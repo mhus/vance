@@ -5,9 +5,10 @@ import de.mhus.vance.api.inbox.InboxItemType;
 import de.mhus.vance.brain.ai.AiModelResolver;
 import de.mhus.vance.brain.ai.light.LightLlmRequest;
 import de.mhus.vance.brain.ai.light.LightLlmService;
-import de.mhus.vance.shared.tenant.TenantService;
 import de.mhus.vance.shared.inbox.InboxItemDocument;
 import de.mhus.vance.shared.inbox.InboxItemService;
+import de.mhus.vance.shared.settings.SettingService;
+import de.mhus.vance.shared.tenant.TenantService;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -78,9 +79,19 @@ public class FookService {
      *  as concrete errors. */
     private static final Map<String, Object> TRIAGE_SCHEMA = Map.of("type", "object");
 
+    /** Setting that decides what {@link FookUpstreamService} (see
+     *  {@code de.mhus.vance.brain.fook.upstream}) does with each
+     *  triaged ticket. Read at triage-time so the ticket can be
+     *  stamped with the right {@code transportApproval} value. */
+    static final String SETTING_UPSTREAM_MODE = "fook.upstream.mode";
+    static final String MODE_NEVER = "never";
+    static final String MODE_AUTOMATIC = "automatic";
+    static final String MODE_MANUAL = "manual";
+
     private final FookTicketService ticketService;
     private final LightLlmService lightLlm;
     private final InboxItemService inboxItemService;
+    private final SettingService settingService;
 
     /** FIFO, thread-safe, lock-free. {@link #submit} writes,
      *  {@link #drainQueue} reads. Bounded only by JVM heap — a
@@ -187,9 +198,12 @@ public class FookService {
 
     private void handleNewTicket(Submission sub, TriageResult result) {
         SubmissionRequest req = sub.request();
+        String mode = currentUpstreamMode();
+        String transportApproval = transportApprovalForMode(mode);
+
         NewTicketPayload payload = NewTicketPayload.builder()
                 .title(firstNonBlank(result.getDerivedTitle(), fallbackTitle(req.getText())))
-                .description(req.getText())
+                .description(bilingualDescription(req.getText(), result.getEnglishTranslation()))
                 .type(firstNonBlank(result.getDerivedType(), "other"))
                 .severity(firstNonBlank(result.getDerivedSeverity(), "medium"))
                 .reporter(req.getReporter())
@@ -197,15 +211,63 @@ public class FookService {
                 .triageNote(result.getTriageNote())
                 .relatedTickets(result.getRelatedTickets() == null
                         ? List.of() : result.getRelatedTickets())
+                .transportApproval(transportApproval)
+                .inboxItemId(null)        // filled in after inbox-item is created
                 .build();
         String ticketId = ticketService.createTicket(payload);
-        writeInboxItem(sub, "Ticket created",
-                "Your submission was opened as a new ticket "
-                        + "(`" + ticketId + "`). "
-                        + (result.getReason() == null ? "" : result.getReason()),
+
+        String body = initialInboxBody(ticketId, mode, result);
+        InboxItemDocument item = writeInboxItem(sub,
+                "Ticket created",
+                body,
                 Map.of("decision", "new_ticket",
                         "ticketId", ticketId,
-                        "submissionId", sub.id()));
+                        "submissionId", sub.id(),
+                        "transportMode", mode));
+        // Back-pointer for FookUpstreamService: the same inbox-item is
+        // later patched in-place with the upstream URL.
+        if (item != null && item.getId() != null) {
+            try {
+                ticketService.setInboxItemId(ticketId, item.getId());
+            } catch (RuntimeException e) {
+                log.warn("Fook: could not stamp inboxItemId on ticket {}: {}",
+                        ticketId, e.getMessage());
+            }
+        }
+    }
+
+    private String currentUpstreamMode() {
+        // Cascade-read: resolves to (tenant=_vance, scope=project,
+        // refId=_tenant) — the same place the setting-form writes to
+        // when the admin picks "tenant" scope.
+        String v = settingService.getStringValueCascade(
+                TenantService.SYSTEM_TENANT, null, null, SETTING_UPSTREAM_MODE);
+        return (v == null || v.isBlank()) ? MODE_NEVER : v;
+    }
+
+    private static String transportApprovalForMode(String mode) {
+        return switch (mode == null ? MODE_NEVER : mode.toLowerCase()) {
+            case MODE_AUTOMATIC -> FookTicketService.TRANSPORT_AUTO;
+            case MODE_MANUAL -> FookTicketService.TRANSPORT_PENDING;
+            default -> FookTicketService.TRANSPORT_NONE;
+        };
+    }
+
+    private static String initialInboxBody(
+            String ticketId, String mode, TriageResult result) {
+        String reason = result.getReason() == null ? "" : " " + result.getReason();
+        return switch (mode == null ? MODE_NEVER : mode.toLowerCase()) {
+            case MODE_AUTOMATIC -> "Your submission was opened as ticket `"
+                    + ticketId + "`. It is being forwarded to the upstream "
+                    + "ticket system; this item updates with the link once "
+                    + "the transfer completes." + reason;
+            case MODE_MANUAL -> "Your submission was opened as ticket `"
+                    + ticketId + "`. It is waiting for an admin to approve "
+                    + "forwarding to the upstream ticket system." + reason;
+            default -> "Your submission was opened as ticket `"
+                    + ticketId + "`. It stays local — upstream forwarding "
+                    + "is disabled on this brain." + reason;
+        };
     }
 
     private void handleMergeInto(Submission sub, TriageResult result) {
@@ -283,7 +345,7 @@ public class FookService {
         }
     }
 
-    private void writeInboxItem(
+    private @Nullable InboxItemDocument writeInboxItem(
             Submission sub,
             String title,
             String body,
@@ -291,17 +353,17 @@ public class FookService {
         TicketReporter reporter = sub.request().getReporter();
         if (reporter.getKind() == TicketReporter.Kind.SERVICE_ACCOUNT) {
             // v1: service-account submissions don't get an inbox
-            // item — there's no user behind them. See §7 planning.
+            // item — there's no user behind them.
             log.info("Fook: skipping inbox for service-account submission " +
                             "submissionId={} serviceAccount={}",
                     sub.id(), reporter.getServiceAccount());
-            return;
+            return null;
         }
         if (reporter.getUserId() == null || reporter.getTenantId() == null) {
             log.warn("Fook: cannot write inbox item — reporter missing " +
                             "userId/tenantId, submissionId={} kind={}",
                     sub.id(), reporter.getKind());
-            return;
+            return null;
         }
         TicketContext ctx = sub.request().getContext();
         InboxItemDocument item = InboxItemDocument.builder()
@@ -318,7 +380,7 @@ public class FookService {
                 .payload(new LinkedHashMap<>(payload))
                 .requiresAction(false)
                 .build();
-        inboxItemService.create(item);
+        return inboxItemService.create(item);
     }
 
     /**
@@ -367,6 +429,27 @@ public class FookService {
     }
 
     // ─── pebble adapters ────────────────────────────────────────────
+
+    /**
+     * Assemble the final ticket-description body. When the LLM
+     * supplied an {@code englishTranslation} (because the original
+     * wasn't English), prepend it and keep the original beneath an
+     * {@code --- Original:} divider. When the original was already
+     * English ({@code englishTranslation} null / blank), return the
+     * original verbatim.
+     *
+     * <p>Upstream maintainers see English first; reporters retain
+     * full audit access to what they actually wrote.
+     */
+    static String bilingualDescription(
+            String original, @Nullable String englishTranslation) {
+        if (englishTranslation == null || englishTranslation.isBlank()) {
+            return original;
+        }
+        return englishTranslation.trim()
+                + "\n\n--- Original:\n\n"
+                + original;
+    }
 
     /**
      * Derive a one-line fallback title from the report text. Used
@@ -429,6 +512,7 @@ public class FookService {
                 .derivedType(stringOrNull(raw.get("derivedType")))
                 .derivedSeverity(stringOrNull(raw.get("derivedSeverity")))
                 .derivedTitle(stringOrNull(raw.get("derivedTitle")))
+                .englishTranslation(stringOrNull(raw.get("englishTranslation")))
                 .targetTicketId(stringOrNull(raw.get("targetTicketId")))
                 .relation(stringOrNull(raw.get("relation")))
                 .relatedTickets(stringList(raw.get("relatedTickets")))

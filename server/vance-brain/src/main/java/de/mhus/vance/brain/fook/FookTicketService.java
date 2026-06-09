@@ -56,8 +56,22 @@ public class FookTicketService {
     static final String PROJECT_ID = HomeBootstrapService.TENANT_PROJECT_NAME;
     static final String PATH_PREFIX = "_vance/fook/tickets/";
     static final String DOC_KIND = "fook-ticket";
-    static final String STATUS_NEW = "new";
     static final String TRIAGED_BY = "fook";
+
+    /** Local transport-lifecycle states. {@code new} → {@code transferred}
+     *  on a successful upstream push; {@code failed} after the sender
+     *  has given up retrying. */
+    public static final String STATUS_NEW = "new";
+    public static final String STATUS_TRANSFERRED = "transferred";
+    public static final String STATUS_FAILED = "failed";
+
+    /** Transport-approval values. The sender-tick picks tickets up
+     *  when this is {@link #TRANSPORT_AUTO} or
+     *  {@link #TRANSPORT_APPROVED}. */
+    public static final String TRANSPORT_AUTO = "auto";
+    public static final String TRANSPORT_PENDING = "pending";
+    public static final String TRANSPORT_APPROVED = "approved";
+    public static final String TRANSPORT_NONE = "none";
 
     /** Cap on tickets pulled for similarity scoring — protects the
      *  triage path from O(n) growth as the pool fills. Tickets
@@ -139,6 +153,9 @@ public class FookTicketService {
         meta.put("type", nonBlank(payload.getType(), "other"));
         meta.put("severity", nonBlank(payload.getSeverity(), "medium"));
         meta.put("status", STATUS_NEW);
+        meta.put("transportApproval",
+                nonBlank(payload.getTransportApproval(), TRANSPORT_NONE));
+        meta.put("inboxItemId", payload.getInboxItemId());
         meta.put("duplicateOf", null);
         putReporter(meta, payload.getReporter());
         meta.put("createdAt", now.toString());
@@ -223,6 +240,128 @@ public class FookTicketService {
                 normaliseList(patch.getAddRelatedTo()).size());
     }
 
+    // ─── Transport state mutators (called by FookUpstreamService) ──
+
+    /**
+     * Mark a ticket as successfully transferred to the configured
+     * {@link de.mhus.vance.brain.fook.upstream.TicketProvider}.
+     * Sets {@code status=transferred}, {@code transferredAt=now},
+     * and fills the {@code upstream*} fields.
+     */
+    public void markTransferred(
+            String uuid,
+            String provider,
+            String externalId,
+            String url) {
+        patchMeta(uuid, meta -> {
+            meta.put("status", STATUS_TRANSFERRED);
+            meta.put("transferredAt", Instant.now().toString());
+            meta.put("upstreamProvider", provider);
+            meta.put("upstreamExternalId", externalId);
+            meta.put("upstreamUrl", url);
+        });
+        log.info("Fook: ticket id='{}' transferred to {} as {} ({})",
+                uuid, provider, externalId, url);
+    }
+
+    /**
+     * Mark a ticket as permanently failed to transfer. Use after the
+     * sender exhausted retries; the inbox-tracker item should then
+     * tell the reporter to escalate.
+     */
+    public void markTransferFailed(String uuid, String reason) {
+        patchMeta(uuid, meta -> meta.put("status", STATUS_FAILED));
+        log.warn("Fook: ticket id='{}' marked transfer-failed: {}", uuid, reason);
+    }
+
+    /**
+     * Admin-approval path for {@code mode=manual}: flips
+     * {@code transportApproval=pending} → {@code approved} so the
+     * next sender-tick picks the ticket up.
+     */
+    public void markApproved(String uuid) {
+        patchMeta(uuid, meta -> meta.put("transportApproval", TRANSPORT_APPROVED));
+        log.info("Fook: ticket id='{}' approved for transport", uuid);
+    }
+
+    /**
+     * Mirror the upstream state pulled by {@code FookUpstreamService}.
+     * For GitHub, {@code state} is {@code open} or {@code closed}.
+     */
+    public void markUpstreamState(String uuid, String state) {
+        patchMeta(uuid, meta -> {
+            meta.put("upstreamState", state);
+            meta.put("upstreamLastSyncedAt", Instant.now().toString());
+        });
+    }
+
+    /** Write the back-pointer from the ticket to its tracker inbox-item. */
+    public void setInboxItemId(String uuid, String inboxItemId) {
+        patchMeta(uuid, meta -> meta.put("inboxItemId", inboxItemId));
+    }
+
+    /**
+     * All tickets the sender-tick should consider: lifecycle is still
+     * {@link #STATUS_NEW}, and the approval flag permits transport
+     * ({@link #TRANSPORT_AUTO} or {@link #TRANSPORT_APPROVED}).
+     */
+    public List<TicketDocument> listPendingTransport() {
+        return listAllTickets().stream()
+                .filter(t -> STATUS_NEW.equals(t.getStatus()))
+                .filter(t -> TRANSPORT_AUTO.equals(t.getTransportApproval())
+                        || TRANSPORT_APPROVED.equals(t.getTransportApproval()))
+                .toList();
+    }
+
+    /**
+     * All transferred tickets — the poll-tick walks these and asks
+     * each {@code TicketProvider} for state/comment updates.
+     */
+    public List<TicketDocument> listTransferredForPolling() {
+        return listAllTickets().stream()
+                .filter(t -> STATUS_TRANSFERRED.equals(t.getStatus()))
+                .filter(t -> t.getUpstreamProvider() != null
+                        && t.getUpstreamExternalId() != null)
+                .toList();
+    }
+
+    private List<TicketDocument> listAllTickets() {
+        Page<DocumentDocument> page = documentService.listByProjectPaged(
+                TENANT_ID, PROJECT_ID, 0, MAX_CANDIDATES_SCAN,
+                PATH_PREFIX, DOC_KIND);
+        if (page.isEmpty()) return List.of();
+        List<TicketDocument> out = new ArrayList<>(page.getNumberOfElements());
+        for (DocumentDocument doc : page.getContent()) {
+            parse(doc).ifPresent(p -> out.add(toDocument(p)));
+        }
+        return out;
+    }
+
+    /** Read-modify-write helper for $meta scalar patches. */
+    private void patchMeta(String uuid, java.util.function.Consumer<Map<String, Object>> mutator) {
+        Optional<DocumentDocument> existing = documentService.findByPath(
+                TENANT_ID, PROJECT_ID, pathFor(uuid));
+        if (existing.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Fook: cannot patch — ticket not found: " + uuid);
+        }
+        DocumentDocument doc = existing.get();
+        String body = documentService.readContent(doc);
+        Map<String, Object> root = parseRoot(body);
+        Map<String, Object> meta = asMap(root.get("$meta"));
+        if (meta == null) {
+            throw new IllegalStateException(
+                    "Fook: ticket '" + uuid + "' is missing $meta block");
+        }
+        mutator.accept(meta);
+        documentService.upsertText(
+                TENANT_ID, PROJECT_ID, pathFor(uuid),
+                doc.getTitle(),
+                doc.getTags(),
+                dumpYaml(root),
+                TRIAGED_BY);
+    }
+
     // ─── Helpers ────────────────────────────────────────────────────
 
     static String pathFor(String uuid) {
@@ -277,10 +416,18 @@ public class FookTicketService {
         p.type = stringOrEmpty(meta.get("type"));
         p.severity = stringOrEmpty(meta.get("severity"));
         p.status = stringOrEmpty(meta.get("status"));
+        p.transportApproval = stringOrNull(meta.get("transportApproval"));
+        p.inboxItemId = stringOrNull(meta.get("inboxItemId"));
         p.duplicateOf = stringOrNull(meta.get("duplicateOf"));
         p.createdAt = parseInstant(meta.get("createdAt"));
         p.triagedAt = parseInstant(meta.get("triagedAt"));
         p.triagedBy = stringOrNull(meta.get("triagedBy"));
+        p.transferredAt = parseInstant(meta.get("transferredAt"));
+        p.upstreamProvider = stringOrNull(meta.get("upstreamProvider"));
+        p.upstreamExternalId = stringOrNull(meta.get("upstreamExternalId"));
+        p.upstreamUrl = stringOrNull(meta.get("upstreamUrl"));
+        p.upstreamState = stringOrNull(meta.get("upstreamState"));
+        p.upstreamLastSyncedAt = parseInstant(meta.get("upstreamLastSyncedAt"));
         p.reporter = readReporter(meta);
         p.description = stringOrEmpty(root.get(FIELD_DESCRIPTION));
         p.triageNote = stringOrNull(root.get(FIELD_TRIAGE_NOTE));
@@ -314,9 +461,17 @@ public class FookTicketService {
                 .type(p.type)
                 .severity(p.severity)
                 .status(p.status)
+                .transportApproval(p.transportApproval)
+                .inboxItemId(p.inboxItemId)
                 .createdAt(p.createdAt)
                 .triagedAt(p.triagedAt)
                 .triagedBy(p.triagedBy)
+                .transferredAt(p.transferredAt)
+                .upstreamProvider(p.upstreamProvider)
+                .upstreamExternalId(p.upstreamExternalId)
+                .upstreamUrl(p.upstreamUrl)
+                .upstreamState(p.upstreamState)
+                .upstreamLastSyncedAt(p.upstreamLastSyncedAt)
                 .description(p.description)
                 .triageNote(p.triageNote)
                 .context(p.context)
@@ -467,10 +622,18 @@ public class FookTicketService {
         String type;
         String severity;
         String status;
+        @Nullable String transportApproval;
+        @Nullable String inboxItemId;
         @Nullable String duplicateOf;
         @Nullable Instant createdAt;
         @Nullable Instant triagedAt;
         @Nullable String triagedBy;
+        @Nullable Instant transferredAt;
+        @Nullable String upstreamProvider;
+        @Nullable String upstreamExternalId;
+        @Nullable String upstreamUrl;
+        @Nullable String upstreamState;
+        @Nullable Instant upstreamLastSyncedAt;
         TicketReporter reporter;
         String description;
         @Nullable String triageNote;

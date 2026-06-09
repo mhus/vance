@@ -44,4 +44,25 @@ public class NewTicketPayload {
      *  aren't reachable from a "new ticket" decision — only
      *  {@code merge_into} touches those, via {@link RelationsPatch}. */
     List<String> relatedTickets;
+
+    /**
+     * Transport-approval flag persisted to {@code $meta.transportApproval}.
+     * Set by {@link FookService} from the current
+     * {@code fook.upstream.mode} setting:
+     * <ul>
+     *   <li>{@code mode=automatic} → {@code "auto"}</li>
+     *   <li>{@code mode=manual}    → {@code "pending"}</li>
+     *   <li>{@code mode=never}     → {@code "none"}</li>
+     * </ul>
+     * The sender-tick picks tickets up when this is {@code auto} or
+     * {@code approved}.
+     */
+    @Nullable String transportApproval;
+
+    /**
+     * The id of the inbox-item written at triage-time. Recorded so
+     * the sender-tick can update the same item with the upstream
+     * URL instead of creating a second one for the transfer event.
+     */
+    @Nullable String inboxItemId;
 }

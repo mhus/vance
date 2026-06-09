@@ -32,8 +32,18 @@ public class TriageResult {
     @Nullable String derivedType;
     /** new_ticket only — LLM-derived from the report text. */
     @Nullable String derivedSeverity;
-    /** new_ticket only — LLM-derived from the report text. */
+    /** new_ticket only — LLM-derived from the report text, ALWAYS
+     *  in English (translated if the report wasn't). */
     @Nullable String derivedTitle;
+
+    /**
+     * new_ticket only — English translation of the report body when
+     * the original isn't in English. Empty string / null when the
+     * report is already English. {@code FookService} concatenates as
+     * {@code <englishTranslation>\n\n--- Original:\n\n<originalText>}
+     * when present, or stores the original verbatim when absent.
+     */
+    @Nullable String englishTranslation;
 
     /** merge_into only — UUID of the ticket the submission folds into. */
     @Nullable String targetTicketId;

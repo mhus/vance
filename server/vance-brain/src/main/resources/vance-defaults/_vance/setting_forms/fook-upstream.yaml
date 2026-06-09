@@ -1,0 +1,236 @@
+title:
+  de: "Fook — Ticket-Upstream"
+  en: "Fook — Ticket Upstream"
+description:
+  de: "Konfiguriert, ob (und wie) lokal triagierte Fook-Tickets an ein
+       externes Ticket-System (Standard: GitHub Issues) weitergeleitet
+       werden. Day-1-Default ist `never` — nichts wird gesendet, bis
+       diese Einstellungen explizit gesetzt sind."
+  en: "Controls whether (and how) locally triaged Fook tickets are
+       forwarded to an external ticket tracker (default: GitHub Issues).
+       Day-1 default is `never` — nothing leaves the brain until these
+       settings are filled in explicitly."
+icon: paper-airplane
+category: integrations
+defaultScope: tenant
+availableIn: [ "_vance" ]
+
+fields:
+
+  # ─── Mode ────────────────────────────────────────────────────────
+
+  - name: mode
+    type: select
+    required: true
+    defaultValue: "never"
+    label:
+      de: "Modus"
+      en: "Mode"
+    help:
+      de: "Steuert, was mit triagierten Tickets passiert.
+           `never` = nichts senden (Default). `automatic` = sofort hochschieben.
+           `manual` = Admin gibt Tickets im Batch frei."
+      en: "Controls what happens with triaged tickets.
+           `never` = nothing is sent (default). `automatic` = push every
+           triaged ticket. `manual` = admin approves tickets in batches."
+    bindsTo:
+      key: "fook.upstream.mode"
+    choices:
+      - value: "never"
+        label: { de: "Niemals senden", en: "Never send" }
+      - value: "automatic"
+        label: { de: "Automatisch", en: "Automatic" }
+      - value: "manual"
+        label: { de: "Manuell (Admin-Freigabe)", en: "Manual (admin approval)" }
+
+  # ─── Provider selection ──────────────────────────────────────────
+
+  - name: providerType
+    type: select
+    required: true
+    defaultValue: "github"
+    label:
+      de: "Ziel-System"
+      en: "Target system"
+    help:
+      de: "Welches Ticket-System Fook anschreibt. v1 unterstützt nur
+           GitHub Issues; weitere Adapter (GitLab, Gitea, …) kommen
+           später."
+      en: "Which ticket system Fook talks to. v1 supports GitHub
+           Issues only; more adapters (GitLab, Gitea, …) follow."
+    showIf: "mode != 'never'"
+    bindsTo:
+      key: "fook.upstream.providerType"
+    choices:
+      - value: "github"
+        label: { de: "GitHub Issues", en: "GitHub Issues" }
+
+  # ─── GitHub: connection ──────────────────────────────────────────
+
+  - name: githubOwner
+    type: string
+    required: true
+    label:
+      de: "GitHub Owner"
+      en: "GitHub owner"
+    help:
+      de: "GitHub-Org oder -User, z.B. `mhus` oder `my-company`."
+      en: "GitHub org or user, e.g. `mhus` or `my-company`."
+    showIf:  "mode != 'never' and providerType == 'github'"
+    writeIf: "mode != 'never' and providerType == 'github'"
+    bindsTo:
+      key: "fook.upstream.github.owner"
+
+  - name: githubRepo
+    type: string
+    required: true
+    label:
+      de: "GitHub Repo"
+      en: "GitHub repo"
+    help:
+      de: "Repository-Name, z.B. `vance`. Issues werden hier angelegt."
+      en: "Repository name, e.g. `vance`. Issues are created here."
+    showIf:  "mode != 'never' and providerType == 'github'"
+    writeIf: "mode != 'never' and providerType == 'github'"
+    bindsTo:
+      key: "fook.upstream.github.repo"
+
+  - name: githubToken
+    type: password
+    required: true
+    label:
+      de: "GitHub Token"
+      en: "GitHub token"
+    help:
+      de: "Personal Access Token (fine-grained) mit `issues:write` und
+           `metadata:read` auf dem Ziel-Repo. Empfehlung: dedizierter
+           Bot-Account `vance-fook-bot`. Leer lassen um einen bestehenden
+           Token nicht zu überschreiben."
+      en: "Fine-grained Personal Access Token with `issues:write` and
+           `metadata:read` on the target repo. Recommended: dedicated
+           bot account `vance-fook-bot`. Leave empty to keep an existing
+           token unchanged."
+    showIf:  "mode != 'never' and providerType == 'github'"
+    writeIf: "mode != 'never' and providerType == 'github'"
+    bindsTo:
+      key: "fook.upstream.github.token"
+
+  - name: githubApiBase
+    type: string
+    defaultValue: "https://api.github.com"
+    label:
+      de: "API-Basis-URL"
+      en: "API base URL"
+    help:
+      de: "Nur ändern für GitHub Enterprise Server. Default ist
+           `https://api.github.com`."
+      en: "Override only for GitHub Enterprise Server. Default is
+           `https://api.github.com`."
+    showIf:  "mode != 'never' and providerType == 'github'"
+    writeIf: "mode != 'never' and providerType == 'github'"
+    bindsTo:
+      key: "fook.upstream.github.apiBase"
+
+  - name: githubExtraLabels
+    type: string
+    label:
+      de: "Extra-Labels (Komma-getrennt)"
+      en: "Extra labels (comma-separated)"
+    help:
+      de: "Zusätzlich zu den automatisch gesetzten `fook` /
+           `fook/<type>` / `fook/severity-<level>` Labels. Beispiel:
+           `env/prod,team/backend`."
+      en: "Applied on top of the automatic `fook` / `fook/<type>` /
+           `fook/severity-<level>` labels. Example:
+           `env/prod,team/backend`."
+    showIf:  "mode != 'never' and providerType == 'github'"
+    writeIf: "mode != 'never' and providerType == 'github'"
+    bindsTo:
+      key: "fook.upstream.github.extraLabels"
+
+  # ─── Anonymization ───────────────────────────────────────────────
+
+  - name: anonymize
+    type: boolean
+    defaultValue: "true"
+    label:
+      de: "Reporter anonymisieren"
+      en: "Anonymize reporter"
+    help:
+      de: "Wenn an: User-ID + Tenant-ID werden vor dem Send gehasht, sodass
+           das Ziel-System nur einen Korrelations-Hash sieht, keine
+           echte Identität. Empfohlen."
+      en: "When on, user-id + tenant-id are hashed before send so the
+           target system sees only a correlation hash, not the real
+           identity. Recommended."
+    showIf:  "mode != 'never'"
+    writeIf: "mode != 'never'"
+    bindsTo:
+      key: "fook.upstream.anonymize"
+
+  - name: scrubPatterns
+    type: string
+    defaultValue: "email,ipv4,apiKey,guid"
+    label:
+      de: "Scrub-Patterns (Komma-getrennt)"
+      en: "Scrub patterns (comma-separated)"
+    help:
+      de: "Liste der Regex-Patterns für PII-Redaction in title,
+           description und triageNote vor Send. Verfügbar:
+           `email`, `ipv4`, `apiKey`, `guid`. Leer lassen für keine
+           Scrubbing (nicht empfohlen)."
+      en: "Regex patterns applied for PII redaction on title,
+           description and triage note before send. Available:
+           `email`, `ipv4`, `apiKey`, `guid`. Empty disables
+           scrubbing (not recommended)."
+    showIf:  "mode != 'never' and anonymize == 'true'"
+    writeIf: "mode != 'never' and anonymize == 'true'"
+    bindsTo:
+      key: "fook.upstream.scrub.patterns"
+
+  # ─── Status sync ─────────────────────────────────────────────────
+
+  - name: statusPollEnabled
+    type: boolean
+    defaultValue: "true"
+    label:
+      de: "Status-Sync aktiv"
+      en: "Status sync enabled"
+    help:
+      de: "Wenn an: Fook pollt das Ziel-System regelmäßig auf Status-
+           Updates + neue Kommentare und meldet sie an den Original-
+           Reporter über die Inbox."
+      en: "When on, Fook polls the target system regularly for state
+           updates and new comments, and pushes them to the original
+           reporter via the inbox."
+    showIf:  "mode != 'never'"
+    writeIf: "mode != 'never'"
+    bindsTo:
+      key: "fook.upstream.statusPoll.enabled"
+
+  # ─── Identity (auto-generated; surfaced read-only) ───────────────
+
+  - name: instanceFingerprint
+    type: string
+    label:
+      de: "Instance-Fingerprint"
+      en: "Instance fingerprint"
+    help:
+      de: "Opaker Identifier dieser Brain-Instanz, den das Ziel-System
+           sieht. Wird beim ersten Send automatisch erzeugt und persistiert.
+           Nicht von Hand ändern, außer zu Debug-Zwecken — der Wechsel
+           bricht die Korrelation bestehender Tickets."
+      en: "Opaque identifier for this brain instance, visible to the
+           target system. Auto-generated on first send and persisted.
+           Don't change by hand except for debugging — it breaks the
+           correlation of existing tickets."
+    showIf:  "mode != 'never'"
+    writeIf: "mode != 'never'"
+    bindsTo:
+      key: "fook.upstream.instanceFingerprint"
+
+settings:
+  # Marker key so other code can detect "Fook upstream has been touched".
+  - key: "fook.upstream.configured"
+    settingType: BOOLEAN
+    value: "true"

@@ -78,10 +78,11 @@ promptPrefix: |
         "decision": "new_ticket",
         "derivedType": "bug" | "feature" | "question" | "other",
         "derivedSeverity": "low" | "medium" | "high",
-        "derivedTitle": "short imperative title",
+        "derivedTitle": "short imperative title — ALWAYS English",
+        "englishTranslation": "English translation of the report body, OR empty string if the report is already in English",
         "relatedTickets": ["<uuid>", ...],
-        "triageNote": "1–3 sentences on why this is new (optional)",
-        "reason": "1 sentence for the user's inbox item"
+        "triageNote": "1–3 sentences in English (optional)",
+        "reason": "1 sentence for the user's inbox item (in the reporter's language if obvious, otherwise English)"
       }
 
   - **merge_into:**
@@ -144,6 +145,34 @@ promptPrefix: |
   - `low` — cosmetic, nit-level, nice-to-have. Use `medium` for
     non-bug types unless the reporter specifically signals
     urgency.
+
+  ## Language handling (new_ticket only)
+
+  Vance tickets get forwarded to a public English-language ticket
+  tracker. Maintainers worldwide read them. Therefore:
+
+  - `derivedTitle` is **always** in English. If the report is in
+    another language, translate the title; keep it short and imperative.
+  - `englishTranslation` carries an English translation of the report
+    body (the prose above the "Submission" header). Detection rule:
+    - If the report body is already in English (US/UK), set
+      `englishTranslation` to an empty string `""`. Do not echo the
+      original.
+    - If the report body is in any other language (German, French,
+      Spanish, Chinese, …), produce a faithful, full-content English
+      translation. Preserve formatting, code snippets, file paths,
+      log lines verbatim — translate only natural-language prose.
+  - `triageNote` is always in English so maintainers reading the
+    upstream ticket understand the rationale.
+  - `reason` (one line for the user's inbox) may stay in the
+    reporter's language if you can tell what it was; otherwise
+    English.
+
+  The backend assembles the final ticket body as
+  `<englishTranslation>\n\n--- Original:\n\n<original report>` when
+  `englishTranslation` is non-empty, or just the original when it's
+  empty. You don't build that concatenation — just supply the
+  translation.
 
   ## Rules
 

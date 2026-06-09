@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -19,6 +20,7 @@ import de.mhus.vance.brain.ai.light.LightLlmRequest;
 import de.mhus.vance.brain.ai.light.LightLlmService;
 import de.mhus.vance.shared.inbox.InboxItemDocument;
 import de.mhus.vance.shared.inbox.InboxItemService;
+import de.mhus.vance.shared.settings.SettingService;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,6 +41,7 @@ class FookServiceTest {
     private FookTicketService ticketService;
     private LightLlmService lightLlm;
     private InboxItemService inboxItemService;
+    private SettingService settingService;
     private FookService service;
 
     @BeforeEach
@@ -46,7 +49,17 @@ class FookServiceTest {
         ticketService = mock(FookTicketService.class);
         lightLlm = mock(LightLlmService.class);
         inboxItemService = mock(InboxItemService.class);
-        service = new FookService(ticketService, lightLlm, inboxItemService);
+        settingService = mock(SettingService.class);
+        // Default: upstream off — every existing test sees "never" so
+        // their assertions stay valid. Tests that exercise the
+        // transport-mode logic override this individually.
+        when(settingService.getStringValueCascade(any(), any(), any(),
+                eq("fook.upstream.mode")))
+                .thenReturn("never");
+        when(inboxItemService.create(any())).thenAnswer(inv ->
+                inv.<InboxItemDocument>getArgument(0));
+        service = new FookService(
+                ticketService, lightLlm, inboxItemService, settingService);
 
         when(ticketService.searchSimilar(any(), anyInt())).thenReturn(List.of());
     }
@@ -389,6 +402,97 @@ class FookServiceTest {
         assertThat(rel.get("rootCauseOf")).isEqualTo(List.of("rc-1"));
     }
 
+    // ─── transport-mode → NewTicketPayload mapping ──────────────────
+
+    @Test
+    void mode_automatic_creates_ticket_with_transport_auto_approval() {
+        when(settingService.getStringValueCascade(any(), any(), any(),
+                eq("fook.upstream.mode")))
+                .thenReturn("automatic");
+        when(lightLlm.callForJson(any(LightLlmRequest.class)))
+                .thenReturn(Map.of("decision", "new_ticket",
+                        "derivedTitle", "T", "derivedType", "bug",
+                        "derivedSeverity", "low",
+                        "reason", "ok"));
+        when(ticketService.createTicket(any())).thenReturn("uuid-new");
+
+        service.submit(engineSubmission("report text"));
+        service.drainQueue();
+
+        ArgumentCaptor<NewTicketPayload> cap =
+                ArgumentCaptor.forClass(NewTicketPayload.class);
+        verify(ticketService).createTicket(cap.capture());
+        assertThat(cap.getValue().getTransportApproval()).isEqualTo("auto");
+    }
+
+    @Test
+    void mode_manual_creates_ticket_with_pending_approval() {
+        when(settingService.getStringValueCascade(any(), any(), any(),
+                eq("fook.upstream.mode")))
+                .thenReturn("manual");
+        when(lightLlm.callForJson(any(LightLlmRequest.class)))
+                .thenReturn(Map.of("decision", "new_ticket",
+                        "derivedTitle", "T", "derivedType", "bug",
+                        "derivedSeverity", "low",
+                        "reason", "ok"));
+        when(ticketService.createTicket(any())).thenReturn("uuid-new");
+
+        service.submit(engineSubmission("text"));
+        service.drainQueue();
+
+        ArgumentCaptor<NewTicketPayload> cap =
+                ArgumentCaptor.forClass(NewTicketPayload.class);
+        verify(ticketService).createTicket(cap.capture());
+        assertThat(cap.getValue().getTransportApproval()).isEqualTo("pending");
+
+        InboxItemDocument item = captureInbox();
+        assertThat(item.getBody()).contains("waiting for an admin");
+        assertThat(item.getPayload()).containsEntry("transportMode", "manual");
+    }
+
+    @Test
+    void mode_never_creates_ticket_with_none_approval() {
+        when(settingService.getStringValueCascade(any(), any(), any(),
+                eq("fook.upstream.mode")))
+                .thenReturn("never");
+        when(lightLlm.callForJson(any(LightLlmRequest.class)))
+                .thenReturn(Map.of("decision", "new_ticket",
+                        "derivedTitle", "T", "derivedType", "bug",
+                        "derivedSeverity", "low",
+                        "reason", "ok"));
+        when(ticketService.createTicket(any())).thenReturn("uuid-new");
+
+        service.submit(engineSubmission("text"));
+        service.drainQueue();
+
+        ArgumentCaptor<NewTicketPayload> cap =
+                ArgumentCaptor.forClass(NewTicketPayload.class);
+        verify(ticketService).createTicket(cap.capture());
+        assertThat(cap.getValue().getTransportApproval()).isEqualTo("none");
+        InboxItemDocument item = captureInbox();
+        assertThat(item.getBody()).contains("stays local");
+    }
+
+    @Test
+    void inboxItemId_back_pointer_is_stamped_on_ticket() {
+        when(lightLlm.callForJson(any(LightLlmRequest.class)))
+                .thenReturn(Map.of("decision", "new_ticket",
+                        "derivedTitle", "T", "derivedType", "bug",
+                        "derivedSeverity", "low",
+                        "reason", "ok"));
+        when(ticketService.createTicket(any())).thenReturn("uuid-new");
+        // create() returns the saved document with an id set.
+        InboxItemDocument withId = InboxItemDocument.builder()
+                .id("inbox-42")
+                .build();
+        when(inboxItemService.create(any())).thenReturn(withId);
+
+        service.submit(engineSubmission("text"));
+        service.drainQueue();
+
+        verify(ticketService).setInboxItemId("uuid-new", "inbox-42");
+    }
+
     // ─── system → reporter tenant fallback ──────────────────────────
 
     @Test
@@ -518,6 +622,74 @@ class FookServiceTest {
                 "decision", "open_ticket")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("open_ticket");
+    }
+
+    // ─── bilingual description ──────────────────────────────────────
+
+    @Test
+    void english_only_submission_keeps_description_as_original() {
+        when(lightLlm.callForJson(any(LightLlmRequest.class)))
+                .thenReturn(Map.of(
+                        "decision", "new_ticket",
+                        "derivedTitle", "Brain crash on boot",
+                        "derivedType", "bug",
+                        "derivedSeverity", "high",
+                        "englishTranslation", "",   // already English
+                        "reason", "ok"));
+        when(ticketService.createTicket(any())).thenReturn("uuid-new");
+
+        service.submit(engineSubmission(
+                "Brain crashes on boot when recipes.yaml is missing."));
+        service.drainQueue();
+
+        ArgumentCaptor<NewTicketPayload> cap =
+                ArgumentCaptor.forClass(NewTicketPayload.class);
+        verify(ticketService).createTicket(cap.capture());
+        // Description is the original verbatim — no divider, no
+        // duplicated text.
+        assertThat(cap.getValue().getDescription())
+                .isEqualTo("Brain crashes on boot when recipes.yaml is missing.");
+        assertThat(cap.getValue().getDescription()).doesNotContain("--- Original:");
+    }
+
+    @Test
+    void non_english_submission_gets_bilingual_description() {
+        when(lightLlm.callForJson(any(LightLlmRequest.class)))
+                .thenReturn(Map.of(
+                        "decision", "new_ticket",
+                        "derivedTitle", "Brain crashes on boot",
+                        "derivedType", "bug",
+                        "derivedSeverity", "high",
+                        "englishTranslation",
+                            "Brain crashes on boot when recipes.yaml is missing.",
+                        "reason", "ok"));
+        when(ticketService.createTicket(any())).thenReturn("uuid-new");
+
+        service.submit(engineSubmission(
+                "Brain stürzt beim Boot ab, wenn die recipes.yaml fehlt."));
+        service.drainQueue();
+
+        ArgumentCaptor<NewTicketPayload> cap =
+                ArgumentCaptor.forClass(NewTicketPayload.class);
+        verify(ticketService).createTicket(cap.capture());
+        String body = cap.getValue().getDescription();
+        // English first, then divider, then original.
+        assertThat(body)
+                .startsWith("Brain crashes on boot when recipes.yaml is missing.")
+                .contains("--- Original:")
+                .contains("Brain stürzt beim Boot ab");
+        // English text comes BEFORE the divider.
+        int dividerAt = body.indexOf("--- Original:");
+        assertThat(body.substring(0, dividerAt)).doesNotContain("stürzt");
+    }
+
+    @Test
+    void bilingualDescription_helper_handles_null_and_blank() {
+        assertThat(FookService.bilingualDescription("hi", null)).isEqualTo("hi");
+        assertThat(FookService.bilingualDescription("hi", "")).isEqualTo("hi");
+        assertThat(FookService.bilingualDescription("hi", "  ")).isEqualTo("hi");
+        assertThat(FookService.bilingualDescription("orig", "english"))
+                .isEqualTo("english\n\n--- Original:\n\norig");
     }
 
     @Test

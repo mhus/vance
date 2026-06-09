@@ -340,6 +340,49 @@ public class InboxItemService {
         return findById(tenantId, itemId);
     }
 
+    /**
+     * In-place patch of an existing item's body, optional title and
+     * payload. Status, ownership and history-of-prior-actions stay
+     * untouched; a {@code CONTENT_UPDATED} history entry is appended.
+     * Intended for system components that track an evolving event
+     * with a single inbox-item (e.g. Fook upstream-transfer).
+     *
+     * <p>Returns {@code empty} if no item with that id exists in the
+     * tenant. {@code newPayload} replaces the entire payload map;
+     * pass {@code null} to keep the current one.
+     */
+    public Optional<InboxItemDocument> updateContent(
+            String tenantId,
+            String itemId,
+            @Nullable String newTitle,
+            String newBody,
+            @Nullable Map<String, Object> newPayload,
+            String byActorId) {
+        Optional<InboxItemDocument> existing = findById(tenantId, itemId);
+        if (existing.isEmpty()) return Optional.empty();
+        InboxItemDocument doc = existing.get();
+        Instant now = Instant.now();
+        Update update = new Update()
+                .set("body", newBody)
+                .push("history", InboxItemHistoryEntry.builder()
+                        .action("CONTENT_UPDATED")
+                        .actor(byActorId)
+                        .at(now)
+                        .build());
+        if (newTitle != null && !newTitle.equals(doc.getTitle())) {
+            update.set("title", newTitle);
+        }
+        if (newPayload != null) {
+            update.set("payload", newPayload);
+        }
+        mongoTemplate.updateFirst(
+                Query.query(Criteria.where(F_ID).is(itemId).and(F_TENANT).is(tenantId)),
+                update, InboxItemDocument.class);
+        InboxItemDocument refreshed = findById(tenantId, itemId).orElse(doc);
+        eventPublisher.publishEvent(new InboxItemUpdatedEvent(refreshed));
+        return Optional.of(refreshed);
+    }
+
     public Optional<InboxItemDocument> delegate(
             String tenantId, String itemId, String toUserId, String byUserId,
             @Nullable String note) {

@@ -1,6 +1,6 @@
 ---
-triggers: tools, find_tools, describe_tool, server tools, client tools, client_*, RAG tools, rag_*, scratchpad, exec, sandbox, tool discovery, what tools are there
-summary: Tool catalogue overview — server vs. client tools, find_tools / describe_tool discovery, scratch + exec sandboxes, RAG tools, tagging.
+triggers: tools, find_tools, describe_tool, server tools, client tools, client_*, RAG tools, rag_*, memory_search, search memory, project memory, scratchpad, exec, sandbox, tool discovery, what tools are there
+summary: Tool catalogue overview — server vs. client tools, find_tools / describe_tool discovery, scratch + exec sandboxes, RAG + memory_search, tagging.
 ---
 # Tools catalogue and composition
 
@@ -47,10 +47,18 @@ Use these when the user asks about *their* files, not project files.
 - `scratchpad_set / get / list / delete title=…` — named-slot persistent
   notes per think-process. Use to remember intermediate findings, plans,
   anything you need next turn that isn't natural chat.
+- `memory_search query=<text> [topK=5] [minScore=0] [pathPrefix=…]`
+  — search the project's auto-indexed default memory (everything under
+  `documents/`). First reflex when the user asks "do we have anything
+  on X" or you suspect a relevant doc exists. Returns hits with score,
+  path and content excerpt. Use `pathPrefix` to scope to a folder
+  (`documents/meeting-notes/`, `_vance/recipes/`, …); use `minScore=0.6+`
+  for strict matches only.
 - `rag_create / list / query / add_text / add_scratch_file / delete`
-  — per-project retrieval indexes. `rag_query name=<rag> query=<text>`
-  returns the top-K most similar chunks. Compose with
-  `rag_add_scratch_file` to ingest a scratch file.
+  — *named* RAG collections separate from the default memory.
+  `rag_query name=<rag> query=<text>` for those. Reach for these only
+  when working with a deliberately-curated index; the default project
+  memory is `memory_search`'s territory.
 
 ## Web
 

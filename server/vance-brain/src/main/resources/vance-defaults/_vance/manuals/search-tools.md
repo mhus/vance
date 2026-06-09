@@ -1,11 +1,25 @@
 ---
-triggers: search, web search, rich_search, web_search, image_search, video_search, pdf_search, recherche, suchen, "look up", find information online, "what does the web say"
-summary: How to pick between rich_search / web_search / image_search / video_search / pdf_search for a given user intent.
+triggers: search, web search, rich_search, web_search, image_search, video_search, pdf_search, memory_search, recherche, suchen, "look up", find information online, "what does the web say", project memory, do we have, haben wir was zu
+summary: How to pick between memory_search (project-local) and rich_search / web_search / image_search / video_search / pdf_search (web) for a given user intent. Check memory first.
 ---
 # Search tools — picking the right one
 
 Five web-search tools, four use cases. Pick by what the user is
 asking for, not by what feels "neutral".
+
+## Before going to the web — check the project first
+
+If the user could plausibly already have something on this topic
+(notes, prior research, documents they uploaded), reach for
+`memory_search query=<text>` first. It searches the project's
+auto-indexed memory (`documents/` and friends) and is the
+cheapest, freshest, most context-aware source you have. Hits
+there save a web round-trip and tie the answer to the user's own
+material — which is almost always what they want.
+
+Web tools below kick in when the project memory comes up empty
+or when the user explicitly asks for fresh external information
+("what's the latest", "search the web for …").
 
 ## When to consult
 

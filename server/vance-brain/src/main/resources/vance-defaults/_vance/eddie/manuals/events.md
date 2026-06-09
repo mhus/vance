@@ -53,8 +53,10 @@ Genau wie beim Scheduler hinterlässt jedes Auslösen ein Markdown unter
 Matter trägt `outcome`, `source` (`admin` für `event_fire`, `public`
 für Webhook), `httpMethod`, `runAs`, `targetName`, `spawnedId`,
 `durationMs`. Auto-TTL: Default 7 Tage, Setting `events.log.retentionDays`
-kann das pro Tenant/Projekt überschreiben — `0` schaltet das Logging
-für diesen Scope komplett ab.
+kann das pro Tenant/Projekt überschreiben (tri-state):
+- **> 0** → Tage Retention (≤ 365).
+- **0** → unbegrenzt erhalten (kein TTL).
+- **< 0** → Logging aus, keine Documents.
 
 ```
 invoke_tool(

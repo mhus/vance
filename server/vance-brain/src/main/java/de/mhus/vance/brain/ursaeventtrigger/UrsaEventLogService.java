@@ -45,11 +45,15 @@ public class UrsaEventLogService {
 
     /**
      * Setting key for the per-tenant retention override (project
-     * cascade). Integer days. {@code < 1} (typically {@code 0})
-     * disables logging for the affected scope — no document is
-     * written at all. Otherwise the value is clamped to
-     * {@code <= MAX_RETENTION_DAYS}. Matches the scheduler-log key
-     * naming convention so operators see one consistent pattern.
+     * cascade). Integer days, tri-state — matches the
+     * scheduler-log key naming and semantics:
+     * <ul>
+     *   <li>{@code > 0} — write doc with {@code expiresAt = firedAt + days},
+     *       clamped to {@code <= MAX_RETENTION_DAYS}.</li>
+     *   <li>{@code 0} — write doc but leave {@code expiresAt = null}
+     *       (infinite retention).</li>
+     *   <li>{@code < 0} — logging disabled; no document is written.</li>
+     * </ul>
      */
     public static final String SETTING_RETENTION_DAYS = "events.log.retentionDays";
 
@@ -81,16 +85,20 @@ public class UrsaEventLogService {
             @Value("${vance.events.log.retention-days:7}") int defaultRetentionDays) {
         this.documentService = documentService;
         this.settingService = settingService;
-        // Only clamp the upper bound — lower-bound clamping would
-        // silently turn "0 = disable globally" into "log for 1 day".
+        // Clamp only the upper bound; 0 = infinite, negative = disabled
+        // are valid signals the caller must see.
         this.defaultRetentionDays = Math.min(MAX_RETENTION_DAYS, defaultRetentionDays);
-        if (this.defaultRetentionDays < 1) {
+        if (this.defaultRetentionDays < 0) {
             log.info("UrsaEventLogService initialised — DISABLED by default (retention-days={}); "
                     + "tenants may opt back in via setting '{}'",
                     this.defaultRetentionDays, SETTING_RETENTION_DAYS);
+        } else if (this.defaultRetentionDays == 0) {
+            log.info("UrsaEventLogService initialised — INFINITE retention by default; "
+                    + "documents stay until manually deleted (setting '{}' to override)",
+                    SETTING_RETENTION_DAYS);
         } else {
             log.info("UrsaEventLogService initialised — default retention={}d (overridable per tenant via setting '{}'; "
-                    + "set to 0 to disable)",
+                    + "0 = infinite, negative = disabled)",
                     this.defaultRetentionDays, SETTING_RETENTION_DAYS);
         }
     }
@@ -162,17 +170,20 @@ public class UrsaEventLogService {
      */
     public void record(String correlationId, TriggerOutcome out) {
         int retentionDays = retentionDaysFor(out.tenantId(), out.projectId());
-        if (retentionDays < 1) {
+        if (retentionDays < 0) {
             // Logging disabled for this scope — skip the document
             // write entirely. The event-log metric counters still
             // record the trigger; the document layer just stays clean.
-            log.trace("UrsaEventLogService — write skipped (retention<1) for '{}/{}/{}' correlationId={}",
+            log.trace("UrsaEventLogService — write skipped (retention<0) for '{}/{}/{}' correlationId={}",
                     out.tenantId(), out.projectId(), out.eventName(), correlationId);
             return;
         }
         String path = pathFor(out.eventName(), out.firedAt(), correlationId);
         String body = renderMarkdown(correlationId, out);
-        Instant expiresAt = out.firedAt().plusSeconds(Duration.ofDays(retentionDays).toSeconds());
+        // retentionDays == 0 → null expiresAt = no TTL = infinite retention.
+        Instant expiresAt = retentionDays == 0
+                ? null
+                : out.firedAt().plusSeconds(Duration.ofDays(retentionDays).toSeconds());
         try {
             documentService.upsertEphemeralText(
                     out.tenantId(),
@@ -203,8 +214,8 @@ public class UrsaEventLogService {
 
     /**
      * Same semantics as {@code SchedulerLogService.retentionDaysFor}:
-     * raw-value cascade resolve, return-value {@code < 1} signals the
-     * caller to skip the write, positive values are MAX-clamped.
+     * raw-value cascade resolve, tri-state return — {@code > 0} =
+     * days (MAX-clamped), {@code 0} = infinite, {@code < 0} = disabled.
      */
     private int retentionDaysFor(String tenantId, @Nullable String projectId) {
         String raw = settingService.getStringValueCascade(
@@ -218,7 +229,7 @@ public class UrsaEventLogService {
                         SETTING_RETENTION_DAYS, raw, defaultRetentionDays);
             }
         }
-        if (days < 1) return days;          // disabled — preserve the signal
+        if (days <= 0) return days;         // disabled (<0) or infinite (=0) — preserve the signal
         return Math.min(MAX_RETENTION_DAYS, days);
     }
 

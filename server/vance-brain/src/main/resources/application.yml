@@ -131,19 +131,23 @@ vance:
       # _tenant → this default). Reaped by MongoDB's TTL monitor —
       # see DocumentDocument.expiresAt and SchedulerLogService.
       #
-      # Set to 0 (or any value < 1) to disable scheduler-run logging
-      # entirely — no documents are created. Positive values are
-      # clamped to <= 365 days.
+      # Tri-state:
+      #   > 0  — actual retention in days (clamped to <= 365).
+      #   0    — INFINITE: document is written but expiresAt is left
+      #          null, so Mongo's TTL monitor never reaps it.
+      #   < 0  — DISABLED: no document is written at all.
       retention-days: 7
   events:
     log:
-      # Same pattern as scheduler.log — system-wide fallback retention
-      # for the per-trigger log document under
+      # Same tri-state semantics as scheduler.log — system-wide fallback
+      # retention for the per-trigger log document under
       # _vance/logs/events/<name>/<isoStamp>-<correlationId>.md.
       # Tenant override: setting `events.log.retentionDays` (project
-      # cascade). Set to 0 (or < 1) to disable event-trigger logging
-      # entirely. Positive values are clamped to <= 365 days. See
-      # UrsaEventLogService.
+      # cascade).
+      #
+      #   > 0  — actual retention in days (clamped to <= 365).
+      #   0    — INFINITE retention (no TTL set).
+      #   < 0  — DISABLED (no document written).
       retention-days: 7
   prak:
     # Side-channel an: Compaction → Prak-Analyzer → Sanitizer → Strength → Promotion → Audit

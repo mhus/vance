@@ -66,9 +66,17 @@ public class SchedulerLogService {
     /**
      * Setting key for the per-tenant retention override (project cascade:
      * project → {@code _tenant} → {@code application.yml} default).
-     * Integer days. {@code < 1} (typically {@code 0}) disables logging
-     * for the affected scope — no document is written at all. Otherwise
-     * the value is clamped to {@code <= MAX_RETENTION_DAYS}.
+     * Integer days, tri-state:
+     * <ul>
+     *   <li>{@code > 0} — document is written with
+     *       {@code expiresAt = firedAt + days}, clamped to
+     *       {@code <= MAX_RETENTION_DAYS}.</li>
+     *   <li>{@code 0} — document is written but {@code expiresAt} is
+     *       left {@code null}; MongoDB's TTL monitor never reaps it
+     *       (effectively infinite retention).</li>
+     *   <li>{@code < 0} — logging disabled for the scope; no document
+     *       is written at all.</li>
+     * </ul>
      */
     public static final String SETTING_RETENTION_DAYS = "scheduler.log.retentionDays";
 
@@ -77,7 +85,8 @@ public class SchedulerLogService {
     private final DocumentService documentService;
     private final SettingService settingService;
     /** System-wide fallback when no tenant/project setting is present.
-     *  May be {@code < 1} to disable logging globally by default. */
+     *  Tri-state: {@code > 0} = retention days, {@code 0} = infinite,
+     *  {@code < 0} = disabled. */
     private final int defaultRetentionDays;
 
     private final Map<String, RunState> runs = new ConcurrentHashMap<>();
@@ -88,16 +97,21 @@ public class SchedulerLogService {
             @Value("${vance.scheduler.log.retention-days:7}") int defaultRetentionDays) {
         this.documentService = documentService;
         this.settingService = settingService;
-        // Only clamp the upper bound — lower-bound clamping would
-        // silently turn "0 = disable globally" into "log for 1 day".
+        // Clamp only the upper bound — 0 means "infinite, no TTL",
+        // negative means "disabled", neither should be silently
+        // rewritten to a positive retention.
         this.defaultRetentionDays = Math.min(MAX_RETENTION_DAYS, defaultRetentionDays);
-        if (this.defaultRetentionDays < 1) {
+        if (this.defaultRetentionDays < 0) {
             log.info("SchedulerLogService initialised — DISABLED by default (retention-days={}); "
                     + "tenants may opt back in via setting '{}'",
                     this.defaultRetentionDays, SETTING_RETENTION_DAYS);
+        } else if (this.defaultRetentionDays == 0) {
+            log.info("SchedulerLogService initialised — INFINITE retention by default; "
+                    + "documents stay until manually deleted (setting '{}' to override)",
+                    SETTING_RETENTION_DAYS);
         } else {
             log.info("SchedulerLogService initialised — default retention={}d (overridable per tenant via setting '{}'; "
-                    + "set to 0 to disable)",
+                    + "0 = infinite, negative = disabled)",
                     this.defaultRetentionDays, SETTING_RETENTION_DAYS);
         }
     }
@@ -105,9 +119,14 @@ public class SchedulerLogService {
     /**
      * Resolve the effective retention days for {@code (tenant, project)}
      * via the settings cascade — project beats tenant beats
-     * {@code application.yml} default. A return value {@code < 1}
-     * signals the caller to skip the document write entirely; positive
-     * values are clamped to {@code <= MAX_RETENTION_DAYS}.
+     * {@code application.yml} default. Return value uses the same
+     * tri-state convention as the setting itself:
+     * <ul>
+     *   <li>{@code > 0} — actual retention, MAX-clamped.</li>
+     *   <li>{@code 0} — infinite retention; caller writes the doc
+     *       without an {@code expiresAt}.</li>
+     *   <li>{@code < 0} — disabled; caller skips the write.</li>
+     * </ul>
      */
     private int retentionDaysFor(String tenantId, @Nullable String projectId) {
         String raw = settingService.getStringValueCascade(
@@ -121,7 +140,7 @@ public class SchedulerLogService {
                         SETTING_RETENTION_DAYS, raw, defaultRetentionDays);
             }
         }
-        if (days < 1) return days;          // disabled — preserve the signal
+        if (days <= 0) return days;         // disabled (<0) or infinite (=0) — preserve the signal
         return Math.min(MAX_RETENTION_DAYS, days);
     }
 
@@ -246,17 +265,21 @@ public class SchedulerLogService {
         // upsert. The cost is one settings cascade lookup per upsert
         // (4 events typically); Mongo lookups are sub-ms and indexed.
         int retentionDays = retentionDaysFor(state.tenantId, state.projectId);
-        if (retentionDays < 1) {
+        if (retentionDays < 0) {
             // Logging disabled for this scope — skip the document
             // write entirely. The event-log + metrics still capture
             // the run; the document layer just stays clean.
-            log.trace("SchedulerLogService — write skipped (retention<1) for '{}/{}/{}' run={}",
+            log.trace("SchedulerLogService — write skipped (retention<0) for '{}/{}/{}' run={}",
                     state.tenantId, state.projectId, state.schedulerName, correlationId);
             return;
         }
         String path = pathFor(state.schedulerName, state.firedAt, correlationId);
         String body = renderMarkdown(state, correlationId);
-        Instant expiresAt = state.firedAt.plusSeconds(Duration.ofDays(retentionDays).toSeconds());
+        // retentionDays == 0 → leave expiresAt null so Mongo's TTL
+        // monitor never reaps the doc (infinite retention).
+        Instant expiresAt = retentionDays == 0
+                ? null
+                : state.firedAt.plusSeconds(Duration.ofDays(retentionDays).toSeconds());
         try {
             documentService.upsertEphemeralText(
                     state.tenantId, state.projectId, path,

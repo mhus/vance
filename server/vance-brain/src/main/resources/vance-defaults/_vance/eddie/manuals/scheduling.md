@@ -195,9 +195,10 @@ mit YAML-Front-Matter (`outcome`, `trigger`, `firedAt`, `completedAt`,
 `durationMs`, `processId`, …) und einer Timeline-Sektion im Body. Die
 Documents werden via MongoDB-TTL automatisch gelöscht — Default 7 Tage,
 pro Tenant oder Projekt über die Setting `scheduler.log.retentionDays`
-einstellbar. Wertebereich: positive Integer ≤ 365 Tage, oder **0** (bzw.
-beliebige Zahl < 1) zum vollständigen **Abschalten** des Logging für
-diesen Scope — dann werden gar keine Log-Documents geschrieben.
+einstellbar (tri-state):
+- **> 0** → Retention in Tagen (≤ 365).
+- **0** → keine Expiry, Documents bleiben unbegrenzt erhalten (z.B. für Compliance).
+- **< 0** → Logging komplett aus, keine Documents werden geschrieben.
 
 So gehe ich vor:
 

@@ -81,6 +81,8 @@ public class UrsaSchedulerService {
     /** Lazy-resolved — only used when a scheduler entry sets {@code workflow:}. May be absent when Magrathea is disabled. */
     private final ObjectProvider<de.mhus.vance.brain.magrathea.MagratheaWorkflowService> workflowServiceProvider;
     private final de.mhus.vance.shared.metric.MetricService metricService;
+    /** LLM-facing materialised log of every run — see {@link SchedulerLogService}. */
+    private final SchedulerLogService schedulerLogService;
 
     /** Counter for scheduler fires. Tags: {@code scheduler}, {@code outcome}. */
     private static final String METRIC_FIRES = "vance.ursascheduler.fires";
@@ -364,16 +366,60 @@ public class UrsaSchedulerService {
     /** Crash-safe wrapper around {@link #fire} for the cron-thread path. */
     private void safeFire(Registration reg) {
         try {
-            fire(reg);
+            fire(reg, "cron");
         } catch (RuntimeException ex) {
             log.error("Scheduler '{}/{}/{}' tick failed: {}",
                     reg.tenantId, reg.projectId, reg.config.name(), ex.toString(), ex);
         }
     }
 
+    /**
+     * Trigger a registered scheduler immediately, bypassing the cron
+     * schedule. Used by the {@code ursascheduler_fire} agent tool and
+     * the {@code POST /scheduler/{name}/fire} REST endpoint so the
+     * model and operators can verify a scheduler end-to-end without
+     * waiting for its next natural tick.
+     *
+     * <p>Goes through the exact same code path as a cron tick —
+     * overlap policy applies, event-log + scheduler-log + metrics fire
+     * identically — only the {@code trigger} marker on the
+     * scheduler-log document differs ({@code manual} vs. {@code cron}).
+     *
+     * @return the {@code correlationId} of the freshly created run, so
+     *         callers can locate the matching scheduler-log document.
+     * @throws IllegalArgumentException when no scheduler with that name
+     *         is currently registered for {@code (tenantId, projectId)}.
+     */
+    public String fireNow(String tenantId, String projectId, String name) {
+        Registration reg = registry.get(registryKey(tenantId, projectId, name));
+        if (reg == null) {
+            throw new IllegalArgumentException(
+                    "Scheduler '" + name + "' is not registered for project '"
+                            + tenantId + "/" + projectId + "' (check spelling and that the document is enabled).");
+        }
+        // The cron path runs on a TaskScheduler thread; for a manual
+        // fire we still want the same isolation — submit on the
+        // scheduler pool and return the correlationId synchronously so
+        // the caller can immediately read the (pending) log document.
+        String correlationId = "run_" + UUID.randomUUID();
+        taskScheduler.schedule(() -> {
+            try {
+                fire(reg, "manual", correlationId);
+            } catch (RuntimeException ex) {
+                log.error("Scheduler '{}/{}/{}' manual fire failed: {}",
+                        reg.tenantId, reg.projectId, reg.config.name(), ex.toString(), ex);
+            }
+        }, Instant.now());
+        return correlationId;
+    }
+
     // ───────────────────────── Fire (one tick) ─────────────────────────
 
-    private void fire(Registration reg) {
+    private void fire(Registration reg, String trigger) {
+        fire(reg, trigger, "run_" + UUID.randomUUID());
+    }
+
+    private void fire(Registration reg, String trigger, String correlationId) {
         ResolvedUrsaScheduler cfg = reg.config;
         String source = UrsaSchedulerSourceKeys.sourceFor(cfg.name());
         String runAs = cfg.effectiveRunAs();
@@ -382,10 +428,14 @@ public class UrsaSchedulerService {
                     cfg.name());
             return;
         }
-        String correlationId = "run_" + UUID.randomUUID();
+        Map<String, Object> triggeredPayload = "cron".equals(trigger)
+                ? null
+                : Map.of("trigger", trigger);
         eventLogService.append(reg.tenantId, reg.projectId, source,
                 EventType.TRIGGERED, correlationId,
-                /*sessionId*/ null, /*processId*/ null, runAs, /*payload*/ null);
+                /*sessionId*/ null, /*processId*/ null, runAs, triggeredPayload);
+        schedulerLogService.onTriggered(reg.tenantId, reg.projectId, cfg.name(),
+                correlationId, trigger, runAs);
         countFire(cfg.name(), "triggered");
 
         synchronized (reg.lock) {
@@ -431,6 +481,7 @@ public class UrsaSchedulerService {
                         EventType.SKIPPED, correlationId,
                         /*sessionId*/ null, /*processId*/ null, runAs,
                         Map.of("reason", "overlap"));
+                schedulerLogService.onSkipped(correlationId, "overlap");
                 countFire(reg.config.name(), "skipped_overlap");
                 log.info("Scheduler '{}/{}/{}' tick skipped — prior run still active",
                         reg.tenantId, reg.projectId, reg.config.name());
@@ -442,6 +493,7 @@ public class UrsaSchedulerService {
                         EventType.SKIPPED, correlationId,
                         /*sessionId*/ null, /*processId*/ null, runAs,
                         Map.of("reason", "overlap", "queued", Boolean.TRUE));
+                schedulerLogService.onSkipped(correlationId, "overlap_queued");
                 countFire(reg.config.name(), "queued_overlap");
                 log.info("Scheduler '{}/{}/{}' tick queued — prior run still active",
                         reg.tenantId, reg.projectId, reg.config.name());
@@ -480,6 +532,7 @@ public class UrsaSchedulerService {
                 EventType.CANCELLED, correlationId,
                 victim.getSessionId(), victimId, runAs,
                 Map.of("reason", "overlap"));
+        schedulerLogService.onCancelled(correlationId, victimId);
         reg.currentProcessId = null;
     }
 
@@ -496,6 +549,7 @@ public class UrsaSchedulerService {
                     EventType.FAILED, correlationId,
                     /*sessionId*/ null, /*processId*/ null, runAs,
                     Map.of("phase", "action_build", "error", ex.getMessage()));
+            schedulerLogService.onFailed(correlationId, "action_build", ex.getMessage());
             countFire(cfg.name(), "failed");
             return;
         }
@@ -523,6 +577,7 @@ public class UrsaSchedulerService {
                     EventType.FAILED, correlationId,
                     parentSessionId, /*processId*/ null, runAs,
                     Map.of("phase", "dispatch", "error", ex.getMessage()));
+            schedulerLogService.onFailed(correlationId, "dispatch", ex.getMessage());
             countFire(cfg.name(), "failed");
             return;
         }
@@ -537,6 +592,7 @@ public class UrsaSchedulerService {
             eventLogService.append(reg.tenantId, reg.projectId, source,
                     EventType.FAILED, correlationId,
                     parentSessionId, /*processId*/ null, runAs, failPayload);
+            schedulerLogService.onFailed(correlationId, "execute", result.errorMessage());
             countFire(cfg.name(), "failed");
             return;
         }
@@ -566,6 +622,12 @@ public class UrsaSchedulerService {
                 EventType.STARTED, correlationId,
                 parentSessionId, spawnedProcessId, runAs,
                 startedPayload.isEmpty() ? null : startedPayload);
+        String startedDetails = startedPayload.isEmpty()
+                ? null
+                : startedPayload.entrySet().stream()
+                        .map(e -> e.getKey() + "=" + e.getValue())
+                        .reduce((a, b) -> a + " " + b).orElse(null);
+        schedulerLogService.onStarted(correlationId, parentSessionId, spawnedProcessId, startedDetails);
         countFire(cfg.name(), "started");
         log.info("Scheduler '{}/{}/{}' fired {} outcome='{}' spawnedId='{}'",
                 reg.tenantId, reg.projectId, cfg.name(),
@@ -584,6 +646,7 @@ public class UrsaSchedulerService {
                     EventType.COMPLETED, correlationId,
                     parentSessionId, /*processId*/ null, runAs,
                     donePayload.isEmpty() ? null : donePayload);
+            schedulerLogService.onTerminated(correlationId, "completed", Instant.now());
             countFire(cfg.name(), "completed");
         }
 

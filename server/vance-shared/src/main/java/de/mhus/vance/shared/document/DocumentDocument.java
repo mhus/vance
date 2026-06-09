@@ -199,4 +199,19 @@ public class DocumentDocument {
 
     /** When the LLM produced the cached deep-review. */
     private @Nullable Instant lastDeepReviewedAt;
+
+    /**
+     * MongoDB TTL — once this timestamp passes, the document row is
+     * removed by the server-side TTL monitor. {@code null} (the default
+     * for normal documents) disables expiry: Mongo's TTL index skips
+     * documents whose date field is absent. Currently set by the
+     * scheduler-log writer (7d retention) and reserved for similar
+     * "ephemeral diagnostics" use cases.
+     *
+     * <p>Important: the TTL applies to the document row itself, not just
+     * its content — a deletion via TTL is final, no archive or trash
+     * step intervenes.
+     */
+    @Indexed(expireAfterSeconds = 0)
+    private @Nullable Instant expiresAt;
 }

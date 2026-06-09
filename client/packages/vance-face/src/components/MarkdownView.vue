@@ -31,6 +31,24 @@ marked.setOptions({
   breaks: true,
 });
 
+// Force external http(s) links to open in a new tab. `vance:` URIs are
+// handled by the click delegation below (preventDefault + manual nav),
+// so target/rel on them would be inert anyway — we skip the attribute
+// to keep the markup tidy. Internal protocol-relative or relative URLs
+// (rare in chat) stay same-tab so deep-link UX inside the app survives.
+marked.use({
+  renderer: {
+    link({ href, title, tokens }) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const text = (this as any).parser.parseInline(tokens);
+      const isExternal = /^https?:\/\//i.test(href);
+      const titleAttr = title ? ` title="${title.replace(/"/g, '&quot;')}"` : '';
+      const targetAttr = isExternal ? ' target="_blank" rel="noopener noreferrer"' : '';
+      return `<a href="${href}"${titleAttr}${targetAttr}>${text}</a>`;
+    },
+  },
+});
+
 // DOMPurify's default URI allowlist (http/https/mailto/tel/cid/xmpp/…)
 // strips the href off any other scheme. Inline `vance:` links — Markdown
 // like `… see [Doc title](vance:/documents/foo.md?kind=document) …` —

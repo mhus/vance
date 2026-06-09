@@ -1,7 +1,7 @@
 ---
 audience: eddie
-triggers: scheduler, scheduler_create, scheduler_update, scheduler_list, scheduler_get, scheduler_delete, cron, at:, erinnere mich, reminder, jeden Montag, morgen früh, recurring task, einmalig, daily briefing, locked scheduler, lockMode, runAs, timezone, Quartz cron, IANA
-summary: How Eddie creates and maintains schedulers — Quartz 6-field cron vs. one-shot `at:`, IANA timezones, recipe choice, lockMode, and runAs semantics.
+triggers: scheduler, scheduler_create, scheduler_update, scheduler_list, scheduler_get, scheduler_delete, scheduler_fire, scheduler manuell auslösen, scheduler testen, scheduler log, lief der scheduler, cron, at:, erinnere mich, reminder, jeden Montag, morgen früh, recurring task, einmalig, daily briefing, locked scheduler, lockMode, runAs, timezone, Quartz cron, IANA
+summary: How Eddie creates and maintains schedulers, fires them manually for testing, and reads the per-run log documents — Quartz 6-field cron vs. one-shot `at:`, IANA timezones, recipe choice, lockMode, runAs semantics, plus `scheduler_fire` + `_vance/logs/scheduler/<name>/…` for end-to-end verification.
 ---
 # Wie ich Scheduler anlege und pflege
 
@@ -24,6 +24,8 @@ sie selbständig nach jedem Schreiben (Delta-Refresh).
 | Neuen Scheduler anlegen | `scheduler_create` |
 | Bestehenden ändern | `scheduler_update` |
 | Entfernen | `scheduler_delete` |
+| Sofort testweise auslösen (am Cron vorbei) | `scheduler_fire` |
+| Lauf-Ergebnis nachlesen (Outcome, Timeline) | `document_read` auf `_vance/logs/scheduler/<name>/…` |
 
 Vor jedem create/update sollte ich kurz `scheduler_list` aufrufen — wenn der
 User „einen Reminder für morgen früh" will und sowas schon existiert, lege
@@ -148,12 +150,70 @@ Falls der User explizit jemand anderen meint („leg den Scheduler für
 road-runner an"), setze ich `runAs: \"road-runner\"`. Voraussetzung: das ist
 ein gültiger User im aktuellen Tenant — sonst landen Inbox-Items im Leeren.
 
-## Wenn der User fragt: „lief das gestern?"
+## Scheduler testweise auslösen (`scheduler_fire`)
 
-`scheduler_list` zeigt pro Eintrag `lastRun` — wenn da was steht (Typ
-`STARTED`/`COMPLETED`/`FAILED`/`SKIPPED`), kann ich es dem User berichten.
-Für mehr Details (welcher Process, was ist passiert) ist das Web-UI der
-bessere Pfad — ich kann den User darauf verweisen.
+Bevor ich einen neuen Scheduler dem Cron-Lauf überlasse, sollte ich ihn
+einmal probefeuern, damit klar ist: greift das Recipe? Bekommt der
+RunAs-User die Antwort? Genau dafür ist `scheduler_fire`:
+
+```
+invoke_tool(
+  name = "scheduler_fire",
+  params = { "name": "morning-briefing" }
+)
+```
+
+Antwort:
+```
+{ "correlationId": "run_550e8400-…",
+  "logPath": "_vance/logs/scheduler/morning-briefing/2026-06-09T08-15-00Z-run_550e8400-….md",
+  "note": "Run started. Read '...' via document_read for status/outcome." }
+```
+
+- Der Lauf geht durch denselben Code-Pfad wie ein Cron-Tick — Overlap-
+  Policy gilt, Event-Log, Metriken, alles. Unterschied: das Lauf-Document
+  trägt `trigger: manual` statt `trigger: cron`.
+- Der `logPath` ist **sofort** lesbar; bis der Process terminiert steht
+  dort `outcome: pending`. Nach ein paar Sekunden nochmal lesen.
+- Bei laufendem Cron-Tick lehnt der Server mit „skipped overlap" ab —
+  Overlap-Policy entscheidet wie immer.
+
+Wenn der User sagt „teste das mal", „lass den scheduler einmal laufen"
+oder „ich will sehen ob das klappt": **fire-Tool benutzen**, nicht einen
+zweiten temporären Scheduler mit `at:` anlegen.
+
+## Wenn der User fragt: „lief das gestern?" / „warum hat das nicht funktioniert?"
+
+Jeder Lauf — Cron-getriggert oder via `scheduler_fire` — hinterlässt ein
+Markdown-Document unter:
+
+```
+_vance/logs/scheduler/<schedulerName>/<isoStamp>-<correlationId>.md
+```
+
+mit YAML-Front-Matter (`outcome`, `trigger`, `firedAt`, `completedAt`,
+`durationMs`, `processId`, …) und einer Timeline-Sektion im Body. Die
+Documents werden via MongoDB-TTL automatisch gelöscht — Default 7 Tage,
+pro Tenant oder Projekt über die Setting `scheduler.log.retentionDays`
+einstellbar. Wertebereich: positive Integer ≤ 365 Tage, oder **0** (bzw.
+beliebige Zahl < 1) zum vollständigen **Abschalten** des Logging für
+diesen Scope — dann werden gar keine Log-Documents geschrieben.
+
+So gehe ich vor:
+
+1. `document_list(pathPrefix = "_vance/logs/scheduler/<schedulerName>/")`
+   — listet alle Läufe des Schedulers, neueste zuletzt (Pfad ist
+   ISO-sortierbar).
+2. `document_read(path = "<einer der gelisteten Pfade>")` — Front-Matter
+   und Timeline analysieren.
+3. Bei `outcome: failed` → die `## Error`-Sektion im Body zeigt die
+   Fehler-Message. Bei `outcome: skipped_overlap` → ein anderer Lauf war
+   noch aktiv. Bei `outcome: pending` → der Lauf läuft noch, oder der
+   Brain ist nach STARTED gecrasht.
+
+Für eine schnelle Übersicht („wann lief das zuletzt") reicht weiterhin
+`scheduler_list` mit seinem `lastRun`-Feld — die Detail-Forensik
+passiert über die Log-Documents.
 
 ## Was ich NICHT anlege
 

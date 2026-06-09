@@ -173,6 +173,35 @@ public class UrsaSchedulerController {
         return new RefreshResult(registered);
     }
 
+    // ─── Manual fire ─────────────────────────────────────────────────────
+
+    /**
+     * Trigger a registered scheduler immediately. Mirrors the cron-path
+     * end-to-end (overlap policy, event-log, scheduler-log document,
+     * metrics) — the only distinction is the {@code trigger=manual}
+     * marker on the run's log document. Designed for the
+     * {@code ursascheduler_fire} agent tool: callers receive the
+     * {@code correlationId} and the path of the scheduler-log document
+     * they can {@code document_read} once the run completes.
+     */
+    @PostMapping("/scheduler/{name}/fire")
+    public FireResult fire(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("project") String project,
+            @PathVariable("name") String name,
+            HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, project), Action.WRITE);
+        String norm = normalizeName(name);
+        String correlationId;
+        try {
+            correlationId = schedulerService.fireNow(tenant, project, norm);
+        } catch (IllegalArgumentException ex) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, ex.getMessage());
+        }
+        String logPath = SchedulerLogService.pathFor(norm, Instant.now(), correlationId);
+        return new FireResult(correlationId, logPath);
+    }
+
     // ─── Events ───────────────────────────────────────────────────────────
 
     @GetMapping("/scheduler/{name}/events")
@@ -267,5 +296,16 @@ public class UrsaSchedulerController {
     }
 
     public record RefreshResult(int registered) {
+    }
+
+    /**
+     * Response of {@code POST /scheduler/{name}/fire}. {@code correlationId}
+     * is the freshly-minted run identifier; {@code logPath} is the
+     * project-relative document path the matching scheduler-log will
+     * live at — callers can {@code document_read} it once the run
+     * completes (or while it's still pending, in which case the
+     * front-matter shows {@code outcome: pending}).
+     */
+    public record FireResult(String correlationId, String logPath) {
     }
 }

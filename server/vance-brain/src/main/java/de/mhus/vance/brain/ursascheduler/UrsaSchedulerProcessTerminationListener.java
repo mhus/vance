@@ -37,6 +37,7 @@ public class UrsaSchedulerProcessTerminationListener {
     private final EventLogService eventLogService;
     private final ThinkProcessService thinkProcessService;
     private final UrsaSchedulerService schedulerService;
+    private final SchedulerLogService schedulerLogService;
 
     @EventListener
     public void onStatusChanged(ThinkProcessStatusChangedEvent event) {
@@ -81,6 +82,10 @@ public class UrsaSchedulerProcessTerminationListener {
                 event.processId(),
                 start.getRunAs(),
                 payload);
+        schedulerLogService.onTerminated(
+                start.getCorrelationId(),
+                terminalType.name().toLowerCase(),
+                java.time.Instant.now());
         log.info("Scheduler run terminated source='{}' process='{}' closeReason={} → {}",
                 start.getSource(), event.processId(), closeReason, terminalType);
 

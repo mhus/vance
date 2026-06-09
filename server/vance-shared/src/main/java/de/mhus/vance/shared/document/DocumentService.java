@@ -537,6 +537,35 @@ public class DocumentService {
     }
 
     /**
+     * {@link #upsertText} variant that sets {@link DocumentDocument#getExpiresAt()}
+     * so MongoDB's TTL monitor reaps the row at the given timestamp.
+     * Intended for ephemeral diagnostics (currently: scheduler run logs);
+     * normal documents must not set this — passing {@code null} disables
+     * expiry (and matches the {@link #upsertText} behaviour exactly).
+     *
+     * <p>Costs one extra {@code save} on top of {@link #upsertText} —
+     * the underlying upsert API doesn't currently take an expiry, and
+     * writing through that path keeps lineage, RAG flags and header
+     * application consistent with every other document.
+     */
+    public DocumentDocument upsertEphemeralText(
+            String tenantId,
+            String projectId,
+            String path,
+            @Nullable String title,
+            @Nullable List<String> tags,
+            String text,
+            @Nullable String createdBy,
+            @Nullable Instant expiresAt) {
+        DocumentDocument doc = upsertText(tenantId, projectId, path, title, tags, text, createdBy);
+        if (!java.util.Objects.equals(doc.getExpiresAt(), expiresAt)) {
+            doc.setExpiresAt(expiresAt);
+            doc = repository.save(doc);
+        }
+        return doc;
+    }
+
+    /**
      * Replace the binary content of an existing document. Always
      * writes through to the storage layer (no inline-text branch
      * — binary by design). Used by the office-editor callback path

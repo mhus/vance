@@ -77,9 +77,13 @@ class UrsaEventServiceTest {
         de.mhus.vance.shared.session.SessionDocument session = new de.mhus.vance.shared.session.SessionDocument();
         session.setSessionId("sess-event");
         when(systemSessionResolver.resolve(any(), any(), any(), any())).thenReturn(session);
+        // UrsaEventLogService is a thin diagnostics writer — mock it
+        // so the existing assertions stay focussed on trigger
+        // semantics and don't depend on a real DocumentService wiring.
+        UrsaEventLogService eventLogService = mock(UrsaEventLogService.class);
         service = new UrsaEventService(
                 eventLoader, settingService, metricService, workflowProvider,
-                actionExecutorRegistry, systemSessionResolver);
+                actionExecutorRegistry, systemSessionResolver, eventLogService);
     }
 
     // ─── happy path ─────────────────────────────────────────────────────

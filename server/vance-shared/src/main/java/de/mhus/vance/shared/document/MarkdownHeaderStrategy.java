@@ -1,5 +1,8 @@
 package de.mhus.vance.shared.document;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -25,6 +28,16 @@ import org.springframework.stereotype.Component;
 public class MarkdownHeaderStrategy implements HeaderStrategy {
 
     private static final String FENCE = "---";
+
+    /**
+     * Upper bound for the prefix the streaming parser materialises into a
+     * string. Markdown front matter is a small fenced YAML block at the very
+     * top of the document — the parser stops at the closing {@code ---}, so
+     * even a 2 KB header is comfortable within this bound. The cap protects
+     * against pathological inputs (unterminated fence in a 100 MB markdown
+     * body).
+     */
+    private static final int STREAM_PREFIX_BYTES = 64 * 1024;
 
     @Override
     public boolean supports(@Nullable String mimeType) {
@@ -66,5 +79,11 @@ public class MarkdownHeaderStrategy implements HeaderStrategy {
                 .kind(kind)
                 .values(values)
                 .build());
+    }
+
+    @Override
+    public Optional<DocumentHeader> parse(InputStream body) throws IOException {
+        byte[] prefix = body.readNBytes(STREAM_PREFIX_BYTES);
+        return parse(new String(prefix, StandardCharsets.UTF_8));
     }
 }

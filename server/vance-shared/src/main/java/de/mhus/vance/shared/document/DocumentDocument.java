@@ -80,7 +80,25 @@ public class DocumentDocument {
     /** Storage id ({@code StorageService}) when content is kept out-of-band. */
     private @Nullable String storageId;
 
-    /** Content for small text documents, held directly on the record. */
+    /**
+     * Whether the blob behind {@link #storageId} was gzip-compressed before it
+     * was written. {@link DocumentService#loadContent} transparently wraps a
+     * {@code GZIPInputStream} when this is {@code true}. Independent of
+     * {@link #size}, which always carries the original uncompressed byte
+     * count. Legacy documents without this field read as {@code false}.
+     */
+    private boolean compressed;
+
+    /**
+     * Content for small text documents, held directly on the record.
+     *
+     * @deprecated New writes never set this; the boot-time inline→storage
+     *     migrator (see {@code DocumentInlineMigrator}) moves any remaining
+     *     content into {@link #storageId}. Field stays in place until the
+     *     migrator has drained every tenant — slated for removal in the
+     *     follow-up PR.
+     */
+    @Deprecated
     private @Nullable String inlineText;
 
     /**

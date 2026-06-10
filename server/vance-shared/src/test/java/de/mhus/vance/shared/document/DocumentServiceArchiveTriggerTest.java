@@ -13,6 +13,7 @@ import static org.mockito.Mockito.when;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.storage.StorageService;
 import java.time.Instant;
+import java.util.Date;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -47,11 +48,24 @@ class DocumentServiceArchiveTriggerTest {
         archiveService = mock(DocumentArchiveService.class);
         settingService = mock(SettingService.class);
         when(headerParser.parse(any(), any())).thenReturn(Optional.empty());
+        try {
+            when(headerParser.parseStream(any(), any())).thenReturn(Optional.empty());
+        } catch (java.io.IOException e) {
+            throw new RuntimeException(e); // mock setup, never throws
+        }
+        when(storageService.store(any(), any(), any())).thenAnswer(inv -> {
+            java.io.InputStream stream = inv.getArgument(2);
+            long size = stream.readAllBytes().length;
+            return new StorageService.StorageInfo(
+                    "blob-" + java.util.UUID.randomUUID(), size, new Date(), null, null);
+        });
         service = new DocumentService(
                 repository, storageService, mongoTemplate,
                 resourcePatternResolver, headerParser,
                 archiveService, settingService);
         ReflectionTestUtils.setField(service, "inlineThreshold", 40960);
+        ReflectionTestUtils.setField(service, "compressionEnabled", false);
+        ReflectionTestUtils.setField(service, "compressionThreshold", 1000);
         ReflectionTestUtils.setField(service, "archiveEnabledDefault", true);
         ReflectionTestUtils.setField(service, "archiveMinIntervalSecondsDefault", 600L);
         when(settingService.getBooleanValueCascade(

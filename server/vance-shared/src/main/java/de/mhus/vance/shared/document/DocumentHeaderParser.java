@@ -1,5 +1,7 @@
 package de.mhus.vance.shared.document;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.List;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
@@ -35,6 +37,24 @@ public class DocumentHeaderParser {
      */
     public Optional<DocumentHeader> parse(@Nullable String mimeType, @Nullable String body) {
         if (body == null || body.isEmpty()) return Optional.empty();
+        for (HeaderStrategy strategy : strategies) {
+            if (strategy.supports(mimeType)) {
+                return strategy.parse(body);
+            }
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Streaming counterpart of {@link #parse(String, String)} — picks the
+     * strategy by mime-type and lets it consume the stream directly. Returns
+     * empty when no strategy claims the type or the body has no header.
+     * {@link IOException} from the underlying transport propagates to the
+     * caller so it can distinguish transport errors from parse failures.
+     */
+    public Optional<DocumentHeader> parseStream(
+            @Nullable String mimeType, @Nullable InputStream body) throws IOException {
+        if (body == null) return Optional.empty();
         for (HeaderStrategy strategy : strategies) {
             if (strategy.supports(mimeType)) {
                 return strategy.parse(body);

@@ -2,9 +2,13 @@ package de.mhus.vance.shared.document;
 
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.storage.StorageService;
+import jakarta.annotation.PreDestroy;
 import java.io.ByteArrayInputStream;
+import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.PipedInputStream;
+import java.io.PipedOutputStream;
 import java.io.SequenceInputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -17,6 +21,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeSet;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -70,6 +79,51 @@ public class DocumentService {
 
     @Value("${vance.document.inline-threshold:40960}")
     private int inlineThreshold;
+
+    /**
+     * Master switch for gzip-compressing document blobs on write. When
+     * {@code false} all writes bypass the compression branch even if their
+     * size would exceed the threshold. Reads always honour the per-document
+     * {@code compressed} flag, so flipping this off does not break access to
+     * existing compressed payloads.
+     */
+    @Value("${vance.document.compression.enabled:true}")
+    private boolean compressionEnabled;
+
+    /**
+     * Byte threshold below which a document's content is stored uncompressed.
+     * Markdown / YAML / JSON tends to compress 3-5× but gzip's framing
+     * overhead (≈20 bytes) makes it counter-productive for tiny payloads;
+     * the default matches the value Nimbus has running in production.
+     */
+    @Value("${vance.document.compression.threshold:1000}")
+    private int compressionThreshold;
+
+    /**
+     * Daemon pool for the streaming-gzip path. Each large-write spawns one
+     * task that pumps the source stream through a {@link GZIPOutputStream}
+     * into a {@link PipedOutputStream}; the storage layer reads the matching
+     * {@link PipedInputStream}. {@code newCachedThreadPool} keeps idle threads
+     * around briefly for the next write — matches Nimbus' production setup.
+     */
+    private final ExecutorService compressionExecutor = Executors.newCachedThreadPool(r -> {
+        Thread t = new Thread(r);
+        t.setDaemon(true);
+        t.setName("doc-compression-" + t.getId());
+        return t;
+    });
+
+    @PreDestroy
+    void shutdownCompressionExecutor() {
+        compressionExecutor.shutdown();
+    }
+
+    /**
+     * Outcome of a single streaming write into {@link StorageService}. Carries
+     * the data we need to mirror onto the {@link DocumentDocument}: storage id,
+     * gzip flag, and original (uncompressed) byte count.
+     */
+    public record ContentWriteResult(String storageId, boolean compressed, long originalSize) {}
 
     /**
      * Operator-level kill-switch for document versioning. When {@code false},
@@ -392,6 +446,114 @@ public class DocumentService {
     }
 
     /**
+     * Streams {@code content} into {@link StorageService}, applying the same
+     * compression strategy Nimbus runs in production:
+     *
+     * <ul>
+     *   <li>Probe the first {@code (threshold + 1)} bytes into a buffer.
+     *       When the stream finishes inside the buffer (small payload) we
+     *       hand it to storage as-is.</li>
+     *   <li>When the payload exceeds the threshold and compression is on,
+     *       we spawn a background task that feeds the buffer + rest of the
+     *       source through {@link GZIPOutputStream} into a
+     *       {@link PipedOutputStream}; the storage layer reads the matching
+     *       {@link PipedInputStream}. No buffering of the full payload.</li>
+     *   <li>When the payload exceeds the threshold but compression is off
+     *       (or we are storing a small file that simply happens to be a
+     *       binary), we stitch the buffer back onto the source via
+     *       {@link SequenceInputStream} and wrap with a counting
+     *       {@link FilterInputStream} so we still know the byte total when
+     *       storage returns.</li>
+     * </ul>
+     *
+     * <p>The caller still owns the source {@link InputStream} and must close
+     * it after this method returns (or after the consuming storage call has
+     * drained it, in the streaming-piped case the storage layer takes care
+     * of that on its end).
+     */
+    ContentWriteResult streamingStoreContent(String tenantId, String path, InputStream content) {
+        int probeLimit = Math.max(compressionThreshold + 1, 1);
+        byte[] initialBuffer = new byte[probeLimit];
+        int bytesRead;
+        try {
+            bytesRead = content.readNBytes(initialBuffer, 0, probeLimit);
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to read document content for storage", e);
+        }
+
+        AtomicLong totalBytes = new AtomicLong(bytesRead);
+        InputStream finalStream;
+        boolean willCompress;
+
+        if (bytesRead > compressionThreshold && compressionEnabled) {
+            // Streaming-gzip path: buffer + remainder flow through a piped
+            // GZIPOutputStream in a background thread; the storage layer
+            // reads the corresponding PipedInputStream. Memory footprint
+            // is bounded by the 64 KB pipe buffer.
+            PipedInputStream pipedIn;
+            PipedOutputStream pipedOut;
+            try {
+                pipedIn = new PipedInputStream(64 * 1024);
+                pipedOut = new PipedOutputStream(pipedIn);
+            } catch (IOException e) {
+                throw new IllegalStateException("Failed to create compression pipe", e);
+            }
+            final int initialBytesRead = bytesRead;
+            compressionExecutor.submit(() -> {
+                try (GZIPOutputStream gzip = new GZIPOutputStream(pipedOut)) {
+                    gzip.write(initialBuffer, 0, initialBytesRead);
+                    byte[] chunk = new byte[8 * 1024];
+                    int n;
+                    while ((n = content.read(chunk)) > 0) {
+                        gzip.write(chunk, 0, n);
+                        totalBytes.addAndGet(n);
+                    }
+                    gzip.finish();
+                } catch (Exception e) {
+                    log.error("Failed to compress document content for path='{}'", path, e);
+                    // Closing the pipe makes the storage-side reader observe EOF
+                    // (and the partial write fails at the StorageService level).
+                    try { pipedOut.close(); } catch (Exception ignored) { /* best effort */ }
+                }
+            });
+            finalStream = pipedIn;
+            willCompress = true;
+        } else if (bytesRead > compressionThreshold) {
+            // Large payload, compression off: stitch buffer + rest, count bytes
+            // as storage drains the stream.
+            ByteArrayInputStream initialStream = new ByteArrayInputStream(initialBuffer, 0, bytesRead);
+            InputStream sequenced = new SequenceInputStream(initialStream, content);
+            finalStream = new FilterInputStream(sequenced) {
+                @Override
+                public int read() throws IOException {
+                    int b = super.read();
+                    if (b != -1) totalBytes.incrementAndGet();
+                    return b;
+                }
+
+                @Override
+                public int read(byte[] b, int off, int len) throws IOException {
+                    int n = super.read(b, off, len);
+                    if (n > 0) totalBytes.addAndGet(n);
+                    return n;
+                }
+            };
+            // totalBytes was seeded with initialBuffer's bytes; sequence reads
+            // them again here, so reset to avoid double-counting.
+            totalBytes.set(0);
+            willCompress = false;
+        } else {
+            // Small payload: everything fit in initialBuffer; totalBytes is
+            // already correct.
+            finalStream = new ByteArrayInputStream(initialBuffer, 0, bytesRead);
+            willCompress = false;
+        }
+
+        StorageService.StorageInfo info = storageService.store(tenantId, path, finalStream);
+        return new ContentWriteResult(info.id(), willCompress, totalBytes.get());
+    }
+
+    /**
      * Creates a document. {@code content} is consumed; close it yourself if you opened it.
      *
      * @throws DocumentAlreadyExistsException if a document with the same {@code path}
@@ -414,30 +576,7 @@ public class DocumentService {
                             + tenantId + "/" + projectId);
         }
 
-        byte[] probe;
-        try {
-            probe = content.readNBytes(inlineThreshold + 1);
-        } catch (IOException e) {
-            throw new IllegalStateException("Failed to read document content", e);
-        }
-
-        String inlineText = null;
-        String storageId = null;
-        long size;
-
-        if (isTextual(mimeType) && probe.length <= inlineThreshold) {
-            inlineText = new String(probe, StandardCharsets.UTF_8);
-            size = probe.length;
-        } else {
-            try (InputStream combined = new SequenceInputStream(
-                    new ByteArrayInputStream(probe), content)) {
-                StorageService.StorageInfo info = storageService.store(tenantId, normalizedPath, combined);
-                storageId = info.id();
-                size = info.size();
-            } catch (IOException e) {
-                throw new IllegalStateException("Failed to stream document content to storage", e);
-            }
-        }
+        ContentWriteResult write = streamingStoreContent(tenantId, normalizedPath, content);
 
         DocumentDocument doc = DocumentDocument.builder()
                 .tenantId(tenantId)
@@ -447,23 +586,24 @@ public class DocumentService {
                 .title(title)
                 .tags(tags == null ? new ArrayList<>() : new ArrayList<>(tags))
                 .mimeType(mimeType)
-                .size(size)
-                .storageId(storageId)
-                .inlineText(inlineText)
+                .size(write.originalSize())
+                .storageId(write.storageId())
+                .compressed(write.compressed())
                 .createdBy(createdBy)
                 .status(DocumentStatus.ACTIVE)
                 .autoSummary(isAutoSummaryEligible(mimeType))
                 .lineageId(java.util.UUID.randomUUID().toString())
                 .build();
+        // Header parsing reads back through loadContent → the just-written
+        // storage blob. One extra round-trip per create, but it keeps the
+        // streaming-write path branch-free.
         applyHeader(doc);
-        // Mark for RAG indexing if the document is eligible — the
-        // project-RAG indexer picks dirty docs on its next tick.
         doc.setRagDirty(isRagEligible(doc));
 
         DocumentDocument saved = repository.save(doc);
-        log.info("Created document tenantId='{}' projectId='{}' path='{}' id='{}' inline={} size={}",
+        log.info("Created document tenantId='{}' projectId='{}' path='{}' id='{}' compressed={} size={}",
                 saved.getTenantId(), saved.getProjectId(), saved.getPath(), saved.getId(),
-                saved.getInlineText() != null, saved.getSize());
+                saved.isCompressed(), saved.getSize());
         return saved;
     }
 
@@ -596,9 +736,9 @@ public class DocumentService {
             doc.setLineageId(java.util.UUID.randomUUID().toString());
         }
         String oldStorageId = doc.getStorageId();
-        StorageService.StorageInfo info;
+        ContentWriteResult write;
         try (InputStream in = new ByteArrayInputStream(bytes)) {
-            info = storageService.store(
+            write = streamingStoreContent(
                     doc.getTenantId(), doc.getPath(), in);
         } catch (IOException e) {
             throw new IllegalStateException(
@@ -609,21 +749,22 @@ public class DocumentService {
             doc.setMimeType(newMimeType);
         }
         doc.setInlineText(null);
-        doc.setStorageId(info.id());
-        doc.setSize(info.size());
+        doc.setStorageId(write.storageId());
+        doc.setCompressed(write.compressed());
+        doc.setSize(write.originalSize());
         doc.setRagDirty(isRagEligible(doc));
         // updatedBy is unused for now — DocumentDocument has no
         // last-editor field. Reserved in the signature so the
         // office-callback path can record audit info once that
         // field lands.
         DocumentDocument saved = repository.save(doc);
-        if (oldStorageId != null && !oldStorageId.equals(info.id())) {
+        if (oldStorageId != null && !oldStorageId.equals(write.storageId())) {
             deleteStorageBlobQuietly(oldStorageId, id);
         }
         log.info("Replaced binary content tenantId='{}' projectId='{}' "
-                        + "path='{}' id='{}' bytes={}",
+                        + "path='{}' id='{}' bytes={} compressed={}",
                 saved.getTenantId(), saved.getProjectId(),
-                saved.getPath(), saved.getId(), saved.getSize());
+                saved.getPath(), saved.getId(), saved.getSize(), saved.isCompressed());
         return saved;
     }
 
@@ -902,6 +1043,8 @@ public class DocumentService {
     }
 
     public InputStream loadContent(DocumentDocument doc) {
+        // Legacy inline path — survives until the boot-time migrator has
+        // drained every tenant. After that the inlineText field comes out.
         String inline = doc.getInlineText();
         if (inline != null) {
             return new ByteArrayInputStream(inline.getBytes(StandardCharsets.UTF_8));
@@ -910,6 +1053,16 @@ public class DocumentService {
         if (sid != null) {
             InputStream stream = storageService.load(sid);
             if (stream != null) {
+                if (doc.isCompressed()) {
+                    try {
+                        return new GZIPInputStream(stream);
+                    } catch (IOException e) {
+                        log.warn("Failed to open gzip stream for document id='{}' storageId='{}': {}",
+                                doc.getId(), sid, e.toString());
+                        try { stream.close(); } catch (IOException ignored) { /* best effort */ }
+                        return InputStream.nullInputStream();
+                    }
+                }
                 return stream;
             }
             log.warn("StorageService returned null for document id='{}' storageId='{}'",
@@ -1029,9 +1182,13 @@ public class DocumentService {
 
         if (newInlineText != null) {
             byte[] bytes = newInlineText.getBytes(StandardCharsets.UTF_8);
-            boolean contentChanged = !newInlineText.equals(doc.getInlineText());
-            boolean fitsInline = isTextual(doc.getMimeType())
-                    && bytes.length <= inlineThreshold;
+            // Compare against the actual current content. After the
+            // inline→storage migration the inlineText field is null, so we
+            // peek the storage blob; for legacy inline docs we still hit the
+            // fast path on the inlineText field.
+            String currentContent = doc.getInlineText() != null
+                    ? doc.getInlineText() : readAsString(doc);
+            boolean contentChanged = !newInlineText.equals(currentContent);
 
             // Archive the *current* version before overwriting — but only
             // when (a) the content is actually changing, (b) archiving is
@@ -1059,42 +1216,26 @@ public class DocumentService {
             }
             String oldStorageId = doc.getStorageId();
 
-            if (fitsInline) {
-                // Target: inline. If the previous backing was
-                // storage, write-the-inline + delete the old blob
-                // (storage→inline transition) — unless we just moved
-                // that blob to the archive, in which case it's owned
-                // by the archive entry now and must NOT be deleted.
-                doc.setInlineText(newInlineText);
-                doc.setStorageId(null);
-                doc.setSize(bytes.length);
-                if (oldStorageId != null && !archived) {
-                    deleteStorageBlobQuietly(oldStorageId, id);
-                }
-            } else {
-                // Target: storage. Write the new blob first, then
-                // null out inline + delete old blob (handles all
-                // three transitions: inline→storage, storage→storage,
-                // inline-too-big rewrite). The "write new before
-                // delete old" order means a crash mid-update leaves
-                // both blobs — orphan reclaim handles that.
-                StorageService.StorageInfo info;
-                try (InputStream in = new ByteArrayInputStream(bytes)) {
-                    info = storageService.store(
-                            doc.getTenantId(), doc.getPath(), in);
-                } catch (IOException e) {
-                    throw new IllegalStateException(
-                            "Failed to stream updated document content to "
-                                    + "storage for id='" + id + "'", e);
-                }
-                doc.setInlineText(null);
-                doc.setStorageId(info.id());
-                doc.setSize(info.size());
-                if (oldStorageId != null
-                        && !oldStorageId.equals(info.id())
-                        && !archived) {
-                    deleteStorageBlobQuietly(oldStorageId, id);
-                }
+            // Always write new storage blob — no inline branch, no in-place
+            // storage edit. "Write new before delete old" means a crash
+            // mid-update leaves both blobs; orphan reclaim handles that.
+            ContentWriteResult write;
+            try (InputStream in = new ByteArrayInputStream(bytes)) {
+                write = streamingStoreContent(
+                        doc.getTenantId(), doc.getPath(), in);
+            } catch (IOException e) {
+                throw new IllegalStateException(
+                        "Failed to stream updated document content to "
+                                + "storage for id='" + id + "'", e);
+            }
+            doc.setInlineText(null);
+            doc.setStorageId(write.storageId());
+            doc.setCompressed(write.compressed());
+            doc.setSize(write.originalSize());
+            if (oldStorageId != null
+                    && !oldStorageId.equals(write.storageId())
+                    && !archived) {
+                deleteStorageBlobQuietly(oldStorageId, id);
             }
 
             if (contentChanged) {
@@ -1290,9 +1431,11 @@ public class DocumentService {
         if (payload.inlineText() != null) {
             live.setInlineText(payload.inlineText());
             live.setStorageId(null);
+            live.setCompressed(false);
         } else {
             live.setInlineText(null);
             live.setStorageId(payload.storageId());
+            live.setCompressed(payload.compressed());
         }
         live.setSize(payload.size());
         if (payload.mimeType() != null) live.setMimeType(payload.mimeType());
@@ -1907,13 +2050,24 @@ public class DocumentService {
      * on every save and is never written back from.
      */
     private void applyHeader(DocumentDocument doc) {
-        if (doc.getInlineText() == null) {
-            doc.setKind(null);
-            doc.setHeaders(new java.util.LinkedHashMap<>());
-            return;
+        // Legacy inline path keeps working: parse the string directly so we
+        // avoid one storage-side read until the migrator has drained inlineText.
+        Optional<DocumentHeader> parsed;
+        String inline = doc.getInlineText();
+        if (inline != null) {
+            parsed = headerParser.parse(doc.getMimeType(), inline);
+        } else if (doc.getStorageId() != null) {
+            try (InputStream in = loadContent(doc)) {
+                parsed = headerParser.parseStream(doc.getMimeType(), in);
+            } catch (IOException e) {
+                log.warn("Failed to stream document for header parsing id='{}' path='{}': {}",
+                        doc.getId(), doc.getPath(), e.toString());
+                parsed = Optional.empty();
+            }
+        } else {
+            parsed = Optional.empty();
         }
-        Optional<DocumentHeader> parsed = headerParser.parse(
-                doc.getMimeType(), doc.getInlineText());
+
         if (parsed.isEmpty()) {
             doc.setKind(null);
             doc.setHeaders(new java.util.LinkedHashMap<>());

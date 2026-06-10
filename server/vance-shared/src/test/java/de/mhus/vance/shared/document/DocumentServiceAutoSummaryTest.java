@@ -51,11 +51,26 @@ class DocumentServiceAutoSummaryTest {
         archiveService = mock(DocumentArchiveService.class);
         settingService = mock(de.mhus.vance.shared.settings.SettingService.class);
         when(headerParser.parse(any(), any())).thenReturn(Optional.empty());
+        try {
+            when(headerParser.parseStream(any(), any())).thenReturn(Optional.empty());
+        } catch (java.io.IOException e) {
+            throw new RuntimeException(e); // mock setup, never throws
+        }
+        // streamingStoreContent() always hits storageService.store(); pretend
+        // every blob lands at a deterministic id.
+        when(storageService.store(any(), any(), any())).thenAnswer(inv -> {
+            java.io.InputStream stream = inv.getArgument(2);
+            long size = stream.readAllBytes().length;
+            return new StorageService.StorageInfo(
+                    "blob-" + java.util.UUID.randomUUID(), size, new Date(), null, null);
+        });
         service = new DocumentService(
                 repository, storageService, mongoTemplate,
                 resourcePatternResolver, headerParser,
                 archiveService, settingService);
         ReflectionTestUtils.setField(service, "inlineThreshold", 40960);
+        ReflectionTestUtils.setField(service, "compressionEnabled", false);
+        ReflectionTestUtils.setField(service, "compressionThreshold", 1000);
         ReflectionTestUtils.setField(service, "archiveEnabledDefault", true);
         ReflectionTestUtils.setField(service, "archiveMinIntervalSecondsDefault", 600L);
     }
@@ -107,9 +122,7 @@ class DocumentServiceAutoSummaryTest {
     void create_pdf_doesNotSetAutoSummary() {
         when(repository.save(any(DocumentDocument.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
-        when(storageService.store(any(), any(), any()))
-                .thenReturn(new StorageService.StorageInfo(
-                        "sid", 100L, new Date(), "t1", "docs/a.pdf"));
+        // setUp() already provides a streaming store stub.
         DocumentDocument saved = service.create(
                 "t1", "p1", "docs/a.pdf", null, null, "application/pdf",
                 new ByteArrayInputStream("%PDF-".getBytes()), "alice");
@@ -134,7 +147,11 @@ class DocumentServiceAutoSummaryTest {
                 "d1", null, null, "new body", null);
 
         assertThat(saved.isSummaryDirty()).isTrue();
-        assertThat(saved.getInlineText()).isEqualTo("new body");
+        // Content writes always land in storage now — inlineText stays null,
+        // storageId is the freshly created blob.
+        assertThat(saved.getInlineText()).isNull();
+        assertThat(saved.getStorageId()).isNotNull();
+        assertThat(saved.getSize()).isEqualTo("new body".length());
     }
 
     @Test

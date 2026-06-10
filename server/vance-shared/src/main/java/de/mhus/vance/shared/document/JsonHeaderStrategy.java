@@ -1,11 +1,16 @@
 package de.mhus.vance.shared.document;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import tools.jackson.core.JacksonException;
+import tools.jackson.core.JsonParser;
+import tools.jackson.core.JsonToken;
+import tools.jackson.core.json.JsonFactory;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -32,6 +37,7 @@ public class JsonHeaderStrategy implements HeaderStrategy {
     private static final String META_KEY = "$meta";
 
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final JsonFactory jsonFactory = new JsonFactory();
 
     @Override
     public boolean supports(@Nullable String mimeType) {
@@ -83,5 +89,95 @@ public class JsonHeaderStrategy implements HeaderStrategy {
         if (node.isTextual()) return node.textValue();
         if (node.isNumber() || node.isBoolean()) return node.asString();
         return null;
+    }
+
+    /**
+     * Streaming variant of {@link #parse(String)} — drives Jackson's pull
+     * parser directly over the input stream so we never materialise the body
+     * in memory. Algorithm:
+     *
+     * <ol>
+     *   <li>Expect {@code START_OBJECT} at the root; bail out on anything
+     *       else.</li>
+     *   <li>Walk top-level fields, skipping values until {@code $meta} is
+     *       found.</li>
+     *   <li>Inside {@code $meta}, read scalar key/value pairs into the
+     *       result map; nested objects and arrays are skipped (mirrors the
+     *       string-based variant).</li>
+     *   <li>Stop reading once {@code $meta} ends — the rest of the body is
+     *       irrelevant.</li>
+     * </ol>
+     *
+     * <p>{@code IOException} bubbles up so the caller can distinguish a
+     * transport-level error from a JSON parse failure (which still becomes
+     * {@link Optional#empty()}).
+     */
+    @Override
+    public Optional<DocumentHeader> parse(InputStream body) throws IOException {
+        try (JsonParser parser = jsonFactory.createParser(body)) {
+            if (parser.nextToken() != JsonToken.START_OBJECT) return Optional.empty();
+            while (true) {
+                JsonToken token = parser.nextToken();
+                if (token == null || token == JsonToken.END_OBJECT) break;
+                if (token != JsonToken.PROPERTY_NAME) {
+                    // Defensive — well-formed JSON only emits PROPERTY_NAME or END_OBJECT here.
+                    return Optional.empty();
+                }
+                String field = parser.currentName();
+                JsonToken valueToken = parser.nextToken();
+                if (META_KEY.equals(field)) {
+                    return readMetaObject(parser, valueToken);
+                }
+                if (valueToken == JsonToken.START_OBJECT || valueToken == JsonToken.START_ARRAY) {
+                    parser.skipChildren();
+                }
+            }
+            return Optional.empty();
+        } catch (JacksonException e) {
+            return Optional.empty();
+        }
+    }
+
+    private Optional<DocumentHeader> readMetaObject(JsonParser parser, JsonToken openToken)
+            throws IOException {
+        if (openToken != JsonToken.START_OBJECT) return Optional.empty();
+        Map<String, String> values = new LinkedHashMap<>();
+        String kind = null;
+        while (true) {
+            JsonToken token = parser.nextToken();
+            if (token == null || token == JsonToken.END_OBJECT) break;
+            if (token != JsonToken.PROPERTY_NAME) return Optional.empty();
+            String rawKey = parser.currentName();
+            JsonToken valueToken = parser.nextToken();
+            String value = scalarFromToken(parser, valueToken);
+            if (value == null) {
+                if (valueToken == JsonToken.START_OBJECT || valueToken == JsonToken.START_ARRAY) {
+                    parser.skipChildren();
+                }
+                continue;
+            }
+            String key = DocumentHeaderParser.normalizeKey(rawKey);
+            if (key.isEmpty()) continue;
+            values.put(key, value);
+            if ("kind".equals(key) && !value.isEmpty()) {
+                kind = value;
+            }
+        }
+        if (values.isEmpty() && kind == null) return Optional.empty();
+        return Optional.of(DocumentHeader.builder()
+                .kind(kind)
+                .values(values)
+                .build());
+    }
+
+    private static @Nullable String scalarFromToken(JsonParser parser, JsonToken token)
+            throws IOException {
+        return switch (token) {
+            case VALUE_NULL -> "";
+            case VALUE_STRING -> parser.getText();
+            case VALUE_NUMBER_INT, VALUE_NUMBER_FLOAT, VALUE_TRUE, VALUE_FALSE ->
+                    parser.getValueAsString();
+            default -> null;
+        };
     }
 }

@@ -1,5 +1,7 @@
 package de.mhus.vance.shared.document;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
@@ -27,4 +29,14 @@ public interface HeaderStrategy {
      * present or the format does not parse. Implementations must not throw.
      */
     Optional<DocumentHeader> parse(String body);
+
+    /**
+     * Streaming counterpart of {@link #parse(String)}. The strategy reads only
+     * as much of the stream as it needs — formats with a top-level marker
+     * ({@code $meta} for JSON/YAML) stop as soon as the marker has been
+     * consumed; markdown reads a bounded prefix. Implementations must close
+     * neither the stream nor partially-consumed sub-resources; the caller
+     * owns the stream lifecycle (via try-with-resources).
+     */
+    Optional<DocumentHeader> parse(InputStream body) throws IOException;
 }

@@ -1,4 +1,4 @@
-import { brainFetch, brainBaseUrl, getStorage, getTenantId, StorageKeys } from '@vance/shared';
+import { brainFetch, brainBaseUrl, brainFetchText, getStorage, getTenantId, StorageKeys } from '@vance/shared';
 import type {
   DocumentDto,
   DocumentFoldersResponse,
@@ -34,6 +34,16 @@ export function listDocuments(params: ListParams = {}): Promise<DocumentListResp
 
 export function getDocument(id: string): Promise<DocumentDto> {
   return brainFetch<DocumentDto>('GET', `documents/${encodeURIComponent(id)}`);
+}
+
+/**
+ * Streams the document's body as UTF-8 text via the brain's
+ * {@code /documents/{id}/content} endpoint — used by the detail screen for
+ * textual docs, since DocumentDto.inlineText is always null after the
+ * full-storage migration.
+ */
+export function getDocumentContent(id: string): Promise<string | null> {
+  return brainFetchText(`documents/${encodeURIComponent(id)}/content`);
 }
 
 export function listDocumentFolders(): Promise<DocumentFoldersResponse> {

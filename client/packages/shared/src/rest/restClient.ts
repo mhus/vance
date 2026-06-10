@@ -246,6 +246,60 @@ function redirectToLogin(): void {
 }
 
 /**
+ * Tenant-scoped PUT/POST that streams a raw body (string or binary) instead
+ * of JSON. Used by the document-content endpoint where the server reads the
+ * body as an {@link InputStream} — JSON-stringifying would double-encode.
+ * The {@code Content-Type} header is set verbatim from {@code contentType};
+ * pass the document's mime so the server can re-classify on save.
+ *
+ * <p>Auth + 401-refresh behaviour identical to {@link brainFetch}. Parses
+ * the response as JSON when present (the document endpoint returns the
+ * updated {@code DocumentDto}); falls back to {@code undefined} on
+ * empty / non-JSON bodies.
+ */
+export async function brainSendRaw<T>(
+  method: 'PUT' | 'POST',
+  path: string,
+  body: string | Blob | ArrayBuffer | Uint8Array,
+  contentType: string,
+): Promise<T> {
+  const tenant = getTenantId();
+  if (!tenant) throw new RestError(0, path, 'No tenant configured — user is not logged in.');
+
+  const url = `${brainBaseUrl()}/brain/${encodeURIComponent(tenant)}/${path.replace(/^\//, '')}`;
+  const send = async (): Promise<Response> => {
+    const config = getRestConfig();
+    const headers: Record<string, string> = { 'Content-Type': contentType };
+    if (config.authMode === 'bearer') {
+      const token = getStorage().secureStore.get(StorageKeys.authAccessToken);
+      if (token !== null) headers['Authorization'] = `Bearer ${token}`;
+    }
+    return fetch(url, {
+      method,
+      headers,
+      body: body as BodyInit,
+      credentials: config.authMode === 'cookie' ? 'include' : 'omit',
+    });
+  };
+
+  let response = await send();
+  if (response.status === 401) {
+    const refreshed = await getRestConfig().refreshAccess();
+    if (refreshed) {
+      response = await send();
+    } else {
+      redirectToLogin();
+      return new Promise<T>(() => {});
+    }
+  }
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new RestError(response.status, path, text || response.statusText);
+  }
+  return parseJson<T>(response);
+}
+
+/**
  * Build a tenant-scoped URL for a document's streaming-content
  * endpoint. Used by `<img src>` / PDF.js viewers / `<a href download>`
  * — places where we cannot inject an `Authorization` header.

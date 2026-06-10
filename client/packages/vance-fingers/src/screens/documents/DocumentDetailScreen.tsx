@@ -3,7 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { DocumentDto } from '@vance/generated';
-import { useDocumentItem } from '@/hooks/useDocuments';
+import { useDocumentContent, useDocumentItem } from '@/hooks/useDocuments';
 import { MobileShell, VAlert, VBadge, VEmptyState, VLoading } from '@/components';
 import { contentHeaders, documentContentUrl } from '@/api/documentsApi';
 import { relativeTime } from '@/util/format';
@@ -69,36 +69,59 @@ function Header({ doc }: { doc: DocumentDto }) {
   );
 }
 
+function isTextualMime(mimeType: string | null | undefined): boolean {
+  if (!mimeType) return false;
+  const base = mimeType.split(';')[0].trim().toLowerCase();
+  return (
+    base.startsWith('text/')
+    || base.includes('json')
+    || base.includes('yaml')
+    || base.includes('xml')
+  );
+}
+
 function Body({ doc }: { doc: DocumentDto }) {
-  // Structured kinds get a JSON-plain-text fallback per the spec; the
-  // mobile app intentionally does not try to render mindmaps / graphs
-  // / sheets / trees.
-  if (doc.kind && STRUCTURED_KINDS.has(doc.kind)) {
+  const isStructured = doc.kind && STRUCTURED_KINDS.has(doc.kind);
+  const wantsText = isStructured || isTextualMime(doc.mimeType);
+  const contentQuery = useDocumentContent(doc.id, wantsText);
+
+  // Structured kinds get a plain-text fallback — Mobile intentionally
+  // does not render mindmaps / graphs / sheets / trees.
+  if (isStructured) {
     return (
       <View className="gap-2">
         <VAlert variant="info">
           This {doc.kind} is best viewed on desktop. The raw text below is the
           unrendered source.
         </VAlert>
-        {doc.inlineText ? (
+        {contentQuery.isLoading ? (
+          <VLoading variant="centered" label="Loading content…" />
+        ) : contentQuery.data ? (
           <Text className="text-sm font-mono text-slate-700 dark:text-slate-300">
-            {doc.inlineText}
+            {contentQuery.data}
           </Text>
         ) : (
           <VEmptyState
             icon={<Ionicons name="document-outline" size={36} color="#94a3b8" />}
-            headline="Stored binary"
-            body="Open on desktop to view."
+            headline="Empty"
+            body="No content stored for this document."
           />
         )}
       </View>
     );
   }
 
-  if (doc.inline && doc.inlineText !== undefined) {
-    return (
-      <Text className="text-base text-slate-800 dark:text-slate-200">{doc.inlineText}</Text>
-    );
+  if (wantsText) {
+    if (contentQuery.isLoading) {
+      return <VLoading variant="centered" label="Loading content…" />;
+    }
+    if (contentQuery.data !== null && contentQuery.data !== undefined) {
+      return (
+        <Text className="text-base text-slate-800 dark:text-slate-200">
+          {contentQuery.data}
+        </Text>
+      );
+    }
   }
 
   if (doc.mimeType?.startsWith('image/')) {

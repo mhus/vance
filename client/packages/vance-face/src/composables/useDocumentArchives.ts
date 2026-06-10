@@ -5,7 +5,7 @@ import type {
   DocumentArchiveSummary,
   DocumentDto,
 } from '@vance/generated';
-import { brainFetch } from '@vance/shared';
+import { brainFetch, brainFetchText } from '@vance/shared';
 
 /**
  * Reactive wrapper around the document-archive REST endpoints. One instance
@@ -57,16 +57,44 @@ export function useDocumentArchives(): {
     previewLoading.value = true;
     error.value = null;
     try {
-      preview.value = await brainFetch<DocumentArchiveDto>(
+      const dto = await brainFetch<DocumentArchiveDto>(
         'GET',
         `documents/${encodeURIComponent(documentId)}/archives/${encodeURIComponent(archiveId)}`,
       );
+      // DocumentArchiveDto.inlineText is null since the full-storage
+      // migration; for textual mime types pull the body via the
+      // archive-content endpoint and patch the cached fields so the
+      // preview pane renders inline instead of falling through to the
+      // generic "binary" fallback.
+      if (isTextualMime(dto.mimeType)) {
+        const body = await brainFetchText(
+          `documents/${encodeURIComponent(documentId)}/archives/${encodeURIComponent(archiveId)}/content`,
+        );
+        dto.inlineText = body ?? '';
+        dto.inline = true;
+      }
+      preview.value = dto;
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load archive.';
       preview.value = null;
     } finally {
       previewLoading.value = false;
     }
+  }
+
+  function isTextualMime(mimeType: string | null | undefined): boolean {
+    if (!mimeType) return false;
+    const base = mimeType.split(';')[0].trim().toLowerCase();
+    return (
+      base.startsWith('text/')
+      || base.includes('json')
+      || base.includes('yaml')
+      || base.includes('xml')
+      || base === 'application/javascript'
+      || base === 'application/typescript'
+      || base === 'application/sql'
+      || base === 'application/x-sh'
+    );
   }
 
   function clearPreview(): void {

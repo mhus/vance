@@ -338,7 +338,6 @@ export default {
     noDocumentsBody: 'This project has no documents yet.',
     createFirstDocument: 'Create first document',
     ungrouped: 'Ungrouped',
-    storedNote: 'stored',
     editAsFile: 'Edit as file (skip app)',
     detail: {
       sizeBy: 'by {user}',
@@ -352,8 +351,6 @@ export default {
       versionsBadge: '{count} versions',
       versionsBadgeTooltip: 'Previous versions — click to show (opens the properties panel).',
       frontMatter: 'Front matter',
-      readOnlyNote:
-        'Stored content — read-only in v1. Use the download button to save a local copy.',
       titleLabel: 'Title',
       pathLabel: 'Path',
       pathHelp:
@@ -429,9 +426,8 @@ export default {
       delete: 'Delete',
       cancel: 'Cancel',
       close: 'Close',
-      storageBacked: 'binary',
       previewTitle: 'Version from {when}',
-      previewBinary: 'Binary content — use download from the file system to inspect.',
+      previewBinary: 'Preview not available for this file type — please download.',
       confirmRestoreTitle: 'Restore this version?',
       confirmRestoreBody:
         'The current content is archived as a new version, then this older version becomes the live document. Nothing is lost.',
@@ -591,10 +587,10 @@ export default {
       kindHelp: 'Optional. Pre-fills a starter body matching the selected kind.',
       contentLabel: 'Content',
       inlineSizeNote:
-        'Inline content, up to 4 KB. For larger or binary files use the upload tab.',
+        'Type the body directly. For file uploads use the upload tab.',
       filesLabel: 'Files',
       filesHelp:
-        'Drop one or more files. Server picks inline vs. storage automatically per file.',
+        'Drop one or more files. The server picks compression per file automatically.',
       pathRequired: 'Path is required.',
       nameRequired: 'Name is required.',
       contentRequired: 'Content is required.',
@@ -640,7 +636,7 @@ export default {
     preview: {
       pdfRendering: 'Rendering PDF…',
       pdfError: 'PDF error: {error}',
-      binary: 'Binary file — use the download button to fetch it.',
+      binary: 'No inline preview for this file type — use the download button.',
     },
     mime: {
       groupDoc: 'Doc & config',

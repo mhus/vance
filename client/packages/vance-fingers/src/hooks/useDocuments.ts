@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import type { DocumentDto, DocumentListResponse } from '@vance/generated';
-import { getDocument, listDocuments } from '@/api/documentsApi';
+import { getDocument, getDocumentContent, listDocuments } from '@/api/documentsApi';
 
 interface ListFilter {
   projectId?: string;
@@ -12,6 +12,7 @@ const documentKeys = {
   list: (filter: ListFilter) =>
     ['documents', 'list', filter.projectId, filter.pathPrefix, filter.kind] as const,
   item: (id: string) => ['documents', 'item', id] as const,
+  content: (id: string) => ['documents', 'content', id] as const,
 };
 
 export function useDocumentList(filter: ListFilter = {}) {
@@ -26,5 +27,19 @@ export function useDocumentItem(id: string | undefined) {
     queryKey: id ? documentKeys.item(id) : ['documents', 'item', '__none__'],
     queryFn: () => getDocument(id as string),
     enabled: id !== undefined,
+  });
+}
+
+/**
+ * Pulls the document body via the streaming /content endpoint. Use this
+ * for textual previews — DocumentDto.inlineText is no longer populated
+ * since the full-storage migration. `enabled` lets callers gate by mime
+ * (skip the request for binary blobs).
+ */
+export function useDocumentContent(id: string | undefined, enabled = true) {
+  return useQuery<string | null>({
+    queryKey: id ? documentKeys.content(id) : ['documents', 'content', '__none__'],
+    queryFn: () => getDocumentContent(id as string),
+    enabled: id !== undefined && enabled,
   });
 }

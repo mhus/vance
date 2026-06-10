@@ -357,7 +357,7 @@ onMounted(async () => {
   }
   if (queryDoc) {
     await docsState.loadOne(queryDoc);
-    fillEditor();
+    await fillEditor();
   }
   window.addEventListener('popstate', onPopstate);
   // One-shot draft handed over by another editor (Inbox "To
@@ -486,7 +486,7 @@ async function onPopstate(): Promise<void> {
   // Document selection.
   if (urlDocumentId && urlDocumentId !== docsState.selected.value?.id) {
     await docsState.loadOne(urlDocumentId);
-    fillEditor();
+    await fillEditor();
   } else if (!urlDocumentId && docsState.selected.value) {
     docsState.clearSelection();
   }
@@ -661,15 +661,48 @@ async function openDocument(doc: DocumentSummary): Promise<void> {
 async function openDocumentInEditor(doc: DocumentSummary): Promise<void> {
   if (!doc.id) return;
   await docsState.loadOne(doc.id);
-  fillEditor();
+  await fillEditor();
 }
 
-function fillEditor(): void {
+/**
+ * Whether the editor can materialise this document's body inline. Driven
+ * by the textual mime list — anything not in {@link createMimeOptions}
+ * (binary blobs, PDFs, images) stays read-only with downloads handled
+ * via the streaming /content endpoint.
+ */
+function canEditInline(mimeType?: string | null): boolean {
+  if (!mimeType) return false;
+  const base = mimeType.split(';')[0].trim().toLowerCase();
+  return createMimeOptions.value.some((opt) => opt.value === base);
+}
+
+/**
+ * Pull the current content out of the brain via /documents/{id}/content
+ * and hand it to the editor. Editable mime types (the ones in
+ * {@link createMimeOptions}) get fetched + materialised on
+ * {@link DocumentDto.inlineText} client-side so the existing kind-view
+ * dispatch (which still reads {@code sel.inlineText}) keeps working
+ * without an invasive refactor. Non-textual blobs stay metadata-only.
+ */
+async function fillEditor(): Promise<void> {
   const sel = docsState.selected.value;
   editTitle.value = sel?.title ?? '';
   editPath.value = sel?.path ?? '';
   editMimeType.value = sel?.mimeType ?? '';
-  editInlineText.value = sel?.inlineText ?? '';
+  if (sel && canEditInline(sel.mimeType)) {
+    const body = await docsState.loadContent(sel.id);
+    const content = body ?? '';
+    // Patch the in-memory DTO so downstream views (TreeView / ChartView /
+    // ListView / …) that still read `doc.inlineText` see the streamed body.
+    // Server-side `inlineText` stays null since the full-storage migration;
+    // we treat the field as a pure UI cache.
+    sel.inlineText = content;
+    sel.inline = true;
+    editInlineText.value = content;
+  } else {
+    if (sel) sel.inline = false;
+    editInlineText.value = '';
+  }
   editAutoSummary.value = sel?.autoSummary ?? false;
   editSummaryDirty.value = sel?.summaryDirty ?? false;
   editSummary.value = sel?.summary ?? '';
@@ -696,7 +729,7 @@ function fillEditor(): void {
   else contentTab.value = 'raw';
 }
 
-function onArchiveRestored(restored: DocumentDto): void {
+async function onArchiveRestored(restored: DocumentDto): Promise<void> {
   docsState.selected.value = restored;
   const idx = docsState.items.value.findIndex((d) => d.id === restored.id);
   if (idx >= 0) {
@@ -709,7 +742,7 @@ function onArchiveRestored(restored: DocumentDto): void {
       name: restored.name,
     };
   }
-  fillEditor();
+  await fillEditor();
 }
 
 // ─── List-document tab toggle ───────────────────────────────────────
@@ -1336,7 +1369,7 @@ async function revertChanges(): Promise<void> {
   const sel = docsState.selected.value;
   if (!sel) return;
   await docsState.loadOne(sel.id);
-  fillEditor();
+  await fillEditor();
 }
 
 /** Discard-modal action: persist the edits, then return to the list
@@ -1590,7 +1623,7 @@ async function submitCreate(): Promise<void> {
       if (created) {
         showCreateModal.value = false;
         await docsState.loadOne(created.id);
-        fillEditor();
+        await fillEditor();
       } else if (docsState.error.value) {
         createError.value = docsState.error.value;
       }
@@ -1612,7 +1645,7 @@ async function submitCreate(): Promise<void> {
       if (created) {
         showCreateModal.value = false;
         await docsState.loadOne(created.id);
-        fillEditor();
+        await fillEditor();
       } else if (docsState.error.value) {
         createError.value = docsState.error.value;
       }
@@ -1697,7 +1730,6 @@ async function apply(): Promise<boolean> {
   editError.value = null;
   try {
     const body: DocumentUpdateRequest = { title: editTitle.value };
-    if (sel.inline) body.inlineText = editInlineText.value;
     // Path-change (move/rename) — only send when actually changed.
     // Server-side normalisation makes minor whitespace/leading-slash
     // diffs idempotent, so we compare verbatim and let the server
@@ -1738,6 +1770,21 @@ async function apply(): Promise<boolean> {
     if (docsState.error.value) {
       editError.value = docsState.error.value;
       return false;
+    }
+
+    // Content goes through the dedicated streaming endpoint — the
+    // metadata PUT above no longer carries the body. Only send when the
+    // doc is in-line editable and the editor's text differs from what we
+    // last loaded. `replaceContent` patches `inline` / `inlineText` on the
+    // refreshed DTO before assigning it to `selected`, so the editor
+    // stays mounted across the save (no binary-preview flicker).
+    if (sel.inline && editInlineText.value !== (sel.inlineText ?? '')) {
+      const mime = editMimeType.value.trim() || sel.mimeType || 'text/plain';
+      const updated = await docsState.replaceContent(sel.id, editInlineText.value, mime);
+      if (!updated && docsState.error.value) {
+        editError.value = docsState.error.value;
+        return false;
+      }
     }
     if (body.newPath && docsState.selected.value) {
       // Server normalised the path; reflect that back into the
@@ -2205,10 +2252,6 @@ const formatBytes = (n: number): string => {
             @restored="onArchiveRestored"
             @update:count="onArchiveCount"
           />
-
-          <VAlert v-if="!docsState.selected.value.inline" variant="info" class="mt-3">
-            <span>{{ $t('documents.detail.readOnlyNote') }}</span>
-          </VAlert>
 
           <VAlert v-if="editError" variant="error" class="mt-3">
             <span>{{ editError }}</span>
@@ -2680,9 +2723,6 @@ const formatBytes = (n: number): string => {
               </div>
               <div class="text-right text-xs opacity-60 shrink-0">
                 <div>{{ formatBytes(item.size) }}</div>
-                <div v-if="!item.inline" class="text-warning">
-                  {{ $t('documents.storedNote') }}
-                </div>
               </div>
               <!-- App-manifest escape hatch: clicking the row would
                    redirect into the dedicated app face (Kanban,

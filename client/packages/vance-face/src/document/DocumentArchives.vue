@@ -138,9 +138,6 @@ async function restoreArchive(): Promise<void> {
               <template v-if="archive.size">
                 · {{ archive.size }} B
               </template>
-              <template v-if="!archive.inline">
-                · {{ $t('documents.archives.storageBacked') }}
-              </template>
             </span>
           </button>
           <div class="flex gap-1 shrink-0">

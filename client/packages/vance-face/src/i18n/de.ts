@@ -334,7 +334,6 @@ export default {
     noDocumentsBody: 'Dieses Projekt hat noch keine Dokumente.',
     createFirstDocument: 'Erstes Dokument anlegen',
     ungrouped: 'Ohne Gruppe',
-    storedNote: 'extern gespeichert',
     editAsFile: 'Als Datei bearbeiten (statt App öffnen)',
     detail: {
       sizeBy: 'von {user}',
@@ -348,8 +347,6 @@ export default {
       versionsBadge: '{count} Versionen',
       versionsBadgeTooltip: 'Frühere Versionen — zum Anzeigen klicken (öffnet die Eigenschaften).',
       frontMatter: 'Front-Matter',
-      readOnlyNote:
-        'Extern gespeicherter Inhalt — in v1 nur lesbar. Zum Speichern den Download-Button nutzen.',
       titleLabel: 'Titel',
       pathLabel: 'Pfad',
       pathHelp:
@@ -425,9 +422,8 @@ export default {
       delete: 'Löschen',
       cancel: 'Abbrechen',
       close: 'Schließen',
-      storageBacked: 'Binär',
       previewTitle: 'Version vom {when}',
-      previewBinary: 'Binärer Inhalt — bitte über das Dateisystem herunterladen, um ihn anzusehen.',
+      previewBinary: 'Vorschau für diesen Dateityp nicht möglich — bitte herunterladen.',
       confirmRestoreTitle: 'Diese Version wiederherstellen?',
       confirmRestoreBody:
         'Der aktuelle Inhalt wird als neue Version archiviert, danach wird diese ältere Version zum aktiven Dokument. Es geht nichts verloren.',
@@ -587,10 +583,10 @@ export default {
       kindHelp: 'Optional. Erzeugt eine passende Vorlage für die gewählte Art.',
       contentLabel: 'Inhalt',
       inlineSizeNote:
-        'Inline-Inhalt bis 4 KB. Für größere oder binäre Dateien den Upload-Tab nutzen.',
+        'Text-Inhalt direkt eingeben. Für Datei-Uploads den Upload-Tab nutzen.',
       filesLabel: 'Dateien',
       filesHelp:
-        'Eine oder mehrere Dateien ablegen. Der Server entscheidet pro Datei zwischen inline und externer Speicherung.',
+        'Eine oder mehrere Dateien ablegen. Der Server entscheidet pro Datei automatisch über Komprimierung.',
       pathRequired: 'Pfad ist erforderlich.',
       nameRequired: 'Name ist erforderlich.',
       contentRequired: 'Inhalt ist erforderlich.',
@@ -636,7 +632,7 @@ export default {
     preview: {
       pdfRendering: 'PDF wird gerendert…',
       pdfError: 'PDF-Fehler: {error}',
-      binary: 'Binär-Datei — bitte den Download-Button nutzen.',
+      binary: 'Keine Vorschau für diesen Dateityp — bitte den Download-Button nutzen.',
     },
     mime: {
       groupDoc: 'Dokumente & Konfig',

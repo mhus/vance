@@ -52,6 +52,31 @@
 #                                      # after long tool-call chains
 #                                      # (gemini-2.5-pro is the known case
 #                                      # — see plan-mode.md §14a).
+#       kind: chat|image               # Optional discriminator. Defaults to
+#                                      # `chat` when absent — every legacy
+#                                      # entry continues to be a chat model
+#                                      # without modification. Set `image`
+#                                      # for an image-generation model (the
+#                                      # Fenchurch image stack picks them up
+#                                      # via ModelCatalog#lookupImage); chat
+#                                      # lookups skip them and vice versa.
+#
+# Image-only fields (apply when kind: image):
+#       supportedAspectRatios: [...]   # list of "W:H" strings the model
+#                                      # accepts (e.g. ["1:1","16:9"]). Used
+#                                      # by the image service to validate
+#                                      # incoming tool params.
+#       maxPromptChars: <int>          # provider-side prompt cap; the
+#                                      # Fenchurch tool rejects longer prompts
+#                                      # with a typed error before issuing
+#                                      # the call.
+#       costPerImage:                  # USD per generated image, keyed by
+#         standard: <float>            # quality tier. Multi-tier vendors
+#         hd: <float>                  # (OpenAI standard/hd) carry both;
+#                                      # single-tier vendors carry only
+#                                      # `standard`. Optional — when absent
+#                                      # the ImageCallTracker counts the
+#                                      # call but cannot bill it.
 #
 # Adjust freely; this file is committed (no secrets here).
 
@@ -109,6 +134,29 @@ gemini:
     size: SMALL
     # 2.0-flash predates Gemini's PDF document mode; vision works.
     capabilities: [vision]
+
+  # ── Image generation (Fenchurch) ─────────────────────────────────
+  # gemini-2.5-flash-image ("nano-banana") is the fast/cheap
+  # default — sub-10s turnarounds, low per-image cost. Imagen 3 is the
+  # quality lane, slower and more expensive. The Fenchurch alias
+  # `default:image` points to nano-banana by convention;
+  # `default:image-high` to gpt-image-1 (OpenAI) or imagen-3.0 when
+  # an OpenAI key isn't configured.
+  gemini-2.5-flash-image:
+    kind: image
+    timeoutSeconds: 90
+    supportedAspectRatios: ["1:1", "16:9", "9:16", "4:3", "3:4"]
+    # Public preview pricing (USD/image, single tier).
+    costPerImage:
+      standard: 0.005
+    maxPromptChars: 480
+  imagen-3.0-generate-002:
+    kind: image
+    timeoutSeconds: 360
+    supportedAspectRatios: ["1:1", "16:9", "9:16", "4:3", "3:4"]
+    costPerImage:
+      standard: 0.04
+    maxPromptChars: 480
 
 # OpenAI proper plus open-weight models reachable through OpenAI-
 # wire gateways (cortecs.ai, OpenRouter, vLLM, …). The provider key
@@ -328,6 +376,20 @@ openai:
     contextWindowTokens: 128000
     defaultMaxOutputTokens: 8192
     size: LARGE
+
+  # ── Image generation (Fenchurch) ─────────────────────────────────
+  # OpenAI's gpt-image-1 — the quality lane for `default:image-high`.
+  # Two pricing tiers (standard, hd) selected by Fenchurch via the
+  # call's quality parameter. Long timeout: HD images regularly take
+  # 2–5 min on cold paths.
+  gpt-image-1:
+    kind: image
+    timeoutSeconds: 360
+    supportedAspectRatios: ["1:1", "16:9", "9:16", "4:3", "3:4"]
+    costPerImage:
+      standard: 0.04
+      hd: 0.08
+    maxPromptChars: 4000
 
 # Local Ollama (http://localhost:11434). Context windows match the
 # model's native window as advertised on ollama.com/library; Ollama

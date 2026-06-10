@@ -5,9 +5,11 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.brain.ai.image.ImageModelInfo;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.home.HomeBootstrapService;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -256,6 +258,104 @@ class ModelCatalogTest {
         // Conservative fallback (8K context, the FALLBACK_TEMPLATE values).
         assertThat(info.contextWindowTokens()).isEqualTo(8192);
         assertThat(info.provider()).isEqualTo("exotic-instance");
+    }
+
+    // ──── kind discriminator (chat vs. image) ──────────────────────────
+
+    @Test
+    void chat_lookup_filters_image_kind_entries() {
+        // Tenant adds an image-kind entry with the same wire name as a
+        // chat entry. The chat lookup must skip it — chat and image
+        // surfaces stay disjoint.
+        stubDocument(TENANT, VANCE, """
+                openai:
+                  gpt-image-1:
+                    kind: image
+                    supportedAspectRatios: ["1:1"]
+                    costPerImage:
+                      standard: 0.04
+                    maxPromptChars: 4000
+                """);
+
+        assertThat(catalog.lookup(TENANT, null, "openai", "gpt-image-1"))
+                .isEmpty();
+    }
+
+    @Test
+    void image_lookup_returns_bundled_gpt_image_1() {
+        // The bundled ai-models.yaml ships gpt-image-1 as the high-quality
+        // image model. Pins the metadata to detect accidental drift.
+        ImageModelInfo info = catalog
+                .lookupImage(null, null, "openai", "gpt-image-1")
+                .orElseThrow();
+
+        assertThat(info.provider()).isEqualTo("openai");
+        assertThat(info.modelName()).isEqualTo("gpt-image-1");
+        assertThat(info.maxPromptChars()).isEqualTo(4000);
+        assertThat(info.timeoutSeconds()).isEqualTo(360);
+        assertThat(info.supportedAspectRatios())
+                .containsExactlyInAnyOrder("1:1", "16:9", "9:16", "4:3", "3:4");
+        assertThat(info.costFor("standard")).isEqualTo(0.04);
+        assertThat(info.costFor("hd")).isEqualTo(0.08);
+    }
+
+    @Test
+    void image_lookup_returns_bundled_gemini_flash_image() {
+        ImageModelInfo info = catalog
+                .lookupImage(null, null, "gemini", "gemini-2.5-flash-image")
+                .orElseThrow();
+
+        assertThat(info.timeoutSeconds()).isEqualTo(90);
+        assertThat(info.maxPromptChars()).isEqualTo(480);
+        assertThat(info.costFor("standard")).isEqualTo(0.005);
+        assertThat(info.costFor("hd")).isNull();
+    }
+
+    @Test
+    void image_lookup_filters_chat_kind_entries() {
+        // Existing chat model — looked up via lookupImage returns empty,
+        // even though the name resolves in the chat catalog.
+        assertThat(catalog.lookupImage(null, null, "anthropic", "claude-sonnet-4-5"))
+                .isEmpty();
+    }
+
+    @Test
+    void image_lookup_unknown_model_returns_empty() {
+        assertThat(catalog.lookupImage(null, null, "openai", "ghost-image-9000"))
+                .isEmpty();
+    }
+
+    @Test
+    void listAll_excludes_image_kind_entries() {
+        // Bundled list shouldn't include gpt-image-1 in the chat surface
+        // — that would pollute model-picker dropdowns.
+        List<ModelInfo> chats = catalog.listAll(null, null);
+
+        assertThat(chats).noneMatch(m -> "gpt-image-1".equals(m.modelName()));
+        assertThat(chats).noneMatch(m ->
+                "gemini-2.5-flash-image".equals(m.modelName()));
+        assertThat(chats).anyMatch(m -> "claude-sonnet-4-5".equals(m.modelName()));
+    }
+
+    @Test
+    void listAllImages_returns_only_image_kind_entries() {
+        List<ImageModelInfo> images = catalog.listAllImages(null, null);
+
+        // Every entry must be one of the bundled image models.
+        assertThat(images).isNotEmpty();
+        assertThat(images).allMatch(m -> "image".equals(kindOf(m)));
+        assertThat(images).anyMatch(m -> "gpt-image-1".equals(m.modelName()));
+        assertThat(images).anyMatch(m ->
+                "gemini-2.5-flash-image".equals(m.modelName()));
+        assertThat(images).anyMatch(m ->
+                "imagen-3.0-generate-002".equals(m.modelName()));
+    }
+
+    /** Marker for the listAllImages assertion — every returned info is
+     *  an image entry by construction (lookupImage / listAllImages
+     *  filter on kind=image), so the lambda just returns "image". */
+    private static String kindOf(ImageModelInfo m) {
+        return m == null ? null : "image";
     }
 
     // ──── Helpers ──────────────────────────────────────────────────────

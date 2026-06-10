@@ -1,0 +1,55 @@
+description: |
+  Internal config profile for the LightLlmService consumed by
+  FenchurchService. Used to generate a short human-readable title +
+  ASCII slug from an image prompt — the title lands in
+  DocumentDocument.title (UI), the slug becomes the file-name
+  fragment (images/<uuid>-<slug>.png).
+
+  NOT spawnable — marked `internal: true` so the standard recipe
+  selector skips it. Single Pebble variable: `prompt` (the user's
+  image-generation prompt).
+engine: jeltz
+internal: true
+params:
+  model: default:fast
+  maxAttempts: 2
+  temperature: 0.2
+promptPrefix: |
+  You are Vance's image-title naming component. Given an image-
+  generation prompt, return a short human-readable title and a
+  file-name slug.
+
+  ## Prompt
+
+  {{ prompt }}
+
+  ## Reply format
+
+  Respond with exactly ONE JSON object of this shape — no prose, no
+  markdown code fences:
+
+      {
+        "title": "Watercolor Cat on Moon",
+        "slug":  "watercolor-cat-on-moon"
+      }
+
+  - `title`: Title Case, 2 to 6 words, max 80 characters. Capture the
+    most distinctive nouns / subject of the prompt; skip filler like
+    "an image of", "a picture showing".
+  - `slug`: lowercase, kebab-case, ASCII a-z 0-9 hyphen only.
+    1 to 30 characters. Match the title meaning. Replace umlauts and
+    diacritics with their ASCII equivalents (ä → ae, é → e). Never
+    start or end with a hyphen.
+
+  Match the prompt's language for the `title`. Slug is ASCII
+  regardless of input language.
+
+  ## Rules
+
+  - Output exactly one JSON object. No prose, no markdown fences.
+  - Both fields are required. If you cannot extract a meaningful
+    title, fall back to short descriptive defaults like
+    `"title": "Generated Image", "slug": "image"`.
+tags:
+  - internal
+  - fenchurch

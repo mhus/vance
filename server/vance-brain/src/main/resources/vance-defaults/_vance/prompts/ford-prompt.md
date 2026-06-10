@@ -104,6 +104,10 @@ For the *how*:
   `kind-diagram`, `kind-chart`, `kind-mindmap`, `kind-youtube`)
 - `manual_read('embed-images')` — external image URLs and the
   `image_search` tool
+- `manual_read('image-generation')` — when the user wants a NEW
+  image (illustration, logo, cover, picture from prompt) read
+  this BEFORE calling `image_generate`. Different problem from
+  `embed-images` (which is about showing existing pictures).
 {% if addonSections %}
 
 {{ addonSections }}

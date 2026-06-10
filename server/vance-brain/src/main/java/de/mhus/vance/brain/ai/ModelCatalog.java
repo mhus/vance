@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.ai;
 
+import de.mhus.vance.brain.ai.image.ImageModelInfo;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.home.HomeBootstrapService;
@@ -8,6 +9,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -111,10 +113,32 @@ public class ModelCatalog {
         }
         Map<String, Map<String, Object>> catalog = resolveMerged(tenantId, projectId);
         Map<String, Object> spec = catalog.get(key(provider, modelName));
-        if (spec == null) {
+        if (spec == null || !isChatKind(spec)) {
             return Optional.empty();
         }
         return Optional.of(buildInfo(provider, modelName, spec));
+    }
+
+    /**
+     * Cascade-aware lookup of an image-generation model entry
+     * ({@code kind: image} in {@code ai-models.yaml}). Returns empty
+     * when no layer carries the {@code (provider, modelName)} pair
+     * <i>as an image model</i> — chat-kind entries are filtered out
+     * even if the name matches, so the call surface for images stays
+     * disjoint from the chat one.
+     */
+    public Optional<ImageModelInfo> lookupImage(
+            @Nullable String tenantId, @Nullable String projectId,
+            String provider, String modelName) {
+        if (provider == null || modelName == null) {
+            return Optional.empty();
+        }
+        Map<String, Map<String, Object>> catalog = resolveMerged(tenantId, projectId);
+        Map<String, Object> spec = catalog.get(key(provider, modelName));
+        if (spec == null || !isImageKind(spec)) {
+            return Optional.empty();
+        }
+        return Optional.of(buildImageInfo(provider, modelName, spec));
     }
 
     /** Same as {@link #lookup}, with a conservative WARN-on-miss fallback. */
@@ -177,6 +201,8 @@ public class ModelCatalog {
         Map<String, Map<String, Object>> merged = resolveMerged(tenantId, projectId);
         List<ModelInfo> out = new java.util.ArrayList<>(merged.size());
         for (Map.Entry<String, Map<String, Object>> entry : merged.entrySet()) {
+            Map<String, Object> spec = entry.getValue();
+            if (!isChatKind(spec)) continue;
             String key = entry.getKey();
             // {@link #key} joins (provider, modelName) with '/' — splitting on
             // ':' would mangle ollama tags like "qwen3:8b". Split at the first
@@ -185,7 +211,31 @@ public class ModelCatalog {
             if (slash <= 0) continue;
             String provider = key.substring(0, slash);
             String modelName = key.substring(slash + 1);
-            out.add(buildInfo(provider, modelName, entry.getValue()));
+            out.add(buildInfo(provider, modelName, spec));
+        }
+        return out;
+    }
+
+    /**
+     * Cascade-aware enumeration of every image-generation
+     * {@code (provider, modelName)} pair visible to the given scope.
+     * Returns only entries carrying {@code kind: image} —
+     * chat entries are excluded. Order follows the
+     * {@link #resolveMerged} iteration order.
+     */
+    public List<ImageModelInfo> listAllImages(
+            @Nullable String tenantId, @Nullable String projectId) {
+        Map<String, Map<String, Object>> merged = resolveMerged(tenantId, projectId);
+        List<ImageModelInfo> out = new java.util.ArrayList<>();
+        for (Map.Entry<String, Map<String, Object>> entry : merged.entrySet()) {
+            Map<String, Object> spec = entry.getValue();
+            if (!isImageKind(spec)) continue;
+            String key = entry.getKey();
+            int slash = key.indexOf('/');
+            if (slash <= 0) continue;
+            String provider = key.substring(0, slash);
+            String modelName = key.substring(slash + 1);
+            out.add(buildImageInfo(provider, modelName, spec));
         }
         return out;
     }
@@ -314,6 +364,84 @@ public class ModelCatalog {
     }
 
     // ──────────────────── ModelInfo construction ────────────────────
+
+    /**
+     * Whether {@code spec} describes a chat model. The {@code kind:}
+     * field is optional — entries without it default to {@code chat}
+     * so all pre-existing {@code ai-models.yaml} entries (and every
+     * tenant override of them) keep working unchanged.
+     */
+    private static boolean isChatKind(Map<String, Object> spec) {
+        Object kind = spec.get("kind");
+        if (kind == null) return true;
+        return "chat".equalsIgnoreCase(kind.toString().trim());
+    }
+
+    /** Whether {@code spec} explicitly declares {@code kind: image}. */
+    private static boolean isImageKind(Map<String, Object> spec) {
+        Object kind = spec.get("kind");
+        if (kind == null) return false;
+        return "image".equalsIgnoreCase(kind.toString().trim());
+    }
+
+    private static ImageModelInfo buildImageInfo(
+            String provider, String modelName, Map<String, Object> spec) {
+        Set<String> aspects = readStringList(spec.get("supportedAspectRatios"));
+        int maxPromptChars = readInt(spec.get("maxPromptChars"),
+                ImageModelInfo.DEFAULT_MAX_PROMPT_CHARS);
+        Map<String, Double> costs = readCostMap(spec.get("costPerImage"),
+                provider, modelName);
+        int timeout = readInt(spec.get("timeoutSeconds"),
+                ImageModelInfo.DEFAULT_TIMEOUT_SECONDS);
+        return new ImageModelInfo(provider, modelName, aspects, maxPromptChars,
+                costs, timeout);
+    }
+
+    private static Set<String> readStringList(@Nullable Object raw) {
+        if (raw == null) return Set.of();
+        if (!(raw instanceof List<?> list)) return Set.of();
+        Set<String> out = new LinkedHashSet<>();
+        for (Object e : list) {
+            if (e == null) continue;
+            String s = e.toString().trim();
+            if (!s.isEmpty()) out.add(s);
+        }
+        return out;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Double> readCostMap(
+            @Nullable Object raw, String provider, String modelName) {
+        if (raw == null) return Map.of();
+        if (!(raw instanceof Map<?, ?> m)) {
+            log.warn("ModelCatalog: '{}/{}' has non-map costPerImage '{}' — ignored",
+                    provider, modelName, raw);
+            return Map.of();
+        }
+        Map<String, Double> out = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : m.entrySet()) {
+            String tier = entry.getKey() == null ? null : entry.getKey().toString().trim();
+            if (tier == null || tier.isEmpty()) continue;
+            Object value = entry.getValue();
+            Double cost = null;
+            if (value instanceof Number n) {
+                cost = n.doubleValue();
+            } else if (value instanceof String s) {
+                try {
+                    cost = Double.parseDouble(s.trim());
+                } catch (NumberFormatException ignored) {
+                    // fall through to warn below
+                }
+            }
+            if (cost == null) {
+                log.warn("ModelCatalog: '{}/{}' costPerImage.{} is not a number '{}' — skipped",
+                        provider, modelName, tier, value);
+                continue;
+            }
+            out.put(tier, cost);
+        }
+        return out;
+    }
 
     private static ModelInfo buildInfo(String provider, String modelName, Map<String, Object> spec) {
         int ctx = readInt(spec.get("contextWindowTokens"),

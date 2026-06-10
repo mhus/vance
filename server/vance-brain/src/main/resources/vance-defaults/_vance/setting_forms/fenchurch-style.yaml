@@ -1,0 +1,41 @@
+title:
+  de: "Fenchurch — Bild-Style"
+  en: "Fenchurch — Image Style"
+description:
+  de: "Persistenter Style-Vorspann, der Fenchurch vor jeden Bild-
+       Prompt setzt. Mehrere Scopes (Tenant → User → Projekt →
+       Session) werden additiv kombiniert — schreib hier nur
+       Style-Tokens (Medium, Beleuchtung, Stilrichtung), nicht den
+       eigentlichen Bildinhalt. Spezielle Werte: leer lassen
+       deaktiviert die Ebene; `__none__` unterdrückt zusätzlich
+       alle äußeren Ebenen ab dieser Stufe."
+  en: "Persistent style prefix Fenchurch prepends to every image
+       prompt. Multiple scopes (tenant → user → project → session)
+       compose additively — put style tokens here (medium,
+       lighting, art direction), not the picture content itself.
+       Special values: blank disables the layer; `__none__`
+       additionally suppresses all outer layers from this scope
+       inwards."
+icon: paint-brush
+category: ai
+defaultScope: project
+availableIn: [ "_vance", "project", "user" ]
+
+fields:
+
+  - name: stylePrefix
+    type: string
+    label:
+      de: "Style-Vorspann"
+      en: "Style prefix"
+    help:
+      de: "Freie Style-Tokens, kommagetrennt. Beispiele: `medieval
+           manuscript`, `watercolor, soft tones`, `photorealistic,
+           studio lighting`, `transparent background`. Max 500
+           Zeichen."
+      en: "Free style tokens, comma-separated. Examples: `medieval
+           manuscript`, `watercolor, soft tones`, `photorealistic,
+           studio lighting`, `transparent background`. Max 500
+           characters."
+    bindsTo:
+      key: "ai.fenchurch.style_prefix"

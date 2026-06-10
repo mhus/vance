@@ -1,0 +1,159 @@
+title:
+  de: "Fenchurch — Bildgenerierung"
+  en: "Fenchurch — Image Generation"
+description:
+  de: "Konfiguriert Vance's Bildgenerierungs-Service. Modell-Aliase
+       (`default:image`, `default:image-high`) werden hier nicht
+       gesetzt — das macht die LLM-Setup-Form. Diese Form steuert
+       Verfügbarkeit, Defaults, Quotas und Performance-Parameter."
+  en: "Configures Vance's image-generation service. Model aliases
+       (`default:image`, `default:image-high`) are set in the LLM
+       setup form — this form controls availability, defaults,
+       quotas, and performance knobs."
+icon: photo
+category: ai
+defaultScope: tenant
+availableIn: [ "_vance", "project" ]
+
+fields:
+
+  # ─── Availability ────────────────────────────────────────────────
+
+  - name: enabled
+    type: boolean
+    defaultValue: "true"
+    label:
+      de: "Aktiviert"
+      en: "Enabled"
+    help:
+      de: "Master-Schalter. Aus bedeutet, dass jeder
+           `image_generate`-Aufruf mit Fehler `disabled` zurückkommt
+           — nützlich um Bildgenerierung temporär zu sperren ohne
+           die Aliase zu entfernen."
+      en: "Master switch. Off makes every `image_generate` call
+           return a `disabled` error — handy to suspend image
+           generation temporarily without removing the aliases."
+    bindsTo:
+      key: "ai.fenchurch.enabled"
+
+  # ─── Defaults ────────────────────────────────────────────────────
+
+  - name: defaultAspectRatio
+    type: select
+    defaultValue: "1:1"
+    label:
+      de: "Default Seitenverhältnis"
+      en: "Default aspect ratio"
+    help:
+      de: "Wird verwendet, wenn der Tool-Call keinen `aspectRatio`
+           mitgibt."
+      en: "Used when the tool call does not specify `aspectRatio`."
+    showIf: "enabled == 'true'"
+    bindsTo:
+      key: "ai.fenchurch.default_aspect_ratio"
+    choices:
+      - value: "1:1"
+        label: { de: "Quadrat (1:1)", en: "Square (1:1)" }
+      - value: "16:9"
+        label: { de: "Querformat (16:9)", en: "Landscape (16:9)" }
+      - value: "9:16"
+        label: { de: "Hochformat (9:16)", en: "Portrait (9:16)" }
+      - value: "4:3"
+        label: { de: "Klassisch (4:3)", en: "Classic (4:3)" }
+      - value: "3:4"
+        label: { de: "Buchformat (3:4)", en: "Book (3:4)" }
+
+  - name: autoTitleFromPrompt
+    type: boolean
+    defaultValue: "true"
+    label:
+      de: "Titel automatisch aus Prompt erzeugen"
+      en: "Auto-generate title from prompt"
+    help:
+      de: "Wenn an: ein zusätzlicher leichter LLM-Call erzeugt einen
+           kurzen Titel und einen Slug aus dem Prompt; der Slug
+           landet im Filenamen, der Titel im Dokument-Header. Aus
+           bedeutet, dass Bilder ohne Titel-Override unter
+           `images/<uuid>-image.png` landen."
+      en: "When on, a small extra LLM call derives a short title +
+           slug from the prompt; slug lands in the filename, title
+           in the document header. Off means images without an
+           explicit `title` end up at `images/<uuid>-image.png`."
+    showIf: "enabled == 'true'"
+    bindsTo:
+      key: "ai.fenchurch.auto_title_from_prompt"
+
+  # ─── Quotas ──────────────────────────────────────────────────────
+
+  - name: dailyImages
+    type: number
+    label:
+      de: "Tägliches Limit (Bilder pro Tag)"
+      en: "Daily limit (images per day)"
+    help:
+      de: "Tenant-weite Obergrenze pro Kalendertag (UTC). Leer oder
+           0 = unbegrenzt. Wird via Cascade auf engere Scopes (User,
+           Projekt, Session) restriktiver gemacht — der innerste
+           gesetzte Wert gewinnt."
+      en: "Tenant-wide ceiling per UTC calendar day. Empty or 0 =
+           unlimited. Cascade: inner scopes (user, project,
+           session) override with a stricter cap when they set a
+           value."
+    showIf: "enabled == 'true'"
+    bindsTo:
+      key: "ai.fenchurch.daily_images"
+
+  - name: monthlyImages
+    type: number
+    label:
+      de: "Monatliches Limit (Bilder pro Monat)"
+      en: "Monthly limit (images per month)"
+    help:
+      de: "Tenant-weite Obergrenze pro Kalendermonat (UTC). Leer
+           oder 0 = unbegrenzt. Gleiche Cascade-Regel wie das
+           Tageslimit."
+      en: "Tenant-wide ceiling per UTC calendar month. Empty or 0 =
+           unlimited. Same cascade rules as the daily limit."
+    showIf: "enabled == 'true'"
+    bindsTo:
+      key: "ai.fenchurch.monthly_images"
+
+  # ─── Performance ─────────────────────────────────────────────────
+
+  - name: timeoutSeconds
+    type: number
+    defaultValue: "360"
+    label:
+      de: "Timeout (Sekunden)"
+      en: "Timeout (seconds)"
+    help:
+      de: "Per-Call-Timeout. Hochwertige Bilder (gpt-image-1 HD,
+           Imagen 3 Pro) brauchen 2–5 min — Default 360 s deckt
+           den Worst Case. Nur senken wenn die UI auf schnellere
+           Fehlermeldungen wartet."
+      en: "Per-call timeout. High-quality models (gpt-image-1 HD,
+           Imagen 3 Pro) regularly take 2–5 min — the 360 s
+           default covers worst case. Lower only if the UI wants
+           faster failure feedback."
+    showIf: "enabled == 'true'"
+    bindsTo:
+      key: "ai.fenchurch.timeout"
+
+  - name: heartbeatIntervalSeconds
+    type: number
+    defaultValue: "30"
+    label:
+      de: "Heartbeat-Intervall (Sekunden)"
+      en: "Heartbeat interval (seconds)"
+    help:
+      de: "Während Fenchurch auf den Provider wartet, schickt der
+           Service alle N Sekunden ein `WAITING`-Update über den
+           Process-Progress-Side-Channel, damit die UI nicht still
+           wirkt. 0 deaktiviert die Heartbeats."
+      en: "While Fenchurch waits for the provider, the service
+           emits a `WAITING` status update over the process
+           progress side-channel every N seconds so the UI does
+           not look stalled. 0 disables heartbeats."
+    showIf: "enabled == 'true'"
+    bindsTo:
+      key: "ai.fenchurch.heartbeat_interval_sec"

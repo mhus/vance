@@ -628,6 +628,89 @@ public class DocumentService {
     }
 
     /**
+     * Create-or-replace a binary document with attached metadata.
+     * Used by the image-generation pipeline (Fenchurch) and any other
+     * caller that needs to write bytes + a curated {@code headers} map
+     * in one step.
+     *
+     * <p>If the document at {@code path} exists, its content is replaced
+     * via {@link #replaceBinaryContent}; otherwise a fresh document is
+     * created via {@link #create}. In both branches the supplied
+     * {@code headers} replace the document's current header map outright
+     * (binary documents have no in-body frontmatter for
+     * {@link #applyHeader} to rebuild from, so the explicit caller-set
+     * values are the only source of truth).
+     *
+     * <p>{@code title} / {@code tags} follow "null = unchanged" semantics
+     * on the replace path; on the create path they're forwarded to
+     * {@link #create} verbatim (where {@code null} means
+     * "leave empty / no tags").
+     *
+     * @param tenantId   owning tenant
+     * @param projectId  owning project
+     * @param path       virtual path inside the project
+     * @param bytes      content (required, non-null)
+     * @param mimeType   content mime type (required, non-blank)
+     * @param title      human-readable title; {@code null} leaves it
+     *                   untouched on replace
+     * @param tags       tag list; {@code null} leaves it untouched on
+     *                   replace
+     * @param headers    metadata map to attach; {@code null} leaves the
+     *                   current headers untouched, empty map clears
+     *                   them
+     * @param createdBy  audit field forwarded to {@link #create} /
+     *                   {@link #replaceBinaryContent}
+     */
+    public DocumentDocument createOrReplaceBinary(
+            String tenantId,
+            String projectId,
+            String path,
+            byte[] bytes,
+            String mimeType,
+            @Nullable String title,
+            @Nullable List<String> tags,
+            @Nullable Map<String, String> headers,
+            @Nullable String createdBy) {
+        if (bytes == null) {
+            throw new IllegalArgumentException(
+                    "bytes must not be null for binary write");
+        }
+        if (mimeType == null || mimeType.isBlank()) {
+            throw new IllegalArgumentException(
+                    "mimeType must not be blank for binary write");
+        }
+        Optional<DocumentDocument> existing = findByPath(tenantId, projectId, path);
+        if (existing.isPresent()) {
+            DocumentDocument doc = replaceBinaryContent(
+                    existing.get().getId(), mimeType, bytes, createdBy);
+            boolean changed = false;
+            if (title != null) {
+                doc.setTitle(title);
+                changed = true;
+            }
+            if (tags != null) {
+                doc.setTags(new ArrayList<>(tags));
+                changed = true;
+            }
+            if (headers != null) {
+                doc.setHeaders(new LinkedHashMap<>(headers));
+                changed = true;
+            }
+            return changed ? repository.save(doc) : doc;
+        }
+        DocumentDocument doc = create(
+                tenantId, projectId, path,
+                title, tags, mimeType,
+                new ByteArrayInputStream(bytes),
+                createdBy);
+        if (headers != null) {
+            doc.setHeaders(new LinkedHashMap<>(headers));
+            doc = repository.save(doc);
+        }
+        return doc;
+    }
+
+    /**
      * Opens a streaming read over the document's content. Caller closes.
      * Returns an empty stream for documents that have neither inline text nor
      * a storage blob (shouldn't happen, but defensive).

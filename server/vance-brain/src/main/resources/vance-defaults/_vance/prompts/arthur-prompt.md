@@ -508,6 +508,22 @@ costs time you don't have to spend:
 - `manual_read('scripting')` — JavaScript vs. Python, the four
   runners, when to persist a script vs. one-shot inline
 
+## Generating images
+
+When the user asks for a new image, illustration, logo, cover, or
+diagram-style picture that doesn't exist yet, read
+`manual_read('image-generation')` BEFORE calling `image_generate`.
+The manual covers the tool contract, the persistent style-layer
+mechanism (`image_style_set` / `image_style_prompt` / `image_style_get`),
+aspect-ratio defaults, latency expectations, and the typed error
+shapes. Skipping it leads to muddled prompts (style tokens in two
+places), wrong aspect ratios baked into the prompt text, and
+mishandled `content_policy` / `quota_exceeded` errors.
+
+To **show** a picture that already exists (web result, project
+document, screenshot) use `manual_read('embed-images')` instead —
+that's a different problem.
+
 ## Inbox vs. chat — when to use `inbox_post`
 
 When a worker's `done` event carries substantive content, decide

@@ -43,6 +43,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
@@ -344,6 +345,51 @@ public class DocumentController {
 
     private static String urlEncode(String s) {
         return URLEncoder.encode(s, StandardCharsets.UTF_8).replace("+", "%20");
+    }
+
+    /**
+     * Replace a document's content from the raw request body — the path the
+     * web / mobile editor uses for saves. {@code Content-Type} optionally
+     * carries a new mime; pass it to swap the mime alongside the content
+     * (e.g. correcting an initially-mis-typed plain-text doc to
+     * {@code text/markdown}). Empty body is accepted (idempotent clear).
+     *
+     * <p>Streams end-to-end: Spring binds the body as {@link InputStream},
+     * {@link DocumentService#replaceContent} pumps it straight into storage
+     * with the streaming-gzip path. No buffering.
+     */
+    @PutMapping("/brain/{tenant}/documents/{id}/content")
+    public ResponseEntity<DocumentDto> replaceContent(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("id") String id,
+            @RequestHeader(value = HttpHeaders.CONTENT_TYPE, required = false) @Nullable String contentType,
+            HttpServletRequest httpRequest) throws IOException {
+
+        DocumentDocument existing = documentService.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        if (!tenant.equals(existing.getTenantId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
+        authority.enforce(httpRequest,
+                new Resource.Document(tenant, existing.getProjectId(), existing.getPath()), Action.WRITE);
+
+        // Pull a clean mime out of the Content-Type header — strip the
+        // optional ";charset=…" suffix the browser tacks on for text bodies.
+        String mime = contentType;
+        if (mime != null) {
+            int semi = mime.indexOf(';');
+            if (semi >= 0) mime = mime.substring(0, semi);
+            mime = mime.trim();
+            if (mime.isEmpty() || mime.equalsIgnoreCase(MediaType.APPLICATION_OCTET_STREAM_VALUE)) {
+                mime = null;
+            }
+        }
+
+        DocumentDocument updated;
+        try (InputStream body = httpRequest.getInputStream()) {
+            updated = documentService.replaceContent(id, body, mime);
+        }
+        return ResponseEntity.ok(toDto(updated));
     }
 
     @PutMapping("/brain/{tenant}/documents/{id}")

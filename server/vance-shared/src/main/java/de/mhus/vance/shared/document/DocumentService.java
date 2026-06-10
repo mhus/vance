@@ -706,6 +706,73 @@ public class DocumentService {
     }
 
     /**
+     * Replace a document's content from a stream — the streaming counterpart
+     * the web/mobile editors call when saving. Mirrors the content-branch of
+     * {@link #update}: archives the previous version (subject to the
+     * cascade + min-interval gates), writes the new blob through
+     * {@link #streamingStoreContent}, rewrites the {@code storageId} /
+     * {@code compressed} / {@code size} fields, deletes the previous blob
+     * (unless it was just transferred to an archive), re-parses headers,
+     * and flips {@code summaryDirty} / {@code ragDirty}.
+     *
+     * <p>Optional {@code newMimeType} updates the mime type before the
+     * header parse so the right strategy runs against the new body.
+     * Pass {@code null} to leave the mime untouched.
+     *
+     * @return the updated document
+     * @throws IllegalArgumentException if the document is unknown
+     */
+    public DocumentDocument replaceContent(
+            String id,
+            InputStream content,
+            @Nullable String newMimeType) {
+        DocumentDocument doc = repository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Unknown document id='" + id + "'"));
+        if (doc.getLineageId() == null || doc.getLineageId().isBlank()) {
+            doc.setLineageId(java.util.UUID.randomUUID().toString());
+        }
+        if (newMimeType != null && !newMimeType.isBlank()) {
+            doc.setMimeType(newMimeType);
+        }
+
+        boolean archived = false;
+        if (shouldArchiveOnSave(doc)) {
+            try {
+                archiveService.archiveCurrent(doc);
+                doc.setLastArchivedAt(Instant.now());
+                archived = true;
+            } catch (RuntimeException e) {
+                log.warn("Failed to archive document id='{}' before content replace — "
+                                + "proceeding without version snapshot", id, e);
+            }
+        }
+        String oldStorageId = doc.getStorageId();
+
+        ContentWriteResult write = streamingStoreContent(
+                doc.getTenantId(), doc.getPath(), content);
+        doc.setInlineText(null);
+        doc.setStorageId(write.storageId());
+        doc.setCompressed(write.compressed());
+        doc.setSize(write.originalSize());
+        if (oldStorageId != null
+                && !oldStorageId.equals(write.storageId())
+                && !archived) {
+            deleteStorageBlobQuietly(oldStorageId, id);
+        }
+
+        doc.setSummaryDirty(true);
+        applyHeader(doc);
+        doc.setRagDirty(isRagEligible(doc));
+
+        DocumentDocument saved = repository.save(doc);
+        log.info("Replaced content tenantId='{}' projectId='{}' path='{}' id='{}' size={} compressed={}",
+                saved.getTenantId(), saved.getProjectId(), saved.getPath(),
+                saved.getId(), saved.getSize(), saved.isCompressed());
+        return saved;
+    }
+
+    /**
      * Replace the binary content of an existing document. Always
      * writes through to the storage layer (no inline-text branch
      * — binary by design). Used by the office-editor callback path

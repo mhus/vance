@@ -23,6 +23,7 @@ import de.mhus.vance.foot.connection.BrainRestClientService;
 import de.mhus.vance.foot.session.SessionService;
 import de.mhus.vance.foot.ui.ChatTerminal;
 import de.mhus.vance.foot.ui.InterfaceService;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -230,10 +231,17 @@ public class UiDocumentsCommand implements SlashCommand {
             try {
                 DocumentDto full = rest.getDocument(sel.getId());
                 String content;
-                if (full.getInlineText() != null) {
-                    content = full.getInlineText();
+                String mime = full.getMimeType() == null ? "" : full.getMimeType().toLowerCase();
+                boolean textual = mime.startsWith("text/") || mime.contains("json")
+                        || mime.contains("yaml") || mime.contains("xml");
+                if (textual) {
+                    // Body lives in storage since the inline→storage migration;
+                    // stream it through the /content endpoint instead of reading
+                    // a now-always-null DocumentDto.inlineText.
+                    byte[] bytes = rest.downloadDocument(sel.getId());
+                    content = new String(bytes, StandardCharsets.UTF_8);
                 } else {
-                    content = "(non-inline document — " + full.getMimeType()
+                    content = "(binary document — " + full.getMimeType()
                             + ", " + full.getSize() + " bytes — use Download to fetch)";
                 }
                 showContentWindow(displayName(full), content);

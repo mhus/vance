@@ -21,7 +21,7 @@ params:
   outputSchemaType: vogon-strategy
   # Slart's per-phase LLM calls benefit from a larger context — it
   # reads many manuals at once during GATHERING.
-  model: default:analyze
+  model: default:slartibartfast,default:analyze
 tags:
   - architect
   - engine-default

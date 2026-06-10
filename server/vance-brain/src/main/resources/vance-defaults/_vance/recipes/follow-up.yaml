@@ -20,7 +20,7 @@ description: |
 engine: jeltz
 internal: true
 params:
-  model: default:fast
+  model: default:follow-up,default:fast
   maxAttempts: 2
   temperature: 0.7
 promptPrefix: |

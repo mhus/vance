@@ -15,7 +15,7 @@ internal: true
 params:
   # Small model is enough — the task is closed-set matching against
   # a list of ~5-30 catalog entries, not open-ended reasoning.
-  model: default:fast
+  model: default:kit-resolver,default:fast
   # LightLlm retries on schema-validation miss; 2 attempts is enough
   # for a tight closed-vocab decision contract — beyond that the
   # model is not going to converge.

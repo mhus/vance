@@ -19,7 +19,7 @@ description: |
 engine: jeltz
 internal: true
 params:
-  model: default:analyze
+  model: default:fook,default:analyze
   maxAttempts: 3
   temperature: 0.0
 promptPrefix: |

@@ -18,7 +18,7 @@ params:
   # Council generation benefits from a larger context — Slart
   # reads the project's manuals and any persona-evidence at once
   # during GATHERING, then composes 2-5 distinct head perspectives.
-  model: default:analyze
+  model: default:zaphod-architect,default:analyze
 tags:
   - architect
   - council

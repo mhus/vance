@@ -1,7 +1,10 @@
 package de.mhus.vance.brain.ai;
 
 import de.mhus.vance.shared.settings.SettingService;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -49,6 +52,27 @@ import org.springframework.stereotype.Service;
  *
  * <p>Cycle-protected: a chain like {@code default:foo → cheap:foo →
  * default:foo} is detected and reported.
+ *
+ * <h2>Comma-cascade</h2>
+ * Any spec string accepted by this resolver may be a
+ * <em>comma-separated cascade</em> of elements: the first element
+ * whose alias/instance/provider is <em>configured</em> wins. Example:
+ * {@code default:arthur,default:chat} — uses an engine-specific alias
+ * when defined, otherwise falls through to the generic chat alias. A
+ * single-element spec (no comma) behaves identically to the pre-cascade
+ * version.
+ *
+ * <p>The {@code default:}-safety-net (rule 4 above) only fires for the
+ * <strong>last</strong> element of the cascade — non-last elements that
+ * are undefined simply skip to the next. Runtime failures (provider
+ * down, quota exhausted) are <em>not</em> cascade triggers; they still
+ * propagate as hard errors. Quota-/disable-driven runtime selection
+ * lives in {@code ChatBehaviorBuilder}'s {@code params.fallbackModels}
+ * chain (orthogonal mechanism).
+ *
+ * <p>Cascade syntax also applies inside alias <em>target</em> values:
+ * {@code ai.alias.default.chat = anthropic:claude-haiku-4-5,openai:gpt-4o-mini}
+ * is valid. Cycle-detection and depth-limit hold across cascade levels.
  *
  * <h2>Example settings</h2>
  * <pre>{@code
@@ -111,7 +135,8 @@ public class AiModelResolver {
         if (input == null || input.isBlank()) {
             return tenantDefault(tenantId, projectId, processId, "<missing input>");
         }
-        return resolve(input.trim(), tenantId, projectId, processId, new LinkedHashSet<>());
+        return resolveCascade(
+                input.trim(), tenantId, projectId, processId, new LinkedHashSet<>());
     }
 
     /**
@@ -132,15 +157,68 @@ public class AiModelResolver {
         if (input == null || input.isBlank()) {
             return tenantDefault(tenantId, projectId, processId, "<no override>");
         }
-        return resolve(input.trim(), tenantId, projectId, processId, new LinkedHashSet<>());
+        return resolveCascade(
+                input.trim(), tenantId, projectId, processId, new LinkedHashSet<>());
     }
 
-    private Resolved resolve(
+    /**
+     * Splits the input on commas and resolves elements left-to-right.
+     * Non-last elements whose alias/instance/provider is undefined return
+     * {@code null} from {@link #resolveElement} and we move on; the last
+     * element resolves with full single-element semantics, including the
+     * {@code default:}-safety-net.
+     *
+     * <p>Each cascade element starts from a copy of the inherited
+     * {@code seen} set so independent alias-chains don't pollute each
+     * other's cycle detection.
+     */
+    private Resolved resolveCascade(
             String input,
             String tenantId,
             @Nullable String projectId,
             @Nullable String processId,
             Set<String> seen) {
+        List<String> elements = splitCascade(input);
+        if (elements.isEmpty()) {
+            throw new UnknownModelException(
+                    "Model spec '" + input + "' has no usable elements");
+        }
+        int lastIdx = elements.size() - 1;
+        for (int i = 0; i < lastIdx; i++) {
+            @Nullable Resolved r = resolveElement(
+                    elements.get(i), tenantId, projectId, processId,
+                    new LinkedHashSet<>(seen), false);
+            if (r != null) {
+                return r;
+            }
+        }
+        @Nullable Resolved last = resolveElement(
+                elements.get(lastIdx), tenantId, projectId, processId,
+                new LinkedHashSet<>(seen), true);
+        if (last == null) {
+            // resolveElement with lastInCascade=true never returns null —
+            // it either resolves, falls back to tenantDefault, or throws.
+            throw new UnknownModelException(
+                    "Cascade '" + input + "' exhausted with no resolution");
+        }
+        return last;
+    }
+
+    /**
+     * Resolves a single cascade element. Returns {@code null} when
+     * {@code lastInCascade=false} and the element is undefined (signals
+     * the caller to try the next cascade element). When
+     * {@code lastInCascade=true}, applies the documented single-element
+     * semantics: {@code default:}-safety-net for unknown aliases, throws
+     * for other namespaces.
+     */
+    private @Nullable Resolved resolveElement(
+            String input,
+            String tenantId,
+            @Nullable String projectId,
+            @Nullable String processId,
+            Set<String> seen,
+            boolean lastInCascade) {
         if (!seen.add(input)) {
             throw new UnknownModelException(
                     "Alias cycle detected: " + String.join(" → ", seen) + " → " + input);
@@ -188,18 +266,23 @@ public class AiModelResolver {
             return new Resolved(typeWireName, prefix, rest);
         }
 
-        // Alias lookup — project cascade.
+        // Alias lookup — project cascade. Alias target may itself be a
+        // comma-cascade, so route through resolveCascade rather than
+        // resolveElement directly.
         String settingKey = ALIAS_KEY_PREFIX + prefix + "." + rest;
         @Nullable String aliased = settingService.getStringValueCascade(
                 tenantId, projectId, processId, settingKey);
         if (aliased != null && !aliased.isBlank()) {
             log.debug("AiModelResolver: alias '{}' → '{}'", input, aliased);
-            return resolve(aliased.trim(), tenantId, projectId, processId, seen);
+            return resolveCascade(aliased.trim(), tenantId, projectId, processId, seen);
         }
 
-        // Fallback for the `default:` namespace — keeps out-of-the-box
-        // recipes working when the operator hasn't yet differentiated
-        // aliases.
+        // Alias undefined — non-last cascade elements skip to the next.
+        if (!lastInCascade) {
+            return null;
+        }
+
+        // Last element: safety net for `default:` namespace, else throw.
         if (DEFAULT_NAMESPACE.equals(prefix)) {
             log.debug("AiModelResolver: alias '{}' not configured, falling back to tenant default",
                     input);
@@ -211,6 +294,67 @@ public class AiModelResolver {
                         + "provider nor a configured alias. Known providers: "
                         + aiModelService.listProviders()
                         + "; expected setting: '" + settingKey + "'");
+    }
+
+    /**
+     * Normalises {@code params.model} / {@code params.provider} from an
+     * engine-params map into a spec string suitable for
+     * {@link #resolve} / {@link #resolveOrDefault}. Returns {@code null}
+     * when no model is configured — caller should fall through to
+     * tenant default.
+     *
+     * <p>Accepted shapes (single source of truth for both
+     * {@code ChatBehaviorBuilder.readModelSpec} and
+     * {@code LightLlmServiceImpl}):
+     * <ul>
+     *   <li>{@code params.model = "provider:model"} or
+     *       {@code "alias:key"} — returned as-is, including comma-cascade
+     *       forms like {@code "default:a,default:b"}.</li>
+     *   <li>{@code params.model} + {@code params.provider} (legacy
+     *       split-params) → {@code "provider:model"}.</li>
+     *   <li>{@code params.model = "shortname"} (no colon, no provider) →
+     *       {@code "default:shortname"}.</li>
+     *   <li>Missing/blank/non-string {@code params.model} → {@code null}.</li>
+     * </ul>
+     */
+    public static @Nullable String parseModelSpec(@Nullable Map<String, Object> params) {
+        if (params == null) {
+            return null;
+        }
+        String model = stringValue(params.get("model"));
+        String provider = stringValue(params.get("provider"));
+        if (model == null) {
+            return null;
+        }
+        if (model.contains(":")) {
+            return model;
+        }
+        if (provider != null) {
+            return provider + ":" + model;
+        }
+        return "default:" + model;
+    }
+
+    private static @Nullable String stringValue(@Nullable Object v) {
+        return (v instanceof String s && !s.isBlank()) ? s.trim() : null;
+    }
+
+    /**
+     * Parses a comma-separated cascade spec into its trimmed,
+     * non-empty elements. Tolerates incidental whitespace
+     * ({@code "a , b"} ≡ {@code "a,b"}) and empty entries
+     * ({@code "a,,b"} → {@code [a, b]}).
+     */
+    private static List<String> splitCascade(String input) {
+        String[] parts = input.split(",");
+        List<String> out = new ArrayList<>(parts.length);
+        for (String p : parts) {
+            String trimmed = p.trim();
+            if (!trimmed.isEmpty()) {
+                out.add(trimmed);
+            }
+        }
+        return out;
     }
 
     private Resolved tenantDefault(

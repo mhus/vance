@@ -3,7 +3,7 @@ description: |
   summarises structure and call sites.
 engine: ford
 params:
-  model: default:code
+  model: default:code-read,default:code
   validation: true
   maxIterations: 10
   manualPaths:

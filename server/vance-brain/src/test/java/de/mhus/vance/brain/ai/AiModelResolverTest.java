@@ -278,4 +278,220 @@ class AiModelResolverTest {
         assertThatThrownBy(() -> resolver.resolve("provider:", "acme", null, null))
                 .isInstanceOf(AiModelResolver.UnknownModelException.class);
     }
+
+    // ──── Comma-cascade ─────────────────────────────────────────────────
+
+    @Test
+    void cascade_firstElementDefined_winsImmediately() {
+        // default:arthur is configured → cascade stops at element 1.
+        when(settingService.getStringValueCascade(
+                any(), any(), any(), eq("ai.alias.default.arthur")))
+                .thenReturn("anthropic:claude-opus-4");
+
+        AiModelResolver.Resolved r = resolver.resolve(
+                "default:arthur,default:chat", "acme", "proj", null);
+
+        assertThat(r.provider()).isEqualTo("anthropic");
+        assertThat(r.modelName()).isEqualTo("claude-opus-4");
+    }
+
+    @Test
+    void cascade_firstElementUndefined_fallsToSecond() {
+        // default:arthur is NOT configured (returns null);
+        // default:chat is configured → second wins.
+        when(settingService.getStringValueCascade(
+                any(), any(), any(), eq("ai.alias.default.arthur")))
+                .thenReturn(null);
+        when(settingService.getStringValueCascade(
+                any(), any(), any(), eq("ai.alias.default.chat")))
+                .thenReturn("gemini:gemini-2.5-flash");
+
+        AiModelResolver.Resolved r = resolver.resolve(
+                "default:arthur,default:chat", "acme", "proj", null);
+
+        assertThat(r.provider()).isEqualTo("gemini");
+        assertThat(r.modelName()).isEqualTo("gemini-2.5-flash");
+    }
+
+    @Test
+    void cascade_allDefaultElementsUndefined_lastFallsToTenantDefault() {
+        // Neither alias configured; last element is "default:" → safety net.
+        when(settingService.getStringValueCascade(
+                any(), any(), any(), eq("ai.alias.default.arthur")))
+                .thenReturn(null);
+        when(settingService.getStringValueCascade(
+                any(), any(), any(), eq("ai.alias.default.chat")))
+                .thenReturn(null);
+        when(settingService.getStringValueCascade(
+                any(), any(), any(), eq("ai.default.provider")))
+                .thenReturn("anthropic");
+        when(settingService.getStringValueCascade(
+                any(), any(), any(), eq("ai.default.model")))
+                .thenReturn("claude-haiku-4-5");
+
+        AiModelResolver.Resolved r = resolver.resolve(
+                "default:arthur,default:chat", "acme", null, null);
+
+        assertThat(r.provider()).isEqualTo("anthropic");
+        assertThat(r.modelName()).isEqualTo("claude-haiku-4-5");
+    }
+
+    @Test
+    void cascade_nonDefaultLastElementUndefined_throws() {
+        // Last element prefix is "cheap" (not "default") and unconfigured —
+        // no safety net applies, must throw.
+        when(settingService.getStringValueCascade(
+                any(), any(), any(), eq("ai.alias.default.arthur")))
+                .thenReturn(null);
+        when(settingService.getStringValueCascade(
+                any(), any(), any(), eq("ai.alias.cheap.lookup")))
+                .thenReturn(null);
+
+        assertThatThrownBy(() -> resolver.resolve(
+                "default:arthur,cheap:lookup", "acme", null, null))
+                .isInstanceOf(AiModelResolver.UnknownModelException.class)
+                .hasMessageContaining("cheap:lookup");
+    }
+
+    @Test
+    void cascade_directProviderAsElement_winsRegardlessOfPosition() {
+        // First element undefined, second is a direct provider:model → second wins.
+        when(settingService.getStringValueCascade(
+                any(), any(), any(), eq("ai.alias.default.arthur")))
+                .thenReturn(null);
+
+        AiModelResolver.Resolved r = resolver.resolve(
+                "default:arthur,openai:gpt-4o-mini", "acme", null, null);
+
+        assertThat(r.provider()).isEqualTo("openai");
+        assertThat(r.modelName()).isEqualTo("gpt-4o-mini");
+    }
+
+    @Test
+    void cascade_namedInstanceAsElement_winsViaInstanceType() {
+        // First element undefined, second is a named instance → second wins.
+        when(settingService.getStringValueCascade(
+                any(), any(), any(), eq("ai.alias.default.arthur")))
+                .thenReturn(null);
+        when(settingService.getStringValueCascade(
+                any(), any(), any(), eq("ai.provider.deepseek-direct.type")))
+                .thenReturn("openai");
+
+        AiModelResolver.Resolved r = resolver.resolve(
+                "default:arthur,deepseek-direct:deepseek-v4-flash", "acme", null, null);
+
+        assertThat(r.provider()).isEqualTo("openai");
+        assertThat(r.providerInstance()).isEqualTo("deepseek-direct");
+        assertThat(r.modelName()).isEqualTo("deepseek-v4-flash");
+    }
+
+    @Test
+    void cascade_whitespaceAroundCommas_isTrimmed() {
+        when(settingService.getStringValueCascade(
+                any(), any(), any(), eq("ai.alias.default.arthur")))
+                .thenReturn(null);
+        when(settingService.getStringValueCascade(
+                any(), any(), any(), eq("ai.alias.default.chat")))
+                .thenReturn("gemini:gemini-2.5-flash");
+
+        AiModelResolver.Resolved r = resolver.resolve(
+                "  default:arthur ,  default:chat  ", "acme", null, null);
+
+        assertThat(r.provider()).isEqualTo("gemini");
+        assertThat(r.modelName()).isEqualTo("gemini-2.5-flash");
+    }
+
+    @Test
+    void cascade_emptyElementsBetweenCommas_areSkipped() {
+        when(settingService.getStringValueCascade(
+                any(), any(), any(), eq("ai.alias.default.arthur")))
+                .thenReturn(null);
+        when(settingService.getStringValueCascade(
+                any(), any(), any(), eq("ai.alias.default.chat")))
+                .thenReturn("gemini:gemini-2.5-flash");
+
+        AiModelResolver.Resolved r = resolver.resolve(
+                "default:arthur,,default:chat", "acme", null, null);
+
+        assertThat(r.provider()).isEqualTo("gemini");
+        assertThat(r.modelName()).isEqualTo("gemini-2.5-flash");
+    }
+
+    @Test
+    void cascade_singleElement_behavesIdenticallyToPreCascade() {
+        // No comma → identical to before: configured alias resolves normally.
+        when(settingService.getStringValueCascade(
+                any(), any(), any(), eq("ai.alias.default.fast")))
+                .thenReturn("gemini:gemini-2.5-flash");
+
+        AiModelResolver.Resolved r = resolver.resolve(
+                "default:fast", "acme", null, null);
+
+        assertThat(r.provider()).isEqualTo("gemini");
+        assertThat(r.modelName()).isEqualTo("gemini-2.5-flash");
+    }
+
+    @Test
+    void cascade_insideAliasTargetValue_isHonored() {
+        // default:chat alias-value is itself a cascade. First sub-element
+        // (cheap:lookup) undefined → second (gemini:...) wins.
+        when(settingService.getStringValueCascade(
+                any(), any(), any(), eq("ai.alias.default.chat")))
+                .thenReturn("cheap:lookup,gemini:gemini-2.5-flash");
+        when(settingService.getStringValueCascade(
+                any(), any(), any(), eq("ai.alias.cheap.lookup")))
+                .thenReturn(null);
+
+        AiModelResolver.Resolved r = resolver.resolve(
+                "default:chat", "acme", null, null);
+
+        assertThat(r.provider()).isEqualTo("gemini");
+        assertThat(r.modelName()).isEqualTo("gemini-2.5-flash");
+    }
+
+    @Test
+    void cascade_cycleAcrossAliasTargets_isDetected() {
+        // default:a → "default:b" alias-value; default:b → "default:a" alias-value.
+        // Each cascade-element starts with a fresh seen-set copy, so the
+        // cycle is detected within an alias-chain.
+        when(settingService.getStringValueCascade(
+                any(), any(), any(), eq("ai.alias.default.a")))
+                .thenReturn("default:b");
+        when(settingService.getStringValueCascade(
+                any(), any(), any(), eq("ai.alias.default.b")))
+                .thenReturn("default:a");
+
+        assertThatThrownBy(() -> resolver.resolve(
+                "default:a,default:c", "acme", null, null))
+                .isInstanceOf(AiModelResolver.UnknownModelException.class)
+                .hasMessageContaining("cycle");
+    }
+
+    @Test
+    void cascade_undefinedFirstElement_doesNotFallToTenantDefault() {
+        // The key cascade contract: a non-last "default:foo" alias-miss
+        // must NOT trigger the tenant-default safety-net; it must skip
+        // to the next cascade element instead.
+        when(settingService.getStringValueCascade(
+                any(), any(), any(), eq("ai.alias.default.arthur")))
+                .thenReturn(null);
+        when(settingService.getStringValueCascade(
+                any(), any(), any(), eq("ai.alias.default.chat")))
+                .thenReturn("openai:gpt-4o-mini");
+        // ai.default.provider/model are configured — but should NOT win,
+        // because the cascade has a second, defined element.
+        when(settingService.getStringValueCascade(
+                any(), any(), any(), eq("ai.default.provider")))
+                .thenReturn("anthropic");
+        when(settingService.getStringValueCascade(
+                any(), any(), any(), eq("ai.default.model")))
+                .thenReturn("claude-haiku-4-5");
+
+        AiModelResolver.Resolved r = resolver.resolve(
+                "default:arthur,default:chat", "acme", null, null);
+
+        // openai (cascade element wins), not anthropic (tenant default).
+        assertThat(r.provider()).isEqualTo("openai");
+        assertThat(r.modelName()).isEqualTo("gpt-4o-mini");
+    }
 }

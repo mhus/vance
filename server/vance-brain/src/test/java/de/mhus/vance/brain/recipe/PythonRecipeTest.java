@@ -76,7 +76,7 @@ class PythonRecipeTest {
         ResolvedRecipe r = loader.load("acme", "proj", RECIPE_NAME).orElseThrow();
 
         Map<String, Object> params = r.params();
-        assertThat(params).containsEntry("model", "default:code");
+        assertThat(params).containsEntry("model", "default:python,default:code");
         assertThat(params).containsEntry("validation", true);
         assertThat(params).containsKey("maxIterations");
     }

@@ -8,7 +8,7 @@ description: |
   not for tasks that need decomposition into phases.
 engine: ford
 params:
-  model: default:web
+  model: default:web-research,default:web
   validation: true
   maxIterations: 12
   manualPaths:

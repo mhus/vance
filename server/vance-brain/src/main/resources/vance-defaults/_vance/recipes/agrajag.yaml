@@ -25,7 +25,7 @@ roles:
   - tool-health-reader
 
 params:
-  model: default:fast
+  model: default:agrajag,default:fast
   maxIterations: 3
   # Maximum number of probe calls Agrajag may issue per diagnostic turn.
   # Enforced engine-side to keep diagnosis bounded.

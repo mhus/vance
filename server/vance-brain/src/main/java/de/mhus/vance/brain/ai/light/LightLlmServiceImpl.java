@@ -368,11 +368,7 @@ public class LightLlmServiceImpl implements LightLlmService {
     }
 
     private static @Nullable String readModelSpec(Map<String, Object> params) {
-        Object m = params.get("model");
-        if (m instanceof String s && !s.isBlank()) {
-            return s.contains(":") ? s : "default:" + s;
-        }
-        return null;
+        return AiModelResolver.parseModelSpec(params);
     }
 
     @SuppressWarnings("unchecked")

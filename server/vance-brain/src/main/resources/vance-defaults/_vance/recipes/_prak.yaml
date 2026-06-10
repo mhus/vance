@@ -18,7 +18,7 @@ params:
   # enough that running every ~25 turns is barely noticeable. Lift to
   # default:large only if tenants need finer-grained classification —
   # the strength tagging + INSIGHT extraction works well at fast tier.
-  model: default:fast
+  model: default:_prak,default:fast
   maxAttempts: 3
   temperature: 0.0
 promptPrefix: |

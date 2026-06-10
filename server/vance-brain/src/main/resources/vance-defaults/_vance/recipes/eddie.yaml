@@ -12,7 +12,7 @@ description: |
   named.
 engine: eddie
 params:
-  model: default:analyze
+  model: default:eddie,default:analyze
   validation: true
   maxIterations: 6
   # Auto-inject the project's default RAG into Eddie's turns. Cheap

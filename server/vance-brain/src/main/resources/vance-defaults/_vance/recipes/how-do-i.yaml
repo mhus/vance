@@ -8,7 +8,7 @@ description: |
 engine: jeltz
 internal: true
 params:
-  model: default:fast
+  model: default:how-do-i,default:fast
   maxAttempts: 3
   temperature: 0.0
 promptPrefix: |

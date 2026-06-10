@@ -5,7 +5,7 @@ description: |
   catalog without find_tools discovery.
 engine: ford
 params:
-  model: default:code
+  model: default:python,default:code
   validation: true
   maxIterations: 12
   manualPaths:

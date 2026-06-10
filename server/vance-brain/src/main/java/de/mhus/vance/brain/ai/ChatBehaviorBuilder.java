@@ -203,25 +203,13 @@ public final class ChatBehaviorBuilder {
     }
 
     /**
-     * Model-spec parsing each engine uses: prefers {@code params.model}
-     * (with its own colon-and-provider quirks), falls back to
-     * alias-default-namespace, otherwise null → tenant default.
-     * Public so engines can reuse the same parsing rules without
-     * duplicating the if-tree.
+     * Model-spec parsing each engine uses. Delegates to the shared
+     * {@link AiModelResolver#parseModelSpec(Map)} so process-driven
+     * resolution and {@code LightLlmService}-driven resolution share
+     * one parser.
      */
     public static @Nullable String readModelSpec(ThinkProcessDocument process) {
-        String paramModel = paramString(process, "model");
-        String paramProvider = paramString(process, "provider");
-        if (paramModel != null && paramModel.contains(":")) {
-            return paramModel;
-        }
-        if (paramModel != null && paramProvider != null) {
-            return paramProvider + ":" + paramModel;
-        }
-        if (paramModel != null) {
-            return "default:" + paramModel;
-        }
-        return null;
+        return AiModelResolver.parseModelSpec(process.getEngineParams());
     }
 
     @SuppressWarnings("unchecked")
@@ -242,10 +230,5 @@ public final class ChatBehaviorBuilder {
     private static @Nullable Object param(ThinkProcessDocument process, String key) {
         Map<String, Object> params = process.getEngineParams();
         return params == null ? null : params.get(key);
-    }
-
-    private static @Nullable String paramString(ThinkProcessDocument process, String key) {
-        Object v = param(process, key);
-        return v instanceof String s && !s.isBlank() ? s : null;
     }
 }

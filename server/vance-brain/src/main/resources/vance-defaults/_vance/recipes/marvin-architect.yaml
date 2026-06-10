@@ -24,7 +24,7 @@ params:
   # Marvin recipe generation benefits from a larger context —
   # Slart needs to reason about node hierarchy, worker recipes
   # and aggregation strategy in one go.
-  model: default:analyze
+  model: default:marvin-architect,default:analyze
 tags:
   - architect
   - deep-think

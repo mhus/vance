@@ -14,7 +14,7 @@ params:
   # Small model is enough — the task is bounded extraction, not
   # open-ended reasoning. Tenants pick a stronger model here when
   # their content needs deeper synthesis (legal, medical, …).
-  model: default:fast
+  model: default:document-summary,default:fast
   # LightLlm retries on schema-validation miss; 2 attempts is enough
   # for a tight structured-summary contract — beyond that the model
   # is not going to converge.

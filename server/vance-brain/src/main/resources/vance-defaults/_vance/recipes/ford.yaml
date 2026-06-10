@@ -10,7 +10,7 @@ description: |
   top of this — pick the most specific one when applicable.
 engine: ford
 params:
-  model: default:analyze
+  model: default:ford,default:analyze
   validation: false
   maxIterations: 8
   # Degraded-but-available fallback: if the analyze-tier model is

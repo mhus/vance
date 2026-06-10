@@ -11,7 +11,7 @@ description: |
   does NOT layer the structured output contract on top of them.
 engine: marvin
 params:
-  model: default:analyze
+  model: default:marvin,default:analyze
   # Specialist recipes available for CALL_RECIPE. Empty list means
   # workers must answer directly or decompose; they cannot call out.
   availableRecipes: []

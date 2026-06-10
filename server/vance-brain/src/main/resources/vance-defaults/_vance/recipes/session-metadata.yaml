@@ -13,7 +13,7 @@ internal: true
 params:
   # Small model is enough — the input is at most a handful of opening
   # messages, the output is one tiny JSON object.
-  model: default:fast
+  model: default:session-metadata,default:fast
   # Schema is small and well-defined; 2 attempts is enough headroom.
   maxAttempts: 2
   temperature: 0.3

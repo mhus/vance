@@ -14,7 +14,7 @@ description: |
   thinking-budget defaults can be overridden per project.
 engine: marvin
 params:
-  model: default:analyze
+  model: default:marvin-worker,default:analyze
   thinking: high
 tags:
   - marvin

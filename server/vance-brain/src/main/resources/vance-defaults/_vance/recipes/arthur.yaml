@@ -10,7 +10,7 @@ description: |
   recipe is named.
 engine: arthur
 params:
-  model: default:analyze
+  model: default:arthur,default:analyze
   validation: true
   maxIterations: 6
   # Auto-inject the project's default RAG into Arthur's turns —

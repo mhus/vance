@@ -6,7 +6,7 @@ description: |
   assistant message, then closes the process with CloseReason.DONE.
 engine: jeltz
 params:
-  model: default:fast
+  model: default:jeltz,default:fast
   maxAttempts: 3
   # Jeltz brings its own schema validator — the generic Ford/Marvin
   # validation gates would just double-fire.

@@ -57,6 +57,31 @@ patterns:
     classification: UNCLEAR
     note: "Could be path drift or server reconfiguration — escalate."
 
+  # Quota exhaustion at the search-provider endpoint — Zarniwoop
+  # (`research:<instanceId>:<modality>` subjects) and any future
+  # search-protocol that surfaces "out of credits" via 402 / 429+body.
+  # Must precede the generic http-429 rule so the body-aware variant
+  # wins on first-match.
+  - id: http-402-quota
+    match: { httpStatus: 402 }
+    signature: quota-exhausted
+    classification: TECHNICALLY_BROKEN
+    healthAction: markUnavailable
+    cooldown: PT24H
+    locked: true
+    note: "Endpoint quota depleted (HTTP 402). Cools down for 24h."
+
+  - id: http-429-quota
+    match:
+      httpStatus: 429
+      bodyContains: ["quota", "credit", "limit exceeded", "out of credits"]
+    signature: quota-exhausted
+    classification: TECHNICALLY_BROKEN
+    healthAction: markUnavailable
+    cooldown: header:retry-after
+    locked: true
+    note: "Endpoint quota depleted (HTTP 429 + quota body)."
+
   - id: http-429
     match: { httpStatus: 429 }
     signature: http-429

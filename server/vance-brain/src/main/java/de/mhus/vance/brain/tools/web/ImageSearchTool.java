@@ -86,7 +86,17 @@ public class ImageSearchTool implements Tool {
 
     @Override
     public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public boolean deferred() {
         return true;
+    }
+
+    @Override
+    public String searchHint() {
+        return "Deprecated — use research_search with modality=image instead.";
     }
 
     @Override

@@ -142,9 +142,6 @@ if (__VLS_ctx.expanded) {
             if (archive.size) {
                 (archive.size);
             }
-            if (!archive.inline) {
-                (__VLS_ctx.$t('documents.archives.storageBacked'));
-            }
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                 ...{ class: "flex gap-1 shrink-0" },
             });

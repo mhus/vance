@@ -65,7 +65,7 @@ public class DocToWorkspaceTool implements Tool {
         support.buffer().flush(ctx.processId(), doc.getId());
         DocumentDocument fresh = support.buffer().read(ctx.processId(), doc.getId());
         if (fresh == null) throw new ToolException("Source document disappeared during export");
-        String body = fresh.getInlineText();
+        String body = support.readBody(fresh, ctx);
 
         try {
             Path written = workspace.write(ctx.tenantId(), ctx.projectId(), dirName, workspacePath, body);

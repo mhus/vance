@@ -50,7 +50,7 @@ public class RecordsAddRowTool implements Tool {
                 support.requireInline(support.loadDocument(params, ctx)), "records");
         Map<String, Object> values = KindToolSupport.paramMap(params, "values");
         if (values == null) throw new ToolException("Missing required object parameter 'values'");
-        RecordsDocument rec = RecordsCodec.parse(doc.getInlineText(), doc.getMimeType());
+        RecordsDocument rec = RecordsCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         Map<String, String> rowValues = new LinkedHashMap<>();
         for (String f : rec.schema()) {
             Object v = values.get(f);

@@ -46,16 +46,14 @@ class GatheringPhaseTest {
         process.setSessionId("sess-1");
         ctx = mock(ThinkEngineContext.class);
 
-        // Default: loadContent reads the inline text via
-        // ByteArrayInputStream — same path the real service uses
-        // for inline documents.
+        // Default: loadContent reads from a per-test in-memory body map keyed
+        // by storageId. Tests populate the map via the {@link #manual} helper.
         when(documentService.loadContent(org.mockito.ArgumentMatchers.any()))
                 .thenAnswer(inv -> {
                     DocumentDocument d = inv.getArgument(0);
-                    String inline = d.getInlineText() == null
-                            ? "" : d.getInlineText();
+                    String body = bodyByStorageId.getOrDefault(d.getStorageId(), "");
                     return new ByteArrayInputStream(
-                            inline.getBytes(StandardCharsets.UTF_8));
+                            body.getBytes(StandardCharsets.UTF_8));
                 });
     }
 
@@ -203,10 +201,14 @@ class GatheringPhaseTest {
                 .anySatisfy(id -> assertThat(id).startsWith("rt"));
     }
 
-    private static DocumentDocument manual(String path, String inline) {
+    private DocumentDocument manual(String path, String inline) {
         DocumentDocument d = new DocumentDocument();
         d.setPath(path);
-        d.setInlineText(inline);
+        String sid = "blob-" + path;
+        d.setStorageId(sid);
+        bodyByStorageId.put(sid, inline);
         return d;
     }
+
+    private final java.util.Map<String, String> bodyByStorageId = new java.util.HashMap<>();
 }

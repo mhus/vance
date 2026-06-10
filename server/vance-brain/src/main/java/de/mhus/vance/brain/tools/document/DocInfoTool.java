@@ -147,7 +147,7 @@ public class DocInfoTool implements Tool {
         if (doc.getMimeType() != null) out.put("mimeType", doc.getMimeType());
         if (doc.getKind() != null) out.put("kind", doc.getKind());
         out.put("size", doc.getSize());
-        out.put("inline", doc.getInlineText() != null);
+        out.put("inline", documentService.readContent(doc) != null);
         if (doc.getTags() != null && !doc.getTags().isEmpty()) {
             out.put("tags", doc.getTags());
         }
@@ -185,8 +185,8 @@ public class DocInfoTool implements Tool {
     }
 
     private String loadAsText(DocumentDocument doc) {
-        if (doc.getInlineText() != null) {
-            return doc.getInlineText();
+        if (documentService.readContent(doc) != null) {
+            return documentService.readContent(doc);
         }
         try (InputStream in = documentService.loadContent(doc)) {
             byte[] bytes = in.readAllBytes();

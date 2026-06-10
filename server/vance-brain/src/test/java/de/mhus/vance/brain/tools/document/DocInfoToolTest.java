@@ -173,7 +173,7 @@ class DocInfoToolTest {
         assertThat(tool.name()).isEqualTo("doc_info");
     }
 
-    private static DocumentDocument inlineDoc(
+    private DocumentDocument inlineDoc(
             String id, String path, String name, String title,
             String mime, long size, String inlineText) {
         DocumentDocument d = new DocumentDocument();
@@ -185,7 +185,8 @@ class DocInfoToolTest {
         d.setTitle(title);
         d.setMimeType(mime);
         d.setSize(size);
-        d.setInlineText(inlineText);
+        d.setStorageId("blob-" + id);
+        when(documentService.readContent(d)).thenReturn(inlineText);
         return d;
     }
 }

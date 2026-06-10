@@ -81,14 +81,8 @@ public class DocumentArchiveDocument {
 
     /** Mirrors {@link DocumentDocument#isCompressed()} — set on the archive at
      *  archive-time so {@link DocumentArchiveService#loadContent} can decompress
-     *  legacy + new entries consistently. */
+     *  entries consistently. */
     private boolean compressed;
-
-    /** Snapshot of the inline text. {@code null} when the version was
-     *  storage-backed. Deprecated for new writes — the inline→storage migrator
-     *  moves any remaining content into {@link #storageId}. */
-    @Deprecated
-    private @Nullable String inlineText;
 
     private @Nullable String kind;
 

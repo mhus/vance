@@ -174,14 +174,16 @@ class DocumentSummaryDriverTest {
         return p;
     }
 
-    private static DocumentDocument inlineDoc(
+    private DocumentDocument inlineDoc(
             String id, String path, String title, String content) {
-        return DocumentDocument.builder()
+        DocumentDocument doc = DocumentDocument.builder()
                 .id(id)
                 .path(path)
                 .title(title)
-                .inlineText(content)
+                .storageId("blob-" + id)
                 .build();
+        when(documentService.readContent(doc)).thenReturn(content);
+        return doc;
     }
 
     private static Map<String, Object> reply(String summary, List<String> tags) {

@@ -1,5 +1,5 @@
 import { ref } from 'vue';
-import { brainFetch } from '@vance/shared';
+import { brainFetch, brainFetchText } from '@vance/shared';
 /**
  * Reactive wrapper around the document-archive REST endpoints. One instance
  * per editor — caches the version list for the currently-selected document
@@ -36,7 +36,18 @@ export function useDocumentArchives() {
         previewLoading.value = true;
         error.value = null;
         try {
-            preview.value = await brainFetch('GET', `documents/${encodeURIComponent(documentId)}/archives/${encodeURIComponent(archiveId)}`);
+            const dto = await brainFetch('GET', `documents/${encodeURIComponent(documentId)}/archives/${encodeURIComponent(archiveId)}`);
+            // DocumentArchiveDto.inlineText is null since the full-storage
+            // migration; for textual mime types pull the body via the
+            // archive-content endpoint and patch the cached fields so the
+            // preview pane renders inline instead of falling through to the
+            // generic "binary" fallback.
+            if (isTextualMime(dto.mimeType)) {
+                const body = await brainFetchText(`documents/${encodeURIComponent(documentId)}/archives/${encodeURIComponent(archiveId)}/content`);
+                dto.inlineText = body ?? '';
+                dto.inline = true;
+            }
+            preview.value = dto;
         }
         catch (e) {
             error.value = e instanceof Error ? e.message : 'Failed to load archive.';
@@ -45,6 +56,19 @@ export function useDocumentArchives() {
         finally {
             previewLoading.value = false;
         }
+    }
+    function isTextualMime(mimeType) {
+        if (!mimeType)
+            return false;
+        const base = mimeType.split(';')[0].trim().toLowerCase();
+        return (base.startsWith('text/')
+            || base.includes('json')
+            || base.includes('yaml')
+            || base.includes('xml')
+            || base === 'application/javascript'
+            || base === 'application/typescript'
+            || base === 'application/sql'
+            || base === 'application/x-sh');
     }
     function clearPreview() {
         preview.value = null;

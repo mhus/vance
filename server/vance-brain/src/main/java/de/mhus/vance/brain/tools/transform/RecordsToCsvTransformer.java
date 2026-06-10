@@ -114,7 +114,7 @@ public class RecordsToCsvTransformer implements DocumentTransformer {
     }
 
     private String loadAsText(DocumentDocument doc) {
-        if (doc.getInlineText() != null) return doc.getInlineText();
+        if (documentService.readContent(doc) != null) return documentService.readContent(doc);
         try (InputStream in = documentService.loadContent(doc)) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {

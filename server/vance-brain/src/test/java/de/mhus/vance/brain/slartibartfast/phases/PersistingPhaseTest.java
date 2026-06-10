@@ -91,7 +91,7 @@ class PersistingPhaseTest {
         existing.setPath("_vance/recipes/_slart/3a4f7c91/essay-pipeline.yaml");
         // Setting inlineText distinguishes the inline-update branch
         // from the storage-backed delete-and-recreate branch.
-        existing.setInlineText("name: stale-content\nengine: vogon\n");
+        existing.setStorageId("blob-test-95490");
         when(documentService.findByPath("acme", "test-project",
                 "_vance/recipes/_slart/3a4f7c91/essay-pipeline.yaml"))
                 .thenReturn(Optional.of(existing));

@@ -48,7 +48,6 @@ class DocumentArchiveServiceTest {
     void archiveCurrent_storageBacked_movesPointerAndClearsLiveStorageId() {
         DocumentDocument doc = baseDoc()
                 .storageId("blob-1")
-                .inlineText(null)
                 .size(1024)
                 .build();
         doc.setId("doc-1");
@@ -71,25 +70,8 @@ class DocumentArchiveServiceTest {
     }
 
     @Test
-    void archiveCurrent_inlineDocument_carriesTextOver() {
-        DocumentDocument doc = baseDoc()
-                .inlineText("hello world")
-                .storageId(null)
-                .size(11)
-                .build();
-        doc.setId("doc-2");
-        doc.setLineageId("lin-2");
-
-        DocumentArchiveDocument saved = service.archiveCurrent(doc);
-
-        assertThat(saved.getInlineText()).isEqualTo("hello world");
-        assertThat(saved.getStorageId()).isNull();
-        assertThat(doc.getStorageId()).isNull(); // unchanged
-    }
-
-    @Test
     void archiveCurrent_rejectsTransientDocument() {
-        DocumentDocument doc = baseDoc().inlineText("x").build();
+        DocumentDocument doc = baseDoc().storageId("blob-x").build();
         doc.setLineageId("lin-x");
         // id stays null
 
@@ -100,7 +82,7 @@ class DocumentArchiveServiceTest {
 
     @Test
     void archiveCurrent_rejectsDocumentWithoutLineage() {
-        DocumentDocument doc = baseDoc().inlineText("x").build();
+        DocumentDocument doc = baseDoc().storageId("blob-x").build();
         doc.setId("doc-3");
         doc.setLineageId("");
 
@@ -110,31 +92,6 @@ class DocumentArchiveServiceTest {
     }
 
     // ──── restore ───────────────────────────────────────────────────────
-
-    @Test
-    void restore_inlineArchive_returnsInlinePayload() {
-        DocumentArchiveDocument archive = DocumentArchiveDocument.builder()
-                .id("arc-1")
-                .lineageId("lin-1")
-                .tenantId("t1")
-                .projectId("p1")
-                .path("notes/a.md")
-                .name("a.md")
-                .title("Title")
-                .tags(List.of("draft"))
-                .mimeType("text/markdown")
-                .inlineText("snapshot text")
-                .size(13)
-                .build();
-
-        DocumentArchiveService.RestorePayload payload = service.restore(archive);
-
-        assertThat(payload.inlineText()).isEqualTo("snapshot text");
-        assertThat(payload.storageId()).isNull();
-        assertThat(payload.size()).isEqualTo(13);
-        assertThat(payload.tags()).containsExactly("draft");
-        verify(storageService, never()).duplicate(anyString(), anyString());
-    }
 
     @Test
     void restore_storageBackedArchive_duplicatesBlob() {
@@ -153,7 +110,6 @@ class DocumentArchiveServiceTest {
 
         DocumentArchiveService.RestorePayload payload = service.restore(archive);
 
-        assertThat(payload.inlineText()).isNull();
         assertThat(payload.storageId()).isEqualTo("blob-new");
         // Archive untouched — same id still on archive entry.
         assertThat(archive.getStorageId()).isEqualTo("blob-old");
@@ -203,7 +159,7 @@ class DocumentArchiveServiceTest {
                 .storageId("blob-1").build();
         DocumentArchiveDocument a2 = DocumentArchiveDocument.builder()
                 .id("arc-2").lineageId("lin-x").tenantId("t1").projectId("p1")
-                .inlineText("inline only").build();
+                .storageId("blob-2").build();
         DocumentArchiveDocument a3 = DocumentArchiveDocument.builder()
                 .id("arc-3").lineageId("lin-x").tenantId("t1").projectId("p1")
                 .storageId("blob-3").build();
@@ -216,9 +172,9 @@ class DocumentArchiveServiceTest {
 
         assertThat(deleted).isEqualTo(3);
         verify(storageService).delete("blob-1");
+        verify(storageService).delete("blob-2");
         verify(storageService).delete("blob-3");
-        // Inline-only archive doesn't touch storage.
-        verify(storageService, times(2)).delete(anyString());
+        verify(storageService, times(3)).delete(anyString());
         verify(repository).deleteByTenantIdAndProjectIdAndLineageId("t1", "p1", "lin-x");
     }
 

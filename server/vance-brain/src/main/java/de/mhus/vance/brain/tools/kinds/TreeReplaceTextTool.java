@@ -54,8 +54,8 @@ public class TreeReplaceTextTool implements Tool {
         String newText = KindToolSupport.requireRawString(params, "text");
 
         TreeDocument tree = "mindmap".equals(doc.getKind())
-                ? MindmapCodec.parse(doc.getInlineText(), doc.getMimeType())
-                : TreeCodec.parse(doc.getInlineText(), doc.getMimeType());
+                ? MindmapCodec.parse(support.readBody(doc, ctx), doc.getMimeType())
+                : TreeCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         TreeItem original = TreePath.at(tree, path);
         TreeDocument updated = TreePath.replaceAt(tree, path,
                 (item) -> new TreeItem(newText, item.children(), item.extra()));

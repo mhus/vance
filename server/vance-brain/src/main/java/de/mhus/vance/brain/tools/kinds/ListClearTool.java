@@ -42,7 +42,7 @@ public class ListClearTool implements Tool {
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         DocumentDocument doc = support.requireKind(
                 support.requireInline(support.loadDocument(params, ctx)), "list");
-        ListDocument list = ListCodec.parse(doc.getInlineText(), doc.getMimeType());
+        ListDocument list = ListCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         int previous = list.items().size();
         ListDocument cleared = new ListDocument(list.kind(), new ArrayList<>(), list.extra());
         support.writeBody(doc, ListCodec.serialize(cleared, doc.getMimeType()), ctx);

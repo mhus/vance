@@ -176,14 +176,16 @@ class DocumentServiceArchiveTriggerTest {
 
     // ──── helpers ───────────────────────────────────────────────────────
 
-    private static DocumentDocument freshDoc(String body, Instant createdAt) {
+    private DocumentDocument freshDoc(String body, Instant createdAt) {
+        when(storageService.load("blob-baseline")).thenAnswer(inv ->
+                new java.io.ByteArrayInputStream(body.getBytes()));
         DocumentDocument doc = DocumentDocument.builder()
                 .tenantId("t1")
                 .projectId("p1")
                 .path("notes/a.md")
                 .name("a.md")
                 .mimeType("text/markdown")
-                .inlineText(body)
+                .storageId("blob-baseline")
                 .size(body.getBytes().length)
                 .lineageId("lin-1")
                 .build();

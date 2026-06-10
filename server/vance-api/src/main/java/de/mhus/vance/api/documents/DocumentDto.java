@@ -50,9 +50,23 @@ public class DocumentDto {
 
     private @Nullable String createdBy;
 
+    /**
+     * Pure client-side cache flag — the server never sets this since the
+     * full-storage migration. The web/mobile editor flips it to {@code true}
+     * after streaming the body via {@code GET /documents/{id}/content} so
+     * downstream views can read {@link #inlineText} without re-fetching.
+     */
+    @Deprecated
     private boolean inline;
 
-    /** Content for inline-stored documents. {@code null} when {@link #inline} is {@code false}. */
+    /**
+     * Pure client-side cache for the body — the server never sets this.
+     * Populated by the web/mobile editor after a streamed
+     * {@code /content} fetch so the existing view layer can read the body
+     * synchronously. To be removed once the editor views are refactored to
+     * accept the body as an explicit prop.
+     */
+    @Deprecated
     private @Nullable String inlineText;
 
     /**

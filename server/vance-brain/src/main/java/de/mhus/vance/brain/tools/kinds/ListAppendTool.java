@@ -49,7 +49,7 @@ public class ListAppendTool implements Tool {
         DocumentDocument doc = support.requireKind(
                 support.requireInline(support.loadDocument(params, ctx)), "list");
         String text = KindToolSupport.requireRawString(params, "text");
-        ListDocument list = ListCodec.parse(doc.getInlineText(), doc.getMimeType());
+        ListDocument list = ListCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         List<ListItem> items = new ArrayList<>(list.items());
         items.add(ListItem.of(text));
         ListDocument updated = new ListDocument(list.kind(), items, list.extra());

@@ -67,7 +67,7 @@ public class RagAddDocumentTool implements Tool {
                         + "' in project '" + projectId + "'"));
         long replaced = ragService.removeBySource(rag.getId(), fresh.getId());
         RagService.IngestResult result = ragService.addText(
-                rag.getId(), fresh.getId(), fresh.getInlineText(), null);
+                rag.getId(), fresh.getId(), support.readBody(fresh, ctx), null);
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("rag", rag.getName());

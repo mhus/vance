@@ -42,7 +42,7 @@ public class ListGetTool implements Tool {
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         DocumentDocument doc = support.requireKind(
                 support.requireInline(support.loadDocument(params, ctx)), "list");
-        ListDocument list = ListCodec.parse(doc.getInlineText(), doc.getMimeType());
+        ListDocument list = ListCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         List<Map<String, Object>> items = new ArrayList<>(list.items().size());
         for (int i = 0; i < list.items().size(); i++) {
             ListItem item = list.items().get(i);

@@ -251,8 +251,7 @@ final class BranchActionExecutor {
                             "list_append: target document '" + la.path()
                                     + "' does not exist — create it with "
                                     + "doc_create first"));
-            String current = existing.getInlineText() == null
-                    ? "" : existing.getInlineText();
+            String current = ctx.documentService().readContent(existing);
             String updated = current.endsWith("\n") || current.isEmpty()
                     ? current : current + "\n";
             updated += "- " + la.text() + "\n";
@@ -279,7 +278,7 @@ final class BranchActionExecutor {
                                 "doc_concat: source '" + path
                                         + "' not found in project '" + projectId + "'"));
                 if (i > 0 || dc.header() != null) sb.append(separator);
-                sb.append(src.getInlineText() == null ? "" : src.getInlineText());
+                sb.append(ctx.documentService().readContent(src));
             }
             if (dc.footer() != null) sb.append(separator).append(dc.footer());
             ctx.documentService().createText(

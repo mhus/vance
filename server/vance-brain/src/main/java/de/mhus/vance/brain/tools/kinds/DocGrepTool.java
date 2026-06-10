@@ -79,7 +79,7 @@ public class DocGrepTool implements Tool {
             throw new ToolException("Invalid regex: " + e.getMessage());
         }
 
-        String[] lines = doc.getInlineText().split("\\R", -1);
+        String[] lines = support.readBody(doc, ctx).split("\\R", -1);
         List<Map<String, Object>> matches = new ArrayList<>();
         boolean truncated = false;
         for (int i = 0; i < lines.length; i++) {

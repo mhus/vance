@@ -53,7 +53,7 @@ public class GraphAddEdgeTool implements Tool {
         String target = KindToolSupport.requireString(params, "target");
         String label = KindToolSupport.paramString(params, "label");
         String color = KindToolSupport.paramString(params, "color");
-        GraphDocument g = GraphCodec.parse(doc.getInlineText(), doc.getMimeType());
+        GraphDocument g = GraphCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         boolean srcOk = g.nodes().stream().anyMatch(n -> n.id().equals(source));
         boolean tgtOk = g.nodes().stream().anyMatch(n -> n.id().equals(target));
         if (!srcOk) throw new ToolException("Source node '" + source + "' does not exist");

@@ -149,10 +149,10 @@ class DocConcatToolTest {
     private void stubInline(String path, String text) {
         DocumentDocument doc = mock(DocumentDocument.class);
         when(doc.getPath()).thenReturn(path);
-        when(doc.getInlineText()).thenReturn(text);
         when(doc.getTenantId()).thenReturn(TENANT);
         when(documentService.findByPath(TENANT, PROJECT, path))
                 .thenReturn(Optional.of(doc));
+        when(documentService.readContent(doc)).thenReturn(text);
     }
 
     private DocumentDocument stubCreate(String targetPath, String expectedContent) {

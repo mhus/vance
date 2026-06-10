@@ -77,7 +77,7 @@ public class DocumentDocument {
     /** Logical content size in bytes. */
     private long size;
 
-    /** Storage id ({@code StorageService}) when content is kept out-of-band. */
+    /** Storage id ({@code StorageService}) — the body lives there exclusively. */
     private @Nullable String storageId;
 
     /**
@@ -88,18 +88,6 @@ public class DocumentDocument {
      * count. Legacy documents without this field read as {@code false}.
      */
     private boolean compressed;
-
-    /**
-     * Content for small text documents, held directly on the record.
-     *
-     * @deprecated New writes never set this; the boot-time inline→storage
-     *     migrator (see {@code DocumentInlineMigrator}) moves any remaining
-     *     content into {@link #storageId}. Field stays in place until the
-     *     migrator has drained every tenant — slated for removal in the
-     *     follow-up PR.
-     */
-    @Deprecated
-    private @Nullable String inlineText;
 
     /**
      * Mirror of the {@code kind:} front-matter value for markdown documents.

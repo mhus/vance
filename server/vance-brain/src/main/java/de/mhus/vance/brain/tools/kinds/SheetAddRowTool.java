@@ -36,7 +36,7 @@ public class SheetAddRowTool implements Tool {
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         DocumentDocument doc = support.requireKind(
                 support.requireInline(support.loadDocument(params, ctx)), "sheet");
-        SheetDocument sheet = SheetCodec.parse(doc.getInlineText(), doc.getMimeType());
+        SheetDocument sheet = SheetCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         int currentRows = sheet.rows() == null
                 ? Math.max(highestRow(sheet), 1)
                 : sheet.rows();

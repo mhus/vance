@@ -69,7 +69,7 @@ class ProjectKitsCatalogServiceTest {
 
         // Reset the mocks: now wire the saved YAML back through load().
         DocumentDocument doc = new DocumentDocument();
-        doc.setInlineText(yamlText.getValue());
+        doc.setStorageId("blob-cat");
         when(documentService.findByPath(
                 "acme", HomeBootstrapService.TENANT_PROJECT_NAME, ProjectKitsCatalogService.CATALOG_PATH))
                 .thenReturn(Optional.of(doc));
@@ -93,7 +93,7 @@ class ProjectKitsCatalogServiceTest {
     void save_overwritesExistingDocument() {
         DocumentDocument existing = new DocumentDocument();
         existing.setId("doc-1");
-        existing.setInlineText("old");
+        existing.setStorageId("blob-old");
         when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.of(existing));
 
         catalog.save("acme", sampleCatalog());
@@ -106,7 +106,7 @@ class ProjectKitsCatalogServiceTest {
     void findByName_returnsMatch_orNull() {
         DocumentDocument doc = new DocumentDocument();
         String yaml = catalog.serialize(sampleCatalog());
-        doc.setInlineText(yaml);
+        doc.setStorageId("blob-cat");
         when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.of(doc));
         when(documentService.readContent(doc)).thenReturn(yaml);
 
@@ -187,9 +187,9 @@ class ProjectKitsCatalogServiceTest {
     @Test
     void seedFromSystemTenant_skipsWhenTargetAlreadyHasCatalog() {
         DocumentDocument source = new DocumentDocument();
-        source.setInlineText("kits: []\nversion: 1\n");
+        source.setStorageId("blob-mock");
         DocumentDocument target = new DocumentDocument();
-        target.setInlineText("kits: []\nversion: 1\n");
+        target.setStorageId("blob-mock");
 
         when(documentService.findByPath(eq(TenantService.SYSTEM_TENANT), any(), any()))
                 .thenReturn(Optional.of(source));
@@ -207,7 +207,7 @@ class ProjectKitsCatalogServiceTest {
     void seedFromSystemTenant_copiesYamlVerbatimToTarget() {
         String yaml = "version: 1\nkits:\n  - name: x\n    title: X\n    source:\n      url: u\n";
         DocumentDocument source = new DocumentDocument();
-        source.setInlineText(yaml);
+        source.setStorageId("blob-mock");
 
         when(documentService.findByPath(eq(TenantService.SYSTEM_TENANT), any(), any()))
                 .thenReturn(Optional.of(source));
@@ -231,7 +231,7 @@ class ProjectKitsCatalogServiceTest {
     void seedFromSystemTenant_silentSkipOnTargetProjectMissing() {
         String yaml = "version: 1\nkits: []\n";
         DocumentDocument source = new DocumentDocument();
-        source.setInlineText(yaml);
+        source.setStorageId("blob-mock");
 
         when(documentService.findByPath(eq(TenantService.SYSTEM_TENANT), any(), any()))
                 .thenReturn(Optional.of(source));

@@ -47,7 +47,7 @@ public class DataGetTool implements Tool {
                 support.requireInline(support.loadDocument(params, ctx)), "data");
         String pathStr = KindToolSupport.paramString(params, "path");
         String[] path = JsonPointer.parse(pathStr);
-        DataDocument data = DataCodec.parse(doc.getInlineText(), doc.getMimeType());
+        DataDocument data = DataCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         Object value = path.length == 0 ? data.body() : JsonPointer.resolve(data.body(), path);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("documentId", doc.getId());

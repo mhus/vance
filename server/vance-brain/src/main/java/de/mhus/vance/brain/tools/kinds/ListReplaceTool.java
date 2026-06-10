@@ -53,7 +53,7 @@ public class ListReplaceTool implements Tool {
                 support.requireInline(support.loadDocument(params, ctx)), "list");
         int index = KindToolSupport.requireInt(params, "index");
         String newText = KindToolSupport.requireRawString(params, "text");
-        ListDocument list = ListCodec.parse(doc.getInlineText(), doc.getMimeType());
+        ListDocument list = ListCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         List<ListItem> items = new ArrayList<>(list.items());
         if (index < 0 || index >= items.size()) {
             throw new ToolException("index " + index + " out of range [0," + (items.size() - 1) + "]");

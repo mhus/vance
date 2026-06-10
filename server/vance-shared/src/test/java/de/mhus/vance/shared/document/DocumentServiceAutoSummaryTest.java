@@ -137,19 +137,18 @@ class DocumentServiceAutoSummaryTest {
                 .id("d1").tenantId("t1").projectId("p1")
                 .path("a.md").name("a.md")
                 .mimeType("text/markdown")
-                .inlineText("old body").size(8)
+                .storageId("blob-old").size(8)
                 .build();
         when(repository.findById("d1")).thenReturn(Optional.of(existing));
         when(repository.save(any(DocumentDocument.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
+        when(storageService.load("blob-old")).thenReturn(
+                new java.io.ByteArrayInputStream("old body".getBytes()));
 
         DocumentDocument saved = service.update(
                 "d1", null, null, "new body", null);
 
         assertThat(saved.isSummaryDirty()).isTrue();
-        // Content writes always land in storage now — inlineText stays null,
-        // storageId is the freshly created blob.
-        assertThat(saved.getInlineText()).isNull();
         assertThat(saved.getStorageId()).isNotNull();
         assertThat(saved.getSize()).isEqualTo("new body".length());
     }
@@ -160,11 +159,13 @@ class DocumentServiceAutoSummaryTest {
                 .id("d1").tenantId("t1").projectId("p1")
                 .path("a.md").name("a.md")
                 .mimeType("text/markdown")
-                .inlineText("body").size(4)
+                .storageId("blob-body").size(4)
                 .build();
         when(repository.findById("d1")).thenReturn(Optional.of(existing));
         when(repository.save(any(DocumentDocument.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
+        when(storageService.load("blob-body")).thenReturn(
+                new java.io.ByteArrayInputStream("body".getBytes()));
 
         DocumentDocument saved = service.update(
                 "d1", null, null, "body", null);
@@ -178,7 +179,7 @@ class DocumentServiceAutoSummaryTest {
                 .id("d1").tenantId("t1").projectId("p1")
                 .path("a.md").name("a.md")
                 .mimeType("text/markdown")
-                .inlineText("body").size(4)
+                .storageId("blob-body").size(4)
                 .build();
         when(repository.findById("d1")).thenReturn(Optional.of(existing));
         when(repository.save(any(DocumentDocument.class)))

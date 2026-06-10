@@ -90,7 +90,7 @@ public class CrossDocMoveTool implements Tool {
                     title != null ? title : fresh.getTitle(),
                     fresh.getTags() != null ? List.copyOf(fresh.getTags()) : null,
                     fresh.getMimeType(),
-                    new ByteArrayInputStream(fresh.getInlineText().getBytes(StandardCharsets.UTF_8)),
+                    new ByteArrayInputStream(support.readBody(fresh, ctx).getBytes(StandardCharsets.UTF_8)),
                     ctx.userId());
         } catch (DocumentService.DocumentAlreadyExistsException e) {
             throw new ToolException(e.getMessage(), e);

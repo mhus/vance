@@ -224,8 +224,6 @@ public class DocumentRelationsService {
     }
 
     private String readBody(DocumentDocument doc) {
-        String inline = doc.getInlineText();
-        if (inline != null) return inline;
         try (InputStream in = documentService.loadContent(doc)) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {

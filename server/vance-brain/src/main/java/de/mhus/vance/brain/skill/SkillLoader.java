@@ -255,7 +255,7 @@ public class SkillLoader {
     }
 
     private String readDocAsString(DocumentDocument doc) {
-        String inline = doc.getInlineText();
+        String inline = documentService.readContent(doc);
         if (inline != null) return inline;
         try (InputStream in = documentService.loadContent(doc)) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);

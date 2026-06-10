@@ -125,8 +125,8 @@ public class DocReadTool implements Tool {
     }
 
     private String loadAsText(DocumentDocument doc) {
-        if (doc.getInlineText() != null) {
-            return doc.getInlineText();
+        if (documentService.readContent(doc) != null) {
+            return documentService.readContent(doc);
         }
         try (InputStream in = documentService.loadContent(doc)) {
             byte[] bytes = in.readAllBytes();

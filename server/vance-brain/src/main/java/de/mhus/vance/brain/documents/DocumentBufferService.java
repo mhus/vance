@@ -95,7 +95,7 @@ public class DocumentBufferService {
         DocumentDocument fresh = documentService.findById(documentId).orElse(null);
         if (fresh == null) return null;
         entries.put(key, new BufferedEntry(
-                fresh, fresh.getInlineText(), false, 0L));
+                fresh, documentService.readContent(fresh), false, 0L));
         return fresh;
     }
 
@@ -206,7 +206,7 @@ public class DocumentBufferService {
     private @Nullable BufferedEntry loadIntoBuffer(String documentId) {
         DocumentDocument fresh = documentService.findById(documentId).orElse(null);
         if (fresh == null) return null;
-        return new BufferedEntry(fresh, fresh.getInlineText(), false, 0L);
+        return new BufferedEntry(fresh, documentService.readContent(fresh), false, 0L);
     }
 
     private void flushEntry(BufferKey key, BufferedEntry entry) {
@@ -229,31 +229,22 @@ public class DocumentBufferService {
         }
     }
 
-    /** A read-time projection: clone the original document, swap in
-     *  the cached body so the caller sees the in-flight mutations.
-     *  Only the fields tools care about (id, path, kind, mimeType,
-     *  inlineText, tags, title) are copied — the buffer is for body
-     *  edits, not metadata edits. */
+    /** A read-time projection: return the cached document baseline. Callers
+     *  that need the in-flight body use {@link #peekBody} which consults the
+     *  buffer first; the document object itself is just metadata. */
     private DocumentDocument projectionOf(BufferedEntry entry) {
-        DocumentDocument original = entry.original();
-        DocumentDocument copy = new DocumentDocument();
-        copy.setId(original.getId());
-        copy.setTenantId(original.getTenantId());
-        copy.setProjectId(original.getProjectId());
-        copy.setPath(original.getPath());
-        copy.setName(original.getName());
-        copy.setTitle(original.getTitle());
-        copy.setKind(original.getKind());
-        copy.setMimeType(original.getMimeType());
-        copy.setSize(original.getSize());
-        copy.setTags(original.getTags() == null ? null : new ArrayList<>(original.getTags()));
-        copy.setHeaders(original.getHeaders() == null ? null : new HashMap<>(original.getHeaders()));
-        copy.setInlineText(entry.currentBody());
-        copy.setStorageId(original.getStorageId());
-        copy.setStatus(original.getStatus());
-        copy.setCreatedAt(original.getCreatedAt());
-        copy.setCreatedBy(original.getCreatedBy());
-        return copy;
+        return entry.original();
+    }
+
+    /**
+     * Look up the in-flight body for {@code (processId, documentId)} without
+     * mutating the buffer. Returns {@code null} when no buffered edit exists
+     * — the caller falls back to {@link DocumentService#readContent}.
+     */
+    public @Nullable String peekBody(@Nullable String processId, String documentId) {
+        if (processId == null) return null;
+        BufferedEntry entry = entries.get(new BufferKey(processId, documentId));
+        return entry == null ? null : entry.currentBody();
     }
 
     /** Cache key — process scope + document id. */

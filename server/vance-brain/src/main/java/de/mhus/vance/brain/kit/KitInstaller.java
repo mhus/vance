@@ -244,7 +244,7 @@ public class KitInstaller {
             return false;
         }
         DocumentDocument doc = existing.get();
-        if (doc.getInlineText() != null) {
+        if (documentService.readContent(doc) != null) {
             try {
                 documentService.update(doc.getId(), null, null, content, null);
                 return true;
@@ -338,7 +338,7 @@ public class KitInstaller {
                 documentService.findByPath(tenantId, projectId, MANIFEST_PATH);
         if (doc.isEmpty()) return null;
         DocumentDocument d = doc.get();
-        String content = d.getInlineText();
+        String content = documentService.readContent(d);
         if (content == null) {
             try (var in = documentService.loadContent(d)) {
                 content = new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
@@ -431,7 +431,7 @@ public class KitInstaller {
             return;
         }
         DocumentDocument doc = existing.get();
-        if (doc.getInlineText() != null) {
+        if (documentService.readContent(doc) != null) {
             try {
                 documentService.update(doc.getId(), null, null, yaml, null);
                 return;

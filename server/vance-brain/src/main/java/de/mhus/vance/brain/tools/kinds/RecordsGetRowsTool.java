@@ -38,7 +38,7 @@ public class RecordsGetRowsTool implements Tool {
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         DocumentDocument doc = support.requireKind(
                 support.requireInline(support.loadDocument(params, ctx)), "records");
-        RecordsDocument rec = RecordsCodec.parse(doc.getInlineText(), doc.getMimeType());
+        RecordsDocument rec = RecordsCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         List<Map<String, Object>> rows = new ArrayList<>(rec.items().size());
         for (int i = 0; i < rec.items().size(); i++) {
             RecordsItem item = rec.items().get(i);

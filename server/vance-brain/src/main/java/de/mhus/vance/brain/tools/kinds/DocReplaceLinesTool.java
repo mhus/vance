@@ -64,7 +64,7 @@ public class DocReplaceLinesTool implements Tool {
         int toLine = KindToolSupport.requireInt(params, "toLine");
         String newContent = KindToolSupport.requireRawString(params, "newContent");
 
-        String[] lines = doc.getInlineText().split("\\R", -1);
+        String[] lines = support.readBody(doc, ctx).split("\\R", -1);
         int total = lines.length;
         if (fromLine < 1) throw new ToolException("fromLine must be >= 1");
         if (fromLine > total + 1) {

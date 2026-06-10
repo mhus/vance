@@ -76,12 +76,12 @@ public class RagAddPathTool implements Tool {
         for (DocumentDocument d : all) {
             if (DocumentService.isTrash(d.getPath())) { skipped++; continue; }
             if (pathPrefix != null && !d.getPath().startsWith(pathPrefix)) continue;
-            if (d.getInlineText() == null) { skipped++; continue; }
+            if (support.readBody(d, ctx) == null) { skipped++; continue; }
             if (indexed.size() >= MAX_DOCUMENTS) { truncated = true; break; }
             try {
                 long replaced = ragService.removeBySource(rag.getId(), d.getId());
                 RagService.IngestResult result = ragService.addText(
-                        rag.getId(), d.getId(), d.getInlineText(), null);
+                        rag.getId(), d.getId(), support.readBody(d, ctx), null);
                 totalChunksAdded += result.chunksAdded();
                 totalChunksReplaced += replaced;
                 Map<String, Object> entry = new LinkedHashMap<>();

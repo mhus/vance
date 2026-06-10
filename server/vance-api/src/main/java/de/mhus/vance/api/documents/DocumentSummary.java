@@ -52,7 +52,8 @@ public class DocumentSummary {
 
     private @Nullable String createdBy;
 
-    /** {@code true} when the content lives inline on the record (editable in v1 UI). */
+    /** Legacy client-side cache flag — server no longer sets this. */
+    @Deprecated
     private boolean inline;
 
     /**

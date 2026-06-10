@@ -166,8 +166,6 @@ class FookTicketServiceTest {
                 eq("_vance"), eq("_tenant"), eq(0), eq(500),
                 eq("_vance/fook/tickets/"), eq("fook-ticket")))
                 .thenReturn(page);
-        when(documentService.readContent(crashTicket)).thenReturn(crashTicket.getInlineText());
-        when(documentService.readContent(weakOverlap)).thenReturn(weakOverlap.getInlineText());
 
         List<TicketCandidate> hits = service.searchSimilar(
                 "Brain crash on boot NPE in recipes loader when folder empty",
@@ -198,7 +196,6 @@ class FookTicketServiceTest {
         when(documentService.listByProjectPaged(
                 any(), any(), any(int.class), any(int.class),
                 any(), any())).thenReturn(page);
-        when(documentService.readContent(other)).thenReturn(other.getInlineText());
 
         List<TicketCandidate> hits = service.searchSimilar(
                 "totally unrelated topic nothing matches here", 5);
@@ -215,9 +212,6 @@ class FookTicketServiceTest {
         when(documentService.listByProjectPaged(
                 any(), any(), any(int.class), any(int.class),
                 any(), any())).thenReturn(page);
-        when(documentService.readContent(a)).thenReturn(a.getInlineText());
-        when(documentService.readContent(b)).thenReturn(b.getInlineText());
-        when(documentService.readContent(c)).thenReturn(c.getInlineText());
 
         List<TicketCandidate> hits = service.searchSimilar(
                 "alpha beta gamma delta", 2);
@@ -255,7 +249,7 @@ class FookTicketServiceTest {
         String yaml = captureUpsertedText();
         DocumentDocument doc = DocumentDocument.builder()
                 .path("_vance/fook/tickets/" + uuid + ".yaml")
-                .inlineText(yaml)
+                .storageId("blob-test-yaml")
                 .mimeType("application/yaml")
                 .build();
         when(documentService.findByPath("_vance", "_tenant",
@@ -316,7 +310,7 @@ class FookTicketServiceTest {
                 """;
         DocumentDocument doc = DocumentDocument.builder()
                 .path("_vance/fook/tickets/uuid-1.yaml")
-                .inlineText(existing)
+                .storageId("blob-test-existing")
                 .mimeType("application/yaml")
                 .title("Existing")
                 .build();
@@ -382,7 +376,7 @@ class FookTicketServiceTest {
                 """;
         DocumentDocument doc = DocumentDocument.builder()
                 .path("_vance/fook/tickets/uuid-2.yaml")
-                .inlineText(existing).mimeType("application/yaml").build();
+                .storageId("blob-test-existing").mimeType("application/yaml").build();
         when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.of(doc));
         when(documentService.readContent(doc)).thenReturn(existing);
         when(documentService.upsertText(any(), any(), any(), any(), any(), any(), any()))
@@ -439,12 +433,14 @@ class FookTicketServiceTest {
                   rootCauseOf: []
                   relatedTo: []
                 """.formatted(id, title, desc);
-        return DocumentDocument.builder()
+        DocumentDocument doc = DocumentDocument.builder()
                 .path("_vance/fook/tickets/" + id + ".yaml")
-                .inlineText(yaml)
+                .storageId("blob-test-" + id)
                 .mimeType("application/yaml")
                 .title(title)
                 .build();
+        when(documentService.readContent(doc)).thenReturn(yaml);
+        return doc;
     }
 
     private String captureUpsertedText() {

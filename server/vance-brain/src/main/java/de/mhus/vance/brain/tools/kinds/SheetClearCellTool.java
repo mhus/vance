@@ -52,7 +52,7 @@ public class SheetClearCellTool implements Tool {
         if (addr == null) throw new ToolException("Invalid A1 address: " + field);
         String key = addr.column() + addr.row();
 
-        SheetDocument sheet = SheetCodec.parse(doc.getInlineText(), doc.getMimeType());
+        SheetDocument sheet = SheetCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         List<SheetCell> cells = sheet.cells().stream()
                 .filter(c -> !c.field().equals(key))
                 .toList();

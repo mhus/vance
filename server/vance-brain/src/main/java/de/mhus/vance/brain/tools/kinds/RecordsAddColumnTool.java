@@ -47,7 +47,7 @@ public class RecordsAddColumnTool implements Tool {
                 support.requireInline(support.loadDocument(params, ctx)), "records");
         String field = KindToolSupport.requireString(params, "field");
 
-        RecordsDocument rec = RecordsCodec.parse(doc.getInlineText(), doc.getMimeType());
+        RecordsDocument rec = RecordsCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         if (rec.schema().contains(field)) {
             throw new ToolException("Field '" + field + "' is already in the schema");
         }

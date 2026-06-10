@@ -49,7 +49,7 @@ public class RecordsRemoveRowTool implements Tool {
         DocumentDocument doc = support.requireKind(
                 support.requireInline(support.loadDocument(params, ctx)), "records");
         int rowIndex = KindToolSupport.requireInt(params, "rowIndex");
-        RecordsDocument rec = RecordsCodec.parse(doc.getInlineText(), doc.getMimeType());
+        RecordsDocument rec = RecordsCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         if (rowIndex < 0 || rowIndex >= rec.items().size()) {
             throw new ToolException("rowIndex " + rowIndex + " out of range");
         }

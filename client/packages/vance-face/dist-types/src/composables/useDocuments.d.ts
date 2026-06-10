@@ -37,6 +37,8 @@ export declare function useDocuments(pageSize?: number): {
     create: (projectId: string, body: DocumentCreateRequest) => Promise<DocumentDto | null>;
     upload: (projectId: string, opts: UploadOptions) => Promise<DocumentDto | null>;
     update: (id: string, body: DocumentUpdateRequest) => Promise<void>;
+    loadContent: (id: string) => Promise<string | null>;
+    replaceContent: (id: string, content: string, mimeType: string) => Promise<DocumentDto | null>;
     setSummary: (id: string, summary: string) => Promise<DocumentDto | null>;
     remove: (id: string) => Promise<boolean>;
 };

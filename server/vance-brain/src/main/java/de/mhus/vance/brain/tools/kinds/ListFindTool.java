@@ -51,7 +51,7 @@ public class ListFindTool implements Tool {
         DocumentDocument doc = support.requireKind(
                 support.requireInline(support.loadDocument(params, ctx)), "list");
         String query = KindToolSupport.requireString(params, "query").toLowerCase();
-        ListDocument list = ListCodec.parse(doc.getInlineText(), doc.getMimeType());
+        ListDocument list = ListCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         List<Map<String, Object>> matches = new ArrayList<>();
         for (int i = 0; i < list.items().size(); i++) {
             ListItem item = list.items().get(i);

@@ -38,7 +38,7 @@ public class SheetAddColumnTool implements Tool {
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         DocumentDocument doc = support.requireKind(
                 support.requireInline(support.loadDocument(params, ctx)), "sheet");
-        SheetDocument sheet = SheetCodec.parse(doc.getInlineText(), doc.getMimeType());
+        SheetDocument sheet = SheetCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         List<String> schema = sheet.schema().isEmpty()
                 ? deriveSchemaFromCells(sheet)
                 : new ArrayList<>(sheet.schema());

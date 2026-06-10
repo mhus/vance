@@ -121,7 +121,7 @@ public class KitExporter {
     }
 
     private String readDocumentText(DocumentDocument doc) {
-        String inline = doc.getInlineText();
+        String inline = documentService.readContent(doc);
         if (inline != null) return inline;
         try (var in = documentService.loadContent(doc)) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);

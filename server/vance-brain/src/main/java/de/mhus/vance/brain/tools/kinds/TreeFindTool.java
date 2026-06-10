@@ -53,8 +53,8 @@ public class TreeFindTool implements Tool {
                 support.requireInline(support.loadDocument(params, ctx)), "tree", "mindmap");
         String query = KindToolSupport.requireString(params, "query");
         TreeDocument tree = "mindmap".equals(doc.getKind())
-                ? MindmapCodec.parse(doc.getInlineText(), doc.getMimeType())
-                : TreeCodec.parse(doc.getInlineText(), doc.getMimeType());
+                ? MindmapCodec.parse(support.readBody(doc, ctx), doc.getMimeType())
+                : TreeCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         List<int[]> paths = TreePath.findByText(tree, query);
         List<Map<String, Object>> matches = new ArrayList<>(paths.size());
         for (int[] path : paths) {

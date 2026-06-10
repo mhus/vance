@@ -69,8 +69,8 @@ public class TreeMoveTool implements Tool {
         }
 
         TreeDocument tree = "mindmap".equals(doc.getKind())
-                ? MindmapCodec.parse(doc.getInlineText(), doc.getMimeType())
-                : TreeCodec.parse(doc.getInlineText(), doc.getMimeType());
+                ? MindmapCodec.parse(support.readBody(doc, ctx), doc.getMimeType())
+                : TreeCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         TreeItem moving = TreePath.at(tree, path);
         TreeDocument removed = TreePath.removeAt(tree, path);
         // Adjust newParent: when an ancestor or earlier sibling of

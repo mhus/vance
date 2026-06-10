@@ -50,7 +50,7 @@ public class GraphRemoveNodeTool implements Tool {
         DocumentDocument doc = support.requireKind(
                 support.requireInline(support.loadDocument(params, ctx)), "graph");
         String id = KindToolSupport.requireString(params, "id");
-        GraphDocument g = GraphCodec.parse(doc.getInlineText(), doc.getMimeType());
+        GraphDocument g = GraphCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         boolean exists = g.nodes().stream().anyMatch(n -> n.id().equals(id));
         if (!exists) throw new ToolException("Node id '" + id + "' not found");
         List<GraphNode> nodes = new ArrayList<>(g.nodes());

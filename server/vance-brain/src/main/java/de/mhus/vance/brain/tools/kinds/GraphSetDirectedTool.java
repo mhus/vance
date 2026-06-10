@@ -50,7 +50,7 @@ public class GraphSetDirectedTool implements Tool {
                 support.requireInline(support.loadDocument(params, ctx)), "graph");
         Boolean directed = KindToolSupport.paramBoolean(params, "directed");
         if (directed == null) throw new ToolException("Missing or non-boolean parameter 'directed'");
-        GraphDocument g = GraphCodec.parse(doc.getInlineText(), doc.getMimeType());
+        GraphDocument g = GraphCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         GraphDocument updated = new GraphDocument(g.kind(), new GraphConfig(directed),
                 g.nodes(), g.edges(), g.extra());
         support.writeBody(doc, GraphCodec.serialize(updated, doc.getMimeType()), ctx);

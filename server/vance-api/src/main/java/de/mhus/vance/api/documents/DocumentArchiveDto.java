@@ -43,9 +43,12 @@ public class DocumentArchiveDto {
     @Builder.Default
     private List<String> tags = new ArrayList<>();
 
+    /** Client-side cache only — server no longer sets this. See {@link DocumentDto#inline}. */
+    @Deprecated
     private boolean inline;
 
-    /** Snapshot text content — present iff {@link #inline} is {@code true}. */
+    /** Client-side cache only — populated after streaming the archive body. */
+    @Deprecated
     private @Nullable String inlineText;
 
     private @Nullable String kind;

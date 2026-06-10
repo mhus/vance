@@ -535,7 +535,7 @@ public class DocumentController {
         authority.enforce(httpRequest,
                 new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.READ);
         DocumentArchiveDocument archive = loadArchiveForLineage(doc, archiveId);
-        return toArchiveDto(archive, documentService.readArchiveContent(archive));
+        return toArchiveDto(archive);
     }
 
     /**
@@ -646,7 +646,6 @@ public class DocumentController {
                 .mimeType(archive.getMimeType())
                 .size(archive.getSize())
                 .tags(archive.getTags())
-                .inline(archive.getInlineText() != null)
                 .kind(archive.getKind())
                 .createdBy(archive.getCreatedBy())
                 .archivedAtMs(archive.getArchivedAt() == null
@@ -655,9 +654,7 @@ public class DocumentController {
                 .build();
     }
 
-    private static DocumentArchiveDto toArchiveDto(
-            DocumentArchiveDocument archive, @Nullable String inlineBody) {
-        boolean inline = archive.getInlineText() != null;
+    private static DocumentArchiveDto toArchiveDto(DocumentArchiveDocument archive) {
         return DocumentArchiveDto.builder()
                 .id(archive.getId())
                 .lineageId(archive.getLineageId())
@@ -667,8 +664,6 @@ public class DocumentController {
                 .mimeType(archive.getMimeType())
                 .size(archive.getSize())
                 .tags(archive.getTags())
-                .inline(inline)
-                .inlineText(inline ? inlineBody : null)
                 .kind(archive.getKind())
                 .createdBy(archive.getCreatedBy())
                 .archivedAtMs(archive.getArchivedAt() == null
@@ -689,7 +684,6 @@ public class DocumentController {
                 .tags(doc.getTags())
                 .createdAtMs(toEpochMillis(doc.getCreatedAt()))
                 .createdBy(doc.getCreatedBy())
-                .inline(doc.getInlineText() != null)
                 .kind(doc.getKind())
                 .build();
     }
@@ -706,8 +700,6 @@ public class DocumentController {
                 .tags(doc.getTags())
                 .createdAtMs(toEpochMillis(doc.getCreatedAt()))
                 .createdBy(doc.getCreatedBy())
-                .inline(doc.getInlineText() != null)
-                .inlineText(doc.getInlineText())
                 .kind(doc.getKind())
                 .headers(doc.getHeaders() == null
                         ? new java.util.LinkedHashMap<>()

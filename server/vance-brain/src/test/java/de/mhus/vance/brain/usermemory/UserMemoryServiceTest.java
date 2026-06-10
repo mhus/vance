@@ -52,9 +52,7 @@ class UserMemoryServiceTest {
 
     @Test
     void composePersonaBlock_wrapsText_withHeader() {
-        DocumentDocument doc = DocumentDocument.builder()
-                .inlineText("Prefers German. Concise replies.")
-                .build();
+        DocumentDocument doc = docWithBody("Prefers German. Concise replies.");
         when(documentService.findByPath(TENANT, USER_PROJECT, UserMemoryService.PERSONA_DOC_PATH))
                 .thenReturn(Optional.of(doc));
 
@@ -84,9 +82,7 @@ class UserMemoryServiceTest {
                     .append("] Fact-").append(line).append('\n');
             line++;
         }
-        DocumentDocument doc = DocumentDocument.builder()
-                .inlineText(big.toString())
-                .build();
+        DocumentDocument doc = docWithBody(big.toString());
         when(documentService.findByPath(TENANT, USER_PROJECT, UserMemoryService.FACTS_DOC_PATH))
                 .thenReturn(Optional.of(doc));
 
@@ -125,9 +121,7 @@ class UserMemoryServiceTest {
 
     @Test
     void learnPersona_appendMode_concatenatesWithBlankLine() {
-        DocumentDocument existing = DocumentDocument.builder()
-                .inlineText("Prefers German.")
-                .build();
+        DocumentDocument existing = docWithBody("Prefers German.");
         when(documentService.findByPath(TENANT, USER_PROJECT, UserMemoryService.PERSONA_DOC_PATH))
                 .thenReturn(Optional.of(existing));
 
@@ -147,9 +141,7 @@ class UserMemoryServiceTest {
 
     @Test
     void learnFact_appendsToExistingJournal_withDateStamp() {
-        DocumentDocument existing = DocumentDocument.builder()
-                .inlineText("[2024-12-01] Likes coffee.")
-                .build();
+        DocumentDocument existing = docWithBody("[2024-12-01] Likes coffee.");
         when(documentService.findByPath(TENANT, USER_PROJECT, UserMemoryService.FACTS_DOC_PATH))
                 .thenReturn(Optional.of(existing));
 
@@ -189,9 +181,7 @@ class UserMemoryServiceTest {
 
     @Test
     void runConsolidation_skipsLlmCall_whenTooSmall() {
-        DocumentDocument tiny = DocumentDocument.builder()
-                .inlineText("Single short line.")
-                .build();
+        DocumentDocument tiny = docWithBody("Single short line.");
         when(documentService.findByPath(TENANT, USER_PROJECT, UserMemoryService.PERSONA_DOC_PATH))
                 .thenReturn(Optional.of(tiny));
 
@@ -209,9 +199,7 @@ class UserMemoryServiceTest {
     @Test
     void runConsolidation_persistsResult_whenChanged() {
         String original = "Line 1.\nLine 2 (longer than the trivial-skip threshold, several characters).";
-        DocumentDocument doc = DocumentDocument.builder()
-                .inlineText(original)
-                .build();
+        DocumentDocument doc = docWithBody(original);
         when(documentService.findByPath(TENANT, USER_PROJECT, UserMemoryService.PERSONA_DOC_PATH))
                 .thenReturn(Optional.of(doc));
 
@@ -232,9 +220,7 @@ class UserMemoryServiceTest {
     @Test
     void runConsolidation_noPersist_whenLlmReturnsSameText() {
         String original = "Line 1.\nLine 2 with enough length to skip the trivial-content branch.";
-        DocumentDocument doc = DocumentDocument.builder()
-                .inlineText(original)
-                .build();
+        DocumentDocument doc = docWithBody(original);
         when(documentService.findByPath(TENANT, USER_PROJECT, UserMemoryService.FACTS_DOC_PATH))
                 .thenReturn(Optional.of(doc));
 
@@ -250,9 +236,7 @@ class UserMemoryServiceTest {
     @Test
     void runConsolidation_stripsCodeFence_fromLlmOutput() {
         String original = "Line 1.\nLine 2 with enough length to skip the trivial-content branch.";
-        DocumentDocument doc = DocumentDocument.builder()
-                .inlineText(original)
-                .build();
+        DocumentDocument doc = docWithBody(original);
         when(documentService.findByPath(TENANT, USER_PROJECT, UserMemoryService.FACTS_DOC_PATH))
                 .thenReturn(Optional.of(doc));
 
@@ -292,9 +276,7 @@ class UserMemoryServiceTest {
     @Test
     void runConsolidation_swallowsLlmException() {
         String original = "Line 1.\nLine 2 long enough to clear the trivial-content threshold easily.";
-        DocumentDocument doc = DocumentDocument.builder()
-                .inlineText(original)
-                .build();
+        DocumentDocument doc = docWithBody(original);
         when(documentService.findByPath(TENANT, USER_PROJECT, UserMemoryService.PERSONA_DOC_PATH))
                 .thenReturn(Optional.of(doc));
 
@@ -322,9 +304,7 @@ class UserMemoryServiceTest {
         // Light sanity check that appending doesn't introduce weird
         // blank-line drift across many entries — the produced string
         // should grow in line-count by exactly one per call.
-        DocumentDocument first = DocumentDocument.builder()
-                .inlineText("[2024-01-01] First.\n[2024-01-02] Second.")
-                .build();
+        DocumentDocument first = docWithBody("[2024-01-01] First.\n[2024-01-02] Second.");
         when(documentService.findByPath(TENANT, USER_PROJECT, UserMemoryService.FACTS_DOC_PATH))
                 .thenReturn(Optional.of(first));
 
@@ -342,5 +322,13 @@ class UserMemoryServiceTest {
         assertThat(lines.get(0)).isEqualTo("[2024-01-01] First.");
         assertThat(lines.get(1)).isEqualTo("[2024-01-02] Second.");
         assertThat(lines.get(2)).endsWith("] Third.");
+    }
+
+    private DocumentDocument docWithBody(String body) {
+        DocumentDocument doc = DocumentDocument.builder()
+                .storageId("blob-" + System.nanoTime())
+                .build();
+        when(documentService.readContent(doc)).thenReturn(body);
+        return doc;
     }
 }

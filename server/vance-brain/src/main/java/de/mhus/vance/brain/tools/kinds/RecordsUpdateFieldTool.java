@@ -51,7 +51,7 @@ public class RecordsUpdateFieldTool implements Tool {
         String field = KindToolSupport.requireString(params, "field");
         String value = KindToolSupport.requireRawString(params, "value");
 
-        RecordsDocument rec = RecordsCodec.parse(doc.getInlineText(), doc.getMimeType());
+        RecordsDocument rec = RecordsCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         if (rowIndex < 0 || rowIndex >= rec.items().size()) {
             throw new ToolException("rowIndex " + rowIndex + " out of range");
         }

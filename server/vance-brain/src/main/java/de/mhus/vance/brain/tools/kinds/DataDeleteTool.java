@@ -47,7 +47,7 @@ public class DataDeleteTool implements Tool {
         String pathStr = KindToolSupport.requireString(params, "path");
         String[] path = JsonPointer.parse(pathStr);
 
-        DataDocument data = DataCodec.parse(doc.getInlineText(), doc.getMimeType());
+        DataDocument data = DataCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         Object body = JsonPointer.mutableCopy(data.body());
         if (body == null) body = new LinkedHashMap<String, Object>();
         Object removed = JsonPointer.remove(body, path);

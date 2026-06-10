@@ -72,7 +72,7 @@ public class DocEditTool implements Tool {
         if (oldString.isEmpty()) {
             throw new ToolException("old_string must be non-empty");
         }
-        String body = doc.getInlineText();
+        String body = support.readBody(doc, ctx);
         int occurrences = countOccurrences(body, oldString);
         if (occurrences == 0) {
             throw new ToolException("old_string not found in document " + support.identify(doc));

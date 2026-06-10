@@ -127,8 +127,8 @@ public class DocumentSummaryDriver {
     }
 
     private String readContent(DocumentDocument doc) {
-        if (doc.getInlineText() != null) {
-            return doc.getInlineText();
+        if (documentService.readContent(doc) != null) {
+            return documentService.readContent(doc);
         }
         // Storage-backed text — load through the service so the
         // inline-vs-storage branch stays in one place.

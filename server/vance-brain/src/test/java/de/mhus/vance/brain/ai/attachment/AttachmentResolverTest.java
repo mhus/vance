@@ -50,7 +50,11 @@ class AttachmentResolverTest {
         DocumentDocument doc = sampleDocument("doc-1", TENANT, "OTHER_PROJECT",
                 "image/png", new byte[]{1, 2, 3});
         when(documentService.findById("doc-1")).thenReturn(Optional.of(doc));
-        when(documentService.loadContent(any())).thenReturn(new ByteArrayInputStream(doc.getInlineText().getBytes()));
+        when(documentService.loadContent(any())).thenAnswer(inv -> {
+            DocumentDocument d = inv.getArgument(0);
+            byte[] bytes = bodyByStorageId.getOrDefault(d.getStorageId(), new byte[0]);
+            return new ByteArrayInputStream(bytes);
+        });
 
         assertThatThrownBy(() ->
                 resolver.resolveAll(List.of(new AttachmentRef("doc-1")), TENANT, PROJECT))
@@ -167,7 +171,7 @@ class AttachmentResolverTest {
         assertThat(resolved.get(0).originalFilename()).isEqualTo("thesis-ch1.md");
     }
 
-    private static DocumentDocument sampleDocument(
+    private DocumentDocument sampleDocument(
             String id, String tenant, String project, String mimeType, byte[] data) {
         DocumentDocument doc = new DocumentDocument();
         doc.setId(id);
@@ -177,9 +181,11 @@ class AttachmentResolverTest {
         doc.setPath("file.bin");
         doc.setMimeType(mimeType);
         doc.setSize(data.length);
-        // Use inlineText so loadContent returns something deterministic
-        // when the test stub doesn't override it.
-        doc.setInlineText(new String(data));
+        String sid = "blob-" + id;
+        doc.setStorageId(sid);
+        bodyByStorageId.put(sid, data);
         return doc;
     }
+
+    private final java.util.Map<String, byte[]> bodyByStorageId = new java.util.HashMap<>();
 }

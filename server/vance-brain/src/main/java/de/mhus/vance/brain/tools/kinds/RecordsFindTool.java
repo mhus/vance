@@ -52,7 +52,7 @@ public class RecordsFindTool implements Tool {
                 support.requireInline(support.loadDocument(params, ctx)), "records");
         String query = KindToolSupport.requireString(params, "query").toLowerCase();
         String field = KindToolSupport.paramString(params, "field");
-        RecordsDocument rec = RecordsCodec.parse(doc.getInlineText(), doc.getMimeType());
+        RecordsDocument rec = RecordsCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         if (field != null && !rec.schema().contains(field)) {
             throw new ToolException("Field '" + field + "' is not in the schema "
                     + rec.schema());

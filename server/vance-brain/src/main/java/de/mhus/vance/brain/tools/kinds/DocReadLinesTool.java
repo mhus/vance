@@ -60,7 +60,7 @@ public class DocReadLinesTool implements Tool {
         int offset = offsetParam == null ? 1 : Math.max(1, offsetParam);
         int limit = limitParam == null ? DEFAULT_LIMIT : Math.min(MAX_LIMIT, Math.max(1, limitParam));
 
-        String[] lines = doc.getInlineText().split("\\R", -1);
+        String[] lines = support.readBody(doc, ctx).split("\\R", -1);
         int total = lines.length;
         if (offset > total) {
             return Map.of("documentId", doc.getId(),

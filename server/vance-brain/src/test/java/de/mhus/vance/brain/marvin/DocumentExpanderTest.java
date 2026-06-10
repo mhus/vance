@@ -281,14 +281,13 @@ class DocumentExpanderTest {
                 .path("plain")
                 .name("plain")
                 .mimeType("text/markdown")
-                .inlineText("# Just a heading\nno kind here.")
+                .storageId("blob-test-49483")
                 .build();
+        String body = "# Just a heading\nno kind here.";
         when(documentService.findByPath(eq(TENANT), eq(PROJECT), eq("plain")))
                 .thenReturn(Optional.of(doc));
         when(documentService.loadContent(any()))
-                .thenAnswer(inv -> new ByteArrayInputStream(
-                        ((DocumentDocument) inv.getArgument(0))
-                                .getInlineText().getBytes(StandardCharsets.UTF_8)));
+                .thenAnswer(inv -> new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8)));
 
         assertThatThrownBy(() -> expander.expand(
                 TENANT, PROJECT,
@@ -329,13 +328,12 @@ class DocumentExpanderTest {
                 .name("whatever.md")
                 .kind("list")
                 .mimeType("text/markdown")
-                .inlineText("---\nkind: list\n---\n- only\n")
+                .storageId("blob-test-16711")
                 .build();
+        String body = "---\nkind: list\n---\n- only\n";
         when(documentService.findById("doc-42")).thenReturn(Optional.of(doc));
         when(documentService.loadContent(any()))
-                .thenAnswer(inv -> new ByteArrayInputStream(
-                        ((DocumentDocument) inv.getArgument(0))
-                                .getInlineText().getBytes(StandardCharsets.UTF_8)));
+                .thenAnswer(inv -> new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8)));
 
         Map<String, Object> ref = new LinkedHashMap<>();
         ref.put("id", "doc-42");
@@ -412,6 +410,7 @@ class DocumentExpanderTest {
      * lookup name in {@link #ref(String)}.
      */
     private DocumentDocument stubDoc(String path, String kind, String mime, String body) {
+        String sid = "blob-test-" + path;
         DocumentDocument doc = DocumentDocument.builder()
                 .id("doc-" + path)
                 .tenantId(TENANT)
@@ -420,14 +419,12 @@ class DocumentExpanderTest {
                 .name(path)
                 .kind(kind)
                 .mimeType(mime)
-                .inlineText(body)
+                .storageId(sid)
                 .build();
         when(documentService.findByPath(eq(TENANT), eq(PROJECT), eq(path)))
                 .thenReturn(Optional.of(doc));
-        when(documentService.loadContent(any()))
-                .thenAnswer(inv -> new ByteArrayInputStream(
-                        ((DocumentDocument) inv.getArgument(0))
-                                .getInlineText().getBytes(StandardCharsets.UTF_8)));
+        when(documentService.loadContent(doc))
+                .thenAnswer(inv -> new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8)));
         return doc;
     }
 

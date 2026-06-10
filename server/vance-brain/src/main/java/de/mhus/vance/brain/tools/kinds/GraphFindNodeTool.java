@@ -46,7 +46,7 @@ public class GraphFindNodeTool implements Tool {
         DocumentDocument doc = support.requireKind(
                 support.requireInline(support.loadDocument(params, ctx)), "graph");
         String query = KindToolSupport.requireString(params, "query").toLowerCase();
-        GraphDocument g = GraphCodec.parse(doc.getInlineText(), doc.getMimeType());
+        GraphDocument g = GraphCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         List<Map<String, Object>> matches = new ArrayList<>();
         for (GraphNode n : g.nodes()) {
             boolean hit = n.id().toLowerCase().contains(query)

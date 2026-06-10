@@ -51,7 +51,7 @@ public class GraphRemoveEdgeTool implements Tool {
                 support.requireInline(support.loadDocument(params, ctx)), "graph");
         String source = KindToolSupport.requireString(params, "source");
         String target = KindToolSupport.requireString(params, "target");
-        GraphDocument g = GraphCodec.parse(doc.getInlineText(), doc.getMimeType());
+        GraphDocument g = GraphCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         List<GraphEdge> edges = new ArrayList<>(g.edges());
         boolean removed = edges.removeIf(e -> e.source().equals(source) && e.target().equals(target));
         if (!removed) {

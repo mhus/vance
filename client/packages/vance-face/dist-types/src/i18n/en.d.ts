@@ -303,7 +303,6 @@ declare const _default: {
         noDocumentsBody: string;
         createFirstDocument: string;
         ungrouped: string;
-        storedNote: string;
         editAsFile: string;
         detail: {
             sizeBy: string;
@@ -317,7 +316,6 @@ declare const _default: {
             versionsBadge: string;
             versionsBadgeTooltip: string;
             frontMatter: string;
-            readOnlyNote: string;
             titleLabel: string;
             pathLabel: string;
             pathHelp: string;
@@ -388,7 +386,6 @@ declare const _default: {
             delete: string;
             cancel: string;
             close: string;
-            storageBacked: string;
             previewTitle: string;
             previewBinary: string;
             confirmRestoreTitle: string;

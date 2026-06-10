@@ -493,7 +493,6 @@ public class ScriptCortexController {
                 .tags(doc.getTags())
                 .createdAtMs(toMillis(doc.getCreatedAt()))
                 .createdBy(doc.getCreatedBy())
-                .inline(doc.getInlineText() != null)
                 .kind(doc.getKind())
                 .build();
     }
@@ -510,8 +509,6 @@ public class ScriptCortexController {
                 .tags(doc.getTags())
                 .createdAtMs(toMillis(doc.getCreatedAt()))
                 .createdBy(doc.getCreatedBy())
-                .inline(doc.getInlineText() != null)
-                .inlineText(doc.getInlineText())
                 .kind(doc.getKind())
                 .headers(doc.getHeaders() == null
                         ? new LinkedHashMap<>()

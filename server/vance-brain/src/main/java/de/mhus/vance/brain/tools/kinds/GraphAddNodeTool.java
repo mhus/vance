@@ -51,7 +51,7 @@ public class GraphAddNodeTool implements Tool {
         String label = KindToolSupport.paramString(params, "label");
         String color = KindToolSupport.paramString(params, "color");
 
-        GraphDocument g = GraphCodec.parse(doc.getInlineText(), doc.getMimeType());
+        GraphDocument g = GraphCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         for (GraphNode existing : g.nodes()) {
             if (existing.id().equals(id)) {
                 throw new ToolException("Node id '" + id + "' already exists");

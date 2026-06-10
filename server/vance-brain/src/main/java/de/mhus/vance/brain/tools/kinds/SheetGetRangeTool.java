@@ -64,7 +64,7 @@ public class SheetGetRangeTool implements Tool {
         int rowMin = Math.min(topLeft.row(), bottomRight.row());
         int rowMax = Math.max(topLeft.row(), bottomRight.row());
 
-        SheetDocument sheet = SheetCodec.parse(doc.getInlineText(), doc.getMimeType());
+        SheetDocument sheet = SheetCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         Map<String, SheetCell> byField = new HashMap<>();
         for (SheetCell c : sheet.cells()) byField.put(c.field(), c);
 

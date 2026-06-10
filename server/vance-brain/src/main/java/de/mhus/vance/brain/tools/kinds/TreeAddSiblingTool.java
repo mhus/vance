@@ -59,8 +59,8 @@ public class TreeAddSiblingTool implements Tool {
         String text = KindToolSupport.requireRawString(params, "text");
 
         TreeDocument tree = "mindmap".equals(doc.getKind())
-                ? MindmapCodec.parse(doc.getInlineText(), doc.getMimeType())
-                : TreeCodec.parse(doc.getInlineText(), doc.getMimeType());
+                ? MindmapCodec.parse(support.readBody(doc, ctx), doc.getMimeType())
+                : TreeCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         // Make sure the reference item exists.
         TreePath.at(tree, refPath);
 

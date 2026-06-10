@@ -14,8 +14,10 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Each field is independently optional — fields left {@code null} are not
  * touched on the server. This lets the UI patch the title without re-sending
- * the entire content. Only inline-stored documents accept {@link #inlineText}
- * updates in v1.
+ * the entire content. Body edits flow through
+ * {@code PUT /brain/{tenant}/documents/{id}/content} (raw streaming
+ * endpoint); {@link #inlineText} on this DTO is the legacy small-text
+ * convenience for callers that still POST JSON.
  */
 @Data
 @Builder
@@ -29,6 +31,15 @@ public class DocumentUpdateRequest {
 
     private @Nullable List<String> tags;
 
+    /**
+     * Legacy convenience for small text bodies. The web/mobile editor uses
+     * the streaming {@code PUT /content} endpoint instead — but Foot,
+     * brain-internal callers and the script-cortex flow still set this
+     * field. Server-side it goes through {@link
+     * de.mhus.vance.shared.document.DocumentService#update}'s
+     * streaming-store path, so size is no concern.
+     */
+    @Deprecated
     private @Nullable String inlineText;
 
     /**

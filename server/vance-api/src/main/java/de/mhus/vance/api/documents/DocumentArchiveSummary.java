@@ -40,7 +40,8 @@ public class DocumentArchiveSummary {
     @Builder.Default
     private List<String> tags = new ArrayList<>();
 
-    /** Whether the archived version was inline-stored (vs. storage-backed). */
+    /** Legacy client-side cache flag — server no longer sets this. */
+    @Deprecated
     private boolean inline;
 
     private @Nullable String kind;

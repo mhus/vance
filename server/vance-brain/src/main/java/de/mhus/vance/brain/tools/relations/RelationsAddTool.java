@@ -170,7 +170,7 @@ public class RelationsAddTool implements Tool {
     private DocumentDocument appendTo(
             DocumentDocument doc,
             String source, String type, String target, String note) {
-        String inline = doc.getInlineText();
+        String inline = documentService.readContent(doc);
         if (inline == null) {
             throw new ToolException(
                     "Relations file '" + doc.getPath() + "' is storage-backed; "

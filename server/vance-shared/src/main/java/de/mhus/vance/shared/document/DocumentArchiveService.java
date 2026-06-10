@@ -86,7 +86,6 @@ public class DocumentArchiveService {
                 .size(doc.getSize())
                 .storageId(movedStorageId)
                 .compressed(doc.isCompressed())
-                .inlineText(doc.getInlineText())
                 .kind(doc.getKind())
                 .headers(doc.getHeaders() == null
                         ? new LinkedHashMap<>()
@@ -113,31 +112,27 @@ public class DocumentArchiveService {
      * the stream from {@link StorageService#load}. Caller closes.
      */
     public InputStream loadContent(DocumentArchiveDocument archive) {
-        // Legacy inline path stays until the migrator has drained inlineText.
-        String inline = archive.getInlineText();
-        if (inline != null) {
-            return new ByteArrayInputStream(inline.getBytes(StandardCharsets.UTF_8));
-        }
         String sid = archive.getStorageId();
-        if (sid != null) {
-            InputStream stream = storageService.load(sid);
-            if (stream != null) {
-                if (archive.isCompressed()) {
-                    try {
-                        return new GZIPInputStream(stream);
-                    } catch (IOException e) {
-                        log.warn("Failed to open gzip stream for archive id='{}' storageId='{}': {}",
-                                archive.getId(), sid, e.toString());
-                        try { stream.close(); } catch (IOException ignored) { /* best effort */ }
-                        return InputStream.nullInputStream();
-                    }
-                }
-                return stream;
-            }
+        if (sid == null) {
+            return InputStream.nullInputStream();
+        }
+        InputStream stream = storageService.load(sid);
+        if (stream == null) {
             log.warn("StorageService returned null for archive id='{}' storageId='{}'",
                     archive.getId(), sid);
+            return InputStream.nullInputStream();
         }
-        return InputStream.nullInputStream();
+        if (archive.isCompressed()) {
+            try {
+                return new GZIPInputStream(stream);
+            } catch (IOException e) {
+                log.warn("Failed to open gzip stream for archive id='{}' storageId='{}': {}",
+                        archive.getId(), sid, e.toString());
+                try { stream.close(); } catch (IOException ignored) { /* best effort */ }
+                return InputStream.nullInputStream();
+            }
+        }
+        return stream;
     }
 
     /**
@@ -145,8 +140,6 @@ public class DocumentArchiveService {
      * empty string if the underlying blob is unreadable.
      */
     public String readContentAsString(DocumentArchiveDocument archive) {
-        String inline = archive.getInlineText();
-        if (inline != null) return inline;
         try (InputStream in = loadContent(archive)) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
@@ -168,21 +161,10 @@ public class DocumentArchiveService {
      *         is set.
      */
     public RestorePayload restore(DocumentArchiveDocument archive) {
-        if (archive.getInlineText() != null) {
-            byte[] bytes = archive.getInlineText().getBytes(StandardCharsets.UTF_8);
-            return new RestorePayload(
-                    archive.getInlineText(),
-                    null,
-                    false,
-                    bytes.length,
-                    archive.getMimeType(),
-                    archive.getTitle(),
-                    new java.util.ArrayList<>(archive.getTags()));
-        }
         String sid = archive.getStorageId();
         if (sid == null) {
-            // Empty archive — restoring yields empty inline content.
-            return new RestorePayload("", null, false, 0L,
+            // Empty archive — restoring yields an empty live document.
+            return new RestorePayload(null, false, 0L,
                     archive.getMimeType(),
                     archive.getTitle(),
                     new java.util.ArrayList<>(archive.getTags()));
@@ -196,7 +178,6 @@ public class DocumentArchiveService {
         // duplicate() copies raw bytes — gzip wrapper (if any) carries over,
         // so the compressed flag of the archive applies to the new blob too.
         return new RestorePayload(
-                null,
                 dupId,
                 archive.isCompressed(),
                 archive.getSize(),
@@ -281,7 +262,6 @@ public class DocumentArchiveService {
      * {@link #inlineText} and {@link #storageId} is non-null.
      */
     public record RestorePayload(
-            @Nullable String inlineText,
             @Nullable String storageId,
             boolean compressed,
             long size,

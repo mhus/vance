@@ -751,7 +751,6 @@ public class DocumentService {
 
         ContentWriteResult write = streamingStoreContent(
                 doc.getTenantId(), doc.getPath(), content);
-        doc.setInlineText(null);
         doc.setStorageId(write.storageId());
         doc.setCompressed(write.compressed());
         doc.setSize(write.originalSize());
@@ -815,7 +814,6 @@ public class DocumentService {
         if (newMimeType != null && !newMimeType.isBlank()) {
             doc.setMimeType(newMimeType);
         }
-        doc.setInlineText(null);
         doc.setStorageId(write.storageId());
         doc.setCompressed(write.compressed());
         doc.setSize(write.originalSize());
@@ -1072,8 +1070,6 @@ public class DocumentService {
     }
 
     private String readAsString(DocumentDocument doc) {
-        String inline = doc.getInlineText();
-        if (inline != null) return inline;
         try (InputStream in = loadContent(doc)) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
@@ -1110,32 +1106,27 @@ public class DocumentService {
     }
 
     public InputStream loadContent(DocumentDocument doc) {
-        // Legacy inline path — survives until the boot-time migrator has
-        // drained every tenant. After that the inlineText field comes out.
-        String inline = doc.getInlineText();
-        if (inline != null) {
-            return new ByteArrayInputStream(inline.getBytes(StandardCharsets.UTF_8));
-        }
         String sid = doc.getStorageId();
-        if (sid != null) {
-            InputStream stream = storageService.load(sid);
-            if (stream != null) {
-                if (doc.isCompressed()) {
-                    try {
-                        return new GZIPInputStream(stream);
-                    } catch (IOException e) {
-                        log.warn("Failed to open gzip stream for document id='{}' storageId='{}': {}",
-                                doc.getId(), sid, e.toString());
-                        try { stream.close(); } catch (IOException ignored) { /* best effort */ }
-                        return InputStream.nullInputStream();
-                    }
-                }
-                return stream;
-            }
+        if (sid == null) {
+            return InputStream.nullInputStream();
+        }
+        InputStream stream = storageService.load(sid);
+        if (stream == null) {
             log.warn("StorageService returned null for document id='{}' storageId='{}'",
                     doc.getId(), sid);
+            return InputStream.nullInputStream();
         }
-        return InputStream.nullInputStream();
+        if (doc.isCompressed()) {
+            try {
+                return new GZIPInputStream(stream);
+            } catch (IOException e) {
+                log.warn("Failed to open gzip stream for document id='{}' storageId='{}': {}",
+                        doc.getId(), sid, e.toString());
+                try { stream.close(); } catch (IOException ignored) { /* best effort */ }
+                return InputStream.nullInputStream();
+            }
+        }
+        return stream;
     }
 
     /**
@@ -1249,12 +1240,7 @@ public class DocumentService {
 
         if (newInlineText != null) {
             byte[] bytes = newInlineText.getBytes(StandardCharsets.UTF_8);
-            // Compare against the actual current content. After the
-            // inline→storage migration the inlineText field is null, so we
-            // peek the storage blob; for legacy inline docs we still hit the
-            // fast path on the inlineText field.
-            String currentContent = doc.getInlineText() != null
-                    ? doc.getInlineText() : readAsString(doc);
+            String currentContent = readAsString(doc);
             boolean contentChanged = !newInlineText.equals(currentContent);
 
             // Archive the *current* version before overwriting — but only
@@ -1295,8 +1281,7 @@ public class DocumentService {
                         "Failed to stream updated document content to "
                                 + "storage for id='" + id + "'", e);
             }
-            doc.setInlineText(null);
-            doc.setStorageId(write.storageId());
+                doc.setStorageId(write.storageId());
             doc.setCompressed(write.compressed());
             doc.setSize(write.originalSize());
             if (oldStorageId != null
@@ -1489,21 +1474,15 @@ public class DocumentService {
         }
         String oldStorageId = live.getStorageId();
 
-        // 2. Apply restored content. archiveService.restore() handed us a
-        //    fresh blob (or inline text); the live row swaps in. The old
-        //    storage pointer (if any) was moved to the archive entry in
-        //    step 1 — but defensive: if archive failed and oldStorageId
-        //    is still live, we'd still need to clean it up afterwards.
+        // 2. Apply restored content. archiveService.restore() duplicated the
+        //    archive's blob; we point the live row at the freshly minted
+        //    storageId. The old storage pointer (if any) was moved to the
+        //    archive entry in step 1 — but defensive: if archive failed and
+        //    oldStorageId is still live, we'd still need to clean it up
+        //    afterwards.
         DocumentArchiveService.RestorePayload payload = archiveService.restore(archive);
-        if (payload.inlineText() != null) {
-            live.setInlineText(payload.inlineText());
-            live.setStorageId(null);
-            live.setCompressed(false);
-        } else {
-            live.setInlineText(null);
-            live.setStorageId(payload.storageId());
-            live.setCompressed(payload.compressed());
-        }
+        live.setStorageId(payload.storageId());
+        live.setCompressed(payload.compressed());
         live.setSize(payload.size());
         if (payload.mimeType() != null) live.setMimeType(payload.mimeType());
         if (payload.title() != null) live.setTitle(payload.title());
@@ -2117,13 +2096,8 @@ public class DocumentService {
      * on every save and is never written back from.
      */
     private void applyHeader(DocumentDocument doc) {
-        // Legacy inline path keeps working: parse the string directly so we
-        // avoid one storage-side read until the migrator has drained inlineText.
         Optional<DocumentHeader> parsed;
-        String inline = doc.getInlineText();
-        if (inline != null) {
-            parsed = headerParser.parse(doc.getMimeType(), inline);
-        } else if (doc.getStorageId() != null) {
+        if (doc.getStorageId() != null) {
             try (InputStream in = loadContent(doc)) {
                 parsed = headerParser.parseStream(doc.getMimeType(), in);
             } catch (IOException e) {

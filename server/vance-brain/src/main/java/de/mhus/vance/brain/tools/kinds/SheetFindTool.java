@@ -46,7 +46,7 @@ public class SheetFindTool implements Tool {
         DocumentDocument doc = support.requireKind(
                 support.requireInline(support.loadDocument(params, ctx)), "sheet");
         String query = KindToolSupport.requireString(params, "query").toLowerCase();
-        SheetDocument sheet = SheetCodec.parse(doc.getInlineText(), doc.getMimeType());
+        SheetDocument sheet = SheetCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         List<Map<String, Object>> matches = new ArrayList<>();
         for (SheetCell c : sheet.cells()) {
             if (!c.data().toLowerCase().contains(query)) continue;

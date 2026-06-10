@@ -50,7 +50,7 @@ public class SheetGetCellTool implements Tool {
         SheetCodec.Address addr = SheetCodec.parseAddress(field);
         if (addr == null) throw new ToolException("Invalid A1 address: " + field);
         String key = addr.column() + addr.row();
-        SheetDocument sheet = SheetCodec.parse(doc.getInlineText(), doc.getMimeType());
+        SheetDocument sheet = SheetCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("documentId", doc.getId());
         out.put("field", key);

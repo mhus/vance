@@ -45,8 +45,8 @@ public class TreeGetTool implements Tool {
         DocumentDocument doc = support.requireKind(
                 support.requireInline(support.loadDocument(params, ctx)), "tree", "mindmap");
         TreeDocument tree = "mindmap".equals(doc.getKind())
-                ? MindmapCodec.parse(doc.getInlineText(), doc.getMimeType())
-                : TreeCodec.parse(doc.getInlineText(), doc.getMimeType());
+                ? MindmapCodec.parse(support.readBody(doc, ctx), doc.getMimeType())
+                : TreeCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("documentId", doc.getId());
         out.put("kind", tree.kind());

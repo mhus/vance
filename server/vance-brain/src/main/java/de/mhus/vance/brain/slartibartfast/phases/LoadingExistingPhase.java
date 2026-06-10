@@ -83,8 +83,8 @@ public class LoadingExistingPhase {
             return;
         }
 
-        String yaml = doc.get().getInlineText();
-        if (yaml == null || yaml.isBlank()) {
+        String yaml = documentService.readContent(doc.get());
+        if (yaml.isBlank()) {
             state.setFailureReason("Existing recipe '" + name
                     + "' at " + path + " is empty");
             appendFailedIteration(state, path, "FAILED — empty document");

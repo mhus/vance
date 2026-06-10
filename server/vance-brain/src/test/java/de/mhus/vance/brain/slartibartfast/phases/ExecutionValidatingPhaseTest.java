@@ -168,9 +168,10 @@ class ExecutionValidatingPhaseTest {
     private void stubDoc(String path, int charCount) {
         DocumentDocument doc = new DocumentDocument();
         doc.setPath(path);
-        doc.setInlineText("x".repeat(charCount));
+        doc.setStorageId("blob-" + path);
         when(documentService.findByPath(eq("acme"), eq("test-project"), eq(path)))
                 .thenReturn(Optional.of(doc));
+        when(documentService.readContent(doc)).thenReturn("x".repeat(charCount));
     }
 
     private static Subgoal sg(String id, String goal, boolean speculative) {

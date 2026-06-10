@@ -312,8 +312,8 @@ public class ContentValidatingPhase {
                 }
             }
             if (excluded) continue;
-            if (doc.getInlineText() == null
-                    || doc.getInlineText().isBlank()) continue;
+            if (documentService.readContent(doc) == null
+                    || documentService.readContent(doc).isBlank()) continue;
             output.add(doc);
         }
         // Sort by (path-depth ASC, size DESC). Shallow paths are
@@ -327,8 +327,8 @@ public class ContentValidatingPhase {
             int db = pathDepth(b.getPath());
             if (da != db) return Integer.compare(da, db);
             return Integer.compare(
-                    b.getInlineText().length(),
-                    a.getInlineText().length());
+                    documentService.readContent(b).length(),
+                    documentService.readContent(a).length());
         });
         return output;
     }
@@ -422,7 +422,7 @@ public class ContentValidatingPhase {
         int remainingBudget = TOTAL_BUDGET_CHARS;
         List<DocumentDocument> deferredByName = new ArrayList<>();
         for (DocumentDocument doc : artifacts) {
-            String full = doc.getInlineText();
+            String full = documentService.readContent(doc);
             int trueLen = full.length();
             if (remainingBudget <= 500) {
                 deferredByName.add(doc);
@@ -447,7 +447,7 @@ public class ContentValidatingPhase {
                     + "only — budget exhausted) ===\n");
             for (DocumentDocument doc : deferredByName) {
                 sb.append("- ").append(doc.getPath()).append(" (")
-                        .append(doc.getInlineText().length())
+                        .append(documentService.readContent(doc).length())
                         .append(" chars, content not shown)\n");
             }
             sb.append("\n");

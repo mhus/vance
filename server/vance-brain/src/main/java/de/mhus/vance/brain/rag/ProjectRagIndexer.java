@@ -54,7 +54,7 @@ public class ProjectRagIndexer {
             return;
         }
 
-        String content = doc.getInlineText();
+        String content = documentService.readContent(doc);
         if (content == null || content.isBlank()) {
             // Storage-backed text? v1 only indexes inline. A later PR can
             // stream from StorageService when needed.

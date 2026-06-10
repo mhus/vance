@@ -60,7 +60,7 @@ public class SheetSetCellTool implements Tool {
         String color = KindToolSupport.paramRawString(params, "color");
         String bg = KindToolSupport.paramRawString(params, "background");
 
-        SheetDocument sheet = SheetCodec.parse(doc.getInlineText(), doc.getMimeType());
+        SheetDocument sheet = SheetCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         List<SheetCell> cells = new ArrayList<>(sheet.cells().size() + 1);
         boolean replaced = false;
         SheetCell newCell = new SheetCell(key, data,

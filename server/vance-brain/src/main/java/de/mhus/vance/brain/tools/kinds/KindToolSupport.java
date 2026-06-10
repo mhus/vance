@@ -93,12 +93,36 @@ public class KindToolSupport {
         return doc;
     }
 
-    /** Validate that the inline body is editable (not storage-backed). */
-    public DocumentDocument requireInline(DocumentDocument doc) {
-        if (doc.getInlineText() == null) {
-            throw new ToolException("Document " + identify(doc)
-                    + " is storage-backed; only inline documents are editable.");
+    /**
+     * Read the document body as UTF-8 — buffer-aware. Tools that have a
+     * {@link ToolInvocationContext} call the 2-arg overload so in-flight
+     * buffered edits from prior tool calls in the same process are
+     * visible. The 1-arg form bypasses the buffer (only safe when the
+     * caller knows no buffer can apply, e.g. one-shot reads in startup
+     * code).
+     */
+    public String readBody(DocumentDocument doc) {
+        return documentService.readContent(doc);
+    }
+
+    public String readBody(DocumentDocument doc, ToolInvocationContext ctx) {
+        if (ctx != null && ctx.processId() != null) {
+            String buffered = bufferService.peekBody(ctx.processId(), doc.getId());
+            if (buffered != null) return buffered;
         }
+        return documentService.readContent(doc);
+    }
+
+    /**
+     * Legacy guard from the inline-storage era — kept as an identity
+     * no-op so the wide existing call surface compiles unchanged. Every
+     * document is storage-backed now, so editability is universal.
+     *
+     * @deprecated drop the call when touching the surrounding code; the
+     *     return value is the same {@code doc} you passed in.
+     */
+    @Deprecated
+    public DocumentDocument requireInline(DocumentDocument doc) {
         return doc;
     }
 

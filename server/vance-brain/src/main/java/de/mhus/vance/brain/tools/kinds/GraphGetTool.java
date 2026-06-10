@@ -39,7 +39,7 @@ public class GraphGetTool implements Tool {
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         DocumentDocument doc = support.requireKind(
                 support.requireInline(support.loadDocument(params, ctx)), "graph");
-        GraphDocument g = GraphCodec.parse(doc.getInlineText(), doc.getMimeType());
+        GraphDocument g = GraphCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         List<Map<String, Object>> nodes = new ArrayList<>();
         for (GraphNode n : g.nodes()) {
             Map<String, Object> m = new LinkedHashMap<>();

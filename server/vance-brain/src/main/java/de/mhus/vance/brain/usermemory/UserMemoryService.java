@@ -239,10 +239,10 @@ public class UserMemoryService {
         if (docOpt.isEmpty()) {
             return null;
         }
-        // Persona + facts stay inline — small text on purpose. A
-        // storage-backed doc would need a streaming read; the prompt
-        // budget keeps us well under the inline threshold.
-        return docOpt.get().getInlineText();
+        // Persona + facts are small text on purpose — the prompt budget
+        // keeps them well under any reasonable size. readContent streams
+        // through storage transparently.
+        return documentService.readContent(docOpt.get());
     }
 
     private static String mergeAppend(@Nullable String existing, String newPart) {

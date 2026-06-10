@@ -53,8 +53,8 @@ public class TreeRemoveTool implements Tool {
         int[] path = TreePath.parse(KindToolSupport.requireString(params, "path"));
 
         TreeDocument tree = "mindmap".equals(doc.getKind())
-                ? MindmapCodec.parse(doc.getInlineText(), doc.getMimeType())
-                : TreeCodec.parse(doc.getInlineText(), doc.getMimeType());
+                ? MindmapCodec.parse(support.readBody(doc, ctx), doc.getMimeType())
+                : TreeCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         TreeItem removed = TreePath.at(tree, path);
         TreeDocument updated = TreePath.removeAt(tree, path);
         String body = "mindmap".equals(doc.getKind())

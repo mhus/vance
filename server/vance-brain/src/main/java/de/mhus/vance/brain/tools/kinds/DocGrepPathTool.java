@@ -101,9 +101,9 @@ public class DocGrepPathTool implements Tool {
             int scanned = 0;
             for (DocumentDocument d : all) {
                 if (!pathPrefix.isEmpty() && !d.getPath().startsWith(pathPrefix)) continue;
-                if (d.getInlineText() == null) continue;
+                if (support.readBody(d, ctx) == null) continue;
                 scanned++;
-                if (containsMatch(d.getInlineText(), pattern)) {
+                if (containsMatch(support.readBody(d, ctx), pattern)) {
                     Map<String, Object> hit = new LinkedHashMap<>();
                     hit.put("documentId", d.getId());
                     hit.put("path", d.getPath());
@@ -127,9 +127,9 @@ public class DocGrepPathTool implements Tool {
         outer:
         for (DocumentDocument d : all) {
             if (pathPrefix != null && !d.getPath().startsWith(pathPrefix)) continue;
-            if (d.getInlineText() == null) continue;
+            if (support.readBody(d, ctx) == null) continue;
             scanned++;
-            String[] lines = d.getInlineText().split("\\R", -1);
+            String[] lines = support.readBody(d, ctx).split("\\R", -1);
             for (int i = 0; i < lines.length; i++) {
                 if (!pattern.matcher(lines[i]).find()) continue;
                 if (hits.size() >= limit) { truncated = true; break outer; }

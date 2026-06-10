@@ -1,5 +1,5 @@
 import { ref } from 'vue';
-import { brainFetch } from '@vance/shared';
+import { brainFetch, brainFetchText, brainSendRaw } from '@vance/shared';
 /**
  * Reactive wrapper around the document REST endpoints. One instance per
  * editor — keeps current page state and exposes `loadPage` / `loadOne` /
@@ -164,6 +164,15 @@ export function useDocuments(pageSize = 20) {
         error.value = null;
         try {
             const updated = await brainFetch('PUT', `documents/${encodeURIComponent(id)}`, { body });
+            // The metadata PUT doesn't carry the body — server DTOs come back with
+            // inline=false / inlineText=null since the full-storage migration.
+            // Preserve the editor's content cache from the previous selection so
+            // the inline editor branch stays mounted after a title/tags/path save.
+            const prev = selected.value;
+            if (prev?.id === id && prev.inline) {
+                updated.inline = true;
+                updated.inlineText = prev.inlineText;
+            }
             selected.value = updated;
             // Reflect summary changes in the visible list without a full reload.
             const idx = items.value.findIndex((d) => d.id === id);
@@ -223,6 +232,63 @@ export function useDocuments(pageSize = 20) {
             return null;
         }
     }
+    /**
+     * Streams the document's content via the brain's
+     * {@code GET /documents/{id}/content} endpoint and returns it as text.
+     * Used by the editor when it selects a doc — the body lives in storage
+     * since the inline→storage migration, so the list/detail DTO no longer
+     * carries it. Returns `null` on 404 (deleted in the meantime).
+     */
+    async function loadContent(id) {
+        error.value = null;
+        try {
+            return await brainFetchText(`documents/${encodeURIComponent(id)}/content`);
+        }
+        catch (e) {
+            error.value = e instanceof Error ? e.message : 'Failed to load document content.';
+            return null;
+        }
+    }
+    /**
+     * Saves edited content back via {@code PUT /documents/{id}/content} as a
+     * raw body. {@code mimeType} goes on the request as {@code Content-Type}
+     * so the server can update the mime when the user corrected it. Returns
+     * the refreshed DTO so callers can swap it into local state.
+     */
+    async function replaceContent(id, content, mimeType) {
+        loading.value = true;
+        error.value = null;
+        try {
+            const mime = mimeType.trim() || 'text/plain';
+            const updated = await brainSendRaw('PUT', `documents/${encodeURIComponent(id)}/content`, content, `${mime}; charset=utf-8`);
+            // The server DTO carries inline=false / inlineText=null since the
+            // full-storage migration; patch the client-side cache fields BEFORE
+            // assigning so Vue's reactivity sees a consistent state on the very
+            // first render after the save (otherwise the editor briefly flips to
+            // the binary-preview branch).
+            updated.inlineText = content;
+            updated.inline = true;
+            if (selected.value?.id === id) {
+                selected.value = updated;
+            }
+            const idx = items.value.findIndex((d) => d.id === id);
+            if (idx >= 0) {
+                items.value[idx] = {
+                    ...items.value[idx],
+                    size: updated.size,
+                    mimeType: updated.mimeType,
+                };
+            }
+            return updated;
+        }
+        catch (e) {
+            error.value = e instanceof Error ? e.message : 'Failed to save document content.';
+            return null;
+        }
+        finally {
+            loading.value = false;
+        }
+    }
     async function remove(id) {
         loading.value = true;
         error.value = null;
@@ -269,6 +335,8 @@ export function useDocuments(pageSize = 20) {
         create,
         upload,
         update,
+        loadContent,
+        replaceContent,
         setSummary,
         remove,
     };

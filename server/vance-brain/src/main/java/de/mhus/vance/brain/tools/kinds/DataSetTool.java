@@ -52,7 +52,7 @@ public class DataSetTool implements Tool {
         String[] path = JsonPointer.parse(pathStr);
         Object value = params == null ? null : params.get("value");
 
-        DataDocument data = DataCodec.parse(doc.getInlineText(), doc.getMimeType());
+        DataDocument data = DataCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         Object body = JsonPointer.mutableCopy(data.body());
         if (body == null) body = new LinkedHashMap<String, Object>();
         Object[] holder = new Object[]{body};

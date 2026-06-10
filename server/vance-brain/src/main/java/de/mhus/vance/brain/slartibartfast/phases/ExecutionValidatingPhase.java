@@ -132,8 +132,8 @@ public class ExecutionValidatingPhase {
                 missing.add(path);
                 continue;
             }
-            String text = doc.get().getInlineText();
-            int size = text == null ? 0 : text.length();
+            String text = documentService.readContent(doc.get());
+            int size = text.length();
             if (size < MIN_ARTIFACT_CHARS) {
                 tooSmall.add(path + " (" + size + " chars)");
             } else {

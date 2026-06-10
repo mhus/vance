@@ -1604,6 +1604,20 @@ export default {
       uiLevelAdmin: 'Admin (zusätzlich Benutzerverwaltung)',
       uiLevelSaved: 'Ansicht aktualisiert.',
     },
+    speech: {
+      title: 'Sprache & Audio',
+      description:
+        'Voreinstellungen für Vorlesen und Spracherkennung. Welche Stimmen verfügbar sind, hängt vom Browser ab; im Chat gibt es Schnellregler für Lautstärke und Geschwindigkeit.',
+      voice: 'Stimme',
+      voiceAuto: 'Automatisch',
+      voiceDefaultSuffix: ' — Standard',
+      voiceUnsupported: 'Dieser Browser bietet keine Sprachsynthese-Stimmen zur Auswahl.',
+      voiceSaved: 'Stimme aktualisiert.',
+      rate: 'Geschwindigkeit',
+      rateSaved: 'Geschwindigkeit aktualisiert.',
+      volume: 'Lautstärke',
+      volumeSaved: 'Lautstärke aktualisiert.',
+    },
     teams: {
       title: 'Teams',
       empty: 'Sie sind in diesem Mandanten in keinem Team Mitglied.',

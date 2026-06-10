@@ -3,12 +3,11 @@
  * shared `speech/preferences.ts` deliberately does not contain.
  * Mobile builds use `expo-speech` instead and never import this file.
  *
- * The picker heuristic ({@link pickDefaultMaleVoice}) and voice
- * resolution ({@link resolveVoice}) live here because they speak the
- * `SpeechSynthesisVoice` type — a DOM-only construct. The
+ * Voice resolution ({@link resolveVoice}) and the language-matching
+ * picker ({@link pickFirstVoiceForLanguage}) live here because they
+ * speak the `SpeechSynthesisVoice` type — a DOM-only construct. The
  * preferences they read (URI / rate / volume) come from
- * `@vance/shared/speech/preferences` so the same user choice
- * surfaces on both platforms.
+ * `./speechSettings` so the same user choice surfaces on every page.
  */
 /**
  * Returns whether the browser exposes the Web Speech Synthesis API.
@@ -29,23 +28,32 @@ export declare function listVoices(): SpeechSynthesisVoice[];
  */
 export declare function onVoicesChanged(handler: () => void): () => void;
 /**
- * Heuristic to pick a sensible default voice for `lang` when the
- * user hasn't chosen one. We prefer voices whose name does *not*
- * match a small list of common female-name hints — the Web Speech
- * API doesn't expose voice gender, so this is best-effort. The user
- * can always override in the settings popover.
+ * First available voice whose BCP-47 primary subtag matches
+ * {@code lang}'s primary subtag (e.g. {@code 'de-DE'} → {@code 'de'}).
+ * Returns {@code null} when no voice matches — the caller should then
+ * skip TTS rather than fall back to a wrong-language voice.
  */
-export declare function pickDefaultMaleVoice(voices: SpeechSynthesisVoice[], lang: string): SpeechSynthesisVoice | null;
+export declare function pickFirstVoiceForLanguage(voices: SpeechSynthesisVoice[], lang: string): SpeechSynthesisVoice | null;
 /**
- * Resolve the {@link SpeechSynthesisVoice} to use for a given
- * language: prefer the user's explicit pick (matched by URI); fall
- * back to {@link pickDefaultMaleVoice}.
+ * Resolve the {@link SpeechSynthesisVoice} to use for {@code lang}:
+ *   1. user's stored pick (matched by URI), provided its language
+ *      still matches — covers the cross-device case where the saved
+ *      URI exists in the voice catalogue but is, say, a German
+ *      voice on an EN page.
+ *   2. first voice in the requested language.
+ *   3. {@code null} — caller skips TTS rather than speaking the
+ *      wrong language.
  */
 export declare function resolveVoice(lang: string): SpeechSynthesisVoice | null;
 /**
- * Build a {@link SpeechSynthesisUtterance} preconfigured from the
- * persisted preferences. Caller is responsible for
- * `speechSynthesis.speak()`.
+ * Build a {@link SpeechSynthesisUtterance}. {@code rate} / {@code volume}
+ * default to the persisted profile preferences but the caller can
+ * override either — used by the chat composer to apply the user's
+ * in-session quick-adjust without writing it back to the server.
+ * Caller is responsible for `speechSynthesis.speak()`.
  */
-export declare function buildUtterance(text: string, lang: string): SpeechSynthesisUtterance | null;
+export declare function buildUtterance(text: string, lang: string, overrides?: {
+    rate?: number;
+    volume?: number;
+}): SpeechSynthesisUtterance | null;
 //# sourceMappingURL=speechWeb.d.ts.map

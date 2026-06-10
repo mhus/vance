@@ -1595,6 +1595,20 @@ export default {
       uiLevelAdmin: 'Admin (adds user management)',
       uiLevelSaved: 'Surface updated.',
     },
+    speech: {
+      title: 'Speech & Audio',
+      description:
+        'Defaults for read-aloud and speech recognition. Voice depends on the languages your browser provides; the chat composer offers quick volume + rate sliders for the per-session adjust.',
+      voice: 'Voice',
+      voiceAuto: 'Auto',
+      voiceDefaultSuffix: ' — default',
+      voiceUnsupported: 'This browser has no speech-synthesis voices to choose from.',
+      voiceSaved: 'Voice updated.',
+      rate: 'Speed',
+      rateSaved: 'Speed updated.',
+      volume: 'Volume',
+      volumeSaved: 'Volume updated.',
+    },
     teams: {
       title: 'Teams',
       empty: "You're not a member of any team in this tenant.",

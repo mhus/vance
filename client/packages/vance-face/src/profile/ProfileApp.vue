@@ -1,11 +1,27 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   applyTheme,
   type WebUiLevel,
   type WebUiTheme,
 } from '@/platform';
+import {
+  isSpeechSynthesisSupported,
+  listVoices,
+  onVoicesChanged,
+} from '@/platform/speechWeb';
+import {
+  resolveSpeechLanguage,
+} from '@/platform/speechSettings';
+import {
+  DEFAULT_RATE,
+  DEFAULT_VOLUME,
+  MAX_RATE,
+  MAX_VOLUME,
+  MIN_RATE,
+  MIN_VOLUME,
+} from '@vance/shared';
 import { setUiLocale } from '@/i18n';
 import { EditorShell, VAlert, VButton, VCard, VInput, VSelect } from '@components/index';
 import { useProfile } from '@composables/useProfile';
@@ -29,6 +45,44 @@ const LANGUAGE_KEY = 'webui.language';
 const CHAT_LANGUAGE_KEY = 'chat.language';
 const THEME_KEY = 'webui.theme';
 const UI_LEVEL_KEY = 'webui.uiLevel';
+const SPEECH_VOICE_KEY = 'webui.speech.voiceUri';
+const SPEECH_RATE_KEY = 'webui.speech.rate';
+const SPEECH_VOLUME_KEY = 'webui.speech.volume';
+
+// Speech settings — voice depends on browser-provided voices for the
+// resolved chat-language, rate + volume are numeric strings (server
+// stores them prefixed with webui.speech.). Bridges the same chat.language
+// cascade that the ChatComposer uses for speech recognition.
+const speechSupported = ref(false);
+const speechVoiceDraft = ref<string>('');
+const speechRateDraft = ref<number>(DEFAULT_RATE);
+const speechVolumeDraft = ref<number>(DEFAULT_VOLUME);
+const speechVoiceSaved = ref<string | null>(null);
+const speechRateSaved = ref<string | null>(null);
+const speechVolumeSaved = ref<string | null>(null);
+
+interface VoiceOption {
+  value: string;
+  label: string;
+}
+const voiceOptions = ref<VoiceOption[]>([]);
+let voicesUnsubscribe: (() => void) | null = null;
+
+function refreshVoiceOptions(): void {
+  if (!speechSupported.value) return;
+  const targetLang = resolveSpeechLanguage().toLowerCase().split('-')[0];
+  const matching = listVoices()
+    .filter((v) => v.lang.toLowerCase().replace('_', '-').split('-')[0] === targetLang)
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name));
+  voiceOptions.value = [
+    { value: '', label: t('profile.speech.voiceAuto') },
+    ...matching.map((v) => ({
+      value: v.voiceURI,
+      label: `${v.name} (${v.lang})${v.default ? t('profile.speech.voiceDefaultSuffix') : ''}`,
+    })),
+  ];
+}
 
 function asTheme(value: string | undefined | null): WebUiTheme {
   // Accept anything stored on the server but normalise unknown
@@ -78,7 +132,18 @@ const uiLevelOptions = computed(() => [
   { value: 'admin', label: t('profile.preferences.uiLevelAdmin') },
 ]);
 
-onMounted(load);
+onMounted(() => {
+  if (isSpeechSynthesisSupported()) {
+    speechSupported.value = true;
+    voicesUnsubscribe = onVoicesChanged(refreshVoiceOptions);
+    refreshVoiceOptions();
+  }
+  void load();
+});
+
+onBeforeUnmount(() => {
+  if (voicesUnsubscribe) voicesUnsubscribe();
+});
 
 // Sync the form drafts whenever the underlying profile object changes —
 // happens on initial load and after every successful save (the
@@ -91,7 +156,26 @@ watch(profile, (current) => {
   chatLanguageDraft.value = current.webUiSettings?.[CHAT_LANGUAGE_KEY] ?? '';
   themeDraft.value = asTheme(current.webUiSettings?.[THEME_KEY]);
   uiLevelDraft.value = asUiLevel(current.webUiSettings?.[UI_LEVEL_KEY]);
+  speechVoiceDraft.value = current.webUiSettings?.[SPEECH_VOICE_KEY] ?? '';
+  speechRateDraft.value = parseSpeechRate(current.webUiSettings?.[SPEECH_RATE_KEY]);
+  speechVolumeDraft.value = parseSpeechVolume(current.webUiSettings?.[SPEECH_VOLUME_KEY]);
+  // chat.language may have changed too — re-filter voice options.
+  refreshVoiceOptions();
 }, { immediate: true });
+
+function parseSpeechRate(raw: string | undefined): number {
+  if (!raw) return DEFAULT_RATE;
+  const parsed = parseFloat(raw);
+  if (!Number.isFinite(parsed)) return DEFAULT_RATE;
+  return Math.max(MIN_RATE, Math.min(MAX_RATE, parsed));
+}
+
+function parseSpeechVolume(raw: string | undefined): number {
+  if (!raw) return DEFAULT_VOLUME;
+  const parsed = parseFloat(raw);
+  if (!Number.isFinite(parsed)) return DEFAULT_VOLUME;
+  return Math.max(MIN_VOLUME, Math.min(MAX_VOLUME, parsed));
+}
 
 async function onSaveIdentity(): Promise<void> {
   identitySaved.value = null;
@@ -163,6 +247,54 @@ async function onUiLevelChanged(value: string | null): Promise<void> {
     // the data cookie on its next mount, which the PUT response just
     // refreshed.
     uiLevelSaved.value = t('profile.preferences.uiLevelSaved');
+  }
+}
+
+async function onSpeechVoiceChanged(value: string | null): Promise<void> {
+  speechVoiceSaved.value = null;
+  const next = value ?? '';
+  speechVoiceDraft.value = next;
+  // Empty value clears the override → resolveVoice() falls back to
+  // the first voice in the resolved language.
+  if (next === '') {
+    await deleteSetting(SPEECH_VOICE_KEY).catch(() => undefined);
+  } else {
+    await saveSetting(SPEECH_VOICE_KEY, next).catch(() => undefined);
+  }
+  if (!error.value) {
+    speechVoiceSaved.value = t('profile.speech.voiceSaved');
+  }
+}
+
+async function onSpeechRateInput(event: Event): Promise<void> {
+  speechRateSaved.value = null;
+  const value = parseFloat((event.target as HTMLInputElement).value);
+  if (!Number.isFinite(value)) return;
+  const clamped = Math.max(MIN_RATE, Math.min(MAX_RATE, value));
+  speechRateDraft.value = clamped;
+  if (clamped === DEFAULT_RATE) {
+    await deleteSetting(SPEECH_RATE_KEY).catch(() => undefined);
+  } else {
+    await saveSetting(SPEECH_RATE_KEY, String(clamped)).catch(() => undefined);
+  }
+  if (!error.value) {
+    speechRateSaved.value = t('profile.speech.rateSaved');
+  }
+}
+
+async function onSpeechVolumeInput(event: Event): Promise<void> {
+  speechVolumeSaved.value = null;
+  const value = parseFloat((event.target as HTMLInputElement).value);
+  if (!Number.isFinite(value)) return;
+  const clamped = Math.max(MIN_VOLUME, Math.min(MAX_VOLUME, value));
+  speechVolumeDraft.value = clamped;
+  if (clamped === DEFAULT_VOLUME) {
+    await deleteSetting(SPEECH_VOLUME_KEY).catch(() => undefined);
+  } else {
+    await saveSetting(SPEECH_VOLUME_KEY, String(clamped)).catch(() => undefined);
+  }
+  if (!error.value) {
+    speechVolumeSaved.value = t('profile.speech.volumeSaved');
   }
 }
 </script>
@@ -267,6 +399,69 @@ async function onUiLevelChanged(value: string | null): Promise<void> {
             <span v-if="uiLevelSaved" class="text-success text-sm">
               {{ uiLevelSaved }}
             </span>
+          </div>
+        </VCard>
+
+        <!-- Speech & Audio ───────────────────────────────────────────────── -->
+        <VCard>
+          <h2 class="text-lg font-semibold mb-3">{{ $t('profile.speech.title') }}</h2>
+          <p class="text-sm opacity-70 mb-3">
+            {{ $t('profile.speech.description') }}
+          </p>
+          <div class="flex flex-col gap-3">
+            <template v-if="speechSupported">
+              <VSelect
+                :model-value="speechVoiceDraft"
+                :options="voiceOptions"
+                :label="$t('profile.speech.voice')"
+                :disabled="loading"
+                @update:model-value="onSpeechVoiceChanged"
+              />
+              <span v-if="speechVoiceSaved" class="text-success text-sm">
+                {{ speechVoiceSaved }}
+              </span>
+              <div>
+                <div class="text-sm font-medium mb-1 flex justify-between">
+                  <span>{{ $t('profile.speech.rate') }}</span>
+                  <span class="opacity-70">{{ speechRateDraft.toFixed(2) }}×</span>
+                </div>
+                <input
+                  type="range"
+                  class="range range-sm w-full"
+                  :min="MIN_RATE"
+                  :max="MAX_RATE"
+                  step="0.05"
+                  :value="speechRateDraft"
+                  :disabled="loading"
+                  @change="onSpeechRateInput"
+                />
+                <span v-if="speechRateSaved" class="text-success text-sm">
+                  {{ speechRateSaved }}
+                </span>
+              </div>
+              <div>
+                <div class="text-sm font-medium mb-1 flex justify-between">
+                  <span>{{ $t('profile.speech.volume') }}</span>
+                  <span class="opacity-70">{{ Math.round(speechVolumeDraft * 100) }}%</span>
+                </div>
+                <input
+                  type="range"
+                  class="range range-sm w-full"
+                  :min="MIN_VOLUME"
+                  :max="MAX_VOLUME"
+                  step="0.05"
+                  :value="speechVolumeDraft"
+                  :disabled="loading"
+                  @change="onSpeechVolumeInput"
+                />
+                <span v-if="speechVolumeSaved" class="text-success text-sm">
+                  {{ speechVolumeSaved }}
+                </span>
+              </div>
+            </template>
+            <p v-else class="text-sm opacity-60">
+              {{ $t('profile.speech.voiceUnsupported') }}
+            </p>
           </div>
         </VCard>
 

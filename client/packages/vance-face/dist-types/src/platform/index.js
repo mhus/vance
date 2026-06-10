@@ -8,4 +8,5 @@ export * from './refreshWeb';
 export * from './ensureAuthenticatedWeb';
 export * from './documentDraft';
 export * from './storageWeb';
+export * from './speechSettings';
 //# sourceMappingURL=index.js.map

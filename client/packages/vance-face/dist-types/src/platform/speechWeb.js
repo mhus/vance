@@ -1,15 +1,14 @@
-import { getSpeechRate, getSpeechVoiceURI, getSpeechVolume } from '@vance/shared';
+import { getSpeechRate, getSpeechVoiceURI, getSpeechVolume, } from './speechSettings';
 /**
  * Web Speech Synthesis bindings — the platform-specific half that the
  * shared `speech/preferences.ts` deliberately does not contain.
  * Mobile builds use `expo-speech` instead and never import this file.
  *
- * The picker heuristic ({@link pickDefaultMaleVoice}) and voice
- * resolution ({@link resolveVoice}) live here because they speak the
- * `SpeechSynthesisVoice` type — a DOM-only construct. The
+ * Voice resolution ({@link resolveVoice}) and the language-matching
+ * picker ({@link pickFirstVoiceForLanguage}) live here because they
+ * speak the `SpeechSynthesisVoice` type — a DOM-only construct. The
  * preferences they read (URI / rate / volume) come from
- * `@vance/shared/speech/preferences` so the same user choice
- * surfaces on both platforms.
+ * `./speechSettings` so the same user choice surfaces on every page.
  */
 /**
  * Returns whether the browser exposes the Web Speech Synthesis API.
@@ -46,45 +45,55 @@ export function onVoicesChanged(handler) {
     return () => synth.removeEventListener('voiceschanged', handler);
 }
 /**
- * Heuristic to pick a sensible default voice for `lang` when the
- * user hasn't chosen one. We prefer voices whose name does *not*
- * match a small list of common female-name hints — the Web Speech
- * API doesn't expose voice gender, so this is best-effort. The user
- * can always override in the settings popover.
+ * First available voice whose BCP-47 primary subtag matches
+ * {@code lang}'s primary subtag (e.g. {@code 'de-DE'} → {@code 'de'}).
+ * Returns {@code null} when no voice matches — the caller should then
+ * skip TTS rather than fall back to a wrong-language voice.
  */
-export function pickDefaultMaleVoice(voices, lang) {
+export function pickFirstVoiceForLanguage(voices, lang) {
     if (voices.length === 0)
         return null;
     const langPrefix = lang.toLowerCase().split('-')[0];
-    const matching = voices.filter((v) => v.lang.toLowerCase().startsWith(langPrefix));
-    const pool = matching.length > 0 ? matching : voices;
-    // Names / hints commonly used for female voices across macOS,
-    // Windows and Google's voice catalogue. Best-effort — not exhaustive.
-    const FEMALE = /\b(female|frau|woman|donna|femme|mujer|samantha|karen|victoria|kate|helena|ellen|emma|hilda|monica|paulina|ines|allison|ava|nora|salli|kimberly|joanna|fiona|moira|susan|tessa|martha|natasha|claire|marlene|alva|ursula|kyoko|silvia|veena|yuna|zuzana|alice|lucia|laura|carmen|petra|katja|anna|merl|tatyana|milena|amelie|sandy|princess)\b/i;
-    const male = pool.find((v) => !FEMALE.test(v.name) && !FEMALE.test(v.voiceURI));
-    return male ?? pool[0];
+    const matching = voices.filter((v) => v.lang.toLowerCase().replace('_', '-').split('-')[0] === langPrefix);
+    if (matching.length === 0)
+        return null;
+    // Prefer the platform's default voice for that language if it's
+    // in the matching set — otherwise just the first one.
+    const def = matching.find((v) => v.default);
+    return def ?? matching[0];
 }
 /**
- * Resolve the {@link SpeechSynthesisVoice} to use for a given
- * language: prefer the user's explicit pick (matched by URI); fall
- * back to {@link pickDefaultMaleVoice}.
+ * Resolve the {@link SpeechSynthesisVoice} to use for {@code lang}:
+ *   1. user's stored pick (matched by URI), provided its language
+ *      still matches — covers the cross-device case where the saved
+ *      URI exists in the voice catalogue but is, say, a German
+ *      voice on an EN page.
+ *   2. first voice in the requested language.
+ *   3. {@code null} — caller skips TTS rather than speaking the
+ *      wrong language.
  */
 export function resolveVoice(lang) {
     const voices = listVoices();
+    const langPrefix = lang.toLowerCase().split('-')[0];
     const stored = getSpeechVoiceURI();
     if (stored) {
         const explicit = voices.find((v) => v.voiceURI === stored);
-        if (explicit)
+        const explicitPrefix = explicit
+            ? explicit.lang.toLowerCase().replace('_', '-').split('-')[0]
+            : null;
+        if (explicit && explicitPrefix === langPrefix)
             return explicit;
     }
-    return pickDefaultMaleVoice(voices, lang);
+    return pickFirstVoiceForLanguage(voices, lang);
 }
 /**
- * Build a {@link SpeechSynthesisUtterance} preconfigured from the
- * persisted preferences. Caller is responsible for
- * `speechSynthesis.speak()`.
+ * Build a {@link SpeechSynthesisUtterance}. {@code rate} / {@code volume}
+ * default to the persisted profile preferences but the caller can
+ * override either — used by the chat composer to apply the user's
+ * in-session quick-adjust without writing it back to the server.
+ * Caller is responsible for `speechSynthesis.speak()`.
  */
-export function buildUtterance(text, lang) {
+export function buildUtterance(text, lang, overrides = {}) {
     if (!isSpeechSynthesisSupported())
         return null;
     const utterance = new SpeechSynthesisUtterance(text);
@@ -92,8 +101,8 @@ export function buildUtterance(text, lang) {
     const voice = resolveVoice(lang);
     if (voice)
         utterance.voice = voice;
-    utterance.rate = getSpeechRate();
-    utterance.volume = getSpeechVolume();
+    utterance.rate = overrides.rate ?? getSpeechRate();
+    utterance.volume = overrides.volume ?? getSpeechVolume();
     return utterance;
 }
 //# sourceMappingURL=speechWeb.js.map

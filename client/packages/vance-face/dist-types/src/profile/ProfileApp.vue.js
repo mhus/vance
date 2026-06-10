@@ -1,6 +1,9 @@
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { applyTheme, } from '@/platform';
+import { isSpeechSynthesisSupported, listVoices, onVoicesChanged, } from '@/platform/speechWeb';
+import { resolveSpeechLanguage, } from '@/platform/speechSettings';
+import { DEFAULT_RATE, DEFAULT_VOLUME, MAX_RATE, MAX_VOLUME, MIN_RATE, MIN_VOLUME, } from '@vance/shared';
 import { setUiLocale } from '@/i18n';
 import { EditorShell, VAlert, VButton, VCard, VInput, VSelect } from '@components/index';
 import { useProfile } from '@composables/useProfile';
@@ -21,6 +24,38 @@ const LANGUAGE_KEY = 'webui.language';
 const CHAT_LANGUAGE_KEY = 'chat.language';
 const THEME_KEY = 'webui.theme';
 const UI_LEVEL_KEY = 'webui.uiLevel';
+const SPEECH_VOICE_KEY = 'webui.speech.voiceUri';
+const SPEECH_RATE_KEY = 'webui.speech.rate';
+const SPEECH_VOLUME_KEY = 'webui.speech.volume';
+// Speech settings — voice depends on browser-provided voices for the
+// resolved chat-language, rate + volume are numeric strings (server
+// stores them prefixed with webui.speech.). Bridges the same chat.language
+// cascade that the ChatComposer uses for speech recognition.
+const speechSupported = ref(false);
+const speechVoiceDraft = ref('');
+const speechRateDraft = ref(DEFAULT_RATE);
+const speechVolumeDraft = ref(DEFAULT_VOLUME);
+const speechVoiceSaved = ref(null);
+const speechRateSaved = ref(null);
+const speechVolumeSaved = ref(null);
+const voiceOptions = ref([]);
+let voicesUnsubscribe = null;
+function refreshVoiceOptions() {
+    if (!speechSupported.value)
+        return;
+    const targetLang = resolveSpeechLanguage().toLowerCase().split('-')[0];
+    const matching = listVoices()
+        .filter((v) => v.lang.toLowerCase().replace('_', '-').split('-')[0] === targetLang)
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name));
+    voiceOptions.value = [
+        { value: '', label: t('profile.speech.voiceAuto') },
+        ...matching.map((v) => ({
+            value: v.voiceURI,
+            label: `${v.name} (${v.lang})${v.default ? t('profile.speech.voiceDefaultSuffix') : ''}`,
+        })),
+    ];
+}
 function asTheme(value) {
     // Accept anything stored on the server but normalise unknown
     // values back to "auto" rather than rendering an empty selector.
@@ -63,7 +98,18 @@ const uiLevelOptions = computed(() => [
     { value: 'expert', label: t('profile.preferences.uiLevelExpert') },
     { value: 'admin', label: t('profile.preferences.uiLevelAdmin') },
 ]);
-onMounted(load);
+onMounted(() => {
+    if (isSpeechSynthesisSupported()) {
+        speechSupported.value = true;
+        voicesUnsubscribe = onVoicesChanged(refreshVoiceOptions);
+        refreshVoiceOptions();
+    }
+    void load();
+});
+onBeforeUnmount(() => {
+    if (voicesUnsubscribe)
+        voicesUnsubscribe();
+});
 // Sync the form drafts whenever the underlying profile object changes —
 // happens on initial load and after every successful save (the
 // composable replaces the ref with the server response).
@@ -76,7 +122,28 @@ watch(profile, (current) => {
     chatLanguageDraft.value = current.webUiSettings?.[CHAT_LANGUAGE_KEY] ?? '';
     themeDraft.value = asTheme(current.webUiSettings?.[THEME_KEY]);
     uiLevelDraft.value = asUiLevel(current.webUiSettings?.[UI_LEVEL_KEY]);
+    speechVoiceDraft.value = current.webUiSettings?.[SPEECH_VOICE_KEY] ?? '';
+    speechRateDraft.value = parseSpeechRate(current.webUiSettings?.[SPEECH_RATE_KEY]);
+    speechVolumeDraft.value = parseSpeechVolume(current.webUiSettings?.[SPEECH_VOLUME_KEY]);
+    // chat.language may have changed too — re-filter voice options.
+    refreshVoiceOptions();
 }, { immediate: true });
+function parseSpeechRate(raw) {
+    if (!raw)
+        return DEFAULT_RATE;
+    const parsed = parseFloat(raw);
+    if (!Number.isFinite(parsed))
+        return DEFAULT_RATE;
+    return Math.max(MIN_RATE, Math.min(MAX_RATE, parsed));
+}
+function parseSpeechVolume(raw) {
+    if (!raw)
+        return DEFAULT_VOLUME;
+    const parsed = parseFloat(raw);
+    if (!Number.isFinite(parsed))
+        return DEFAULT_VOLUME;
+    return Math.max(MIN_VOLUME, Math.min(MAX_VOLUME, parsed));
+}
 async function onSaveIdentity() {
     identitySaved.value = null;
     await saveIdentity({
@@ -144,6 +211,56 @@ async function onUiLevelChanged(value) {
         // the data cookie on its next mount, which the PUT response just
         // refreshed.
         uiLevelSaved.value = t('profile.preferences.uiLevelSaved');
+    }
+}
+async function onSpeechVoiceChanged(value) {
+    speechVoiceSaved.value = null;
+    const next = value ?? '';
+    speechVoiceDraft.value = next;
+    // Empty value clears the override → resolveVoice() falls back to
+    // the first voice in the resolved language.
+    if (next === '') {
+        await deleteSetting(SPEECH_VOICE_KEY).catch(() => undefined);
+    }
+    else {
+        await saveSetting(SPEECH_VOICE_KEY, next).catch(() => undefined);
+    }
+    if (!error.value) {
+        speechVoiceSaved.value = t('profile.speech.voiceSaved');
+    }
+}
+async function onSpeechRateInput(event) {
+    speechRateSaved.value = null;
+    const value = parseFloat(event.target.value);
+    if (!Number.isFinite(value))
+        return;
+    const clamped = Math.max(MIN_RATE, Math.min(MAX_RATE, value));
+    speechRateDraft.value = clamped;
+    if (clamped === DEFAULT_RATE) {
+        await deleteSetting(SPEECH_RATE_KEY).catch(() => undefined);
+    }
+    else {
+        await saveSetting(SPEECH_RATE_KEY, String(clamped)).catch(() => undefined);
+    }
+    if (!error.value) {
+        speechRateSaved.value = t('profile.speech.rateSaved');
+    }
+}
+async function onSpeechVolumeInput(event) {
+    speechVolumeSaved.value = null;
+    const value = parseFloat(event.target.value);
+    if (!Number.isFinite(value))
+        return;
+    const clamped = Math.max(MIN_VOLUME, Math.min(MAX_VOLUME, value));
+    speechVolumeDraft.value = clamped;
+    if (clamped === DEFAULT_VOLUME) {
+        await deleteSetting(SPEECH_VOLUME_KEY).catch(() => undefined);
+    }
+    else {
+        await saveSetting(SPEECH_VOLUME_KEY, String(clamped)).catch(() => undefined);
+    }
+    if (!error.value) {
+        speechVolumeSaved.value = t('profile.speech.volumeSaved');
     }
 }
 debugger; /* PartiallyEnd: #3632/scriptSetup.vue */
@@ -431,6 +548,114 @@ else if (__VLS_ctx.profile) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.h2, __VLS_intrinsicElements.h2)({
         ...{ class: "text-lg font-semibold mb-3" },
     });
+    (__VLS_ctx.$t('profile.speech.title'));
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
+        ...{ class: "text-sm opacity-70 mb-3" },
+    });
+    (__VLS_ctx.$t('profile.speech.description'));
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "flex flex-col gap-3" },
+    });
+    if (__VLS_ctx.speechSupported) {
+        const __VLS_69 = {}.VSelect;
+        /** @type {[typeof __VLS_components.VSelect, ]} */ ;
+        // @ts-ignore
+        const __VLS_70 = __VLS_asFunctionalComponent(__VLS_69, new __VLS_69({
+            ...{ 'onUpdate:modelValue': {} },
+            modelValue: (__VLS_ctx.speechVoiceDraft),
+            options: (__VLS_ctx.voiceOptions),
+            label: (__VLS_ctx.$t('profile.speech.voice')),
+            disabled: (__VLS_ctx.loading),
+        }));
+        const __VLS_71 = __VLS_70({
+            ...{ 'onUpdate:modelValue': {} },
+            modelValue: (__VLS_ctx.speechVoiceDraft),
+            options: (__VLS_ctx.voiceOptions),
+            label: (__VLS_ctx.$t('profile.speech.voice')),
+            disabled: (__VLS_ctx.loading),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_70));
+        let __VLS_73;
+        let __VLS_74;
+        let __VLS_75;
+        const __VLS_76 = {
+            'onUpdate:modelValue': (__VLS_ctx.onSpeechVoiceChanged)
+        };
+        var __VLS_72;
+        if (__VLS_ctx.speechVoiceSaved) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "text-success text-sm" },
+            });
+            (__VLS_ctx.speechVoiceSaved);
+        }
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "text-sm font-medium mb-1 flex justify-between" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+        (__VLS_ctx.$t('profile.speech.rate'));
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "opacity-70" },
+        });
+        (__VLS_ctx.speechRateDraft.toFixed(2));
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.input)({
+            ...{ onChange: (__VLS_ctx.onSpeechRateInput) },
+            type: "range",
+            ...{ class: "range range-sm w-full" },
+            min: (__VLS_ctx.MIN_RATE),
+            max: (__VLS_ctx.MAX_RATE),
+            step: "0.05",
+            value: (__VLS_ctx.speechRateDraft),
+            disabled: (__VLS_ctx.loading),
+        });
+        if (__VLS_ctx.speechRateSaved) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "text-success text-sm" },
+            });
+            (__VLS_ctx.speechRateSaved);
+        }
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "text-sm font-medium mb-1 flex justify-between" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+        (__VLS_ctx.$t('profile.speech.volume'));
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "opacity-70" },
+        });
+        (Math.round(__VLS_ctx.speechVolumeDraft * 100));
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.input)({
+            ...{ onChange: (__VLS_ctx.onSpeechVolumeInput) },
+            type: "range",
+            ...{ class: "range range-sm w-full" },
+            min: (__VLS_ctx.MIN_VOLUME),
+            max: (__VLS_ctx.MAX_VOLUME),
+            step: "0.05",
+            value: (__VLS_ctx.speechVolumeDraft),
+            disabled: (__VLS_ctx.loading),
+        });
+        if (__VLS_ctx.speechVolumeSaved) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "text-success text-sm" },
+            });
+            (__VLS_ctx.speechVolumeSaved);
+        }
+    }
+    else {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
+            ...{ class: "text-sm opacity-60" },
+        });
+        (__VLS_ctx.$t('profile.speech.voiceUnsupported'));
+    }
+    var __VLS_68;
+    const __VLS_77 = {}.VCard;
+    /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
+    // @ts-ignore
+    const __VLS_78 = __VLS_asFunctionalComponent(__VLS_77, new __VLS_77({}));
+    const __VLS_79 = __VLS_78({}, ...__VLS_functionalComponentArgsRest(__VLS_78));
+    __VLS_80.slots.default;
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.h2, __VLS_intrinsicElements.h2)({
+        ...{ class: "text-lg font-semibold mb-3" },
+    });
     (__VLS_ctx.$t('profile.teams.title'));
     if (__VLS_ctx.profile.teams.length === 0) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
@@ -474,7 +699,7 @@ else if (__VLS_ctx.profile) {
             }
         }
     }
-    var __VLS_68;
+    var __VLS_80;
 }
 var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['container']} */ ;
@@ -531,6 +756,41 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['mb-3']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-success']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-medium']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['justify-between']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
+/** @type {__VLS_StyleScopedClasses['range']} */ ;
+/** @type {__VLS_StyleScopedClasses['range-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['w-full']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-success']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-medium']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['justify-between']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
+/** @type {__VLS_StyleScopedClasses['range']} */ ;
+/** @type {__VLS_StyleScopedClasses['range-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['w-full']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-success']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-lg']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-semibold']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
@@ -553,6 +813,10 @@ var __VLS_dollars;
 const __VLS_self = (await import('vue')).defineComponent({
     setup() {
         return {
+            MAX_RATE: MAX_RATE,
+            MAX_VOLUME: MAX_VOLUME,
+            MIN_RATE: MIN_RATE,
+            MIN_VOLUME: MIN_VOLUME,
             EditorShell: EditorShell,
             VAlert: VAlert,
             VButton: VButton,
@@ -573,6 +837,14 @@ const __VLS_self = (await import('vue')).defineComponent({
             chatLanguageSaved: chatLanguageSaved,
             themeSaved: themeSaved,
             uiLevelSaved: uiLevelSaved,
+            speechSupported: speechSupported,
+            speechVoiceDraft: speechVoiceDraft,
+            speechRateDraft: speechRateDraft,
+            speechVolumeDraft: speechVolumeDraft,
+            speechVoiceSaved: speechVoiceSaved,
+            speechRateSaved: speechRateSaved,
+            speechVolumeSaved: speechVolumeSaved,
+            voiceOptions: voiceOptions,
             languageOptions: languageOptions,
             chatLanguageOptions: chatLanguageOptions,
             themeOptions: themeOptions,
@@ -582,6 +854,9 @@ const __VLS_self = (await import('vue')).defineComponent({
             onChatLanguageChanged: onChatLanguageChanged,
             onThemeChanged: onThemeChanged,
             onUiLevelChanged: onUiLevelChanged,
+            onSpeechVoiceChanged: onSpeechVoiceChanged,
+            onSpeechRateInput: onSpeechRateInput,
+            onSpeechVolumeInput: onSpeechVolumeInput,
         };
     },
 });

@@ -6,6 +6,7 @@ import de.mhus.vance.shared.access.WebUiCookies;
 import de.mhus.vance.shared.jwt.JwtService;
 import de.mhus.vance.shared.jwt.TokenType;
 import de.mhus.vance.shared.jwt.VanceJwtClaims;
+import de.mhus.vance.shared.settings.LanguageResolver;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.user.UserDocument;
 import jakarta.servlet.http.Cookie;
@@ -14,7 +15,9 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Value;
@@ -50,6 +53,19 @@ import tools.jackson.databind.json.JsonMapper;
 @Service
 @Slf4j
 public class WebUiCookieService {
+
+    /**
+     * Settings that ship in the data cookie even though they sit
+     * outside the {@code webui.*} prefix. Keep this small — every
+     * entry costs cookie size on every request, and any value here
+     * leaks into the JS-readable cookie payload.
+     *
+     * <p>{@code chat.language} is here because the Web-UI chat composer
+     * needs the resolved language at mount time (for speech
+     * recognition) without an extra round-trip to {@code /profile}.
+     */
+    private static final Set<String> EXTRA_COOKIE_SETTING_KEYS = Set.of(
+            LanguageResolver.Keys.CHAT_LANGUAGE);
 
     private final JwtService jwtService;
     private final SettingService settingService;
@@ -165,8 +181,7 @@ public class WebUiCookieService {
             boolean includeWebUiSettings) {
 
         Map<String, String> webUiSettings = includeWebUiSettings
-                ? settingService.findUserSettingsByPrefix(
-                        user.getTenantId(), user.getName(), WebUiCookies.SETTINGS_PREFIX)
+                ? loadCookieSettings(user.getTenantId(), user.getName())
                 : Map.of();
 
         WebUiSessionData sessionData = WebUiSessionData.builder()
@@ -193,6 +208,23 @@ public class WebUiCookieService {
                 .maxAge(Duration.between(Instant.now(), dataExpiresAt))
                 .build();
         responseBuilder.header(HttpHeaders.SET_COOKIE, data.toString());
+    }
+
+    /**
+     * Collect all settings that ship in the data cookie — the
+     * {@code webui.*} prefix scan plus the explicit
+     * {@link #EXTRA_COOKIE_SETTING_KEYS} allowlist for cookie-visible
+     * extras like {@code chat.language}.
+     */
+    private Map<String, String> loadCookieSettings(String tenantId, String username) {
+        Map<String, String> result = new LinkedHashMap<>(
+                settingService.findUserSettingsByPrefix(
+                        tenantId, username, WebUiCookies.SETTINGS_PREFIX));
+        for (String key : EXTRA_COOKIE_SETTING_KEYS) {
+            String v = settingService.getUserStringValue(tenantId, username, key);
+            if (v != null) result.put(key, v);
+        }
+        return result;
     }
 
     private ResponseCookie.ResponseCookieBuilder baseCookie(String name, String value) {

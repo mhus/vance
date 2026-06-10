@@ -4,19 +4,6 @@ import { useI18n } from 'vue-i18n';
 import {
   type BrainWsApi,
   WebSocketRequestError,
-  AUTO_LANGUAGE,
-  SUPPORTED_SPEECH_LANGUAGES,
-  getSpeechLanguage,
-  resolveSpeechLanguage,
-  setSpeechLanguage,
-  getSpeakerEnabled,
-  getSpeechRate,
-  getSpeechVoiceURI,
-  getSpeechVolume,
-  setSpeakerEnabled,
-  setSpeechRate,
-  setSpeechVoiceURI,
-  setSpeechVolume,
   markdownToSpeech,
   MIN_RATE,
   MAX_RATE,
@@ -26,9 +13,14 @@ import {
 import {
   buildUtterance,
   isSpeechSynthesisSupported,
-  listVoices,
-  onVoicesChanged,
 } from '../platform/speechWeb';
+import {
+  getSpeakerEnabled,
+  getSpeechRate,
+  getSpeechVolume,
+  resolveSpeechLanguage,
+  saveSpeakerEnabled,
+} from '../platform/speechSettings';
 import type {
   AttachmentRef,
   ChatMessageDto,
@@ -41,7 +33,7 @@ import {
   uploadChatboxAttachments,
   ChatboxUploadError,
 } from '@composables/useChatboxUpload';
-import { VAlert, VButton, VSelect, VTextarea } from '@components/index';
+import { VAlert, VButton, VTextarea } from '@components/index';
 import { OPTIMISTIC_PREFIX } from './optimisticEcho';
 
 /**
@@ -163,12 +155,6 @@ type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
 const speechSupported = ref(false);
 const speechRecording = ref(false);
 const speechError = ref<string | null>(null);
-const speechSettingsOpen = ref(false);
-const speechLanguageStored = ref<string>(getSpeechLanguage());
-const speechLanguageOptions = SUPPORTED_SPEECH_LANGUAGES.map((opt) => ({
-  value: opt.code,
-  label: opt.label,
-}));
 let recognition: SpeechRecognitionLike | null = null;
 
 function initSpeechRecognition(): void {
@@ -248,16 +234,6 @@ function toggleSpeech(): void {
   else startMic();
 }
 
-function onLanguageChanged(code: string | null): void {
-  const next = code ?? AUTO_LANGUAGE;
-  setSpeechLanguage(next === AUTO_LANGUAGE ? null : next);
-  speechLanguageStored.value = next;
-  if (recognition && speechRecording.value) {
-    recognition.stop();
-  }
-  refreshVoiceOptions();
-}
-
 // ──────────────── Speaker (text-to-speech queue) ────────────────
 
 const speakerSupported = ref(false);
@@ -269,40 +245,19 @@ const speakerSpeaking = ref(false);
  * never reads aloud backfill content.
  */
 const speakerLiveReady = ref(false);
+// Live rate / volume seeded from the persisted profile defaults at
+// mount time. The composer exposes both as quick-adjust sliders that
+// are intentionally session-only — moving them affects the running
+// chat but does NOT write back to the server. The user's persistent
+// defaults live on the profile page; reload the chat tab to pick up
+// a fresh profile default here.
 const speechRate = ref<number>(getSpeechRate());
 const speechVolume = ref<number>(getSpeechVolume());
-const speechVoiceUri = ref<string | null>(getSpeechVoiceURI());
-
-interface VoiceOption {
-  value: string;
-  label: string;
-  group?: string;
-}
-const voiceOptions = ref<VoiceOption[]>([]);
-let voicesUnsubscribe: (() => void) | null = null;
-
-function refreshVoiceOptions(): void {
-  if (!speakerSupported.value) return;
-  const targetLang = resolveSpeechLanguage().toLowerCase().split('-')[0];
-  const matching = listVoices()
-    .filter((v) => v.lang.toLowerCase().replace('_', '-').split('-')[0] === targetLang)
-    .slice()
-    .sort((a, b) => a.name.localeCompare(b.name));
-  voiceOptions.value = [
-    { value: '__auto__', label: t('chat.speech.voiceAuto') },
-    ...matching.map((v) => ({
-      value: v.voiceURI,
-      label: `${v.name} (${v.lang})${v.default ? t('chat.speech.voiceDefaultSuffix') : ''}`,
-    })),
-  ];
-}
 
 function initSpeechSynthesis(): void {
   if (!isSpeechSynthesisSupported()) return;
   speakerSupported.value = true;
   speakerEnabled.value = getSpeakerEnabled();
-  voicesUnsubscribe = onVoicesChanged(refreshVoiceOptions);
-  refreshVoiceOptions();
 }
 
 function speakMessage(content: string): void {
@@ -310,7 +265,10 @@ function speakMessage(content: string): void {
   if (!speakerLiveReady.value) return;
   const text = markdownToSpeech(content);
   if (!text) return;
-  const utter = buildUtterance(text, resolveSpeechLanguage());
+  const utter = buildUtterance(text, resolveSpeechLanguage(), {
+    rate: speechRate.value,
+    volume: speechVolume.value,
+  });
   if (!utter) return;
   utter.onstart = () => {
     speakerSpeaking.value = true;
@@ -344,31 +302,25 @@ function toggleSpeaker(): void {
   }
   const next = !speakerEnabled.value;
   speakerEnabled.value = next;
-  setSpeakerEnabled(next);
+  void saveSpeakerEnabled(next);
   if (!next) {
     window.speechSynthesis.cancel();
     speakerSpeaking.value = false;
   }
 }
 
-function onVoiceChanged(uri: string | null): void {
-  const next = uri && uri !== '__auto__' ? uri : null;
-  speechVoiceUri.value = next;
-  setSpeechVoiceURI(next);
-}
-
 function onRateInput(event: Event): void {
   const value = parseFloat((event.target as HTMLInputElement).value);
   if (!Number.isFinite(value)) return;
+  // Session-only override — not persisted. See speechRate / speechVolume
+  // definition above.
   speechRate.value = value;
-  setSpeechRate(value);
 }
 
 function onVolumeInput(event: Event): void {
   const value = parseFloat((event.target as HTMLInputElement).value);
   if (!Number.isFinite(value)) return;
   speechVolume.value = value;
-  setSpeechVolume(value);
 }
 
 // ──────────────── Talk-Mode (hands-free phone-call UX) ────────────────
@@ -452,7 +404,7 @@ function enableTalkMode(): void {
   speechError.value = null;
   if (!speakerEnabled.value) {
     speakerEnabled.value = true;
-    setSpeakerEnabled(true);
+    void saveSpeakerEnabled(true);
   }
   if (!speakerSpeaking.value && !speechRecording.value) {
     startMic();
@@ -473,7 +425,7 @@ function disableTalkMode(): void {
   speakerSpeaking.value = false;
   if (speakerEnabled.value) {
     speakerEnabled.value = false;
-    setSpeakerEnabled(false);
+    void saveSpeakerEnabled(false);
   }
 }
 
@@ -752,7 +704,6 @@ onBeforeUnmount(() => {
   if (recognition && speechRecording.value) {
     try { recognition.stop(); } catch { /* already stopped */ }
   }
-  if (voicesUnsubscribe) voicesUnsubscribe();
   if (speakerSupported.value && window.speechSynthesis.speaking) {
     window.speechSynthesis.cancel();
   }
@@ -834,111 +785,63 @@ onBeforeUnmount(() => {
         >
           {{ multiline ? '▲' : '▼' }}
         </VButton>
-        <div v-if="speechSupported || speakerSupported" class="relative">
-          <div class="flex gap-1">
-            <VButton
-              v-if="talkModeSupported"
-              variant="ghost"
-              size="sm"
-              :class="talkMode ? 'text-success animate-pulse' : ''"
-              :title="talkMode ? $t('chat.speech.talkModeStop') : $t('chat.speech.talkModeStart')"
-              @click="toggleTalkMode"
-            >
-              📞
-            </VButton>
-            <VButton
-              v-if="speechSupported"
-              variant="ghost"
-              size="sm"
-              :class="speechRecording ? 'text-error animate-pulse' : ''"
-              :title="speechRecording ? $t('chat.speech.stopSpeechToText') : $t('chat.speech.startSpeechToText')"
-              @click="toggleSpeech"
-            >
-              🎤
-            </VButton>
-            <VButton
-              v-if="speakerSupported"
-              variant="ghost"
-              size="sm"
-              :class="speakerEnabled ? (speakerSpeaking ? 'text-success animate-pulse' : 'text-success') : ''"
-              :title="speakerEnabled ? $t('chat.speech.muteIncoming') : $t('chat.speech.readAloud')"
-              @click="toggleSpeaker"
-            >
-              {{ speakerEnabled ? '🔊' : '🔇' }}
-            </VButton>
-            <VButton
-              variant="ghost"
-              size="sm"
-              :title="$t('chat.speech.settings')"
-              @click="speechSettingsOpen = !speechSettingsOpen"
-            >
-              ⚙
-            </VButton>
-          </div>
-          <div
-            v-if="speechSettingsOpen"
-            class="absolute bottom-full mb-2 left-0 z-10 w-80 bg-base-100 border border-base-300 rounded shadow-lg p-3 flex flex-col gap-3"
+        <div v-if="speechSupported || speakerSupported" class="flex gap-1 items-center">
+          <VButton
+            v-if="talkModeSupported"
+            variant="ghost"
+            size="sm"
+            :class="talkMode ? 'text-success animate-pulse' : ''"
+            :title="talkMode ? $t('chat.speech.talkModeStop') : $t('chat.speech.talkModeStart')"
+            @click="toggleTalkMode"
           >
-            <div>
-              <div class="text-xs uppercase tracking-wide opacity-60 font-semibold mb-1">
-                {{ $t('chat.speech.language') }}
-              </div>
-              <VSelect
-                :model-value="speechLanguageStored"
-                :options="speechLanguageOptions"
-                @update:model-value="onLanguageChanged"
-              />
-            </div>
-
-            <template v-if="speakerSupported">
-              <div>
-                <div class="text-xs uppercase tracking-wide opacity-60 font-semibold mb-1">
-                  {{ $t('chat.speech.voice') }}
-                </div>
-                <VSelect
-                  :model-value="speechVoiceUri ?? '__auto__'"
-                  :options="voiceOptions"
-                  @update:model-value="onVoiceChanged"
-                />
-              </div>
-
-              <div>
-                <div class="text-xs uppercase tracking-wide opacity-60 font-semibold mb-1 flex justify-between">
-                  <span>{{ $t('chat.speech.rate') }}</span>
-                  <span class="opacity-70">{{ speechRate.toFixed(2) }}×</span>
-                </div>
-                <input
-                  type="range"
-                  class="range range-sm w-full"
-                  :min="MIN_RATE"
-                  :max="MAX_RATE"
-                  step="0.05"
-                  :value="speechRate"
-                  @input="onRateInput"
-                />
-              </div>
-
-              <div>
-                <div class="text-xs uppercase tracking-wide opacity-60 font-semibold mb-1 flex justify-between">
-                  <span>{{ $t('chat.speech.volume') }}</span>
-                  <span class="opacity-70">{{ Math.round(speechVolume * 100) }}%</span>
-                </div>
-                <input
-                  type="range"
-                  class="range range-sm w-full"
-                  :min="MIN_VOLUME"
-                  :max="MAX_VOLUME"
-                  step="0.05"
-                  :value="speechVolume"
-                  @input="onVolumeInput"
-                />
-              </div>
-            </template>
-
-            <p class="text-xs opacity-60">
-              {{ $t('chat.speech.savedLocally') }}
-            </p>
-          </div>
+            📞
+          </VButton>
+          <VButton
+            v-if="speechSupported"
+            variant="ghost"
+            size="sm"
+            :class="speechRecording ? 'text-error animate-pulse' : ''"
+            :title="speechRecording ? $t('chat.speech.stopSpeechToText') : $t('chat.speech.startSpeechToText')"
+            @click="toggleSpeech"
+          >
+            🎤
+          </VButton>
+          <VButton
+            v-if="speakerSupported"
+            variant="ghost"
+            size="sm"
+            :class="speakerEnabled ? (speakerSpeaking ? 'text-success animate-pulse' : 'text-success') : ''"
+            :title="speakerEnabled ? $t('chat.speech.muteIncoming') : $t('chat.speech.readAloud')"
+            @click="toggleSpeaker"
+          >
+            {{ speakerEnabled ? '🔊' : '🔇' }}
+          </VButton>
+          <!-- Quick-adjust sliders for volume + rate. Saved server-side
+               on every input event — these are the user's persistent
+               default, not a session-only override. Voice + language
+               live on the profile page. -->
+          <input
+            v-if="speakerSupported"
+            type="range"
+            class="range range-xs w-16"
+            :min="MIN_VOLUME"
+            :max="MAX_VOLUME"
+            step="0.05"
+            :value="speechVolume"
+            :title="$t('chat.speech.volume') + ': ' + Math.round(speechVolume * 100) + '%'"
+            @input="onVolumeInput"
+          />
+          <input
+            v-if="speakerSupported"
+            type="range"
+            class="range range-xs w-16"
+            :min="MIN_RATE"
+            :max="MAX_RATE"
+            step="0.05"
+            :value="speechRate"
+            :title="$t('chat.speech.rate') + ': ' + speechRate.toFixed(2) + '×'"
+            @input="onRateInput"
+          />
         </div>
         <!-- Hidden file picker — paperclip button below opens it.
              Drag-and-drop on the surrounding footer bypasses this

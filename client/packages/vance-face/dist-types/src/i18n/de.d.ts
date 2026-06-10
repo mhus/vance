@@ -1480,6 +1480,19 @@ declare const _default: {
             uiLevelAdmin: string;
             uiLevelSaved: string;
         };
+        speech: {
+            title: string;
+            description: string;
+            voice: string;
+            voiceAuto: string;
+            voiceDefaultSuffix: string;
+            voiceUnsupported: string;
+            voiceSaved: string;
+            rate: string;
+            rateSaved: string;
+            volume: string;
+            volumeSaved: string;
+        };
         teams: {
             title: string;
             empty: string;

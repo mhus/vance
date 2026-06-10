@@ -84,12 +84,17 @@ public class UrsaSchedulerSetTool implements Tool {
         ResolvedUrsaScheduler validated = support.parseOrThrow(name, yaml);
         support.upsert(ctx.tenantId(), ctx.projectId(), name, yaml, ctx.userId());
         boolean registered = schedulerService.refreshOne(ctx.tenantId(), ctx.projectId(), name);
+        List<String> warnings = support.crossReferenceWarnings(
+                ctx.tenantId(), ctx.projectId(), validated);
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("name", name);
         out.put("enabled", validated.enabled());
         out.put("created", !existed);
         out.put("registered", registered);
+        if (!warnings.isEmpty()) {
+            out.put("warnings", warnings);
+        }
         return out;
     }
 

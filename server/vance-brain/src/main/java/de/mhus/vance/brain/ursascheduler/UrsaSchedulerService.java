@@ -2,6 +2,8 @@ package de.mhus.vance.brain.ursascheduler;
 
 import de.mhus.vance.api.action.TriggerAction;
 import de.mhus.vance.api.eventlog.EventType;
+import de.mhus.vance.api.inbox.Criticality;
+import de.mhus.vance.api.inbox.InboxItemType;
 import de.mhus.vance.api.ursascheduler.OverlapPolicy;
 import de.mhus.vance.brain.action.ActionExecutorRegistry;
 import de.mhus.vance.brain.action.ActionOutcome;
@@ -14,6 +16,8 @@ import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.eventlog.EventLogService;
+import de.mhus.vance.shared.inbox.InboxItemDocument;
+import de.mhus.vance.shared.inbox.InboxItemService;
 import de.mhus.vance.shared.ursascheduler.ResolvedUrsaScheduler;
 import de.mhus.vance.shared.ursascheduler.UrsaSchedulerLoader;
 import de.mhus.vance.shared.session.SessionDocument;
@@ -34,6 +38,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.support.CronExpression;
 import org.springframework.scheduling.support.CronTrigger;
@@ -83,6 +88,25 @@ public class UrsaSchedulerService {
     private final de.mhus.vance.shared.metric.MetricService metricService;
     /** LLM-facing materialised log of every run — see {@link SchedulerLogService}. */
     private final SchedulerLogService schedulerLogService;
+    /** For auto-disable notifications — see {@link #autoDisableScheduler}. */
+    private final InboxItemService inboxItemService;
+
+    /**
+     * When {@code false}, the seconds-field of a 6-field cron expression
+     * is clamped to {@code "0"} at registration time — see
+     * {@link #clampCronSecondsIfDisallowed}. Default {@code false}, so
+     * sub-minute crons (e.g. every-five-seconds expressions) get
+     * normalised to once-per-minute. Operators can opt back in via the
+     * {@code vance.scheduler.allow-seconds} property in
+     * {@code application.yml}.
+     *
+     * <p>Field injection (not constructor) so the Lombok-generated
+     * required-args constructor stays untouched; the flag is read on
+     * every {@link #registerCron} call which always runs after Spring's
+     * field-injection completes.
+     */
+    @Value("${vance.scheduler.allow-seconds:false}")
+    private boolean allowSeconds;
 
     /** Counter for scheduler fires. Tags: {@code scheduler}, {@code outcome}. */
     private static final String METRIC_FIRES = "vance.ursascheduler.fires";
@@ -284,15 +308,38 @@ public class UrsaSchedulerService {
                     tenantId, projectId, config.name(), cron);
             return false;
         }
+        String effectiveCron = clampCronSecondsIfDisallowed(cron, allowSeconds);
+        if (!effectiveCron.equals(cron)) {
+            log.warn("Scheduler '{}/{}/{}' seconds-field clamped to 0 — cron '{}' → '{}' "
+                            + "(set 'vance.scheduler.allow-seconds: true' to keep sub-minute precision)",
+                    tenantId, projectId, config.name(), cron, effectiveCron);
+        }
         Registration reg = new Registration(tenantId, projectId, config, zone, null);
-        CronTrigger trigger = new CronTrigger(cron, java.util.TimeZone.getTimeZone(zone));
+        CronTrigger trigger = new CronTrigger(effectiveCron, java.util.TimeZone.getTimeZone(zone));
         ScheduledFuture<?> future = taskScheduler.schedule(() -> safeFire(reg), trigger);
         reg.future = future;
         registry.put(registryKey(tenantId, projectId, config.name()), reg);
         log.info("Scheduler '{}/{}/{}' registered cron='{}' tz={} runAs='{}'",
                 tenantId, projectId, config.name(),
-                cron, zone, config.effectiveRunAs());
+                effectiveCron, zone, config.effectiveRunAs());
         return true;
+    }
+
+    /**
+     * Optionally clamp the seconds field of a 6-field cron to {@code "0"}.
+     * Input is assumed valid (the loader auto-upgrades 5-field to
+     * 6-field). Returns the input unchanged when {@code allowSeconds} is
+     * true, when the cron isn't 6-field, or when the seconds field is
+     * already {@code "0"}. The original cron stays in the YAML; only the
+     * runtime trigger sees the clamped value.
+     */
+    static String clampCronSecondsIfDisallowed(String cron, boolean allowSeconds) {
+        if (allowSeconds) return cron;
+        String[] fields = cron.trim().split("\\s+");
+        if (fields.length != 6) return cron;
+        if ("0".equals(fields[0])) return cron;
+        fields[0] = "0";
+        return String.join(" ", fields);
     }
 
     /**
@@ -608,6 +655,16 @@ public class UrsaSchedulerService {
                     parentSessionId, /*processId*/ null, runAs, failPayload);
             schedulerLogService.onFailed(correlationId, "execute", result.errorMessage());
             countFire(cfg.name(), "failed");
+
+            // Recipe-resolution failures (typically a hallucinated or
+            // deleted recipe-name in the YAML) would otherwise repeat at
+            // every cron tick. Disable the scheduler and notify the
+            // runAs user via the inbox — they need to fix the recipe
+            // reference before re-enabling. See specification/scheduler.md.
+            if (isRecipeResolutionFailure(result.errorMessage())) {
+                autoDisableScheduler(reg, correlationId,
+                        result.errorMessage() == null ? "recipe missing" : result.errorMessage());
+            }
             return;
         }
 
@@ -700,6 +757,144 @@ public class UrsaSchedulerService {
         } catch (RuntimeException ex) {
             log.warn("Scheduler '{}/{}/{}' failed to trash document '{}': {}",
                     reg.tenantId, reg.projectId, reg.config.name(), docId, ex.toString());
+        }
+    }
+
+    // ───────────────────────── Auto-disable on recipe-miss ─────────────────────────
+
+    /**
+     * Detects the two error-message shapes produced by
+     * {@code RecipeActionExecutor} when the recipe-name doesn't resolve:
+     * the prefixed {@code "recipe_resolution: …"} and the bare
+     * {@code "unknown recipe '…'"}. Non-recipe failures (engine
+     * resolution, process-create) are left to surface as transient
+     * errors — only recipe-misses get the auto-disable treatment because
+     * they're guaranteed to repeat at every tick.
+     */
+    private static boolean isRecipeResolutionFailure(@Nullable String error) {
+        if (error == null) return false;
+        return error.startsWith("recipe_resolution:")
+                || error.startsWith("unknown recipe ");
+    }
+
+    /**
+     * Flip the scheduler's YAML to {@code enabled: false}, re-register
+     * (which turns the cron trigger off), and create an inbox item for
+     * the run-as user. Idempotent: a second failure after disable is
+     * caught at register-time (where {@code enabled=false} short-circuits
+     * before {@code registerCron}) and won't reach this method.
+     */
+    private void autoDisableScheduler(
+            Registration reg, String correlationId, String reason) {
+        String tenantId = reg.tenantId;
+        String projectId = reg.projectId;
+        String name = reg.config.name();
+        String docId = reg.config.documentId();
+
+        if (docId == null) {
+            // Cascade-resolved entries without a per-project document
+            // can't be edited from here — the project owner would need
+            // to override at their tier. Still notify the run-as user.
+            log.warn("Scheduler '{}/{}/{}' auto-disable skipped: cascade entry, no documentId. Reason: {}",
+                    tenantId, projectId, name, reason);
+            notifyAutoDisabled(reg, correlationId, reason, /*persisted=*/false);
+            return;
+        }
+
+        try {
+            String mutated = disableInYaml(reg.config.yaml());
+            documentService.update(docId,
+                    /*newTitle*/ null, /*newTags*/ null,
+                    /*newInlineText*/ mutated, /*newPath*/ null);
+            refreshOne(tenantId, projectId, name);
+            log.warn("Scheduler '{}/{}/{}' auto-disabled after recipe-resolution failure: {}",
+                    tenantId, projectId, name, reason);
+            notifyAutoDisabled(reg, correlationId, reason, /*persisted=*/true);
+        } catch (RuntimeException ex) {
+            log.error("Scheduler '{}/{}/{}' auto-disable failed: {}",
+                    tenantId, projectId, name, ex.toString(), ex);
+        }
+    }
+
+    /**
+     * In-place edit: replace the first {@code enabled:} line with
+     * {@code enabled: false}, or append the field if missing. Keeps the
+     * rest of the YAML — comments, ordering, formatting — untouched
+     * (a full SnakeYAML round-trip would normalise away author intent).
+     */
+    static String disableInYaml(String yaml) {
+        java.util.regex.Pattern p = java.util.regex.Pattern.compile(
+                "^(\\s*enabled\\s*:\\s*)(true|false)(\\s*)$",
+                java.util.regex.Pattern.MULTILINE);
+        java.util.regex.Matcher m = p.matcher(yaml);
+        if (m.find()) {
+            return m.replaceFirst("$1false$3");
+        }
+        String suffix = yaml.endsWith("\n") ? "" : "\n";
+        return yaml + suffix + "enabled: false\n";
+    }
+
+    /**
+     * Inbox item announcing the auto-disable. Assigned to the scheduler's
+     * effective run-as user (the human or service-account on whose behalf
+     * the run was happening); they're the right person to decide whether
+     * to fix the recipe and re-enable. {@code OUTPUT_TEXT} with
+     * {@code requiresAction=true} so it surfaces in the assignee's inbox
+     * but doesn't block the originating process (there is none).
+     */
+    private void notifyAutoDisabled(
+            Registration reg, String correlationId, String reason, boolean persisted) {
+        String assignee = reg.config.effectiveRunAs();
+        if (assignee == null || assignee.isBlank()) {
+            log.warn("Scheduler '{}/{}/{}' auto-disable: no runAs to notify",
+                    reg.tenantId, reg.projectId, reg.config.name());
+            return;
+        }
+        String logPath = SchedulerLogService.pathFor(
+                reg.config.name(), Instant.now(), correlationId);
+        StringBuilder body = new StringBuilder();
+        body.append("The scheduler `").append(reg.config.name())
+                .append("` was ");
+        body.append(persisted ? "automatically disabled" : "marked failing (cascade entry — disable not persisted)");
+        body.append(" because its configured recipe could not be resolved.\n\n");
+        body.append("**Error:** ").append(reason).append("\n\n");
+        if (reg.config.recipe() != null) {
+            body.append("**Configured recipe:** `").append(reg.config.recipe()).append("`\n\n");
+        }
+        body.append("**Last run log:** `").append(logPath).append("`\n\n");
+        body.append("To fix:\n");
+        body.append("1. Create the missing recipe under `_vance/recipes/<name>.yaml`, "
+                + "or update the scheduler's `recipe:` field to an existing recipe name.\n");
+        body.append("2. Set `enabled: true` in `_vance/scheduler/")
+                .append(reg.config.name()).append(".yaml` to re-arm the schedule.\n");
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("schedulerName", reg.config.name());
+        payload.put("projectId", reg.projectId);
+        payload.put("correlationId", correlationId);
+        payload.put("reason", reason);
+        if (reg.config.recipe() != null) {
+            payload.put("recipe", reg.config.recipe());
+        }
+        payload.put("logPath", logPath);
+        payload.put("autoDisabled", persisted);
+
+        try {
+            inboxItemService.create(InboxItemDocument.builder()
+                    .tenantId(reg.tenantId)
+                    .originatorUserId("ursascheduler:" + reg.config.name())
+                    .assignedToUserId(assignee)
+                    .type(InboxItemType.OUTPUT_TEXT)
+                    .criticality(Criticality.NORMAL)
+                    .title("Scheduler '" + reg.config.name() + "' auto-disabled")
+                    .body(body.toString())
+                    .tags(List.of("scheduler", reg.config.name(), "auto-disabled", "recipe-missing"))
+                    .payload(payload)
+                    .requiresAction(true)
+                    .build());
+        } catch (RuntimeException ex) {
+            log.error("Scheduler '{}/{}/{}' inbox notify failed: {}",
+                    reg.tenantId, reg.projectId, reg.config.name(), ex.toString(), ex);
         }
     }
 

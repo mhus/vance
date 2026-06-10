@@ -221,6 +221,28 @@ public class SchedulerLogService {
         runs.remove(correlationId);
     }
 
+    /**
+     * Non-terminal pause: the spawned process transitioned to
+     * {@code BLOCKED} — engine asked the user something via the inbox
+     * and is waiting for an answer. For scheduler-spawned processes with
+     * a system run-as user this is effectively a stall (nobody is
+     * watching that inbox), but we keep the outcome on {@code pending}
+     * because the process is technically still alive and could be
+     * unblocked via the inbox at any time.
+     *
+     * <p>Idempotent on repeated BLOCKED→RUNNING→BLOCKED bounces: each
+     * transition just appends another timeline entry. The runState
+     * survives until a terminal event arrives ({@link #onTerminated},
+     * {@link #onFailed}).
+     */
+    public synchronized void onBlocked(String correlationId, @Nullable String details) {
+        RunState state = runs.get(correlationId);
+        if (state == null) return;
+        state.timeline.add(formatTimelineEntry(Instant.now(), "BLOCKED",
+                details != null && !details.isBlank() ? details : "awaiting input"));
+        upsert(state, correlationId);
+    }
+
     /** Overlap policy {@code CANCEL_PREVIOUS} stopped a prior run. */
     public synchronized void onCancelled(String correlationId, @Nullable String victimProcessId) {
         RunState state = runs.get(correlationId);

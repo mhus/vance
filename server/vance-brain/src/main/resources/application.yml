@@ -159,6 +159,14 @@ vance:
       #          null, so Mongo's TTL monitor never reaps it.
       #   < 0  — DISABLED: no document is written at all.
       retention-days: 7
+    # Whether 6-field cron expressions may use the seconds field for
+    # sub-minute precision. Default off — protects the brain from
+    # accidentally-overloading expressions like `*/5 * * * * *`
+    # (every 5 seconds). When off, the input format stays accepted
+    # (no error at scheduler_set), but the seconds field is clamped
+    # to "0" at registration time, so the lowest effective firing
+    # cadence is once per minute.
+    allow-seconds: false
   events:
     log:
       # Same tri-state semantics as scheduler.log — system-wide fallback

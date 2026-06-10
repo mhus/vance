@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.tools.ursascheduler;
 
 import de.mhus.vance.api.eventlog.EventType;
+import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.ursascheduler.UrsaSchedulerService;
 import de.mhus.vance.brain.ursascheduler.UrsaSchedulerSourceKeys;
 import de.mhus.vance.shared.document.DocumentDocument;
@@ -11,6 +12,7 @@ import de.mhus.vance.shared.ursascheduler.ResolvedUrsaScheduler;
 import de.mhus.vance.shared.ursascheduler.UrsaSchedulerLoader;
 import de.mhus.vance.toolpack.ToolException;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -38,6 +40,7 @@ class UrsaSchedulerToolSupport {
     private final UrsaSchedulerLoader loader;
     private final EventLogService eventLogService;
     private final UrsaSchedulerService schedulerService;
+    private final RecipeResolver recipeResolver;
 
     static String normalizeName(String name) {
         if (name == null) {
@@ -102,6 +105,35 @@ class UrsaSchedulerToolSupport {
         } catch (UrsaSchedulerLoader.SchedulerParseException ex) {
             throw new ToolException(ex.getMessage());
         }
+    }
+
+    /**
+     * Cross-reference checks the tool layer surfaces back to the LLM as
+     * non-fatal warnings — the scheduler is still saved and registered,
+     * but the caller knows about dangling references before the first
+     * cron tick. Today: recipe-name existence (the most common
+     * hallucination). Workflow / script targets are not checked here —
+     * their resolution paths surface failures differently.
+     *
+     * <p>An empty list means "no warnings"; an LLM seeing this in the
+     * tool result should self-correct (typically by creating the
+     * referenced recipe, or by setting {@code enabled: false} until the
+     * referenced object exists).
+     */
+    List<String> crossReferenceWarnings(
+            String tenantId, String projectId, ResolvedUrsaScheduler r) {
+        List<String> warnings = new ArrayList<>();
+        if (r.recipe() != null && !r.recipe().isBlank()) {
+            boolean exists = recipeResolver.resolve(tenantId, projectId, r.recipe()).isPresent();
+            if (!exists) {
+                warnings.add("recipe '" + r.recipe()
+                        + "' is not defined in this project's cascade — "
+                        + "scheduler will fail on fire until the recipe is created "
+                        + "(see _vance/recipes/<name>.yaml) or the scheduler's "
+                        + "'recipe:' field is corrected");
+            }
+        }
+        return warnings;
     }
 
     /**

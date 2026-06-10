@@ -17,17 +17,27 @@ import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 /**
- * Hooks {@link ThinkProcessStatusChangedEvent} to write the terminal
- * event-log entry (COMPLETED / FAILED / CANCELLED) for scheduler-spawned
- * processes, and to notify {@link UrsaSchedulerService} so the
- * overlap-{@code QUEUE} re-fire can proceed.
+ * Hooks {@link ThinkProcessStatusChangedEvent} for scheduler-spawned
+ * processes — two duties:
+ *
+ * <ul>
+ *   <li>Terminal transitions ({@code CLOSED}) write the closing event-log
+ *       entry (COMPLETED / FAILED / CANCELLED), update the scheduler-log
+ *       document with the final outcome, and notify
+ *       {@link UrsaSchedulerService} so the overlap-{@code QUEUE} re-fire
+ *       can proceed.</li>
+ *   <li>Non-terminal pauses ({@code BLOCKED}) append a timeline entry to
+ *       the scheduler-log so the document doesn't forever show only
+ *       "STARTED" when the engine is waiting on an inbox answer. Outcome
+ *       remains {@code pending} — the run is technically still alive.</li>
+ * </ul>
  *
  * <p>Process identity is recovered through the event log itself: the
  * scheduler emits a {@code STARTED} entry on spawn that carries both
- * {@code processId} and {@code correlationId}. On termination we look
- * that entry up — when it exists, the process was scheduler-spawned and
- * we close the run with the matching correlation. When it doesn't, the
- * process is unrelated and we stay silent.
+ * {@code processId} and {@code correlationId}. On any handled transition
+ * we look that entry up — when it exists, the process was
+ * scheduler-spawned and we update with the matching correlation. When it
+ * doesn't, the process is unrelated and we stay silent.
  */
 @Component
 @RequiredArgsConstructor
@@ -41,7 +51,9 @@ public class UrsaSchedulerProcessTerminationListener {
 
     @EventListener
     public void onStatusChanged(ThinkProcessStatusChangedEvent event) {
-        if (event.newStatus() != ThinkProcessStatus.CLOSED) {
+        ThinkProcessStatus newStatus = event.newStatus();
+        if (newStatus != ThinkProcessStatus.CLOSED
+                && newStatus != ThinkProcessStatus.BLOCKED) {
             return;
         }
         Optional<EventLogDocument> startOpt = eventLogService.findStartForProcess(
@@ -51,6 +63,14 @@ public class UrsaSchedulerProcessTerminationListener {
             return;
         }
         EventLogDocument start = startOpt.get();
+        if (newStatus == ThinkProcessStatus.BLOCKED) {
+            schedulerLogService.onBlocked(
+                    start.getCorrelationId(),
+                    "process " + event.processId() + " awaiting inbox answer");
+            log.info("Scheduler run blocked source='{}' process='{}' — awaiting inbox answer",
+                    start.getSource(), event.processId());
+            return;
+        }
 
         Optional<ThinkProcessDocument> processOpt = thinkProcessService.findById(event.processId());
         CloseReason closeReason = processOpt

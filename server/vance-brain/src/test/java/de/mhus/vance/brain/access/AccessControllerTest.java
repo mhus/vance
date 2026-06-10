@@ -71,9 +71,8 @@ class AccessControllerTest {
                 userService,
                 passwordService,
                 homeBootstrapService,
-                settingService,
                 auditService,
-                /* cookieSecure */ true);
+                new WebUiCookieService(jwtService, settingService, /* cookieSecure */ true));
 
         // Default wiring — an active user exists in the tenant with a
         // password hash. Individual tests override what they need.
@@ -496,8 +495,8 @@ class AccessControllerTest {
         // path. Production must keep it true.
         AccessController insecure = new AccessController(
                 jwtService, userService, passwordService,
-                homeBootstrapService, settingService, auditService,
-                /* cookieSecure */ false);
+                homeBootstrapService, auditService,
+                new WebUiCookieService(jwtService, settingService, /* cookieSecure */ false));
 
         AccessTokenRequest req = AccessTokenRequest.builder()
                 .password("right-password")

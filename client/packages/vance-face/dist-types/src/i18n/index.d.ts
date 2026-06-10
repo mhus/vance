@@ -11,9 +11,9 @@ declare const i18n: I18n<{
 export declare function installI18n(app: App): void;
 /**
  * Switch the live UI language. Used by the profile page after the
- * user picks a different language — the new value flows from
- * sessionStorage (set by {@code setActiveLanguage}) into i18n's
- * reactive locale ref so all bound templates re-render immediately.
+ * user picks a different language — flips the i18n locale ref so all
+ * bound templates re-render immediately, without waiting for the
+ * page reload that would otherwise re-read the data cookie.
  *
  * Unsupported codes silently no-op (rather than throwing) — the user
  * has already saved the value to the server, the UI just doesn't

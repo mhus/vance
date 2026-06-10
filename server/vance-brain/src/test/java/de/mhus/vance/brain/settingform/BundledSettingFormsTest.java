@@ -41,12 +41,13 @@ class BundledSettingFormsTest {
                 .extracting(field -> field.getName())
                 .containsExactly(
                         "aliasAnalyze", "aliasFast", "aliasDeep", "aliasWeb", "aliasCode",
+                        "aliasImage", "aliasImageHigh",
                         "provider",
                         "anthropicKey", "openaiKey", "geminiKey",
                         "openaiBaseUrl", "ollamaBaseUrl",
                         "tracing");
 
-        // All five aliases use the dynamic ai-models choice source.
+        // Chat-tier aliases use the chat-only ai-models choice source.
         for (String aliasField : new String[]{
                 "aliasAnalyze", "aliasFast", "aliasDeep", "aliasWeb", "aliasCode"}) {
             var fld = f.fields().stream()
@@ -55,6 +56,17 @@ class BundledSettingFormsTest {
             assertThat(fld.getChoicesFrom()).isEqualTo("ai-models");
             assertThat(fld.getBindsTo()).isNotNull();
             assertThat(fld.getBindsTo().getKey()).startsWith("ai.alias.default.");
+        }
+
+        // Image aliases use the kind:image filtered source so the picker
+        // doesn't mix chat models in.
+        for (String aliasField : new String[]{"aliasImage", "aliasImageHigh"}) {
+            var fld = f.fields().stream()
+                    .filter(field -> field.getName().equals(aliasField))
+                    .findFirst().orElseThrow();
+            assertThat(fld.getChoicesFrom()).isEqualTo("ai-image-models");
+            assertThat(fld.getBindsTo()).isNotNull();
+            assertThat(fld.getBindsTo().getKey()).startsWith("ai.alias.default.image");
         }
 
         // Tracing should produce two computed settings.

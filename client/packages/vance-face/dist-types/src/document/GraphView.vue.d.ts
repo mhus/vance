@@ -17,8 +17,8 @@ declare const _default: import("vue").DefineComponent<__VLS_Props, {}, {}, {}, {
 }, string, import("vue").PublicProps, Readonly<__VLS_Props> & Readonly<{
     "onUpdate:doc"?: ((doc: GraphDocument) => any) | undefined;
 }>, {
-    mode: "editor" | "inline" | "embedded";
     meta: FenceMeta;
+    mode: "editor" | "inline" | "embedded";
 }, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;
 export default _default;
 //# sourceMappingURL=GraphView.vue.d.ts.map

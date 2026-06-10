@@ -3,12 +3,10 @@
 // The i18n instance is a singleton — every editor's `main.ts` calls
 // {@link installI18n} before mounting its app. Locale resolution
 // order at startup:
-//   1. {@code getActiveLanguage()} — sessionStorage override set
-//      by the profile page; lives for the lifetime of this tab.
-//   2. data cookie's {@code webui.language} (already covered by
-//      getActiveLanguage's fallback).
-//   3. {@code navigator.language} primary tag (`'de-DE'` → `'de'`).
-//   4. `'en'`.
+//   1. {@code getActiveLanguage()} — reads `webui.language` straight
+//      from the data cookie (server-refreshed on every profile save).
+//   2. {@code navigator.language} primary tag (`'de-DE'` → `'de'`).
+//   3. `'en'`.
 //
 // Fallback locale is always `'en'`. Missing keys in any other locale
 // fall through to English silently — `silentTranslationWarn: true`
@@ -66,9 +64,9 @@ export function installI18n(app: App): void {
 
 /**
  * Switch the live UI language. Used by the profile page after the
- * user picks a different language — the new value flows from
- * sessionStorage (set by {@code setActiveLanguage}) into i18n's
- * reactive locale ref so all bound templates re-render immediately.
+ * user picks a different language — flips the i18n locale ref so all
+ * bound templates re-render immediately, without waiting for the
+ * page reload that would otherwise re-read the data cookie.
  *
  * Unsupported codes silently no-op (rather than throwing) — the user
  * has already saved the value to the server, the UI just doesn't

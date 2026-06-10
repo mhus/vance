@@ -1,6 +1,5 @@
 import type { AccessTokenRequest, AccessTokenResponse } from '@vance/generated';
 import { brainBaseUrl } from '@vance/shared';
-import { clearActiveWebUiSettings } from './webUiSession';
 
 export class LoginError extends Error {
   constructor(public readonly status: number, message: string) {
@@ -113,7 +112,4 @@ export async function logout(tenant: string): Promise<void> {
     // and the local clear below removes the data cookie immediately.
   }
   document.cookie = 'vance_data=; Max-Age=0; Path=/; SameSite=Strict';
-  // Drop the per-tab UI overrides too — otherwise the next user on
-  // this tab inherits the previous user's language.
-  clearActiveWebUiSettings();
 }

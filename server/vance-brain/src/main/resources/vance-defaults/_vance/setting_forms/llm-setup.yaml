@@ -75,6 +75,35 @@ fields:
     bindsTo:
       key: "ai.alias.default.code"
 
+  # ─── Image-generation aliases (Fenchurch) ──────────────────────────
+  # See specification/fenchurch-service.md. The choices come from a
+  # separate ai-models.yaml view that only lists `kind: image` entries,
+  # so the picker doesn't mix chat models in.
+
+  - name: aliasImage
+    type: select
+    label:
+      de: "Alias `default:image`"
+      en: "Alias `default:image`"
+    help:
+      de: "Schneller / günstiger Bildgenerator — Default für `image_generate` ohne explizite Quality-Wahl."
+      en: "Fast / cheap image generator — default for `image_generate` without explicit quality choice."
+    choicesFrom: ai-image-models
+    bindsTo:
+      key: "ai.alias.default.image"
+
+  - name: aliasImageHigh
+    type: select
+    label:
+      de: "Alias `default:image-high`"
+      en: "Alias `default:image-high`"
+    help:
+      de: "Hochwertige Bildgenerierung — langsamer, teurer. Empfohlen für finale Assets (Cover, Logo, Marketing)."
+      en: "Quality image generation — slower, more expensive. Recommended for final assets (cover art, logo, marketing)."
+    choicesFrom: ai-image-models
+    bindsTo:
+      key: "ai.alias.default.image-high"
+
   # ─── Default fallback — used when an alias is unset ────────────────
 
   - name: provider

@@ -3,7 +3,6 @@ package de.mhus.vance.brain.access;
 import de.mhus.vance.api.access.AccessTokenRequest;
 import de.mhus.vance.api.access.AccessTokenResponse;
 import de.mhus.vance.api.access.RefreshTokenResponse;
-import de.mhus.vance.api.access.WebUiSessionData;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.access.WebUiCookies;
 import de.mhus.vance.shared.audit.AuditService;
@@ -12,32 +11,22 @@ import de.mhus.vance.shared.jwt.JwtService;
 import de.mhus.vance.shared.jwt.TokenType;
 import de.mhus.vance.shared.jwt.VanceJwtClaims;
 import de.mhus.vance.shared.password.PasswordService;
-import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.user.UserDocument;
 import de.mhus.vance.shared.user.UserService;
 import de.mhus.vance.shared.user.UserStatus;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Map;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.ObjectMapper;
-import tools.jackson.databind.json.JsonMapper;
 
 /**
  * REST endpoint that mints JWTs after verifying username + password.
@@ -78,32 +67,21 @@ public class AccessController {
     private final UserService userService;
     private final PasswordService passwordService;
     private final HomeBootstrapService homeBootstrapService;
-    private final SettingService settingService;
     private final AuditService auditService;
-    private final boolean cookieSecure;
-    private final ObjectMapper objectMapper = JsonMapper.builder().build();
+    private final WebUiCookieService webUiCookieService;
 
-    /**
-     * @param cookieSecure default {@code true}. Set to {@code false} in
-     *                     local non-HTTPS development so the browser
-     *                     accepts the cookies. Production must keep it
-     *                     true — otherwise the {@code HttpOnly} access
-     *                     cookie can be sniffed off the wire.
-     */
     public AccessController(JwtService jwtService,
                             UserService userService,
                             PasswordService passwordService,
                             HomeBootstrapService homeBootstrapService,
-                            SettingService settingService,
                             AuditService auditService,
-                            @Value("${vance.web.cookies.secure:true}") boolean cookieSecure) {
+                            WebUiCookieService webUiCookieService) {
         this.jwtService = jwtService;
         this.userService = userService;
         this.passwordService = passwordService;
         this.homeBootstrapService = homeBootstrapService;
-        this.settingService = settingService;
         this.auditService = auditService;
-        this.cookieSecure = cookieSecure;
+        this.webUiCookieService = webUiCookieService;
     }
 
     @PostMapping("/brain/{tenant}/access/{username}")
@@ -232,120 +210,13 @@ public class AccessController {
 
         ResponseEntity.BodyBuilder responseEntityBuilder = ResponseEntity.ok();
         if (request.isRequestCookies()) {
-            attachCookies(responseEntityBuilder, user, request,
-                    token, expiresAt, refreshToken, refreshExpiresAt);
+            webUiCookieService.attachLoginCookies(
+                    responseEntityBuilder, user,
+                    token, expiresAt,
+                    refreshToken, refreshExpiresAt,
+                    request.isIncludeWebUiSettings());
         }
         return responseEntityBuilder.body(responseBuilder.build());
-    }
-
-    /**
-     * Builds and attaches the three web-UI cookies. Always sets the
-     * access cookie and the JS-readable {@code data} cookie when the
-     * caller asked for cookies; the refresh cookie only when a refresh
-     * token was actually minted.
-     *
-     * <p>Cookie sticky-bits:
-     * <ul>
-     *   <li>{@code HttpOnly} on access + refresh — JS cannot read them,
-     *       so an XSS payload can't exfiltrate the credential.</li>
-     *   <li>{@code SameSite=Lax} — the cookies travel on same-origin
-     *       requests and on top-level cross-site GET navigations.
-     *       Strict would block the latter, which kills the OAuth
-     *       callback flow: a 302 from a provider back to
-     *       {@code /brain/.../oauth/.../callback} is a cross-site GET
-     *       navigation, and the browser would drop the access cookie.
-     *       Lax still blocks the CSRF-relevant cases (cross-site POST
-     *       form submissions, image/iframe inclusion), and the OAuth
-     *       callback is independently protected by the {@code state}
-     *       parameter (single-use, bound to tenant+user).</li>
-     *   <li>{@code Secure} — toggled by {@code vance.web.cookies.secure}
-     *       (default {@code true}). Production must keep it true.</li>
-     *   <li>{@code Path=/} — every brain endpoint receives the cookies.
-     *       Tightening the refresh cookie's path to {@code /brain/...}
-     *       would block automatic re-mint from arbitrary editors, so
-     *       we keep them all path-wide.</li>
-     * </ul>
-     */
-    private void attachCookies(
-            ResponseEntity.BodyBuilder responseBuilder,
-            UserDocument user,
-            AccessTokenRequest request,
-            String accessToken,
-            Instant accessExpiresAt,
-            String refreshToken,
-            Instant refreshExpiresAt) {
-
-        ResponseCookie access = baseCookie(WebUiCookies.ACCESS, accessToken)
-                .httpOnly(true)
-                .maxAge(Duration.between(Instant.now(), accessExpiresAt))
-                .build();
-        responseBuilder.header(HttpHeaders.SET_COOKIE, access.toString());
-
-        if (refreshToken != null && refreshExpiresAt != null) {
-            ResponseCookie refresh = baseCookie(WebUiCookies.REFRESH, refreshToken)
-                    .httpOnly(true)
-                    .maxAge(Duration.between(Instant.now(), refreshExpiresAt))
-                    .build();
-            responseBuilder.header(HttpHeaders.SET_COOKIE, refresh.toString());
-        }
-
-        Map<String, String> webUiSettings = request.isIncludeWebUiSettings()
-                ? settingService.findUserSettingsByPrefix(
-                        user.getTenantId(), user.getName(), WebUiCookies.SETTINGS_PREFIX)
-                : Map.of();
-
-        WebUiSessionData sessionData = WebUiSessionData.builder()
-                .username(user.getName())
-                .tenantId(user.getTenantId())
-                .displayName(user.getTitle())
-                .accessExpiresAtTimestamp(accessExpiresAt.toEpochMilli())
-                .refreshExpiresAtTimestamp(refreshExpiresAt == null ? null : refreshExpiresAt.toEpochMilli())
-                .webUiSettings(webUiSettings)
-                .build();
-
-        // The data cookie's lifetime mirrors whichever credential cookie
-        // outlives it — the SPA reads expiry timestamps from it to
-        // schedule silent re-mints. If the refresh cookie isn't issued
-        // we fall back to the access lifetime; the SPA then knows it
-        // must redirect to login when the access cookie expires.
-        Instant dataExpiresAt = refreshExpiresAt != null ? refreshExpiresAt : accessExpiresAt;
-
-        ResponseCookie data = baseCookie(WebUiCookies.DATA, encodeSessionData(sessionData))
-                // Not HttpOnly — the SPA reads it on every page load.
-                .httpOnly(false)
-                .maxAge(Duration.between(Instant.now(), dataExpiresAt))
-                .build();
-        responseBuilder.header(HttpHeaders.SET_COOKIE, data.toString());
-    }
-
-    private ResponseCookie.ResponseCookieBuilder baseCookie(String name, String value) {
-        return ResponseCookie.from(name, value)
-                .secure(cookieSecure)
-                .sameSite("Lax")
-                .path("/");
-    }
-
-    /**
-     * URL-encodes a JSON-serialised {@link WebUiSessionData}. Cookies
-     * may not contain raw whitespace / special characters; URL encoding
-     * keeps the payload ASCII-safe at the cost of a single decode call
-     * on the SPA side.
-     */
-    private String encodeSessionData(WebUiSessionData sessionData) {
-        try {
-            String json = objectMapper.writeValueAsString(sessionData);
-            return URLEncoder.encode(json, StandardCharsets.UTF_8);
-        } catch (JacksonException e) {
-            // The DTO is fully POJO and never throws — this branch is
-            // defensive only. Fall back to a minimal payload so the
-            // SPA at least has identity, even if settings are missing.
-            log.warn("Failed to serialise WebUiSessionData for tenant='{}' user='{}': {}",
-                    sessionData.getTenantId(), sessionData.getUsername(), e.getMessage());
-            return URLEncoder.encode(
-                    "{\"username\":\"" + sessionData.getUsername()
-                            + "\",\"tenantId\":\"" + sessionData.getTenantId() + "\"}",
-                    StandardCharsets.UTF_8);
-        }
     }
 
     /**
@@ -422,16 +293,7 @@ public class AccessController {
     @PostMapping("/brain/{tenant}/logout")
     public ResponseEntity<Void> logout(@PathVariable("tenant") String tenant) {
         ResponseEntity.HeadersBuilder<?> builder = ResponseEntity.noContent();
-        for (String name : new String[]{WebUiCookies.ACCESS, WebUiCookies.REFRESH, WebUiCookies.DATA}) {
-            ResponseCookie expired = ResponseCookie.from(name, "")
-                    .secure(cookieSecure)
-                    .sameSite("Lax")
-                    .path("/")
-                    .httpOnly(!WebUiCookies.DATA.equals(name))
-                    .maxAge(0)
-                    .build();
-            builder.header(HttpHeaders.SET_COOKIE, expired.toString());
-        }
+        webUiCookieService.clearCookies(builder);
         log.info("Logout tenant='{}'", tenant);
         auditService.authLogout(tenant, null);
         return builder.build();

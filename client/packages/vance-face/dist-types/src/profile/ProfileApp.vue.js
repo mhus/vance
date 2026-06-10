@@ -1,6 +1,6 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { applyTheme, setActiveLanguage, setActiveTheme, setActiveUiLevel, } from '@/platform';
+import { applyTheme, } from '@/platform';
 import { setUiLocale } from '@/i18n';
 import { EditorShell, VAlert, VButton, VCard, VInput, VSelect } from '@components/index';
 import { useProfile } from '@composables/useProfile';
@@ -93,12 +93,9 @@ async function onLanguageChanged(value) {
     languageDraft.value = next;
     await saveSetting(LANGUAGE_KEY, next === '' ? null : next).catch(() => undefined);
     if (!error.value) {
-        // Mirror the new value into sessionStorage so the rest of the
-        // app picks it up via {@code getActiveLanguage} immediately —
-        // no re-login, no page reload. The data cookie still carries
-        // the login-time snapshot; sessionStorage wins for live reads.
-        setActiveLanguage(next === '' ? null : next);
-        // Switch the live i18n locale too so the page re-renders in the
+        // The PUT response refreshes the data cookie server-side, so
+        // {@link getActiveLanguage} sees the new value on the next read.
+        // Switch the live i18n locale here so the page re-renders in the
         // newly chosen language right away.
         setUiLocale(next === '' ? null : next);
         languageSaved.value = t('profile.preferences.languageSaved');
@@ -129,7 +126,8 @@ async function onThemeChanged(value) {
     // pass null so the brain DELETEs it. light / dark are stored as-is.
     await saveSetting(THEME_KEY, next === 'auto' ? null : next).catch(() => undefined);
     if (!error.value) {
-        setActiveTheme(next);
+        // PUT refreshes the data cookie; flip the DOM theme here so the
+        // change is visible without waiting for a page reload.
         applyTheme(next);
         themeSaved.value = t('profile.preferences.themeSaved');
     }
@@ -142,7 +140,9 @@ async function onUiLevelChanged(value) {
     // setting — same convention as theme=auto / language="".
     await saveSetting(UI_LEVEL_KEY, next === 'standard' ? null : next).catch(() => undefined);
     if (!error.value) {
-        setActiveUiLevel(next);
+        // Index-page tile filtering reads {@link getActiveUiLevel} from
+        // the data cookie on its next mount, which the PUT response just
+        // refreshed.
         uiLevelSaved.value = t('profile.preferences.uiLevelSaved');
     }
 }

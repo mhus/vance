@@ -4,7 +4,6 @@ import { useI18n } from 'vue-i18n';
 import { getTenantId, getUsername } from '@vance/shared';
 import {
   logout as serverLogout,
-  setActiveLanguage,
 } from '@/platform';
 import { setUiLocale } from '@/i18n';
 import FookSupportModal from './FookSupportModal.vue';
@@ -99,7 +98,9 @@ const LANGUAGES: readonly LanguageOption[] = [
 const currentLocale = computed<string>(() => String(locale.value));
 
 function selectLanguage(code: LanguageOption['code']): void {
-  setActiveLanguage(code);
+  // Transient switch for the current page only. The user's persistent
+  // default lives on the profile page; switching here reverts on the
+  // next page reload because the data cookie is the source of truth.
   setUiLocale(code);
 }
 

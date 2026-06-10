@@ -7,11 +7,10 @@
  * JavaScript never holds the access or refresh token; the refresh
  * cookie is `HttpOnly` and travels with the request automatically.
  *
- * Re-hydrates the session-storage UI settings and the identity
- * mirror in the platform's prefsStore on success — a silent-refresh
- * re-issues the data cookie with whatever the server thinks the
- * current `webui.*` values are, and shared modules read identity from
- * the prefsStore.
+ * Re-hydrates the identity mirror in the platform's prefsStore on
+ * success so shared modules see the fresh tenant/username. The
+ * webui.* settings ride along in the freshly issued data cookie and
+ * are read straight from there by `getActive*()`.
  */
 export declare function refreshAccessCookie(): Promise<boolean>;
 //# sourceMappingURL=refreshWeb.d.ts.map

@@ -53,6 +53,11 @@ public class SettingFormService {
     /** Recognized {@link FormFieldDto#getChoicesFrom()} markers. */
     public static final String CHOICES_FROM_AI_MODELS = "ai-models";
 
+    /** Image-only counterpart of {@link #CHOICES_FROM_AI_MODELS} —
+     *  populates a select with the {@code kind: image} entries from
+     *  {@code ai-models.yaml}. Used by the Fenchurch alias pickers. */
+    public static final String CHOICES_FROM_AI_IMAGE_MODELS = "ai-image-models";
+
     /**
      * Validates and applies {@code values} against {@code form}. The
      * returned list mirrors what was actually executed — including
@@ -171,16 +176,23 @@ public class SettingFormService {
     private List<FormFieldDto> resolveDynamicChoices(
             List<FormFieldDto> fields, String tenantId, @Nullable String projectId) {
         @Nullable List<FormChoiceDto> aiModelChoices = null;
+        @Nullable List<FormChoiceDto> aiImageModelChoices = null;
         List<FormFieldDto> out = new ArrayList<>(fields.size());
         for (FormFieldDto f : fields) {
-            if (!CHOICES_FROM_AI_MODELS.equals(f.getChoicesFrom())) {
+            String src = f.getChoicesFrom();
+            if (CHOICES_FROM_AI_MODELS.equals(src)) {
+                if (aiModelChoices == null) {
+                    aiModelChoices = buildAiModelChoices(tenantId, projectId);
+                }
+                out.add(f.toBuilder().choices(aiModelChoices).build());
+            } else if (CHOICES_FROM_AI_IMAGE_MODELS.equals(src)) {
+                if (aiImageModelChoices == null) {
+                    aiImageModelChoices = buildAiImageModelChoices(tenantId, projectId);
+                }
+                out.add(f.toBuilder().choices(aiImageModelChoices).build());
+            } else {
                 out.add(f);
-                continue;
             }
-            if (aiModelChoices == null) {
-                aiModelChoices = buildAiModelChoices(tenantId, projectId);
-            }
-            out.add(f.toBuilder().choices(aiModelChoices).build());
         }
         return out;
     }
@@ -199,6 +211,25 @@ public class SettingFormService {
         for (ModelInfo m : models) {
             String value = m.provider() + ":" + m.modelName();
             String label = value + "  (" + m.size().name().toLowerCase(Locale.ROOT) + ")";
+            out.add(FormChoiceDto.builder().value(value).label(java.util.Map.of("en", label)).build());
+        }
+        return out;
+    }
+
+    /**
+     * Image-model counterpart of {@link #buildAiModelChoices}: only
+     * picks up {@code kind: image} entries via
+     * {@link ModelCatalog#listAllImages}. Order follows the catalog
+     * iteration order.
+     */
+    private List<FormChoiceDto> buildAiImageModelChoices(
+            String tenantId, @Nullable String projectId) {
+        List<de.mhus.vance.brain.ai.image.ImageModelInfo> models =
+                modelCatalog.listAllImages(tenantId, projectId);
+        List<FormChoiceDto> out = new ArrayList<>(models.size());
+        for (de.mhus.vance.brain.ai.image.ImageModelInfo m : models) {
+            String value = m.provider() + ":" + m.modelName();
+            String label = value;
             out.add(FormChoiceDto.builder().value(value).label(java.util.Map.of("en", label)).build());
         }
         return out;

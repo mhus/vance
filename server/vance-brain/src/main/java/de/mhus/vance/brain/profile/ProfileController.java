@@ -5,6 +5,7 @@ import de.mhus.vance.api.profile.ProfileSettingWriteRequest;
 import de.mhus.vance.api.profile.ProfileUpdateRequest;
 import de.mhus.vance.api.settings.SettingType;
 import de.mhus.vance.api.teams.TeamSummary;
+import de.mhus.vance.brain.access.WebUiCookieService;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.access.WebUiCookies;
 import de.mhus.vance.shared.home.HomeBootstrapService;
@@ -74,6 +75,7 @@ public class ProfileController {
     private final UserService userService;
     private final SettingService settingService;
     private final TeamService teamService;
+    private final WebUiCookieService webUiCookieService;
 
     @GetMapping
     public ProfileDto get(
@@ -87,7 +89,7 @@ public class ProfileController {
     }
 
     @PutMapping
-    public ProfileDto update(
+    public ResponseEntity<ProfileDto> update(
             @PathVariable("tenant") String tenant,
             @Valid @RequestBody ProfileUpdateRequest request,
             HttpServletRequest httpRequest) {
@@ -100,14 +102,15 @@ public class ProfileController {
             UserDocument saved = userService.update(
                     tenant, username, request.getTitle(), request.getEmail(), null, null);
             log.info("Profile updated tenant='{}' user='{}'", tenant, username);
-            return toDto(saved, loadTeams(tenant, username), loadSettings(tenant, username));
+            return withRefreshedDataCookie(httpRequest, saved,
+                    toDto(saved, loadTeams(tenant, username), loadSettings(tenant, username)));
         } catch (UserService.UserNotFoundException e) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
         }
     }
 
     @PutMapping("/settings/{key}")
-    public ProfileDto setSetting(
+    public ResponseEntity<ProfileDto> setSetting(
             @PathVariable("tenant") String tenant,
             @PathVariable("key") String key,
             @Valid @RequestBody ProfileSettingWriteRequest request,
@@ -129,7 +132,8 @@ public class ProfileController {
         UserDocument user = userService.findByTenantAndName(tenant, username)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Profile not found for current user"));
-        return toDto(user, loadTeams(tenant, username), loadSettings(tenant, username));
+        return withRefreshedDataCookie(httpRequest, user,
+                toDto(user, loadTeams(tenant, username), loadSettings(tenant, username)));
     }
 
     @DeleteMapping("/settings/{key}")
@@ -145,10 +149,28 @@ public class ProfileController {
                 key);
         log.info("Profile setting deleted tenant='{}' user='{}' key='{}'",
                 tenant, username, key);
-        return ResponseEntity.noContent().build();
+        UserDocument user = userService.findByTenantAndName(tenant, username)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Profile not found for current user"));
+        ResponseEntity.HeadersBuilder<?> builder = ResponseEntity.noContent();
+        webUiCookieService.refreshDataCookie(httpRequest, builder, user);
+        return builder.build();
     }
 
     // ─── Helpers ───────────────────────────────────────────────────────────
+
+    /**
+     * Wrap {@code body} in a 200-response that also carries a freshly
+     * minted {@code vance_data} cookie. Profile mutations must update
+     * the cookie so subsequent page loads pick up the new settings
+     * snapshot instead of re-applying the stale login-time view.
+     */
+    private ResponseEntity<ProfileDto> withRefreshedDataCookie(
+            HttpServletRequest httpRequest, UserDocument user, ProfileDto body) {
+        ResponseEntity.BodyBuilder builder = ResponseEntity.ok();
+        webUiCookieService.refreshDataCookie(httpRequest, builder, user);
+        return builder.body(body);
+    }
 
     private static String currentUser(HttpServletRequest req) {
         Object u = req.getAttribute(AccessFilterBase.ATTR_USERNAME);

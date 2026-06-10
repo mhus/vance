@@ -1,7 +1,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { clearLegacyAuth, clearRememberedLogin, getRememberedLogin, setRememberedLogin, } from '@vance/shared';
-import { getActiveUiLevel, getSessionData, hydrateActiveWebUiSettings, hydrateIdentity, isAccessAlive, isRefreshAlive, login, LoginError, rankOf, refreshAccessCookie, } from '@/platform';
+import { getActiveUiLevel, getSessionData, hydrateIdentity, isAccessAlive, isRefreshAlive, login, LoginError, rankOf, refreshAccessCookie, } from '@/platform';
 import { setUiLocale } from '@/i18n';
 import { EditorShell, VAlert, VButton, VCard, VCheckbox, VInput } from '@/components';
 const { t } = useI18n();
@@ -19,8 +19,8 @@ const autoLoginNotice = ref(null);
 // localStorage on principle.
 const rememberUser = ref(false);
 // Active UI level for tile filtering. Mirrors the value the user has
-// chosen in the profile page; the 'landing' branch reads it after
-// {@link hydrateActiveWebUiSettings} has populated sessionStorage.
+// chosen in the profile page; the 'landing' branch reads it straight
+// from the data cookie via {@link getActiveUiLevel}.
 //
 // Tiers:
 //   * standard — chat / documents / inbox  (everyday)
@@ -48,10 +48,8 @@ onMounted(async () => {
     }
     if (isAccessAlive()) {
         // Already-alive cookie path (user opened a fresh tab while
-        // logged in) — mirror the webui.* settings into sessionStorage
-        // so editors that consult {@link getActiveLanguage} have a
-        // value before the user does anything.
-        hydrateActiveWebUiSettings();
+        // logged in) — the data cookie already carries the user's
+        // language/theme/uiLevel, read straight from it.
         syncUiLocaleFromSession();
         uiLevel.value = getActiveUiLevel();
         redirectAfterLogin();
@@ -66,10 +64,8 @@ onMounted(async () => {
         autoLoginNotice.value = t('login.autoLoginNotice');
         const ok = await refreshAccessCookie();
         if (ok && isAccessAlive()) {
-            // Refresh re-issued the data cookie — push fresh settings
-            // into sessionStorage before the redirect mounts the next
-            // editor.
-            hydrateActiveWebUiSettings();
+            // Refresh re-issued the data cookie — pick the fresh values
+            // up before the redirect mounts the next editor.
             hydrateIdentity();
             syncUiLocaleFromSession();
             uiLevel.value = getActiveUiLevel();
@@ -83,10 +79,10 @@ onMounted(async () => {
     }
 });
 /**
- * Pull the language from the just-hydrated sessionStorage / data
- * cookie and feed it into the i18n instance. Called after every
- * successful login or auto-login so the {@code mode === 'landing'}
- * editor list renders in the user's chosen language.
+ * Pull the language from the data cookie and feed it into the i18n
+ * instance. Called after every successful login or auto-login so the
+ * {@code mode === 'landing'} editor list renders in the user's
+ * chosen language.
  */
 function syncUiLocaleFromSession() {
     const lang = getSessionData()?.webUiSettings?.['webui.language'];
@@ -103,10 +99,8 @@ async function onSubmit() {
             username: trimmedUsername,
             password: password.value,
         });
-        // Cookies are now set; mirror the webui.* settings into the
-        // tab's sessionStorage so live reads (language, theme) come
-        // from there until the user changes them in profile.
-        hydrateActiveWebUiSettings();
+        // Cookies are now set — read the fresh webui.* settings straight
+        // from the data cookie before the redirect mounts the next editor.
         syncUiLocaleFromSession();
         uiLevel.value = getActiveUiLevel();
         // Persist or clear the (tenant, username) hint based on the

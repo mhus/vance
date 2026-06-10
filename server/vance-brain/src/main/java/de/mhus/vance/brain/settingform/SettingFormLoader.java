@@ -418,10 +418,11 @@ public class SettingFormLoader {
         String writeIf = optionalString(raw.get("writeIf"));
         String choicesFrom = optionalString(raw.get("choicesFrom"));
         if (choicesFrom != null) {
-            if (!"ai-models".equals(choicesFrom)) {
+            if (!"ai-models".equals(choicesFrom)
+                    && !"ai-image-models".equals(choicesFrom)) {
                 throw new IllegalStateException(
                         "'" + path + ".choicesFrom' unknown source: '" + choicesFrom
-                                + "' (known: 'ai-models')");
+                                + "' (known: 'ai-models', 'ai-image-models')");
             }
             if (!choices.isEmpty()) {
                 throw new IllegalStateException(

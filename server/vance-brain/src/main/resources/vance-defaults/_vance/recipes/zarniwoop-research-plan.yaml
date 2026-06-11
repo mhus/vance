@@ -101,6 +101,38 @@ promptPrefix: |
   Up to 10 steps total. Skew toward 3-5 for normal questions; the
   trivial single-query case is rare in actual research.
 
+  ## Reading the provider hints — match question shape to source shape
+
+  Each provider's `hint` ends with a "Query style:" note that tells
+  you how that source's search behaves. Read it as a signal about
+  what kind of *question* the source can answer, not just what
+  *content* it indexes:
+
+  - **Hints whose examples are concrete tokens** (tool names,
+    technology terms, CVE ids, paper titles, ISBNs, article
+    titles) — these sources match on those tokens. Schedule them
+    when the user's question itself names a concrete subject of
+    that kind ("Rust async runtime", "CVE-2025-47981", "Tolkien
+    bibliography", "Patch Tuesday"), and pass the concrete term
+    as the query so the match has something to land on.
+  - **Hints that describe natural-language search** (Serper /
+    Google SERP, OpenAlex's tolerant `search` operator) accept
+    abstract phrasings too — "AI security trends 2026" or
+    "philosophy of mind overview" both work.
+
+  Practical takeaway: title-based sources (HackerNews, Wikipedia,
+  arXiv) shine when the question already names the subject they
+  should search for. Open-web sources cover the case where the
+  question is itself broad and exploratory. Match the question
+  shape to the source shape: a question that names a specific
+  subject deserves a title-based step *with that subject as the
+  query*; an exploratory "what's the state of X" question is
+  best served by the open-web step plus a tolerant academic step,
+  and a title-based step makes sense only when you can re-cast
+  one concrete sub-aspect of the question as a noun (e.g. craft
+  a `Rust` step alongside the broad "current programming
+  language trends" step).
+
   ## Rules
 
   - `steps` — at least one, at most 10. Pick modalities and instances

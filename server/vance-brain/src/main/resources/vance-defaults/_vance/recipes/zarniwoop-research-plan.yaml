@@ -58,30 +58,64 @@ promptPrefix: |
 
       {
         "steps": [
-          { "modality": "web",      "query": "…", "num": 5 },
-          { "modality": "encyclopedia", "query": "…", "instance": "wiki-de", "num": 3 }
+          { "modality": "news",         "query": "Microsoft Windows zero-day Mai 2026", "num": 5 },
+          { "modality": "web",          "query": "Patch Tuesday Microsoft Windows critical vulnerabilities", "num": 5 },
+          { "modality": "encyclopedia", "query": "Patch Tuesday",
+            "instance": "wiki-de", "num": 2 }
         ],
         "sourceAffinity": {
-          "modality:web":          0.7,
-          "modality:encyclopedia": 1.0,
-          "modality:news":         0.3,
-          "instance:serper-main":  0.9
+          "modality:news":         1.0,
+          "modality:web":          0.8,
+          "modality:encyclopedia": 0.5,
+          "modality:academic":     0.2
         },
         "minResults": 5
       }
 
+  ## Multi-wave planning
+
+  Real research is iterative — a human looks at a first batch and
+  then asks "what did I miss?". You don't have a second pass to do
+  that, so **plan the iteration up front as multiple steps in one
+  shot**. For any question with more than one reasonable angle,
+  emit 2-4 steps that cover the angles in parallel:
+
+  - **Narrow + broad pair.** One step with concrete keywords
+    ("CVE-2025-47981 SPNEGO NEGOEX") and a second with broader
+    wording ("Windows critical vulnerabilities 2026"). The narrow
+    one catches authoritative hits, the broad one catches
+    contextual / discussion sources the narrow one filters out.
+  - **Cross-modality coverage.** Combine modalities whose `hint`s
+    cover *different* angles of the same question. A security
+    question wants `news` (current advisories) + maybe
+    `encyclopedia` (background on a CVE class) + maybe `web`
+    (vendor blog posts). A historical question wants
+    `encyclopedia` (overview) + `book` (canonical works) +
+    `academic` (peer-reviewed deep-dive).
+  - **Instance variation when the protocol expects it.** If
+    `wiki-de` is in the inventory and the question is German, pin
+    it on the encyclopedia step. If both `serper-main` and a
+    second Serper endpoint are available, you can dispatch the
+    same modality to both with slightly different queries.
+
+  Up to 10 steps total. Skew toward 3-5 for normal questions; the
+  trivial single-query case is rare in actual research.
+
   ## Rules
 
-  - `steps` — at least one, at most 6. Pick modalities and instances
+  - `steps` — at least one, at most 10. Pick modalities and instances
     whose `hint` matches the question's topic. A provider whose
     indexed content is unrelated to the topic should be left out
     entirely, not just down-weighted in sourceAffinity. `query` may
     be a refined / synonymed version of the user's wording — search
-    engines reward concrete keywords.
+    engines reward concrete keywords. Two steps with the same
+    modality but different queries (one narrow, one broad) is a
+    valid and often useful pattern.
   - `instance` (optional, per step) pins a specific endpoint id
     from the inventory above. Use it when one instance is clearly
     right (e.g. `wiki-de` for a German encyclopedia question).
-  - `num` is the result cap for the step (1–10, default 5).
+  - `num` is the result cap for the step (1–10, default 5). Keep
+    narrow steps small (2-3 hits) and broad steps wider (5-8).
   - `sourceAffinity` is a map of weighting multipliers in [0, 1].
     Keys are either `modality:<lowercase-modality>` or
     `instance:<endpointId>`. The service multiplies these into the
@@ -96,8 +130,9 @@ promptPrefix: |
   news + general web. "AI launch this week" → favour news + web,
   dampen encyclopedia + academic.
 
-  Do NOT emit a refine plan in v1 — that's a v1.5 feature. The
-  service ignores any `refine` / `plannedRefinements` fields.
+  Do NOT emit a `refine` / `plannedRefinements` field — the service
+  ignores them. If you want more coverage, add more steps to the
+  initial plan instead.
 
   Output exactly one JSON object.
 tags:

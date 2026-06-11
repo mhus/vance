@@ -99,6 +99,28 @@ class ZarniwoopResearchServiceTest {
     }
 
     @Test
+    void plan_with_many_steps_is_capped_to_max_parallel() {
+        // MAX_PARALLEL_STEPS = 10 — a plan with 15 steps is allowed
+        // up to 10, the rest is dropped silently.
+        List<Map<String, Object>> bigPlan = new java.util.ArrayList<>();
+        for (int i = 0; i < 15; i++) {
+            bigPlan.add(Map.of("modality", "web",
+                    "query", "step-" + i, "num", 2));
+        }
+        stubPlan(Map.of("steps", bigPlan));
+        when(zarniwoopService.search(any(SearchRequest.class), any(), any()))
+                .thenReturn(emptyResult(SearchModality.WEB));
+        stubEvaluate(Map.of("verdicts", List.of()));
+
+        service.investigate("topic", SCOPE, CTX);
+
+        // Service should have invoked search 10 times — the cap.
+        org.mockito.Mockito.verify(zarniwoopService,
+                org.mockito.Mockito.times(10))
+                .search(any(), any(), any());
+    }
+
+    @Test
     void evaluate_keep_drop_split_lands_in_result() {
         stubPlan(Map.of(
                 "steps", List.of(Map.of("modality", "web", "query", "x", "num", 5)),

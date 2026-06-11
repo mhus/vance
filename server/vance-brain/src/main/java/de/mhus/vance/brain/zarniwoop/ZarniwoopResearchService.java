@@ -64,7 +64,15 @@ public class ZarniwoopResearchService {
 
     static final int DEFAULT_MIN_RESULTS = 5;
     static final int DEFAULT_NUM_PER_STEP = 5;
-    static final int MAX_PARALLEL_STEPS = 6;
+    /**
+     * Upper bound on plan steps. Raised from 6 → 10 so the plan-recipe
+     * can lay out multi-wave searches (narrow + broad queries across
+     * 2-3 modalities) inside a single plan call. The parallel
+     * fan-out caps thread-pool size by the same number — 10 threads
+     * for one investigate call is fine, the total budget is bounded
+     * by the per-step timeout (~15s) anyway.
+     */
+    static final int MAX_PARALLEL_STEPS = 10;
 
     private static final Map<String, Object> EMPTY_SCHEMA = Map.of("type", "object");
 

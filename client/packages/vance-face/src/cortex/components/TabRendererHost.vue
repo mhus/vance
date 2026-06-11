@@ -1,24 +1,26 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+/**
+ * Thin pass-through that mounts the DocumentTabShell. Kept as a named
+ * integration point so CortexApp doesn't need to import the shell
+ * directly — swapping the shell (e.g. introducing a tabs-as-windows
+ * variant) stays a one-file change.
+ */
 import type { CortexDocument } from '../types';
-import { resolveRenderer } from '../docTypeRegistry';
+import DocumentTabShell from './DocumentTabShell.vue';
 
 interface Props {
   document: CortexDocument;
 }
 
-const props = defineProps<Props>();
+defineProps<Props>();
 
 const emit = defineEmits<{
   (e: 'update', text: string): void;
 }>();
-
-const renderer = computed(() => resolveRenderer(props.document));
 </script>
 
 <template>
-  <component
-    :is="renderer.component"
+  <DocumentTabShell
     :document="document"
     @update="(text: string) => emit('update', text)"
   />

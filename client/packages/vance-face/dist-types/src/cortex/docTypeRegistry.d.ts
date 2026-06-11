@@ -1,35 +1,40 @@
-import type { Component } from 'vue';
 import type { CortexDocument } from './types';
 /**
- * A renderer entry that knows how to display + edit one class of
- * documents. Phase 1 registers only the code/text renderer; Phase 4
- * adds the image renderer; further plugins (sheet, chart, etc.) plug
- * in here without touching CortexApp.
+ * Binding entry: which DocumentTabShell mode handles this document, and
+ * how its edits should be persisted. The first entry whose {@link match}
+ * returns true wins.
  *
- * The first entry whose {@link match} returns true wins.
+ * V1 has two modes — {@code 'code'} (CodeEditor) and {@code 'image'}
+ * (ImageView read-only). V2 will add {@code 'typed-model'} for the
+ * Checklist/List/Tree/Records/Sheet/Chart/Graph views that emit a
+ * typed model via {@code @update:doc}; that needs the cortex store to
+ * carry a codec-parsed object instead of {@code inlineText}, which is
+ * a bigger lift than the V1 wrapper.
  */
-export interface DocTypeRenderer {
+export interface DocTypeBinding {
     /** Unique identifier — used for debug logs and future addon dispatch. */
     id: string;
-    /** Decides whether this renderer handles the given document. */
+    /** Decides whether this binding handles the given document. */
     match: (doc: CortexDocument) => boolean;
-    /** Vue component shown inside the active-tab area. */
-    component: Component;
+    /**
+     * Which built-in shell mode renders the body.
+     *  - {@code 'code'}  — CodeEditor with text-selection mirroring
+     *  - {@code 'image'} — ImageView, read-only in V1
+     */
+    mode: 'code' | 'image';
     /**
      * Where edits go.
-     *  - {@code 'client-memory'} — Tab-Renderer updates the document
-     *    in-memory; cortexStore.saveActive flushes it to the server.
-     *  - {@code 'server-side'} — edits are mediated through dedicated
-     *    server endpoints (e.g. image transforms); the tab is read-only
-     *    from the user's perspective.
-     * Phase 1 has only {@code 'client-memory'} renderers.
+     *  - {@code 'client-memory'} — DocumentTabShell emits {@code update}
+     *    with the new text; cortexStore writes it on save.
+     *  - {@code 'server-side'} — read-only in V1; image-modify tools
+     *    will land later as server-mediated operations (decision in
+     *    planning/cortex.md §6).
      */
     editLocation: 'client-memory' | 'server-side';
 }
 /**
- * Find the renderer that should handle the given document. Returns the
- * first matching entry; falls back to the last registry entry (which
- * v1 guarantees is the catch-all code renderer).
+ * Resolve which binding renders the given document. Returns the first
+ * matching entry; falls back to the catch-all code binding (last entry).
  */
-export declare function resolveRenderer(doc: CortexDocument): DocTypeRenderer;
+export declare function resolveBinding(doc: CortexDocument): DocTypeBinding;
 //# sourceMappingURL=docTypeRegistry.d.ts.map

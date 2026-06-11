@@ -86,7 +86,7 @@ public class WikipediaProtocol implements SearchProtocol {
 
     @Override
     public Set<SearchTier> tiersSupported() {
-        return Set.of(SearchTier.NORMAL);
+        return Set.of(SearchTier.NORMAL, SearchTier.EXPERT);
     }
 
     @Override
@@ -177,7 +177,13 @@ public class WikipediaProtocol implements SearchProtocol {
 
         @Override
         public Set<SearchTier> tiers() {
-            return Set.of(SearchTier.NORMAL);
+            // EXPERT means "callers may pin this instance"; the
+            // protocol silently ignores filter params it doesn't
+            // implement (no site/dateRange semantics on MediaWiki).
+            // Without EXPERT in the set, ZarniwoopResearchService
+            // can't honour a planned step with instance="wiki-de"
+            // — see planning/zarniwoop-service.md §11.
+            return Set.of(SearchTier.NORMAL, SearchTier.EXPERT);
         }
 
         @Override

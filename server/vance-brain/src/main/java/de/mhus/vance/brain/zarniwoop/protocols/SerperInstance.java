@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import tools.jackson.databind.JsonNode;
@@ -62,6 +63,9 @@ class SerperInstance implements SearchProviderInstance {
     private final ImageValidatorService imageValidator;
     private final YouTubeValidatorService youtubeValidator;
     private final SerperPdfHeadProbe pdfHeadProbe;
+
+    /** Logs the legacy-fallback warning only once per instance lifetime. */
+    private final AtomicBoolean legacyFallbackLogged = new AtomicBoolean(false);
 
     SerperInstance(ProviderInstanceConfig cfg,
                    SettingService settings,
@@ -470,9 +474,15 @@ class SerperInstance implements SearchProviderInstance {
                 scope.tenantId(), scope.projectId(), scope.processId(),
                 LEGACY_API_KEY_SETTING);
         if (!StringUtils.isBlank(legacy)) {
-            log.warn("Serper endpoint '{}' falling back to legacy setting '{}'. "
-                    + "Migrate to '{}' before the next release removes the legacy path.",
-                    cfg.instanceId(), LEGACY_API_KEY_SETTING, cfg.credentialSettingKey());
+            // Latch keeps the migration warning to one line per
+            // instance lifetime — the dispatcher would otherwise emit
+            // it on every availability + search pair (6+ lines per
+            // research_investigate call).
+            if (legacyFallbackLogged.compareAndSet(false, true)) {
+                log.warn("Serper endpoint '{}' falling back to legacy setting '{}'. "
+                        + "Migrate to '{}' before the next release removes the legacy path.",
+                        cfg.instanceId(), LEGACY_API_KEY_SETTING, cfg.credentialSettingKey());
+            }
             return legacy;
         }
         return "";

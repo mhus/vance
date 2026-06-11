@@ -291,13 +291,6 @@ function readNextParam(): string | null {
                 <div class="text-sm opacity-70">{{ $t('index.insights.description') }}</div>
             </a>
           </li>
-          <li v-if="showExpertTiles">
-            <a class="tile-row" href="/scripts.html">
-                <div class="font-semibold">Script Cortex</div>
-                <div class="text-sm opacity-70">JavaScript-Scripte schreiben, validieren, ausführen.</div>
-            </a>
-          </li>
-
           <!-- Admin tier — tenant-management surfaces. The brain still
                denies non-admins at the REST layer; this is just a
                clutter filter. -->

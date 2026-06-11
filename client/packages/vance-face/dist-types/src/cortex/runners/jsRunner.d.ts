@@ -5,9 +5,9 @@ import type { RunAdapter } from './types';
  * and falls back to short-interval polling when WS subscription
  * fails (e.g. the worker terminated before subscribe landed).
  *
- * <p>Logic mirrors {@code src/scripts/components/ExecutionDialog.vue}
- * but exposes it as a reactive handle the shell can drive without a
- * modal — the run lives inline below the editor.
+ * <p>Drives the run inline below the editor (no modal). Same backend
+ * endpoints the deleted Script-Cortex modal used — only the UI
+ * shape changed.
  */
 export declare const jsRunner: RunAdapter;
 //# sourceMappingURL=jsRunner.d.ts.map

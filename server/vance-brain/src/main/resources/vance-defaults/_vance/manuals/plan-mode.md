@@ -46,7 +46,7 @@ emitting an action out of sequence is rejected by the validator.
 ```
 
 Flips the process into **EXPLORING**. The tool filter narrows to
-read-only tools (`*_read`, `*_list`, `web_search`, ...) so you
+read-only tools (`*_read`, `*_list`, `research_search`, ...) so you
 investigate without making changes. Use this phase to read files,
 search code, query RAG — gather what you need.
 

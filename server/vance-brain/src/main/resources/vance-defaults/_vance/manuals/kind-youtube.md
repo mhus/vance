@@ -1,6 +1,6 @@
 ---
-triggers: video, YouTube, clip, tutorial, Tutorial, ride-along, "show me how X looks", play, abspielen, Video zeigen, video_search
-summary: Embed a YouTube video inline via a ```youtube fence; use video_search to find one.
+triggers: video, YouTube, clip, tutorial, Tutorial, ride-along, "show me how X looks", play, abspielen, Video zeigen, research_search modality=video, video_search
+summary: Embed a YouTube video inline via a ```youtube fence; use research_search modality=video to find one.
 ---
 # Inline kind — `youtube` (inline-only, no stored form)
 
@@ -35,12 +35,12 @@ https://youtu.be/dQw4w9WgXcQ
 - `start=N` — seek offset in seconds.
 - `title=<text>` — caption shown above the player.
 
-## Finding videos — call `video_search`, not `web_search`
+## Finding videos — call `research_search modality=video`
 
 When the user asks for a video, tutorial, ride-along, or "show me
-how X looks", call `video_search(query=...)`. The tool pre-validates
-each result via YouTube oEmbed and drops uploader-disabled,
-private, or geo-blocked entries.
+how X looks", call `research_search(query=..., modality=video)`.
+The tool pre-validates each result via YouTube oEmbed and drops
+uploader-disabled, private, or geo-blocked entries.
 
 Each surviving result carries an `embedFence` field — drop that
 string **verbatim** into your reply. Title and channel from the
@@ -56,8 +56,9 @@ https://youtu.be/dQw4w9WgXcQ
 \`\`\`
 ```
 
-`web_search` returns generic web pages; YouTube hits from there
-aren't validated, often dead, and waste the user's attention.
+`research_search modality=web` returns generic web pages; YouTube
+hits from there aren't validated, often dead, and waste the user's
+attention.
 
 ## Anti-patterns
 

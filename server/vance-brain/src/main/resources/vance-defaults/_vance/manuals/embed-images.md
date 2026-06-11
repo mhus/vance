@@ -1,6 +1,6 @@
 ---
-triggers: image, picture, photo, screenshot, Bild, Foto, Bildschirmfoto, Grafik, "show me a picture", image_search, Pixabay, Unsplash, png, jpg, svg
-summary: How to show a picture in chat — external URLs, project Documents, or image_search results.
+triggers: image, picture, photo, screenshot, Bild, Foto, Bildschirmfoto, Grafik, "show me a picture", research_search modality=image, image_search, Pixabay, Unsplash, png, jpg, svg
+summary: How to show a picture in chat — external URLs, project Documents, or research_search modality=image results.
 ---
 # Embedding — Images
 
@@ -11,7 +11,7 @@ delivered through Markdown — no special protocol, no tool gymnastics.
 
 User asks to *see* a photo, screenshot, diagram or any visual.
 Examples: "zeig mir Bilder von Lissabon", "show me the logo",
-"what does X look like", or you just ran `web_search` and the
+"what does X look like", or you just ran a web search and the
 results contain image URLs.
 
 ## Three ways to embed an image
@@ -28,14 +28,14 @@ so this just works:
 
 How to find the URL — pick the right tool:
 
-- **`image_search`** (preferred for "show me pictures of X"
-  requests). Each returned `imageUrl` is pre-validated against
-  the source host, so dead links never reach the user. The result
-  also carries `thumbnailUrl`, `source`, `sourceLink`. Drop
-  `imageUrl` straight into the Markdown above.
-- `web_search` returns page hits, not image URLs. If you extract
-  an image URL out of a snippet manually, it has not been
-  validated — `image_search` is the safer path.
+- **`research_search modality=image`** (preferred for "show me
+  pictures of X" requests). Each returned `imageUrl` is
+  pre-validated against the source host, so dead links never reach
+  the user. The result also carries `thumbnailUrl`, `source`,
+  `sourceLink`. Drop `imageUrl` straight into the Markdown above.
+- `research_search modality=web` returns page hits, not image URLs.
+  If you extract an image URL out of a snippet manually, it has
+  not been validated — `modality=image` is the safer path.
 - Public references the user names directly (a Wikipedia article,
   a stock-photo URL they pasted) — use as-is.
 
@@ -47,8 +47,8 @@ Rules:
   caption in voice/TTS clients and as accessibility text.
 - One image per line. Do not glue them into a single paragraph.
 - Don't fabricate URLs. If you don't have a real URL from
-  `image_search` or the user, don't invent one — search first or
-  ask the user.
+  `research_search modality=image` or the user, don't invent one —
+  search first or ask the user.
 
 ### 2. Project Document — when the image lives in this workspace
 

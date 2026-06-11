@@ -54,8 +54,8 @@ promptPrefix: |
         "alternatives": [
           { "type": "manual", "name": "embed-overview", "source": "engine",
             "summary": "Routing index for embedding visual content", "score": 0.7 },
-          { "type": "tool", "name": "image_search", "source": "engine",
-            "summary": "Search the web for images …", "score": 0.6 }
+          { "type": "tool", "name": "research_search", "source": "engine",
+            "summary": "Search the web for images via modality=image …", "score": 0.6 }
         ]
       }
 

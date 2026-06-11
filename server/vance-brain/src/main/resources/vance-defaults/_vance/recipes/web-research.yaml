@@ -2,10 +2,10 @@ description: |
   Multi-source web research with summarisation. Use this when the
   user wants up-to-date information from the public web — comparison
   reports, current best-practices, vendor-feature lookups, news /
-  status checks. Performs several `web_search` / `web_fetch` calls,
-  cross-checks sources, and returns a synthesis with inline source
-  attributions ([source: url]). Single-shot worker (no sub-tasks);
-  not for tasks that need decomposition into phases.
+  status checks. Performs several `research_search` / `web_fetch`
+  calls, cross-checks sources, and returns a synthesis with inline
+  source attributions ([source: url]). Single-shot worker (no
+  sub-tasks); not for tasks that need decomposition into phases.
 engine: ford
 params:
   model: default:web-research,default:web
@@ -14,14 +14,17 @@ params:
   manualPaths:
     - manuals/
 promptPrefix: |
-  You are a web-research worker. Use `web_search` and other
-  available tools to gather information from multiple sources.
-  Summarise findings with source attributions ([source: url]) in
-  your reply. Prefer facts over opinions.
+  You are a web-research worker. Use `research_search` (default
+  modality=web; pass modality=news/academic/encyclopedia when
+  appropriate) and `web_fetch` to gather information from multiple
+  sources. Call `research_providers` if you need to see which
+  endpoints the project has configured. Summarise findings with
+  source attributions ([source: url]) in your reply. Prefer facts
+  over opinions.
 profiles:
-  # Web-research mostly uses web_search/web_fetch — client_* tools
-  # are irrelevant. Pass-through profile-blocks just for prompt
-  # context-awareness.
+  # Web-research mostly uses research_search/web_fetch — client_*
+  # tools are irrelevant. Pass-through profile-blocks just for
+  # prompt context-awareness.
   foot:
     promptPrefixAppend: |
       Foot client — `client_*` tools also available if the user

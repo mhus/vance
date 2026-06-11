@@ -22,8 +22,8 @@ Counterparts in the manual library:
 
 - `doc_read` — for plain-text documents (markdown, json, yaml, …).
   PDF-mime documents are **rejected** by `doc_read`; use `pdf_read`.
-- `pdf_search` — Google search for PDFs *on the web*, not in the
-  project. Different tool, different scope.
+- `research_search modality=pdf` — Google search for PDFs *on the
+  web*, not in the project. Different tool, different scope.
 
 ## pdf_read
 

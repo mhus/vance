@@ -14,7 +14,7 @@ The Web-UI parses your reply as Markdown and goes beyond text:
 
 - Standard Markdown image syntax `![alt](url)` renders external
   `https://` images directly as `<img>` (e.g. results from
-  `web_search`). No tool call needed for this.
+  `research_search modality=image`). No tool call needed for this.
 - Fenced code blocks with a Vance kind tag (`mermaid`, `mindmap`,
   `chart`, `graph`, `youtube`, `tree`, `list`, `items`, `records`)
   render as interactive canvases.
@@ -28,7 +28,7 @@ The Web-UI parses your reply as Markdown and goes beyond text:
 
 | User wants … | Read |
 |---|---|
-| To see a picture / photo / screenshot — external URL, project image, or `image_search` result | `manual_read('embed-images')` |
+| To see a picture / photo / screenshot — external URL, project image, or `research_search modality=image` result | `manual_read('embed-images')` |
 | A flowchart / sequence / state / ER / gantt / gitGraph / C4 diagram | `manual_read('kind-diagram')` |
 | A numerical chart (line, bar, pie, scatter, candlestick, heatmap) | `manual_read('kind-chart')` |
 | A mindmap / radial brainstorm | `manual_read('kind-mindmap')` |

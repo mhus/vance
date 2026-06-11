@@ -23,7 +23,7 @@ The last expression's value is the tool's `value` field.
 ## Brain — `vance.*`
 
 ```js
-let hits = vance.tools.call("web_search", { query: "graaljs sandboxing" });
+let hits = vance.tools.call("research_search", { query: "graaljs sandboxing" });
 hits.results.length;
 ```
 
@@ -76,9 +76,9 @@ client.context.projectId;     // String|null
 ```
 
 Only `client_*` tools that the foot registered locally are reachable.
-`client.tools.call("web_search", ...)` throws — `web_search` is a
-server tool, the foot has no idea about it. `vance` is `undefined` on
-the foot.
+`client.tools.call("research_search", ...)` throws — `research_search`
+is a server tool, the foot has no idea about it. `vance` is `undefined`
+on the foot.
 
 `client.log.info(...)` / `.warn` / `.error` write to the foot log.
 Not auto-mirrored to the brain — return a value from the script if
@@ -111,7 +111,7 @@ Other `error` codes: `TIMEOUT`, `RESOURCE_EXHAUSTED`, `HOST_EXCEPTION`,
 - **Statement budget** — ~1M statements before `RESOURCE_EXHAUSTED`.
 - **No** Java interop, no `Java.type(...)`, no `java.lang.System`.
 - **No** filesystem (use `scratch_*` / `client_file_*` tools).
-- **No** network (use `web_search` etc.).
+- **No** network (use `research_search` etc.).
 - **No** threads, no `setTimeout` long-poll — script runs straight
   through, then exits.
 - **No** module loading (`import`, `require`). One flat source.

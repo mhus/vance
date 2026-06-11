@@ -62,8 +62,12 @@ Use these when the user asks about *their* files, not project files.
 
 ## Web
 
-- `web_search query=…` — Serper.dev-backed Google search. Use for
-  fresh facts or anything you don't already know.
+- `research_search query=… modality=web` — multi-provider web search
+  routed through the project's `research.endpoint.*` configuration
+  (default backed by Serper.dev). Use for fresh facts or anything
+  you don't already know. Pass `modality=image|video|pdf|news|
+  academic|encyclopedia` for those formats. Use `research_rich` when
+  the user wants a mixed view across formats.
 
 ## Compute
 

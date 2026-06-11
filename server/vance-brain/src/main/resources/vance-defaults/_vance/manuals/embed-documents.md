@@ -30,9 +30,10 @@ If you only have an **external** URL (Pixabay, Wikipedia, an
 arbitrary `https://`), this is the wrong manual:
 
 - External images → `manual_read('embed-images')`
-- External PDFs you need to find → call `pdf_search(query=...)`.
-  Each hit is HEAD-validated (`application/pdf` confirmed), so the
-  result can be presented as a plain `[Title](url)` Markdown link.
+- External PDFs you need to find → call
+  `research_search(query=..., modality=pdf)`. Each hit is
+  HEAD-validated (`application/pdf` confirmed), so the result can be
+  presented as a plain `[Title](url)` Markdown link.
   The Web-UI renders external PDF links as cards with title +
   hostname automatically; no extra embed work needed.
 

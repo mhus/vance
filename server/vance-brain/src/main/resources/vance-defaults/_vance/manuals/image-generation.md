@@ -19,8 +19,9 @@ User wants a picture that does not exist yet:
 - "Show me what X could look like" (when no real photo will do)
 
 If a real photo or existing graphic would answer the request,
-prefer `image_search` or `manual_read('embed-images')` — image
-generation is slow (5 s – 5 min) and uses paid tokens.
+prefer `research_search modality=image` or
+`manual_read('embed-images')` — image generation is slow (5 s –
+5 min) and uses paid tokens.
 
 ## Tool
 

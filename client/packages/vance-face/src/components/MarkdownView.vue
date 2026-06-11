@@ -520,8 +520,14 @@ export default defineComponent({
 }
 
 .markdown-view :deep(p)  { margin: 0.5em 0; }
+/* Tailwind's preflight strips list-style off ul/ol — explicitly
+ * restore so bullets / numbers come back in rendered Markdown. */
 .markdown-view :deep(ul),
-.markdown-view :deep(ol) { margin: 0.5em 0 0.5em 1.4em; }
+.markdown-view :deep(ol) { margin: 0.5em 0 0.5em 1.4em; padding-left: 0; }
+.markdown-view :deep(ul) { list-style: disc outside; }
+.markdown-view :deep(ol) { list-style: decimal outside; }
+.markdown-view :deep(ul ul) { list-style: circle outside; }
+.markdown-view :deep(ul ul ul) { list-style: square outside; }
 .markdown-view :deep(li) { margin: 0.15em 0; }
 .markdown-view :deep(blockquote) {
   border-left: 3px solid hsl(var(--bc) / 0.25);

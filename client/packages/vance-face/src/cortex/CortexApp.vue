@@ -17,7 +17,7 @@ import { CortexClientToolService } from './clientToolService';
 import FileTreeSidebar from './components/FileTreeSidebar.vue';
 import EditorTabs from './components/EditorTabs.vue';
 import TabRendererHost from './components/TabRendererHost.vue';
-import CortexChatPanel from './components/CortexChatPanel.vue';
+import CortexRightPanel from './components/CortexRightPanel.vue';
 
 // The generated SessionSummaryRichDto picks up these fields on the next
 // {@code mvn install} of the api module. Until then, augment locally so
@@ -750,11 +750,12 @@ onBeforeUnmount(() => {
     </div>
 
     <template #right-panel>
-      <CortexChatPanel
+      <CortexRightPanel
         v-if="sessionId && projectId"
         :session-id="sessionId"
         :project-id="projectId"
         :tool-service="clientToolService"
+        :active-document="activeTab"
       />
       <div v-else class="h-full p-3 text-sm opacity-60">
         Waiting for session…

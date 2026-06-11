@@ -7,7 +7,7 @@ import { CortexClientToolService } from './clientToolService';
 import FileTreeSidebar from './components/FileTreeSidebar.vue';
 import EditorTabs from './components/EditorTabs.vue';
 import TabRendererHost from './components/TabRendererHost.vue';
-import CortexChatPanel from './components/CortexChatPanel.vue';
+import CortexRightPanel from './components/CortexRightPanel.vue';
 // sessionId is mandatory — without it, send the user back to chat.html
 // where they can pick or create a session. Cortex never operates without
 // a chat session as its anchor (see planning/cortex.md §4.2).
@@ -943,17 +943,19 @@ if (__VLS_ctx.sessionId) {
     {
         const { 'right-panel': __VLS_thisSlot } = __VLS_3.slots;
         if (__VLS_ctx.sessionId && __VLS_ctx.projectId) {
-            /** @type {[typeof CortexChatPanel, ]} */ ;
+            /** @type {[typeof CortexRightPanel, ]} */ ;
             // @ts-ignore
-            const __VLS_57 = __VLS_asFunctionalComponent(CortexChatPanel, new CortexChatPanel({
+            const __VLS_57 = __VLS_asFunctionalComponent(CortexRightPanel, new CortexRightPanel({
                 sessionId: (__VLS_ctx.sessionId),
                 projectId: (__VLS_ctx.projectId),
                 toolService: (__VLS_ctx.clientToolService),
+                activeDocument: (__VLS_ctx.activeTab),
             }));
             const __VLS_58 = __VLS_57({
                 sessionId: (__VLS_ctx.sessionId),
                 projectId: (__VLS_ctx.projectId),
                 toolService: (__VLS_ctx.clientToolService),
+                activeDocument: (__VLS_ctx.activeTab),
             }, ...__VLS_functionalComponentArgsRest(__VLS_57));
         }
         else {
@@ -1198,7 +1200,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             FileTreeSidebar: FileTreeSidebar,
             EditorTabs: EditorTabs,
             TabRendererHost: TabRendererHost,
-            CortexChatPanel: CortexChatPanel,
+            CortexRightPanel: CortexRightPanel,
             sessionId: sessionId,
             projectId: projectId,
             chatBoundDocumentId: chatBoundDocumentId,

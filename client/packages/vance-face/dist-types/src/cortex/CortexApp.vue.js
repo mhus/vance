@@ -927,10 +927,12 @@ if (__VLS_ctx.sessionId) {
         const __VLS_50 = __VLS_asFunctionalComponent(TabRendererHost, new TabRendererHost({
             ...{ 'onUpdate': {} },
             document: (__VLS_ctx.activeTab),
+            sessionId: (__VLS_ctx.sessionId),
         }));
         const __VLS_51 = __VLS_50({
             ...{ 'onUpdate': {} },
             document: (__VLS_ctx.activeTab),
+            sessionId: (__VLS_ctx.sessionId),
         }, ...__VLS_functionalComponentArgsRest(__VLS_50));
         let __VLS_53;
         let __VLS_54;

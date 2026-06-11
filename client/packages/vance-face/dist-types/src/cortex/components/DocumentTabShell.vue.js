@@ -4,6 +4,8 @@ import ImageView from '@/document/ImageView.vue';
 import { useCortexStore } from '../stores/cortexStore';
 import { resolveBinding } from '../docTypeRegistry';
 import { resolveRunAdapter } from '../runners/runnerRegistry';
+import CortexValidateDialog from './CortexValidateDialog.vue';
+import CortexHactarDialog from './CortexHactarDialog.vue';
 const props = defineProps();
 const emit = defineEmits();
 const store = useCortexStore();
@@ -38,26 +40,44 @@ const propertiesUrl = computed(() => {
     });
     return `/documents.html?${params.toString()}`;
 });
+// Derive a language hint for CodeEditor. Path extension wins over the
+// server-supplied mime: a file named {@code foo.js} should highlight
+// as JS whether the server returns {@code text/javascript},
+// {@code application/octet-stream} or nothing at all. Server mime is
+// only consulted when the extension doesn't pin a language.
 const effectiveMimeType = computed(() => {
-    const explicit = props.document.mimeType;
-    if (explicit)
-        return explicit;
     const lower = props.document.path.toLowerCase();
-    if (lower.endsWith('.md'))
+    if (lower.endsWith('.md') || lower.endsWith('.markdown'))
         return 'text/markdown';
     if (lower.endsWith('.json'))
         return 'application/json';
     if (lower.endsWith('.yaml') || lower.endsWith('.yml'))
         return 'application/yaml';
-    if (lower.endsWith('.js') || lower.endsWith('.mjs'))
+    if (lower.endsWith('.js')
+        || lower.endsWith('.mjs')
+        || lower.endsWith('.mjsh')
+        || lower.endsWith('.cjs'))
         return 'text/javascript';
-    if (lower.endsWith('.ts'))
+    if (lower.endsWith('.ts') || lower.endsWith('.tsx'))
         return 'text/typescript';
     if (lower.endsWith('.py'))
         return 'text/x-python';
     if (lower.endsWith('.sh') || lower.endsWith('.bash'))
         return 'text/x-shellscript';
-    return 'text/plain';
+    if (lower.endsWith('.r'))
+        return 'text/x-r';
+    if (lower.endsWith('.java'))
+        return 'text/x-java';
+    if (lower.endsWith('.html') || lower.endsWith('.htm'))
+        return 'text/html';
+    if (lower.endsWith('.css'))
+        return 'text/css';
+    if (lower.endsWith('.xml'))
+        return 'application/xml';
+    if (lower.endsWith('.sql'))
+        return 'application/sql';
+    const explicit = props.document.mimeType;
+    return explicit && explicit.trim() ? explicit : 'text/plain';
 });
 function onSelectionChanged(sel) {
     if (sel.from === sel.to || !sel.text) {
@@ -277,6 +297,17 @@ onBeforeUnmount(() => {
         runHandle.value = null;
     }
 });
+// ─── Validate + Hactar dialogs (JS-only for V1) ─────────────────
+//
+// Both gated by {@code runAdapter.id === 'js'} — Python / Shell
+// runners later get their own (or none); the per-language gating
+// keeps the toolbar from showing buttons whose endpoint would 404.
+const showValidate = ref(false);
+const showHactar = ref(false);
+const isJsLanguage = computed(() => runAdapter.value?.id === 'js');
+function onHactarApply(code) {
+    emit('update', code);
+}
 function fmtResult(v) {
     if (v === null || v === undefined)
         return '(no return value)';
@@ -375,6 +406,28 @@ if (__VLS_ctx.runAdapter) {
         ...{ class: (__VLS_ctx.argsError ? 'border-error' : 'border-base-300') },
         title: (__VLS_ctx.argsError ?? 'JSON args object, default `{}`'),
         placeholder: "{}",
+    });
+}
+if (__VLS_ctx.isJsLanguage) {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+        ...{ onClick: (...[$event]) => {
+                if (!(__VLS_ctx.isJsLanguage))
+                    return;
+                __VLS_ctx.showValidate = true;
+            } },
+        type: "button",
+        ...{ class: "text-xs px-2 py-0.5 rounded border border-base-300 hover:bg-base-200" },
+        title: "Validate (quick + deep)",
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+        ...{ onClick: (...[$event]) => {
+                if (!(__VLS_ctx.isJsLanguage))
+                    return;
+                __VLS_ctx.showHactar = true;
+            } },
+        type: "button",
+        ...{ class: "text-xs px-2 py-0.5 rounded border border-base-300 hover:bg-base-200" },
+        title: "Hactar — generate or improve this script",
     });
 }
 if (__VLS_ctx.propertiesUrl) {
@@ -603,6 +656,61 @@ if (__VLS_ctx.runHandle) {
         (__VLS_ctx.fmtResult(__VLS_ctx.runHandle.result.value));
     }
 }
+if (__VLS_ctx.showValidate) {
+    /** @type {[typeof CortexValidateDialog, ]} */ ;
+    // @ts-ignore
+    const __VLS_38 = __VLS_asFunctionalComponent(CortexValidateDialog, new CortexValidateDialog({
+        ...{ 'onClose': {} },
+        document: (__VLS_ctx.document),
+    }));
+    const __VLS_39 = __VLS_38({
+        ...{ 'onClose': {} },
+        document: (__VLS_ctx.document),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_38));
+    let __VLS_41;
+    let __VLS_42;
+    let __VLS_43;
+    const __VLS_44 = {
+        onClose: (...[$event]) => {
+            if (!(__VLS_ctx.showValidate))
+                return;
+            __VLS_ctx.showValidate = false;
+        }
+    };
+    var __VLS_40;
+}
+if (__VLS_ctx.showHactar && __VLS_ctx.store.projectId) {
+    /** @type {[typeof CortexHactarDialog, ]} */ ;
+    // @ts-ignore
+    const __VLS_45 = __VLS_asFunctionalComponent(CortexHactarDialog, new CortexHactarDialog({
+        ...{ 'onClose': {} },
+        ...{ 'onApply': {} },
+        document: (__VLS_ctx.document),
+        projectId: (__VLS_ctx.store.projectId),
+        sessionId: (__VLS_ctx.sessionId ?? null),
+    }));
+    const __VLS_46 = __VLS_45({
+        ...{ 'onClose': {} },
+        ...{ 'onApply': {} },
+        document: (__VLS_ctx.document),
+        projectId: (__VLS_ctx.store.projectId),
+        sessionId: (__VLS_ctx.sessionId ?? null),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_45));
+    let __VLS_48;
+    let __VLS_49;
+    let __VLS_50;
+    const __VLS_51 = {
+        onClose: (...[$event]) => {
+            if (!(__VLS_ctx.showHactar && __VLS_ctx.store.projectId))
+                return;
+            __VLS_ctx.showHactar = false;
+        }
+    };
+    const __VLS_52 = {
+        onApply: (__VLS_ctx.onHactarApply)
+    };
+    var __VLS_47;
+}
 /** @type {__VLS_StyleScopedClasses['h-full']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
@@ -661,6 +769,20 @@ if (__VLS_ctx.runHandle) {
 /** @type {__VLS_StyleScopedClasses['rounded']} */ ;
 /** @type {__VLS_StyleScopedClasses['border']} */ ;
 /** @type {__VLS_StyleScopedClasses['w-32']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-0.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['rounded']} */ ;
+/** @type {__VLS_StyleScopedClasses['border']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;
+/** @type {__VLS_StyleScopedClasses['hover:bg-base-200']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-0.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['rounded']} */ ;
+/** @type {__VLS_StyleScopedClasses['border']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;
+/** @type {__VLS_StyleScopedClasses['hover:bg-base-200']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
 /** @type {__VLS_StyleScopedClasses['hover:opacity-100']} */ ;
 /** @type {__VLS_StyleScopedClasses['hover:bg-base-200']} */ ;
@@ -775,7 +897,10 @@ const __VLS_self = (await import('vue')).defineComponent({
         return {
             CodeEditor: CodeEditor,
             ImageView: ImageView,
+            CortexValidateDialog: CortexValidateDialog,
+            CortexHactarDialog: CortexHactarDialog,
             emit: emit,
+            store: store,
             binding: binding,
             reloading: reloading,
             onReload: onReload,
@@ -799,6 +924,10 @@ const __VLS_self = (await import('vue')).defineComponent({
             onRun: onRun,
             onCancel: onCancel,
             onCloseLogPanel: onCloseLogPanel,
+            showValidate: showValidate,
+            showHactar: showHactar,
+            isJsLanguage: isJsLanguage,
+            onHactarApply: onHactarApply,
             fmtResult: fmtResult,
             fmtDuration: fmtDuration,
         };

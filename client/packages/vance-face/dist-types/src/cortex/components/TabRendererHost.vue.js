@@ -10,10 +10,12 @@ let __VLS_directives;
 const __VLS_0 = __VLS_asFunctionalComponent(DocumentTabShell, new DocumentTabShell({
     ...{ 'onUpdate': {} },
     document: (__VLS_ctx.document),
+    sessionId: (__VLS_ctx.sessionId ?? null),
 }));
 const __VLS_1 = __VLS_0({
     ...{ 'onUpdate': {} },
     document: (__VLS_ctx.document),
+    sessionId: (__VLS_ctx.sessionId ?? null),
 }, ...__VLS_functionalComponentArgsRest(__VLS_0));
 let __VLS_3;
 let __VLS_4;

@@ -20,6 +20,19 @@ export interface CortexDocument {
     inlineText: string;
     /** True when {@link inlineText} has been edited since load/save. */
     dirty: boolean;
+    /**
+     * Last hash the deep-validator reviewed. Populated from
+     * {@code DocumentDto.lastDeepReviewedHash}; the cached-warnings
+     * panel uses it to decide whether the cached findings still apply
+     * to the current body.
+     */
+    lastDeepReviewedHash?: string | null;
+    /**
+     * JSON-encoded {@code ScriptDeepWarning[]} from the most recent
+     * deep-validate run, mirrored from the server DTO so the dialog
+     * can show "cached findings" without an extra fetch.
+     */
+    lastDeepReviewWarningsJson?: string | null;
 }
 /**
  * Folder-tree node, built client-side by aggregating the path prefixes

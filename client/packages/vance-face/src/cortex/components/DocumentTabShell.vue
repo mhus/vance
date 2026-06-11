@@ -31,9 +31,13 @@ import { useCortexStore } from '../stores/cortexStore';
 import { resolveBinding } from '../docTypeRegistry';
 import { resolveRunAdapter } from '../runners/runnerRegistry';
 import type { RunHandle } from '../runners/types';
+import CortexValidateDialog from './CortexValidateDialog.vue';
+import CortexHactarDialog from './CortexHactarDialog.vue';
 
 interface Props {
   document: CortexDocument;
+  /** Chat session id — Hactar binds its think-process to this session. */
+  sessionId?: string | null;
 }
 
 const props = defineProps<Props>();
@@ -75,18 +79,33 @@ const propertiesUrl = computed<string | null>(() => {
   return `/documents.html?${params.toString()}`;
 });
 
+// Derive a language hint for CodeEditor. Path extension wins over the
+// server-supplied mime: a file named {@code foo.js} should highlight
+// as JS whether the server returns {@code text/javascript},
+// {@code application/octet-stream} or nothing at all. Server mime is
+// only consulted when the extension doesn't pin a language.
 const effectiveMimeType = computed<string>(() => {
-  const explicit = props.document.mimeType;
-  if (explicit) return explicit;
   const lower = props.document.path.toLowerCase();
-  if (lower.endsWith('.md')) return 'text/markdown';
+  if (lower.endsWith('.md') || lower.endsWith('.markdown')) return 'text/markdown';
   if (lower.endsWith('.json')) return 'application/json';
   if (lower.endsWith('.yaml') || lower.endsWith('.yml')) return 'application/yaml';
-  if (lower.endsWith('.js') || lower.endsWith('.mjs')) return 'text/javascript';
-  if (lower.endsWith('.ts')) return 'text/typescript';
+  if (
+    lower.endsWith('.js')
+    || lower.endsWith('.mjs')
+    || lower.endsWith('.mjsh')
+    || lower.endsWith('.cjs')
+  ) return 'text/javascript';
+  if (lower.endsWith('.ts') || lower.endsWith('.tsx')) return 'text/typescript';
   if (lower.endsWith('.py')) return 'text/x-python';
   if (lower.endsWith('.sh') || lower.endsWith('.bash')) return 'text/x-shellscript';
-  return 'text/plain';
+  if (lower.endsWith('.r')) return 'text/x-r';
+  if (lower.endsWith('.java')) return 'text/x-java';
+  if (lower.endsWith('.html') || lower.endsWith('.htm')) return 'text/html';
+  if (lower.endsWith('.css')) return 'text/css';
+  if (lower.endsWith('.xml')) return 'application/xml';
+  if (lower.endsWith('.sql')) return 'application/sql';
+  const explicit = props.document.mimeType;
+  return explicit && explicit.trim() ? explicit : 'text/plain';
 });
 
 interface RawSelection {
@@ -364,6 +383,21 @@ onBeforeUnmount(() => {
   }
 });
 
+// ─── Validate + Hactar dialogs (JS-only for V1) ─────────────────
+//
+// Both gated by {@code runAdapter.id === 'js'} — Python / Shell
+// runners later get their own (or none); the per-language gating
+// keeps the toolbar from showing buttons whose endpoint would 404.
+
+const showValidate = ref(false);
+const showHactar = ref(false);
+
+const isJsLanguage = computed<boolean>(() => runAdapter.value?.id === 'js');
+
+function onHactarApply(code: string): void {
+  emit('update', code);
+}
+
 function fmtResult(v: unknown): string {
   if (v === null || v === undefined) return '(no return value)';
   if (typeof v === 'string') return v;
@@ -443,6 +477,22 @@ function fmtDuration(ms: number | null): string {
           :title="argsError ?? 'JSON args object, default `{}`'"
           placeholder="{}"
         />
+      </template>
+      <!-- JS-only side actions. Hactar generates / improves a script
+           via LLM; Validate runs quick (parse) + deep (LLM review). -->
+      <template v-if="isJsLanguage">
+        <button
+          type="button"
+          class="text-xs px-2 py-0.5 rounded border border-base-300 hover:bg-base-200"
+          title="Validate (quick + deep)"
+          @click="showValidate = true"
+        >✓ Validate</button>
+        <button
+          type="button"
+          class="text-xs px-2 py-0.5 rounded border border-base-300 hover:bg-base-200"
+          title="Hactar — generate or improve this script"
+          @click="showHactar = true"
+        >✨ Hactar</button>
       </template>
       <a
         v-if="propertiesUrl"
@@ -582,5 +632,19 @@ function fmtDuration(ms: number | null): string {
         {{ fmtResult(runHandle.result.value) }}
       </div>
     </div>
+
+    <CortexValidateDialog
+      v-if="showValidate"
+      :document="document"
+      @close="showValidate = false"
+    />
+    <CortexHactarDialog
+      v-if="showHactar && store.projectId"
+      :document="document"
+      :project-id="store.projectId"
+      :session-id="sessionId ?? null"
+      @close="showHactar = false"
+      @apply="onHactarApply"
+    />
   </div>
 </template>

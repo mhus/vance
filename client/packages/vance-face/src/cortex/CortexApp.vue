@@ -744,6 +744,7 @@ onBeforeUnmount(() => {
       <div v-else class="flex-1 min-h-0 overflow-hidden">
         <TabRendererHost
           :document="activeTab"
+          :session-id="sessionId"
           @update="store.updateActiveContent"
         />
       </div>

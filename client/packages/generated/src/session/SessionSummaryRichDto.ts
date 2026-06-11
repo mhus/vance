@@ -26,4 +26,6 @@ export interface SessionSummaryRichDto {
   lastMessagePreview?: string;
   lastMessageRole?: string;
   lastMessageAt?: Date;
+  openDocumentIds: string[];
+  chatBoundDocumentId?: string;
 }

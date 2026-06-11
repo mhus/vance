@@ -43,6 +43,8 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         kind?: (string | null) | undefined;
         inlineText: string;
         dirty: boolean;
+        lastDeepReviewedHash?: (string | null) | undefined;
+        lastDeepReviewWarningsJson?: (string | null) | undefined;
     }[], CortexDocument[] | {
         id: string;
         path: string;
@@ -52,6 +54,8 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         kind?: (string | null) | undefined;
         inlineText: string;
         dirty: boolean;
+        lastDeepReviewedHash?: (string | null) | undefined;
+        lastDeepReviewWarningsJson?: (string | null) | undefined;
     }[]>;
     openTabs: import("vue").Ref<{
         id: string;
@@ -62,6 +66,8 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         kind?: (string | null) | undefined;
         inlineText: string;
         dirty: boolean;
+        lastDeepReviewedHash?: (string | null) | undefined;
+        lastDeepReviewWarningsJson?: (string | null) | undefined;
     }[], CortexDocument[] | {
         id: string;
         path: string;
@@ -71,6 +77,8 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         kind?: (string | null) | undefined;
         inlineText: string;
         dirty: boolean;
+        lastDeepReviewedHash?: (string | null) | undefined;
+        lastDeepReviewWarningsJson?: (string | null) | undefined;
     }[]>;
     activeTabId: import("vue").Ref<string | null, string | null>;
     activeTab: import("vue").ComputedRef<CortexDocument | null>;
@@ -116,6 +124,8 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         kind?: (string | null) | undefined;
         inlineText: string;
         dirty: boolean;
+        lastDeepReviewedHash?: (string | null) | undefined;
+        lastDeepReviewWarningsJson?: (string | null) | undefined;
     }[], CortexDocument[] | {
         id: string;
         path: string;
@@ -125,6 +135,8 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         kind?: (string | null) | undefined;
         inlineText: string;
         dirty: boolean;
+        lastDeepReviewedHash?: (string | null) | undefined;
+        lastDeepReviewWarningsJson?: (string | null) | undefined;
     }[]>;
     openTabs: import("vue").Ref<{
         id: string;
@@ -135,6 +147,8 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         kind?: (string | null) | undefined;
         inlineText: string;
         dirty: boolean;
+        lastDeepReviewedHash?: (string | null) | undefined;
+        lastDeepReviewWarningsJson?: (string | null) | undefined;
     }[], CortexDocument[] | {
         id: string;
         path: string;
@@ -144,6 +158,8 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         kind?: (string | null) | undefined;
         inlineText: string;
         dirty: boolean;
+        lastDeepReviewedHash?: (string | null) | undefined;
+        lastDeepReviewWarningsJson?: (string | null) | undefined;
     }[]>;
     activeTabId: import("vue").Ref<string | null, string | null>;
     activeTab: import("vue").ComputedRef<CortexDocument | null>;
@@ -189,6 +205,8 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         kind?: (string | null) | undefined;
         inlineText: string;
         dirty: boolean;
+        lastDeepReviewedHash?: (string | null) | undefined;
+        lastDeepReviewWarningsJson?: (string | null) | undefined;
     }[], CortexDocument[] | {
         id: string;
         path: string;
@@ -198,6 +216,8 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         kind?: (string | null) | undefined;
         inlineText: string;
         dirty: boolean;
+        lastDeepReviewedHash?: (string | null) | undefined;
+        lastDeepReviewWarningsJson?: (string | null) | undefined;
     }[]>;
     openTabs: import("vue").Ref<{
         id: string;
@@ -208,6 +228,8 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         kind?: (string | null) | undefined;
         inlineText: string;
         dirty: boolean;
+        lastDeepReviewedHash?: (string | null) | undefined;
+        lastDeepReviewWarningsJson?: (string | null) | undefined;
     }[], CortexDocument[] | {
         id: string;
         path: string;
@@ -217,6 +239,8 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         kind?: (string | null) | undefined;
         inlineText: string;
         dirty: boolean;
+        lastDeepReviewedHash?: (string | null) | undefined;
+        lastDeepReviewWarningsJson?: (string | null) | undefined;
     }[]>;
     activeTabId: import("vue").Ref<string | null, string | null>;
     activeTab: import("vue").ComputedRef<CortexDocument | null>;

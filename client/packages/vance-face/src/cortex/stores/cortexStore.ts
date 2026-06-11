@@ -98,6 +98,8 @@ export const useCortexStore = defineStore('cortex', () => {
       kind: d.kind ?? null,
       inlineText: d.inlineText ?? '',
       dirty: false,
+      lastDeepReviewedHash: d.lastDeepReviewedHash ?? null,
+      lastDeepReviewWarningsJson: d.lastDeepReviewWarningsJson ?? null,
     };
   }
 

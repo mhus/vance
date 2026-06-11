@@ -10,6 +10,8 @@ import DocumentTabShell from './DocumentTabShell.vue';
 
 interface Props {
   document: CortexDocument;
+  /** Chat session id — forwarded to language-aware dialogs (Hactar). */
+  sessionId?: string | null;
 }
 
 defineProps<Props>();
@@ -22,6 +24,7 @@ const emit = defineEmits<{
 <template>
   <DocumentTabShell
     :document="document"
+    :session-id="sessionId ?? null"
     @update="(text: string) => emit('update', text)"
   />
 </template>

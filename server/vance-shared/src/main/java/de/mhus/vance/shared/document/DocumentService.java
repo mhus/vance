@@ -631,8 +631,9 @@ public class DocumentService {
      *  {@code text/plain} for unknown extensions or paths without
      *  one — matches what kind-codecs / header strategies expect
      *  (see {@link MarkdownHeaderStrategy}, {@link YamlHeaderStrategy},
-     *  {@link JsonHeaderStrategy}). */
-    static String mimeFromPath(String path) {
+     *  {@link JsonHeaderStrategy}). Public so the controllers can
+     *  reuse the same mapping when a request omits {@code mimeType}. */
+    public static String mimeFromPath(String path) {
         int slash = path.lastIndexOf('/');
         String name = slash >= 0 ? path.substring(slash + 1) : path;
         int dot = name.lastIndexOf('.');
@@ -646,6 +647,15 @@ public class DocumentService {
             case "html", "htm" -> "text/html";
             case "css" -> "text/css";
             case "csv" -> "text/csv";
+            // Code / script extensions — the Web-UI's CodeEditor maps
+            // these mime-types to syntax-highlighting languages.
+            case "js", "mjs", "cjs", "mjsh" -> "text/javascript";
+            case "ts", "tsx" -> "text/typescript";
+            case "py" -> "text/x-python";
+            case "sh", "bash" -> "text/x-shellscript";
+            case "r" -> "text/x-r";
+            case "java" -> "text/x-java";
+            case "sql" -> "application/sql";
             default -> "text/plain";
         };
     }

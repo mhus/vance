@@ -201,8 +201,12 @@ public class DocumentController {
         authority.enforce(httpRequest,
                 new Resource.Document(tenant, projectId, request.getPath()), Action.CREATE);
         String username = (String) httpRequest.getAttribute(AccessFilterBase.ATTR_USERNAME);
+        // No explicit mime → derive from path extension. The previous
+        // "text/markdown" default mis-typed every .js/.json/.yaml file
+        // that wasn't markdown, defeating downstream codec dispatch and
+        // syntax-highlighting.
         String mimeType = request.getMimeType() == null || request.getMimeType().isBlank()
-                ? "text/markdown"
+                ? DocumentService.mimeFromPath(request.getPath())
                 : request.getMimeType();
 
         DocumentDocument created;

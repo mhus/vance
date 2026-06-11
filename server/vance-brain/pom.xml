@@ -173,6 +173,28 @@
             <version>0.4.0</version>
         </dependency>
 
+        <!-- Scrimage: pure-Java image manipulation (crop, resize, rotate,
+             flip, color adjust, filters, auto-enhance). Reads / writes
+             PNG, JPEG, GIF, BMP via javax.imageio. Drives the
+             ImageManipulationService and the image_* tool family.
+
+             Day 1 is deliberately limited to scrimage-core and
+             scrimage-filters — scrimage-webp pulls libwebp as a JNI
+             native binary, which would tie the pod image to glibc.
+             WebP support (and HEIC/TIFF) are out of scope until a
+             concrete need shows up; see specification/image-manipulation.md
+             §3 for the rationale. -->
+        <dependency>
+            <groupId>com.sksamuel.scrimage</groupId>
+            <artifactId>scrimage-core</artifactId>
+            <version>4.3.0</version>
+        </dependency>
+        <dependency>
+            <groupId>com.sksamuel.scrimage</groupId>
+            <artifactId>scrimage-filters</artifactId>
+            <version>4.3.0</version>
+        </dependency>
+
         <!-- Multi-format report export (pdf_from_markdown,
              docx_from_markdown). Three building blocks share the same
              commonmark-AST frontend; the Vance-Kind graceful-degradation

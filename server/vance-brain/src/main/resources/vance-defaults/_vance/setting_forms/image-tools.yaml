@@ -1,0 +1,167 @@
+title:
+  de: "Bildbearbeitung — Tools"
+  en: "Image Manipulation — Tools"
+description:
+  de: "Steuert das Tool-Set für Bildbearbeitung (crop, resize, rotate,
+       flip, adjust, filter, auto_enhance). Pure-Java-Implementierung
+       über Scrimage — kein Provider-Call, keine Quota im klassischen
+       Sinn. Die Limits hier sind Pod-Schutz-Grenzen, keine
+       Abrechnungslimits."
+  en: "Controls the image-manipulation tool-set (crop, resize, rotate,
+       flip, adjust, filter, auto_enhance). Pure-Java implementation
+       via Scrimage — no provider call, no classic quota. The limits
+       below are pod-safety guards, not billing limits."
+icon: image-edit
+category: ai
+defaultScope: tenant
+availableIn: [ "_vance", "project" ]
+
+fields:
+
+  # ─── Availability ────────────────────────────────────────────────
+
+  - name: enabled
+    type: boolean
+    defaultValue: "true"
+    label:
+      de: "Aktiviert"
+      en: "Enabled"
+    help:
+      de: "Master-Schalter. Aus bedeutet, dass jeder `image_*`-Aufruf
+           mit Fehler `disabled` zurückkommt — nützlich um die Tools
+           projektweit zu sperren ohne sie aus dem Recipe zu nehmen."
+      en: "Master switch. Off makes every `image_*` call return a
+           `disabled` error — handy to disable the tools project-wide
+           without removing them from the recipe."
+    bindsTo:
+      key: "image.tools.enabled"
+
+  # ─── Input limits ────────────────────────────────────────────────
+
+  - name: maxInputBytes
+    type: number
+    defaultValue: "20000000"
+    label:
+      de: "Max. Eingabe-Größe (Bytes)"
+      en: "Max input size (bytes)"
+    help:
+      de: "Quellbilder, die mehr Bytes wiegen, werden mit
+           `limit_exceeded` abgelehnt. Schutz gegen Heap-Druck — ein
+           30 000 × 30 000 PNG kann mehrere GB als entpackter Pixel-
+           Buffer wiegen. Default 20 MB."
+      en: "Source images bigger than this byte threshold are rejected
+           with `limit_exceeded`. Heap-safety guard — a 30 000 ×
+           30 000 PNG can weigh several GB as an unpacked pixel
+           buffer. Default 20 MB."
+    showIf: "enabled == 'true'"
+    bindsTo:
+      key: "image.tools.max_input_bytes"
+
+  - name: maxInputDimension
+    type: number
+    defaultValue: "8192"
+    label:
+      de: "Max. Eingabe-Dimension (Pixel)"
+      en: "Max input dimension (pixels)"
+    help:
+      de: "Bilder, deren Breite ODER Höhe diesen Wert übersteigt,
+           werden mit `limit_exceeded` abgelehnt. Default 8192 px."
+      en: "Images with width OR height above this threshold are
+           rejected with `limit_exceeded`. Default 8192 px."
+    showIf: "enabled == 'true'"
+    bindsTo:
+      key: "image.tools.max_input_dimension"
+
+  # ─── Output limits ───────────────────────────────────────────────
+
+  - name: maxOutputDimension
+    type: number
+    defaultValue: "8192"
+    label:
+      de: "Max. Ausgabe-Dimension (Pixel)"
+      en: "Max output dimension (pixels)"
+    help:
+      de: "Ergebnis-Bilder, deren Breite oder Höhe diesen Wert
+           überschreiten, werden vor dem Schreiben mit
+           `limit_exceeded` abgelehnt — verhindert versehentliches
+           Hochskalieren via `image_resize`. Default 8192 px."
+      en: "Result images with width or height above this threshold
+           are rejected before the write with `limit_exceeded` —
+           guards against accidental up-scales via `image_resize`.
+           Default 8192 px."
+    showIf: "enabled == 'true'"
+    bindsTo:
+      key: "image.tools.max_output_dimension"
+
+  - name: maxOutputBytes
+    type: number
+    defaultValue: "30000000"
+    label:
+      de: "Max. Ausgabe-Größe (Bytes)"
+      en: "Max output size (bytes)"
+    help:
+      de: "Encodierte Ergebnis-Bytes, die diesen Wert übersteigen,
+           werden vor dem Schreiben mit `limit_exceeded` abgelehnt.
+           Default 30 MB."
+      en: "Encoded result bytes exceeding this threshold are rejected
+           before the write with `limit_exceeded`. Default 30 MB."
+    showIf: "enabled == 'true'"
+    bindsTo:
+      key: "image.tools.max_output_bytes"
+
+  # ─── Auto-enhance tuning ─────────────────────────────────────────
+
+  - name: autoEnhancePercentileClip
+    type: number
+    defaultValue: "0.005"
+    label:
+      de: "Auto-Enhance: Perzentil-Clip"
+      en: "Auto-enhance: percentile clip"
+    help:
+      de: "Anteil der hellsten/dunkelsten Pixel pro Kanal, die vor
+           dem linearen Stretch verworfen werden. 0 = exakte
+           Min/Max-Werte (riskant bei Spikes), 0.005 = 0.5 % (Default
+           — ausgewogen), 0.02 = aggressiv. Werte außerhalb [0, 0.25]
+           werden auf den Default zurückgesetzt."
+      en: "Fraction of brightest/darkest pixels per channel discarded
+           before the linear stretch. 0 = exact min/max (risky on
+           spikes), 0.005 = 0.5 % (default — balanced), 0.02 =
+           aggressive. Values outside [0, 0.25] fall back to default."
+    showIf: "enabled == 'true'"
+    bindsTo:
+      key: "image.tools.auto_enhance.percentile_clip"
+
+  - name: autoEnhanceGamma
+    type: number
+    defaultValue: "0.95"
+    label:
+      de: "Auto-Enhance: Gamma-Korrektur"
+      en: "Auto-enhance: gamma correction"
+    help:
+      de: "Gamma-Faktor nach dem Stretch. 1.0 = neutral
+           (deaktiviert), <1 hellt Mitten leicht auf (Default 0.95),
+           >1 dunkelt sie ab. Werte außerhalb [0.1, 5.0] werden auf
+           den Default zurückgesetzt."
+      en: "Gamma factor after the stretch. 1.0 = neutral (disabled),
+           <1 brightens midtones (default 0.95), >1 darkens them.
+           Values outside [0.1, 5.0] fall back to default."
+    showIf: "enabled == 'true'"
+    bindsTo:
+      key: "image.tools.auto_enhance.gamma"
+
+  - name: autoEnhanceSaturationBoost
+    type: number
+    defaultValue: "0.1"
+    label:
+      de: "Auto-Enhance: Sättigungs-Boost"
+      en: "Auto-enhance: saturation boost"
+    help:
+      de: "Sättigungs-Plus nach Stretch und Gamma. 0 = deaktiviert,
+           0.1 = +10 % (Default), 1.0 = sehr stark. Werte außerhalb
+           [-1.0, 1.0] werden auf den Default zurückgesetzt."
+      en: "Saturation delta after stretch and gamma. 0 = disabled,
+           0.1 = +10 % (default), 1.0 = very strong. Values outside
+           [-1.0, 1.0] fall back to default."
+    showIf: "enabled == 'true'"
+    bindsTo:
+      key: "image.tools.auto_enhance.saturation_boost"

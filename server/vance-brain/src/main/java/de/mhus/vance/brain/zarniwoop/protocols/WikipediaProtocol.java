@@ -206,12 +206,17 @@ public class WikipediaProtocol implements SearchProtocol {
                     + "scientific concepts, organisations, cultural and "
                     + "art-historical subjects. The article extract is "
                     + "returned inline with each hit. Best for: getting "
-                    + "neutral overview text on a topic that has stabilised "
-                    + "enough to have its own article, factual "
+                    + "neutral overview text on a topic that has "
+                    + "stabilised enough to have its own article, factual "
                     + "encyclopedia-style background, biographical / "
-                    + "geographical / historical lookups. The host language "
-                    + "matches the endpoint id (e.g. wiki-de = German, "
-                    + "wiki-en = English).";
+                    + "geographical / historical lookups. Query style: "
+                    + "the article subject as a noun phrase, the way an "
+                    + "article would be titled — `Rote und Blaue "
+                    + "Mauritius`, `Patch Tuesday`, `Albert Einstein`, "
+                    + "`Holzgerechtigkeit`. Match the endpoint's host "
+                    + "language (wiki-de → German subject, "
+                    + "wiki-en → English subject). The host language "
+                    + "matches the endpoint id.";
         }
 
         @Override

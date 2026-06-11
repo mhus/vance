@@ -132,15 +132,25 @@ public class HackerNewsProtocol implements SearchProtocol {
 
         @Override
         public String promptHint() {
-            return "HackerNews story + comment search. Indexed scope: "
-                    + "software engineering, programming languages, dev "
-                    + "tooling, AI / ML, computing infrastructure, security, "
-                    + "startups, SaaS, venture capital, and the tech "
-                    + "community's discussion threads around them. Best for: "
-                    + "questions about software / the tech industry where "
-                    + "the user wants practitioner perspectives, opinions "
-                    + "from working engineers, or current discussion "
-                    + "around a dev tool, framework, or company.";
+            return "HackerNews story + comment full-text search via "
+                    + "Algolia. Indexed scope: software engineering, "
+                    + "programming languages, dev tooling, AI / ML, "
+                    + "computing infrastructure, security, startups, "
+                    + "SaaS, venture capital, and the tech community's "
+                    + "discussion threads around them. Best for: "
+                    + "questions about software / the tech industry "
+                    + "where the user wants practitioner perspectives, "
+                    + "opinions from working engineers, or current "
+                    + "discussion around a dev tool, framework, or "
+                    + "company. Query style: pass concrete topic "
+                    + "keywords that would plausibly appear in a story "
+                    + "title — tool names (`Rust`, `Tailwind`, "
+                    + "`Kubernetes`), specific technologies "
+                    + "(`server components`, `WebGPU`), company / "
+                    + "product names, or vulnerability identifiers "
+                    + "(`CVE-2025-…`). Queries are matched against the "
+                    + "actual story-title and comment text, so concrete "
+                    + "nouns work best.";
         }
 
         @Override

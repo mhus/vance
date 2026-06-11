@@ -131,9 +131,12 @@ public class OpenLibraryProtocol implements SearchProtocol {
                     + "cover-image url. Covers fiction, non-fiction, "
                     + "academic monographs, and history equally; spans "
                     + "centuries of publishing. Best for: finding "
-                    + "canonical books on a topic, looking up an author's "
-                    + "bibliography, ISBN or edition resolution, "
-                    + "recommending reading.";
+                    + "canonical books on a topic, looking up an "
+                    + "author's bibliography, ISBN or edition "
+                    + "resolution, recommending reading. Query style: "
+                    + "title words, author names, or topic terms — "
+                    + "what would plausibly appear on a book cover or "
+                    + "in a library catalogue entry. ISBN works too.";
         }
 
         @Override

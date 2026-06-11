@@ -136,7 +136,15 @@ public class ArxivProtocol implements SearchProtocol {
                     + "primary category tag, PDF link. Best for: "
                     + "cutting-edge STEM research before journal "
                     + "publication, theoretical CS / ML papers, math / "
-                    + "physics / quant topics. Abstracts come inline "
+                    + "physics / quant topics. Query style: pass "
+                    + "technical topic terms as they appear in paper "
+                    + "titles or abstracts — concept names "
+                    + "(`attention mechanism`, `topological data "
+                    + "analysis`), method names "
+                    + "(`stochastic gradient descent`), specific "
+                    + "techniques (`mixture of experts`). The query "
+                    + "is matched against the full paper text via "
+                    + "arXiv's `all:` selector. Abstracts come inline "
                     + "with the result.";
         }
 

@@ -143,7 +143,13 @@ public class OpenAlexProtocol implements SearchProtocol {
                     + "count, venue, year. Best for: peer-reviewed "
                     + "literature on any topic, citation lookups, finding "
                     + "the canonical paper for a question, broad academic "
-                    + "discovery. Abstracts come inline with the result.";
+                    + "discovery. Query style: topic phrases as they "
+                    + "would appear in paper titles or abstracts — "
+                    + "concept names, method names, named entities, "
+                    + "author names. The free-text `search` operator is "
+                    + "tolerant: 2-6 word queries work well, both "
+                    + "English and other languages. Abstracts come "
+                    + "inline with the result.";
         }
 
         @Override

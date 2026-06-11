@@ -230,6 +230,13 @@ public class ZarniwoopResearchService {
             row.put("id", inst.id());
             row.put("modalities", inst.modalities().stream().map(Enum::name).toList());
             row.put("domains", inst.domains().stream().map(Enum::name).toList());
+            String hint = "";
+            try {
+                hint = inst.promptHint();
+            } catch (RuntimeException e) {
+                log.debug("promptHint raised for '{}': {}", inst.id(), e.toString());
+            }
+            row.put("hint", hint == null ? "" : hint);
             rows.add(row);
         }
         out.put("instances", rows);

@@ -134,6 +134,19 @@ public class OpenAlexProtocol implements SearchProtocol {
         }
 
         @Override
+        public String promptHint() {
+            return "OpenAlex scholarly works index — 250M+ peer-reviewed "
+                    + "and grey-literature papers across every academic "
+                    + "discipline: humanities, social sciences, natural "
+                    + "sciences, engineering, medicine, law, the arts. "
+                    + "Indexes title, authors, abstract, DOI, citation "
+                    + "count, venue, year. Best for: peer-reviewed "
+                    + "literature on any topic, citation lookups, finding "
+                    + "the canonical paper for a question, broad academic "
+                    + "discovery. Abstracts come inline with the result.";
+        }
+
+        @Override
         public SearchResult search(SearchRequest req, SearchScope scope) {
             if (req.modality() != SearchModality.ACADEMIC) {
                 return softFailure(req, "modality " + req.modality()

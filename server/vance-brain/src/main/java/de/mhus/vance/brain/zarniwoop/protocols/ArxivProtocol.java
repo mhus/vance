@@ -126,6 +126,21 @@ public class ArxivProtocol implements SearchProtocol {
         }
 
         @Override
+        public String promptHint() {
+            return "arXiv preprint server. Indexed content: STEM "
+                    + "preprints — physics (all branches), mathematics, "
+                    + "computer science (including AI / ML), statistics, "
+                    + "quantitative biology, quantitative finance, "
+                    + "electrical engineering & systems science, "
+                    + "economics. Per-paper title, authors, abstract, "
+                    + "primary category tag, PDF link. Best for: "
+                    + "cutting-edge STEM research before journal "
+                    + "publication, theoretical CS / ML papers, math / "
+                    + "physics / quant topics. Abstracts come inline "
+                    + "with the result.";
+        }
+
+        @Override
         public SearchResult search(SearchRequest req, SearchScope scope) {
             if (req.modality() != SearchModality.ACADEMIC) {
                 return softFailure(req, "modality " + req.modality()

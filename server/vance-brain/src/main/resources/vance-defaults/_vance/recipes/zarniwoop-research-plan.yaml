@@ -32,11 +32,18 @@ promptPrefix: |
 
   ## Available provider instances in this project
 
+  Read each instance's `hint` carefully — it states what the source
+  indexes, so you can pick the right ones and skip the ones whose
+  content doesn't match the question.
+
   {% if providers is empty %}
   *(no provider instances configured)*
   {% else %}
   {% for p in providers %}
   - `{{ p.id }}` — modalities: {{ p.modalities | join(', ') }}; domains: {{ p.domains | join(', ') }}
+    {%- if p.hint %}
+    > {{ p.hint }}
+    {%- endif %}
   {% endfor %}
   {% endif %}
 
@@ -65,10 +72,12 @@ promptPrefix: |
 
   ## Rules
 
-  - `steps` — at least one, at most 6. Pick modalities that match
-    the question; do not search a modality the project has no
-    provider for. `query` may be a refined / synonymed version of
-    the user's wording — search engines reward concrete keywords.
+  - `steps` — at least one, at most 6. Pick modalities and instances
+    whose `hint` matches the question's topic. A provider whose
+    indexed content is unrelated to the topic should be left out
+    entirely, not just down-weighted in sourceAffinity. `query` may
+    be a refined / synonymed version of the user's wording — search
+    engines reward concrete keywords.
   - `instance` (optional, per step) pins a specific endpoint id
     from the inventory above. Use it when one instance is clearly
     right (e.g. `wiki-de` for a German encyclopedia question).

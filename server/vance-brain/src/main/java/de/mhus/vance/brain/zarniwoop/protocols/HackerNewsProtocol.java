@@ -131,6 +131,19 @@ public class HackerNewsProtocol implements SearchProtocol {
         }
 
         @Override
+        public String promptHint() {
+            return "HackerNews story + comment search. Indexed scope: "
+                    + "software engineering, programming languages, dev "
+                    + "tooling, AI / ML, computing infrastructure, security, "
+                    + "startups, SaaS, venture capital, and the tech "
+                    + "community's discussion threads around them. Best for: "
+                    + "questions about software / the tech industry where "
+                    + "the user wants practitioner perspectives, opinions "
+                    + "from working engineers, or current discussion "
+                    + "around a dev tool, framework, or company.";
+        }
+
+        @Override
         public SearchResult search(SearchRequest req, SearchScope scope) {
             int num = clampNum(req.maxResults());
             String url = SimpleHttpClient.buildQuery(

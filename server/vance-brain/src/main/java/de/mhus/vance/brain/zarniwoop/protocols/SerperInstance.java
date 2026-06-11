@@ -549,6 +549,17 @@ class SerperInstance implements SearchProviderInstance {
         return s.substring(0, max) + "…";
     }
 
+    @Override
+    public String promptHint() {
+        return "Generic Google SERP via Serper.dev. Indexes the open web "
+                + "across every topic — news sites, blogs, documentation, "
+                + "commercial pages, forums, government pages, image search, "
+                + "YouTube video search, and PDFs sitting on public servers. "
+                + "Best for: current events, mainstream coverage, finding "
+                + "an authoritative landing page for a topic, mixed-modality "
+                + "requests (image / video / pdf alongside text).";
+    }
+
     /** Used by tests to peek at the resolved config. */
     ProviderInstanceConfig config() {
         return cfg;

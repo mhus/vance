@@ -124,6 +124,19 @@ public class OpenLibraryProtocol implements SearchProtocol {
         }
 
         @Override
+        public String promptHint() {
+            return "OpenLibrary book catalogue. Indexed content: "
+                    + "bibliographic metadata for ~50M books — title, "
+                    + "author, year, ISBN, publisher, edition count, "
+                    + "cover-image url. Covers fiction, non-fiction, "
+                    + "academic monographs, and history equally; spans "
+                    + "centuries of publishing. Best for: finding "
+                    + "canonical books on a topic, looking up an author's "
+                    + "bibliography, ISBN or edition resolution, "
+                    + "recommending reading.";
+        }
+
+        @Override
         public SearchResult search(SearchRequest req, SearchScope scope) {
             if (req.modality() != SearchModality.BOOK) {
                 return softFailure(req, "modality " + req.modality()

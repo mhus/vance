@@ -199,6 +199,22 @@ public class WikipediaProtocol implements SearchProtocol {
         }
 
         @Override
+        public String promptHint() {
+            return "Wikipedia (one MediaWiki host per endpoint). Indexed "
+                    + "content: curated encyclopedia articles — established "
+                    + "topics, biographies, historical events, geography, "
+                    + "scientific concepts, organisations, cultural and "
+                    + "art-historical subjects. The article extract is "
+                    + "returned inline with each hit. Best for: getting "
+                    + "neutral overview text on a topic that has stabilised "
+                    + "enough to have its own article, factual "
+                    + "encyclopedia-style background, biographical / "
+                    + "geographical / historical lookups. The host language "
+                    + "matches the endpoint id (e.g. wiki-de = German, "
+                    + "wiki-en = English).";
+        }
+
+        @Override
         public SearchResult search(SearchRequest req, SearchScope scope) {
             if (req.modality() != SearchModality.WEB
                     && req.modality() != SearchModality.ENCYCLOPEDIA) {

@@ -353,6 +353,48 @@ async function onDelete(id) {
         return;
     await store.deleteFile(id);
 }
+// ──────────────── File-tree drag & drop ────────────────
+//
+// {@link treeError} surfaces above the tree when a move / upload fails
+// (path conflict, network error). Cleared by every successful op so it
+// doesn't linger from an unrelated previous attempt.
+const treeError = ref(null);
+async function onMoveFile(payload) {
+    const doc = store.files.find((f) => f.id === payload.id)
+        ?? store.openTabs.find((t) => t.id === payload.id);
+    if (!doc)
+        return;
+    const slash = doc.path.lastIndexOf('/');
+    const basename = slash === -1 ? doc.path : doc.path.slice(slash + 1);
+    const newPath = payload.targetFolder
+        ? `${payload.targetFolder}/${basename}`
+        : basename;
+    if (newPath === doc.path)
+        return; // no-op: dropped into the source folder
+    treeError.value = null;
+    try {
+        await store.moveFile(payload.id, newPath);
+    }
+    catch (e) {
+        treeError.value = e instanceof Error ? e.message : 'Move failed';
+    }
+}
+async function onUploadFiles(payload) {
+    treeError.value = null;
+    const failures = [];
+    for (const file of payload.files) {
+        try {
+            await store.uploadExternalFile(file, payload.targetFolder);
+        }
+        catch (e) {
+            const msg = e instanceof Error ? e.message : 'Upload failed';
+            failures.push(`${file.name}: ${msg}`);
+        }
+    }
+    if (failures.length > 0) {
+        treeError.value = failures.join('\n');
+    }
+}
 function backToChat() {
     if (sessionId.value) {
         window.location.href = `/chat.html?sessionId=${encodeURIComponent(sessionId.value)}`;
@@ -580,48 +622,75 @@ if (__VLS_ctx.sessionId) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "flex-1 min-h-0 overflow-y-auto" },
         });
+        if (__VLS_ctx.treeError) {
+            const __VLS_16 = {}.VAlert;
+            /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
+            // @ts-ignore
+            const __VLS_17 = __VLS_asFunctionalComponent(__VLS_16, new __VLS_16({
+                variant: "error",
+                ...{ class: "m-2" },
+            }));
+            const __VLS_18 = __VLS_17({
+                variant: "error",
+                ...{ class: "m-2" },
+            }, ...__VLS_functionalComponentArgsRest(__VLS_17));
+            __VLS_19.slots.default;
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+            (__VLS_ctx.treeError);
+            var __VLS_19;
+        }
         if (__VLS_ctx.projectId) {
             /** @type {[typeof FileTreeSidebar, ]} */ ;
             // @ts-ignore
-            const __VLS_16 = __VLS_asFunctionalComponent(FileTreeSidebar, new FileTreeSidebar({
+            const __VLS_20 = __VLS_asFunctionalComponent(FileTreeSidebar, new FileTreeSidebar({
                 ...{ 'onOpenFile': {} },
                 ...{ 'onDeleteFile': {} },
+                ...{ 'onMoveFile': {} },
+                ...{ 'onUploadFiles': {} },
                 root: (__VLS_ctx.store.fileTree),
                 activeFileId: (__VLS_ctx.store.activeTabId),
             }));
-            const __VLS_17 = __VLS_16({
+            const __VLS_21 = __VLS_20({
                 ...{ 'onOpenFile': {} },
                 ...{ 'onDeleteFile': {} },
+                ...{ 'onMoveFile': {} },
+                ...{ 'onUploadFiles': {} },
                 root: (__VLS_ctx.store.fileTree),
                 activeFileId: (__VLS_ctx.store.activeTabId),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_16));
-            let __VLS_19;
-            let __VLS_20;
-            let __VLS_21;
-            const __VLS_22 = {
+            }, ...__VLS_functionalComponentArgsRest(__VLS_20));
+            let __VLS_23;
+            let __VLS_24;
+            let __VLS_25;
+            const __VLS_26 = {
                 onOpenFile: ((id) => { __VLS_ctx.focusZone = 'main'; __VLS_ctx.store.openFile(id); })
             };
-            const __VLS_23 = {
+            const __VLS_27 = {
                 onDeleteFile: (__VLS_ctx.onDelete)
             };
-            var __VLS_18;
+            const __VLS_28 = {
+                onMoveFile: (__VLS_ctx.onMoveFile)
+            };
+            const __VLS_29 = {
+                onUploadFiles: (__VLS_ctx.onUploadFiles)
+            };
+            var __VLS_22;
         }
         else if (__VLS_ctx.bootError) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                 ...{ class: "p-3 text-sm" },
             });
-            const __VLS_24 = {}.VAlert;
+            const __VLS_30 = {}.VAlert;
             /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
             // @ts-ignore
-            const __VLS_25 = __VLS_asFunctionalComponent(__VLS_24, new __VLS_24({
+            const __VLS_31 = __VLS_asFunctionalComponent(__VLS_30, new __VLS_30({
                 variant: "error",
             }));
-            const __VLS_26 = __VLS_25({
+            const __VLS_32 = __VLS_31({
                 variant: "error",
-            }, ...__VLS_functionalComponentArgsRest(__VLS_25));
-            __VLS_27.slots.default;
+            }, ...__VLS_functionalComponentArgsRest(__VLS_31));
+            __VLS_33.slots.default;
             (__VLS_ctx.bootError);
-            var __VLS_27;
+            var __VLS_33;
         }
         else {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -795,59 +864,59 @@ if (__VLS_ctx.sessionId) {
     }
     /** @type {[typeof EditorTabs, ]} */ ;
     // @ts-ignore
-    const __VLS_28 = __VLS_asFunctionalComponent(EditorTabs, new EditorTabs({
+    const __VLS_34 = __VLS_asFunctionalComponent(EditorTabs, new EditorTabs({
         ...{ 'onSelect': {} },
         ...{ 'onClose': {} },
         tabs: (__VLS_ctx.store.openTabs),
         activeTabId: (__VLS_ctx.store.activeTabId),
     }));
-    const __VLS_29 = __VLS_28({
+    const __VLS_35 = __VLS_34({
         ...{ 'onSelect': {} },
         ...{ 'onClose': {} },
         tabs: (__VLS_ctx.store.openTabs),
         activeTabId: (__VLS_ctx.store.activeTabId),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_28));
-    let __VLS_31;
-    let __VLS_32;
-    let __VLS_33;
-    const __VLS_34 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_34));
+    let __VLS_37;
+    let __VLS_38;
+    let __VLS_39;
+    const __VLS_40 = {
         onSelect: (__VLS_ctx.store.setActiveTab)
     };
-    const __VLS_35 = {
+    const __VLS_41 = {
         onClose: (__VLS_ctx.store.closeTab)
     };
-    var __VLS_30;
+    var __VLS_36;
     if (__VLS_ctx.saveError) {
-        const __VLS_36 = {}.VAlert;
+        const __VLS_42 = {}.VAlert;
         /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
         // @ts-ignore
-        const __VLS_37 = __VLS_asFunctionalComponent(__VLS_36, new __VLS_36({
+        const __VLS_43 = __VLS_asFunctionalComponent(__VLS_42, new __VLS_42({
             variant: "error",
             ...{ class: "m-2" },
         }));
-        const __VLS_38 = __VLS_37({
+        const __VLS_44 = __VLS_43({
             variant: "error",
             ...{ class: "m-2" },
-        }, ...__VLS_functionalComponentArgsRest(__VLS_37));
-        __VLS_39.slots.default;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_43));
+        __VLS_45.slots.default;
         (__VLS_ctx.saveError);
-        var __VLS_39;
+        var __VLS_45;
     }
     if (!__VLS_ctx.activeTab) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "flex-1 flex items-center justify-center" },
         });
-        const __VLS_40 = {}.VEmptyState;
+        const __VLS_46 = {}.VEmptyState;
         /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
         // @ts-ignore
-        const __VLS_41 = __VLS_asFunctionalComponent(__VLS_40, new __VLS_40({
+        const __VLS_47 = __VLS_asFunctionalComponent(__VLS_46, new __VLS_46({
             headline: "No document open",
             body: "Pick one from the tree on the left, or create a new file.",
         }));
-        const __VLS_42 = __VLS_41({
+        const __VLS_48 = __VLS_47({
             headline: "No document open",
             body: "Pick one from the tree on the left, or create a new file.",
-        }, ...__VLS_functionalComponentArgsRest(__VLS_41));
+        }, ...__VLS_functionalComponentArgsRest(__VLS_47));
     }
     else {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -855,37 +924,37 @@ if (__VLS_ctx.sessionId) {
         });
         /** @type {[typeof TabRendererHost, ]} */ ;
         // @ts-ignore
-        const __VLS_44 = __VLS_asFunctionalComponent(TabRendererHost, new TabRendererHost({
+        const __VLS_50 = __VLS_asFunctionalComponent(TabRendererHost, new TabRendererHost({
             ...{ 'onUpdate': {} },
             document: (__VLS_ctx.activeTab),
         }));
-        const __VLS_45 = __VLS_44({
+        const __VLS_51 = __VLS_50({
             ...{ 'onUpdate': {} },
             document: (__VLS_ctx.activeTab),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_44));
-        let __VLS_47;
-        let __VLS_48;
-        let __VLS_49;
-        const __VLS_50 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_50));
+        let __VLS_53;
+        let __VLS_54;
+        let __VLS_55;
+        const __VLS_56 = {
             onUpdate: (__VLS_ctx.store.updateActiveContent)
         };
-        var __VLS_46;
+        var __VLS_52;
     }
     {
         const { 'right-panel': __VLS_thisSlot } = __VLS_3.slots;
         if (__VLS_ctx.sessionId && __VLS_ctx.projectId) {
             /** @type {[typeof CortexChatPanel, ]} */ ;
             // @ts-ignore
-            const __VLS_51 = __VLS_asFunctionalComponent(CortexChatPanel, new CortexChatPanel({
+            const __VLS_57 = __VLS_asFunctionalComponent(CortexChatPanel, new CortexChatPanel({
                 sessionId: (__VLS_ctx.sessionId),
                 projectId: (__VLS_ctx.projectId),
                 toolService: (__VLS_ctx.clientToolService),
             }));
-            const __VLS_52 = __VLS_51({
+            const __VLS_58 = __VLS_57({
                 sessionId: (__VLS_ctx.sessionId),
                 projectId: (__VLS_ctx.projectId),
                 toolService: (__VLS_ctx.clientToolService),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_51));
+            }, ...__VLS_functionalComponentArgsRest(__VLS_57));
         }
         else {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -895,106 +964,106 @@ if (__VLS_ctx.sessionId) {
     }
     var __VLS_3;
 }
-const __VLS_54 = {}.VModal;
+const __VLS_60 = {}.VModal;
 /** @type {[typeof __VLS_components.VModal, typeof __VLS_components.VModal, ]} */ ;
 // @ts-ignore
-const __VLS_55 = __VLS_asFunctionalComponent(__VLS_54, new __VLS_54({
+const __VLS_61 = __VLS_asFunctionalComponent(__VLS_60, new __VLS_60({
     modelValue: (__VLS_ctx.showCreate),
     title: "New document",
 }));
-const __VLS_56 = __VLS_55({
+const __VLS_62 = __VLS_61({
     modelValue: (__VLS_ctx.showCreate),
     title: "New document",
-}, ...__VLS_functionalComponentArgsRest(__VLS_55));
-__VLS_57.slots.default;
+}, ...__VLS_functionalComponentArgsRest(__VLS_61));
+__VLS_63.slots.default;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.form, __VLS_intrinsicElements.form)({
     ...{ onSubmit: (__VLS_ctx.confirmCreate) },
     ...{ class: "space-y-3 p-2" },
 });
-const __VLS_58 = {}.VInput;
+const __VLS_64 = {}.VInput;
 /** @type {[typeof __VLS_components.VInput, ]} */ ;
 // @ts-ignore
-const __VLS_59 = __VLS_asFunctionalComponent(__VLS_58, new __VLS_58({
+const __VLS_65 = __VLS_asFunctionalComponent(__VLS_64, new __VLS_64({
     modelValue: (__VLS_ctx.createDir),
     label: "Path",
     placeholder: "(project root)",
 }));
-const __VLS_60 = __VLS_59({
+const __VLS_66 = __VLS_65({
     modelValue: (__VLS_ctx.createDir),
     label: "Path",
     placeholder: "(project root)",
-}, ...__VLS_functionalComponentArgsRest(__VLS_59));
-const __VLS_62 = {}.VInput;
+}, ...__VLS_functionalComponentArgsRest(__VLS_65));
+const __VLS_68 = {}.VInput;
 /** @type {[typeof __VLS_components.VInput, ]} */ ;
 // @ts-ignore
-const __VLS_63 = __VLS_asFunctionalComponent(__VLS_62, new __VLS_62({
+const __VLS_69 = __VLS_asFunctionalComponent(__VLS_68, new __VLS_68({
     modelValue: (__VLS_ctx.createName),
     label: "Name",
     placeholder: "idea.md",
     disabled: (__VLS_ctx.creating),
 }));
-const __VLS_64 = __VLS_63({
+const __VLS_70 = __VLS_69({
     modelValue: (__VLS_ctx.createName),
     label: "Name",
     placeholder: "idea.md",
     disabled: (__VLS_ctx.creating),
-}, ...__VLS_functionalComponentArgsRest(__VLS_63));
+}, ...__VLS_functionalComponentArgsRest(__VLS_69));
 if (__VLS_ctx.createError) {
-    const __VLS_66 = {}.VAlert;
+    const __VLS_72 = {}.VAlert;
     /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
     // @ts-ignore
-    const __VLS_67 = __VLS_asFunctionalComponent(__VLS_66, new __VLS_66({
+    const __VLS_73 = __VLS_asFunctionalComponent(__VLS_72, new __VLS_72({
         variant: "error",
     }));
-    const __VLS_68 = __VLS_67({
+    const __VLS_74 = __VLS_73({
         variant: "error",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_67));
-    __VLS_69.slots.default;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_73));
+    __VLS_75.slots.default;
     (__VLS_ctx.createError);
-    var __VLS_69;
+    var __VLS_75;
 }
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "flex justify-end gap-2 pt-2" },
 });
-const __VLS_70 = {}.VButton;
+const __VLS_76 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
 // @ts-ignore
-const __VLS_71 = __VLS_asFunctionalComponent(__VLS_70, new __VLS_70({
+const __VLS_77 = __VLS_asFunctionalComponent(__VLS_76, new __VLS_76({
     ...{ 'onClick': {} },
     type: "button",
     variant: "ghost",
 }));
-const __VLS_72 = __VLS_71({
+const __VLS_78 = __VLS_77({
     ...{ 'onClick': {} },
     type: "button",
     variant: "ghost",
-}, ...__VLS_functionalComponentArgsRest(__VLS_71));
-let __VLS_74;
-let __VLS_75;
-let __VLS_76;
-const __VLS_77 = {
+}, ...__VLS_functionalComponentArgsRest(__VLS_77));
+let __VLS_80;
+let __VLS_81;
+let __VLS_82;
+const __VLS_83 = {
     onClick: (...[$event]) => {
         __VLS_ctx.showCreate = false;
     }
 };
-__VLS_73.slots.default;
-var __VLS_73;
-const __VLS_78 = {}.VButton;
+__VLS_79.slots.default;
+var __VLS_79;
+const __VLS_84 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
 // @ts-ignore
-const __VLS_79 = __VLS_asFunctionalComponent(__VLS_78, new __VLS_78({
+const __VLS_85 = __VLS_asFunctionalComponent(__VLS_84, new __VLS_84({
     type: "submit",
     variant: "primary",
     loading: (__VLS_ctx.creating),
 }));
-const __VLS_80 = __VLS_79({
+const __VLS_86 = __VLS_85({
     type: "submit",
     variant: "primary",
     loading: (__VLS_ctx.creating),
-}, ...__VLS_functionalComponentArgsRest(__VLS_79));
-__VLS_81.slots.default;
-var __VLS_81;
-var __VLS_57;
+}, ...__VLS_functionalComponentArgsRest(__VLS_85));
+__VLS_87.slots.default;
+var __VLS_87;
+var __VLS_63;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
 /** @type {__VLS_StyleScopedClasses['h-full']} */ ;
@@ -1009,6 +1078,7 @@ var __VLS_57;
 /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
 /** @type {__VLS_StyleScopedClasses['overflow-y-auto']} */ ;
+/** @type {__VLS_StyleScopedClasses['m-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['p-3']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
 /** @type {__VLS_StyleScopedClasses['p-3']} */ ;
@@ -1153,6 +1223,9 @@ const __VLS_self = (await import('vue')).defineComponent({
             onNew: onNew,
             confirmCreate: confirmCreate,
             onDelete: onDelete,
+            treeError: treeError,
+            onMoveFile: onMoveFile,
+            onUploadFiles: onUploadFiles,
             backToChat: backToChat,
             onSaveAll: onSaveAll,
             onCloseActiveTab: onCloseActiveTab,

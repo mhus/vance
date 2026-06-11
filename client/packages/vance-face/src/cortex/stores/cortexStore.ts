@@ -150,6 +150,67 @@ export const useCortexStore = defineStore('cortex', () => {
   }
 
   /**
+   * Move a document to a new path. Used by the file tree's drag &
+   * drop — drag a file onto a folder row to call this with the folder's
+   * path + the file's basename. The server validates conflicts (409 on
+   * existing path) and we surface the error to the caller.
+   */
+  async function moveFile(id: string, newPath: string): Promise<void> {
+    const updated = await brainFetch<DocumentDto>(
+      'PUT',
+      `documents/${encodeURIComponent(id)}`,
+      { body: { newPath } },
+    );
+    const patch = {
+      path: updated.path,
+      name: updated.name,
+    };
+    const fIdx = files.value.findIndex((f) => f.id === id);
+    if (fIdx >= 0) {
+      files.value = [
+        ...files.value.slice(0, fIdx),
+        { ...files.value[fIdx], ...patch },
+        ...files.value.slice(fIdx + 1),
+      ];
+    }
+    const tIdx = openTabs.value.findIndex((t) => t.id === id);
+    if (tIdx >= 0) {
+      openTabs.value = [
+        ...openTabs.value.slice(0, tIdx),
+        { ...openTabs.value[tIdx], ...patch },
+        ...openTabs.value.slice(tIdx + 1),
+      ];
+    }
+  }
+
+  /**
+   * Upload one external (OS file system) file into the project at the
+   * given folder. The server picks a unique path if the basename
+   * collides — caller doesn't have to dedupe. Returns the new document
+   * summary so the caller can refresh visual state or open it as a tab.
+   */
+  async function uploadExternalFile(
+    file: File,
+    folderPath: string,
+  ): Promise<CortexDocument> {
+    if (!projectId.value) throw new Error('No project selected');
+    const form = new FormData();
+    form.append('file', file);
+    const targetPath = folderPath ? `${folderPath}/${file.name}` : file.name;
+    form.append('path', targetPath);
+    if (file.type) form.append('mimeType', file.type);
+    const params = new URLSearchParams({ projectId: projectId.value });
+    const dto = await brainFetch<DocumentDto>(
+      'POST',
+      `documents/upload?${params}`,
+      { body: form },
+    );
+    const created = dtoToDocument(dto);
+    files.value = [...files.value, created];
+    return created;
+  }
+
+  /**
    * Re-fetch metadata + content for an already-open tab and replace the
    * in-memory copy. Any local dirty edits on that tab are dropped — the
    * caller is responsible for confirming with the user beforehand.
@@ -337,6 +398,8 @@ export const useCortexStore = defineStore('cortex', () => {
     loadList,
     openFile,
     reloadTab,
+    moveFile,
+    uploadExternalFile,
     setActiveTab,
     closeTab,
     updateActiveContent,

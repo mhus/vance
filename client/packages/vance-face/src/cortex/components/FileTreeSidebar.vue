@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, ref } from 'vue';
+import { nextTick, onBeforeUnmount, onMounted, provide, ref } from 'vue';
 import type { FolderNode } from '../types';
 import FileTreeNode from './FileTreeNode.vue';
 
@@ -13,12 +13,39 @@ const props = defineProps<Props>();
 const emit = defineEmits<{
   (e: 'open-file', id: string): void;
   (e: 'delete-file', id: string): void;
+  (e: 'move-file', payload: { id: string; targetFolder: string }): void;
+  (e: 'upload-files', payload: { files: File[]; targetFolder: string }): void;
 }>();
 
 // Root pre-expanded so the project's top-level structure is visible
 // immediately. Sub-folders collapse until clicked.
 const expanded = ref<Set<string>>(new Set(['']));
 const sidebarEl = ref<HTMLElement | null>(null);
+
+// Tree-wide single drop-target — the deepest folder currently under
+// the cursor during a drag. Shared across all FileTreeNode instances
+// via provide/inject so that {@code dragover} on a child folder
+// implicitly clears the parent's highlight (last-writer-wins).
+const dragOverPath = ref<string | null>(null);
+provide('cortexDragOverPath', dragOverPath);
+
+// Safety net: an OS-originated drag has no element of ours to fire
+// {@code dragend} on, and a drag the user cancels (Esc / drops outside
+// our nodes) leaves no other hook to reset the highlight. Document-
+// level {@code dragend}/{@code drop} listeners catch all of those — for
+// drops on our own folder rows the inner handler has already cleared
+// the path, so the no-op here is harmless.
+function clearDragOver(): void {
+  dragOverPath.value = null;
+}
+onMounted(() => {
+  document.addEventListener('dragend', clearDragOver);
+  document.addEventListener('drop', clearDragOver);
+});
+onBeforeUnmount(() => {
+  document.removeEventListener('dragend', clearDragOver);
+  document.removeEventListener('drop', clearDragOver);
+});
 
 function toggle(path: string): void {
   const next = new Set(expanded.value);
@@ -81,6 +108,8 @@ function revealActiveFile(): void {
       @toggle="toggle"
       @open-file="(id: string) => emit('open-file', id)"
       @delete-file="(id: string) => emit('delete-file', id)"
+      @move-file="(payload) => emit('move-file', payload)"
+      @upload-files="(payload) => emit('upload-files', payload)"
     />
   </div>
 </template>

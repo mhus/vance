@@ -31,7 +31,7 @@ const propertiesUrl = computed(() => {
         projectId: pid,
         documentId: props.document.id,
     });
-    return `/document.html?${params.toString()}`;
+    return `/documents.html?${params.toString()}`;
 });
 /**
  * Brain-hosted image URL. The server enforces auth on the

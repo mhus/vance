@@ -1,3 +1,4 @@
+import { computed, inject } from 'vue';
 const props = defineProps();
 const emit = defineEmits();
 function isOpen(path) {
@@ -19,11 +20,90 @@ function fileIcon(name) {
 function indentStyle(extra) {
     return { paddingLeft: `${(props.depth + extra) * 12}px` };
 }
+// ──────────────── Drag & Drop ────────────────
+//
+// File rows are draggable. Folder rows (including the synthetic root)
+// are drop targets that accept either:
+//
+//   - another tracked file → emits {@code move-file}, the parent
+//     translates to {@code store.moveFile(id, newPath)}.
+//   - OS files from the desktop → emits {@code upload-files}, the
+//     parent translates to {@code store.uploadExternalFile(file, folder)}.
+//
+// {@code application/vance-doc-id} is our private MIME — used to
+// distinguish an internal drag from a cross-tab drag without leaking
+// the document id into dataTransfer.types (which is observable during
+// dragover, when the data itself is not yet readable).
+//
+// {@link dragOverPath} is a tree-wide shared ref (provided by the
+// FileTreeSidebar) so that only the deepest folder under the cursor
+// shows the highlight — child {@code dragover} overwrites the path,
+// {@code drop} or document-level cleanup clears it.
+const VANCE_DOC_MIME = 'application/vance-doc-id';
+const dragOverPath = inject('cortexDragOverPath');
+const folderDragOver = computed(() => dragOverPath?.value === props.node.path);
+function setDragOver(path) {
+    if (dragOverPath)
+        dragOverPath.value = path;
+}
+function onFileDragStart(ev, fileId) {
+    if (!ev.dataTransfer)
+        return;
+    ev.dataTransfer.setData(VANCE_DOC_MIME, fileId);
+    // text/plain mirror keeps non-conforming targets (the URL bar, an
+    // editor outside the tree) from claiming ownership of the drag.
+    ev.dataTransfer.setData('text/plain', fileId);
+    ev.dataTransfer.effectAllowed = 'move';
+}
+function isAcceptableDrag(ev) {
+    const types = ev.dataTransfer?.types;
+    if (!types)
+        return false;
+    // {@code DataTransferItemList} reports OS files as "Files".
+    return Array.from(types).some((t) => t === VANCE_DOC_MIME || t === 'Files');
+}
+function onFolderDragOver(ev) {
+    if (!isAcceptableDrag(ev))
+        return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    const isExternal = Array.from(ev.dataTransfer?.types ?? []).includes('Files');
+    if (ev.dataTransfer) {
+        ev.dataTransfer.dropEffect = isExternal ? 'copy' : 'move';
+    }
+    setDragOver(props.node.path);
+}
+function onFolderDrop(ev) {
+    if (!isAcceptableDrag(ev))
+        return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    setDragOver(null);
+    const dt = ev.dataTransfer;
+    if (!dt)
+        return;
+    const docId = dt.getData(VANCE_DOC_MIME);
+    if (docId) {
+        emit('move-file', { id: docId, targetFolder: props.node.path });
+        return;
+    }
+    const files = Array.from(dt.files ?? []);
+    if (files.length > 0) {
+        emit('upload-files', { files, targetFolder: props.node.path });
+    }
+}
 debugger; /* PartiallyEnd: #3632/scriptSetup.vue */
 const __VLS_ctx = {};
 let __VLS_components;
 let __VLS_directives;
-__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
+__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+    ...{ onDragover: (__VLS_ctx.onFolderDragOver) },
+    ...{ onDrop: (__VLS_ctx.onFolderDrop) },
+    ...{ class: ([
+            'rounded',
+            __VLS_ctx.folderDragOver ? 'ring-2 ring-primary/40 bg-primary/5' : '',
+        ]) },
+});
 if (__VLS_ctx.node.path !== '') {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
         ...{ onClick: (...[$event]) => {
@@ -54,6 +134,8 @@ if (__VLS_ctx.isOpen(__VLS_ctx.node.path)) {
             ...{ 'onToggle': {} },
             ...{ 'onOpenFile': {} },
             ...{ 'onDeleteFile': {} },
+            ...{ 'onMoveFile': {} },
+            ...{ 'onUploadFiles': {} },
             key: (`f:${child.path}`),
             node: (child),
             depth: (__VLS_ctx.depth + 1),
@@ -64,6 +146,8 @@ if (__VLS_ctx.isOpen(__VLS_ctx.node.path)) {
             ...{ 'onToggle': {} },
             ...{ 'onOpenFile': {} },
             ...{ 'onDeleteFile': {} },
+            ...{ 'onMoveFile': {} },
+            ...{ 'onUploadFiles': {} },
             key: (`f:${child.path}`),
             node: (child),
             depth: (__VLS_ctx.depth + 1),
@@ -82,12 +166,20 @@ if (__VLS_ctx.isOpen(__VLS_ctx.node.path)) {
         const __VLS_9 = {
             onDeleteFile: ((id) => __VLS_ctx.emit('delete-file', id))
         };
+        const __VLS_10 = {
+            onMoveFile: ((payload) => __VLS_ctx.emit('move-file', payload))
+        };
+        const __VLS_11 = {
+            onUploadFiles: ((payload) => __VLS_ctx.emit('upload-files', payload))
+        };
         var __VLS_3;
     }
     for (const [file] of __VLS_getVForSourceType((__VLS_ctx.node.files))) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ onDragstart: ((ev) => __VLS_ctx.onFileDragStart(ev, file.id)) },
             key: (`x:${file.id}`),
             'data-file-id': (file.id),
+            draggable: "true",
             ...{ class: ([
                     'group flex items-center gap-1 px-2 py-1 hover:bg-base-200 rounded cursor-pointer',
                     __VLS_ctx.activeFileId === file.id ? 'bg-base-200 font-semibold' : '',
@@ -128,6 +220,7 @@ if (__VLS_ctx.isOpen(__VLS_ctx.node.path)) {
         });
     }
 }
+/** @type {__VLS_StyleScopedClasses['rounded']} */ ;
 /** @type {__VLS_StyleScopedClasses['w-full']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-left']} */ ;
 /** @type {__VLS_StyleScopedClasses['px-2']} */ ;
@@ -177,6 +270,10 @@ const __VLS_self = (await import('vue')).defineComponent({
             isOpen: isOpen,
             fileIcon: fileIcon,
             indentStyle: indentStyle,
+            folderDragOver: folderDragOver,
+            onFileDragStart: onFileDragStart,
+            onFolderDragOver: onFolderDragOver,
+            onFolderDrop: onFolderDrop,
         };
     },
     __typeEmits: {},

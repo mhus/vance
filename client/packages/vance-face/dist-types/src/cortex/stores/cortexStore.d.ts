@@ -76,6 +76,8 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
     loadList: (pid: string) => Promise<void>;
     openFile: (id: string) => Promise<void>;
     reloadTab: (id: string) => Promise<void>;
+    moveFile: (id: string, newPath: string) => Promise<void>;
+    uploadExternalFile: (file: File, folderPath: string) => Promise<CortexDocument>;
     setActiveTab: (id: string) => void;
     closeTab: (id: string) => void;
     updateActiveContent: (text: string) => void;
@@ -143,6 +145,8 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
     loadList: (pid: string) => Promise<void>;
     openFile: (id: string) => Promise<void>;
     reloadTab: (id: string) => Promise<void>;
+    moveFile: (id: string, newPath: string) => Promise<void>;
+    uploadExternalFile: (file: File, folderPath: string) => Promise<CortexDocument>;
     setActiveTab: (id: string) => void;
     closeTab: (id: string) => void;
     updateActiveContent: (text: string) => void;
@@ -210,6 +214,8 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
     loadList: (pid: string) => Promise<void>;
     openFile: (id: string) => Promise<void>;
     reloadTab: (id: string) => Promise<void>;
+    moveFile: (id: string, newPath: string) => Promise<void>;
+    uploadExternalFile: (file: File, folderPath: string) => Promise<CortexDocument>;
     setActiveTab: (id: string) => void;
     closeTab: (id: string) => void;
     updateActiveContent: (text: string) => void;
@@ -233,6 +239,6 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
     } | null>;
     setSelection: (sel: CortexSelection | null) => void;
     clearSelection: () => void;
-}, "loadList" | "openFile" | "reloadTab" | "setActiveTab" | "closeTab" | "updateActiveContent" | "saveActive" | "saveTab" | "saveAllDirty" | "createFile" | "deleteFile" | "setSelection" | "clearSelection">>;
+}, "loadList" | "openFile" | "reloadTab" | "moveFile" | "uploadExternalFile" | "setActiveTab" | "closeTab" | "updateActiveContent" | "saveActive" | "saveTab" | "saveAllDirty" | "createFile" | "deleteFile" | "setSelection" | "clearSelection">>;
 export {};
 //# sourceMappingURL=cortexStore.d.ts.map

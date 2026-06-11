@@ -390,6 +390,47 @@ async function onDelete(id: string): Promise<void> {
   await store.deleteFile(id);
 }
 
+// ──────────────── File-tree drag & drop ────────────────
+//
+// {@link treeError} surfaces above the tree when a move / upload fails
+// (path conflict, network error). Cleared by every successful op so it
+// doesn't linger from an unrelated previous attempt.
+const treeError = ref<string | null>(null);
+
+async function onMoveFile(payload: { id: string; targetFolder: string }): Promise<void> {
+  const doc = store.files.find((f) => f.id === payload.id)
+    ?? store.openTabs.find((t) => t.id === payload.id);
+  if (!doc) return;
+  const slash = doc.path.lastIndexOf('/');
+  const basename = slash === -1 ? doc.path : doc.path.slice(slash + 1);
+  const newPath = payload.targetFolder
+    ? `${payload.targetFolder}/${basename}`
+    : basename;
+  if (newPath === doc.path) return; // no-op: dropped into the source folder
+  treeError.value = null;
+  try {
+    await store.moveFile(payload.id, newPath);
+  } catch (e) {
+    treeError.value = e instanceof Error ? e.message : 'Move failed';
+  }
+}
+
+async function onUploadFiles(payload: { files: File[]; targetFolder: string }): Promise<void> {
+  treeError.value = null;
+  const failures: string[] = [];
+  for (const file of payload.files) {
+    try {
+      await store.uploadExternalFile(file, payload.targetFolder);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Upload failed';
+      failures.push(`${file.name}: ${msg}`);
+    }
+  }
+  if (failures.length > 0) {
+    treeError.value = failures.join('\n');
+  }
+}
+
 function backToChat(): void {
   if (sessionId.value) {
     window.location.href = `/chat.html?sessionId=${encodeURIComponent(sessionId.value)}`;
@@ -579,12 +620,17 @@ onBeforeUnmount(() => {
           <VButton size="sm" variant="ghost" @click="backToChat">← Chat</VButton>
         </div>
         <div class="flex-1 min-h-0 overflow-y-auto">
+          <VAlert v-if="treeError" variant="error" class="m-2">
+            <span>{{ treeError }}</span>
+          </VAlert>
           <FileTreeSidebar
             v-if="projectId"
             :root="store.fileTree"
             :active-file-id="store.activeTabId"
             @open-file="(id: string) => { focusZone = 'main'; store.openFile(id); }"
             @delete-file="onDelete"
+            @move-file="onMoveFile"
+            @upload-files="onUploadFiles"
           />
           <div v-else-if="bootError" class="p-3 text-sm">
             <VAlert variant="error">{{ bootError }}</VAlert>

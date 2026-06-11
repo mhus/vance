@@ -1,4 +1,4 @@
-import { nextTick, ref } from 'vue';
+import { nextTick, onBeforeUnmount, onMounted, provide, ref } from 'vue';
 import FileTreeNode from './FileTreeNode.vue';
 const props = defineProps();
 const emit = defineEmits();
@@ -6,6 +6,29 @@ const emit = defineEmits();
 // immediately. Sub-folders collapse until clicked.
 const expanded = ref(new Set(['']));
 const sidebarEl = ref(null);
+// Tree-wide single drop-target — the deepest folder currently under
+// the cursor during a drag. Shared across all FileTreeNode instances
+// via provide/inject so that {@code dragover} on a child folder
+// implicitly clears the parent's highlight (last-writer-wins).
+const dragOverPath = ref(null);
+provide('cortexDragOverPath', dragOverPath);
+// Safety net: an OS-originated drag has no element of ours to fire
+// {@code dragend} on, and a drag the user cancels (Esc / drops outside
+// our nodes) leaves no other hook to reset the highlight. Document-
+// level {@code dragend}/{@code drop} listeners catch all of those — for
+// drops on our own folder rows the inner handler has already cleared
+// the path, so the no-op here is harmless.
+function clearDragOver() {
+    dragOverPath.value = null;
+}
+onMounted(() => {
+    document.addEventListener('dragend', clearDragOver);
+    document.addEventListener('drop', clearDragOver);
+});
+onBeforeUnmount(() => {
+    document.removeEventListener('dragend', clearDragOver);
+    document.removeEventListener('drop', clearDragOver);
+});
 function toggle(path) {
     const next = new Set(expanded.value);
     if (next.has(path)) {
@@ -76,6 +99,8 @@ const __VLS_0 = __VLS_asFunctionalComponent(FileTreeNode, new FileTreeNode({
     ...{ 'onToggle': {} },
     ...{ 'onOpenFile': {} },
     ...{ 'onDeleteFile': {} },
+    ...{ 'onMoveFile': {} },
+    ...{ 'onUploadFiles': {} },
     node: (__VLS_ctx.root),
     depth: (0),
     activeFileId: (__VLS_ctx.activeFileId ?? null),
@@ -85,6 +110,8 @@ const __VLS_1 = __VLS_0({
     ...{ 'onToggle': {} },
     ...{ 'onOpenFile': {} },
     ...{ 'onDeleteFile': {} },
+    ...{ 'onMoveFile': {} },
+    ...{ 'onUploadFiles': {} },
     node: (__VLS_ctx.root),
     depth: (0),
     activeFileId: (__VLS_ctx.activeFileId ?? null),
@@ -101,6 +128,12 @@ const __VLS_7 = {
 };
 const __VLS_8 = {
     onDeleteFile: ((id) => __VLS_ctx.emit('delete-file', id))
+};
+const __VLS_9 = {
+    onMoveFile: ((payload) => __VLS_ctx.emit('move-file', payload))
+};
+const __VLS_10 = {
+    onUploadFiles: ((payload) => __VLS_ctx.emit('upload-files', payload))
 };
 var __VLS_2;
 /** @type {__VLS_StyleScopedClasses['p-2']} */ ;

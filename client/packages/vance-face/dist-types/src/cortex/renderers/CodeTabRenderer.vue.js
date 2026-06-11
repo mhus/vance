@@ -62,7 +62,7 @@ const propertiesUrl = computed(() => {
         projectId: pid,
         documentId: props.document.id,
     });
-    return `/document.html?${params.toString()}`;
+    return `/documents.html?${params.toString()}`;
 });
 /**
  * Derive a language hint from the document's mime-type, falling back to

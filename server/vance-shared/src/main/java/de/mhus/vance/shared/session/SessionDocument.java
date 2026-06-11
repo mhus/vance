@@ -282,4 +282,28 @@ public class SessionDocument {
      * is set at create-time and never changes.
      */
     private boolean system;
+
+    // ─── Cortex view state — see planning/cortex.md §4.1 ───
+
+    /**
+     * Document ids open as tabs in the Cortex view of this session.
+     * Order is the tab order — first entry is leftmost. Restored on
+     * Cortex re-entry. Empty when the session has never been opened
+     * in Cortex, or when all tabs were closed.
+     *
+     * <p>Persistence is the Cortex client's responsibility: the
+     * {@code PUT /sessions/{sessionId}/cortex-state} endpoint writes
+     * this field on tab open/close/reorder.
+     */
+    private List<String> openDocumentIds = new ArrayList<>();
+
+    /**
+     * Document id the Cortex chat is "bound to" — i.e. the document
+     * the agent operates on through client-tools. May differ from the
+     * document the user is currently viewing (a tab can be in focus
+     * without being chat-bound). Must be present in
+     * {@link #openDocumentIds} when set; {@code null} when no document
+     * is bound (initial state, or user explicitly unbound).
+     */
+    private @Nullable String chatBoundDocumentId;
 }

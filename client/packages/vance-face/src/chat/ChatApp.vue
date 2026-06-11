@@ -562,6 +562,21 @@ function onTitleClick(): void {
     void leaveLive();
   }
 }
+
+/**
+ * Switch from the plain chat view to the Cortex view for this session.
+ * Cortex picks up the same sessionId from the URL and restores its own
+ * state (open tabs, chat-bound document) from the chat session record.
+ *
+ * <p>Implemented as a hard navigation rather than an SPA route because
+ * the two views live in separate Vite entries (chat.html, cortex.html);
+ * the user's reverse path is the {@code ← Chat} button in Cortex.
+ */
+function openInCortex(): void {
+  const id = activeSessionId.value;
+  if (!id) return;
+  window.location.href = `/cortex.html?sessionId=${encodeURIComponent(id)}`;
+}
 </script>
 
 <template>
@@ -578,6 +593,16 @@ function onTitleClick(): void {
     :title-clickable="pickerMode || liveOk"
     @title-click="onTitleClick"
   >
+    <!-- Topbar action: jump from the plain chat view into Cortex for
+         the current session. Hidden in picker mode where there's no
+         session to anchor Cortex to. The session's projectId is the
+         one Cortex will scope its file tree to. -->
+    <template v-if="liveOk" #topbar-extra>
+      <VButton size="sm" variant="ghost" @click="openInCortex">
+        Open Cortex →
+      </VButton>
+    </template>
+
     <!-- Sidebar slot — picker mode only. PickerView teleports its
          project-list aside into the target div below so the project
          nav lives in the EditorShell sidebar zone (proper focus +

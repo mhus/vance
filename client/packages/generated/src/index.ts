@@ -218,6 +218,18 @@ export * from './server-tools/ServerToolDto';
 export * from './server-tools/ServerToolWriteRequest';
 export * from './server-tools/ToolTypeDto';
 
+export * from './tools/ClientToolInvokeRequest';
+export * from './tools/ClientToolInvokeResponse';
+export * from './tools/ClientToolRegisterRequest';
+export * from './tools/DaemonRegisterRequest';
+export * from './tools/ToolSpec';
+
+export * from './toolhealth/ToolErrorCode';
+export * from './toolhealth/ToolHealthClassification';
+export * from './toolhealth/ToolHealthScope';
+export * from './toolhealth/ToolHealthStatus';
+export * from './toolhealth/ToolSafety';
+
 export * from './session/DisconnectPolicy';
 export * from './session/IdlePolicy';
 export * from './session/SessionColor';

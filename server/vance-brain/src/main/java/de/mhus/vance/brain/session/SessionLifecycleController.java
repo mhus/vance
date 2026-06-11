@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.session;
 
 import de.mhus.vance.api.session.SessionColor;
+import de.mhus.vance.api.session.SessionCortexStateRequest;
 import de.mhus.vance.api.session.SessionMetadataDto;
 import de.mhus.vance.api.session.SessionMetadataPatchRequest;
 import de.mhus.vance.api.session.SessionStatus;
@@ -22,6 +23,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -133,6 +135,37 @@ public class SessionLifecycleController {
                 new Resource.Session(tenant, session.getProjectId(), session.getSessionId()),
                 Action.DELETE);
         lifecycleService.deleteSession(sessionId);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Persist the Cortex view state (open tabs + chat-bound document)
+     * for a session. Called by the Cortex client on tab open/close and
+     * on bind changes. Replacement semantics — the request body is the
+     * full state, not a patch.
+     *
+     * <p>Returns 204 even when no field changed (idempotent). Closed
+     * sessions reject the call with 409 — Cortex doesn't operate on
+     * terminal sessions.
+     */
+    @PutMapping("/{sessionId}/cortex-state")
+    public ResponseEntity<Void> setCortexState(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("sessionId") String sessionId,
+            @RequestBody SessionCortexStateRequest body,
+            HttpServletRequest request) {
+        SessionDocument session = requireOwnedSession(tenant, sessionId, request);
+        authority.enforce(request,
+                new Resource.Session(tenant, session.getProjectId(), session.getSessionId()),
+                Action.WRITE);
+        if (session.getStatus() == SessionStatus.CLOSED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Cannot update Cortex state on a CLOSED session");
+        }
+        List<String> ids = body.getOpenDocumentIds() == null
+                ? List.of()
+                : List.copyOf(body.getOpenDocumentIds());
+        sessionService.setCortexState(sessionId, ids, body.getChatBoundDocumentId());
         return ResponseEntity.noContent().build();
     }
 

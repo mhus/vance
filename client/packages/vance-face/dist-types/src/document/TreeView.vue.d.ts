@@ -28,10 +28,10 @@ declare const _default: import("vue").DefineComponent<__VLS_Props, {}, {}, {}, {
 }, string, import("vue").PublicProps, Readonly<__VLS_Props> & Readonly<{
     "onUpdate:doc"?: ((doc: TreeDocument) => any) | undefined;
 }>, {
-    meta: FenceMeta;
-    mode: "editor" | "inline" | "embedded";
-    items: TreeItem[];
     doc: TreeDocument | null;
+    meta: FenceMeta;
+    items: TreeItem[];
+    mode: "editor" | "inline" | "embedded";
     pathPrefix: number[];
 }, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;
 export default _default;

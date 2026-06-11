@@ -331,6 +331,10 @@ debugger; /* PartiallyEnd: #3632/scriptSetup.vue */
 const __VLS_ctx = {};
 let __VLS_components;
 let __VLS_directives;
+/** @type {__VLS_StyleScopedClasses['cortex-code-host']} */ ;
+/** @type {__VLS_StyleScopedClasses['cortex-code-host']} */ ;
+// CSS variable injection 
+// CSS variable injection end 
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "h-full flex flex-col min-h-0" },
 });
@@ -455,7 +459,7 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.
 (__VLS_ctx.binding.mode === 'code' ? __VLS_ctx.effectiveMimeType : (__VLS_ctx.document.mimeType ?? __VLS_ctx.binding.mode));
 if (__VLS_ctx.binding.mode === 'code') {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "flex-1 min-h-0 overflow-hidden" },
+        ...{ class: "flex-1 min-h-0 overflow-hidden cortex-code-host" },
     });
     const __VLS_0 = {}.CodeEditor;
     /** @type {[typeof __VLS_components.CodeEditor, ]} */ ;
@@ -501,7 +505,7 @@ else if (__VLS_ctx.binding.mode === 'image') {
 else if (__VLS_ctx.isViewMode) {
     if (__VLS_ctx.showRawEditor) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-            ...{ class: "flex-1 min-h-0 overflow-hidden" },
+            ...{ class: "flex-1 min-h-0 overflow-hidden cortex-code-host" },
         });
         const __VLS_12 = {}.CodeEditor;
         /** @type {[typeof __VLS_components.CodeEditor, ]} */ ;
@@ -539,7 +543,7 @@ else if (__VLS_ctx.isViewMode) {
         (__VLS_ctx.document.kind);
         (__VLS_ctx.parseResult.error);
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-            ...{ class: "flex-1 min-h-0 overflow-hidden" },
+            ...{ class: "flex-1 min-h-0 overflow-hidden cortex-code-host" },
         });
         const __VLS_21 = {}.CodeEditor;
         /** @type {[typeof __VLS_components.CodeEditor, ]} */ ;
@@ -797,6 +801,7 @@ if (__VLS_ctx.showHactar && __VLS_ctx.store.projectId) {
 /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
 /** @type {__VLS_StyleScopedClasses['overflow-hidden']} */ ;
+/** @type {__VLS_StyleScopedClasses['cortex-code-host']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
 /** @type {__VLS_StyleScopedClasses['overflow-auto']} */ ;
@@ -808,6 +813,7 @@ if (__VLS_ctx.showHactar && __VLS_ctx.store.projectId) {
 /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
 /** @type {__VLS_StyleScopedClasses['overflow-hidden']} */ ;
+/** @type {__VLS_StyleScopedClasses['cortex-code-host']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
@@ -823,6 +829,7 @@ if (__VLS_ctx.showHactar && __VLS_ctx.store.projectId) {
 /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
 /** @type {__VLS_StyleScopedClasses['overflow-hidden']} */ ;
+/** @type {__VLS_StyleScopedClasses['cortex-code-host']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
 /** @type {__VLS_StyleScopedClasses['overflow-auto']} */ ;

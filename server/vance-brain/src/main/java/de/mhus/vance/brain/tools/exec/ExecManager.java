@@ -235,6 +235,52 @@ public class ExecManager {
         return ExecJobRenderer.render(job, properties.getInlineOutputCharCap());
     }
 
+    /**
+     * Async submit for REST-style callers (e.g. PythonCortexController).
+     * Returns the job id immediately after submit + registry register;
+     * the caller polls {@link #renderJob} to surface stdout/stderr +
+     * terminal state to the user. Mirrors the
+     * {@link #submitTrackedAndRender} setup minus the synchronous
+     * wait+render — REST clients can't block.
+     */
+    public String submitTracked(
+            String tenantId, String projectId,
+            @Nullable String sessionId, @Nullable String processId,
+            String dirName, String command) {
+        ExecJob job = submit(tenantId, projectId, processId, dirName, command);
+        registry.register(new de.mhus.vance.brain.execution.ExecutionRegistryEntry(
+                job.id(),
+                de.mhus.vance.brain.execution.ExecutionOwner.Brain.INSTANCE,
+                tenantId,
+                projectId,
+                sessionId,
+                processId,
+                job.command(),
+                dirName,
+                job.startedAt(),
+                job.lastOutputAt(),
+                null,
+                de.mhus.vance.brain.execution.ExecutionStatus.RUNNING,
+                null,
+                job.stdoutFile().toString(),
+                job.stderrFile().toString()));
+        return job.id();
+    }
+
+    /**
+     * Public snapshot for a previously-submitted job. Returns the
+     * same {@code Map<String, Object>} shape as the LLM-facing
+     * {@code exec_status} / {@code exec_run} tools — REST clients
+     * read {@code status} / {@code stdout} / {@code stderr} /
+     * {@code exitCode} / {@code durationMs}. Empty when the job id
+     * doesn't belong to this project (or has been evicted).
+     */
+    public Optional<Map<String, Object>> renderJob(
+            String tenantId, String projectId, String jobId) {
+        return get(tenantId, projectId, jobId)
+                .map(j -> ExecJobRenderer.render(j, properties.getInlineOutputCharCap()));
+    }
+
     /** Blocks up to {@code maxMillis} for a RUNNING job to finish. */
     public ExecJob waitFor(ExecJob job, long maxMillis) {
         long deadline = System.currentTimeMillis() + maxMillis;

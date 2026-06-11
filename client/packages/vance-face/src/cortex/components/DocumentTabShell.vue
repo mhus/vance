@@ -517,7 +517,7 @@ function fmtDuration(ms: number | null): string {
     </div>
 
     <!-- Code mode: CodeEditor on the raw text. -->
-    <div v-if="binding.mode === 'code'" class="flex-1 min-h-0 overflow-hidden">
+    <div v-if="binding.mode === 'code'" class="flex-1 min-h-0 overflow-hidden cortex-code-host">
       <CodeEditor
         :model-value="document.inlineText"
         :mime-type="effectiveMimeType"
@@ -540,7 +540,7 @@ function fmtDuration(ms: number | null): string {
            inlineText with the same CodeEditor the catch-all uses. -->
       <div
         v-if="showRawEditor"
-        class="flex-1 min-h-0 overflow-hidden"
+        class="flex-1 min-h-0 overflow-hidden cortex-code-host"
       >
         <CodeEditor
           :model-value="document.inlineText"
@@ -559,7 +559,7 @@ function fmtDuration(ms: number | null): string {
           Could not parse as {{ document.kind }} — falling back to raw editor.
           {{ parseResult.error }}
         </div>
-        <div class="flex-1 min-h-0 overflow-hidden">
+        <div class="flex-1 min-h-0 overflow-hidden cortex-code-host">
           <CodeEditor
             :model-value="document.inlineText"
             :mime-type="effectiveMimeType"
@@ -648,3 +648,24 @@ function fmtDuration(ms: number | null): string {
     />
   </div>
 </template>
+
+<style scoped>
+/* CodeEditor renders a <label class="form-control"> with an inner
+ * .code-editor div that only carries a min-height — by default the
+ * label/.code-editor pair is content-sized and grows past the
+ * Cortex-bounded parent, so CodeMirror's internal scroller never
+ * activates. Force the host chain into flex-fill so the editor
+ * matches the bounded parent and CodeMirror handles its own scroll. */
+.cortex-code-host {
+  display: flex;
+  flex-direction: column;
+}
+.cortex-code-host :deep(.form-control) {
+  flex: 1 1 0;
+  min-height: 0;
+}
+.cortex-code-host :deep(.code-editor) {
+  flex: 1 1 0;
+  min-height: 0;
+}
+</style>

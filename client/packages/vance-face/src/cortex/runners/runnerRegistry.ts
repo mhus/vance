@@ -1,13 +1,14 @@
 import type { CortexDocument } from '../types';
 import type { RunAdapter } from './types';
 import { jsRunner } from './jsRunner';
+import { pythonRunner } from './pythonRunner';
 
 /**
  * Registered run adapters. First-match wins per
- * {@link resolveRunAdapter}; future language runners (Python, Shell, R)
+ * {@link resolveRunAdapter}; future language runners (Shell, R)
  * register themselves here in their own modules.
  */
-const adapters: RunAdapter[] = [jsRunner];
+const adapters: RunAdapter[] = [jsRunner, pythonRunner];
 
 /**
  * Pick the first adapter willing to execute the given document, or

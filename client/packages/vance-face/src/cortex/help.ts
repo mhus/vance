@@ -52,6 +52,7 @@ export function resolveHelpPath(doc: CortexDocument | null): string {
 
   const adapter = resolveRunAdapter(doc);
   if (adapter?.id === 'js') return 'script-cortex.md';
+  if (adapter?.id === 'py') return 'python-cortex.md';
 
   const binding = resolveBinding(doc);
   if (binding.mode === 'kind-registry' && binding.kindEntry) {

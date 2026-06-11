@@ -82,10 +82,3 @@ was du siehst.
   zwischen Docs wechseln und die Hilfe folgt.
 - Der Chat überlebt einen Switch auf Help; zurückwechseln und der
   Message-Buffer ist noch da.
-
-## Grenzen in V1
-
-- Keine Live-Updates außerhalb des Chats — andere Editoren laden
-  REST-Snapshots und werden manuell refresht.
-- Keine Zwei-User-Kollaboration auf demselben Tab.
-- Mobile / schmale Screens sind V2 — Cortex ist Desktop-first.

@@ -1,10 +1,11 @@
 import { jsRunner } from './jsRunner';
+import { pythonRunner } from './pythonRunner';
 /**
  * Registered run adapters. First-match wins per
- * {@link resolveRunAdapter}; future language runners (Python, Shell, R)
+ * {@link resolveRunAdapter}; future language runners (Shell, R)
  * register themselves here in their own modules.
  */
-const adapters = [jsRunner];
+const adapters = [jsRunner, pythonRunner];
 /**
  * Pick the first adapter willing to execute the given document, or
  * {@code null} when none matches. The shell uses this to decide

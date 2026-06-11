@@ -31,6 +31,10 @@ export * from './scripts/ScriptValidateError';
 export * from './scripts/ScriptValidateRequest';
 export * from './scripts/ScriptValidateResponse';
 
+export * from './python/PythonExecuteRequest';
+export * from './python/PythonExecuteResponse';
+export * from './python/PythonExecutionStatus';
+
 export * from './eddie/ChannelMode';
 export * from './eddie/SwitchToNotification';
 

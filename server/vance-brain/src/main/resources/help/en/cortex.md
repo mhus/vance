@@ -80,10 +80,3 @@ to the server first so the executed code matches what you see.
   between docs and the help follows.
 - The chat survives a tab-switch to Help; switch back and your
   message buffer is still there.
-
-## Limits in v1
-
-- No live updates outside the chat — other editors load REST
-  snapshots and refresh manually.
-- No two-user collaboration on the same tab.
-- Mobile / narrow screens are V2 — Cortex is desktop-first.

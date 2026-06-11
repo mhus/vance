@@ -18,6 +18,7 @@ public enum SearchModality {
     PDF,
     NEWS,
     ACADEMIC,
+    ENCYCLOPEDIA,
     BOOK,
     MAP,
     CODE,

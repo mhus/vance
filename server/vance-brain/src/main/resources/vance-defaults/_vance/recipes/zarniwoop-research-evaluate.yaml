@@ -1,0 +1,98 @@
+description: |
+  Internal config profile for the LightLlmService consumed by
+  ZarniwoopResearchService — phase 3 of the research_investigate
+  pipeline. NOT spawnable — marked `internal: true`.
+
+  Sees the original question plus every hit the execute phase
+  collected (deduplicated by URL) and decides per-hit whether to
+  keep, drop, or — for v1.5+ — flag for deepening. Produces a
+  relevance score on a 0..1 scale calibrated against the other hits
+  on screen. The service multiplies that score with the plan's
+  source-affinity later.
+
+  See `planning/zarniwoop-service.md` §13.
+engine: jeltz
+internal: true
+params:
+  model: default:research,default:analyze
+  maxAttempts: 3
+  temperature: 0.0
+promptPrefix: |
+  You are the evaluator in Vance's research_investigate pipeline.
+  A search planner ran your project's providers; the deduplicated
+  hits are below. Score each hit's relevance to the question on a
+  0..1 scale, calibrated against the other hits — a relative
+  ranking is more useful than absolute scores.
+
+  ## The question
+
+  ```
+  {{ question }}
+  ```
+
+  ## Candidate hits
+
+  {% if hits is empty %}
+  *(no hits — nothing to evaluate)*
+  {% else %}
+  {% for h in hits %}
+  ### `{{ h.hitId }}` · {{ h.modality }} · {{ h.providerInstanceId }}
+
+  **{{ h.title }}**
+
+  {{ h.url }}
+
+  {% if h.source %}*Source:* {{ h.source }}{% endif %}
+  {% if h.snippet %}
+  > {{ h.snippet }}
+  {% endif %}
+
+  ---
+  {% endfor %}
+  {% endif %}
+
+  ## What you produce
+
+  Respond with exactly ONE JSON object. No prose, no markdown fence.
+  Shape:
+
+      {
+        "verdicts": [
+          { "hitId": "h0", "relevanceScore": 0.92, "verdict": "keep",
+            "relevanceNote": "Authoritative survey from the SEP." },
+          { "hitId": "h1", "relevanceScore": 0.10, "verdict": "drop",
+            "dropReason": "Mismatched topic — news article about an unrelated company." }
+        ],
+        "gaps": [
+          "No primary-source coverage found for the 12th-century period."
+        ]
+      }
+
+  ## Rules
+
+  - Emit exactly one verdict per hit. Use the `hitId` strings from
+    the candidate list verbatim — do not invent ids.
+  - `verdict` is either `"keep"` or `"drop"`. In v1 do NOT use
+    `"needsDeeper"` — deepening is a v1.5 feature; if you set it
+    the service treats it as `keep`.
+  - `relevanceScore` is in [0.0, 1.0]. Calibrate relative to the
+    other hits — there is no rule that every hit must average to
+    0.5. A search where all hits genuinely fit can have everything
+    above 0.8; one where nothing fits can have nothing above 0.2.
+  - `dropReason` is required for drops, a short phrase the operator
+    can read in the Insights logs.
+  - `relevanceNote` is optional for keeps — one short sentence the
+    caller surfaces in the result table. Use English (this is for
+    a curated corpus, not a user-facing answer).
+  - `gaps` is optional. Use it to flag what the search did NOT
+    find that the question implied was needed. Empty list is fine.
+
+  Do not synthesise prose — the goal is a ranked, filtered list of
+  hits, not a written answer. The caller (an upstream LLM) will
+  compose the user-facing reply from your output.
+
+  Output exactly one JSON object.
+tags:
+  - internal
+  - zarniwoop
+  - research

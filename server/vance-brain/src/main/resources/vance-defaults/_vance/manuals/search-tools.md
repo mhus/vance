@@ -1,6 +1,6 @@
 ---
-triggers: search, web search, recherche, suchen, "look up", find information online, "what does the web say", project memory, do we have, haben wir was zu, research_search, research_rich, research_search_expert, research_providers, web_search, image_search, video_search, pdf_search, rich_search, memory_search
-summary: How to pick between memory_search (project-local), research_search / research_rich (web), and the deferred legacy *_search tools. Check memory first; on the web side everything goes through research_search.
+triggers: search, web search, recherche, suchen, "look up", find information online, "what does the web say", project memory, do we have, haben wir was zu, research_search, research_rich, research_search_expert, research_providers, research_investigate, investigate, "research the topic", "best sources", "find me the best", web_search, image_search, video_search, pdf_search, rich_search, memory_search
+summary: How to pick between memory_search (project-local), research_search / research_rich / research_investigate (web), and the deferred legacy *_search tools. Check memory first; on the web side everything goes through the research_* family.
 ---
 # Search tools — picking the right one
 
@@ -123,6 +123,47 @@ Use when:
 - The default-cascade picked a provider that the user didn't want
   (look at `research_providers` to see the inventory, then pin).
 
+### `research_investigate` — curated, scored corpus
+
+`research_investigate question=<text>`
+
+The slow path. Hands the question to a plan-LLM that decides which
+modalities to query (web, encyclopedia, academic, …), runs the
+searches in parallel through `research_search`'s dispatcher, then
+asks an evaluate-LLM to score and filter the hits. Returns a
+ranked corpus (`results` sorted by `finalScore` desc plus a
+`dropped` list with reasons) — **not a written report**. You
+compose the user-facing answer from those hits yourself.
+
+`finalScore = relevanceScore × sourceAffinity`. The plan-LLM
+decides source affinity per question ("medieval guild" → high
+encyclopedia/academic, low news; "AI launch this week" → high
+news/web, low encyclopedia). Each hit row carries both numbers
+plus the multiplier that was applied, so you can see why a hit
+ranks where it does.
+
+Use when:
+
+- *"Research X for me"*, *"find the best sources on Y"*, *"was
+  weiss man über Z"* — anything where the user wants curation.
+- The first `research_search` returned a flat list and the user
+  wants a quality-ranked, multi-source pass instead.
+- A question where source authority matters (academic, news,
+  encyclopedia mixing) and you'd otherwise have to weight by hand.
+
+Expect 5–30 seconds of latency — two LLM calls (plan + evaluate)
+plus the search fan-out. `research_search` is the right answer
+when you only want raw hits.
+
+Anti-patterns:
+
+- Calling `research_investigate` and then ignoring its scoring.
+  If the user asked for raw results, `research_search` is faster
+  and cheaper.
+- Asking it to "answer" the question. Output is hits, not prose.
+- Calling it for memory-lookups. If the user's project already has
+  notes on the topic, `memory_search` is the right first stop.
+
 ### `research_providers` — inventory probe (deferred)
 
 `research_providers` (no params)
@@ -153,6 +194,7 @@ Use when:
 | "Wikipedia über Y" | `research_search modality=encyclopedia` or `research_search_expert instance=wiki-de` |
 | "Find papers about Z" | `research_search modality=academic` |
 | "Nur arxiv, nur PDFs von 2024" | `research_search_expert` |
+| "Research X", "find the best sources", multi-source quality ranking | `research_investigate` |
 | Which provider is configured? | `research_providers` |
 
 ## Anti-patterns

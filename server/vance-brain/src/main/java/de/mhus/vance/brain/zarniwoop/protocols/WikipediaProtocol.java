@@ -81,7 +81,7 @@ public class WikipediaProtocol implements SearchProtocol {
 
     @Override
     public Set<SearchModality> modalitiesSupported() {
-        return Set.of(SearchModality.WEB);
+        return Set.of(SearchModality.WEB, SearchModality.ENCYCLOPEDIA);
     }
 
     @Override
@@ -165,10 +165,9 @@ public class WikipediaProtocol implements SearchProtocol {
 
         @Override
         public Set<SearchModality> modalities() {
-            // Wikipedia is the encyclopedia source in the inventory.
-            // Maps onto WEB (general search) too so it's usable as a
-            // fallback when web instances die.
-            return Set.of(SearchModality.WEB);
+            // Wikipedia is the encyclopedia source in the inventory and
+            // also doubles as a WEB-fallback when other web instances die.
+            return Set.of(SearchModality.WEB, SearchModality.ENCYCLOPEDIA);
         }
 
         @Override
@@ -195,7 +194,8 @@ public class WikipediaProtocol implements SearchProtocol {
 
         @Override
         public SearchResult search(SearchRequest req, SearchScope scope) {
-            if (req.modality() != SearchModality.WEB) {
+            if (req.modality() != SearchModality.WEB
+                    && req.modality() != SearchModality.ENCYCLOPEDIA) {
                 return softFailure(req, "modality " + req.modality()
                         + " not supported by Wikipedia '" + cfg.instanceId() + "'");
             }

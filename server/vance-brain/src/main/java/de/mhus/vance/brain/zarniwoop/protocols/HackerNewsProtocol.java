@@ -132,8 +132,9 @@ public class HackerNewsProtocol implements SearchProtocol {
 
         @Override
         public String promptHint() {
-            return "HackerNews story + comment full-text search via "
-                    + "Algolia. Indexed scope: software engineering, "
+            return "HackerNews search via Algolia. Matches against "
+                    + "BOTH story titles AND comment bodies in a single "
+                    + "call. Indexed scope: software engineering, "
                     + "programming languages, dev tooling, AI / ML, "
                     + "computing infrastructure, security, startups, "
                     + "SaaS, venture capital, and the tech community's "
@@ -142,25 +143,32 @@ public class HackerNewsProtocol implements SearchProtocol {
                     + "where the user wants practitioner perspectives, "
                     + "opinions from working engineers, or current "
                     + "discussion around a dev tool, framework, or "
-                    + "company. Query style: pass concrete topic "
-                    + "keywords that would plausibly appear in a story "
-                    + "title — tool names (`Rust`, `Tailwind`, "
+                    + "company. Query style: topic words as they would "
+                    + "appear in discussion — tool names (`Rust`, "
                     + "`Kubernetes`), specific technologies "
-                    + "(`server components`, `WebGPU`), company / "
-                    + "product names, or vulnerability identifiers "
-                    + "(`CVE-2025-…`). Queries are matched against the "
-                    + "actual story-title and comment text, so concrete "
-                    + "nouns work best.";
+                    + "(`server components`, `WebGPU`), CVE ids, but "
+                    + "also broader discussion terms work because the "
+                    + "comment text is in scope (`supply chain "
+                    + "attacks`, `AI agents`, `vibe coding`). Each "
+                    + "hit's `hnItemKind` extra says whether it was a "
+                    + "story (title-match) or a comment (body-match); "
+                    + "comment hits carry the parent-story title + "
+                    + "url + a snippet of the comment text.";
         }
 
         @Override
         public SearchResult search(SearchRequest req, SearchScope scope) {
             int num = clampNum(req.maxResults());
+            // tags=story,comment matches both Story titles and the
+            // body text of comments — the second piece is where actual
+            // community discussion lives, and a query like "supply
+            // chain attacks" hits it much more reliably than story
+            // titles alone.
             String url = SimpleHttpClient.buildQuery(
                     URI.create(baseUrl() + "/search"),
                     SimpleHttpClient.mapOf(
                             "query", req.query(),
-                            "tags", "story",
+                            "tags", "(story,comment)",
                             "hitsPerPage", String.valueOf(num)));
             Response response;
             try {
@@ -183,6 +191,13 @@ public class HackerNewsProtocol implements SearchProtocol {
                     hits, hits.size(), 0, null, null, Map.of());
         }
 
+        /**
+         * Maximum chars to surface as snippet from a comment body.
+         * Algolia HN returns the full comment text — long ones blow
+         * up the LLM context if we forward them verbatim.
+         */
+        static final int COMMENT_SNIPPET_MAX = 320;
+
         List<SearchHit> parseHits(String json, SearchModality modality) {
             try {
                 JsonNode root = objectMapper.readTree(json);
@@ -190,37 +205,92 @@ public class HackerNewsProtocol implements SearchProtocol {
                 List<SearchHit> out = new ArrayList<>();
                 if (!arr.isArray()) return out;
                 for (JsonNode item : arr) {
-                    String title = item.path("title").asText("");
-                    String url = item.path("url").asText("");
-                    String objectId = item.path("objectID").asText("");
-                    if (StringUtils.isBlank(title)) continue;
-                    // HN entries without an external URL are Ask/Show
-                    // posts — link back to the HN item page.
-                    if (StringUtils.isBlank(url)) {
-                        if (StringUtils.isBlank(objectId)) continue;
-                        url = "https://news.ycombinator.com/item?id=" + objectId;
-                    }
-                    Map<String, Object> extras = new LinkedHashMap<>();
-                    String author = item.path("author").asText("");
-                    if (!StringUtils.isBlank(author)) extras.put("author", author);
-                    int points = item.path("points").asInt(0);
-                    if (points > 0) extras.put("points", points);
-                    int comments = item.path("num_comments").asInt(0);
-                    if (comments > 0) extras.put("comments", comments);
-                    String createdAt = item.path("created_at").asText("");
-                    if (!StringUtils.isBlank(createdAt)) extras.put("createdAt", createdAt);
-                    if (!StringUtils.isBlank(objectId)) {
-                        extras.put("hnDiscussion",
-                                "https://news.ycombinator.com/item?id=" + objectId);
-                    }
-                    out.add(new SearchHit(
-                            title, url, null, "HackerNews", modality, null, extras));
+                    SearchHit hit = parseOneHit(item, modality);
+                    if (hit != null) out.add(hit);
                 }
                 return out;
             } catch (Exception e) {
                 log.warn("HN '{}': parseHits failed: {}", cfg.instanceId(), e.toString());
                 return List.of();
             }
+        }
+
+        /**
+         * Single Algolia hit → SearchHit. Algolia's HN endpoint
+         * returns story items and comment items in the same array,
+         * distinguishable by which fields they carry:
+         * <ul>
+         *   <li>Story: {@code title}, {@code url} (optional), {@code points},
+         *     {@code num_comments}.</li>
+         *   <li>Comment: {@code comment_text}, {@code story_id},
+         *     {@code story_title}, {@code story_url} (optional).</li>
+         * </ul>
+         * Both expose {@code objectID}, {@code author}, {@code created_at}.
+         */
+        private SearchHit parseOneHit(JsonNode item, SearchModality modality) {
+            String objectId = item.path("objectID").asText("");
+            if (StringUtils.isBlank(objectId)) return null;
+
+            String storyTitle = item.path("title").asText("");
+            String commentText = item.path("comment_text").asText("");
+            boolean isComment = !StringUtils.isBlank(commentText);
+
+            String title;
+            String url;
+            String snippet = null;
+            String itemKind;
+
+            if (isComment) {
+                title = item.path("story_title").asText("");
+                if (StringUtils.isBlank(title)) title = "(HN comment)";
+                url = item.path("story_url").asText("");
+                if (StringUtils.isBlank(url)) {
+                    // story_url is missing for Ask-HN / Show-HN parents
+                    // — link to the comment item directly.
+                    url = "https://news.ycombinator.com/item?id=" + objectId;
+                }
+                snippet = stripHtml(commentText);
+                if (snippet.length() > COMMENT_SNIPPET_MAX) {
+                    snippet = snippet.substring(0, COMMENT_SNIPPET_MAX) + "…";
+                }
+                itemKind = "comment";
+            } else {
+                title = storyTitle;
+                if (StringUtils.isBlank(title)) return null;
+                url = item.path("url").asText("");
+                if (StringUtils.isBlank(url)) {
+                    // Ask-HN / Show-HN / job posts without an external URL
+                    // — link to the HN item page.
+                    url = "https://news.ycombinator.com/item?id=" + objectId;
+                }
+                itemKind = "story";
+            }
+
+            Map<String, Object> extras = new LinkedHashMap<>();
+            extras.put("hnItemKind", itemKind);
+            String author = item.path("author").asText("");
+            if (!StringUtils.isBlank(author)) extras.put("author", author);
+            int points = item.path("points").asInt(0);
+            if (points > 0) extras.put("points", points);
+            int comments = item.path("num_comments").asInt(0);
+            if (comments > 0) extras.put("comments", comments);
+            String createdAt = item.path("created_at").asText("");
+            if (!StringUtils.isBlank(createdAt)) extras.put("createdAt", createdAt);
+            extras.put("hnDiscussion",
+                    "https://news.ycombinator.com/item?id=" + objectId);
+
+            return new SearchHit(title, url, snippet, "HackerNews", modality, null, extras);
+        }
+
+        /**
+         * Algolia returns comment text with HTML entities and a few
+         * inline tags ({@code <p>}, {@code <a>}). Strip the tags so
+         * the snippet is plain text the LLM can use as context.
+         */
+        static String stripHtml(String s) {
+            if (s == null) return "";
+            String stripped = s.replaceAll("<[^>]+>", " ");
+            return stripped.replaceAll("\\s+", " ").trim();
         }
 
         private String baseUrl() {

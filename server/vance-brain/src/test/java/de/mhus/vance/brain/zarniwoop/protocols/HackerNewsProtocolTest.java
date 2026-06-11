@@ -68,7 +68,7 @@ class HackerNewsProtocolTest {
     }
 
     @Test
-    void search_sends_query_and_story_tag() throws Exception {
+    void search_sends_query_with_story_and_comment_tags() throws Exception {
         SimpleHttpClient http = mock(SimpleHttpClient.class);
         when(http.get(any(URI.class), any(String.class), any(Duration.class)))
                 .thenReturn(new Response(200, "{\"hits\":[]}"));
@@ -80,8 +80,88 @@ class HackerNewsProtocolTest {
         org.mockito.Mockito.verify(http).get(cap.capture(), any(), any());
         String url = cap.getValue().toString();
         assertThat(url).contains("query=react+server+components");
-        assertThat(url).contains("tags=story");
+        // (story,comment) URL-encoded — both tags present.
+        assertThat(url).contains("story").contains("comment");
         assertThat(url).contains("hitsPerPage=7");
+    }
+
+    @Test
+    void search_parses_comment_hits_with_parent_story_title() throws Exception {
+        SimpleHttpClient http = mock(SimpleHttpClient.class);
+        when(http.get(any(URI.class), any(String.class), any(Duration.class)))
+                .thenReturn(new Response(200, """
+                    {"hits":[
+                       {"objectID":"42",
+                        "story_title":"Show HN: my new framework",
+                        "story_url":"https://example.com/framework",
+                        "story_id":40,
+                        "comment_text":"<p>Looks like <i>another</i> rewrite. Why not just use Rust?</p>",
+                        "author":"charlie",
+                        "created_at":"2026-06-01T12:00:00Z"}
+                    ]}"""));
+        HackerNewsProtocol protocol = new HackerNewsProtocol(new ObjectMapper(), http);
+        SearchResult r = protocol.instantiate(CFG)
+                .search(SearchRequest.normal("rust", SearchModality.NEWS, 5), SCOPE);
+
+        assertThat(r.ok()).isTrue();
+        assertThat(r.hits()).hasSize(1);
+        SearchHit hit = r.hits().get(0);
+        assertThat(hit.title()).isEqualTo("Show HN: my new framework");
+        assertThat(hit.url()).isEqualTo("https://example.com/framework");
+        assertThat(hit.snippet()).contains("rewrite").contains("Rust");
+        assertThat(hit.snippet()).doesNotContain("<p>").doesNotContain("</i>");
+        assertThat(hit.extras())
+                .containsEntry("hnItemKind", "comment")
+                .containsEntry("author", "charlie")
+                .containsEntry("hnDiscussion",
+                        "https://news.ycombinator.com/item?id=42");
+    }
+
+    @Test
+    void search_distinguishes_story_and_comment_items() throws Exception {
+        SimpleHttpClient http = mock(SimpleHttpClient.class);
+        when(http.get(any(URI.class), any(String.class), any(Duration.class)))
+                .thenReturn(new Response(200, """
+                    {"hits":[
+                       {"objectID":"1","title":"Rust 1.78 released",
+                        "url":"https://blog.rust-lang.org/2026",
+                        "points":250,"num_comments":120,"author":"alice"},
+                       {"objectID":"2","story_title":"Some article",
+                        "story_url":"https://example.com/x","story_id":99,
+                        "comment_text":"Strong opinions about Rust async.",
+                        "author":"bob"}
+                    ]}"""));
+        HackerNewsProtocol protocol = new HackerNewsProtocol(new ObjectMapper(), http);
+        SearchResult r = protocol.instantiate(CFG)
+                .search(SearchRequest.normal("rust", SearchModality.NEWS, 5), SCOPE);
+
+        assertThat(r.hits()).hasSize(2);
+        assertThat(r.hits().get(0).extras())
+                .containsEntry("hnItemKind", "story")
+                .containsEntry("points", 250);
+        assertThat(r.hits().get(1).extras())
+                .containsEntry("hnItemKind", "comment");
+        assertThat(r.hits().get(1).extras()).doesNotContainKey("points");
+    }
+
+    @Test
+    void search_truncates_long_comment_snippets() throws Exception {
+        // Build a comment with 600 chars; snippet should land below 350.
+        String longBody = "Rust async is great. ".repeat(40);
+        SimpleHttpClient http = mock(SimpleHttpClient.class);
+        when(http.get(any(URI.class), any(String.class), any(Duration.class)))
+                .thenReturn(new Response(200,
+                        "{\"hits\":[{\"objectID\":\"7\","
+                        + "\"story_title\":\"Discussion\","
+                        + "\"story_url\":\"https://x\",\"story_id\":6,"
+                        + "\"comment_text\":\"" + longBody + "\","
+                        + "\"author\":\"someone\"}]}"));
+        HackerNewsProtocol protocol = new HackerNewsProtocol(new ObjectMapper(), http);
+        SearchResult r = protocol.instantiate(CFG)
+                .search(SearchRequest.normal("rust", SearchModality.NEWS, 5), SCOPE);
+
+        assertThat(r.hits().get(0).snippet()).hasSizeLessThan(longBody.length());
+        assertThat(r.hits().get(0).snippet()).endsWith("…");
     }
 
     @Test

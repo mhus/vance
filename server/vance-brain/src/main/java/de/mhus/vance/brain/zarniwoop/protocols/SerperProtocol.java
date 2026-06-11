@@ -10,6 +10,7 @@ import de.mhus.vance.toolpack.research.SearchProviderInstance;
 import de.mhus.vance.toolpack.research.SearchTier;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
@@ -38,6 +39,7 @@ public class SerperProtocol implements SearchProtocol {
     private final YouTubeValidatorService youtubeValidator;
     private final SerperPdfHeadProbe pdfHeadProbe;
 
+    @Autowired
     public SerperProtocol(SettingService settings,
                           ObjectMapper objectMapper,
                           ImageValidatorService imageValidator,

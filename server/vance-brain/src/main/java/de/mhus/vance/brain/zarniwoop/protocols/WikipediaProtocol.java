@@ -30,6 +30,7 @@ import java.util.Set;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -57,6 +58,7 @@ public class WikipediaProtocol implements SearchProtocol {
     private final ObjectMapper objectMapper;
     private final WikipediaHttp http;
 
+    @Autowired
     public WikipediaProtocol(ObjectMapper objectMapper) {
         this(objectMapper, new WikipediaHttp.JdkWikipediaHttp());
     }

@@ -9,6 +9,14 @@ export interface CortexDocument {
   name: string;
   title?: string | null;
   mimeType?: string | null;
+  /**
+   * Document kind from {@code DocumentDto.kind} — e.g. "list",
+   * "checklist", "tree", "records", "sheet", "chart", "graph", "image".
+   * The DocumentTabShell uses {@code (kind, mimeType)} pairs to pick a
+   * typed-model renderer; absent / unknown kinds fall back to the
+   * Code-Tab.
+   */
+  kind?: string | null;
   inlineText: string;
   /** True when {@link inlineText} has been edited since load/save. */
   dirty: boolean;

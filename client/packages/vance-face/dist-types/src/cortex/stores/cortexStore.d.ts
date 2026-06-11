@@ -40,6 +40,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         name: string;
         title?: (string | null) | undefined;
         mimeType?: (string | null) | undefined;
+        kind?: (string | null) | undefined;
         inlineText: string;
         dirty: boolean;
     }[], CortexDocument[] | {
@@ -48,6 +49,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         name: string;
         title?: (string | null) | undefined;
         mimeType?: (string | null) | undefined;
+        kind?: (string | null) | undefined;
         inlineText: string;
         dirty: boolean;
     }[]>;
@@ -57,6 +59,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         name: string;
         title?: (string | null) | undefined;
         mimeType?: (string | null) | undefined;
+        kind?: (string | null) | undefined;
         inlineText: string;
         dirty: boolean;
     }[], CortexDocument[] | {
@@ -65,6 +68,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         name: string;
         title?: (string | null) | undefined;
         mimeType?: (string | null) | undefined;
+        kind?: (string | null) | undefined;
         inlineText: string;
         dirty: boolean;
     }[]>;
@@ -109,6 +113,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         name: string;
         title?: (string | null) | undefined;
         mimeType?: (string | null) | undefined;
+        kind?: (string | null) | undefined;
         inlineText: string;
         dirty: boolean;
     }[], CortexDocument[] | {
@@ -117,6 +122,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         name: string;
         title?: (string | null) | undefined;
         mimeType?: (string | null) | undefined;
+        kind?: (string | null) | undefined;
         inlineText: string;
         dirty: boolean;
     }[]>;
@@ -126,6 +132,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         name: string;
         title?: (string | null) | undefined;
         mimeType?: (string | null) | undefined;
+        kind?: (string | null) | undefined;
         inlineText: string;
         dirty: boolean;
     }[], CortexDocument[] | {
@@ -134,6 +141,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         name: string;
         title?: (string | null) | undefined;
         mimeType?: (string | null) | undefined;
+        kind?: (string | null) | undefined;
         inlineText: string;
         dirty: boolean;
     }[]>;
@@ -178,6 +186,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         name: string;
         title?: (string | null) | undefined;
         mimeType?: (string | null) | undefined;
+        kind?: (string | null) | undefined;
         inlineText: string;
         dirty: boolean;
     }[], CortexDocument[] | {
@@ -186,6 +195,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         name: string;
         title?: (string | null) | undefined;
         mimeType?: (string | null) | undefined;
+        kind?: (string | null) | undefined;
         inlineText: string;
         dirty: boolean;
     }[]>;
@@ -195,6 +205,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         name: string;
         title?: (string | null) | undefined;
         mimeType?: (string | null) | undefined;
+        kind?: (string | null) | undefined;
         inlineText: string;
         dirty: boolean;
     }[], CortexDocument[] | {
@@ -203,6 +214,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         name: string;
         title?: (string | null) | undefined;
         mimeType?: (string | null) | undefined;
+        kind?: (string | null) | undefined;
         inlineText: string;
         dirty: boolean;
     }[]>;

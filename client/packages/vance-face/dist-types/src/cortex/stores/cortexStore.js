@@ -43,6 +43,7 @@ export const useCortexStore = defineStore('cortex', () => {
             name: s.name,
             title: s.title ?? null,
             mimeType: s.mimeType ?? null,
+            kind: s.kind ?? null,
             inlineText: '', // populated on full load via openFile
             dirty: false,
         };
@@ -54,6 +55,7 @@ export const useCortexStore = defineStore('cortex', () => {
             name: d.name,
             title: d.title ?? null,
             mimeType: d.mimeType ?? null,
+            kind: d.kind ?? null,
             inlineText: d.inlineText ?? '',
             dirty: false,
         };

@@ -1,6 +1,5 @@
-import { computed, onBeforeUnmount, ref } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { CodeEditor } from '@/components';
-import { documentContentUrl } from '@vance/shared';
 import ImageView from '@/document/ImageView.vue';
 import { useCortexStore } from '../stores/cortexStore';
 import { resolveBinding } from '../docTypeRegistry';
@@ -28,10 +27,6 @@ async function onReload() {
         reloading.value = false;
     }
 }
-// External-edit deep-link — full metadata editing lives in
-// documents.html; cortex just jumps there in a new tab so the user can
-// edit title/path/MIME/tags/RAG-mode/etc. without us reimplementing
-// the entire properties panel here.
 const propertiesUrl = computed(() => {
     const pid = store.projectId;
     if (!pid)
@@ -42,12 +37,6 @@ const propertiesUrl = computed(() => {
     });
     return `/documents.html?${params.toString()}`;
 });
-// Derive a language hint from the document's mime-type, falling back
-// to the path extension when the server didn't store one. CodeEditor's
-// own languageFor mapping handles common mime-types directly, but
-// extension-derived mime-types give nicer defaults for files the server
-// left as null (e.g. uploaded snippets, markdown notes created via API
-// without explicit mime).
 const effectiveMimeType = computed(() => {
     const explicit = props.document.mimeType;
     if (explicit)
@@ -85,12 +74,10 @@ function onSelectionChanged(sel) {
 onBeforeUnmount(() => {
     store.clearSelection();
 });
-// ImageView consumes a DocumentDto; CortexDocument is a trimmed
-// in-memory shape. Build a partial DTO with the fields ImageView
-// actually reads (id, projectId, path, mimeType, inline, inlineText,
-// title). Required-but-unused DTO fields get inert defaults — they
-// don't affect rendering.
-const docDtoForImage = computed(() => ({
+// ImageView and the addon kind views consume a DocumentDto. Build a
+// partial DTO from the trimmed CortexDocument shape — required-but-
+// unused fields get inert defaults that don't affect rendering.
+const docDtoForView = computed(() => ({
     id: props.document.id,
     projectId: store.projectId ?? '',
     path: props.document.path,
@@ -101,15 +88,91 @@ const docDtoForImage = computed(() => ({
     tags: [],
     inline: !!props.document.inlineText,
     inlineText: props.document.inlineText || undefined,
+    kind: props.document.kind ?? undefined,
     headers: {},
     autoSummary: false,
     summaryDirty: false,
 }));
-// Reference the import so an unused-symbol lint doesn't strip it; SVG
-// rendering currently goes through ImageView's own documentContentUrl
-// call but we may switch to a blob-URL path here once typed-model
-// images land.
-void documentContentUrl;
+const codecPair = computed(() => {
+    const b = binding.value;
+    if (b.mode === 'typed-model' && b.codec) {
+        return {
+            parse: b.codec.parse,
+            serialize: b.codec.serialize,
+        };
+    }
+    if (b.mode === 'kind-registry' && b.kindEntry) {
+        return {
+            parse: b.kindEntry.parse,
+            serialize: b.kindEntry.serialize,
+            isParseError: b.kindEntry.isParseError,
+        };
+    }
+    return null;
+});
+const parseResult = computed(() => {
+    const pair = codecPair.value;
+    if (!pair?.parse) {
+        return { model: null, error: null };
+    }
+    const mime = props.document.mimeType ?? '';
+    try {
+        return { model: pair.parse(props.document.inlineText, mime), error: null };
+    }
+    catch (e) {
+        // KindEntry.isParseError lets the view distinguish its own codec
+        // errors (show the banner) from unrelated bugs (rethrow). Hand-
+        // rolled bindings don't provide one — treat every throw as parse.
+        const isParseErr = pair.isParseError ? pair.isParseError(e) : true;
+        if (!isParseErr)
+            throw e;
+        const msg = e instanceof Error ? e.message : String(e);
+        return { model: null, error: msg };
+    }
+});
+function onModelUpdate(model) {
+    const pair = codecPair.value;
+    if (!pair?.serialize)
+        return; // read-only view (e.g. mindmap render)
+    const mime = props.document.mimeType ?? '';
+    let text;
+    try {
+        text = pair.serialize(model, mime);
+    }
+    catch (e) {
+        console.warn('Codec serialize failed; dropping update', e);
+        return;
+    }
+    if (text !== props.document.inlineText) {
+        emit('update', text);
+    }
+}
+const activeView = computed(() => {
+    const b = binding.value;
+    if (b.mode === 'typed-model')
+        return b.view;
+    if (b.mode === 'kind-registry')
+        return b.kindEntry?.editor ?? b.kindEntry?.view;
+    return undefined;
+});
+// What gets passed to the view: a parsed model when there's a parser,
+// otherwise the DocumentDto so display-only views (PDF-like addons)
+// can fetch their own bytes.
+const viewBindings = computed(() => {
+    if (codecPair.value?.parse) {
+        return { doc: parseResult.value.model };
+    }
+    return { document: docDtoForView.value };
+});
+const isViewMode = computed(() => binding.value.mode === 'typed-model' || binding.value.mode === 'kind-registry');
+const viewEditMode = ref('view');
+watch(() => props.document.id, () => {
+    viewEditMode.value = 'view';
+});
+// In a view-capable mode, 'edit' falls back to the same CodeEditor
+// the catch-all 'code' mode uses — same selection-tracking, same
+// keyboard model.
+const showRawEditor = computed(() => isViewMode.value && viewEditMode.value === 'edit');
 debugger; /* PartiallyEnd: #3632/scriptSetup.vue */
 const __VLS_ctx = {};
 let __VLS_components;
@@ -134,6 +197,35 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.
     ...{ class: "font-mono opacity-80 truncate" },
 });
 (__VLS_ctx.document.path);
+if (__VLS_ctx.isViewMode) {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "flex border border-base-300 rounded overflow-hidden text-xs" },
+        role: "group",
+        'aria-label': "View / edit toggle",
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+        ...{ onClick: (...[$event]) => {
+                if (!(__VLS_ctx.isViewMode))
+                    return;
+                __VLS_ctx.viewEditMode = 'view';
+            } },
+        type: "button",
+        ...{ class: "px-2 py-0.5" },
+        ...{ class: (__VLS_ctx.viewEditMode === 'view' ? 'bg-base-300' : 'opacity-60 hover:bg-base-200') },
+        title: "Rendered view",
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+        ...{ onClick: (...[$event]) => {
+                if (!(__VLS_ctx.isViewMode))
+                    return;
+                __VLS_ctx.viewEditMode = 'edit';
+            } },
+        type: "button",
+        ...{ class: "px-2 py-0.5 border-l border-base-300" },
+        ...{ class: (__VLS_ctx.viewEditMode === 'edit' ? 'bg-base-300' : 'opacity-60 hover:bg-base-200') },
+        title: "Raw source editor",
+    });
+}
 if (__VLS_ctx.propertiesUrl) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
         href: (__VLS_ctx.propertiesUrl),
@@ -153,8 +245,10 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.span)({
 });
 __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
     ...{ class: "opacity-50 text-xs font-mono" },
+    title: (`binding=${__VLS_ctx.binding.id} mode=${__VLS_ctx.binding.mode} kind=${__VLS_ctx.document.kind ?? 'null'} mime=${__VLS_ctx.document.mimeType ?? 'null'}`),
 });
-(__VLS_ctx.binding.mode === 'code' ? __VLS_ctx.effectiveMimeType : (__VLS_ctx.document.mimeType ?? 'image'));
+(__VLS_ctx.binding.id);
+(__VLS_ctx.binding.mode === 'code' ? __VLS_ctx.effectiveMimeType : (__VLS_ctx.document.mimeType ?? __VLS_ctx.binding.mode));
 if (__VLS_ctx.binding.mode === 'code') {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "flex-1 min-h-0 overflow-hidden" },
@@ -193,12 +287,106 @@ else if (__VLS_ctx.binding.mode === 'image') {
     // @ts-ignore
     const __VLS_9 = __VLS_asFunctionalComponent(ImageView, new ImageView({
         mode: "editor",
-        document: (__VLS_ctx.docDtoForImage),
+        document: (__VLS_ctx.docDtoForView),
     }));
     const __VLS_10 = __VLS_9({
         mode: "editor",
-        document: (__VLS_ctx.docDtoForImage),
+        document: (__VLS_ctx.docDtoForView),
     }, ...__VLS_functionalComponentArgsRest(__VLS_9));
+}
+else if (__VLS_ctx.isViewMode) {
+    if (__VLS_ctx.showRawEditor) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "flex-1 min-h-0 overflow-hidden" },
+        });
+        const __VLS_12 = {}.CodeEditor;
+        /** @type {[typeof __VLS_components.CodeEditor, ]} */ ;
+        // @ts-ignore
+        const __VLS_13 = __VLS_asFunctionalComponent(__VLS_12, new __VLS_12({
+            ...{ 'onUpdate:modelValue': {} },
+            ...{ 'onSelectionChanged': {} },
+            modelValue: (__VLS_ctx.document.inlineText),
+            mimeType: (__VLS_ctx.effectiveMimeType),
+        }));
+        const __VLS_14 = __VLS_13({
+            ...{ 'onUpdate:modelValue': {} },
+            ...{ 'onSelectionChanged': {} },
+            modelValue: (__VLS_ctx.document.inlineText),
+            mimeType: (__VLS_ctx.effectiveMimeType),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_13));
+        let __VLS_16;
+        let __VLS_17;
+        let __VLS_18;
+        const __VLS_19 = {
+            'onUpdate:modelValue': ((v) => __VLS_ctx.emit('update', v))
+        };
+        const __VLS_20 = {
+            onSelectionChanged: (__VLS_ctx.onSelectionChanged)
+        };
+        var __VLS_15;
+    }
+    else if (__VLS_ctx.parseResult.error) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "flex-1 min-h-0 flex flex-col overflow-hidden" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "px-3 py-2 bg-error/10 text-error text-xs border-b border-error/30" },
+        });
+        (__VLS_ctx.document.kind);
+        (__VLS_ctx.parseResult.error);
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "flex-1 min-h-0 overflow-hidden" },
+        });
+        const __VLS_21 = {}.CodeEditor;
+        /** @type {[typeof __VLS_components.CodeEditor, ]} */ ;
+        // @ts-ignore
+        const __VLS_22 = __VLS_asFunctionalComponent(__VLS_21, new __VLS_21({
+            ...{ 'onUpdate:modelValue': {} },
+            ...{ 'onSelectionChanged': {} },
+            modelValue: (__VLS_ctx.document.inlineText),
+            mimeType: (__VLS_ctx.effectiveMimeType),
+        }));
+        const __VLS_23 = __VLS_22({
+            ...{ 'onUpdate:modelValue': {} },
+            ...{ 'onSelectionChanged': {} },
+            modelValue: (__VLS_ctx.document.inlineText),
+            mimeType: (__VLS_ctx.effectiveMimeType),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_22));
+        let __VLS_25;
+        let __VLS_26;
+        let __VLS_27;
+        const __VLS_28 = {
+            'onUpdate:modelValue': ((v) => __VLS_ctx.emit('update', v))
+        };
+        const __VLS_29 = {
+            onSelectionChanged: (__VLS_ctx.onSelectionChanged)
+        };
+        var __VLS_24;
+    }
+    else {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "flex-1 min-h-0 overflow-auto" },
+        });
+        const __VLS_30 = ((__VLS_ctx.activeView));
+        // @ts-ignore
+        const __VLS_31 = __VLS_asFunctionalComponent(__VLS_30, new __VLS_30({
+            ...{ 'onUpdate:doc': {} },
+            mode: "editor",
+            ...(__VLS_ctx.viewBindings),
+        }));
+        const __VLS_32 = __VLS_31({
+            ...{ 'onUpdate:doc': {} },
+            mode: "editor",
+            ...(__VLS_ctx.viewBindings),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_31));
+        let __VLS_34;
+        let __VLS_35;
+        let __VLS_36;
+        const __VLS_37 = {
+            'onUpdate:doc': (__VLS_ctx.onModelUpdate)
+        };
+        var __VLS_33;
+    }
 }
 /** @type {__VLS_StyleScopedClasses['h-full']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
@@ -223,6 +411,18 @@ else if (__VLS_ctx.binding.mode === 'image') {
 /** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-80']} */ ;
 /** @type {__VLS_StyleScopedClasses['truncate']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['border']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;
+/** @type {__VLS_StyleScopedClasses['rounded']} */ ;
+/** @type {__VLS_StyleScopedClasses['overflow-hidden']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-0.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-0.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-l']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
 /** @type {__VLS_StyleScopedClasses['hover:opacity-100']} */ ;
 /** @type {__VLS_StyleScopedClasses['hover:bg-base-200']} */ ;
@@ -245,6 +445,27 @@ else if (__VLS_ctx.binding.mode === 'image') {
 /** @type {__VLS_StyleScopedClasses['items-start']} */ ;
 /** @type {__VLS_StyleScopedClasses['justify-center']} */ ;
 /** @type {__VLS_StyleScopedClasses['p-4']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
+/** @type {__VLS_StyleScopedClasses['overflow-hidden']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
+/** @type {__VLS_StyleScopedClasses['overflow-hidden']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['bg-error/10']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-error']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-b']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-error/30']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
+/** @type {__VLS_StyleScopedClasses['overflow-hidden']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
+/** @type {__VLS_StyleScopedClasses['overflow-auto']} */ ;
 var __VLS_dollars;
 const __VLS_self = (await import('vue')).defineComponent({
     setup() {
@@ -258,7 +479,14 @@ const __VLS_self = (await import('vue')).defineComponent({
             propertiesUrl: propertiesUrl,
             effectiveMimeType: effectiveMimeType,
             onSelectionChanged: onSelectionChanged,
-            docDtoForImage: docDtoForImage,
+            docDtoForView: docDtoForView,
+            parseResult: parseResult,
+            onModelUpdate: onModelUpdate,
+            activeView: activeView,
+            viewBindings: viewBindings,
+            isViewMode: isViewMode,
+            viewEditMode: viewEditMode,
+            showRawEditor: showRawEditor,
         };
     },
     __typeEmits: {},

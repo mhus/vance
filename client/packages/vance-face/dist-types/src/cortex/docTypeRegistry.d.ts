@@ -1,40 +1,63 @@
+import type { Component } from 'vue';
+import { type KindEntry } from '@vance/kind-registry';
 import type { CortexDocument } from './types';
+/**
+ * Symmetric codec interface — type-erased at the registry boundary so
+ * the heterogeneous list of bindings can sit in a single array. The
+ * concrete view receives the parsed shape it expects; type-checking
+ * happens at the per-binding wiring below.
+ */
+export interface DocCodec {
+    parse(body: string, mimeType: string): unknown;
+    serialize(doc: unknown, mimeType: string): string;
+}
 /**
  * Binding entry: which DocumentTabShell mode handles this document, and
  * how its edits should be persisted. The first entry whose {@link match}
- * returns true wins.
+ * returns true wins; the catch-all {@code code} entry must stay last.
  *
- * V1 has two modes — {@code 'code'} (CodeEditor) and {@code 'image'}
- * (ImageView read-only). V2 will add {@code 'typed-model'} for the
- * Checklist/List/Tree/Records/Sheet/Chart/Graph views that emit a
- * typed model via {@code @update:doc}; that needs the cortex store to
- * carry a codec-parsed object instead of {@code inlineText}, which is
- * a bigger lift than the V1 wrapper.
+ * Modes:
+ *  - {@code 'code'} — CodeEditor with text-selection mirroring
+ *  - {@code 'image'} — ImageView, read-only
+ *  - {@code 'typed-model'} — domain view (Checklist/List/Tree/...) that
+ *    consumes a codec-parsed model via {@code :doc} and emits
+ *    {@code @update:doc}; the shell parses on render and serializes on
+ *    update.
+ *  - {@code 'kind-registry'} — view + codec resolved from
+ *    {@code @vance/kind-registry} (host built-ins + addon contributions
+ *    like Calendar). The shell delegates parse/serialize to the
+ *    KindEntry; read-only when {@code serialize} is absent.
  */
+export type BindingMode = 'code' | 'image' | 'typed-model' | 'kind-registry';
 export interface DocTypeBinding {
     /** Unique identifier — used for debug logs and future addon dispatch. */
     id: string;
-    /** Decides whether this binding handles the given document. */
-    match: (doc: CortexDocument) => boolean;
-    /**
-     * Which built-in shell mode renders the body.
-     *  - {@code 'code'}  — CodeEditor with text-selection mirroring
-     *  - {@code 'image'} — ImageView, read-only in V1
-     */
-    mode: 'code' | 'image';
+    /** Body-render strategy. */
+    mode: BindingMode;
     /**
      * Where edits go.
      *  - {@code 'client-memory'} — DocumentTabShell emits {@code update}
      *    with the new text; cortexStore writes it on save.
-     *  - {@code 'server-side'} — read-only in V1; image-modify tools
-     *    will land later as server-mediated operations (decision in
-     *    planning/cortex.md §6).
+     *  - {@code 'server-side'} — read-only (image, view-only kind entries).
      */
     editLocation: 'client-memory' | 'server-side';
+    /** Required for {@code typed-model}: the Vue component to mount. */
+    view?: Component;
+    /** Required for {@code typed-model}: parse/serialize against inlineText. */
+    codec?: DocCodec;
+    /** Required for {@code kind-registry}: the resolved entry. */
+    kindEntry?: KindEntry;
 }
 /**
- * Resolve which binding renders the given document. Returns the first
- * matching entry; falls back to the catch-all code binding (last entry).
+ * Resolve which binding renders the given document.
+ *
+ * Lookup order:
+ *  1. {@code @vance/kind-registry} — addon-contributed Kinds (e.g.
+ *     Calendar) and any host built-ins that have migrated to the
+ *     registry.
+ *  2. Hand-rolled bindings — for the kinds DocumentApp still dispatches
+ *     via hard-coded {@code if/else}.
+ *  3. Catch-all CodeEditor on the raw inlineText.
  */
 export declare function resolveBinding(doc: CortexDocument): DocTypeBinding;
 //# sourceMappingURL=docTypeRegistry.d.ts.map

@@ -59,6 +59,12 @@ const props = defineProps<{
    *  it into the input plus a trailing space, shell-autosuggestion
    *  style) instead of inserting the space. */
   followUpSuggestion?: string | null;
+  /** Force the narrow-viewport tools layout (burger `⋯` toggle + popup)
+   *  regardless of viewport width. Used by hosts that embed the composer
+   *  in a fixed-width container (e.g. Cortex's right panel) where the
+   *  `max-width: 640px` media-query gate doesn't fire even though the
+   *  composer itself has too little room. */
+  compactTools?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -713,6 +719,7 @@ onBeforeUnmount(() => {
 <template>
   <div
     class="p-4 relative h-full"
+    :class="{ 'composer--compact': compactTools }"
     @dragenter="onComposerDragEnter"
     @dragover="onComposerDragOver"
     @dragleave="onComposerDragLeave"
@@ -901,6 +908,30 @@ onBeforeUnmount(() => {
   display: flex;
   gap: 0.5rem;
   align-items: flex-end;
+}
+
+/* Forced-compact mode for embedded hosts (e.g. Cortex's right panel)
+   where the parent column is narrow but the viewport isn't — the
+   media-query gate below would otherwise leave the full toolbar in
+   place and overflow horizontally. Mirrors the narrow-viewport rules
+   1:1; keep both blocks in sync. */
+.composer--compact .composer-tools-toggle {
+  display: inline-flex;
+}
+.composer--compact .composer-tools {
+  display: none;
+}
+.composer--compact .composer-tools.composer-tools--open {
+  display: flex;
+  position: absolute;
+  bottom: calc(100% + 0.5rem);
+  left: 0.5rem;
+  z-index: 20;
+  padding: 0.5rem;
+  background-color: var(--fallback-b1, oklch(var(--b1) / 1));
+  border: 1px solid var(--fallback-b3, oklch(var(--b3) / 1));
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 @media (max-width: 640px) {

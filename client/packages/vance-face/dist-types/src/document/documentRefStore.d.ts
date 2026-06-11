@@ -18,5 +18,5 @@ export declare const useDocumentRefStore: import("pinia").StoreDefinition<"docum
     resolve: (embedRef: EmbedRef) => Promise<DocumentDto>;
     invalidate: (projectName: string, path: string) => void;
     clear: () => void;
-}, "clear" | "setCurrentProject" | "resolve" | "invalidate">>;
+}, "clear" | "resolve" | "setCurrentProject" | "invalidate">>;
 //# sourceMappingURL=documentRefStore.d.ts.map

@@ -47,6 +47,20 @@ interface CreateBody {
  * large page size. If projects grow past ~500 documents, we'll switch to
  * a tree-friendly endpoint or virtual scrolling.
  */
+/**
+ * Current text selection inside the active tab's editor. {@code null}
+ * when nothing is selected (or the active doc isn't a text doc). The
+ * cortex_get_selection client tool reads this; CodeTabRenderer writes
+ * it via the CodeEditor's {@code selection-changed} emit.
+ */
+export interface CortexSelection {
+  docId: string;
+  docPath: string;
+  from: number;
+  to: number;
+  text: string;
+}
+
 export const useCortexStore = defineStore('cortex', () => {
   const projectId = ref<string | null>(null);
   const files = ref<CortexDocument[]>([]);
@@ -54,6 +68,7 @@ export const useCortexStore = defineStore('cortex', () => {
   const activeTabId = ref<string | null>(null);
   const loading = ref(false);
   const error = ref<string | null>(null);
+  const currentSelection = ref<CortexSelection | null>(null);
 
   const activeTab = computed<CortexDocument | null>(() => {
     if (!activeTabId.value) return null;
@@ -132,6 +147,32 @@ export const useCortexStore = defineStore('cortex', () => {
 
   function setActiveTab(id: string): void {
     activeTabId.value = id;
+  }
+
+  /**
+   * Re-fetch metadata + content for an already-open tab and replace the
+   * in-memory copy. Any local dirty edits on that tab are dropped — the
+   * caller is responsible for confirming with the user beforehand.
+   */
+  async function reloadTab(id: string): Promise<void> {
+    const idx = openTabs.value.findIndex((t) => t.id === id);
+    if (idx < 0) return;
+    const dto = await brainFetch<DocumentDto>(
+      'GET',
+      `documents/${encodeURIComponent(id)}`,
+    );
+    const fresh = dtoToDocument(dto);
+    if (!isBinaryMime(dto.mimeType)) {
+      const text = await brainFetchText(
+        `documents/${encodeURIComponent(id)}/content`,
+      );
+      fresh.inlineText = text ?? '';
+    }
+    openTabs.value = [
+      ...openTabs.value.slice(0, idx),
+      fresh,
+      ...openTabs.value.slice(idx + 1),
+    ];
   }
 
   function closeTab(id: string): void {
@@ -235,6 +276,14 @@ export const useCortexStore = defineStore('cortex', () => {
     return file;
   }
 
+  function setSelection(sel: CortexSelection | null): void {
+    currentSelection.value = sel;
+  }
+
+  function clearSelection(): void {
+    currentSelection.value = null;
+  }
+
   async function deleteFile(id: string): Promise<void> {
     await brainFetch<void>('DELETE', `documents/${encodeURIComponent(id)}`);
     files.value = files.value.filter((f) => f.id !== id);
@@ -287,6 +336,7 @@ export const useCortexStore = defineStore('cortex', () => {
     fileTree,
     loadList,
     openFile,
+    reloadTab,
     setActiveTab,
     closeTab,
     updateActiveContent,
@@ -295,5 +345,8 @@ export const useCortexStore = defineStore('cortex', () => {
     saveAllDirty,
     createFile,
     deleteFile,
+    currentSelection,
+    setSelection,
+    clearSelection,
   };
 });

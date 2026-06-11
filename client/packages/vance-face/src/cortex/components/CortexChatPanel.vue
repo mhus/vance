@@ -20,12 +20,6 @@ interface Props {
   sessionId: string;
   projectId: string;
   /**
-   * Display-only — the document the Cortex chat is currently bound to.
-   * Surfaces in the panel header so the user can see at a glance where
-   * the agent will operate.
-   */
-  chatBoundDocumentPath?: string | null;
-  /**
    * Owned by the parent app — single instance for the lifetime of the
    * Cortex view. Attached to the WS whenever a session goes live; the
    * brain pushes invocations through this same connection.
@@ -171,13 +165,11 @@ function onLeave(): void {
 <template>
   <div class="h-full min-h-0 flex flex-col">
     <div
-      v-if="chatBoundDocumentPath"
-      class="px-3 py-1.5 text-xs border-b border-base-300 bg-primary/5 text-primary/80
+      class="px-3 py-1.5 text-xs border-b border-base-300 bg-base-200/40 text-base-content/60
              flex items-center gap-2 shrink-0"
-      title="Chat is bound to this document — agent tools will operate on it (Phase 3)."
     >
-      <span aria-hidden="true">🔗</span>
-      <span class="font-mono truncate">{{ chatBoundDocumentPath }}</span>
+      <span class="uppercase tracking-wide opacity-70">Session</span>
+      <span class="font-mono truncate">{{ sessionId }}</span>
     </div>
 
     <div v-if="status === 'connecting'" class="flex-1 flex items-center justify-center text-sm opacity-60">
@@ -213,6 +205,7 @@ function onLeave(): void {
           :socket="socket"
           :chat-process-name="CHAT_PROCESS_NAME"
           :chat-project-id="projectId"
+          :compact-tools="true"
           @hub="onLeave"
           @local-echo="onLocalEcho"
           @rollback-echo="onRollbackEcho"

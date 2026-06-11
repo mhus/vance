@@ -1,7 +1,7 @@
 import { VButton, VColorPicker, VEmojiPicker, VTagEditor } from '@vance/components';
 import { SessionColor, SessionStatus, } from '@vance/generated';
 import { archiveSession, deleteSession, listSessions, patchSessionMetadata, reactivateSession, } from '@vance/shared';
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 const props = defineProps();
 const emit = defineEmits();
@@ -14,6 +14,57 @@ const titleDraft = ref('');
 const showColor = ref(false);
 const showTags = ref(false);
 const saving = ref(false);
+// Responsive collapse: when the header has less than this many pixels of
+// horizontal room, the five action buttons (pin/color/labels/archive/delete)
+// fold into a single "⋯" overflow menu.
+const COMPACT_THRESHOLD_PX = 520;
+const rootEl = ref(null);
+const menuEl = ref(null);
+const containerWidth = ref(Number.POSITIVE_INFINITY);
+const compact = computed(() => containerWidth.value < COMPACT_THRESHOLD_PX);
+const menuOpen = ref(false);
+const menuExpand = ref(null);
+let resizeObserver = null;
+function closeMenu() {
+    menuOpen.value = false;
+    menuExpand.value = null;
+}
+function onDocMouseDown(e) {
+    if (!menuOpen.value)
+        return;
+    const target = e.target;
+    if (target && menuEl.value && menuEl.value.contains(target))
+        return;
+    closeMenu();
+}
+onMounted(() => {
+    if (rootEl.value) {
+        containerWidth.value = rootEl.value.offsetWidth;
+        resizeObserver = new ResizeObserver((entries) => {
+            for (const entry of entries) {
+                containerWidth.value = entry.contentRect.width;
+            }
+        });
+        resizeObserver.observe(rootEl.value);
+    }
+    document.addEventListener('mousedown', onDocMouseDown);
+});
+onBeforeUnmount(() => {
+    resizeObserver?.disconnect();
+    resizeObserver = null;
+    document.removeEventListener('mousedown', onDocMouseDown);
+});
+// Reset transient popover state when crossing the compact/wide threshold so
+// the user never lands on a stranded panel that belongs to the other layout.
+watch(compact, (isCompact) => {
+    if (isCompact) {
+        showColor.value = false;
+        showTags.value = false;
+    }
+    else {
+        closeMenu();
+    }
+});
 const isArchived = computed(() => session.value?.status === SessionStatus.ARCHIVED);
 const displayTitle = computed(() => {
     const s = session.value;
@@ -185,9 +236,11 @@ const __VLS_ctx = {};
 let __VLS_components;
 let __VLS_directives;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+    ref: "rootEl",
     ...{ class: "flex items-center gap-2 min-w-0 flex-1 pl-3" },
     ...{ class: (__VLS_ctx.colorAccentClass) },
 });
+/** @type {typeof __VLS_ctx.rootEl} */ ;
 const __VLS_0 = {}.VEmojiPicker;
 /** @type {[typeof __VLS_components.VEmojiPicker, ]} */ ;
 // @ts-ignore
@@ -245,188 +298,444 @@ if (__VLS_ctx.isArchived) {
     });
     (__VLS_ctx.t('chat.sessionHeader.archived'));
 }
-if (!__VLS_ctx.isArchived) {
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-        ...{ onClick: (__VLS_ctx.togglePin) },
-        type: "button",
-        ...{ class: "btn btn-ghost btn-sm" },
-        title: (__VLS_ctx.session?.pinned ? __VLS_ctx.t('chat.sessionHeader.unpinTooltip') : __VLS_ctx.t('chat.sessionHeader.pinTooltip')),
-        disabled: (__VLS_ctx.saving),
-    });
-    if (__VLS_ctx.session?.pinned) {
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+if (!__VLS_ctx.compact) {
+    if (!__VLS_ctx.isArchived) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+            ...{ onClick: (__VLS_ctx.togglePin) },
+            type: "button",
+            ...{ class: "btn btn-ghost btn-sm" },
+            title: (__VLS_ctx.session?.pinned ? __VLS_ctx.t('chat.sessionHeader.unpinTooltip') : __VLS_ctx.t('chat.sessionHeader.pinTooltip')),
+            disabled: (__VLS_ctx.saving),
+        });
+        if (__VLS_ctx.session?.pinned) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+        }
+        else {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "opacity-40" },
+            });
+        }
+    }
+    if (!__VLS_ctx.isArchived) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "relative" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+            ...{ onClick: (...[$event]) => {
+                    if (!(!__VLS_ctx.compact))
+                        return;
+                    if (!(!__VLS_ctx.isArchived))
+                        return;
+                    __VLS_ctx.showColor = !__VLS_ctx.showColor;
+                } },
+            type: "button",
+            ...{ class: "btn btn-ghost btn-sm" },
+            title: (__VLS_ctx.t('chat.sessionHeader.colorLabel')),
+        });
+        if (__VLS_ctx.showColor) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "absolute right-0 top-full mt-1 z-30 p-3 rounded-md border border-base-300 bg-base-100 shadow-lg" },
+            });
+            const __VLS_8 = {}.VColorPicker;
+            /** @type {[typeof __VLS_components.VColorPicker, ]} */ ;
+            // @ts-ignore
+            const __VLS_9 = __VLS_asFunctionalComponent(__VLS_8, new __VLS_8({
+                ...{ 'onUpdate:modelValue': {} },
+                modelValue: (__VLS_ctx.session?.color),
+            }));
+            const __VLS_10 = __VLS_9({
+                ...{ 'onUpdate:modelValue': {} },
+                modelValue: (__VLS_ctx.session?.color),
+            }, ...__VLS_functionalComponentArgsRest(__VLS_9));
+            let __VLS_12;
+            let __VLS_13;
+            let __VLS_14;
+            const __VLS_15 = {
+                'onUpdate:modelValue': ((v) => { __VLS_ctx.onColor(v); __VLS_ctx.showColor = false; })
+            };
+            var __VLS_11;
+        }
+    }
+    if (!__VLS_ctx.isArchived) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "relative" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+            ...{ onClick: (...[$event]) => {
+                    if (!(!__VLS_ctx.compact))
+                        return;
+                    if (!(!__VLS_ctx.isArchived))
+                        return;
+                    __VLS_ctx.showTags = !__VLS_ctx.showTags;
+                } },
+            type: "button",
+            ...{ class: "btn btn-ghost btn-sm" },
+            title: (__VLS_ctx.t('chat.sessionHeader.tagsTooltip')),
+            ...{ class: ((__VLS_ctx.session?.tags?.length ?? 0) > 0 ? '' : 'opacity-60') },
+        });
+        if ((__VLS_ctx.session?.tags?.length ?? 0) > 0) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "text-[10px] ml-1 opacity-70" },
+            });
+            (__VLS_ctx.session?.tags?.length);
+        }
+        if (__VLS_ctx.showTags) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "absolute right-0 top-full mt-1 z-30 w-72 p-3 rounded-md border border-base-300 bg-base-100 shadow-lg" },
+            });
+            const __VLS_16 = {}.VTagEditor;
+            /** @type {[typeof __VLS_components.VTagEditor, ]} */ ;
+            // @ts-ignore
+            const __VLS_17 = __VLS_asFunctionalComponent(__VLS_16, new __VLS_16({
+                ...{ 'onUpdate:modelValue': {} },
+                modelValue: (__VLS_ctx.session?.tags ?? []),
+                label: (__VLS_ctx.t('chat.sessionHeader.tagsLabel')),
+                placeholder: (__VLS_ctx.t('chat.sessionHeader.tagsPlaceholder')),
+            }));
+            const __VLS_18 = __VLS_17({
+                ...{ 'onUpdate:modelValue': {} },
+                modelValue: (__VLS_ctx.session?.tags ?? []),
+                label: (__VLS_ctx.t('chat.sessionHeader.tagsLabel')),
+                placeholder: (__VLS_ctx.t('chat.sessionHeader.tagsPlaceholder')),
+            }, ...__VLS_functionalComponentArgsRest(__VLS_17));
+            let __VLS_20;
+            let __VLS_21;
+            let __VLS_22;
+            const __VLS_23 = {
+                'onUpdate:modelValue': (__VLS_ctx.onTags)
+            };
+            var __VLS_19;
+        }
+    }
+    if (!__VLS_ctx.isArchived) {
+        const __VLS_24 = {}.VButton;
+        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+        // @ts-ignore
+        const __VLS_25 = __VLS_asFunctionalComponent(__VLS_24, new __VLS_24({
+            ...{ 'onClick': {} },
+            variant: "ghost",
+            size: "sm",
+            disabled: (__VLS_ctx.saving),
+            title: (__VLS_ctx.t('chat.sessionHeader.archiveTooltip')),
+        }));
+        const __VLS_26 = __VLS_25({
+            ...{ 'onClick': {} },
+            variant: "ghost",
+            size: "sm",
+            disabled: (__VLS_ctx.saving),
+            title: (__VLS_ctx.t('chat.sessionHeader.archiveTooltip')),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_25));
+        let __VLS_28;
+        let __VLS_29;
+        let __VLS_30;
+        const __VLS_31 = {
+            onClick: (__VLS_ctx.onArchive)
+        };
+        __VLS_27.slots.default;
+        var __VLS_27;
     }
     else {
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-            ...{ class: "opacity-40" },
-        });
-    }
-}
-if (!__VLS_ctx.isArchived) {
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "relative" },
-    });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-        ...{ onClick: (...[$event]) => {
-                if (!(!__VLS_ctx.isArchived))
-                    return;
-                __VLS_ctx.showColor = !__VLS_ctx.showColor;
-            } },
-        type: "button",
-        ...{ class: "btn btn-ghost btn-sm" },
-        title: (__VLS_ctx.t('chat.sessionHeader.colorLabel')),
-    });
-    if (__VLS_ctx.showColor) {
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-            ...{ class: "absolute right-0 top-full mt-1 z-30 p-3 rounded-md border border-base-300 bg-base-100 shadow-lg" },
-        });
-        const __VLS_8 = {}.VColorPicker;
-        /** @type {[typeof __VLS_components.VColorPicker, ]} */ ;
+        const __VLS_32 = {}.VButton;
+        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
         // @ts-ignore
-        const __VLS_9 = __VLS_asFunctionalComponent(__VLS_8, new __VLS_8({
-            ...{ 'onUpdate:modelValue': {} },
-            modelValue: (__VLS_ctx.session?.color),
+        const __VLS_33 = __VLS_asFunctionalComponent(__VLS_32, new __VLS_32({
+            ...{ 'onClick': {} },
+            variant: "primary",
+            size: "sm",
+            disabled: (__VLS_ctx.saving),
         }));
-        const __VLS_10 = __VLS_9({
-            ...{ 'onUpdate:modelValue': {} },
-            modelValue: (__VLS_ctx.session?.color),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_9));
-        let __VLS_12;
-        let __VLS_13;
-        let __VLS_14;
-        const __VLS_15 = {
-            'onUpdate:modelValue': ((v) => { __VLS_ctx.onColor(v); __VLS_ctx.showColor = false; })
+        const __VLS_34 = __VLS_33({
+            ...{ 'onClick': {} },
+            variant: "primary",
+            size: "sm",
+            disabled: (__VLS_ctx.saving),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_33));
+        let __VLS_36;
+        let __VLS_37;
+        let __VLS_38;
+        const __VLS_39 = {
+            onClick: (__VLS_ctx.onReactivate)
         };
-        var __VLS_11;
+        __VLS_35.slots.default;
+        (__VLS_ctx.t('chat.sessionHeader.reactivate'));
+        var __VLS_35;
     }
+    const __VLS_40 = {}.VButton;
+    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+    // @ts-ignore
+    const __VLS_41 = __VLS_asFunctionalComponent(__VLS_40, new __VLS_40({
+        ...{ 'onClick': {} },
+        variant: "ghost",
+        size: "sm",
+        disabled: (__VLS_ctx.saving),
+        title: (__VLS_ctx.t('chat.sessionHeader.delete')),
+    }));
+    const __VLS_42 = __VLS_41({
+        ...{ 'onClick': {} },
+        variant: "ghost",
+        size: "sm",
+        disabled: (__VLS_ctx.saving),
+        title: (__VLS_ctx.t('chat.sessionHeader.delete')),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_41));
+    let __VLS_44;
+    let __VLS_45;
+    let __VLS_46;
+    const __VLS_47 = {
+        onClick: (__VLS_ctx.onDelete)
+    };
+    __VLS_43.slots.default;
+    var __VLS_43;
 }
-if (!__VLS_ctx.isArchived) {
+else {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ref: "menuEl",
         ...{ class: "relative" },
     });
+    /** @type {typeof __VLS_ctx.menuEl} */ ;
     __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
         ...{ onClick: (...[$event]) => {
-                if (!(!__VLS_ctx.isArchived))
+                if (!!(!__VLS_ctx.compact))
                     return;
-                __VLS_ctx.showTags = !__VLS_ctx.showTags;
+                __VLS_ctx.menuOpen = !__VLS_ctx.menuOpen;
             } },
         type: "button",
         ...{ class: "btn btn-ghost btn-sm" },
-        title: (__VLS_ctx.t('chat.sessionHeader.tagsTooltip')),
-        ...{ class: ((__VLS_ctx.session?.tags?.length ?? 0) > 0 ? '' : 'opacity-60') },
+        title: (__VLS_ctx.t('chat.sessionHeader.moreActions')),
+        'aria-expanded': (__VLS_ctx.menuOpen),
+        disabled: (__VLS_ctx.saving),
     });
-    if ((__VLS_ctx.session?.tags?.length ?? 0) > 0) {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+        ...{ class: "text-lg leading-none" },
+    });
+    if (__VLS_ctx.session?.pinned || (__VLS_ctx.session?.tags?.length ?? 0) > 0) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
             ...{ class: "text-[10px] ml-1 opacity-70" },
         });
-        (__VLS_ctx.session?.tags?.length);
+        if (__VLS_ctx.session?.pinned) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+        }
+        if ((__VLS_ctx.session?.tags?.length ?? 0) > 0) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+            (__VLS_ctx.session?.tags?.length);
+        }
     }
-    if (__VLS_ctx.showTags) {
+    if (__VLS_ctx.menuOpen) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-            ...{ class: "absolute right-0 top-full mt-1 z-30 w-72 p-3 rounded-md border border-base-300 bg-base-100 shadow-lg" },
+            ...{ class: "absolute right-0 top-full mt-1 z-30 w-64 rounded-md border border-base-300 bg-base-100 shadow-lg overflow-hidden" },
+            role: "menu",
         });
-        const __VLS_16 = {}.VTagEditor;
-        /** @type {[typeof __VLS_components.VTagEditor, ]} */ ;
-        // @ts-ignore
-        const __VLS_17 = __VLS_asFunctionalComponent(__VLS_16, new __VLS_16({
-            ...{ 'onUpdate:modelValue': {} },
-            modelValue: (__VLS_ctx.session?.tags ?? []),
-            label: (__VLS_ctx.t('chat.sessionHeader.tagsLabel')),
-            placeholder: (__VLS_ctx.t('chat.sessionHeader.tagsPlaceholder')),
-        }));
-        const __VLS_18 = __VLS_17({
-            ...{ 'onUpdate:modelValue': {} },
-            modelValue: (__VLS_ctx.session?.tags ?? []),
-            label: (__VLS_ctx.t('chat.sessionHeader.tagsLabel')),
-            placeholder: (__VLS_ctx.t('chat.sessionHeader.tagsPlaceholder')),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_17));
-        let __VLS_20;
-        let __VLS_21;
-        let __VLS_22;
-        const __VLS_23 = {
-            'onUpdate:modelValue': (__VLS_ctx.onTags)
-        };
-        var __VLS_19;
+        if (!__VLS_ctx.isArchived) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.compact))
+                            return;
+                        if (!(__VLS_ctx.menuOpen))
+                            return;
+                        if (!(!__VLS_ctx.isArchived))
+                            return;
+                        __VLS_ctx.togglePin();
+                        __VLS_ctx.closeMenu();
+                    } },
+                type: "button",
+                ...{ class: "flex items-center gap-3 w-full px-3 py-2 text-sm hover:bg-base-200 disabled:opacity-50" },
+                disabled: (__VLS_ctx.saving),
+                role: "menuitem",
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "w-5 text-center" },
+                ...{ class: (__VLS_ctx.session?.pinned ? '' : 'opacity-40') },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "flex-1 text-left" },
+            });
+            (__VLS_ctx.session?.pinned ? __VLS_ctx.t('chat.sessionHeader.unpinTooltip') : __VLS_ctx.t('chat.sessionHeader.pinTooltip'));
+        }
+        if (!__VLS_ctx.isArchived) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.compact))
+                            return;
+                        if (!(__VLS_ctx.menuOpen))
+                            return;
+                        if (!(!__VLS_ctx.isArchived))
+                            return;
+                        __VLS_ctx.menuExpand = __VLS_ctx.menuExpand === 'color' ? null : 'color';
+                    } },
+                type: "button",
+                ...{ class: "flex items-center gap-3 w-full px-3 py-2 text-sm hover:bg-base-200" },
+                role: "menuitem",
+                'aria-expanded': (__VLS_ctx.menuExpand === 'color'),
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "w-5 text-center" },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "flex-1 text-left" },
+            });
+            (__VLS_ctx.t('chat.sessionHeader.colorLabel'));
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "opacity-60 text-xs" },
+            });
+            (__VLS_ctx.menuExpand === 'color' ? '▾' : '▸');
+            if (__VLS_ctx.menuExpand === 'color') {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                    ...{ class: "px-3 py-2 border-t border-b border-base-300 bg-base-200/30" },
+                });
+                const __VLS_48 = {}.VColorPicker;
+                /** @type {[typeof __VLS_components.VColorPicker, ]} */ ;
+                // @ts-ignore
+                const __VLS_49 = __VLS_asFunctionalComponent(__VLS_48, new __VLS_48({
+                    ...{ 'onUpdate:modelValue': {} },
+                    modelValue: (__VLS_ctx.session?.color),
+                }));
+                const __VLS_50 = __VLS_49({
+                    ...{ 'onUpdate:modelValue': {} },
+                    modelValue: (__VLS_ctx.session?.color),
+                }, ...__VLS_functionalComponentArgsRest(__VLS_49));
+                let __VLS_52;
+                let __VLS_53;
+                let __VLS_54;
+                const __VLS_55 = {
+                    'onUpdate:modelValue': ((v) => { __VLS_ctx.onColor(v); __VLS_ctx.closeMenu(); })
+                };
+                var __VLS_51;
+            }
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.compact))
+                            return;
+                        if (!(__VLS_ctx.menuOpen))
+                            return;
+                        if (!(!__VLS_ctx.isArchived))
+                            return;
+                        __VLS_ctx.menuExpand = __VLS_ctx.menuExpand === 'tags' ? null : 'tags';
+                    } },
+                type: "button",
+                ...{ class: "flex items-center gap-3 w-full px-3 py-2 text-sm hover:bg-base-200" },
+                role: "menuitem",
+                'aria-expanded': (__VLS_ctx.menuExpand === 'tags'),
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "w-5 text-center" },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "flex-1 text-left" },
+            });
+            (__VLS_ctx.t('chat.sessionHeader.tagsLabel'));
+            if ((__VLS_ctx.session?.tags?.length ?? 0) > 0) {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                    ...{ class: "text-[10px] opacity-70" },
+                });
+                (__VLS_ctx.session?.tags?.length);
+            }
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "opacity-60 text-xs" },
+            });
+            (__VLS_ctx.menuExpand === 'tags' ? '▾' : '▸');
+            if (__VLS_ctx.menuExpand === 'tags') {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                    ...{ class: "px-3 py-2 border-t border-b border-base-300 bg-base-200/30" },
+                });
+                const __VLS_56 = {}.VTagEditor;
+                /** @type {[typeof __VLS_components.VTagEditor, ]} */ ;
+                // @ts-ignore
+                const __VLS_57 = __VLS_asFunctionalComponent(__VLS_56, new __VLS_56({
+                    ...{ 'onUpdate:modelValue': {} },
+                    modelValue: (__VLS_ctx.session?.tags ?? []),
+                    label: (__VLS_ctx.t('chat.sessionHeader.tagsLabel')),
+                    placeholder: (__VLS_ctx.t('chat.sessionHeader.tagsPlaceholder')),
+                }));
+                const __VLS_58 = __VLS_57({
+                    ...{ 'onUpdate:modelValue': {} },
+                    modelValue: (__VLS_ctx.session?.tags ?? []),
+                    label: (__VLS_ctx.t('chat.sessionHeader.tagsLabel')),
+                    placeholder: (__VLS_ctx.t('chat.sessionHeader.tagsPlaceholder')),
+                }, ...__VLS_functionalComponentArgsRest(__VLS_57));
+                let __VLS_60;
+                let __VLS_61;
+                let __VLS_62;
+                const __VLS_63 = {
+                    'onUpdate:modelValue': (__VLS_ctx.onTags)
+                };
+                var __VLS_59;
+            }
+        }
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "border-t border-base-300" },
+        });
+        if (!__VLS_ctx.isArchived) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.compact))
+                            return;
+                        if (!(__VLS_ctx.menuOpen))
+                            return;
+                        if (!(!__VLS_ctx.isArchived))
+                            return;
+                        __VLS_ctx.closeMenu();
+                        __VLS_ctx.onArchive();
+                    } },
+                type: "button",
+                ...{ class: "flex items-center gap-3 w-full px-3 py-2 text-sm hover:bg-base-200 disabled:opacity-50" },
+                disabled: (__VLS_ctx.saving),
+                role: "menuitem",
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "w-5 text-center" },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "flex-1 text-left" },
+            });
+            (__VLS_ctx.t('chat.sessionHeader.archive'));
+        }
+        else {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.compact))
+                            return;
+                        if (!(__VLS_ctx.menuOpen))
+                            return;
+                        if (!!(!__VLS_ctx.isArchived))
+                            return;
+                        __VLS_ctx.closeMenu();
+                        __VLS_ctx.onReactivate();
+                    } },
+                type: "button",
+                ...{ class: "flex items-center gap-3 w-full px-3 py-2 text-sm hover:bg-base-200 disabled:opacity-50" },
+                disabled: (__VLS_ctx.saving),
+                role: "menuitem",
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "w-5 text-center" },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "flex-1 text-left" },
+            });
+            (__VLS_ctx.t('chat.sessionHeader.reactivate'));
+        }
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+            ...{ onClick: (...[$event]) => {
+                    if (!!(!__VLS_ctx.compact))
+                        return;
+                    if (!(__VLS_ctx.menuOpen))
+                        return;
+                    __VLS_ctx.closeMenu();
+                    __VLS_ctx.onDelete();
+                } },
+            type: "button",
+            ...{ class: "flex items-center gap-3 w-full px-3 py-2 text-sm hover:bg-base-200 disabled:opacity-50 text-error" },
+            disabled: (__VLS_ctx.saving),
+            role: "menuitem",
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "w-5 text-center" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "flex-1 text-left" },
+        });
+        (__VLS_ctx.t('chat.sessionHeader.delete'));
     }
 }
-if (!__VLS_ctx.isArchived) {
-    const __VLS_24 = {}.VButton;
-    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-    // @ts-ignore
-    const __VLS_25 = __VLS_asFunctionalComponent(__VLS_24, new __VLS_24({
-        ...{ 'onClick': {} },
-        variant: "ghost",
-        size: "sm",
-        disabled: (__VLS_ctx.saving),
-        title: (__VLS_ctx.t('chat.sessionHeader.archiveTooltip')),
-    }));
-    const __VLS_26 = __VLS_25({
-        ...{ 'onClick': {} },
-        variant: "ghost",
-        size: "sm",
-        disabled: (__VLS_ctx.saving),
-        title: (__VLS_ctx.t('chat.sessionHeader.archiveTooltip')),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_25));
-    let __VLS_28;
-    let __VLS_29;
-    let __VLS_30;
-    const __VLS_31 = {
-        onClick: (__VLS_ctx.onArchive)
-    };
-    __VLS_27.slots.default;
-    var __VLS_27;
-}
-else {
-    const __VLS_32 = {}.VButton;
-    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-    // @ts-ignore
-    const __VLS_33 = __VLS_asFunctionalComponent(__VLS_32, new __VLS_32({
-        ...{ 'onClick': {} },
-        variant: "primary",
-        size: "sm",
-        disabled: (__VLS_ctx.saving),
-    }));
-    const __VLS_34 = __VLS_33({
-        ...{ 'onClick': {} },
-        variant: "primary",
-        size: "sm",
-        disabled: (__VLS_ctx.saving),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_33));
-    let __VLS_36;
-    let __VLS_37;
-    let __VLS_38;
-    const __VLS_39 = {
-        onClick: (__VLS_ctx.onReactivate)
-    };
-    __VLS_35.slots.default;
-    (__VLS_ctx.t('chat.sessionHeader.reactivate'));
-    var __VLS_35;
-}
-const __VLS_40 = {}.VButton;
-/** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-// @ts-ignore
-const __VLS_41 = __VLS_asFunctionalComponent(__VLS_40, new __VLS_40({
-    ...{ 'onClick': {} },
-    variant: "ghost",
-    size: "sm",
-    disabled: (__VLS_ctx.saving),
-    title: (__VLS_ctx.t('chat.sessionHeader.delete')),
-}));
-const __VLS_42 = __VLS_41({
-    ...{ 'onClick': {} },
-    variant: "ghost",
-    size: "sm",
-    disabled: (__VLS_ctx.saving),
-    title: (__VLS_ctx.t('chat.sessionHeader.delete')),
-}, ...__VLS_functionalComponentArgsRest(__VLS_41));
-let __VLS_44;
-let __VLS_45;
-let __VLS_46;
-const __VLS_47 = {
-    onClick: (__VLS_ctx.onDelete)
-};
-__VLS_43.slots.default;
-var __VLS_43;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['items-center']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
@@ -505,6 +814,124 @@ var __VLS_43;
 /** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;
 /** @type {__VLS_StyleScopedClasses['bg-base-100']} */ ;
 /** @type {__VLS_StyleScopedClasses['shadow-lg']} */ ;
+/** @type {__VLS_StyleScopedClasses['relative']} */ ;
+/** @type {__VLS_StyleScopedClasses['btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['btn-ghost']} */ ;
+/** @type {__VLS_StyleScopedClasses['btn-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-lg']} */ ;
+/** @type {__VLS_StyleScopedClasses['leading-none']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-[10px]']} */ ;
+/** @type {__VLS_StyleScopedClasses['ml-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
+/** @type {__VLS_StyleScopedClasses['absolute']} */ ;
+/** @type {__VLS_StyleScopedClasses['right-0']} */ ;
+/** @type {__VLS_StyleScopedClasses['top-full']} */ ;
+/** @type {__VLS_StyleScopedClasses['mt-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['z-30']} */ ;
+/** @type {__VLS_StyleScopedClasses['w-64']} */ ;
+/** @type {__VLS_StyleScopedClasses['rounded-md']} */ ;
+/** @type {__VLS_StyleScopedClasses['border']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;
+/** @type {__VLS_StyleScopedClasses['bg-base-100']} */ ;
+/** @type {__VLS_StyleScopedClasses['shadow-lg']} */ ;
+/** @type {__VLS_StyleScopedClasses['overflow-hidden']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['w-full']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['hover:bg-base-200']} */ ;
+/** @type {__VLS_StyleScopedClasses['disabled:opacity-50']} */ ;
+/** @type {__VLS_StyleScopedClasses['w-5']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-left']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['w-full']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['hover:bg-base-200']} */ ;
+/** @type {__VLS_StyleScopedClasses['w-5']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-left']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-t']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-b']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;
+/** @type {__VLS_StyleScopedClasses['bg-base-200/30']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['w-full']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['hover:bg-base-200']} */ ;
+/** @type {__VLS_StyleScopedClasses['w-5']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-left']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-[10px]']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-t']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-b']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;
+/** @type {__VLS_StyleScopedClasses['bg-base-200/30']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-t']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['w-full']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['hover:bg-base-200']} */ ;
+/** @type {__VLS_StyleScopedClasses['disabled:opacity-50']} */ ;
+/** @type {__VLS_StyleScopedClasses['w-5']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-left']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['w-full']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['hover:bg-base-200']} */ ;
+/** @type {__VLS_StyleScopedClasses['disabled:opacity-50']} */ ;
+/** @type {__VLS_StyleScopedClasses['w-5']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-left']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['w-full']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['hover:bg-base-200']} */ ;
+/** @type {__VLS_StyleScopedClasses['disabled:opacity-50']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-error']} */ ;
+/** @type {__VLS_StyleScopedClasses['w-5']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-left']} */ ;
 var __VLS_dollars;
 const __VLS_self = (await import('vue')).defineComponent({
     setup() {
@@ -520,6 +947,12 @@ const __VLS_self = (await import('vue')).defineComponent({
             showColor: showColor,
             showTags: showTags,
             saving: saving,
+            rootEl: rootEl,
+            menuEl: menuEl,
+            compact: compact,
+            menuOpen: menuOpen,
+            menuExpand: menuExpand,
+            closeMenu: closeMenu,
             isArchived: isArchived,
             displayTitle: displayTitle,
             colorAccentClass: colorAccentClass,

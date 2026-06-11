@@ -220,6 +220,7 @@ export default {
       tagsLabel: 'Tags',
       tagsTooltip: 'Tags bearbeiten',
       tagsPlaceholder: 'Tag hinzufügen…',
+      moreActions: 'Weitere Aktionen',
     },
     picker: {
       projectsTitle: 'Projekte',

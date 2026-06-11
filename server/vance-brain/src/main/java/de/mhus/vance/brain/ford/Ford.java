@@ -193,6 +193,7 @@ public class Ford implements ThinkEngine {
     private final SessionService sessionService;
     private final de.mhus.vance.shared.workspace.WorkspaceService workspaceService;
     private final de.mhus.vance.brain.prak.HistoryStrengthFilter historyStrengthFilter;
+    private final de.mhus.vance.brain.tools.client.CortexPromptResolver cortexPromptResolver;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -950,11 +951,22 @@ public class Ford implements ThinkEngine {
             ModelInfo modelInfo, ModelSize tier, List<ResolvedSkill> activeSkills,
             ContextToolsApi tools) {
         List<ChatMessage> messages = new ArrayList<>();
+        // Cortex-mode: same per-turn injection as Arthur — fires only
+        // when a Cortex client is currently bound to this session's
+        // chat WS (workers delegated to from a Cortex session inherit
+        // the same answer). See arthur-prompt.md / ford-prompt.md
+        // {% if cortexMode %} blocks.
+        de.mhus.vance.brain.tools.client.CortexPromptResolver.CortexContext cortex =
+                cortexPromptResolver.resolve(process.getSessionId());
+
         de.mhus.vance.brain.prompt.PromptContextBuilder ctxBuilder =
                 de.mhus.vance.brain.prompt.PromptContextBuilder
                         .forProcess(process, modelInfo)
                         .tier(tier)
                         .engine(NAME)
+                        .cortexMode(cortex.active())
+                        .cortexBoundDocPath(cortex.boundDocPath())
+                        .cortexBoundDocMime(cortex.boundDocMime())
                         .withRootDirTypes(workspaceService.getRootDirTypes(
                                 process.getTenantId(), process.getProjectId()));
         String base = composer.compose(process,

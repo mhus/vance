@@ -11,6 +11,7 @@ import {
 } from '@/components';
 import { brainFetch } from '@vance/shared';
 import type { SessionSummaryRichDto } from '@vance/generated';
+import { useTenantProjects } from '@composables/useTenantProjects';
 import { useCortexStore } from './stores/cortexStore';
 import { CortexClientToolService } from './clientToolService';
 import FileTreeSidebar from './components/FileTreeSidebar.vue';
@@ -42,12 +43,21 @@ const focusZone = ref<FocusZone>('main');
 
 const store = useCortexStore();
 
+// Tenant project list — used to resolve the human-readable project
+// title for the breadcrumb. Loaded lazily once we know which session
+// (and therefore which project) the user is looking at.
+const { projects: tenantProjects, reload: loadTenantProjects } = useTenantProjects();
+
 const bootError = ref<string | null>(null);
 const saving = ref(false);
 const saveError = ref<string | null>(null);
 
 const showCreate = ref(false);
-const createPath = ref('');
+/** Directory portion of the new file's path — editable, prefilled
+ *  from the active tab's folder when the dialog opens. Empty means
+ *  project root. Trailing slash is normalised away in {@link confirmCreate}. */
+const createDir = ref('');
+const createName = ref('');
 const createError = ref<string | null>(null);
 const creating = ref(false);
 
@@ -83,6 +93,7 @@ async function resolveSession(id: string): Promise<void> {
     }
     projectId.value = match.projectId;
     sessionTitle.value = match.title ?? null;
+    void loadTenantProjects();
     await store.loadList(match.projectId);
     await restoreCortexState(match);
   } catch (e) {
@@ -113,11 +124,20 @@ async function restoreCortexState(summary: CortexAwareSessionSummary): Promise<v
     }
     const bound = summary.chatBoundDocumentId ?? null;
     chatBoundDocumentId.value = bound;
-    // If the bound document survived restoration, surface it as the
-    // active tab so the user lands where the chat is working.
-    if (bound && store.openTabs.some((t) => t.id === bound)) {
+    // Initial active tab — URL `doc` param wins (the user navigated
+    // here or hit back/forward to land on a specific document),
+    // otherwise fall back to the chat-bound document so the user lands
+    // where the agent is working.
+    const urlDoc = readDocFromUrl();
+    if (urlDoc && store.openTabs.some((t) => t.id === urlDoc)) {
+      store.setActiveTab(urlDoc);
+    } else if (bound && store.openTabs.some((t) => t.id === bound)) {
       store.setActiveTab(bound);
     }
+    // Normalise the URL so the active tab is reflected even when the
+    // user landed on a bare `?sessionId=…` — replaceState (not push)
+    // because this is the natural entry point, not a navigation.
+    replaceDocInUrl(store.activeTabId ?? null);
   } finally {
     restoring.value = false;
   }
@@ -174,16 +194,75 @@ watch(chatBoundDocumentId, () => {
 
 const title = computed<string>(() => {
   if (sessionTitle.value) return `Cortex · ${sessionTitle.value}`;
-  if (sessionId.value) return `Cortex · ${sessionId.value}`;
   return 'Cortex';
 });
 
-const breadcrumbs = computed(() => {
-  const crumbs: { label: string }[] = [];
-  if (projectId.value) crumbs.push({ label: projectId.value });
-  if (sessionTitle.value) crumbs.push({ label: sessionTitle.value });
+// Human-readable project label: prefer the title from the tenant
+// project list, fall back to the technical id while the list is still
+// loading so the breadcrumb never appears blank.
+const projectLabel = computed<string | null>(() => {
+  const id = projectId.value;
+  if (!id) return null;
+  const p = tenantProjects.value.find((x) => x.name === id);
+  const title = p?.title?.trim();
+  return title && title.length > 0 ? title : id;
+});
+
+const breadcrumbs = computed<string[]>(() => {
+  const crumbs: string[] = [];
+  if (projectLabel.value) crumbs.push(projectLabel.value);
+  if (store.activeTab?.path) crumbs.push(store.activeTab.path);
   return crumbs;
 });
+
+// ──────────────── URL sync for active document tab ────────────────
+//
+// The active tab is mirrored into a `doc=<documentId>` query parameter
+// so that browser back/forward steps walk through the user's tab
+// history. On every tab switch we {@code pushState} a new entry; the
+// {@link onPopState} handler reverses the mapping when the user uses
+// the browser's nav arrows. {@code suppressHistoryPush} breaks the
+// otherwise infinite watcher⇄popstate loop.
+const URL_DOC_PARAM = 'doc';
+let suppressHistoryPush = false;
+
+function readDocFromUrl(): string | null {
+  const params = new URLSearchParams(window.location.search);
+  return params.get(URL_DOC_PARAM);
+}
+
+function buildUrlWithDoc(docId: string | null): string {
+  const params = new URLSearchParams(window.location.search);
+  if (docId) params.set(URL_DOC_PARAM, docId);
+  else params.delete(URL_DOC_PARAM);
+  const query = params.toString();
+  return `${window.location.pathname}${query ? `?${query}` : ''}`;
+}
+
+function pushDocToUrl(docId: string | null): void {
+  const next = buildUrlWithDoc(docId);
+  if (next === `${window.location.pathname}${window.location.search}`) return;
+  window.history.pushState({ doc: docId }, '', next);
+}
+
+function replaceDocInUrl(docId: string | null): void {
+  const next = buildUrlWithDoc(docId);
+  if (next === `${window.location.pathname}${window.location.search}`) return;
+  window.history.replaceState({ doc: docId }, '', next);
+}
+
+function onPopState(): void {
+  const urlDoc = readDocFromUrl();
+  // History may carry a doc that is no longer open (closed in the
+  // meantime) — ignore those entries rather than fighting the user's
+  // navigation; their next tab switch will re-sync the URL.
+  if (urlDoc && !store.openTabs.some((t) => t.id === urlDoc)) return;
+  if ((urlDoc ?? null) === (store.activeTabId ?? null)) return;
+  suppressHistoryPush = true;
+  if (urlDoc) {
+    store.setActiveTab(urlDoc);
+  }
+}
 
 const activeTab = computed(() => store.activeTab);
 
@@ -192,6 +271,44 @@ const chatBoundDocumentPath = computed<string | null>(() => {
   if (!id) return null;
   const tab = store.openTabs.find((t) => t.id === id);
   return tab?.path ?? null;
+});
+
+const hasDirtyTabs = computed<boolean>(() => store.openTabs.some((t) => t.dirty));
+
+const isActiveTabBound = computed<boolean>(() =>
+  activeTab.value !== null && chatBoundDocumentId.value === activeTab.value.id,
+);
+
+/**
+ * Truncated form of the bound document's path for the menu-bar status
+ * area — leading directories collapse to ellipses so a deeply-nested
+ * path doesn't push the rest of the bar off-screen.
+ */
+const chatBoundDocumentPathDisplay = computed<string | null>(() => {
+  const p = chatBoundDocumentPath.value;
+  if (!p) return null;
+  const MAX = 32;
+  if (p.length <= MAX) return p;
+  return '…' + p.slice(p.length - (MAX - 1));
+});
+
+/**
+ * Hover text for the menu-bar link button — describes what a click
+ * will do or, when the button is disabled (already bound to the active
+ * tab), just states the current binding.
+ */
+const bindIconTooltip = computed<string>(() => {
+  if (isActiveTabBound.value) {
+    return 'Chat is bound to this document';
+  }
+  if (!activeTab.value) {
+    return chatBoundDocumentPath.value
+      ? `Chat is bound to ${chatBoundDocumentPath.value}`
+      : 'Open a document to bind';
+  }
+  return chatBoundDocumentPath.value
+    ? `Bind chat to current tab (currently: ${chatBoundDocumentPath.value})`
+    : 'Bind chat to current tab';
 });
 
 /**
@@ -209,6 +326,7 @@ const clientToolService = new CortexClientToolService({
     if (!id) return null;
     return store.openTabs.find((t) => t.id === id) ?? null;
   },
+  getSelection: () => store.currentSelection,
 });
 
 async function onSave(): Promise<void> {
@@ -224,22 +342,39 @@ async function onSave(): Promise<void> {
   }
 }
 
-function onNew(parentPath: string): void {
-  createPath.value = parentPath ? `${parentPath}/` : '';
+function onNew(): void {
+  // Prefill the directory from the currently active tab so "New file…"
+  // in the same folder is one-click. Path stays editable — the user
+  // can still rewrite it to land anywhere in the project tree.
+  const ref = activeTab.value;
+  if (ref) {
+    const idx = ref.path.lastIndexOf('/');
+    createDir.value = idx >= 0 ? ref.path.slice(0, idx) : '';
+  } else {
+    createDir.value = '';
+  }
+  createName.value = '';
   createError.value = null;
   showCreate.value = true;
 }
 
 async function confirmCreate(): Promise<void> {
-  if (!createPath.value.trim()) {
-    createError.value = 'Path required';
+  const name = createName.value.trim();
+  if (!name) {
+    createError.value = 'Name required';
     return;
   }
+  if (name.includes('/')) {
+    createError.value = 'Name must not contain "/" — put folders in the path field.';
+    return;
+  }
+  const dir = createDir.value.trim().replace(/^\/+|\/+$/g, '');
+  const fullPath = dir ? `${dir}/${name}` : name;
   creating.value = true;
   createError.value = null;
   try {
     await store.createFile({
-      path: createPath.value.trim(),
+      path: fullPath,
       inlineText: '',
     });
     showCreate.value = false;
@@ -261,6 +396,43 @@ function backToChat(): void {
   } else {
     window.location.href = '/chat.html';
   }
+}
+
+async function onSaveAll(): Promise<void> {
+  saving.value = true;
+  saveError.value = null;
+  try {
+    await store.saveAllDirty();
+  } catch (e) {
+    saveError.value = e instanceof Error ? e.message : 'Save failed';
+  } finally {
+    saving.value = false;
+  }
+}
+
+function onCloseActiveTab(): void {
+  if (!activeTab.value) return;
+  store.closeTab(activeTab.value.id);
+}
+
+function onBindActiveTab(): void {
+  if (!activeTab.value) return;
+  chatBoundDocumentId.value = activeTab.value.id;
+}
+
+function onUnbindChat(): void {
+  chatBoundDocumentId.value = null;
+}
+
+/**
+ * Closes any open dropdown by removing focus from its trigger. Daisy's
+ * CSS-only dropdown stays open as long as the trigger or any child
+ * holds focus — clicking a menu item doesn't naturally blur. Call this
+ * at the start of every menu action so the menu collapses afterwards.
+ */
+function closeMenus(): void {
+  const el = document.activeElement;
+  if (el instanceof HTMLElement) el.blur();
 }
 
 // Keep the document title in sync so the browser tab is informative
@@ -312,6 +484,22 @@ watch(
   },
 );
 
+// Mirror the active tab to the URL so browser back/forward step
+// through it. Skipped while {@link restoring} is true (initial restore
+// chooses the start point via {@link replaceDocInUrl} once) and when a
+// popstate event already drove the change (no double-push).
+watch(
+  () => store.activeTabId,
+  (curr) => {
+    if (restoring.value) return;
+    if (suppressHistoryPush) {
+      suppressHistoryPush = false;
+      return;
+    }
+    pushDocToUrl(curr ?? null);
+  },
+);
+
 /**
  * beforeunload guard — if a user closes the tab while edits are still
  * unsaved (debounce hasn't fired, network failed silently, etc.), warn
@@ -336,20 +524,31 @@ function onBeforeUnload(e: BeforeUnloadEvent): void {
  * and matches what every editor user expects.
  */
 function onKeyDown(e: KeyboardEvent): void {
-  const isSave = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's';
-  if (!isSave) return;
-  e.preventDefault();
-  void store.saveAllDirty();
+  const cmd = e.metaKey || e.ctrlKey;
+  if (!cmd) return;
+  const key = e.key.toLowerCase();
+  if (key === 's') {
+    e.preventDefault();
+    void store.saveAllDirty();
+    return;
+  }
+  if (key === 'w' && activeTab.value) {
+    e.preventDefault();
+    store.closeTab(activeTab.value.id);
+    return;
+  }
 }
 
 onMounted(() => {
   window.addEventListener('beforeunload', onBeforeUnload);
   window.addEventListener('keydown', onKeyDown);
+  window.addEventListener('popstate', onPopState);
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener('beforeunload', onBeforeUnload);
   window.removeEventListener('keydown', onKeyDown);
+  window.removeEventListener('popstate', onPopState);
   if (autoSaveTimer !== null) {
     clearTimeout(autoSaveTimer);
     autoSaveTimer = null;
@@ -385,7 +584,6 @@ onBeforeUnmount(() => {
             :root="store.fileTree"
             :active-file-id="store.activeTabId"
             @open-file="(id: string) => { focusZone = 'main'; store.openFile(id); }"
-            @new-file="onNew"
             @delete-file="onDelete"
           />
           <div v-else-if="bootError" class="p-3 text-sm">
@@ -399,12 +597,96 @@ onBeforeUnmount(() => {
     </template>
 
     <div class="flex flex-col h-full min-h-0">
+      <!-- Menu bar — sits above tabs so it stays put when the tab strip
+           scrolls horizontally. CSS-only Daisy dropdowns: clicking a
+           menu item calls closeMenus() to blur the trigger so the menu
+           collapses (Daisy keeps it open while any descendant has
+           focus). New action groups land here as the app grows. -->
+      <div class="flex items-center gap-1 px-2 py-1 border-b border-base-300 bg-base-200 text-sm shrink-0">
+        <div class="dropdown">
+          <div tabindex="0" role="button" class="btn btn-ghost btn-xs">File</div>
+          <ul tabindex="0" class="dropdown-content menu menu-sm bg-base-100 rounded-box z-[20] mt-1 w-56 p-2 shadow">
+            <li>
+              <a @click="closeMenus(); onNew()">
+                <span class="flex-1">New file…</span>
+              </a>
+            </li>
+            <li :class="{ disabled: !activeTab || !activeTab.dirty }">
+              <a @click="closeMenus(); onSave()">
+                <span class="flex-1">Save</span>
+                <kbd class="kbd kbd-xs">⌘S</kbd>
+              </a>
+            </li>
+            <li :class="{ disabled: !hasDirtyTabs }">
+              <a @click="closeMenus(); onSaveAll()">
+                <span class="flex-1">Save all</span>
+              </a>
+            </li>
+            <li><div class="divider my-0" /></li>
+            <li :class="{ disabled: !activeTab }">
+              <a @click="closeMenus(); onCloseActiveTab()">
+                <span class="flex-1">Close tab</span>
+                <kbd class="kbd kbd-xs">⌘W</kbd>
+              </a>
+            </li>
+            <li><div class="divider my-0" /></li>
+            <li>
+              <a @click="closeMenus(); backToChat()">
+                <span class="flex-1">Back to chat</span>
+              </a>
+            </li>
+          </ul>
+        </div>
+
+        <div class="dropdown">
+          <div tabindex="0" role="button" class="btn btn-ghost btn-xs">Chat</div>
+          <ul tabindex="0" class="dropdown-content menu menu-sm bg-base-100 rounded-box z-[20] mt-1 w-64 p-2 shadow">
+            <li :class="{ disabled: !activeTab || isActiveTabBound }">
+              <a @click="closeMenus(); onBindActiveTab()">
+                <span class="flex-1">Bind chat to current tab</span>
+              </a>
+            </li>
+            <li :class="{ disabled: !chatBoundDocumentId }">
+              <a @click="closeMenus(); onUnbindChat()">
+                <span class="flex-1">Unbind chat</span>
+              </a>
+            </li>
+          </ul>
+        </div>
+
+        <span class="flex-1" />
+
+        <!-- Status area: agent activity wins visually over the static
+             bound-doc indicator, since "something is happening" needs
+             more attention than "where it would happen". -->
+        <span
+          v-if="clientToolService.isExecuting.value"
+          class="text-xs px-2 py-0.5 rounded bg-warning/15 text-warning border border-warning/30 animate-pulse"
+          title="An agent tool is currently editing the chat-bound document"
+        >agent editing…</span>
+        <button
+          v-else-if="activeTab || chatBoundDocumentId"
+          type="button"
+          class="text-xs px-2 py-0.5 rounded font-mono flex items-center gap-1
+                 transition-colors enabled:hover:bg-base-200 disabled:cursor-default"
+          :class="isActiveTabBound ? 'text-primary bg-primary/10' : 'opacity-70'"
+          :disabled="!activeTab || isActiveTabBound"
+          :title="bindIconTooltip"
+          @click="onBindActiveTab"
+        >
+          <span aria-hidden="true">🔗</span>
+          <span v-if="chatBoundDocumentPathDisplay">{{ chatBoundDocumentPathDisplay }}</span>
+        </button>
+      </div>
+
       <EditorTabs
         :tabs="store.openTabs"
         :active-tab-id="store.activeTabId"
         @select="store.setActiveTab"
         @close="store.closeTab"
       />
+
+      <VAlert v-if="saveError" variant="error" class="m-2">{{ saveError }}</VAlert>
 
       <div v-if="!activeTab" class="flex-1 flex items-center justify-center">
         <VEmptyState
@@ -413,44 +695,11 @@ onBeforeUnmount(() => {
         />
       </div>
 
-      <div v-else class="flex-1 flex flex-col min-h-0">
-        <div class="flex items-center gap-2 px-3 py-2 border-b border-base-300 bg-base-100 text-sm">
-          <span class="font-mono opacity-80 truncate">{{ activeTab.path }}</span>
-          <span v-if="activeTab.dirty" class="opacity-60">●</span>
-          <span
-            v-if="chatBoundDocumentId === activeTab.id && clientToolService.isExecuting.value"
-            class="text-xs px-2 py-0.5 rounded bg-warning/15 text-warning border border-warning/30 animate-pulse"
-            title="An agent tool is currently editing this document"
-          >agent editing…</span>
-          <span
-            v-else-if="chatBoundDocumentId === activeTab.id"
-            class="text-xs px-2 py-0.5 rounded bg-primary/10 text-primary opacity-80"
-            title="Cortex chat is bound to this document"
-          >chat bound</span>
-          <VButton
-            v-else
-            size="sm"
-            variant="ghost"
-            title="Bind the Cortex chat to this document"
-            @click="chatBoundDocumentId = activeTab.id"
-          >Bind chat here</VButton>
-          <span class="flex-1" />
-          <VButton
-            size="sm"
-            :loading="saving"
-            :disabled="!activeTab.dirty"
-            @click="onSave"
-          >Save</VButton>
-        </div>
-
-        <VAlert v-if="saveError" variant="error" class="m-2">{{ saveError }}</VAlert>
-
-        <div class="flex-1 min-h-0 overflow-hidden">
-          <TabRendererHost
-            :document="activeTab"
-            @update="store.updateActiveContent"
-          />
-        </div>
+      <div v-else class="flex-1 min-h-0 overflow-hidden">
+        <TabRendererHost
+          :document="activeTab"
+          @update="store.updateActiveContent"
+        />
       </div>
     </div>
 
@@ -459,7 +708,6 @@ onBeforeUnmount(() => {
         v-if="sessionId && projectId"
         :session-id="sessionId"
         :project-id="projectId"
-        :chat-bound-document-path="chatBoundDocumentPath"
         :tool-service="clientToolService"
       />
       <div v-else class="h-full p-3 text-sm opacity-60">
@@ -469,17 +717,23 @@ onBeforeUnmount(() => {
   </EditorShell>
 
   <VModal v-model="showCreate" title="New document">
-    <div class="space-y-2 p-2">
+    <form class="space-y-3 p-2" @submit.prevent="confirmCreate">
       <VInput
-        v-model="createPath"
+        v-model="createDir"
         label="Path"
-        placeholder="notes/idea.md"
+        placeholder="(project root)"
+      />
+      <VInput
+        v-model="createName"
+        label="Name"
+        placeholder="idea.md"
+        :disabled="creating"
       />
       <VAlert v-if="createError" variant="error">{{ createError }}</VAlert>
       <div class="flex justify-end gap-2 pt-2">
-        <VButton variant="ghost" @click="showCreate = false">Cancel</VButton>
-        <VButton variant="primary" :loading="creating" @click="confirmCreate">Create</VButton>
+        <VButton type="button" variant="ghost" @click="showCreate = false">Cancel</VButton>
+        <VButton type="submit" variant="primary" :loading="creating">Create</VButton>
       </div>
-    </div>
+    </form>
   </VModal>
 </template>

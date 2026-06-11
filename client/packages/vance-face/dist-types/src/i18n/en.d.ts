@@ -194,6 +194,7 @@ declare const _default: {
             tagsLabel: string;
             tagsTooltip: string;
             tagsPlaceholder: string;
+            moreActions: string;
         };
         picker: {
             projectsTitle: string;

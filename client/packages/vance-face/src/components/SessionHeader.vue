@@ -13,7 +13,7 @@ import {
   patchSessionMetadata,
   reactivateSession,
 } from '@vance/shared';
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 interface Props {
@@ -38,6 +38,61 @@ const titleDraft = ref('');
 const showColor = ref(false);
 const showTags = ref(false);
 const saving = ref(false);
+
+// Responsive collapse: when the header has less than this many pixels of
+// horizontal room, the five action buttons (pin/color/labels/archive/delete)
+// fold into a single "⋯" overflow menu.
+const COMPACT_THRESHOLD_PX = 520;
+const rootEl = ref<HTMLElement | null>(null);
+const menuEl = ref<HTMLElement | null>(null);
+const containerWidth = ref<number>(Number.POSITIVE_INFINITY);
+const compact = computed(() => containerWidth.value < COMPACT_THRESHOLD_PX);
+const menuOpen = ref(false);
+const menuExpand = ref<'color' | 'tags' | null>(null);
+
+let resizeObserver: ResizeObserver | null = null;
+
+function closeMenu(): void {
+  menuOpen.value = false;
+  menuExpand.value = null;
+}
+
+function onDocMouseDown(e: MouseEvent): void {
+  if (!menuOpen.value) return;
+  const target = e.target as Node | null;
+  if (target && menuEl.value && menuEl.value.contains(target)) return;
+  closeMenu();
+}
+
+onMounted(() => {
+  if (rootEl.value) {
+    containerWidth.value = rootEl.value.offsetWidth;
+    resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        containerWidth.value = entry.contentRect.width;
+      }
+    });
+    resizeObserver.observe(rootEl.value);
+  }
+  document.addEventListener('mousedown', onDocMouseDown);
+});
+
+onBeforeUnmount(() => {
+  resizeObserver?.disconnect();
+  resizeObserver = null;
+  document.removeEventListener('mousedown', onDocMouseDown);
+});
+
+// Reset transient popover state when crossing the compact/wide threshold so
+// the user never lands on a stranded panel that belongs to the other layout.
+watch(compact, (isCompact) => {
+  if (isCompact) {
+    showColor.value = false;
+    showTags.value = false;
+  } else {
+    closeMenu();
+  }
+});
 
 const isArchived = computed(() => session.value?.status === SessionStatus.ARCHIVED);
 
@@ -197,6 +252,7 @@ async function onDelete(): Promise<void> {
 
 <template>
   <div
+    ref="rootEl"
     class="flex items-center gap-2 min-w-0 flex-1 pl-3"
     :class="colorAccentClass"
   >
@@ -245,97 +301,232 @@ async function onDelete(): Promise<void> {
       </span>
     </div>
 
-    <!-- Pin toggle -->
-    <button
-      v-if="!isArchived"
-      type="button"
-      class="btn btn-ghost btn-sm"
-      :title="session?.pinned ? t('chat.sessionHeader.unpinTooltip') : t('chat.sessionHeader.pinTooltip')"
-      :disabled="saving"
-      @click="togglePin"
-    >
-      <span v-if="session?.pinned">📌</span>
-      <span v-else class="opacity-40">📌</span>
-    </button>
-
-    <!-- Color picker (compact, opens on click) -->
-    <div v-if="!isArchived" class="relative">
+    <!-- ─── Wide layout: inline action buttons ─── -->
+    <template v-if="!compact">
+      <!-- Pin toggle -->
       <button
+        v-if="!isArchived"
         type="button"
         class="btn btn-ghost btn-sm"
-        :title="t('chat.sessionHeader.colorLabel')"
-        @click="showColor = !showColor"
+        :title="session?.pinned ? t('chat.sessionHeader.unpinTooltip') : t('chat.sessionHeader.pinTooltip')"
+        :disabled="saving"
+        @click="togglePin"
       >
-        🎨
+        <span v-if="session?.pinned">📌</span>
+        <span v-else class="opacity-40">📌</span>
       </button>
-      <div
-        v-if="showColor"
-        class="absolute right-0 top-full mt-1 z-30 p-3 rounded-md border border-base-300 bg-base-100 shadow-lg"
-      >
-        <VColorPicker
-          :model-value="session?.color"
-          @update:model-value="(v) => { onColor(v); showColor = false; }"
-        />
-      </div>
-    </div>
 
-    <!-- Tag editor (compact, opens on click) -->
-    <div v-if="!isArchived" class="relative">
+      <!-- Color picker (compact, opens on click) -->
+      <div v-if="!isArchived" class="relative">
+        <button
+          type="button"
+          class="btn btn-ghost btn-sm"
+          :title="t('chat.sessionHeader.colorLabel')"
+          @click="showColor = !showColor"
+        >
+          🎨
+        </button>
+        <div
+          v-if="showColor"
+          class="absolute right-0 top-full mt-1 z-30 p-3 rounded-md border border-base-300 bg-base-100 shadow-lg"
+        >
+          <VColorPicker
+            :model-value="session?.color"
+            @update:model-value="(v) => { onColor(v); showColor = false; }"
+          />
+        </div>
+      </div>
+
+      <!-- Tag editor (compact, opens on click) -->
+      <div v-if="!isArchived" class="relative">
+        <button
+          type="button"
+          class="btn btn-ghost btn-sm"
+          :title="t('chat.sessionHeader.tagsTooltip')"
+          :class="(session?.tags?.length ?? 0) > 0 ? '' : 'opacity-60'"
+          @click="showTags = !showTags"
+        >
+          🏷️
+          <span
+            v-if="(session?.tags?.length ?? 0) > 0"
+            class="text-[10px] ml-1 opacity-70"
+          >{{ session?.tags?.length }}</span>
+        </button>
+        <div
+          v-if="showTags"
+          class="absolute right-0 top-full mt-1 z-30 w-72 p-3 rounded-md border border-base-300 bg-base-100 shadow-lg"
+        >
+          <VTagEditor
+            :model-value="session?.tags ?? []"
+            :label="t('chat.sessionHeader.tagsLabel')"
+            :placeholder="t('chat.sessionHeader.tagsPlaceholder')"
+            @update:model-value="onTags"
+          />
+        </div>
+      </div>
+
+      <!-- Archive / Reactivate / Delete -->
+      <VButton
+        v-if="!isArchived"
+        variant="ghost"
+        size="sm"
+        :disabled="saving"
+        :title="t('chat.sessionHeader.archiveTooltip')"
+        @click="onArchive"
+      >
+        📦
+      </VButton>
+      <VButton
+        v-else
+        variant="primary"
+        size="sm"
+        :disabled="saving"
+        @click="onReactivate"
+      >
+        {{ t('chat.sessionHeader.reactivate') }}
+      </VButton>
+
+      <VButton
+        variant="ghost"
+        size="sm"
+        :disabled="saving"
+        :title="t('chat.sessionHeader.delete')"
+        @click="onDelete"
+      >
+        🗑️
+      </VButton>
+    </template>
+
+    <!-- ─── Compact layout: overflow menu ─── -->
+    <div v-else ref="menuEl" class="relative">
       <button
         type="button"
         class="btn btn-ghost btn-sm"
-        :title="t('chat.sessionHeader.tagsTooltip')"
-        :class="(session?.tags?.length ?? 0) > 0 ? '' : 'opacity-60'"
-        @click="showTags = !showTags"
+        :title="t('chat.sessionHeader.moreActions')"
+        :aria-expanded="menuOpen"
+        :disabled="saving"
+        @click="menuOpen = !menuOpen"
       >
-        🏷️
+        <span class="text-lg leading-none">⋯</span>
         <span
-          v-if="(session?.tags?.length ?? 0) > 0"
+          v-if="session?.pinned || (session?.tags?.length ?? 0) > 0"
           class="text-[10px] ml-1 opacity-70"
-        >{{ session?.tags?.length }}</span>
+        >
+          <span v-if="session?.pinned">📌</span>
+          <span v-if="(session?.tags?.length ?? 0) > 0">{{ session?.tags?.length }}</span>
+        </span>
       </button>
+
       <div
-        v-if="showTags"
-        class="absolute right-0 top-full mt-1 z-30 w-72 p-3 rounded-md border border-base-300 bg-base-100 shadow-lg"
+        v-if="menuOpen"
+        class="absolute right-0 top-full mt-1 z-30 w-64 rounded-md border border-base-300 bg-base-100 shadow-lg overflow-hidden"
+        role="menu"
       >
-        <VTagEditor
-          :model-value="session?.tags ?? []"
-          :label="t('chat.sessionHeader.tagsLabel')"
-          :placeholder="t('chat.sessionHeader.tagsPlaceholder')"
-          @update:model-value="onTags"
-        />
+        <!-- Pin toggle -->
+        <button
+          v-if="!isArchived"
+          type="button"
+          class="flex items-center gap-3 w-full px-3 py-2 text-sm hover:bg-base-200 disabled:opacity-50"
+          :disabled="saving"
+          role="menuitem"
+          @click="togglePin(); closeMenu()"
+        >
+          <span class="w-5 text-center" :class="session?.pinned ? '' : 'opacity-40'">📌</span>
+          <span class="flex-1 text-left">
+            {{ session?.pinned ? t('chat.sessionHeader.unpinTooltip') : t('chat.sessionHeader.pinTooltip') }}
+          </span>
+        </button>
+
+        <!-- Color (expands inline picker) -->
+        <template v-if="!isArchived">
+          <button
+            type="button"
+            class="flex items-center gap-3 w-full px-3 py-2 text-sm hover:bg-base-200"
+            role="menuitem"
+            :aria-expanded="menuExpand === 'color'"
+            @click="menuExpand = menuExpand === 'color' ? null : 'color'"
+          >
+            <span class="w-5 text-center">🎨</span>
+            <span class="flex-1 text-left">{{ t('chat.sessionHeader.colorLabel') }}</span>
+            <span class="opacity-60 text-xs">{{ menuExpand === 'color' ? '▾' : '▸' }}</span>
+          </button>
+          <div
+            v-if="menuExpand === 'color'"
+            class="px-3 py-2 border-t border-b border-base-300 bg-base-200/30"
+          >
+            <VColorPicker
+              :model-value="session?.color"
+              @update:model-value="(v) => { onColor(v); closeMenu(); }"
+            />
+          </div>
+
+          <!-- Labels (expands inline editor) -->
+          <button
+            type="button"
+            class="flex items-center gap-3 w-full px-3 py-2 text-sm hover:bg-base-200"
+            role="menuitem"
+            :aria-expanded="menuExpand === 'tags'"
+            @click="menuExpand = menuExpand === 'tags' ? null : 'tags'"
+          >
+            <span class="w-5 text-center">🏷️</span>
+            <span class="flex-1 text-left">{{ t('chat.sessionHeader.tagsLabel') }}</span>
+            <span
+              v-if="(session?.tags?.length ?? 0) > 0"
+              class="text-[10px] opacity-70"
+            >{{ session?.tags?.length }}</span>
+            <span class="opacity-60 text-xs">{{ menuExpand === 'tags' ? '▾' : '▸' }}</span>
+          </button>
+          <div
+            v-if="menuExpand === 'tags'"
+            class="px-3 py-2 border-t border-b border-base-300 bg-base-200/30"
+          >
+            <VTagEditor
+              :model-value="session?.tags ?? []"
+              :label="t('chat.sessionHeader.tagsLabel')"
+              :placeholder="t('chat.sessionHeader.tagsPlaceholder')"
+              @update:model-value="onTags"
+            />
+          </div>
+        </template>
+
+        <div class="border-t border-base-300"></div>
+
+        <!-- Archive / Reactivate -->
+        <button
+          v-if="!isArchived"
+          type="button"
+          class="flex items-center gap-3 w-full px-3 py-2 text-sm hover:bg-base-200 disabled:opacity-50"
+          :disabled="saving"
+          role="menuitem"
+          @click="closeMenu(); onArchive()"
+        >
+          <span class="w-5 text-center">📦</span>
+          <span class="flex-1 text-left">{{ t('chat.sessionHeader.archive') }}</span>
+        </button>
+        <button
+          v-else
+          type="button"
+          class="flex items-center gap-3 w-full px-3 py-2 text-sm hover:bg-base-200 disabled:opacity-50"
+          :disabled="saving"
+          role="menuitem"
+          @click="closeMenu(); onReactivate()"
+        >
+          <span class="w-5 text-center">♻️</span>
+          <span class="flex-1 text-left">{{ t('chat.sessionHeader.reactivate') }}</span>
+        </button>
+
+        <!-- Delete -->
+        <button
+          type="button"
+          class="flex items-center gap-3 w-full px-3 py-2 text-sm hover:bg-base-200 disabled:opacity-50 text-error"
+          :disabled="saving"
+          role="menuitem"
+          @click="closeMenu(); onDelete()"
+        >
+          <span class="w-5 text-center">🗑️</span>
+          <span class="flex-1 text-left">{{ t('chat.sessionHeader.delete') }}</span>
+        </button>
       </div>
     </div>
-
-    <!-- Archive / Reactivate / Delete -->
-    <VButton
-      v-if="!isArchived"
-      variant="ghost"
-      size="sm"
-      :disabled="saving"
-      :title="t('chat.sessionHeader.archiveTooltip')"
-      @click="onArchive"
-    >
-      📦
-    </VButton>
-    <VButton
-      v-else
-      variant="primary"
-      size="sm"
-      :disabled="saving"
-      @click="onReactivate"
-    >
-      {{ t('chat.sessionHeader.reactivate') }}
-    </VButton>
-
-    <VButton
-      variant="ghost"
-      size="sm"
-      :disabled="saving"
-      :title="t('chat.sessionHeader.delete')"
-      @click="onDelete"
-    >
-      🗑️
-    </VButton>
   </div>
 </template>

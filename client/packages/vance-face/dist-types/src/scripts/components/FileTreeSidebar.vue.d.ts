@@ -5,12 +5,12 @@ interface Props {
 }
 declare const _default: import("vue").DefineComponent<Props, {}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {} & {
     "open-file": (id: string) => any;
-    "new-file": (parentPath: string) => any;
     "delete-file": (id: string) => any;
+    "new-file": (parentPath: string) => any;
 }, string, import("vue").PublicProps, Readonly<Props> & Readonly<{
     "onOpen-file"?: ((id: string) => any) | undefined;
-    "onNew-file"?: ((parentPath: string) => any) | undefined;
     "onDelete-file"?: ((id: string) => any) | undefined;
+    "onNew-file"?: ((parentPath: string) => any) | undefined;
 }>, {}, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;
 export default _default;
 //# sourceMappingURL=FileTreeSidebar.vue.d.ts.map

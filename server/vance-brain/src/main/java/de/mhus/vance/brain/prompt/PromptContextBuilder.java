@@ -163,6 +163,47 @@ public final class PromptContextBuilder {
     }
 
     /**
+     * Cortex-mode flag for the current turn — {@code true} when a
+     * Cortex-view client is currently bound to this session (the
+     * client-tool registry contains tools labelled {@code "cortex"}).
+     * Engines render a {@code {% if cortexMode %}} block in their
+     * system prompt to tell the LLM the {@code cortex_*} tools are
+     * available and which document is bound.
+     *
+     * <p>Per-turn — never persisted on the process. Default
+     * {@code false} when the setter is not called. See
+     * {@link de.mhus.vance.brain.tools.client.CortexPromptResolver}.
+     */
+    public PromptContextBuilder cortexMode(boolean cortexMode) {
+        map.put("cortexMode", cortexMode);
+        return this;
+    }
+
+    /**
+     * Path of the document the Cortex chat is currently bound to —
+     * exposed to templates as {@code {{ cortexBoundDocPath }}}. Only
+     * meaningful when {@link #cortexMode(boolean)} is {@code true};
+     * {@code null} when Cortex is open without a binding (the agent
+     * has tools but no target yet).
+     */
+    public PromptContextBuilder cortexBoundDocPath(@Nullable String path) {
+        if (path != null && !path.isBlank()) map.put("cortexBoundDocPath", path);
+        return this;
+    }
+
+    /**
+     * Mime-type of the bound Cortex document — companion to
+     * {@link #cortexBoundDocPath(String)}. Lets the template tell the
+     * agent up front when the bound document is a binary type
+     * (image/PDF) so it doesn't waste a call on {@code cortex_read}
+     * just to discover the text tools won't apply.
+     */
+    public PromptContextBuilder cortexBoundDocMime(@Nullable String mime) {
+        if (mime != null && !mime.isBlank()) map.put("cortexBoundDocMime", mime);
+        return this;
+    }
+
+    /**
      * Pre-rendered profile-block append text — exposed to recipe
      * templates as {@code {{ profileAppend }}} so the author can place
      * it at any position in the prompt body. Normally set by

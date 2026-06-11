@@ -206,6 +206,7 @@ export default {
             tagsLabel: 'Tags',
             tagsTooltip: 'Edit tags',
             tagsPlaceholder: 'Add tag…',
+            moreActions: 'More actions',
         },
         picker: {
             projectsTitle: 'Projects',

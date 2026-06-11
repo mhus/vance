@@ -224,6 +224,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     private final de.mhus.vance.brain.memory.MemoryCompactionService memoryCompactionService;
     private final UserMemoryService userMemoryService;
     private final de.mhus.vance.brain.discovery.DiscoveryService discoveryService;
+    private final de.mhus.vance.brain.tools.client.CortexPromptResolver cortexPromptResolver;
     private final ObjectMapper objectMapper;
 
     /**
@@ -280,7 +281,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             de.mhus.vance.brain.memory.MemoryCompactionService memoryCompactionService,
             UserMemoryService userMemoryService,
             @org.springframework.context.annotation.Lazy
-                    de.mhus.vance.brain.discovery.DiscoveryService discoveryService) {
+                    de.mhus.vance.brain.discovery.DiscoveryService discoveryService,
+            de.mhus.vance.brain.tools.client.CortexPromptResolver cortexPromptResolver) {
         super(streamingProperties, llmCallTracker, objectMapper, composer);
         this.thinkProcessService = thinkProcessService;
         this.arthurProperties = arthurProperties;
@@ -300,6 +302,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         this.memoryCompactionService = memoryCompactionService;
         this.userMemoryService = userMemoryService;
         this.discoveryService = discoveryService;
+        this.cortexPromptResolver = cortexPromptResolver;
         this.objectMapper = objectMapper;
     }
 
@@ -1894,12 +1897,23 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             }
         }
 
+        // Cortex-mode: live-checked from the client-tool registry per
+        // turn — fires only when a Cortex-view client is currently
+        // connected to this session. Persisted SessionDocument fields
+        // aren't enough on their own (they'd falsely linger after the
+        // user navigates back to plain chat).
+        de.mhus.vance.brain.tools.client.CortexPromptResolver.CortexContext cortex =
+                cortexPromptResolver.resolve(process.getSessionId());
+
         de.mhus.vance.brain.prompt.PromptContextBuilder ctxBuilder =
                 de.mhus.vance.brain.prompt.PromptContextBuilder
                         .forProcess(process, modelInfo)
                         .tier(modelSize)
                         .engine(NAME)
                         .voiceMode(voiceMode)
+                        .cortexMode(cortex.active())
+                        .cortexBoundDocPath(cortex.boundDocPath())
+                        .cortexBoundDocMime(cortex.boundDocMime())
                         .withRootDirTypes(workspaceService.getRootDirTypes(
                                 process.getTenantId(), process.getProjectId()));
         String base = composer.compose(process,

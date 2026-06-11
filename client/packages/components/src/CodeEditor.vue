@@ -70,7 +70,21 @@ const props = withDefaults(defineProps<Props>(), {
   readOnly: false,
 });
 
-const emit = defineEmits<{ (e: 'update:modelValue', value: string): void }>();
+/** Reported alongside the {@code selection-changed} event so hosts that
+ *  need the highlighted text (e.g. Cortex' agent-tool surface) don't
+ *  have to slice the model themselves. {@code text} is empty when the
+ *  selection is a zero-length cursor; consumers should check
+ *  {@code from === to} to distinguish "caret only" from "real range". */
+export interface CodeEditorSelection {
+  from: number;
+  to: number;
+  text: string;
+}
+
+const emit = defineEmits<{
+  (e: 'update:modelValue', value: string): void;
+  (e: 'selection-changed', selection: CodeEditorSelection): void;
+}>();
 
 const host = ref<HTMLDivElement | null>(null);
 let view: EditorView | null = null;
@@ -155,8 +169,20 @@ onMounted(() => {
     keymap.of([...defaultKeymap, ...historyKeymap, ...foldKeymap]),
     EditorView.lineWrapping,
     EditorView.updateListener.of((u) => {
-      if (!u.docChanged) return;
-      emit('update:modelValue', u.state.doc.toString());
+      if (u.docChanged) {
+        emit('update:modelValue', u.state.doc.toString());
+      }
+      // selectionSet covers both pointer + keyboard moves; docChanged
+      // also implies a selection update (typing moves the caret), so
+      // we re-emit either way. Hosts that don't care just ignore the
+      // event — there's no per-keystroke listener on this side.
+      if (u.selectionSet || u.docChanged) {
+        const main = u.state.selection.main;
+        const text = main.from === main.to
+          ? ''
+          : u.state.sliceDoc(main.from, main.to);
+        emit('selection-changed', { from: main.from, to: main.to, text });
+      }
     }),
     languageCompartment.of(languageFor(props.mimeType)),
     readOnlyCompartment.of(readOnlyExt(props.disabled || props.readOnly)),

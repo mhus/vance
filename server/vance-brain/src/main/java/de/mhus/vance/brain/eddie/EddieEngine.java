@@ -208,6 +208,7 @@ public class EddieEngine extends StructuredActionEngine {
     private final de.mhus.vance.brain.prak.HistoryStrengthFilter historyStrengthFilter;
     private final de.mhus.vance.brain.memory.MemoryCompactionService memoryCompactionService;
     private final de.mhus.vance.brain.discovery.DiscoveryService discoveryService;
+    private final de.mhus.vance.brain.tools.client.CortexPromptResolver cortexPromptResolver;
     private final ObjectMapper objectMapper;
 
     /**
@@ -244,7 +245,8 @@ public class EddieEngine extends StructuredActionEngine {
             de.mhus.vance.brain.prak.HistoryStrengthFilter historyStrengthFilter,
             de.mhus.vance.brain.memory.MemoryCompactionService memoryCompactionService,
             @org.springframework.context.annotation.Lazy
-                    de.mhus.vance.brain.discovery.DiscoveryService discoveryService) {
+                    de.mhus.vance.brain.discovery.DiscoveryService discoveryService,
+            de.mhus.vance.brain.tools.client.CortexPromptResolver cortexPromptResolver) {
         super(streamingProperties, llmCallTracker, objectMapper, composer);
         this.thinkProcessService = thinkProcessService;
         this.modelCatalog = modelCatalog;
@@ -264,6 +266,7 @@ public class EddieEngine extends StructuredActionEngine {
         this.historyStrengthFilter = historyStrengthFilter;
         this.memoryCompactionService = memoryCompactionService;
         this.discoveryService = discoveryService;
+        this.cortexPromptResolver = cortexPromptResolver;
         this.objectMapper = objectMapper;
     }
 
@@ -2203,12 +2206,22 @@ public class EddieEngine extends StructuredActionEngine {
             }
         }
 
+        // Cortex-mode: same per-turn injection as Arthur / Ford. Eddie
+        // is the hub assistant — if a Cortex client is bound to her
+        // session she's the one fielding "welche datei?" before any
+        // worker delegation.
+        de.mhus.vance.brain.tools.client.CortexPromptResolver.CortexContext cortex =
+                cortexPromptResolver.resolve(process.getSessionId());
+
         de.mhus.vance.brain.prompt.PromptContextBuilder ctxBuilder =
                 de.mhus.vance.brain.prompt.PromptContextBuilder
                         .forProcess(process, modelInfo)
                         .tier(modelSize)
                         .engine(NAME)
                         .voiceMode(voiceMode)
+                        .cortexMode(cortex.active())
+                        .cortexBoundDocPath(cortex.boundDocPath())
+                        .cortexBoundDocMime(cortex.boundDocMime())
                         .withRootDirTypes(workspaceService.getRootDirTypes(
                                 process.getTenantId(), process.getProjectId()));
         // Fall back to the engine's cascade-resolved default prompt

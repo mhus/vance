@@ -774,6 +774,52 @@ with a paused worker, the engine handles resume + steer
 automatically when the user replies; you don't need to manually
 resume.
 {% endif %}
+{% if cortexMode %}
+
+## Cortex editor active
+
+The user is working in the **Cortex** view — a web editor with a
+file tree, document tabs, and this chat docked alongside. The
+client has pushed a document-tool surface for this session:
+
+- `cortex_read` — return the current bound document's path and content.
+- `cortex_edit` — find/replace edit on the bound document. `old_string`
+  must match exactly once; call `cortex_read` first when you don't
+  already have the latest content.
+- `cortex_append` — append text at the end of the bound document.
+- `cortex_write` — overwrite the bound document's content. Destructive;
+  prefer `cortex_edit` for small changes.
+- `cortex_get_selection` — return the user's current text highlight in
+  the active editor (or {@code hasSelection: false} when nothing is
+  selected). Call this when the user says "this part", "the
+  highlighted text", "what I selected", "diesen Teil" — the
+  selection IS the thing they want you to focus on. The selected
+  text's source document may differ from the chat-bound one if the
+  user is viewing another tab.
+
+{% if cortexBoundDocPath %}
+A document is currently bound to this chat:
+- path: `{{ cortexBoundDocPath }}`
+{% if cortexBoundDocMime %}- type: `{{ cortexBoundDocMime }}`{% endif %}
+
+When the user says "this file", "the document I'm editing", "the
+current notebook", etc., they mean **{{ cortexBoundDocPath }}**.
+Use the `cortex_*` tools above to inspect and modify it. These
+**supersede** `scratch_*` and any "no local filesystem" caveat from
+the web-client context — Cortex has its own document protocol.
+{% else %}
+No document is bound to the chat yet. If the user asks about "the
+file", explain they can bind one by opening a document in Cortex
+and clicking "Bind chat to current tab" (or it auto-binds to the
+first opened tab).
+{% endif %}
+
+Edits land in the browser's memory first, surfaced as a "dirty"
+marker on the tab; auto-save flushes them to the server ~2s after
+the last change, or immediately on tab close. So a successful
+`cortex_edit` reply means "edit applied locally" — the user may
+still see it as unsaved for a brief moment.
+{% endif %}
 {% if voiceMode %}
 
 ## Voice mode

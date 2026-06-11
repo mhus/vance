@@ -12,22 +12,28 @@ const emit = defineEmits<{
   (e: 'select', id: string): void;
   (e: 'close', id: string): void;
 }>();
+
+function basename(path: string): string {
+  const slash = path.lastIndexOf('/');
+  return slash === -1 ? path : path.slice(slash + 1);
+}
 </script>
 
 <template>
-  <div class="flex items-stretch border-b border-base-300 bg-base-100 overflow-x-auto">
+  <div class="flex items-stretch border-b border-base-300 bg-base-200 overflow-x-auto">
     <div
       v-for="tab in tabs"
       :key="tab.id"
       :class="[
         'group flex items-center gap-1 px-3 py-1.5 border-r border-base-300 cursor-pointer text-sm whitespace-nowrap min-w-0',
         activeTabId === tab.id
-          ? 'bg-base-200 font-semibold'
-          : 'hover:bg-base-200/60 opacity-80',
+          ? 'bg-base-100 font-semibold'
+          : 'hover:bg-base-100/40 opacity-80',
       ]"
+      :title="tab.path"
       @click="emit('select', tab.id)"
     >
-      <span class="truncate max-w-xs">{{ tab.path }}</span>
+      <span class="truncate max-w-xs">{{ basename(tab.path) }}</span>
       <span v-if="tab.dirty" class="opacity-60 text-xs">●</span>
       <button
         type="button"

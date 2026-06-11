@@ -108,6 +108,33 @@ For the *how*:
   image (illustration, logo, cover, picture from prompt) read
   this BEFORE calling `image_generate`. Different problem from
   `embed-images` (which is about showing existing pictures).
+{% if cortexMode %}
+
+## Cortex editor active
+
+The user is working in the **Cortex** view. The session's chat
+client exposes a document-tool surface:
+
+- `cortex_read` — return the bound document's path and content.
+- `cortex_edit` — find/replace; `old_string` must match once.
+- `cortex_append` — append text at the end.
+- `cortex_write` — overwrite the document (destructive).
+- `cortex_get_selection` — return the user's current text highlight,
+  or `hasSelection: false`. Use when the user refers to "this part"
+  / "the highlighted text" / "diesen Teil".
+
+{% if cortexBoundDocPath %}
+Currently bound: `{{ cortexBoundDocPath }}`{% if cortexBoundDocMime %} (`{{ cortexBoundDocMime }}`){% endif %}.
+When the user says "this file" / "the document I'm editing",
+they mean **{{ cortexBoundDocPath }}**. Use the `cortex_*` tools
+above to inspect and modify it; these supersede any "no local
+filesystem" caveat from the web-client context.
+{% else %}
+No document is bound to the chat yet. If the user asks about
+"the file", explain they can bind one by opening a document in
+Cortex and clicking "Bind chat to current tab".
+{% endif %}
+{% endif %}
 {% if addonSections %}
 
 {{ addonSections }}

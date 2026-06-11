@@ -44,6 +44,17 @@ const chatProjectLabel = computed(() => {
     const title = p?.title?.trim();
     return title && title.length > 0 ? title : id;
 });
+// Drop the project chip when the chat header gets cramped. The chip
+// eats ~224px of horizontal real estate (plus padding/gap), which is
+// the dominant culprit pushing SessionHeader into its overflow menu.
+// Hiding it here gives SessionHeader the breathing room to stay in
+// wide mode a bit longer; SessionHeader still has its own internal
+// collapse below ~520px once the chip is gone.
+const HEADER_DENSE_THRESHOLD_PX = 800;
+const headerEl = ref(null);
+const headerWidth = ref(Number.POSITIVE_INFINITY);
+const headerDense = computed(() => headerWidth.value < HEADER_DENSE_THRESHOLD_PX);
+let headerResizeObserver = null;
 // Keep the embedded-document resolver and the save-as-document promote
 // path informed about the chat's current project — both fall back to
 // this store value when a vance:/-link or a kindbox action omits the
@@ -315,9 +326,20 @@ onMounted(async () => {
     // open its TTS gate.
     emit('history-loaded');
     window.addEventListener('vance-open-wizard', onWizardDeepLink);
+    if (headerEl.value) {
+        headerWidth.value = headerEl.value.offsetWidth;
+        headerResizeObserver = new ResizeObserver((entries) => {
+            for (const entry of entries) {
+                headerWidth.value = entry.contentRect.width;
+            }
+        });
+        headerResizeObserver.observe(headerEl.value);
+    }
 });
 onBeforeUnmount(() => {
     window.removeEventListener('vance-open-wizard', onWizardDeepLink);
+    headerResizeObserver?.disconnect();
+    headerResizeObserver = null;
     for (const off of subscriptions)
         off();
     reset();
@@ -340,9 +362,11 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.d
     ...{ class: "h-full min-h-0 flex flex-col" },
 });
 __VLS_asFunctionalElement(__VLS_intrinsicElements.header, __VLS_intrinsicElements.header)({
+    ref: "headerEl",
     ...{ class: "px-6 py-3 border-b border-base-300 bg-base-100 flex items-center gap-3" },
 });
-if (__VLS_ctx.chatProjectLabel) {
+/** @type {typeof __VLS_ctx.headerEl} */ ;
+if (__VLS_ctx.chatProjectLabel && !__VLS_ctx.headerDense) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "\u0066\u006c\u0065\u0078\u0020\u0069\u0074\u0065\u006d\u0073\u002d\u0063\u0065\u006e\u0074\u0065\u0072\u0020\u0067\u0061\u0070\u002d\u0031\u0020\u0074\u0065\u0078\u0074\u002d\u0078\u0073\u0020\u0070\u0078\u002d\u0032\u0020\u0070\u0079\u002d\u0031\u0020\u0072\u006f\u0075\u006e\u0064\u0065\u0064\u000a\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0062\u0067\u002d\u0062\u0061\u0073\u0065\u002d\u0032\u0030\u0030\u0020\u0074\u0065\u0078\u0074\u002d\u0062\u0061\u0073\u0065\u002d\u0063\u006f\u006e\u0074\u0065\u006e\u0074\u002f\u0038\u0030\u0020\u006d\u0061\u0078\u002d\u0077\u002d\u005b\u0031\u0034\u0072\u0065\u006d\u005d\u0020\u0073\u0068\u0072\u0069\u006e\u006b\u002d\u0030" },
         title: (__VLS_ctx.$t('chat.projectTooltip', { name: __VLS_ctx.chatProjectId })),
@@ -629,6 +653,8 @@ const __VLS_self = (await import('vue')).defineComponent({
             planMeta: planMeta,
             modeBadge: modeBadge,
             chatProjectLabel: chatProjectLabel,
+            headerEl: headerEl,
+            headerDense: headerDense,
             messageContainer: messageContainer,
             allMessages: allMessages,
             activeAskUserMessageId: activeAskUserMessageId,

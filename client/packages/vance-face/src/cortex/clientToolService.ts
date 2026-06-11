@@ -1,6 +1,7 @@
 import { ref, type Ref } from 'vue';
 import type { BrainWsApi } from '@vance/shared';
 import type { CortexDocument } from './types';
+import type { CortexSelection } from './stores/cortexStore';
 
 // Wire-format mirrors of the brain DTOs. Inlined deliberately: the
 // upstream @vance/generated package's hand-maintained index.ts has to
@@ -68,6 +69,16 @@ export interface CortexToolDeps {
    * binding without us having to re-push the registration.
    */
   getBoundDocument(): CortexDocument | null;
+
+  /**
+   * Returns the user's current editor selection or {@code null} when
+   * nothing is highlighted. The renderer mirrors the CodeEditor's
+   * selection events into the store; the {@code cortex_get_selection}
+   * tool surfaces it on demand. Caret-only positions (zero-length
+   * range) are stored as {@code null} — they're not a "selection" in
+   * the user-intent sense.
+   */
+  getSelection(): CortexSelection | null;
 }
 
 type ToolHandler = (
@@ -158,6 +169,31 @@ export class CortexClientToolService {
 
   private toolSpecs(): ToolSpec[] {
     return [
+      {
+        name: 'cortex_get_selection',
+        description:
+          'Return the user\'s current text selection in the active '
+          + 'Cortex editor, or indicate that nothing is selected. Use '
+          + 'this when the user refers to "this part", "the highlighted '
+          + 'text", "what I selected", or similar — the selection is the '
+          + 'piece of the document they want you to focus on. Returns '
+          + 'the selected text plus its source document path (which may '
+          + 'differ from the chat-bound document if the user is viewing '
+          + 'another tab).',
+        primary: true,
+        source: 'cortex',
+        paramsSchema: {
+          type: 'object',
+          properties: {},
+          required: [],
+        },
+        labels: ['read-only', 'cortex'],
+        allowedProfiles: ['web'],
+        deferred: false,
+        searchHint: '',
+        safety: 'SAFE_PROBE',
+        requiresEngineRoles: [],
+      },
       {
         name: 'cortex_read',
         description:
@@ -266,6 +302,21 @@ export class CortexClientToolService {
   }
 
   private registerCortexHandlers(): void {
+    this.handlers.set('cortex_get_selection', () => {
+      const sel = this.deps.getSelection();
+      if (!sel) {
+        return { hasSelection: false };
+      }
+      return {
+        hasSelection: true,
+        path: sel.docPath,
+        text: sel.text,
+        from: sel.from,
+        to: sel.to,
+        length: sel.text.length,
+      };
+    });
+
     this.handlers.set('cortex_read', () => {
       const doc = this.requireBound();
       if (isBinaryMime(doc.mimeType)) {

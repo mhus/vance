@@ -181,6 +181,22 @@ Use when:
   the operator what's missing.
 - The user asks "which search backends do we have configured?".
 
+## Default providers per modality (out of the box)
+
+| Modality | Default endpoint | Protocol | Notes |
+|---|---|---|---|
+| `web` / `image` / `video` / `pdf` | `serper-main` | Serper.dev | Needs API key (free 2 500 / month). |
+| `web` fallback | `wiki-de` | Wikipedia | Key-less. |
+| `encyclopedia` | `wiki-de` | Wikipedia | Inline extract. |
+| `news` | `hn-algolia` | HackerNews via Algolia | Key-less, tech focus. |
+| `book` | `openlib` | OpenLibrary | Key-less. |
+| `academic` | `openalex` | OpenAlex | Polite-pool needs `contactEmail`. |
+| `academic` fallback | `arxiv` | arXiv | Key-less, STEM focus. |
+
+Operators can override defaults / fallbacks in any project via
+`research.default.<modality>` and `research.fallback.<modality>`
+settings. Use `research_providers` to list the inventory live.
+
 ## Decision shortcut
 
 | User signal | Tool |

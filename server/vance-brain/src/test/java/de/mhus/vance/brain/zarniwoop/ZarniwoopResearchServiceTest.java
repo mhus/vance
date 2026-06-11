@@ -150,17 +150,27 @@ class ZarniwoopResearchServiceTest {
     }
 
     @Test
-    void hits_are_url_deduped_across_steps_first_step_wins() {
+    void hits_are_url_deduped_across_steps() {
+        // The two steps run in parallel — the order they reach the
+        // dedupe map is non-deterministic, so the test asserts on the
+        // dedupe property (shared URL appears once, both per-step
+        // exclusives survive, both instances are reported) instead of
+        // which step's title wins the shared row.
         stubPlan(Map.of("steps", List.of(
                 Map.of("modality", "web", "query", "a", "num", 5),
                 Map.of("modality", "web", "query", "b", "num", 5))));
-        SearchResult first = oneResultSearchResult(SearchModality.WEB, "serper-main",
-                List.of(hit("First", "https://shared/"), hit("Solo", "https://solo/")));
-        SearchResult second = oneResultSearchResult(SearchModality.WEB, "serper-eu",
-                List.of(hit("Duplicate-but-different-title", "https://shared/"),
-                        hit("Other", "https://other/")));
         when(zarniwoopService.search(any(SearchRequest.class), any(), any()))
-                .thenReturn(first, second);
+                .thenAnswer(inv -> {
+                    SearchRequest req = inv.getArgument(0);
+                    if ("a".equals(req.query())) {
+                        return oneResultSearchResult(SearchModality.WEB, "serper-main",
+                                List.of(hit("First", "https://shared/"),
+                                        hit("Solo", "https://solo/")));
+                    }
+                    return oneResultSearchResult(SearchModality.WEB, "serper-eu",
+                            List.of(hit("Duplicate-but-different-title", "https://shared/"),
+                                    hit("Other", "https://other/")));
+                });
         stubEvaluate(Map.of("verdicts", List.of(
                 Map.of("hitId", "h0", "verdict", "keep", "relevanceScore", 1.0),
                 Map.of("hitId", "h1", "verdict", "keep", "relevanceScore", 0.5),
@@ -171,10 +181,6 @@ class ZarniwoopResearchServiceTest {
         assertThat(result.keptHits()).hasSize(3);
         assertThat(result.keptHits().stream().map(h -> h.url()))
                 .containsExactlyInAnyOrder("https://shared/", "https://solo/", "https://other/");
-        // The shared URL came from the first step → its title wins.
-        boolean firstWins = result.keptHits().stream()
-                .anyMatch(h -> h.url().equals("https://shared/") && h.title().equals("First"));
-        assertThat(firstWins).isTrue();
         assertThat(result.instancesUsed()).containsExactlyInAnyOrder("serper-main", "serper-eu");
     }
 

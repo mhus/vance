@@ -87,4 +87,27 @@ public class ZarniwoopInsightsDto {
 
     /** ISO-8601 timestamp at which the active cooldown lifts. */
     private @Nullable String activeCooldownUntil;
+
+    /**
+     * Settings-default enable flag — driven by
+     * {@code research.endpoint.<id>.enabled} (default {@code true}).
+     * Persistent across pod restarts.
+     */
+    private boolean defaultEnabled;
+
+    /**
+     * Pod-local manual override set from the Insights tab.
+     * {@code "ENABLED"} / {@code "DISABLED"} when set, {@code null}
+     * when the instance follows the settings default. Lost on pod
+     * restart and on project suspend.
+     */
+    private @Nullable String manualOverride;
+
+    /**
+     * Effective state the dispatcher uses — override wins over the
+     * settings default. {@code false} hides the instance from
+     * {@code research_search} / {@code research_rich} dispatch.
+     */
+    private boolean effectivelyEnabled;
 }
+

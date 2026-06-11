@@ -47,6 +47,7 @@ class ZarniwoopServiceTest {
     private AgrajagChecker agrajag;
     private ObjectProvider<AgrajagChecker> agrajagProvider;
     private QuotaCache quotaCache;
+    private ZarniwoopGateService gate;
     private ZarniwoopService service;
 
     @BeforeEach
@@ -63,8 +64,10 @@ class ZarniwoopServiceTest {
                 .thenReturn(Optional.empty());
         quotaCache = mock(QuotaCache.class);
         when(quotaCache.get(any(), any())).thenReturn(Optional.empty());
+        gate = mock(ZarniwoopGateService.class);
+        when(gate.isEnabled(any(), anyString())).thenReturn(true);
         service = new ZarniwoopService(factory, settings, healthService,
-                agrajagProvider, quotaCache, new ZarniwoopUsageCounter());
+                agrajagProvider, quotaCache, new ZarniwoopUsageCounter(), gate);
     }
 
     @Test
@@ -128,6 +131,25 @@ class ZarniwoopServiceTest {
         verify(agrajag).handle(
                 eq(ZarniwoopSettings.cooldownSubject("primary", SearchModality.WEB)),
                 any(Throwable.class), eq(CTX));
+    }
+
+    @Test
+    void search_filters_out_instances_gated_off() {
+        FakeInstance gated = new FakeInstance("gated", Behavior.success("gated"));
+        FakeInstance live = new FakeInstance("live", Behavior.success("live"));
+        when(factory.assemble(eq(SCOPE))).thenReturn(List.of(gated, live));
+        when(settings.getStringValueCascade(
+                eq(TENANT), eq(PROJECT), any(),
+                eq(ZarniwoopSettings.defaultKey(SearchModality.WEB))))
+                .thenReturn("gated");
+        when(gate.isEnabled(any(), eq("gated"))).thenReturn(false);
+
+        SearchRequest req = SearchRequest.normal("q", SearchModality.WEB, 5);
+        SearchResult result = service.search(req, SCOPE, CTX);
+
+        assertThat(result.ok()).isTrue();
+        assertThat(result.providerInstanceId()).isEqualTo("live");
+        assertThat(gated.calls).isEqualTo(0);
     }
 
     @Test

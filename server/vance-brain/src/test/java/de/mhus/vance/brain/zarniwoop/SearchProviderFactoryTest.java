@@ -110,7 +110,9 @@ class SearchProviderFactoryTest {
     }
 
     @Test
-    void assemble_honours_explicit_enabled_false() {
+    void assemble_still_instantiates_endpoints_with_enabled_false() {
+        // enabled=false is no longer a build-time skip — ZarniwoopGateService
+        // applies it at dispatch time so the UI can override.
         SettingService settings = mock(SettingService.class);
         Map<String, String> endpointSettings = new LinkedHashMap<>();
         endpointSettings.put("research.endpoint.alpha.protocol", "serper");
@@ -126,7 +128,7 @@ class SearchProviderFactoryTest {
         List<SearchProviderInstance> result = factory.assemble(SearchScope.of(TENANT, PROJECT));
 
         assertThat(result.stream().map(SearchProviderInstance::id))
-                .containsExactly("beta");
+                .containsExactlyInAnyOrder("alpha", "beta");
     }
 
     @Test

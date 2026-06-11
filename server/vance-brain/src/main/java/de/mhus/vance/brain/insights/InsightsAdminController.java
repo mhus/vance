@@ -15,7 +15,9 @@ import de.mhus.vance.api.insights.SessionClientToolsDto;
 import de.mhus.vance.api.insights.SessionInsightsDto;
 import de.mhus.vance.api.insights.ThinkProcessInsightsDto;
 import de.mhus.vance.api.insights.ZarniwoopInsightsDto;
+import de.mhus.vance.brain.zarniwoop.ZarniwoopGateService;
 import de.mhus.vance.brain.zarniwoop.ZarniwoopInsightsService;
+import de.mhus.vance.toolpack.research.SearchScope;
 import de.mhus.vance.brain.cluster.ClusterService;
 import de.mhus.vance.shared.addon.AddonInsightsService;
 import de.mhus.vance.brain.recipe.RecipeLoader;
@@ -68,8 +70,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -115,6 +120,7 @@ public class InsightsAdminController {
     private final PrakRunService prakRunService;
     private final AddonInsightsService addonInsightsService;
     private final ZarniwoopInsightsService zarniwoopInsightsService;
+    private final ZarniwoopGateService zarniwoopGateService;
     private final RequestAuthority authority;
     private final ObjectMapper objectMapper;
 
@@ -689,6 +695,50 @@ public class InsightsAdminController {
         authority.enforce(httpRequest, new Resource.Project(tenant, project), Action.READ);
         return zarniwoopInsightsService.listInstances(tenant, project);
     }
+
+    /**
+     * Set a pod-local manual override on a single Zarniwoop instance.
+     * Pass {@code {"enabled":true}} to force-enable (overriding a
+     * settings default of {@code enabled=false}), {@code "enabled":false}
+     * to temporarily disable a working instance. The override survives
+     * dispatcher calls but is dropped on project suspend and on pod
+     * restart — settings stay untouched.
+     */
+    @PutMapping("/projects/{project}/insights/zarniwoop/{instanceId}/override")
+    public List<ZarniwoopInsightsDto> setZarniwoopOverride(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("project") String project,
+            @PathVariable("instanceId") String instanceId,
+            @RequestBody ZarniwoopOverrideRequest request,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Project(tenant, project), Action.WRITE);
+        if (request == null || request.enabled() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Body must carry {\"enabled\":true|false}");
+        }
+        SearchScope scope = new SearchScope(tenant, project, null, null);
+        zarniwoopGateService.setOverride(scope, instanceId,
+                request.enabled()
+                        ? ZarniwoopGateService.ManualState.ENABLED
+                        : ZarniwoopGateService.ManualState.DISABLED);
+        return zarniwoopInsightsService.listInstances(tenant, project);
+    }
+
+    /** Drop the manual override; the instance returns to its settings default. */
+    @DeleteMapping("/projects/{project}/insights/zarniwoop/{instanceId}/override")
+    public List<ZarniwoopInsightsDto> clearZarniwoopOverride(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("project") String project,
+            @PathVariable("instanceId") String instanceId,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Project(tenant, project), Action.WRITE);
+        SearchScope scope = new SearchScope(tenant, project, null, null);
+        zarniwoopGateService.clearOverride(scope, instanceId);
+        return zarniwoopInsightsService.listInstances(tenant, project);
+    }
+
+    /** Request body shape for the override endpoint. */
+    public record ZarniwoopOverrideRequest(Boolean enabled) { }
 
     @GetMapping("/projects/{project}/insights/tools")
     public List<EffectiveToolDto> listEffectiveTools(

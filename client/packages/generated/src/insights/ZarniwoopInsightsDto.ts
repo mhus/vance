@@ -20,4 +20,7 @@ export interface ZarniwoopInsightsDto {
   lastErrorMessage?: string;
   activeCooldownSignature?: string;
   activeCooldownUntil?: string;
+  defaultEnabled: boolean;
+  manualOverride?: string;
+  effectivelyEnabled: boolean;
 }

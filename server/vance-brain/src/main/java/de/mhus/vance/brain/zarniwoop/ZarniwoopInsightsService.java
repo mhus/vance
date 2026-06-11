@@ -37,6 +37,7 @@ public class ZarniwoopInsightsService {
     private final SearchProviderFactory factory;
     private final ZarniwoopUsageCounter usageCounter;
     private final ToolHealthService healthService;
+    private final ZarniwoopGateService gate;
 
     public List<ZarniwoopInsightsDto> listInstances(String tenantId, String projectId) {
         SearchScope scope = new SearchScope(tenantId, projectId, null, null);
@@ -83,6 +84,15 @@ public class ZarniwoopInsightsService {
             avail = ProviderAvailability.COOLDOWN;
         }
 
+        // Gate decision — operator settings + UI override.
+        ZarniwoopGateService.GateDecision gateDecision = gate.resolve(scope, inst.id());
+        // When the operator gate forces the instance off, surface it as
+        // DISABLED in the availability column so the UI badge agrees
+        // with effectivelyEnabled.
+        if (!gateDecision.effectivelyEnabled()) {
+            avail = ProviderAvailability.DISABLED;
+        }
+
         return ZarniwoopInsightsDto.builder()
                 .id(inst.id())
                 .displayName(inst.displayName())
@@ -104,6 +114,10 @@ public class ZarniwoopInsightsService {
                 .activeCooldownUntil(activeCooldown
                         .map(c -> isoOrNull(c.getNextSpawnAllowedAt()))
                         .orElse(null))
+                .defaultEnabled(gateDecision.defaultEnabled())
+                .manualOverride(gateDecision.override()
+                        .map(Enum::name).orElse(null))
+                .effectivelyEnabled(gateDecision.effectivelyEnabled())
                 .build();
     }
 

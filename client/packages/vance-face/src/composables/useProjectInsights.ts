@@ -95,6 +95,8 @@ export interface UseZarniwoopInsights {
   error: Ref<string | null>;
   load: (projectId: string) => Promise<void>;
   clear: () => void;
+  setOverride: (projectId: string, instanceId: string, enabled: boolean) => Promise<void>;
+  clearOverride: (projectId: string, instanceId: string) => Promise<void>;
 }
 
 export function useZarniwoopInsights(): UseZarniwoopInsights {
@@ -123,5 +125,40 @@ export function useZarniwoopInsights(): UseZarniwoopInsights {
     error.value = null;
   }
 
-  return { instances, loading, error, load, clear };
+  async function setOverride(
+    projectId: string,
+    instanceId: string,
+    enabled: boolean,
+  ): Promise<void> {
+    loading.value = true;
+    error.value = null;
+    try {
+      instances.value = await brainFetch<ZarniwoopInsightsDto[]>(
+        'PUT',
+        `admin/projects/${encodeURIComponent(projectId)}/insights/zarniwoop/${encodeURIComponent(instanceId)}/override`,
+        { body: { enabled } },
+      );
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to set override.';
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  async function clearOverride(projectId: string, instanceId: string): Promise<void> {
+    loading.value = true;
+    error.value = null;
+    try {
+      instances.value = await brainFetch<ZarniwoopInsightsDto[]>(
+        'DELETE',
+        `admin/projects/${encodeURIComponent(projectId)}/insights/zarniwoop/${encodeURIComponent(instanceId)}/override`,
+      );
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to clear override.';
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  return { instances, loading, error, load, clear, setOverride, clearOverride };
 }

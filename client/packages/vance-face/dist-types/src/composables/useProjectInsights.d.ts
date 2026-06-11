@@ -31,6 +31,8 @@ export interface UseZarniwoopInsights {
     error: Ref<string | null>;
     load: (projectId: string) => Promise<void>;
     clear: () => void;
+    setOverride: (projectId: string, instanceId: string, enabled: boolean) => Promise<void>;
+    clearOverride: (projectId: string, instanceId: string) => Promise<void>;
 }
 export declare function useZarniwoopInsights(): UseZarniwoopInsights;
 //# sourceMappingURL=useProjectInsights.d.ts.map

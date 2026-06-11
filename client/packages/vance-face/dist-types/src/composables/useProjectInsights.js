@@ -70,6 +70,32 @@ export function useZarniwoopInsights() {
         instances.value = [];
         error.value = null;
     }
-    return { instances, loading, error, load, clear };
+    async function setOverride(projectId, instanceId, enabled) {
+        loading.value = true;
+        error.value = null;
+        try {
+            instances.value = await brainFetch('PUT', `admin/projects/${encodeURIComponent(projectId)}/insights/zarniwoop/${encodeURIComponent(instanceId)}/override`, { body: { enabled } });
+        }
+        catch (e) {
+            error.value = e instanceof Error ? e.message : 'Failed to set override.';
+        }
+        finally {
+            loading.value = false;
+        }
+    }
+    async function clearOverride(projectId, instanceId) {
+        loading.value = true;
+        error.value = null;
+        try {
+            instances.value = await brainFetch('DELETE', `admin/projects/${encodeURIComponent(projectId)}/insights/zarniwoop/${encodeURIComponent(instanceId)}/override`);
+        }
+        catch (e) {
+            error.value = e instanceof Error ? e.message : 'Failed to clear override.';
+        }
+        finally {
+            loading.value = false;
+        }
+    }
+    return { instances, loading, error, load, clear, setOverride, clearOverride };
 }
 //# sourceMappingURL=useProjectInsights.js.map

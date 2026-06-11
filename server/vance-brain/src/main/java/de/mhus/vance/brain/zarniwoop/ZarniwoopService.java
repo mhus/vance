@@ -53,6 +53,7 @@ public class ZarniwoopService {
     private final ObjectProvider<AgrajagChecker> agrajagProvider;
     private final QuotaCache quotaCache;
     private final ZarniwoopUsageCounter usageCounter;
+    private final ZarniwoopGateService gate;
 
     public ZarniwoopService(
             SearchProviderFactory factory,
@@ -60,13 +61,15 @@ public class ZarniwoopService {
             ToolHealthService healthService,
             ObjectProvider<AgrajagChecker> agrajagProvider,
             QuotaCache quotaCache,
-            ZarniwoopUsageCounter usageCounter) {
+            ZarniwoopUsageCounter usageCounter,
+            ZarniwoopGateService gate) {
         this.factory = factory;
         this.settings = settings;
         this.healthService = healthService;
         this.agrajagProvider = agrajagProvider;
         this.quotaCache = quotaCache;
         this.usageCounter = usageCounter;
+        this.gate = gate;
     }
 
     /**
@@ -160,6 +163,11 @@ public class ZarniwoopService {
 
     private boolean isUsable(SearchProviderInstance instance,
                              SearchScope scope, SearchModality modality) {
+        // Operator gate first — a setting or UI override that turned
+        // the instance off short-circuits everything below.
+        if (!gate.isEnabled(scope, instance.id())) {
+            return false;
+        }
         if (instance.availability(scope) != ProviderAvailability.READY) {
             return false;
         }

@@ -117,11 +117,10 @@ public class SearchProviderFactory {
             String endpointId = entry.getKey();
             Map<String, String> fields = entry.getValue();
 
-            String enabled = fields.get(ZarniwoopSettings.SUFFIX_ENABLED.substring(1));
-            if ("false".equalsIgnoreCase(enabled)) {
-                log.debug("Zarniwoop: endpoint '{}' is disabled, skipping", endpointId);
-                continue;
-            }
+            // Endpoints with .enabled=false are still instantiated —
+            // ZarniwoopGateService consults the same setting at
+            // dispatch time, but keeping the instance lets the UI
+            // re-enable it temporarily via a manual override.
 
             String protocolId = fields.get(ZarniwoopSettings.SUFFIX_PROTOCOL.substring(1));
             if (StringUtils.isBlank(protocolId)) {

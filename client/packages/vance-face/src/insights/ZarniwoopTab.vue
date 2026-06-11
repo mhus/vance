@@ -21,6 +21,18 @@ function reload(): void {
   if (props.projectId) state.load(props.projectId);
 }
 
+async function toggleInstance(inst: ZarniwoopInsightsDto): Promise<void> {
+  if (!props.projectId) return;
+  // Effective state right now (after gate resolution) drives the flip;
+  // forcing the opposite value is what the operator means.
+  await state.setOverride(props.projectId, inst.id, !inst.effectivelyEnabled);
+}
+
+async function resetOverride(inst: ZarniwoopInsightsDto): Promise<void> {
+  if (!props.projectId) return;
+  await state.clearOverride(props.projectId, inst.id);
+}
+
 function availabilityClass(availability: string): string {
   switch (availability) {
     case 'READY':
@@ -120,6 +132,7 @@ const now = Date.now();
       <table class="table table-sm">
         <thead>
           <tr>
+            <th class="w-32">Enabled</th>
             <th class="w-40">Instance</th>
             <th class="w-24">Protocol</th>
             <th>Modalities</th>
@@ -131,6 +144,33 @@ const now = Date.now();
         </thead>
         <tbody>
           <tr v-for="inst in sorted" :key="inst.id">
+            <td class="text-xs">
+              <label class="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  class="checkbox checkbox-sm"
+                  :checked="inst.effectivelyEnabled"
+                  :disabled="state.loading.value"
+                  @change="toggleInstance(inst)"
+                />
+                <span
+                  v-if="inst.manualOverride"
+                  class="badge badge--tag"
+                  :title="`Manual override: ${inst.manualOverride}. Settings default: ${inst.defaultEnabled ? 'enabled' : 'disabled'}.`"
+                >override</span>
+                <span
+                  v-else-if="!inst.defaultEnabled"
+                  class="opacity-60 text-xs"
+                  title="Settings have research.endpoint.<id>.enabled=false"
+                >off by default</span>
+              </label>
+              <button
+                v-if="inst.manualOverride"
+                class="btn btn-xs btn-link mt-1"
+                @click="resetOverride(inst)"
+                :disabled="state.loading.value"
+              >reset</button>
+            </td>
             <td class="font-mono">
               {{ inst.id }}
               <div class="text-xs opacity-60">{{ inst.displayName }}</div>
@@ -179,8 +219,10 @@ const now = Date.now();
       </table>
 
       <div class="text-xs opacity-50">
-        Counters are pod-local and reset when the project is suspended.
-        The persistent audit log lives at
+        Counters and manual overrides are pod-local — both reset when
+        the project is suspended. The settings default lives at
+        <span class="font-mono">research.endpoint.&lt;id&gt;.enabled</span>;
+        the persistent audit log at
         <span class="font-mono">_vance/logs/research/</span>.
       </div>
     </template>

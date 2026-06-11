@@ -13,6 +13,18 @@ function reload() {
     if (props.projectId)
         state.load(props.projectId);
 }
+async function toggleInstance(inst) {
+    if (!props.projectId)
+        return;
+    // Effective state right now (after gate resolution) drives the flip;
+    // forcing the opposite value is what the operator means.
+    await state.setOverride(props.projectId, inst.id, !inst.effectivelyEnabled);
+}
+async function resetOverride(inst) {
+    if (!props.projectId)
+        return;
+    await state.clearOverride(props.projectId, inst.id);
+}
 function availabilityClass(availability) {
     switch (availability) {
         case 'READY':
@@ -140,6 +152,9 @@ else {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.thead, __VLS_intrinsicElements.thead)({});
     __VLS_asFunctionalElement(__VLS_intrinsicElements.tr, __VLS_intrinsicElements.tr)({});
     __VLS_asFunctionalElement(__VLS_intrinsicElements.th, __VLS_intrinsicElements.th)({
+        ...{ class: "w-32" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.th, __VLS_intrinsicElements.th)({
         ...{ class: "w-40" },
     });
     __VLS_asFunctionalElement(__VLS_intrinsicElements.th, __VLS_intrinsicElements.th)({
@@ -161,6 +176,60 @@ else {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.tr, __VLS_intrinsicElements.tr)({
             key: (inst.id),
         });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.td, __VLS_intrinsicElements.td)({
+            ...{ class: "text-xs" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.label, __VLS_intrinsicElements.label)({
+            ...{ class: "flex items-center gap-2" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.input)({
+            ...{ onChange: (...[$event]) => {
+                    if (!!(!__VLS_ctx.projectId))
+                        return;
+                    if (!!(__VLS_ctx.state.loading.value))
+                        return;
+                    if (!!(__VLS_ctx.state.error.value))
+                        return;
+                    if (!!(__VLS_ctx.state.instances.value.length === 0))
+                        return;
+                    __VLS_ctx.toggleInstance(inst);
+                } },
+            type: "checkbox",
+            ...{ class: "checkbox checkbox-sm" },
+            checked: (inst.effectivelyEnabled),
+            disabled: (__VLS_ctx.state.loading.value),
+        });
+        if (inst.manualOverride) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "badge badge--tag" },
+                title: (`Manual override: ${inst.manualOverride}. Settings default: ${inst.defaultEnabled ? 'enabled' : 'disabled'}.`),
+            });
+        }
+        else if (!inst.defaultEnabled) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "opacity-60 text-xs" },
+                title: "Settings have research.endpoint.<id>.enabled=false",
+            });
+        }
+        if (inst.manualOverride) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.projectId))
+                            return;
+                        if (!!(__VLS_ctx.state.loading.value))
+                            return;
+                        if (!!(__VLS_ctx.state.error.value))
+                            return;
+                        if (!!(__VLS_ctx.state.instances.value.length === 0))
+                            return;
+                        if (!(inst.manualOverride))
+                            return;
+                        __VLS_ctx.resetOverride(inst);
+                    } },
+                ...{ class: "btn btn-xs btn-link mt-1" },
+                disabled: (__VLS_ctx.state.loading.value),
+            });
+        }
         __VLS_asFunctionalElement(__VLS_intrinsicElements.td, __VLS_intrinsicElements.td)({
             ...{ class: "font-mono" },
         });
@@ -235,6 +304,9 @@ else {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
         ...{ class: "font-mono" },
     });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+        ...{ class: "font-mono" },
+    });
 }
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
@@ -255,12 +327,27 @@ else {
 /** @type {__VLS_StyleScopedClasses['ml-auto']} */ ;
 /** @type {__VLS_StyleScopedClasses['table']} */ ;
 /** @type {__VLS_StyleScopedClasses['table-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['w-32']} */ ;
 /** @type {__VLS_StyleScopedClasses['w-40']} */ ;
 /** @type {__VLS_StyleScopedClasses['w-24']} */ ;
 /** @type {__VLS_StyleScopedClasses['w-32']} */ ;
 /** @type {__VLS_StyleScopedClasses['w-32']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-right']} */ ;
 /** @type {__VLS_StyleScopedClasses['w-40']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['checkbox']} */ ;
+/** @type {__VLS_StyleScopedClasses['checkbox-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['badge']} */ ;
+/** @type {__VLS_StyleScopedClasses['badge--tag']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['btn-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['btn-link']} */ ;
+/** @type {__VLS_StyleScopedClasses['mt-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
@@ -287,6 +374,7 @@ else {
 /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-50']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
 var __VLS_dollars;
 const __VLS_self = (await import('vue')).defineComponent({
     setup() {
@@ -295,6 +383,8 @@ const __VLS_self = (await import('vue')).defineComponent({
             VEmptyState: VEmptyState,
             state: state,
             reload: reload,
+            toggleInstance: toggleInstance,
+            resetOverride: resetOverride,
             availabilityClass: availabilityClass,
             formatTimestamp: formatTimestamp,
             formatDuration: formatDuration,

@@ -136,6 +136,7 @@ export * from './insights/PrakRunInsightsDto';
 export * from './insights/SessionClientToolsDto';
 export * from './insights/SessionInsightsDto';
 export * from './insights/ThinkProcessInsightsDto';
+export * from './insights/ZarniwoopInsightsDto';
 
 export * from './progress/MetricsPayload';
 export * from './progress/PlanNode';

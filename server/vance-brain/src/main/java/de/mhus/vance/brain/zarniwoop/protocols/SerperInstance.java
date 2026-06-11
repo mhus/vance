@@ -117,6 +117,21 @@ class SerperInstance implements SearchProviderInstance {
     }
 
     @Override
+    public String statusText(SearchScope scope) {
+        if (StringUtils.isBlank(resolveApiKey(scope))) {
+            return "no API key configured";
+        }
+        Optional<QuotaStatus> q = currentQuota(scope);
+        if (q.isEmpty()) return null;
+        QuotaStatus s = q.get();
+        StringBuilder out = new StringBuilder();
+        out.append(s.remaining()).append(" credits remaining");
+        if (s.limit() != null) out.append(" / ").append(s.limit());
+        if (s.resetsAt() != null) out.append(" (resets ").append(s.resetsAt()).append(")");
+        return out.toString();
+    }
+
+    @Override
     public Optional<QuotaStatus> currentQuota(SearchScope scope) {
         String apiKey = resolveApiKey(scope);
         if (StringUtils.isBlank(apiKey)) return Optional.empty();

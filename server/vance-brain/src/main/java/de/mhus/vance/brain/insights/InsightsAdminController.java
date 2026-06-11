@@ -14,6 +14,8 @@ import de.mhus.vance.api.insights.PrakRunInsightsDto;
 import de.mhus.vance.api.insights.SessionClientToolsDto;
 import de.mhus.vance.api.insights.SessionInsightsDto;
 import de.mhus.vance.api.insights.ThinkProcessInsightsDto;
+import de.mhus.vance.api.insights.ZarniwoopInsightsDto;
+import de.mhus.vance.brain.zarniwoop.ZarniwoopInsightsService;
 import de.mhus.vance.brain.cluster.ClusterService;
 import de.mhus.vance.shared.addon.AddonInsightsService;
 import de.mhus.vance.brain.recipe.RecipeLoader;
@@ -112,6 +114,7 @@ public class InsightsAdminController {
     private final ClusterService clusterService;
     private final PrakRunService prakRunService;
     private final AddonInsightsService addonInsightsService;
+    private final ZarniwoopInsightsService zarniwoopInsightsService;
     private final RequestAuthority authority;
     private final ObjectMapper objectMapper;
 
@@ -670,6 +673,23 @@ public class InsightsAdminController {
      * on the otherwise hidden entry instead of dropping it silently —
      * this is the diagnostic value the insights tab exists for.
      */
+    /**
+     * Search/research provider instances assembled for the project,
+     * with the current availability verdict, a free-text status line
+     * from the protocol (Serper credits, Wikipedia "no quota meter"
+     * etc.) and the pod-local invocation counter. Read-only —
+     * everything writeable lives in {@code research.endpoint.*}
+     * settings under the standard cascade editor.
+     */
+    @GetMapping("/projects/{project}/insights/zarniwoop")
+    public List<ZarniwoopInsightsDto> listZarniwoopInstances(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("project") String project,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Project(tenant, project), Action.READ);
+        return zarniwoopInsightsService.listInstances(tenant, project);
+    }
+
     @GetMapping("/projects/{project}/insights/tools")
     public List<EffectiveToolDto> listEffectiveTools(
             @PathVariable("tenant") String tenant,

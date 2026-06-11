@@ -39,6 +39,7 @@ import AddonsTab from './AddonsTab.vue';
 import EventsTab from './EventsTab.vue';
 import WorkflowsTab from './WorkflowsTab.vue';
 import RagTab from './RagTab.vue';
+import ZarniwoopTab from './ZarniwoopTab.vue';
 import {
   ChatRole,
   type MarvinNodeInsightsDto,
@@ -92,7 +93,7 @@ const filterStatus = ref<string | null>(null);
 // Sessions = the existing session-walker (default). Recipes / Tools
 // show project-scope read-only views fed from the same project filter
 // as the sidebar.
-type TopTab = 'sessions' | 'recipes' | 'tools' | 'workspace' | 'executions' | 'workflows' | 'events' | 'rag' | 'cluster' | 'addons';
+type TopTab = 'sessions' | 'recipes' | 'tools' | 'workspace' | 'executions' | 'workflows' | 'events' | 'rag' | 'research' | 'cluster' | 'addons';
 const topTab = ref<TopTab>('sessions');
 
 const projectFilterOptions = computed(() => [
@@ -574,6 +575,11 @@ function clickProcessByMongoId(id: string | undefined | null): void {
         >RAG</button>
         <button
           class="tab"
+          :class="{ 'tab--active': topTab === 'research' }"
+          @click="topTab = 'research'"
+        >Research</button>
+        <button
+          class="tab"
           :class="{ 'tab--active': topTab === 'cluster' }"
           @click="topTab = 'cluster'"
         >Cluster</button>
@@ -603,6 +609,7 @@ function clickProcessByMongoId(id: string | undefined | null): void {
       <WorkflowsTab v-else-if="topTab === 'workflows'" :project-id="effectiveProjectId" />
       <EventsTab v-else-if="topTab === 'events'" :project-id="effectiveProjectId" />
       <RagTab v-else-if="topTab === 'rag'" :project-id="effectiveProjectId" />
+      <ZarniwoopTab v-else-if="topTab === 'research'" :project-id="effectiveProjectId" />
       <ClusterTab v-else-if="topTab === 'cluster'" />
       <AddonsTab v-else-if="topTab === 'addons'" />
 

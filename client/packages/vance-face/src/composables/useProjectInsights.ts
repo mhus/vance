@@ -1,6 +1,10 @@
 import { ref, type Ref } from 'vue';
 import { brainFetch } from '@vance/shared';
-import type { EffectiveRecipeDto, EffectiveToolDto } from '@vance/generated';
+import type {
+  EffectiveRecipeDto,
+  EffectiveToolDto,
+  ZarniwoopInsightsDto,
+} from '@vance/generated';
 
 /**
  * REST loaders for the project-level insight tabs (Recipes / Tools).
@@ -83,4 +87,41 @@ export function useEffectiveTools(): UseEffectiveTools {
   }
 
   return { tools, loading, error, load, clear };
+}
+
+export interface UseZarniwoopInsights {
+  instances: Ref<ZarniwoopInsightsDto[]>;
+  loading: Ref<boolean>;
+  error: Ref<string | null>;
+  load: (projectId: string) => Promise<void>;
+  clear: () => void;
+}
+
+export function useZarniwoopInsights(): UseZarniwoopInsights {
+  const instances = ref<ZarniwoopInsightsDto[]>([]);
+  const loading = ref(false);
+  const error = ref<string | null>(null);
+
+  async function load(projectId: string): Promise<void> {
+    loading.value = true;
+    error.value = null;
+    try {
+      instances.value = await brainFetch<ZarniwoopInsightsDto[]>(
+        'GET',
+        `admin/projects/${encodeURIComponent(projectId)}/insights/zarniwoop`,
+      );
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to load search providers.';
+      instances.value = [];
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  function clear(): void {
+    instances.value = [];
+    error.value = null;
+  }
+
+  return { instances, loading, error, load, clear };
 }

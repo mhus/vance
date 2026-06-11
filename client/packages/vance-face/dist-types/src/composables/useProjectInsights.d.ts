@@ -1,5 +1,5 @@
 import { type Ref } from 'vue';
-import type { EffectiveRecipeDto, EffectiveToolDto } from '@vance/generated';
+import type { EffectiveRecipeDto, EffectiveToolDto, ZarniwoopInsightsDto } from '@vance/generated';
 /**
  * REST loaders for the project-level insight tabs (Recipes / Tools).
  * Both endpoints walk the cascade ({@code project → _vance →
@@ -25,4 +25,12 @@ export interface UseEffectiveTools {
 }
 export declare function useEffectiveRecipes(): UseEffectiveRecipes;
 export declare function useEffectiveTools(): UseEffectiveTools;
+export interface UseZarniwoopInsights {
+    instances: Ref<ZarniwoopInsightsDto[]>;
+    loading: Ref<boolean>;
+    error: Ref<string | null>;
+    load: (projectId: string) => Promise<void>;
+    clear: () => void;
+}
+export declare function useZarniwoopInsights(): UseZarniwoopInsights;
 //# sourceMappingURL=useProjectInsights.d.ts.map

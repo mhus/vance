@@ -52,18 +52,21 @@ public class ZarniwoopService {
     private final ToolHealthService healthService;
     private final ObjectProvider<AgrajagChecker> agrajagProvider;
     private final QuotaCache quotaCache;
+    private final ZarniwoopUsageCounter usageCounter;
 
     public ZarniwoopService(
             SearchProviderFactory factory,
             SettingService settings,
             ToolHealthService healthService,
             ObjectProvider<AgrajagChecker> agrajagProvider,
-            QuotaCache quotaCache) {
+            QuotaCache quotaCache,
+            ZarniwoopUsageCounter usageCounter) {
         this.factory = factory;
         this.settings = settings;
         this.healthService = healthService;
         this.agrajagProvider = agrajagProvider;
         this.quotaCache = quotaCache;
+        this.usageCounter = usageCounter;
     }
 
     /**
@@ -89,6 +92,7 @@ public class ZarniwoopService {
             try {
                 SearchResult result = instance.search(req, scope);
                 if (result != null && result.ok()) {
+                    usageCounter.recordSuccess(scope, instance.id(), req.modality());
                     return result;
                 }
                 lastError = result;
@@ -96,6 +100,8 @@ public class ZarniwoopService {
                         instance.id(),
                         result == null ? "(null result)" : result.errorMessage());
             } catch (Throwable t) {
+                usageCounter.recordError(scope, instance.id(), req.modality(),
+                        t.getMessage());
                 handleHardFailure(instance, req, ctx, t);
             }
         }

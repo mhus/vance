@@ -75,6 +75,18 @@ public interface SearchProviderInstance {
     }
 
     /**
+     * Free-text status line for operator-facing UI. Examples:
+     * {@code "1552 credits remaining"} for a Serper endpoint with a
+     * usable {@code /account} response, {@code "rate-limited until
+     * 14:32:10Z"} for a backoff in progress. Returns {@code null} (the
+     * default) when there's nothing to add beyond the structured
+     * {@link #availability(SearchScope)} and {@link #currentQuota(SearchScope)}.
+     */
+    default @org.jspecify.annotations.Nullable String statusText(SearchScope scope) {
+        return null;
+    }
+
+    /**
      * Called by {@code SearchProviderFactory} when the project the
      * instance was built for is suspended. Default is a no-op;
      * protocols with HTTP client pools or persistent sockets close them

@@ -64,7 +64,7 @@ class ZarniwoopServiceTest {
         quotaCache = mock(QuotaCache.class);
         when(quotaCache.get(any(), any())).thenReturn(Optional.empty());
         service = new ZarniwoopService(factory, settings, healthService,
-                agrajagProvider, quotaCache);
+                agrajagProvider, quotaCache, new ZarniwoopUsageCounter());
     }
 
     @Test

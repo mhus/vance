@@ -22,13 +22,15 @@
  *    Calendar). Same render contract as {@code typed-model}; the host
  *    just sourced the entry differently.
  */
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
 import { CodeEditor } from '@/components';
 import type { DocumentDto } from '@vance/generated';
 import ImageView from '@/document/ImageView.vue';
 import type { CortexDocument } from '../types';
 import { useCortexStore } from '../stores/cortexStore';
 import { resolveBinding } from '../docTypeRegistry';
+import { resolveRunAdapter } from '../runners/runnerRegistry';
+import type { RunHandle } from '../runners/types';
 
 interface Props {
   document: CortexDocument;
@@ -251,6 +253,132 @@ watch(
 const showRawEditor = computed<boolean>(
   () => isViewMode.value && viewEditMode.value === 'edit',
 );
+
+// ─── Run adapter (orthogonal capability) ─────────────────────────
+//
+// resolveRunAdapter is independent of the doc-type binding — a JS
+// file might be 'code' mode (catch-all), a Python file might one day
+// be a typed-model view, both can be runnable. The shell composes
+// view + run UI.
+
+const runAdapter = computed(() => resolveRunAdapter(props.document));
+// shallowRef preserves the RunHandle's internal Ref<T> shape — the
+// template + script access {@code .state.value} / {@code .logLines.value}
+// directly, no deep-unwrap surprises.
+const runHandle = shallowRef<RunHandle | null>(null);
+const argsJson = ref('{}');
+const argsError = ref<string | null>(null);
+const runStarting = ref(false);
+
+const runState = computed(() => runHandle.value?.state.value ?? 'idle');
+const isRunning = computed(
+  () => runStarting.value
+    || runState.value === 'starting'
+    || runState.value === 'running',
+);
+
+async function onRun(): Promise<void> {
+  if (!runAdapter.value || !store.projectId) return;
+  if (isRunning.value) return;
+  // Parse args before starting so a typo doesn't kick off a no-op
+  // execution. {} is the implicit default for an empty input.
+  let parsedArgs: Record<string, unknown> = {};
+  argsError.value = null;
+  const raw = argsJson.value.trim();
+  if (raw && raw !== '{}') {
+    try {
+      const v = JSON.parse(raw);
+      if (v === null || typeof v !== 'object' || Array.isArray(v)) {
+        throw new Error('args must be a JSON object');
+      }
+      parsedArgs = v as Record<string, unknown>;
+    } catch (e) {
+      argsError.value = e instanceof Error ? e.message : 'Invalid JSON';
+      return;
+    }
+  }
+  // Detach the previous handle to free its WS / poll listeners
+  // before allocating a new one for the same tab.
+  if (runHandle.value) {
+    runHandle.value.detach();
+    runHandle.value = null;
+  }
+  runStarting.value = true;
+  try {
+    // Backend's scripts/execute loads the document body server-side
+    // via scriptId — if our local buffer has uncommitted edits the
+    // 2s auto-save debounce wouldn't have flushed yet, so the run
+    // would silently execute the previous version. Flush now to
+    // guarantee server sees what the user just typed.
+    if (props.document.dirty) {
+      await store.saveTab(props.document.id);
+    }
+    const handle = await runAdapter.value.execute({
+      doc: props.document,
+      projectId: store.projectId,
+      args: parsedArgs,
+    });
+    runHandle.value = handle;
+  } catch (e) {
+    argsError.value = e instanceof Error ? e.message : 'Run failed';
+  } finally {
+    runStarting.value = false;
+  }
+}
+
+async function onCancel(): Promise<void> {
+  if (!runHandle.value) return;
+  await runHandle.value.cancel();
+}
+
+function onCloseLogPanel(): void {
+  if (runHandle.value) {
+    // Terminal-state handle: detach is fine. Mid-run: detach also
+    // OK — we keep the backend execution running, just stop
+    // listening. The user can navigate back via the next Run.
+    runHandle.value.detach();
+    runHandle.value = null;
+  }
+}
+
+// Tab switch: drop the previous tab's handle so its WS listeners
+// don't leak. The new tab starts with no handle until the user hits
+// Run.
+watch(
+  () => props.document.id,
+  () => {
+    if (runHandle.value) {
+      runHandle.value.detach();
+      runHandle.value = null;
+    }
+    argsJson.value = '{}';
+    argsError.value = null;
+  },
+);
+
+// Final cleanup when the shell unmounts (Cortex closed).
+onBeforeUnmount(() => {
+  if (runHandle.value) {
+    runHandle.value.detach();
+    runHandle.value = null;
+  }
+});
+
+function fmtResult(v: unknown): string {
+  if (v === null || v === undefined) return '(no return value)';
+  if (typeof v === 'string') return v;
+  try {
+    return JSON.stringify(v, null, 2);
+  } catch {
+    return String(v);
+  }
+}
+
+function fmtDuration(ms: number | null): string {
+  if (ms == null) return '';
+  if (ms < 1000) return `${ms} ms`;
+  return `${(ms / 1000).toFixed(2)} s`;
+}
 </script>
 
 <template>
@@ -288,6 +416,34 @@ const showRawEditor = computed<boolean>(
           @click="viewEditMode = 'edit'"
         >Edit</button>
       </div>
+      <!-- Run controls — only when an adapter matches this doc. The
+           args input stays inline; an empty / '{}' string is the
+           implicit default so the user can just hit Run. -->
+      <template v-if="runAdapter">
+        <button
+          v-if="!isRunning"
+          type="button"
+          class="text-xs px-2 py-0.5 rounded border border-base-300 hover:bg-base-200"
+          :title="`${runAdapter.label} — execute the document`"
+          @click="onRun"
+        >▶ {{ runAdapter.label }}</button>
+        <button
+          v-else
+          type="button"
+          class="text-xs px-2 py-0.5 rounded border border-warning/40 bg-warning/10 text-warning hover:bg-warning/20"
+          title="Cancel the running execution"
+          @click="onCancel"
+        >■ Cancel</button>
+        <input
+          v-model="argsJson"
+          type="text"
+          spellcheck="false"
+          class="text-xs font-mono px-2 py-0.5 rounded border w-32"
+          :class="argsError ? 'border-error' : 'border-base-300'"
+          :title="argsError ?? 'JSON args object, default `{}`'"
+          placeholder="{}"
+        />
+      </template>
       <a
         v-if="propertiesUrl"
         :href="propertiesUrl"
@@ -371,5 +527,60 @@ const showRawEditor = computed<boolean>(
         />
       </div>
     </template>
+
+    <!-- Run log panel — collapses the editor area when a run is
+         active or just finished. Closes with the ✕ button; future
+         runs reopen it. -->
+    <div
+      v-if="runHandle"
+      class="flex-none border-t border-base-300 flex flex-col overflow-hidden"
+      style="max-height: 45%; min-height: 8rem;"
+    >
+      <div class="flex items-center gap-2 px-3 py-1 bg-base-200 text-xs font-mono border-b border-base-300">
+        <span
+          class="px-1.5 py-0.5 rounded uppercase tracking-wide"
+          :class="{
+            'bg-info/15 text-info': runState === 'running' || runState === 'starting',
+            'bg-success/15 text-success': runState === 'finished',
+            'bg-error/15 text-error': runState === 'failed',
+            'bg-base-300': runState === 'cancelled' || runState === 'idle',
+          }"
+        >{{ runState }}</span>
+        <span v-if="runHandle.durationMs.value != null" class="opacity-70">
+          {{ fmtDuration(runHandle.durationMs.value) }}
+        </span>
+        <span class="flex-1" />
+        <button
+          type="button"
+          class="opacity-60 hover:opacity-100 hover:bg-base-300 rounded px-1"
+          title="Close log panel"
+          @click="onCloseLogPanel"
+        >✕</button>
+      </div>
+
+      <div
+        v-if="runHandle.error.value"
+        class="px-3 py-1.5 bg-error/10 text-error text-xs font-mono whitespace-pre-wrap border-b border-error/30"
+      >{{ runHandle.error.value }}</div>
+
+      <div class="flex-1 min-h-0 overflow-y-auto font-mono text-xs p-2 leading-tight">
+        <div
+          v-for="(line, i) in runHandle.logLines.value"
+          :key="i"
+          class="whitespace-pre-wrap"
+        >{{ line }}</div>
+        <div v-if="runHandle.logLines.value.length === 0" class="opacity-50">
+          (no log output yet)
+        </div>
+      </div>
+
+      <div
+        v-if="runState === 'finished' && runHandle.result.value !== null"
+        class="border-t border-base-300 px-3 py-1.5 bg-base-200/40 font-mono text-xs whitespace-pre-wrap max-h-32 overflow-y-auto"
+      >
+        <div class="opacity-60 mb-1">result:</div>
+        {{ fmtResult(runHandle.result.value) }}
+      </div>
+    </div>
   </div>
 </template>

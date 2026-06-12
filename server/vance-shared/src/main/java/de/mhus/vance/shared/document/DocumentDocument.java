@@ -77,7 +77,10 @@ public class DocumentDocument {
     /** Logical content size in bytes. */
     private long size;
 
-    /** Storage id ({@code StorageService}) — the body lives there exclusively. */
+    /** Storage id ({@code StorageService}) — the body lives there exclusively.
+     *  Sparse-indexed: inline-text documents leave this {@code null} and aren't
+     *  carried in the index. Looked up by the storage-orphan sweep in batches. */
+    @Indexed(sparse = true)
     private @Nullable String storageId;
 
     /**

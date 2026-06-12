@@ -27,13 +27,15 @@ class DocumentArchiveServiceTest {
 
     private DocumentArchiveRepository repository;
     private StorageService storageService;
+    private org.springframework.data.mongodb.core.MongoTemplate mongoTemplate;
     private DocumentArchiveService service;
 
     @BeforeEach
     void setUp() {
         repository = mock(DocumentArchiveRepository.class);
         storageService = mock(StorageService.class);
-        service = new DocumentArchiveService(repository, storageService);
+        mongoTemplate = mock(org.springframework.data.mongodb.core.MongoTemplate.class);
+        service = new DocumentArchiveService(repository, storageService, mongoTemplate);
         when(repository.save(any(DocumentArchiveDocument.class)))
                 .thenAnswer(inv -> {
                     DocumentArchiveDocument a = inv.getArgument(0);

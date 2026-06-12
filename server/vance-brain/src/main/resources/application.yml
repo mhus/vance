@@ -50,6 +50,19 @@ vance:
   storage:
     chunk-size: 524288            # 512 KB
     cleanup-interval-ms: 900000   # 15 min
+    orphanSweep:
+      # Cluster-master-only periodic orphan-cleanup. Two phases:
+      #   1) Archive entries whose lineage has no live document left
+      #      (leaked by a crashed DocumentService.delete).
+      #   2) Storage blobs older than gracePeriod that no document and
+      #      no archive references.
+      # Memory stays at O(batchSize) — Mongo cursors stream both passes.
+      # See StorageOrphanCleanupService for the write-order / race
+      # analysis behind the grace value.
+      interval: PT1H
+      initialDelay: PT5M
+      gracePeriod: PT1H
+      batchSize: 500
   services:
     storage-cleanup: true         # this brain instance runs the cleanup
     magrathea: true                  # workflow subsystem (planning/workflow-service.md)

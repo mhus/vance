@@ -221,6 +221,13 @@ class DocumentServiceStreamingTest {
             return id;
         }
 
+        @Override
+        public void forEachFinalStorageIdOlderThan(
+                java.time.Instant cutoff, int batchSize,
+                java.util.function.Consumer<java.util.List<String>> batchHandler) {
+            // Streaming test doesn't drive the orphan sweep — no-op is safe.
+        }
+
         long size(String storageId) {
             byte[] data = blobs.get(storageId);
             return data == null ? 0 : data.length;

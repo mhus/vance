@@ -6,13 +6,22 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.function.Consumer;
 import java.util.zip.GZIPInputStream;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import java.util.stream.Stream;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Service;
 
 /**
@@ -46,6 +55,7 @@ public class DocumentArchiveService {
 
     private final DocumentArchiveRepository repository;
     private final StorageService storageService;
+    private final MongoTemplate mongoTemplate;
 
     /**
      * Snapshot {@code doc} into a new archive entry. The live document's
@@ -269,4 +279,57 @@ public class DocumentArchiveService {
             @Nullable String title,
             List<String> tags) {
     }
+
+    // ────────────────────────────────────────────────────────────────────
+    // Orphan-cleanup support — read-only batch + cursor helpers used by
+    // StorageOrphanCleanupService. The cursor variant streams the
+    // collection chunk by chunk so the JVM heap stays at O(batchSize)
+    // regardless of how many archives exist.
+    // ────────────────────────────────────────────────────────────────────
+
+    /**
+     * Of the given {@code storageIds}, returns the subset that at least one
+     * archive entry still references.
+     */
+    public Set<String> findReferencedStorageIds(Collection<String> storageIds) {
+        if (storageIds == null || storageIds.isEmpty()) return Set.of();
+        Query q = new Query(Criteria.where("storageId").in(storageIds));
+        q.fields().include("storageId");
+        Set<String> found = new HashSet<>();
+        for (DocumentArchiveDocument a : mongoTemplate.find(q, DocumentArchiveDocument.class)) {
+            if (a.getStorageId() != null) found.add(a.getStorageId());
+        }
+        return found;
+    }
+
+    /**
+     * Stream-iterate every archive entry, calling {@code batchHandler} per
+     * full batch (last batch may be partial). Cursor is closed on exit even
+     * if the handler throws. Projection: {@code id} + {@code lineageId} only
+     * — handler must not assume any other fields are populated.
+     */
+    public void forEachArchive(int batchSize, Consumer<List<ArchiveOrphanCandidate>> batchHandler) {
+        if (batchSize <= 0) throw new IllegalArgumentException("batchSize must be > 0");
+        Query q = new Query();
+        q.fields().include("_id").include("lineageId");
+        List<ArchiveOrphanCandidate> batch = new ArrayList<>(batchSize);
+        try (Stream<DocumentArchiveDocument> stream =
+                     mongoTemplate.stream(q, DocumentArchiveDocument.class)) {
+            for (DocumentArchiveDocument a : (Iterable<DocumentArchiveDocument>) stream::iterator) {
+                if (a.getId() == null) continue;
+                batch.add(new ArchiveOrphanCandidate(a.getId(),
+                        a.getLineageId() == null ? "" : a.getLineageId()));
+                if (batch.size() >= batchSize) {
+                    batchHandler.accept(batch);
+                    batch = new ArrayList<>(batchSize);
+                }
+            }
+        }
+        if (!batch.isEmpty()) {
+            batchHandler.accept(batch);
+        }
+    }
+
+    /** Trimmed projection of an archive for orphan-detection. */
+    public record ArchiveOrphanCandidate(String archiveId, String lineageId) {}
 }

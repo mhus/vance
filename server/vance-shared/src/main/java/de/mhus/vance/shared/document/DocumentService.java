@@ -2257,6 +2257,48 @@ public class DocumentService {
         int subfolderCount;
     }
 
+    // ────────────────────────────────────────────────────────────────────
+    // Orphan-cleanup support — read-only batch queries used by
+    // StorageOrphanCleanupService. Both methods project a single field
+    // so the response stays at O(batchSize) regardless of document size.
+    // ────────────────────────────────────────────────────────────────────
+
+    /**
+     * Of the given {@code storageIds}, returns the subset that at least one
+     * live document still references. The complement is "no document points
+     * to this storage" — the cleanup-sweep then asks the archive side too
+     * before declaring the blob an orphan.
+     */
+    public java.util.Set<String> findReferencedStorageIds(
+            java.util.Collection<String> storageIds) {
+        if (storageIds == null || storageIds.isEmpty()) return java.util.Set.of();
+        Query q = new Query(Criteria.where("storageId").in(storageIds));
+        q.fields().include("storageId");
+        java.util.Set<String> found = new java.util.HashSet<>();
+        for (DocumentDocument d : mongoTemplate.find(q, DocumentDocument.class)) {
+            if (d.getStorageId() != null) found.add(d.getStorageId());
+        }
+        return found;
+    }
+
+    /**
+     * Of the given {@code lineageIds}, returns the subset for which at least
+     * one live document still exists. The complement is "no live document
+     * left in this lineage" — those lineage's archives are orphans that the
+     * cleanup-sweep should remove.
+     */
+    public java.util.Set<String> findLineageIdsWithLiveDocument(
+            java.util.Collection<String> lineageIds) {
+        if (lineageIds == null || lineageIds.isEmpty()) return java.util.Set.of();
+        Query q = new Query(Criteria.where("lineageId").in(lineageIds));
+        q.fields().include("lineageId");
+        java.util.Set<String> found = new java.util.HashSet<>();
+        for (DocumentDocument d : mongoTemplate.find(q, DocumentDocument.class)) {
+            if (d.getLineageId() != null) found.add(d.getLineageId());
+        }
+        return found;
+    }
+
     public static class DocumentAlreadyExistsException extends RuntimeException {
         public DocumentAlreadyExistsException(String message) {
             super(message);

@@ -10,7 +10,6 @@ import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.index.CompoundIndex;
 import org.springframework.data.mongodb.core.index.CompoundIndexes;
-import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 /**
@@ -19,7 +18,14 @@ import org.springframework.data.mongodb.core.mapping.Document;
  */
 @Document(collection = "storage_data")
 @CompoundIndexes({
-        @CompoundIndex(name = "uuid_index_idx", def = "{ 'uuid': 1, 'index': 1 }", unique = true)
+        @CompoundIndex(name = "uuid_index_idx", def = "{ 'uuid': 1, 'index': 1 }", unique = true),
+        // Orphan-storage sweep driver: iterate final chunks in createdAt order,
+        // honouring the grace period via the createdAt range filter. Partial
+        // filter keeps the index at one entry per blob (one final chunk per
+        // uuid), not one per data chunk.
+        @CompoundIndex(name = "final_createdAt_idx",
+                def = "{ 'isFinal': 1, 'createdAt': 1 }",
+                partialFilter = "{ 'isFinal': true }")
 })
 @Data
 @Builder
@@ -45,8 +51,8 @@ class StorageData {
     /** Chunk payload — at most {@code chunkSize} bytes. */
     private byte @Nullable [] data;
 
-    /** True on the last chunk — marks end of file and carries the total {@link #size}. */
-    @Indexed
+    /** True on the last chunk — marks end of file and carries the total {@link #size}.
+     *  Indexed via the {@code final_createdAt_idx} compound partial index. */
     private boolean isFinal;
 
     /** Total blob size in bytes. Only meaningful on the final chunk. */

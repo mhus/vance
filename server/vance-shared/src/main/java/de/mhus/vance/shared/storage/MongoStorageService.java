@@ -2,14 +2,21 @@ package de.mhus.vance.shared.storage;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.Consumer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.IncorrectResultSizeDataAccessException;
+import java.util.stream.Stream;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,6 +38,7 @@ public class MongoStorageService extends StorageService {
 
     private final StorageDataRepository storageDataRepository;
     private final StorageDeleteRepository storageDeleteRepository;
+    private final MongoTemplate mongoTemplate;
 
     @Value("${vance.storage.chunk-size:524288}")
     private int chunkSize;
@@ -185,6 +193,30 @@ public class MongoStorageService extends StorageService {
             } catch (IOException e) {
                 log.warn("Error closing source stream", e);
             }
+        }
+    }
+
+    @Override
+    public void forEachFinalStorageIdOlderThan(
+            Instant cutoff, int batchSize, Consumer<List<String>> batchHandler) {
+        if (batchSize <= 0) throw new IllegalArgumentException("batchSize must be > 0");
+        Query q = new Query(Criteria.where("isFinal").is(true)
+                .and("createdAt").lt(Date.from(cutoff)));
+        q.fields().include("uuid");
+        List<String> batch = new ArrayList<>(batchSize);
+        try (Stream<StorageData> stream = mongoTemplate.stream(q, StorageData.class)) {
+            for (StorageData chunk : (Iterable<StorageData>) stream::iterator) {
+                String uuid = chunk.getUuid();
+                if (uuid == null || uuid.isBlank()) continue;
+                batch.add(uuid);
+                if (batch.size() >= batchSize) {
+                    batchHandler.accept(batch);
+                    batch = new ArrayList<>(batchSize);
+                }
+            }
+        }
+        if (!batch.isEmpty()) {
+            batchHandler.accept(batch);
         }
     }
 }

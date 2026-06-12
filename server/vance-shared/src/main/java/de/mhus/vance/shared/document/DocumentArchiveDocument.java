@@ -13,6 +13,7 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.index.CompoundIndex;
 import org.springframework.data.mongodb.core.index.CompoundIndexes;
+import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 /**
@@ -76,7 +77,9 @@ public class DocumentArchiveDocument {
     private long size;
 
     /** Storage id moved over from the live document at archive-time. {@code null}
-     *  when the archived version was inline-only. */
+     *  when the archived version was inline-only. Sparse-indexed for the
+     *  storage-orphan sweep's batch lookup. */
+    @Indexed(sparse = true)
     private @Nullable String storageId;
 
     /** Mirrors {@link DocumentDocument#isCompressed()} — set on the archive at

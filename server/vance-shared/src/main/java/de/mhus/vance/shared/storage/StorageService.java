@@ -1,7 +1,10 @@
 package de.mhus.vance.shared.storage;
 
 import java.io.InputStream;
+import java.time.Instant;
 import java.util.Date;
+import java.util.List;
+import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -52,6 +55,24 @@ public abstract class StorageService {
             return false;
         }
     }
+
+    /**
+     * Stream-iterate the storage ids of every <em>completely written</em>
+     * blob whose write finished before {@code cutoff}, calling
+     * {@code batchHandler} per full batch (last batch may be partial).
+     *
+     * <p>"Completely written" = the blob's final chunk has been persisted.
+     * In-flight uploads are excluded automatically — there is no final chunk
+     * yet. The {@code cutoff} on top of that gives an explicit grace period
+     * for writes whose entity-side persist hasn't caught up yet (see the
+     * write-order analysis in {@link StorageOrphanCleanupService}).
+     *
+     * <p>Used by {@link StorageOrphanCleanupService} for the cluster-master
+     * orphan-storage sweep — must keep JVM memory at O(batchSize) regardless
+     * of total blob count.
+     */
+    public abstract void forEachFinalStorageIdOlderThan(
+            Instant cutoff, int batchSize, Consumer<List<String>> batchHandler);
 
     /** Metadata record returned from {@link #store}, {@link #info} and friends. */
     public record StorageInfo(

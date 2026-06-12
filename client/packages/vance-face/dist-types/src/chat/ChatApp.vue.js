@@ -650,7 +650,7 @@ if (__VLS_ctx.errorMessage) {
     }
     else if (__VLS_ctx.mode === 'failed') {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-            ...{ class: "mt-2" },
+            ...{ class: "mt-2 flex gap-2" },
         });
         const __VLS_37 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
@@ -672,6 +672,38 @@ if (__VLS_ctx.errorMessage) {
         __VLS_40.slots.default;
         (__VLS_ctx.$t('chat.backToPicker'));
         var __VLS_40;
+        if (__VLS_ctx.activeSessionId) {
+            const __VLS_45 = {}.VButton;
+            /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+            // @ts-ignore
+            const __VLS_46 = __VLS_asFunctionalComponent(__VLS_45, new __VLS_45({
+                ...{ 'onClick': {} },
+                variant: "ghost",
+            }));
+            const __VLS_47 = __VLS_46({
+                ...{ 'onClick': {} },
+                variant: "ghost",
+            }, ...__VLS_functionalComponentArgsRest(__VLS_46));
+            let __VLS_49;
+            let __VLS_50;
+            let __VLS_51;
+            const __VLS_52 = {
+                onClick: (...[$event]) => {
+                    if (!(__VLS_ctx.errorMessage))
+                        return;
+                    if (!!(__VLS_ctx.mode === 'occupied'))
+                        return;
+                    if (!(__VLS_ctx.mode === 'failed'))
+                        return;
+                    if (!(__VLS_ctx.activeSessionId))
+                        return;
+                    __VLS_ctx.openAndBind(__VLS_ctx.activeSessionId ?? '');
+                }
+            };
+            __VLS_48.slots.default;
+            (__VLS_ctx.$t('chat.tryAgain'));
+            var __VLS_48;
+        }
     }
     var __VLS_20;
 }
@@ -681,7 +713,7 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.d
 if (__VLS_ctx.mode === 'picker' && __VLS_ctx.socket) {
     /** @type {[typeof PickerView, ]} */ ;
     // @ts-ignore
-    const __VLS_45 = __VLS_asFunctionalComponent(PickerView, new PickerView({
+    const __VLS_53 = __VLS_asFunctionalComponent(PickerView, new PickerView({
         ...{ 'onSessionPicked': {} },
         ...{ 'onSessionBootstrapped': {} },
         ...{ 'onFocusMain': {} },
@@ -691,7 +723,7 @@ if (__VLS_ctx.mode === 'picker' && __VLS_ctx.socket) {
         socket: (__VLS_ctx.socket),
         username: (__VLS_ctx.username),
     }));
-    const __VLS_46 = __VLS_45({
+    const __VLS_54 = __VLS_53({
         ...{ 'onSessionPicked': {} },
         ...{ 'onSessionBootstrapped': {} },
         ...{ 'onFocusMain': {} },
@@ -700,35 +732,35 @@ if (__VLS_ctx.mode === 'picker' && __VLS_ctx.socket) {
         selectedProject: (__VLS_ctx.pickerProjectName),
         socket: (__VLS_ctx.socket),
         username: (__VLS_ctx.username),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_45));
-    let __VLS_48;
-    let __VLS_49;
-    let __VLS_50;
-    const __VLS_51 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_53));
+    let __VLS_56;
+    let __VLS_57;
+    let __VLS_58;
+    const __VLS_59 = {
         onSessionPicked: (__VLS_ctx.onSessionPicked)
     };
-    const __VLS_52 = {
+    const __VLS_60 = {
         onSessionBootstrapped: (__VLS_ctx.onSessionBootstrapped)
     };
-    const __VLS_53 = {
+    const __VLS_61 = {
         onFocusMain: (...[$event]) => {
             if (!(__VLS_ctx.mode === 'picker' && __VLS_ctx.socket))
                 return;
             __VLS_ctx.focusZone = 'main';
         }
     };
-    const __VLS_54 = {
+    const __VLS_62 = {
         onProjectPick: (__VLS_ctx.onPickerProjectPick)
     };
-    const __VLS_55 = {
+    const __VLS_63 = {
         onProjectResolved: (__VLS_ctx.onPickerProjectResolved)
     };
-    var __VLS_47;
+    var __VLS_55;
 }
 else if (__VLS_ctx.liveOk) {
     /** @type {[typeof ChatView, ]} */ ;
     // @ts-ignore
-    const __VLS_56 = __VLS_asFunctionalComponent(ChatView, new ChatView({
+    const __VLS_64 = __VLS_asFunctionalComponent(ChatView, new ChatView({
         ...{ 'onLeave': {} },
         ...{ 'onHub': {} },
         ...{ 'onSpeakMessage': {} },
@@ -748,7 +780,7 @@ else if (__VLS_ctx.liveOk) {
         chatProjectId: (__VLS_ctx.chatProjectId),
         followUpSuggestion: (__VLS_ctx.followUpSuggestion),
     }));
-    const __VLS_57 = __VLS_56({
+    const __VLS_65 = __VLS_64({
         ...{ 'onLeave': {} },
         ...{ 'onHub': {} },
         ...{ 'onSpeakMessage': {} },
@@ -767,43 +799,43 @@ else if (__VLS_ctx.liveOk) {
         chatProcessName: (__VLS_ctx.chatProcessName),
         chatProjectId: (__VLS_ctx.chatProjectId),
         followUpSuggestion: (__VLS_ctx.followUpSuggestion),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_56));
-    let __VLS_59;
-    let __VLS_60;
-    let __VLS_61;
-    const __VLS_62 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_64));
+    let __VLS_67;
+    let __VLS_68;
+    let __VLS_69;
+    const __VLS_70 = {
         onLeave: (__VLS_ctx.leaveLive)
     };
-    const __VLS_63 = {
+    const __VLS_71 = {
         onHub: (__VLS_ctx.backToHub)
     };
-    const __VLS_64 = {
+    const __VLS_72 = {
         onSpeakMessage: (__VLS_ctx.onSpeakMessageFromView)
     };
-    const __VLS_65 = {
+    const __VLS_73 = {
         onNoteActivity: (__VLS_ctx.onNoteActivityFromView)
     };
-    const __VLS_66 = {
+    const __VLS_74 = {
         onHistoryLoaded: (__VLS_ctx.onHistoryLoadedFromView)
     };
-    const __VLS_67 = {
+    const __VLS_75 = {
         onAskUserPick: (__VLS_ctx.onAskUserPickFromView)
     };
-    const __VLS_68 = {
+    const __VLS_76 = {
         onWizardDeepLink: (__VLS_ctx.onWizardDeepLinkFromView)
     };
-    const __VLS_69 = {
+    const __VLS_77 = {
         onProjectResolved: (__VLS_ctx.onChatViewProjectResolved)
     };
-    const __VLS_70 = {
+    const __VLS_78 = {
         onLastAssistantChanged: (__VLS_ctx.onLastAssistantChangedFromView)
     };
-    const __VLS_71 = {
+    const __VLS_79 = {
         onAcceptFollowUp: (__VLS_ctx.onAcceptFollowUpFromView)
     };
     /** @type {typeof __VLS_ctx.chatViewRef} */ ;
-    var __VLS_72 = {};
-    var __VLS_58;
+    var __VLS_80 = {};
+    var __VLS_66;
 }
 else if (__VLS_ctx.mode === 'connecting') {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -816,29 +848,29 @@ else if (__VLS_ctx.mode === 'connecting') {
     if (__VLS_ctx.liveOk) {
         /** @type {[typeof ChatRightPanel, ]} */ ;
         // @ts-ignore
-        const __VLS_74 = __VLS_asFunctionalComponent(ChatRightPanel, new ChatRightPanel({
+        const __VLS_82 = __VLS_asFunctionalComponent(ChatRightPanel, new ChatRightPanel({
             ...{ 'onPromptReady': {} },
             ref: "rightPanelRef",
             events: (__VLS_ctx.progressEvents),
             projectId: (__VLS_ctx.chatProjectId || undefined),
             sessionKey: (__VLS_ctx.chatProcessName ?? undefined),
         }));
-        const __VLS_75 = __VLS_74({
+        const __VLS_83 = __VLS_82({
             ...{ 'onPromptReady': {} },
             ref: "rightPanelRef",
             events: (__VLS_ctx.progressEvents),
             projectId: (__VLS_ctx.chatProjectId || undefined),
             sessionKey: (__VLS_ctx.chatProcessName ?? undefined),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_74));
-        let __VLS_77;
-        let __VLS_78;
-        let __VLS_79;
-        const __VLS_80 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_82));
+        let __VLS_85;
+        let __VLS_86;
+        let __VLS_87;
+        const __VLS_88 = {
             onPromptReady: (__VLS_ctx.onPromptReadyFromRightPanel)
         };
         /** @type {typeof __VLS_ctx.rightPanelRef} */ ;
-        var __VLS_81 = {};
-        var __VLS_76;
+        var __VLS_89 = {};
+        var __VLS_84;
     }
 }
 {
@@ -846,7 +878,7 @@ else if (__VLS_ctx.mode === 'connecting') {
     if (__VLS_ctx.liveOk) {
         /** @type {[typeof ChatComposer, ]} */ ;
         // @ts-ignore
-        const __VLS_83 = __VLS_asFunctionalComponent(ChatComposer, new ChatComposer({
+        const __VLS_91 = __VLS_asFunctionalComponent(ChatComposer, new ChatComposer({
             ...{ 'onHub': {} },
             ...{ 'onLocalEcho': {} },
             ...{ 'onRollbackEcho': {} },
@@ -861,7 +893,7 @@ else if (__VLS_ctx.mode === 'connecting') {
             mediation: (__VLS_ctx.mediation),
             followUpSuggestion: (__VLS_ctx.followUpSuggestion),
         }));
-        const __VLS_84 = __VLS_83({
+        const __VLS_92 = __VLS_91({
             ...{ 'onHub': {} },
             ...{ 'onLocalEcho': {} },
             ...{ 'onRollbackEcho': {} },
@@ -875,31 +907,31 @@ else if (__VLS_ctx.mode === 'connecting') {
             chatProjectId: (__VLS_ctx.chatProjectId),
             mediation: (__VLS_ctx.mediation),
             followUpSuggestion: (__VLS_ctx.followUpSuggestion),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_83));
-        let __VLS_86;
-        let __VLS_87;
-        let __VLS_88;
-        const __VLS_89 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_91));
+        let __VLS_94;
+        let __VLS_95;
+        let __VLS_96;
+        const __VLS_97 = {
             onHub: (__VLS_ctx.backToHub)
         };
-        const __VLS_90 = {
+        const __VLS_98 = {
             onLocalEcho: (__VLS_ctx.onLocalEchoFromComposer)
         };
-        const __VLS_91 = {
+        const __VLS_99 = {
             onRollbackEcho: (__VLS_ctx.onRollbackEchoFromComposer)
         };
-        const __VLS_92 = {
+        const __VLS_100 = {
             onTextChanged: (__VLS_ctx.onComposerTextChanged)
         };
-        const __VLS_93 = {
+        const __VLS_101 = {
             onFollowUpAccepted: (__VLS_ctx.onFollowUpAcceptedFromComposer)
         };
-        const __VLS_94 = {
+        const __VLS_102 = {
             onFocusChanged: (__VLS_ctx.onComposerFocusChanged)
         };
         /** @type {typeof __VLS_ctx.composerRef} */ ;
-        var __VLS_95 = {};
-        var __VLS_85;
+        var __VLS_103 = {};
+        var __VLS_93;
     }
 }
 var __VLS_3;
@@ -914,13 +946,15 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['mt-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
 /** @type {__VLS_StyleScopedClasses['p-6']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
 // @ts-ignore
-var __VLS_73 = __VLS_72, __VLS_82 = __VLS_81, __VLS_96 = __VLS_95;
+var __VLS_81 = __VLS_80, __VLS_90 = __VLS_89, __VLS_104 = __VLS_103;
 var __VLS_dollars;
 const __VLS_self = (await import('vue')).defineComponent({
     setup() {

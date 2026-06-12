@@ -1,4 +1,23 @@
 import type { CortexDocument, FolderNode } from '../types';
+/**
+ * Heuristic for "this document is not text we should pull as inline
+ * content". Mirrors the same check in clientToolService.ts — images
+ * and other binaries are surfaced by their renderer (e.g. ImageView
+ * loads via documentContentUrl) and don't need their bytes streamed
+ * into JS memory.
+ */
+export declare function isBinaryMime(mime: string | null | undefined): boolean;
+/**
+ * Document-level binary check. Uses the mime when present, falls back
+ * to extension when the mime is blank or generic. Routes binding
+ * resolution to the read-only preview path and gates the save pipeline
+ * so a stray dirty-flag can't overwrite a binary file with the empty
+ * inlineText we (correctly) declined to load.
+ */
+export declare function isBinaryDoc(doc: {
+    mimeType?: string | null;
+    path: string;
+}): boolean;
 interface CreateBody {
     path: string;
     title?: string | null;
@@ -98,6 +117,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
     saveAllDirty: () => Promise<void>;
     createFile: (body: CreateBody) => Promise<CortexDocument>;
     deleteFile: (id: string) => Promise<void>;
+    addVirtualFolder: (path: string) => void;
     currentSelection: import("vue").Ref<{
         docId: string;
         docPath: string;
@@ -113,7 +133,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
     } | null>;
     setSelection: (sel: CortexSelection | null) => void;
     clearSelection: () => void;
-}, "projectId" | "error" | "loading" | "files" | "openTabs" | "activeTabId" | "currentSelection">, Pick<{
+}, "projectId" | "files" | "openTabs" | "activeTabId" | "loading" | "error" | "currentSelection">, Pick<{
     projectId: import("vue").Ref<string | null, string | null>;
     files: import("vue").Ref<{
         id: string;
@@ -179,6 +199,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
     saveAllDirty: () => Promise<void>;
     createFile: (body: CreateBody) => Promise<CortexDocument>;
     deleteFile: (id: string) => Promise<void>;
+    addVirtualFolder: (path: string) => void;
     currentSelection: import("vue").Ref<{
         docId: string;
         docPath: string;
@@ -260,6 +281,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
     saveAllDirty: () => Promise<void>;
     createFile: (body: CreateBody) => Promise<CortexDocument>;
     deleteFile: (id: string) => Promise<void>;
+    addVirtualFolder: (path: string) => void;
     currentSelection: import("vue").Ref<{
         docId: string;
         docPath: string;
@@ -275,6 +297,6 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
     } | null>;
     setSelection: (sel: CortexSelection | null) => void;
     clearSelection: () => void;
-}, "clearSelection" | "loadList" | "openFile" | "reloadTab" | "moveFile" | "uploadExternalFile" | "setActiveTab" | "closeTab" | "updateActiveContent" | "saveActive" | "saveTab" | "saveAllDirty" | "createFile" | "deleteFile" | "setSelection">>;
+}, "loadList" | "openFile" | "reloadTab" | "moveFile" | "uploadExternalFile" | "setActiveTab" | "closeTab" | "updateActiveContent" | "saveActive" | "saveTab" | "saveAllDirty" | "createFile" | "deleteFile" | "addVirtualFolder" | "setSelection" | "clearSelection">>;
 export {};
 //# sourceMappingURL=cortexStore.d.ts.map

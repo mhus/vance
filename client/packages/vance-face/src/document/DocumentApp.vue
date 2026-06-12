@@ -499,6 +499,23 @@ watch(
   },
 );
 
+// True while the user is editing an _app.yaml manifest in the generic
+// document editor (typically reached via the per-row "edit as file"
+// shortcut, or via a Cortex deep-link). The detail strip surfaces a
+// jump button so the user is never stuck without a way back to the
+// dedicated Applications page.
+const selectedIsAppDocument = computed<boolean>(() => {
+  const sel = docsState.selected.value;
+  if (!sel) return false;
+  return sel.kind === 'application' && !!sel.path?.endsWith('/_app.yaml');
+});
+
+const selectedAppEditorUrl = computed<string | null>(() => {
+  const sel = docsState.selected.value;
+  if (!sel?.id || !selectedIsAppDocument.value) return null;
+  return `/app.html?documentId=${encodeURIComponent(sel.id)}`;
+});
+
 const projectOptions = computed<{ value: string; label: string; group?: string }[]>(() => {
   const groupNameById = new Map<string, string>();
   for (const g of projectsState.groups.value) {
@@ -2108,6 +2125,12 @@ const formatBytes = (n: number): string => {
               class="badge badge-info badge-sm"
               :title="$t('documents.detail.kindBadgeTooltip')"
             >{{ $t('documents.detail.kindLabel', { kind: docsState.selected.value.kind }) }}</span>
+            <a
+              v-if="selectedAppEditorUrl"
+              :href="selectedAppEditorUrl"
+              class="badge badge-primary badge-sm cursor-pointer hover:no-underline"
+              :title="$t('documents.detail.openApplicationEditorTooltip')"
+            >{{ $t('documents.detail.openApplicationEditor') }} ↗</a>
             <span
               v-if="isDirty"
               class="badge badge-warning badge-sm"

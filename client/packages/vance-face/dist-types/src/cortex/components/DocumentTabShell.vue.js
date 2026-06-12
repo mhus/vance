@@ -1,6 +1,7 @@
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
-import { CodeEditor } from '@/components';
+import { CodeEditor, MarkdownView } from '@/components';
 import ImageView from '@/document/ImageView.vue';
+import DocumentPreview from '@/document/DocumentPreview.vue';
 import { useCortexStore } from '../stores/cortexStore';
 import { resolveBinding } from '../docTypeRegistry';
 import { resolveRunAdapter } from '../runners/runnerRegistry';
@@ -186,6 +187,21 @@ const viewBindings = computed(() => {
     return { document: docDtoForView.value };
 });
 const isViewMode = computed(() => binding.value.mode === 'typed-model' || binding.value.mode === 'kind-registry');
+// Markdown gets the same view/edit toggle as the kind-registry modes:
+// rendered MarkdownView in 'view', raw CodeEditor in 'edit'. The
+// catch-all 'code' binding resolves these documents (no dedicated
+// Markdown binding in the registry) so the toggle gates inside the
+// 'code' branch below rather than the typed-model / kind-registry
+// template.
+const isMarkdownDocument = computed(() => {
+    if (binding.value.mode !== 'code')
+        return false;
+    const lower = props.document.path.toLowerCase();
+    if (lower.endsWith('.md') || lower.endsWith('.markdown'))
+        return true;
+    return (props.document.mimeType ?? '').toLowerCase().startsWith('text/markdown');
+});
+const showToggle = computed(() => isViewMode.value || isMarkdownDocument.value);
 const viewEditMode = ref('view');
 watch(() => props.document.id, () => {
     viewEditMode.value = 'view';
@@ -355,7 +371,7 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.
     ...{ class: "font-mono opacity-80 truncate" },
 });
 (__VLS_ctx.document.path);
-if (__VLS_ctx.isViewMode) {
+if (__VLS_ctx.showToggle) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "flex border border-base-300 rounded overflow-hidden text-xs" },
         role: "group",
@@ -363,7 +379,7 @@ if (__VLS_ctx.isViewMode) {
     });
     __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
         ...{ onClick: (...[$event]) => {
-                if (!(__VLS_ctx.isViewMode))
+                if (!(__VLS_ctx.showToggle))
                     return;
                 __VLS_ctx.viewEditMode = 'view';
             } },
@@ -374,7 +390,7 @@ if (__VLS_ctx.isViewMode) {
     });
     __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
         ...{ onClick: (...[$event]) => {
-                if (!(__VLS_ctx.isViewMode))
+                if (!(__VLS_ctx.showToggle))
                     return;
                 __VLS_ctx.viewEditMode = 'edit';
             } },
@@ -457,35 +473,49 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.
 });
 (__VLS_ctx.binding.id);
 (__VLS_ctx.binding.mode === 'code' ? __VLS_ctx.effectiveMimeType : (__VLS_ctx.document.mimeType ?? __VLS_ctx.binding.mode));
-if (__VLS_ctx.binding.mode === 'code') {
+if (__VLS_ctx.binding.mode === 'code' && __VLS_ctx.isMarkdownDocument && __VLS_ctx.viewEditMode === 'view') {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "flex-1 min-h-0 overflow-auto px-4 py-2" },
+    });
+    const __VLS_0 = {}.MarkdownView;
+    /** @type {[typeof __VLS_components.MarkdownView, ]} */ ;
+    // @ts-ignore
+    const __VLS_1 = __VLS_asFunctionalComponent(__VLS_0, new __VLS_0({
+        source: (__VLS_ctx.document.inlineText),
+    }));
+    const __VLS_2 = __VLS_1({
+        source: (__VLS_ctx.document.inlineText),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_1));
+}
+else if (__VLS_ctx.binding.mode === 'code') {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "flex-1 min-h-0 overflow-hidden cortex-code-host" },
     });
-    const __VLS_0 = {}.CodeEditor;
+    const __VLS_4 = {}.CodeEditor;
     /** @type {[typeof __VLS_components.CodeEditor, ]} */ ;
     // @ts-ignore
-    const __VLS_1 = __VLS_asFunctionalComponent(__VLS_0, new __VLS_0({
+    const __VLS_5 = __VLS_asFunctionalComponent(__VLS_4, new __VLS_4({
         ...{ 'onUpdate:modelValue': {} },
         ...{ 'onSelectionChanged': {} },
         modelValue: (__VLS_ctx.document.inlineText),
         mimeType: (__VLS_ctx.effectiveMimeType),
     }));
-    const __VLS_2 = __VLS_1({
+    const __VLS_6 = __VLS_5({
         ...{ 'onUpdate:modelValue': {} },
         ...{ 'onSelectionChanged': {} },
         modelValue: (__VLS_ctx.document.inlineText),
         mimeType: (__VLS_ctx.effectiveMimeType),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_1));
-    let __VLS_4;
-    let __VLS_5;
-    let __VLS_6;
-    const __VLS_7 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_5));
+    let __VLS_8;
+    let __VLS_9;
+    let __VLS_10;
+    const __VLS_11 = {
         'onUpdate:modelValue': ((v) => __VLS_ctx.emit('update', v))
     };
-    const __VLS_8 = {
+    const __VLS_12 = {
         onSelectionChanged: (__VLS_ctx.onSelectionChanged)
     };
-    var __VLS_3;
+    var __VLS_7;
 }
 else if (__VLS_ctx.binding.mode === 'image') {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -493,45 +523,80 @@ else if (__VLS_ctx.binding.mode === 'image') {
     });
     /** @type {[typeof ImageView, ]} */ ;
     // @ts-ignore
-    const __VLS_9 = __VLS_asFunctionalComponent(ImageView, new ImageView({
+    const __VLS_13 = __VLS_asFunctionalComponent(ImageView, new ImageView({
         mode: "editor",
         document: (__VLS_ctx.docDtoForView),
     }));
-    const __VLS_10 = __VLS_9({
+    const __VLS_14 = __VLS_13({
         mode: "editor",
         document: (__VLS_ctx.docDtoForView),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_9));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_13));
+}
+else if (__VLS_ctx.binding.mode === 'preview') {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "px-4 py-2 bg-base-200/40 border-b border-base-300 text-xs flex flex-wrap gap-x-4 gap-y-1 shrink-0" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+        ...{ class: "opacity-60" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+        ...{ class: "font-mono" },
+    });
+    (__VLS_ctx.document.path);
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+        ...{ class: "opacity-60" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+        ...{ class: "font-mono" },
+    });
+    (__VLS_ctx.document.mimeType ?? '—');
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+        ...{ class: "opacity-60 italic" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "flex-1 min-h-0 overflow-auto p-4 bg-base-200/40" },
+    });
+    /** @type {[typeof DocumentPreview, ]} */ ;
+    // @ts-ignore
+    const __VLS_16 = __VLS_asFunctionalComponent(DocumentPreview, new DocumentPreview({
+        documentId: (__VLS_ctx.document.id),
+        mimeType: (__VLS_ctx.document.mimeType ?? null),
+    }));
+    const __VLS_17 = __VLS_16({
+        documentId: (__VLS_ctx.document.id),
+        mimeType: (__VLS_ctx.document.mimeType ?? null),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_16));
 }
 else if (__VLS_ctx.isViewMode) {
     if (__VLS_ctx.showRawEditor) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "flex-1 min-h-0 overflow-hidden cortex-code-host" },
         });
-        const __VLS_12 = {}.CodeEditor;
+        const __VLS_19 = {}.CodeEditor;
         /** @type {[typeof __VLS_components.CodeEditor, ]} */ ;
         // @ts-ignore
-        const __VLS_13 = __VLS_asFunctionalComponent(__VLS_12, new __VLS_12({
+        const __VLS_20 = __VLS_asFunctionalComponent(__VLS_19, new __VLS_19({
             ...{ 'onUpdate:modelValue': {} },
             ...{ 'onSelectionChanged': {} },
             modelValue: (__VLS_ctx.document.inlineText),
             mimeType: (__VLS_ctx.effectiveMimeType),
         }));
-        const __VLS_14 = __VLS_13({
+        const __VLS_21 = __VLS_20({
             ...{ 'onUpdate:modelValue': {} },
             ...{ 'onSelectionChanged': {} },
             modelValue: (__VLS_ctx.document.inlineText),
             mimeType: (__VLS_ctx.effectiveMimeType),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_13));
-        let __VLS_16;
-        let __VLS_17;
-        let __VLS_18;
-        const __VLS_19 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_20));
+        let __VLS_23;
+        let __VLS_24;
+        let __VLS_25;
+        const __VLS_26 = {
             'onUpdate:modelValue': ((v) => __VLS_ctx.emit('update', v))
         };
-        const __VLS_20 = {
+        const __VLS_27 = {
             onSelectionChanged: (__VLS_ctx.onSelectionChanged)
         };
-        var __VLS_15;
+        var __VLS_22;
     }
     else if (__VLS_ctx.parseResult.error) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -545,55 +610,55 @@ else if (__VLS_ctx.isViewMode) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "flex-1 min-h-0 overflow-hidden cortex-code-host" },
         });
-        const __VLS_21 = {}.CodeEditor;
+        const __VLS_28 = {}.CodeEditor;
         /** @type {[typeof __VLS_components.CodeEditor, ]} */ ;
         // @ts-ignore
-        const __VLS_22 = __VLS_asFunctionalComponent(__VLS_21, new __VLS_21({
+        const __VLS_29 = __VLS_asFunctionalComponent(__VLS_28, new __VLS_28({
             ...{ 'onUpdate:modelValue': {} },
             ...{ 'onSelectionChanged': {} },
             modelValue: (__VLS_ctx.document.inlineText),
             mimeType: (__VLS_ctx.effectiveMimeType),
         }));
-        const __VLS_23 = __VLS_22({
+        const __VLS_30 = __VLS_29({
             ...{ 'onUpdate:modelValue': {} },
             ...{ 'onSelectionChanged': {} },
             modelValue: (__VLS_ctx.document.inlineText),
             mimeType: (__VLS_ctx.effectiveMimeType),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_22));
-        let __VLS_25;
-        let __VLS_26;
-        let __VLS_27;
-        const __VLS_28 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_29));
+        let __VLS_32;
+        let __VLS_33;
+        let __VLS_34;
+        const __VLS_35 = {
             'onUpdate:modelValue': ((v) => __VLS_ctx.emit('update', v))
         };
-        const __VLS_29 = {
+        const __VLS_36 = {
             onSelectionChanged: (__VLS_ctx.onSelectionChanged)
         };
-        var __VLS_24;
+        var __VLS_31;
     }
     else {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "flex-1 min-h-0 overflow-auto" },
         });
-        const __VLS_30 = ((__VLS_ctx.activeView));
+        const __VLS_37 = ((__VLS_ctx.activeView));
         // @ts-ignore
-        const __VLS_31 = __VLS_asFunctionalComponent(__VLS_30, new __VLS_30({
+        const __VLS_38 = __VLS_asFunctionalComponent(__VLS_37, new __VLS_37({
             ...{ 'onUpdate:doc': {} },
             mode: "editor",
             ...(__VLS_ctx.viewBindings),
         }));
-        const __VLS_32 = __VLS_31({
+        const __VLS_39 = __VLS_38({
             ...{ 'onUpdate:doc': {} },
             mode: "editor",
             ...(__VLS_ctx.viewBindings),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_31));
-        let __VLS_34;
-        let __VLS_35;
-        let __VLS_36;
-        const __VLS_37 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_38));
+        let __VLS_41;
+        let __VLS_42;
+        let __VLS_43;
+        const __VLS_44 = {
             'onUpdate:doc': (__VLS_ctx.onModelUpdate)
         };
-        var __VLS_33;
+        var __VLS_40;
     }
 }
 if (__VLS_ctx.runHandle) {
@@ -663,57 +728,57 @@ if (__VLS_ctx.runHandle) {
 if (__VLS_ctx.showValidate) {
     /** @type {[typeof CortexValidateDialog, ]} */ ;
     // @ts-ignore
-    const __VLS_38 = __VLS_asFunctionalComponent(CortexValidateDialog, new CortexValidateDialog({
+    const __VLS_45 = __VLS_asFunctionalComponent(CortexValidateDialog, new CortexValidateDialog({
         ...{ 'onClose': {} },
         document: (__VLS_ctx.document),
-    }));
-    const __VLS_39 = __VLS_38({
-        ...{ 'onClose': {} },
-        document: (__VLS_ctx.document),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_38));
-    let __VLS_41;
-    let __VLS_42;
-    let __VLS_43;
-    const __VLS_44 = {
-        onClose: (...[$event]) => {
-            if (!(__VLS_ctx.showValidate))
-                return;
-            __VLS_ctx.showValidate = false;
-        }
-    };
-    var __VLS_40;
-}
-if (__VLS_ctx.showHactar && __VLS_ctx.store.projectId) {
-    /** @type {[typeof CortexHactarDialog, ]} */ ;
-    // @ts-ignore
-    const __VLS_45 = __VLS_asFunctionalComponent(CortexHactarDialog, new CortexHactarDialog({
-        ...{ 'onClose': {} },
-        ...{ 'onApply': {} },
-        document: (__VLS_ctx.document),
-        projectId: (__VLS_ctx.store.projectId),
-        sessionId: (__VLS_ctx.sessionId ?? null),
     }));
     const __VLS_46 = __VLS_45({
         ...{ 'onClose': {} },
-        ...{ 'onApply': {} },
         document: (__VLS_ctx.document),
-        projectId: (__VLS_ctx.store.projectId),
-        sessionId: (__VLS_ctx.sessionId ?? null),
     }, ...__VLS_functionalComponentArgsRest(__VLS_45));
     let __VLS_48;
     let __VLS_49;
     let __VLS_50;
     const __VLS_51 = {
         onClose: (...[$event]) => {
+            if (!(__VLS_ctx.showValidate))
+                return;
+            __VLS_ctx.showValidate = false;
+        }
+    };
+    var __VLS_47;
+}
+if (__VLS_ctx.showHactar && __VLS_ctx.store.projectId) {
+    /** @type {[typeof CortexHactarDialog, ]} */ ;
+    // @ts-ignore
+    const __VLS_52 = __VLS_asFunctionalComponent(CortexHactarDialog, new CortexHactarDialog({
+        ...{ 'onClose': {} },
+        ...{ 'onApply': {} },
+        document: (__VLS_ctx.document),
+        projectId: (__VLS_ctx.store.projectId),
+        sessionId: (__VLS_ctx.sessionId ?? null),
+    }));
+    const __VLS_53 = __VLS_52({
+        ...{ 'onClose': {} },
+        ...{ 'onApply': {} },
+        document: (__VLS_ctx.document),
+        projectId: (__VLS_ctx.store.projectId),
+        sessionId: (__VLS_ctx.sessionId ?? null),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_52));
+    let __VLS_55;
+    let __VLS_56;
+    let __VLS_57;
+    const __VLS_58 = {
+        onClose: (...[$event]) => {
             if (!(__VLS_ctx.showHactar && __VLS_ctx.store.projectId))
                 return;
             __VLS_ctx.showHactar = false;
         }
     };
-    const __VLS_52 = {
+    const __VLS_59 = {
         onApply: (__VLS_ctx.onHactarApply)
     };
-    var __VLS_47;
+    var __VLS_54;
 }
 /** @type {__VLS_StyleScopedClasses['h-full']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
@@ -800,6 +865,11 @@ if (__VLS_ctx.showHactar && __VLS_ctx.store.projectId) {
 /** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
+/** @type {__VLS_StyleScopedClasses['overflow-auto']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-4']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
 /** @type {__VLS_StyleScopedClasses['overflow-hidden']} */ ;
 /** @type {__VLS_StyleScopedClasses['cortex-code-host']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
@@ -810,6 +880,28 @@ if (__VLS_ctx.showHactar && __VLS_ctx.store.projectId) {
 /** @type {__VLS_StyleScopedClasses['items-start']} */ ;
 /** @type {__VLS_StyleScopedClasses['justify-center']} */ ;
 /** @type {__VLS_StyleScopedClasses['p-4']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-4']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['bg-base-200/40']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-b']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-wrap']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-x-4']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-y-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['shrink-0']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['italic']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
+/** @type {__VLS_StyleScopedClasses['overflow-auto']} */ ;
+/** @type {__VLS_StyleScopedClasses['p-4']} */ ;
+/** @type {__VLS_StyleScopedClasses['bg-base-200/40']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
 /** @type {__VLS_StyleScopedClasses['overflow-hidden']} */ ;
@@ -903,7 +995,9 @@ const __VLS_self = (await import('vue')).defineComponent({
     setup() {
         return {
             CodeEditor: CodeEditor,
+            MarkdownView: MarkdownView,
             ImageView: ImageView,
+            DocumentPreview: DocumentPreview,
             CortexValidateDialog: CortexValidateDialog,
             CortexHactarDialog: CortexHactarDialog,
             emit: emit,
@@ -920,6 +1014,8 @@ const __VLS_self = (await import('vue')).defineComponent({
             activeView: activeView,
             viewBindings: viewBindings,
             isViewMode: isViewMode,
+            isMarkdownDocument: isMarkdownDocument,
+            showToggle: showToggle,
             viewEditMode: viewEditMode,
             showRawEditor: showRawEditor,
             runAdapter: runAdapter,

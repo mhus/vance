@@ -8,7 +8,7 @@ import { brainFetch, brainFetchText, brainSendRaw } from '@vance/shared';
  * loads via documentContentUrl) and don't need their bytes streamed
  * into JS memory.
  */
-function isBinaryMime(mime) {
+export function isBinaryMime(mime) {
     const m = (mime ?? '').toLowerCase();
     if (!m)
         return false;
@@ -18,10 +18,66 @@ function isBinaryMime(mime) {
         return true;
     if (m.startsWith('video/'))
         return true;
-    if (m === 'application/pdf' || m === 'application/zip'
-        || m === 'application/octet-stream')
+    if (m.startsWith('font/'))
+        return true;
+    // Office Open XML — docx/xlsx/pptx.
+    if (m.startsWith('application/vnd.openxmlformats-officedocument.'))
+        return true;
+    // Legacy Office (.doc, .xls, .ppt) and other MS binaries.
+    if (m.startsWith('application/vnd.ms-'))
+        return true;
+    // OpenDocument (.odt, .ods, .odp).
+    if (m.startsWith('application/vnd.oasis.opendocument.'))
+        return true;
+    if (m === 'application/pdf')
+        return true;
+    if (m === 'application/zip' || m === 'application/x-zip-compressed')
+        return true;
+    if (m === 'application/x-tar' || m === 'application/gzip')
+        return true;
+    if (m === 'application/x-7z-compressed' || m === 'application/x-rar')
+        return true;
+    if (m === 'application/octet-stream')
+        return true;
+    if (m === 'application/x-msdownload')
+        return true;
+    if (m === 'application/wasm')
         return true;
     return false;
+}
+/**
+ * Extension-based binary detection used when the server returned a
+ * blank/unknown mime. Kept in sync with {@link isBinaryMime}'s coverage
+ * — every entry here is "definitely not text we should round-trip
+ * through a CodeEditor" because the bytes carry framing the editor
+ * cannot reproduce.
+ */
+const BINARY_EXTS = [
+    '.pdf',
+    '.docx', '.xlsx', '.pptx', '.doc', '.xls', '.ppt',
+    '.odt', '.ods', '.odp',
+    '.zip', '.tar', '.gz', '.tgz', '.7z', '.rar',
+    '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.ico',
+    '.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a',
+    '.mp4', '.mkv', '.avi', '.mov', '.webm',
+    '.ttf', '.otf', '.woff', '.woff2', '.eot',
+    '.exe', '.dll', '.so', '.dylib', '.wasm',
+];
+/**
+ * Document-level binary check. Uses the mime when present, falls back
+ * to extension when the mime is blank or generic. Routes binding
+ * resolution to the read-only preview path and gates the save pipeline
+ * so a stray dirty-flag can't overwrite a binary file with the empty
+ * inlineText we (correctly) declined to load.
+ */
+export function isBinaryDoc(doc) {
+    if (isBinaryMime(doc.mimeType))
+        return true;
+    const m = (doc.mimeType ?? '').toLowerCase();
+    if (m)
+        return false; // server gave us a non-binary mime — trust it.
+    const path = doc.path.toLowerCase();
+    return BINARY_EXTS.some((ext) => path.endsWith(ext));
 }
 export const useCortexStore = defineStore('cortex', () => {
     const projectId = ref(null);
@@ -31,6 +87,14 @@ export const useCortexStore = defineStore('cortex', () => {
     const loading = ref(false);
     const error = ref(null);
     const currentSelection = ref(null);
+    // Client-only virtual folders. The server has no folder entity —
+    // folders exist implicitly via document path prefixes. To let the
+    // user "stage" an empty folder as a drop target before any document
+    // lives there, we merge these path strings into the {@link fileTree}
+    // computation. Wiped on next {@link loadList} (and not persisted),
+    // matching the spec: a virtual folder vanishes on refresh unless a
+    // file has since materialised it.
+    const virtualFolders = ref(new Set());
     const activeTab = computed(() => {
         if (!activeTabId.value)
             return null;
@@ -74,6 +138,9 @@ export const useCortexStore = defineStore('cortex', () => {
             });
             const data = await brainFetch('GET', `documents?${params}`);
             files.value = (data.items ?? []).map(summaryToDocument);
+            // Virtual folders are ephemeral by design — a refresh discards
+            // any the user staged that didn't get a real file moved into it.
+            virtualFolders.value = new Set();
         }
         catch (e) {
             error.value = e instanceof Error ? e.message : 'Failed to load documents.';
@@ -190,6 +257,12 @@ export const useCortexStore = defineStore('cortex', () => {
         const tab = activeTab.value;
         if (!tab)
             return;
+        // Binary documents have an empty {@link CortexDocument.inlineText}
+        // (we deliberately don't fetch their bytes as text). Any update
+        // path that reached here would mark the tab dirty and queue a save
+        // that overwrites the server file with empty bytes — refuse.
+        if (isBinaryDoc(tab))
+            return;
         tab.inlineText = text;
         tab.dirty = true;
     }
@@ -197,6 +270,13 @@ export const useCortexStore = defineStore('cortex', () => {
         const tab = openTabs.value.find((t) => t.id === id);
         if (!tab || !tab.dirty)
             return;
+        // Defense in depth: same reason as {@link updateActiveContent}. A
+        // binary doc that somehow has dirty=true (race, stale state) must
+        // not get its bytes replaced with our blank inlineText.
+        if (isBinaryDoc(tab)) {
+            tab.dirty = false;
+            return;
+        }
         // Content lives at /documents/{id}/content after the inline→storage
         // migration. The body is the raw text (not JSON); Content-Type
         // carries the doc's mime so the server can re-classify on save.
@@ -278,6 +358,19 @@ export const useCortexStore = defineStore('cortex', () => {
         closeTab(id);
     }
     /**
+     * Stage an empty folder so it appears in the tree as a drop target.
+     * The path is normalised (trimmed, slashes stripped). No-op for an
+     * empty path or a path that already corresponds to an existing file
+     * folder (insertion is idempotent — {@link fileTree}'s loop dedupes
+     * by path).
+     */
+    function addVirtualFolder(path) {
+        const normalised = path.trim().replace(/^\/+|\/+$/g, '');
+        if (!normalised)
+            return;
+        virtualFolders.value = new Set(virtualFolders.value).add(normalised);
+    }
+    /**
      * Group the file list into a recursive folder tree based on
      * forward-slash-separated path segments. Files at the root sit
      * directly under the synthetic root node with path === "".
@@ -302,6 +395,24 @@ export const useCortexStore = defineStore('cortex', () => {
                 current = next;
             }
             current.files.push({ ...f, name: fileName });
+        }
+        // Merge in virtual (file-less) folders. Same walk as the file
+        // loop, just without anything to push at the leaf — empty
+        // FolderNodes get created along the way as needed.
+        for (const vpath of virtualFolders.value) {
+            const segments = vpath.split('/');
+            let current = root;
+            let prefix = '';
+            for (const seg of segments) {
+                prefix = prefix ? `${prefix}/${seg}` : seg;
+                let next = folderIndex.get(prefix);
+                if (!next) {
+                    next = { path: prefix, name: seg, children: [], files: [] };
+                    folderIndex.set(prefix, next);
+                    current.children.push(next);
+                }
+                current = next;
+            }
         }
         function sortNode(n) {
             n.children.sort((a, b) => a.name.localeCompare(b.name));
@@ -333,6 +444,7 @@ export const useCortexStore = defineStore('cortex', () => {
         saveAllDirty,
         createFile,
         deleteFile,
+        addVirtualFolder,
         currentSelection,
         setSelection,
         clearSelection,

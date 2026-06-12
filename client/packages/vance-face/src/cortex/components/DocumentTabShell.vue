@@ -23,9 +23,10 @@
  *    just sourced the entry differently.
  */
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
-import { CodeEditor } from '@/components';
+import { CodeEditor, MarkdownView } from '@/components';
 import type { DocumentDto } from '@vance/generated';
 import ImageView from '@/document/ImageView.vue';
+import DocumentPreview from '@/document/DocumentPreview.vue';
 import type { CortexDocument } from '../types';
 import { useCortexStore } from '../stores/cortexStore';
 import { resolveBinding } from '../docTypeRegistry';
@@ -248,6 +249,23 @@ const isViewMode = computed<boolean>(
   () => binding.value.mode === 'typed-model' || binding.value.mode === 'kind-registry',
 );
 
+// Markdown gets the same view/edit toggle as the kind-registry modes:
+// rendered MarkdownView in 'view', raw CodeEditor in 'edit'. The
+// catch-all 'code' binding resolves these documents (no dedicated
+// Markdown binding in the registry) so the toggle gates inside the
+// 'code' branch below rather than the typed-model / kind-registry
+// template.
+const isMarkdownDocument = computed<boolean>(() => {
+  if (binding.value.mode !== 'code') return false;
+  const lower = props.document.path.toLowerCase();
+  if (lower.endsWith('.md') || lower.endsWith('.markdown')) return true;
+  return (props.document.mimeType ?? '').toLowerCase().startsWith('text/markdown');
+});
+
+const showToggle = computed<boolean>(
+  () => isViewMode.value || isMarkdownDocument.value,
+);
+
 // ─── View / Edit toggle ──────────────────────────────────────────
 //
 // For typed-model and kind-registry modes the user can flip between
@@ -430,7 +448,7 @@ function fmtDuration(ms: number | null): string {
       </button>
       <span class="font-mono opacity-80 truncate">{{ document.path }}</span>
       <div
-        v-if="isViewMode"
+        v-if="showToggle"
         class="flex border border-base-300 rounded overflow-hidden text-xs"
         role="group"
         aria-label="View / edit toggle"
@@ -516,8 +534,18 @@ function fmtDuration(ms: number | null): string {
       </span>
     </div>
 
-    <!-- Code mode: CodeEditor on the raw text. -->
-    <div v-if="binding.mode === 'code'" class="flex-1 min-h-0 overflow-hidden cortex-code-host">
+    <!-- Code mode: CodeEditor on the raw text. Markdown takes the same
+         branch but adds a rendered Preview/Edit toggle on top. -->
+    <div
+      v-if="binding.mode === 'code' && isMarkdownDocument && viewEditMode === 'view'"
+      class="flex-1 min-h-0 overflow-auto px-4 py-2"
+    >
+      <MarkdownView :source="document.inlineText" />
+    </div>
+    <div
+      v-else-if="binding.mode === 'code'"
+      class="flex-1 min-h-0 overflow-hidden cortex-code-host"
+    >
       <CodeEditor
         :model-value="document.inlineText"
         :mime-type="effectiveMimeType"
@@ -533,6 +561,29 @@ function fmtDuration(ms: number | null): string {
     >
       <ImageView mode="editor" :document="docDtoForView" />
     </div>
+
+    <!-- Preview mode: binary docs that should NEVER hit the CodeEditor
+         (PDF/DOCX/XLSX/archive/audio/video/…). DocumentPreview handles
+         the renderable subset (PDF via pdfjs, DOCX via mammoth, XLSX
+         via SheetJS) and falls back to a "binary file" placeholder for
+         the rest. The metadata strip at top gives the user a visible
+         confirmation of which file is open and what we know about it
+         even when no preview is available. -->
+    <template v-else-if="binding.mode === 'preview'">
+      <div class="px-4 py-2 bg-base-200/40 border-b border-base-300 text-xs flex flex-wrap gap-x-4 gap-y-1 shrink-0">
+        <span class="opacity-60">Path:</span>
+        <span class="font-mono">{{ document.path }}</span>
+        <span class="opacity-60">MIME:</span>
+        <span class="font-mono">{{ document.mimeType ?? '—' }}</span>
+        <span class="opacity-60 italic">read-only</span>
+      </div>
+      <div class="flex-1 min-h-0 overflow-auto p-4 bg-base-200/40">
+        <DocumentPreview
+          :document-id="document.id"
+          :mime-type="document.mimeType ?? null"
+        />
+      </div>
+    </template>
 
     <!-- typed-model + kind-registry share the same render contract. -->
     <template v-else-if="isViewMode">

@@ -1,4 +1,4 @@
-import { computed, defineComponent, h } from 'vue';
+import { computed, defineComponent, h, inject } from 'vue';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import InlineKindBox from './InlineKindBox.vue';
@@ -8,6 +8,7 @@ import { hasRenderer } from '@/kindRenderers/registry';
 import { parseFenceLang } from '@/kindRenderers/parseFenceLang';
 import { isVanceUri, parseVanceUri } from '@/kindRenderers/parseVanceUri';
 import { useDocumentRefStore } from '@/document/documentRefStore';
+export const VANCE_LINK_HANDLER_KEY = Symbol('vance-link-handler');
 marked.setOptions({
     gfm: true,
     breaks: true,
@@ -353,6 +354,7 @@ export default defineComponent({
     },
     setup(props) {
         const documentRefStore = useDocumentRefStore();
+        const vanceLinkHandler = inject(VANCE_LINK_HANDLER_KEY, null);
         const inlineHtml = computed(() => {
             const src = props.source ?? '';
             if (!src)
@@ -444,6 +446,27 @@ export default defineComponent({
             if (!projectId || !documentId) {
                 console.warn('MarkdownView: resolved vance: URI is missing projectId/id', href);
                 return;
+            }
+            // Plain-click interception — Cortex (or another host) can take
+            // ownership and open the doc in-place. Cmd/Ctrl/Shift-click is
+            // always treated as "I really want a new browser tab" and goes
+            // through the default path below so the host can't trap the
+            // user. The handler returns truthy to claim the click.
+            if (vanceLinkHandler && !newTab) {
+                try {
+                    const handled = await vanceLinkHandler({
+                        documentId,
+                        projectId,
+                        embedRef,
+                        newTab,
+                    });
+                    if (handled)
+                        return;
+                }
+                catch (e) {
+                    console.warn('MarkdownView: vance link handler threw', e);
+                    // Fall through to default navigation rather than swallow.
+                }
             }
             const url = `/documents.html?projectId=${encodeURIComponent(projectId)}`
                 + `&documentId=${encodeURIComponent(documentId)}`;

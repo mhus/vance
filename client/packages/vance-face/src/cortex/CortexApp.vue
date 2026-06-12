@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue';
 import {
   EditorShell,
   type FocusZone,
   VAlert,
+  VANCE_LINK_HANDLER_KEY,
+  type VanceLinkHandler,
   VButton,
   VEmptyState,
   VInput,
@@ -43,6 +45,27 @@ const focusZone = ref<FocusZone>('main');
 
 const store = useCortexStore();
 
+// Hijack vance:-doc links inside any descendant MarkdownView (chat
+// bubbles, help panel, …) so a plain click opens the document as a
+// Cortex tab instead of navigating away from the page. Cmd/Ctrl-click
+// is left untouched by MarkdownView itself so the user can always pop
+// out into a documents.html tab. Cross-project refs fall through to
+// the default jump — Cortex can only host files from the session's
+// own project.
+const onVanceLink: VanceLinkHandler = async ({ documentId, projectId, newTab }) => {
+  if (newTab) return false;
+  if (!store.projectId || projectId !== store.projectId) return false;
+  focusZone.value = 'main';
+  try {
+    await store.openFile(documentId);
+  } catch (e) {
+    console.warn('Cortex: failed to open vance: link in editor', e);
+    return false; // let the default navigation kick in as a fallback
+  }
+  return true;
+};
+provide(VANCE_LINK_HANDLER_KEY, onVanceLink);
+
 // Tenant project list — used to resolve the human-readable project
 // title for the breadcrumb. Loaded lazily once we know which session
 // (and therefore which project) the user is looking at.
@@ -60,6 +83,13 @@ const createDir = ref('');
 const createName = ref('');
 const createError = ref<string | null>(null);
 const creating = ref(false);
+
+// "New folder" dialog state. The folder is purely client-side — see
+// {@code cortexStore.addVirtualFolder} — so there's no async / saving
+// state, just a single editable path field.
+const showNewFolder = ref(false);
+const newFolderPath = ref('');
+const newFolderError = ref<string | null>(null);
 
 // True while initial state restoration is running. While set, the
 // state-persistence watcher is muted — otherwise the per-{@code openFile}
@@ -344,14 +374,16 @@ async function onSave(): Promise<void> {
 
 function onNew(): void {
   // Prefill the directory from the currently active tab so "New file…"
-  // in the same folder is one-click. Path stays editable — the user
-  // can still rewrite it to land anywhere in the project tree.
+  // in the same folder is one-click. Without an active tab, suggest
+  // `documents` — the conventional user-content folder — instead of
+  // leaving the field blank (which would land the file in the project
+  // root). Path stays editable so the user can rewrite either default.
   const ref = activeTab.value;
   if (ref) {
     const idx = ref.path.lastIndexOf('/');
     createDir.value = idx >= 0 ? ref.path.slice(0, idx) : '';
   } else {
-    createDir.value = '';
+    createDir.value = 'documents';
   }
   createName.value = '';
   createError.value = null;
@@ -383,6 +415,31 @@ async function confirmCreate(): Promise<void> {
   } finally {
     creating.value = false;
   }
+}
+
+function onNewFolder(): void {
+  // Prefill with the active tab's folder so "make a sibling
+  // sub-folder" is the easy case. Without an active tab, suggest
+  // `documents` for the same reason {@link onNew} does.
+  const ref = activeTab.value;
+  if (ref) {
+    const idx = ref.path.lastIndexOf('/');
+    newFolderPath.value = idx >= 0 ? ref.path.slice(0, idx) : '';
+  } else {
+    newFolderPath.value = 'documents';
+  }
+  newFolderError.value = null;
+  showNewFolder.value = true;
+}
+
+function confirmNewFolder(): void {
+  const path = newFolderPath.value.trim().replace(/^\/+|\/+$/g, '');
+  if (!path) {
+    newFolderError.value = 'Path required';
+    return;
+  }
+  store.addVirtualFolder(path);
+  showNewFolder.value = false;
 }
 
 async function onDelete(id: string): Promise<void> {
@@ -657,6 +714,11 @@ onBeforeUnmount(() => {
                 <span class="flex-1">New file…</span>
               </a>
             </li>
+            <li>
+              <a @click="closeMenus(); onNewFolder()">
+                <span class="flex-1">New folder…</span>
+              </a>
+            </li>
             <li :class="{ disabled: !activeTab || !activeTab.dirty }">
               <a @click="closeMenus(); onSave()">
                 <span class="flex-1">Save</span>
@@ -781,6 +843,26 @@ onBeforeUnmount(() => {
       <div class="flex justify-end gap-2 pt-2">
         <VButton type="button" variant="ghost" @click="showCreate = false">Cancel</VButton>
         <VButton type="submit" variant="primary" :loading="creating">Create</VButton>
+      </div>
+    </form>
+  </VModal>
+
+  <VModal v-model="showNewFolder" title="New folder">
+    <form class="space-y-3 p-2" @submit.prevent="confirmNewFolder">
+      <VInput
+        v-model="newFolderPath"
+        label="Folder path"
+        placeholder="documents/notes"
+      />
+      <p class="text-xs opacity-60">
+        Folders are virtual until a file lives in them — this entry is
+        client-side and disappears on refresh unless something gets
+        moved into it.
+      </p>
+      <VAlert v-if="newFolderError" variant="error">{{ newFolderError }}</VAlert>
+      <div class="flex justify-end gap-2 pt-2">
+        <VButton type="button" variant="ghost" @click="showNewFolder = false">Cancel</VButton>
+        <VButton type="submit" variant="primary">Create</VButton>
       </div>
     </form>
   </VModal>

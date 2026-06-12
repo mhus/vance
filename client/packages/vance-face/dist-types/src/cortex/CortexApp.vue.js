@@ -1,5 +1,5 @@
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { EditorShell, VAlert, VButton, VEmptyState, VInput, VModal, } from '@/components';
+import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue';
+import { EditorShell, VAlert, VANCE_LINK_HANDLER_KEY, VButton, VEmptyState, VInput, VModal, } from '@/components';
 import { brainFetch } from '@vance/shared';
 import { useTenantProjects } from '@composables/useTenantProjects';
 import { useCortexStore } from './stores/cortexStore';
@@ -17,6 +17,29 @@ const projectId = ref(null);
 const chatBoundDocumentId = ref(null);
 const focusZone = ref('main');
 const store = useCortexStore();
+// Hijack vance:-doc links inside any descendant MarkdownView (chat
+// bubbles, help panel, …) so a plain click opens the document as a
+// Cortex tab instead of navigating away from the page. Cmd/Ctrl-click
+// is left untouched by MarkdownView itself so the user can always pop
+// out into a documents.html tab. Cross-project refs fall through to
+// the default jump — Cortex can only host files from the session's
+// own project.
+const onVanceLink = async ({ documentId, projectId, newTab }) => {
+    if (newTab)
+        return false;
+    if (!store.projectId || projectId !== store.projectId)
+        return false;
+    focusZone.value = 'main';
+    try {
+        await store.openFile(documentId);
+    }
+    catch (e) {
+        console.warn('Cortex: failed to open vance: link in editor', e);
+        return false; // let the default navigation kick in as a fallback
+    }
+    return true;
+};
+provide(VANCE_LINK_HANDLER_KEY, onVanceLink);
 // Tenant project list — used to resolve the human-readable project
 // title for the breadcrumb. Loaded lazily once we know which session
 // (and therefore which project) the user is looking at.
@@ -32,6 +55,12 @@ const createDir = ref('');
 const createName = ref('');
 const createError = ref(null);
 const creating = ref(false);
+// "New folder" dialog state. The folder is purely client-side — see
+// {@code cortexStore.addVirtualFolder} — so there's no async / saving
+// state, just a single editable path field.
+const showNewFolder = ref(false);
+const newFolderPath = ref('');
+const newFolderError = ref(null);
 // True while initial state restoration is running. While set, the
 // state-persistence watcher is muted — otherwise the per-{@code openFile}
 // rebuild would echo the restored state straight back to the server.
@@ -306,15 +335,17 @@ async function onSave() {
 }
 function onNew() {
     // Prefill the directory from the currently active tab so "New file…"
-    // in the same folder is one-click. Path stays editable — the user
-    // can still rewrite it to land anywhere in the project tree.
+    // in the same folder is one-click. Without an active tab, suggest
+    // `documents` — the conventional user-content folder — instead of
+    // leaving the field blank (which would land the file in the project
+    // root). Path stays editable so the user can rewrite either default.
     const ref = activeTab.value;
     if (ref) {
         const idx = ref.path.lastIndexOf('/');
         createDir.value = idx >= 0 ? ref.path.slice(0, idx) : '';
     }
     else {
-        createDir.value = '';
+        createDir.value = 'documents';
     }
     createName.value = '';
     createError.value = null;
@@ -347,6 +378,30 @@ async function confirmCreate() {
     finally {
         creating.value = false;
     }
+}
+function onNewFolder() {
+    // Prefill with the active tab's folder so "make a sibling
+    // sub-folder" is the easy case. Without an active tab, suggest
+    // `documents` for the same reason {@link onNew} does.
+    const ref = activeTab.value;
+    if (ref) {
+        const idx = ref.path.lastIndexOf('/');
+        newFolderPath.value = idx >= 0 ? ref.path.slice(0, idx) : '';
+    }
+    else {
+        newFolderPath.value = 'documents';
+    }
+    newFolderError.value = null;
+    showNewFolder.value = true;
+}
+function confirmNewFolder() {
+    const path = newFolderPath.value.trim().replace(/^\/+|\/+$/g, '');
+    if (!path) {
+        newFolderError.value = 'Path required';
+        return;
+    }
+    store.addVirtualFolder(path);
+    showNewFolder.value = false;
 }
 async function onDelete(id) {
     if (!confirm('Delete this document?'))
@@ -728,6 +783,18 @@ if (__VLS_ctx.sessionId) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
         ...{ class: "flex-1" },
     });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({});
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
+        ...{ onClick: (...[$event]) => {
+                if (!(__VLS_ctx.sessionId))
+                    return;
+                __VLS_ctx.closeMenus();
+                __VLS_ctx.onNewFolder();
+            } },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+        ...{ class: "flex-1" },
+    });
     __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
         ...{ class: ({ disabled: !__VLS_ctx.activeTab || !__VLS_ctx.activeTab.dirty }) },
     });
@@ -1068,6 +1135,92 @@ const __VLS_86 = __VLS_85({
 __VLS_87.slots.default;
 var __VLS_87;
 var __VLS_63;
+const __VLS_88 = {}.VModal;
+/** @type {[typeof __VLS_components.VModal, typeof __VLS_components.VModal, ]} */ ;
+// @ts-ignore
+const __VLS_89 = __VLS_asFunctionalComponent(__VLS_88, new __VLS_88({
+    modelValue: (__VLS_ctx.showNewFolder),
+    title: "New folder",
+}));
+const __VLS_90 = __VLS_89({
+    modelValue: (__VLS_ctx.showNewFolder),
+    title: "New folder",
+}, ...__VLS_functionalComponentArgsRest(__VLS_89));
+__VLS_91.slots.default;
+__VLS_asFunctionalElement(__VLS_intrinsicElements.form, __VLS_intrinsicElements.form)({
+    ...{ onSubmit: (__VLS_ctx.confirmNewFolder) },
+    ...{ class: "space-y-3 p-2" },
+});
+const __VLS_92 = {}.VInput;
+/** @type {[typeof __VLS_components.VInput, ]} */ ;
+// @ts-ignore
+const __VLS_93 = __VLS_asFunctionalComponent(__VLS_92, new __VLS_92({
+    modelValue: (__VLS_ctx.newFolderPath),
+    label: "Folder path",
+    placeholder: "documents/notes",
+}));
+const __VLS_94 = __VLS_93({
+    modelValue: (__VLS_ctx.newFolderPath),
+    label: "Folder path",
+    placeholder: "documents/notes",
+}, ...__VLS_functionalComponentArgsRest(__VLS_93));
+__VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
+    ...{ class: "text-xs opacity-60" },
+});
+if (__VLS_ctx.newFolderError) {
+    const __VLS_96 = {}.VAlert;
+    /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
+    // @ts-ignore
+    const __VLS_97 = __VLS_asFunctionalComponent(__VLS_96, new __VLS_96({
+        variant: "error",
+    }));
+    const __VLS_98 = __VLS_97({
+        variant: "error",
+    }, ...__VLS_functionalComponentArgsRest(__VLS_97));
+    __VLS_99.slots.default;
+    (__VLS_ctx.newFolderError);
+    var __VLS_99;
+}
+__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+    ...{ class: "flex justify-end gap-2 pt-2" },
+});
+const __VLS_100 = {}.VButton;
+/** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+// @ts-ignore
+const __VLS_101 = __VLS_asFunctionalComponent(__VLS_100, new __VLS_100({
+    ...{ 'onClick': {} },
+    type: "button",
+    variant: "ghost",
+}));
+const __VLS_102 = __VLS_101({
+    ...{ 'onClick': {} },
+    type: "button",
+    variant: "ghost",
+}, ...__VLS_functionalComponentArgsRest(__VLS_101));
+let __VLS_104;
+let __VLS_105;
+let __VLS_106;
+const __VLS_107 = {
+    onClick: (...[$event]) => {
+        __VLS_ctx.showNewFolder = false;
+    }
+};
+__VLS_103.slots.default;
+var __VLS_103;
+const __VLS_108 = {}.VButton;
+/** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+// @ts-ignore
+const __VLS_109 = __VLS_asFunctionalComponent(__VLS_108, new __VLS_108({
+    type: "submit",
+    variant: "primary",
+}));
+const __VLS_110 = __VLS_109({
+    type: "submit",
+    variant: "primary",
+}, ...__VLS_functionalComponentArgsRest(__VLS_109));
+__VLS_111.slots.default;
+var __VLS_111;
+var __VLS_91;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
 /** @type {__VLS_StyleScopedClasses['h-full']} */ ;
@@ -1116,6 +1269,7 @@ var __VLS_63;
 /** @type {__VLS_StyleScopedClasses['w-56']} */ ;
 /** @type {__VLS_StyleScopedClasses['p-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['shadow']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['disabled']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
@@ -1189,6 +1343,14 @@ var __VLS_63;
 /** @type {__VLS_StyleScopedClasses['justify-end']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['pt-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['space-y-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['p-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['justify-end']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['pt-2']} */ ;
 var __VLS_dollars;
 const __VLS_self = (await import('vue')).defineComponent({
     setup() {
@@ -1215,6 +1377,9 @@ const __VLS_self = (await import('vue')).defineComponent({
             createName: createName,
             createError: createError,
             creating: creating,
+            showNewFolder: showNewFolder,
+            newFolderPath: newFolderPath,
+            newFolderError: newFolderError,
             title: title,
             breadcrumbs: breadcrumbs,
             activeTab: activeTab,
@@ -1226,6 +1391,8 @@ const __VLS_self = (await import('vue')).defineComponent({
             onSave: onSave,
             onNew: onNew,
             confirmCreate: confirmCreate,
+            onNewFolder: onNewFolder,
+            confirmNewFolder: confirmNewFolder,
             onDelete: onDelete,
             treeError: treeError,
             onMoveFile: onMoveFile,

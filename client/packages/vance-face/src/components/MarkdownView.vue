@@ -15,7 +15,7 @@
  *
  * Spec: specification/inline-and-embedded-content.md §11.7.
  */
-import { computed, defineComponent, h, type PropType, type VNode } from 'vue';
+import { computed, defineComponent, h, inject, type PropType, type VNode } from 'vue';
 import { marked, type Tokens } from 'marked';
 import DOMPurify from 'dompurify';
 import InlineKindBox from './InlineKindBox.vue';
@@ -23,8 +23,35 @@ import EmbeddedKindBox from './EmbeddedKindBox.vue';
 import LinkCard from './LinkCard.vue';
 import { hasRenderer } from '@/kindRenderers/registry';
 import { parseFenceLang } from '@/kindRenderers/parseFenceLang';
-import { isVanceUri, parseVanceUri } from '@/kindRenderers/parseVanceUri';
+import { isVanceUri, parseVanceUri, type EmbedRef } from '@/kindRenderers/parseVanceUri';
 import { useDocumentRefStore } from '@/document/documentRefStore';
+
+/**
+ * Optional host-level interceptor for {@code vance:} document links
+ * inside rendered Markdown. Provide a function under this key (via
+ * Vue's {@code provide()}) to take ownership of plain-click navigation
+ * — return {@code true} to suppress the default jump to
+ * {@code documents.html}. Returning {@code false} (or not providing a
+ * handler) falls back to the default.
+ *
+ * <p>Cmd/Ctrl/Shift-click is treated as "open in new tab" and bypasses
+ * the interceptor by default so the user can always escape into a
+ * dedicated browser tab.
+ *
+ * <p>Used by Cortex to open the file as a tab in its in-place editor
+ * instead of navigating away from the page.
+ */
+export interface VanceLinkInterception {
+  documentId: string;
+  projectId: string;
+  embedRef: EmbedRef;
+  newTab: boolean;
+}
+export type VanceLinkHandler = (
+  payload: VanceLinkInterception,
+) => boolean | Promise<boolean>;
+export const VANCE_LINK_HANDLER_KEY = Symbol('vance-link-handler') as
+  unknown as import('vue').InjectionKey<VanceLinkHandler>;
 
 marked.setOptions({
   gfm: true,
@@ -377,6 +404,7 @@ export default defineComponent({
   },
   setup(props) {
     const documentRefStore = useDocumentRefStore();
+    const vanceLinkHandler = inject(VANCE_LINK_HANDLER_KEY, null);
 
     const inlineHtml = computed<string>(() => {
       const src = props.source ?? '';
@@ -468,6 +496,26 @@ export default defineComponent({
         console.warn('MarkdownView: resolved vance: URI is missing projectId/id', href);
         return;
       }
+      // Plain-click interception — Cortex (or another host) can take
+      // ownership and open the doc in-place. Cmd/Ctrl/Shift-click is
+      // always treated as "I really want a new browser tab" and goes
+      // through the default path below so the host can't trap the
+      // user. The handler returns truthy to claim the click.
+      if (vanceLinkHandler && !newTab) {
+        try {
+          const handled = await vanceLinkHandler({
+            documentId,
+            projectId,
+            embedRef,
+            newTab,
+          });
+          if (handled) return;
+        } catch (e) {
+          console.warn('MarkdownView: vance link handler threw', e);
+          // Fall through to default navigation rather than swallow.
+        }
+      }
+
       const url = `/documents.html?projectId=${encodeURIComponent(projectId)}`
         + `&documentId=${encodeURIComponent(documentId)}`;
       if (newTab) {

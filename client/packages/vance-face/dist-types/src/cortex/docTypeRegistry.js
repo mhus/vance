@@ -21,6 +21,7 @@ import { parseSheet, serializeSheet, isSheetMime, } from '@/document/sheetCodec'
 import { parseGraph, serializeGraph, isGraphMime, } from '@/document/graphCodec';
 import { parseSlides, serializeSlides, isSlidesMime, } from '@/document/slidesCodec';
 import { parseDiagram, serializeDiagram, isDiagramMime, } from '@/document/diagramCodec';
+import { isBinaryDoc } from './stores/cortexStore';
 const IMAGE_EXTS = [
     '.png',
     '.jpg',
@@ -179,6 +180,17 @@ const handRolled = [
             return IMAGE_EXTS.some((ext) => p.endsWith(ext));
         },
         mode: 'image',
+        editLocation: 'server-side',
+    },
+    // ── Preview: every non-image binary (PDF, DOCX, XLSX, archive,
+    //    audio/video, …). Mounts DocumentPreview, read-only — the
+    //    catch-all CodeEditor below would otherwise render an empty
+    //    body (binary mimes never load inlineText) that a save would
+    //    push back as 0 bytes, destroying the file.
+    {
+        id: 'preview',
+        match: (doc) => isBinaryDoc(doc),
+        mode: 'preview',
         editLocation: 'server-side',
     },
     // ── Catch-all: CodeEditor on the raw inlineText. Must stay last. ──

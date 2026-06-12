@@ -28,7 +28,7 @@ export interface DocCodec {
  *    like Calendar). The shell delegates parse/serialize to the
  *    KindEntry; read-only when {@code serialize} is absent.
  */
-export type BindingMode = 'code' | 'image' | 'typed-model' | 'kind-registry';
+export type BindingMode = 'code' | 'image' | 'preview' | 'typed-model' | 'kind-registry';
 export interface DocTypeBinding {
     /** Unique identifier — used for debug logs and future addon dispatch. */
     id: string;

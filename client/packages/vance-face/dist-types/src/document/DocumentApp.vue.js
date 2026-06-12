@@ -394,6 +394,23 @@ async function onPopstate() {
 watch(() => docsState.selected.value?.id ?? null, (id) => {
     pushQueryParams({ documentId: id });
 });
+// True while the user is editing an _app.yaml manifest in the generic
+// document editor (typically reached via the per-row "edit as file"
+// shortcut, or via a Cortex deep-link). The detail strip surfaces a
+// jump button so the user is never stuck without a way back to the
+// dedicated Applications page.
+const selectedIsAppDocument = computed(() => {
+    const sel = docsState.selected.value;
+    if (!sel)
+        return false;
+    return sel.kind === 'application' && !!sel.path?.endsWith('/_app.yaml');
+});
+const selectedAppEditorUrl = computed(() => {
+    const sel = docsState.selected.value;
+    if (!sel?.id || !selectedIsAppDocument.value)
+        return null;
+    return `/app.html?documentId=${encodeURIComponent(sel.id)}`;
+});
 const projectOptions = computed(() => {
     const groupNameById = new Map();
     for (const g of projectsState.groups.value) {
@@ -2130,6 +2147,14 @@ else if (__VLS_ctx.docsState.selected.value) {
             title: (__VLS_ctx.$t('documents.detail.kindBadgeTooltip')),
         });
         (__VLS_ctx.$t('documents.detail.kindLabel', { kind: __VLS_ctx.docsState.selected.value.kind }));
+    }
+    if (__VLS_ctx.selectedAppEditorUrl) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
+            href: (__VLS_ctx.selectedAppEditorUrl),
+            ...{ class: "badge badge-primary badge-sm cursor-pointer hover:no-underline" },
+            title: (__VLS_ctx.$t('documents.detail.openApplicationEditorTooltip')),
+        });
+        (__VLS_ctx.$t('documents.detail.openApplicationEditor'));
     }
     if (__VLS_ctx.isDirty) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
@@ -4971,6 +4996,11 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['badge-info']} */ ;
 /** @type {__VLS_StyleScopedClasses['badge-sm']} */ ;
 /** @type {__VLS_StyleScopedClasses['badge']} */ ;
+/** @type {__VLS_StyleScopedClasses['badge-primary']} */ ;
+/** @type {__VLS_StyleScopedClasses['badge-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['cursor-pointer']} */ ;
+/** @type {__VLS_StyleScopedClasses['hover:no-underline']} */ ;
+/** @type {__VLS_StyleScopedClasses['badge']} */ ;
 /** @type {__VLS_StyleScopedClasses['badge-warning']} */ ;
 /** @type {__VLS_StyleScopedClasses['badge-sm']} */ ;
 /** @type {__VLS_StyleScopedClasses['badge']} */ ;
@@ -5301,6 +5331,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             uploadProgress: uploadProgress,
             createMimeOptions: createMimeOptions,
             editMimeOptions: editMimeOptions,
+            selectedAppEditorUrl: selectedAppEditorUrl,
             projectOptions: projectOptions,
             focusZone: focusZone,
             onProjectListDataChanged: onProjectListDataChanged,

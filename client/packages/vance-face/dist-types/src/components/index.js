@@ -5,7 +5,7 @@
 // Addons should import V* primitives directly from @vance/components.
 export * from '@vance/components';
 export { default as EditorShell } from './EditorShell.vue';
-export { default as MarkdownView } from './MarkdownView.vue';
+export { default as MarkdownView, VANCE_LINK_HANDLER_KEY, } from './MarkdownView.vue';
 export { default as ProjectListSidebar } from './ProjectListSidebar.vue';
 export { default as SessionHeader } from './SessionHeader.vue';
 export { default as FormFields } from './FormFields.vue';

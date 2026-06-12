@@ -72,6 +72,7 @@ import {
 } from '@/document/diagramCodec';
 
 import type { CortexDocument } from './types';
+import { isBinaryDoc } from './stores/cortexStore';
 
 /**
  * Symmetric codec interface — type-erased at the registry boundary so
@@ -101,7 +102,12 @@ export interface DocCodec {
  *    like Calendar). The shell delegates parse/serialize to the
  *    KindEntry; read-only when {@code serialize} is absent.
  */
-export type BindingMode = 'code' | 'image' | 'typed-model' | 'kind-registry';
+export type BindingMode =
+  | 'code'
+  | 'image'
+  | 'preview'
+  | 'typed-model'
+  | 'kind-registry';
 
 export interface DocTypeBinding {
   /** Unique identifier — used for debug logs and future addon dispatch. */
@@ -310,6 +316,17 @@ const handRolled: HandRolledBinding[] = [
       return IMAGE_EXTS.some((ext) => p.endsWith(ext));
     },
     mode: 'image',
+    editLocation: 'server-side',
+  },
+  // ── Preview: every non-image binary (PDF, DOCX, XLSX, archive,
+  //    audio/video, …). Mounts DocumentPreview, read-only — the
+  //    catch-all CodeEditor below would otherwise render an empty
+  //    body (binary mimes never load inlineText) that a save would
+  //    push back as 0 bytes, destroying the file.
+  {
+    id: 'preview',
+    match: (doc) => isBinaryDoc(doc),
+    mode: 'preview',
     editLocation: 'server-side',
   },
   // ── Catch-all: CodeEditor on the raw inlineText. Must stay last. ──

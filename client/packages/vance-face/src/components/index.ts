@@ -8,7 +8,11 @@ export * from '@vance/components';
 
 export { default as EditorShell } from './EditorShell.vue';
 export type { Crumb, FocusZone } from './EditorShell.vue';
-export { default as MarkdownView } from './MarkdownView.vue';
+export {
+  default as MarkdownView,
+  VANCE_LINK_HANDLER_KEY,
+} from './MarkdownView.vue';
+export type { VanceLinkHandler, VanceLinkInterception } from './MarkdownView.vue';
 export { default as ProjectListSidebar } from './ProjectListSidebar.vue';
 export type { PickerNode } from './ProjectListSidebar.vue';
 export { default as SessionHeader } from './SessionHeader.vue';

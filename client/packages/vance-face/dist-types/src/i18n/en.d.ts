@@ -309,6 +309,8 @@ declare const _default: {
             sizeBy: string;
             kindBadgeTooltip: string;
             kindLabel: string;
+            openApplicationEditor: string;
+            openApplicationEditorTooltip: string;
             changedBadge: string;
             changedBadgeTooltip: string;
             propsToggleLabel: string;

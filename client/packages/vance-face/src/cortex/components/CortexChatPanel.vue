@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import {
   BrainWebSocket,
   WebSocketRequestError,
@@ -13,7 +13,10 @@ import type {
 } from '@vance/generated';
 import { VAlert, VButton } from '@/components';
 import ChatView from '@/chat/ChatView.vue';
-import ChatComposer from '@/chat/ChatComposer.vue';
+import ChatComposer, {
+  type ComposerCurrentFileSource,
+} from '@/chat/ChatComposer.vue';
+import { useCortexStore } from '../stores/cortexStore';
 import type { CortexClientToolService } from '../clientToolService';
 
 interface Props {
@@ -28,6 +31,21 @@ interface Props {
 }
 
 const props = defineProps<Props>();
+
+const cortexStore = useCortexStore();
+
+/**
+ * Surfaces the Cortex active tab as a one-click chat attachment. Reactive,
+ * so the composer's dropdown label always reflects what the user is
+ * currently looking at in the main editor. {@code null} when no tab is
+ * open (Cortex starts blank for fresh sessions) — the composer then
+ * falls back to the plain native file-picker UX.
+ */
+const currentFileSource = computed<ComposerCurrentFileSource | null>(() => {
+  const tab = cortexStore.activeTab;
+  if (!tab) return null;
+  return { documentId: tab.id, label: tab.path };
+});
 
 const CLIENT_VERSION = '0.1.0';
 
@@ -206,6 +224,7 @@ function onLeave(): void {
           :chat-process-name="CHAT_PROCESS_NAME"
           :chat-project-id="projectId"
           :compact-tools="true"
+          :current-file-source="currentFileSource"
           @hub="onLeave"
           @local-echo="onLocalEcho"
           @rollback-echo="onRollbackEcho"

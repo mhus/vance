@@ -65,7 +65,33 @@ const props = defineProps<{
    *  `max-width: 640px` media-query gate doesn't fire even though the
    *  composer itself has too little room. */
   compactTools?: boolean;
+  /** Host-provided "current file" hint. When set, the attachment
+   *  picker becomes a dropdown that offers attaching this existing
+   *  document by id (no upload — it's already in the project) in
+   *  addition to the regular from-computer file pick. Drives the
+   *  Cortex chat panel's "attach active tab" affordance. */
+  currentFileSource?: ComposerCurrentFileSource | null;
 }>();
+
+/**
+ * Reference to an already-existing document in the chat's project that
+ * the host wants to surface as a one-click attachment. {@code label}
+ * is whatever the host wants displayed (typically the file path).
+ */
+export interface ComposerCurrentFileSource {
+  documentId: string;
+  label: string;
+}
+
+/**
+ * One pending attachment that is already a server-side document — no
+ * upload step needed. Distinct from {@link selectedFiles} (browser
+ * {@code File} objects that need a multipart POST first).
+ */
+interface AttachedDoc {
+  documentId: string;
+  label: string;
+}
 
 const emit = defineEmits<{
   /** Slash-command interception: user typed `/hub`. Parent closes the
@@ -107,7 +133,33 @@ watch(composerText, (next) => {
 }, { immediate: true });
 
 const selectedFiles = ref<File[]>([]);
+const selectedDocs = ref<AttachedDoc[]>([]);
 const dragActive = ref(false);
+
+function attachCurrentFile(): void {
+  const src = props.currentFileSource;
+  if (!src) return;
+  // Same doc shouldn't appear twice in the same turn — silently
+  // dedupe so a double-click on the menu item is harmless.
+  if (selectedDocs.value.some((d) => d.documentId === src.documentId)) return;
+  selectedDocs.value = [...selectedDocs.value, { ...src }];
+}
+
+function removeAttachedDoc(idx: number): void {
+  const next = selectedDocs.value.slice();
+  next.splice(idx, 1);
+  selectedDocs.value = next;
+}
+
+/**
+ * Collapse the DaisyUI attachment-picker dropdown by blurring the
+ * currently-focused element. Daisy's CSS-only dropdown stays open as
+ * long as the trigger or any child holds focus.
+ */
+function closeAttachmentMenu(): void {
+  const ae = document.activeElement;
+  if (ae && ae instanceof HTMLElement) ae.blur();
+}
 
 /**
  * Composer mode: single-line uses Enter to send (Shift+Enter for a hard
@@ -445,12 +497,17 @@ function toggleTalkMode(): void {
 async function send(): Promise<void> {
   const text = composerText.value.trim();
   const filesSnapshot = selectedFiles.value.slice();
+  const docsSnapshot = selectedDocs.value.slice();
 
   // While bound to a worker via Eddie's MEDIATE handover, the user can
   // type {@code /hub} to bounce back to Eddie. We intercept it here
   // so the brain's MediationEndHandler picks up the control frame
   // instead of process-steer enqueueing "/hub" as a chat message.
-  if (props.mediation && text === '/hub' && filesSnapshot.length === 0) {
+  if (
+    props.mediation && text === '/hub'
+    && filesSnapshot.length === 0
+    && docsSnapshot.length === 0
+  ) {
     composerText.value = '';
     emit('hub');
     return;
@@ -460,7 +517,7 @@ async function send(): Promise<void> {
   // send without typing — Arthur can then ask "what should I do with
   // this?" rather than the UI silently rejecting the click.
   if (sending.value || !props.chatProcessName) return;
-  if (!text && filesSnapshot.length === 0) return;
+  if (!text && filesSnapshot.length === 0 && docsSnapshot.length === 0) return;
   sending.value = true;
   sendError.value = null;
   clearTalkAutoSend();
@@ -488,11 +545,20 @@ async function send(): Promise<void> {
     uploading.value = false;
   }
 
+  // Merge the upload-derived AttachmentRefs with the already-existing
+  // document references (Cortex "current file" path). Existing refs go
+  // first so the agent sees the user's contextual pick before the
+  // ad-hoc uploads.
+  const allAttachments: AttachmentRef[] = [
+    ...docsSnapshot.map((d) => ({ documentId: d.documentId })),
+    ...attachmentRefs,
+  ];
+
   // Stage 2 — emit the optimistic echo (the parent appends to its
   // message stream), clear the composer, and send the steer.
   const optimisticId = `${OPTIMISTIC_PREFIX}${++optimisticSeq}`;
-  const echoText = filesSnapshot.length > 0
-    ? attachmentEchoPrefix(filesSnapshot) + text
+  const echoText = filesSnapshot.length > 0 || docsSnapshot.length > 0
+    ? attachmentEchoPrefix(filesSnapshot, docsSnapshot) + text
     : text;
   emit('local-echo', {
     messageId: optimisticId,
@@ -503,6 +569,7 @@ async function send(): Promise<void> {
   });
   composerText.value = '';
   selectedFiles.value = [];
+  selectedDocs.value = [];
 
   try {
     // Per-turn voice-mode signal — see specification/voice-mode.md.
@@ -510,7 +577,7 @@ async function send(): Promise<void> {
     await props.socket.send<ProcessSteerRequest, ProcessSteerResponse>('process-steer', {
       processName: props.chatProcessName,
       content: text,
-      attachments: attachmentRefs.length > 0 ? attachmentRefs : undefined,
+      attachments: allAttachments.length > 0 ? allAttachments : undefined,
       voiceMode: voiceMode ? true : undefined,
     });
   } catch (e) {
@@ -644,9 +711,15 @@ function removeFile(index: number): void {
   selectedFiles.value = next;
 }
 
-function attachmentEchoPrefix(files: File[]): string {
-  const lines = files.map((f) => `📎 ${f.name} _(${formatBytes(f.size)})_`);
-  return lines.join('\n') + (files.length > 0 ? '\n\n' : '');
+function attachmentEchoPrefix(files: File[], docs: AttachedDoc[]): string {
+  const lines: string[] = [];
+  for (const d of docs) {
+    lines.push(`📄 ${d.label}`);
+  }
+  for (const f of files) {
+    lines.push(`📎 ${f.name} _(${formatBytes(f.size)})_`);
+  }
+  return lines.length > 0 ? lines.join('\n') + '\n\n' : '';
 }
 
 function formatBytes(bytes: number): string {
@@ -743,11 +816,29 @@ onBeforeUnmount(() => {
     <VAlert v-if="speechError" variant="warning" class="mb-2">{{ speechError }}</VAlert>
 
     <!-- Pending-attachment chips. Cleared by send() on success;
-         per-chip ✕ removes a single entry before send. -->
+         per-chip ✕ removes a single entry before send. Two flavours:
+         📄 for already-existing docs (no upload step) and 📎 for
+         to-be-uploaded files. -->
     <div
-      v-if="selectedFiles.length > 0"
+      v-if="selectedFiles.length > 0 || selectedDocs.length > 0"
       class="max-w-5xl mx-auto mb-2 flex flex-wrap gap-2"
     >
+      <div
+        v-for="(doc, idx) in selectedDocs"
+        :key="`doc-${doc.documentId}`"
+        class="flex items-center gap-2 px-2 py-1
+               border border-primary/40 rounded bg-primary/5 text-sm"
+      >
+        <span aria-hidden="true">📄</span>
+        <span class="font-mono truncate max-w-xs">{{ doc.label }}</span>
+        <VButton
+          variant="ghost"
+          size="sm"
+          :disabled="sending || uploading"
+          :title="$t('chat.attachments.remove')"
+          @click="removeAttachedDoc(idx)"
+        >✕</VButton>
+      </div>
       <div
         v-for="(file, idx) in selectedFiles"
         :key="`att-${file.name}-${idx}`"
@@ -860,7 +951,45 @@ onBeforeUnmount(() => {
           multiple
           @change="onFilePickerChange"
         />
+        <!-- Host (e.g. Cortex) declared a current-file source → render
+             the 📎 button as a DaisyUI dropdown so the user can choose
+             between picking a fresh file and attaching the contextual
+             one without a roundtrip. Without that source we keep the
+             single-click direct picker — same UX as standalone chat. -->
+        <div v-if="currentFileSource" class="dropdown dropdown-top">
+          <div
+            tabindex="0"
+            role="button"
+            class="btn btn-ghost btn-sm"
+            :class="{ 'btn-disabled': sending || uploading || !chatProcessName }"
+            :title="$t('chat.attachments.pickerTooltip')"
+          >📎</div>
+          <ul
+            tabindex="0"
+            class="dropdown-content menu menu-sm bg-base-100 rounded-box z-[30]
+                   mb-2 w-72 p-2 shadow border border-base-300"
+          >
+            <li>
+              <a @click="closeAttachmentMenu(); fileInputRef?.click()">
+                <span aria-hidden="true">📎</span>
+                <span class="flex-1">{{ $t('chat.attachments.pickFromComputer') }}</span>
+              </a>
+            </li>
+            <li>
+              <a @click="closeAttachmentMenu(); attachCurrentFile()">
+                <span aria-hidden="true">📄</span>
+                <span class="flex-1 min-w-0">
+                  <span class="block text-xs opacity-60">
+                    {{ $t('chat.attachments.attachCurrentFile') }}
+                  </span>
+                  <span class="block truncate font-mono">{{ currentFileSource.label }}</span>
+                </span>
+              </a>
+            </li>
+          </ul>
+        </div>
         <VButton
+          v-else
           variant="ghost"
           size="sm"
           :disabled="sending || uploading || !chatProcessName"
@@ -880,7 +1009,7 @@ onBeforeUnmount(() => {
       </div>
       <VButton
         variant="primary"
-        :disabled="(!composerText.trim() && selectedFiles.length === 0)
+        :disabled="(!composerText.trim() && selectedFiles.length === 0 && selectedDocs.length === 0)
           || sending || uploading || !chatProcessName"
         :loading="sending || uploading"
         :title="$t('chat.send')"

@@ -152,6 +152,8 @@ declare const _default: {
         sessionForbidden: string;
         attachments: {
             pickerTooltip: string;
+            pickFromComputer: string;
+            attachCurrentFile: string;
             dropToAttach: string;
             remove: string;
         };

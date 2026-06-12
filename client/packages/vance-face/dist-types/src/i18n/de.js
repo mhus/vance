@@ -160,6 +160,8 @@ export default {
             pickerTooltip: 'Datei anhängen (oder ins Eingabefeld ziehen)',
             dropToAttach: 'Zum Anhängen loslassen',
             remove: 'Anhang entfernen',
+            pickFromComputer: 'Vom Rechner…',
+            attachCurrentFile: 'Aktuelle Datei',
         },
         speech: {
             startSpeechToText: 'Spracheingabe starten',

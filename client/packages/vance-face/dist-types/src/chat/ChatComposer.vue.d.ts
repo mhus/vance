@@ -28,7 +28,22 @@ type __VLS_Props = {
      *  `max-width: 640px` media-query gate doesn't fire even though the
      *  composer itself has too little room. */
     compactTools?: boolean;
+    /** Host-provided "current file" hint. When set, the attachment
+     *  picker becomes a dropdown that offers attaching this existing
+     *  document by id (no upload — it's already in the project) in
+     *  addition to the regular from-computer file pick. Drives the
+     *  Cortex chat panel's "attach active tab" affordance. */
+    currentFileSource?: ComposerCurrentFileSource | null;
 };
+/**
+ * Reference to an already-existing document in the chat's project that
+ * the host wants to surface as a one-click attachment. {@code label}
+ * is whatever the host wants displayed (typically the file path).
+ */
+export interface ComposerCurrentFileSource {
+    documentId: string;
+    label: string;
+}
 declare function speakMessage(content: string): void;
 declare function noteTalkActivity(): void;
 /** Open the TTS gate. Called by the parent once the initial REST

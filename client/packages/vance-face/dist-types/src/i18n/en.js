@@ -164,6 +164,8 @@ export default {
         sessionForbidden: 'Session "{id}" belongs to another user.',
         attachments: {
             pickerTooltip: 'Attach a file (or drop one onto the message box)',
+            pickFromComputer: 'From computer…',
+            attachCurrentFile: 'Current file',
             dropToAttach: 'Drop to attach',
             remove: 'Remove attachment',
         },

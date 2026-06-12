@@ -1,9 +1,24 @@
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { BrainWebSocket, WebSocketRequestError, getTenantId, setActiveSessionId, } from '@vance/shared';
 import { VAlert, VButton } from '@/components';
 import ChatView from '@/chat/ChatView.vue';
 import ChatComposer from '@/chat/ChatComposer.vue';
+import { useCortexStore } from '../stores/cortexStore';
 const props = defineProps();
+const cortexStore = useCortexStore();
+/**
+ * Surfaces the Cortex active tab as a one-click chat attachment. Reactive,
+ * so the composer's dropdown label always reflects what the user is
+ * currently looking at in the main editor. {@code null} when no tab is
+ * open (Cortex starts blank for fresh sessions) — the composer then
+ * falls back to the plain native file-picker UX.
+ */
+const currentFileSource = computed(() => {
+    const tab = cortexStore.activeTab;
+    if (!tab)
+        return null;
+    return { documentId: tab.id, label: tab.path };
+});
 const CLIENT_VERSION = '0.1.0';
 // The chat-process name is fixed by {@code SessionChatBootstrapper} to
 // "chat" — exactly one per session, see chat/ChatApp.vue's
@@ -238,6 +253,7 @@ else {
             chatProcessName: (__VLS_ctx.CHAT_PROCESS_NAME),
             chatProjectId: (__VLS_ctx.projectId),
             compactTools: (true),
+            currentFileSource: (__VLS_ctx.currentFileSource),
         }));
         const __VLS_23 = __VLS_22({
             ...{ 'onHub': {} },
@@ -248,6 +264,7 @@ else {
             chatProcessName: (__VLS_ctx.CHAT_PROCESS_NAME),
             chatProjectId: (__VLS_ctx.projectId),
             compactTools: (true),
+            currentFileSource: (__VLS_ctx.currentFileSource),
         }, ...__VLS_functionalComponentArgsRest(__VLS_22));
         let __VLS_25;
         let __VLS_26;
@@ -310,6 +327,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             VButton: VButton,
             ChatView: ChatView,
             ChatComposer: ChatComposer,
+            currentFileSource: currentFileSource,
             CHAT_PROCESS_NAME: CHAT_PROCESS_NAME,
             status: status,
             errorMessage: errorMessage,

@@ -154,6 +154,8 @@ declare const _default: {
             pickerTooltip: string;
             dropToAttach: string;
             remove: string;
+            pickFromComputer: string;
+            attachCurrentFile: string;
         };
         speech: {
             startSpeechToText: string;

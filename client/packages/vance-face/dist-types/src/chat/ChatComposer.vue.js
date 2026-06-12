@@ -20,7 +20,33 @@ watch(composerText, (next) => {
     emit('text-changed', next);
 }, { immediate: true });
 const selectedFiles = ref([]);
+const selectedDocs = ref([]);
 const dragActive = ref(false);
+function attachCurrentFile() {
+    const src = props.currentFileSource;
+    if (!src)
+        return;
+    // Same doc shouldn't appear twice in the same turn — silently
+    // dedupe so a double-click on the menu item is harmless.
+    if (selectedDocs.value.some((d) => d.documentId === src.documentId))
+        return;
+    selectedDocs.value = [...selectedDocs.value, { ...src }];
+}
+function removeAttachedDoc(idx) {
+    const next = selectedDocs.value.slice();
+    next.splice(idx, 1);
+    selectedDocs.value = next;
+}
+/**
+ * Collapse the DaisyUI attachment-picker dropdown by blurring the
+ * currently-focused element. Daisy's CSS-only dropdown stays open as
+ * long as the trigger or any child holds focus.
+ */
+function closeAttachmentMenu() {
+    const ae = document.activeElement;
+    if (ae && ae instanceof HTMLElement)
+        ae.blur();
+}
 /**
  * Composer mode: single-line uses Enter to send (Shift+Enter for a hard
  * break), multi-line uses Ctrl/Cmd+Enter (because plain Enter is the
@@ -333,11 +359,14 @@ function toggleTalkMode() {
 async function send() {
     const text = composerText.value.trim();
     const filesSnapshot = selectedFiles.value.slice();
+    const docsSnapshot = selectedDocs.value.slice();
     // While bound to a worker via Eddie's MEDIATE handover, the user can
     // type {@code /hub} to bounce back to Eddie. We intercept it here
     // so the brain's MediationEndHandler picks up the control frame
     // instead of process-steer enqueueing "/hub" as a chat message.
-    if (props.mediation && text === '/hub' && filesSnapshot.length === 0) {
+    if (props.mediation && text === '/hub'
+        && filesSnapshot.length === 0
+        && docsSnapshot.length === 0) {
         composerText.value = '';
         emit('hub');
         return;
@@ -347,7 +376,7 @@ async function send() {
     // this?" rather than the UI silently rejecting the click.
     if (sending.value || !props.chatProcessName)
         return;
-    if (!text && filesSnapshot.length === 0)
+    if (!text && filesSnapshot.length === 0 && docsSnapshot.length === 0)
         return;
     sending.value = true;
     sendError.value = null;
@@ -375,11 +404,19 @@ async function send() {
         }
         uploading.value = false;
     }
+    // Merge the upload-derived AttachmentRefs with the already-existing
+    // document references (Cortex "current file" path). Existing refs go
+    // first so the agent sees the user's contextual pick before the
+    // ad-hoc uploads.
+    const allAttachments = [
+        ...docsSnapshot.map((d) => ({ documentId: d.documentId })),
+        ...attachmentRefs,
+    ];
     // Stage 2 — emit the optimistic echo (the parent appends to its
     // message stream), clear the composer, and send the steer.
     const optimisticId = `${OPTIMISTIC_PREFIX}${++optimisticSeq}`;
-    const echoText = filesSnapshot.length > 0
-        ? attachmentEchoPrefix(filesSnapshot) + text
+    const echoText = filesSnapshot.length > 0 || docsSnapshot.length > 0
+        ? attachmentEchoPrefix(filesSnapshot, docsSnapshot) + text
         : text;
     emit('local-echo', {
         messageId: optimisticId,
@@ -390,13 +427,14 @@ async function send() {
     });
     composerText.value = '';
     selectedFiles.value = [];
+    selectedDocs.value = [];
     try {
         // Per-turn voice-mode signal — see specification/voice-mode.md.
         const voiceMode = speakerEnabled.value || talkMode.value;
         await props.socket.send('process-steer', {
             processName: props.chatProcessName,
             content: text,
-            attachments: attachmentRefs.length > 0 ? attachmentRefs : undefined,
+            attachments: allAttachments.length > 0 ? allAttachments : undefined,
             voiceMode: voiceMode ? true : undefined,
         });
     }
@@ -526,9 +564,15 @@ function removeFile(index) {
     next.splice(index, 1);
     selectedFiles.value = next;
 }
-function attachmentEchoPrefix(files) {
-    const lines = files.map((f) => `📎 ${f.name} _(${formatBytes(f.size)})_`);
-    return lines.join('\n') + (files.length > 0 ? '\n\n' : '');
+function attachmentEchoPrefix(files, docs) {
+    const lines = [];
+    for (const d of docs) {
+        lines.push(`📄 ${d.label}`);
+    }
+    for (const f of files) {
+        lines.push(`📎 ${f.name} _(${formatBytes(f.size)})_`);
+    }
+    return lines.length > 0 ? lines.join('\n') + '\n\n' : '';
 }
 function formatBytes(bytes) {
     if (bytes < 1024)
@@ -658,14 +702,14 @@ if (__VLS_ctx.speechError) {
     (__VLS_ctx.speechError);
     var __VLS_7;
 }
-if (__VLS_ctx.selectedFiles.length > 0) {
+if (__VLS_ctx.selectedFiles.length > 0 || __VLS_ctx.selectedDocs.length > 0) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "max-w-5xl mx-auto mb-2 flex flex-wrap gap-2" },
     });
-    for (const [file, idx] of __VLS_getVForSourceType((__VLS_ctx.selectedFiles))) {
+    for (const [doc, idx] of __VLS_getVForSourceType((__VLS_ctx.selectedDocs))) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-            key: (`att-${file.name}-${idx}`),
-            ...{ class: "\u0066\u006c\u0065\u0078\u0020\u0069\u0074\u0065\u006d\u0073\u002d\u0063\u0065\u006e\u0074\u0065\u0072\u0020\u0067\u0061\u0070\u002d\u0032\u0020\u0070\u0078\u002d\u0032\u0020\u0070\u0079\u002d\u0031\u000a\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0062\u006f\u0072\u0064\u0065\u0072\u0020\u0062\u006f\u0072\u0064\u0065\u0072\u002d\u0062\u0061\u0073\u0065\u002d\u0033\u0030\u0030\u0020\u0072\u006f\u0075\u006e\u0064\u0065\u0064\u0020\u0062\u0067\u002d\u0062\u0061\u0073\u0065\u002d\u0032\u0030\u0030\u0020\u0074\u0065\u0078\u0074\u002d\u0073\u006d" },
+            key: (`doc-${doc.documentId}`),
+            ...{ class: "\u0066\u006c\u0065\u0078\u0020\u0069\u0074\u0065\u006d\u0073\u002d\u0063\u0065\u006e\u0074\u0065\u0072\u0020\u0067\u0061\u0070\u002d\u0032\u0020\u0070\u0078\u002d\u0032\u0020\u0070\u0079\u002d\u0031\u000a\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0062\u006f\u0072\u0064\u0065\u0072\u0020\u0062\u006f\u0072\u0064\u0065\u0072\u002d\u0070\u0072\u0069\u006d\u0061\u0072\u0079\u002f\u0034\u0030\u0020\u0072\u006f\u0075\u006e\u0064\u0065\u0064\u0020\u0062\u0067\u002d\u0070\u0072\u0069\u006d\u0061\u0072\u0079\u002f\u0035\u0020\u0074\u0065\u0078\u0074\u002d\u0073\u006d" },
         });
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
             'aria-hidden': "true",
@@ -673,11 +717,7 @@ if (__VLS_ctx.selectedFiles.length > 0) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
             ...{ class: "font-mono truncate max-w-xs" },
         });
-        (file.name);
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-            ...{ class: "text-xs opacity-60" },
-        });
-        (__VLS_ctx.formatBytes(file.size));
+        (doc.label);
         const __VLS_8 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
         // @ts-ignore
@@ -700,48 +740,63 @@ if (__VLS_ctx.selectedFiles.length > 0) {
         let __VLS_14;
         const __VLS_15 = {
             onClick: (...[$event]) => {
-                if (!(__VLS_ctx.selectedFiles.length > 0))
+                if (!(__VLS_ctx.selectedFiles.length > 0 || __VLS_ctx.selectedDocs.length > 0))
                     return;
-                __VLS_ctx.removeFile(idx);
+                __VLS_ctx.removeAttachedDoc(idx);
             }
         };
         __VLS_11.slots.default;
         var __VLS_11;
     }
+    for (const [file, idx] of __VLS_getVForSourceType((__VLS_ctx.selectedFiles))) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            key: (`att-${file.name}-${idx}`),
+            ...{ class: "\u0066\u006c\u0065\u0078\u0020\u0069\u0074\u0065\u006d\u0073\u002d\u0063\u0065\u006e\u0074\u0065\u0072\u0020\u0067\u0061\u0070\u002d\u0032\u0020\u0070\u0078\u002d\u0032\u0020\u0070\u0079\u002d\u0031\u000a\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0062\u006f\u0072\u0064\u0065\u0072\u0020\u0062\u006f\u0072\u0064\u0065\u0072\u002d\u0062\u0061\u0073\u0065\u002d\u0033\u0030\u0030\u0020\u0072\u006f\u0075\u006e\u0064\u0065\u0064\u0020\u0062\u0067\u002d\u0062\u0061\u0073\u0065\u002d\u0032\u0030\u0030\u0020\u0074\u0065\u0078\u0074\u002d\u0073\u006d" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            'aria-hidden': "true",
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "font-mono truncate max-w-xs" },
+        });
+        (file.name);
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "text-xs opacity-60" },
+        });
+        (__VLS_ctx.formatBytes(file.size));
+        const __VLS_16 = {}.VButton;
+        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+        // @ts-ignore
+        const __VLS_17 = __VLS_asFunctionalComponent(__VLS_16, new __VLS_16({
+            ...{ 'onClick': {} },
+            variant: "ghost",
+            size: "sm",
+            disabled: (__VLS_ctx.sending || __VLS_ctx.uploading),
+            title: (__VLS_ctx.$t('chat.attachments.remove')),
+        }));
+        const __VLS_18 = __VLS_17({
+            ...{ 'onClick': {} },
+            variant: "ghost",
+            size: "sm",
+            disabled: (__VLS_ctx.sending || __VLS_ctx.uploading),
+            title: (__VLS_ctx.$t('chat.attachments.remove')),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_17));
+        let __VLS_20;
+        let __VLS_21;
+        let __VLS_22;
+        const __VLS_23 = {
+            onClick: (...[$event]) => {
+                if (!(__VLS_ctx.selectedFiles.length > 0 || __VLS_ctx.selectedDocs.length > 0))
+                    return;
+                __VLS_ctx.removeFile(idx);
+            }
+        };
+        __VLS_19.slots.default;
+        var __VLS_19;
+    }
 }
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "max-w-5xl mx-auto flex gap-2 items-end relative" },
-});
-const __VLS_16 = {}.VButton;
-/** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-// @ts-ignore
-const __VLS_17 = __VLS_asFunctionalComponent(__VLS_16, new __VLS_16({
-    ...{ 'onClick': {} },
-    variant: "ghost",
-    size: "sm",
-    ...{ class: "composer-tools-toggle" },
-    title: (__VLS_ctx.composerToolsOpen ? 'Hide tools' : 'Show tools'),
-}));
-const __VLS_18 = __VLS_17({
-    ...{ 'onClick': {} },
-    variant: "ghost",
-    size: "sm",
-    ...{ class: "composer-tools-toggle" },
-    title: (__VLS_ctx.composerToolsOpen ? 'Hide tools' : 'Show tools'),
-}, ...__VLS_functionalComponentArgsRest(__VLS_17));
-let __VLS_20;
-let __VLS_21;
-let __VLS_22;
-const __VLS_23 = {
-    onClick: (...[$event]) => {
-        __VLS_ctx.composerToolsOpen = !__VLS_ctx.composerToolsOpen;
-    }
-};
-__VLS_19.slots.default;
-var __VLS_19;
-__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "composer-tools" },
-    ...{ class: ({ 'composer-tools--open': __VLS_ctx.composerToolsOpen }) },
 });
 const __VLS_24 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
@@ -750,57 +805,61 @@ const __VLS_25 = __VLS_asFunctionalComponent(__VLS_24, new __VLS_24({
     ...{ 'onClick': {} },
     variant: "ghost",
     size: "sm",
-    title: (__VLS_ctx.multiline ? __VLS_ctx.$t('chat.multilineToggleSingle') : __VLS_ctx.$t('chat.multilineToggleMulti')),
+    ...{ class: "composer-tools-toggle" },
+    title: (__VLS_ctx.composerToolsOpen ? 'Hide tools' : 'Show tools'),
 }));
 const __VLS_26 = __VLS_25({
     ...{ 'onClick': {} },
     variant: "ghost",
     size: "sm",
-    title: (__VLS_ctx.multiline ? __VLS_ctx.$t('chat.multilineToggleSingle') : __VLS_ctx.$t('chat.multilineToggleMulti')),
+    ...{ class: "composer-tools-toggle" },
+    title: (__VLS_ctx.composerToolsOpen ? 'Hide tools' : 'Show tools'),
 }, ...__VLS_functionalComponentArgsRest(__VLS_25));
 let __VLS_28;
 let __VLS_29;
 let __VLS_30;
 const __VLS_31 = {
     onClick: (...[$event]) => {
-        __VLS_ctx.multiline = !__VLS_ctx.multiline;
+        __VLS_ctx.composerToolsOpen = !__VLS_ctx.composerToolsOpen;
     }
 };
 __VLS_27.slots.default;
-(__VLS_ctx.multiline ? '▲' : '▼');
 var __VLS_27;
+__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+    ...{ class: "composer-tools" },
+    ...{ class: ({ 'composer-tools--open': __VLS_ctx.composerToolsOpen }) },
+});
+const __VLS_32 = {}.VButton;
+/** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+// @ts-ignore
+const __VLS_33 = __VLS_asFunctionalComponent(__VLS_32, new __VLS_32({
+    ...{ 'onClick': {} },
+    variant: "ghost",
+    size: "sm",
+    title: (__VLS_ctx.multiline ? __VLS_ctx.$t('chat.multilineToggleSingle') : __VLS_ctx.$t('chat.multilineToggleMulti')),
+}));
+const __VLS_34 = __VLS_33({
+    ...{ 'onClick': {} },
+    variant: "ghost",
+    size: "sm",
+    title: (__VLS_ctx.multiline ? __VLS_ctx.$t('chat.multilineToggleSingle') : __VLS_ctx.$t('chat.multilineToggleMulti')),
+}, ...__VLS_functionalComponentArgsRest(__VLS_33));
+let __VLS_36;
+let __VLS_37;
+let __VLS_38;
+const __VLS_39 = {
+    onClick: (...[$event]) => {
+        __VLS_ctx.multiline = !__VLS_ctx.multiline;
+    }
+};
+__VLS_35.slots.default;
+(__VLS_ctx.multiline ? '▲' : '▼');
+var __VLS_35;
 if (__VLS_ctx.speechSupported || __VLS_ctx.speakerSupported) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "flex gap-1 items-center" },
     });
     if (__VLS_ctx.talkModeSupported) {
-        const __VLS_32 = {}.VButton;
-        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-        // @ts-ignore
-        const __VLS_33 = __VLS_asFunctionalComponent(__VLS_32, new __VLS_32({
-            ...{ 'onClick': {} },
-            variant: "ghost",
-            size: "sm",
-            ...{ class: (__VLS_ctx.talkMode ? 'text-success animate-pulse' : '') },
-            title: (__VLS_ctx.talkMode ? __VLS_ctx.$t('chat.speech.talkModeStop') : __VLS_ctx.$t('chat.speech.talkModeStart')),
-        }));
-        const __VLS_34 = __VLS_33({
-            ...{ 'onClick': {} },
-            variant: "ghost",
-            size: "sm",
-            ...{ class: (__VLS_ctx.talkMode ? 'text-success animate-pulse' : '') },
-            title: (__VLS_ctx.talkMode ? __VLS_ctx.$t('chat.speech.talkModeStop') : __VLS_ctx.$t('chat.speech.talkModeStart')),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_33));
-        let __VLS_36;
-        let __VLS_37;
-        let __VLS_38;
-        const __VLS_39 = {
-            onClick: (__VLS_ctx.toggleTalkMode)
-        };
-        __VLS_35.slots.default;
-        var __VLS_35;
-    }
-    if (__VLS_ctx.speechSupported) {
         const __VLS_40 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
         // @ts-ignore
@@ -808,26 +867,26 @@ if (__VLS_ctx.speechSupported || __VLS_ctx.speakerSupported) {
             ...{ 'onClick': {} },
             variant: "ghost",
             size: "sm",
-            ...{ class: (__VLS_ctx.speechRecording ? 'text-error animate-pulse' : '') },
-            title: (__VLS_ctx.speechRecording ? __VLS_ctx.$t('chat.speech.stopSpeechToText') : __VLS_ctx.$t('chat.speech.startSpeechToText')),
+            ...{ class: (__VLS_ctx.talkMode ? 'text-success animate-pulse' : '') },
+            title: (__VLS_ctx.talkMode ? __VLS_ctx.$t('chat.speech.talkModeStop') : __VLS_ctx.$t('chat.speech.talkModeStart')),
         }));
         const __VLS_42 = __VLS_41({
             ...{ 'onClick': {} },
             variant: "ghost",
             size: "sm",
-            ...{ class: (__VLS_ctx.speechRecording ? 'text-error animate-pulse' : '') },
-            title: (__VLS_ctx.speechRecording ? __VLS_ctx.$t('chat.speech.stopSpeechToText') : __VLS_ctx.$t('chat.speech.startSpeechToText')),
+            ...{ class: (__VLS_ctx.talkMode ? 'text-success animate-pulse' : '') },
+            title: (__VLS_ctx.talkMode ? __VLS_ctx.$t('chat.speech.talkModeStop') : __VLS_ctx.$t('chat.speech.talkModeStart')),
         }, ...__VLS_functionalComponentArgsRest(__VLS_41));
         let __VLS_44;
         let __VLS_45;
         let __VLS_46;
         const __VLS_47 = {
-            onClick: (__VLS_ctx.toggleSpeech)
+            onClick: (__VLS_ctx.toggleTalkMode)
         };
         __VLS_43.slots.default;
         var __VLS_43;
     }
-    if (__VLS_ctx.speakerSupported) {
+    if (__VLS_ctx.speechSupported) {
         const __VLS_48 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
         // @ts-ignore
@@ -835,25 +894,52 @@ if (__VLS_ctx.speechSupported || __VLS_ctx.speakerSupported) {
             ...{ 'onClick': {} },
             variant: "ghost",
             size: "sm",
-            ...{ class: (__VLS_ctx.speakerEnabled ? (__VLS_ctx.speakerSpeaking ? 'text-success animate-pulse' : 'text-success') : '') },
-            title: (__VLS_ctx.speakerEnabled ? __VLS_ctx.$t('chat.speech.muteIncoming') : __VLS_ctx.$t('chat.speech.readAloud')),
+            ...{ class: (__VLS_ctx.speechRecording ? 'text-error animate-pulse' : '') },
+            title: (__VLS_ctx.speechRecording ? __VLS_ctx.$t('chat.speech.stopSpeechToText') : __VLS_ctx.$t('chat.speech.startSpeechToText')),
         }));
         const __VLS_50 = __VLS_49({
             ...{ 'onClick': {} },
             variant: "ghost",
             size: "sm",
-            ...{ class: (__VLS_ctx.speakerEnabled ? (__VLS_ctx.speakerSpeaking ? 'text-success animate-pulse' : 'text-success') : '') },
-            title: (__VLS_ctx.speakerEnabled ? __VLS_ctx.$t('chat.speech.muteIncoming') : __VLS_ctx.$t('chat.speech.readAloud')),
+            ...{ class: (__VLS_ctx.speechRecording ? 'text-error animate-pulse' : '') },
+            title: (__VLS_ctx.speechRecording ? __VLS_ctx.$t('chat.speech.stopSpeechToText') : __VLS_ctx.$t('chat.speech.startSpeechToText')),
         }, ...__VLS_functionalComponentArgsRest(__VLS_49));
         let __VLS_52;
         let __VLS_53;
         let __VLS_54;
         const __VLS_55 = {
-            onClick: (__VLS_ctx.toggleSpeaker)
+            onClick: (__VLS_ctx.toggleSpeech)
         };
         __VLS_51.slots.default;
-        (__VLS_ctx.speakerEnabled ? '🔊' : '🔇');
         var __VLS_51;
+    }
+    if (__VLS_ctx.speakerSupported) {
+        const __VLS_56 = {}.VButton;
+        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+        // @ts-ignore
+        const __VLS_57 = __VLS_asFunctionalComponent(__VLS_56, new __VLS_56({
+            ...{ 'onClick': {} },
+            variant: "ghost",
+            size: "sm",
+            ...{ class: (__VLS_ctx.speakerEnabled ? (__VLS_ctx.speakerSpeaking ? 'text-success animate-pulse' : 'text-success') : '') },
+            title: (__VLS_ctx.speakerEnabled ? __VLS_ctx.$t('chat.speech.muteIncoming') : __VLS_ctx.$t('chat.speech.readAloud')),
+        }));
+        const __VLS_58 = __VLS_57({
+            ...{ 'onClick': {} },
+            variant: "ghost",
+            size: "sm",
+            ...{ class: (__VLS_ctx.speakerEnabled ? (__VLS_ctx.speakerSpeaking ? 'text-success animate-pulse' : 'text-success') : '') },
+            title: (__VLS_ctx.speakerEnabled ? __VLS_ctx.$t('chat.speech.muteIncoming') : __VLS_ctx.$t('chat.speech.readAloud')),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_57));
+        let __VLS_60;
+        let __VLS_61;
+        let __VLS_62;
+        const __VLS_63 = {
+            onClick: (__VLS_ctx.toggleSpeaker)
+        };
+        __VLS_59.slots.default;
+        (__VLS_ctx.speakerEnabled ? '🔊' : '🔇');
+        var __VLS_59;
     }
     if (__VLS_ctx.speakerSupported) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.input)({
@@ -888,107 +974,164 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.input)({
     multiple: true,
 });
 /** @type {typeof __VLS_ctx.fileInputRef} */ ;
-const __VLS_56 = {}.VButton;
-/** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-// @ts-ignore
-const __VLS_57 = __VLS_asFunctionalComponent(__VLS_56, new __VLS_56({
-    ...{ 'onClick': {} },
-    variant: "ghost",
-    size: "sm",
-    disabled: (__VLS_ctx.sending || __VLS_ctx.uploading || !__VLS_ctx.chatProcessName),
-    title: (__VLS_ctx.$t('chat.attachments.pickerTooltip')),
-}));
-const __VLS_58 = __VLS_57({
-    ...{ 'onClick': {} },
-    variant: "ghost",
-    size: "sm",
-    disabled: (__VLS_ctx.sending || __VLS_ctx.uploading || !__VLS_ctx.chatProcessName),
-    title: (__VLS_ctx.$t('chat.attachments.pickerTooltip')),
-}, ...__VLS_functionalComponentArgsRest(__VLS_57));
-let __VLS_60;
-let __VLS_61;
-let __VLS_62;
-const __VLS_63 = {
-    onClick: (() => __VLS_ctx.fileInputRef?.click())
-};
-__VLS_59.slots.default;
-var __VLS_59;
+if (__VLS_ctx.currentFileSource) {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "dropdown dropdown-top" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        tabindex: "0",
+        role: "button",
+        ...{ class: "btn btn-ghost btn-sm" },
+        ...{ class: ({ 'btn-disabled': __VLS_ctx.sending || __VLS_ctx.uploading || !__VLS_ctx.chatProcessName }) },
+        title: (__VLS_ctx.$t('chat.attachments.pickerTooltip')),
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.ul, __VLS_intrinsicElements.ul)({
+        tabindex: "0",
+        ...{ class: "\u0064\u0072\u006f\u0070\u0064\u006f\u0077\u006e\u002d\u0063\u006f\u006e\u0074\u0065\u006e\u0074\u0020\u006d\u0065\u006e\u0075\u0020\u006d\u0065\u006e\u0075\u002d\u0073\u006d\u0020\u0062\u0067\u002d\u0062\u0061\u0073\u0065\u002d\u0031\u0030\u0030\u0020\u0072\u006f\u0075\u006e\u0064\u0065\u0064\u002d\u0062\u006f\u0078\u0020\u007a\u002d\u005b\u0033\u0030\u005d\u000a\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u006d\u0062\u002d\u0032\u0020\u0077\u002d\u0037\u0032\u0020\u0070\u002d\u0032\u0020\u0073\u0068\u0061\u0064\u006f\u0077\u0020\u0062\u006f\u0072\u0064\u0065\u0072\u0020\u0062\u006f\u0072\u0064\u0065\u0072\u002d\u0062\u0061\u0073\u0065\u002d\u0033\u0030\u0030" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({});
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
+        ...{ onClick: (...[$event]) => {
+                if (!(__VLS_ctx.currentFileSource))
+                    return;
+                __VLS_ctx.closeAttachmentMenu();
+                __VLS_ctx.fileInputRef?.click();
+            } },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+        'aria-hidden': "true",
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+        ...{ class: "flex-1" },
+    });
+    (__VLS_ctx.$t('chat.attachments.pickFromComputer'));
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({});
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
+        ...{ onClick: (...[$event]) => {
+                if (!(__VLS_ctx.currentFileSource))
+                    return;
+                __VLS_ctx.closeAttachmentMenu();
+                __VLS_ctx.attachCurrentFile();
+            } },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+        'aria-hidden': "true",
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+        ...{ class: "flex-1 min-w-0" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+        ...{ class: "block text-xs opacity-60" },
+    });
+    (__VLS_ctx.$t('chat.attachments.attachCurrentFile'));
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+        ...{ class: "block truncate font-mono" },
+    });
+    (__VLS_ctx.currentFileSource.label);
+}
+else {
+    const __VLS_64 = {}.VButton;
+    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+    // @ts-ignore
+    const __VLS_65 = __VLS_asFunctionalComponent(__VLS_64, new __VLS_64({
+        ...{ 'onClick': {} },
+        variant: "ghost",
+        size: "sm",
+        disabled: (__VLS_ctx.sending || __VLS_ctx.uploading || !__VLS_ctx.chatProcessName),
+        title: (__VLS_ctx.$t('chat.attachments.pickerTooltip')),
+    }));
+    const __VLS_66 = __VLS_65({
+        ...{ 'onClick': {} },
+        variant: "ghost",
+        size: "sm",
+        disabled: (__VLS_ctx.sending || __VLS_ctx.uploading || !__VLS_ctx.chatProcessName),
+        title: (__VLS_ctx.$t('chat.attachments.pickerTooltip')),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_65));
+    let __VLS_68;
+    let __VLS_69;
+    let __VLS_70;
+    const __VLS_71 = {
+        onClick: (() => __VLS_ctx.fileInputRef?.click())
+    };
+    __VLS_67.slots.default;
+    var __VLS_67;
+}
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ onFocusin: (__VLS_ctx.onComposerFocusIn) },
     ...{ onFocusout: (__VLS_ctx.onComposerFocusOut) },
     ...{ class: "flex-1" },
 });
-const __VLS_64 = {}.VTextarea;
+const __VLS_72 = {}.VTextarea;
 /** @type {[typeof __VLS_components.VTextarea, ]} */ ;
 // @ts-ignore
-const __VLS_65 = __VLS_asFunctionalComponent(__VLS_64, new __VLS_64({
-    ...{ 'onKeydown': {} },
-    modelValue: (__VLS_ctx.composerText),
-    placeholder: (__VLS_ctx.composerPlaceholder),
-    rows: (__VLS_ctx.composerRows),
-}));
-const __VLS_66 = __VLS_65({
-    ...{ 'onKeydown': {} },
-    modelValue: (__VLS_ctx.composerText),
-    placeholder: (__VLS_ctx.composerPlaceholder),
-    rows: (__VLS_ctx.composerRows),
-}, ...__VLS_functionalComponentArgsRest(__VLS_65));
-let __VLS_68;
-let __VLS_69;
-let __VLS_70;
-const __VLS_71 = {
-    onKeydown: (__VLS_ctx.onComposerKeydown)
-};
-var __VLS_67;
-const __VLS_72 = {}.VButton;
-/** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-// @ts-ignore
 const __VLS_73 = __VLS_asFunctionalComponent(__VLS_72, new __VLS_72({
-    ...{ 'onClick': {} },
-    variant: "primary",
-    disabled: ((!__VLS_ctx.composerText.trim() && __VLS_ctx.selectedFiles.length === 0)
-        || __VLS_ctx.sending || __VLS_ctx.uploading || !__VLS_ctx.chatProcessName),
-    loading: (__VLS_ctx.sending || __VLS_ctx.uploading),
-    title: (__VLS_ctx.$t('chat.send')),
+    ...{ 'onKeydown': {} },
+    modelValue: (__VLS_ctx.composerText),
+    placeholder: (__VLS_ctx.composerPlaceholder),
+    rows: (__VLS_ctx.composerRows),
 }));
 const __VLS_74 = __VLS_73({
-    ...{ 'onClick': {} },
-    variant: "primary",
-    disabled: ((!__VLS_ctx.composerText.trim() && __VLS_ctx.selectedFiles.length === 0)
-        || __VLS_ctx.sending || __VLS_ctx.uploading || !__VLS_ctx.chatProcessName),
-    loading: (__VLS_ctx.sending || __VLS_ctx.uploading),
-    title: (__VLS_ctx.$t('chat.send')),
+    ...{ 'onKeydown': {} },
+    modelValue: (__VLS_ctx.composerText),
+    placeholder: (__VLS_ctx.composerPlaceholder),
+    rows: (__VLS_ctx.composerRows),
 }, ...__VLS_functionalComponentArgsRest(__VLS_73));
 let __VLS_76;
 let __VLS_77;
 let __VLS_78;
 const __VLS_79 = {
+    onKeydown: (__VLS_ctx.onComposerKeydown)
+};
+var __VLS_75;
+const __VLS_80 = {}.VButton;
+/** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+// @ts-ignore
+const __VLS_81 = __VLS_asFunctionalComponent(__VLS_80, new __VLS_80({
+    ...{ 'onClick': {} },
+    variant: "primary",
+    disabled: ((!__VLS_ctx.composerText.trim() && __VLS_ctx.selectedFiles.length === 0 && __VLS_ctx.selectedDocs.length === 0)
+        || __VLS_ctx.sending || __VLS_ctx.uploading || !__VLS_ctx.chatProcessName),
+    loading: (__VLS_ctx.sending || __VLS_ctx.uploading),
+    title: (__VLS_ctx.$t('chat.send')),
+}));
+const __VLS_82 = __VLS_81({
+    ...{ 'onClick': {} },
+    variant: "primary",
+    disabled: ((!__VLS_ctx.composerText.trim() && __VLS_ctx.selectedFiles.length === 0 && __VLS_ctx.selectedDocs.length === 0)
+        || __VLS_ctx.sending || __VLS_ctx.uploading || !__VLS_ctx.chatProcessName),
+    loading: (__VLS_ctx.sending || __VLS_ctx.uploading),
+    title: (__VLS_ctx.$t('chat.send')),
+}, ...__VLS_functionalComponentArgsRest(__VLS_81));
+let __VLS_84;
+let __VLS_85;
+let __VLS_86;
+const __VLS_87 = {
     onClick: (__VLS_ctx.send)
 };
-__VLS_75.slots.default;
-var __VLS_75;
+__VLS_83.slots.default;
+var __VLS_83;
 if (__VLS_ctx.sending) {
-    const __VLS_80 = {}.VButton;
+    const __VLS_88 = {}.VButton;
     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
-    const __VLS_81 = __VLS_asFunctionalComponent(__VLS_80, new __VLS_80({
+    const __VLS_89 = __VLS_asFunctionalComponent(__VLS_88, new __VLS_88({
         ...{ 'onClick': {} },
         variant: "danger",
         title: (__VLS_ctx.$t('chat.pauseTooltip')),
     }));
-    const __VLS_82 = __VLS_81({
+    const __VLS_90 = __VLS_89({
         ...{ 'onClick': {} },
         variant: "danger",
         title: (__VLS_ctx.$t('chat.pauseTooltip')),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_81));
-    let __VLS_84;
-    let __VLS_85;
-    let __VLS_86;
-    const __VLS_87 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_89));
+    let __VLS_92;
+    let __VLS_93;
+    let __VLS_94;
+    const __VLS_95 = {
         onClick: (__VLS_ctx.pause)
     };
-    __VLS_83.slots.default;
-    var __VLS_83;
+    __VLS_91.slots.default;
+    var __VLS_91;
 }
 /** @type {__VLS_StyleScopedClasses['p-4']} */ ;
 /** @type {__VLS_StyleScopedClasses['relative']} */ ;
@@ -1023,6 +1166,19 @@ if (__VLS_ctx.sending) {
 /** @type {__VLS_StyleScopedClasses['px-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['py-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['border']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-primary/40']} */ ;
+/** @type {__VLS_StyleScopedClasses['rounded']} */ ;
+/** @type {__VLS_StyleScopedClasses['bg-primary/5']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
+/** @type {__VLS_StyleScopedClasses['truncate']} */ ;
+/** @type {__VLS_StyleScopedClasses['max-w-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['border']} */ ;
 /** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;
 /** @type {__VLS_StyleScopedClasses['rounded']} */ ;
 /** @type {__VLS_StyleScopedClasses['bg-base-200']} */ ;
@@ -1051,6 +1207,33 @@ if (__VLS_ctx.sending) {
 /** @type {__VLS_StyleScopedClasses['range-xs']} */ ;
 /** @type {__VLS_StyleScopedClasses['w-16']} */ ;
 /** @type {__VLS_StyleScopedClasses['hidden']} */ ;
+/** @type {__VLS_StyleScopedClasses['dropdown']} */ ;
+/** @type {__VLS_StyleScopedClasses['dropdown-top']} */ ;
+/** @type {__VLS_StyleScopedClasses['btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['btn-ghost']} */ ;
+/** @type {__VLS_StyleScopedClasses['btn-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['btn-disabled']} */ ;
+/** @type {__VLS_StyleScopedClasses['dropdown-content']} */ ;
+/** @type {__VLS_StyleScopedClasses['menu']} */ ;
+/** @type {__VLS_StyleScopedClasses['menu-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['bg-base-100']} */ ;
+/** @type {__VLS_StyleScopedClasses['rounded-box']} */ ;
+/** @type {__VLS_StyleScopedClasses['z-[30]']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['w-72']} */ ;
+/** @type {__VLS_StyleScopedClasses['p-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['shadow']} */ ;
+/** @type {__VLS_StyleScopedClasses['border']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['min-w-0']} */ ;
+/** @type {__VLS_StyleScopedClasses['block']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['block']} */ ;
+/** @type {__VLS_StyleScopedClasses['truncate']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
 var __VLS_dollars;
 const __VLS_self = (await import('vue')).defineComponent({
@@ -1068,7 +1251,11 @@ const __VLS_self = (await import('vue')).defineComponent({
             uploading: uploading,
             sendError: sendError,
             selectedFiles: selectedFiles,
+            selectedDocs: selectedDocs,
             dragActive: dragActive,
+            attachCurrentFile: attachCurrentFile,
+            removeAttachedDoc: removeAttachedDoc,
+            closeAttachmentMenu: closeAttachmentMenu,
             multiline: multiline,
             composerRows: composerRows,
             composerPlaceholder: composerPlaceholder,

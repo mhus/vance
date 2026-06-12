@@ -376,6 +376,8 @@ export default {
             revert: 'Discard changes',
             apply: 'Apply',
             save: 'Save',
+            expiresAtLabel: 'Expires at',
+            expiresAtHint: '— the server will delete this document automatically when the timestamp is reached.',
             summary: {
                 heading: 'Auto-summary',
                 summaryLabel: 'Summary',

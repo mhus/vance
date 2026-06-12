@@ -41,6 +41,16 @@ const mode = ref<Mode>('connecting');
 const errorMessage = ref<string | null>(null);
 const socket = ref<BrainWebSocket | null>(null);
 const activeSessionId = ref<string | null>(null);
+/**
+ * True after the live WS has closed but before a reconnect has run.
+ * In this state the editor stays mounted (composer text + ChatView
+ * scroll position survive) and the next user-initiated send goes
+ * through {@link ensureConnected} to transparently re-open the socket.
+ * Set back to false on successful reconnect; on reconnect-failure we
+ * fall through to {@code mode = 'failed'} so the existing Retry banner
+ * picks it up.
+ */
+const socketDown = ref(false);
 
 /**
  * Banner / UI state shown while the WS is bound to a session Eddie
@@ -61,9 +71,20 @@ const previousSessionId = ref<string | null>(null);
 const username = computed<string | null>(() => getUsername());
 
 const connectionState = computed<'connected' | 'idle' | 'occupied' | undefined>(() => {
+  // socketDown wins over live: the session is still bound and the
+  // editor stays mounted, but the WS is gone until the next send. Spec
+  // §6.4 maps "disconnect with reconnect pending" to the grey idle dot.
+  if (mode.value === 'live' && socketDown.value) return 'idle';
   if (mode.value === 'live') return 'connected';
   if (mode.value === 'occupied') return 'occupied';
   if (mode.value === 'picker' || mode.value === 'connecting') return 'idle';
+  return undefined;
+});
+
+const connectionTooltip = computed<string | undefined>(() => {
+  if (mode.value === 'live' && socketDown.value) {
+    return t('header.connection.reconnecting');
+  }
   return undefined;
 });
 
@@ -364,8 +385,11 @@ async function teardownCurrentSocket(): Promise<void> {
 function attachSocketListeners(s: BrainWsApi): void {
   onCloseUnsubscribe = s.onClose(() => {
     if (mode.value === 'live') {
-      mode.value = 'failed';
-      errorMessage.value = t('chat.connectionLost');
+      // Keep ChatView/Composer mounted (their local state — composer
+      // text, scroll position, in-flight uploads — would otherwise be
+      // discarded). {@link ensureConnected} re-opens the socket lazily
+      // on the next send.
+      socketDown.value = true;
     } else if (mode.value === 'picker' || mode.value === 'occupied') {
       mode.value = 'failed';
       errorMessage.value = t('chat.connectionClosed');
@@ -375,6 +399,74 @@ function attachSocketListeners(s: BrainWsApi): void {
     'switch-to', (data) => { void onSwitchTo(data); });
   progressUnsubscribe = s.on<ProcessProgressNotification>(
     'process-progress', recordProgress);
+}
+
+/**
+ * Coalesced reconnect entry-point handed to ChatComposer. Returns
+ * {@code true} if the socket is (or becomes) usable, {@code false} if
+ * the reconnect failed — in which case {@code mode} has been flipped
+ * to {@code 'failed'} and the Retry banner is showing.
+ *
+ * <p>The composer calls this before each WS send when
+ * {@code socket.closed()}. Concurrent calls share the same in-flight
+ * promise so two near-simultaneous sends produce one reconnect.
+ */
+let reconnectInFlight: Promise<boolean> | null = null;
+
+async function ensureConnected(): Promise<boolean> {
+  if (!socketDown.value && socket.value && !socket.value.closed()) {
+    return true;
+  }
+  if (reconnectInFlight) return reconnectInFlight;
+  reconnectInFlight = doReconnect();
+  try {
+    return await reconnectInFlight;
+  } finally {
+    reconnectInFlight = null;
+  }
+}
+
+async function doReconnect(): Promise<boolean> {
+  const sessionId = activeSessionId.value;
+  if (!sessionId) {
+    mode.value = 'failed';
+    errorMessage.value = t('chat.connectionLost');
+    return false;
+  }
+  let newSocket: BrainWebSocket;
+  try {
+    newSocket = await openSocket();
+  } catch (e) {
+    mode.value = 'failed';
+    errorMessage.value = e instanceof Error ? e.message : t('chat.connectionLost');
+    return false;
+  }
+  try {
+    await newSocket.send<SessionResumeRequest, SessionResumeResponse>(
+      'session-resume', { sessionId });
+  } catch (e) {
+    newSocket.close();
+    if (e instanceof WebSocketRequestError && e.errorCode === 409) {
+      mode.value = 'occupied';
+      errorMessage.value = t('chat.sessionOccupiedBy', { id: sessionId });
+    } else {
+      mode.value = 'failed';
+      errorMessage.value = e instanceof Error ? e.message : t('chat.connectionLost');
+    }
+    return false;
+  }
+  // Drop subscribers bound to the dead socket; attach fresh ones to the
+  // new socket before swapping it into the reactive ref so ChatView's
+  // socket-watch sees the replacement and re-attaches its own.
+  const oldSocket = socket.value;
+  switchToUnsubscribe?.(); switchToUnsubscribe = null;
+  onCloseUnsubscribe?.(); onCloseUnsubscribe = null;
+  progressUnsubscribe?.(); progressUnsubscribe = null;
+  attachSocketListeners(newSocket);
+  socket.value = newSocket;
+  socketDown.value = false;
+  oldSocket?.close();
+  return true;
 }
 
 async function openAndBind(sessionId: string): Promise<boolean> {
@@ -585,6 +677,7 @@ function openInCortex(): void {
     :title="$t('chat.pageTitle')"
     :breadcrumbs="breadcrumbs"
     :connection-state="connectionState"
+    :connection-tooltip="connectionTooltip"
     :full-height="true"
     focus-model="auto"
     :show-sidebar="pickerMode"
@@ -722,6 +815,7 @@ function openInCortex(): void {
         :chat-project-id="chatProjectId"
         :mediation="mediation"
         :follow-up-suggestion="followUpSuggestion"
+        :ensure-connected="ensureConnected"
         @hub="backToHub"
         @local-echo="onLocalEchoFromComposer"
         @rollback-echo="onRollbackEchoFromComposer"

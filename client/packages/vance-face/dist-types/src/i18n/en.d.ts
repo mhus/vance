@@ -364,6 +364,8 @@ declare const _default: {
             revert: string;
             apply: string;
             save: string;
+            expiresAtLabel: string;
+            expiresAtHint: string;
             summary: {
                 heading: string;
                 summaryLabel: string;

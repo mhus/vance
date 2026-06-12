@@ -69,6 +69,7 @@ export default {
       connected: 'Verbunden — live',
       occupied: 'Session ist von einer anderen Verbindung belegt',
       idle: 'Eine Session zum Starten auswählen',
+      reconnecting: 'Verbindung pausiert — wird beim nächsten Senden wiederhergestellt',
     },
     menu: {
       languageHeader: 'Sprache',

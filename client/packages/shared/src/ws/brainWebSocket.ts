@@ -1,4 +1,4 @@
-import type { WelcomeData } from '@vance/generated';
+import type { PingData, PongData, WelcomeData } from '@vance/generated';
 import { brainBaseUrl } from '../rest/restClient';
 import {
   WebSocketClosedError,
@@ -81,6 +81,7 @@ export class BrainWebSocket {
   private readonly tenantId: string;
   private welcome: WelcomeData | null = null;
   private isClosed = false;
+  private keepAliveTimer: ReturnType<typeof setInterval> | null = null;
 
   private constructor(socket: WebSocket, tenant: string) {
     this.socket = socket;
@@ -106,6 +107,11 @@ export class BrainWebSocket {
         if (settled) return;
         settled = true;
         instance.welcome = data;
+        // Brain expects client-driven heartbeat pings (see vance-foot's
+        // ConnectionService.startKeepAlive). Without these the server's
+        // session bookkeeping treats the connection as idle and may
+        // close it — same contract as Foot, same interval.
+        instance.startKeepAlive(data.server.pingInterval);
         resolve(instance);
       };
       instance.on<WelcomeData>('welcome', onWelcome);
@@ -252,8 +258,38 @@ export class BrainWebSocket {
     }
   };
 
+  private startKeepAlive(intervalSeconds: number): void {
+    this.stopKeepAlive();
+    if (intervalSeconds <= 0) return;
+    this.keepAliveTimer = setInterval(
+      () => { void this.sendKeepAlivePing(); },
+      intervalSeconds * 1000);
+  }
+
+  private stopKeepAlive(): void {
+    if (this.keepAliveTimer !== null) {
+      clearInterval(this.keepAliveTimer);
+      this.keepAliveTimer = null;
+    }
+  }
+
+  private async sendKeepAlivePing(): Promise<void> {
+    if (this.isClosed) return;
+    try {
+      await this.send<PingData, PongData>('ping', {
+        clientTimestamp: Date.now(),
+      });
+    } catch (e) {
+      // Connection died or server rejected the ping. The close handler
+      // will stop the loop; just log so the failure is visible during
+      // dev. No surface to users — reconnect-on-send recovers.
+      console.warn('WebSocket keep-alive ping failed', e);
+    }
+  }
+
   private readonly handleClose = (event: CloseEvent): void => {
     this.isClosed = true;
+    this.stopKeepAlive();
     for (const [id, pending] of this.pending) {
       pending.reject(new WebSocketClosedError(
         `WebSocket closed (code ${event.code}) — request '${pending.type}' (${id}) abandoned`));

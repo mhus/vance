@@ -276,6 +276,8 @@ export * from './ws/ErrorData';
 export * from './ws/ProjectGroupSummary';
 export * from './ws/ProjectListRequest';
 export * from './ws/ProjectListResponse';
+export * from './ws/PingData';
+export * from './ws/PongData';
 export * from './ws/ProjectSummary';
 export * from './ws/ServerInfo';
 export * from './ws/SessionCreateRequest';

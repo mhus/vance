@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   type BrainWsApi,
+  WebSocketClosedError,
   WebSocketRequestError,
   markdownToSpeech,
   MIN_RATE,
@@ -71,6 +72,13 @@ const props = defineProps<{
    *  addition to the regular from-computer file pick. Drives the
    *  Cortex chat panel's "attach active tab" affordance. */
   currentFileSource?: ComposerCurrentFileSource | null;
+  /** Lazy-reconnect hook. When set, the composer calls this before
+   *  each WS send if {@code socket.closed()} so the parent can swap in
+   *  a fresh socket transparently (typical: server-side idle close).
+   *  Returns {@code true} when the socket is ready, {@code false} when
+   *  the reconnect failed — in which case the parent has already
+   *  switched to its failure UI and the send is aborted. */
+  ensureConnected?: () => Promise<boolean>;
 }>();
 
 /**
@@ -572,6 +580,16 @@ async function send(): Promise<void> {
   selectedDocs.value = [];
 
   try {
+    // The WS may have been closed by the server during idle. Try a
+    // transparent reconnect before failing the send — the user expects
+    // their click to land, not to hit a "connection lost" banner just
+    // because nothing happened on the connection for a while.
+    if (props.socket.closed() && props.ensureConnected) {
+      const reconnected = await props.ensureConnected();
+      if (!reconnected) {
+        throw new WebSocketClosedError('Reconnect failed');
+      }
+    }
     // Per-turn voice-mode signal — see specification/voice-mode.md.
     const voiceMode = speakerEnabled.value || talkMode.value;
     await props.socket.send<ProcessSteerRequest, ProcessSteerResponse>('process-steer', {
@@ -582,6 +600,31 @@ async function send(): Promise<void> {
     });
   } catch (e) {
     emit('rollback-echo', optimisticId);
+    // Restore composer state so the user's input isn't lost (typical
+    // case: WebSocket closed silently while idle, send fails on the
+    // first frame). The textarea is not disabled during send, so the
+    // user may have typed something new in the meantime — prepend the
+    // failed text rather than overwrite, and dedupe re-added files/docs.
+    if (text) {
+      composerText.value = composerText.value
+        ? `${text}\n\n${composerText.value}`
+        : text;
+    }
+    if (filesSnapshot.length > 0) {
+      const fileKey = (f: File): string => `${f.name}|${f.size}|${f.lastModified}`;
+      const existing = new Set(selectedFiles.value.map(fileKey));
+      selectedFiles.value = [
+        ...filesSnapshot.filter((f) => !existing.has(fileKey(f))),
+        ...selectedFiles.value,
+      ];
+    }
+    if (docsSnapshot.length > 0) {
+      const existing = new Set(selectedDocs.value.map((d) => d.documentId));
+      selectedDocs.value = [
+        ...docsSnapshot.filter((d) => !existing.has(d.documentId)),
+        ...selectedDocs.value,
+      ];
+    }
     if (e instanceof WebSocketRequestError) {
       sendError.value = `${e.message} (code ${e.errorCode})`;
     } else {

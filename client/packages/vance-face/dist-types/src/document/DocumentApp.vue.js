@@ -2226,6 +2226,23 @@ else if (__VLS_ctx.docsState.selected.value) {
             (entry.value);
         }
     }
+    if (!__VLS_ctx.propsCollapsed && __VLS_ctx.docsState.selected.value.expiresAtMs) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "mt-3 border border-warning/40 bg-warning/10 rounded-md px-3 py-2 text-xs flex items-center gap-2" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "font-medium uppercase opacity-70" },
+        });
+        (__VLS_ctx.$t('documents.detail.expiresAtLabel'));
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "font-mono" },
+        });
+        (new Date(__VLS_ctx.docsState.selected.value.expiresAtMs).toLocaleString());
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "opacity-60" },
+        });
+        (__VLS_ctx.$t('documents.detail.expiresAtHint'));
+    }
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "mt-3 border border-base-300 rounded-md overflow-hidden" },
     });
@@ -5032,6 +5049,22 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['w-1/3']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
 /** @type {__VLS_StyleScopedClasses['break-all']} */ ;
+/** @type {__VLS_StyleScopedClasses['mt-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['border']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-warning/40']} */ ;
+/** @type {__VLS_StyleScopedClasses['bg-warning/10']} */ ;
+/** @type {__VLS_StyleScopedClasses['rounded-md']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-medium']} */ ;
+/** @type {__VLS_StyleScopedClasses['uppercase']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
 /** @type {__VLS_StyleScopedClasses['mt-3']} */ ;
 /** @type {__VLS_StyleScopedClasses['border']} */ ;
 /** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;

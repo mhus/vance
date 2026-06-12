@@ -629,9 +629,16 @@ function openInCortex(): void {
             </div>
           </template>
           <template v-else-if="mode === 'failed'">
-            <div class="mt-2">
+            <div class="mt-2 flex gap-2">
               <VButton variant="secondary" @click="backToPicker">
                 {{ $t('chat.backToPicker') }}
+              </VButton>
+              <VButton
+                v-if="activeSessionId"
+                variant="ghost"
+                @click="openAndBind(activeSessionId ?? '')"
+              >
+                {{ $t('chat.tryAgain') }}
               </VButton>
             </div>
           </template>

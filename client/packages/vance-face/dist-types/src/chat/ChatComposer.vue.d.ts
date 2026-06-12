@@ -25,7 +25,7 @@ type __VLS_Props = {
     /** Force the narrow-viewport tools layout (burger `⋯` toggle + popup)
      *  regardless of viewport width. Used by hosts that embed the composer
      *  in a fixed-width container (e.g. Cortex's right panel) where the
-     *  `max-width: 640px` media-query gate doesn't fire even though the
+     *  `max-width: 1024px` media-query gate doesn't fire even though the
      *  composer itself has too little room. */
     compactTools?: boolean;
     /** Host-provided "current file" hint. When set, the attachment

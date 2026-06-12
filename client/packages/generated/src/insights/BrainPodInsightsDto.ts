@@ -3,6 +3,8 @@
  Source: de.mhus.vance.api.insights.BrainPodInsightsDto
 */
 
+import { BrainPodProjectInsightsDto } from './BrainPodProjectInsightsDto';
+
 export interface BrainPodInsightsDto {
   nodeName: string;
   podId: string;
@@ -11,8 +13,9 @@ export interface BrainPodInsightsDto {
   status: string;
   stale: boolean;
   selfPod: boolean;
+  master: boolean;
   bootedAt?: Date;
   lastHeartbeatAt?: Date;
   version?: string;
-  tenantProjects: string[];
+  tenantProjects: BrainPodProjectInsightsDto[];
 }

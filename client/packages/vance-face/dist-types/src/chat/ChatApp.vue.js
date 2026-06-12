@@ -554,11 +554,13 @@ if (__VLS_ctx.liveOk) {
             ...{ 'onClick': {} },
             size: "sm",
             variant: "ghost",
+            ...{ class: "hidden md:inline-flex" },
         }));
         const __VLS_11 = __VLS_10({
             ...{ 'onClick': {} },
             size: "sm",
             variant: "ghost",
+            ...{ class: "hidden md:inline-flex" },
         }, ...__VLS_functionalComponentArgsRest(__VLS_10));
         let __VLS_13;
         let __VLS_14;
@@ -935,6 +937,8 @@ else if (__VLS_ctx.mode === 'connecting') {
     }
 }
 var __VLS_3;
+/** @type {__VLS_StyleScopedClasses['hidden']} */ ;
+/** @type {__VLS_StyleScopedClasses['md:inline-flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['h-full']} */ ;
 /** @type {__VLS_StyleScopedClasses['h-full']} */ ;
 /** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;

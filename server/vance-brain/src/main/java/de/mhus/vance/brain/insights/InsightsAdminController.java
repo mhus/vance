@@ -3,8 +3,10 @@ package de.mhus.vance.brain.insights;
 import de.mhus.vance.api.addon.AddonInsightDto;
 import de.mhus.vance.api.insights.ActiveSkillInsightsDto;
 import de.mhus.vance.api.insights.BrainPodInsightsDto;
+import de.mhus.vance.api.insights.BrainPodProjectInsightsDto;
 import de.mhus.vance.api.insights.CacheStatsDto;
 import de.mhus.vance.api.insights.ChatMessageInsightsDto;
+import de.mhus.vance.api.insights.ClusterInsightsDto;
 import de.mhus.vance.api.insights.EffectiveRecipeDto;
 import de.mhus.vance.api.insights.EffectiveToolDto;
 import de.mhus.vance.api.insights.MarvinNodeInsightsDto;
@@ -18,7 +20,13 @@ import de.mhus.vance.api.insights.ZarniwoopInsightsDto;
 import de.mhus.vance.brain.zarniwoop.ZarniwoopGateService;
 import de.mhus.vance.brain.zarniwoop.ZarniwoopInsightsService;
 import de.mhus.vance.toolpack.research.SearchScope;
+import de.mhus.vance.brain.cluster.ClusterMasterService;
 import de.mhus.vance.brain.cluster.ClusterService;
+import de.mhus.vance.shared.cluster.ClusterMasterDocument;
+import de.mhus.vance.shared.project.LifecycleType;
+import de.mhus.vance.shared.project.ProjectDocument;
+import de.mhus.vance.shared.project.ProjectService;
+import de.mhus.vance.shared.project.ProjectStatus;
 import de.mhus.vance.shared.addon.AddonInsightsService;
 import de.mhus.vance.brain.recipe.RecipeLoader;
 import de.mhus.vance.brain.recipe.RecipeSource;
@@ -66,6 +74,8 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.function.Function;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -117,6 +127,8 @@ public class InsightsAdminController {
     private final PodForwarder podForwarder;
     private final WorkspaceAccessProperties workspaceAccessProperties;
     private final ClusterService clusterService;
+    private final Optional<ClusterMasterService> clusterMasterService;
+    private final ProjectService projectService;
     private final PrakRunService prakRunService;
     private final AddonInsightsService addonInsightsService;
     private final ZarniwoopInsightsService zarniwoopInsightsService;
@@ -871,16 +883,19 @@ public class InsightsAdminController {
     // ─── Cluster pods ──────────────────────────────────────────────────────
 
     /**
-     * Lists every brain-pod row in this brain's cluster. {@code activeProjects}
+     * Cluster dashboard payload — the pods registered in this brain's
+     * cluster plus the current Cluster-Master lease. {@code activeProjects}
      * is filtered to the requesting tenant — other tenants' projects on the
      * same pod are dropped server-side and never reach the wire.
      *
      * <p>Staleness is computed against this brain's view of the clock; a pod
      * whose last heartbeat is older than the cluster's stale window comes
      * back with {@code stale=true} regardless of its self-reported status.
+     * The master row is identified via the {@code cluster_master} lease
+     * — when the lease is absent or expired no row is flagged.
      */
     @GetMapping("/cluster/pods")
-    public List<BrainPodInsightsDto> listClusterPods(
+    public ClusterInsightsDto listClusterPods(
             @PathVariable("tenant") String tenant,
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
@@ -889,27 +904,55 @@ public class InsightsAdminController {
         String selfPodId = clusterService.selfPodId();
         String tenantPrefix = tenant + "/";
 
-        return clusterService.listCluster().stream()
+        Optional<ClusterMasterDocument> leaseOpt = clusterMasterService
+                .flatMap(ClusterMasterService::currentLease);
+        String masterPodId = leaseOpt.map(ClusterMasterDocument::getCurrentPodId).orElse(null);
+
+        Function<String, @Nullable ProjectDocument> projectLookup =
+                name -> projectService.findByTenantAndName(tenant, name).orElse(null);
+
+        List<BrainPodInsightsDto> pods = clusterService.listCluster().stream()
                 .sorted(Comparator.comparing(BrainPodDocument::getNodeName,
                         Comparator.nullsLast(Comparator.naturalOrder())))
                 .map(doc -> toClusterPodDto(
-                        doc, tenantPrefix, selfPodId, clusterService.isStale(doc, now)))
+                        doc, tenantPrefix, selfPodId, masterPodId,
+                        clusterService.isStale(doc, now), projectLookup))
                 .toList();
+
+        return ClusterInsightsDto.builder()
+                .clusterId(clusterService.selfClusterId())
+                .masterPodId(masterPodId)
+                .masterNodeName(leaseOpt.map(ClusterMasterDocument::getCurrentNodeName).orElse(null))
+                .masterEndpoint(leaseOpt.map(ClusterMasterDocument::getCurrentEndpoint).orElse(null))
+                .masterLeaseUntil(leaseOpt.map(ClusterMasterDocument::getLeaseUntil).orElse(null))
+                .pods(pods)
+                .build();
     }
 
     /**
      * Pure mapping: pod row + tenant prefix → DTO with cross-tenant
      * projects filtered out and the prefix stripped. Static + package-
      * private so it can be unit-tested without the controller stack.
+     *
+     * <p>{@code projectLookup} resolves a tenant-scoped project name to
+     * its {@link ProjectDocument} — {@code null} when the row has been
+     * removed between the heartbeat that wrote {@code activeProjects}
+     * and this read. Tests pass a stub here.
      */
     static BrainPodInsightsDto toClusterPodDto(
-            BrainPodDocument doc, String tenantPrefix, String selfPodId, boolean stale) {
-        List<String> tenantProjects = doc.getActiveProjects() == null
+            BrainPodDocument doc,
+            String tenantPrefix,
+            String selfPodId,
+            @Nullable String masterPodId,
+            boolean stale,
+            Function<String, @Nullable ProjectDocument> projectLookup) {
+        List<BrainPodProjectInsightsDto> tenantProjects = doc.getActiveProjects() == null
                 ? List.of()
                 : doc.getActiveProjects().stream()
                         .filter(p -> p != null && p.startsWith(tenantPrefix))
                         .map(p -> p.substring(tenantPrefix.length()))
                         .sorted()
+                        .map(name -> toProjectDto(name, projectLookup.apply(name)))
                         .toList();
         return BrainPodInsightsDto.builder()
                 .nodeName(doc.getNodeName())
@@ -919,10 +962,29 @@ public class InsightsAdminController {
                 .status(doc.getStatus() != null ? doc.getStatus().name() : "UNKNOWN")
                 .stale(stale)
                 .selfPod(selfPodId.equals(doc.getPodId()))
+                .master(masterPodId != null && masterPodId.equals(doc.getPodId()))
                 .bootedAt(doc.getBootedAt())
                 .lastHeartbeatAt(doc.getLastHeartbeatAt())
                 .version(doc.getVersion())
                 .tenantProjects(tenantProjects)
+                .build();
+    }
+
+    private static BrainPodProjectInsightsDto toProjectDto(
+            String name, @Nullable ProjectDocument project) {
+        if (project == null) {
+            return BrainPodProjectInsightsDto.builder()
+                    .name(name)
+                    .homeResourceScore(0)
+                    .build();
+        }
+        ProjectStatus status = project.getStatus();
+        LifecycleType lifecycle = project.getLifecycleType();
+        return BrainPodProjectInsightsDto.builder()
+                .name(name)
+                .status(status != null ? status.name() : null)
+                .lifecycleType(lifecycle != null ? lifecycle.name() : null)
+                .homeResourceScore(project.getHomeResourceScore())
                 .build();
     }
 

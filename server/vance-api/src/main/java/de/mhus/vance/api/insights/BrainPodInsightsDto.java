@@ -21,7 +21,8 @@ import org.jspecify.annotations.Nullable;
  * <p>{@link #stale} is observer-derived from
  * {@link #lastHeartbeatAt} on the brain that answered the request, so
  * a missed heartbeat shows up without the pod itself having to flip
- * its status.
+ * its status. {@link #master} is observer-derived from the
+ * {@code cluster_master} lease.
  */
 @Data
 @Builder
@@ -52,6 +53,9 @@ public class BrainPodInsightsDto {
     /** {@code true} for the row that represents the brain currently serving this request. */
     private boolean selfPod;
 
+    /** {@code true} for the row that currently holds the cluster-master lease. */
+    private boolean master;
+
     /** Set on registration; never updated. */
     private @Nullable Instant bootedAt;
 
@@ -62,10 +66,12 @@ public class BrainPodInsightsDto {
     private @Nullable String version;
 
     /**
-     * Project names this pod currently owns <em>that belong to the
+     * Projects this pod currently owns <em>that belong to the
      * requesting tenant</em>. Other tenants' projects are filtered out
-     * server-side and never appear here.
+     * server-side and never appear here. Each entry carries the
+     * project's lifecycle status, lifecycle type, and resource-score
+     * — see {@link BrainPodProjectInsightsDto}.
      */
     @Builder.Default
-    private List<String> tenantProjects = new ArrayList<>();
+    private List<BrainPodProjectInsightsDto> tenantProjects = new ArrayList<>();
 }

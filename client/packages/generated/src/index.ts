@@ -129,8 +129,10 @@ export * from './execution/ExecutionTailDto';
 
 export * from './insights/ActiveSkillInsightsDto';
 export * from './insights/BrainPodInsightsDto';
+export * from './insights/BrainPodProjectInsightsDto';
 export * from './insights/CacheStatsDto';
 export * from './insights/ChatMessageInsightsDto';
+export * from './insights/ClusterInsightsDto';
 export * from './insights/EffectiveRecipeDto';
 export * from './insights/EffectiveToolDto';
 export * from './insights/MarvinNodeInsightsDto';

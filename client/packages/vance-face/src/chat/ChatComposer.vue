@@ -62,7 +62,7 @@ const props = defineProps<{
   /** Force the narrow-viewport tools layout (burger `⋯` toggle + popup)
    *  regardless of viewport width. Used by hosts that embed the composer
    *  in a fixed-width container (e.g. Cortex's right panel) where the
-   *  `max-width: 640px` media-query gate doesn't fire even though the
+   *  `max-width: 1024px` media-query gate doesn't fire even though the
    *  composer itself has too little room. */
   compactTools?: boolean;
   /** Host-provided "current file" hint. When set, the attachment
@@ -1063,7 +1063,12 @@ onBeforeUnmount(() => {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
-@media (max-width: 640px) {
+/* Compact-toolbar threshold pulled up from the phone breakpoint to
+   1024px so iPad-sized viewports (portrait 768, landscape 1024) get
+   the popup variant — the inline toolbar plus voice / attachment
+   buttons squeezed the prompt input to a few characters wide on
+   tablets. Laptops at >= 1025px keep the full inline toolbar. */
+@media (max-width: 1024px) {
   .composer-tools-toggle {
     display: inline-flex;
   }

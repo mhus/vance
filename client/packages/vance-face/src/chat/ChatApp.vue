@@ -596,9 +596,19 @@ function openInCortex(): void {
     <!-- Topbar action: jump from the plain chat view into Cortex for
          the current session. Hidden in picker mode where there's no
          session to anchor Cortex to. The session's projectId is the
-         one Cortex will scope its file tree to. -->
+         one Cortex will scope its file tree to.
+
+         Also hidden on phone-class viewports — Cortex's three-zone
+         layout (file tree + editor + chat) is unusable below ~768px,
+         so we don't tempt the user into a broken view. iPad portrait
+         (768px) is the smallest size where Cortex still works. -->
     <template v-if="liveOk" #topbar-extra>
-      <VButton size="sm" variant="ghost" @click="openInCortex">
+      <VButton
+        size="sm"
+        variant="ghost"
+        class="hidden md:inline-flex"
+        @click="openInCortex"
+      >
         Open Cortex →
       </VButton>
     </template>

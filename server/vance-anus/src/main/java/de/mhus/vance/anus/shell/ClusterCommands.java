@@ -6,12 +6,15 @@ import de.mhus.vance.anus.brain.AnusBrainClient.BrainCallException;
 import de.mhus.vance.anus.brain.AnusBrainClient.Response;
 import de.mhus.vance.shared.cluster.BrainPodDocument;
 import de.mhus.vance.shared.cluster.BrainPodService;
+import de.mhus.vance.shared.cluster.ClusterMasterStore;
 import de.mhus.vance.shared.tenant.TenantService;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Function;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
@@ -32,10 +35,13 @@ import org.springframework.shell.standard.ShellOption;
 public class ClusterCommands {
 
     private final BrainPodService brainPodService;
+    private final ClusterMasterStore clusterMasterStore;
     private final AnusBrainClient brainClient;
 
     @ShellMethod(key = "cluster list",
-            value = "List registered brain pods. Filter by --cluster (default: all clusters).")
+            value = "List registered brain pods. Filter by --cluster (default: all clusters). "
+                    + "The MASTER column carries '*' for the pod that currently holds the "
+                    + "cluster-master lease — expired/absent leases leave the column blank.")
     public String list(
             @ShellOption(value = {"--cluster", "-c"}, defaultValue = ShellOption.NULL,
                     help = "Cluster id to filter by. Omit to list every pod regardless of cluster.")
@@ -45,17 +51,47 @@ public class ClusterCommands {
             return cluster == null ? "(no pods registered)"
                     : "(no pods registered in cluster '" + cluster + "')";
         }
+        Map<String, String> liveMasterPodIdByCluster = liveMasterPodIdByCluster(pods);
         return Tables.render(
-                List.of("CLUSTER", "NODE", "PODID", "ENDPOINT", "STATUS", "VERSION", "LASTBEAT"),
+                List.of("CLUSTER", "NODE", "MASTER", "PODID", "ENDPOINT", "STATUS", "VERSION", "LASTBEAT"),
                 List.<Function<BrainPodDocument, @Nullable Object>>of(
                         BrainPodDocument::getClusterId,
                         BrainPodDocument::getNodeName,
+                        p -> p.getPodId().equals(liveMasterPodIdByCluster.get(p.getClusterId()))
+                                ? "*" : "",
                         BrainPodDocument::getPodId,
                         BrainPodDocument::getEndpoint,
                         BrainPodDocument::getStatus,
                         BrainPodDocument::getVersion,
                         BrainPodDocument::getLastHeartbeatAt),
                 pods);
+    }
+
+    /**
+     * Reads the {@code cluster_master} lease for every distinct cluster
+     * in {@code pods} and returns the live master {@code podId} per
+     * cluster id. A lease whose {@code leaseUntil} has elapsed is
+     * ignored — staleness is observer-derived, the same way the brain
+     * dashboard treats it.
+     */
+    private Map<String, String> liveMasterPodIdByCluster(List<BrainPodDocument> pods) {
+        Instant now = Instant.now();
+        Map<String, String> out = new HashMap<>();
+        for (BrainPodDocument pod : pods) {
+            String clusterId = pod.getClusterId();
+            if (StringUtils.isBlank(clusterId) || out.containsKey(clusterId)) continue;
+            clusterMasterStore.find(clusterId).ifPresent(lease -> {
+                String podId = lease.getCurrentPodId();
+                Instant leaseUntil = lease.getLeaseUntil();
+                if (podId != null && !podId.isBlank()
+                        && leaseUntil != null && leaseUntil.isAfter(now)) {
+                    out.put(clusterId, podId);
+                }
+            });
+            // Cache "no live master" too so we don't re-query the same cluster.
+            out.putIfAbsent(clusterId, "");
+        }
+        return out;
     }
 
     @ShellMethod(key = "cluster prune",

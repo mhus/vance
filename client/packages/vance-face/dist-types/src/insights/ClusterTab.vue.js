@@ -1,7 +1,39 @@
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { VAlert, VButton, VEmptyState } from '@/components';
 import { useClusterPods } from '@/composables/useCluster';
 const state = useClusterPods();
+/**
+ * Default sort matches the server: by node name ascending. Click a
+ * header to switch column, click the same header again to flip
+ * direction.
+ */
+const sortKey = ref('node');
+const sortDir = ref('asc');
+function toggleSort(key) {
+    if (sortKey.value === key) {
+        sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc';
+    }
+    else {
+        sortKey.value = key;
+        sortDir.value = defaultDirection(key);
+    }
+}
+/** Numeric/time columns default to descending — recent/loaded first. */
+function defaultDirection(key) {
+    switch (key) {
+        case 'heartbeat':
+        case 'booted':
+        case 'projects':
+            return 'desc';
+        default:
+            return 'asc';
+    }
+}
+function sortIndicator(key) {
+    if (sortKey.value !== key)
+        return '';
+    return sortDir.value === 'asc' ? '▲' : '▼';
+}
 onMounted(() => {
     void state.load();
 });
@@ -27,6 +59,22 @@ function statusClass(pod) {
         default: return 'badge-status';
     }
 }
+function projectChipClass(p) {
+    switch (p.lifecycleType) {
+        case 'PERMANENT': return 'project-chip project-chip--permanent';
+        case 'EPHEMERAL': return 'project-chip project-chip--ephemeral';
+        case 'HOMELESS': return 'project-chip project-chip--homeless';
+        default: return 'project-chip';
+    }
+}
+function projectChipTitle(p) {
+    const parts = [
+        `status: ${p.status ?? '—'}`,
+        `lifecycle: ${p.lifecycleType ?? '—'}`,
+        `score: ${p.homeResourceScore}`,
+    ];
+    return parts.join(' · ');
+}
 function fmtTime(value) {
     if (value == null)
         return '—';
@@ -50,11 +98,78 @@ function fmtAge(value) {
         return `${Math.floor(deltaSec / 3600)}h ago`;
     return `${Math.floor(deltaSec / 86400)}d ago`;
 }
+/** Relative remaining lifetime "in 12s" / "in 3m" / "expired". */
+function fmtRemaining(value) {
+    if (value == null)
+        return '—';
+    const ts = value instanceof Date ? value.getTime() : Date.parse(String(value));
+    if (Number.isNaN(ts))
+        return '—';
+    const deltaSec = Math.floor((ts - Date.now()) / 1000);
+    if (deltaSec <= 0)
+        return 'expired';
+    if (deltaSec < 60)
+        return `in ${deltaSec}s`;
+    if (deltaSec < 3600)
+        return `in ${Math.floor(deltaSec / 60)}m`;
+    if (deltaSec < 86400)
+        return `in ${Math.floor(deltaSec / 3600)}h`;
+    return `in ${Math.floor(deltaSec / 86400)}d`;
+}
 const totalProjects = computed(() => state.pods.value.reduce((sum, p) => sum + (p.tenantProjects?.length ?? 0), 0));
+const masterPresent = computed(() => state.cluster.value?.masterPodId != null && state.cluster.value.masterPodId !== '');
+/**
+ * Returns the sort key as a tuple so we can lift {@code null}s to the
+ * tail regardless of direction — missing timestamps/versions belong at
+ * the bottom whether you sort asc or desc. The first element flags
+ * null (0/1), the second carries the real comparable value.
+ */
+function sortValue(pod) {
+    switch (sortKey.value) {
+        case 'node':
+            return [0, (pod.nodeName ?? '').toLowerCase()];
+        case 'status':
+            return [0, effectiveStatus(pod).toLowerCase()];
+        case 'endpoint':
+            return [pod.endpoint ? 0 : 1, (pod.endpoint ?? '').toLowerCase()];
+        case 'heartbeat':
+            return tsTuple(pod.lastHeartbeatAt);
+        case 'booted':
+            return tsTuple(pod.bootedAt);
+        case 'version':
+            return [pod.version ? 0 : 1, (pod.version ?? '').toLowerCase()];
+        case 'projects':
+            return [0, pod.tenantProjects?.length ?? 0];
+    }
+}
+function tsTuple(value) {
+    if (value == null)
+        return [1, 0];
+    const ts = value instanceof Date ? value.getTime() : Date.parse(String(value));
+    return Number.isNaN(ts) ? [1, 0] : [0, ts];
+}
+const sortedPods = computed(() => {
+    const out = [...state.pods.value];
+    const dir = sortDir.value === 'asc' ? 1 : -1;
+    out.sort((a, b) => {
+        const [aNull, aVal] = sortValue(a);
+        const [bNull, bVal] = sortValue(b);
+        if (aNull !== bNull)
+            return aNull - bNull; // nulls always last
+        if (aVal < bVal)
+            return -1 * dir;
+        if (aVal > bVal)
+            return 1 * dir;
+        // Stable tiebreaker so toggling direction on equal values doesn't shuffle.
+        return (a.nodeName ?? '').localeCompare(b.nodeName ?? '');
+    });
+    return out;
+});
 debugger; /* PartiallyEnd: #3632/scriptSetup.vue */
 const __VLS_ctx = {};
 let __VLS_components;
 let __VLS_directives;
+/** @type {__VLS_StyleScopedClasses['th-sort']} */ ;
 // CSS variable injection 
 // CSS variable injection end 
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -91,6 +206,34 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.d
 (__VLS_ctx.state.pods.value.length === 1 ? '' : 's');
 (__VLS_ctx.totalProjects);
 (__VLS_ctx.totalProjects === 1 ? '' : 's');
+if (__VLS_ctx.state.cluster.value) {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "master-banner" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "master-banner__label" },
+    });
+    if (__VLS_ctx.masterPresent) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "master-banner__node font-mono" },
+        });
+        (__VLS_ctx.state.cluster.value.masterNodeName ?? '—');
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "master-banner__endpoint font-mono" },
+        });
+        (__VLS_ctx.state.cluster.value.masterEndpoint ?? '');
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "master-banner__lease" },
+            title: (__VLS_ctx.fmtTime(__VLS_ctx.state.cluster.value.masterLeaseUntil)),
+        });
+        (__VLS_ctx.fmtRemaining(__VLS_ctx.state.cluster.value.masterLeaseUntil));
+    }
+    else {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "master-banner__none" },
+        });
+    }
+}
 if (__VLS_ctx.state.loading.value) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "text-sm opacity-60" },
@@ -130,27 +273,122 @@ else {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.thead, __VLS_intrinsicElements.thead)({});
     __VLS_asFunctionalElement(__VLS_intrinsicElements.tr, __VLS_intrinsicElements.tr)({});
     __VLS_asFunctionalElement(__VLS_intrinsicElements.th, __VLS_intrinsicElements.th)({
-        ...{ class: "w-44" },
+        ...{ onClick: (...[$event]) => {
+                if (!!(__VLS_ctx.state.loading.value))
+                    return;
+                if (!!(__VLS_ctx.state.error.value))
+                    return;
+                if (!!(__VLS_ctx.state.pods.value.length === 0))
+                    return;
+                __VLS_ctx.toggleSort('node');
+            } },
+        ...{ class: "w-44 th-sort" },
     });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+        ...{ class: "th-sort__arrow" },
+    });
+    (__VLS_ctx.sortIndicator('node'));
     __VLS_asFunctionalElement(__VLS_intrinsicElements.th, __VLS_intrinsicElements.th)({
-        ...{ class: "w-24" },
+        ...{ onClick: (...[$event]) => {
+                if (!!(__VLS_ctx.state.loading.value))
+                    return;
+                if (!!(__VLS_ctx.state.error.value))
+                    return;
+                if (!!(__VLS_ctx.state.pods.value.length === 0))
+                    return;
+                __VLS_ctx.toggleSort('status');
+            } },
+        ...{ class: "w-24 th-sort" },
     });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.th, __VLS_intrinsicElements.th)({});
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+        ...{ class: "th-sort__arrow" },
+    });
+    (__VLS_ctx.sortIndicator('status'));
     __VLS_asFunctionalElement(__VLS_intrinsicElements.th, __VLS_intrinsicElements.th)({
-        ...{ class: "w-32" },
+        ...{ onClick: (...[$event]) => {
+                if (!!(__VLS_ctx.state.loading.value))
+                    return;
+                if (!!(__VLS_ctx.state.error.value))
+                    return;
+                if (!!(__VLS_ctx.state.pods.value.length === 0))
+                    return;
+                __VLS_ctx.toggleSort('endpoint');
+            } },
+        ...{ class: "th-sort" },
     });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+        ...{ class: "th-sort__arrow" },
+    });
+    (__VLS_ctx.sortIndicator('endpoint'));
     __VLS_asFunctionalElement(__VLS_intrinsicElements.th, __VLS_intrinsicElements.th)({
-        ...{ class: "w-32" },
+        ...{ onClick: (...[$event]) => {
+                if (!!(__VLS_ctx.state.loading.value))
+                    return;
+                if (!!(__VLS_ctx.state.error.value))
+                    return;
+                if (!!(__VLS_ctx.state.pods.value.length === 0))
+                    return;
+                __VLS_ctx.toggleSort('heartbeat');
+            } },
+        ...{ class: "w-32 th-sort" },
     });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+        ...{ class: "th-sort__arrow" },
+    });
+    (__VLS_ctx.sortIndicator('heartbeat'));
     __VLS_asFunctionalElement(__VLS_intrinsicElements.th, __VLS_intrinsicElements.th)({
-        ...{ class: "w-24" },
+        ...{ onClick: (...[$event]) => {
+                if (!!(__VLS_ctx.state.loading.value))
+                    return;
+                if (!!(__VLS_ctx.state.error.value))
+                    return;
+                if (!!(__VLS_ctx.state.pods.value.length === 0))
+                    return;
+                __VLS_ctx.toggleSort('booted');
+            } },
+        ...{ class: "w-32 th-sort" },
     });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.th, __VLS_intrinsicElements.th)({});
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+        ...{ class: "th-sort__arrow" },
+    });
+    (__VLS_ctx.sortIndicator('booted'));
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.th, __VLS_intrinsicElements.th)({
+        ...{ onClick: (...[$event]) => {
+                if (!!(__VLS_ctx.state.loading.value))
+                    return;
+                if (!!(__VLS_ctx.state.error.value))
+                    return;
+                if (!!(__VLS_ctx.state.pods.value.length === 0))
+                    return;
+                __VLS_ctx.toggleSort('version');
+            } },
+        ...{ class: "w-24 th-sort" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+        ...{ class: "th-sort__arrow" },
+    });
+    (__VLS_ctx.sortIndicator('version'));
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.th, __VLS_intrinsicElements.th)({
+        ...{ onClick: (...[$event]) => {
+                if (!!(__VLS_ctx.state.loading.value))
+                    return;
+                if (!!(__VLS_ctx.state.error.value))
+                    return;
+                if (!!(__VLS_ctx.state.pods.value.length === 0))
+                    return;
+                __VLS_ctx.toggleSort('projects');
+            } },
+        ...{ class: "th-sort" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+        ...{ class: "th-sort__arrow" },
+    });
+    (__VLS_ctx.sortIndicator('projects'));
     __VLS_asFunctionalElement(__VLS_intrinsicElements.tbody, __VLS_intrinsicElements.tbody)({});
-    for (const [pod] of __VLS_getVForSourceType((__VLS_ctx.state.pods.value))) {
+    for (const [pod] of __VLS_getVForSourceType((__VLS_ctx.sortedPods))) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.tr, __VLS_intrinsicElements.tr)({
             key: (pod.podId),
-            ...{ class: ({ 'pod-row--self': pod.selfPod }) },
+            ...{ class: ({ 'pod-row--self': pod.selfPod, 'pod-row--master': pod.master }) },
         });
         __VLS_asFunctionalElement(__VLS_intrinsicElements.td, __VLS_intrinsicElements.td)({
             ...{ class: "text-sm" },
@@ -159,6 +397,12 @@ else {
             ...{ class: "font-mono" },
         });
         (pod.nodeName);
+        if (pod.master) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "ml-1 badge-role badge-role--master" },
+                title: "Currently holds the cluster-master lease",
+            });
+        }
         if (pod.selfPod) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
                 ...{ class: "ml-1 text-[10px] uppercase tracking-wider opacity-70" },
@@ -204,12 +448,20 @@ else {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                 ...{ class: "flex flex-wrap gap-1" },
             });
-            for (const [name] of __VLS_getVForSourceType((pod.tenantProjects))) {
+            for (const [proj] of __VLS_getVForSourceType((pod.tenantProjects))) {
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                    key: (name),
-                    ...{ class: "project-chip font-mono" },
+                    key: (proj.name),
+                    ...{ class: (__VLS_ctx.projectChipClass(proj)) },
+                    title: (__VLS_ctx.projectChipTitle(proj)),
                 });
-                (name);
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                    ...{ class: "font-mono" },
+                });
+                (proj.name);
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                    ...{ class: "project-chip__score" },
+                });
+                (proj.homeResourceScore);
             }
         }
     }
@@ -220,7 +472,7 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.d
 __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
     ...{ class: "font-mono" },
 });
-(__VLS_ctx.state.pods.value[0]?.clusterId ?? '—');
+(__VLS_ctx.state.cluster.value?.clusterId ?? '—');
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
@@ -233,18 +485,44 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.
 /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
 /** @type {__VLS_StyleScopedClasses['ml-auto']} */ ;
+/** @type {__VLS_StyleScopedClasses['master-banner']} */ ;
+/** @type {__VLS_StyleScopedClasses['master-banner__label']} */ ;
+/** @type {__VLS_StyleScopedClasses['master-banner__node']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
+/** @type {__VLS_StyleScopedClasses['master-banner__endpoint']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
+/** @type {__VLS_StyleScopedClasses['master-banner__lease']} */ ;
+/** @type {__VLS_StyleScopedClasses['master-banner__none']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
 /** @type {__VLS_StyleScopedClasses['table']} */ ;
 /** @type {__VLS_StyleScopedClasses['table-sm']} */ ;
 /** @type {__VLS_StyleScopedClasses['w-44']} */ ;
+/** @type {__VLS_StyleScopedClasses['th-sort']} */ ;
+/** @type {__VLS_StyleScopedClasses['th-sort__arrow']} */ ;
 /** @type {__VLS_StyleScopedClasses['w-24']} */ ;
+/** @type {__VLS_StyleScopedClasses['th-sort']} */ ;
+/** @type {__VLS_StyleScopedClasses['th-sort__arrow']} */ ;
+/** @type {__VLS_StyleScopedClasses['th-sort']} */ ;
+/** @type {__VLS_StyleScopedClasses['th-sort__arrow']} */ ;
 /** @type {__VLS_StyleScopedClasses['w-32']} */ ;
+/** @type {__VLS_StyleScopedClasses['th-sort']} */ ;
+/** @type {__VLS_StyleScopedClasses['th-sort__arrow']} */ ;
 /** @type {__VLS_StyleScopedClasses['w-32']} */ ;
+/** @type {__VLS_StyleScopedClasses['th-sort']} */ ;
+/** @type {__VLS_StyleScopedClasses['th-sort__arrow']} */ ;
 /** @type {__VLS_StyleScopedClasses['w-24']} */ ;
+/** @type {__VLS_StyleScopedClasses['th-sort']} */ ;
+/** @type {__VLS_StyleScopedClasses['th-sort__arrow']} */ ;
+/** @type {__VLS_StyleScopedClasses['th-sort']} */ ;
+/** @type {__VLS_StyleScopedClasses['th-sort__arrow']} */ ;
 /** @type {__VLS_StyleScopedClasses['pod-row--self']} */ ;
+/** @type {__VLS_StyleScopedClasses['pod-row--master']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
+/** @type {__VLS_StyleScopedClasses['ml-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['badge-role']} */ ;
+/** @type {__VLS_StyleScopedClasses['badge-role--master']} */ ;
 /** @type {__VLS_StyleScopedClasses['ml-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-[10px]']} */ ;
 /** @type {__VLS_StyleScopedClasses['uppercase']} */ ;
@@ -267,8 +545,8 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-wrap']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-1']} */ ;
-/** @type {__VLS_StyleScopedClasses['project-chip']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
+/** @type {__VLS_StyleScopedClasses['project-chip__score']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-[11px]']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
@@ -280,12 +558,19 @@ const __VLS_self = (await import('vue')).defineComponent({
             VButton: VButton,
             VEmptyState: VEmptyState,
             state: state,
+            toggleSort: toggleSort,
+            sortIndicator: sortIndicator,
             refresh: refresh,
             effectiveStatus: effectiveStatus,
             statusClass: statusClass,
+            projectChipClass: projectChipClass,
+            projectChipTitle: projectChipTitle,
             fmtTime: fmtTime,
             fmtAge: fmtAge,
+            fmtRemaining: fmtRemaining,
             totalProjects: totalProjects,
+            masterPresent: masterPresent,
+            sortedPods: sortedPods,
         };
     },
 });

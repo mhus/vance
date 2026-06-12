@@ -6,7 +6,6 @@ import de.mhus.vance.brain.project.ProjectLifecycleService;
 import de.mhus.vance.brain.project.ProjectManagerService;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
-import de.mhus.vance.shared.session.SessionService;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -21,19 +20,24 @@ import org.springframework.stereotype.Service;
 /**
  * Reclaims pod-level state on startup.
  *
- * <p>Two concerns, both idempotent and safe under concurrent multi-pod
- * boots:
- * <ol>
- *   <li>Wipe stale {@code homeNode} values on every project whose
- *       owning cluster node is no longer in the live registry. Every
- *       fresh pod boot picks a new node name (see
- *       {@code ClusterNodeNameGenerator}), so the previous incarnation's
- *       claims will never be inherited — they would otherwise block
- *       the current pod from claiming via the CAS predicate.</li>
- *   <li>Clear stale {@code boundConnectionId} fields on sessions under
- *       projects this pod owns — those refer to the previous incarnation
- *       and would block resume with a {@code 409}.</li>
- * </ol>
+ * <p>Wipe stale {@code homeNode} values on every project whose owning
+ * cluster node is no longer in the live registry. Every fresh pod boot
+ * picks a new node name (see {@code ClusterNodeNameGenerator}), so the
+ * previous incarnation's claims will never be inherited — they would
+ * otherwise block the current pod from claiming via the CAS predicate.
+ *
+ * <p>Stale {@code boundConnectionId} cleanup is handled in two places
+ * instead of here:
+ * <ul>
+ *   <li>{@link ProjectLifecycleService#bring} unbinds at the moment a
+ *       project transitions from non-RUNNING to RUNNING on this pod —
+ *       covers every claim path (self-pull, distributor, locator,
+ *       direct-spawn) and is the latency-critical fast path for the
+ *       next reconnect.</li>
+ *   <li>{@code SessionStaleBindSweepTick} sweeps cluster-wide on the
+ *       master pod — catches every session, including those for
+ *       projects no pod currently owns ({@code _user_*}, archived).</li>
+ * </ul>
  *
  * <p>Listens on {@link ApplicationReadyEvent} with low precedence so it
  * runs <em>after</em> {@code ClusterService} has registered this pod's
@@ -55,13 +59,11 @@ public class ProjectStartupReclaimer {
     private final ProjectLifecycleService lifecycleService;
     private final ClusterService clusterService;
     private final ClusterProperties clusterProperties;
-    private final SessionService sessionService;
 
     @EventListener(ApplicationReadyEvent.class)
     @Order(Ordered.LOWEST_PRECEDENCE)
     void reclaim() {
         clearStaleClusterClaims();
-        clearStaleSessionBindings();
         selfPullPermanentProjects();
     }
 
@@ -89,25 +91,6 @@ public class ProjectStartupReclaimer {
             log.info("ProjectStartupReclaimer: no stale home-cluster claims; live={}",
                     liveClusters);
         }
-    }
-
-    /**
-     * Sessions under projects this pod currently owns (i.e. RUNNING +
-     * {@code homeNode == self}) may still carry {@code boundConnectionId}
-     * values from the previous incarnation — wipe those so the next
-     * client connect can resume cleanly. Other pods' sessions are not
-     * touched.
-     */
-    private void clearStaleSessionBindings() {
-        List<ProjectDocument> mine = projectManager.projectsOwnedByLocalPod();
-        if (mine.isEmpty()) {
-            log.info("ProjectStartupReclaimer: no sessions to unbind (no projects owned)");
-            return;
-        }
-        List<String> projectNames = mine.stream().map(ProjectDocument::getName).toList();
-        long n = sessionService.unbindAllForProjects(projectNames);
-        log.info("ProjectStartupReclaimer: {} project(s) owned by this pod, {} stale binding(s) cleared",
-                projectNames.size(), n);
     }
 
     /**

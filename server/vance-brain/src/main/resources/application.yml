@@ -179,6 +179,19 @@ vance:
       #   0    — INFINITE retention (no TTL set).
       #   < 0  — DISABLED (no document written).
       retention-days: 7
+  session:
+    # Max age of a bound session's lastActivityAt (= last heartbeat)
+    # before the bind is considered dead. Also drives tryBind's
+    # stale-takeover. Default = 4× WS ping (30s), tolerant of one
+    # missed ping + jitter.
+    bindStaleAfter: PT2M
+    staleBindSweep:
+      # Cluster-master-only periodic sweep that releases boundConnectionId
+      # on every session whose lastActivityAt is older than bindStaleAfter.
+      # Runs as a server-side updateMulti backed by the bound_activity_idx
+      # partial index — cost is independent of total session count.
+      interval: PT60S
+      initialDelay: PT2M
   prak:
     # Side-channel an: Compaction → Prak-Analyzer → Sanitizer → Strength → Promotion → Audit
     sideChannelEnabled: true

@@ -98,6 +98,11 @@ public class SessionService {
     @org.springframework.beans.factory.annotation.Value("${vance.session.bindStaleAfter:PT2M}")
     private Duration bindStaleAfter = Duration.ofMinutes(2);
 
+    /** Exposes {@link #bindStaleAfter} so sweep ticks share one threshold. */
+    public Duration bindStaleAfter() {
+        return bindStaleAfter;
+    }
+
     // ---------------------------------------------------------------- reads
 
     public Optional<SessionDocument> findBySessionId(String sessionId) {
@@ -379,9 +384,11 @@ public class SessionService {
 
     /**
      * Mass-release the {@code boundConnectionId} for every session whose
-     * {@code projectId} is in {@code projectIds}. Used by the project
-     * startup-reclaimer when a pod takes over its own projects on
-     * restart — pre-restart connections are gone, the bookkeeping isn't.
+     * {@code projectId} is in {@code projectIds}. Used by
+     * {@code ProjectLifecycleService.bring} when the project transitions
+     * from non-RUNNING to RUNNING on this pod — any pre-existing bound
+     * connection is guaranteed dead, immediate unbind avoids a 409 on
+     * the next client reconnect.
      *
      * @return number of sessions that were released
      */
@@ -395,6 +402,39 @@ public class SessionService {
         if (n > 0) {
             log.info("Reclaimed {} stale session binding(s) for {} project(s)",
                     n, projectIds.size());
+        }
+        return n;
+    }
+
+    /**
+     * Cluster-wide stale-bind sweep. Releases {@code boundConnectionId}
+     * on every session whose last heartbeat is older than {@code cutoff}
+     * — i.e. the bound connection has missed too many pings to still be
+     * considered live.
+     *
+     * <p>Driven by {@code SessionStaleBindSweepTick} on the cluster
+     * master only, so a single sweep covers all pods. The query is
+     * served by the {@code bound_activity_idx} partial index — only
+     * bound sessions are visited, regardless of total session count.
+     * No documents are loaded into memory; the {@code updateMulti}
+     * executes server-side.
+     *
+     * <p>{@code lastActivityAt} is deliberately <em>not</em> touched —
+     * the original timestamp documents when the connection actually
+     * died, which is useful for diagnostics.
+     *
+     * @param cutoff sessions with {@code lastActivityAt < cutoff} are
+     *     unbound — typically {@code now - bindStaleAfter}
+     * @return number of sessions that were released
+     */
+    public long unbindStaleConnections(Instant cutoff) {
+        Query query = new Query(Criteria.where(F_BOUND_CONNECTION).ne(null)
+                .and(F_LAST_ACTIVITY).lt(cutoff));
+        Update update = new Update().set(F_BOUND_CONNECTION, null);
+        UpdateResult result = mongoTemplate.updateMulti(query, update, SessionDocument.class);
+        long n = result.getModifiedCount();
+        if (n > 0) {
+            log.info("Stale-bind sweep released {} session binding(s) (cutoff={})", n, cutoff);
         }
         return n;
     }

@@ -55,6 +55,13 @@ import org.springframework.data.mongodb.core.mapping.Document;
         @CompoundIndex(name = "tenant_user_project_idx",
                 def = "{ 'tenantId': 1, 'userId': 1, 'projectId': 1 }"),
         @CompoundIndex(name = "status_activity_idx", def = "{ 'status': 1, 'lastActivityAt': 1 }"),
+        // Stale-bind sweep: SessionService#unbindStaleConnections filters on
+        // boundConnectionId != null + lastActivityAt < cutoff. Partial-filter
+        // keeps the index small — only bound sessions are indexed, idle
+        // sessions (the vast majority) don't carry any weight.
+        @CompoundIndex(name = "bound_activity_idx",
+                def = "{ 'boundConnectionId': 1, 'lastActivityAt': 1 }",
+                partialFilter = "{ 'boundConnectionId': { '$type': 'string' } }"),
         // Suspend-sweep query: status=SUSPENDED + transitionAt <= now.
         @CompoundIndex(name = "status_transition_idx",
                 def = "{ 'status': 1, 'transitionAt': 1 }"),

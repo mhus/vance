@@ -317,6 +317,26 @@ const clientToolService = new CortexClientToolService({
         return store.openTabs.find((t) => t.id === id) ?? null;
     },
     getSelection: () => store.currentSelection,
+    getActiveTab: () => {
+        const tab = store.activeTab;
+        if (!tab)
+            return null;
+        return { documentId: tab.id, path: tab.path };
+    },
+    openFileByPath: async (path) => {
+        // Path is the project-relative file path the agent sees in
+        // {@code cortex_read} results or in the file tree. Resolve to a
+        // documentId via {@link store.files}; on a miss we return null so
+        // the tool surfaces a clear "no such file" error to the LLM.
+        const normalised = path.replace(/^\/+/, '');
+        const file = store.files.find((f) => f.path === normalised);
+        if (!file)
+            return null;
+        const alreadyOpen = store.openTabs.some((t) => t.id === file.id);
+        focusZone.value = 'main';
+        await store.openFile(file.id);
+        return { documentId: file.id, path: file.path, alreadyOpen };
+    },
 });
 async function onSave() {
     if (!activeTab.value)

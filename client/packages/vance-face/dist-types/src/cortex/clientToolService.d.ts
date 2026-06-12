@@ -41,6 +41,31 @@ export interface CortexToolDeps {
      * the user-intent sense.
      */
     getSelection(): CortexSelection | null;
+    /**
+     * Open the document with the given path (relative inside the chat's
+     * project) as a Cortex tab and activate it. Idempotent — when the
+     * document is already open the existing tab is brought to the
+     * foreground rather than duplicated. The brain's
+     * {@code cortex_open_file} tool routes here. Returns the resolved
+     * doc info or {@code null} when the path is unknown to the project.
+     */
+    openFileByPath(path: string): Promise<{
+        documentId: string;
+        path: string;
+        alreadyOpen: boolean;
+    } | null>;
+    /**
+     * Returns the currently active editor tab — what the user has in the
+     * foreground. May differ from the chat-bound document (the user can
+     * switch tabs without rebinding the chat). The
+     * {@code cortex_get_active_tab} tool exposes this so the agent can
+     * disambiguate "this file" between the bound doc and what's on
+     * screen.
+     */
+    getActiveTab(): {
+        documentId: string;
+        path: string;
+    } | null;
 }
 export declare class CortexClientToolService {
     private readonly deps;

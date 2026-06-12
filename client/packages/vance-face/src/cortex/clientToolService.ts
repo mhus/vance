@@ -79,6 +79,28 @@ export interface CortexToolDeps {
    * the user-intent sense.
    */
   getSelection(): CortexSelection | null;
+
+  /**
+   * Open the document with the given path (relative inside the chat's
+   * project) as a Cortex tab and activate it. Idempotent — when the
+   * document is already open the existing tab is brought to the
+   * foreground rather than duplicated. The brain's
+   * {@code cortex_open_file} tool routes here. Returns the resolved
+   * doc info or {@code null} when the path is unknown to the project.
+   */
+  openFileByPath(
+    path: string,
+  ): Promise<{ documentId: string; path: string; alreadyOpen: boolean } | null>;
+
+  /**
+   * Returns the currently active editor tab — what the user has in the
+   * foreground. May differ from the chat-bound document (the user can
+   * switch tabs without rebinding the chat). The
+   * {@code cortex_get_active_tab} tool exposes this so the agent can
+   * disambiguate "this file" between the bound doc and what's on
+   * screen.
+   */
+  getActiveTab(): { documentId: string; path: string } | null;
 }
 
 type ToolHandler = (
@@ -273,6 +295,60 @@ export class CortexClientToolService {
         requiresEngineRoles: [],
       },
       {
+        name: 'cortex_get_active_tab',
+        description:
+          'Return the document currently shown in the foreground of the '
+          + 'Cortex editor — what the user is actively looking at. May '
+          + 'differ from the chat-bound document (the user can browse '
+          + 'tabs without rebinding the chat). Use to disambiguate '
+          + '"this file" / "the open one" in user requests. Returns '
+          + '{ hasActiveTab, documentId?, path? }.',
+        primary: true,
+        source: 'cortex',
+        paramsSchema: {
+          type: 'object',
+          properties: {},
+          required: [],
+        },
+        labels: ['read-only', 'cortex'],
+        allowedProfiles: ['web'],
+        deferred: false,
+        searchHint: '',
+        safety: 'SAFE_PROBE',
+        requiresEngineRoles: [],
+      },
+      {
+        name: 'cortex_open_file',
+        description:
+          'Open a document as a tab in the Cortex editor and bring it to '
+          + 'the foreground. Idempotent — calling it on an already-open '
+          + 'document just focuses that tab. Use to show the user a '
+          + 'document you reference (e.g. before quoting from it, or when '
+          + 'the user asks to "open / show / look at X"). Returns the '
+          + 'document\'s id and whether it was already open. '
+          + 'Fails when the path is not present in the project.',
+        primary: true,
+        source: 'cortex',
+        paramsSchema: {
+          type: 'object',
+          properties: {
+            path: {
+              type: 'string',
+              description:
+                'Path of the document inside the project (e.g. '
+                + '"documents/notes/idea.md"). Must match an existing file.',
+            },
+          },
+          required: ['path'],
+        },
+        labels: ['ui', 'cortex'],
+        allowedProfiles: ['web'],
+        deferred: false,
+        searchHint: '',
+        safety: 'SAFE_PROBE',
+        requiresEngineRoles: [],
+      },
+      {
         name: 'cortex_write',
         description:
           'Overwrite the Cortex-bound document with new content. '
@@ -366,6 +442,37 @@ export class CortexClientToolService {
         + content;
       doc.dirty = true;
       return { path: doc.path, appendedChars: content.length };
+    });
+
+    this.handlers.set('cortex_get_active_tab', () => {
+      const tab = this.deps.getActiveTab();
+      if (!tab) {
+        return { hasActiveTab: false };
+      }
+      return {
+        hasActiveTab: true,
+        documentId: tab.documentId,
+        path: tab.path,
+      };
+    });
+
+    this.handlers.set('cortex_open_file', async (params) => {
+      const path = requireString(params, 'path').trim();
+      if (!path) {
+        throw new Error('path must not be empty');
+      }
+      const result = await this.deps.openFileByPath(path);
+      if (!result) {
+        throw new Error(
+          `No document at path "${path}" in this project. `
+          + 'Use list-style tools to discover existing paths.',
+        );
+      }
+      return {
+        documentId: result.documentId,
+        path: result.path,
+        alreadyOpen: result.alreadyOpen,
+      };
     });
 
     this.handlers.set('cortex_write', (params) => {

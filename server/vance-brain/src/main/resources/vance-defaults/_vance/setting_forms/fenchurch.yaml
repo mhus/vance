@@ -48,7 +48,7 @@ fields:
       de: "Wird verwendet, wenn der Tool-Call keinen `aspectRatio`
            mitgibt."
       en: "Used when the tool call does not specify `aspectRatio`."
-    showIf: "enabled == 'true'"
+    showIf: "enabled"
     bindsTo:
       key: "ai.fenchurch.default_aspect_ratio"
     choices:
@@ -79,7 +79,7 @@ fields:
            slug from the prompt; slug lands in the filename, title
            in the document header. Off means images without an
            explicit `title` end up at `images/<uuid>-image.png`."
-    showIf: "enabled == 'true'"
+    showIf: "enabled"
     bindsTo:
       key: "ai.fenchurch.auto_title_from_prompt"
 
@@ -99,7 +99,7 @@ fields:
            unlimited. Cascade: inner scopes (user, project,
            session) override with a stricter cap when they set a
            value."
-    showIf: "enabled == 'true'"
+    showIf: "enabled"
     bindsTo:
       key: "ai.fenchurch.daily_images"
 
@@ -114,7 +114,7 @@ fields:
            Tageslimit."
       en: "Tenant-wide ceiling per UTC calendar month. Empty or 0 =
            unlimited. Same cascade rules as the daily limit."
-    showIf: "enabled == 'true'"
+    showIf: "enabled"
     bindsTo:
       key: "ai.fenchurch.monthly_images"
 
@@ -135,7 +135,7 @@ fields:
            Imagen 3 Pro) regularly take 2–5 min — the 360 s
            default covers worst case. Lower only if the UI wants
            faster failure feedback."
-    showIf: "enabled == 'true'"
+    showIf: "enabled"
     bindsTo:
       key: "ai.fenchurch.timeout"
 
@@ -154,6 +154,6 @@ fields:
            emits a `WAITING` status update over the process
            progress side-channel every N seconds so the UI does
            not look stalled. 0 disables heartbeats."
-    showIf: "enabled == 'true'"
+    showIf: "enabled"
     bindsTo:
       key: "ai.fenchurch.heartbeat_interval_sec"

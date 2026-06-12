@@ -1,0 +1,225 @@
+title:
+  de: "Research — Such-Provider"
+  en: "Research — Search Providers"
+description:
+  de: "Konfiguriert die Web-/Research-Such-Endpoints (Zarniwoop). Werte werden
+       tenant-weit geschrieben (`_tenant`) und gelten dadurch für alle Projekte
+       — auch System-Projekte wie `_user_*`. Pro Endpoint: aktivieren und (falls
+       nötig) API-Key hinterlegen. Das Default-Routing pro Modality bestimmt
+       der Dispatcher automatisch aus den aktivierten Endpoints."
+  en: "Configures the web/research search endpoints (Zarniwoop). Values are
+       written tenant-wide (`_tenant`) and apply to all projects including
+       system projects like `_user_*`. Per endpoint: enable and (if required)
+       provide the API key. Default routing per modality is picked
+       automatically by the dispatcher from the enabled endpoints."
+icon: magnifying-glass
+category: ai
+defaultScope: tenant
+
+fields:
+
+  # ─── Serper.dev — Web / Image / Video / PDF ──────────────────────
+
+  # Default `true` matches the dispatcher's behavior when `.enabled`
+  # is missing in Mongo (ZarniwoopGateService treats absent as enabled).
+  # If this default were `false`, opening + saving the form on an
+  # endpoint configured via init-settings would silently disable it.
+
+  - name: serperEnabled
+    type: boolean
+    defaultValue: "true"
+    label:
+      de: "Serper.dev aktivieren"
+      en: "Enable Serper.dev"
+    help:
+      de: "Kommerzieller Google-SERP-API-Provider — bedient WEB, IMAGE, VIDEO,
+           PDF aus einer einzigen API-Key. Free-Tier 2 500 Calls/Monat
+           (siehe https://serper.dev/billing)."
+      en: "Commercial Google SERP API — serves WEB, IMAGE, VIDEO, PDF from one
+           single API key. Free tier 2 500 calls/month
+           (see https://serper.dev/billing)."
+    bindsTo:
+      key: "research.endpoint.serper-main.enabled"
+
+  - name: serperApiKey
+    type: password
+    label:
+      de: "Serper API-Key"
+      en: "Serper API Key"
+    help:
+      de: "Leer lassen, um einen bereits gespeicherten Key unverändert zu
+           übernehmen. Beim Deaktivieren wird der Key gelöscht."
+      en: "Leave empty to keep an already stored key. Disabling Serper deletes
+           the stored key."
+    showIf:  "serperEnabled"
+    writeIf: "serperEnabled"
+    bindsTo:
+      key: "research.endpoint.serper-main.apiKey"
+
+  - name: serperBaseUrl
+    type: string
+    label:
+      de: "Serper Base-URL (optional)"
+      en: "Serper Base-URL (optional)"
+    help:
+      de: "Leer = https://google.serper.dev (Standard). Nur überschreiben für
+           private Mirrors oder Region-spezifische Endpoints."
+      en: "Empty = https://google.serper.dev (default). Override only for
+           private mirrors or region-specific endpoints."
+    showIf:  "serperEnabled"
+    writeIf: "serperEnabled"
+    bindsTo:
+      key: "research.endpoint.serper-main.baseUrl"
+
+  # ─── Wikipedia — Encyclopedia + Web-Fallback (keyless) ───────────
+
+  - name: wikiEnabled
+    type: boolean
+    defaultValue: "true"
+    label:
+      de: "Wikipedia aktivieren"
+      en: "Enable Wikipedia"
+    help:
+      de: "Key-loser Encyclopedia-Provider. Bedient ENCYCLOPEDIA und springt
+           zusätzlich als WEB-Fallback ein, wenn keine andere WEB-Quelle
+           verfügbar ist."
+      en: "Key-less encyclopedia provider. Serves ENCYCLOPEDIA and additionally
+           acts as a WEB fallback when no other WEB source is available."
+    bindsTo:
+      key: "research.endpoint.wiki-de.enabled"
+
+  - name: wikiBaseUrl
+    type: string
+    label:
+      de: "Wikipedia Base-URL (optional)"
+      en: "Wikipedia Base-URL (optional)"
+    help:
+      de: "Leer = https://de.wikipedia.org (deutsche Wikipedia). Beispiel für
+           Englisch: https://en.wikipedia.org. Pro Tenant nur eine Sprache —
+           für mehrere Sprachen weitere Endpoints via Raw-Settings anlegen."
+      en: "Empty = https://de.wikipedia.org (German Wikipedia). Example for
+           English: https://en.wikipedia.org. One language per tenant — add
+           additional endpoints via raw settings for multilingual setups."
+    showIf:  "wikiEnabled"
+    writeIf: "wikiEnabled"
+    bindsTo:
+      key: "research.endpoint.wiki-de.baseUrl"
+
+  # ─── OpenAlex — Academic (keyless, Polite-Pool via E-Mail) ───────
+
+  - name: openalexEnabled
+    type: boolean
+    defaultValue: "true"
+    label:
+      de: "OpenAlex aktivieren"
+      en: "Enable OpenAlex"
+    help:
+      de: "Key-loser akademischer Provider mit über 250 Mio Papers. Der
+           Polite-Pool (geringere Latenz, höhere Stabilität) wird durch eine
+           Kontakt-E-Mail aktiviert (siehe unten)."
+      en: "Key-less academic provider with 250M+ papers. The polite pool
+           (lower latency, higher reliability) is activated by providing a
+           contact email (see below)."
+    bindsTo:
+      key: "research.endpoint.openalex.enabled"
+
+  - name: openalexContactEmail
+    type: string
+    label:
+      de: "OpenAlex Polite-Pool E-Mail"
+      en: "OpenAlex polite-pool email"
+    help:
+      de: "Optional. Eine echte E-Mail-Adresse aktiviert den OpenAlex-
+           Polite-Pool. Leer = öffentlicher Pool (höhere Latenz, mehr
+           Rate-Limit-Risiko)."
+      en: "Optional. A real email address activates OpenAlex's polite pool.
+           Empty = public pool (higher latency, more rate-limit risk)."
+    showIf:  "openalexEnabled"
+    writeIf: "openalexEnabled"
+    bindsTo:
+      key: "research.endpoint.openalex.contactEmail"
+
+  # ─── arXiv — STEM-Academic (keyless) ─────────────────────────────
+
+  - name: arxivEnabled
+    type: boolean
+    defaultValue: "true"
+    label:
+      de: "arXiv aktivieren"
+      en: "Enable arXiv"
+    help:
+      de: "Key-loser STEM-Academic-Provider. Geeignet als ACADEMIC-Fallback —
+           dispatcht automatisch nach OpenAlex, wenn beides aktiv ist."
+      en: "Key-less STEM academic provider. Useful as ACADEMIC fallback —
+           automatically dispatched after OpenAlex if both are enabled."
+    bindsTo:
+      key: "research.endpoint.arxiv.enabled"
+
+  # ─── OpenLibrary — Books (keyless) ───────────────────────────────
+
+  - name: openlibEnabled
+    type: boolean
+    defaultValue: "true"
+    label:
+      de: "OpenLibrary aktivieren"
+      en: "Enable OpenLibrary"
+    help:
+      de: "Key-loser Buch-Provider (Internet Archive). Bedient BOOK."
+      en: "Key-less book provider (Internet Archive). Serves BOOK."
+    bindsTo:
+      key: "research.endpoint.openlib.enabled"
+
+  # ─── HackerNews via Algolia — Tech-News (keyless) ────────────────
+
+  - name: hnEnabled
+    type: boolean
+    defaultValue: "true"
+    label:
+      de: "HackerNews aktivieren"
+      en: "Enable HackerNews"
+    help:
+      de: "Key-loser Tech-News-Provider via Algolia. Bedient NEWS und liefert
+           als sekundärer Treffer auch WEB (tech-fokussiert)."
+      en: "Key-less tech-news provider via Algolia. Serves NEWS and also
+           contributes secondary WEB hits (tech-focused)."
+    bindsTo:
+      key: "research.endpoint.hn-algolia.enabled"
+
+settings:
+
+  # Protocol pinning per endpoint. Without `.protocol` the
+  # SearchProviderFactory skips the endpoint entirely — so deleting
+  # `.protocol` (via writeIf) is what makes a disabled endpoint
+  # disappear from `research_providers`. The `.enabled` setting
+  # remains as the toggle state but has no effect once the endpoint
+  # is not instantiated.
+
+  - key: "research.endpoint.serper-main.protocol"
+    settingType: STRING
+    writeIf: "serperEnabled"
+    value: "serper"
+
+  - key: "research.endpoint.wiki-de.protocol"
+    settingType: STRING
+    writeIf: "wikiEnabled"
+    value: "wikipedia"
+
+  - key: "research.endpoint.openalex.protocol"
+    settingType: STRING
+    writeIf: "openalexEnabled"
+    value: "openalex"
+
+  - key: "research.endpoint.arxiv.protocol"
+    settingType: STRING
+    writeIf: "arxivEnabled"
+    value: "arxiv"
+
+  - key: "research.endpoint.openlib.protocol"
+    settingType: STRING
+    writeIf: "openlibEnabled"
+    value: "openlibrary"
+
+  - key: "research.endpoint.hn-algolia.protocol"
+    settingType: STRING
+    writeIf: "hnEnabled"
+    value: "hackernews"

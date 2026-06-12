@@ -38,6 +38,7 @@ import de.mhus.vance.brain.tools.client.ClientToolRegistry;
 import de.mhus.vance.brain.workspace.access.PodForwarder;
 import de.mhus.vance.brain.workspace.access.ProjectPodKey;
 import de.mhus.vance.brain.workspace.access.WorkspaceAccessProperties;
+import de.mhus.vance.brain.workspace.access.WorkspaceRoutingCache;
 import de.mhus.vance.shared.cluster.BrainPodDocument;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.servertool.ServerToolConfig;
@@ -125,6 +126,7 @@ public class InsightsAdminController {
     private final BuiltInToolSource builtInToolSource;
     private final ClientToolRegistry clientToolRegistry;
     private final PodForwarder podForwarder;
+    private final WorkspaceRoutingCache workspaceRoutingCache;
     private final WorkspaceAccessProperties workspaceAccessProperties;
     private final ClusterService clusterService;
     private final Optional<ClusterMasterService> clusterMasterService;
@@ -855,29 +857,45 @@ public class InsightsAdminController {
         authority.enforce(httpRequest,
                 new Resource.Session(tenant, session.getProjectId(), session.getSessionId()), Action.ADMIN);
 
-        // Bypass mode (used in single-pod tests): read the local registry
-        // directly. In normal operation we always forward, so dev and prod
-        // exercise the same path.
-        if (workspaceAccessProperties.isBypassProxy()) {
-            return clientToolRegistry.entry(sessionId)
-                    .map(e -> SessionClientToolsDto.builder()
-                            .sessionId(sessionId)
-                            .bound(true)
-                            .connectionId(e.connectionId())
-                            .tools(List.copyOf(e.tools().values()))
-                            .build())
-                    .orElseGet(() -> SessionClientToolsDto.builder()
-                            .sessionId(sessionId)
-                            .bound(false)
-                            .tools(List.of())
-                            .build());
+        // Bypass mode (used in single-pod tests) and podless system
+        // projects (_vance / _user_<login>, no homeNode by design)
+        // read the local registry directly. In normal multi-pod
+        // operation we forward, so dev and prod exercise the same path.
+        String projectId = session.getProjectId();
+        if (workspaceAccessProperties.isBypassProxy() || ProjectService.isPodless(projectId)) {
+            return localClientTools(sessionId);
         }
 
-        ProjectPodKey key = new ProjectPodKey(tenant, session.getProjectId());
+        ProjectPodKey key = new ProjectPodKey(tenant, projectId);
+        if (workspaceRoutingCache.lookup(key).isEmpty()) {
+            // No pod owns this project right now → the session can't be
+            // bound to any client-tool registry. Return unbound instead
+            // of 409 so the Insights tab can render.
+            return SessionClientToolsDto.builder()
+                    .sessionId(sessionId)
+                    .bound(false)
+                    .tools(List.of())
+                    .build();
+        }
         String path = "/internal/insights/sessions/"
                 + java.net.URLEncoder.encode(sessionId, java.nio.charset.StandardCharsets.UTF_8)
                 + "/client-tools";
         return podForwarder.getJson(key, path, SessionClientToolsDto.class);
+    }
+
+    private SessionClientToolsDto localClientTools(String sessionId) {
+        return clientToolRegistry.entry(sessionId)
+                .map(e -> SessionClientToolsDto.builder()
+                        .sessionId(sessionId)
+                        .bound(true)
+                        .connectionId(e.connectionId())
+                        .tools(List.copyOf(e.tools().values()))
+                        .build())
+                .orElseGet(() -> SessionClientToolsDto.builder()
+                        .sessionId(sessionId)
+                        .bound(false)
+                        .tools(List.of())
+                        .build());
     }
 
     // ─── Cluster pods ──────────────────────────────────────────────────────

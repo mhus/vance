@@ -13,6 +13,7 @@ import de.mhus.vance.brain.workspace.access.WorkspaceAccessProperties;
 import de.mhus.vance.brain.workspace.access.WorkspaceRoutingCache;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
+import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.toolpack.ToolException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
@@ -52,6 +53,19 @@ import tools.jackson.databind.ObjectMapper;
  * exercise the same code path; flip
  * {@code vance.workspace.access.bypass-proxy=true} to call the
  * registry / router directly (test mode only).
+ *
+ * <p>Podless system projects ({@code _vance} / {@code _user_<login>},
+ * detected via {@link ProjectService#isPodless}) never have a {@code
+ * homeNode} — they run on whichever pod processed the WS connection.
+ * For those the controller short-circuits straight to the local
+ * registry, same as the bypass path; otherwise it would 409 with
+ * "not claimed by any pod yet" on every Insights → Executions call.
+ *
+ * <p>NORMAL projects without an active claim (no live {@code homeNode})
+ * also can't have any registered executions — the registry is
+ * pod-local and only the owner pod populates it. The controller
+ * therefore answers {@code /list} with an empty snapshot and
+ * {@code /stat} / {@code /tail} with {@code 404} instead of 409.
  *
  * <p>Live updates: not in v1. The Insights "Executions" tab loads a
  * snapshot via {@code /list} and refreshes manually — same convention
@@ -99,10 +113,16 @@ public class ExecutionsController {
             @RequestParam(value = "ownerLabel", required = false) @Nullable String ownerLabel,
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Project(tenant, project), Action.READ);
-        if (properties.isBypassProxy()) {
+        if (properties.isBypassProxy() || ProjectService.isPodless(project)) {
             return listDirect(tenant, project, onlyRunning, ownerLabel);
         }
         ProjectPodKey key = new ProjectPodKey(tenant, project);
+        if (routingCache.lookup(key).isEmpty()) {
+            // No pod owns this project right now — there can be no
+            // registered executions. Empty snapshot is the right answer
+            // for the Insights tab, not 409.
+            return List.of();
+        }
         StringBuilder qs = new StringBuilder();
         if (onlyRunning) qs.append("onlyRunning=true");
         if (ownerLabel != null && !ownerLabel.isBlank()) {
@@ -126,10 +146,14 @@ public class ExecutionsController {
             @PathVariable("id") String id,
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Project(tenant, project), Action.READ);
-        if (properties.isBypassProxy()) {
+        if (properties.isBypassProxy() || ProjectService.isPodless(project)) {
             return statDirect(tenant, project, id);
         }
         ProjectPodKey key = new ProjectPodKey(tenant, project);
+        if (routingCache.lookup(key).isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Unknown execution: '" + id + "'");
+        }
         String body = proxyGet(key, buildInternalPath(tenant, project, id + "/stat"));
         try {
             return objectMapper.readValue(body, ExecutionInsightsDto.class);
@@ -151,10 +175,14 @@ public class ExecutionsController {
         if (n <= 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "'n' must be > 0");
         }
-        if (properties.isBypassProxy()) {
+        if (properties.isBypassProxy() || ProjectService.isPodless(project)) {
             return tailDirect(tenant, id, n, stream);
         }
         ProjectPodKey key = new ProjectPodKey(tenant, project);
+        if (routingCache.lookup(key).isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Unknown execution: '" + id + "'");
+        }
         StringBuilder qs = new StringBuilder("n=").append(n);
         qs.append("&stream=").append(URLEncoder.encode(stream, StandardCharsets.UTF_8));
         String path = buildInternalPath(tenant, project, id + "/tail") + "?" + qs;

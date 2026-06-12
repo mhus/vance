@@ -1,10 +1,12 @@
 package de.mhus.vance.brain.workspace.access;
 
+import de.mhus.vance.api.projects.WorkspaceNodeType;
 import de.mhus.vance.api.projects.WorkspaceTreeNodeDto;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.location.LocationService;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
+import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.workspace.WorkspaceException;
 import de.mhus.vance.shared.workspace.WorkspaceFileSizeExceededException;
 import de.mhus.vance.shared.workspace.WorkspaceService;
@@ -20,6 +22,7 @@ import java.net.http.HttpResponse.BodyHandlers;
 import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.List;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -45,6 +48,17 @@ import tools.jackson.databind.ObjectMapper;
  * unless {@code vance.workspace.access.bypass-proxy=true}, in which case
  * Layer 1 calls {@link WorkspaceService} directly. See
  * {@code specification/workspace-access.md} §2 / §8.
+ *
+ * <p>Podless system projects ({@code _vance} / {@code _user_<login>},
+ * detected via {@link ProjectService#isPodless}) never have a {@code
+ * homeNode} — workspace lives on whichever pod processed the WS
+ * connection. The controller short-circuits to the local
+ * {@link WorkspaceService} for those, same as the bypass path.
+ *
+ * <p>NORMAL projects without an active claim (no live {@code homeNode})
+ * have no materialized workspace anywhere — the controller answers
+ * {@code /tree} with an empty root and {@code /file} with {@code 404}
+ * instead of 409.
  */
 @RestController
 @RequestMapping("/brain/{tenant}/projects/{project}/workspace")
@@ -87,10 +101,16 @@ public class WorkspaceController {
             @RequestParam(value = "depth", required = false, defaultValue = "1") int depth,
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Project(tenant, project), Action.READ);
-        if (properties.isBypassProxy()) {
+        if (properties.isBypassProxy() || ProjectService.isPodless(project)) {
             return treeDirect(tenant, project, path, depth);
         }
         ProjectPodKey key = new ProjectPodKey(tenant, project);
+        if (routingCache.lookup(key).isEmpty()) {
+            // No pod owns this project right now — the workspace isn't
+            // materialized anywhere live. Return an empty root rather
+            // than 409 so the Insights/Workspace tab can render.
+            return emptyRoot();
+        }
         String body = proxyGet(key, buildInternalPath(tenant, project, "tree", path, depth));
         try {
             return objectMapper.readValue(body, WorkspaceTreeNodeDto.class);
@@ -110,16 +130,31 @@ public class WorkspaceController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "path is required");
         }
         authority.enforce(httpRequest, new Resource.Project(tenant, project), Action.READ);
-        if (properties.isBypassProxy()) {
+        if (properties.isBypassProxy() || ProjectService.isPodless(project)) {
             return fileDirect(tenant, project, path);
         }
         ProjectPodKey key = new ProjectPodKey(tenant, project);
+        if (routingCache.lookup(key).isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Workspace file not found: '" + path + "'");
+        }
         return proxyFile(key, buildInternalPath(tenant, project, "file", path, -1));
     }
 
     // ------------------------------------------------------------------
     // Bypass path — direct WorkspaceService call (test/dev only)
     // ------------------------------------------------------------------
+
+    private static WorkspaceTreeNodeDto emptyRoot() {
+        return WorkspaceTreeNodeDto.builder()
+                .name("")
+                .path("")
+                .type(WorkspaceNodeType.DIR)
+                .size(0L)
+                .lastModified(null)
+                .children(List.of())
+                .build();
+    }
 
     private WorkspaceTreeNodeDto treeDirect(String tenant, String project, @Nullable String path, int depth) {
         try {

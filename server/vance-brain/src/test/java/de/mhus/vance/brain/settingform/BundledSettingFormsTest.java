@@ -109,6 +109,42 @@ class BundledSettingFormsTest {
                 .isEqualTo("credentials.jira.configured");
     }
 
+    @Test
+    void research_parses_cleanly_and_pins_protocols() throws IOException {
+        ResolvedSettingForm f = loadBundled("research");
+
+        // Per-endpoint boolean toggles in declaration order.
+        assertThat(f.fields())
+                .extracting(field -> field.getName())
+                .containsExactly(
+                        "serperEnabled", "serperApiKey", "serperBaseUrl",
+                        "wikiEnabled", "wikiBaseUrl",
+                        "openalexEnabled", "openalexContactEmail",
+                        "arxivEnabled",
+                        "openlibEnabled",
+                        "hnEnabled");
+
+        // Each enabled-gated endpoint pins its protocol via writeIf.
+        // Without the protocol setting SearchProviderFactory skips the
+        // endpoint — so this is the actual on/off switch.
+        assertThat(f.computedSettings())
+                .extracting(ResolvedComputedSetting::key)
+                .containsExactly(
+                        "research.endpoint.serper-main.protocol",
+                        "research.endpoint.wiki-de.protocol",
+                        "research.endpoint.openalex.protocol",
+                        "research.endpoint.arxiv.protocol",
+                        "research.endpoint.openlib.protocol",
+                        "research.endpoint.hn-algolia.protocol");
+
+        // Tenant-wide form must remain visible in every project context —
+        // including system projects (_tenant, _user_*) — so the operator
+        // can reach it from anywhere.
+        assertThat(SettingFormLoader.isAvailableIn(f.availableIn(), "_tenant")).isTrue();
+        assertThat(SettingFormLoader.isAvailableIn(f.availableIn(), "_user_alice")).isTrue();
+        assertThat(SettingFormLoader.isAvailableIn(f.availableIn(), "research-2026")).isTrue();
+    }
+
     private ResolvedSettingForm loadBundled(String name) throws IOException {
         String resourcePath = "vance-defaults/_vance/setting_forms/" + name + ".yaml";
         String yaml = readClasspath(resourcePath);

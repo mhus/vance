@@ -102,6 +102,19 @@ scratch_write path="check.py" content="import sys; print(sys.version_info)"
 python_run file="check.py"
 ```
 
+### Script-side document access (Cortex-spawn only)
+
+When the user runs a Python script from the **Cortex Run button**,
+the script can `import vance` and reach project documents through
+`vance.documents.*` — read, write, list, delete. This does NOT work
+from `python_run` / `execute_python` (LLM-spawned) today: those
+paths skip the env-injection, so `import vance` fails with
+`VanceError: Environment variable 'VANCE_BRAIN_URL' is not set`.
+
+When asked to author a Python script that reads or writes documents,
+load `manual_read('script-document-api')` for the API surface, path
+conventions, and limitations.
+
 ## Interpreter switching
 
 `python_set_interpreter pythonPath="/opt/homebrew/bin/python3.13"`

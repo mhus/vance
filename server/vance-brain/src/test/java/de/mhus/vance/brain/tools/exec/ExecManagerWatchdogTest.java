@@ -126,7 +126,7 @@ class ExecManagerWatchdogTest {
     @Test
     void extendDeadline_returnsFalseForTerminalJob() throws Exception {
         ExecJob job = manager.submit(
-                TENANT, PROJECT, OWNER, DIR, "echo done", null);
+                TENANT, PROJECT, OWNER, DIR, "echo done", (Instant) null);
         manager.waitFor(job, 5_000);
         assertThat(job.isTerminal()).isTrue();
 

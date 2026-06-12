@@ -4,6 +4,7 @@ import de.mhus.vance.api.python.PythonExecuteRequest;
 import de.mhus.vance.api.python.PythonExecuteResponse;
 import de.mhus.vance.api.python.PythonExecutionStatus;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.brain.tools.exec.ExecLabels;
 import de.mhus.vance.brain.tools.exec.ExecManager;
 import de.mhus.vance.brain.tools.python.PythonExecutionService;
 import de.mhus.vance.shared.document.DocumentDocument;
@@ -61,6 +62,7 @@ public class PythonCortexController {
 
         String code;
         @Nullable String resolvedProjectId = projectId;
+        @Nullable String documentPath = null;
         if (request.getScriptId() != null && !request.getScriptId().isBlank()) {
             DocumentDocument doc = loadOwned(tenant, request.getScriptId());
             authority.enforce(httpRequest,
@@ -68,6 +70,7 @@ public class PythonCortexController {
                     Action.EXECUTE);
             code = documentService.readContent(doc);
             if (resolvedProjectId == null) resolvedProjectId = doc.getProjectId();
+            documentPath = doc.getPath();
         } else if (request.getCode() != null && !request.getCode().isBlank()) {
             code = request.getCode();
             if (resolvedProjectId == null) {
@@ -82,14 +85,27 @@ public class PythonCortexController {
         }
 
         List<String> args = request.getArgs() == null ? List.of() : request.getArgs();
+        Map<String, String> labels = new java.util.LinkedHashMap<>();
+        labels.put(ExecLabels.KEY_SOURCE, ExecLabels.SOURCE_CORTEX);
+        labels.put(ExecLabels.KEY_LANGUAGE, ExecLabels.LANG_PYTHON);
+        labels.put(ExecLabels.KEY_RUN_KIND, ExecLabels.RUN_KIND_SCRIPT);
+        if (documentPath != null) {
+            labels.put(ExecLabels.KEY_DOCUMENT, documentPath);
+        }
+        // Username drives the SCRIPT_RUN JWT subject — the brain access
+        // filter sets ATTR_USERNAME after JWT validation upstream.
+        String username = (String) httpRequest.getAttribute(
+                de.mhus.vance.shared.access.AccessFilterBase.ATTR_USERNAME);
         String executionId = pythonExecutionService.executeAsync(
                 tenant,
                 resolvedProjectId,
                 sessionId,
                 null,
+                username,
                 code,
                 args,
-                request.getFlags());
+                request.getFlags(),
+                labels);
         return PythonExecuteResponse.builder().executionId(executionId).build();
     }
 

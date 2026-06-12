@@ -2,7 +2,9 @@ package de.mhus.vance.brain.magrathea;
 
 import de.mhus.vance.api.magrathea.MagratheaErrorKind;
 import de.mhus.vance.api.magrathea.MagratheaTaskType;
+import de.mhus.vance.brain.tools.exec.ExecLabels;
 import de.mhus.vance.brain.tools.exec.ExecManager;
+import de.mhus.vance.brain.tools.exec.SubmitOptions;
 import de.mhus.vance.shared.magrathea.MagratheaStateSpec;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -79,6 +81,10 @@ public class ShellTaskExecutor implements MagratheaTypeExecutor {
                 ? DEFAULT_TIMEOUT_MS
                 : state.timeoutSeconds() * 1000L;
 
+        Map<String, String> labels = Map.of(
+                ExecLabels.KEY_SOURCE, ExecLabels.SOURCE_WORKFLOW,
+                ExecLabels.KEY_LANGUAGE, ExecLabels.LANG_SHELL,
+                ExecLabels.KEY_RUN_KIND, ExecLabels.RUN_KIND_SHELL);
         Map<String, Object> result;
         try {
             result = execManager.submitTrackedAndRender(
@@ -88,7 +94,8 @@ public class ShellTaskExecutor implements MagratheaTypeExecutor {
                     /* processId */ null,
                     dirName,
                     command,
-                    waitMs);
+                    waitMs,
+                    SubmitOptions.defaults().withLabels(labels));
         } catch (RuntimeException ex) {
             // ExecException is package-private; the wider RuntimeException
             // catch covers it plus any infrastructure failure (e.g. workspace

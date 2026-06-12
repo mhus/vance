@@ -521,6 +521,7 @@ public class ScriptCortexController {
                 .lastDeepReviewedHash(doc.getLastDeepReviewedHash())
                 .lastDeepReviewWarningsJson(doc.getLastDeepReviewWarningsJson())
                 .lastDeepReviewedAtMs(toMillis(doc.getLastDeepReviewedAt()))
+                .expiresAtMs(toMillis(doc.getExpiresAt()))
                 .build();
     }
 

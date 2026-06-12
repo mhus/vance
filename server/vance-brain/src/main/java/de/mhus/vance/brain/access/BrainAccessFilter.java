@@ -2,6 +2,7 @@ package de.mhus.vance.brain.access;
 
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.jwt.JwtService;
+import de.mhus.vance.shared.jwt.TokenType;
 import de.mhus.vance.shared.jwt.VanceJwtClaims;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.regex.Matcher;
@@ -87,8 +88,11 @@ public class BrainAccessFilter extends AccessFilterBase {
     private static final Pattern OFFICE_EXTERNAL_PATH =
             Pattern.compile("^/brain/[^/]+/office/(download|callback)/[^/]+/?$");
 
-    public BrainAccessFilter(JwtService jwtService) {
+    private final ScriptRunAuthService scriptRunAuthService;
+
+    public BrainAccessFilter(JwtService jwtService, ScriptRunAuthService scriptRunAuthService) {
         super(jwtService);
+        this.scriptRunAuthService = scriptRunAuthService;
     }
 
     @Override
@@ -143,6 +147,13 @@ public class BrainAccessFilter extends AccessFilterBase {
     }
 
     @Override
+    protected boolean isTokenTypeAcceptable(TokenType type) {
+        // SCRIPT_RUN tokens are loopback-bound and registry-gated —
+        // ScriptRunAuthService does the extra checks in isClaimsAcceptable.
+        return type == TokenType.ACCESS || type == TokenType.SCRIPT_RUN;
+    }
+
+    @Override
     protected boolean isClaimsAcceptable(VanceJwtClaims claims, HttpServletRequest request) {
         String uri = request.getRequestURI();
         Matcher matcher = BRAIN_TENANT_PATH.matcher(uri);
@@ -154,6 +165,9 @@ public class BrainAccessFilter extends AccessFilterBase {
         if (!pathTenant.equals(claims.tenantId())) {
             log.debug("Tenant mismatch: path='{}' jwt='{}' on {}", pathTenant, claims.tenantId(), uri);
             return false;
+        }
+        if (claims.tokenType() == TokenType.SCRIPT_RUN) {
+            return scriptRunAuthService.isAcceptable(claims, request);
         }
         return true;
     }

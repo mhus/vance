@@ -398,6 +398,8 @@ export default {
       revert: 'Änderungen verwerfen',
       apply: 'Anwenden',
       save: 'Speichern',
+      expiresAtLabel: 'Läuft ab am',
+      expiresAtHint: '— der Server löscht das Dokument automatisch, sobald der Zeitpunkt erreicht ist.',
       summary: {
         heading: 'Automatische Zusammenfassung',
         summaryLabel: 'Zusammenfassung',

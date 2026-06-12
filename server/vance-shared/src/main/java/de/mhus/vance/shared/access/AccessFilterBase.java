@@ -86,6 +86,21 @@ public abstract class AccessFilterBase extends OncePerRequestFilter {
         return true;
     }
 
+    /**
+     * Hook deciding which {@link TokenType} values are bearer-acceptable
+     * on regular API requests. Default: only {@link TokenType#ACCESS}.
+     *
+     * <p>{@link TokenType#REFRESH} is always rejected here — refresh tokens
+     * are credentials for the mint endpoint and never grant API access.
+     * Subclasses can extend the accept-set (e.g. brain accepts
+     * {@link TokenType#SCRIPT_RUN} via {@code BrainAccessFilter}); the
+     * extra validation (loopback origin, registry-status check) goes into
+     * {@link #isClaimsAcceptable(VanceJwtClaims, HttpServletRequest)}.
+     */
+    protected boolean isTokenTypeAcceptable(TokenType type) {
+        return type == TokenType.ACCESS;
+    }
+
     @Override
     protected void doFilterInternal(
             HttpServletRequest request,
@@ -141,13 +156,19 @@ public abstract class AccessFilterBase extends OncePerRequestFilter {
             log.debug("Bearer token did not pass JWT verification for {}", request.getRequestURI());
             return null;
         }
-        if (claims.tokenType() != TokenType.ACCESS) {
+        if (claims.tokenType() == TokenType.REFRESH) {
             // Refresh tokens are credentials for the token-mint endpoint
             // only — they must never authenticate API requests. The
             // mint endpoint sits behind shouldRequireAuthentication=false
             // and validates the refresh token itself.
             log.debug("Refresh token rejected as bearer for {} (user='{}' tenant='{}')",
                     request.getRequestURI(), claims.username(), claims.tenantId());
+            return null;
+        }
+        if (!isTokenTypeAcceptable(claims.tokenType())) {
+            log.debug("Token type {} rejected as bearer for {} (user='{}' tenant='{}')",
+                    claims.tokenType(), request.getRequestURI(),
+                    claims.username(), claims.tenantId());
             return null;
         }
         if (!isClaimsAcceptable(claims, request)) {

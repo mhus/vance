@@ -100,7 +100,7 @@ public class ExecManager {
      * calls.
      */
     public ExecJob submit(String tenantId, String projectId, String dirName, String command) {
-        return submit(tenantId, projectId, null, dirName, command, null);
+        return submit(tenantId, projectId, null, dirName, command, SubmitOptions.defaults());
     }
 
     /**
@@ -116,17 +116,12 @@ public class ExecManager {
             @Nullable String ownerProcessId,
             String dirName,
             String command) {
-        return submit(tenantId, projectId, ownerProcessId, dirName, command, null);
+        return submit(tenantId, projectId, ownerProcessId, dirName, command,
+                SubmitOptions.defaults());
     }
 
     /**
-     * Owner-aware variant with an optional <em>hard-kill</em> deadline.
-     * When {@code deadline} is set, the {@linkplain #watchdog watchdog}
-     * scheduler kills the subprocess and pushes an
-     * {@code EXEC_TIMEOUT} event if the job is still RUNNING when
-     * that instant passes. The deadline can be pushed out later via
-     * {@link #extendDeadline(String, String, String, java.time.Duration)}.
-     * Plan: {@code planning/wakeup-and-exec.md} Phase 3.
+     * Legacy overload kept for direct callers that only carry a deadline.
      */
     public ExecJob submit(
             String tenantId,
@@ -135,6 +130,28 @@ public class ExecManager {
             String dirName,
             String command,
             @Nullable Instant deadline) {
+        return submit(tenantId, projectId, ownerProcessId, dirName, command,
+                SubmitOptions.withDeadline(deadline));
+    }
+
+    /**
+     * Full-options variant. {@code options} bundles deadline, sealed
+     * subprocess env, and labels — see {@link SubmitOptions}. When
+     * {@code env} is non-null the runner wipes inherited JVM vars and
+     * installs only these (security boundary for script-execution
+     * paths). Labels are exposed via {@link ExecJob#labels()} and copied
+     * onto the {@link
+     * de.mhus.vance.brain.execution.ExecutionRegistryEntry} when the
+     * caller goes through {@code submitTracked} / {@code
+     * submitTrackedAndRender}.
+     */
+    public ExecJob submit(
+            String tenantId,
+            String projectId,
+            @Nullable String ownerProcessId,
+            String dirName,
+            String command,
+            SubmitOptions options) {
         requireTenant(tenantId);
         requireProject(projectId);
         Path cwd = resolveCwd(tenantId, projectId, dirName);
@@ -150,7 +167,10 @@ public class ExecManager {
         ExecJob job = new ExecJob(
                 jobId, projectId, ownerProcessId, command,
                 jobDir.resolve("stdout.log"),
-                jobDir.resolve("stderr.log"));
+                jobDir.resolve("stderr.log"),
+                options.env(),
+                options.labels());
+        Instant deadline = options.deadline();
         if (deadline != null) {
             job.initialDeadline(deadline);
         }
@@ -214,7 +234,17 @@ public class ExecManager {
             String tenantId, String projectId,
             @Nullable String sessionId, @Nullable String processId,
             String dirName, String command, long waitMs) {
-        ExecJob job = submit(tenantId, projectId, processId, dirName, command);
+        return submitTrackedAndRender(tenantId, projectId, sessionId, processId,
+                dirName, command, waitMs, SubmitOptions.defaults());
+    }
+
+    /** Full-options variant of {@link #submitTrackedAndRender}. */
+    public Map<String, Object> submitTrackedAndRender(
+            String tenantId, String projectId,
+            @Nullable String sessionId, @Nullable String processId,
+            String dirName, String command, long waitMs,
+            SubmitOptions options) {
+        ExecJob job = submit(tenantId, projectId, processId, dirName, command, options);
         registry.register(new de.mhus.vance.brain.execution.ExecutionRegistryEntry(
                 job.id(),
                 de.mhus.vance.brain.execution.ExecutionOwner.Brain.INSTANCE,
@@ -230,7 +260,8 @@ public class ExecManager {
                 de.mhus.vance.brain.execution.ExecutionStatus.RUNNING,
                 null,
                 job.stdoutFile().toString(),
-                job.stderrFile().toString()));
+                job.stderrFile().toString(),
+                job.labels()));
         waitFor(job, waitMs);
         return ExecJobRenderer.render(job, properties.getInlineOutputCharCap());
     }
@@ -247,7 +278,17 @@ public class ExecManager {
             String tenantId, String projectId,
             @Nullable String sessionId, @Nullable String processId,
             String dirName, String command) {
-        ExecJob job = submit(tenantId, projectId, processId, dirName, command);
+        return submitTracked(tenantId, projectId, sessionId, processId,
+                dirName, command, SubmitOptions.defaults());
+    }
+
+    /** Full-options variant of {@link #submitTracked}. */
+    public String submitTracked(
+            String tenantId, String projectId,
+            @Nullable String sessionId, @Nullable String processId,
+            String dirName, String command,
+            SubmitOptions options) {
+        ExecJob job = submit(tenantId, projectId, processId, dirName, command, options);
         registry.register(new de.mhus.vance.brain.execution.ExecutionRegistryEntry(
                 job.id(),
                 de.mhus.vance.brain.execution.ExecutionOwner.Brain.INSTANCE,
@@ -263,7 +304,8 @@ public class ExecManager {
                 de.mhus.vance.brain.execution.ExecutionStatus.RUNNING,
                 null,
                 job.stdoutFile().toString(),
-                job.stderrFile().toString()));
+                job.stderrFile().toString(),
+                job.labels()));
         return job.id();
     }
 
@@ -430,6 +472,12 @@ public class ExecManager {
                     : new ProcessBuilder("/bin/sh", "-c", job.command());
             pb.directory(cwd.toFile());
             pb.redirectErrorStream(false);
+            Map<String, String> sealedEnv = job.env();
+            if (sealedEnv != null) {
+                Map<String, String> processEnv = pb.environment();
+                processEnv.clear();
+                processEnv.putAll(sealedEnv);
+            }
             Process p = pb.start();
             job.process(p);
 

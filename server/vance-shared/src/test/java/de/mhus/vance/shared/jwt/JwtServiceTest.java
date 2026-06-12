@@ -178,6 +178,38 @@ class JwtServiceTest {
     }
 
     @Test
+    void createScriptRunToken_roundTripsAllClaims() {
+        Instant exp = Instant.now().plus(24, ChronoUnit.HOURS);
+        String token = jwt.createScriptRunToken(
+                "acme", "alice",
+                "run-42", "proj-9", "sess-7",
+                exp);
+
+        Optional<VanceJwtClaims> claims = jwt.validateToken(token);
+
+        assertThat(claims).isPresent();
+        assertThat(claims.get().tokenType()).isEqualTo(TokenType.SCRIPT_RUN);
+        assertThat(claims.get().username()).isEqualTo("alice");
+        assertThat(claims.get().tenantId()).isEqualTo("acme");
+        assertThat(claims.get().runId()).isEqualTo("run-42");
+        assertThat(claims.get().projectId()).isEqualTo("proj-9");
+        assertThat(claims.get().sessionId()).isEqualTo("sess-7");
+    }
+
+    @Test
+    void createScriptRunToken_omitsSessionWhenNull() {
+        String token = jwt.createScriptRunToken(
+                "acme", "alice",
+                "run-42", "proj-9", null,
+                Instant.now().plusSeconds(60));
+
+        Optional<VanceJwtClaims> claims = jwt.validateToken(token);
+
+        assertThat(claims).isPresent();
+        assertThat(claims.get().sessionId()).isNull();
+    }
+
+    @Test
     void createToken_withoutExpiry_producesNonExpiringToken() {
         String token = jwt.createToken("acme", "alice", null);
 

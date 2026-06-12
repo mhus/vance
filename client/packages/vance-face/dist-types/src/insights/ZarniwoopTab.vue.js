@@ -1,5 +1,5 @@
 import { computed, watch } from 'vue';
-import { VAlert, VEmptyState } from '@/components';
+import { VAlert, VButton, VEmptyState } from '@/components';
 import { useZarniwoopInsights } from '@/composables/useProjectInsights';
 const props = defineProps();
 const state = useZarniwoopInsights();
@@ -115,7 +115,7 @@ else if (__VLS_ctx.state.error.value) {
 }
 else if (__VLS_ctx.state.instances.value.length === 0) {
     const __VLS_4 = {}.VEmptyState;
-    /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
+    /** @type {[typeof __VLS_components.VEmptyState, typeof __VLS_components.VEmptyState, ]} */ ;
     // @ts-ignore
     const __VLS_5 = __VLS_asFunctionalComponent(__VLS_4, new __VLS_4({
         headline: "No search providers configured",
@@ -125,6 +125,34 @@ else if (__VLS_ctx.state.instances.value.length === 0) {
         headline: "No search providers configured",
         body: "This project has no research.endpoint.* entries. Add one in the settings editor — e.g. research.endpoint.serper-main.protocol = serper.",
     }, ...__VLS_functionalComponentArgsRest(__VLS_5));
+    __VLS_7.slots.default;
+    {
+        const { action: __VLS_thisSlot } = __VLS_7.slots;
+        const __VLS_8 = {}.VButton;
+        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+        // @ts-ignore
+        const __VLS_9 = __VLS_asFunctionalComponent(__VLS_8, new __VLS_8({
+            ...{ 'onClick': {} },
+            variant: "secondary",
+            size: "sm",
+            disabled: (__VLS_ctx.state.loading.value),
+        }));
+        const __VLS_10 = __VLS_9({
+            ...{ 'onClick': {} },
+            variant: "secondary",
+            size: "sm",
+            disabled: (__VLS_ctx.state.loading.value),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_9));
+        let __VLS_12;
+        let __VLS_13;
+        let __VLS_14;
+        const __VLS_15 = {
+            onClick: (__VLS_ctx.reload)
+        };
+        __VLS_11.slots.default;
+        var __VLS_11;
+    }
+    var __VLS_7;
 }
 else {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -380,6 +408,7 @@ const __VLS_self = (await import('vue')).defineComponent({
     setup() {
         return {
             VAlert: VAlert,
+            VButton: VButton,
             VEmptyState: VEmptyState,
             state: state,
             reload: reload,

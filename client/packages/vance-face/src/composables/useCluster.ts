@@ -22,7 +22,16 @@ export function useClusterPods(): UseClusterPods {
   const loading = ref(false);
   const error = ref<string | null>(null);
 
-  const pods = computed<BrainPodInsightsDto[]>(() => cluster.value?.pods ?? []);
+  // Defensive: tolerate a missing or non-array `pods` field on the
+  // wire. The DTO declares it as a non-null List, but the empty-cluster
+  // case on a fresh brain has been observed to deliver `pods=null` from
+  // Jackson when @Builder.Default lost a race against the response
+  // serializer — guarding here keeps `reduce`/`map` downstream from
+  // throwing on the cluster tab.
+  const pods = computed<BrainPodInsightsDto[]>(() => {
+    const raw = cluster.value?.pods;
+    return Array.isArray(raw) ? raw : [];
+  });
 
   async function load(): Promise<void> {
     loading.value = true;

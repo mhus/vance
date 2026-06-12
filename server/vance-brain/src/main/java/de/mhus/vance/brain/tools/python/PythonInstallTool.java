@@ -1,7 +1,9 @@
 package de.mhus.vance.brain.tools.python;
 
+import de.mhus.vance.brain.tools.exec.ExecLabels;
 import de.mhus.vance.brain.tools.exec.ExecManager;
 import de.mhus.vance.brain.tools.exec.ExecProperties;
+import de.mhus.vance.brain.tools.exec.SubmitOptions;
 import de.mhus.vance.brain.tools.workspace.WorkspaceDirResolver;
 import de.mhus.vance.shared.workspace.PythonHandler;
 import de.mhus.vance.shared.workspace.RootDirHandle;
@@ -125,11 +127,16 @@ public class PythonInstallTool implements Tool {
         String command = pipInstall
                 + " && .venv/bin/python -m pip freeze > " + PythonHandler.REQUIREMENTS_FILE;
 
+        Map<String, String> labels = Map.of(
+                ExecLabels.KEY_SOURCE, ExecLabels.SOURCE_LLM_TOOL,
+                ExecLabels.KEY_LANGUAGE, ExecLabels.LANG_PYTHON,
+                ExecLabels.KEY_RUN_KIND, ExecLabels.RUN_KIND_INSTALL);
         try {
             return execManager.submitTrackedAndRender(
                     ctx.tenantId(), ctx.projectId(),
                     ctx.sessionId(), ctx.processId(),
-                    dirName, command, waitMs);
+                    dirName, command, waitMs,
+                    SubmitOptions.defaults().withLabels(labels));
         } catch (RuntimeException e) {
             throw new ToolException(e.getMessage(), e);
         }

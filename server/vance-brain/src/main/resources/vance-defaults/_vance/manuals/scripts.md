@@ -59,6 +59,14 @@ Convenience wrapper over `vance.tools.call("process_create", ...)`.
 Spawn returns immediately — don't synchronously wait on the
 sub-process's result; that's a multi-turn LLM job, not one script.
 
+### Reading and writing project documents
+
+JS scripts also see `vance.documents.*` for direct access to the
+project's documents (read, write, list, exists, delete, meta). When
+you need to read input data or persist output as a document instead
+of just returning a value, load `manual_read('script-document-api')`
+for the full surface and path conventions.
+
 ## Foot — `client.*`
 
 ```js

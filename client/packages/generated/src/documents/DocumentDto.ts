@@ -26,4 +26,5 @@ export interface DocumentDto {
   lastDeepReviewedHash?: string;
   lastDeepReviewWarningsJson?: string;
   lastDeepReviewedAtMs?: number;
+  expiresAtMs?: number;
 }

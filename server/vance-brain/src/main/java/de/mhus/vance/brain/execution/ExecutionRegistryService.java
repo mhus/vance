@@ -69,13 +69,54 @@ public class ExecutionRegistryService {
 
     /** Snapshot view, oldest-first by {@code startedAt}. */
     public List<ExecutionRegistryEntry> list(ExecutionScopeFilter filter) {
+        return list(filter, Map.of());
+    }
+
+    /**
+     * Snapshot view with optional label selector. {@code labelSelector}
+     * entries are AND-combined as equals-matches against
+     * {@link ExecutionRegistryEntry#labels()}; an entry without the
+     * required key never matches. Empty selector behaves like
+     * {@link #list(ExecutionScopeFilter)}.
+     */
+    public List<ExecutionRegistryEntry> list(
+            ExecutionScopeFilter filter, Map<String, String> labelSelector) {
         Collection<ExecutionRegistryEntry> snap = entries.values();
         List<ExecutionRegistryEntry> out = new ArrayList<>(snap.size());
         for (ExecutionRegistryEntry e : snap) {
-            if (filter.matches(e)) out.add(e);
+            if (!filter.matches(e)) continue;
+            if (!matchesLabels(e, labelSelector)) continue;
+            out.add(e);
         }
         out.sort(Comparator.comparing(ExecutionRegistryEntry::startedAt));
         return out;
+    }
+
+    private static boolean matchesLabels(
+            ExecutionRegistryEntry e, Map<String, String> labelSelector) {
+        if (labelSelector.isEmpty()) return true;
+        Map<String, String> labels = e.labels();
+        for (Map.Entry<String, String> req : labelSelector.entrySet()) {
+            if (!req.getValue().equals(labels.get(req.getKey()))) return false;
+        }
+        return true;
+    }
+
+    /**
+     * True when any {@link ExecutionStatus#RUNNING} entry belongs to
+     * the given session. Used by {@code SessionIdleSweeper} to keep a
+     * session alive while a tracked script-execution still runs even
+     * though no think-process is in a RUNNING state.
+     */
+    public boolean hasActiveJobsForSession(
+            @Nullable String tenantId, String sessionId) {
+        for (ExecutionRegistryEntry e : entries.values()) {
+            if (e.status() != ExecutionStatus.RUNNING) continue;
+            if (!sessionId.equals(e.sessionId())) continue;
+            if (tenantId != null && !tenantId.equals(e.tenantId())) continue;
+            return true;
+        }
+        return false;
     }
 
     /** Drop every entry owned by the given foot client — used on disconnect. */

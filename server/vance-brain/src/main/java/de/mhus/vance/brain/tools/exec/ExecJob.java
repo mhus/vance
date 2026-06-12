@@ -2,6 +2,7 @@ package de.mhus.vance.brain.tools.exec;
 
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -21,6 +22,20 @@ final class ExecJob {
     private final Path stdoutFile;
     private final Path stderrFile;
     private final Instant startedAt;
+    /**
+     * Subprocess environment to install. {@code null} = inherit JVM env
+     * (legacy default for {@code exec_run} callers). When non-null the
+     * runner wipes inherited vars and installs only these — used by
+     * script-execution paths that need a sealed env (e.g. Python with
+     * {@code VANCE_TOKEN}).
+     */
+    private final @Nullable Map<String, String> env;
+    /**
+     * Per-instance metadata for cross-cutting filters (Cortex doc
+     * linkage, runtime kind, source). Stays in-memory; never goes to
+     * Micrometer or Mongo.
+     */
+    private final Map<String, String> labels;
 
     private final StringBuilder stdout = new StringBuilder();
     private final StringBuilder stderr = new StringBuilder();
@@ -34,7 +49,7 @@ final class ExecJob {
     private volatile boolean killedByWatchdog;
 
     ExecJob(String id, String projectId, String command, Path stdoutFile, Path stderrFile) {
-        this(id, projectId, null, command, stdoutFile, stderrFile);
+        this(id, projectId, null, command, stdoutFile, stderrFile, null, Map.of());
     }
 
     ExecJob(
@@ -44,12 +59,26 @@ final class ExecJob {
             String command,
             Path stdoutFile,
             Path stderrFile) {
+        this(id, projectId, ownerProcessId, command, stdoutFile, stderrFile, null, Map.of());
+    }
+
+    ExecJob(
+            String id,
+            String projectId,
+            @Nullable String ownerProcessId,
+            String command,
+            Path stdoutFile,
+            Path stderrFile,
+            @Nullable Map<String, String> env,
+            Map<String, String> labels) {
         this.id = id;
         this.projectId = projectId;
         this.ownerProcessId = ownerProcessId;
         this.command = command;
         this.stdoutFile = stdoutFile;
         this.stderrFile = stderrFile;
+        this.env = env == null ? null : Map.copyOf(env);
+        this.labels = Map.copyOf(labels);
         this.startedAt = Instant.now();
         this.lastOutputAt = this.startedAt;
     }
@@ -61,6 +90,8 @@ final class ExecJob {
     Path stdoutFile() { return stdoutFile; }
     Path stderrFile() { return stderrFile; }
     Instant startedAt() { return startedAt; }
+    @Nullable Map<String, String> env() { return env; }
+    Map<String, String> labels() { return labels; }
 
     @Nullable Instant finishedAt() { return finishedAt; }
     void finishedAt(Instant t) { this.finishedAt = t; }

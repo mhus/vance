@@ -129,9 +129,14 @@ public class ExecRunTool implements Tool {
             deadline = java.time.Instant.now().plusSeconds(d.longValue());
         }
         String dirName = WorkspaceDirResolver.resolve(workspaceService, ctx, stringOrNull(params, "dirName"));
+        Map<String, String> labels = Map.of(
+                ExecLabels.KEY_SOURCE, ExecLabels.SOURCE_LLM_TOOL,
+                ExecLabels.KEY_LANGUAGE, ExecLabels.LANG_SHELL,
+                ExecLabels.KEY_RUN_KIND, ExecLabels.RUN_KIND_SHELL);
+        SubmitOptions options = new SubmitOptions(deadline, null, labels);
         try {
             ExecJob job = execManager.submit(
-                    ctx.tenantId(), ctx.projectId(), ctx.processId(), dirName, command, deadline);
+                    ctx.tenantId(), ctx.projectId(), ctx.processId(), dirName, command, options);
             registry.register(new ExecutionRegistryEntry(
                     job.id(),
                     ExecutionOwner.Brain.INSTANCE,
@@ -147,7 +152,8 @@ public class ExecRunTool implements Tool {
                     ExecutionStatus.RUNNING,
                     null,
                     job.stdoutFile().toString(),
-                    job.stderrFile().toString()));
+                    job.stderrFile().toString(),
+                    job.labels()));
             execManager.waitFor(job, waitMs);
             return ExecJobRenderer.render(job, properties.getInlineOutputCharCap());
         } catch (ExecException e) {

@@ -638,14 +638,14 @@ class AccessControllerTest {
     }
 
     private static VanceJwtClaims refreshClaims(String tenantId, String username) {
-        return new VanceJwtClaims(username, tenantId,
+        return VanceJwtClaims.user(username, tenantId,
                 Instant.now().minusSeconds(60),
                 Instant.now().plusSeconds(86_400),
                 TokenType.REFRESH);
     }
 
     private static VanceJwtClaims accessClaims(String tenantId, String username) {
-        return new VanceJwtClaims(username, tenantId,
+        return VanceJwtClaims.user(username, tenantId,
                 Instant.now().minusSeconds(60),
                 Instant.now().plusSeconds(86_400),
                 TokenType.ACCESS);

@@ -199,7 +199,7 @@ class AccessFilterBaseTest {
     }
 
     private static VanceJwtClaims claims(String tenantId, String username, TokenType type) {
-        return new VanceJwtClaims(username, tenantId,
+        return VanceJwtClaims.user(username, tenantId,
                 Instant.now().minusSeconds(60),
                 Instant.now().plusSeconds(86_400),
                 type);

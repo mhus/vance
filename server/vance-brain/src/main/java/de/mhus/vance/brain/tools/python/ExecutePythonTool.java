@@ -1,7 +1,9 @@
 package de.mhus.vance.brain.tools.python;
 
+import de.mhus.vance.brain.tools.exec.ExecLabels;
 import de.mhus.vance.brain.tools.exec.ExecManager;
 import de.mhus.vance.brain.tools.exec.ExecProperties;
+import de.mhus.vance.brain.tools.exec.SubmitOptions;
 import de.mhus.vance.shared.workspace.PythonHandler;
 import de.mhus.vance.shared.workspace.RootDirHandle;
 import de.mhus.vance.shared.workspace.RootDirSpec;
@@ -170,11 +172,16 @@ public class ExecutePythonTool implements Tool {
             cmd.append(' ').append(PythonShellEscape.quote(arg));
         }
 
+        Map<String, String> labels = Map.of(
+                ExecLabels.KEY_SOURCE, ExecLabels.SOURCE_LLM_TOOL,
+                ExecLabels.KEY_LANGUAGE, ExecLabels.LANG_PYTHON,
+                ExecLabels.KEY_RUN_KIND, ExecLabels.RUN_KIND_SCRIPT);
         try {
             return execManager.submitTrackedAndRender(
                     tenantId, projectId,
                     ctx.sessionId(), ctx.processId(),
-                    dirName, cmd.toString(), waitMs);
+                    dirName, cmd.toString(), waitMs,
+                    SubmitOptions.defaults().withLabels(labels));
         } catch (RuntimeException e) {
             throw new ToolException(e.getMessage(), e);
         }

@@ -2183,6 +2183,25 @@ const formatBytes = (n: number): string => {
             </table>
           </div>
 
+          <!-- ─── Expiry hint — only rendered when the server-side TTL
+               monitor has a deletion timestamp on the document (e.g.
+               scheduler-log retention). Read-only; expiry is not
+               user-editable in v1. ─── -->
+          <div
+            v-if="!propsCollapsed && docsState.selected.value.expiresAtMs"
+            class="mt-3 border border-warning/40 bg-warning/10 rounded-md px-3 py-2 text-xs flex items-center gap-2"
+          >
+            <span class="font-medium uppercase opacity-70">
+              {{ $t('documents.detail.expiresAtLabel') }}
+            </span>
+            <span class="font-mono">
+              {{ new Date(docsState.selected.value.expiresAtMs).toLocaleString() }}
+            </span>
+            <span class="opacity-60">
+              {{ $t('documents.detail.expiresAtHint') }}
+            </span>
+          </div>
+
           <!-- ─── Auto-summary panel — read-only summary text plus the
                two editable flags. Visible regardless of mime type so
                users can disable the scheduler on a doc that shouldn't

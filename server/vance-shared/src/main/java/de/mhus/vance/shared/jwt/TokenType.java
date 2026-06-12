@@ -1,7 +1,7 @@
 package de.mhus.vance.shared.jwt;
 
 /**
- * Distinguishes the two JWT roles in the Vance auth model.
+ * Distinguishes the JWT roles in the Vance auth model.
  *
  * <ul>
  *   <li>{@link #ACCESS} — short-lived (24 h), accepted by every
@@ -14,6 +14,16 @@ package de.mhus.vance.shared.jwt;
  *       access — the filter rejects refresh tokens in {@code Authorization}
  *       headers explicitly.
  *   </li>
+ *   <li>{@link #SCRIPT_RUN} — long-lived, scoped to a single script
+ *       execution: claims carry a {@code srid} (run id), {@code pid}
+ *       (project), and optional {@code sid} (session). Acceptance
+ *       additionally requires (a) the request originates from the
+ *       loopback interface (script runs as a subprocess in the same
+ *       pod as the brain) and (b) the run id is still
+ *       {@code RUNNING} in the brain's execution registry. The TTL is
+ *       only a safety net — termination of the run revokes the token
+ *       immediately via the registry-status check.
+ *   </li>
  * </ul>
  *
  * <p>The discriminator is carried in the {@code tt} claim. Tokens that
@@ -23,7 +33,8 @@ package de.mhus.vance.shared.jwt;
  */
 public enum TokenType {
     ACCESS,
-    REFRESH;
+    REFRESH,
+    SCRIPT_RUN;
 
     /** JSON value for the {@code tt} claim — lower-case enum name. */
     public String wireValue() {

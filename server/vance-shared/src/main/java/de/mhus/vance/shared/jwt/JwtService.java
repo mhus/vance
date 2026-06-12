@@ -14,6 +14,7 @@ import java.util.Date;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -63,14 +64,7 @@ public class JwtService {
      */
     public String createToken(String tenantId, String username, Instant expiresAt,
                               TokenType type) {
-        PrivateKey privateKey = keyService.getLatestPrivateKey(tenantId, KeyPurpose.JWT_SIGNING)
-                .orElseThrow(() -> new IllegalStateException(
-                        "No JWT signing key for tenant '" + tenantId + "'"));
-        if (!"EC".equalsIgnoreCase(privateKey.getAlgorithm())) {
-            throw new IllegalStateException(
-                    "JWT signing key for tenant '" + tenantId + "' is not EC — got "
-                            + privateKey.getAlgorithm());
-        }
+        PrivateKey privateKey = signingKey(tenantId);
 
         Instant now = Instant.now();
         var builder = Jwts.builder()
@@ -82,6 +76,51 @@ public class JwtService {
             builder.expiration(Date.from(expiresAt));
         }
         return builder.signWith(privateKey).compact();
+    }
+
+    /**
+     * Mints a {@link TokenType#SCRIPT_RUN} token scoped to a single
+     * execution. The {@code runId} is the lookup key the
+     * loopback-bound validator uses to check that the run is still
+     * in flight — see {@code planning/script-document-api.md} §4.4.
+     *
+     * <p>{@code expiresAt} acts only as a safety net; the registry
+     * status is the primary revocation channel.
+     */
+    public String createScriptRunToken(
+            String tenantId, String username,
+            String runId, String projectId,
+            @Nullable String sessionId,
+            @Nullable Instant expiresAt) {
+        PrivateKey privateKey = signingKey(tenantId);
+
+        Instant now = Instant.now();
+        var builder = Jwts.builder()
+                .subject(username)
+                .claim(VanceJwtClaims.CLAIM_TENANT_ID, tenantId)
+                .claim(VanceJwtClaims.CLAIM_TOKEN_TYPE, TokenType.SCRIPT_RUN.wireValue())
+                .claim(VanceJwtClaims.CLAIM_RUN_ID, runId)
+                .claim(VanceJwtClaims.CLAIM_PROJECT_ID, projectId)
+                .issuedAt(Date.from(now));
+        if (sessionId != null) {
+            builder.claim(VanceJwtClaims.CLAIM_SESSION_ID, sessionId);
+        }
+        if (expiresAt != null) {
+            builder.expiration(Date.from(expiresAt));
+        }
+        return builder.signWith(privateKey).compact();
+    }
+
+    private PrivateKey signingKey(String tenantId) {
+        PrivateKey privateKey = keyService.getLatestPrivateKey(tenantId, KeyPurpose.JWT_SIGNING)
+                .orElseThrow(() -> new IllegalStateException(
+                        "No JWT signing key for tenant '" + tenantId + "'"));
+        if (!"EC".equalsIgnoreCase(privateKey.getAlgorithm())) {
+            throw new IllegalStateException(
+                    "JWT signing key for tenant '" + tenantId + "' is not EC — got "
+                            + privateKey.getAlgorithm());
+        }
+        return privateKey;
     }
 
     /**
@@ -141,11 +180,17 @@ public class JwtService {
         String tt = claims.get(VanceJwtClaims.CLAIM_TOKEN_TYPE, String.class);
         Date iat = claims.getIssuedAt();
         Date exp = claims.getExpiration();
+        String runId = claims.get(VanceJwtClaims.CLAIM_RUN_ID, String.class);
+        String projectId = claims.get(VanceJwtClaims.CLAIM_PROJECT_ID, String.class);
+        String sessionId = claims.get(VanceJwtClaims.CLAIM_SESSION_ID, String.class);
         return new VanceJwtClaims(
                 username,
                 tenantId,
                 iat == null ? null : iat.toInstant(),
                 exp == null ? null : exp.toInstant(),
-                TokenType.fromWire(tt));
+                TokenType.fromWire(tt),
+                runId,
+                projectId,
+                sessionId);
     }
 }

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue';
 import type { ZarniwoopInsightsDto } from '@vance/generated';
-import { VAlert, VEmptyState } from '@/components';
+import { VAlert, VButton, VEmptyState } from '@/components';
 import { useZarniwoopInsights } from '@/composables/useProjectInsights';
 
 const props = defineProps<{ projectId: string | null }>();
@@ -108,7 +108,13 @@ const now = Date.now();
       <VEmptyState
         headline="No search providers configured"
         body="This project has no research.endpoint.* entries. Add one in the settings editor — e.g. research.endpoint.serper-main.protocol = serper."
-      />
+      >
+        <template #action>
+          <VButton variant="secondary" size="sm" @click="reload" :disabled="state.loading.value">
+            Reload
+          </VButton>
+        </template>
+      </VEmptyState>
     </template>
 
     <template v-else>

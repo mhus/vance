@@ -3,6 +3,7 @@ package de.mhus.vance.brain.script;
 import de.mhus.vance.brain.action.ScopeLevel;
 import de.mhus.vance.brain.action.SpawnToolRegistry;
 import de.mhus.vance.brain.tools.ContextToolsApi;
+import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.workspace.NodeHandler;
 import de.mhus.vance.shared.workspace.RootDirHandle;
 import de.mhus.vance.shared.workspace.WorkspaceService;
@@ -61,6 +62,7 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
     private final ScriptEngineProperties props;
     private final @Nullable WorkspaceService workspaceService;
     private final @Nullable SpawnToolRegistry spawnToolRegistry;
+    private final @Nullable DocumentService documentService;
 
     @Autowired
     public GraaljsScriptExecutor(
@@ -68,12 +70,25 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
             HostAccess hostAccess,
             ScriptEngineProperties props,
             @Autowired(required = false) @Nullable WorkspaceService workspaceService,
-            @Autowired(required = false) @Nullable SpawnToolRegistry spawnToolRegistry) {
+            @Autowired(required = false) @Nullable SpawnToolRegistry spawnToolRegistry,
+            @Autowired(required = false) @Nullable DocumentService documentService) {
         this.engine = engine;
         this.hostAccess = hostAccess;
         this.props = props;
         this.workspaceService = workspaceService;
         this.spawnToolRegistry = spawnToolRegistry;
+        this.documentService = documentService;
+    }
+
+    /** Five-arg backwards-compat constructor — pre-DocumentService.
+     *  Document-API is unavailable; {@code vance.documents} stays null. */
+    public GraaljsScriptExecutor(
+            Engine engine,
+            HostAccess hostAccess,
+            ScriptEngineProperties props,
+            @Nullable WorkspaceService workspaceService,
+            @Nullable SpawnToolRegistry spawnToolRegistry) {
+        this(engine, hostAccess, props, workspaceService, spawnToolRegistry, null);
     }
 
     /** Four-arg backwards-compat constructor — pre-spawn-registry. Used by
@@ -84,21 +99,21 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
             HostAccess hostAccess,
             ScriptEngineProperties props,
             @Nullable WorkspaceService workspaceService) {
-        this(engine, hostAccess, props, workspaceService, null);
+        this(engine, hostAccess, props, workspaceService, null, null);
     }
 
     /** Three-arg constructor for tests that don't need the require
      *  pathway (workspaceService=null). */
     public GraaljsScriptExecutor(
             Engine engine, HostAccess hostAccess, ScriptEngineProperties props) {
-        this(engine, hostAccess, props, null, null);
+        this(engine, hostAccess, props, null, null, null);
     }
 
     /** Two-arg backwards-compat constructor — auto-builds a HostAccess
      *  matching the production one. Used by tests that pre-date the
      *  HostAccess-injection refactor. */
     public GraaljsScriptExecutor(Engine engine, ScriptEngineProperties props) {
-        this(engine, defaultHostAccess(), props, null, null);
+        this(engine, defaultHostAccess(), props, null, null, null);
     }
 
     /** Three-arg backwards-compat constructor matching the old
@@ -110,7 +125,7 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
             Engine engine,
             ScriptEngineProperties props,
             @Nullable WorkspaceService workspaceService) {
-        this(engine, defaultHostAccess(), props, workspaceService, null);
+        this(engine, defaultHostAccess(), props, workspaceService, null, null);
     }
 
     /** Legacy single-arg ctor — matches the original public contract.
@@ -118,7 +133,7 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
      *  {@code ScriptHarness}, and any harness that builds its own
      *  Engine and doesn't need to share HostAccess across services. */
     public GraaljsScriptExecutor(Engine engine) {
-        this(engine, defaultHostAccess(), new ScriptEngineProperties(), null, null);
+        this(engine, defaultHostAccess(), new ScriptEngineProperties(), null, null, null);
     }
 
     private static HostAccess defaultHostAccess() {
@@ -174,7 +189,7 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
                         ? spawnToolRegistry.spawnToolNames()
                         : Set.of();
         VanceScriptApi api = new VanceScriptApi(
-                effectiveTools, request.recipeName(), deniedToolNames);
+                effectiveTools, request.recipeName(), deniedToolNames, documentService);
         ResourceLimits limits = ResourceLimits.newBuilder()
                 .statementLimit(effectiveStatements, null)
                 .build();

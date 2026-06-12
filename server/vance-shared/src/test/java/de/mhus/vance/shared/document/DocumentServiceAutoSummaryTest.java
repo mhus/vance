@@ -129,6 +129,67 @@ class DocumentServiceAutoSummaryTest {
         assertThat(saved.isAutoSummary()).isFalse();
     }
 
+    // ──── upsertEphemeralText() — force-disables summary + RAG ──────────
+
+    @Test
+    void upsertEphemeralText_create_forcesAutoSummaryOffAndRagDisabled() {
+        when(repository.findByTenantIdAndProjectIdAndPath(
+                any(), any(), any())).thenReturn(Optional.empty());
+        when(repository.save(any(DocumentDocument.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        DocumentDocument saved = service.upsertEphemeralText(
+                "t1", "p1", "_vance/logs/scheduler/run-1.md",
+                "Scheduler run 1", List.of("scheduler-log"),
+                "body", "ursascheduler",
+                Instant.now().plus(Duration.ofDays(7)));
+
+        // Markdown would normally default to autoSummary=true; the ephemeral
+        // path must override that so the auto-summary scheduler ignores logs.
+        assertThat(saved.isAutoSummary()).isFalse();
+        assertThat(saved.isSummaryDirty()).isFalse();
+        // Explicit ragEnabled=false so the RAG indexer skips logs regardless
+        // of path-based eligibility (defensive: avoids surprises if log paths
+        // are ever moved under documents/).
+        assertThat(saved.getRagEnabled()).isFalse();
+        assertThat(saved.isRagDirty()).isFalse();
+        assertThat(saved.getExpiresAt()).isNotNull();
+    }
+
+    @Test
+    void upsertEphemeralText_reupsert_clearsDirtyFlagsFromUpdate() {
+        // Existing doc that's already ephemeral-correctly configured.
+        DocumentDocument existing = DocumentDocument.builder()
+                .id("d1").tenantId("t1").projectId("p1")
+                .path("_vance/logs/scheduler/run-1.md")
+                .name("run-1.md")
+                .mimeType("text/markdown")
+                .storageId("blob-old").size(8)
+                .autoSummary(false)
+                .ragEnabled(false)
+                .build();
+        when(repository.findByTenantIdAndProjectIdAndPath(
+                any(), any(), any())).thenReturn(Optional.of(existing));
+        when(repository.findById("d1")).thenReturn(Optional.of(existing));
+        when(repository.save(any(DocumentDocument.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+        when(storageService.load("blob-old")).thenReturn(
+                new java.io.ByteArrayInputStream("old body".getBytes()));
+
+        DocumentDocument saved = service.upsertEphemeralText(
+                "t1", "p1", "_vance/logs/scheduler/run-1.md",
+                "Scheduler run 1", List.of("scheduler-log"),
+                "new body", "ursascheduler",
+                Instant.now().plus(Duration.ofDays(7)));
+
+        // update() would have flipped summaryDirty + ragDirty to true because
+        // the body changed — the ephemeral overlay clears them back to false.
+        assertThat(saved.isAutoSummary()).isFalse();
+        assertThat(saved.isSummaryDirty()).isFalse();
+        assertThat(saved.getRagEnabled()).isFalse();
+        assertThat(saved.isRagDirty()).isFalse();
+    }
+
     // ──── update() — summaryDirty on content change ─────────────────────
 
     @Test

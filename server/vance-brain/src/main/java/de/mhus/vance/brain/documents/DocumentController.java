@@ -713,6 +713,7 @@ public class DocumentController {
                 .summary(doc.getSummary())
                 .summarizedAtMs(toEpochMillis(doc.getSummarizedAt()))
                 .ragEnabled(doc.getRagEnabled())
+                .expiresAtMs(toEpochMillis(doc.getExpiresAt()))
                 .build();
     }
 

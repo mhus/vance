@@ -114,4 +114,11 @@ public class DocumentDto {
 
     /** Epoch ms of the cached review. */
     private @Nullable Long lastDeepReviewedAtMs;
+
+    /**
+     * Epoch ms at which the MongoDB TTL monitor will delete the document.
+     * {@code null} for normal documents (no expiry). Set by server-side
+     * writers such as the scheduler-log retention path.
+     */
+    private @Nullable Long expiresAtMs;
 }

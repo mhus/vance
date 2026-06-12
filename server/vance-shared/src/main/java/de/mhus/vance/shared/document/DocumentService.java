@@ -689,14 +689,21 @@ public class DocumentService {
     /**
      * {@link #upsertText} variant that sets {@link DocumentDocument#getExpiresAt()}
      * so MongoDB's TTL monitor reaps the row at the given timestamp.
-     * Intended for ephemeral diagnostics (currently: scheduler run logs);
-     * normal documents must not set this — passing {@code null} disables
-     * expiry (and matches the {@link #upsertText} behaviour exactly).
+     * Intended for ephemeral diagnostics (scheduler run logs, UrsaEvent
+     * trigger logs); normal documents must not set this — passing
+     * {@code null} disables expiry (and matches the {@link #upsertText}
+     * behaviour exactly).
+     *
+     * <p>Ephemeral docs are also force-excluded from the auto-summary
+     * scheduler and the project-RAG indexer regardless of mime type or
+     * path: writing one log entry per trigger would otherwise burn LLM
+     * quota on machine-generated YAML that no human reads through summary
+     * or semantic search.
      *
      * <p>Costs one extra {@code save} on top of {@link #upsertText} —
      * the underlying upsert API doesn't currently take an expiry, and
-     * writing through that path keeps lineage, RAG flags and header
-     * application consistent with every other document.
+     * writing through that path keeps lineage and header application
+     * consistent with every other document.
      */
     public DocumentDocument upsertEphemeralText(
             String tenantId,
@@ -708,8 +715,28 @@ public class DocumentService {
             @Nullable String createdBy,
             @Nullable Instant expiresAt) {
         DocumentDocument doc = upsertText(tenantId, projectId, path, title, tags, text, createdBy);
+        boolean dirty = false;
         if (!java.util.Objects.equals(doc.getExpiresAt(), expiresAt)) {
             doc.setExpiresAt(expiresAt);
+            dirty = true;
+        }
+        if (doc.isAutoSummary()) {
+            doc.setAutoSummary(false);
+            dirty = true;
+        }
+        if (doc.isSummaryDirty()) {
+            doc.setSummaryDirty(false);
+            dirty = true;
+        }
+        if (!Boolean.FALSE.equals(doc.getRagEnabled())) {
+            doc.setRagEnabled(Boolean.FALSE);
+            dirty = true;
+        }
+        if (doc.isRagDirty()) {
+            doc.setRagDirty(false);
+            dirty = true;
+        }
+        if (dirty) {
             doc = repository.save(doc);
         }
         return doc;

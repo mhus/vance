@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.tools.python;
 
 import de.mhus.vance.brain.tools.exec.ExecManager;
+import de.mhus.vance.brain.tools.exec.SubmitOptions;
 import de.mhus.vance.shared.workspace.PythonHandler;
 import de.mhus.vance.shared.workspace.RootDirHandle;
 import de.mhus.vance.shared.workspace.RootDirSpec;
@@ -54,6 +55,8 @@ public class PythonExecutionService {
 
     private final WorkspaceService workspaceService;
     private final ExecManager execManager;
+    private final de.mhus.vance.brain.access.ScriptRunEnvironmentBuilder scriptRunEnvironmentBuilder;
+    private final PythonHelperBundler pythonHelperBundler;
 
     /**
      * Submit a Python script for async execution. Returns the
@@ -75,6 +78,33 @@ public class PythonExecutionService {
             String code,
             List<String> args,
             @Nullable String flags) {
+        return executeAsync(tenantId, projectId, sessionId, processId,
+                /* username */ null, code, args, flags, Map.of());
+    }
+
+    /**
+     * Variant that attaches {@code labels} to the spawned
+     * {@link de.mhus.vance.brain.tools.exec.ExecJob} — used by callers
+     * that want to identify the run for cross-cutting filters (Cortex
+     * doc linkage, language, source). See {@link
+     * de.mhus.vance.brain.tools.exec.ExecLabels} for the convention.
+     *
+     * <p>{@code username} drives the {@code SCRIPT_RUN} JWT subject when
+     * non-blank — the subprocess uses that token via the bundled
+     * {@code vance.py} helper to call back into the brain's Document
+     * REST API. Passing {@code null} or blank skips the env-injection
+     * entirely (legacy callers that don't need brain-callback access).
+     */
+    public String executeAsync(
+            String tenantId,
+            String projectId,
+            @Nullable String sessionId,
+            @Nullable String processId,
+            @Nullable String username,
+            String code,
+            List<String> args,
+            @Nullable String flags,
+            Map<String, String> labels) {
         RootDirHandle handle = ensureDefaultPythonRootDir(
                 tenantId, projectId,
                 StringUtils.defaultIfBlank(processId,
@@ -124,8 +154,26 @@ public class PythonExecutionService {
             cmd.append(' ').append(PythonShellEscape.quote(arg));
         }
 
+        SubmitOptions options = SubmitOptions.defaults().withLabels(labels);
+        if (StringUtils.isNotBlank(username)) {
+            de.mhus.vance.brain.access.ScriptRunEnvironmentBuilder.ScriptRunEnvironment scriptEnv =
+                    scriptRunEnvironmentBuilder.build(tenantId, projectId, sessionId, username);
+            // Drop the bundled vance.py helper next to the user's script so
+            // `import vance` resolves out of the workspace cwd.
+            pythonHelperBundler.installInto(handle.getPath());
+            // Stamp the run id as a label so SCRIPT_RUN-JWT validation can
+            // look up the registry entry by the JWT's srid claim.
+            Map<String, String> labelsWithRunId = new LinkedHashMap<>(labels);
+            labelsWithRunId.put(
+                    de.mhus.vance.brain.tools.exec.ExecLabels.KEY_RUN_ID, scriptEnv.runId());
+            options = SubmitOptions.defaults()
+                    .withLabels(labelsWithRunId)
+                    .withEnv(scriptEnv.env());
+        }
+
         return execManager.submitTracked(
-                tenantId, projectId, sessionId, processId, dirName, cmd.toString());
+                tenantId, projectId, sessionId, processId, dirName, cmd.toString(),
+                options);
     }
 
     /**

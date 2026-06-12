@@ -3,6 +3,7 @@ package de.mhus.vance.brain.session;
 import de.mhus.vance.api.session.IdlePolicy;
 import de.mhus.vance.api.session.SuspendCause;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
+import de.mhus.vance.brain.execution.ExecutionRegistryService;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
@@ -40,6 +41,7 @@ public class SessionIdleSweeper {
     private final SessionService sessionService;
     private final ThinkProcessService thinkProcessService;
     private final SessionLifecycleService lifecycleService;
+    private final ExecutionRegistryService executionRegistryService;
 
     /**
      * Coarse pre-filter floor — sessions touched in the last N seconds
@@ -87,7 +89,9 @@ public class SessionIdleSweeper {
 
     /**
      * A session is "active" if any of its processes is in a status that
-     * either runs the engine or waits for the user. {@code IDLE} and
+     * either runs the engine or waits for the user, or if a tracked
+     * shell execution (Cortex script run, Python tool, Magrathea
+     * shell-task) is still RUNNING for the session. {@code IDLE} and
      * {@code SUSPENDED} processes (and {@code CLOSED}/{@code INIT}) don't
      * count as activity for idle-suspend purposes. See spec §7 table.
      */
@@ -101,6 +105,10 @@ public class SessionIdleSweeper {
                     || s == ThinkProcessStatus.PAUSED) {
                 return true;
             }
+        }
+        if (executionRegistryService.hasActiveJobsForSession(
+                session.getTenantId(), session.getSessionId())) {
+            return true;
         }
         return false;
     }

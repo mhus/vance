@@ -51,7 +51,8 @@ class PythonInstallToolTest {
         when(workspace.getRootDir(eq("acme"), eq("instant-hole"), eq("python")))
                 .thenReturn(Optional.of(pythonHandle("python")));
         when(execManager.submitTrackedAndRender(
-                anyString(), anyString(), any(), any(), anyString(), anyString(), anyLong()))
+                anyString(), anyString(), any(), any(), anyString(), anyString(), anyLong(),
+                any(de.mhus.vance.brain.tools.exec.SubmitOptions.class)))
                 .thenReturn(Map.of("status", "COMPLETED", "exitCode", 0));
     }
 
@@ -132,7 +133,8 @@ class PythonInstallToolTest {
         verify(execManager, times(1)).submitTrackedAndRender(
                 eq("acme"), eq("instant-hole"),
                 eq("sess"), eq("proc"),
-                eq("python"), cmd.capture(), anyLong());
+                eq("python"), cmd.capture(), anyLong(),
+                any(de.mhus.vance.brain.tools.exec.SubmitOptions.class));
         return cmd.getValue();
     }
 

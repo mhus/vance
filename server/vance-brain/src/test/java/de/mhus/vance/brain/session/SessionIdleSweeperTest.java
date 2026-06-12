@@ -33,6 +33,7 @@ class SessionIdleSweeperTest {
     private SessionService sessionService;
     private ThinkProcessService thinkProcessService;
     private SessionLifecycleService lifecycleService;
+    private de.mhus.vance.brain.execution.ExecutionRegistryService executionRegistryService;
     private SessionIdleSweeper sweeper;
 
     @BeforeEach
@@ -40,8 +41,10 @@ class SessionIdleSweeperTest {
         sessionService = mock(SessionService.class);
         thinkProcessService = mock(ThinkProcessService.class);
         lifecycleService = mock(SessionLifecycleService.class);
+        executionRegistryService = mock(de.mhus.vance.brain.execution.ExecutionRegistryService.class);
         sweeper = new SessionIdleSweeper(
-                sessionService, thinkProcessService, lifecycleService);
+                sessionService, thinkProcessService, lifecycleService,
+                executionRegistryService);
         ReflectionTestUtils.setField(sweeper, "coarseCutoffSeconds", 30L);
     }
 
@@ -149,6 +152,35 @@ class SessionIdleSweeperTest {
         sweeper.sweep();
 
         verify(lifecycleService).suspendCascade("s-good", SuspendCause.IDLE);
+    }
+
+    @Test
+    void sweep_activeExecJobBlocksSuspendEvenWithoutActiveEngine() {
+        SessionDocument s = idleCandidate("s-1", millisAgo(2L * 60_000L), 60_000L);
+        when(sessionService.findIdleCandidates(any())).thenReturn(List.of(s));
+        when(thinkProcessService.findBySession(any(), eq("s-1")))
+                .thenReturn(List.of(process(ThinkProcessStatus.IDLE)));
+        when(executionRegistryService.hasActiveJobsForSession(eq("acme"), eq("s-1")))
+                .thenReturn(true);
+
+        sweeper.sweep();
+
+        verify(lifecycleService, never()).suspendCascade(any(), any());
+    }
+
+    @Test
+    void sweep_noActiveExecJob_allowsSuspendOnIdle() {
+        SessionDocument s = idleCandidate("s-1", millisAgo(2L * 60_000L), 60_000L);
+        when(sessionService.findIdleCandidates(any())).thenReturn(List.of(s));
+        when(thinkProcessService.findBySession(any(), eq("s-1")))
+                .thenReturn(List.of(process(ThinkProcessStatus.IDLE)));
+        when(executionRegistryService.hasActiveJobsForSession(eq("acme"), eq("s-1")))
+                .thenReturn(false);
+
+        sweeper.sweep();
+
+        verify(lifecycleService, times(1))
+                .suspendCascade("s-1", SuspendCause.IDLE);
     }
 
     @Test

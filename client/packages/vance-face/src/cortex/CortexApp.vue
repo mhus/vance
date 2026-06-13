@@ -885,3 +885,23 @@ onBeforeUnmount(() => {
     </form>
   </VModal>
 </template>
+
+<style>
+/* Cortex-specific responsive override (intentionally unscoped — Cortex
+ * is its own MPA entry, so this CSS only ships with cortex.html).
+ *
+ * On iPad-class viewports (≤1366px, covers iPad Pro 13" landscape down
+ * to iPad Mini portrait), collapse the sidebar to 0 whenever the
+ * centre, right panel, or footer is focused. Cortex carries three
+ * dense zones — file tree + document editor + chat panel — and the
+ * baseline EditorShell rule (sidebar fixed at 16rem until ≤900px)
+ * leaves the centre too narrow on tablet sizes. The reclaim handle
+ * keeps the sidebar one tap away. */
+@media (max-width: 1366px) {
+  .editor-shell-grid[data-focus='main']:not([data-help-open]),
+  .editor-shell-grid[data-focus='right']:not([data-help-open]),
+  .editor-shell-grid[data-focus='footer']:not([data-help-open]) {
+    --shell-sidebar-w: 0;
+  }
+}
+</style>

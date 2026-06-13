@@ -96,10 +96,10 @@ export async function addAccount(input: {
   const accounts = await listAccounts();
   accounts.push(account);
   await saveAll(accounts);
-  // Auto-activate when this is the first account so the shell has
-  // something to render immediately.
-  const active = await getActiveAccountId();
-  if (active === null) await setActiveAccountId(account.id);
+  // Always activate the freshly added account — the user just chose
+  // to add it, so the shell should open *its* website rather than
+  // dropping them back into whichever account was previously active.
+  await setActiveAccountId(account.id);
   return account;
 }
 

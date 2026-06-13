@@ -376,6 +376,7 @@ export default {
             delete: 'Move to bin',
             deletePermanent: 'Delete permanently',
             download: 'Download',
+            exportToFiles: 'Export to Files…',
             cancel: 'Cancel',
             revert: 'Discard changes',
             apply: 'Apply',

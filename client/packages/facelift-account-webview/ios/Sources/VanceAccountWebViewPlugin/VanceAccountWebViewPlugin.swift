@@ -21,7 +21,7 @@ import WebKit
 ///     its persistent data store — the next `present` for the same
 ///     id starts fresh.
 @objc(VanceAccountWebViewPlugin)
-public class VanceAccountWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigationDelegate {
+public class VanceAccountWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigationDelegate, WKScriptMessageHandler, UIDocumentPickerDelegate {
     public let identifier = "VanceAccountWebViewPlugin"
     public let jsName = "VanceAccountWebView"
     public let pluginMethods: [CAPPluginMethod] = [
@@ -29,6 +29,7 @@ public class VanceAccountWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigatio
         CAPPluginMethod(name: "dismiss", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setBounds", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "reload", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "navigateHome", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "remove", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "addListener", returnType: CAPPluginReturnCallback),
         CAPPluginMethod(name: "removeAllListeners", returnType: CAPPluginReturnPromise),
@@ -49,6 +50,44 @@ public class VanceAccountWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigatio
     /// delegate cancels the request and forwards it to JS via the
     /// `urlOpen` plugin event so Vue can act on it.
     private let urlScheme = "vance-facelift"
+
+    /// Name of the `WKScriptMessageHandler` channel exposed to the
+    /// website via `window.webkit.messageHandlers.<name>`. The
+    /// `vanceFacelift` JS facade injected at document-start posts
+    /// messages here so the website can call into native code
+    /// without going through Capacitor (which it can't — the
+    /// website lives in a plain WKWebView, not the Capacitor host
+    /// WebView).
+    private let bridgeMessageName = "vanceFacelift"
+
+    /// JS shim injected at document-start into every per-account
+    /// WebView. Exposes `window.vanceFacelift.exportFile({name,
+    /// mime, base64})` which posts to the native bridge. Keep this
+    /// dependency-free — the website's bundle must not have to
+    /// import anything to use it.
+    private let bridgeUserScript = """
+    (function () {
+      if (window.vanceFacelift) return;
+      function post(payload) {
+        try {
+          window.webkit.messageHandlers.vanceFacelift.postMessage(payload);
+        } catch (e) {
+          console.error('[vanceFacelift] bridge post failed', e);
+        }
+      }
+      window.vanceFacelift = {
+        exportFile: function (opts) {
+          opts = opts || {};
+          post({
+            action: 'exportFile',
+            name: String(opts.name || 'document'),
+            mime: String(opts.mime || 'application/octet-stream'),
+            base64: String(opts.base64 || '')
+          });
+        }
+      };
+    })();
+    """
 
     private var webViews: [String: WKWebView] = [:]
     private var activeWebView: WKWebView?
@@ -102,6 +141,18 @@ public class VanceAccountWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigatio
                 // Tells the website + Brain that this WebView lives
                 // inside Facelift. Appended to the default Safari UA.
                 config.applicationNameForUserAgent = self.userAgentSuffix
+                // Inject `window.vanceFacelift.*` bridge + register
+                // ourselves as the message handler so the website can
+                // call into native (export-to-Files etc.) without a
+                // Capacitor bridge.
+                let contentController = WKUserContentController()
+                contentController.add(self, name: self.bridgeMessageName)
+                contentController.addUserScript(WKUserScript(
+                    source: self.bridgeUserScript,
+                    injectionTime: .atDocumentStart,
+                    forMainFrameOnly: false))
+                config.userContentController = contentController
+                NSLog("[VanceFacelift] bridge installed on new WebView for account \(accountId)")
                 let created = WKWebView(frame: frame, configuration: config)
                 created.allowsBackForwardNavigationGestures = true
                 created.translatesAutoresizingMaskIntoConstraints = true
@@ -158,6 +209,107 @@ public class VanceAccountWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigatio
             self?.activeWebView?.reload()
             call.resolve()
         }
+    }
+
+    @objc func navigateHome(_ call: CAPPluginCall) {
+        guard let accountId = call.getString("accountId"), !accountId.isEmpty else {
+            call.reject("accountId required")
+            return
+        }
+        guard let urlString = call.getString("url"),
+              let url = URL(string: urlString) else {
+            call.reject("url required and valid")
+            return
+        }
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else {
+                call.resolve()
+                return
+            }
+            // Re-navigates the cached WebView to its account's home
+            // URL without tearing down the WKWebsiteDataStore, so
+            // cookies and login state survive. No-op when the WebView
+            // for this account hasn't been created yet — the next
+            // `present(...)` will create one and load the URL then.
+            if let webView = self.webViews[accountId] {
+                webView.load(URLRequest(url: url))
+            }
+            call.resolve()
+        }
+    }
+
+    // MARK: - WKScriptMessageHandler
+
+    public func userContentController(_ userContentController: WKUserContentController,
+                                      didReceive message: WKScriptMessage) {
+        NSLog("[VanceFacelift] bridge: message received name=\(message.name)")
+        guard message.name == self.bridgeMessageName else { return }
+        guard let body = message.body as? [String: Any],
+              let action = body["action"] as? String else {
+            NSLog("[VanceFacelift] bridge: malformed message body")
+            return
+        }
+        NSLog("[VanceFacelift] bridge: action=\(action)")
+        switch action {
+        case "exportFile":
+            self.handleExportFile(body)
+        default:
+            NSLog("[VanceFacelift] bridge: unknown action '\(action)'")
+        }
+    }
+
+    private func handleExportFile(_ body: [String: Any]) {
+        guard let name = body["name"] as? String,
+              let base64 = body["base64"] as? String,
+              let data = Data(base64Encoded: base64) else {
+            NSLog("[VanceFacelift] exportFile: invalid payload")
+            return
+        }
+        // Sanitise filename — slashes / control chars would confuse
+        // either the temp-file path or the picker's suggested name.
+        var safeName = name
+        for ch in ["/", "\\", "\0"] {
+            safeName = safeName.replacingOccurrences(of: ch, with: "_")
+        }
+        if safeName.isEmpty { safeName = "document" }
+        let tmpDir = FileManager.default.temporaryDirectory
+        let fileURL = tmpDir.appendingPathComponent(safeName)
+        do {
+            try data.write(to: fileURL, options: [.atomic])
+        } catch {
+            NSLog("[VanceFacelift] exportFile: failed to write temp file: \(error)")
+            return
+        }
+        NSLog("[VanceFacelift] exportFile: temp file written at \(fileURL.path), size=\(data.count)")
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self,
+                  let vc = self.bridge?.viewController else {
+                NSLog("[VanceFacelift] exportFile: no host view controller")
+                return
+            }
+            // Direct iOS Files picker (export mode) instead of the
+            // UIActivityViewController share sheet. The "Save to
+            // Files" entry of the share sheet silently fails in the
+            // simulator; calling the picker directly side-steps that
+            // path and lets the user pick a destination immediately.
+            let picker = UIDocumentPickerViewController(forExporting: [fileURL])
+            picker.delegate = self
+            picker.modalPresentationStyle = .formSheet
+            vc.present(picker, animated: true) {
+                NSLog("[VanceFacelift] exportFile: document picker presented")
+            }
+        }
+    }
+
+    // MARK: - UIDocumentPickerDelegate
+
+    public func documentPicker(_ controller: UIDocumentPickerViewController,
+                               didPickDocumentsAt urls: [URL]) {
+        NSLog("[VanceFacelift] exportFile: saved to \(urls.map { $0.path })")
+    }
+
+    public func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+        NSLog("[VanceFacelift] exportFile: picker cancelled")
     }
 
     // MARK: - WKNavigationDelegate

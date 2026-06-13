@@ -398,6 +398,7 @@ export default {
       delete: 'In Papierkorb',
       deletePermanent: 'Endgültig löschen',
       download: 'Herunterladen',
+      exportToFiles: 'In Dateien sichern…',
       cancel: 'Abbrechen',
       revert: 'Änderungen verwerfen',
       apply: 'Anwenden',

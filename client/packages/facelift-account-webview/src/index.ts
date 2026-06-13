@@ -75,6 +75,11 @@ export interface VanceAccountWebViewPlugin {
   /** Reload the currently visible account WebView's page. */
   reload(): Promise<void>;
 
+  /** Re-navigate the account's cached WebView to its home URL while
+   *  preserving its `WKWebsiteDataStore` (cookies / login state).
+   *  No-op when no WebView for this account exists yet. */
+  navigateHome(options: { accountId: string; url: string }): Promise<void>;
+
   /** Tear down the cached WebView for an account and wipe its
    *  persistent `WKWebsiteDataStore`. Called when the user removes
    *  an account from the Manage screen. */

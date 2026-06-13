@@ -4,7 +4,8 @@ import { EditorShell, ProjectListSidebar, VAlert, VButton, VCard, VCheckbox, VDa
 import { useDocuments } from '@/composables/useDocuments';
 import { useHelp } from '@/composables/useHelp';
 import { useTenantProjects } from '@/composables/useTenantProjects';
-import { brainFetch, documentContentUrl } from '@vance/shared';
+import { brainFetch, brainFetchBlob, documentContentUrl, isFacelift } from '@vance/shared';
+import { exportToFiles } from '@/platform/faceliftFiles';
 import { consumeDocumentDraft } from '@/platform';
 import DocumentPreview from './DocumentPreview.vue';
 import DocumentIcon from './DocumentIcon.vue';
@@ -1257,6 +1258,44 @@ onBeforeUnmount(() => {
  */
 function downloadUrl(doc) {
     return documentContentUrl(doc.id, true);
+}
+/**
+ * True only when the page is running inside the Facelift Capacitor
+ * wrapper. Toggles the "Export to Files" footer button — the iOS
+ * share-sheet flow it triggers has no plain-browser equivalent.
+ */
+const inFacelift = computed(() => isFacelift());
+const exportingToFiles = ref(false);
+/**
+ * Fetch the active document's binary content and hand it to the
+ * Facelift wrapper's share-sheet so the user can save it into the
+ * iOS Files app (or AirDrop, mail, …). `brainFetchBlob` is used
+ * rather than the `<a download>` URL so the JWT travels in the
+ * Authorization header and the blob is reachable from JS.
+ */
+async function exportSelectedToFiles() {
+    const doc = docsState.selected.value;
+    if (doc === null || exportingToFiles.value)
+        return;
+    exportingToFiles.value = true;
+    try {
+        const { blob, filename } = await brainFetchBlob(`documents/${encodeURIComponent(doc.id)}/content?download=1`);
+        await exportToFiles({
+            name: filename ?? doc.name ?? 'document',
+            mime: blob.type || 'application/octet-stream',
+            data: blob,
+        });
+    }
+    catch (e) {
+        console.error('Export to Files failed', e);
+        // The wrapper already throws on user-cancel? No — Share.share
+        // currently treats cancellation as success on iOS, so any error
+        // here is a real failure worth surfacing.
+        alert(e instanceof Error ? e.message : 'Export failed');
+    }
+    finally {
+        exportingToFiles.value = false;
+    }
 }
 function openCreateModal(prefill) {
     createMode.value = 'inline';
@@ -4852,90 +4891,116 @@ var __VLS_387;
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
             ...{ class: "flex-1" },
         });
-        const __VLS_492 = {}.VButton;
-        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-        // @ts-ignore
-        const __VLS_493 = __VLS_asFunctionalComponent(__VLS_492, new __VLS_492({
-            variant: "ghost",
-            href: (__VLS_ctx.downloadUrl(__VLS_ctx.docsState.selected.value)),
-            download: (__VLS_ctx.docsState.selected.value.name || 'document'),
-        }));
-        const __VLS_494 = __VLS_493({
-            variant: "ghost",
-            href: (__VLS_ctx.downloadUrl(__VLS_ctx.docsState.selected.value)),
-            download: (__VLS_ctx.docsState.selected.value.name || 'document'),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_493));
-        __VLS_495.slots.default;
-        (__VLS_ctx.$t('documents.detail.download'));
-        var __VLS_495;
-        if (__VLS_ctx.isDirty) {
+        if (!__VLS_ctx.inFacelift) {
+            const __VLS_492 = {}.VButton;
+            /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+            // @ts-ignore
+            const __VLS_493 = __VLS_asFunctionalComponent(__VLS_492, new __VLS_492({
+                variant: "ghost",
+                href: (__VLS_ctx.downloadUrl(__VLS_ctx.docsState.selected.value)),
+                download: (__VLS_ctx.docsState.selected.value.name || 'document'),
+            }));
+            const __VLS_494 = __VLS_493({
+                variant: "ghost",
+                href: (__VLS_ctx.downloadUrl(__VLS_ctx.docsState.selected.value)),
+                download: (__VLS_ctx.docsState.selected.value.name || 'document'),
+            }, ...__VLS_functionalComponentArgsRest(__VLS_493));
+            __VLS_495.slots.default;
+            (__VLS_ctx.$t('documents.detail.download'));
+            var __VLS_495;
+        }
+        if (__VLS_ctx.inFacelift) {
             const __VLS_496 = {}.VButton;
             /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
             // @ts-ignore
             const __VLS_497 = __VLS_asFunctionalComponent(__VLS_496, new __VLS_496({
                 ...{ 'onClick': {} },
                 variant: "ghost",
-                disabled: (__VLS_ctx.saving),
+                loading: (__VLS_ctx.exportingToFiles),
             }));
             const __VLS_498 = __VLS_497({
                 ...{ 'onClick': {} },
                 variant: "ghost",
-                disabled: (__VLS_ctx.saving),
+                loading: (__VLS_ctx.exportingToFiles),
             }, ...__VLS_functionalComponentArgsRest(__VLS_497));
             let __VLS_500;
             let __VLS_501;
             let __VLS_502;
             const __VLS_503 = {
-                onClick: (__VLS_ctx.requestRevert)
+                onClick: (__VLS_ctx.exportSelectedToFiles)
             };
             __VLS_499.slots.default;
-            (__VLS_ctx.$t('documents.detail.revert'));
+            (__VLS_ctx.$t('documents.detail.exportToFiles'));
             var __VLS_499;
         }
-        const __VLS_504 = {}.VButton;
-        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-        // @ts-ignore
-        const __VLS_505 = __VLS_asFunctionalComponent(__VLS_504, new __VLS_504({
-            ...{ 'onClick': {} },
-            variant: "secondary",
-            loading: (__VLS_ctx.saving),
-        }));
-        const __VLS_506 = __VLS_505({
-            ...{ 'onClick': {} },
-            variant: "secondary",
-            loading: (__VLS_ctx.saving),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_505));
-        let __VLS_508;
-        let __VLS_509;
-        let __VLS_510;
-        const __VLS_511 = {
-            onClick: (__VLS_ctx.apply)
-        };
-        __VLS_507.slots.default;
-        (__VLS_ctx.$t('documents.detail.apply'));
-        var __VLS_507;
+        if (__VLS_ctx.isDirty) {
+            const __VLS_504 = {}.VButton;
+            /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+            // @ts-ignore
+            const __VLS_505 = __VLS_asFunctionalComponent(__VLS_504, new __VLS_504({
+                ...{ 'onClick': {} },
+                variant: "ghost",
+                disabled: (__VLS_ctx.saving),
+            }));
+            const __VLS_506 = __VLS_505({
+                ...{ 'onClick': {} },
+                variant: "ghost",
+                disabled: (__VLS_ctx.saving),
+            }, ...__VLS_functionalComponentArgsRest(__VLS_505));
+            let __VLS_508;
+            let __VLS_509;
+            let __VLS_510;
+            const __VLS_511 = {
+                onClick: (__VLS_ctx.requestRevert)
+            };
+            __VLS_507.slots.default;
+            (__VLS_ctx.$t('documents.detail.revert'));
+            var __VLS_507;
+        }
         const __VLS_512 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
         // @ts-ignore
         const __VLS_513 = __VLS_asFunctionalComponent(__VLS_512, new __VLS_512({
             ...{ 'onClick': {} },
-            variant: "primary",
+            variant: "secondary",
             loading: (__VLS_ctx.saving),
         }));
         const __VLS_514 = __VLS_513({
             ...{ 'onClick': {} },
-            variant: "primary",
+            variant: "secondary",
             loading: (__VLS_ctx.saving),
         }, ...__VLS_functionalComponentArgsRest(__VLS_513));
         let __VLS_516;
         let __VLS_517;
         let __VLS_518;
         const __VLS_519 = {
-            onClick: (__VLS_ctx.save)
+            onClick: (__VLS_ctx.apply)
         };
         __VLS_515.slots.default;
-        (__VLS_ctx.$t('documents.detail.save'));
+        (__VLS_ctx.$t('documents.detail.apply'));
         var __VLS_515;
+        const __VLS_520 = {}.VButton;
+        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+        // @ts-ignore
+        const __VLS_521 = __VLS_asFunctionalComponent(__VLS_520, new __VLS_520({
+            ...{ 'onClick': {} },
+            variant: "primary",
+            loading: (__VLS_ctx.saving),
+        }));
+        const __VLS_522 = __VLS_521({
+            ...{ 'onClick': {} },
+            variant: "primary",
+            loading: (__VLS_ctx.saving),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_521));
+        let __VLS_524;
+        let __VLS_525;
+        let __VLS_526;
+        const __VLS_527 = {
+            onClick: (__VLS_ctx.save)
+        };
+        __VLS_523.slots.default;
+        (__VLS_ctx.$t('documents.detail.save'));
+        var __VLS_523;
     }
 }
 var __VLS_3;
@@ -5425,6 +5490,9 @@ const __VLS_self = (await import('vue')).defineComponent({
             revertChanges: revertChanges,
             saveAndBack: saveAndBack,
             downloadUrl: downloadUrl,
+            inFacelift: inFacelift,
+            exportingToFiles: exportingToFiles,
+            exportSelectedToFiles: exportSelectedToFiles,
             openCreateModal: openCreateModal,
             kindCreateOptions: kindCreateOptions,
             setCreateMode: setCreateMode,

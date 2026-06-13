@@ -24,7 +24,8 @@ import {
 import { useDocuments } from '@/composables/useDocuments';
 import { useHelp } from '@/composables/useHelp';
 import { useTenantProjects } from '@/composables/useTenantProjects';
-import { brainFetch, documentContentUrl } from '@vance/shared';
+import { brainFetch, brainFetchBlob, documentContentUrl, isFacelift } from '@vance/shared';
+import { exportToFiles } from '@/platform/faceliftFiles';
 import type { FollowUpRequestDto, FollowUpResponseDto } from '@vance/generated';
 import type { FollowUpExtensionOptions } from '@/components';
 import { consumeDocumentDraft } from '@/platform';
@@ -1433,6 +1434,46 @@ onBeforeUnmount(() => {
  */
 function downloadUrl(doc: { id: string }): string {
   return documentContentUrl(doc.id, true);
+}
+
+/**
+ * True only when the page is running inside the Facelift Capacitor
+ * wrapper. Toggles the "Export to Files" footer button — the iOS
+ * share-sheet flow it triggers has no plain-browser equivalent.
+ */
+const inFacelift = computed<boolean>(() => isFacelift());
+
+const exportingToFiles = ref<boolean>(false);
+
+/**
+ * Fetch the active document's binary content and hand it to the
+ * Facelift wrapper's share-sheet so the user can save it into the
+ * iOS Files app (or AirDrop, mail, …). `brainFetchBlob` is used
+ * rather than the `<a download>` URL so the JWT travels in the
+ * Authorization header and the blob is reachable from JS.
+ */
+async function exportSelectedToFiles(): Promise<void> {
+  const doc = docsState.selected.value;
+  if (doc === null || exportingToFiles.value) return;
+  exportingToFiles.value = true;
+  try {
+    const { blob, filename } = await brainFetchBlob(
+      `documents/${encodeURIComponent(doc.id)}/content?download=1`,
+    );
+    await exportToFiles({
+      name: filename ?? doc.name ?? 'document',
+      mime: blob.type || 'application/octet-stream',
+      data: blob,
+    });
+  } catch (e) {
+    console.error('Export to Files failed', e);
+    // The wrapper already throws on user-cancel? No — Share.share
+    // currently treats cancellation as success on iOS, so any error
+    // here is a real failure worth surfacing.
+    alert(e instanceof Error ? e.message : 'Export failed');
+  } finally {
+    exportingToFiles.value = false;
+  }
 }
 
 interface CreateModalPrefill {
@@ -3127,10 +3168,17 @@ const formatBytes = (n: number): string => {
           : $t('documents.detail.delete') }}</VButton>
         <span class="flex-1"></span>
         <VButton
+          v-if="!inFacelift"
           variant="ghost"
           :href="downloadUrl(docsState.selected.value)"
           :download="docsState.selected.value.name || 'document'"
         >{{ $t('documents.detail.download') }}</VButton>
+        <VButton
+          v-if="inFacelift"
+          variant="ghost"
+          :loading="exportingToFiles"
+          @click="exportSelectedToFiles"
+        >{{ $t('documents.detail.exportToFiles') }}</VButton>
         <!-- "Discard changes" replaces the old Cancel button while the
              document is dirty. Clicking opens a confirmation modal so
              the unsaved work isn't dropped accidentally. -->

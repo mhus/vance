@@ -201,6 +201,14 @@ async function onReload(): Promise<void> {
   await VanceAccountWebView.reload();
 }
 
+async function onHome(): Promise<void> {
+  if (active.value === null) return;
+  await VanceAccountWebView.navigateHome({
+    accountId: active.value.id,
+    url: active.value.brainUrl,
+  });
+}
+
 async function goManage(): Promise<void> {
   showSwitcher.value = false;
   await VanceAccountWebView.dismiss();
@@ -234,17 +242,43 @@ async function goAdd(): Promise<void> {
       <button
         v-if="active !== null"
         type="button"
-        class="rounded bg-gray-800 px-3 py-2 text-xs font-medium text-gray-200"
+        class="flex h-9 w-9 items-center justify-center rounded bg-gray-800 text-gray-200"
+        title="Home"
+        aria-label="Home"
+        @click="onHome"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" class="h-5 w-5">
+          <path d="M3 12L12 3l9 9" />
+          <path d="M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10" />
+        </svg>
+      </button>
+      <button
+        v-if="active !== null"
+        type="button"
+        class="flex h-9 w-9 items-center justify-center rounded bg-gray-800 text-gray-200"
+        title="Reload"
+        aria-label="Reload"
         @click="onReload"
       >
-        Reload
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" class="h-5 w-5">
+          <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+          <path d="M21 3v6h-6" />
+        </svg>
       </button>
       <button
         type="button"
-        class="rounded bg-gray-800 px-3 py-2 text-xs font-medium text-gray-200"
+        class="flex h-9 w-9 items-center justify-center rounded bg-gray-800 text-gray-200"
+        title="Manage accounts"
+        aria-label="Manage accounts"
         @click="goManage"
       >
-        Manage
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" class="h-5 w-5">
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        </svg>
       </button>
     </header>
 

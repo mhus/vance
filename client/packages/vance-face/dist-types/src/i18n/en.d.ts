@@ -364,6 +364,7 @@ declare const _default: {
             delete: string;
             deletePermanent: string;
             download: string;
+            exportToFiles: string;
             cancel: string;
             revert: string;
             apply: string;

@@ -9,8 +9,10 @@
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
+    "assets:regenerate-png": "qlmanage -t -s 1024 -o assets assets/icon-source.svg && qlmanage -t -s 2732 -o assets assets/splash-source.svg && mv assets/icon-source.svg.png assets/icon-only.png && mv assets/splash-source.svg.png assets/splash.png && cp assets/splash.png assets/splash-dark.png",
+    "assets:generate": "capacitor-assets generate --ios",
     "cap:sync": "cap sync",
-    "cap:add:ios": "cap add ios || true; sed -i '' \"s/platform :ios, '[0-9.]*'/platform :ios, '17.0'/\" ios/App/Podfile && sed -i '' \"s/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*;/IPHONEOS_DEPLOYMENT_TARGET = 17.0;/g\" ios/App/App.xcodeproj/project.pbxproj && cd ios/App && pod install",
+    "cap:add:ios": "cap add ios || true; sed -i '' \"s/platform :ios, '[0-9.]*'/platform :ios, '17.0'/\" ios/App/Podfile && sed -i '' \"s/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*;/IPHONEOS_DEPLOYMENT_TARGET = 17.0;/g\" ios/App/App.xcodeproj/project.pbxproj && cd ios/App && pod install && cd ../.. && pnpm assets:generate",
     "cap:open:ios": "cap open ios",
     "cap:run:ios": "cap run ios --livereload --external",
     "clean": "rm -rf dist *.tsbuildinfo"
@@ -27,10 +29,12 @@
     "vue-router": "^4.4.5"
   },
   "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
     "@capacitor/cli": "^6.2.0",
     "@vitejs/plugin-vue": "^5.2.1",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.49",
+    "sharp": "^0.35.1",
     "tailwindcss": "^3.4.17",
     "vite": "^5.4.11",
     "vue-tsc": "^2.1.10"

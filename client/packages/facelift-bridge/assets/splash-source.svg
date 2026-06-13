@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="2732" height="2732" viewBox="0 0 2732 2732">
+  <!-- Vance launch screen. Mark = mathematical italic small "v"
+       (U+1D463) per the brand guideline in instructions/web-ui.md.
+       iOS shows only the centre ~38% of the canvas in portrait — the
+       rest is bleed for landscape and iPad. -->
+  <rect width="2732" height="2732" fill="#1e3a8a"/>
+  <text x="1366" y="1620"
+        font-family="STIX Two Math, Cambria Math, Latin Modern Math, serif"
+        font-size="1100"
+        text-anchor="middle"
+        fill="#ffffff">𝑣</text>
+</svg>

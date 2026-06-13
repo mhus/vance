@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Vance app icon. Mark = mathematical italic small "v" (U+1D463)
+       per the brand guideline in instructions/web-ui.md. Solid
+       background (no transparency — iOS App Store rejects transparent
+       icons). Replace the SVG and re-run `pnpm assets:regenerate-png`
+       + `pnpm assets:generate` to refresh the iOS Assets.xcassets. -->
+  <rect width="1024" height="1024" fill="#1e3a8a"/>
+  <text x="512" y="780"
+        font-family="STIX Two Math, Cambria Math, Latin Modern Math, serif"
+        font-size="880"
+        text-anchor="middle"
+        fill="#ffffff">𝑣</text>
+</svg>

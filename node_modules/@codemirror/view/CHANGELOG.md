@@ -1,3 +1,13 @@
+## 6.43.1 (2026-06-09)
+
+### Bug fixes
+
+Work around an issue in with some IMEs (like Tibetan) in MacOS Chrome where composition could get interrupted needlessly.
+
+Fix a crash when calling  on a line with only `display: none` content.
+
+Improve reuse of widgets near composition, which in some cases prevents Safari from doing odd thing with the selection.
+
 ## 6.43.0 (2026-05-14)
 
 ### New features

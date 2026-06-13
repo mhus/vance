@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, nextTick, ref, computed, watch } from 'vue';
 import { useRouter } from 'vue-router';
+import type { PluginListenerHandle } from '@capacitor/core';
 import { VanceAccountWebView, type AccountWebViewBounds } from '@vance/facelift-account-webview';
 import {
   type Account,
@@ -37,6 +38,7 @@ const active = computed<Account | null>(() => {
 });
 
 let resizeObserver: ResizeObserver | null = null;
+let urlOpenListener: PluginListenerHandle | null = null;
 
 onMounted(async () => {
   await refresh();
@@ -49,13 +51,57 @@ onMounted(async () => {
   await nextTick();
   await waitForFrame();
   installLayoutListeners();
+  urlOpenListener = await VanceAccountWebView.addListener('urlOpen', (event) => {
+    void handleFaceliftUrl(event.url);
+  });
   await presentActive();
 });
 
 onBeforeUnmount(async () => {
   uninstallLayoutListeners();
+  if (urlOpenListener !== null) {
+    await urlOpenListener.remove();
+    urlOpenListener = null;
+  }
   await VanceAccountWebView.dismiss();
 });
+
+/**
+ * Handle a `vance-facelift://*` URL emitted by the active account's
+ * WebView. The website navigates to these URLs to ask the wrapper to
+ * perform an action; the Swift plugin cancels the underlying
+ * navigation and forwards the URL here. The contract is documented in
+ * `facelift-bridge/README.md`.
+ */
+async function handleFaceliftUrl(rawUrl: string): Promise<void> {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    console.warn('[facelift] ignored malformed url', rawUrl);
+    return;
+  }
+  if (parsed.protocol !== 'vance-facelift:') return;
+  // `vance-facelift://back-to-picker` parses with host = "back-to-picker";
+  // when the website omits the host (e.g. `vance-facelift:back-to-picker`)
+  // the action lands in pathname instead — accept both shapes.
+  const action = parsed.host || parsed.pathname.replace(/^\//, '');
+  switch (action) {
+    case 'back-to-picker':
+      await VanceAccountWebView.dismiss();
+      void router.push({ name: 'manage' });
+      break;
+    case 'add-account':
+      await VanceAccountWebView.dismiss();
+      void router.push({ name: 'add' });
+      break;
+    case 'switch-account':
+      showSwitcher.value = true;
+      break;
+    default:
+      console.warn('[facelift] unknown action', action, 'from', rawUrl);
+  }
+}
 
 watch(active, async (next, prev) => {
   if (next?.id === prev?.id) return;

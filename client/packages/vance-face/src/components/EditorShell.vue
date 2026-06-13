@@ -432,10 +432,10 @@ onBeforeUnmount(() => {
  */
 
 .editor-shell-grid {
-  /* Track sizes per zone. Defaults match the legacy fixed-width
-   * layout used by {@code focusModel='off'}. */
+  /* Track sizes per zone. Sidebar and right baseline match so that
+   * focus=main / focus=footer render symmetric L/R rails. */
   --shell-sidebar-w: 16rem;
-  --shell-right-w: 20rem;
+  --shell-right-w: 16rem;
   --shell-footer-h: auto;
 
   /* Single source of truth for resize + colour transitions. */
@@ -454,13 +454,16 @@ onBeforeUnmount(() => {
 }
 
 /* Focus-driven widths. Applied only when data-focus is set, which
- * happens exclusively in focusModel='auto'. Sidebar expands a bit when
- * focused; right column shrinks when the focus is elsewhere (and
- * collapses further when the footer is focused, freeing horizontal
- * room for the composer). */
+ * happens exclusively in focusModel='auto'. Sidebar expands when
+ * focused; right expands further when focused. Footer focus shrinks
+ * both rails together so the composer gets horizontal room while the
+ * L/R symmetry stays intact. */
 .editor-shell-grid[data-focus='sidebar'] { --shell-sidebar-w: 24rem; }
 .editor-shell-grid[data-focus='right']   { --shell-right-w: 32rem; }
-.editor-shell-grid[data-focus='footer']  { --shell-right-w: 14rem; }
+.editor-shell-grid[data-focus='footer'] {
+  --shell-sidebar-w: 14rem;
+  --shell-right-w: 14rem;
+}
 
 /* Help drawer commandeers the right column at its non-focus baseline
  * (20rem, or 40rem with wideRightPanel). Comes *after* the focus
@@ -472,15 +475,29 @@ onBeforeUnmount(() => {
   --shell-right-w: 40rem;
 }
 
-/* Phone-narrow viewports: optional unfocused zones disappear entirely.
- * Reclaim handles stay anchored at the right/left edges. The focused
- * zone takes the full width when it's the sidebar or the right panel
- * (main collapses to 0 in those cases — Escape brings it back). */
-@media (max-width: 400px) {
+/* Tablet (iPad portrait, ~768–900px): sidebar always collapses to 0
+ * unless explicitly focused; right stays available via reclaim handle
+ * but is hidden in main/footer focus so the centre zone gets the room.
+ * The order matters — generic data-focus rule first, then the focused-
+ * zone overrides. */
+@media (max-width: 900px) {
   .editor-shell-grid[data-focus]:not([data-help-open]) {
     --shell-sidebar-w: 0;
     --shell-right-w: 0;
   }
+  .editor-shell-grid[data-focus='sidebar']:not([data-help-open]) {
+    --shell-sidebar-w: 20rem;
+  }
+  .editor-shell-grid[data-focus='right']:not([data-help-open]) {
+    --shell-right-w: 24rem;
+  }
+}
+
+/* Phone-narrow viewports (≤600px, covers iPhone 17 Pro portrait at
+ * 430px). The focused side zone takes the full width; main is reached
+ * via Escape or by clicking the reclaim handle. Inherits "both rails 0
+ * in main/footer focus" from the 900px breakpoint. */
+@media (max-width: 600px) {
   .editor-shell-grid[data-focus='sidebar']:not([data-help-open]) {
     --shell-sidebar-w: 100%;
   }

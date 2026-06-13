@@ -21,7 +21,7 @@ import WebKit
 ///     its persistent data store — the next `present` for the same
 ///     id starts fresh.
 @objc(VanceAccountWebViewPlugin)
-public class VanceAccountWebViewPlugin: CAPPlugin, CAPBridgedPlugin {
+public class VanceAccountWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigationDelegate {
     public let identifier = "VanceAccountWebViewPlugin"
     public let jsName = "VanceAccountWebView"
     public let pluginMethods: [CAPPluginMethod] = [
@@ -30,7 +30,25 @@ public class VanceAccountWebViewPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "setBounds", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "reload", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "remove", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "addListener", returnType: CAPPluginReturnCallback),
+        CAPPluginMethod(name: "removeAllListeners", returnType: CAPPluginReturnPromise),
     ]
+
+    /// User-Agent suffix appended to the default Safari UA via
+    /// `WKWebViewConfiguration.applicationNameForUserAgent`. The
+    /// website + Brain server can detect this with
+    /// `navigator.userAgent` / `User-Agent` header and adapt
+    /// behaviour (Mobile-Photos uploader, deep-link back to picker,
+    /// etc.). See `facelift-bridge/README.md` for the JS-side
+    /// detection convention.
+    private let userAgentSuffix = "VanceFacelift/0.1.0"
+
+    /// Custom URL scheme the website navigates to in order to ask
+    /// the wrapper to perform an action (e.g.
+    /// `vance-facelift://back-to-picker`). The WebView's navigation
+    /// delegate cancels the request and forwards it to JS via the
+    /// `urlOpen` plugin event so Vue can act on it.
+    private let urlScheme = "vance-facelift"
 
     private var webViews: [String: WKWebView] = [:]
     private var activeWebView: WKWebView?
@@ -81,6 +99,9 @@ public class VanceAccountWebViewPlugin: CAPPlugin, CAPBridgedPlugin {
                 }
                 let config = WKWebViewConfiguration()
                 config.websiteDataStore = WKWebsiteDataStore(forIdentifier: uuid)
+                // Tells the website + Brain that this WebView lives
+                // inside Facelift. Appended to the default Safari UA.
+                config.applicationNameForUserAgent = self.userAgentSuffix
                 let created = WKWebView(frame: frame, configuration: config)
                 created.allowsBackForwardNavigationGestures = true
                 created.translatesAutoresizingMaskIntoConstraints = true
@@ -90,6 +111,10 @@ public class VanceAccountWebViewPlugin: CAPPlugin, CAPBridgedPlugin {
                 // safe-area inset adjustment.
                 created.clipsToBounds = true
                 created.scrollView.contentInsetAdjustmentBehavior = .never
+                // Catch `vance-facelift://*` URLs and forward them to
+                // JS as `urlOpen` events. All other navigations pass
+                // through unchanged.
+                created.navigationDelegate = self
                 if #available(iOS 16.4, *) {
                     created.isInspectable = true
                 }
@@ -133,6 +158,24 @@ public class VanceAccountWebViewPlugin: CAPPlugin, CAPBridgedPlugin {
             self?.activeWebView?.reload()
             call.resolve()
         }
+    }
+
+    // MARK: - WKNavigationDelegate
+
+    public func webView(_ webView: WKWebView,
+                        decidePolicyFor navigationAction: WKNavigationAction,
+                        decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        if let url = navigationAction.request.url, url.scheme == self.urlScheme {
+            // Hand the full URL to JS — the Vue side parses host/path
+            // and decides what to do (back-to-picker, switch-account,
+            // add-account, …). Cancel the navigation so the WebView
+            // doesn't display a "page not found" / external-app
+            // prompt for the unknown scheme.
+            self.notifyListeners("urlOpen", data: ["url": url.absoluteString])
+            decisionHandler(.cancel)
+            return
+        }
+        decisionHandler(.allow)
     }
 
     @objc func remove(_ call: CAPPluginCall) {

@@ -21,7 +21,8 @@
       "sharp"
     ],
     "overrides": {
-      "yallist": "4.0.0"
+      "yallist": "4.0.0",
+      "@module-federation/vite": "1.4.0"
     }
   }
 }

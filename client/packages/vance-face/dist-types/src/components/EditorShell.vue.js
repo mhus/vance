@@ -191,6 +191,8 @@ let __VLS_directives;
 /** @type {__VLS_StyleScopedClasses['editor-shell-grid']} */ ;
 /** @type {__VLS_StyleScopedClasses['editor-shell-grid']} */ ;
 /** @type {__VLS_StyleScopedClasses['editor-shell-grid']} */ ;
+/** @type {__VLS_StyleScopedClasses['editor-shell-grid']} */ ;
+/** @type {__VLS_StyleScopedClasses['editor-shell-grid']} */ ;
 /** @type {__VLS_StyleScopedClasses['zone-sidebar']} */ ;
 /** @type {__VLS_StyleScopedClasses['editor-shell-grid']} */ ;
 /** @type {__VLS_StyleScopedClasses['editor-shell-grid']} */ ;

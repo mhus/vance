@@ -79,6 +79,57 @@ pnpm dev
 pnpm cap:run:ios
 ```
 
+## Facelift detection from the website
+
+The Vance Web-UI can detect that it is being hosted inside Facelift
+(rather than a plain Safari tab) and adapt its behaviour — surface
+mobile-specific entry points, hide affordances that don't make sense
+inside the wrapper, etc.
+
+The signal lives in the User-Agent. The native plugin sets
+`WKWebViewConfiguration.applicationNameForUserAgent =
+"VanceFacelift/0.1.0"`, which iOS appends to the default Safari UA.
+So every HTTP request, WebSocket upgrade and `navigator.userAgent`
+look from the website carries that suffix.
+
+```ts
+// In vance-face / @vance/shared
+export function isFacelift(): boolean {
+  return /\bVanceFacelift\/(\d+)/.test(navigator.userAgent);
+}
+```
+
+Same signal is available server-side from the `User-Agent` HTTP
+header — useful for adapting auth-cookie flags, returning different
+asset bundles, etc.
+
+## Wrapper actions: `vance-facelift://` URL scheme
+
+To trigger native actions *from* the website (e.g. "log out and
+return to the account picker"), the website navigates to a custom
+URL. The plugin intercepts the navigation, cancels it, and forwards
+the URL to the Vue shell which routes the action.
+
+```ts
+// From inside the website running in Facelift:
+window.location.href = 'vance-facelift://back-to-picker';
+```
+
+Supported actions in v1:
+
+| URL | Effect |
+|---|---|
+| `vance-facelift://back-to-picker` | Dismiss the WebView, navigate the wrapper to the Manage screen. |
+| `vance-facelift://add-account` | Dismiss the WebView, open the Add-Account form. |
+| `vance-facelift://switch-account` | Open the account switcher bottom-sheet on top of the website. |
+
+Adding new actions: append a `case` in
+`facelift-bridge/src/views/ShellView.vue::handleFaceliftUrl()`. The
+URL scheme registration in `Info.plist` is a single
+`CFBundleURLTypes` entry covering everything under the
+`vance-facelift://` namespace, so no extra registration is needed
+per action.
+
 ## File map
 
 ```

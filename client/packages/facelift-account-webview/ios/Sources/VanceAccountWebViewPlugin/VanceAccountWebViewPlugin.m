@@ -11,4 +11,6 @@ CAP_PLUGIN(VanceAccountWebViewPlugin, "VanceAccountWebView",
     CAP_PLUGIN_METHOD(setBounds, CAPPluginReturnPromise);
     CAP_PLUGIN_METHOD(reload, CAPPluginReturnPromise);
     CAP_PLUGIN_METHOD(remove, CAPPluginReturnPromise);
+    CAP_PLUGIN_METHOD(addListener, CAPPluginReturnCallback);
+    CAP_PLUGIN_METHOD(removeAllListeners, CAPPluginReturnPromise);
 )

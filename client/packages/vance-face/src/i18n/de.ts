@@ -73,6 +73,9 @@ export default {
     },
     menu: {
       languageHeader: 'Sprache',
+      switchAccount: 'Konto wechseln',
+      manageAccounts: 'Konten verwalten',
+      addAccount: 'Konto hinzufügen',
     },
     help: {
       toggle: 'Hilfe ein-/ausblenden',

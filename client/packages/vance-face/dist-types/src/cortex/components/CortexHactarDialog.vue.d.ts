@@ -10,11 +10,11 @@ interface Props {
     sessionId?: string | null;
 }
 declare const _default: import("vue").DefineComponent<Props, {}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {} & {
-    close: any;
-    apply: any;
+    close: () => any;
+    apply: (code: string) => any;
 }, string, import("vue").PublicProps, Readonly<Props> & Readonly<{
-    onClose?: ((...args: any) => any) | undefined;
-    onApply?: ((...args: any) => any) | undefined;
+    onClose?: (() => any) | undefined;
+    onApply?: ((code: string) => any) | undefined;
 }>, {}, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;
 export default _default;
 //# sourceMappingURL=CortexHactarDialog.vue.d.ts.map

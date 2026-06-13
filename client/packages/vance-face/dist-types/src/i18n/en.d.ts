@@ -62,6 +62,9 @@ declare const _default: {
         };
         menu: {
             languageHeader: string;
+            switchAccount: string;
+            manageAccounts: string;
+            addAccount: string;
         };
         help: {
             toggle: string;

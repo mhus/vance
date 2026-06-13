@@ -1,7 +1,14 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { getTenantId, getUsername } from '@vance/shared';
+import {
+  getTenantId,
+  getUsername,
+  isFacelift,
+  requestAddAccount,
+  requestBackToPicker,
+  requestSwitchAccount,
+} from '@vance/shared';
 import {
   logout as serverLogout,
 } from '@/platform';
@@ -112,6 +119,23 @@ async function logout(): Promise<void> {
   window.location.href = '/index.html';
 }
 
+// Facelift wrapper bridges — these are no-ops in a plain browser
+// (see @vance/shared/facelift). The menu only renders these entries
+// when `isFacelift()` is true.
+const inFacelift = computed<boolean>(() => isFacelift());
+
+function onSwitchAccount(): void {
+  requestSwitchAccount();
+}
+
+function onManageAccounts(): void {
+  requestBackToPicker();
+}
+
+function onAddAccount(): void {
+  requestAddAccount();
+}
+
 function onToggleHelp(): void {
   if (!props.helpPath) return;
   emit('toggle-help');
@@ -214,6 +238,12 @@ function openFook(): void {
             </a>
           </li>
           <li class="divider-row"><div class="divider my-1" /></li>
+          <template v-if="inFacelift">
+            <li><a @click="onSwitchAccount">{{ $t('header.menu.switchAccount') }}</a></li>
+            <li><a @click="onManageAccounts">{{ $t('header.menu.manageAccounts') }}</a></li>
+            <li><a @click="onAddAccount">{{ $t('header.menu.addAccount') }}</a></li>
+            <li class="divider-row"><div class="divider my-1" /></li>
+          </template>
           <li><a @click="openFook">{{ $t('fook.menuLabel') }}</a></li>
           <li><a href="/profile.html">{{ $t('common.profile') }}</a></li>
           <li><a @click="logout">{{ $t('common.signOut') }}</a></li>

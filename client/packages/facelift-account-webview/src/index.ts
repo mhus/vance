@@ -1,4 +1,4 @@
-import { registerPlugin } from '@capacitor/core';
+import { registerPlugin, type PluginListenerHandle } from '@capacitor/core';
 
 /**
  * Rectangle in CSS pixels (= UIKit points on iOS) relative to the
@@ -34,6 +34,23 @@ export interface RemoveOptions {
   accountId: string;
 }
 
+/**
+ * Fired when the active account's WebView navigates to a
+ * `vance-facelift://*` URL. The website uses this scheme to ask the
+ * native wrapper to perform an action — see
+ * `facelift-bridge/README.md` for the convention.
+ *
+ * Example payloads:
+ *   - `{ url: "vance-facelift://back-to-picker" }`
+ *   - `{ url: "vance-facelift://add-account" }`
+ *   - `{ url: "vance-facelift://switch-account" }`
+ *
+ * The Vue side parses the URL and routes accordingly.
+ */
+export interface UrlOpenEvent {
+  url: string;
+}
+
 export interface VanceAccountWebViewPlugin {
   /**
    * Show the WebView for `accountId`, creating it if needed.
@@ -62,6 +79,17 @@ export interface VanceAccountWebViewPlugin {
    *  persistent `WKWebsiteDataStore`. Called when the user removes
    *  an account from the Manage screen. */
   remove(options: RemoveOptions): Promise<void>;
+
+  /** Subscribe to `vance-facelift://*` URL events from any of the
+   *  account WebViews. The plugin cancels the underlying navigation
+   *  and forwards the URL via this callback. */
+  addListener(
+    eventName: 'urlOpen',
+    listener: (event: UrlOpenEvent) => void,
+  ): Promise<PluginListenerHandle>;
+
+  /** Remove all event listeners attached via {@link addListener}. */
+  removeAllListeners(): Promise<void>;
 }
 
 export const VanceAccountWebView = registerPlugin<VanceAccountWebViewPlugin>(

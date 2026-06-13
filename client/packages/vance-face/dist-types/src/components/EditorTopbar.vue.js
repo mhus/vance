@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { getTenantId, getUsername } from '@vance/shared';
+import { getTenantId, getUsername, isFacelift, requestAddAccount, requestBackToPicker, requestSwitchAccount, } from '@vance/shared';
 import { logout as serverLogout, } from '@/platform';
 import { setUiLocale } from '@/i18n';
 import FookSupportModal from './FookSupportModal.vue';
@@ -44,6 +44,19 @@ async function logout() {
         await serverLogout(tenant);
     }
     window.location.href = '/index.html';
+}
+// Facelift wrapper bridges — these are no-ops in a plain browser
+// (see @vance/shared/facelift). The menu only renders these entries
+// when `isFacelift()` is true.
+const inFacelift = computed(() => isFacelift());
+function onSwitchAccount() {
+    requestSwitchAccount();
+}
+function onManageAccounts() {
+    requestBackToPicker();
+}
+function onAddAccount() {
+    requestAddAccount();
 }
 function onToggleHelp() {
     if (!props.helpPath)
@@ -209,6 +222,29 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div)({
     ...{ class: "divider my-1" },
 });
+if (__VLS_ctx.inFacelift) {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({});
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
+        ...{ onClick: (__VLS_ctx.onSwitchAccount) },
+    });
+    (__VLS_ctx.$t('header.menu.switchAccount'));
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({});
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
+        ...{ onClick: (__VLS_ctx.onManageAccounts) },
+    });
+    (__VLS_ctx.$t('header.menu.manageAccounts'));
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({});
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
+        ...{ onClick: (__VLS_ctx.onAddAccount) },
+    });
+    (__VLS_ctx.$t('header.menu.addAccount'));
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
+        ...{ class: "divider-row" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div)({
+        ...{ class: "divider my-1" },
+    });
+}
 __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({});
 __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
     ...{ onClick: (__VLS_ctx.openFook) },
@@ -299,6 +335,9 @@ const __VLS_3 = __VLS_2({
 /** @type {__VLS_StyleScopedClasses['divider-row']} */ ;
 /** @type {__VLS_StyleScopedClasses['divider']} */ ;
 /** @type {__VLS_StyleScopedClasses['my-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['divider-row']} */ ;
+/** @type {__VLS_StyleScopedClasses['divider']} */ ;
+/** @type {__VLS_StyleScopedClasses['my-1']} */ ;
 // @ts-ignore
 var __VLS_1 = __VLS_0;
 var __VLS_dollars;
@@ -316,6 +355,10 @@ const __VLS_self = (await import('vue')).defineComponent({
             currentLocale: currentLocale,
             selectLanguage: selectLanguage,
             logout: logout,
+            inFacelift: inFacelift,
+            onSwitchAccount: onSwitchAccount,
+            onManageAccounts: onManageAccounts,
+            onAddAccount: onAddAccount,
             onToggleHelp: onToggleHelp,
             fookOpen: fookOpen,
             openFook: openFook,

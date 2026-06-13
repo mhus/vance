@@ -327,13 +327,12 @@ __VLS_7.slots.default;
     let __VLS_19;
     let __VLS_20;
     const __VLS_21 = {
-        onPointerdown: (...[$event]) => {
-            __VLS_ctx.emit('focus-main');
-        }
+        onPointerdown: () => { }
     };
     const __VLS_22 = {
         onClick: (...[$event]) => {
             __VLS_ctx.searchOpen = true;
+            __VLS_ctx.emit('focus-main');
         }
     };
     __VLS_17.slots.default;

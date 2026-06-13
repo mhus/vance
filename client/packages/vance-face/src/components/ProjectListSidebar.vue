@@ -716,8 +716,8 @@ async function onBlockDrop(block: GroupBlock, ev: DragEvent): Promise<void> {
               :class="isGroupSelected(block.group)
                 ? 'bg-primary/10 text-primary font-medium'
                 : 'hover:bg-base-200'"
-              @pointerdown.stop="emit('focus-main')"
-              @click="selectGroup(block.group)"
+              @pointerdown.stop
+              @click="selectGroup(block.group); emit('focus-main')"
             >
               <span class="flex-1 truncate">{{ block.group.title || block.group.name }}</span>
               <slot name="row-suffix" :kind="'group'" :item="block.group" />
@@ -776,8 +776,8 @@ async function onBlockDrop(block: GroupBlock, ev: DragEvent): Promise<void> {
             editEnabled ? 'cursor-grab active:cursor-grabbing' : '',
             draggingProject === p.name ? 'opacity-50' : '',
           ]"
-          @pointerdown.stop="emit('focus-main')"
-          @click="selectProject(p)"
+          @pointerdown.stop
+          @click="selectProject(p); emit('focus-main')"
           @dragstart="onProjectDragStart(p, $event)"
           @dragend="onProjectDragEnd"
         >

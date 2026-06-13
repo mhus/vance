@@ -314,8 +314,8 @@ watch(showArchived, async () => {
             variant="ghost"
             size="sm"
             :title="$t('chat.picker.searchTooltip')"
-            @pointerdown.stop="emit('focus-main')"
-            @click="searchOpen = true"
+            @pointerdown.stop
+            @click="searchOpen = true; emit('focus-main')"
           >
             🔍
           </VButton>

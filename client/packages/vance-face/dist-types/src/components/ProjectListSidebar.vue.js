@@ -686,15 +686,7 @@ else {
             });
             (__VLS_ctx.isGroupCollapsed(block.group) ? '▸' : '▾');
             __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-                ...{ onPointerdown: (...[$event]) => {
-                        if (!!(__VLS_ctx.loading))
-                            return;
-                        if (!!(__VLS_ctx.error))
-                            return;
-                        if (!(block.group && __VLS_ctx.showGroupRows))
-                            return;
-                        __VLS_ctx.emit('focus-main');
-                    } },
+                ...{ onPointerdown: () => { } },
                 ...{ onClick: (...[$event]) => {
                         if (!!(__VLS_ctx.loading))
                             return;
@@ -703,6 +695,7 @@ else {
                         if (!(block.group && __VLS_ctx.showGroupRows))
                             return;
                         __VLS_ctx.selectGroup(block.group);
+                        __VLS_ctx.emit('focus-main');
                     } },
                 type: "button",
                 ...{ class: "flex-1 text-left px-2 py-1.5 rounded text-sm transition-colors flex items-center gap-2" },
@@ -793,19 +786,14 @@ else {
         }
         for (const [p] of __VLS_getVForSourceType((block.projects))) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-                ...{ onPointerdown: (...[$event]) => {
-                        if (!!(__VLS_ctx.loading))
-                            return;
-                        if (!!(__VLS_ctx.error))
-                            return;
-                        __VLS_ctx.emit('focus-main');
-                    } },
+                ...{ onPointerdown: () => { } },
                 ...{ onClick: (...[$event]) => {
                         if (!!(__VLS_ctx.loading))
                             return;
                         if (!!(__VLS_ctx.error))
                             return;
                         __VLS_ctx.selectProject(p);
+                        __VLS_ctx.emit('focus-main');
                     } },
                 ...{ onDragstart: (...[$event]) => {
                         if (!!(__VLS_ctx.loading))

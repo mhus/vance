@@ -74,6 +74,9 @@ export default {
         },
         menu: {
             languageHeader: 'Language',
+            switchAccount: 'Switch account',
+            manageAccounts: 'Manage accounts',
+            addAccount: 'Add account',
         },
         help: {
             toggle: 'Toggle help',

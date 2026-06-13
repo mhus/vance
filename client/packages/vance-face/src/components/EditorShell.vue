@@ -380,7 +380,7 @@ onBeforeUnmount(() => {
 
       <footer
         v-if="hasFooterSlot"
-        class="zone zone-footer col-span-full min-w-0 min-h-0 border-t border-base-300 overflow-hidden"
+        class="zone zone-footer col-span-full min-w-0 min-h-0 border-t border-base-300 overflow-x-clip overflow-y-visible"
         @focusin="onFooterFocusin"
       >
         <slot name="footer" />

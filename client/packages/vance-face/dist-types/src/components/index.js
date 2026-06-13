@@ -10,4 +10,5 @@ export { default as ProjectListSidebar } from './ProjectListSidebar.vue';
 export { default as SessionHeader } from './SessionHeader.vue';
 export { default as FormFields } from './FormFields.vue';
 export { default as SettingFormView } from './SettingFormView.vue';
+export { default as VanceLogo } from './VanceLogo.vue';
 //# sourceMappingURL=index.js.map

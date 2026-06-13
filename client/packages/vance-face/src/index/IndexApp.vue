@@ -20,7 +20,7 @@ import {
   type WebUiLevel,
 } from '@/platform';
 import { setUiLocale } from '@/i18n';
-import { EditorShell, VAlert, VButton, VCard, VCheckbox, VInput } from '@/components';
+import { EditorShell, VAlert, VanceLogo, VButton, VCard, VCheckbox, VInput } from '@/components';
 
 const { t } = useI18n();
 
@@ -189,7 +189,8 @@ function readNextParam(): string | null {
        The hero layout is the documented exception. -->
   <div v-if="mode === 'auto-login'" class="hero min-h-screen bg-base-200">
     <div class="hero-content flex-col">
-      <h1 class="text-3xl font-bold mb-4 font-mono">vance</h1>
+      <VanceLogo size="xl" class="text-primary mb-2" />
+      <h1 class="text-3xl font-bold mb-4 font-mono opacity-60">vance</h1>
       <VCard class="w-full max-w-md">
         <div class="flex items-center gap-3 py-2">
           <span class="loading loading-spinner loading-md" />
@@ -201,7 +202,8 @@ function readNextParam(): string | null {
 
   <div v-else-if="mode === 'login'" class="hero min-h-screen bg-base-200">
     <div class="hero-content w-full max-w-md flex-col">
-      <h1 class="text-3xl font-bold mb-4 font-mono">vance</h1>
+      <VanceLogo size="xl" class="text-primary mb-2" />
+      <h1 class="text-3xl font-bold mb-4 font-mono opacity-60">vance</h1>
       <VCard class="w-full">
         <form class="flex flex-col gap-3" @submit.prevent="onSubmit">
           <VAlert v-if="error" variant="error">

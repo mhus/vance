@@ -140,8 +140,9 @@ declare const __VLS_component: import("vue").DefineComponent<__VLS_PublicProps, 
         name: string;
     }) => any) | undefined;
 }>, {
-    error: string | null;
     loading: boolean;
+    error: string | null;
+    heading: string;
     searchEnabled: boolean;
     editEnabled: boolean;
     showGroupRows: boolean;
@@ -150,7 +151,6 @@ declare const __VLS_component: import("vue").DefineComponent<__VLS_PublicProps, 
         label: string;
     }[];
     hideKitField: boolean;
-    heading: string;
     filterPlaceholder: string;
     ungroupedLabel: string;
     emptyHeadline: string;

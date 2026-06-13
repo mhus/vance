@@ -39,9 +39,9 @@ interface Props {
      */
     titleClickable?: boolean;
 }
-declare var __VLS_1: {};
+declare var __VLS_4: {};
 type __VLS_Slots = {} & {
-    'topbar-extra'?: (props: typeof __VLS_1) => any;
+    'topbar-extra'?: (props: typeof __VLS_4) => any;
 };
 declare const __VLS_component: import("vue").DefineComponent<Props, {}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {} & {
     "toggle-help": () => any;

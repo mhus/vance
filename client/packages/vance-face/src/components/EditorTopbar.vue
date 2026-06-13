@@ -14,6 +14,7 @@ import {
 } from '@/platform';
 import { setUiLocale } from '@/i18n';
 import FookSupportModal from './FookSupportModal.vue';
+import VanceLogo from './VanceLogo.vue';
 
 /**
  * A breadcrumb segment. Either a plain string label (immutable, no
@@ -152,12 +153,17 @@ function openFook(): void {
 
 <template>
   <header class="navbar bg-base-100 shadow-sm border-b border-base-300 px-4 gap-2">
-    <!-- Logo doubles as a "home" link back to the editor list. -->
+    <!-- Logo doubles as a "home" link back to the editor list.
+         Mark (mathematical italic v) + wordmark; the mark carries the
+         brand on small viewports where horizontal room is tight. -->
     <a
       href="/index.html"
-      class="flex-none font-bold text-lg font-mono no-underline hover:opacity-80"
+      class="flex-none flex items-center gap-1.5 no-underline hover:opacity-80"
       :title="$t('common.backToHome')"
-    >vance</a>
+    >
+      <VanceLogo size="sm" class="text-primary" />
+      <span class="font-bold text-lg font-mono">vance</span>
+    </a>
 
     <div class="flex-1 flex items-center gap-2 text-sm">
       <button

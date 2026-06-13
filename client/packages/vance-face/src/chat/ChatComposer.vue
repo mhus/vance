@@ -1098,7 +1098,7 @@ onBeforeUnmount(() => {
   position: absolute;
   bottom: calc(100% + 0.5rem);
   left: 0.5rem;
-  z-index: 20;
+  z-index: 50;
   padding: 0.5rem;
   background-color: var(--fallback-b1, oklch(var(--b1) / 1));
   border: 1px solid var(--fallback-b3, oklch(var(--b3) / 1));

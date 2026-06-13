@@ -3,7 +3,7 @@ import { useI18n } from 'vue-i18n';
 import { clearLegacyAuth, clearRememberedLogin, getRememberedLogin, setRememberedLogin, } from '@vance/shared';
 import { getActiveUiLevel, getSessionData, hydrateIdentity, isAccessAlive, isRefreshAlive, login, LoginError, rankOf, refreshAccessCookie, } from '@/platform';
 import { setUiLocale } from '@/i18n';
-import { EditorShell, VAlert, VButton, VCard, VCheckbox, VInput } from '@/components';
+import { EditorShell, VAlert, VanceLogo, VButton, VCard, VCheckbox, VInput } from '@/components';
 const { t } = useI18n();
 const mode = ref('login');
 const tenant = ref('default');
@@ -170,19 +170,30 @@ if (__VLS_ctx.mode === 'auto-login') {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "hero-content flex-col" },
     });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.h1, __VLS_intrinsicElements.h1)({
-        ...{ class: "text-3xl font-bold mb-4 font-mono" },
-    });
-    const __VLS_0 = {}.VCard;
-    /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
+    const __VLS_0 = {}.VanceLogo;
+    /** @type {[typeof __VLS_components.VanceLogo, ]} */ ;
     // @ts-ignore
     const __VLS_1 = __VLS_asFunctionalComponent(__VLS_0, new __VLS_0({
-        ...{ class: "w-full max-w-md" },
+        size: "xl",
+        ...{ class: "text-primary mb-2" },
     }));
     const __VLS_2 = __VLS_1({
-        ...{ class: "w-full max-w-md" },
+        size: "xl",
+        ...{ class: "text-primary mb-2" },
     }, ...__VLS_functionalComponentArgsRest(__VLS_1));
-    __VLS_3.slots.default;
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.h1, __VLS_intrinsicElements.h1)({
+        ...{ class: "text-3xl font-bold mb-4 font-mono opacity-60" },
+    });
+    const __VLS_4 = {}.VCard;
+    /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
+    // @ts-ignore
+    const __VLS_5 = __VLS_asFunctionalComponent(__VLS_4, new __VLS_4({
+        ...{ class: "w-full max-w-md" },
+    }));
+    const __VLS_6 = __VLS_5({
+        ...{ class: "w-full max-w-md" },
+    }, ...__VLS_functionalComponentArgsRest(__VLS_5));
+    __VLS_7.slots.default;
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "flex items-center gap-3 py-2" },
     });
@@ -191,7 +202,7 @@ if (__VLS_ctx.mode === 'auto-login') {
     });
     __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
     (__VLS_ctx.autoLoginNotice);
-    var __VLS_3;
+    var __VLS_7;
 }
 else if (__VLS_ctx.mode === 'login') {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -200,137 +211,148 @@ else if (__VLS_ctx.mode === 'login') {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "hero-content w-full max-w-md flex-col" },
     });
+    const __VLS_8 = {}.VanceLogo;
+    /** @type {[typeof __VLS_components.VanceLogo, ]} */ ;
+    // @ts-ignore
+    const __VLS_9 = __VLS_asFunctionalComponent(__VLS_8, new __VLS_8({
+        size: "xl",
+        ...{ class: "text-primary mb-2" },
+    }));
+    const __VLS_10 = __VLS_9({
+        size: "xl",
+        ...{ class: "text-primary mb-2" },
+    }, ...__VLS_functionalComponentArgsRest(__VLS_9));
     __VLS_asFunctionalElement(__VLS_intrinsicElements.h1, __VLS_intrinsicElements.h1)({
-        ...{ class: "text-3xl font-bold mb-4 font-mono" },
+        ...{ class: "text-3xl font-bold mb-4 font-mono opacity-60" },
     });
-    const __VLS_4 = {}.VCard;
+    const __VLS_12 = {}.VCard;
     /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
     // @ts-ignore
-    const __VLS_5 = __VLS_asFunctionalComponent(__VLS_4, new __VLS_4({
+    const __VLS_13 = __VLS_asFunctionalComponent(__VLS_12, new __VLS_12({
         ...{ class: "w-full" },
     }));
-    const __VLS_6 = __VLS_5({
+    const __VLS_14 = __VLS_13({
         ...{ class: "w-full" },
-    }, ...__VLS_functionalComponentArgsRest(__VLS_5));
-    __VLS_7.slots.default;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_13));
+    __VLS_15.slots.default;
     __VLS_asFunctionalElement(__VLS_intrinsicElements.form, __VLS_intrinsicElements.form)({
         ...{ onSubmit: (__VLS_ctx.onSubmit) },
         ...{ class: "flex flex-col gap-3" },
     });
     if (__VLS_ctx.error) {
-        const __VLS_8 = {}.VAlert;
+        const __VLS_16 = {}.VAlert;
         /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
         // @ts-ignore
-        const __VLS_9 = __VLS_asFunctionalComponent(__VLS_8, new __VLS_8({
+        const __VLS_17 = __VLS_asFunctionalComponent(__VLS_16, new __VLS_16({
             variant: "error",
         }));
-        const __VLS_10 = __VLS_9({
+        const __VLS_18 = __VLS_17({
             variant: "error",
-        }, ...__VLS_functionalComponentArgsRest(__VLS_9));
-        __VLS_11.slots.default;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_17));
+        __VLS_19.slots.default;
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
         (__VLS_ctx.error);
-        var __VLS_11;
+        var __VLS_19;
     }
-    const __VLS_12 = {}.VInput;
-    /** @type {[typeof __VLS_components.VInput, ]} */ ;
-    // @ts-ignore
-    const __VLS_13 = __VLS_asFunctionalComponent(__VLS_12, new __VLS_12({
-        modelValue: (__VLS_ctx.tenant),
-        label: (__VLS_ctx.$t('login.tenant')),
-        required: true,
-        autocomplete: "organization",
-        disabled: (__VLS_ctx.submitting),
-    }));
-    const __VLS_14 = __VLS_13({
-        modelValue: (__VLS_ctx.tenant),
-        label: (__VLS_ctx.$t('login.tenant')),
-        required: true,
-        autocomplete: "organization",
-        disabled: (__VLS_ctx.submitting),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_13));
-    const __VLS_16 = {}.VInput;
-    /** @type {[typeof __VLS_components.VInput, ]} */ ;
-    // @ts-ignore
-    const __VLS_17 = __VLS_asFunctionalComponent(__VLS_16, new __VLS_16({
-        modelValue: (__VLS_ctx.username),
-        label: (__VLS_ctx.$t('login.username')),
-        required: true,
-        autocomplete: "username",
-        disabled: (__VLS_ctx.submitting),
-    }));
-    const __VLS_18 = __VLS_17({
-        modelValue: (__VLS_ctx.username),
-        label: (__VLS_ctx.$t('login.username')),
-        required: true,
-        autocomplete: "username",
-        disabled: (__VLS_ctx.submitting),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_17));
     const __VLS_20 = {}.VInput;
     /** @type {[typeof __VLS_components.VInput, ]} */ ;
     // @ts-ignore
     const __VLS_21 = __VLS_asFunctionalComponent(__VLS_20, new __VLS_20({
-        modelValue: (__VLS_ctx.password),
-        type: "password",
-        label: (__VLS_ctx.$t('login.password')),
+        modelValue: (__VLS_ctx.tenant),
+        label: (__VLS_ctx.$t('login.tenant')),
         required: true,
-        autocomplete: "current-password",
+        autocomplete: "organization",
         disabled: (__VLS_ctx.submitting),
     }));
     const __VLS_22 = __VLS_21({
+        modelValue: (__VLS_ctx.tenant),
+        label: (__VLS_ctx.$t('login.tenant')),
+        required: true,
+        autocomplete: "organization",
+        disabled: (__VLS_ctx.submitting),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_21));
+    const __VLS_24 = {}.VInput;
+    /** @type {[typeof __VLS_components.VInput, ]} */ ;
+    // @ts-ignore
+    const __VLS_25 = __VLS_asFunctionalComponent(__VLS_24, new __VLS_24({
+        modelValue: (__VLS_ctx.username),
+        label: (__VLS_ctx.$t('login.username')),
+        required: true,
+        autocomplete: "username",
+        disabled: (__VLS_ctx.submitting),
+    }));
+    const __VLS_26 = __VLS_25({
+        modelValue: (__VLS_ctx.username),
+        label: (__VLS_ctx.$t('login.username')),
+        required: true,
+        autocomplete: "username",
+        disabled: (__VLS_ctx.submitting),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_25));
+    const __VLS_28 = {}.VInput;
+    /** @type {[typeof __VLS_components.VInput, ]} */ ;
+    // @ts-ignore
+    const __VLS_29 = __VLS_asFunctionalComponent(__VLS_28, new __VLS_28({
         modelValue: (__VLS_ctx.password),
         type: "password",
         label: (__VLS_ctx.$t('login.password')),
         required: true,
         autocomplete: "current-password",
         disabled: (__VLS_ctx.submitting),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_21));
-    const __VLS_24 = {}.VCheckbox;
-    /** @type {[typeof __VLS_components.VCheckbox, ]} */ ;
-    // @ts-ignore
-    const __VLS_25 = __VLS_asFunctionalComponent(__VLS_24, new __VLS_24({
-        modelValue: (__VLS_ctx.rememberUser),
-        label: (__VLS_ctx.$t('login.rememberUser')),
-        disabled: (__VLS_ctx.submitting),
-    }));
-    const __VLS_26 = __VLS_25({
-        modelValue: (__VLS_ctx.rememberUser),
-        label: (__VLS_ctx.$t('login.rememberUser')),
-        disabled: (__VLS_ctx.submitting),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_25));
-    const __VLS_28 = {}.VButton;
-    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-    // @ts-ignore
-    const __VLS_29 = __VLS_asFunctionalComponent(__VLS_28, new __VLS_28({
-        type: "submit",
-        variant: "primary",
-        loading: (__VLS_ctx.submitting),
-        ...{ class: "mt-2" },
-        block: true,
     }));
     const __VLS_30 = __VLS_29({
+        modelValue: (__VLS_ctx.password),
+        type: "password",
+        label: (__VLS_ctx.$t('login.password')),
+        required: true,
+        autocomplete: "current-password",
+        disabled: (__VLS_ctx.submitting),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_29));
+    const __VLS_32 = {}.VCheckbox;
+    /** @type {[typeof __VLS_components.VCheckbox, ]} */ ;
+    // @ts-ignore
+    const __VLS_33 = __VLS_asFunctionalComponent(__VLS_32, new __VLS_32({
+        modelValue: (__VLS_ctx.rememberUser),
+        label: (__VLS_ctx.$t('login.rememberUser')),
+        disabled: (__VLS_ctx.submitting),
+    }));
+    const __VLS_34 = __VLS_33({
+        modelValue: (__VLS_ctx.rememberUser),
+        label: (__VLS_ctx.$t('login.rememberUser')),
+        disabled: (__VLS_ctx.submitting),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_33));
+    const __VLS_36 = {}.VButton;
+    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+    // @ts-ignore
+    const __VLS_37 = __VLS_asFunctionalComponent(__VLS_36, new __VLS_36({
         type: "submit",
         variant: "primary",
         loading: (__VLS_ctx.submitting),
         ...{ class: "mt-2" },
         block: true,
-    }, ...__VLS_functionalComponentArgsRest(__VLS_29));
-    __VLS_31.slots.default;
+    }));
+    const __VLS_38 = __VLS_37({
+        type: "submit",
+        variant: "primary",
+        loading: (__VLS_ctx.submitting),
+        ...{ class: "mt-2" },
+        block: true,
+    }, ...__VLS_functionalComponentArgsRest(__VLS_37));
+    __VLS_39.slots.default;
     (__VLS_ctx.$t('common.signIn'));
-    var __VLS_31;
-    var __VLS_7;
+    var __VLS_39;
+    var __VLS_15;
 }
 else {
-    const __VLS_32 = {}.EditorShell;
+    const __VLS_40 = {}.EditorShell;
     /** @type {[typeof __VLS_components.EditorShell, typeof __VLS_components.EditorShell, ]} */ ;
     // @ts-ignore
-    const __VLS_33 = __VLS_asFunctionalComponent(__VLS_32, new __VLS_32({
+    const __VLS_41 = __VLS_asFunctionalComponent(__VLS_40, new __VLS_40({
         title: (__VLS_ctx.$t('common.home')),
     }));
-    const __VLS_34 = __VLS_33({
+    const __VLS_42 = __VLS_41({
         title: (__VLS_ctx.$t('common.home')),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_33));
-    __VLS_35.slots.default;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_41));
+    __VLS_43.slots.default;
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "container mx-auto px-4 py-8 max-w-3xl" },
     });
@@ -455,17 +477,20 @@ else {
         });
         (__VLS_ctx.$t('toolTemplates.intro'));
     }
-    var __VLS_35;
+    var __VLS_43;
 }
 /** @type {__VLS_StyleScopedClasses['hero']} */ ;
 /** @type {__VLS_StyleScopedClasses['min-h-screen']} */ ;
 /** @type {__VLS_StyleScopedClasses['bg-base-200']} */ ;
 /** @type {__VLS_StyleScopedClasses['hero-content']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-primary']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-3xl']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-bold']} */ ;
 /** @type {__VLS_StyleScopedClasses['mb-4']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
 /** @type {__VLS_StyleScopedClasses['w-full']} */ ;
 /** @type {__VLS_StyleScopedClasses['max-w-md']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
@@ -482,10 +507,13 @@ else {
 /** @type {__VLS_StyleScopedClasses['w-full']} */ ;
 /** @type {__VLS_StyleScopedClasses['max-w-md']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-primary']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-3xl']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-bold']} */ ;
 /** @type {__VLS_StyleScopedClasses['mb-4']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
 /** @type {__VLS_StyleScopedClasses['w-full']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
@@ -540,6 +568,7 @@ const __VLS_self = (await import('vue')).defineComponent({
         return {
             EditorShell: EditorShell,
             VAlert: VAlert,
+            VanceLogo: VanceLogo,
             VButton: VButton,
             VCard: VCard,
             VCheckbox: VCheckbox,

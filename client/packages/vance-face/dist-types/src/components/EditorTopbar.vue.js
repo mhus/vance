@@ -4,6 +4,7 @@ import { getTenantId, getUsername, isFacelift, requestAddAccount, requestBackToP
 import { logout as serverLogout, } from '@/platform';
 import { setUiLocale } from '@/i18n';
 import FookSupportModal from './FookSupportModal.vue';
+import VanceLogo from './VanceLogo.vue';
 const props = withDefaults(defineProps(), {
     breadcrumbs: () => [],
     helpOpen: false,
@@ -88,8 +89,21 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.header, __VLS_intrinsicElement
 });
 __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
     href: "/index.html",
-    ...{ class: "flex-none font-bold text-lg font-mono no-underline hover:opacity-80" },
+    ...{ class: "flex-none flex items-center gap-1.5 no-underline hover:opacity-80" },
     title: (__VLS_ctx.$t('common.backToHome')),
+});
+/** @type {[typeof VanceLogo, ]} */ ;
+// @ts-ignore
+const __VLS_0 = __VLS_asFunctionalComponent(VanceLogo, new VanceLogo({
+    size: "sm",
+    ...{ class: "text-primary" },
+}));
+const __VLS_1 = __VLS_0({
+    size: "sm",
+    ...{ class: "text-primary" },
+}, ...__VLS_functionalComponentArgsRest(__VLS_0));
+__VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+    ...{ class: "font-bold text-lg font-mono" },
 });
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "flex-1 flex items-center gap-2 text-sm" },
@@ -152,7 +166,7 @@ if (__VLS_ctx.$slots['topbar-extra']) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "flex items-center" },
     });
-    var __VLS_0 = {};
+    var __VLS_3 = {};
 }
 if (__VLS_ctx.connectionState) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.span)({
@@ -262,12 +276,12 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)(
 (__VLS_ctx.$t('common.signOut'));
 /** @type {[typeof FookSupportModal, ]} */ ;
 // @ts-ignore
-const __VLS_2 = __VLS_asFunctionalComponent(FookSupportModal, new FookSupportModal({
+const __VLS_5 = __VLS_asFunctionalComponent(FookSupportModal, new FookSupportModal({
     modelValue: (__VLS_ctx.fookOpen),
 }));
-const __VLS_3 = __VLS_2({
+const __VLS_6 = __VLS_5({
     modelValue: (__VLS_ctx.fookOpen),
-}, ...__VLS_functionalComponentArgsRest(__VLS_2));
+}, ...__VLS_functionalComponentArgsRest(__VLS_5));
 /** @type {__VLS_StyleScopedClasses['navbar']} */ ;
 /** @type {__VLS_StyleScopedClasses['bg-base-100']} */ ;
 /** @type {__VLS_StyleScopedClasses['shadow-sm']} */ ;
@@ -276,11 +290,15 @@ const __VLS_3 = __VLS_2({
 /** @type {__VLS_StyleScopedClasses['px-4']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-none']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-1.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['no-underline']} */ ;
+/** @type {__VLS_StyleScopedClasses['hover:opacity-80']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-primary']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-bold']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-lg']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
-/** @type {__VLS_StyleScopedClasses['no-underline']} */ ;
-/** @type {__VLS_StyleScopedClasses['hover:opacity-80']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['items-center']} */ ;
@@ -339,12 +357,13 @@ const __VLS_3 = __VLS_2({
 /** @type {__VLS_StyleScopedClasses['divider']} */ ;
 /** @type {__VLS_StyleScopedClasses['my-1']} */ ;
 // @ts-ignore
-var __VLS_1 = __VLS_0;
+var __VLS_4 = __VLS_3;
 var __VLS_dollars;
 const __VLS_self = (await import('vue')).defineComponent({
     setup() {
         return {
             FookSupportModal: FookSupportModal,
+            VanceLogo: VanceLogo,
             emit: emit,
             tenantId: tenantId,
             username: username,

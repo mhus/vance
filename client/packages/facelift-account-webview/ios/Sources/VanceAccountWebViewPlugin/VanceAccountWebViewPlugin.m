@@ -15,6 +15,8 @@ CAP_PLUGIN(VanceAccountWebViewPlugin, "VanceAccountWebView",
     CAP_PLUGIN_METHOD(setAccountSnapshot, CAPPluginReturnPromise);
     CAP_PLUGIN_METHOD(setShareCredentials, CAPPluginReturnPromise);
     CAP_PLUGIN_METHOD(setProjectSnapshot, CAPPluginReturnPromise);
+    CAP_PLUGIN_METHOD(isBiometricAvailable, CAPPluginReturnPromise);
+    CAP_PLUGIN_METHOD(authenticateBiometric, CAPPluginReturnPromise);
     CAP_PLUGIN_METHOD(addListener, CAPPluginReturnCallback);
     CAP_PLUGIN_METHOD(removeAllListeners, CAPPluginReturnPromise);
 )

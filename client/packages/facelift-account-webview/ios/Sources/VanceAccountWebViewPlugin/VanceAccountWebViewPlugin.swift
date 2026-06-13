@@ -1,4 +1,5 @@
 import Capacitor
+import LocalAuthentication
 import UIKit
 import WebKit
 
@@ -34,6 +35,8 @@ public class VanceAccountWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigatio
         CAPPluginMethod(name: "setAccountSnapshot", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setShareCredentials", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setProjectSnapshot", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "isBiometricAvailable", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "authenticateBiometric", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "addListener", returnType: CAPPluginReturnCallback),
         CAPPluginMethod(name: "removeAllListeners", returnType: CAPPluginReturnPromise),
     ]
@@ -380,6 +383,76 @@ public class VanceAccountWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigatio
             return
         }
         decisionHandler(.allow)
+    }
+
+    // MARK: - Biometric (Face-ID / Touch-ID)
+
+    /// Reports whether the device can run a biometric check at all.
+    /// Resolves with `{ available: bool, biometryType: 'faceID' |
+    /// 'touchID' | 'none', errorCode?: number }`. The JS lock screen
+    /// uses {@code available} to decide whether to surface the
+    /// "Use Face ID / Touch ID" toggle.
+    @objc func isBiometricAvailable(_ call: CAPPluginCall) {
+        let context = LAContext()
+        var nsError: NSError?
+        let canEvaluate = context.canEvaluatePolicy(
+            .deviceOwnerAuthenticationWithBiometrics, error: &nsError)
+        var biometryType = "none"
+        if #available(iOS 11.0, *) {
+            switch context.biometryType {
+            case .faceID:  biometryType = "faceID"
+            case .touchID: biometryType = "touchID"
+            default:       biometryType = "none"
+            }
+        }
+        var result: [String: Any] = [
+            "available": canEvaluate,
+            "biometryType": biometryType,
+        ]
+        if let err = nsError {
+            result["errorCode"] = err.code
+            result["errorMessage"] = err.localizedDescription
+        }
+        call.resolve(result)
+    }
+
+    /// Trigger the system biometric prompt. Resolves with
+    /// `{ success: bool, errorCode?: number, errorMessage?: string }`.
+    /// `errorCode` follows `LAError.Code` — `userCancel` (-2) is the
+    /// most common non-success outcome and should not be treated as
+    /// a fatal error by the caller.
+    @objc func authenticateBiometric(_ call: CAPPluginCall) {
+        let reason = call.getString("reason") ?? "Unlock Vance"
+        let context = LAContext()
+        // Suppress the Apple-side "fallback to passcode" affordance —
+        // our JS layer owns the PIN fallback so the two paths don't
+        // conflict.
+        context.localizedFallbackTitle = ""
+        var nsError: NSError?
+        guard context.canEvaluatePolicy(
+                .deviceOwnerAuthenticationWithBiometrics,
+                error: &nsError) else {
+            var result: [String: Any] = ["success": false]
+            if let err = nsError {
+                result["errorCode"] = err.code
+                result["errorMessage"] = err.localizedDescription
+            }
+            call.resolve(result)
+            return
+        }
+        context.evaluatePolicy(
+            .deviceOwnerAuthenticationWithBiometrics,
+            localizedReason: reason
+        ) { success, error in
+            DispatchQueue.main.async {
+                var result: [String: Any] = ["success": success]
+                if let err = error as NSError? {
+                    result["errorCode"] = err.code
+                    result["errorMessage"] = err.localizedDescription
+                }
+                call.resolve(result)
+            }
+        }
     }
 
     // MARK: - Share-Extension snapshot bridge

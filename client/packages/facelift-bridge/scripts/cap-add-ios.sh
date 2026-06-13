@@ -40,6 +40,11 @@ plutil -replace NSPhotoLibraryUsageDescription \
   -string "Vance uses your photo library so you can attach pictures to documents and chat messages." \
   ios/App/App/Info.plist
 
+# Face-ID — iOS aborts the biometric call without this description.
+plutil -replace NSFaceIDUsageDescription \
+  -string "Vance uses Face ID to unlock the app." \
+  ios/App/App/Info.plist
+
 # ── App-Group entitlement ─────────────────────────────────────────
 # Copy our committed template (allows the Share Extension to access
 # accounts.json / projects.json / credentials.json on disk and via

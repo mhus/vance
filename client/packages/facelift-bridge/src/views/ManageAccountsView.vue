@@ -8,6 +8,11 @@ import {
   listAccounts,
   removeAccount,
 } from '@/accounts/accountStore';
+import {
+  isBiometricEnabled,
+  setBiometricEnabled,
+} from '@/lock/lockStore';
+import { isBiometricSupported, tryBiometricUnlock } from '@/lock/biometric';
 
 const router = useRouter();
 const accounts = ref<Account[]>([]);
@@ -16,6 +21,7 @@ const loading = ref(true);
 
 onMounted(async () => {
   await refresh();
+  await refreshSecurity();
   loading.value = false;
 });
 
@@ -30,6 +36,36 @@ function sortByLastUsed(list: Account[]): Account[] {
 
 function onEdit(id: string): void {
   void router.push({ name: 'edit', params: { id } });
+}
+
+const biometricSupported = ref(false);
+const biometricEnabled = ref(false);
+
+async function refreshSecurity(): Promise<void> {
+  biometricSupported.value = await isBiometricSupported();
+  biometricEnabled.value = await isBiometricEnabled();
+}
+
+async function onToggleBiometric(): Promise<void> {
+  const desired = !biometricEnabled.value;
+  if (desired) {
+    // Verify the user actually has biometric enrolled + can pass it
+    // before flipping the pref. Otherwise we'd be in a "Face-ID
+    // enabled but the user has no face enrolled" state where the
+    // unlock screen offers a button that always fails.
+    const ok = await tryBiometricUnlock();
+    if (!ok) return;
+  }
+  await setBiometricEnabled(desired);
+  biometricEnabled.value = desired;
+}
+
+function onChangePin(): void {
+  // For v1 this just re-runs the setup flow which overwrites the
+  // stored hash. v2 should add a "verify current PIN" step before
+  // accepting the new one. The app being unlocked is the current
+  // implicit authority for the change.
+  void router.push({ name: 'lock-setup', query: { next: '/manage' } });
 }
 
 async function onRemove(a: Account): Promise<void> {
@@ -102,6 +138,32 @@ const hasAccounts = computed(() => accounts.value.length > 0);
         </li>
       </ul>
     </div>
+    <section class="border-t border-gray-800 px-4 py-3">
+      <h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+        Security
+      </h2>
+      <button
+        type="button"
+        class="flex w-full items-center justify-between rounded border border-gray-800 bg-gray-900 px-3 py-2 text-left text-sm"
+        @click="onChangePin"
+      >
+        <span>Change PIN</span>
+        <span class="text-gray-500">›</span>
+      </button>
+      <label
+        v-if="biometricSupported"
+        class="mt-2 flex w-full items-center justify-between rounded border border-gray-800 bg-gray-900 px-3 py-2 text-sm"
+      >
+        <span>Use Face ID / Touch ID</span>
+        <input
+          type="checkbox"
+          :checked="biometricEnabled"
+          class="h-5 w-5"
+          @change="onToggleBiometric"
+        />
+      </label>
+    </section>
+
     <footer
       class="border-t border-gray-800 p-4"
       style="padding-bottom: max(1rem, env(safe-area-inset-bottom))"

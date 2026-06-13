@@ -118,6 +118,26 @@ export interface VanceAccountWebViewPlugin {
     accountId: string;
     projectsJson: string;
   }): Promise<void>;
+
+  /** Whether the device can run a biometric check at all. */
+  isBiometricAvailable(): Promise<BiometricAvailability>;
+
+  /** Trigger the system biometric prompt. `reason` is shown by iOS
+   *  beneath the Face-ID / Touch-ID dialog title. */
+  authenticateBiometric(options: { reason?: string }): Promise<BiometricResult>;
+}
+
+export interface BiometricAvailability {
+  available: boolean;
+  biometryType: 'faceID' | 'touchID' | 'none';
+  errorCode?: number;
+  errorMessage?: string;
+}
+
+export interface BiometricResult {
+  success: boolean;
+  errorCode?: number;
+  errorMessage?: string;
 }
 
 export const VanceAccountWebView = registerPlugin<VanceAccountWebViewPlugin>(

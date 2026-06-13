@@ -201,7 +201,7 @@ let __VLS_directives;
 // CSS variable injection 
 // CSS variable injection end 
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "h-screen overflow-hidden flex flex-col bg-base-200" },
+    ...{ class: "h-screen h-dvh overflow-hidden flex flex-col bg-base-200" },
 });
 /** @type {[typeof EditorTopbar, typeof EditorTopbar, ]} */ ;
 // @ts-ignore
@@ -376,6 +376,7 @@ if (__VLS_ctx.focusModel === 'auto') {
     }
 }
 /** @type {__VLS_StyleScopedClasses['h-screen']} */ ;
+/** @type {__VLS_StyleScopedClasses['h-dvh']} */ ;
 /** @type {__VLS_StyleScopedClasses['overflow-hidden']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;

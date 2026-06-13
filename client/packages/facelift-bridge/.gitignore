@@ -1,0 +1,8 @@
+dist/
+node_modules/
+*.tsbuildinfo
+# Capacitor generates native projects locally — committing them later is
+# fine, but the v1 spike keeps the iOS folder out of git until we have a
+# build pipeline that depends on it.
+ios/
+android/

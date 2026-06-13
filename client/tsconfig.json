@@ -3,6 +3,8 @@
   "references": [
     { "path": "./packages/generated" },
     { "path": "./packages/shared" },
-    { "path": "./packages/vance-face" }
+    { "path": "./packages/vance-face" },
+    { "path": "./packages/facelift-account-webview" },
+    { "path": "./packages/facelift-bridge" }
   ]
 }

@@ -1,0 +1,38 @@
+{
+  "name": "@vance/facelift-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Vance Facelift — thin Capacitor wrapper around the deployed Vance web UI. Native account picker + brain URL switching; the live website handles auth and editors itself.",
+  "license": "SEE LICENSE IN ../../LICENSE.txt",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "cap:sync": "cap sync",
+    "cap:add:ios": "cap add ios || true; sed -i '' \"s/platform :ios, '[0-9.]*'/platform :ios, '17.0'/\" ios/App/Podfile && sed -i '' \"s/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*;/IPHONEOS_DEPLOYMENT_TARGET = 17.0;/g\" ios/App/App.xcodeproj/project.pbxproj && cd ios/App && pod install",
+    "cap:open:ios": "cap open ios",
+    "cap:run:ios": "cap run ios --livereload --external",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@capacitor/core": "^6.2.0",
+    "@capacitor/ios": "^6.2.0",
+    "@capacitor/preferences": "^6.0.3",
+    "@capacitor/splash-screen": "^6.0.3",
+    "@capacitor/status-bar": "^6.0.2",
+    "@vance/facelift-account-webview": "workspace:*",
+    "pinia": "^2.2.4",
+    "vue": "^3.5.13",
+    "vue-router": "^4.4.5"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.2.0",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "vite": "^5.4.11",
+    "vue-tsc": "^2.1.10"
+  }
+}

@@ -1,6 +1,7 @@
 import { ref, type Ref } from 'vue';
 import type { ProjectGroupSummary, ProjectSummary, TenantProjectsResponse } from '@vance/generated';
 import { brainFetch } from '@vance/shared';
+import { pushProjectSnapshot } from '@/platform/faceliftShareSetup';
 
 /**
  * Loads the tenant's project groups and projects once. Used by the project
@@ -26,6 +27,9 @@ export function useTenantProjects(): {
       const data = await brainFetch<TenantProjectsResponse>('GET', 'projects');
       groups.value = data.groups ?? [];
       projects.value = data.projects ?? [];
+      // No-op outside Facelift; otherwise persists the list so the
+      // iOS Share-Extension's project picker stays in sync.
+      pushProjectSnapshot(projects.value);
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load projects.';
     } finally {

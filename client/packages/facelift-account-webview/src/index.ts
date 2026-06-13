@@ -95,6 +95,29 @@ export interface VanceAccountWebViewPlugin {
 
   /** Remove all event listeners attached via {@link addListener}. */
   removeAllListeners(): Promise<void>;
+
+  /** Persist the wrapper's account list to the App-Group container
+   *  so the iOS Share-Extension can populate its account picker.
+   *  Pass the JSON-stringified array. */
+  setAccountSnapshot(options: { accountsJson: string }): Promise<void>;
+
+  /** Persist the long-lived bearer credentials minted by the website
+   *  for one account. Stored under `credentials.json` keyed by
+   *  `accountId`; subsequent writes replace just that account's
+   *  entry. `credentialsJson` must encode an object with
+   *  `{brainUrl, tenant, username, token, refreshToken?}`. */
+  setShareCredentials(options: {
+    accountId: string;
+    credentialsJson: string;
+  }): Promise<void>;
+
+  /** Persist the per-account project list so the Share-Extension can
+   *  populate its project picker. `projectsJson` must encode an
+   *  array of `{name, title}` objects. */
+  setProjectSnapshot(options: {
+    accountId: string;
+    projectsJson: string;
+  }): Promise<void>;
 }
 
 export const VanceAccountWebView = registerPlugin<VanceAccountWebViewPlugin>(

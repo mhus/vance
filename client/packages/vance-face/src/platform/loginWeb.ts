@@ -1,5 +1,6 @@
 import type { AccessTokenRequest, AccessTokenResponse } from '@vance/generated';
 import { brainBaseUrl } from '@vance/shared';
+import { pushShareCredentials } from './faceliftShareSetup';
 
 export class LoginError extends Error {
   constructor(public readonly status: number, message: string) {
@@ -53,9 +54,20 @@ export async function login(params: {
 
   // The server has set the cookies. We don't keep anything in JS —
   // subsequent reads go through getSessionData() on the vance_data
-  // cookie. Discard the JSON body; it carries the same tokens as the
-  // cookies already do.
-  await response.json().catch(() => undefined as unknown as AccessTokenResponse);
+  // cookie. The body, though, carries the bearer access + refresh
+  // tokens we forward to the Facelift wrapper so its iOS
+  // Share-Extension can POST shares without holding cookies.
+  const parsed = (await response.json().catch(() => undefined)) as
+    | AccessTokenResponse
+    | undefined;
+  if (parsed !== undefined && typeof parsed.token === 'string') {
+    pushShareCredentials({
+      tenant: params.tenant,
+      username: params.username,
+      token: parsed.token,
+      refreshToken: parsed.refreshToken,
+    });
+  }
 }
 
 /**
@@ -86,6 +98,21 @@ export async function silentLogin(params: {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
+    if (response.ok) {
+      // Same Facelift-share token forwarding as the initial login —
+      // every silent refresh hands a fresh bearer to the App-Group.
+      const parsed = (await response.json().catch(() => undefined)) as
+        | AccessTokenResponse
+        | undefined;
+      if (parsed !== undefined && typeof parsed.token === 'string') {
+        pushShareCredentials({
+          tenant: params.tenant,
+          username: params.username,
+          token: parsed.token,
+          refreshToken: parsed.refreshToken,
+        });
+      }
+    }
     return response.ok;
   } catch {
     return false;

@@ -31,6 +31,9 @@ public class VanceAccountWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigatio
         CAPPluginMethod(name: "reload", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "navigateHome", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "remove", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setAccountSnapshot", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setShareCredentials", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setProjectSnapshot", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "addListener", returnType: CAPPluginReturnCallback),
         CAPPluginMethod(name: "removeAllListeners", returnType: CAPPluginReturnPromise),
     ]
@@ -60,14 +63,16 @@ public class VanceAccountWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigatio
     /// WebView).
     private let bridgeMessageName = "vanceFacelift"
 
-    /// JS shim injected at document-start into every per-account
-    /// WebView. Exposes `window.vanceFacelift.exportFile({name,
-    /// mime, base64})` which posts to the native bridge. Keep this
-    /// dependency-free — the website's bundle must not have to
-    /// import anything to use it.
-    private let bridgeUserScript = """
+    /// Template for the JS shim that gets injected at document-start
+    /// into every per-account WebView. Substituted per-WebView so
+    /// `window.vanceFacelift.accountId` is the wrapper's UUID for
+    /// the account that owns this WebView — the website doesn't
+    /// know that ID otherwise. Keep dependency-free — the website's
+    /// bundle must not have to import anything to use it.
+    private let bridgeUserScriptTemplate = """
     (function () {
       if (window.vanceFacelift) return;
+      var ACCOUNT_ID = __ACCOUNT_ID__;
       function post(payload) {
         try {
           window.webkit.messageHandlers.vanceFacelift.postMessage(payload);
@@ -76,6 +81,7 @@ public class VanceAccountWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigatio
         }
       }
       window.vanceFacelift = {
+        accountId: ACCOUNT_ID,
         exportFile: function (opts) {
           opts = opts || {};
           post({
@@ -84,10 +90,33 @@ public class VanceAccountWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigatio
             mime: String(opts.mime || 'application/octet-stream'),
             base64: String(opts.base64 || '')
           });
+        },
+        setShareCredentials: function (opts) {
+          post({
+            action: 'setShareCredentials',
+            accountId: ACCOUNT_ID,
+            credentialsJson: JSON.stringify(opts || {})
+          });
+        },
+        setProjectSnapshot: function (projects) {
+          post({
+            action: 'setProjectSnapshot',
+            accountId: ACCOUNT_ID,
+            projectsJson: JSON.stringify(projects || [])
+          });
         }
       };
     })();
     """
+
+    private func buildBridgeUserScript(accountId: String) -> String {
+        // accountId is a UUID string — safe to embed as a JS literal,
+        // but escape single quotes defensively in case the source
+        // ever loosens the format.
+        let escaped = accountId.replacingOccurrences(of: "'", with: "\\'")
+        return bridgeUserScriptTemplate.replacingOccurrences(
+            of: "__ACCOUNT_ID__", with: "'\(escaped)'")
+    }
 
     private var webViews: [String: WKWebView] = [:]
     private var activeWebView: WKWebView?
@@ -148,7 +177,7 @@ public class VanceAccountWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigatio
                 let contentController = WKUserContentController()
                 contentController.add(self, name: self.bridgeMessageName)
                 contentController.addUserScript(WKUserScript(
-                    source: self.bridgeUserScript,
+                    source: self.buildBridgeUserScript(accountId: accountId),
                     injectionTime: .atDocumentStart,
                     forMainFrameOnly: false))
                 config.userContentController = contentController
@@ -253,9 +282,32 @@ public class VanceAccountWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigatio
         switch action {
         case "exportFile":
             self.handleExportFile(body)
+        case "setShareCredentials":
+            self.handleBridgeSetShareCredentials(body)
+        case "setProjectSnapshot":
+            self.handleBridgeSetProjectSnapshot(body)
         default:
             NSLog("[VanceFacelift] bridge: unknown action '\(action)'")
         }
+    }
+
+    private func handleBridgeSetShareCredentials(_ body: [String: Any]) {
+        guard let accountId = body["accountId"] as? String, !accountId.isEmpty,
+              let credentialsJson = body["credentialsJson"] as? String else {
+            NSLog("[VanceFacelift] bridge setShareCredentials: invalid payload")
+            return
+        }
+        writeShareCredentialsMerged(accountId: accountId, credentialsJson: credentialsJson)
+    }
+
+    private func handleBridgeSetProjectSnapshot(_ body: [String: Any]) {
+        guard let accountId = body["accountId"] as? String, !accountId.isEmpty,
+              let projectsJson = body["projectsJson"] as? String else {
+            NSLog("[VanceFacelift] bridge setProjectSnapshot: invalid payload")
+            return
+        }
+        let safeId = accountId.replacingOccurrences(of: "/", with: "_")
+        writeShareFileBackground(name: "projects-\(safeId).json", contents: projectsJson)
     }
 
     private func handleExportFile(_ body: [String: Any]) {
@@ -328,6 +380,140 @@ public class VanceAccountWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigatio
             return
         }
         decisionHandler(.allow)
+    }
+
+    // MARK: - Share-Extension snapshot bridge
+
+    /// App-Group identifier shared between the wrapper and the
+    /// Share-Extension target. Must match the `com.apple.security.
+    /// application-groups` entitlement on both. Update both places
+    /// together if you ever rename it.
+    private let appGroupId = "group.de.mhus.vance.facelift"
+
+    private func appGroupContainerURL() -> URL? {
+        return FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: self.appGroupId)
+    }
+
+    /// Wrapper writes the account-list snapshot on every accountStore
+    /// mutation. Extension reads `accounts.json` to populate its
+    /// account picker.
+    @objc func setAccountSnapshot(_ call: CAPPluginCall) {
+        guard let json = call.getString("accountsJson") else {
+            call.reject("accountsJson required")
+            return
+        }
+        writeShareFile(call: call, name: "accounts.json", contents: json)
+    }
+
+    /// Vance-face writes a long-lived bearer token + identity for the
+    /// active account once the user has signed in. Stored under
+    /// `credentials.json` keyed by `accountId` so multiple accounts'
+    /// credentials coexist; subsequent writes replace just their own
+    /// entry rather than overwriting the whole file.
+    @objc func setShareCredentials(_ call: CAPPluginCall) {
+        guard let accountId = call.getString("accountId"),
+              let credentialsJson = call.getString("credentialsJson") else {
+            call.reject("accountId + credentialsJson required")
+            return
+        }
+        writeShareCredentialsMerged(
+            accountId: accountId,
+            credentialsJson: credentialsJson,
+            onResolve: { call.resolve() },
+            onReject: { msg in call.reject(msg) })
+    }
+
+    /// Shared body for both the Capacitor plugin entry-point
+    /// ({@link setShareCredentials}) and the WKScriptMessageHandler
+    /// bridge case ({@code setShareCredentials}). The two callers
+    /// differ in how they report results — the Capacitor plugin has
+    /// a {@code CAPPluginCall} to resolve/reject, the bridge has no
+    /// reply channel and just logs failures.
+    private func writeShareCredentialsMerged(
+        accountId: String,
+        credentialsJson: String,
+        onResolve: @escaping () -> Void = {},
+        onReject: @escaping (String) -> Void = { msg in
+            NSLog("[VanceFacelift] setShareCredentials: \(msg)")
+        }
+    ) {
+        guard let containerURL = appGroupContainerURL() else {
+            onReject("App Group '\(appGroupId)' is not configured — add the capability in Xcode → Signing & Capabilities → App Groups")
+            return
+        }
+        DispatchQueue.global(qos: .userInitiated).async {
+            let file = containerURL.appendingPathComponent("credentials.json")
+            do {
+                var merged: [String: Any] = [:]
+                if let existing = try? Data(contentsOf: file),
+                   let parsed = try JSONSerialization.jsonObject(with: existing) as? [String: Any] {
+                    merged = parsed
+                }
+                guard let incomingData = credentialsJson.data(using: .utf8),
+                      let incoming = try JSONSerialization.jsonObject(with: incomingData) as? [String: Any] else {
+                    throw NSError(domain: "VanceFacelift", code: 1,
+                                  userInfo: [NSLocalizedDescriptionKey: "credentialsJson is not a JSON object"])
+                }
+                merged[accountId] = incoming
+                let out = try JSONSerialization.data(withJSONObject: merged,
+                                                     options: [.prettyPrinted, .sortedKeys])
+                try out.write(to: file, options: .atomic)
+                DispatchQueue.main.async { onResolve() }
+            } catch {
+                DispatchQueue.main.async {
+                    onReject("setShareCredentials write failed: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    /// Vance-face writes the per-account project list after fetching
+    /// `/projects`. Extension reads `projects-<accountId>.json` to
+    /// populate its project picker once the account is chosen.
+    @objc func setProjectSnapshot(_ call: CAPPluginCall) {
+        guard let accountId = call.getString("accountId"),
+              let projectsJson = call.getString("projectsJson") else {
+            call.reject("accountId + projectsJson required")
+            return
+        }
+        let safeId = accountId.replacingOccurrences(of: "/", with: "_")
+        writeShareFile(call: call,
+                       name: "projects-\(safeId).json",
+                       contents: projectsJson)
+    }
+
+    private func writeShareFile(call: CAPPluginCall, name: String, contents: String) {
+        writeShareFileBackground(
+            name: name,
+            contents: contents,
+            onResolve: { call.resolve() },
+            onReject: { msg in call.reject(msg) })
+    }
+
+    private func writeShareFileBackground(
+        name: String,
+        contents: String,
+        onResolve: @escaping () -> Void = {},
+        onReject: @escaping (String) -> Void = { msg in
+            NSLog("[VanceFacelift] writeShareFile: \(msg)")
+        }
+    ) {
+        guard let containerURL = appGroupContainerURL() else {
+            onReject("App Group '\(appGroupId)' is not configured — add the capability in Xcode → Signing & Capabilities → App Groups")
+            return
+        }
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                let file = containerURL.appendingPathComponent(name)
+                try contents.write(to: file, atomically: true, encoding: .utf8)
+                DispatchQueue.main.async { onResolve() }
+            } catch {
+                DispatchQueue.main.async {
+                    onReject("write '\(name)' failed: \(error.localizedDescription)")
+                }
+            }
+        }
     }
 
     @objc func remove(_ call: CAPPluginCall) {

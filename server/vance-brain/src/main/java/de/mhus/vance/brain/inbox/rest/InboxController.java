@@ -1,11 +1,14 @@
 package de.mhus.vance.brain.inbox.rest;
 
 import de.mhus.vance.api.inbox.AnswerPayload;
+import de.mhus.vance.api.inbox.Criticality;
 import de.mhus.vance.api.inbox.InboxAnswerRequest;
 import de.mhus.vance.api.inbox.InboxDelegateRequest;
 import de.mhus.vance.api.inbox.InboxItemDto;
 import de.mhus.vance.api.inbox.InboxItemStatus;
+import de.mhus.vance.api.inbox.InboxItemType;
 import de.mhus.vance.api.inbox.InboxListResponse;
+import de.mhus.vance.api.inbox.InboxShareRequest;
 import de.mhus.vance.api.inbox.InboxTagsResponse;
 import de.mhus.vance.api.inbox.ResolvedBy;
 import de.mhus.vance.brain.inbox.InboxMapper;
@@ -15,15 +18,20 @@ import de.mhus.vance.shared.inbox.InboxItemDocument;
 import de.mhus.vance.shared.inbox.InboxItemService;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
+import de.mhus.vance.shared.project.ProjectDocument;
+import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.team.TeamDocument;
 import de.mhus.vance.shared.team.TeamService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import org.apache.commons.lang3.StringUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -63,6 +71,7 @@ public class InboxController {
 
     private final InboxItemService inboxItemService;
     private final TeamService teamService;
+    private final ProjectService projectService;
     private final RequestAuthority authority;
 
     // ──────────────────── Read ────────────────────
@@ -215,6 +224,66 @@ public class InboxController {
                         tenant, id, request.getToUserId(), currentUser, request.getNote())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         return ResponseEntity.ok(InboxMapper.toDto(updated));
+    }
+
+    /**
+     * Drop a shared item (text / URL / note) into the authenticated
+     * user's inbox, scoped to the chosen project. Endpoint used by
+     * the iOS Share-Extension in {@code @vance/facelift-bridge} —
+     * the extension authenticates with a long-lived bearer token
+     * minted at login time and stored in the App-Group keychain.
+     *
+     * <p>The item is created as an {@link InboxItemType#OUTPUT_TEXT}
+     * with {@code requiresAction=false} so the inbox treats it as a
+     * delivered note the user can read, archive, move to Documents,
+     * or attach to a chat later. The project association lives in
+     * the payload (under {@code projectName}) and as a tag prefix
+     * (so the existing tag-filter UI picks it up).
+     */
+    @PostMapping("/brain/{tenant}/share/inbox")
+    public ResponseEntity<InboxItemDto> shareInbox(
+            @PathVariable("tenant") String tenant,
+            @Valid @RequestBody InboxShareRequest request,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.READ);
+        String currentUser = currentUser(httpRequest);
+
+        ProjectDocument project = projectService
+                .findByTenantAndName(tenant, request.getProjectName())
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Project not found: " + request.getProjectName()));
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("projectName", project.getName());
+        payload.put("source", "share-extension");
+        if (StringUtils.isNotBlank(request.getSharedUrl())) {
+            payload.put("sharedUrl", request.getSharedUrl());
+        }
+
+        List<String> tags = new ArrayList<>();
+        tags.add("share");
+        tags.add("project:" + project.getName());
+
+        String title = StringUtils.defaultIfBlank(request.getTitle(), "Shared item");
+
+        InboxItemDocument toCreate = InboxItemDocument.builder()
+                .tenantId(tenant)
+                .originatorUserId(currentUser)
+                .assignedToUserId(currentUser)
+                .type(InboxItemType.OUTPUT_TEXT)
+                .criticality(Criticality.NORMAL)
+                .status(InboxItemStatus.PENDING)
+                .requiresAction(false)
+                .title(title)
+                .body(request.getBody())
+                .tags(tags)
+                .payload(payload)
+                .build();
+
+        InboxItemDocument created = inboxItemService.create(toCreate);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(InboxMapper.toDto(created));
     }
 
     // ──────────────────── Authorization helpers ────────────────────

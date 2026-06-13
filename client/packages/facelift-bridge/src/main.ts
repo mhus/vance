@@ -3,6 +3,7 @@ import { Capacitor } from '@capacitor/core';
 import { SplashScreen } from '@capacitor/splash-screen';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import App from './App.vue';
+import { listAccounts, pushSnapshotToShareExtension } from './accounts/accountStore';
 import { createAppRouter } from './router';
 import './style.css';
 
@@ -25,5 +26,9 @@ if (Capacitor.isNativePlatform()) {
     } catch (e) {
       console.warn('SplashScreen.hide failed', e);
     }
+    // Re-push the account list to the App-Group container so the
+    // Share-Extension always sees the latest set even when no
+    // mutation happened this session.
+    void pushSnapshotToShareExtension(await listAccounts());
   })();
 }

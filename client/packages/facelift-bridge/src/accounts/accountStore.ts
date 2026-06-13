@@ -1,4 +1,5 @@
 import { Preferences } from '@capacitor/preferences';
+import { VanceAccountWebView } from '@vance/facelift-account-webview';
 
 /**
  * One account = one Brain server the user has chosen to point this
@@ -42,6 +43,31 @@ export async function listAccounts(): Promise<Account[]> {
 
 async function saveAll(accounts: Account[]): Promise<void> {
   await Preferences.set({ key: KEY_LIST, value: JSON.stringify(accounts) });
+  await pushSnapshotToShareExtension(accounts);
+}
+
+/**
+ * Mirror the account list into the App-Group container so the iOS
+ * Share-Extension target can populate its account picker. Stripped
+ * to the fields the extension actually needs ({@code id, brainUrl,
+ * displayName}) — credentials + project list come from the website
+ * via separate bridge calls. Silently no-ops when the App Group
+ * isn't configured yet (first install before the user has added the
+ * capability in Xcode).
+ */
+export async function pushSnapshotToShareExtension(accounts: Account[]): Promise<void> {
+  try {
+    const snapshot = accounts.map((a) => ({
+      id: a.id,
+      brainUrl: a.brainUrl,
+      displayName: a.displayName,
+    }));
+    await VanceAccountWebView.setAccountSnapshot({
+      accountsJson: JSON.stringify(snapshot),
+    });
+  } catch (e) {
+    console.warn('[facelift] account snapshot push failed', e);
+  }
 }
 
 export async function getAccount(id: string): Promise<Account | null> {

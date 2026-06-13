@@ -130,6 +130,47 @@ URL scheme registration in `Info.plist` is a single
 `vance-facelift://` namespace, so no extra registration is needed
 per action.
 
+## iOS Share-Extension ("Send to Vance")
+
+The wrapper ships an iOS Share-Extension under
+`ios-template/VanceShareExtension/`. Setting up the Xcode target is
+a one-time manual step — see
+[`ios-template/VanceShareExtension/README.md`](./ios-template/VanceShareExtension/README.md)
+for the click-through.
+
+Architecture overview (Variante A — direct send to brain):
+
+```
+Safari/Notes/Photos             iOS Share sheet              VanceShareExtension
+  share button  ─────────────►  tap "Vance"  ──────────────► Compose sheet
+                                                              ├─ Account picker
+                                                              ├─ Project picker
+                                                              └─ Text input
+                                                                  │
+                                                                  ▼
+                                                              POST /brain/{tenant}/share/inbox
+                                                              (Bearer token from App-Group)
+                                                                  │
+                                                                  ▼
+                                                              Inbox-Item created
+```
+
+The extension reads its picker options + credentials from the
+**App-Group container** that the main app keeps refreshed:
+
+- `accounts.json` — written by `accountStore.saveAll()` whenever the
+  user adds/removes/edits an account.
+- `credentials.json` — written by `vance-face`'s `loginWeb.ts` after
+  every successful login or silent-refresh. Keyed by `accountId`.
+- `projects-<accountId>.json` — written by `vance-face`'s
+  `useTenantProjects.reload()` after every `/projects` fetch.
+
+The App-Group identifier is `group.de.mhus.vance.facelift` — declared
+in `ios-template/App.entitlements` (main app) and
+`ios-template/VanceShareExtension/VanceShareExtension.entitlements`
+(extension). Both targets must enable the **App Groups** capability
+in Xcode → Signing & Capabilities.
+
 ## File map
 
 ```

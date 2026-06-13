@@ -12,7 +12,7 @@
     "assets:regenerate-png": "qlmanage -t -s 1024 -o assets assets/icon-source.svg && qlmanage -t -s 2732 -o assets assets/splash-source.svg && mv assets/icon-source.svg.png assets/icon-only.png && mv assets/splash-source.svg.png assets/splash.png && cp assets/splash.png assets/splash-dark.png",
     "assets:generate": "capacitor-assets generate --ios",
     "cap:sync": "cap sync",
-    "cap:add:ios": "cap add ios || true; sed -i '' \"s/platform :ios, '[0-9.]*'/platform :ios, '17.0'/\" ios/App/Podfile && sed -i '' \"s/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*;/IPHONEOS_DEPLOYMENT_TARGET = 17.0;/g\" ios/App/App.xcodeproj/project.pbxproj && plutil -remove CFBundleURLTypes ios/App/App/Info.plist 2>/dev/null; plutil -insert CFBundleURLTypes -json '[{\"CFBundleURLSchemes\":[\"vance-facelift\"]}]' ios/App/App/Info.plist && plutil -replace NSCameraUsageDescription -string \"Vance uses the camera so you can attach photos to documents and chat messages.\" ios/App/App/Info.plist && plutil -replace NSPhotoLibraryUsageDescription -string \"Vance uses your photo library so you can attach pictures to documents and chat messages.\" ios/App/App/Info.plist && cd ios/App && pod install && cd ../.. && pnpm assets:generate",
+    "cap:add:ios": "bash scripts/cap-add-ios.sh",
     "cap:open:ios": "cap open ios",
     "cap:run:ios": "cap run ios --livereload --external",
     "clean": "rm -rf dist *.tsbuildinfo"

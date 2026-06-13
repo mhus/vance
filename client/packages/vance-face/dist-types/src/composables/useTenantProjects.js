@@ -1,5 +1,6 @@
 import { ref } from 'vue';
 import { brainFetch } from '@vance/shared';
+import { pushProjectSnapshot } from '@/platform/faceliftShareSetup';
 /**
  * Loads the tenant's project groups and projects once. Used by the project
  * selector in the document editor (and any future editor that needs the same
@@ -17,6 +18,9 @@ export function useTenantProjects() {
             const data = await brainFetch('GET', 'projects');
             groups.value = data.groups ?? [];
             projects.value = data.projects ?? [];
+            // No-op outside Facelift; otherwise persists the list so the
+            // iOS Share-Extension's project picker stays in sync.
+            pushProjectSnapshot(projects.value);
         }
         catch (e) {
             error.value = e instanceof Error ? e.message : 'Failed to load projects.';

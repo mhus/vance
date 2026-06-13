@@ -297,7 +297,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="h-screen overflow-hidden flex flex-col bg-base-200">
+  <div class="h-screen h-dvh overflow-hidden flex flex-col bg-base-200">
     <EditorTopbar
       :title="title"
       :breadcrumbs="breadcrumbs"

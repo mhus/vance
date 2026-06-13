@@ -110,38 +110,20 @@ declare const __VLS_component: import("vue").DefineComponent<__VLS_PublicProps, 
     "update:selectedProject": (value: string | null) => any;
     "update:selectedNode": (value: PickerNode | null) => any;
 } & {
-    "project-pick": (payload: {
-        name: string;
-        title: string;
-    }) => any;
-    "group-pick": (payload: {
-        name: string;
-        title: string;
-    }) => any;
-    "focus-main": () => any;
-    "data-changed": (payload: {
-        kind: "group" | "project";
-        name: string;
-    }) => any;
+    "focus-main": any;
+    "project-pick": any;
+    "group-pick": any;
+    "data-changed": any;
 }, string, import("vue").PublicProps, Readonly<__VLS_PublicProps> & Readonly<{
     "onUpdate:selectedProject"?: ((value: string | null) => any) | undefined;
+    "onFocus-main"?: ((...args: any) => any) | undefined;
+    "onProject-pick"?: ((...args: any) => any) | undefined;
     "onUpdate:selectedNode"?: ((value: PickerNode | null) => any) | undefined;
-    "onProject-pick"?: ((payload: {
-        name: string;
-        title: string;
-    }) => any) | undefined;
-    "onGroup-pick"?: ((payload: {
-        name: string;
-        title: string;
-    }) => any) | undefined;
-    "onFocus-main"?: (() => any) | undefined;
-    "onData-changed"?: ((payload: {
-        kind: "group" | "project";
-        name: string;
-    }) => any) | undefined;
+    "onGroup-pick"?: ((...args: any) => any) | undefined;
+    "onData-changed"?: ((...args: any) => any) | undefined;
 }>, {
-    error: string | null;
     loading: boolean;
+    error: string | null;
     searchEnabled: boolean;
     editEnabled: boolean;
     showGroupRows: boolean;

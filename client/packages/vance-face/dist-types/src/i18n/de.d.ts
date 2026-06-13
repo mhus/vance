@@ -58,6 +58,7 @@ declare const _default: {
             connected: string;
             occupied: string;
             idle: string;
+            reconnecting: string;
         };
         menu: {
             languageHeader: string;

@@ -70,6 +70,7 @@ export default {
             connected: 'Connected — live',
             occupied: 'Session is occupied by another connection',
             idle: 'Pick a session to start',
+            reconnecting: 'Connection paused — will reconnect on next send',
         },
         menu: {
             languageHeader: 'Language',

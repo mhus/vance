@@ -272,7 +272,7 @@ function truncate(s: string, max: number): string {
           :events-by-process="eventsByProcess"
           :collapsed-processes="collapsedProcesses"
           :expanded-events="expandedEvents"
-          @select-process="(id) => emit('select-process', id)"
+          @select-process="(id: string) => emit('select-process', id)"
           @toggle-process="toggleProcess"
           @toggle-event="toggleEvent"
         />

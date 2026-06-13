@@ -78,6 +78,13 @@ vance:
     # In prod, override with the reverse-proxy hostname:
     #   VANCE_WEB_PUBLICBASEURL=https://vance.example.com
     publicBaseUrl: ${VANCE_WEB_PUBLICBASEURL:http://localhost:9900}
+    cookies:
+      # Default 'false' so the local http://localhost:9900 dev flow works
+      # in browsers that strictly honour the Secure flag (Safari rejects
+      # Secure-cookies over plain http even on localhost; Chrome is lax
+      # and treats localhost as a secure context). Production deployments
+      # MUST set this to 'true' — see deployment/mini/k8s/configmap.yaml.
+      secure: ${VANCE_WEB_COOKIES_SECURE:false}
     search:
       log:
         # Per-call log document for web_search invocations under

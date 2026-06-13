@@ -13,6 +13,16 @@ const mode = ref('connecting');
 const errorMessage = ref(null);
 const socket = ref(null);
 const activeSessionId = ref(null);
+/**
+ * True after the live WS has closed but before a reconnect has run.
+ * In this state the editor stays mounted (composer text + ChatView
+ * scroll position survive) and the next user-initiated send goes
+ * through {@link ensureConnected} to transparently re-open the socket.
+ * Set back to false on successful reconnect; on reconnect-failure we
+ * fall through to {@code mode = 'failed'} so the existing Retry banner
+ * picks it up.
+ */
+const socketDown = ref(false);
 const mediation = ref(null);
 /**
  * Single-level back-stack: the session id we were bound to before the
@@ -21,12 +31,23 @@ const mediation = ref(null);
 const previousSessionId = ref(null);
 const username = computed(() => getUsername());
 const connectionState = computed(() => {
+    // socketDown wins over live: the session is still bound and the
+    // editor stays mounted, but the WS is gone until the next send. Spec
+    // §6.4 maps "disconnect with reconnect pending" to the grey idle dot.
+    if (mode.value === 'live' && socketDown.value)
+        return 'idle';
     if (mode.value === 'live')
         return 'connected';
     if (mode.value === 'occupied')
         return 'occupied';
     if (mode.value === 'picker' || mode.value === 'connecting')
         return 'idle';
+    return undefined;
+});
+const connectionTooltip = computed(() => {
+    if (mode.value === 'live' && socketDown.value) {
+        return t('header.connection.reconnecting');
+    }
     return undefined;
 });
 // ──────────────── Session-resolved state ────────────────
@@ -299,8 +320,11 @@ async function teardownCurrentSocket() {
 function attachSocketListeners(s) {
     onCloseUnsubscribe = s.onClose(() => {
         if (mode.value === 'live') {
-            mode.value = 'failed';
-            errorMessage.value = t('chat.connectionLost');
+            // Keep ChatView/Composer mounted (their local state — composer
+            // text, scroll position, in-flight uploads — would otherwise be
+            // discarded). {@link ensureConnected} re-opens the socket lazily
+            // on the next send.
+            socketDown.value = true;
         }
         else if (mode.value === 'picker' || mode.value === 'occupied') {
             mode.value = 'failed';
@@ -309,6 +333,78 @@ function attachSocketListeners(s) {
     });
     switchToUnsubscribe = s.on('switch-to', (data) => { void onSwitchTo(data); });
     progressUnsubscribe = s.on('process-progress', recordProgress);
+}
+/**
+ * Coalesced reconnect entry-point handed to ChatComposer. Returns
+ * {@code true} if the socket is (or becomes) usable, {@code false} if
+ * the reconnect failed — in which case {@code mode} has been flipped
+ * to {@code 'failed'} and the Retry banner is showing.
+ *
+ * <p>The composer calls this before each WS send when
+ * {@code socket.closed()}. Concurrent calls share the same in-flight
+ * promise so two near-simultaneous sends produce one reconnect.
+ */
+let reconnectInFlight = null;
+async function ensureConnected() {
+    if (!socketDown.value && socket.value && !socket.value.closed()) {
+        return true;
+    }
+    if (reconnectInFlight)
+        return reconnectInFlight;
+    reconnectInFlight = doReconnect();
+    try {
+        return await reconnectInFlight;
+    }
+    finally {
+        reconnectInFlight = null;
+    }
+}
+async function doReconnect() {
+    const sessionId = activeSessionId.value;
+    if (!sessionId) {
+        mode.value = 'failed';
+        errorMessage.value = t('chat.connectionLost');
+        return false;
+    }
+    let newSocket;
+    try {
+        newSocket = await openSocket();
+    }
+    catch (e) {
+        mode.value = 'failed';
+        errorMessage.value = e instanceof Error ? e.message : t('chat.connectionLost');
+        return false;
+    }
+    try {
+        await newSocket.send('session-resume', { sessionId });
+    }
+    catch (e) {
+        newSocket.close();
+        if (e instanceof WebSocketRequestError && e.errorCode === 409) {
+            mode.value = 'occupied';
+            errorMessage.value = t('chat.sessionOccupiedBy', { id: sessionId });
+        }
+        else {
+            mode.value = 'failed';
+            errorMessage.value = e instanceof Error ? e.message : t('chat.connectionLost');
+        }
+        return false;
+    }
+    // Drop subscribers bound to the dead socket; attach fresh ones to the
+    // new socket before swapping it into the reactive ref so ChatView's
+    // socket-watch sees the replacement and re-attaches its own.
+    const oldSocket = socket.value;
+    switchToUnsubscribe?.();
+    switchToUnsubscribe = null;
+    onCloseUnsubscribe?.();
+    onCloseUnsubscribe = null;
+    progressUnsubscribe?.();
+    progressUnsubscribe = null;
+    attachSocketListeners(newSocket);
+    socket.value = newSocket;
+    socketDown.value = false;
+    oldSocket?.close();
+    return true;
 }
 async function openAndBind(sessionId) {
     await teardownCurrentSocket();
@@ -516,6 +612,7 @@ const __VLS_1 = __VLS_asFunctionalComponent(__VLS_0, new __VLS_0({
     title: (__VLS_ctx.$t('chat.pageTitle')),
     breadcrumbs: (__VLS_ctx.breadcrumbs),
     connectionState: (__VLS_ctx.connectionState),
+    connectionTooltip: (__VLS_ctx.connectionTooltip),
     fullHeight: (true),
     focusModel: "auto",
     showSidebar: (__VLS_ctx.pickerMode),
@@ -529,6 +626,7 @@ const __VLS_2 = __VLS_1({
     title: (__VLS_ctx.$t('chat.pageTitle')),
     breadcrumbs: (__VLS_ctx.breadcrumbs),
     connectionState: (__VLS_ctx.connectionState),
+    connectionTooltip: (__VLS_ctx.connectionTooltip),
     fullHeight: (true),
     focusModel: "auto",
     showSidebar: (__VLS_ctx.pickerMode),
@@ -894,6 +992,7 @@ else if (__VLS_ctx.mode === 'connecting') {
             chatProjectId: (__VLS_ctx.chatProjectId),
             mediation: (__VLS_ctx.mediation),
             followUpSuggestion: (__VLS_ctx.followUpSuggestion),
+            ensureConnected: (__VLS_ctx.ensureConnected),
         }));
         const __VLS_92 = __VLS_91({
             ...{ 'onHub': {} },
@@ -909,6 +1008,7 @@ else if (__VLS_ctx.mode === 'connecting') {
             chatProjectId: (__VLS_ctx.chatProjectId),
             mediation: (__VLS_ctx.mediation),
             followUpSuggestion: (__VLS_ctx.followUpSuggestion),
+            ensureConnected: (__VLS_ctx.ensureConnected),
         }, ...__VLS_functionalComponentArgsRest(__VLS_91));
         let __VLS_94;
         let __VLS_95;
@@ -977,6 +1077,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             mediation: mediation,
             username: username,
             connectionState: connectionState,
+            connectionTooltip: connectionTooltip,
             chatProcessName: chatProcessName,
             chatProjectId: chatProjectId,
             pickerProjectName: pickerProjectName,
@@ -1003,6 +1104,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             onComposerFocusChanged: onComposerFocusChanged,
             onAcceptFollowUpFromView: onAcceptFollowUpFromView,
             onFollowUpAcceptedFromComposer: onFollowUpAcceptedFromComposer,
+            ensureConnected: ensureConnected,
             openAndBind: openAndBind,
             backToHub: backToHub,
             onSessionPicked: onSessionPicked,

@@ -56,8 +56,8 @@ declare const _default: import("vue").DefineComponent<import("vue").ExtractPropT
         default: boolean;
     };
 }>> & Readonly<{}>, {
-    inline: boolean;
     source: string | null;
+    inline: boolean;
 }, {}, {}, {}, string, import("vue").ComponentProvideOptions, true, {}, any>;
 export default _default;
 //# sourceMappingURL=MarkdownView.vue.d.ts.map

@@ -314,8 +314,24 @@ function onWizardDeepLink(ev) {
 }
 // ──────────────── Lifecycle ────────────────
 const subscriptions = [];
-onMounted(async () => {
+function subscribeToSocket() {
+    // Replace any previous subscriptions in-place — used both on initial
+    // mount and after ChatApp swaps in a fresh socket via ensureConnected
+    // (server-side idle close followed by reconnect-on-send). The
+    // {@code socket} prop ref changes, our subscribers are still bound
+    // to the dead instance, hence the re-attach.
+    for (const off of subscriptions)
+        off();
+    subscriptions.length = 0;
     subscriptions.push(props.socket.on('chat-message-appended', appendMessageBubble), props.socket.on('chat-message-stream-chunk', appendChunk), props.socket.on('process-mode-changed', onProcessModeChanged), props.socket.on('todos-updated', onTodosUpdated), props.socket.on('plan-proposed', onPlanProposed));
+}
+watch(() => props.socket, (next, prev) => {
+    if (next === prev)
+        return;
+    subscribeToSocket();
+});
+onMounted(async () => {
+    subscribeToSocket();
     await Promise.all([
         load(props.sessionId),
         loadTenantProjects(),

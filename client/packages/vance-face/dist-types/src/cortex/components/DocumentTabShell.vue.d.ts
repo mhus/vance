@@ -5,9 +5,9 @@ interface Props {
     sessionId?: string | null;
 }
 declare const _default: import("vue").DefineComponent<Props, {}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {} & {
-    update: (text: string) => any;
+    update: any;
 }, string, import("vue").PublicProps, Readonly<Props> & Readonly<{
-    onUpdate?: ((text: string) => any) | undefined;
+    onUpdate?: ((...args: any) => any) | undefined;
 }>, {}, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;
 export default _default;
 //# sourceMappingURL=DocumentTabShell.vue.d.ts.map

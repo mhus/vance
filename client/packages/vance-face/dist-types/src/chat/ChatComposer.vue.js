@@ -1,6 +1,6 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { WebSocketRequestError, markdownToSpeech, MIN_RATE, MAX_RATE, MIN_VOLUME, MAX_VOLUME, } from '@vance/shared';
+import { WebSocketClosedError, WebSocketRequestError, markdownToSpeech, MIN_RATE, MAX_RATE, MIN_VOLUME, MAX_VOLUME, } from '@vance/shared';
 import { buildUtterance, isSpeechSynthesisSupported, } from '../platform/speechWeb';
 import { getSpeakerEnabled, getSpeechRate, getSpeechVolume, resolveSpeechLanguage, saveSpeakerEnabled, } from '../platform/speechSettings';
 import { uploadChatboxAttachments, ChatboxUploadError, } from '@composables/useChatboxUpload';
@@ -429,6 +429,16 @@ async function send() {
     selectedFiles.value = [];
     selectedDocs.value = [];
     try {
+        // The WS may have been closed by the server during idle. Try a
+        // transparent reconnect before failing the send — the user expects
+        // their click to land, not to hit a "connection lost" banner just
+        // because nothing happened on the connection for a while.
+        if (props.socket.closed() && props.ensureConnected) {
+            const reconnected = await props.ensureConnected();
+            if (!reconnected) {
+                throw new WebSocketClosedError('Reconnect failed');
+            }
+        }
         // Per-turn voice-mode signal — see specification/voice-mode.md.
         const voiceMode = speakerEnabled.value || talkMode.value;
         await props.socket.send('process-steer', {
@@ -440,6 +450,31 @@ async function send() {
     }
     catch (e) {
         emit('rollback-echo', optimisticId);
+        // Restore composer state so the user's input isn't lost (typical
+        // case: WebSocket closed silently while idle, send fails on the
+        // first frame). The textarea is not disabled during send, so the
+        // user may have typed something new in the meantime — prepend the
+        // failed text rather than overwrite, and dedupe re-added files/docs.
+        if (text) {
+            composerText.value = composerText.value
+                ? `${text}\n\n${composerText.value}`
+                : text;
+        }
+        if (filesSnapshot.length > 0) {
+            const fileKey = (f) => `${f.name}|${f.size}|${f.lastModified}`;
+            const existing = new Set(selectedFiles.value.map(fileKey));
+            selectedFiles.value = [
+                ...filesSnapshot.filter((f) => !existing.has(fileKey(f))),
+                ...selectedFiles.value,
+            ];
+        }
+        if (docsSnapshot.length > 0) {
+            const existing = new Set(selectedDocs.value.map((d) => d.documentId));
+            selectedDocs.value = [
+                ...docsSnapshot.filter((d) => !existing.has(d.documentId)),
+                ...selectedDocs.value,
+            ];
+        }
         if (e instanceof WebSocketRequestError) {
             sendError.value = `${e.message} (code ${e.errorCode})`;
         }

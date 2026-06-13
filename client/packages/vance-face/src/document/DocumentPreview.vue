@@ -18,15 +18,13 @@ const XlsxView = defineAsyncComponent(() => import('./XlsxView.vue'));
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
-interface Props {
+const props = defineProps<{
   documentId: string;
   mimeType?: string | null;
   /** True when the source is editable inline-text — preview steps
    *  out of the way for those (the editor handles them). */
   inline?: boolean;
-}
-
-const props = defineProps<Props>();
+}>();
 
 (pdfjsLib as unknown as { GlobalWorkerOptions: { workerSrc: string } })
   .GlobalWorkerOptions.workerSrc = pdfWorkerUrl as string;

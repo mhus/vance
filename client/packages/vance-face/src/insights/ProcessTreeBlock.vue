@@ -123,9 +123,9 @@ function chatRoleClass(label: string): string {
           :events-by-process="eventsByProcess"
           :collapsed-processes="collapsedProcesses"
           :expanded-events="expandedEvents"
-          @select-process="(id) => emit('select-process', id)"
-          @toggle-process="(id) => emit('toggle-process', id)"
-          @toggle-event="(pid, eid) => emit('toggle-event', pid, eid)"
+          @select-process="(id: string) => emit('select-process', id)"
+          @toggle-process="(id: string) => emit('toggle-process', id)"
+          @toggle-event="(pid: string, eid: string) => emit('toggle-event', pid, eid)"
         />
       </li>
     </ul>

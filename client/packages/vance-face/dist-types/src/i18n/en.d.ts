@@ -81,6 +81,10 @@ declare const _default: {
         loginFailed: string;
         loginFailedWithStatus: string;
         autoLoginFailed: string;
+        openInApp: {
+            message: string;
+            action: string;
+        };
         tenant: string;
         username: string;
         password: string;

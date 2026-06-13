@@ -1,11 +1,25 @@
 import { computed, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { clearLegacyAuth, clearRememberedLogin, getRememberedLogin, setRememberedLogin, } from '@vance/shared';
+import { clearLegacyAuth, clearRememberedLogin, getRememberedLogin, isFacelift, setRememberedLogin, } from '@vance/shared';
 import { getActiveUiLevel, getSessionData, hydrateIdentity, isAccessAlive, isRefreshAlive, login, LoginError, rankOf, refreshAccessCookie, } from '@/platform';
 import { setUiLocale } from '@/i18n';
 import { EditorShell, VAlert, VanceLogo, VButton, VCard, VCheckbox, VInput } from '@/components';
 const { t } = useI18n();
 const mode = ref('login');
+/**
+ * Show the "Open in Vance app" banner only when we're on a mobile
+ * browser AND not already in the Facelift wrapper. On Desktop the
+ * banner would never lead anywhere; inside Facelift it would be
+ * redundant. The custom URL-scheme tap silently no-ops when the
+ * app isn't installed.
+ */
+const showOpenInAppBanner = computed(() => {
+    if (typeof navigator === 'undefined')
+        return false;
+    if (isFacelift())
+        return false;
+    return /iPhone|iPad|iPod/i.test(navigator.userAgent);
+});
 const tenant = ref('default');
 const username = ref('');
 const password = ref('');
@@ -163,6 +177,21 @@ let __VLS_directives;
 /** @type {__VLS_StyleScopedClasses['tile-row']} */ ;
 // CSS variable injection 
 // CSS variable injection end 
+if (__VLS_ctx.showOpenInAppBanner) {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
+        href: "vance-facelift://",
+        ...{ class: "block w-full bg-primary text-primary-content no-underline" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "mx-auto flex max-w-md items-center justify-between px-4 py-2 text-sm" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+    (__VLS_ctx.$t('login.openInApp.message'));
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+        ...{ class: "font-semibold underline-offset-2" },
+    });
+    (__VLS_ctx.$t('login.openInApp.action'));
+}
 if (__VLS_ctx.mode === 'auto-login') {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "hero min-h-screen bg-base-200" },
@@ -479,6 +508,21 @@ else {
     }
     var __VLS_43;
 }
+/** @type {__VLS_StyleScopedClasses['block']} */ ;
+/** @type {__VLS_StyleScopedClasses['w-full']} */ ;
+/** @type {__VLS_StyleScopedClasses['bg-primary']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-primary-content']} */ ;
+/** @type {__VLS_StyleScopedClasses['no-underline']} */ ;
+/** @type {__VLS_StyleScopedClasses['mx-auto']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['max-w-md']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['justify-between']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-4']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-semibold']} */ ;
+/** @type {__VLS_StyleScopedClasses['underline-offset-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['hero']} */ ;
 /** @type {__VLS_StyleScopedClasses['min-h-screen']} */ ;
 /** @type {__VLS_StyleScopedClasses['bg-base-200']} */ ;
@@ -574,6 +618,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             VCheckbox: VCheckbox,
             VInput: VInput,
             mode: mode,
+            showOpenInAppBanner: showOpenInAppBanner,
             tenant: tenant,
             username: username,
             password: password,

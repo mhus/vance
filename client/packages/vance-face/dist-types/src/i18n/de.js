@@ -87,6 +87,10 @@ export default {
         loginFailed: 'Anmeldung fehlgeschlagen.',
         loginFailedWithStatus: 'Anmeldung fehlgeschlagen mit Status {status}.',
         autoLoginFailed: 'Automatische Anmeldung fehlgeschlagen. Bitte melden Sie sich erneut an.',
+        openInApp: {
+            message: 'Vance gibt es als iOS-App',
+            action: 'Öffnen',
+        },
         tenant: 'Mandant',
         username: 'Benutzername',
         password: 'Passwort',

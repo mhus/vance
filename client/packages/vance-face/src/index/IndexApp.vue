@@ -5,6 +5,7 @@ import {
   clearLegacyAuth,
   clearRememberedLogin,
   getRememberedLogin,
+  isFacelift,
   setRememberedLogin,
 } from '@vance/shared';
 import {
@@ -27,6 +28,19 @@ const { t } = useI18n();
 type Mode = 'login' | 'landing' | 'auto-login';
 
 const mode = ref<Mode>('login');
+/**
+ * Show the "Open in Vance app" banner only when we're on a mobile
+ * browser AND not already in the Facelift wrapper. On Desktop the
+ * banner would never lead anywhere; inside Facelift it would be
+ * redundant. The custom URL-scheme tap silently no-ops when the
+ * app isn't installed.
+ */
+const showOpenInAppBanner = computed<boolean>(() => {
+  if (typeof navigator === 'undefined') return false;
+  if (isFacelift()) return false;
+  return /iPhone|iPad|iPod/i.test(navigator.userAgent);
+});
+
 const tenant = ref('default');
 const username = ref('');
 const password = ref('');
@@ -184,6 +198,23 @@ function readNextParam(): string | null {
 </script>
 
 <template>
+  <!-- "Open in app" banner — only on the login page, only on iOS,
+       only when not already running inside the Facelift wrapper.
+       Slim, dismissible-by-tap: a single tap fires the
+       vance-facelift:// URL scheme. iOS routes to the app if it's
+       installed; if not, nothing visible happens (no App Store
+       deep-link yet — Vance isn't on the store). -->
+  <a
+    v-if="showOpenInAppBanner"
+    href="vance-facelift://"
+    class="block w-full bg-primary text-primary-content no-underline"
+  >
+    <div class="mx-auto flex max-w-md items-center justify-between px-4 py-2 text-sm">
+      <span>📱 {{ $t('login.openInApp.message') }}</span>
+      <span class="font-semibold underline-offset-2">{{ $t('login.openInApp.action') }} ›</span>
+    </div>
+  </a>
+
   <!-- Login is the one editor that runs *before* a tenant is known, so it
        cannot use <EditorShell> (which renders user/tenant in the topbar).
        The hero layout is the documented exception. -->

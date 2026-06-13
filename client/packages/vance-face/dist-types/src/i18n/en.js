@@ -93,6 +93,10 @@ export default {
         loginFailed: 'Login failed.',
         loginFailedWithStatus: 'Login failed with status {status}.',
         autoLoginFailed: 'Auto-login failed. Please sign in again.',
+        openInApp: {
+            message: 'Vance has a native iOS app',
+            action: 'Open',
+        },
         tenant: 'Tenant',
         username: 'Username',
         password: 'Password',

@@ -9,7 +9,7 @@ const route = useRoute();
 const router = useRouter();
 
 const accountId = ref<string>('');
-const brainUrl = ref<string>('');
+const faceUrl = ref<string>('');
 const displayName = ref<string>('');
 const submitting = ref(false);
 const error = ref<string | null>(null);
@@ -27,23 +27,23 @@ onMounted(async () => {
     return;
   }
   accountId.value = account.id;
-  brainUrl.value = account.brainUrl;
+  faceUrl.value = account.faceUrl;
   displayName.value = account.displayName;
 });
 
 async function onSubmit(): Promise<void> {
   if (submitting.value) return;
   error.value = null;
-  const url = brainUrl.value.trim();
+  const url = faceUrl.value.trim();
   if (url.length === 0) {
-    error.value = 'Brain URL is required.';
+    error.value = 'URL is required.';
     return;
   }
   try {
     // eslint-disable-next-line no-new
     new URL(url);
   } catch {
-    error.value = 'Brain URL is not a valid URL.';
+    error.value = 'Not a valid URL.';
     return;
   }
   submitting.value = true;
@@ -56,7 +56,7 @@ async function onSubmit(): Promise<void> {
       error.value = 'Account no longer exists.';
       return;
     }
-    if (url !== current.brainUrl) {
+    if (url !== current.faceUrl) {
       const verify = await verifyVanceUrl(url);
       if (!verify.ok) {
         error.value = `Not a Vance instance (${verify.reason ?? 'unknown'})`;
@@ -64,14 +64,14 @@ async function onSubmit(): Promise<void> {
       }
     }
     const result = await updateAccount(accountId.value, {
-      brainUrl: url,
+      faceUrl: url,
       displayName: displayName.value,
     });
     if (result === null) {
       error.value = 'Account no longer exists.';
       return;
     }
-    if (result.brainUrlChanged) {
+    if (result.faceUrlChanged) {
       // Wipe the cached native WebView + its persistent data store —
       // a new origin needs a clean cookie jar and the cached WebView
       // is still pointing at the old URL.
@@ -118,9 +118,9 @@ function onCancel(): void {
     </div>
     <form v-else class="flex-1 space-y-4 overflow-y-auto p-4" @submit.prevent="onSubmit">
       <label class="block">
-        <span class="mb-1 block text-xs uppercase tracking-wide text-gray-400">Brain URL</span>
+        <span class="mb-1 block text-xs uppercase tracking-wide text-gray-400">URL</span>
         <input
-          v-model="brainUrl"
+          v-model="faceUrl"
           type="url"
           autocomplete="off"
           autocapitalize="none"

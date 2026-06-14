@@ -73,7 +73,7 @@ async function onRemove(a: Account): Promise<void> {
   await removeAccount(a.id);
   // Tear down the cached native WebView for this account and wipe
   // its persistent WKWebsiteDataStore. A future re-add of the same
-  // brainUrl starts with a clean cookie jar.
+  // faceUrl starts with a clean cookie jar.
   await VanceAccountWebView.remove({ accountId: a.id });
   await refresh();
 }
@@ -125,7 +125,7 @@ const hasAccounts = computed(() => accounts.value.length > 0);
             @click="onEdit(a.id)"
           >
             <p class="truncate font-medium">{{ a.displayName }}</p>
-            <p class="mt-1 truncate text-xs text-gray-500">{{ a.brainUrl }}</p>
+            <p class="mt-1 truncate text-xs text-gray-500">{{ a.faceUrl }}</p>
             <p v-if="a.id === activeId" class="mt-1 text-xs text-blue-400">Active</p>
           </button>
           <button

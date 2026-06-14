@@ -43,7 +43,7 @@ const emit = defineEmits<{
           >
             <div class="min-w-0 flex-1">
               <p class="truncate font-medium">{{ a.displayName }}</p>
-              <p class="mt-0.5 truncate text-xs text-gray-500">{{ a.brainUrl }}</p>
+              <p class="mt-0.5 truncate text-xs text-gray-500">{{ a.faceUrl }}</p>
             </div>
             <span v-if="a.id === activeId" class="ml-3 text-blue-400">●</span>
           </button>

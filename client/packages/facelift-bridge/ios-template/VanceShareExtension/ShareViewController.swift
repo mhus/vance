@@ -90,10 +90,10 @@ class ShareViewController: SLComposeServiceViewController {
         else { return }
         self.accounts = raw.compactMap { dict in
             guard let id = dict["id"] as? String,
-                  let brainUrl = dict["brainUrl"] as? String,
+                  let faceUrl = dict["faceUrl"] as? String,
                   let displayName = dict["displayName"] as? String
             else { return nil }
-            return Account(id: id, brainUrl: brainUrl, displayName: displayName)
+            return Account(id: id, faceUrl: faceUrl, displayName: displayName)
         }
         // Auto-select if there's only one — saves a tap.
         if accounts.count == 1 {
@@ -126,11 +126,11 @@ class ShareViewController: SLComposeServiceViewController {
               let all = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let dict = all[accountId] as? [String: Any]
         else { return nil }
-        guard let brainUrl = dict["brainUrl"] as? String,
+        guard let faceUrl = dict["faceUrl"] as? String,
               let tenant = dict["tenant"] as? String,
               let token = dict["token"] as? String
         else { return nil }
-        return Credentials(brainUrl: brainUrl, tenant: tenant, token: token)
+        return Credentials(faceUrl: faceUrl, tenant: tenant, token: token)
     }
 
     // MARK: - Share-content extraction
@@ -200,7 +200,7 @@ class ShareViewController: SLComposeServiceViewController {
             extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
             return
         }
-        let urlString = "\(creds.brainUrl)/brain/\(creds.tenant)/share/inbox"
+        let urlString = "\(creds.faceUrl)/brain/\(creds.tenant)/share/inbox"
         guard let url = URL(string: urlString) else {
             extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
             return
@@ -236,7 +236,7 @@ class ShareViewController: SLComposeServiceViewController {
 
 private struct Account {
     let id: String
-    let brainUrl: String
+    let faceUrl: String
     let displayName: String
 }
 
@@ -246,7 +246,7 @@ private struct Project {
 }
 
 private struct Credentials {
-    let brainUrl: String
+    let faceUrl: String
     let tenant: String
     let token: String
 }

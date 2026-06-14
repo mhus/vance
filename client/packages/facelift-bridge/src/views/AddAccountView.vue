@@ -6,7 +6,7 @@ import { verifyVanceUrl } from '@/accounts/verifyVanceUrl';
 
 const router = useRouter();
 
-const brainUrl = ref('https://');
+const faceUrl = ref('https://');
 const displayName = ref('');
 const submitting = ref(false);
 const error = ref<string | null>(null);
@@ -14,16 +14,16 @@ const error = ref<string | null>(null);
 async function onSubmit(): Promise<void> {
   if (submitting.value) return;
   error.value = null;
-  const url = brainUrl.value.trim();
+  const url = faceUrl.value.trim();
   if (url.length === 0 || url === 'https://' || url === 'http://') {
-    error.value = 'Brain URL is required.';
+    error.value = 'URL is required.';
     return;
   }
   try {
     // eslint-disable-next-line no-new
     new URL(url);
   } catch {
-    error.value = 'Brain URL is not a valid URL.';
+    error.value = 'Not a valid URL.';
     return;
   }
   submitting.value = true;
@@ -44,7 +44,7 @@ async function onSubmit(): Promise<void> {
         ? displayName.value
         : (verify.config?.title?.trim() ?? '');
     await addAccount({
-      brainUrl: url,
+      faceUrl: url,
       displayName: finalDisplayName,
     });
     // addAccount auto-activates when this is the first entry, so
@@ -80,9 +80,9 @@ function onCancel(): void {
     </header>
     <form class="flex-1 space-y-4 overflow-y-auto p-4" @submit.prevent="onSubmit">
       <label class="block">
-        <span class="mb-1 block text-xs uppercase tracking-wide text-gray-400">Brain URL</span>
+        <span class="mb-1 block text-xs uppercase tracking-wide text-gray-400">URL</span>
         <input
-          v-model="brainUrl"
+          v-model="faceUrl"
           type="url"
           autocomplete="off"
           autocapitalize="none"

@@ -105,7 +105,7 @@ export interface VanceAccountWebViewPlugin {
    *  for one account. Stored under `credentials.json` keyed by
    *  `accountId`; subsequent writes replace just that account's
    *  entry. `credentialsJson` must encode an object with
-   *  `{brainUrl, tenant, username, token, refreshToken?}`. */
+   *  `{faceUrl, tenant, username, token, refreshToken?}`. */
   setShareCredentials(options: {
     accountId: string;
     credentialsJson: string;

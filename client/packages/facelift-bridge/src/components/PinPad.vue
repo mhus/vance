@@ -17,7 +17,14 @@ const emit = defineEmits<{
 
 function press(digit: string): void {
   if (props.value.length >= props.maxLength) return;
-  emit('update:value', props.value + digit);
+  const next = props.value + digit;
+  emit('update:value', next);
+  // Auto-submit when the user filled the max-length slot — saves a
+  // tap on 6-digit PINs. Shorter PINs (4–5 digits) still need an
+  // explicit Submit because we can't tell when the user is done.
+  if (next.length === props.maxLength) {
+    emit('submit');
+  }
 }
 
 function backspace(): void {

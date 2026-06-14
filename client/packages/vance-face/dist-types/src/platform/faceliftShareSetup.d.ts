@@ -11,7 +11,11 @@
  */
 import type { ProjectSummary } from '@vance/generated';
 export interface ShareCredentials {
-    brainUrl: string;
+    /** URL of the `vance-face` deployment (same-origin host of the
+     *  brain via the nginx `/brain/*` proxy). The Share-Extension
+     *  POSTs `<faceUrl>/brain/{tenant}/share/inbox` with these
+     *  credentials. */
+    faceUrl: string;
     tenant: string;
     username: string;
     /** Bearer access token. */
@@ -25,7 +29,7 @@ export interface ShareCredentials {
  * the App-Group container under the current account's ID. Stored
  * for the iOS Share-Extension target to use as a bearer header.
  */
-export declare function pushShareCredentials(opts: Omit<ShareCredentials, 'brainUrl'>): void;
+export declare function pushShareCredentials(opts: Omit<ShareCredentials, 'faceUrl'>): void;
 /**
  * Forward the project list to the App-Group container. Called from
  * `useTenantProjects.reload()` after a successful `/projects` fetch.

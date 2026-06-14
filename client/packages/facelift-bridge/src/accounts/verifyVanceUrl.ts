@@ -1,7 +1,7 @@
 import { CapacitorHttp } from '@capacitor/core';
 
 /**
- * Add-Account validation — checks that a user-supplied Brain URL
+ * Add-Account validation — checks that a user-supplied URL
  * actually points at a Vance deployment before persisting it.
  *
  * The check is a single GET to `<url>/config.json`, the file that
@@ -54,14 +54,23 @@ export async function verifyVanceUrl(url: string): Promise<VerifyResult> {
   } catch {
     return { ok: false, reason: 'not a valid URL' };
   }
-  const fullUrl = `${base}/config.json`;
+  // Cache-bust to defeat the iOS URLCache. Earlier failed attempts
+  // (the website wasn't redeployed yet, so /config.json fell through
+  // to nginx's SPA fallback returning index.html) get cached with
+  // their HTML body — without the query string the next attempt
+  // serves the stale HTML even after the server is fixed.
+  const fullUrl = `${base}/config.json?_=${Date.now()}`;
   let response;
   try {
     response = await CapacitorHttp.get({
       url: fullUrl,
       connectTimeout: 5000,
       readTimeout: 5000,
-      headers: { Accept: 'application/json' },
+      headers: {
+        Accept: 'application/json',
+        'Cache-Control': 'no-cache, no-store',
+        Pragma: 'no-cache',
+      },
     });
   } catch (e) {
     return {
@@ -72,17 +81,57 @@ export async function verifyVanceUrl(url: string): Promise<VerifyResult> {
   if (response.status !== 200) {
     return { ok: false, reason: `HTTP ${response.status}` };
   }
-  let parsed: VanceConfigJson;
-  try {
-    parsed =
-      typeof response.data === 'string'
-        ? (JSON.parse(response.data) as VanceConfigJson)
-        : (response.data as VanceConfigJson);
-  } catch {
-    return { ok: false, reason: 'response is not JSON' };
+  // The website's nginx usually has a `try_files … /index.html`
+  // SPA fallback — fetching a path that doesn't exist (like an
+  // outdated face without /config.json) returns 200 + the SPA's
+  // index.html. Catch that early via Content-Type before trying to
+  // parse the body, otherwise the "response is not JSON" error
+  // would point at random bytes the user can't act on.
+  const contentType = readHeader(response.headers, 'content-type');
+  if (contentType !== undefined && !contentType.toLowerCase().includes('json')) {
+    return {
+      ok: false,
+      reason: `expected JSON, got "${contentType}" — /config.json missing? Redeploy vance-face.`,
+    };
+  }
+  let parsed: VanceConfigJson | undefined;
+  const dataType = typeof response.data;
+  if (response.data !== null && response.data !== undefined && dataType === 'object') {
+    parsed = response.data as VanceConfigJson;
+  } else if (dataType === 'string') {
+    const text = response.data as string;
+    try {
+      parsed = JSON.parse(text) as VanceConfigJson;
+    } catch {
+      const excerpt = text.slice(0, 120).replace(/\s+/g, ' ');
+      return {
+        ok: false,
+        reason: `response is not JSON (got ${text.length} chars: "${excerpt}…")`,
+      };
+    }
+  } else {
+    return { ok: false, reason: `unexpected response type "${dataType}"` };
   }
   if (parsed?.product !== 'vance') {
-    return { ok: false, reason: 'not a Vance instance' };
+    return {
+      ok: false,
+      reason: `not a Vance instance (product=${JSON.stringify(parsed?.product)})`,
+    };
   }
   return { ok: true, config: parsed };
+}
+
+/** Case-insensitive header lookup — CapacitorHttp normalises header
+ *  case on iOS but returns them as-shipped on Android, and the JS
+ *  type is `Record<string, string>` either way. */
+function readHeader(
+  headers: Record<string, string> | undefined,
+  name: string,
+): string | undefined {
+  if (headers === undefined) return undefined;
+  const lower = name.toLowerCase();
+  for (const key of Object.keys(headers)) {
+    if (key.toLowerCase() === lower) return headers[key];
+  }
+  return undefined;
 }

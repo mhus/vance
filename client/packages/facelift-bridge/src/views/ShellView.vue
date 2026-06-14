@@ -166,7 +166,7 @@ async function presentActive(): Promise<void> {
   if (active.value === null) return;
   await VanceAccountWebView.present({
     accountId: active.value.id,
-    url: active.value.brainUrl,
+    url: active.value.faceUrl,
     ...currentBounds(),
   });
 }
@@ -205,7 +205,7 @@ async function onHome(): Promise<void> {
   if (active.value === null) return;
   await VanceAccountWebView.navigateHome({
     accountId: active.value.id,
-    url: active.value.brainUrl,
+    url: active.value.faceUrl,
   });
 }
 

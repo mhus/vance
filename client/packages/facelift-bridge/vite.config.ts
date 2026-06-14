@@ -16,14 +16,14 @@ export default defineConfig({
     port: 9901,
     // Dev-Server proxies /brain to the local Brain so REST + WS run
     // same-origin in the browser (`pnpm dev`). On-device, the Capacitor
-    // WebView talks to the explicit baseUrl in `vance.identity.brainUrl`
+    // WebView talks to the explicit faceUrl of the active account
     // and CORS must be configured on the Brain to allow
     // `capacitor://localhost`.
     proxy: {
       '/brain': {
         // Dev-server proxy target. Only relevant for `pnpm dev` —
         // the Capacitor WebView in production talks to the per-account
-        // brainUrl, not through this proxy.
+        // faceUrl, not through this proxy.
         target: 'http://localhost:9990',
         changeOrigin: true,
         ws: true,

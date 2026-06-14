@@ -2,9 +2,10 @@
 
 Thin Capacitor wrapper around the deployed Vance web UI. The bundle
 itself contains only an **account picker** — when the user taps an
-entry, the WebView navigates to the configured Brain URL (e.g.
-`https://eddie.mhus.de`) via `window.location.href`, and the live
-website takes over from there. Auth, editors, and all REST/WS traffic
+entry, the WebView loads the configured `vance-face` URL (e.g.
+`https://eddie.mhus.de`), and the live website takes over from there.
+The Vance brain is reachable from that same URL via the `/brain/*`
+paths that face's nginx proxies. Auth, editors, and all REST/WS traffic
 happen inside the website exactly as in a desktop browser.
 
 Replaces `@vance/vance-fingers` over the medium term — see
@@ -23,9 +24,9 @@ problem.
 What the wrapper adds on top of just "open Safari to
 `eddie.mhus.de`":
 
-- **Multi-Identity** — one row per Brain server. Each `brainUrl` is
-  its own WebView origin, so iOS keeps cookies, IndexedDB and Service
-  Workers separated automatically.
+- **Multi-Identity** — one row per Vance deployment. Each `faceUrl`
+  is its own WebView origin, so iOS keeps cookies, IndexedDB and
+  Service Workers separated automatically.
 - **App-Store distribution** — appears in the iOS App Store with its
   own icon, push entitlement, share-target, etc. (Push and share are
   Phase 5 — see planning doc.)
@@ -38,7 +39,7 @@ What the wrapper adds on top of just "open Safari to
 - Capacitor 6 + Vite + Vue 3 + Vue Router 4
 - Picker (`/#/`) + Add-Account (`/#/add`) screens
 - Account list persisted in `@capacitor/preferences` —
-  `{ id, brainUrl, displayName, createdAt, lastUsedAt }`
+  `{ id, faceUrl, displayName, createdAt, lastUsedAt }`
 - iOS only (Android scaffolding deferred)
 
 Explicit non-features in v1:
@@ -50,9 +51,10 @@ Explicit non-features in v1:
   WebView cold-starts back to the picker), or wait until Phase 2
   adds a "Back to picker" bridge plugin.
 - No push, no voice, no share — Phase 5+.
-- Multiple users on the **same** Brain origin share cookies; only
-  one is signed in at a time. Phase 2 considers per-account
-  `WKWebsiteDataStore` profiles.
+- Multiple users on the **same** origin share cookies in any
+  given WebView, but the `@vance/facelift-account-webview` plugin's
+  per-account `WKWebsiteDataStore(forIdentifier:)` keeps them
+  isolated across the picker entries.
 
 ## One-time iOS setup
 
@@ -67,7 +69,7 @@ pnpm cap:open:ios         # opens Xcode
 
 In Xcode: select a Simulator (e.g. iPhone 15), press Run. The
 wrapper boots straight into the empty picker — add an account
-pointing at any reachable Brain URL.
+pointing at any reachable Vance deployment URL.
 
 For dev-loop iteration:
 
@@ -183,14 +185,14 @@ src/
 │   └── accountStore.ts           Account[] CRUD over Capacitor Preferences
 └── views/
     ├── PickerView.vue            Account list, tap → window.location.href
-    └── AddAccountView.vue        Brain-URL + display-name form
+    └── AddAccountView.vue        URL + display-name form
 ```
 
 ## Why no `server.url` in capacitor.config.ts
 
 We deliberately ship the picker as bundled assets (`webDir: 'dist'`)
-rather than setting `server.url` to a remote Brain. With
-`server.url`, **every** WebView session would start at that one URL —
-killing the multi-identity story before it begins. Bundling the picker
-means cold-starts always land on `capacitor://localhost/index.html`
-and the user explicitly chooses which Brain to open.
+rather than setting `server.url` to a remote URL. With `server.url`,
+**every** WebView session would start at that one URL — killing the
+multi-identity story before it begins. Bundling the picker means
+cold-starts always land on `capacitor://localhost/index.html` and the
+user explicitly chooses which Vance deployment to open.

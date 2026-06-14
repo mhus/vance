@@ -292,16 +292,24 @@ async function submitCreateGroup() {
     }
 }
 async function submitCreateProject() {
-    const name = newProjectName.value.trim();
-    if (!name)
+    const raw = newProjectName.value.trim();
+    if (!raw)
         return;
+    // Project names are case-sensitive identifiers on the server side
+    // but humans frequently type "MyProject" expecting it to work like
+    // a label. Lowercase on submit, and — if the user's original typing
+    // carried any uppercase — promote that original spelling to `title`
+    // so the prettier form survives as the display name.
+    const name = raw.toLowerCase();
+    const titleInput = newProjectTitle.value.trim();
+    const title = titleInput || (raw !== name ? raw : undefined);
     creating.value = true;
     creationError.value = null;
     try {
         await brainFetch('POST', 'admin/projects', {
             body: {
                 name,
-                title: newProjectTitle.value.trim() || undefined,
+                title,
                 projectGroupId: newProjectGroupId.value || undefined,
                 teamIds: [],
                 // Only included when the host opted in via {@link Props.kitOptions}.

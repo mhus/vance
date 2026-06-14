@@ -16,7 +16,7 @@ export function pushShareCredentials(opts) {
     if (b?.setShareCredentials === undefined)
         return;
     b.setShareCredentials({
-        brainUrl: brainBaseUrl(),
+        faceUrl: brainBaseUrl(),
         tenant: opts.tenant,
         username: opts.username,
         token: opts.token,

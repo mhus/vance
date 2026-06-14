@@ -19,7 +19,11 @@ interface FaceliftBridge {
 }
 
 export interface ShareCredentials {
-  brainUrl: string;
+  /** URL of the `vance-face` deployment (same-origin host of the
+   *  brain via the nginx `/brain/*` proxy). The Share-Extension
+   *  POSTs `<faceUrl>/brain/{tenant}/share/inbox` with these
+   *  credentials. */
+  faceUrl: string;
   tenant: string;
   username: string;
   /** Bearer access token. */
@@ -46,11 +50,11 @@ function bridge(): FaceliftBridge | null {
  * the App-Group container under the current account's ID. Stored
  * for the iOS Share-Extension target to use as a bearer header.
  */
-export function pushShareCredentials(opts: Omit<ShareCredentials, 'brainUrl'>): void {
+export function pushShareCredentials(opts: Omit<ShareCredentials, 'faceUrl'>): void {
   const b = bridge();
   if (b?.setShareCredentials === undefined) return;
   b.setShareCredentials({
-    brainUrl: brainBaseUrl(),
+    faceUrl: brainBaseUrl(),
     tenant: opts.tenant,
     username: opts.username,
     token: opts.token,

@@ -127,10 +127,10 @@ declare const __VLS_component: import("vue").DefineComponent<__VLS_PublicProps, 
     "onUpdate:focusZone"?: ((value: FocusZone) => any) | undefined;
 }>, {
     breadcrumbs: Crumb[];
-    helpOpen: boolean;
-    titleClickable: boolean;
     wideRightPanel: boolean;
     fullHeight: boolean;
+    helpOpen: boolean;
+    titleClickable: boolean;
     focusModel: "off" | "auto";
 }, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;
 declare const _default: __VLS_WithSlots<typeof __VLS_component, __VLS_Slots>;

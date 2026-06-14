@@ -65,6 +65,21 @@ class WebFetchToolTest {
     }
 
     @Test
+    void parseFlags_recognises_insecure_opt_in() {
+        // 'insecure' is the explicit opt-out from TLS verification for
+        // sites with broken cert chains (e.g. leaf-only certificates
+        // where AIA chasing also fails). Has to be parseable — must
+        // not be silently dropped — otherwise the caller's "skip TLS"
+        // intent is lost and the fetch fails with the same PKIX error
+        // it was trying to bypass.
+        assertThat(WebFetchTool.parseFlags("insecure"))
+                .containsExactly(WebFetchTool.FLAG_INSECURE);
+        assertThat(WebFetchTool.parseFlags("raw, insecure"))
+                .containsExactlyInAnyOrder(
+                        WebFetchTool.FLAG_RAW, WebFetchTool.FLAG_INSECURE);
+    }
+
+    @Test
     void parseFlags_keeps_text_token_as_no_op_for_backwards_compat() {
         // 'text' used to flip text-extraction on; now text is the
         // default and the flag is a documented no-op. Old callers

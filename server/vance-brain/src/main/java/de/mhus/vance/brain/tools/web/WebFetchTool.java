@@ -68,7 +68,16 @@ public class WebFetchTool implements Tool {
      * both prefer.
      */
     static final String FLAG_RAW = "raw";
-    private static final Set<String> KNOWN_FLAGS = Set.of(FLAG_NO_LLMS, FLAG_TEXT, FLAG_RAW);
+    /**
+     * Skip TLS certificate / hostname verification for this single
+     * call. Opt-in escape hatch for sites with broken cert chains —
+     * e.g. a leaf-only certificate without the intermediate, where
+     * even AIA chasing fails. Caller-acknowledged, logged. Never
+     * defaulted on, never set by the engine on its own initiative.
+     */
+    static final String FLAG_INSECURE = "insecure";
+    private static final Set<String> KNOWN_FLAGS =
+            Set.of(FLAG_NO_LLMS, FLAG_TEXT, FLAG_RAW, FLAG_INSECURE);
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
@@ -87,10 +96,13 @@ public class WebFetchTool implements Tool {
                                     + "verbatim instead of the default extracted body "
                                     + "text (use only when you need tag structure, "
                                     + "scripts, or meta-data); 'no-llms' skips the "
-                                    + "per-origin llms.txt overview probe; 'text' is "
-                                    + "a legacy no-op (text extraction is now the "
-                                    + "default for HTML pages). Unknown tokens are "
-                                    + "ignored.")),
+                                    + "per-origin llms.txt overview probe; 'insecure' "
+                                    + "skips TLS certificate verification for this "
+                                    + "call only — use sparingly, only when the user "
+                                    + "explicitly asks for it on a site with a known-"
+                                    + "broken certificate chain; 'text' is a legacy "
+                                    + "no-op (text extraction is now the default for "
+                                    + "HTML pages). Unknown tokens are ignored.")),
             "required", List.of("url"));
 
     private final HttpClient http = HttpClient.newBuilder()
@@ -128,7 +140,10 @@ public class WebFetchTool implements Tool {
                 + "Optional 'flags' parameter — comma- or space-separated "
                 + "tokens — controls behaviour: 'raw' opts out of HTML "
                 + "text extraction and returns the original markup; "
-                + "'no-llms' skips the originOverview probe entirely.";
+                + "'no-llms' skips the originOverview probe entirely; "
+                + "'insecure' skips TLS certificate verification for "
+                + "this one call — only use when the user has explicitly "
+                + "asked to bypass a known-broken cert chain.";
     }
 
     @Override
@@ -184,7 +199,14 @@ public class WebFetchTool implements Tool {
                     .timeout(REQUEST_TIMEOUT)
                     .GET()
                     .build();
-            HttpResponse<String> response = http.send(
+            HttpClient client = flags.contains(FLAG_INSECURE)
+                    ? InsecureHttpClientFactory.client()
+                    : http;
+            if (flags.contains(FLAG_INSECURE)) {
+                log.warn("WebFetchTool tenant='{}' url='{}' — TLS verification disabled (insecure flag)",
+                        ctx.tenantId(), truncate(rawUrl, 120));
+            }
+            HttpResponse<String> response = client.send(
                     request, HttpResponse.BodyHandlers.ofString());
 
             String body = response.body() == null ? "" : response.body();

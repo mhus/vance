@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.tools.document;
 
 import de.mhus.vance.brain.tools.eddie.EddieContext;
+import de.mhus.vance.brain.tools.web.InsecureHttpClientFactory;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -83,7 +84,18 @@ public class DocImportUrlTool implements Tool {
                                     + "PDFs) where the auto-summary "
                                     + "scheduler doesn't run. Slideshows "
                                     + "fall back to this when no caption "
-                                    + "is set in the manifest.")),
+                                    + "is set in the manifest."),
+                    "insecure", Map.of(
+                            "type", "boolean",
+                            "description", "Skip TLS certificate "
+                                    + "verification for this single fetch. "
+                                    + "Opt-in escape hatch for sites with "
+                                    + "broken cert chains — e.g. a leaf-"
+                                    + "only certificate without the "
+                                    + "intermediate, where AIA chasing "
+                                    + "also fails. Only set when the user "
+                                    + "explicitly asks; the call is logged "
+                                    + "as a warning.")),
             "required", List.of("url"));
 
     private final HttpClient http = HttpClient.newBuilder()
@@ -160,6 +172,7 @@ public class DocImportUrlTool implements Tool {
 
         ProjectDocument project = eddieContext.resolveProject(params, ctx, false);
 
+        boolean insecure = paramBoolean(params, "insecure");
         byte[] body;
         String contentType;
         int status;
@@ -171,7 +184,12 @@ public class DocImportUrlTool implements Tool {
                     .timeout(REQUEST_TIMEOUT)
                     .GET()
                     .build();
-            HttpResponse<byte[]> response = http.send(
+            HttpClient client = insecure ? InsecureHttpClientFactory.client() : http;
+            if (insecure) {
+                log.warn("DocImportUrlTool tenant='{}' url='{}' — TLS verification disabled (insecure=true)",
+                        ctx.tenantId(), rawUrl);
+            }
+            HttpResponse<byte[]> response = client.send(
                     request, HttpResponse.BodyHandlers.ofByteArray());
             status = response.statusCode();
             if (status < 200 || status >= 300) {
@@ -279,6 +297,14 @@ public class DocImportUrlTool implements Tool {
         if (params == null) return null;
         Object v = params.get(key);
         return v instanceof String s && !s.isBlank() ? s.trim() : null;
+    }
+
+    private static boolean paramBoolean(Map<String, Object> params, String key) {
+        if (params == null) return false;
+        Object v = params.get(key);
+        if (v instanceof Boolean b) return b;
+        if (v instanceof String s) return "true".equalsIgnoreCase(s.trim());
+        return false;
     }
 
     @SuppressWarnings("unchecked")

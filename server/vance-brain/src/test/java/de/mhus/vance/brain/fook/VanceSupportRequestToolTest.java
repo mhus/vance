@@ -58,6 +58,21 @@ class VanceSupportRequestToolTest {
     }
 
     @Test
+    void description_names_the_text_parameter_explicitly() {
+        // Regression for the schema-mismatch loop we saw in the live
+        // mhus/gesundheit session: the LLM first called with
+        // {"description": "..."} (rejected, no tool-result), then
+        // retried with {"text": "..."}. Driver of the wrong key was
+        // the description's loose phrasing ("describe what happened");
+        // pinning the exact param name in the prose stops the retry.
+        String desc = tool.description();
+        assertThat(desc).contains("`text`");
+        assertThat(desc).contains("description")
+                .contains("message")
+                .contains("body");
+    }
+
+    @Test
     void schema_has_only_text_param_and_is_required() {
         Map<String, Object> schema = tool.paramsSchema();
         assertThat(schema.get("type")).isEqualTo("object");
@@ -167,6 +182,56 @@ class VanceSupportRequestToolTest {
         assertThatThrownBy(() -> tool.invoke(Map.of("text", "   "), CTX))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("text");
+    }
+
+    @Test
+    void invoke_accepts_description_alias_when_text_missing() {
+        // LLM-side fallback: if the model ignores the schema and
+        // passes the payload under one of the common aliases
+        // (description/message/body/report/content) we treat it as
+        // the text instead of letting the Jeltz schema-loop burn an
+        // extra correction cycle. The pre-fix live trace had Arthur
+        // call {"description":"..."} first; this turns that into a
+        // single successful invocation.
+        Map<String, Object> result = tool.invoke(
+                Map.of("description", "Brain crashes on boot."),
+                CTX);
+
+        assertThat(result).containsEntry("status", "queued");
+        ArgumentCaptor<SubmissionRequest> cap =
+                ArgumentCaptor.forClass(SubmissionRequest.class);
+        verify(fookService).submit(cap.capture());
+        assertThat(cap.getValue().getText())
+                .isEqualTo("Brain crashes on boot.");
+    }
+
+    @Test
+    void invoke_prefers_text_over_alias_when_both_present() {
+        // text wins — alias only fires as a fallback. Without this,
+        // a future model that emits both keys could silently overwrite
+        // the canonical field with a stale alias value.
+        tool.invoke(
+                Map.of("text", "canonical body", "description", "stale alias body"),
+                CTX);
+
+        ArgumentCaptor<SubmissionRequest> cap =
+                ArgumentCaptor.forClass(SubmissionRequest.class);
+        verify(fookService).submit(cap.capture());
+        assertThat(cap.getValue().getText()).isEqualTo("canonical body");
+    }
+
+    @Test
+    void missing_text_error_message_names_the_aliases() {
+        // Belt-and-braces: if the LLM somehow lands on an alias we
+        // *don't* accept (e.g. "summary"), the error tells it both
+        // the correct name and which wrong names are well-known —
+        // saves an extra Jeltz round-trip.
+        assertThatThrownBy(() -> tool.invoke(Map.of("summary", "x"), CTX))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("text")
+                .hasMessageContaining("description")
+                .hasMessageContaining("message")
+                .hasMessageContaining("body");
     }
 
     // ─── context guards ─────────────────────────────────────────────

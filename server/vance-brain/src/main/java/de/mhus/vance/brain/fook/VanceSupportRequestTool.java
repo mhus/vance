@@ -76,9 +76,12 @@ public class VanceSupportRequestTool implements Tool {
     public String description() {
         return "Send a free-form report about **Vance itself** — a bug "
                 + "you hit, a feature you'd want, a documentation gap, "
-                + "or other feedback. One text parameter: describe what "
-                + "happened, what you expected, or what you wish Vance "
-                + "did. Fook classifies the type, derives the title, "
+                + "or other feedback. "
+                + "**Exactly one parameter, named `text`** (string), "
+                + "containing what happened, what you expected, or what "
+                + "you wish Vance did. Do not name the parameter "
+                + "`description`, `message`, or `body` — the field is "
+                + "`text`. Fook classifies the type, derives the title, "
                 + "and decides severity from your text — you don't pick "
                 + "those. Queued for async triage; the user receives an "
                 + "inbox item with the outcome. "
@@ -109,7 +112,7 @@ public class VanceSupportRequestTool implements Tool {
         Map<String, Object> textProp = new LinkedHashMap<>();
         textProp.put("type", "string");
         textProp.put("description",
-                "Free-form description of the issue or request. Be "
+                "Required. The whole report goes here, free-form. Be "
                         + "concrete: what happened, what you expected, "
                         + "steps to reproduce if applicable. Markdown is "
                         + "fine. Fook reads this and picks the type "
@@ -123,8 +126,19 @@ public class VanceSupportRequestTool implements Tool {
         schema.put("type", "object");
         schema.put("properties", props);
         schema.put("required", List.of("text"));
+        schema.put("additionalProperties", false);
         return schema;
     }
+
+    /**
+     * Synonyms the LLM has been seen to use for the {@code text}
+     * parameter when it ignores the schema. Accepting them as
+     * aliases turns "schema-error → Jeltz-retry" into a single
+     * successful call. Each alias hit is logged at INFO so we can
+     * spot if the description tweak isn't enough and re-tune.
+     */
+    private static final List<String> TEXT_ALIASES =
+            List.of("description", "message", "body", "report", "content");
 
     // ─── invoke ─────────────────────────────────────────────────────
 
@@ -162,7 +176,7 @@ public class VanceSupportRequestTool implements Tool {
                             + "you're trying to report.");
         }
 
-        String text = readNonBlank(params, "text");
+        String text = readTextOrAlias(params, processId);
 
         SubmissionRequest req = SubmissionRequest.builder()
                 .text(text)
@@ -208,14 +222,27 @@ public class VanceSupportRequestTool implements Tool {
                 .build();
     }
 
-    private static String readNonBlank(Map<String, Object> params, String key) {
-        Object raw = params.get(key);
+    private String readTextOrAlias(Map<String, Object> params, String processId) {
+        Object raw = params.get("text");
+        if (raw == null || raw.toString().isBlank()) {
+            for (String alias : TEXT_ALIASES) {
+                Object aliasVal = params.get(alias);
+                if (aliasVal != null && !aliasVal.toString().isBlank()) {
+                    log.info("vance_support_request process='{}' accepted alias '{}' for 'text'",
+                            processId, alias);
+                    raw = aliasVal;
+                    break;
+                }
+            }
+        }
         if (raw == null) {
-            throw new ToolException("'" + key + "' is required");
+            throw new ToolException(
+                    "'text' is required (a single string parameter named 'text'"
+                            + " — do not call it 'description', 'message', or 'body')");
         }
         String s = raw.toString();
         if (s.isBlank()) {
-            throw new ToolException("'" + key + "' must not be blank");
+            throw new ToolException("'text' must not be blank");
         }
         return s;
     }

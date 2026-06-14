@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { VanceAccountWebView } from '@vance/facelift-account-webview';
 import { getAccount, updateAccount } from '@/accounts/accountStore';
+import { verifyVanceUrl } from '@/accounts/verifyVanceUrl';
 
 const route = useRoute();
 const router = useRouter();
@@ -47,6 +48,21 @@ async function onSubmit(): Promise<void> {
   }
   submitting.value = true;
   try {
+    // Verify the new URL really is a Vance instance — but only
+    // when it actually changed; renaming the displayName alone
+    // shouldn't round-trip to the server.
+    const current = await getAccount(accountId.value);
+    if (current === null) {
+      error.value = 'Account no longer exists.';
+      return;
+    }
+    if (url !== current.brainUrl) {
+      const verify = await verifyVanceUrl(url);
+      if (!verify.ok) {
+        error.value = `Not a Vance instance (${verify.reason ?? 'unknown'})`;
+        return;
+      }
+    }
     const result = await updateAccount(accountId.value, {
       brainUrl: url,
       displayName: displayName.value,

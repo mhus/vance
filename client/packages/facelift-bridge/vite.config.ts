@@ -21,7 +21,10 @@ export default defineConfig({
     // `capacitor://localhost`.
     proxy: {
       '/brain': {
-        target: process.env.VITE_BRAIN_URL ?? 'http://localhost:9990',
+        // Dev-server proxy target. Only relevant for `pnpm dev` —
+        // the Capacitor WebView in production talks to the per-account
+        // brainUrl, not through this proxy.
+        target: 'http://localhost:9990',
         changeOrigin: true,
         ws: true,
       },

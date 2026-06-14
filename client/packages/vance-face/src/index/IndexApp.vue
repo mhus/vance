@@ -41,6 +41,20 @@ const showOpenInAppBanner = computed<boolean>(() => {
   return /iPhone|iPad|iPod/i.test(navigator.userAgent);
 });
 
+/**
+ * Server-side info from the pod-written `/config.json` — title shown
+ * under the "vance" brand, optional backlink to the operator's home
+ * page below it. Loaded once on mount; both fields are optional and
+ * may be empty strings.
+ */
+import { loadRuntimeConfig, type RuntimeConfig } from '@/platform/runtimeConfig';
+const runtimeCfg = ref<RuntimeConfig | null>(null);
+onMounted(async () => {
+  runtimeCfg.value = await loadRuntimeConfig();
+});
+const serverTitle = computed<string>(() => runtimeCfg.value?.title?.trim() ?? '');
+const serverBacklink = computed<string>(() => runtimeCfg.value?.backlink?.trim() ?? '');
+
 const tenant = ref('default');
 const username = ref('');
 const password = ref('');
@@ -143,8 +157,15 @@ async function onSubmit(): Promise<void> {
       username: trimmedUsername,
       password: password.value,
     });
-    // Cookies are now set — read the fresh webui.* settings straight
-    // from the data cookie before the redirect mounts the next editor.
+    // Cookies are now set. Mirror the fresh tenantId/username into
+    // the prefsStore — `bootWeb.ts` ran its hydrateIdentity once at
+    // module-load (before login, with no cookie present), so without
+    // this call EditorTopbar's `getTenantId()` / `getUsername()`
+    // would stay null when we switch to 'landing' mode below. A
+    // full F5 reload masks the bug because boot runs again with the
+    // cookie present.
+    hydrateIdentity();
+    // Also refresh the UI locale + level from the data cookie.
     syncUiLocaleFromSession();
     uiLevel.value = getActiveUiLevel();
     // Persist or clear the (tenant, username) hint based on the
@@ -221,7 +242,14 @@ function readNextParam(): string | null {
   <div v-if="mode === 'auto-login'" class="hero min-h-screen bg-base-200">
     <div class="hero-content flex-col">
       <VanceLogo size="xl" class="text-primary mb-2" />
-      <h1 class="text-3xl font-bold mb-4 font-mono opacity-60">vance</h1>
+      <h1 class="text-3xl font-bold mb-1 font-mono opacity-60">vance</h1>
+      <p v-if="serverTitle" class="text-base font-medium opacity-70">{{ serverTitle }}</p>
+      <a
+        v-if="serverBacklink"
+        :href="serverBacklink"
+        class="link link-hover mb-4 text-sm opacity-60"
+      >{{ serverBacklink }}</a>
+      <div v-else class="mb-4"></div>
       <VCard class="w-full max-w-md">
         <div class="flex items-center gap-3 py-2">
           <span class="loading loading-spinner loading-md" />
@@ -234,7 +262,14 @@ function readNextParam(): string | null {
   <div v-else-if="mode === 'login'" class="hero min-h-screen bg-base-200">
     <div class="hero-content w-full max-w-md flex-col">
       <VanceLogo size="xl" class="text-primary mb-2" />
-      <h1 class="text-3xl font-bold mb-4 font-mono opacity-60">vance</h1>
+      <h1 class="text-3xl font-bold mb-1 font-mono opacity-60">vance</h1>
+      <p v-if="serverTitle" class="text-base font-medium opacity-70">{{ serverTitle }}</p>
+      <a
+        v-if="serverBacklink"
+        :href="serverBacklink"
+        class="link link-hover mb-4 text-sm opacity-60"
+      >{{ serverBacklink }}</a>
+      <div v-else class="mb-4"></div>
       <VCard class="w-full">
         <form class="flex flex-col gap-3" @submit.prevent="onSubmit">
           <VAlert v-if="error" variant="error">

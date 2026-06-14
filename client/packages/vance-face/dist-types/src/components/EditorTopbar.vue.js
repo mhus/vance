@@ -5,6 +5,7 @@ import { logout as serverLogout, } from '@/platform';
 import { setUiLocale } from '@/i18n';
 import FookSupportModal from './FookSupportModal.vue';
 import VanceLogo from './VanceLogo.vue';
+import { loadRuntimeConfig } from '@/platform/runtimeConfig';
 const props = withDefaults(defineProps(), {
     breadcrumbs: () => [],
     helpOpen: false,
@@ -50,6 +51,13 @@ async function logout() {
 // (see @vance/shared/facelift). The menu only renders these entries
 // when `isFacelift()` is true.
 const inFacelift = computed(() => isFacelift());
+// Server-declared title / backlink from the pod-written
+// /config.json. Both are optional; the title is rendered next to the
+// "vance" wordmark when set, the backlink as a small link below it.
+const runtimeCfg = ref(null);
+const serverTitle = computed(() => runtimeCfg.value?.title?.trim() ?? '');
+const serverBacklink = computed(() => runtimeCfg.value?.backlink?.trim() ?? '');
+void loadRuntimeConfig().then((cfg) => { runtimeCfg.value = cfg; });
 function onSwitchAccount() {
     requestSwitchAccount();
 }
@@ -105,6 +113,25 @@ const __VLS_1 = __VLS_0({
 __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
     ...{ class: "font-bold text-lg font-mono" },
 });
+if (__VLS_ctx.serverTitle || __VLS_ctx.serverBacklink) {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "flex-none flex flex-col leading-tight" },
+    });
+    if (__VLS_ctx.serverTitle) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "text-sm font-medium opacity-70" },
+        });
+        (__VLS_ctx.serverTitle);
+    }
+    if (__VLS_ctx.serverBacklink) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
+            ...{ onClick: () => { } },
+            href: (__VLS_ctx.serverBacklink),
+            ...{ class: "link link-hover text-xs opacity-50" },
+        });
+        (__VLS_ctx.serverBacklink);
+    }
+}
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "flex-1 flex items-center gap-2 text-sm" },
 });
@@ -299,6 +326,17 @@ const __VLS_6 = __VLS_5({
 /** @type {__VLS_StyleScopedClasses['font-bold']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-lg']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-none']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
+/** @type {__VLS_StyleScopedClasses['leading-tight']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-medium']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
+/** @type {__VLS_StyleScopedClasses['link']} */ ;
+/** @type {__VLS_StyleScopedClasses['link-hover']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-50']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['items-center']} */ ;
@@ -375,6 +413,8 @@ const __VLS_self = (await import('vue')).defineComponent({
             selectLanguage: selectLanguage,
             logout: logout,
             inFacelift: inFacelift,
+            serverTitle: serverTitle,
+            serverBacklink: serverBacklink,
             onSwitchAccount: onSwitchAccount,
             onManageAccounts: onManageAccounts,
             onAddAccount: onAddAccount,

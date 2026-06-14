@@ -2,6 +2,7 @@
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { addAccount } from '@/accounts/accountStore';
+import { verifyVanceUrl } from '@/accounts/verifyVanceUrl';
 
 const router = useRouter();
 
@@ -27,9 +28,24 @@ async function onSubmit(): Promise<void> {
   }
   submitting.value = true;
   try {
+    // Confirm the URL actually serves a Vance deployment before
+    // persisting — catches typos like "https://google.de" without
+    // forcing the user through the WebView round-trip.
+    const verify = await verifyVanceUrl(url);
+    if (!verify.ok) {
+      error.value = `Not a Vance instance (${verify.reason ?? 'unknown'})`;
+      return;
+    }
+    // Prefer the server-declared title as the default display name
+    // when the user hasn't typed one. The accountStore further
+    // falls back to the URL host if both are empty.
+    const finalDisplayName =
+      displayName.value.trim().length > 0
+        ? displayName.value
+        : (verify.config?.title?.trim() ?? '');
     await addAccount({
       brainUrl: url,
-      displayName: displayName.value,
+      displayName: finalDisplayName,
     });
     // addAccount auto-activates when this is the first entry, so
     // returning straight to the shell makes the new account

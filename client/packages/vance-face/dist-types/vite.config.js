@@ -164,7 +164,12 @@ export default defineConfig({
         port: 9900,
         proxy: {
             '/brain': {
-                target: process.env.VITE_BRAIN_URL ?? 'http://localhost:9990',
+                // Dev-server proxy target — only used by `pnpm dev`. Production
+                // bundles never see this; the deployed face is same-origin-
+                // served by the brain in docker / k8s, and the (forthcoming)
+                // runtime config.json carries the public URL when the two
+                // are split.
+                target: 'http://localhost:9990',
                 changeOrigin: true,
                 ws: true,
             },

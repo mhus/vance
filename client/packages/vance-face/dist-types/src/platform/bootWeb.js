@@ -8,19 +8,18 @@ import { storageWeb } from './storageWeb';
  * editor's `main.ts` so `configurePlatform` runs before any other
  * `@vance/shared` module touches storage or the network.
  *
- * The base URL falls back to the page's own origin in production
- * (when the SPA is served by the Brain itself); `vite dev` sets
- * `VITE_BRAIN_URL` to point at a separately running Brain.
+ * The base URL is always the page's own origin — in production the
+ * SPA is same-origin-served by the brain, in `vite dev` the
+ * dev-server proxies `/brain/*` to `http://localhost:9990`. No
+ * build-time environment variable: deployment-specific values like
+ * the brain URL belong in the runtime `config.json` written by the
+ * pod entrypoint, not baked into the JS bundle.
  *
  * After binding, mirror the cookie-derived identity into the
  * prefsStore so `getTenantId()` / `getUsername()` from
  * `@vance/shared` find the values via the same path Mobile uses.
  */
 function resolveBaseUrl() {
-    const fromEnv = import.meta.env
-        ?.VITE_BRAIN_URL;
-    if (fromEnv && fromEnv.length > 0)
-        return fromEnv;
     return `${window.location.protocol}//${window.location.host}`;
 }
 function redirectToLogin() {

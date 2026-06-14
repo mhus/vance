@@ -20,6 +20,19 @@ const showOpenInAppBanner = computed(() => {
         return false;
     return /iPhone|iPad|iPod/i.test(navigator.userAgent);
 });
+/**
+ * Server-side info from the pod-written `/config.json` — title shown
+ * under the "vance" brand, optional backlink to the operator's home
+ * page below it. Loaded once on mount; both fields are optional and
+ * may be empty strings.
+ */
+import { loadRuntimeConfig } from '@/platform/runtimeConfig';
+const runtimeCfg = ref(null);
+onMounted(async () => {
+    runtimeCfg.value = await loadRuntimeConfig();
+});
+const serverTitle = computed(() => runtimeCfg.value?.title?.trim() ?? '');
+const serverBacklink = computed(() => runtimeCfg.value?.backlink?.trim() ?? '');
 const tenant = ref('default');
 const username = ref('');
 const password = ref('');
@@ -113,8 +126,15 @@ async function onSubmit() {
             username: trimmedUsername,
             password: password.value,
         });
-        // Cookies are now set — read the fresh webui.* settings straight
-        // from the data cookie before the redirect mounts the next editor.
+        // Cookies are now set. Mirror the fresh tenantId/username into
+        // the prefsStore — `bootWeb.ts` ran its hydrateIdentity once at
+        // module-load (before login, with no cookie present), so without
+        // this call EditorTopbar's `getTenantId()` / `getUsername()`
+        // would stay null when we switch to 'landing' mode below. A
+        // full F5 reload masks the bug because boot runs again with the
+        // cookie present.
+        hydrateIdentity();
+        // Also refresh the UI locale + level from the data cookie.
         syncUiLocaleFromSession();
         uiLevel.value = getActiveUiLevel();
         // Persist or clear the (tenant, username) hint based on the
@@ -211,8 +231,26 @@ if (__VLS_ctx.mode === 'auto-login') {
         ...{ class: "text-primary mb-2" },
     }, ...__VLS_functionalComponentArgsRest(__VLS_1));
     __VLS_asFunctionalElement(__VLS_intrinsicElements.h1, __VLS_intrinsicElements.h1)({
-        ...{ class: "text-3xl font-bold mb-4 font-mono opacity-60" },
+        ...{ class: "text-3xl font-bold mb-1 font-mono opacity-60" },
     });
+    if (__VLS_ctx.serverTitle) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
+            ...{ class: "text-base font-medium opacity-70" },
+        });
+        (__VLS_ctx.serverTitle);
+    }
+    if (__VLS_ctx.serverBacklink) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
+            href: (__VLS_ctx.serverBacklink),
+            ...{ class: "link link-hover mb-4 text-sm opacity-60" },
+        });
+        (__VLS_ctx.serverBacklink);
+    }
+    else {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "mb-4" },
+        });
+    }
     const __VLS_4 = {}.VCard;
     /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
     // @ts-ignore
@@ -252,8 +290,26 @@ else if (__VLS_ctx.mode === 'login') {
         ...{ class: "text-primary mb-2" },
     }, ...__VLS_functionalComponentArgsRest(__VLS_9));
     __VLS_asFunctionalElement(__VLS_intrinsicElements.h1, __VLS_intrinsicElements.h1)({
-        ...{ class: "text-3xl font-bold mb-4 font-mono opacity-60" },
+        ...{ class: "text-3xl font-bold mb-1 font-mono opacity-60" },
     });
+    if (__VLS_ctx.serverTitle) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
+            ...{ class: "text-base font-medium opacity-70" },
+        });
+        (__VLS_ctx.serverTitle);
+    }
+    if (__VLS_ctx.serverBacklink) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
+            href: (__VLS_ctx.serverBacklink),
+            ...{ class: "link link-hover mb-4 text-sm opacity-60" },
+        });
+        (__VLS_ctx.serverBacklink);
+    }
+    else {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "mb-4" },
+        });
+    }
     const __VLS_12 = {}.VCard;
     /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
     // @ts-ignore
@@ -532,9 +588,18 @@ else {
 /** @type {__VLS_StyleScopedClasses['mb-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-3xl']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-bold']} */ ;
-/** @type {__VLS_StyleScopedClasses['mb-4']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-base']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-medium']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
+/** @type {__VLS_StyleScopedClasses['link']} */ ;
+/** @type {__VLS_StyleScopedClasses['link-hover']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-4']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-4']} */ ;
 /** @type {__VLS_StyleScopedClasses['w-full']} */ ;
 /** @type {__VLS_StyleScopedClasses['max-w-md']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
@@ -555,9 +620,18 @@ else {
 /** @type {__VLS_StyleScopedClasses['mb-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-3xl']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-bold']} */ ;
-/** @type {__VLS_StyleScopedClasses['mb-4']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-base']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-medium']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
+/** @type {__VLS_StyleScopedClasses['link']} */ ;
+/** @type {__VLS_StyleScopedClasses['link-hover']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-4']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-4']} */ ;
 /** @type {__VLS_StyleScopedClasses['w-full']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
@@ -619,6 +693,8 @@ const __VLS_self = (await import('vue')).defineComponent({
             VInput: VInput,
             mode: mode,
             showOpenInAppBanner: showOpenInAppBanner,
+            serverTitle: serverTitle,
+            serverBacklink: serverBacklink,
             tenant: tenant,
             username: username,
             password: password,

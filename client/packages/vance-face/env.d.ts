@@ -49,7 +49,11 @@ declare module 'vance_addon_calendar/register' {
 }
 
 interface ImportMetaEnv {
-  readonly VITE_BRAIN_URL?: string;
+  // Note: no VITE_BRAIN_URL here — runtime config lives in
+  // `/config.json` (see vance-face/public/config.json + the docker
+  // entrypoint that overwrites it at pod start). Build-time env vars
+  // would re-bake the URL into every bundle and prevent image reuse
+  // across deployments.
   readonly VITE_VANCE_COLOR_WORKER?: string;
   readonly VITE_VANCE_COLOR_USER_FG?: string;
   readonly VITE_VANCE_COLOR_USER_BG?: string;

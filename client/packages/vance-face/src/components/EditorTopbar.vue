@@ -15,6 +15,7 @@ import {
 import { setUiLocale } from '@/i18n';
 import FookSupportModal from './FookSupportModal.vue';
 import VanceLogo from './VanceLogo.vue';
+import { loadRuntimeConfig, type RuntimeConfig } from '@/platform/runtimeConfig';
 
 /**
  * A breadcrumb segment. Either a plain string label (immutable, no
@@ -125,6 +126,14 @@ async function logout(): Promise<void> {
 // when `isFacelift()` is true.
 const inFacelift = computed<boolean>(() => isFacelift());
 
+// Server-declared title / backlink from the pod-written
+// /config.json. Both are optional; the title is rendered next to the
+// "vance" wordmark when set, the backlink as a small link below it.
+const runtimeCfg = ref<RuntimeConfig | null>(null);
+const serverTitle = computed<string>(() => runtimeCfg.value?.title?.trim() ?? '');
+const serverBacklink = computed<string>(() => runtimeCfg.value?.backlink?.trim() ?? '');
+void loadRuntimeConfig().then((cfg) => { runtimeCfg.value = cfg; });
+
 function onSwitchAccount(): void {
   requestSwitchAccount();
 }
@@ -164,6 +173,23 @@ function openFook(): void {
       <VanceLogo size="sm" class="text-primary" />
       <span class="font-bold text-lg font-mono">vance</span>
     </a>
+    <!-- Server identity (title + backlink) from the pod-written
+         /config.json. Only rendered when set so vanilla deployments
+         keep the existing minimal "[V] vance" wordmark. -->
+    <div
+      v-if="serverTitle || serverBacklink"
+      class="flex-none flex flex-col leading-tight"
+    >
+      <span v-if="serverTitle" class="text-sm font-medium opacity-70">
+        {{ serverTitle }}
+      </span>
+      <a
+        v-if="serverBacklink"
+        :href="serverBacklink"
+        class="link link-hover text-xs opacity-50"
+        @click.stop
+      >{{ serverBacklink }}</a>
+    </div>
 
     <div class="flex-1 flex items-center gap-2 text-sm">
       <button

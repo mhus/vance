@@ -12,11 +12,11 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { documentContentUrl } from '@vance/shared';
+// Polyfill Map.prototype.getOrInsertComputed before pdfjs initialises —
+// pdfjs-dist v5 calls it from its message handler and crashes on
+// browsers that haven't shipped the TC39 upsert proposal yet.
+import '../polyfills/mapGetOrInsert';
 import * as pdfjsLib from 'pdfjs-dist';
-// PDF.js v5 worker — Vite bundles it as a URL.
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore — Vite asset import resolves at build time.
-import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import type { DocumentDto } from '@vance/generated';
 import type { EmbedRef } from '@/kindRenderers/parseVanceUri';
 
@@ -28,8 +28,9 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), { mode: 'embedded' });
 
-(pdfjsLib as unknown as { GlobalWorkerOptions: { workerSrc: string } })
-  .GlobalWorkerOptions.workerSrc = pdfWorkerUrl as string;
+import { configurePdfWorker } from './pdfWorkerPort';
+
+configurePdfWorker(pdfjsLib.GlobalWorkerOptions);
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 const pageCount = ref<number>(0);

@@ -14,8 +14,8 @@ interface Props {
     embedRef?: EmbedRef;
 }
 declare const _default: import("vue").DefineComponent<Props, {}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {}, string, import("vue").PublicProps, Readonly<Props> & Readonly<{}>, {
-    mode: "editor" | "inline" | "embedded";
     meta: FenceMeta;
+    mode: "editor" | "inline" | "embedded";
 }, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;
 export default _default;
 //# sourceMappingURL=CodeView.vue.d.ts.map

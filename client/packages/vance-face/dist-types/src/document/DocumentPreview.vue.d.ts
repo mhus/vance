@@ -1,3 +1,4 @@
+import '../polyfills/mapGetOrInsert';
 declare function attachCanvas(host: HTMLElement | null, canvas: HTMLCanvasElement): void;
 export { attachCanvas };
 declare const _default: import("vue").DefineComponent<{

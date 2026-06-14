@@ -1,12 +1,11 @@
 import { computed, defineAsyncComponent, onBeforeUnmount, ref, watch } from 'vue';
 import { documentContentUrl } from '@vance/shared';
+// Polyfill Map.prototype.getOrInsertComputed before pdfjs initialises —
+// pdfjs-dist v5 calls it from its message handler and crashes on
+// browsers that haven't shipped the TC39 upsert proposal yet.
+import '../polyfills/mapGetOrInsert';
 import * as pdfjsLib from 'pdfjs-dist';
-// PDF.js v5 uses an ESM worker that Vite can bundle as a URL via the
-// `?url` import. We point pdfjs at it once on first mount — same worker
-// instance is reused across renders.
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore — Vite asset import resolves at build time.
-import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import { configurePdfWorker } from './pdfWorkerPort';
 // Helper used by the v-for ref to attach the canvas the PDF.js
 // rendered into. Defining it in a module-level <script> block
 // keeps it out of the reactive setup state.
@@ -29,8 +28,7 @@ export default await (async () => {
     const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
     const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
     const props = defineProps();
-    pdfjsLib
-        .GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+    configurePdfWorker(pdfjsLib.GlobalWorkerOptions);
     const streamUrl = computed(() => props.documentId ? documentContentUrl(props.documentId, false) : '');
     const kind = computed(() => {
         if (props.inline)

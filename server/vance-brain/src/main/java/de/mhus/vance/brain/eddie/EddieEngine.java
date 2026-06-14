@@ -1216,28 +1216,35 @@ public class EddieEngine extends StructuredActionEngine {
         return sb.toString();
     }
 
+    /**
+     * Event-only turn gate — same pattern as Arthur. Without this
+     * Eddie keeps re-spawning DELEGATE_PROJECT every time a child
+     * chat closes (parent-notification arrives in pendingMessages
+     * → lane wakes Eddie → LLM sees the event as context → emits
+     * DELEGATE_PROJECT again). The idempotency suffix saves the
+     * actual project_create but the LLM-spawn cascade still burns
+     * budget. RELAY / RELAY_INBOX / ANSWER / WAIT / REJECT / LEARN
+     * / MEDIATE stay allowed — they report state without spawning.
+     *
+     * <p><b>Plan-mode exception</b>: in EXPLORING / PLANNING /
+     * EXECUTING the lane runs a <em>legitimate</em>
+     * self-continuation loop (see runTurn). ASK_USER for
+     * clarification on a failed tool call, DELEGATE_PROJECT to hand
+     * off a step, STEER_PROJECT to drive an existing worker — all
+     * are intentional actions during plan execution, not respawn
+     * cascades. Skip the gate so the LLM isn't forced to emit the
+     * rejection hint as a user-facing chat message.
+     *
+     * <p>Routing through {@link #validateActionSemantics} (not
+     * {@link #handleAction}) keeps the rejection hint inside the
+     * action-loop correction path — the LLM sees it as a tool-result
+     * and re-emits, the user never sees the engine-internal string.
+     */
     @Override
-    protected ActionTurnOutcome handleAction(
+    protected @Nullable String validateActionSemantics(
             EngineAction action,
             ThinkProcessDocument process,
             ThinkEngineContext ctx) {
-        // Event-only turn gate — same pattern as Arthur. Without this
-        // Eddie keeps re-spawning DELEGATE_PROJECT every time a child
-        // chat closes (parent-notification arrives in pendingMessages
-        // → lane wakes Eddie → LLM sees the event as context → emits
-        // DELEGATE_PROJECT again). The idempotency suffix saves the
-        // actual project_create but the LLM-spawn cascade still burns
-        // budget. RELAY / RELAY_INBOX / ANSWER / WAIT / REJECT / LEARN
-        // / MEDIATE stay allowed — they report state without spawning.
-        //
-        // **Plan-mode exception**: in EXPLORING / PLANNING / EXECUTING
-        // the lane runs a *legitimate* self-continuation loop (see
-        // runTurn). ASK_USER for clarification on a failed tool call,
-        // DELEGATE_PROJECT to hand off a step, STEER_PROJECT to drive
-        // an existing worker — all are intentional actions during plan
-        // execution, not respawn cascades. Skip the gate so the LLM
-        // isn't forced to emit the rejection hint as a user-facing
-        // chat message.
         boolean inActivePlanMode = process.getMode() != null
                 && process.getMode() != de.mhus.vance.api.thinkprocess.ProcessMode.NORMAL;
         if (!Boolean.TRUE.equals(currentTurnHadUserInput.get(process.getId()))
@@ -1246,7 +1253,7 @@ public class EddieEngine extends StructuredActionEngine {
             log.warn("Eddie id='{}' rejected spawn-action '{}' on event-only turn"
                             + " (no fresh user-input in inbox) — reason: '{}'",
                     process.getId(), action.type(), action.reason());
-            String hint = "Action '" + action.type() + "' is not allowed on a turn "
+            return "Action '" + action.type() + "' is not allowed on a turn "
                     + "triggered without fresh user-input. The current inbox carries "
                     + "only in-bound process events (child closed / steer reply / "
                     + "tool-result). Spawning new projects or steering existing "
@@ -1254,9 +1261,15 @@ public class EddieEngine extends StructuredActionEngine {
                     + "we just stopped. Emit RELAY (worker output → user), "
                     + "RELAY_INBOX (notification → user), ANSWER (short status), "
                     + "or WAIT — and let the user decide whether more work is wanted.";
-            return new ActionTurnOutcome(hint, /*awaitingUserInput*/ true);
         }
+        return null;
+    }
 
+    @Override
+    protected ActionTurnOutcome handleAction(
+            EngineAction action,
+            ThinkProcessDocument process,
+            ThinkEngineContext ctx) {
         // Plan-Mode actions go through the shared service first. When
         // the service recognises the action it returns the outcome;
         // otherwise null and we fall through to Eddie-specific actions.

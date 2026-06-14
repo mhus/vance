@@ -1053,6 +1053,42 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         return ArthurActionSchema.SUPPORTED_TYPES;
     }
 
+    /**
+     * Event-only turn gate — see {@link #currentTurnHadUserInput} and
+     * {@link #SPAWN_ACTIONS_FORBIDDEN_ON_EVENT_TURNS}. When the turn
+     * was triggered solely by a process-event (child closed,
+     * tool-result, …) the LLM must not spawn new work — exactly the
+     * path that drove the multi-Slartibartfast respawn cascade.
+     * Routing the rejection through the action loop's correction
+     * mechanism (instead of {@link #handleAction}) keeps the engine-
+     * internal hint out of the user-facing chat: the LLM gets the
+     * hint as the action tool's tool-result and re-emits a valid
+     * action (RELAY / ANSWER / WAIT / REJECT). If it keeps insisting,
+     * the loop falls back to the longest free-text seen this turn —
+     * same path as any other unrecoverable schema error.
+     */
+    @Override
+    protected @Nullable String validateActionSemantics(
+            de.mhus.vance.brain.thinkengine.action.EngineAction action,
+            ThinkProcessDocument process,
+            de.mhus.vance.brain.thinkengine.ThinkEngineContext ctx) {
+        if (!Boolean.TRUE.equals(currentTurnHadUserInput.get(process.getId()))
+                && SPAWN_ACTIONS_FORBIDDEN_ON_EVENT_TURNS.contains(action.type())) {
+            log.warn("Arthur id='{}' rejected spawn-action '{}' on event-only turn"
+                            + " (no fresh user-input in inbox) — reason: '{}'",
+                    process.getId(), action.type(), action.reason());
+            return "Action '" + action.type() + "' is not allowed on a turn "
+                    + "triggered without fresh user-input. The current inbox carries "
+                    + "only process-events (worker closed / tool-result / similar). "
+                    + "Spawning new work without a user prompt led to the multi-"
+                    + "Slartibartfast respawn cascade we just stopped. "
+                    + "Emit RELAY (with the latest worker output as `source`), or "
+                    + "ANSWER (with a short status note), or WAIT — and let the user "
+                    + "decide whether more work is wanted.";
+        }
+        return null;
+    }
+
     @Override
     protected ActionTurnOutcome handleAction(
             de.mhus.vance.brain.thinkengine.action.EngineAction action,
@@ -1115,30 +1151,6 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                 return new ActionTurnOutcome(hint, /*awaitingUserInput*/ true);
             }
         }
-        // Event-only turn gate — see currentTurnHadUserInput +
-        // SPAWN_ACTIONS_FORBIDDEN_ON_EVENT_TURNS javadoc above. When the
-        // turn was triggered solely by a process-event (child closed,
-        // tool-result, …) the LLM must not spawn new work — that's
-        // exactly the path that drove the multi-Slartibartfast respawn
-        // cascade in the live tests today. RELAY / ANSWER / WAIT / REJECT
-        // are fine: they let Arthur tell the user "the worker terminated"
-        // or absorb the event silently.
-        if (!Boolean.TRUE.equals(currentTurnHadUserInput.get(process.getId()))
-                && SPAWN_ACTIONS_FORBIDDEN_ON_EVENT_TURNS.contains(action.type())) {
-            log.warn("Arthur id='{}' rejected spawn-action '{}' on event-only turn"
-                            + " (no fresh user-input in inbox) — reason: '{}'",
-                    process.getId(), action.type(), action.reason());
-            String hint = "Action '" + action.type() + "' is not allowed on a turn "
-                    + "triggered without fresh user-input. The current inbox carries "
-                    + "only process-events (worker closed / tool-result / similar). "
-                    + "Spawning new work without a user prompt led to the multi-"
-                    + "Slartibartfast respawn cascade we just stopped. "
-                    + "Emit RELAY (with the latest worker output as `source`), or "
-                    + "ANSWER (with a short status note), or WAIT — and let the user "
-                    + "decide whether more work is wanted.";
-            return new ActionTurnOutcome(hint, /*awaitingUserInput*/ true);
-        }
-
         // Plan-Mode actions go through the shared service first — if
         // it recognises the action it returns the outcome; otherwise
         // null and we fall through to Arthur-specific actions.

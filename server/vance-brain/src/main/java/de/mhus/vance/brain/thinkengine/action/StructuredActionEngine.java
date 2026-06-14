@@ -444,6 +444,32 @@ public abstract class StructuredActionEngine implements ThinkEngine {
                         null, toolInvocations);
             }
 
+            // Semantic gate — subclass-defined post-parse rejection
+            // (e.g. spawn-action on event-only turn). Feed the hint
+            // back as a correction so the LLM re-emits a valid action
+            // instead of leaking the engine-internal reject string
+            // into the chat as the assistant's reply.
+            String semanticReject =
+                    validateActionSemantics(parsed.action(), process, ctx);
+            if (semanticReject != null) {
+                if (corrections < maxCorrections) {
+                    log.info(
+                            "{} id='{}' action-loop: semantic reject ({}), correcting ({}/{})",
+                            name(), process.getId(),
+                            summarise(semanticReject),
+                            corrections + 1, maxCorrections);
+                    messages.add(ToolExecutionResultMessage.from(actionCall,
+                            semanticRejectToolResult(semanticReject)));
+                    corrections++;
+                    continue;
+                }
+                log.warn(
+                        "{} id='{}' action-loop: semantic reject after {} corrections, falling back",
+                        name(), process.getId(), corrections);
+                return ActionLoopResult.fallback(bestFreeText, "semantic-reject",
+                        null, toolInvocations);
+            }
+
             log.info(
                     "{} id='{}' action='{}' reason='{}'",
                     name(), process.getId(),
@@ -663,6 +689,39 @@ public abstract class StructuredActionEngine implements ThinkEngine {
         } catch (RuntimeException e) {
             return "{\"error\":\"" + (error == null ? "invalid action" : error) + "\"}";
         }
+    }
+
+    private String semanticRejectToolResult(String hint) {
+        try {
+            Map<String, Object> err = new LinkedHashMap<>();
+            err.put("error", "semantic_reject");
+            err.put("hint", hint);
+            return objectMapper.writeValueAsString(err);
+        } catch (RuntimeException e) {
+            return "{\"error\":\"semantic_reject\",\"hint\":\""
+                    + hint.replace("\"", "'") + "\"}";
+        }
+    }
+
+    /**
+     * Subclass hook for post-parse semantic rejection of an otherwise
+     * schema-valid action. Return {@code null} to accept the action;
+     * return a non-null hint to force a correction iteration (the hint
+     * is fed back to the LLM as the action tool's tool-result, exactly
+     * like a schema error). After the correction budget is exhausted
+     * the loop falls back to {@code bestFreeText} — same path as an
+     * unrecoverable schema error — so the rejection hint never leaks
+     * into the chat as the assistant's reply.
+     *
+     * <p>Used e.g. to forbid spawn actions on event-only turns without
+     * the previous behaviour of emitting the engine-internal reject
+     * string as a chat message.
+     */
+    protected @Nullable String validateActionSemantics(
+            EngineAction action,
+            ThinkProcessDocument process,
+            ThinkEngineContext ctx) {
+        return null;
     }
 
     /**

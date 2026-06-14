@@ -23,35 +23,20 @@ import EmbeddedKindBox from './EmbeddedKindBox.vue';
 import LinkCard from './LinkCard.vue';
 import { hasRenderer } from '@/kindRenderers/registry';
 import { parseFenceLang } from '@/kindRenderers/parseFenceLang';
-import { isVanceUri, parseVanceUri, type EmbedRef } from '@/kindRenderers/parseVanceUri';
+import { isVanceUri, parseVanceUri } from '@/kindRenderers/parseVanceUri';
 import { useDocumentRefStore } from '@/document/documentRefStore';
+import { VANCE_LINK_HANDLER_KEY } from './vanceLinkHandler';
 
-/**
- * Optional host-level interceptor for {@code vance:} document links
- * inside rendered Markdown. Provide a function under this key (via
- * Vue's {@code provide()}) to take ownership of plain-click navigation
- * — return {@code true} to suppress the default jump to
- * {@code documents.html}. Returning {@code false} (or not providing a
- * handler) falls back to the default.
- *
- * <p>Cmd/Ctrl/Shift-click is treated as "open in new tab" and bypasses
- * the interceptor by default so the user can always escape into a
- * dedicated browser tab.
- *
- * <p>Used by Cortex to open the file as a tab in its in-place editor
- * instead of navigating away from the page.
- */
-export interface VanceLinkInterception {
-  documentId: string;
-  projectId: string;
-  embedRef: EmbedRef;
-  newTab: boolean;
-}
-export type VanceLinkHandler = (
-  payload: VanceLinkInterception,
-) => boolean | Promise<boolean>;
-export const VANCE_LINK_HANDLER_KEY = Symbol('vance-link-handler') as
-  unknown as import('vue').InjectionKey<VanceLinkHandler>;
+// Re-export the host-interception contract from its dedicated module so
+// existing import paths (`from '@/components/MarkdownView.vue'` and the
+// `@/components` barrel) keep working — the symbol itself lives in
+// {@link ./vanceLinkHandler} to dodge the circular import with
+// {@link EmbeddedKindBox}.
+export {
+  VANCE_LINK_HANDLER_KEY,
+  type VanceLinkHandler,
+  type VanceLinkInterception,
+} from './vanceLinkHandler';
 
 marked.setOptions({
   gfm: true,

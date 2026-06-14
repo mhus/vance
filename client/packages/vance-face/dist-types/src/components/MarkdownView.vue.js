@@ -8,7 +8,13 @@ import { hasRenderer } from '@/kindRenderers/registry';
 import { parseFenceLang } from '@/kindRenderers/parseFenceLang';
 import { isVanceUri, parseVanceUri } from '@/kindRenderers/parseVanceUri';
 import { useDocumentRefStore } from '@/document/documentRefStore';
-export const VANCE_LINK_HANDLER_KEY = Symbol('vance-link-handler');
+import { VANCE_LINK_HANDLER_KEY } from './vanceLinkHandler';
+// Re-export the host-interception contract from its dedicated module so
+// existing import paths (`from '@/components/MarkdownView.vue'` and the
+// `@/components` barrel) keep working — the symbol itself lives in
+// {@link ./vanceLinkHandler} to dodge the circular import with
+// {@link EmbeddedKindBox}.
+export { VANCE_LINK_HANDLER_KEY, } from './vanceLinkHandler';
 marked.setOptions({
     gfm: true,
     breaks: true,

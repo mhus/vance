@@ -12,11 +12,12 @@
  * kind (kindHint first-paint, then verified against the loaded
  * Document's metadata).
  */
-import { computed, onMounted, ref } from 'vue';
+import { computed, inject, onMounted, ref } from 'vue';
 import KindBox from './KindBox.vue';
 import { kindIcon, kindLabel, resolveRenderer } from '@/kindRenderers/registry';
 import { useDocumentRefStore } from '@/document/documentRefStore';
 import type { EmbedRef } from '@/kindRenderers/parseVanceUri';
+import { VANCE_LINK_HANDLER_KEY } from './vanceLinkHandler';
 
 interface Props {
   embedRef: EmbedRef;
@@ -27,6 +28,11 @@ const props = defineProps<Props>();
 const store = useDocumentRefStore();
 const doc = ref<Awaited<ReturnType<typeof store.resolve>> | null>(null);
 const loadError = ref<string | null>(null);
+// Same interception protocol as the inline-anchor path in MarkdownView:
+// a host (Cortex) can provide a handler to take ownership of plain
+// "Open" clicks and render the document in-place instead of letting us
+// jump to documents.html.
+const vanceLinkHandler = inject(VANCE_LINK_HANDLER_KEY, null);
 
 const effectiveKind = computed<string>(() => {
   // Loaded doc kind wins over hint (§3.3 conflict-resolution).
@@ -56,7 +62,7 @@ function onCopy(): void {
   }
 }
 
-function onOpen(): void {
+async function onOpen(event?: MouseEvent): Promise<void> {
   // Mirror the inline-link path in MarkdownView: deep-link into the
   // documents editor via the resolved document id. Without an id
   // (resolve failed) we can't navigate — keep the user where they are.
@@ -64,9 +70,31 @@ function onOpen(): void {
   if (!documentId) return;
   const projectId = props.embedRef.project ?? doc.value?.projectId;
   if (!projectId) return;
+  const newTab = !!event && (event.metaKey || event.ctrlKey || event.shiftKey);
+  // Plain click: give an injected host (Cortex) a chance to open the
+  // document in-place. Modifier-click bypasses the handler so the user
+  // can always escape into a real browser tab.
+  if (vanceLinkHandler && !newTab) {
+    try {
+      const handled = await vanceLinkHandler({
+        documentId,
+        projectId,
+        embedRef: props.embedRef,
+        newTab,
+      });
+      if (handled) return;
+    } catch (e) {
+      console.warn('EmbeddedKindBox: vance link handler threw', e);
+      // Fall through to default navigation rather than swallow.
+    }
+  }
   const url = `/documents.html?projectId=${encodeURIComponent(projectId)}`
     + `&documentId=${encodeURIComponent(documentId)}`;
-  window.open(url, '_blank', 'noopener');
+  if (newTab) {
+    window.open(url, '_blank', 'noopener');
+  } else {
+    window.location.href = url;
+  }
 }
 
 function onDownload(): void {
@@ -86,7 +114,7 @@ function onDownload(): void {
   >
     <template #actions>
       <button class="kbx-act" :title="$t?.('chat.kindBox.copy') ?? 'Copy'" @click="onCopy">⧉</button>
-      <button class="kbx-act" :title="$t?.('chat.kindBox.open') ?? 'Open'" @click="onOpen">↗</button>
+      <button class="kbx-act" :title="$t?.('chat.kindBox.open') ?? 'Open'" @click="(e: MouseEvent) => onOpen(e)">↗</button>
       <button class="kbx-act" :title="$t?.('chat.kindBox.download') ?? 'Download'" @click="onDownload">↓</button>
     </template>
 

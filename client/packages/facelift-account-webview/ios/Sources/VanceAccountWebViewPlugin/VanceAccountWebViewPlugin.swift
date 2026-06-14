@@ -22,7 +22,7 @@ import WebKit
 ///     its persistent data store — the next `present` for the same
 ///     id starts fresh.
 @objc(VanceAccountWebViewPlugin)
-public class VanceAccountWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigationDelegate, WKScriptMessageHandler, UIDocumentPickerDelegate {
+public class VanceAccountWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, UIDocumentPickerDelegate {
     public let identifier = "VanceAccountWebViewPlugin"
     public let jsName = "VanceAccountWebView"
     public let pluginMethods: [CAPPluginMethod] = [
@@ -198,6 +198,12 @@ public class VanceAccountWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigatio
                 // JS as `urlOpen` events. All other navigations pass
                 // through unchanged.
                 created.navigationDelegate = self
+                // Handle `target="_blank"` / `window.open(...)` —
+                // WKWebView returns nil by default, so the click
+                // silently no-ops. We redirect the navigation into
+                // the same WebView so chat-message "open" buttons
+                // and other internal links actually go somewhere.
+                created.uiDelegate = self
                 if #available(iOS 16.4, *) {
                     created.isInspectable = true
                 }
@@ -365,6 +371,23 @@ public class VanceAccountWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigatio
 
     public func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
         NSLog("[VanceFacelift] exportFile: picker cancelled")
+    }
+
+    // MARK: - WKUIDelegate
+
+    /// Catch `target="_blank"` / `window.open(...)` from the website
+    /// and load the URL in the same WebView instead of letting the
+    /// click silently no-op. The Facelift shell intentionally hosts
+    /// only one WebView per account; multi-tab behaviour belongs in
+    /// the website, not the wrapper.
+    public func webView(_ webView: WKWebView,
+                        createWebViewWith configuration: WKWebViewConfiguration,
+                        for navigationAction: WKNavigationAction,
+                        windowFeatures: WKWindowFeatures) -> WKWebView? {
+        if navigationAction.targetFrame == nil, let url = navigationAction.request.url {
+            webView.load(URLRequest(url: url))
+        }
+        return nil
     }
 
     // MARK: - WKNavigationDelegate

@@ -184,6 +184,7 @@ public class EddieChatFrameHandler implements EddieFrameRouter.ChatFrameHandler 
                 .sourceProcessId(link.getWorkerProcessId())
                 .eventType(ProcessEventType.SUMMARY)
                 .content(summary)
+                .eventId(java.util.UUID.randomUUID().toString())
                 .build();
         try {
             boolean appended = thinkProcessService.appendPending(

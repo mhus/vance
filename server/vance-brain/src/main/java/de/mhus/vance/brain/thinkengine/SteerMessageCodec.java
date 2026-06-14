@@ -61,6 +61,8 @@ public final class SteerMessageCodec {
                     .eventType(e.type())
                     .content(e.humanSummary())
                     .payload(e.payload())
+                    .eventId(e.eventId())
+                    .inResponseToAt(e.inResponseToAt())
                     .build();
 
             case SteerMessage.ToolResult r -> b
@@ -118,7 +120,9 @@ public final class SteerMessageCodec {
                     nullToEmpty(d.getSourceProcessId()),
                     d.getEventType() == null ? ProcessEventType.SUMMARY : d.getEventType(),
                     d.getContent(),
-                    d.getPayload());
+                    d.getPayload(),
+                    d.getEventId(),
+                    d.getInResponseToAt());
 
             case TOOL_RESULT -> new SteerMessage.ToolResult(
                     at, idem,

@@ -110,10 +110,32 @@ public sealed interface SteerMessage
      * (terminal transitions) or when an engine pushes an explicit
      * summary.
      *
+     * <p>The {@code eventId} is the stable handle a parent engine uses
+     * to refer to this specific event (e.g. Arthur's RELAY {@code
+     * eventRef}). It is generated when the event is queued and
+     * persisted alongside it, so a drained event keeps the same id
+     * across the codec round-trip. {@code null} only on legacy queued
+     * events from before the field existed.
+     *
+     * <p>{@code inResponseToAt} is the timestamp of the user-input
+     * turn the emitting worker was processing when it produced this
+     * event — set by {@code ParentNotificationListener} from the
+     * worker's chat history. Lets the receiving engine tell a fresh
+     * reply from a stale one without having to guess from wall-clock
+     * timing alone. {@code null} for engine-driven {@code SUMMARY}
+     * events or when no triggering user-input could be identified.
+     *
      * @param sourceProcessId Mongo id of the emitting process
      * @param type            event flavor — see {@link ProcessEventType}
      * @param humanSummary    short text suitable for direct LLM consumption
      * @param payload         optional structured side-channel data
+     * @param eventId         stable handle for this event (UUID), used
+     *                        by parent engines to reference it in
+     *                        follow-up actions like Arthur's
+     *                        {@code RELAY eventRef}
+     * @param inResponseToAt  timestamp of the user-input turn the
+     *                        emitting worker was responding to, or
+     *                        {@code null} when not applicable
      */
     record ProcessEvent(
             Instant at,
@@ -121,7 +143,9 @@ public sealed interface SteerMessage
             String sourceProcessId,
             ProcessEventType type,
             @Nullable String humanSummary,
-            @Nullable Map<String, Object> payload) implements SteerMessage {
+            @Nullable Map<String, Object> payload,
+            @Nullable String eventId,
+            @Nullable Instant inResponseToAt) implements SteerMessage {
     }
 
     /**

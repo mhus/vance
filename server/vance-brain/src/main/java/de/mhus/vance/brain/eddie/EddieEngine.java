@@ -222,6 +222,17 @@ public class EddieEngine extends StructuredActionEngine {
     private final ConcurrentMap<String, Boolean> currentTurnHadUserInput =
             new ConcurrentHashMap<>();
 
+    /**
+     * Per-process map of {@code eventId → SteerMessage.ProcessEvent}
+     * built fresh at the start of each {@link #runTurnFor} from the
+     * drained inbox — same Fix 1/2 pattern as Arthur. The RELAY and
+     * RELAY_INBOX handlers look up the LLM-supplied {@code eventRef}
+     * here and reject anything outside the current drain. See
+     * {@code planning/arthur-process-event-attribution.md}.
+     */
+    private final ConcurrentMap<String, Map<String, SteerMessage.ProcessEvent>>
+            currentTurnEventsByRef = new ConcurrentHashMap<>();
+
     public EddieEngine(
             StreamingProperties streamingProperties,
             LlmCallTracker llmCallTracker,
@@ -759,14 +770,20 @@ public class EddieEngine extends StructuredActionEngine {
         // of the recurring "Eddie keeps trying" cascade the user has
         // observed across sessions.
         boolean hadUserInput = false;
+        // Same RELAY-attribution map as Arthur — see ArthurEngine.runTurnFor.
+        Map<String, SteerMessage.ProcessEvent> eventsByRef = new LinkedHashMap<>();
         for (SteerMessage m : inbox) {
             if (m instanceof SteerMessage.UserChatInput uci
                     && uci.content() != null && !uci.content().isBlank()) {
                 hadUserInput = true;
-                break;
+            }
+            if (m instanceof SteerMessage.ProcessEvent pe
+                    && pe.eventId() != null && !pe.eventId().isBlank()) {
+                eventsByRef.put(pe.eventId(), pe);
             }
         }
         currentTurnHadUserInput.put(process.getId(), hadUserInput);
+        currentTurnEventsByRef.put(process.getId(), eventsByRef);
         boolean awaitingUserInput = false;
         try {
             ChatMessageService chatLog = ctx.chatMessageService();
@@ -947,6 +964,7 @@ public class EddieEngine extends StructuredActionEngine {
             return new TurnSignal(appendedChat, loopResult.madeProgress());
         } finally {
             currentTurnHadUserInput.remove(process.getId());
+            currentTurnEventsByRef.remove(process.getId());
             ThinkProcessStatus exitStatus = awaitingUserInput
                     ? ThinkProcessStatus.BLOCKED
                     : ThinkProcessStatus.IDLE;
@@ -1578,52 +1596,131 @@ public class EddieEngine extends StructuredActionEngine {
      */
     private ActionTurnOutcome handleRelay(
             EngineAction action, ThinkProcessDocument process, ThinkEngineContext ctx) {
-        ChatMessageDocument lastReply = resolveWorkerReply(action, process, ctx);
-        if (lastReply == null) {
-            String source = action.stringParam(EddieActionSchema.PARAM_SOURCE);
-            return new ActionTurnOutcome(
-                    "(intern: konnte Worker '" + source + "' nicht erreichen.)",
-                    true);
+        EventRelayResolution res = resolveRelayEvent(action, process, ctx);
+        if (res.error() != null) {
+            return new ActionTurnOutcome(res.error(), true);
         }
-        String prefix = action.stringParam(EddieActionSchema.PARAM_PREFIX);
+        String body = res.body();
+        // Deterministic header — built from the referenced event's
+        // metadata, not from anything the LLM wrote. Prevents the
+        // Marvin-wording / Ford-source mismatch the planning doc
+        // describes.
         StringBuilder out = new StringBuilder();
-        if (prefix != null && !prefix.isBlank()) {
-            out.append(prefix.trim()).append("\n\n");
-        }
-        out.append(lastReply.getContent());
-        // Cross-engine ASK_USER picker — see specification/eddie-engine.md
-        // §5.8. When the relayed worker reply was an ASK_USER with
-        // structured options, the worker's chat-message carries them
-        // in meta.askUserOptions. Re-emit the same options on Eddie's
-        // outgoing chat message so picker-aware clients render the
-        // picker on Eddie's side too (the worker's options aren't
-        // user-facing; only Eddie's are).
-        Map<String, Object> relayedMeta = extractAskUserOptionsMeta(lastReply);
-        log.info("Eddie id='{}' RELAY source='{}' ({} chars) reason='{}'{}",
+        out.append("**[Worker ").append(res.sourceName())
+                .append(" → ").append(res.event().type().name().toLowerCase())
+                .append("]**\n\n");
+        out.append(body);
+        // Cross-engine ASK_USER picker — same provenance lookup as
+        // before, but anchored on the event's source-process rather
+        // than the LLM-supplied name (see specification/eddie-engine.md
+        // §5.8 for why we forward picker options).
+        Map<String, Object> relayedMeta = extractAskUserOptionsMetaForProcess(
+                res.event().sourceProcessId(), process, ctx);
+        log.info("Eddie id='{}' RELAY eventRef='{}' source='{}' ({} chars) reason='{}'{}",
                 process.getId(),
-                action.stringParam(EddieActionSchema.PARAM_SOURCE),
-                lastReply.getContent().length(),
+                action.stringParam(EddieActionSchema.PARAM_EVENT_REF),
+                res.sourceName(),
+                body.length(),
                 summariseReason(action.reason()),
                 relayedMeta != null ? " — forwarding askUserOptions" : "");
         return new ActionTurnOutcome(out.toString(), /*awaitingUserInput*/ true, relayedMeta);
     }
 
     /**
-     * Reads {@code meta.askUserOptions} from a worker's chat message
-     * and rebuilds the meta map for Eddie's own outgoing chat message.
-     * Returns {@code null} when no options were attached — keeps the
-     * relayed message clean for non-ASK_USER reports.
+     * Resolution result for the eventRef-based RELAY / RELAY_INBOX
+     * handlers. Either {@link #error} is set (and the engine returns
+     * that as an ActionTurnOutcome) or {@link #event}, {@link #body}
+     * and {@link #sourceName} carry the validated payload.
+     */
+    private record EventRelayResolution(
+            SteerMessage.@Nullable ProcessEvent event,
+            @Nullable String body,
+            @Nullable String sourceName,
+            @Nullable String error) { }
+
+    /**
+     * Validates the {@code eventRef} param against the current turn's
+     * drain, resolves the source-process name for the deterministic
+     * header, and pulls the verbatim reply from the event's
+     * humanSummary. Symmetric to {@code ArthurEngine.handleRelay} —
+     * see the planning doc for the full rationale.
+     */
+    private EventRelayResolution resolveRelayEvent(
+            EngineAction action, ThinkProcessDocument process, ThinkEngineContext ctx) {
+        String eventRef = action.stringParam(EddieActionSchema.PARAM_EVENT_REF);
+        if (eventRef == null || eventRef.isBlank()) {
+            log.warn("Eddie id='{}' relay missing 'eventRef' — reason='{}'",
+                    process.getId(), action.reason());
+            return new EventRelayResolution(null, null, null,
+                    "(intern: RELAY braucht `eventRef` — kopiere das `eventId` "
+                            + "Attribut von einem <process-event> aus deiner Inbox. "
+                            + "Grund war: " + action.reason() + ")");
+        }
+        Map<String, SteerMessage.ProcessEvent> available =
+                currentTurnEventsByRef.getOrDefault(process.getId(), Map.of());
+        SteerMessage.ProcessEvent event = available.get(eventRef);
+        if (event == null) {
+            String hint = available.isEmpty()
+                    ? "keine <process-event> in diesem Drain"
+                    : "verfügbare eventIds: " + String.join(", ", available.keySet());
+            log.warn("Eddie id='{}' relay eventRef '{}' not in current drain ({}) — reason='{}'",
+                    process.getId(), eventRef, hint, action.reason());
+            return new EventRelayResolution(null, null, null,
+                    "(intern: RELAY eventRef '" + eventRef
+                            + "' ist nicht in deiner aktuellen Inbox — nur Events aus DIESEM "
+                            + "Drain dürfen relayed werden. " + hint + ".)");
+        }
+        String body = event.humanSummary();
+        if (body == null || body.isBlank()) {
+            log.warn("Eddie id='{}' relay eventRef '{}' has empty body — reason='{}'",
+                    process.getId(), eventRef, action.reason());
+            return new EventRelayResolution(null, null, null,
+                    "(intern: <process-event eventId=\"" + eventRef + "\"> hat keinen "
+                            + "Inhalt zum Relayen.)");
+        }
+        // Source-worker name for the deterministic header. Eddie's
+        // workers live in their own sessions (cross-project), so a
+        // tenant-scoped findById is enough; no Eddie-child filter
+        // here because we trust the event came from the drain, which
+        // ParentNotificationListener / EddieChatFrameHandler already
+        // anchored to Eddie.
+        String sourceProcessId = event.sourceProcessId();
+        String sourceName = thinkProcessService.findById(sourceProcessId)
+                .filter(p -> process.getTenantId().equals(p.getTenantId()))
+                .map(ThinkProcessDocument::getName)
+                .orElse(sourceProcessId);
+        return new EventRelayResolution(event, body, sourceName, null);
+    }
+
+    /**
+     * Looks up the worker's last ASSISTANT chat-message to pull
+     * {@code meta.askUserOptions} for picker-forwarding. The event
+     * payload only carries the prose reply; the picker options live
+     * on the worker's chat-message meta. Returns {@code null} when no
+     * options are present — keeps non-ASK_USER relays clean.
      */
     @SuppressWarnings("unchecked")
-    private static @Nullable Map<String, Object> extractAskUserOptionsMeta(
-            ChatMessageDocument workerReply) {
-        Map<String, Object> meta = workerReply.getMeta();
-        if (meta == null || meta.isEmpty()) return null;
-        Object options = meta.get(ChatMessageDocument.META_ASK_USER_OPTIONS);
-        if (!(options instanceof List<?> list) || list.isEmpty()) return null;
-        Map<String, Object> forward = new LinkedHashMap<>();
-        forward.put(ChatMessageDocument.META_ASK_USER_OPTIONS, list);
-        return forward;
+    private @Nullable Map<String, Object> extractAskUserOptionsMetaForProcess(
+            String workerProcessId, ThinkProcessDocument eddie, ThinkEngineContext ctx) {
+        ThinkProcessDocument worker = thinkProcessService.findById(workerProcessId)
+                .filter(p -> eddie.getTenantId().equals(p.getTenantId()))
+                .orElse(null);
+        if (worker == null) return null;
+        List<ChatMessageDocument> history = ctx.chatMessageService().activeHistory(
+                worker.getTenantId(), worker.getSessionId(), worker.getId());
+        for (int i = history.size() - 1; i >= 0; i--) {
+            ChatMessageDocument m = history.get(i);
+            if (m.getRole() != ChatRole.ASSISTANT
+                    || m.getContent() == null || m.getContent().isBlank()) continue;
+            Map<String, Object> meta = m.getMeta();
+            if (meta == null || meta.isEmpty()) return null;
+            Object options = meta.get(ChatMessageDocument.META_ASK_USER_OPTIONS);
+            if (!(options instanceof List<?> list) || list.isEmpty()) return null;
+            Map<String, Object> forward = new LinkedHashMap<>();
+            forward.put(ChatMessageDocument.META_ASK_USER_OPTIONS, list);
+            return forward;
+        }
+        return null;
     }
 
     /**
@@ -1645,12 +1742,9 @@ public class EddieEngine extends StructuredActionEngine {
                             + action.reason() + ")",
                     true);
         }
-        ChatMessageDocument lastReply = resolveWorkerReply(action, process, ctx);
-        if (lastReply == null) {
-            String source = action.stringParam(EddieActionSchema.PARAM_SOURCE);
-            return new ActionTurnOutcome(
-                    "(intern: konnte Worker '" + source + "' nicht erreichen.)",
-                    true);
+        EventRelayResolution res = resolveRelayEvent(action, process, ctx);
+        if (res.error() != null) {
+            return new ActionTurnOutcome(res.error(), true);
         }
 
         // Resolve the user-id from the session — inbox_post needs it
@@ -1666,17 +1760,20 @@ public class EddieEngine extends StructuredActionEngine {
         }
 
         // Post the body to the inbox via the existing inbox_post tool.
+        String body = res.body();
         try {
             Map<String, Object> params = new LinkedHashMap<>();
             params.put("targetUserId", targetUserId);
             params.put("type", "OUTPUT_TEXT");
             params.put("title", inboxTitle);
-            params.put("body", lastReply.getContent());
+            params.put("body", body);
             ctx.tools().invokeInternal("inbox_post", params);
-            log.info("Eddie id='{}' RELAY_INBOX source='{}' title='{}' ({} chars) reason='{}'",
+            log.info("Eddie id='{}' RELAY_INBOX eventRef='{}' source='{}' title='{}' "
+                            + "({} chars) reason='{}'",
                     process.getId(),
-                    action.stringParam(EddieActionSchema.PARAM_SOURCE),
-                    inboxTitle, lastReply.getContent().length(),
+                    action.stringParam(EddieActionSchema.PARAM_EVENT_REF),
+                    res.sourceName(),
+                    inboxTitle, body.length(),
                     summariseReason(action.reason()));
         } catch (RuntimeException e) {
             log.warn("Eddie id='{}' RELAY_INBOX inbox_post failed: {}",
@@ -2117,82 +2214,6 @@ public class EddieEngine extends StructuredActionEngine {
                 .orElse(null);
     }
 
-    // ──────────────────── Worker-reply lookup ────────────────────
-
-    /**
-     * Resolves the {@code source} param to a <em>worker</em> process
-     * (cross-project: Eddie's workers live in their own sessions, not
-     * in Eddie's session) and returns its last substantive ASSISTANT
-     * message.
-     *
-     * <p>Resolution order, all tenant-scoped for safety, with the
-     * additional guard that the resolved process must be Eddie's
-     * <em>child</em> (its {@code parentProcessId} matches the calling
-     * Eddie). That prevents the LLM from accidentally relaying
-     * Eddie's own messages or unrelated processes:
-     *
-     * <ol>
-     *   <li>By Mongo id ({@code findById}) — unique, the preferred
-     *       form. The {@code <process-event sourceProcessId="...">}
-     *       in the prompt provides exactly this.</li>
-     *   <li>By name across all sessions of the tenant, filtered to
-     *       Eddie's children — only used when the LLM passed a name
-     *       like {@code "chat"} that collides across sessions.</li>
-     * </ol>
-     */
-    private @Nullable ChatMessageDocument resolveWorkerReply(
-            EngineAction action, ThinkProcessDocument process, ThinkEngineContext ctx) {
-        String source = action.stringParam(EddieActionSchema.PARAM_SOURCE);
-        if (source == null || source.isBlank()) {
-            log.warn("Eddie id='{}' relay missing 'source' — reason='{}'",
-                    process.getId(), action.reason());
-            return null;
-        }
-
-        // Prefer Mongo-id lookup — unique and disambiguous across
-        // sessions. Tenant-scoped + child-of-Eddie filter for safety.
-        ThinkProcessDocument target = thinkProcessService.findById(source)
-                .filter(p -> process.getTenantId().equals(p.getTenantId()))
-                .filter(p -> process.getId().equals(p.getParentProcessId()))
-                .orElse(null);
-
-        if (target == null) {
-            // Name-based fallback: find any child of Eddie (across all
-            // sessions in the tenant) whose name matches. Useful when
-            // the LLM passed the worker's process-name from the event.
-            // We don't use findByName here because it's session-scoped
-            // and Eddie's workers live in different sessions; instead
-            // we walk all of Eddie's children and match.
-            for (ThinkProcessDocument child : thinkProcessService
-                    .findByParentProcessId(process.getId())) {
-                if (source.equals(child.getName())) {
-                    target = child;
-                    break;
-                }
-            }
-        }
-
-        if (target == null) {
-            log.warn("Eddie id='{}' relay source '{}' not found among children",
-                    process.getId(), source);
-            return null;
-        }
-
-        List<ChatMessageDocument> history = ctx.chatMessageService().activeHistory(
-                target.getTenantId(), target.getSessionId(), target.getId());
-        for (int i = history.size() - 1; i >= 0; i--) {
-            ChatMessageDocument m = history.get(i);
-            if (m.getRole() == ChatRole.ASSISTANT
-                    && m.getContent() != null
-                    && !m.getContent().isBlank()) {
-                return m;
-            }
-        }
-        log.warn("Eddie id='{}' relay source '{}' (id={}) has no ASSISTANT reply yet",
-                process.getId(), source, target.getId());
-        return null;
-    }
-
     // ──────────────────── Prompt building ────────────────────
 
     private List<ChatMessage> buildPromptMessages(
@@ -2617,6 +2638,20 @@ public class EddieEngine extends StructuredActionEngine {
             if (sourceName != null && !sourceName.isBlank()) {
                 sb.append(" sourceProcessName=\"")
                         .append(escapeAttr(sourceName))
+                        .append("\"");
+            }
+            // eventId + respondingToTurnAt: see ArthurEngine.renderForLlm —
+            // same Fix 1 attribution attrs, propagated cross-engine so Eddie's
+            // RELAY / RELAY_INBOX can reference events by id and the LLM can
+            // tell fresh worker replies from stale ones.
+            if (pe.eventId() != null && !pe.eventId().isBlank()) {
+                sb.append(" eventId=\"")
+                        .append(escapeAttr(pe.eventId()))
+                        .append("\"");
+            }
+            if (pe.inResponseToAt() != null) {
+                sb.append(" respondingToTurnAt=\"")
+                        .append(escapeAttr(pe.inResponseToAt().toString()))
                         .append("\"");
             }
             sb.append(" type=\"").append(pe.type().name().toLowerCase()).append("\">");

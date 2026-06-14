@@ -12,9 +12,17 @@ description: |
 engine: marvin
 params:
   model: default:marvin,default:analyze
-  # Specialist recipes available for CALL_RECIPE. Empty list means
-  # workers must answer directly or decompose; they cannot call out.
-  availableRecipes: []
+  # Specialist recipes available for CALL_RECIPE. The recipe
+  # description above names the canonical three — keep them in the
+  # default so Marvin actually has an outbound path. Empty list
+  # would force every leaf into PROCEED_TO_CONCLUDE / NEEDS_SUBTASKS,
+  # which collapses to training-data-only answers for any question
+  # that needs fresh facts (the Vibecoding-Bug: 92 LLM calls, 0 tool
+  # calls). Project-level overrides can still narrow this list.
+  availableRecipes:
+    - web-research
+    - analyze
+    - code-read
   # Hard cap on tree size before runaway protection kicks in.
   maxTreeNodes: 200
   # NEEDS_SUBTASKS-depth cap.

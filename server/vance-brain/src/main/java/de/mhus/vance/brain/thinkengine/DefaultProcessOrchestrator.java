@@ -37,8 +37,13 @@ final class DefaultProcessOrchestrator implements ProcessOrchestrator {
         if (parentId == null) {
             return false;
         }
+        // Engine-driven SUMMARY events have no "responding to" turn —
+        // they're progress notes pushed by the engine, not replies to a
+        // specific user input. Child-status-driven events go through
+        // ParentNotificationListener instead, which fills the
+        // attribution slot from the worker's chat history.
         return eventEmitter.notifyParent(
-                parentId, process.getId(), type, humanSummary, payload);
+                parentId, process.getId(), type, humanSummary, payload, null);
     }
 
     @Override

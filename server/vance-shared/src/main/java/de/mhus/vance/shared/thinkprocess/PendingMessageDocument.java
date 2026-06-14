@@ -84,6 +84,26 @@ public class PendingMessageDocument {
 
     private @Nullable ProcessEventType eventType;
 
+    /**
+     * Stable handle for this PROCESS_EVENT — UUID assigned when the
+     * event is queued by {@code ProcessEventEmitter}. Parent engines
+     * reference it in follow-up actions (Arthur's {@code RELAY
+     * eventRef}), so the persistence round-trip must preserve it.
+     * {@code null} only on rows written before the field existed.
+     */
+    private @Nullable String eventId;
+
+    /**
+     * Timestamp of the user-input turn the emitting worker was
+     * responding to when it produced this event — set by
+     * {@code ParentNotificationListener} from the worker's chat
+     * history. Lets a parent engine distinguish a fresh reply from a
+     * stale one (the Marvin-spawn / Ford-stale-relay bug pattern).
+     * {@code null} for engine-driven SUMMARY events or when the
+     * triggering input could not be identified.
+     */
+    private @Nullable Instant inResponseToAt;
+
     // ─── TOOL_RESULT ─────────────────────────────────────────────
     private @Nullable String toolCallId;
 

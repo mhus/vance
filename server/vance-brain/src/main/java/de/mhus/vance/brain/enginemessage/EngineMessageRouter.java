@@ -153,6 +153,8 @@ public class EngineMessageRouter {
                 .content(m.getContent())
                 .sourceProcessId(m.getSourceProcessId())
                 .eventType(m.getEventType())
+                .eventId(m.getEventId())
+                .inResponseToAt(m.getInResponseToAt())
                 .toolCallId(m.getToolCallId())
                 .toolName(m.getToolName())
                 .toolStatus(m.getToolStatus())

@@ -632,6 +632,7 @@ public class ExecManager {
                     .eventType(eventType)
                     .content(summary)
                     .payload(payload)
+                    .eventId(java.util.UUID.randomUUID().toString())
                     .build();
             boolean ok = engineMessageRouterProvider.getObject()
                     .dispatch(ownerProcessId, ownerProcessId, doc);

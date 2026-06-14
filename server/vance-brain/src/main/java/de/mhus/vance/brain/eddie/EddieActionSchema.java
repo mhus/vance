@@ -133,7 +133,7 @@ public final class EddieActionSchema {
     // Field names — public so handlers can use them
     // ─────────────────────────────────────────────
 
-    /** User-facing message text (ANSWER / ASK_USER / REJECT / WAIT-with-note / RELAY-prefix). */
+    /** User-facing message text (ANSWER / ASK_USER / REJECT / WAIT-with-note). */
     public static final String PARAM_MESSAGE      = "message";
 
     /** Project name to create (DELEGATE_PROJECT) — should be a slug-style identifier. */
@@ -154,13 +154,19 @@ public final class EddieActionSchema {
     /** Content to send to the existing project's Arthur (STEER_PROJECT). */
     public static final String PARAM_CONTENT      = "content";
 
-    /** Worker process name whose last reply to relay (RELAY / RELAY_INBOX). */
-    public static final String PARAM_SOURCE       = "source";
+    /**
+     * RELAY / RELAY_INBOX: stable handle of the {@code <process-event>}
+     * to relay, copied verbatim from the {@code eventId} attribute the
+     * engine rendered into Eddie's inbox snapshot. The engine validates
+     * the ref against the current drain and pulls the worker's reply
+     * from that specific event — so a stale event from a previous turn
+     * (the Marvin / Ford race we are explicitly fixing) can no longer
+     * be relayed as if it were fresh. See
+     * {@code planning/arthur-process-event-attribution.md}.
+     */
+    public static final String PARAM_EVENT_REF    = "eventRef";
 
-    /** Worker process name (or id) to mediate to (MEDIATE) — distinct
-     *  from RELAY's {@link #PARAM_SOURCE} both semantically and to keep
-     *  the schema descriptions of the two parameters mutually exclusive
-     *  per action. */
+    /** Worker process name (or id) to mediate to (MEDIATE). */
     public static final String PARAM_TARGET       = "target";
 
     /** Optional short spoken sentence Eddie says to the user immediately
@@ -168,9 +174,6 @@ public final class EddieActionSchema {
      *  user what's happening and reminds them of the {@code /hub}
      *  return path. */
     public static final String PARAM_VOICE_ANNOUNCEMENT = "voiceAnnouncement";
-
-    /** Optional short prefix prepended to relayed worker text (RELAY). */
-    public static final String PARAM_PREFIX       = "prefix";
 
     /** Inbox item title (RELAY_INBOX) — what the user sees in the inbox list. */
     public static final String PARAM_INBOX_TITLE  = "inboxTitle";
@@ -311,13 +314,18 @@ public final class EddieActionSchema {
                         + "update or factual entry to persist. Required "
                         + "for both.");
 
-        Map<String, Object> sourceProp = new LinkedHashMap<>();
-        sourceProp.put("type", "string");
-        sourceProp.put("description",
-                "Worker process name (or id) whose last reply should be "
-                        + "relayed. Required for RELAY and RELAY_INBOX. Use "
-                        + "the sourceProcessName from the most recent "
-                        + "<process-event> marker, not a guess.");
+        Map<String, Object> eventRefProp = new LinkedHashMap<>();
+        eventRefProp.put("type", "string");
+        eventRefProp.put("description",
+                "Stable handle of the <process-event> to relay — copy "
+                        + "the `eventId` attribute verbatim from one of the "
+                        + "<process-event> markers in your current inbox. "
+                        + "Required for RELAY and RELAY_INBOX. The engine "
+                        + "validates that the eventId belongs to the current "
+                        + "drain (no relaying of stale events from previous "
+                        + "turns) and emits the worker reply with a "
+                        + "deterministic source-header — you do not write "
+                        + "the prefix yourself.");
 
         Map<String, Object> targetProp = new LinkedHashMap<>();
         targetProp.put("type", "string");
@@ -337,12 +345,6 @@ public final class EddieActionSchema {
                         + "the user what's about to happen and remind them "
                         + "of the /hub return path. Leave empty for silent "
                         + "hand-over.");
-
-        Map<String, Object> prefixProp = new LinkedHashMap<>();
-        prefixProp.put("type", "string");
-        prefixProp.put("description",
-                "Optional short spoken-style line before the relayed text "
-                        + "(RELAY only). Leave empty for clean pass-through.");
 
         Map<String, Object> inboxTitleProp = new LinkedHashMap<>();
         inboxTitleProp.put("type", "string");
@@ -511,10 +513,9 @@ public final class EddieActionSchema {
         properties.put(PARAM_KIT_NAME, kitNameProp);
         properties.put(PARAM_PROJECT, projectProp);
         properties.put(PARAM_CONTENT, contentProp);
-        properties.put(PARAM_SOURCE, sourceProp);
+        properties.put(PARAM_EVENT_REF, eventRefProp);
         properties.put(PARAM_TARGET, targetProp);
         properties.put(PARAM_VOICE_ANNOUNCEMENT, voiceAnnouncementProp);
-        properties.put(PARAM_PREFIX, prefixProp);
         properties.put(PARAM_INBOX_TITLE, inboxTitleProp);
         properties.put(PARAM_SPOKEN, spokenProp);
         properties.put(PARAM_SCOPE, scopeProp);

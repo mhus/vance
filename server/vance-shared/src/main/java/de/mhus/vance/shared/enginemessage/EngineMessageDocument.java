@@ -135,6 +135,21 @@ public class EngineMessageDocument {
 
     private @Nullable ProcessEventType eventType;
 
+    /**
+     * Stable handle for this PROCESS_EVENT — propagated cross-pod so a
+     * receiving engine can reference the event by id in follow-up
+     * actions (Arthur's {@code RELAY eventRef}). Mirrors the field on
+     * {@code PendingMessageDocument}.
+     */
+    private @Nullable String eventId;
+
+    /**
+     * Timestamp of the user-input turn the emitting worker was
+     * responding to. Mirrors {@code PendingMessageDocument.inResponseToAt}
+     * — propagated cross-pod so attribution survives the WS hop.
+     */
+    private @Nullable Instant inResponseToAt;
+
     // ─── TOOL_RESULT ─────────────────────────────────────────────
     private @Nullable String toolCallId;
     private @Nullable String toolName;

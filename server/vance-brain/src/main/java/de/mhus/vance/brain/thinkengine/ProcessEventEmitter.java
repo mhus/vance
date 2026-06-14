@@ -12,6 +12,7 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -69,6 +70,14 @@ public class ProcessEventEmitter {
      * Appends a {@code PROCESS_EVENT} to {@code parentProcessId}'s
      * pending queue and schedules a wakeup on the parent's lane.
      *
+     * <p>Generates a fresh {@code eventId} (UUID) for the event so
+     * parent engines have a stable handle to reference it in follow-
+     * up actions (Arthur's {@code RELAY eventRef}). Pass
+     * {@code inResponseToAt} when the emitting worker was responding
+     * to a specific user-input turn — {@code ParentNotificationListener}
+     * derives this from the worker's last incoming USER chat message
+     * so a receiving parent can tell a fresh reply from a stale one.
+     *
      * @return {@code true} when the parent existed and the message
      *         was queued, {@code false} otherwise
      */
@@ -77,7 +86,8 @@ public class ProcessEventEmitter {
             String sourceProcessId,
             ProcessEventType type,
             @Nullable String humanSummary,
-            @Nullable Map<String, Object> payload) {
+            @Nullable Map<String, Object> payload,
+            @Nullable Instant inResponseToAt) {
 
         PendingMessageDocument doc = PendingMessageDocument.builder()
                 .type(PendingMessageType.PROCESS_EVENT)
@@ -86,6 +96,8 @@ public class ProcessEventEmitter {
                 .eventType(type)
                 .content(humanSummary)
                 .payload(payload)
+                .eventId(UUID.randomUUID().toString())
+                .inResponseToAt(inResponseToAt)
                 .build();
 
         // Routes through the router so cross-project parents (Eddie listening

@@ -620,6 +620,21 @@ public class MarvinEngine implements ThinkEngine {
                             : new LinkedHashMap<>(node.getArtifacts());
                     art.put("spawnedChildren", sc.children().size());
                     nodeService.markDone(node, art);
+                    // Self-wakeup: spawned children are PENDING and
+                    // have no listener that would re-fire the lane on
+                    // their own. Without this scheduleTurn the lane
+                    // goes IDLE after parking and the freshly spawned
+                    // children sit untouched until something external
+                    // pokes Marvin (process_steer, ProcessEvent, …).
+                    // The previous behaviour appeared to work only
+                    // when start()-emitted wakeups happened to still
+                    // be queued — a single SpawnChildren in the same
+                    // process exposed the gap (Vibecoding sess_dad31d6
+                    // 8 — 6 min stall after the second NEEDS_SUBTASKS).
+                    // AskUserInput / CallRecipe correctly stay quiet —
+                    // they wait for an external trigger, this branch
+                    // is the only "parked-but-more-work" case.
+                    eventEmitter.scheduleTurn(process.getId());
                     return true;
                 }
                 if (trans instanceof MarvinNodeStateMachine.AskUserInput aui) {

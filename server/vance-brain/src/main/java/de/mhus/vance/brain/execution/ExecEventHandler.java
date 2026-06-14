@@ -171,6 +171,7 @@ public class ExecEventHandler implements WsHandler {
                     .eventType(eventType)
                     .content(summary)
                     .payload(payload)
+                    .eventId(java.util.UUID.randomUUID().toString())
                     .build();
             boolean ok = engineMessageRouter.getObject()
                     .dispatch(ownerProcessId, ownerProcessId, doc);

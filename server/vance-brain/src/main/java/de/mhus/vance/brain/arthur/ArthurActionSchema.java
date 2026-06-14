@@ -174,8 +174,17 @@ public final class ArthurActionSchema {
     public static final String PARAM_MESSAGE = "message";
     public static final String PARAM_PRESET  = "preset";
     public static final String PARAM_PROMPT  = "prompt";
-    public static final String PARAM_SOURCE  = "source";
-    public static final String PARAM_PREFIX  = "prefix";
+    /**
+     * RELAY: stable handle of the {@code <process-event>} to relay,
+     * copied verbatim from the {@code eventId} attribute the engine
+     * rendered into the inbox snapshot. The engine validates the ref
+     * against the current drain and pulls the worker's reply from
+     * that specific event — so a stale {@code <process-event>}
+     * sitting around from a previous turn can no longer be relayed
+     * as if it were a fresh worker output. See
+     * {@code planning/arthur-process-event-attribution.md}.
+     */
+    public static final String PARAM_EVENT_REF = "eventRef";
 
     // LEARN params — mirror EddieActionSchema for symmetry.
     /** LEARN scope discriminator: {@code persona} or {@code fact}. */
@@ -227,8 +236,11 @@ public final class ArthurActionSchema {
         typeProp.put("description",
                 "Which branch this turn takes. ANSWER = direct reply. "
                         + "ASK_USER = clarification question. DELEGATE = spawn "
-                        + "a worker. RELAY = pass through a worker's last "
-                        + "reply as your own answer. WAIT = async work running. "
+                        + "a worker. RELAY = pass through a specific "
+                        + "<process-event> from your current inbox — pick "
+                        + "the eventId, the engine renders the source header "
+                        + "and worker reply deterministically. WAIT = async "
+                        + "work running. "
                         + "REJECT = out of scope. LEARN = persist something "
                         + "about the user (persona summary or specific fact) "
                         + "into the cross-engine per-user memory. DISCOVER = "
@@ -292,17 +304,18 @@ public final class ArthurActionSchema {
         promptProp.put("description",
                 "Concrete instruction for the worker. Required for DELEGATE.");
 
-        Map<String, Object> sourceProp = new LinkedHashMap<>();
-        sourceProp.put("type", "string");
-        sourceProp.put("description",
-                "Worker process name whose last reply should be relayed. "
-                        + "Required for RELAY.");
-
-        Map<String, Object> prefixProp = new LinkedHashMap<>();
-        prefixProp.put("type", "string");
-        prefixProp.put("description",
-                "Optional short prefix prepended to relayed worker text. "
-                        + "Only meaningful for RELAY.");
+        Map<String, Object> eventRefProp = new LinkedHashMap<>();
+        eventRefProp.put("type", "string");
+        eventRefProp.put("description",
+                "Stable handle of the <process-event> to relay — copy "
+                        + "the `eventId` attribute verbatim from one of the "
+                        + "<process-event> markers in your current inbox. "
+                        + "Required for RELAY. The engine validates that "
+                        + "the eventId belongs to the current drain (no "
+                        + "relaying of stale events from previous turns) "
+                        + "and renders a deterministic header that names "
+                        + "the source worker — you do not write the "
+                        + "header yourself.");
 
         // Plan-Mode params
         Map<String, Object> goalProp = new LinkedHashMap<>();
@@ -435,8 +448,7 @@ public final class ArthurActionSchema {
         properties.put(PARAM_MESSAGE, messageProp);
         properties.put(PARAM_PRESET, presetProp);
         properties.put(PARAM_PROMPT, promptProp);
-        properties.put(PARAM_SOURCE, sourceProp);
-        properties.put(PARAM_PREFIX, prefixProp);
+        properties.put(PARAM_EVENT_REF, eventRefProp);
         properties.put(PARAM_SCOPE, scopeProp);
         properties.put(PARAM_MODE, modeProp);
         properties.put(PARAM_CONTENT, learnContentProp);

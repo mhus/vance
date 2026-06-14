@@ -246,6 +246,23 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             new ConcurrentHashMap<>();
 
     /**
+     * Per-process map of {@code eventId → SteerMessage.ProcessEvent}
+     * built fresh at the start of each {@link #runTurnFor} from the
+     * drained inbox. The RELAY handler looks up the LLM-supplied
+     * {@code eventRef} here and rejects anything that wasn't in the
+     * current drain — so a stale {@code <process-event>} from a
+     * previous turn (the Marvin-spawn / Ford-stale-relay bug pattern)
+     * can no longer be relayed as if it were fresh worker output.
+     * See {@code planning/arthur-process-event-attribution.md}.
+     *
+     * <p>ConcurrentHashMap to match {@link #currentTurnHadUserInput};
+     * entries are cleaned up in the {@code finally} block of
+     * {@link #runTurnFor}.
+     */
+    private final ConcurrentMap<String, Map<String, SteerMessage.ProcessEvent>>
+            currentTurnEventsByRef = new ConcurrentHashMap<>();
+
+    /**
      * Action types Arthur is forbidden from emitting on a turn that was
      * triggered without any USER_CHAT_INPUT. RELAY / ANSWER / ASK_USER /
      * WAIT / REJECT stay allowed — those report state to the user
@@ -440,6 +457,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         log.debug("Arthur.suspend id='{}'", process.getId());
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.SUSPENDED);
         currentTurnHadUserInput.remove(process.getId());
+        currentTurnEventsByRef.remove(process.getId());
     }
 
     @Override
@@ -447,6 +465,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         log.info("Arthur.stop id='{}'", process.getId());
         thinkProcessService.closeProcess(process.getId(), CloseReason.STOPPED);
         currentTurnHadUserInput.remove(process.getId());
+        currentTurnEventsByRef.remove(process.getId());
     }
 
     /**
@@ -619,14 +638,23 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         // Event-only turns must not emit spawn-actions (DELEGATE /
         // ASK_USER) — see SPAWN_ACTIONS_FORBIDDEN_ON_EVENT_TURNS.
         boolean hadUserInput = false;
+        // RELAY-attribution map: { eventId → ProcessEvent } drawn from
+        // THIS drain so handleRelay can validate the LLM's eventRef
+        // against fresh events only. Built in the same loop as the
+        // hadUserInput check to avoid a second pass.
+        Map<String, SteerMessage.ProcessEvent> eventsByRef = new LinkedHashMap<>();
         for (SteerMessage m : inbox) {
             if (m instanceof SteerMessage.UserChatInput uci
                     && uci.content() != null && !uci.content().isBlank()) {
                 hadUserInput = true;
-                break;
+            }
+            if (m instanceof SteerMessage.ProcessEvent pe
+                    && pe.eventId() != null && !pe.eventId().isBlank()) {
+                eventsByRef.put(pe.eventId(), pe);
             }
         }
         currentTurnHadUserInput.put(process.getId(), hadUserInput);
+        currentTurnEventsByRef.put(process.getId(), eventsByRef);
         // Default IDLE on any abnormal exit — matches legacy lifecycle.
         // Reset to outcome.awaitingUserInput() inside the try.
         boolean awaitingUserInput = false;
@@ -866,6 +894,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             return new TurnSignal(appendedChat, loopResult.madeProgress());
         } finally {
             currentTurnHadUserInput.remove(process.getId());
+            currentTurnEventsByRef.remove(process.getId());
             ThinkProcessStatus exitStatus = awaitingUserInput
                     ? ThinkProcessStatus.BLOCKED
                     : ThinkProcessStatus.IDLE;
@@ -1082,9 +1111,10 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                     + "only process-events (worker closed / tool-result / similar). "
                     + "Spawning new work without a user prompt led to the multi-"
                     + "Slartibartfast respawn cascade we just stopped. "
-                    + "Emit RELAY (with the latest worker output as `source`), or "
-                    + "ANSWER (with a short status note), or WAIT — and let the user "
-                    + "decide whether more work is wanted.";
+                    + "Emit RELAY (with `eventRef` pointing at a <process-event> "
+                    + "from the current inbox), or ANSWER (with a short status "
+                    + "note), or WAIT — and let the user decide whether more "
+                    + "work is wanted.";
         }
         return null;
     }
@@ -1622,93 +1652,93 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     }
 
     /**
-     * Pass a worker's last reply through to the user as Arthur's
-     * own answer. Zero LLM tokens for the content — the engine
-     * looks up the worker by name (with id fallback so the LLM can
-     * use either the {@code sourceProcessName} or the
-     * {@code sourceProcessId} from the most recent
-     * {@code <process-event>} marker), reads the worker's last
-     * substantive ASSISTANT message verbatim, and persists it as a
-     * fresh ASSISTANT message under Arthur's process id with
-     * {@code originatingProcessId} provenance.
-     *
-     * <p>The optional {@code prefix} param prepends a brief Arthur
-     * line ("Hier ist das Rezept, das ich gefunden habe:") before
-     * the relayed text — useful when Arthur wants to frame the
-     * worker's output in the conversation. Empty / missing prefix
-     * = clean pass-through.
+     * Pass a specific {@code <process-event>} from the current
+     * drain through to the user as Arthur's own answer. Zero LLM
+     * tokens for the content — the engine looks up the event by
+     * {@code eventRef}, validates that it belongs to THIS turn's
+     * drain (so a stale event from a previous turn can no longer
+     * be relayed as if it were fresh), and emits the verbatim
+     * worker reply that the event carries plus a deterministic
+     * {@code **[Worker {name} → {type}]**} header. The LLM does
+     * not pick the source-name or the prefix text — both are
+     * derived from the referenced event's metadata so a
+     * {@code Marvin-wording / Ford-source} mismatch becomes
+     * structurally impossible. See
+     * {@code planning/arthur-process-event-attribution.md}.
      */
     private ActionTurnOutcome handleRelay(
             de.mhus.vance.brain.thinkengine.action.EngineAction action,
             ThinkProcessDocument process,
             ThinkEngineContext ctx) {
-        String source = action.stringParam(ArthurActionSchema.PARAM_SOURCE);
-        if (source == null || source.isBlank()) {
-            log.warn("Arthur id='{}' RELAY missing 'source' — reason='{}'",
+        String eventRef = action.stringParam(ArthurActionSchema.PARAM_EVENT_REF);
+        if (eventRef == null || eventRef.isBlank()) {
+            log.warn("Arthur id='{}' RELAY missing 'eventRef' — reason='{}'",
                     process.getId(), action.reason());
             return new ActionTurnOutcome(
-                    "(internal: RELAY without 'source'. Reason was: "
+                    "(internal: RELAY needs `eventRef` — copy the `eventId` "
+                            + "attribute verbatim from one of the <process-event> "
+                            + "markers in your current inbox. Reason was: "
                             + action.reason() + ")",
                     true);
         }
 
-        // Same name-or-id resolution as the process tools so the LLM
-        // can use either sourceProcessName="web-research-7b9124" or
-        // sourceProcessId="69f7..." from the <process-event>.
-        Optional<ThinkProcessDocument> targetOpt = thinkProcessService
-                .findByName(process.getTenantId(), process.getSessionId(), source)
-                .or(() -> thinkProcessService.findById(source)
-                        .filter(p -> process.getTenantId().equals(p.getTenantId())
-                                && process.getSessionId().equals(p.getSessionId())));
-        if (targetOpt.isEmpty()) {
-            log.warn("Arthur id='{}' RELAY source '{}' not found in session",
-                    process.getId(), source);
+        // Look up the event in THIS turn's drain. Anything not present
+        // is either a stale event from a previous turn (the Marvin /
+        // Ford race we are explicitly fixing) or a fabricated id —
+        // both rejected with a hint that names the eventIds that ARE
+        // available, so the next LLM iteration can pick correctly.
+        Map<String, SteerMessage.ProcessEvent> available =
+                currentTurnEventsByRef.getOrDefault(process.getId(), Map.of());
+        SteerMessage.ProcessEvent event = available.get(eventRef);
+        if (event == null) {
+            String hint = available.isEmpty()
+                    ? "no <process-event> in this drain"
+                    : "available eventIds: " + String.join(", ", available.keySet());
+            log.warn("Arthur id='{}' RELAY eventRef '{}' not in current drain "
+                            + "({}) — reason='{}'",
+                    process.getId(), eventRef, hint, action.reason());
             return new ActionTurnOutcome(
-                    "(internal: RELAY target '" + source
-                            + "' not found in this session.)",
-                    true);
-        }
-        ThinkProcessDocument target = targetOpt.get();
-
-        // Find the worker's last substantive ASSISTANT message. We
-        // walk the active history backwards because compacted-out
-        // messages (archived into a memory) shouldn't be relayed —
-        // they're old context, not the latest reply.
-        java.util.List<de.mhus.vance.shared.chat.ChatMessageDocument> workerHistory =
-                ctx.chatMessageService().activeHistory(
-                        target.getTenantId(),
-                        target.getSessionId(),
-                        target.getId());
-        de.mhus.vance.shared.chat.ChatMessageDocument lastReply = null;
-        for (int i = workerHistory.size() - 1; i >= 0; i--) {
-            de.mhus.vance.shared.chat.ChatMessageDocument m = workerHistory.get(i);
-            if (m.getRole() == ChatRole.ASSISTANT
-                    && m.getContent() != null
-                    && !m.getContent().isBlank()) {
-                lastReply = m;
-                break;
-            }
-        }
-        if (lastReply == null) {
-            log.warn("Arthur id='{}' RELAY source '{}' has no ASSISTANT reply yet",
-                    process.getId(), source);
-            return new ActionTurnOutcome(
-                    "(internal: worker '" + source
-                            + "' has no reply to relay yet.)",
+                    "(internal: RELAY eventRef '" + eventRef
+                            + "' is not in your current inbox — only events from "
+                            + "THIS drain can be relayed. " + hint + ".)",
                     true);
         }
 
-        String prefix = action.stringParam(ArthurActionSchema.PARAM_PREFIX);
+        // Resolve the source-worker name for the deterministic header.
+        // The event already carries the verbatim child reply in its
+        // humanSummary (set by ParentNotificationListener.enrichWith-
+        // LastReply), so we render straight from that — no second
+        // lookup against the worker's chat-history that could pick up
+        // a fresher reply than the one this event captured.
+        String sourceProcessId = event.sourceProcessId();
+        Optional<ThinkProcessDocument> targetOpt = thinkProcessService.findById(sourceProcessId)
+                .filter(p -> process.getTenantId().equals(p.getTenantId())
+                        && process.getSessionId().equals(p.getSessionId()));
+        String sourceName = targetOpt.map(ThinkProcessDocument::getName).orElse(sourceProcessId);
+
+        String body = event.humanSummary();
+        if (body == null || body.isBlank()) {
+            log.warn("Arthur id='{}' RELAY eventRef '{}' has empty body — reason='{}'",
+                    process.getId(), eventRef, action.reason());
+            return new ActionTurnOutcome(
+                    "(internal: <process-event eventId=\"" + eventRef
+                            + "\"> has no body to relay.)",
+                    true);
+        }
+
+        // Deterministic header — built from the event's own metadata,
+        // not from anything the LLM wrote. Prevents the failure mode
+        // where the LLM names Marvin in the prefix while the source
+        // is actually Ford.
         StringBuilder out = new StringBuilder();
-        if (prefix != null && !prefix.isBlank()) {
-            out.append(prefix.trim()).append("\n\n");
-        }
-        out.append(lastReply.getContent());
+        out.append("**[Worker ").append(sourceName)
+                .append(" → ").append(event.type().name().toLowerCase())
+                .append("]**\n\n");
+        out.append(body);
 
         log.info(
-                "Arthur id='{}' RELAY source='{}' ({} chars) reason='{}'",
-                process.getId(), target.getName(),
-                lastReply.getContent().length(),
+                "Arthur id='{}' RELAY eventRef='{}' source='{}' ({} chars) reason='{}'",
+                process.getId(), eventRef, sourceName, body.length(),
                 summariseReason(action.reason()));
 
         // The engine layer (runTurnFor) appends the chat message —
@@ -1974,6 +2004,17 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                 messages.add(VanceSystemMessage.dynamic(factsBlock));
             }
         }
+        // Active workers — permanent status view of Arthur's children
+        // independent of inbox events. Without this, a worker that
+        // hasn't sent a PROCESS_EVENT yet (still mid-run) is invisible
+        // to Arthur and the LLM has to remember its own spawn-state
+        // across turns. Concretely fixes the "did Marvin actually start
+        // or did Ford just answer?" confusion from the Vibecoding-Bug
+        // (see planning/arthur-process-event-attribution.md §Erweiterungen).
+        String activeWorkersBlock = composeActiveWorkersBlock(process);
+        if (activeWorkersBlock != null && !activeWorkersBlock.isBlank()) {
+            messages.add(VanceSystemMessage.dynamic(activeWorkersBlock));
+        }
         // Plan-Mode TodoList block — surfaces the live task list so the
         // LLM in EXECUTING / PLANNING knows which step is current
         // (IN_PROGRESS marker) and which are still PENDING. Without
@@ -2117,6 +2158,90 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                 .orElse(null);
     }
 
+    /** Max entries in the {@code <active_workers>} block. Mirrors
+     *  Eddie's {@code DELEGATED_WORKERS_MAX_RENDER} — Arthur's
+     *  child-set is typically small (1–3), so a hard upper bound
+     *  just guards against pathological cases like many parallel
+     *  micro-workers. */
+    private static final int ACTIVE_WORKERS_MAX_RENDER = 8;
+
+    /**
+     * Composes the {@code ## Active workers} prompt block — a permanent
+     * status view of Arthur's children, independent of inbox events.
+     * Mirrors Eddies {@code <delegated_workers>} but uses the
+     * parent-child link from {@code ThinkProcessDocument.parentProcessId}
+     * (Arthur's children live in the same session) rather than Eddie's
+     * cross-project {@code WorkerLinks}.
+     *
+     * <p>Without this block, a worker that hasn't sent a PROCESS_EVENT
+     * yet (still mid-run after spawn) is invisible to Arthur — the LLM
+     * has to remember its own spawn-state across turns, which is the
+     * exact failure mode in the Vibecoding session (Marvin just
+     * spawned, Ford's stale reply arrived, Arthur conflated them).
+     */
+    private @Nullable String composeActiveWorkersBlock(ThinkProcessDocument process) {
+        List<ThinkProcessDocument> children = thinkProcessService
+                .findByParentProcessId(process.getId());
+        return renderActiveWorkersBlock(children, ACTIVE_WORKERS_MAX_RENDER, java.time.Instant.now());
+    }
+
+    /**
+     * Pure-function render of the active-workers block so the format
+     * can be unit-tested without spinning up the engine bean. Returns
+     * {@code null} when there are no active (non-CLOSED) children to
+     * surface — keeps the prompt clean when Arthur is doing direct
+     * work.
+     */
+    static @Nullable String renderActiveWorkersBlock(
+            @Nullable List<ThinkProcessDocument> children,
+            int maxRender,
+            java.time.Instant now) {
+        if (children == null || children.isEmpty()) return null;
+        var visible = children.stream()
+                .filter(c -> c.getStatus() != ThinkProcessStatus.CLOSED)
+                .sorted((a, b) -> {
+                    java.time.Instant ai = a.getUpdatedAt();
+                    java.time.Instant bi = b.getUpdatedAt();
+                    if (ai == null && bi == null) return 0;
+                    if (ai == null) return 1;
+                    if (bi == null) return -1;
+                    return bi.compareTo(ai);
+                })
+                .limit(maxRender)
+                .toList();
+        if (visible.isEmpty()) return null;
+        StringBuilder sb = new StringBuilder();
+        sb.append("## Active workers\n\n");
+        sb.append("Workers you have spawned that have not closed yet. Use this "
+                + "to ground RELAY / process_steer / process_stop targets and to "
+                + "decide whether to spawn another one — never claim a worker has "
+                + "finished if it still appears here.\n\n");
+        for (ThinkProcessDocument c : visible) {
+            String name = c.getName() == null || c.getName().isBlank()
+                    ? c.getId() : c.getName();
+            sb.append("- ").append(name)
+                    .append(" (").append(c.getThinkEngine())
+                    .append(", status=").append(c.getStatus().name().toLowerCase(java.util.Locale.ROOT));
+            java.time.Instant updated = c.getUpdatedAt();
+            if (updated != null && now != null) {
+                long ageSec = Math.max(0, java.time.Duration.between(updated, now).getSeconds());
+                sb.append(", last activity ").append(formatAge(ageSec)).append(" ago");
+            }
+            sb.append(")\n");
+        }
+        return sb.toString();
+    }
+
+    /** Compact relative-time formatter for the active-workers block. */
+    static String formatAge(long seconds) {
+        if (seconds < 60) return seconds + "s";
+        long minutes = seconds / 60;
+        if (minutes < 60) return minutes + "m";
+        long hours = minutes / 60;
+        if (hours < 24) return hours + "h";
+        return (hours / 24) + "d";
+    }
+
     /** Rendering helper that needs access to the {@code thinkProcessService}. */
     private String renderForLlm(SteerMessage m) {
         if (m instanceof SteerMessage.ProcessEvent pe) {
@@ -2128,6 +2253,27 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             if (sourceName != null && !sourceName.isBlank()) {
                 sb.append(" sourceProcessName=\"")
                         .append(escapeAttr(sourceName))
+                        .append("\"");
+            }
+            // eventId: stable handle the LLM passes back as
+            // RELAY's `eventRef` to refer to THIS event — the
+            // engine rejects RELAYs without it, see
+            // ArthurEngine.handleRelay.
+            if (pe.eventId() != null && !pe.eventId().isBlank()) {
+                sb.append(" eventId=\"")
+                        .append(escapeAttr(pe.eventId()))
+                        .append("\"");
+            }
+            // respondingToTurnAt: the user-input turn the emitting
+            // worker was processing. Lets the LLM see which user
+            // question this is a reply to — a Ford reply that's
+            // attributed to a turn older than the current outgoing
+            // delegate is a stale reply, NOT a result from the just-
+            // spawned worker. See planning/arthur-process-event-
+            // attribution.md.
+            if (pe.inResponseToAt() != null) {
+                sb.append(" respondingToTurnAt=\"")
+                        .append(escapeAttr(pe.inResponseToAt().toString()))
                         .append("\"");
             }
             sb.append(" type=\"").append(pe.type().name().toLowerCase()).append("\">");
@@ -2160,7 +2306,18 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                 StringBuilder sb = new StringBuilder();
                 sb.append("<process-event sourceProcessId=\"")
                         .append(escapeAttr(pe.sourceProcessId()))
-                        .append("\" type=\"")
+                        .append("\"");
+                if (pe.eventId() != null && !pe.eventId().isBlank()) {
+                    sb.append(" eventId=\"")
+                            .append(escapeAttr(pe.eventId()))
+                            .append("\"");
+                }
+                if (pe.inResponseToAt() != null) {
+                    sb.append(" respondingToTurnAt=\"")
+                            .append(escapeAttr(pe.inResponseToAt().toString()))
+                            .append("\"");
+                }
+                sb.append(" type=\"")
                         .append(pe.type().name().toLowerCase())
                         .append("\">");
                 if (pe.humanSummary() != null) {

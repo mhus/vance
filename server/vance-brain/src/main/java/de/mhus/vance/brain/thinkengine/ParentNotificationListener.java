@@ -9,6 +9,7 @@ import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessStatusChangedEvent;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -105,12 +106,20 @@ public class ParentNotificationListener {
         // re-spawns or endless clarification loops.
         String enrichedSummary = enrichWithLastReply(
                 event.processId(), report.humanSummary());
+        // Attribution: which user-input turn was the worker responding
+        // to when it produced this event? Lets the parent engine (e.g.
+        // Arthur) distinguish a fresh reply from a stale one — without
+        // this, a Ford reply that arrived during an Arthur turn that
+        // spawned Marvin gets relayed as if it were Marvin's output.
+        // See planning/arthur-process-event-attribution.md.
+        Instant inResponseToAt = findLastUserInputAt(event.processId());
         boolean queued = eventEmitter.notifyParent(
                 parentId,
                 event.processId(),
                 eventType,
                 enrichedSummary,
-                report.payload());
+                report.payload(),
+                inResponseToAt);
         if (queued) {
             log.info("Parent notify queued parent='{}' child='{}' event={}",
                     parentId, event.processId(), eventType);
@@ -185,6 +194,43 @@ public class ParentNotificationListener {
             log.warn("enrichWithLastReply failed for child='{}': {}",
                     childProcessId, e.toString());
             return engineSummary;
+        }
+    }
+
+    /**
+     * Reads the child's chat history and returns the timestamp of its
+     * most recent USER message — that's the user-input turn the child
+     * was processing when this event was produced. The parent engine
+     * uses this to distinguish a fresh reply (matches the current
+     * outgoing user-input timestamp) from a stale one (matches an
+     * older turn that the parent has since moved past).
+     *
+     * <p>Returns {@code null} when the process row is gone, the
+     * history is empty, no USER message exists yet, or the lookup
+     * throws — never let attribution failure swallow the
+     * notification.
+     */
+    private @Nullable Instant findLastUserInputAt(String childProcessId) {
+        Optional<ThinkProcessDocument> processOpt =
+                thinkProcessService.findById(childProcessId);
+        if (processOpt.isEmpty()) {
+            return null;
+        }
+        ThinkProcessDocument process = processOpt.get();
+        try {
+            List<ChatMessageDocument> history = chatMessageService.activeHistory(
+                    process.getTenantId(), process.getSessionId(), process.getId());
+            for (int i = history.size() - 1; i >= 0; i--) {
+                ChatMessageDocument m = history.get(i);
+                if (m.getRole() == ChatRole.USER && m.getCreatedAt() != null) {
+                    return m.getCreatedAt();
+                }
+            }
+            return null;
+        } catch (RuntimeException e) {
+            log.warn("findLastUserInputAt failed for child='{}': {}",
+                    childProcessId, e.toString());
+            return null;
         }
     }
 

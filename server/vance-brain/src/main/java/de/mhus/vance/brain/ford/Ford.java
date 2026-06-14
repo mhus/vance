@@ -247,12 +247,26 @@ public class Ford implements ThinkEngine {
 
     @Override
     public void steer(ThinkProcessDocument process, ThinkEngineContext ctx, SteerMessage message) {
-        if (!(message instanceof SteerMessage.UserChatInput userInput)) {
-            log.warn("Ford.steer received unexpected message type '{}' for id='{}' — ignoring",
-                    message.getClass().getSimpleName(), process.getId());
-            return;
+        // Single-message entry — wrap in a one-element inbox and route
+        // through the same drain-aware path the default runTurn uses.
+        runTurnFor(process, ctx, List.of(message));
+    }
+
+    /**
+     * Override the default {@link ThinkEngine#runTurn} so we drain the
+     * whole inbox once per pass and fold it into a single LLM round-trip
+     * — same Auto-Wakeup loop as Arthur, only simpler. Without this
+     * override Ford would call {@link #steer} per drained message,
+     * which would burn an LLM call per ProcessEvent and prevent the
+     * model from seeing UserChatInput + worker reply in the same turn.
+     */
+    @Override
+    public void runTurn(ThinkProcessDocument process, ThinkEngineContext ctx) {
+        while (true) {
+            List<SteerMessage> drained = ctx.drainPending();
+            if (drained.isEmpty()) return;
+            runTurnFor(process, ctx, drained);
         }
-        runTurn(process, ctx, userInput.content());
     }
 
     @Override
@@ -263,10 +277,10 @@ public class Ford implements ThinkEngine {
 
     // ──────────────────── One turn ────────────────────
 
-    private TurnOutcome runTurn(
+    private TurnOutcome runTurnFor(
             ThinkProcessDocument process,
             ThinkEngineContext ctx,
-            String userInput) {
+            List<SteerMessage> inbox) {
 
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.RUNNING);
         // Default IDLE on any abnormal exit — matches legacy lifecycle.
@@ -275,19 +289,35 @@ public class Ford implements ThinkEngine {
         boolean awaitingUserInput = false;
         try {
             ChatMessageService chatLog = ctx.chatMessageService();
-            chatLog.append(ChatMessageDocument.builder()
-                    .tenantId(process.getTenantId())
-                    .sessionId(process.getSessionId())
-                    .thinkProcessId(process.getId())
-                    .role(ChatRole.USER)
-                    .content(userInput)
-                    .build());
-
-            // Skill auto-trigger: match the user input against PATTERN/
-            // KEYWORDS triggers of visible skills, one-shot activate
-            // matches. Filters via process.allowedSkillsOverride. Quiet
-            // when nothing fires.
-            skillTriggerMatcher.detectAndActivate(process, userInput);
+            // Persist UserChatInput entries to chat history so future
+            // turns see them; collect the joined text for skill-trigger
+            // matching. Non-UCI items (ProcessEvent, ToolResult, …) are
+            // turn-local — they steer this turn but don't enter the
+            // user-visible chat log. Same convention as Arthur.
+            StringBuilder userTextForTriggers = new StringBuilder();
+            List<SteerMessage> extras = new ArrayList<>();
+            for (SteerMessage m : inbox) {
+                if (m instanceof SteerMessage.UserChatInput uci
+                        && uci.content() != null && !uci.content().isBlank()) {
+                    chatLog.append(ChatMessageDocument.builder()
+                            .tenantId(process.getTenantId())
+                            .sessionId(process.getSessionId())
+                            .thinkProcessId(process.getId())
+                            .role(ChatRole.USER)
+                            .content(uci.content())
+                            .build());
+                    if (userTextForTriggers.length() > 0) userTextForTriggers.append('\n');
+                    userTextForTriggers.append(uci.content());
+                } else if (!(m instanceof SteerMessage.UserChatInput)) {
+                    extras.add(m);
+                }
+            }
+            // Skill auto-trigger runs on the combined fresh user input —
+            // ignores non-UCI items, mirroring previous behaviour.
+            String userInput = userTextForTriggers.toString();
+            if (!userInput.isBlank()) {
+                skillTriggerMatcher.detectAndActivate(process, userInput);
+            }
 
             // Build the chat with primary + ordered fallback chain plus
             // the standard resilience-notifier and (when tracing.llm is
@@ -312,7 +342,7 @@ public class Ford implements ThinkEngine {
             ModelSize effectiveSize = ModelSize.parseOrAuto(
                     paramString(process, "modelSize", null), modelInfo.size());
             List<ChatMessage> messages = buildPromptMessages(
-                    process, chatLog, modelInfo, effectiveSize, activeSkills, tools);
+                    process, chatLog, extras, modelInfo, effectiveSize, activeSkills, tools);
             // Shared trigger: SOFT / HARD / EMERGENCY based on
             // estimated-tokens-vs-context-window thresholds in
             // vance.prak.*. Compacts via the strength-aware selector
@@ -328,7 +358,7 @@ public class Ford implements ThinkEngine {
                 // Rebuild the prompt: the active-history shrunk and a
                 // new ARCHIVED_CHAT memory pinned the summary at top.
                 messages = buildPromptMessages(
-                        process, chatLog, modelInfo, effectiveSize, activeSkills, tools);
+                        process, chatLog, extras, modelInfo, effectiveSize, activeSkills, tools);
             }
 
             int maxIters = paramInt(process, "maxIterations", MAX_TOOL_ITERATIONS);
@@ -948,6 +978,7 @@ public class Ford implements ThinkEngine {
      */
     private List<ChatMessage> buildPromptMessages(
             ThinkProcessDocument process, ChatMessageService chatLog,
+            List<SteerMessage> inboxExtras,
             ModelInfo modelInfo, ModelSize tier, List<ResolvedSkill> activeSkills,
             ContextToolsApi tools) {
         List<ChatMessage> messages = new ArrayList<>();
@@ -1002,7 +1033,98 @@ public class Ford implements ThinkEngine {
                 process.getTenantId(), process.getSessionId(), process.getId()))) {
             messages.add(toLangchain(msg));
         }
+        // Non-UserChatInput inbox items (ProcessEvent, ToolResult,
+        // ExternalCommand, …) appended as user-role messages with the
+        // same <process-event> XML markers Arthur uses — including
+        // eventId / respondingToTurnAt from Fix 1 so Ford can attribute
+        // a child worker's reply to the right turn. See
+        // planning/arthur-process-event-attribution.md §Erweiterungen.
+        if (inboxExtras != null) {
+            for (SteerMessage m : inboxExtras) {
+                String wrapped = renderForLlm(m);
+                if (wrapped != null) {
+                    messages.add(UserMessage.from(wrapped));
+                }
+            }
+        }
         return messages;
+    }
+
+    /**
+     * Wraps a non-UserChatInput inbox item in the XML marker the LLM
+     * is trained on. Returns {@code null} for items that have no
+     * separate rendering (UserChatInput is already in chat history).
+     * Mirrors Arthur's static renderer; carries the Fix 1 attribution
+     * attributes ({@code eventId}, {@code respondingToTurnAt}) so
+     * Ford parents can map a child reply to the originating turn.
+     */
+    private @Nullable String renderForLlm(SteerMessage m) {
+        if (m instanceof SteerMessage.UserChatInput) return null;
+        if (m instanceof SteerMessage.ProcessEvent pe) {
+            StringBuilder sb = new StringBuilder();
+            sb.append("<process-event sourceProcessId=\"")
+                    .append(escapeAttr(pe.sourceProcessId()))
+                    .append("\"");
+            String sourceName = thinkProcessService.findById(pe.sourceProcessId())
+                    .map(ThinkProcessDocument::getName).orElse(null);
+            if (sourceName != null && !sourceName.isBlank()) {
+                sb.append(" sourceProcessName=\"")
+                        .append(escapeAttr(sourceName))
+                        .append("\"");
+            }
+            if (pe.eventId() != null && !pe.eventId().isBlank()) {
+                sb.append(" eventId=\"")
+                        .append(escapeAttr(pe.eventId()))
+                        .append("\"");
+            }
+            if (pe.inResponseToAt() != null) {
+                sb.append(" respondingToTurnAt=\"")
+                        .append(escapeAttr(pe.inResponseToAt().toString()))
+                        .append("\"");
+            }
+            sb.append(" type=\"")
+                    .append(pe.type().name().toLowerCase(java.util.Locale.ROOT))
+                    .append("\">");
+            if (pe.humanSummary() != null) {
+                sb.append(escapeText(pe.humanSummary()));
+            }
+            sb.append("</process-event>");
+            return sb.toString();
+        }
+        if (m instanceof SteerMessage.ToolResult tr) {
+            StringBuilder sb = new StringBuilder();
+            sb.append("<tool-result toolCallId=\"")
+                    .append(escapeAttr(tr.toolCallId()))
+                    .append("\" toolName=\"")
+                    .append(escapeAttr(tr.toolName()))
+                    .append("\" status=\"")
+                    .append(tr.status().name().toLowerCase(java.util.Locale.ROOT))
+                    .append("\">");
+            if (tr.error() != null) {
+                sb.append("error: ").append(escapeText(tr.error()));
+            } else if (tr.result() != null) {
+                sb.append(escapeText(tr.result().toString()));
+            }
+            sb.append("</tool-result>");
+            return sb.toString();
+        }
+        if (m instanceof SteerMessage.ExternalCommand ec) {
+            return "<external-command command=\""
+                    + escapeAttr(ec.command()) + "\">"
+                    + escapeText(ec.params() == null ? "" : ec.params().toString())
+                    + "</external-command>";
+        }
+        return null;
+    }
+
+    private static String escapeAttr(@Nullable String s) {
+        if (s == null) return "";
+        return s.replace("&", "&amp;").replace("\"", "&quot;").replace("<", "&lt;");
+    }
+
+    private static String escapeText(@Nullable String s) {
+        if (s == null) return "";
+        return s.replace("&", "&amp;").replace("<", "&lt;");
     }
 
     /**

@@ -218,6 +218,7 @@ public class WakeupRegistry {
                     .eventType(ProcessEventType.SCHEDULED_WAKEUP)
                     .content(entry.label)
                     .payload(buildPayload(correlationId, entry.label, entry.payload))
+                    .eventId(java.util.UUID.randomUUID().toString())
                     .build();
             boolean ok = routerProvider.getObject().dispatch(processId, processId, doc);
             if (!ok) {

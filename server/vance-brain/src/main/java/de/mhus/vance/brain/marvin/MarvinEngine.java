@@ -49,6 +49,7 @@ import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -750,11 +751,12 @@ public class MarvinEngine implements ThinkEngine {
         composer.withAddons(NAME, sysCtxBuilder);
         String renderedSystem = composer.render(systemPrompt, sysCtxBuilder.build());
 
-        String planSnapshot = planSnapshotRenderer.render(
-                nodeService.listAll(process.getId()), node.getId());
+        List<MarvinNodeDocument> allNodes = nodeService.listAll(process.getId());
+        String planSnapshot = planSnapshotRenderer.render(allNodes, node.getId());
+        int nodeDepth = computeDepth(node, allNodes);
 
         String userBody = buildPhaseUserMessage(
-                process, node, phase, counters, caps, planSnapshot, hint);
+                process, node, phase, counters, caps, planSnapshot, nodeDepth, hint);
 
         List<ChatMessage> messages = new ArrayList<>();
         messages.add(SystemMessage.from(renderedSystem));
@@ -926,6 +928,7 @@ public class MarvinEngine implements ThinkEngine {
             MarvinNodeStateMachine.Counters counters,
             MarvinNodeStateMachine.Caps caps,
             String planSnapshot,
+            int nodeDepth,
             @Nullable String hint) {
         StringBuilder sb = new StringBuilder();
         sb.append("Goal: ").append(nullSafe(node.getGoal())).append("\n\n");
@@ -945,6 +948,19 @@ public class MarvinEngine implements ThinkEngine {
         }
 
         sb.append(planSnapshot).append("\n\n");
+
+        // Depth damper: ramps up discouragement of further
+        // NEEDS_SUBTASKS based on this node's depth in the tree —
+        // not on the total tree size. Total-count would punish later
+        // sibling sub-topics unfairly (whoever runs first burns the
+        // shared budget). Depth-based pressure is per-branch, so each
+        // top-level sub-topic gets equal room to decompose. The hard
+        // cap (caps.maxDepth + maxTreeNodes) still fires at the limit;
+        // this block is purely the prompt-side bend-the-curve hint.
+        String budgetBlock = renderDepthDamperBlock(nodeDepth, caps.maxTreeDepth());
+        if (budgetBlock != null) {
+            sb.append(budgetBlock).append("\n\n");
+        }
 
         if (phase == WorkerPhase.POST_CHILDREN) {
             String childBlock = renderChildrenResultsBlock(process, node);
@@ -972,6 +988,93 @@ public class MarvinEngine implements ThinkEngine {
         }
         sb.append('\n');
         sb.append(phaseInstruction(phase));
+        return sb.toString();
+    }
+
+    /**
+     * Computes the depth of {@code node} in the tree by walking up
+     * the {@code parentId} chain through {@code allNodes}. Root nodes
+     * (no parent) are depth 0; their direct children are depth 1, and
+     * so on. Per-branch — sibling sub-trees get evaluated independently.
+     *
+     * <p>Defensive: if the chain references a parent not in the
+     * provided list (shouldn't happen but possible mid-write), the
+     * traversal stops and returns the depth reached so far instead of
+     * looping or throwing.
+     */
+    static int computeDepth(MarvinNodeDocument node, List<MarvinNodeDocument> allNodes) {
+        if (node == null) return 0;
+        Map<String, MarvinNodeDocument> byId = new HashMap<>();
+        for (MarvinNodeDocument n : allNodes) {
+            if (n.getId() != null) byId.put(n.getId(), n);
+        }
+        int depth = 0;
+        String parentId = node.getParentId();
+        // Guard against a corrupted parent-chain by capping at the
+        // number of nodes — can't be deeper than the tree is large.
+        int safetyCap = allNodes.size() + 1;
+        while (parentId != null && depth < safetyCap) {
+            MarvinNodeDocument parent = byId.get(parentId);
+            if (parent == null) break;
+            depth++;
+            parentId = parent.getParentId();
+        }
+        return depth;
+    }
+
+    /**
+     * Renders the per-branch depth damper — a progressive nudge that
+     * discourages further NEEDS_SUBTASKS as a node sits deeper in the
+     * tree. Returns {@code null} for shallow nodes where the damper
+     * would just be noise.
+     *
+     * <p>Depth-based instead of total-node-count: total-count would
+     * exhaust the budget on whichever sibling sub-topic runs first
+     * and force the later siblings into shallow PROCEED_TO_CONCLUDE.
+     * Depth pressure is per-branch — each top-level sub-topic gets
+     * the same depth budget regardless of how greedy its predecessors
+     * were.
+     *
+     * <p>Thresholds, anchored to {@code maxTreeDepth} (default 5):
+     *
+     * <ul>
+     *   <li>&lt;40% (depth 0–1 of 5) — silent. Top of the branch,
+     *       free to decompose.</li>
+     *   <li>40–70% (depth 2–3 of 5) — gentle nudge: prefer
+     *       CALL_RECIPE or PROCEED_TO_CONCLUDE if the goal is concrete
+     *       enough.</li>
+     *   <li>70–100% (depth 4 of 5) — strong: stop decomposing,
+     *       finish here.</li>
+     *   <li>≥100% — at hard cap; engine will reject further
+     *       NEEDS_SUBTASKS.</li>
+     * </ul>
+     */
+    static @Nullable String renderDepthDamperBlock(int depth, int maxDepth) {
+        if (maxDepth <= 0) return null;
+        int pct = (int) Math.round(100.0 * depth / maxDepth);
+        if (pct < 40) {
+            return null;
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("Branch depth: ").append(depth).append('/').append(maxDepth)
+                .append(" (this node's level in the tree).");
+        if (pct < 70) {
+            sb.append(" You are mid-branch — sub-tasks here are usually "
+                    + "concrete enough to answer via PROCEED_TO_CONCLUDE or "
+                    + "delegate via CALL_RECIPE. Use NEEDS_SUBTASKS only "
+                    + "when the goal is still composite and the children "
+                    + "would do clearly different work.");
+        } else if (pct < 100) {
+            sb.append(" Near branch depth cap — do NOT spawn another "
+                    + "level. Wrap up this branch with PROCEED_TO_CONCLUDE "
+                    + "using the material already gathered, or delegate a "
+                    + "single focused CALL_RECIPE. NEEDS_SUBTASKS at this "
+                    + "depth fragments the answer without adding value.");
+        } else {
+            sb.append(" At branch depth cap — further NEEDS_SUBTASKS will "
+                    + "be rejected by the engine. Finish via "
+                    + "PROCEED_TO_CONCLUDE or CALL_RECIPE.");
+        }
         return sb.toString();
     }
 

@@ -20,9 +20,24 @@ params:
   # that needs fresh facts (the Vibecoding-Bug: 92 LLM calls, 0 tool
   # calls). Project-level overrides can still narrow this list.
   availableRecipes:
+    # web-research: focused on external web (research_search,
+    #   web_fetch, research_investigate). Use for "what's the latest
+    #   X on the internet" — current models, news, public benchmarks.
+    # analyze: full Ford toolbelt — RAG (rag_query, memory_search),
+    #   documents (doc_read, doc_grep, doc_find), emails (gmail_*,
+    #   zoho_imap__*), scratch / client files, calendars, Slack,
+    #   Jira, Drive. The generalist for "look at material we have"
+    #   tasks — own project data, mailbox, knowledge base.
+    # code-read: read-only code inspection — file reads, ref chasing,
+    #   structure summaries. Cheaper than analyze when scope is code.
+    # quick-lookup: cheap one-shot — single tool call, short answer.
+    #   For "what's the current date" / "does file X exist" style
+    #   leaves so Marvin doesn't spawn a 10-iteration analyze for
+    #   trivia.
     - web-research
     - analyze
     - code-read
+    - quick-lookup
   # Hard cap on tree size before runaway protection kicks in.
   maxTreeNodes: 200
   # NEEDS_SUBTASKS-depth cap.

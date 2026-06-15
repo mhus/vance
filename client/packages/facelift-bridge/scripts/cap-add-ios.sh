@@ -45,6 +45,14 @@ plutil -replace NSFaceIDUsageDescription \
   -string "Vance uses Face ID to unlock the app." \
   ios/App/App/Info.plist
 
+# Microphone — required for the website's web-based speech-to-text
+# (the chat editor uses the SpeechRecognition API). The WKUIDelegate
+# in the Swift plugin grants the actual per-call permission; this
+# string is shown by iOS in the system permission prompt.
+plutil -replace NSMicrophoneUsageDescription \
+  -string "Vance uses the microphone for voice input (speech-to-text) in the chat editor." \
+  ios/App/App/Info.plist
+
 # ── App-Group entitlement ─────────────────────────────────────────
 # Copy our committed template (allows the Share Extension to access
 # accounts.json / projects.json / credentials.json on disk and via

@@ -122,6 +122,12 @@ public class VanceAccountWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigatio
     }
 
     private var webViews: [String: WKWebView] = [:]
+    /// Original host (without port) for each cached WebView. Used by
+    /// the external-link guard in `WKNavigationDelegate` — any
+    /// navigation to a different host gets cancelled + handed to
+    /// Safari rather than turning the wrapper into a general-purpose
+    /// browser.
+    private var webViewHomeHosts: [String: String] = [:]
     private var activeWebView: WKWebView?
     private var activeAccountId: String?
 
@@ -208,6 +214,9 @@ public class VanceAccountWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigatio
                     created.isInspectable = true
                 }
                 self.webViews[accountId] = created
+                if let host = url.host {
+                    self.webViewHomeHosts[accountId] = host.lowercased()
+                }
                 parentView.addSubview(created)
                 created.load(URLRequest(url: url))
                 webView = created
@@ -390,22 +399,59 @@ public class VanceAccountWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigatio
         return nil
     }
 
+    /// Grant the website microphone / camera access without an
+    /// in-WebView second prompt. iOS still shows its own system-
+    /// level prompt (driven by `NSMicrophoneUsageDescription` /
+    /// `NSCameraUsageDescription`), and the user's answer there is
+    /// the actual authority — this handler only stops WKWebView
+    /// from rejecting the JS API call before iOS gets a chance to
+    /// ask.
+    @available(iOS 15.0, *)
+    public func webView(_ webView: WKWebView,
+                        requestMediaCapturePermissionFor origin: WKSecurityOrigin,
+                        initiatedByFrame frame: WKFrameInfo,
+                        type: WKMediaCaptureType,
+                        decisionHandler: @escaping (WKPermissionDecision) -> Void) {
+        decisionHandler(.grant)
+    }
+
     // MARK: - WKNavigationDelegate
 
     public func webView(_ webView: WKWebView,
                         decidePolicyFor navigationAction: WKNavigationAction,
                         decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-        if let url = navigationAction.request.url, url.scheme == self.urlScheme {
-            // Hand the full URL to JS — the Vue side parses host/path
-            // and decides what to do (back-to-picker, switch-account,
-            // add-account, …). Cancel the navigation so the WebView
-            // doesn't display a "page not found" / external-app
-            // prompt for the unknown scheme.
+        guard let url = navigationAction.request.url else {
+            decisionHandler(.allow)
+            return
+        }
+        // `vance-facelift://*` → forward to JS as urlOpen event.
+        if url.scheme == self.urlScheme {
             self.notifyListeners("urlOpen", data: ["url": url.absoluteString])
             decisionHandler(.cancel)
             return
         }
+        // External-link guard — any navigation to a host other than
+        // the account's home host gets cancelled + opened in Safari
+        // instead. Keeps the wrapper focused on the user's Vance
+        // deployment rather than turning into a general browser. No
+        // whitelist (would break self-hosted users); OAuth flows
+        // that bounce through external IdPs leave the app — that's
+        // an accepted v1 trade-off.
+        if let homeHost = self.homeHost(for: webView),
+           let nextHost = url.host?.lowercased(),
+           nextHost != homeHost {
+            UIApplication.shared.open(url, options: [:], completionHandler: nil)
+            decisionHandler(.cancel)
+            return
+        }
         decisionHandler(.allow)
+    }
+
+    private func homeHost(for webView: WKWebView) -> String? {
+        for (accountId, cached) in self.webViews where cached === webView {
+            return self.webViewHomeHosts[accountId]
+        }
+        return nil
     }
 
     // MARK: - Biometric (Face-ID / Touch-ID)
@@ -630,6 +676,7 @@ public class VanceAccountWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigatio
                     self.activeAccountId = nil
                 }
             }
+            self.webViewHomeHosts.removeValue(forKey: accountId)
             // Wipe the persistent data store so a future re-add of
             // the same UUID starts with no cookies. Best-effort —
             // failure of the removal call doesn't fail the JS call.

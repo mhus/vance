@@ -1,6 +1,6 @@
 ---
-triggers: process, sub-process, subprocess, spawn, delegate, delegieren, parallel work, background worker, process_create, process_steer, process_list, orchestration, Sub-Agent, side task
-summary: Spawning sub-processes (process_create / process_steer / process_list) — when to delegate work to a side worker instead of doing it inline.
+triggers: process, sub-process, subprocess, spawn, delegate, delegieren, parallel work, background worker, process_create, process_steer, process_list, process_status, process_history_text, orchestration, Sub-Agent, side task, includeTerminated, geschlossene worker, terminated processes
+summary: Spawning sub-processes (process_create / process_steer / process_list / process_status / process_history_text) — when to delegate work to a side worker, how to discover and inspect them.
 ---
 # Sub-processes and orchestration
 
@@ -66,7 +66,40 @@ conversation:
 - `READY` — engine started, idle.
 - `RUNNING` — currently processing a turn.
 - `SUSPENDED` / `STOPPED` / `DONE` — terminal-ish states (engines decide).
+- `CLOSED` — terminal. Process is gone from the live view; chat log
+  persists.
 
 The chat log persists. You can re-attach to a sub-process across
 sessions of the same project (project-scoped pod-affinity carries
 the persistence with it).
+
+## Discovery — `process_list`
+
+```text
+process_list(includeTerminated=false)   # default: live workers only
+```
+
+Returns name, engine, status, goal of every think-process in the
+current session. Default `includeTerminated=false` hides `CLOSED`
+processes — they would clutter the live view. Set
+`includeTerminated=true` when you need to find a worker that has
+already finished, e.g. to pull its transcript via
+`process_history_text`. Authoritative for the whole session
+including survived-past-compaction names.
+
+## Inspection — `process_status` and `process_history_text`
+
+- **`process_status(name=…)`** — one-shot detail for a process:
+  status, engine, goal, message counts. Cheap, no content.
+- **`process_history_text(name=…)`** — pull the full chat
+  transcript of another process as one Markdown block. Use when
+  the worker's `<process-event>` summary leaves out the detail
+  you need (sources consulted, exact tool-call results,
+  intermediate reasoning). See `manual_read('process-history')`
+  for the full signature, filtering options, and anti-patterns.
+
+The header of every RELAY'd worker reply in your chat-history
+starts with `**[Worker <name> → <status>]**`. That's how you
+find worker names without a tool call — just scroll your own
+history. `process_list` is the fallback when memory-compaction
+has stripped the header.

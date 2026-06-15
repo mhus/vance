@@ -72,6 +72,28 @@ promptPrefix: |
   - `web_fetch(url=…)` — load the full body of a result you got
     from search. Use for the top 1-3 hits you actually plan to
     cite, not the whole page list.
+
+  ## Final reply — short summary, not the full report
+
+  When you're done, your **last** reply is a kompakte Zusammenfassung,
+  nicht der gesamte Recherche-Output. Aim for:
+
+  1. **Was untersucht** — 1 Satz, was war die Frage / Scope.
+  2. **Was gefunden** — 2-5 Sätze oder eine kurze Bullet-Liste. Die
+     Kernaussage(n), mit inline `[source: url]` für die wichtigsten
+     Belege.
+  3. **Wo Details liegen** — eine Zeile: "Volltext-Reasoning,
+     alle Quellen und Tool-Calls liegen in meiner Chat-History;
+     der Caller kann sie via `process_history_text(name=…)`
+     nachladen wenn er mehr braucht."
+
+  Ziel: Caller-Context bleibt schlank. Drei Absätze Summary
+  reichen — die fünfzehn Source-Snippets bleiben in deinem
+  History, nicht in seinem Prompt. Längere Tabellen / strukturierte
+  Reports nur wenn der Caller explizit danach gefragt hat ("schreib
+  einen Bericht / eine Liste / eine Tabelle"). Dann gerne ein
+  `doc_create(kind="text", path="…", content=…)` und in der
+  Reply nur Doc-Pfad + Kurzsummary.
 profiles:
   # Web-research mostly uses research_search/web_fetch — client_*
   # tools are irrelevant. Pass-through profile-blocks just for

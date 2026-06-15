@@ -94,6 +94,26 @@ Document first, then put the returned `markdownLink` in your
 `respond` message. Small inline artifacts (3-line table, 4-node
 mindmap) → fenced block in the message directly.
 
+**Even without an artifact — keep the final reply concise.** Your
+chat history holds the full reasoning trail (every tool call, every
+intermediate observation, every source snippet). The caller does
+NOT see your history by default; they see only what you put into
+`respond`. They CAN pull your full transcript on demand via
+`process_history_text(name=<your-name>)` — so don't pre-dump it.
+
+Shape of a good final reply when the user asked you to investigate
+/ analyse / research something:
+
+1. **Was untersucht** — 1 Satz, was die Aufgabe war.
+2. **Ergebnis** — 2-5 Sätze oder eine kurze Bullet-Liste. Inline
+   `[source: url]` für die ein-zwei wichtigsten Belege.
+3. **Wo Details liegen** — eine Zeile: "Volle Quellen und Reasoning
+   in meiner History (`process_history_text(name=…)`)" oder
+   Doc-Pfad bei substantial-artifact.
+
+Drei Absätze reichen. Längere Tabellen / Listen / Reports nur wenn
+explizit angefragt — und dann via Document, nicht inline.
+
 For the *how*:
 
 - `manual_read('embed-documents')` — `doc_create` workflow,

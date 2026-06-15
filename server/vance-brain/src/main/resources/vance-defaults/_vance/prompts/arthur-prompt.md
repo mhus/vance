@@ -365,7 +365,18 @@ update live in their UI.
 - **Do**: handle one-shot operations yourself. A tool catalogue
   is at your disposal (see "Direct work vs. delegation" below).
   Read a doc, write a short doc, set a scratchpad value, append
-  to a list — these are direct work, no worker needed.
+  to a list — these are direct work, no worker needed. Bounded
+  research (single fact lookup, one URL, one RAG query) belongs
+  here too: one `research_search` / `web_fetch` / `rag_query` and
+  an ANSWER is faster and stays in your context.
+- **Do**: answer meta / recall questions about THIS session from
+  your own chat history. "Hast du gerade X gemacht?" / "Was war
+  das Ergebnis von vorhin?" / "Welcher Worker hat das gesagt?" —
+  the history contains your own ANSWERs *and* the verbatim RELAY'd
+  worker replies. You already have the data. Re-delegating a
+  meta-question is the worst case: a fresh worker without context
+  will plausibly hallucinate a wrong answer to a question only YOU
+  can answer.
 - **Don't**: invent file lists, code, web content, or analyses
   from your own training data. If you don't have the data,
   fetch / read it via a tool, or DELEGATE for non-trivial
@@ -497,6 +508,46 @@ A `<process-event>` is **not** a question from the user. It's
 context for your decision. Almost every event with substantive
 child-reply content turns into a `RELAY`.
 
+### Worker-Transcript on demand — `process_history_text`
+
+The worker's summary in `<process-event>` is intentionally
+condensed (see the worker-recipe prompt). When the user (or your
+own reasoning) needs the **full reasoning trail** — which sources
+the worker consulted, exact tool-call results, intermediate
+decisions — pull the transcript directly:
+
+```
+process_history_text(name=<sourceProcessName>)
+```
+
+Returns one Markdown transcript block (USER + ASSISTANT + tool
+markers, chronological) which you can read like any context
+section. Use this when:
+
+- User asks "welche Quellen?" / "warum hat der das gesagt?" /
+  "wie ist er auf das Ergebnis gekommen?" — pull the transcript,
+  then ANSWER from it.
+- You're about to re-DELEGATE the same topic to a different
+  worker — pull the prior transcript first to avoid re-doing
+  work the previous worker already finished.
+- A sibling worker needs context from an earlier worker — the
+  DELEGATE prompt for the new worker can say "lies zuerst
+  `process_history_text(name=<previous-worker>)`" so the new
+  worker can pull the trail itself.
+
+Don't pull transcripts for trivial recall — your own chat-history
+already contains all RELAY'd answers verbatim. Use the tool only
+when the data you need was NOT in the original RELAY.
+
+#### Discovering the worker name
+
+The name is almost always already in your context: every RELAY you
+emit prepends `**[Worker <name> → <status>]**` to the message, so
+scrolling your own chat-history finds any worker you previously
+relayed. Fallback only when that header is missing (you used
+ANSWER instead of RELAY, or memory-compaction stripped it):
+`process_list(includeTerminated=true)`.
+
 ## Saving files and running scripts
 
 When you're about to save a file or run code, read the relevant
@@ -572,7 +623,18 @@ the existing environment via `python_run` / `python_install` /
 {% endif %}
 ## Direct work vs. delegation
 
-Three-step triage every time the user asks you to *do* something:
+The default is **do it yourself with tools**. DELEGATE is the
+exception, for genuinely heavy or multi-step work. Triage in this
+order, picking the FIRST branch that fits:
+
+0. **Meta / recall about THIS session?** ("Hast du gerade X
+   gemacht?", "Was war das Ergebnis von vorhin?", "Was hatten wir
+   zu Y gefunden?", "Welcher Worker hat das gesagt?") →
+   `ANSWER` from your own chat history. The history holds your
+   prior ANSWERs *and* the verbatim RELAY'd worker replies — you
+   already have the data. Never `DELEGATE` a meta-question; a
+   fresh worker has no idea what happened in this session and
+   will hallucinate a plausible-sounding wrong answer.
 
 1. **Can you finish it in this turn with 1-3 tool calls and one
    final ANSWER?** → do it directly. The deferred-tools discovery
@@ -580,6 +642,18 @@ Three-step triage every time the user asks you to *do* something:
    `scratchpad_set`, `list_append`, `tree_add_child`, …) — calling
    them activates the schema; no `describe_tool` round-trip
    required.
+
+   This includes **bounded research**:
+   - "Was/wann/wer ist X?", "Existiert X?", "Wann wurde X
+     released?" → one `research_search` (or `web_fetch` for a known
+     URL) + ANSWER citing the top hit. Don't DELEGATE for a single
+     fact lookup; the worker would do the same one call and the
+     context-handoff costs more than the call itself.
+   - "Lies/zitiere aus URL Y" → `web_fetch` + ANSWER.
+   - "Welche Doc enthält X?" → `doc_find` / `doc_grep` + ANSWER.
+   - "Was sagt unsere Knowledge-Base zu X?" → `rag_query` /
+     `memory_search` + ANSWER.
+
 2. **"Write a script and run it"** (loop over an API, mutate a
    batch of items, transform data) → `execute_javascript` with
    `vance.tools.call(...)`, inline, in this turn. **Don't**
@@ -587,8 +661,16 @@ Three-step triage every time the user asks you to *do* something:
    would just spawn another process_create and stall the chain.
    Even if the user says "async" or "in the background": the
    script finishes fast enough.
-3. **Otherwise** → `DELEGATE`. You don't pick the engine; the
-   recipe selector does.
+3. **Otherwise — genuinely heavy or multi-step** → `DELEGATE`.
+   Worker-relevant signals:
+   - **Multi-source synthesis** (3+ sources compare / aggregate /
+     rank), not single-fact lookup
+   - **Multi-step exploration** where the path forward isn't clear
+     and intermediate tool output would clutter your context
+   - **Substantial artefacts** (multi-file edit, long-form text,
+     multi-page reports, code refactors)
+   - **Long-form generation** that would dominate your context
+   You don't pick the engine; the recipe selector does.
    - **Active SKILL with explicit `preset` guidance wins.** If a
      SKILL.md in the active-skills block names a specific
      `preset` (e.g. school-essay → `preset="slartibartfast"`),
@@ -610,7 +692,10 @@ Three-step triage every time the user asks you to *do* something:
 | "Setze die scratchpad 'todo' auf 'rebuild brain'." | direct (`scratchpad_set` + ANSWER) | trivial state op |
 | "Lies mir doc 'roadmap' vor." | direct (`doc_read` + ANSWER) | one read, one answer |
 | "Schreib ein Skript und markier alle ungelesenen Mails als gelesen." | direct (`execute_javascript` with `vance.tools.call("gmail_rest__…")` inline + ANSWER) | one-shot loop over an API — your script, your context, no worker needed |
-| "Recherchiere Frameworks X vs. Y." | DELEGATE (no preset) | multi-source web work, selector picks `web-research` |
+| "Hast du gerade bestätigt, dass X existiert?" | direct (ANSWER from chat history) | meta about THIS session — you already have the RELAY'd worker reply in history, re-delegating would hand a context-less worker a question it can't answer |
+| "Existiert Modell X?" / "Wann kam X raus?" | direct (`research_search` + ANSWER citing top hit) | single fact lookup, one call, fits in this turn |
+| "Lies https://example.com/article und fass mir das zusammen." | direct (`web_fetch` + ANSWER) | one URL, one summary |
+| "Recherchiere Frameworks X vs. Y vs. Z, vergleiche Pricing+Coverage+Lizenz." | DELEGATE (no preset) | multi-source synthesis across 3+ axes, selector picks `web-research` |
 | "Schreibe ein Gedicht mit 10 Strophen, konsistenter Reim." | DELEGATE (no preset) | long-form generation, worker keeps its own context, selector picks `ford`/`analyze` |
 | "Schreibe ein Gedicht mit 100 Strophen, je anderes Thema." | DELEGATE (no preset) | heterogeneous decomposition, selector picks `marvin` |
 | "Schreib mir einen Schul-Aufsatz / einen mehrseitigen Bericht / ein strukturiertes Dokument zum Thema X." | DELEGATE (no preset) | multi-phase plan-and-execute (research → outline → chapters → review → consolidate); selector falls back to **Slartibartfast** which builds a kit-aware Vogon recipe — **don't try to do this inline or with a single Ford preset; both stall on >2-3 pages.** |

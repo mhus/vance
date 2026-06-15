@@ -101,6 +101,30 @@ public class ProcessHistoryTextTool implements Tool {
                                 + "Default false — only the live history is "
                                 + "returned; compacted material lives under the "
                                 + "process's ARCHIVED_CHAT memories."));
+                put("includeActiveSummary", Map.of(
+                        "type", "boolean",
+                        "description",
+                        "When true (default), prepend the process's active "
+                                + "ARCHIVED_CHAT memory summary (if any) before the "
+                                + "transcript. Gives you the compacted context the "
+                                + "process itself sees alongside the live turns. "
+                                + "Set false when you only want the raw active "
+                                + "history without the summary preamble."));
+                put("minStrength", Map.of(
+                        "type", "string",
+                        "enum", List.of("weak", "normal", "strong", "pinned"),
+                        "description",
+                        "Filter active history by minimum strength tag. Messages "
+                                + "with NO STRENGTH tag are KEPT (OR-untagged), so "
+                                + "the filter degrades gracefully on sessions where "
+                                + "prak hasn't yet evaluated content. Combine with "
+                                + "lastN for a tight slice."));
+                put("lastN", Map.of(
+                        "type", "integer",
+                        "description",
+                        "Keep only the last N filtered messages. Useful when you "
+                                + "want the recent tail without scanning the full "
+                                + "history. Applied AFTER role/since/minStrength."));
                 put("maxChars", Map.of(
                         "type", "integer",
                         "description",
@@ -112,6 +136,7 @@ public class ProcessHistoryTextTool implements Tool {
 
     private final ThinkProcessService thinkProcessService;
     private final ChatMessageService chatMessageService;
+    private final de.mhus.vance.shared.memory.MemoryService memoryService;
 
     @Override
     public String name() {
@@ -160,19 +185,40 @@ public class ProcessHistoryTextTool implements Tool {
         Set<ChatRole> roleFilter = parseRoles(params.get("roles"));
         Instant since = parseInstant(params.get("since"));
         boolean includeArchived = Boolean.TRUE.equals(params.get("includeArchived"));
+        boolean includeActiveSummary = !Boolean.FALSE.equals(
+                params.get("includeActiveSummary"));
+        de.mhus.vance.shared.prak.@Nullable SpanStrength minStrength =
+                parseStrength(params.get("minStrength"));
+        int lastN = parseLastN(params.get("lastN"));
         int maxChars = clampMaxChars(params.get("maxChars"));
 
         List<ChatMessageDocument> history = includeArchived
                 ? chatMessageService.history(ctx.tenantId(), sessionId, doc.getId())
                 : chatMessageService.activeHistory(ctx.tenantId(), sessionId, doc.getId());
 
-        List<ChatMessageDocument> filtered = history.stream()
-                .filter(m -> roleFilter.isEmpty() || roleFilter.contains(m.getRole()))
-                .filter(m -> since == null
-                        || (m.getCreatedAt() != null && !m.getCreatedAt().isBefore(since)))
-                .toList();
+        List<ChatMessageDocument> filtered = new java.util.ArrayList<>(history.size());
+        for (ChatMessageDocument m : history) {
+            if (!roleFilter.isEmpty() && !roleFilter.contains(m.getRole())) continue;
+            if (since != null && (m.getCreatedAt() == null
+                    || m.getCreatedAt().isBefore(since))) continue;
+            if (minStrength != null && !passesStrength(m, minStrength)) continue;
+            filtered.add(m);
+        }
+        if (lastN > 0 && filtered.size() > lastN) {
+            filtered = filtered.subList(filtered.size() - lastN, filtered.size());
+        }
 
-        String transcript = render(doc, filtered, maxChars, includeArchived);
+        @Nullable String summary = null;
+        if (includeActiveSummary) {
+            List<de.mhus.vance.shared.memory.MemoryDocument> summaries =
+                    memoryService.activeByProcessAndKind(ctx.tenantId(), doc.getId(),
+                            de.mhus.vance.shared.memory.MemoryKind.ARCHIVED_CHAT);
+            if (!summaries.isEmpty()) {
+                summary = summaries.get(summaries.size() - 1).getContent();
+            }
+        }
+
+        String transcript = render(doc, filtered, summary, maxChars, includeArchived);
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("processName", doc.getName());
@@ -180,8 +226,54 @@ public class ProcessHistoryTextTool implements Tool {
         out.put("engine", doc.getThinkEngine());
         out.put("status", doc.getStatus() == null ? null : doc.getStatus().name());
         out.put("messageCount", filtered.size());
+        out.put("hasSummary", summary != null && !summary.isBlank());
         out.put("transcript", transcript);
         return out;
+    }
+
+    private static de.mhus.vance.shared.prak.@Nullable SpanStrength parseStrength(
+            @Nullable Object raw) {
+        if (!(raw instanceof String s) || s.isBlank()) return null;
+        try {
+            return de.mhus.vance.shared.prak.SpanStrength.valueOf(
+                    s.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            throw new ToolException("'minStrength' must be one of: weak, normal, strong, pinned");
+        }
+    }
+
+    private static int parseLastN(@Nullable Object raw) {
+        if (raw == null) return 0;
+        if (raw instanceof Number num) return Math.max(0, num.intValue());
+        if (raw instanceof String s && !s.isBlank()) {
+            try {
+                return Math.max(0, Integer.parseInt(s.trim()));
+            } catch (NumberFormatException ignored) {
+                return 0;
+            }
+        }
+        return 0;
+    }
+
+    /**
+     * OR-untagged strength filter: messages without any
+     * {@code STRENGTH:*} tag pass every minimum, because prak may
+     * not have evaluated them yet. Same semantic as the spawn-time
+     * {@link de.mhus.vance.brain.inherit.ParentContextRenderer}.
+     */
+    private static boolean passesStrength(
+            ChatMessageDocument m,
+            de.mhus.vance.shared.prak.SpanStrength min) {
+        Set<String> tags = m.getTags();
+        if (tags == null || tags.isEmpty()) return true;
+        de.mhus.vance.shared.prak.SpanStrength found = null;
+        for (String t : tags) {
+            de.mhus.vance.shared.prak.SpanStrength s =
+                    de.mhus.vance.shared.prak.SpanStrength.fromTag(t);
+            if (s != null) { found = s; break; }
+        }
+        if (found == null) return true;
+        return found.ordinal() >= min.ordinal();
     }
 
     // ───────────────────── helpers ─────────────────────
@@ -261,6 +353,7 @@ public class ProcessHistoryTextTool implements Tool {
      */
     private static String render(ThinkProcessDocument doc,
                                  List<ChatMessageDocument> msgs,
+                                 @Nullable String activeSummary,
                                  int maxChars,
                                  boolean includeArchived) {
         StringBuilder header = new StringBuilder();
@@ -281,8 +374,22 @@ public class ProcessHistoryTextTool implements Tool {
         if (includeArchived) header.append(" (incl. archived)");
         header.append(" ===\n\n");
 
+        // Compacted summary (if requested + present) goes before the
+        // transcript, so the reader sees "older context summarised,
+        // then recent turns verbatim" — same shape the process
+        // itself renders in its own prompt.
+        StringBuilder summaryBlock = new StringBuilder();
+        if (activeSummary != null && !activeSummary.isBlank()) {
+            summaryBlock.append("--- Earlier conversation (compacted summary) ---\n\n");
+            summaryBlock.append(activeSummary.trim()).append("\n\n");
+            summaryBlock.append("--- Recent conversation (active history) ---\n\n");
+        }
+
         if (msgs.isEmpty()) {
-            return header.append("(no messages match the filter)\n").toString();
+            StringBuilder empty = new StringBuilder(header);
+            if (summaryBlock.length() > 0) empty.append(summaryBlock);
+            empty.append("(no messages match the filter)\n");
+            return empty.toString();
         }
 
         // Render bottom-up so we can stop once the budget is full and
@@ -290,7 +397,7 @@ public class ProcessHistoryTextTool implements Tool {
         List<String> blocks = new java.util.ArrayList<>(msgs.size());
         for (ChatMessageDocument m : msgs) blocks.add(renderMessage(m));
 
-        int budget = Math.max(0, maxChars - header.length()
+        int budget = Math.max(0, maxChars - header.length() - summaryBlock.length()
                 - 80 /* truncation marker reserve */);
         int kept = 0;
         int runningLen = 0;
@@ -303,6 +410,7 @@ public class ProcessHistoryTextTool implements Tool {
         int dropped = blocks.size() - kept;
 
         StringBuilder out = new StringBuilder(header);
+        out.append(summaryBlock);
         if (dropped > 0) {
             out.append("[… ").append(dropped)
                     .append(" earlier messages truncated …]\n\n");

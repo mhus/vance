@@ -9,6 +9,10 @@ params:
   maxIterations: 3
   manualPaths:
     - manuals/
+  # Cheap one-shot — no parent context needed. The goal carries
+  # everything; loading conversation history would just inflate
+  # tokens for a single-tool lookup.
+  inheritContext: none
 promptPrefix: |
   You are a quick-lookup worker. Answer in one short paragraph or
   a single line. Use a tool, paste the result. Do not explain

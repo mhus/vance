@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue';
 import {
+  type Crumb,
   EditorShell,
   type FocusZone,
   VAlert,
@@ -238,9 +239,25 @@ const projectLabel = computed<string | null>(() => {
   return title && title.length > 0 ? title : id;
 });
 
-const breadcrumbs = computed<string[]>(() => {
-  const crumbs: string[] = [];
-  if (projectLabel.value) crumbs.push(projectLabel.value);
+/**
+ * Jumps from Cortex back to the chat picker with the current project
+ * pre-selected — mirrors the chat-mode breadcrumb behaviour (see
+ * {@code ChatApp.goToPickerWithProject}). Full navigation rather than
+ * {@code pushState} because Cortex and chat are separate MPA entries.
+ */
+function goToChatPickerWithProject(): void {
+  const id = projectId.value;
+  if (!id) return;
+  window.location.href = `/chat.html?project=${encodeURIComponent(id)}`;
+}
+
+const breadcrumbs = computed<Crumb[]>(() => {
+  const crumbs: Crumb[] = [];
+  if (projectLabel.value && projectId.value) {
+    crumbs.push({ text: projectLabel.value, onClick: goToChatPickerWithProject });
+  } else if (projectLabel.value) {
+    crumbs.push(projectLabel.value);
+  }
   if (store.activeTab?.path) crumbs.push(store.activeTab.path);
   return crumbs;
 });

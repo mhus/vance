@@ -638,11 +638,15 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         // Event-only turns must not emit spawn-actions (DELEGATE /
         // ASK_USER) — see SPAWN_ACTIONS_FORBIDDEN_ON_EVENT_TURNS.
         boolean hadUserInput = false;
-        // RELAY-attribution map: { eventId → ProcessEvent } drawn from
-        // THIS drain so handleRelay can validate the LLM's eventRef
-        // against fresh events only. Built in the same loop as the
-        // hadUserInput check to avoid a second pass.
+        // RELAY-attribution map: { shortToken → ProcessEvent } drawn
+        // from THIS drain so handleRelay can validate the LLM's
+        // eventRef against fresh events only. Keys are short stable
+        // tokens (ev1, ev2, ...) assigned in inbox-order, not the
+        // underlying UUIDs. LLMs handle 3-char tokens reliably; 36-
+        // char UUIDs invite hallucination. The full UUID stays in the
+        // event for logs / cross-pod tracing.
         Map<String, SteerMessage.ProcessEvent> eventsByRef = new LinkedHashMap<>();
+        int eventCounter = 0;
         for (SteerMessage m : inbox) {
             if (m instanceof SteerMessage.UserChatInput uci
                     && uci.content() != null && !uci.content().isBlank()) {
@@ -650,7 +654,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             }
             if (m instanceof SteerMessage.ProcessEvent pe
                     && pe.eventId() != null && !pe.eventId().isBlank()) {
-                eventsByRef.put(pe.eventId(), pe);
+                String token = "ev" + (++eventCounter);
+                eventsByRef.put(token, pe);
             }
         }
         currentTurnHadUserInput.put(process.getId(), hadUserInput);
@@ -1111,10 +1116,10 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                     + "only process-events (worker closed / tool-result / similar). "
                     + "Spawning new work without a user prompt led to the multi-"
                     + "Slartibartfast respawn cascade we just stopped. "
-                    + "Emit RELAY (with `eventRef` pointing at a <process-event> "
-                    + "from the current inbox), or ANSWER (with a short status "
-                    + "note), or WAIT — and let the user decide whether more "
-                    + "work is wanted.";
+                    + "Emit RELAY (engine auto-picks the single event in the "
+                    + "drain, or pass `eventRef` token if multiple are present), "
+                    + "or ANSWER (with a short status note), or WAIT — and let "
+                    + "the user decide whether more work is wanted.";
         }
         return null;
     }
@@ -1670,39 +1675,23 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             de.mhus.vance.brain.thinkengine.action.EngineAction action,
             ThinkProcessDocument process,
             ThinkEngineContext ctx) {
-        String eventRef = action.stringParam(ArthurActionSchema.PARAM_EVENT_REF);
-        if (eventRef == null || eventRef.isBlank()) {
-            log.warn("Arthur id='{}' RELAY missing 'eventRef' — reason='{}'",
-                    process.getId(), action.reason());
-            return new ActionTurnOutcome(
-                    "(internal: RELAY needs `eventRef` — copy the `eventId` "
-                            + "attribute verbatim from one of the <process-event> "
-                            + "markers in your current inbox. Reason was: "
-                            + action.reason() + ")",
-                    true);
-        }
-
-        // Look up the event in THIS turn's drain. Anything not present
-        // is either a stale event from a previous turn (the Marvin /
-        // Ford race we are explicitly fixing) or a fabricated id —
-        // both rejected with a hint that names the eventIds that ARE
-        // available, so the next LLM iteration can pick correctly.
         Map<String, SteerMessage.ProcessEvent> available =
                 currentTurnEventsByRef.getOrDefault(process.getId(), Map.of());
-        SteerMessage.ProcessEvent event = available.get(eventRef);
+
+        SteerMessage.ProcessEvent event = resolveRelayEvent(action, available);
         if (event == null) {
-            String hint = available.isEmpty()
-                    ? "no <process-event> in this drain"
-                    : "available eventIds: " + String.join(", ", available.keySet());
-            log.warn("Arthur id='{}' RELAY eventRef '{}' not in current drain "
-                            + "({}) — reason='{}'",
-                    process.getId(), eventRef, hint, action.reason());
+            log.warn("Arthur id='{}' RELAY could not be resolved "
+                            + "(drain size={}, eventRef='{}', legacy source='{}') "
+                            + "— reason='{}'",
+                    process.getId(), available.size(),
+                    action.stringParam(ArthurActionSchema.PARAM_EVENT_REF),
+                    action.stringParam("source"),
+                    action.reason());
             return new ActionTurnOutcome(
-                    "(internal: RELAY eventRef '" + eventRef
-                            + "' is not in your current inbox — only events from "
-                            + "THIS drain can be relayed. " + hint + ".)",
+                    relayFallbackMessage(available),
                     true);
         }
+        String eventRef = event.eventId();
 
         // Resolve the source-worker name for the deterministic header.
         // The event already carries the verbatim child reply in its
@@ -1716,13 +1705,13 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                         && process.getSessionId().equals(p.getSessionId()));
         String sourceName = targetOpt.map(ThinkProcessDocument::getName).orElse(sourceProcessId);
 
-        String body = event.humanSummary();
+        String body = unwrapChildReply(event.humanSummary());
         if (body == null || body.isBlank()) {
             log.warn("Arthur id='{}' RELAY eventRef '{}' has empty body — reason='{}'",
                     process.getId(), eventRef, action.reason());
             return new ActionTurnOutcome(
-                    "(internal: <process-event eventId=\"" + eventRef
-                            + "\"> has no body to relay.)",
+                    "_Der Worker `" + sourceName + "` hat eine leere Antwort "
+                            + "zurückgegeben. Sag mir kurz wie wir weitermachen._",
                     true);
         }
 
@@ -1747,6 +1736,85 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         // BLOCKED waiting for the user's next message, which is the
         // expected state after delivering an answer.
         return new ActionTurnOutcome(out.toString(), /*awaitingUserInput*/ true);
+    }
+
+    /**
+     * Resolve which {@code <process-event>} the LLM is RELAYing.
+     * Three-tier strategy minimises hallucination surface:
+     * <ol>
+     *   <li>{@code eventRef} present → look up by short token
+     *       (e.g. {@code "ev1"}). Token map matches what was
+     *       rendered in the prompt, so the only way to fail is a
+     *       fabricated token.</li>
+     *   <li>{@code eventRef} absent AND drain has exactly one event
+     *       → auto-pick. Single-event drains don't need any id; the
+     *       LLM emits {@code {type: RELAY}} with no id field.</li>
+     *   <li>Legacy {@code source} field present (older prompt) →
+     *       resolve to a single event by process-id or process-name.
+     *       Logged as drift warning.</li>
+     * </ol>
+     * Returns {@code null} when none of these produce a single,
+     * unambiguous event from THIS drain — caller emits a user-
+     * friendly fallback.
+     */
+    private SteerMessage.@org.jspecify.annotations.Nullable ProcessEvent
+    resolveRelayEvent(
+            de.mhus.vance.brain.thinkengine.action.EngineAction action,
+            Map<String, SteerMessage.ProcessEvent> available) {
+        String eventRef = action.stringParam(ArthurActionSchema.PARAM_EVENT_REF);
+        if (eventRef != null && !eventRef.isBlank()) {
+            // Tier 1: short-token lookup. Also tolerate the LLM
+            // pasting the bare UUID (some models echo what they
+            // see in logs); scan values for matching eventId.
+            SteerMessage.ProcessEvent byToken = available.get(eventRef);
+            if (byToken != null) return byToken;
+            for (SteerMessage.ProcessEvent ev : available.values()) {
+                if (eventRef.equals(ev.eventId())) return ev;
+            }
+            return null;
+        }
+        // Tier 2: auto-pick on single-event drain.
+        if (available.size() == 1) {
+            return available.values().iterator().next();
+        }
+        // Tier 3: legacy `source` field, resolve to a single match.
+        String legacySource = action.stringParam("source");
+        if (legacySource == null || legacySource.isBlank()) return null;
+        List<SteerMessage.ProcessEvent> matches = available.values().stream()
+                .filter(ev -> matchesLegacySource(ev, legacySource))
+                .toList();
+        return matches.size() == 1 ? matches.get(0) : null;
+    }
+
+    private boolean matchesLegacySource(
+            SteerMessage.ProcessEvent event, String legacySource) {
+        if (legacySource.equals(event.sourceProcessId())) return true;
+        // sourceProcessName isn't on the event record — resolve via
+        // the registry. Tenant/session scope filter prevents matching
+        // a same-named worker in a sibling session.
+        return thinkProcessService.findById(event.sourceProcessId())
+                .map(ThinkProcessDocument::getName)
+                .filter(legacySource::equals)
+                .isPresent();
+    }
+
+    /**
+     * User-visible message when RELAY can't be honoured (missing or
+     * stale eventRef). Never leaks the internal validator diagnostic
+     * — the user gets a plain "lost the trail" line plus, if the
+     * drain still contains events, an action-loop hint that the LLM
+     * will re-evaluate on the next iteration (visible via warn-log
+     * only).
+     */
+    private String relayFallbackMessage(
+            Map<String, SteerMessage.ProcessEvent> available) {
+        if (available.isEmpty()) {
+            return "_Ich habe gerade nichts zum Weiterreichen — "
+                    + "sag mir kurz wo es weitergehen soll._";
+        }
+        return "_Beim Übergeben der Worker-Antwort ist mir gerade "
+                + "die Spur verloren gegangen — wenn die Antwort fehlt, "
+                + "sag's mir und ich starte den Worker neu._";
     }
 
     /** Async work in flight, nothing to add. Engine goes IDLE. */
@@ -1903,6 +1971,39 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         if (reason == null) return "";
         String oneLine = reason.replace("\n", " ").replaceAll("\\s+", " ").trim();
         return oneLine.length() > 80 ? oneLine.substring(0, 77) + "..." : oneLine;
+    }
+
+    /**
+     * The {@code humanSummary} of a {@link SteerMessage.ProcessEvent}
+     * comes pre-wrapped by {@code ParentNotificationListener.enrichWithLastReply}:
+     *
+     * <pre>
+     *   Child process X status=blocked
+     *
+     *   Last assistant reply from this child (verbatim):
+     *   --- BEGIN CHILD REPLY ---
+     *   &lt;actual reply&gt;
+     *   --- END CHILD REPLY ---
+     * </pre>
+     *
+     * That framing is useful for the LLM-facing {@code <process-event>}
+     * marker (tells the model what it's looking at). For a RELAY to the
+     * user, only the body between BEGIN/END belongs in the chat — Fix 2's
+     * deterministic {@code **[Worker ... → ...]**} header already
+     * supplies the attribution. This helper extracts that inner text;
+     * returns the input unchanged if the framing isn't present.
+     */
+    static @Nullable String unwrapChildReply(@Nullable String humanSummary) {
+        if (humanSummary == null) return null;
+        int begin = humanSummary.indexOf("--- BEGIN CHILD REPLY ---");
+        if (begin < 0) return humanSummary;
+        int bodyStart = humanSummary.indexOf('\n', begin);
+        if (bodyStart < 0) return humanSummary;
+        int end = humanSummary.indexOf("--- END CHILD REPLY ---", bodyStart);
+        String inner = end < 0
+                ? humanSummary.substring(bodyStart + 1)
+                : humanSummary.substring(bodyStart + 1, end);
+        return inner.trim();
     }
 
     // ──────────────────── Prompt building ────────────────────
@@ -2082,16 +2183,39 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
 
         // Now append the non-user inbox items (events, tool results,
         // external commands) as user-role messages with the XML
-        // wrapper Arthur's prompt is trained on.
+        // wrapper Arthur's prompt is trained on. The token map drives
+        // short eventRef attributes when more than one event is in
+        // the drain (handleRelay validates against the same map).
+        Map<String, String> eventIdToToken = invertToShortTokens(
+                currentTurnEventsByRef.getOrDefault(process.getId(), Map.of()));
+        boolean multiEventDrain = eventIdToToken.size() > 1;
         for (SteerMessage m : inbox) {
             if (m instanceof SteerMessage.UserChatInput) continue;
-            String wrapped = renderForLlm(m);
+            String wrapped = renderForLlm(m, eventIdToToken, multiEventDrain);
             if (wrapped != null) {
                 messages.add(UserMessage.from(wrapped));
             }
         }
 
         return messages;
+    }
+
+    /**
+     * Reverse the {token → event} drain map into {eventId → token}
+     * so the renderer can attach the short token to each
+     * {@code <process-event>} marker.
+     */
+    private static Map<String, String> invertToShortTokens(
+            Map<String, SteerMessage.ProcessEvent> eventsByToken) {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (var entry : eventsByToken.entrySet()) {
+            String token = entry.getKey();
+            SteerMessage.ProcessEvent pe = entry.getValue();
+            if (pe.eventId() != null && !pe.eventId().isBlank()) {
+                out.put(pe.eventId(), token);
+            }
+        }
+        return out;
     }
 
     /**
@@ -2243,7 +2367,10 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     }
 
     /** Rendering helper that needs access to the {@code thinkProcessService}. */
-    private String renderForLlm(SteerMessage m) {
+    private String renderForLlm(
+            SteerMessage m,
+            Map<String, String> eventIdToToken,
+            boolean multiEventDrain) {
         if (m instanceof SteerMessage.ProcessEvent pe) {
             StringBuilder sb = new StringBuilder();
             sb.append("<process-event sourceProcessId=\"")
@@ -2255,13 +2382,17 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                         .append(escapeAttr(sourceName))
                         .append("\"");
             }
-            // eventId: stable handle the LLM passes back as
-            // RELAY's `eventRef` to refer to THIS event — the
-            // engine rejects RELAYs without it, see
-            // ArthurEngine.handleRelay.
-            if (pe.eventId() != null && !pe.eventId().isBlank()) {
-                sb.append(" eventId=\"")
-                        .append(escapeAttr(pe.eventId()))
+            // eventRef: short token the LLM passes back when emitting
+            // RELAY (e.g. "ev1"). Only rendered when more than one
+            // event is in the drain — single-event drains auto-pick
+            // in handleRelay so the LLM doesn't need to copy any id
+            // at all. UUID stays inside the engine for logs.
+            String token = pe.eventId() == null
+                    ? null
+                    : eventIdToToken.get(pe.eventId());
+            if (multiEventDrain && token != null) {
+                sb.append(" eventRef=\"")
+                        .append(escapeAttr(token))
                         .append("\"");
             }
             // respondingToTurnAt: the user-input turn the emitting

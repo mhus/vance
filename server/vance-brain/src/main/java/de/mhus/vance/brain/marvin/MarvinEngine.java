@@ -157,6 +157,8 @@ public class MarvinEngine implements ThinkEngine {
     private final de.mhus.vance.shared.workspace.WorkspaceService workspaceService;
     private final de.mhus.vance.shared.document.DocumentService documentService;
     private final ObjectProvider<ThinkEngineService> thinkEngineServiceProvider;
+    private final de.mhus.vance.brain.inherit.ParentContextSpawnHelper parentContextSpawnHelper;
+    private final de.mhus.vance.brain.inherit.ParentContextRenderer parentContextRenderer;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -931,6 +933,20 @@ public class MarvinEngine implements ThinkEngine {
             int nodeDepth,
             @Nullable String hint) {
         StringBuilder sb = new StringBuilder();
+        // Parent-context block. Marvin's engine ignores incoming
+        // UserChatInput (it doesn't talk directly to a chat partner),
+        // so the spawn-time pre-paste from ProcessCreateTool never
+        // reaches Marvin's prompt. Instead Marvin reads
+        // `engineParams.inheritContext` itself and renders the parent
+        // process's history at prompt-build time — the same renderer
+        // ProcessCreateTool uses, just at a different lifecycle point.
+        // See planning/worker-spawn-context.md.
+        String parentBlock = renderMarvinParentContext(process);
+        if (parentBlock != null && !parentBlock.isBlank()) {
+            sb.append(parentBlock);
+            if (!parentBlock.endsWith("\n")) sb.append('\n');
+            sb.append('\n');
+        }
         sb.append("Goal: ").append(nullSafe(node.getGoal())).append("\n\n");
 
         List<String> available = readAvailableRecipes(process);
@@ -1298,9 +1314,30 @@ public class MarvinEngine implements ThinkEngine {
         // the DONE event, which we don't currently expose to a sync
         // CALL_RECIPE — those engines are blocked above (marvin) or
         // simply uncommon in practice (Vogon).
+        // Apply inheritContext wrapping before sending the steer to
+        // the child. Marvin's CALL_RECIPE spawn bypasses
+        // ProcessCreateTool, so the helper has to be invoked here
+        // explicitly. Parent for the child is Marvin (the current
+        // process) — child sees Marvin's session-level state, which
+        // includes the CALL_RECIPE result history of sibling nodes.
+        String inheritContextRaw = null;
+        if (applied.params() != null) {
+            Object v = applied.params().get("inheritContext");
+            if (v instanceof String s) inheritContextRaw = s;
+        }
+        String steerContent;
+        try {
+            steerContent = parentContextSpawnHelper.wrap(
+                    inheritContextRaw, process.getId(), call.steerContent());
+        } catch (RuntimeException e) {
+            log.warn("Marvin id='{}' CALL_RECIPE inheritContext wrap failed: {}",
+                    process.getId(), e.toString());
+            steerContent = call.steerContent();
+        }
+
         String reply;
         try {
-            driveSubProcessOnce(child, process.getId(), call.steerContent());
+            driveSubProcessOnce(child, process.getId(), steerContent);
             reply = readLastAssistantText(
                     process.getTenantId(), process.getSessionId(), child.getId());
             if (reply == null || reply.isBlank()) {
@@ -2011,6 +2048,38 @@ public class MarvinEngine implements ThinkEngine {
             return Criticality.valueOf(raw.trim().toUpperCase());
         } catch (IllegalArgumentException e) {
             return fallback;
+        }
+    }
+
+    /**
+     * Renders the parent-context block for the current Marvin process
+     * — read at every phase prompt-build because Marvin's engine
+     * silently discards the spawn-time UserChatInput and would
+     * otherwise never see Arthur's conversation. Cheap by design
+     * (one ChatMessageService.activeHistory + one MemoryService
+     * lookup); the renderer applies its own budget cap. Returns
+     * {@code null} when the recipe sets {@code inheritContext: none},
+     * when there is no parent, or when the parent has nothing to
+     * surface yet.
+     */
+    private @Nullable String renderMarvinParentContext(ThinkProcessDocument process) {
+        String parentId = process.getParentProcessId();
+        if (parentId == null || parentId.isBlank()) return null;
+        Map<String, Object> params = process.getEngineParams();
+        if (params == null) return null;
+        Object raw = params.get("inheritContext");
+        String levelRaw = raw instanceof String s ? s : null;
+        de.mhus.vance.brain.inherit.InheritLevel level =
+                de.mhus.vance.brain.inherit.InheritLevel.parse(levelRaw);
+        if (level instanceof de.mhus.vance.brain.inherit.InheritLevel.None) return null;
+        try {
+            return parentContextRenderer.render(
+                    parentId, process.getTenantId(), process.getSessionId(),
+                    level, /*maxChars*/ 15_000);
+        } catch (RuntimeException e) {
+            log.warn("Marvin id='{}' parent-context render failed: {}",
+                    process.getId(), e.toString());
+            return null;
         }
     }
 

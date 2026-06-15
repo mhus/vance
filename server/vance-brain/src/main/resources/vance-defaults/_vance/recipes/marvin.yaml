@@ -12,6 +12,16 @@ description: |
 engine: marvin
 params:
   model: default:marvin,default:analyze
+  # Tree-engine sees the parent's conversation highlights so it
+  # builds its sub-task goals from what the USER actually mentioned,
+  # not from training-data model names. `strong` filters by STRONG/
+  # PINNED tags AND keeps untagged messages (OR-untagged semantic),
+  # so in a young session where prak has not yet evaluated anything
+  # Marvin sees the full active chat; in a mature session it sees
+  # only the highlights. Avoids the failure mode where Marvin
+  # decomposes from training cutoff and asks specialists for
+  # outdated model names.
+  inheritContext: strong
   # Specialist recipes available for CALL_RECIPE. The recipe
   # description above names the canonical three — keep them in the
   # default so Marvin actually has an outbound path. Empty list

@@ -22,6 +22,11 @@ params:
   # Slart's per-phase LLM calls benefit from a larger context — it
   # reads many manuals at once during GATHERING.
   model: default:slartibartfast,default:analyze
+  # Meta-engine — operates on the goal-string. Parent's verbatim chat
+  # would just distract Slart's phase logic. `summary` gives it a
+  # background anchor (compacted parent summary) without polluting the
+  # phase-prompts. The goal already carries the actionable intent.
+  inheritContext: summary
 tags:
   - architect
   - engine-default

@@ -75,6 +75,26 @@ const hasRichContent = computed(() => {
         return true;
     return false;
 });
+/**
+ * Display-form of the message body. Replaces the engine-internal
+ * "--- BEGIN/END CHILD REPLY ---" framing that
+ * {@code ParentNotificationListener.enrichWithLastReply} emits in
+ * {@code <process-event>} markers with compact visual chevrons
+ * (>>>> / <<<<). Also drops the diagnostic lead-in line that
+ * accompanies the BEGIN marker. New RELAY-output is already stripped
+ * server-side by Arthur/Eddie's {@code unwrapChildReply}; this is
+ * the safety net for historical chat-messages and for any fallback
+ * paths where the LLM regurgitates the marker as content.
+ */
+const displayContent = computed(() => {
+    const src = props.content;
+    if (!src)
+        return '';
+    return src
+        .replace(/Last assistant reply from this child \(verbatim\):\s*\n?/g, '')
+        .replace(/\n?-{3,}\s*BEGIN CHILD REPLY\s*-{3,}\n?/g, '\n\n>>>>\n')
+        .replace(/\n?-{3,}\s*END CHILD REPLY\s*-{3,}\n?/g, '\n<<<<\n\n');
+});
 const workerText = computed(() => {
     if (!props.worker)
         return '';
@@ -182,13 +202,13 @@ else {
         // @ts-ignore
         const __VLS_0 = __VLS_asFunctionalComponent(QuestionCanvas, new QuestionCanvas({
             ...{ 'onPick': {} },
-            content: (__VLS_ctx.content),
+            content: (__VLS_ctx.displayContent),
             options: (__VLS_ctx.askUserOptions),
             actionable: (__VLS_ctx.optionsActionable),
         }));
         const __VLS_1 = __VLS_0({
             ...{ 'onPick': {} },
-            content: (__VLS_ctx.content),
+            content: (__VLS_ctx.displayContent),
             options: (__VLS_ctx.askUserOptions),
             actionable: (__VLS_ctx.optionsActionable),
         }, ...__VLS_functionalComponentArgsRest(__VLS_0));
@@ -207,7 +227,7 @@ else {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span)({
             ...{ class: "inline-block w-1.5 h-1.5 rounded-full bg-warning animate-pulse mr-2" },
         });
-        (__VLS_ctx.content);
+        (__VLS_ctx.displayContent);
     }
     else if (__VLS_ctx.isReject) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -217,10 +237,10 @@ else {
         /** @type {[typeof __VLS_components.MarkdownView, ]} */ ;
         // @ts-ignore
         const __VLS_8 = __VLS_asFunctionalComponent(__VLS_7, new __VLS_7({
-            source: (__VLS_ctx.content),
+            source: (__VLS_ctx.displayContent),
         }));
         const __VLS_9 = __VLS_8({
-            source: (__VLS_ctx.content),
+            source: (__VLS_ctx.displayContent),
         }, ...__VLS_functionalComponentArgsRest(__VLS_8));
     }
     else {
@@ -228,10 +248,10 @@ else {
         /** @type {[typeof __VLS_components.MarkdownView, ]} */ ;
         // @ts-ignore
         const __VLS_12 = __VLS_asFunctionalComponent(__VLS_11, new __VLS_11({
-            source: (__VLS_ctx.content),
+            source: (__VLS_ctx.displayContent),
         }));
         const __VLS_13 = __VLS_12({
-            source: (__VLS_ctx.content),
+            source: (__VLS_ctx.displayContent),
         }, ...__VLS_functionalComponentArgsRest(__VLS_12));
     }
 }
@@ -299,6 +319,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             isAssistant: isAssistant,
             isSystem: isSystem,
             hasRichContent: hasRichContent,
+            displayContent: displayContent,
             workerText: workerText,
             formatted: formatted,
             workerStyle: workerStyle,

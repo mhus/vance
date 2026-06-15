@@ -17,6 +17,11 @@ params:
   maxIterations: 8
   manualPaths:
     - manuals/
+  # Selector-routed fallback recipe — used for Arthur's DELEGATE
+  # without preset. Worker needs the parent's conversation as
+  # background (same rationale as `ford.yaml`). See
+  # planning/worker-spawn-context.md.
+  inheritContext: all
 promptPrefix: |
   You are a generalist Vance worker.
   {% if tier == "small" %}

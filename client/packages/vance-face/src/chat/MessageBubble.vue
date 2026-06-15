@@ -131,6 +131,26 @@ const hasRichContent = computed<boolean>(() => {
   return false;
 });
 
+/**
+ * Display-form of the message body. Replaces the engine-internal
+ * "--- BEGIN/END CHILD REPLY ---" framing that
+ * {@code ParentNotificationListener.enrichWithLastReply} emits in
+ * {@code <process-event>} markers with compact visual chevrons
+ * (>>>> / <<<<). Also drops the diagnostic lead-in line that
+ * accompanies the BEGIN marker. New RELAY-output is already stripped
+ * server-side by Arthur/Eddie's {@code unwrapChildReply}; this is
+ * the safety net for historical chat-messages and for any fallback
+ * paths where the LLM regurgitates the marker as content.
+ */
+const displayContent = computed<string>(() => {
+  const src = props.content;
+  if (!src) return '';
+  return src
+    .replace(/Last assistant reply from this child \(verbatim\):\s*\n?/g, '')
+    .replace(/\n?-{3,}\s*BEGIN CHILD REPLY\s*-{3,}\n?/g, '\n\n>>>>\n')
+    .replace(/\n?-{3,}\s*END CHILD REPLY\s*-{3,}\n?/g, '\n<<<<\n\n');
+});
+
 const workerText = computed<string>(() => {
   if (!props.worker) return '';
   const max = props.lineMaxChars;
@@ -210,7 +230,7 @@ const bubbleStyle = computed(() => {
            messages without actionType still render correctly. -->
       <QuestionCanvas
         v-if="isAskUser"
-        :content="content"
+        :content="displayContent"
         :options="askUserOptions"
         :actionable="optionsActionable"
         @pick="onPick"
@@ -219,14 +239,14 @@ const bubbleStyle = computed(() => {
            full bubble payload. -->
       <div v-else-if="isWait" class="text-xs italic opacity-70">
         <span class="inline-block w-1.5 h-1.5 rounded-full bg-warning animate-pulse mr-2" />
-        {{ content }}
+        {{ displayContent }}
       </div>
       <!-- REJECT — out-of-scope refusal; render in muted/warning tone. -->
       <div v-else-if="isReject" class="text-sm italic opacity-80">
-        <MarkdownView :source="content" />
+        <MarkdownView :source="displayContent" />
       </div>
       <!-- ANSWER / RELAY / untagged: default Markdown rendering. -->
-      <MarkdownView v-else :source="content" />
+      <MarkdownView v-else :source="displayContent" />
     </div>
   </div>
 </template>

@@ -247,14 +247,28 @@ openai:
     size: LARGE
 
   # ── Gemma (Google, open-weight) ───────────────────────────────
-  # Served via OpenAI-wire gateways (sipgate.ai, etc.). Model id
-  # follows the HuggingFace path convention `google/<name>`.
+  # Served via OpenAI-wire gateways (sipgate.ai, cortecs.ai, …).
+  # Different gateways expose different SKUs and naming conventions
+  # for the same family — we keep one entry per actually-callable
+  # model id. The provider key stays `openai` (wire format), only
+  # `vance.ai.openai.base-url` differs per tenant.
+  #
+  # sipgate.ai exposes the 31B dense instruction-tuned variant under
+  # the HuggingFace path convention.
   google/gemma-4-31B-it:
     contextWindowTokens: 131072
     defaultMaxOutputTokens: 8192
     # 31B instruction-tuned — sits in the fast / allround tier alongside
     # gpt-oss-20b and deepseek-v4-flash. Bump to LARGE if you start
     # using it for serious reasoning work.
+    size: SMALL
+  # cortecs.ai exposes the 26B-A4B MoE variant (26B total params,
+  # 4B active per token) — no `google/` prefix, native 128K window.
+  # Faster + cheaper than the 31B dense variant at comparable quality;
+  # MoE only pays for active params per token.
+  gemma-4-26b-a4b-it:
+    contextWindowTokens: 131072
+    defaultMaxOutputTokens: 8192
     size: SMALL
 
   # ── Qwen (Alibaba, open-weight) ───────────────────────────────
@@ -395,22 +409,25 @@ openai:
 # model's native window as advertised on ollama.com/library; Ollama
 # itself defaults to num_ctx=4096 unless OllamaProvider passes
 # numCtx explicitly, so the catalog values here drive that override.
-# Timeouts are bumped — local inference on 20-30B models takes
-# noticeably longer than cloud APIs, especially on first token.
+# Timeouts are generous — local inference on M-series Macs + Ollama
+# regularly stalls minutes on first-token while the model is loaded
+# into VRAM, and tool-loop turns with thinking-mode can take
+# multi-minute compute even on warm models. Aligned with lmstudio (600s)
+# below so users don't see InterruptedException mid-thinking.
 ollama:
   # ── Small / fast tier ─────────────────────────────────────────
   "llama3.1:8b":
     contextWindowTokens: 131072
     defaultMaxOutputTokens: 4096
     size: SMALL
-    timeoutSeconds: 180
+    timeoutSeconds: 600
   "qwen3:8b":
     # qwen3:8b advertises 40K native context on ollama.com; some
     # Vance turns blow past that — keep low to avoid silent truncation.
     contextWindowTokens: 40960
     defaultMaxOutputTokens: 4096
     size: SMALL
-    timeoutSeconds: 180
+    timeoutSeconds: 600
     # qwen3 emits <think>…</think>; strip from user-visible content.
     # See the qwen3:30b entry below for the full rationale.
     stripThinkTags: true
@@ -420,7 +437,7 @@ ollama:
     contextWindowTokens: 131072
     defaultMaxOutputTokens: 4096
     size: SMALL
-    timeoutSeconds: 240
+    timeoutSeconds: 600
     # gpt-oss uses OpenAI's harmony format — emits <|channel|>analysis
     # / commentary / final segments. Strip the analysis/commentary
     # parts so only the final user-visible content reaches chat_messages.
@@ -430,17 +447,29 @@ ollama:
     defaultMaxOutputTokens: 4096
     size: SMALL
     capabilities: [vision]
-    timeoutSeconds: 240
+    timeoutSeconds: 600
 
   # ── Gemma 4 (Google, open-weight, via Ollama) ─────────────────
-  # Apple-Silicon MLX build for local inference. 31B dense
-  # parameters, Metal-backed via mlx — materially faster than the
-  # GGUF build on M-series Macs. Native 128K window.
+  # Apple-Silicon MLX builds for local inference. Metal-backed
+  # via mlx — materially faster than the GGUF build on M-series
+  # Macs. Native 128K window.
+  #
+  # 26B-A4B MoE — 26B total params, 4B active per token. Faster
+  # and cheaper VRAM than the 31B dense variant at comparable
+  # quality (only active params hit compute per token). Same
+  # family as the cortecs `gemma-4-26b-a4b-it` cloud entry.
+  "gemma4:26b-mlx":
+    contextWindowTokens: 131072
+    defaultMaxOutputTokens: 8192
+    size: LARGE
+    timeoutSeconds: 600
+  # 31B dense — slower than the 26B MoE on the same hardware
+  # because every param participates in every token.
   "gemma4:31b-mlx":
     contextWindowTokens: 131072
     defaultMaxOutputTokens: 8192
     size: LARGE
-    timeoutSeconds: 300
+    timeoutSeconds: 600
 
   # ── Large MoE ─────────────────────────────────────────────────
   # qwen3:30b is a 30B-param MoE with ~3B active — treat as the
@@ -451,7 +480,7 @@ ollama:
     contextWindowTokens: 131072
     defaultMaxOutputTokens: 4096
     size: LARGE
-    timeoutSeconds: 300
+    timeoutSeconds: 600
     # qwen3 is a reasoning model — it emits <think>…</think> blocks
     # by default even when `think=false` is passed (the flag isn't
     # reliably honoured on local Ollama). The blocks belong in the
@@ -470,7 +499,7 @@ ollama:
     defaultMaxOutputTokens: 4096
     size: LARGE
     capabilities: [vision]
-    timeoutSeconds: 300
+    timeoutSeconds: 600
     stripThinkTags: true
 
 # ────────────────────────────────────────────────────────────────────

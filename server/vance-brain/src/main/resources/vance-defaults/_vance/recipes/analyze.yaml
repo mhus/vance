@@ -6,6 +6,11 @@ params:
   model: default:analyze
   validation: true
   maxIterations: 10
+  # Specialist worker — wants the highlights of the parent's
+  # conversation, not the full chatter. `strong` = summary + active
+  # history filtered to STRONG/PINNED (plus untagged for graceful
+  # fallback when prak has not yet evaluated the span).
+  inheritContext: strong
   # Multi-step analysis with cross-evidence synthesis benefits from
   # moderate reasoning budget. Provider mapping: Anthropic 8k tokens,
   # OpenAI reasoning_effort=medium, Gemini thinkingLevel=MEDIUM,
@@ -33,12 +38,14 @@ promptPrefix: |
 
   Dein letzter `respond` ist eine Zusammenfassung, kein Dump:
 
-  1. **Was untersucht** — 1 Satz.
-  2. **Ergebnis / Befund** — 2-5 Sätze oder Bullets. Inline
-     Tool-/Quellen-Belege für die ein-zwei zentralen Aussagen.
-  3. **Wo Details liegen** — eine Zeile: "Volle Tool-Calls,
-     Outputs und Reasoning in meiner History; per
-     `process_history_text(name=<mein-name>)` abrufbar."
+  - 1 Satz zum Auftrag.
+  - 2-5 Sätze oder Bullets mit dem Ergebnis. Inline
+    Tool-/Quellen-Belege für die zentralen Aussagen.
+
+  Schreib KEINEN Footer der erklärt wo „Details liegen" oder dass
+  man „mehr via process_history_text nachladen kann" — das ist
+  interne Plumbing und der Caller weiß das selbst. Schreib einfach
+  die Antwort und hör auf wenn sie steht.
 
   Substantielle Listen / Tabellen / Reports → `doc_create` und
   Doc-Pfad in der Reply; nicht inline mehrere Seiten paste-en.

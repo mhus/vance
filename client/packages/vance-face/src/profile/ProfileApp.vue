@@ -23,7 +23,7 @@ import {
   MIN_VOLUME,
 } from '@vance/shared';
 import { setUiLocale } from '@/i18n';
-import { EditorShell, VAlert, VButton, VCard, VInput, VSelect } from '@components/index';
+import { EditorShell, VAlert, VButton, VCard, VCheckbox, VInput, VSelect } from '@components/index';
 import { useProfile } from '@composables/useProfile';
 
 const { t } = useI18n();
@@ -40,11 +40,14 @@ const languageSaved = ref<string | null>(null);
 const chatLanguageSaved = ref<string | null>(null);
 const themeSaved = ref<string | null>(null);
 const uiLevelSaved = ref<string | null>(null);
+const openDocsNewTabDraft = ref<boolean>(true);
+const openDocsNewTabSaved = ref<string | null>(null);
 
 const LANGUAGE_KEY = 'webui.language';
 const CHAT_LANGUAGE_KEY = 'chat.language';
 const THEME_KEY = 'webui.theme';
 const UI_LEVEL_KEY = 'webui.uiLevel';
+const OPEN_DOCS_NEW_TAB_KEY = 'webui.document.openInNewTab';
 const SPEECH_VOICE_KEY = 'webui.speech.voiceUri';
 const SPEECH_RATE_KEY = 'webui.speech.rate';
 const SPEECH_VOLUME_KEY = 'webui.speech.volume';
@@ -156,6 +159,9 @@ watch(profile, (current) => {
   chatLanguageDraft.value = current.webUiSettings?.[CHAT_LANGUAGE_KEY] ?? '';
   themeDraft.value = asTheme(current.webUiSettings?.[THEME_KEY]);
   uiLevelDraft.value = asUiLevel(current.webUiSettings?.[UI_LEVEL_KEY]);
+  // Default true — only an explicit "false" turns it off; absent / any
+  // other value (legacy / typo) stays on the new-tab default.
+  openDocsNewTabDraft.value = current.webUiSettings?.[OPEN_DOCS_NEW_TAB_KEY] !== 'false';
   speechVoiceDraft.value = current.webUiSettings?.[SPEECH_VOICE_KEY] ?? '';
   speechRateDraft.value = parseSpeechRate(current.webUiSettings?.[SPEECH_RATE_KEY]);
   speechVolumeDraft.value = parseSpeechVolume(current.webUiSettings?.[SPEECH_VOLUME_KEY]);
@@ -247,6 +253,21 @@ async function onUiLevelChanged(value: string | null): Promise<void> {
     // the data cookie on its next mount, which the PUT response just
     // refreshed.
     uiLevelSaved.value = t('profile.preferences.uiLevelSaved');
+  }
+}
+
+async function onOpenDocsNewTabChanged(value: boolean): Promise<void> {
+  openDocsNewTabSaved.value = null;
+  openDocsNewTabDraft.value = value;
+  // True is the default — store it as the absence of the setting so
+  // the cookie/DB stay tidy. Only the explicit opt-out is persisted.
+  if (value) {
+    await deleteSetting(OPEN_DOCS_NEW_TAB_KEY).catch(() => undefined);
+  } else {
+    await saveSetting(OPEN_DOCS_NEW_TAB_KEY, 'false').catch(() => undefined);
+  }
+  if (!error.value) {
+    openDocsNewTabSaved.value = t('profile.preferences.openDocsNewTabSaved');
   }
 }
 
@@ -398,6 +419,16 @@ async function onSpeechVolumeInput(event: Event): Promise<void> {
             </p>
             <span v-if="uiLevelSaved" class="text-success text-sm">
               {{ uiLevelSaved }}
+            </span>
+            <VCheckbox
+              :model-value="openDocsNewTabDraft"
+              :label="$t('profile.preferences.openDocsNewTab')"
+              :help="$t('profile.preferences.openDocsNewTabDescription')"
+              :disabled="loading"
+              @update:model-value="onOpenDocsNewTabChanged"
+            />
+            <span v-if="openDocsNewTabSaved" class="text-success text-sm">
+              {{ openDocsNewTabSaved }}
             </span>
           </div>
         </VCard>

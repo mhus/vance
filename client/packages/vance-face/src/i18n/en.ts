@@ -1606,6 +1606,10 @@ export default {
       uiLevelExpert: 'Expert (adds scopes, tools, insights)',
       uiLevelAdmin: 'Admin (adds user management)',
       uiLevelSaved: 'Surface updated.',
+      openDocsNewTab: 'Open documents in a new browser tab',
+      openDocsNewTabDescription:
+        'When enabled, clicking a document link in the chat opens a new browser tab instead of replacing the current page. Cortex keeps its own in-app tab behaviour either way.',
+      openDocsNewTabSaved: 'Preference updated.',
     },
     speech: {
       title: 'Speech & Audio',

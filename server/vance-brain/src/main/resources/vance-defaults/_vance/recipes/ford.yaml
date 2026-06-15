@@ -13,6 +13,12 @@ params:
   model: default:ford,default:analyze
   validation: false
   maxIterations: 8
+  # Worker-spawn-context: Ford is a reflex worker that operates close
+  # to the user's words; it needs the parent's conversation as
+  # background or it will guess. `all` = parent's active ARCHIVED_CHAT
+  # summary + complete active history (compaction keeps it bounded).
+  # See planning/worker-spawn-context.md.
+  inheritContext: all
   # Degraded-but-available fallback: if the analyze-tier model is
   # rate-limited or 5xx, retry on the fast tier rather than failing
   # the whole turn.

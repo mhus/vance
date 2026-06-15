@@ -771,7 +771,10 @@ public class EddieEngine extends StructuredActionEngine {
         // observed across sessions.
         boolean hadUserInput = false;
         // Same RELAY-attribution map as Arthur — see ArthurEngine.runTurnFor.
+        // Keys are short stable tokens (ev1, ev2, ...) so the LLM
+        // doesn't have to copy a 36-char UUID.
         Map<String, SteerMessage.ProcessEvent> eventsByRef = new LinkedHashMap<>();
+        int eventCounter = 0;
         for (SteerMessage m : inbox) {
             if (m instanceof SteerMessage.UserChatInput uci
                     && uci.content() != null && !uci.content().isBlank()) {
@@ -779,7 +782,8 @@ public class EddieEngine extends StructuredActionEngine {
             }
             if (m instanceof SteerMessage.ProcessEvent pe
                     && pe.eventId() != null && !pe.eventId().isBlank()) {
-                eventsByRef.put(pe.eventId(), pe);
+                String token = "ev" + (++eventCounter);
+                eventsByRef.put(token, pe);
             }
         }
         currentTurnHadUserInput.put(process.getId(), hadUserInput);
@@ -1647,36 +1651,33 @@ public class EddieEngine extends StructuredActionEngine {
      */
     private EventRelayResolution resolveRelayEvent(
             EngineAction action, ThinkProcessDocument process, ThinkEngineContext ctx) {
-        String eventRef = action.stringParam(EddieActionSchema.PARAM_EVENT_REF);
-        if (eventRef == null || eventRef.isBlank()) {
-            log.warn("Eddie id='{}' relay missing 'eventRef' — reason='{}'",
-                    process.getId(), action.reason());
-            return new EventRelayResolution(null, null, null,
-                    "(intern: RELAY braucht `eventRef` — kopiere das `eventId` "
-                            + "Attribut von einem <process-event> aus deiner Inbox. "
-                            + "Grund war: " + action.reason() + ")");
-        }
         Map<String, SteerMessage.ProcessEvent> available =
                 currentTurnEventsByRef.getOrDefault(process.getId(), Map.of());
-        SteerMessage.ProcessEvent event = available.get(eventRef);
+        SteerMessage.ProcessEvent event = pickRelayEvent(action, process, available);
         if (event == null) {
-            String hint = available.isEmpty()
-                    ? "keine <process-event> in diesem Drain"
-                    : "verfügbare eventIds: " + String.join(", ", available.keySet());
-            log.warn("Eddie id='{}' relay eventRef '{}' not in current drain ({}) — reason='{}'",
-                    process.getId(), eventRef, hint, action.reason());
+            log.warn("Eddie id='{}' relay could not be resolved "
+                            + "(drain size={}, eventRef='{}', legacy source='{}') "
+                            + "— reason='{}'",
+                    process.getId(), available.size(),
+                    action.stringParam(EddieActionSchema.PARAM_EVENT_REF),
+                    action.stringParam("source"),
+                    action.reason());
             return new EventRelayResolution(null, null, null,
-                    "(intern: RELAY eventRef '" + eventRef
-                            + "' ist nicht in deiner aktuellen Inbox — nur Events aus DIESEM "
-                            + "Drain dürfen relayed werden. " + hint + ".)");
+                    relayFallbackMessage(available));
         }
-        String body = event.humanSummary();
+        // Unwrap the BEGIN/END CHILD REPLY framing that
+        // ParentNotificationListener.enrichWithLastReply adds for the
+        // LLM-facing <process-event> marker. The framing isn't user-
+        // facing — the RELAY-Header already supplies attribution, and
+        // we don't want raw "Child process X status=blocked / --- BEGIN
+        // CHILD REPLY ---" markers to leak into the user's chat.
+        String body = unwrapChildReply(event.humanSummary());
         if (body == null || body.isBlank()) {
-            log.warn("Eddie id='{}' relay eventRef '{}' has empty body — reason='{}'",
-                    process.getId(), eventRef, action.reason());
+            log.warn("Eddie id='{}' relay eventId '{}' has empty body — reason='{}'",
+                    process.getId(), event.eventId(), action.reason());
             return new EventRelayResolution(null, null, null,
-                    "(intern: <process-event eventId=\"" + eventRef + "\"> hat keinen "
-                            + "Inhalt zum Relayen.)");
+                    "_Der Worker hat eine leere Antwort zurückgegeben. "
+                            + "Sag mir kurz wie es weitergeht._");
         }
         // Source-worker name for the deterministic header. Eddie's
         // workers live in their own sessions (cross-project), so a
@@ -1690,6 +1691,82 @@ public class EddieEngine extends StructuredActionEngine {
                 .map(ThinkProcessDocument::getName)
                 .orElse(sourceProcessId);
         return new EventRelayResolution(event, body, sourceName, null);
+    }
+
+    /**
+     * Three-tier RELAY event resolution — symmetric to
+     * {@code ArthurEngine.resolveRelayEvent}. See the javadoc there
+     * for the rationale.
+     */
+    private SteerMessage.@org.jspecify.annotations.Nullable ProcessEvent
+    pickRelayEvent(
+            EngineAction action,
+            ThinkProcessDocument process,
+            Map<String, SteerMessage.ProcessEvent> available) {
+        String eventRef = action.stringParam(EddieActionSchema.PARAM_EVENT_REF);
+        if (eventRef != null && !eventRef.isBlank()) {
+            SteerMessage.ProcessEvent byToken = available.get(eventRef);
+            if (byToken != null) return byToken;
+            for (SteerMessage.ProcessEvent ev : available.values()) {
+                if (eventRef.equals(ev.eventId())) return ev;
+            }
+            return null;
+        }
+        if (available.size() == 1) {
+            return available.values().iterator().next();
+        }
+        String legacySource = action.stringParam("source");
+        if (legacySource == null || legacySource.isBlank()) return null;
+        List<SteerMessage.ProcessEvent> matches = available.values().stream()
+                .filter(ev -> matchesLegacySource(ev, process, legacySource))
+                .toList();
+        return matches.size() == 1 ? matches.get(0) : null;
+    }
+
+    private boolean matchesLegacySource(
+            SteerMessage.ProcessEvent event,
+            ThinkProcessDocument process,
+            String legacySource) {
+        if (legacySource.equals(event.sourceProcessId())) return true;
+        return thinkProcessService.findById(event.sourceProcessId())
+                .filter(p -> process.getTenantId().equals(p.getTenantId()))
+                .map(ThinkProcessDocument::getName)
+                .filter(legacySource::equals)
+                .isPresent();
+    }
+
+    /**
+     * Reverse the {token → event} drain map into {eventId → token}
+     * so the renderer can attach the short token to each
+     * {@code <process-event>} marker. Symmetric to Arthur.
+     */
+    private static Map<String, String> invertToShortTokens(
+            Map<String, SteerMessage.ProcessEvent> eventsByToken) {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (var entry : eventsByToken.entrySet()) {
+            String token = entry.getKey();
+            SteerMessage.ProcessEvent pe = entry.getValue();
+            if (pe.eventId() != null && !pe.eventId().isBlank()) {
+                out.put(pe.eventId(), token);
+            }
+        }
+        return out;
+    }
+
+    /**
+     * User-visible fallback when RELAY can't be honoured. Never
+     * leaks the internal validator diagnostic into the chat.
+     */
+    private String relayFallbackMessage(
+            Map<String, SteerMessage.ProcessEvent> available) {
+        if (available.isEmpty()) {
+            return "_Ich habe gerade nichts zum Weiterreichen. "
+                    + "Sag mir kurz wo es weitergehen soll._";
+        }
+        return "_Beim Übergeben der Worker-Antwort ist mir gerade "
+                + "die Spur verloren gegangen. Wenn du die Antwort "
+                + "noch brauchst, frag nochmal — ich starte ggf. einen "
+                + "neuen Worker._";
     }
 
     /**
@@ -2336,8 +2413,14 @@ public class EddieEngine extends StructuredActionEngine {
             messages.add(toLangchain(msg));
         }
 
+        // Short-token map for the renderer — only events present in
+        // THIS drain map (built in runTurnFor) get a multi-drain
+        // eventRef rendered.
+        Map<String, String> eventIdToToken = invertToShortTokens(
+                currentTurnEventsByRef.getOrDefault(process.getId(), Map.of()));
+        boolean multiEventDrain = eventIdToToken.size() > 1;
         for (SteerMessage m : inbox) {
-            String wrapped = renderForLlm(m);
+            String wrapped = renderForLlm(m, eventIdToToken, multiEventDrain);
             if (wrapped != null) {
                 messages.add(UserMessage.from(wrapped));
             }
@@ -2625,7 +2708,10 @@ public class EddieEngine extends StructuredActionEngine {
                 .orElse(null);
     }
 
-    private @Nullable String renderForLlm(SteerMessage m) {
+    private @Nullable String renderForLlm(
+            SteerMessage m,
+            Map<String, String> eventIdToToken,
+            boolean multiEventDrain) {
         if (m instanceof SteerMessage.UserChatInput) {
             return null; // already in chat history
         }
@@ -2640,13 +2726,16 @@ public class EddieEngine extends StructuredActionEngine {
                         .append(escapeAttr(sourceName))
                         .append("\"");
             }
-            // eventId + respondingToTurnAt: see ArthurEngine.renderForLlm —
-            // same Fix 1 attribution attrs, propagated cross-engine so Eddie's
-            // RELAY / RELAY_INBOX can reference events by id and the LLM can
-            // tell fresh worker replies from stale ones.
-            if (pe.eventId() != null && !pe.eventId().isBlank()) {
-                sb.append(" eventId=\"")
-                        .append(escapeAttr(pe.eventId()))
+            // eventRef: only rendered when the drain has more than one
+            // event — single-event drains auto-pick in resolveRelayEvent.
+            // The token (ev1, ev2, ...) is what the LLM passes back; the
+            // UUID stays internal for cross-pod logs.
+            String token = pe.eventId() == null
+                    ? null
+                    : eventIdToToken.get(pe.eventId());
+            if (multiEventDrain && token != null) {
+                sb.append(" eventRef=\"")
+                        .append(escapeAttr(token))
                         .append("\"");
             }
             if (pe.inResponseToAt() != null) {
@@ -2707,6 +2796,27 @@ public class EddieEngine extends StructuredActionEngine {
             case ASSISTANT -> AiMessage.from(msg.getContent());
             case SYSTEM -> SystemMessage.from(msg.getContent());
         };
+    }
+
+    /**
+     * Strips the BEGIN/END CHILD REPLY framing that
+     * {@code ParentNotificationListener.enrichWithLastReply} adds to
+     * the LLM-facing {@code <process-event>} marker. For RELAY-to-user
+     * we only want the inner child reply, not the diagnostic wrapper.
+     * Returns the input unchanged when the framing isn't present.
+     * Symmetric with {@code ArthurEngine.unwrapChildReply}.
+     */
+    static @Nullable String unwrapChildReply(@Nullable String humanSummary) {
+        if (humanSummary == null) return null;
+        int begin = humanSummary.indexOf("--- BEGIN CHILD REPLY ---");
+        if (begin < 0) return humanSummary;
+        int bodyStart = humanSummary.indexOf('\n', begin);
+        if (bodyStart < 0) return humanSummary;
+        int end = humanSummary.indexOf("--- END CHILD REPLY ---", bodyStart);
+        String inner = end < 0
+                ? humanSummary.substring(bodyStart + 1)
+                : humanSummary.substring(bodyStart + 1, end);
+        return inner.trim();
     }
 
     private static String escapeAttr(String s) {

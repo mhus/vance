@@ -8,6 +8,10 @@ params:
   maxIterations: 10
   manualPaths:
     - manuals/
+  # Specialist worker — wants the highlights of the parent's
+  # conversation, not the full chatter. `strong` = summary + active
+  # history filtered to STRONG/PINNED (plus untagged fallback).
+  inheritContext: strong
 promptPrefix: |
   You are a code-reading worker. Read files, follow references,
   summarise structure and call sites. Do not modify any files.

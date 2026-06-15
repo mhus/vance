@@ -355,7 +355,17 @@ public abstract class StructuredActionEngine implements ThinkEngine {
                 log.warn(
                         "{} id='{}' action-loop: out of corrections, falling back to free-text",
                         name(), process.getId());
-                return ActionLoopResult.fallback(bestFreeText, "no-action-tool-call",
+                // Sanitize the fallback before it lands in the user-
+                // facing chat. The LLM sometimes regurgitates the
+                // <process-event> markers from its drain (treating
+                // them as content to relay), or includes a fenced
+                // ```json action block. Neither belongs in chat — the
+                // first is an internal context-cue, the second is a
+                // failed-tool-call escapee. Strip both so the user
+                // sees only the prose the LLM actually wrote, not the
+                // structural plumbing.
+                String sanitized = sanitizeFallbackText(bestFreeText);
+                return ActionLoopResult.fallback(sanitized, "no-action-tool-call",
                         null, toolInvocations);
             }
 
@@ -632,7 +642,60 @@ public abstract class StructuredActionEngine implements ThinkEngine {
      */
     private @Nullable EngineAction tryParseActionFromFreeText(@Nullable String text) {
         if (text == null) return null;
-        String stripped = stripJsonCodeFence(text).trim();
+        // Try three increasingly tolerant extractions:
+        //   (a) entire text is a JSON object — original behaviour
+        //   (b) entire text wrapped in a ```json … ``` fence
+        //   (c) text is prose with an embedded ```json … ``` block
+        //       (observed Gemini emission: "Hier ist die Aktion: ```json
+        //       {…} ```"). Conservative: must contain a known action
+        //       type, otherwise we leave prose alone.
+        for (String candidate : extractJsonCandidates(text)) {
+            EngineAction recovered = tryParseAction(candidate);
+            if (recovered != null) return recovered;
+        }
+        return null;
+    }
+
+    /**
+     * Yields parse-candidates in priority order from a free-text reply:
+     * the whole text, the de-fenced text, and (last) the first
+     * ```json … ``` block embedded anywhere. Caller picks the first one
+     * that yields a known action type — see
+     * {@link #tryParseActionFromFreeText}.
+     */
+    private static List<String> extractJsonCandidates(String text) {
+        List<String> out = new ArrayList<>(3);
+        String trimmed = text.trim();
+        if (!trimmed.isEmpty()) out.add(trimmed);
+        String defenced = stripJsonCodeFence(trimmed).trim();
+        if (!defenced.isEmpty() && !defenced.equals(trimmed)) {
+            out.add(defenced);
+        }
+        // Embedded fence anywhere in the text — observed when the LLM
+        // emits intro prose then a fenced action block as a "show-off"
+        // of what it intended to call.
+        int fenceStart = text.indexOf("```json");
+        if (fenceStart < 0) fenceStart = text.indexOf("```");
+        if (fenceStart >= 0) {
+            int bodyStart = text.indexOf('\n', fenceStart);
+            if (bodyStart >= 0) {
+                int fenceEnd = text.indexOf("```", bodyStart + 1);
+                if (fenceEnd >= 0) {
+                    String inner = text.substring(bodyStart + 1, fenceEnd).trim();
+                    if (!inner.isEmpty()) out.add(inner);
+                }
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Parses one candidate string into an {@link EngineAction} if it
+     * is a JSON object with a known {@code type}. Returns {@code null}
+     * for any failure — caller iterates over candidates.
+     */
+    private @Nullable EngineAction tryParseAction(String candidate) {
+        String stripped = candidate.trim();
         if (stripped.isEmpty()) return null;
         if (!stripped.startsWith("{") || !stripped.endsWith("}")) return null;
         Map<String, Object> json;
@@ -657,6 +720,58 @@ public abstract class StructuredActionEngine implements ThinkEngine {
         params.remove("type");
         params.remove("reason");
         return new EngineAction(typeStr, reasonStr, params);
+    }
+
+    /**
+     * Cleans a free-text fallback reply before it lands in the user's
+     * chat:
+     *
+     * <ul>
+     *   <li>Removes any embedded {@code <process-event …> … </process-event>}
+     *       block — the LLM sometimes copies these from its drain
+     *       context into its prose, which leaks structural plumbing to
+     *       the user.</li>
+     *   <li>Removes any embedded fenced {@code ```json …action-shape… ```}
+     *       block — the LLM occasionally emits an action call as a
+     *       code-fence inside prose instead of as a real tool call;
+     *       the action-recovery path already extracts that path, the
+     *       sanitizer just makes sure the literal JSON doesn't appear
+     *       to the user when recovery couldn't dispatch it (e.g. when
+     *       the JSON contained syntax errors).</li>
+     *   <li>Collapses the resulting double-blank lines.</li>
+     * </ul>
+     *
+     * <p>Conservative: when the cleaning would reduce the text to
+     * essentially nothing (less than 20 characters), the original
+     * text is returned — better to show plumbing than nothing.
+     */
+    static String sanitizeFallbackText(String text) {
+        if (text == null || text.isEmpty()) return text;
+        String s = text;
+        // Strip <process-event ...> ... </process-event> (case-insensitive,
+        // multi-line). Pattern is forgiving so attribute order / quoting
+        // variants don't matter.
+        s = s.replaceAll("(?is)<process-event\\b[^>]*>.*?</process-event>", "");
+        // Strip <peer-event ...> ... </peer-event> (Eddie-side cousin).
+        s = s.replaceAll("(?is)<peer-event\\b[^>]*>.*?</peer-event>", "");
+        // Strip <tool-result ...> ... </tool-result>.
+        s = s.replaceAll("(?is)<tool-result\\b[^>]*>.*?</tool-result>", "");
+        // Strip a fenced ```json { ... } ``` block whose body parses as
+        // an action shape. We don't try every fence — only json-typed
+        // ones with an action-like top-level object (heuristic on
+        // \"type\" + \"reason\" markers).
+        s = s.replaceAll(
+                "(?is)```json\\s*\\{\\s*\"type\"\\s*:\\s*\"[A-Z_]+\"[\\s\\S]*?\\}\\s*```",
+                "");
+        // Collapse run-on blank lines from the cuts.
+        s = s.replaceAll("\\n{3,}", "\n\n").trim();
+        if (s.length() < 20 && text.length() > 20) {
+            // Sanitization wiped the whole message — leave original
+            // so the user at least sees something. Operator/Logs will
+            // show the warning the caller already emitted.
+            return text;
+        }
+        return s;
     }
 
     /**

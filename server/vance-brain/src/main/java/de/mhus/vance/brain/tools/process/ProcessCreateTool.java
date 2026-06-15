@@ -126,7 +126,9 @@ public class ProcessCreateTool implements Tool {
                         + "selector to pick a matching project recipe. "
                         + "Be specific: 'write a research report on gRPC "
                         + "vs REST' is better than 'do something with "
-                        + "research'."));
+                        + "research'. The field `prompt` is also accepted "
+                        + "as an alias if you only pass that (tolerance "
+                        + "for the arthur_action DELEGATE shape)."));
         properties.put("recipe", Map.of(
                 "type", "string",
                 "description", "Preferred routing: recipe name for cascade "
@@ -177,6 +179,7 @@ public class ProcessCreateTool implements Tool {
     }
 
     private final ThinkProcessService thinkProcessService;
+    private final de.mhus.vance.brain.inherit.ParentContextSpawnHelper parentContextSpawnHelper;
     /**
      * Lazy because the bean graph cycles otherwise:
      * {@code ThinkEngineService → ToolDispatcher → BuiltInToolSource → this}.
@@ -198,7 +201,8 @@ public class ProcessCreateTool implements Tool {
             RecipeLoader recipeLoader,
             RecipeSelectorService selector,
             SettingService settingService,
-            ObjectProvider<EngineMessageRouter> messageRouterProvider) {
+            ObjectProvider<EngineMessageRouter> messageRouterProvider,
+            de.mhus.vance.brain.inherit.ParentContextSpawnHelper parentContextSpawnHelper) {
         this.thinkProcessService = thinkProcessService;
         this.thinkEngineServiceProvider = thinkEngineServiceProvider;
         this.recipeResolver = recipeResolver;
@@ -206,6 +210,7 @@ public class ProcessCreateTool implements Tool {
         this.selector = selector;
         this.settingService = settingService;
         this.messageRouterProvider = messageRouterProvider;
+        this.parentContextSpawnHelper = parentContextSpawnHelper;
     }
 
     @Override
@@ -259,7 +264,29 @@ public class ProcessCreateTool implements Tool {
             throw new ToolException("process_create requires a session scope");
         }
         String name = stringOrThrow(params, "name");
-        String goal = stringOrThrow(params, "goal");
+        // Schema-drift tolerance: weaker tool-use models (Gemma-4-mlx,
+        // gpt-oss-20b) confuse this tool's `goal` with Arthur's
+        // arthur_action(DELEGATE) field `prompt`, sending only `prompt`
+        // on the first attempt. Treat `prompt` as an alias for `goal`
+        // when `goal` is missing — same idea, just the field the model
+        // happened to pick. Logged so prompt-drift stays visible.
+        String goal = optString(params, "goal");
+        if (goal == null) {
+            String aliasPrompt = optString(params, "prompt");
+            if (aliasPrompt != null) {
+                log.warn("process_create called without 'goal' but with 'prompt' "
+                                + "(name='{}') — using prompt as goal (schema-drift "
+                                + "tolerance for weak tool-use models).",
+                        name);
+                goal = aliasPrompt;
+            }
+        }
+        if (goal == null) {
+            throw new ToolException("'goal' is required and must be a non-empty "
+                    + "string (describes what the spawned process should "
+                    + "accomplish). For an additional initial USER message, "
+                    + "use 'steerContent'.");
+        }
         String recipeName = normaliseRecipeParam(optString(params, "recipe"));
         String engineName = optString(params, "engine");
         String title = optString(params, "title");
@@ -317,7 +344,15 @@ public class ProcessCreateTool implements Tool {
                         ctx, sessionId, name, engineName, title, goal, callerParams);
             }
         } catch (ThinkProcessService.ThinkProcessAlreadyExistsException e) {
-            throw new ToolException(e.getMessage());
+            // Name collision: don't fail the LLM-loop with an error
+            // tool-result — weak models then respawn under tweaked
+            // names and we end up with parallel workers on the same
+            // task (the gemma4-mlx loop we observed). Return a
+            // structured hint that names the existing process,
+            // its status and engine, plus the two valid next moves
+            // (steer it / pick another name). See
+            // planning/arthur-process-event-attribution.md.
+            return buildAlreadyExistsHint(ctx, name);
         }
 
         try {
@@ -327,8 +362,43 @@ public class ProcessCreateTool implements Tool {
                     "Engine start failed for '" + name + "': " + e.getMessage(), e);
         }
 
-        boolean steered = pushInitialSteer(ctx, fresh, name, steerContent);
-        return buildSpawnResult(fresh, steerContent, steered);
+        // Worker-spawn-context pre-paste: if the recipe declares
+        // `inheritContext` (other than `none`), render the spawning
+        // process's chat history as a Markdown block and prepend it to
+        // the initial steer. The worker then sees its task with the
+        // parent's conversation already in view — no need to pull via
+        // process_history_text in the common case. See
+        // planning/worker-spawn-context.md.
+        String effectiveSteer = applyInheritContext(
+                ctx, applied.orElse(null), fresh, steerContent);
+
+        boolean steered = pushInitialSteer(ctx, fresh, name, effectiveSteer);
+        return buildSpawnResult(fresh, effectiveSteer, steered);
+    }
+
+    /**
+     * Wraps {@code steerContent} with a {@code ## Parent context} block
+     * via the centralised {@link de.mhus.vance.brain.inherit.ParentContextSpawnHelper}.
+     * Same helper backs other spawn paths (Marvin's CALL_RECIPE drive),
+     * so the wrap shape stays uniform across the codebase.
+     */
+    private @Nullable String applyInheritContext(
+            ToolInvocationContext ctx,
+            @Nullable AppliedRecipe applied,
+            ThinkProcessDocument fresh,
+            @Nullable String steerContent) {
+        String levelRaw = null;
+        if (applied != null && applied.params() != null) {
+            Object v = applied.params().get("inheritContext");
+            if (v instanceof String s) levelRaw = s;
+        }
+        try {
+            return parentContextSpawnHelper.wrap(levelRaw, ctx.processId(), steerContent);
+        } catch (RuntimeException e) {
+            log.warn("process_create id='{}' inheritContext wrap failed: {}",
+                    fresh.getId(), e.toString());
+            return steerContent;
+        }
     }
 
     /**
@@ -574,6 +644,41 @@ public class ProcessCreateTool implements Tool {
         if (steerContent != null) {
             out.put("steered", steered);
         }
+        return out;
+    }
+
+    /**
+     * Structured tool-result for the "name already in session" case
+     * — non-fatal hint instead of an error. Tells the LLM what's
+     * there and what to do, so weak tool-use models don't loop with
+     * tweaked names. See planning/arthur-process-event-attribution.md.
+     */
+    private Map<String, Object> buildAlreadyExistsHint(
+            ToolInvocationContext ctx, String name) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("status", "already_exists");
+        out.put("name", name);
+        thinkProcessService.findByName(ctx.tenantId(), ctx.sessionId(), name)
+                .ifPresent(existing -> {
+                    if (existing.getStatus() != null) {
+                        out.put("existingStatus", existing.getStatus().name());
+                    }
+                    if (existing.getThinkEngine() != null) {
+                        out.put("existingEngine", existing.getThinkEngine());
+                    }
+                    if (existing.getRecipeName() != null) {
+                        out.put("existingRecipe", existing.getRecipeName());
+                    }
+                });
+        out.put("hint", "A process with this name already exists in the "
+                + "current session. To send the same goal as additional "
+                + "input to the existing process, call `process_steer(name=\""
+                + name + "\", content=…)`. To run a SECOND process in "
+                + "parallel on a similar topic, retry `process_create` "
+                + "with a different `name`. Do NOT silently retry with the "
+                + "same name — the original spawn already succeeded.");
+        log.info("process_create name='{}' rejected as already_exists — returning hint",
+                name);
         return out;
     }
 

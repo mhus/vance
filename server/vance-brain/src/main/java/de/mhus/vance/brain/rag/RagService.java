@@ -19,6 +19,7 @@ import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 
@@ -31,10 +32,20 @@ import org.springframework.stereotype.Service;
  * later does not silently re-embed. Switching models would require
  * a re-ingest path, which we'll add when someone actually wants it.
  *
- * <p>API key resolution per call uses the same
- * {@code ai.provider.<provider>.apiKey} setting the chat side uses,
- * so adding embedding capability to a tenant is just two settings:
- * {@code ai.embedding.provider} and {@code ai.embedding.model}.
+ * <p>Embedding settings are independent of the chat-LLM credential
+ * namespace ({@code ai.provider.*}). A tenant configures embeddings
+ * with up to four settings, all cascading tenant→project:
+ * <ul>
+ *   <li>{@code ai.embedding.provider} — provider id (default
+ *       {@code gemini}; available: {@code gemini}, {@code openai}).</li>
+ *   <li>{@code ai.embedding.model} — model name (default
+ *       {@code gemini-embedding-001}).</li>
+ *   <li>{@code ai.embedding.apiKey} — credential (PASSWORD-typed).</li>
+ *   <li>{@code ai.embedding.baseUrl} — optional, for OpenAI-compatible
+ *       endpoints (Ollama, TEI, custom gateway).</li>
+ * </ul>
+ * The separation lets a tenant use Cortecs for chat and Gemini /
+ * OpenAI / a self-hosted compat endpoint for embeddings independently.
  */
 @Service
 @RequiredArgsConstructor
@@ -43,7 +54,8 @@ public class RagService {
 
     private static final String SETTING_EMBED_PROVIDER = "ai.embedding.provider";
     private static final String SETTING_EMBED_MODEL = "ai.embedding.model";
-    private static final String SETTING_PROVIDER_API_KEY_FMT = "ai.provider.%s.apiKey";
+    private static final String SETTING_EMBED_API_KEY = "ai.embedding.apiKey";
+    private static final String SETTING_EMBED_BASE_URL = "ai.embedding.baseUrl";
 
     private static final String DEFAULT_EMBED_PROVIDER = "gemini";
     // text-embedding-004 was deprecated on Google's v1beta endpoint
@@ -172,43 +184,42 @@ public class RagService {
     // ──────────────────── Helpers ────────────────────
 
     private EmbeddingModel modelFor(RagDocument rag) {
-        String apiKeySetting = String.format(
-                SETTING_PROVIDER_API_KEY_FMT, rag.getEmbeddingProvider());
         // RAG-level operation has no process scope — read from the
         // _vance/project layer of the project cascade.
         String apiKey = settingService.getDecryptedPasswordCascade(
-                rag.getTenantId(), /*projectId*/ null, /*processId*/ null, apiKeySetting);
+                rag.getTenantId(), /*projectId*/ null, /*processId*/ null, SETTING_EMBED_API_KEY);
         if (apiKey == null || apiKey.isBlank()) {
             throw new IllegalStateException(
                     "No API key for embedding provider '" + rag.getEmbeddingProvider()
                             + "' (tenant='" + rag.getTenantId()
-                            + "', setting='" + apiKeySetting + "')");
+                            + "', setting='" + SETTING_EMBED_API_KEY + "')");
         }
+        String baseUrl = settingService.getStringValueCascade(
+                rag.getTenantId(), /*projectId*/ null, /*processId*/ null, SETTING_EMBED_BASE_URL);
         return embeddingModelService.createEmbeddingModel(new EmbeddingConfig(
-                rag.getEmbeddingProvider(), rag.getEmbeddingModel(), apiKey));
+                rag.getEmbeddingProvider(), rag.getEmbeddingModel(), apiKey,
+                StringUtils.isBlank(baseUrl) ? null : baseUrl));
     }
 
     private EmbeddingConfig resolveEmbeddingConfig(String tenantId) {
         String provider = settingService.getStringValueCascade(
                 tenantId, /*projectId*/ null, /*processId*/ null, SETTING_EMBED_PROVIDER);
-        // No fallback to the chat provider here: chat and embedding are
-        // separate API families. A tenant on OpenAI chat may still need
-        // Gemini embeddings (or vice versa), and not every chat provider
-        // has an embedding sibling registered as an EmbeddingProvider bean.
         if (provider == null || provider.isBlank()) provider = DEFAULT_EMBED_PROVIDER;
         String model = settingService.getStringValueCascade(
                 tenantId, /*projectId*/ null, /*processId*/ null, SETTING_EMBED_MODEL);
         if (model == null || model.isBlank()) model = DEFAULT_EMBED_MODEL;
-        String apiKeySetting = String.format(SETTING_PROVIDER_API_KEY_FMT, provider);
         String apiKey = settingService.getDecryptedPasswordCascade(
-                tenantId, /*projectId*/ null, /*processId*/ null, apiKeySetting);
+                tenantId, /*projectId*/ null, /*processId*/ null, SETTING_EMBED_API_KEY);
         if (apiKey == null || apiKey.isBlank()) {
             throw new IllegalStateException(
                     "No API key for embedding provider '" + provider
                             + "' (tenant='" + tenantId
-                            + "', setting='" + apiKeySetting + "')");
+                            + "', setting='" + SETTING_EMBED_API_KEY + "')");
         }
-        return new EmbeddingConfig(provider, model, apiKey);
+        String baseUrl = settingService.getStringValueCascade(
+                tenantId, /*projectId*/ null, /*processId*/ null, SETTING_EMBED_BASE_URL);
+        return new EmbeddingConfig(provider, model, apiKey,
+                StringUtils.isBlank(baseUrl) ? null : baseUrl);
     }
 
     private static int probeDimension(EmbeddingModel model) {

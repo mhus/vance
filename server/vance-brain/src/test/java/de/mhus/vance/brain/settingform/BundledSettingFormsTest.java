@@ -45,7 +45,19 @@ class BundledSettingFormsTest {
                         "provider",
                         "anthropicKey", "openaiKey", "geminiKey",
                         "openaiBaseUrl", "ollamaBaseUrl",
+                        "embeddingProvider", "embeddingModel", "embeddingKey", "embeddingBaseUrl",
                         "tracing");
+
+        // Embedding fields bind to the standalone ai.embedding.* namespace
+        // (separate from the chat-side ai.provider.*.apiKey credentials).
+        for (String f2 : new String[]{
+                "embeddingProvider", "embeddingModel", "embeddingKey", "embeddingBaseUrl"}) {
+            var fld = f.fields().stream()
+                    .filter(field -> field.getName().equals(f2))
+                    .findFirst().orElseThrow();
+            assertThat(fld.getBindsTo()).isNotNull();
+            assertThat(fld.getBindsTo().getKey()).startsWith("ai.embedding.");
+        }
 
         // Chat-tier aliases use the chat-only ai-models choice source.
         for (String aliasField : new String[]{
@@ -74,10 +86,12 @@ class BundledSettingFormsTest {
                 .extracting(ResolvedComputedSetting::key)
                 .contains("tracing.llm.enabled", "tracing.llm.sample_rate");
 
-        // availableIn must keep this form out of system projects.
-        assertThat(f.availableIn()).containsExactly("!_*");
+        // availableIn keeps this form out of per-user home projects but
+        // allows the tenant-default project so LLM creds can be set there.
+        assertThat(f.availableIn()).containsExactly("!_user_*");
         assertThat(SettingFormLoader.isAvailableIn(f.availableIn(), "research-2026")).isTrue();
-        assertThat(SettingFormLoader.isAvailableIn(f.availableIn(), "_tenant")).isFalse();
+        assertThat(SettingFormLoader.isAvailableIn(f.availableIn(), "_tenant")).isTrue();
+        assertThat(SettingFormLoader.isAvailableIn(f.availableIn(), "_user_wile.coyote")).isFalse();
     }
 
     @Test

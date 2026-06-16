@@ -1492,6 +1492,9 @@ declare const _default: {
             uiLevelExpert: string;
             uiLevelAdmin: string;
             uiLevelSaved: string;
+            openDocsNewTab: string;
+            openDocsNewTabDescription: string;
+            openDocsNewTabSaved: string;
         };
         speech: {
             title: string;

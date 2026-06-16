@@ -1502,6 +1502,9 @@ export default {
             uiLevelExpert: 'Experte (zusätzlich Scopes, Tools, Insights)',
             uiLevelAdmin: 'Admin (zusätzlich Benutzerverwaltung)',
             uiLevelSaved: 'Ansicht aktualisiert.',
+            openDocsNewTab: 'Dokumente in neuem Browser-Tab öffnen',
+            openDocsNewTabDescription: 'Wenn aktiviert, öffnet ein Klick auf einen Dokument-Link im Chat eine neue Browser-Registerkarte statt die aktuelle Seite zu ersetzen. In Cortex bleibt das Verhalten unabhängig davon gleich.',
+            openDocsNewTabSaved: 'Einstellung aktualisiert.',
         },
         speech: {
             title: 'Sprache & Audio',

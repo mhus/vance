@@ -2,12 +2,12 @@ title:
   de: "LLM-Einstellungen"
   en: "LLM Settings"
 description:
-  de: "Modell-Aliase pro Aufgaben-Typ, Default-Fallback, Provider-API-Keys und Gateway-URLs."
-  en: "Model aliases per task type, default fallback, provider API keys and gateway URLs."
+  de: "Modell-Aliase pro Aufgaben-Typ, Default-Fallback, Provider-API-Keys, Gateway-URLs und RAG-Embedding-Konfiguration."
+  en: "Model aliases per task type, default fallback, provider API keys, gateway URLs and RAG embedding configuration."
 icon: cpu-chip
 category: llm
 defaultScope: project
-availableIn: [ "!_*" ]
+availableIn: [ "!_user_*" ]
 
 fields:
   # ─── Aliases — referenced by recipes as `default:<key>` ────────────
@@ -183,6 +183,58 @@ fields:
       en: "Empty = http://localhost:11434. E.g. http://gpu-host:11434 for a shared inference host."
     bindsTo:
       key: "ai.provider.ollama.baseUrl"
+
+  # ─── RAG / embeddings ──────────────────────────────────────────────
+  # Embeddings live on their own credential namespace so a tenant on
+  # Cortecs/Ollama for chat can still drive RAG via Gemini or OpenAI
+  # independently. See RagService.java for the cascade and defaults.
+
+  - name: embeddingProvider
+    type: select
+    label:
+      de: "Embedding-Provider"
+      en: "Embedding provider"
+    help:
+      de: "Bestimmt, welches Backend RAG-Chunks vektorisiert. Unabhängig vom Chat-Provider oben."
+      en: "Backend that vectorises RAG chunks. Independent from the chat provider above."
+    bindsTo:
+      key: "ai.embedding.provider"
+    choices:
+      - { value: "gemini", label: { de: "Google Gemini", en: "Google Gemini" } }
+      - { value: "openai", label: { de: "OpenAI (oder OpenAI-kompatibel)", en: "OpenAI (or OpenAI-compatible)" } }
+
+  - name: embeddingModel
+    type: string
+    label:
+      de: "Embedding-Modell"
+      en: "Embedding model"
+    help:
+      de: "Leer = `gemini-embedding-001`. OpenAI-Beispiele: `text-embedding-3-small`, `text-embedding-3-large`. Für Ollama via OpenAI-Compat: z.B. `nomic-embed-text`."
+      en: "Empty = `gemini-embedding-001`. OpenAI examples: `text-embedding-3-small`, `text-embedding-3-large`. For Ollama via OpenAI-compat: e.g. `nomic-embed-text`."
+    bindsTo:
+      key: "ai.embedding.model"
+
+  - name: embeddingKey
+    type: password
+    label:
+      de: "Embedding API Key"
+      en: "Embedding API Key"
+    help:
+      de: "Separat vom Chat-Provider-Key. Bei keyless-Endpoints (lokales Ollama / TEI) trotzdem irgendeinen Platzhalter setzen — das Feld darf nicht leer sein."
+      en: "Separate from the chat provider key. Even for keyless endpoints (local Ollama / TEI) set some placeholder — the field must not be empty."
+    bindsTo:
+      key: "ai.embedding.apiKey"
+
+  - name: embeddingBaseUrl
+    type: string
+    label:
+      de: "Embedding Base-URL"
+      en: "Embedding Base-URL"
+    help:
+      de: "Nur für Provider `openai` relevant. Leer = api.openai.com. Beispiele: http://localhost:11434/v1 (Ollama), http://tei.vance.svc:8080 (TEI im Cluster)."
+      en: "Only relevant for provider `openai`. Empty = api.openai.com. Examples: http://localhost:11434/v1 (Ollama), http://tei.vance.svc:8080 (TEI in-cluster)."
+    bindsTo:
+      key: "ai.embedding.baseUrl"
 
   # ─── Tracing toggle ────────────────────────────────────────────────
 

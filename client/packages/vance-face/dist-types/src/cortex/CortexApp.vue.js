@@ -201,10 +201,26 @@ const projectLabel = computed(() => {
     const title = p?.title?.trim();
     return title && title.length > 0 ? title : id;
 });
+/**
+ * Jumps from Cortex back to the chat picker with the current project
+ * pre-selected — mirrors the chat-mode breadcrumb behaviour (see
+ * {@code ChatApp.goToPickerWithProject}). Full navigation rather than
+ * {@code pushState} because Cortex and chat are separate MPA entries.
+ */
+function goToChatPickerWithProject() {
+    const id = projectId.value;
+    if (!id)
+        return;
+    window.location.href = `/chat.html?project=${encodeURIComponent(id)}`;
+}
 const breadcrumbs = computed(() => {
     const crumbs = [];
-    if (projectLabel.value)
+    if (projectLabel.value && projectId.value) {
+        crumbs.push({ text: projectLabel.value, onClick: goToChatPickerWithProject });
+    }
+    else if (projectLabel.value) {
         crumbs.push(projectLabel.value);
+    }
     if (store.activeTab?.path)
         crumbs.push(store.activeTab.path);
     return crumbs;

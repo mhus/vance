@@ -8,6 +8,7 @@ import { hasRenderer } from '@/kindRenderers/registry';
 import { parseFenceLang } from '@/kindRenderers/parseFenceLang';
 import { isVanceUri, parseVanceUri } from '@/kindRenderers/parseVanceUri';
 import { useDocumentRefStore } from '@/document/documentRefStore';
+import { getOpenDocumentsInNewTab } from '@/platform/webUiSession';
 import { VANCE_LINK_HANDLER_KEY } from './vanceLinkHandler';
 // Re-export the host-interception contract from its dedicated module so
 // existing import paths (`from '@/components/MarkdownView.vue'` and the
@@ -19,6 +20,31 @@ marked.setOptions({
     gfm: true,
     breaks: true,
 });
+/**
+ * Markdown links inside chat content never address the Face UI itself
+ * — a relative href like `documents/coding-modelle-vergleich.md` is
+ * always meant as a Vance Document reference. Rewrite such hrefs to
+ * the `vance:` scheme so they flow through the same EmbeddedKindBox /
+ * click-delegation path as an explicit `vance:/...` URI would.
+ *
+ * Pass through:
+ * - anything with an explicit scheme (http, https, mailto, tel, vance, …)
+ * - fragment-only links (#section)
+ * - protocol-relative URLs (//example.com/…)
+ */
+function rewriteHrefIfRelative(href) {
+    if (!href)
+        return href ?? '';
+    const trimmed = href.trim();
+    if (!trimmed)
+        return href;
+    if (/^[a-z][a-z0-9+.\-]*:/i.test(trimmed))
+        return href;
+    if (trimmed.startsWith('#') || trimmed.startsWith('//'))
+        return href;
+    const path = trimmed.replace(/^(\.\/)+/, '').replace(/^\/+/, '');
+    return `vance:/${path}`;
+}
 // Force external http(s) links to open in a new tab. `vance:` URIs are
 // handled by the click delegation below (preventDefault + manual nav),
 // so target/rel on them would be inert anyway — we skip the attribute
@@ -29,13 +55,59 @@ marked.use({
         link({ href, title, tokens }) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const text = this.parser.parseInline(tokens);
-            const isExternal = /^https?:\/\//i.test(href);
+            const resolvedHref = rewriteHrefIfRelative(href);
+            const isExternal = /^https?:\/\//i.test(resolvedHref);
             const titleAttr = title ? ` title="${title.replace(/"/g, '&quot;')}"` : '';
             const targetAttr = isExternal ? ' target="_blank" rel="noopener noreferrer"' : '';
-            return `<a href="${href}"${titleAttr}${targetAttr}>${text}</a>`;
+            return `<a href="${resolvedHref}"${titleAttr}${targetAttr}>${text}</a>`;
         },
     },
 });
+/**
+ * Walks the token tree and rewrites relative-style hrefs on
+ * `link`/`image` tokens via {@link rewriteHrefIfRelative}. Normalising
+ * at the token layer means the {@link isVanceLinkParagraph} /
+ * {@link isVanceMediaList} checks see the same `vance:` URI as the
+ * link renderer below, so a paragraph that's just
+ * `[Doc](documents/foo.md)` still routes to {@link EmbeddedKindBox}.
+ */
+function normalizeRelativeHrefs(tokens) {
+    for (const t of tokens) {
+        if (t.type === 'link' || t.type === 'image') {
+            const lt = t;
+            lt.href = rewriteHrefIfRelative(lt.href);
+        }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const anyT = t;
+        if (Array.isArray(anyT.tokens))
+            normalizeRelativeHrefs(anyT.tokens);
+        if (Array.isArray(anyT.items)) {
+            for (const item of anyT.items) {
+                if (item && Array.isArray(item.tokens)) {
+                    normalizeRelativeHrefs(item.tokens);
+                }
+            }
+        }
+        if (Array.isArray(anyT.header)) {
+            for (const cell of anyT.header) {
+                if (cell && Array.isArray(cell.tokens)) {
+                    normalizeRelativeHrefs(cell.tokens);
+                }
+            }
+        }
+        if (Array.isArray(anyT.rows)) {
+            for (const row of anyT.rows) {
+                if (!Array.isArray(row))
+                    continue;
+                for (const cell of row) {
+                    if (cell && Array.isArray(cell.tokens)) {
+                        normalizeRelativeHrefs(cell.tokens);
+                    }
+                }
+            }
+        }
+    }
+}
 // DOMPurify's default URI allowlist (http/https/mailto/tel/cid/xmpp/…)
 // strips the href off any other scheme. Inline `vance:` links — Markdown
 // like `… see [Doc title](vance:/documents/foo.md?kind=document) …` —
@@ -373,6 +445,7 @@ export default defineComponent({
             if (!src)
                 return [];
             const tokens = marked.lexer(src);
+            normalizeRelativeHrefs(tokens);
             return vnodesForTokens(tokens);
         });
         // Click delegation for inline `vance:` links inside the rendered
@@ -476,7 +549,16 @@ export default defineComponent({
             }
             const url = `/documents.html?projectId=${encodeURIComponent(projectId)}`
                 + `&documentId=${encodeURIComponent(documentId)}`;
-            if (newTab) {
+            // Hosts that provide a {@link VanceLinkHandler} (Cortex) keep
+            // their existing behaviour even when the handler decided not to
+            // claim this click — the page already gives the user a tab-aware
+            // surface, so opening a doc in a new browser tab from there would
+            // be surprising. Everywhere else (chat, inbox, …) honour the
+            // user-level `webui.document.openInNewTab` preference (default
+            // true) so a `vance:`-link click doesn't blow away the current
+            // page.
+            const preferNewTab = !vanceLinkHandler && getOpenDocumentsInNewTab();
+            if (newTab || preferNewTab) {
                 window.open(url, '_blank', 'noopener');
             }
             else {

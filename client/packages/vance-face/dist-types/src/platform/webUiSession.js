@@ -148,6 +148,18 @@ export function getActiveUiLevel() {
     const fromCookie = getSessionData()?.webUiSettings?.['webui.uiLevel'];
     return isWebUiLevel(fromCookie) ? fromCookie : 'standard';
 }
+/**
+ * Whether `vance:` document links inside Markdown should open in a new
+ * browser tab (the default) or replace the current page. Read from the
+ * data cookie; default {@code true} so the user keeps their place in
+ * the chat / sessions list. The setting is ignored when a host like
+ * Cortex has injected a {@code VanceLinkHandler} — that handler claims
+ * the click first and routes the doc into an in-app tab instead.
+ */
+export function getOpenDocumentsInNewTab() {
+    const fromCookie = getSessionData()?.webUiSettings?.['webui.document.openInNewTab'];
+    return fromCookie !== 'false';
+}
 function readCookie(name) {
     const cookies = document.cookie.split(';');
     for (const cookie of cookies) {

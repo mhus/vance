@@ -5,7 +5,7 @@ import { isSpeechSynthesisSupported, listVoices, onVoicesChanged, } from '@/plat
 import { resolveSpeechLanguage, } from '@/platform/speechSettings';
 import { DEFAULT_RATE, DEFAULT_VOLUME, MAX_RATE, MAX_VOLUME, MIN_RATE, MIN_VOLUME, } from '@vance/shared';
 import { setUiLocale } from '@/i18n';
-import { EditorShell, VAlert, VButton, VCard, VInput, VSelect } from '@components/index';
+import { EditorShell, VAlert, VButton, VCard, VCheckbox, VInput, VSelect } from '@components/index';
 import { useProfile } from '@composables/useProfile';
 const { t } = useI18n();
 const { profile, loading, error, load, saveIdentity, saveSetting, deleteSetting } = useProfile();
@@ -20,10 +20,13 @@ const languageSaved = ref(null);
 const chatLanguageSaved = ref(null);
 const themeSaved = ref(null);
 const uiLevelSaved = ref(null);
+const openDocsNewTabDraft = ref(true);
+const openDocsNewTabSaved = ref(null);
 const LANGUAGE_KEY = 'webui.language';
 const CHAT_LANGUAGE_KEY = 'chat.language';
 const THEME_KEY = 'webui.theme';
 const UI_LEVEL_KEY = 'webui.uiLevel';
+const OPEN_DOCS_NEW_TAB_KEY = 'webui.document.openInNewTab';
 const SPEECH_VOICE_KEY = 'webui.speech.voiceUri';
 const SPEECH_RATE_KEY = 'webui.speech.rate';
 const SPEECH_VOLUME_KEY = 'webui.speech.volume';
@@ -122,6 +125,9 @@ watch(profile, (current) => {
     chatLanguageDraft.value = current.webUiSettings?.[CHAT_LANGUAGE_KEY] ?? '';
     themeDraft.value = asTheme(current.webUiSettings?.[THEME_KEY]);
     uiLevelDraft.value = asUiLevel(current.webUiSettings?.[UI_LEVEL_KEY]);
+    // Default true — only an explicit "false" turns it off; absent / any
+    // other value (legacy / typo) stays on the new-tab default.
+    openDocsNewTabDraft.value = current.webUiSettings?.[OPEN_DOCS_NEW_TAB_KEY] !== 'false';
     speechVoiceDraft.value = current.webUiSettings?.[SPEECH_VOICE_KEY] ?? '';
     speechRateDraft.value = parseSpeechRate(current.webUiSettings?.[SPEECH_RATE_KEY]);
     speechVolumeDraft.value = parseSpeechVolume(current.webUiSettings?.[SPEECH_VOLUME_KEY]);
@@ -211,6 +217,21 @@ async function onUiLevelChanged(value) {
         // the data cookie on its next mount, which the PUT response just
         // refreshed.
         uiLevelSaved.value = t('profile.preferences.uiLevelSaved');
+    }
+}
+async function onOpenDocsNewTabChanged(value) {
+    openDocsNewTabSaved.value = null;
+    openDocsNewTabDraft.value = value;
+    // True is the default — store it as the absence of the setting so
+    // the cookie/DB stay tidy. Only the explicit opt-out is persisted.
+    if (value) {
+        await deleteSetting(OPEN_DOCS_NEW_TAB_KEY).catch(() => undefined);
+    }
+    else {
+        await saveSetting(OPEN_DOCS_NEW_TAB_KEY, 'false').catch(() => undefined);
+    }
+    if (!error.value) {
+        openDocsNewTabSaved.value = t('profile.preferences.openDocsNewTabSaved');
     }
 }
 async function onSpeechVoiceChanged(value) {
@@ -538,13 +559,43 @@ else if (__VLS_ctx.profile) {
         });
         (__VLS_ctx.uiLevelSaved);
     }
+    const __VLS_65 = {}.VCheckbox;
+    /** @type {[typeof __VLS_components.VCheckbox, ]} */ ;
+    // @ts-ignore
+    const __VLS_66 = __VLS_asFunctionalComponent(__VLS_65, new __VLS_65({
+        ...{ 'onUpdate:modelValue': {} },
+        modelValue: (__VLS_ctx.openDocsNewTabDraft),
+        label: (__VLS_ctx.$t('profile.preferences.openDocsNewTab')),
+        help: (__VLS_ctx.$t('profile.preferences.openDocsNewTabDescription')),
+        disabled: (__VLS_ctx.loading),
+    }));
+    const __VLS_67 = __VLS_66({
+        ...{ 'onUpdate:modelValue': {} },
+        modelValue: (__VLS_ctx.openDocsNewTabDraft),
+        label: (__VLS_ctx.$t('profile.preferences.openDocsNewTab')),
+        help: (__VLS_ctx.$t('profile.preferences.openDocsNewTabDescription')),
+        disabled: (__VLS_ctx.loading),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_66));
+    let __VLS_69;
+    let __VLS_70;
+    let __VLS_71;
+    const __VLS_72 = {
+        'onUpdate:modelValue': (__VLS_ctx.onOpenDocsNewTabChanged)
+    };
+    var __VLS_68;
+    if (__VLS_ctx.openDocsNewTabSaved) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "text-success text-sm" },
+        });
+        (__VLS_ctx.openDocsNewTabSaved);
+    }
     var __VLS_32;
-    const __VLS_65 = {}.VCard;
+    const __VLS_73 = {}.VCard;
     /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
     // @ts-ignore
-    const __VLS_66 = __VLS_asFunctionalComponent(__VLS_65, new __VLS_65({}));
-    const __VLS_67 = __VLS_66({}, ...__VLS_functionalComponentArgsRest(__VLS_66));
-    __VLS_68.slots.default;
+    const __VLS_74 = __VLS_asFunctionalComponent(__VLS_73, new __VLS_73({}));
+    const __VLS_75 = __VLS_74({}, ...__VLS_functionalComponentArgsRest(__VLS_74));
+    __VLS_76.slots.default;
     __VLS_asFunctionalElement(__VLS_intrinsicElements.h2, __VLS_intrinsicElements.h2)({
         ...{ class: "text-lg font-semibold mb-3" },
     });
@@ -557,30 +608,30 @@ else if (__VLS_ctx.profile) {
         ...{ class: "flex flex-col gap-3" },
     });
     if (__VLS_ctx.speechSupported) {
-        const __VLS_69 = {}.VSelect;
+        const __VLS_77 = {}.VSelect;
         /** @type {[typeof __VLS_components.VSelect, ]} */ ;
         // @ts-ignore
-        const __VLS_70 = __VLS_asFunctionalComponent(__VLS_69, new __VLS_69({
+        const __VLS_78 = __VLS_asFunctionalComponent(__VLS_77, new __VLS_77({
             ...{ 'onUpdate:modelValue': {} },
             modelValue: (__VLS_ctx.speechVoiceDraft),
             options: (__VLS_ctx.voiceOptions),
             label: (__VLS_ctx.$t('profile.speech.voice')),
             disabled: (__VLS_ctx.loading),
         }));
-        const __VLS_71 = __VLS_70({
+        const __VLS_79 = __VLS_78({
             ...{ 'onUpdate:modelValue': {} },
             modelValue: (__VLS_ctx.speechVoiceDraft),
             options: (__VLS_ctx.voiceOptions),
             label: (__VLS_ctx.$t('profile.speech.voice')),
             disabled: (__VLS_ctx.loading),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_70));
-        let __VLS_73;
-        let __VLS_74;
-        let __VLS_75;
-        const __VLS_76 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_78));
+        let __VLS_81;
+        let __VLS_82;
+        let __VLS_83;
+        const __VLS_84 = {
             'onUpdate:modelValue': (__VLS_ctx.onSpeechVoiceChanged)
         };
-        var __VLS_72;
+        var __VLS_80;
         if (__VLS_ctx.speechVoiceSaved) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
                 ...{ class: "text-success text-sm" },
@@ -646,13 +697,13 @@ else if (__VLS_ctx.profile) {
         });
         (__VLS_ctx.$t('profile.speech.voiceUnsupported'));
     }
-    var __VLS_68;
-    const __VLS_77 = {}.VCard;
+    var __VLS_76;
+    const __VLS_85 = {}.VCard;
     /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
     // @ts-ignore
-    const __VLS_78 = __VLS_asFunctionalComponent(__VLS_77, new __VLS_77({}));
-    const __VLS_79 = __VLS_78({}, ...__VLS_functionalComponentArgsRest(__VLS_78));
-    __VLS_80.slots.default;
+    const __VLS_86 = __VLS_asFunctionalComponent(__VLS_85, new __VLS_85({}));
+    const __VLS_87 = __VLS_86({}, ...__VLS_functionalComponentArgsRest(__VLS_86));
+    __VLS_88.slots.default;
     __VLS_asFunctionalElement(__VLS_intrinsicElements.h2, __VLS_intrinsicElements.h2)({
         ...{ class: "text-lg font-semibold mb-3" },
     });
@@ -699,7 +750,7 @@ else if (__VLS_ctx.profile) {
             }
         }
     }
-    var __VLS_80;
+    var __VLS_88;
 }
 var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['container']} */ ;
@@ -749,6 +800,8 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
 /** @type {__VLS_StyleScopedClasses['-mt-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-success']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-success']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-lg']} */ ;
@@ -821,6 +874,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             VAlert: VAlert,
             VButton: VButton,
             VCard: VCard,
+            VCheckbox: VCheckbox,
             VInput: VInput,
             VSelect: VSelect,
             profile: profile,
@@ -837,6 +891,8 @@ const __VLS_self = (await import('vue')).defineComponent({
             chatLanguageSaved: chatLanguageSaved,
             themeSaved: themeSaved,
             uiLevelSaved: uiLevelSaved,
+            openDocsNewTabDraft: openDocsNewTabDraft,
+            openDocsNewTabSaved: openDocsNewTabSaved,
             speechSupported: speechSupported,
             speechVoiceDraft: speechVoiceDraft,
             speechRateDraft: speechRateDraft,
@@ -854,6 +910,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             onChatLanguageChanged: onChatLanguageChanged,
             onThemeChanged: onThemeChanged,
             onUiLevelChanged: onUiLevelChanged,
+            onOpenDocsNewTabChanged: onOpenDocsNewTabChanged,
             onSpeechVoiceChanged: onSpeechVoiceChanged,
             onSpeechRateInput: onSpeechRateInput,
             onSpeechVolumeInput: onSpeechVolumeInput,

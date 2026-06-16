@@ -389,7 +389,7 @@ class TriggerActionParserTest {
 
     @Test
     void validate_on_valid_action_returns_empty() {
-        TriggerAction a = new TriggerAction.Recipe("analyze", null, null, null);
+        TriggerAction a = TriggerAction.Recipe.of("analyze", null, null, null);
         List<ActionValidationError> errors = parser.validate(a);
         assertThat(errors).isEmpty();
     }

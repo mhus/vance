@@ -79,7 +79,7 @@ public record ResolvedUrsaEvent(
      */
     public TriggerAction toTriggerAction(Map<String, Object> mergedParams) {
         if (recipe != null && !recipe.isBlank()) {
-            return new TriggerAction.Recipe(recipe, initialMessage, mergedParams, effectiveRunAs());
+            return TriggerAction.Recipe.of(recipe, initialMessage, mergedParams, effectiveRunAs());
         }
         if (workflow != null && !workflow.isBlank()) {
             return new TriggerAction.Workflow(workflow, mergedParams, effectiveRunAs());

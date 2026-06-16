@@ -1,34 +1,35 @@
 package de.mhus.vance.brain.ws.handlers;
 
-import de.mhus.vance.api.chat.ChatMessageAppendedData;
+import de.mhus.vance.api.action.TriggerAction;
+import de.mhus.vance.api.session.SessionStatus;
 import de.mhus.vance.api.thinkprocess.BootstrappedProcess;
 import de.mhus.vance.api.thinkprocess.ProcessSpec;
 import de.mhus.vance.api.thinkprocess.SessionBootstrapRequest;
 import de.mhus.vance.api.thinkprocess.SessionBootstrapResponse;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
+import de.mhus.vance.brain.action.ActionExecutorRegistry;
+import de.mhus.vance.brain.action.ActionOutcome;
+import de.mhus.vance.brain.action.ActionResult;
+import de.mhus.vance.brain.action.TriggerContext;
+import de.mhus.vance.brain.action.TriggerKind;
 import de.mhus.vance.brain.events.SessionConnectionRegistry;
 import de.mhus.vance.brain.inbox.InboxPendingSummaryPusher;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.project.ProjectManagerService;
-import de.mhus.vance.brain.recipe.AppliedRecipe;
-import de.mhus.vance.brain.recipe.RecipeResolver;
+import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.session.SessionChatBootstrapper;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
-import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.brain.ws.WsHandler;
+import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
-import de.mhus.vance.shared.chat.ChatMessageDocument;
-import de.mhus.vance.shared.chat.ChatMessageService;
-import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
-import de.mhus.vance.api.session.SessionStatus;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.io.IOException;
@@ -47,16 +48,23 @@ import tools.jackson.databind.ObjectMapper;
  * Compound command: session (create or resume) + zero or more
  * think-processes + optional initial steer — all in one round-trip.
  *
- * <p>Runs on a session-less connection (creates/binds a session). If the
- * request carries a {@code sessionId}, the session is resumed; otherwise a
- * new one is created on {@code projectId}.
+ * <p>Runs on a session-less connection (creates/binds a session). If
+ * the request carries a {@code sessionId}, the session is resumed;
+ * otherwise a new one is created on {@code projectId} (or auto-resumed
+ * from the user's most-recent OPEN+unbound session when neither is
+ * supplied).
  *
- * <p>Processes are built in list order. Name-collisions against an existing
- * process in the session are reported as {@code processesSkipped} — the
- * operation stays idempotent for resume scenarios. If a single
- * {@code process-create} / {@code engine.start} throws, the handler
- * best-effort continues with the remaining processes and reports the
- * failure via the usual error frame; there is no rollback.
+ * <p>Processes are built in list order. Each spec is dispatched through
+ * the central {@link ActionExecutorRegistry} as a
+ * {@link TriggerAction.Recipe} with caller-supplied name/title/goal and
+ * the session's connection profile. Name-collisions against an existing
+ * process in the session are reported as {@code processesSkipped} —
+ * idempotent for resume scenarios.
+ *
+ * <p>{@code initialMessage}, when set, is steered to the first
+ * process in the list via the lane scheduler (fire-and-forget) — the
+ * WS response goes out immediately and the {@code chat-message-appended}
+ * notification arrives once the lane has processed the steer.
  */
 @Component
 @RequiredArgsConstructor
@@ -70,13 +78,13 @@ public class SessionBootstrapHandler implements WsHandler {
     private final ProjectManagerService projectManager;
     private final ThinkProcessService thinkProcessService;
     private final ThinkEngineService thinkEngineService;
-    private final ChatMessageService chatMessageService;
     private final SessionConnectionRegistry connectionRegistry;
     private final SessionChatBootstrapper chatBootstrapper;
-    private final RecipeResolver recipeResolver;
     private final InboxPendingSummaryPusher inboxSummaryPusher;
     private final HomeBootstrapService homeBootstrapService;
     private final RequestAuthority authority;
+    private final ActionExecutorRegistry actionRegistry;
+    private final LaneScheduler laneScheduler;
 
     @Override
     public String type() {
@@ -103,8 +111,8 @@ public class SessionBootstrapHandler implements WsHandler {
             sender.sendError(wsSession, envelope, 400, "empty session-bootstrap payload");
             return;
         }
-        // Compound entry-point — gate at the tenant level. Per-project / per-session
-        // checks happen inside resumeAndBindSession / process create paths.
+        // Compound entry-point — gate at the tenant level. Per-project /
+        // per-session checks happen inside resumeAndBindSession / spawn paths.
         authority.enforce(ctx, new Resource.Tenant(ctx.getTenantId()), Action.START);
 
         // ── Session: explicit resume / auto-resume / create ──────────────
@@ -112,17 +120,11 @@ public class SessionBootstrapHandler implements WsHandler {
         boolean sessionCreated;
         try {
             if (!isBlank(request.getSessionId())) {
-                // Explicit resume of a known session.
                 Optional<SessionDocument> resumed = resumeAndBindSession(ctx, wsSession, envelope, request);
-                if (resumed.isEmpty()) {
-                    return;
-                }
+                if (resumed.isEmpty()) return;
                 session = resumed.get();
                 sessionCreated = false;
             } else if (isBlank(request.getProjectId())) {
-                // "Just let me pick up where I left off" — try to resume the
-                // most recent unbound OPEN session of this user before
-                // defaulting to a fresh one.
                 Optional<SessionDocument> autoResumed = tryAutoResumeLatest(ctx);
                 if (autoResumed.isPresent()) {
                     session = autoResumed.get();
@@ -131,18 +133,13 @@ public class SessionBootstrapHandler implements WsHandler {
                             session.getSessionId(), ctx.getTenantId(), ctx.getUserId());
                 } else {
                     Optional<SessionDocument> created = createAndBindSession(ctx, wsSession, envelope, request);
-                    if (created.isEmpty()) {
-                        return;
-                    }
+                    if (created.isEmpty()) return;
                     session = created.get();
                     sessionCreated = true;
                 }
             } else {
-                // Explicit project name without sessionId — always create.
                 Optional<SessionDocument> created = createAndBindSession(ctx, wsSession, envelope, request);
-                if (created.isEmpty()) {
-                    return;
-                }
+                if (created.isEmpty()) return;
                 session = created.get();
                 sessionCreated = true;
             }
@@ -159,27 +156,17 @@ public class SessionBootstrapHandler implements WsHandler {
 
         // ── Auto-spawn the session-chat process ──────────────────────────
         // Idempotent: re-bootstrap of an existing session adopts the chat
-        // process that's already there. Failure here doesn't fail the whole
-        // bootstrap — log and leave chatProcessId null in the response.
+        // process that's already there. Failure here doesn't fail the
+        // whole bootstrap — log and leave chatProcess null in the response.
         ThinkProcessDocument chatProcess = null;
         try {
             chatProcess = chatBootstrapper.ensureChatProcess(session).orElse(null);
-            if (chatProcess != null) {
-                // Push only the new greeting messages. For a re-bootstrap of
-                // an existing session, history is non-empty but already on
-                // the client — we replay nothing here. Resume frames are
-                // out-of-scope for this handler; the dedicated session-resume
-                // path handles them.
-                if (sessionCreated) {
-                    // Pushed by ChatMessageNotificationDispatcher.
-                }
-            }
         } catch (RuntimeException e) {
             log.error("Chat-process bootstrap failed for session '{}'",
                     session.getSessionId(), e);
         }
 
-        // ── Processes: create + start (skip duplicates) ──────────────────
+        // ── Processes: spawn-via-pipeline (skip duplicates) ──────────────
         List<BootstrappedProcess> created = new ArrayList<>();
         List<BootstrappedProcess> skipped = new ArrayList<>();
         List<ProcessSpec> processes = request.getProcesses() != null
@@ -188,8 +175,7 @@ public class SessionBootstrapHandler implements WsHandler {
 
         for (ProcessSpec spec : processes) {
             if (spec == null || isBlank(spec.getName())) {
-                sender.sendError(wsSession, envelope, 400,
-                        "process spec needs name");
+                sender.sendError(wsSession, envelope, 400, "process spec needs name");
                 return;
             }
             Optional<ThinkProcessDocument> existing = thinkProcessService
@@ -197,143 +183,95 @@ public class SessionBootstrapHandler implements WsHandler {
             if (existing.isPresent()) {
                 ThinkProcessDocument doc = existing.get();
                 skipped.add(toBootstrapped(doc));
-                if (firstProcess == null) {
-                    firstProcess = doc;
-                }
+                if (firstProcess == null) firstProcess = doc;
                 continue;
             }
 
-            Optional<AppliedRecipe> appliedOpt;
-            try {
-                appliedOpt = recipeResolver.applyDefaulting(
-                        session.getTenantId(),
-                        session.getProjectId(),
-                        spec.getRecipe(),
-                        spec.getEngine(),
-                        session.getProfile(),
-                        spec.getParams());
-            } catch (RecipeResolver.UnknownRecipeException e) {
-                sender.sendError(wsSession, envelope, 404, e.getMessage());
-                return;
-            } catch (RecipeResolver.UnknownEngineException e) {
-                sender.sendError(wsSession, envelope, 404, e.getMessage());
+            boolean hasRecipe = !isBlank(spec.getRecipe());
+            boolean hasEngine = !isBlank(spec.getEngine());
+            if (!hasRecipe && !hasEngine) {
+                sender.sendError(wsSession, envelope, 400,
+                        "process spec '" + spec.getName()
+                                + "' needs either recipe or engine");
                 return;
             }
-            AppliedRecipe applied = appliedOpt.orElse(null);
+            TriggerAction.Recipe action = new TriggerAction.Recipe(
+                    hasRecipe ? spec.getRecipe() : null,
+                    hasRecipe ? null : spec.getEngine(),
+                    spec.getName(),
+                    spec.getTitle(),
+                    spec.getGoal(),
+                    /*inheritContextLevel*/ null,
+                    session.getProfile(),
+                    /*initialMessage*/ null,
+                    spec.getParams(),
+                    /*runAs*/ null);
+            TriggerContext triggerCtx = new TriggerContext(
+                    session.getTenantId(), session.getProjectId(),
+                    /*resolvedRunAs*/ null, /*correlationId*/ null,
+                    /*sourceTag*/ "session-bootstrap",
+                    session.getSessionId(), /*parentProcessId*/ null);
 
-            ThinkEngine engine;
-            if (applied != null) {
-                engine = thinkEngineService.resolve(applied.engine()).orElseThrow();
-            } else {
-                // Engine-direct fallback (no recipe matched the engine name).
-                if (isBlank(spec.getEngine())) {
-                    sender.sendError(wsSession, envelope, 400,
-                            "process spec '" + spec.getName()
-                                    + "' needs either recipe or engine");
+            ActionResult result = actionRegistry.execute(action, triggerCtx, TriggerKind.USER);
+            switch (result.outcome()) {
+                case SCHEDULED -> {
+                    ThinkProcessDocument fresh = thinkProcessService.findById(result.spawnedId())
+                            .orElseThrow(() -> new IllegalStateException(
+                                    "spawned process '" + result.spawnedId() + "' is gone"));
+                    created.add(toBootstrapped(fresh));
+                    if (firstProcess == null) firstProcess = fresh;
+                }
+                case SUCCESS -> {
+                    // Soft-success: already_exists race — adopt the existing one.
+                    String existingId = result.output() == null ? null
+                            : (String) result.output().get("existingProcessId");
+                    if (existingId != null) {
+                        thinkProcessService.findById(existingId).ifPresent(doc -> {
+                            skipped.add(toBootstrapped(doc));
+                        });
+                        if (firstProcess == null && existingId != null) {
+                            thinkProcessService.findById(existingId).ifPresent(d -> {});
+                        }
+                    }
+                }
+                case TECHNICAL_ERROR, BUSINESS_ERROR, TIMEOUT, PERMISSION_ERROR, CANCELLED -> {
+                    int status = result.errorMessage() != null
+                            && result.errorMessage().toLowerCase().contains("unknown recipe")
+                            ? 404 : 500;
+                    sender.sendError(wsSession, envelope, status,
+                            "process spec '" + spec.getName() + "' failed: "
+                                    + result.errorMessage());
                     return;
                 }
-                Optional<ThinkEngine> engineOpt = thinkEngineService.resolve(spec.getEngine());
-                if (engineOpt.isEmpty()) {
-                    sender.sendError(wsSession, envelope, 404,
-                            "Unknown think-engine '" + spec.getEngine()
-                                    + "' — registered: " + thinkEngineService.listEngines());
-                    return;
-                }
-                engine = engineOpt.get();
-            }
-
-            ThinkProcessDocument fresh;
-            try {
-                if (applied != null) {
-                    fresh = thinkProcessService.create(
-                            session.getTenantId(),
-                            session.getProjectId(),
-                            session.getSessionId(),
-                            spec.getName(),
-                            engine.name(),
-                            engine.version(),
-                            spec.getTitle(),
-                            spec.getGoal(),
-                            /*parentProcessId*/ null,
-                            applied.params(),
-                            applied.name(),
-                            applied.promptOverride(),
-                            applied.promptOverrideAppend(),
-                            applied.promptMode(),
-                            applied.dataRelayCorrection(),
-                            applied.effectiveAllowedTools(),
-                            applied.connectionProfile(),
-                            applied.defaultActiveSkills(),
-                            applied.allowedSkills() == null
-                                    ? null : java.util.Set.copyOf(applied.allowedSkills()));
-                } else {
-                    fresh = thinkProcessService.create(
-                            session.getTenantId(),
-                            session.getProjectId(),
-                            session.getSessionId(),
-                            spec.getName(),
-                            engine.name(),
-                            engine.version(),
-                            spec.getTitle(),
-                            spec.getGoal(),
-                            /*parentProcessId*/ null,
-                            spec.getParams());
-                }
-            } catch (ThinkProcessService.ThinkProcessAlreadyExistsException e) {
-                // Extremely rare race with a concurrent bootstrap — treat as skip.
-                Optional<ThinkProcessDocument> raced = thinkProcessService
-                        .findByName(session.getTenantId(), session.getSessionId(), spec.getName());
-                raced.ifPresent(d -> skipped.add(toBootstrapped(d)));
-                continue;
-            }
-
-            try {
-                thinkEngineService.start(fresh);
-            } catch (RuntimeException e) {
-                log.error("Engine start failed for process id='{}' engine='{}'",
-                        fresh.getId(), engine.name(), e);
-                sender.sendError(wsSession, envelope, 500,
-                        "Engine start failed for '" + spec.getName() + "': " + e.getMessage());
-                return;
-            }
-
-            // Push every message the engine produced during start() — typically a greeting.
-            // Pushed by ChatMessageNotificationDispatcher.
-
-            ThinkProcessDocument refreshed = thinkProcessService.findById(fresh.getId()).orElse(fresh);
-            created.add(toBootstrapped(refreshed));
-            if (firstProcess == null) {
-                firstProcess = refreshed;
             }
         }
 
-        // ── Optional initial steer ───────────────────────────────────────
+        // ── Optional initial steer (fire-and-forget on the lane) ─────────
+        // Q18 fix: previously the WS handler thread ran engine.steer
+        // synchronously, blocking the response. The lane scheduler
+        // processes it asynchronously; chat-message-appended frames
+        // arrive once the engine emits them.
         String steeredProcessName = null;
         if (!isBlank(request.getInitialMessage()) && firstProcess != null) {
-            int beforeSize = chatMessageService.history(
-                    firstProcess.getTenantId(),
-                    firstProcess.getSessionId(),
-                    firstProcess.getId()).size();
+            ThinkProcessDocument target = firstProcess;
             SteerMessage.UserChatInput userInput = new SteerMessage.UserChatInput(
                     Instant.now(), null, ctx.getUserId(), request.getInitialMessage());
             try {
-                thinkEngineService.steer(firstProcess, userInput);
-                // Pushed by ChatMessageNotificationDispatcher.
-                steeredProcessName = firstProcess.getName();
+                laneScheduler.submit(target.getId(),
+                        () -> thinkEngineService.steer(target, userInput));
+                steeredProcessName = target.getName();
             } catch (RuntimeException e) {
-                log.error("Initial steer failed for process id='{}'", firstProcess.getId(), e);
+                log.error("Initial-steer lane-submit failed for process id='{}'",
+                        target.getId(), e);
                 sender.sendError(wsSession, envelope, 500,
-                        "Initial steer failed: " + e.getMessage());
+                        "Initial steer submit failed: " + e.getMessage());
                 return;
             }
         }
 
         // Propagate the connection profile to every think-process on the
         // session so the per-turn tool filter (Tool.allowedForProfile)
-        // and capability checks (e.g. Eddie's canMediate gate) see the
-        // current bound profile. Done after chat-process spawn + any
-        // additional processes so they're all included. Mirrors
-        // SessionCreateHandler / SessionResumeHandler. See
+        // and capability checks see the current bound profile. See
         // engine-message-routing.md §4.1.1.
         thinkProcessService.updateBoundProfileForSession(
                 session.getSessionId(), ctx.getProfile());
@@ -355,20 +293,17 @@ public class SessionBootstrapHandler implements WsHandler {
     // ──────────────────── Session sub-steps ────────────────────
 
     /**
-     * Walks the user's OPEN sessions, newest-activity first, and tries to
-     * atomically bind each one to this connection. First successful bind
-     * wins. Returns {@link Optional#empty()} if the user has no unbound
-     * resumable session — the caller will fall through to session creation.
+     * Walks the user's OPEN sessions, newest-activity first, and tries
+     * to atomically bind each one to this connection. First successful
+     * bind wins. Returns {@link Optional#empty()} if the user has no
+     * unbound resumable session — the caller will fall through to
+     * session creation.
      */
     private Optional<SessionDocument> tryAutoResumeLatest(ConnectionContext ctx) {
         List<SessionDocument> candidates = sessionService
                 .listForUser(ctx.getTenantId(), ctx.getUserId()).stream()
                 .filter(s -> s.getStatus() != SessionStatus.CLOSED)
                 .filter(s -> s.getBoundConnectionId() == null)
-                // A foot connection auto-resumes only foot sessions and so on —
-                // mismatched profile would surface client-tools the connection
-                // can't host. Cross-profile resume is rejected explicitly in
-                // resumeAndBindSession() below.
                 .filter(s -> profileMatches(ctx, s))
                 .sorted((a, b) -> {
                     Instant aLa = a.getLastActivityAt();
@@ -400,9 +335,6 @@ public class SessionBootstrapHandler implements WsHandler {
             WebSocketEnvelope envelope, SessionBootstrapRequest request) throws IOException {
         String projectId = request.getProjectId();
         if (isBlank(projectId)) {
-            // Default: pick the first project in the tenant — CLI callers
-            // can drop the bootstrap block entirely and still get a
-            // working session.
             List<de.mhus.vance.shared.project.ProjectDocument> all =
                     projectService.all(ctx.getTenantId());
             if (all.isEmpty()) {
@@ -456,9 +388,6 @@ public class SessionBootstrapHandler implements WsHandler {
             return Optional.empty();
         }
         if (!profileMatches(ctx, doc)) {
-            // Cross-profile resume would mix client-tool sets — a web client
-            // would inherit foot-only tools etc. Force the user to start a
-            // fresh session under the current profile.
             sender.sendError(wsSession, envelope, 409,
                     "Session '" + request.getSessionId() + "' was created with profile '"
                             + doc.getProfile() + "', this connection uses profile '"
@@ -476,29 +405,7 @@ public class SessionBootstrapHandler implements WsHandler {
         return Optional.of(doc);
     }
 
-    // ──────────────────── Notification push ────────────────────
-
-    private void pushAppendedMessages(
-            WebSocketSession wsSession, ThinkProcessDocument process, String processName, int beforeSize)
-            throws IOException {
-        List<ChatMessageDocument> full = chatMessageService.history(
-                process.getTenantId(), process.getSessionId(), process.getId());
-        for (ChatMessageDocument appended : full.subList(beforeSize, full.size())) {
-            sender.sendNotification(wsSession, MessageType.CHAT_MESSAGE_APPENDED,
-                    toDto(appended, processName));
-        }
-    }
-
-    private static ChatMessageAppendedData toDto(ChatMessageDocument doc, String processName) {
-        return ChatMessageAppendedData.builder()
-                .chatMessageId(doc.getId())
-                .thinkProcessId(doc.getThinkProcessId())
-                .processName(processName)
-                .role(doc.getRole())
-                .content(doc.getContent())
-                .createdAt(doc.getCreatedAt())
-                .build();
-    }
+    // ──────────────────── Helpers ────────────────────
 
     private static BootstrappedProcess toBootstrapped(ThinkProcessDocument doc) {
         return BootstrappedProcess.builder()
@@ -513,12 +420,6 @@ public class SessionBootstrapHandler implements WsHandler {
         return s == null || s.isBlank();
     }
 
-    /**
-     * Profile-match for resume: the session's profile must equal the
-     * connecting client's profile. Both sides are non-null in practice —
-     * the session-create path stamps a profile (default {@code web}) and
-     * the handshake interceptor likewise defaults missing values.
-     */
     private static boolean profileMatches(ConnectionContext ctx, SessionDocument session) {
         String sessionProfile = session.getProfile();
         String ctxProfile = ctx.getProfile();

@@ -40,10 +40,21 @@ public record ActionResult(
 
     /** Async spawn — the spawned entity tracks completion. */
     public static ActionResult scheduled(String spawnedId) {
+        return scheduled(spawnedId, null);
+    }
+
+    /**
+     * Async spawn with structured spawn-metadata output (e.g.
+     * {@code {processId, name, status, engine, recipe?, steered?}} for
+     * the spawn-action executor). The output map travels alongside
+     * {@link #spawnedId()} so callers don't need a second lookup to
+     * render their tool-response shape.
+     */
+    public static ActionResult scheduled(String spawnedId, @Nullable Map<String, Object> output) {
         if (spawnedId == null || spawnedId.isBlank()) {
             throw new IllegalArgumentException("scheduled() requires a non-blank spawnedId");
         }
-        return new ActionResult(ActionOutcome.SCHEDULED, spawnedId, null, null);
+        return new ActionResult(ActionOutcome.SCHEDULED, spawnedId, output, null);
     }
 
     /** Sync failure with explicit outcome class. */

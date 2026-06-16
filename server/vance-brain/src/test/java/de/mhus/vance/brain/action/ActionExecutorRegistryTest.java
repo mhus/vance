@@ -24,7 +24,7 @@ class ActionExecutorRegistryTest {
                 new StubWorkflowExecutor()));
 
         ActionResult r = registry.execute(
-                new TriggerAction.Recipe("analyze", null, null, null),
+                TriggerAction.Recipe.of("analyze", null, null, null),
                 ctx,
                 TriggerKind.SCHEDULER);
 
@@ -111,7 +111,7 @@ class ActionExecutorRegistryTest {
 
         assertThat(registry.hasExecutorFor(TriggerAction.Recipe.class)).isFalse();
         assertThatThrownBy(() -> registry.execute(
-                new TriggerAction.Recipe("r", null, null, null),
+                TriggerAction.Recipe.of("r", null, null, null),
                 ctx,
                 TriggerKind.SCHEDULER))
                 .isInstanceOf(IllegalStateException.class);

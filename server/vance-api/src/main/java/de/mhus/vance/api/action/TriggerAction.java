@@ -40,20 +40,73 @@ public sealed interface TriggerAction
     // ──────────────────── Recipe ────────────────────
 
     /**
-     * Spawn a ThinkProcess via a recipe. The recipe is resolved
-     * through the normal {@code RecipeResolver} cascade (project →
-     * _vance → bundled).
+     * Spawn a ThinkProcess. Two paths:
+     *
+     * <ul>
+     *   <li><b>Recipe-driven:</b> {@code recipe} set, {@code engineOverride}
+     *       null. Resolved through the {@code RecipeResolver} cascade
+     *       (project → _vance → bundled). Engine + params + prompt-prefix
+     *       come from the recipe.</li>
+     *   <li><b>Engine-direct:</b> {@code engineOverride} set, {@code recipe}
+     *       null. No recipe lookup; engine is resolved by name and
+     *       caller-supplied {@code params} apply directly.</li>
+     * </ul>
+     *
+     * <p>The two paths are <b>mutually exclusive</b> — exactly one of
+     * {@code recipe} / {@code engineOverride} must be non-blank.
+     *
+     * <p>Most callers use the minimal-form factory {@link #of(String,
+     * String, Map, String)} which fills the spawn-detail fields with
+     * sensible defaults. Spawn-tools (process_create, process_run,
+     * session-bootstrap) use the canonical constructor to supply
+     * caller-controlled process name, title, goal, profile, etc.
      */
     record Recipe(
-            String recipe,
+            @Nullable String recipe,
+            @Nullable String engineOverride,
+            @Nullable String processName,
+            @Nullable String title,
+            @Nullable String goal,
+            @Nullable String inheritContextLevel,
+            @Nullable String connectionProfile,
             @Nullable String initialMessage,
             @Nullable Map<String, Object> params,
             @Nullable String runAs) implements TriggerAction {
 
         public Recipe {
-            if (recipe == null || recipe.isBlank()) {
-                throw new IllegalArgumentException("Recipe.recipe must be non-blank");
+            boolean hasRecipe = recipe != null && !recipe.isBlank();
+            boolean hasEngine = engineOverride != null && !engineOverride.isBlank();
+            if (hasRecipe == hasEngine) {
+                throw new IllegalArgumentException(
+                        "TriggerAction.Recipe: exactly one of recipe or engineOverride "
+                                + "must be non-blank (recipe='" + recipe
+                                + "', engineOverride='" + engineOverride + "')");
             }
+        }
+
+        /**
+         * Minimal-form factory for callers that only need the
+         * recipe-driven path with caller-merged params: scheduler,
+         * event, workflow-task, parser. Spawn-detail fields default to
+         * {@code null} — the executor auto-generates the process name
+         * and derives the connection profile from the trigger kind.
+         */
+        public static Recipe of(
+                String recipe,
+                @Nullable String initialMessage,
+                @Nullable Map<String, Object> params,
+                @Nullable String runAs) {
+            return new Recipe(
+                    recipe,
+                    /*engineOverride*/ null,
+                    /*processName*/ null,
+                    /*title*/ null,
+                    /*goal*/ null,
+                    /*inheritContextLevel*/ null,
+                    /*connectionProfile*/ null,
+                    initialMessage,
+                    params,
+                    runAs);
         }
     }
 

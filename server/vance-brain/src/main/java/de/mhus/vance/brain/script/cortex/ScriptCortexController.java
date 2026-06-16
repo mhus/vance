@@ -390,7 +390,7 @@ public class ScriptCortexController {
                 /*parentProcessId*/ null);
 
         ActionResult result = actionExecutorRegistry.execute(
-                new TriggerAction.Recipe(
+                TriggerAction.Recipe.of(
                         "slart-script-author",
                         /*initialMessage*/ null,
                         overrideParams,
@@ -405,7 +405,7 @@ public class ScriptCortexController {
         }
         if (result.spawnedId() == null || result.spawnedId().isBlank()) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
-                    "RecipeActionExecutor did not return a process id");
+                    "SpawnActionExecutor did not return a process id");
         }
         return ScriptGenerateResponse.builder()
                 .thinkProcessId(result.spawnedId())

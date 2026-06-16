@@ -115,7 +115,7 @@ public final class TriggerActionParser {
             return null;
         }
         String initialMessage = readString(yaml, "initialMessage", errors);
-        return new TriggerAction.Recipe(recipe, initialMessage, params, runAs);
+        return TriggerAction.Recipe.of(recipe, initialMessage, params, runAs);
     }
 
     private @Nullable TriggerAction parseScript(Map<String, Object> yaml,

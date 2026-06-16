@@ -89,7 +89,7 @@ public record ResolvedUrsaScheduler(
      */
     public TriggerAction toTriggerAction() {
         if (recipe != null && !recipe.isBlank()) {
-            return new TriggerAction.Recipe(recipe, initialMessage, params, effectiveRunAs());
+            return TriggerAction.Recipe.of(recipe, initialMessage, params, effectiveRunAs());
         }
         if (workflow != null && !workflow.isBlank()) {
             return new TriggerAction.Workflow(workflow, params, effectiveRunAs());

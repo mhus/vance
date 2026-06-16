@@ -1,11 +1,14 @@
 package de.mhus.vance.brain.tools.process;
 
+import de.mhus.vance.api.action.TriggerAction;
 import de.mhus.vance.api.chat.ChatRole;
-import de.mhus.vance.brain.recipe.AppliedRecipe;
-import de.mhus.vance.brain.recipe.RecipeResolver;
+import de.mhus.vance.brain.action.ActionExecutorRegistry;
+import de.mhus.vance.brain.action.ActionOutcome;
+import de.mhus.vance.brain.action.ActionResult;
+import de.mhus.vance.brain.action.TriggerContext;
+import de.mhus.vance.brain.action.TriggerKind;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
-import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
@@ -30,29 +33,32 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 /**
- * Spawn a worker process, drive its lane synchronously to completion,
- * return the worker's last ASSISTANT reply. Sibling to
- * {@link ProcessCreateTool} but with explicit synchronous semantics —
- * blocks until the worker finishes a turn (or the timeout trips),
- * then returns the captured reply.
+ * Spawn a worker process, drive its lane synchronously to completion of
+ * one turn, and return the worker's last ASSISTANT reply. Sibling to
+ * {@code ProcessCreateTool} but with explicit synchronous semantics —
+ * blocks until the worker finishes a turn (or the timeout trips), then
+ * returns the captured reply.
  *
  * <p>Same pattern Vogon uses internally
- * ({@code VogonEngine.spawnAndAwaitWorker}): create + start + lane-
- * scheduled steer + readLastAssistantText + stop. Exposing it as a
- * tool lets skill-bound scripts orchestrate per-chapter / per-step
- * sub-workers without the engine code being JS-aware.
+ * ({@code VogonEngine.spawnAndAwaitWorker}): spawn via the central
+ * {@link ActionExecutorRegistry}, lane-scheduled steer, read the last
+ * ASSISTANT text, stop. Exposing it as a tool lets skill-bound scripts
+ * orchestrate per-chapter / per-step sub-workers without the engine
+ * being JS-aware.
  *
- * <p>Caller picks either {@code recipe} (resolved via recipe cascade)
- * or {@code engine} (direct engine name). Mutually exclusive — both
- * present is an error. Steer content is what the worker receives as
- * its first user-message; if a worker recipe expects a structured
- * input shape, the caller fills it in here.
+ * <p>The caller picks either {@code recipe} (recipe-cascade resolution)
+ * or {@code engine} (direct engine name) — mutually exclusive. Steer
+ * content is what the worker receives as its first user-message; if a
+ * worker recipe expects a structured input shape, the caller fills it
+ * in here.
  *
- * <p>Timeout protects against worker turns that hang on a slow
- * external call. Default 300 s; configurable per call. The script
- * engine's own wall-clock timeout still applies on top — if a single
- * worker call eats the whole 300 s, the script's overall budget
- * needs to be at least as long.
+ * <p>Timeout protects against worker turns that hang on a slow external
+ * call. Default 300 s; configurable per call up to {@link #MAX_TIMEOUT}.
+ * The script engine's own wall-clock timeout still applies on top.
+ *
+ * <p>Connection-profile is inherited from the calling process so a worker
+ * spawned by a Foot-connected Arthur picks up the foot profile-block —
+ * same semantics as {@code ProcessCreateTool}.
  */
 @Component
 @RequiredArgsConstructor
@@ -68,14 +74,13 @@ public class ProcessRunTool implements Tool {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("name", Map.of(
                 "type", "string",
-                "description", "Stable name for the spawned worker "
-                        + "process. Used in logs and the worker's "
-                        + "process row."));
+                "description", "Stable name for the spawned worker process. "
+                        + "Used in logs and the worker's process row."));
         properties.put("goal", Map.of(
                 "type", "string",
-                "description", "Short one-line description of what "
-                        + "the worker is supposed to do — shown in "
-                        + "process listings."));
+                "description", "Short one-line description of what the "
+                        + "worker is supposed to do — shown in process "
+                        + "listings."));
         properties.put("recipe", Map.of(
                 "type", "string",
                 "description", "Recipe name (e.g. 'ford', 'analyze'). "
@@ -84,8 +89,8 @@ public class ProcessRunTool implements Tool {
         properties.put("engine", Map.of(
                 "type", "string",
                 "description", "Direct engine name (e.g. 'ford'). "
-                        + "Use when you don't want a recipe's "
-                        + "defaults. Mutually exclusive with 'recipe'."));
+                        + "Use when you don't want a recipe's defaults. "
+                        + "Mutually exclusive with 'recipe'."));
         properties.put("params", Map.of(
                 "type", "object",
                 "description", "Engine-specific params merged over "
@@ -107,9 +112,9 @@ public class ProcessRunTool implements Tool {
                 "required", List.of("name", "goal", "steerContent"));
     }
 
+    private final ActionExecutorRegistry actionRegistry;
     private final ThinkProcessService thinkProcessService;
     private final ObjectProvider<ThinkEngineService> thinkEngineServiceProvider;
-    private final RecipeResolver recipeResolver;
     private final LaneScheduler laneScheduler;
     private final ChatMessageService chatMessageService;
 
@@ -123,10 +128,10 @@ public class ProcessRunTool implements Tool {
         return "Spawn a worker process, drive its lane synchronously to "
                 + "completion of one turn, and return the worker's last "
                 + "ASSISTANT reply. Use this when you orchestrate sub-"
-                + "workers from a skill-bound script and need each "
-                + "reply before starting the next one. Pick recipe OR "
-                + "engine, pass steerContent as the worker's "
-                + "user-message, get back {processId, status, reply}.";
+                + "workers from a skill-bound script and need each reply "
+                + "before starting the next one. Pick recipe OR engine, "
+                + "pass steerContent as the worker's user-message, get "
+                + "back {processId, status, reply}.";
     }
 
     @Override
@@ -167,59 +172,43 @@ public class ProcessRunTool implements Tool {
                     "process_run must be invoked from a process with a session");
         }
 
-        ThinkEngineService engineService = thinkEngineServiceProvider.getObject();
-        ThinkProcessDocument child;
-        ThinkEngine resolvedEngine;
-        @Nullable String resolvedRecipeName = null;
+        // ── Spawn via central pipeline ───────────────────────────────────
+        String parentProfile = parentConnectionProfile(ctx.processId());
+        TriggerAction.Recipe action = new TriggerAction.Recipe(
+                recipeName,
+                engineName,
+                name,
+                /*title*/ null,
+                goal,
+                /*inheritContextLevel*/ null,
+                parentProfile,
+                /*initialMessage*/ null,  // sync-wait drives the steer below
+                callerParams,
+                /*runAs*/ null);
+        TriggerContext triggerCtx = new TriggerContext(
+                ctx.tenantId(), ctx.projectId(),
+                /*resolvedRunAs*/ null, /*correlationId*/ null,
+                /*sourceTag*/ "tool:process_run",
+                ctx.sessionId(), ctx.processId());
 
-        if (recipeName != null) {
-            AppliedRecipe applied;
-            try {
-                applied = recipeResolver.apply(
-                        ctx.tenantId(), ctx.projectId(), recipeName,
-                        /*connectionProfile*/ null, callerParams);
-            } catch (RuntimeException e) {
-                throw new ToolException(
-                        "process_run: recipe '" + recipeName + "' failed to apply: "
-                                + e.getMessage(), e);
-            }
-            resolvedEngine = engineService.resolve(applied.engine())
-                    .orElseThrow(() -> new ToolException(
-                            "Recipe '" + applied.name() + "' references unknown engine '"
-                                    + applied.engine() + "'"));
-            resolvedRecipeName = applied.name();
-            child = thinkProcessService.create(
-                    ctx.tenantId(), ctx.projectId(), ctx.sessionId(),
-                    name, resolvedEngine.name(), resolvedEngine.version(),
-                    goal, steerContent, ctx.processId(),
-                    applied.params(),
-                    applied.name(),
-                    applied.promptOverride(),
-                    applied.promptOverrideAppend(),
-                    applied.promptMode(),
-                    applied.dataRelayCorrection(),
-                    applied.effectiveAllowedTools(),
-                    applied.connectionProfile(),
-                    applied.defaultActiveSkills(),
-                    applied.allowedSkills() == null
-                            ? null : Set.copyOf(applied.allowedSkills()));
-        } else {
-            resolvedEngine = engineService.resolve(engineName)
-                    .orElseThrow(() -> new ToolException(
-                            "Unknown engine '" + engineName + "' — known: "
-                                    + engineService.listEngines()));
-            child = thinkProcessService.create(
-                    ctx.tenantId(), ctx.projectId(), ctx.sessionId(),
-                    name, resolvedEngine.name(), resolvedEngine.version(),
-                    goal, steerContent, ctx.processId(), callerParams);
+        ActionResult result = actionRegistry.execute(action, triggerCtx, TriggerKind.TOOL);
+        if (result.outcome() != ActionOutcome.SCHEDULED) {
+            throw new ToolException(
+                    "process_run: spawn failed (" + result.outcome() + "): "
+                            + result.errorMessage());
         }
+        String childId = result.spawnedId();
+        ThinkProcessDocument child = thinkProcessService.findById(childId)
+                .orElseThrow(() -> new ToolException(
+                        "process_run: spawned process '" + childId + "' is gone"));
 
-        engineService.start(child);
         log.info("process_run spawned child='{}' name='{}' engine='{}' recipe='{}' timeoutSec={}",
-                child.getId(), name, resolvedEngine.name(),
-                resolvedRecipeName == null ? "(none)" : resolvedRecipeName,
+                child.getId(), name, child.getThinkEngine(),
+                child.getRecipeName() == null ? "(none)" : child.getRecipeName(),
                 timeout.toSeconds());
 
+        // ── Synchronous lane-wait ────────────────────────────────────────
+        ThinkEngineService engineService = thinkEngineServiceProvider.getObject();
         @Nullable String reply = null;
         String terminalStatus;
         try {
@@ -264,14 +253,22 @@ public class ProcessRunTool implements Tool {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("processId", child.getId());
         out.put("status", terminalStatus);
-        out.put("engine", resolvedEngine.name());
-        if (resolvedRecipeName != null) {
-            out.put("recipe", resolvedRecipeName);
+        out.put("engine", child.getThinkEngine());
+        if (child.getRecipeName() != null) {
+            out.put("recipe", child.getRecipeName());
         }
         if (reply != null) {
             out.put("reply", reply);
         }
         return out;
+    }
+
+    /** Q11 fix: inherit the parent process's connection profile when present. */
+    private @Nullable String parentConnectionProfile(@Nullable String parentProcessId) {
+        if (parentProcessId == null || parentProcessId.isBlank()) return null;
+        return thinkProcessService.findById(parentProcessId)
+                .map(ThinkProcessDocument::getConnectionProfile)
+                .orElse(null);
     }
 
     private @Nullable String readLastAssistantText(

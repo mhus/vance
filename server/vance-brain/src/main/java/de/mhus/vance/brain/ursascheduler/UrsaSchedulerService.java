@@ -764,8 +764,8 @@ public class UrsaSchedulerService {
 
     /**
      * Detects the two error-message shapes produced by
-     * {@code RecipeActionExecutor} when the recipe-name doesn't resolve:
-     * the prefixed {@code "recipe_resolution: …"} and the bare
+     * {@code SpawnActionExecutor} when the recipe-name doesn't resolve:
+     * the prefixed {@code "resolution: …"} and the bare
      * {@code "unknown recipe '…'"}. Non-recipe failures (engine
      * resolution, process-create) are left to surface as transient
      * errors — only recipe-misses get the auto-disable treatment because
@@ -773,7 +773,7 @@ public class UrsaSchedulerService {
      */
     private static boolean isRecipeResolutionFailure(@Nullable String error) {
         if (error == null) return false;
-        return error.startsWith("recipe_resolution:")
+        return error.startsWith("resolution:")
                 || error.startsWith("unknown recipe ");
     }
 

@@ -632,6 +632,17 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             return new TurnSignal(/*appendedChat=*/ false, /*toolUsed=*/ true);
         }
 
+        // ─── Auto-WAIT: a drain that contains only BLOCKED ProcessEvents
+        // from the currently delegated worker means "the child is parking
+        // on a sub-task" (typical: Slart parking on a Hactar child). No
+        // human attention is needed — the LLM would either WAIT (the
+        // correct answer) or get confused by the stale Active-Workers
+        // snapshot and emit spurious steer / delegate / ASK_USER, which
+        // is exactly what we want to suppress.
+        if (tryAutoWaitOnDelegationPointerBlocked(process, inbox)) {
+            return new TurnSignal(/*appendedChat=*/ false, /*toolUsed=*/ true);
+        }
+
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.RUNNING);
         // Per-turn flag for handleAction: was this turn triggered by a
         // fresh user message, or purely by an in-bound process-event?
@@ -1014,28 +1025,117 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     }
 
     /**
+     * Suppress an LLM round-trip when the only thing in the drain is
+     * one or more {@link ProcessEventType#BLOCKED} events from the
+     * worker this Arthur is currently delegating to. Semantically a
+     * BLOCKED event from the delegated worker means "the child is
+     * parking on a sub-task, no parent action required" — typical
+     * for Slart parking on a Hactar child or any engine that uses
+     * BLOCKED as a parking signal.
+     *
+     * <p>Without this short-circuit the LLM sees a stale
+     * Active-Workers snapshot ("status=blocked") together with a
+     * {@code process_steer} tool result that reports CLOSED (the
+     * child has since moved on) and routinely emits a phantom
+     * {@code ASK_USER} / {@code DELEGATE} / {@code process_steer} —
+     * exactly the noise we want to suppress.
+     *
+     * <p>Falls through to the normal LLM-mediated turn when the drain
+     * contains anything else: foreign-worker events, DONE / FAILED
+     * (where RELAY is the right response), tool-results, external
+     * commands, or user-typed input.
+     *
+     * @return {@code true} when Auto-WAIT was applied — the caller
+     *         must yield the turn; status is set to {@code IDLE}
+     *         (consistent with the regular {@code WAIT} action).
+     */
+    private boolean tryAutoWaitOnDelegationPointerBlocked(
+            ThinkProcessDocument process,
+            List<SteerMessage> inbox) {
+        String workerId = process.getActiveDelegationWorkerId();
+        if (!shouldAutoWaitOnDelegationPointerBlocked(workerId, inbox)) {
+            return false;
+        }
+        log.info(
+                "Arthur id='{}' auto-WAIT: {} BLOCKED event(s) from delegation worker '{}' — yielding turn without LLM round-trip",
+                process.getId(), inbox.size(), workerId);
+        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
+        return true;
+    }
+
+    /**
+     * Pure decision function for {@link #tryAutoWaitOnDelegationPointerBlocked}.
+     * Extracted so the auto-WAIT predicate is unit-testable without
+     * wiring the full engine + all dependencies.
+     *
+     * @return {@code true} iff the drain contains at least one
+     *         {@link ProcessEventType#BLOCKED} event from
+     *         {@code workerId} and contains nothing else — no user
+     *         input, no foreign-worker events, no DONE/FAILED, no
+     *         tool results.
+     */
+    static boolean shouldAutoWaitOnDelegationPointerBlocked(
+            @Nullable String workerId, List<SteerMessage> inbox) {
+        if (workerId == null || workerId.isBlank()) {
+            return false;
+        }
+        if (inbox == null || inbox.isEmpty()) {
+            return false;
+        }
+        boolean foundBlocked = false;
+        for (SteerMessage m : inbox) {
+            if (!(m instanceof SteerMessage.ProcessEvent pe)) {
+                return false;
+            }
+            if (!workerId.equals(pe.sourceProcessId())) {
+                return false;
+            }
+            if (pe.type() != ProcessEventType.BLOCKED) {
+                return false;
+            }
+            foundBlocked = true;
+        }
+        return foundBlocked;
+    }
+
+    /**
      * Sets / clears {@link ThinkProcessDocument#activeDelegationWorkerId}
-     * based on what just happened. The simple rule: pointer survives
-     * iff this turn relayed exactly one BLOCKED ProcessEvent and ended
-     * awaiting the user — i.e. Arthur is forwarding a worker's
-     * clarification question. Any other outcome clears the pointer.
+     * based on what just happened.
+     *
+     * <p>Three cases:
+     * <ul>
+     *   <li>{@code awaitingUserInput=true} AND inbox contained exactly
+     *       one BLOCKED ProcessEvent → set the pointer to that
+     *       worker. Arthur just relayed a worker's clarification
+     *       question; the next user-input should auto-forward back.</li>
+     *   <li>{@code awaitingUserInput=true} otherwise → clear the
+     *       pointer. Arthur is explicitly waiting on the user for
+     *       a non-worker reason (ANSWER, REJECT, generic ASK_USER,
+     *       RELAY on DONE/FAILED), so the previous delegate is no
+     *       longer the auto-forward target.</li>
+     *   <li>{@code awaitingUserInput=false} → leave the pointer
+     *       untouched. The worker is still doing background work;
+     *       the pointer (set by {@code handleDelegate} on the
+     *       initial spawn or by an earlier RELAY-on-BLOCKED) must
+     *       survive a WAIT / LEARN / silent turn so subsequent
+     *       BLOCKED events from the same worker still hit the
+     *       Auto-WAIT short-circuit.</li>
+     * </ul>
      */
     private void updateDelegationPointer(
             ThinkProcessDocument process,
             List<SteerMessage> inbox,
             boolean awaitingUserInput) {
-        String currentWorker = process.getActiveDelegationWorkerId();
-        String nextWorker = null;
-        if (awaitingUserInput) {
-            String single = singleBlockedSourceProcessId(inbox);
-            if (single != null) {
-                nextWorker = single;
-            }
+        if (!awaitingUserInput) {
+            return;
         }
+        String currentWorker = process.getActiveDelegationWorkerId();
+        String nextWorker = singleBlockedSourceProcessId(inbox);
         if (java.util.Objects.equals(currentWorker, nextWorker)) {
             return;
         }
         thinkProcessService.updateActiveDelegationWorkerId(process.getId(), nextWorker);
+        process.setActiveDelegationWorkerId(nextWorker);
         if (nextWorker != null) {
             log.info("Arthur id='{}' delegation pointer set → worker id='{}'",
                     process.getId(), nextWorker);
@@ -1637,6 +1737,26 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                 log.info("Arthur id='{}' DELEGATE via selector worker='{}' reason='{}'",
                         process.getId(), workerName, summariseReason(action.reason()));
             }
+            // Arm the delegation pointer immediately so the next
+            // inbound BLOCKED event from this worker auto-WAITs
+            // (see tryAutoWaitOnDelegationPointerBlocked) without
+            // an LLM round-trip. Without this, the first BLOCKED
+            // event after a fresh DELEGATE always falls through to
+            // the LLM with a stale Active-Workers snapshot,
+            // routinely producing phantom "previous worker already
+            // finished" messages right before the real DONE event.
+            thinkProcessService.findByName(
+                            process.getTenantId(),
+                            process.getSessionId(),
+                            workerName)
+                    .ifPresent(spawned -> {
+                        thinkProcessService.updateActiveDelegationWorkerId(
+                                process.getId(), spawned.getId());
+                        process.setActiveDelegationWorkerId(spawned.getId());
+                        log.info(
+                                "Arthur id='{}' delegation pointer armed → worker '{}' (id='{}') on DELEGATE",
+                                process.getId(), workerName, spawned.getId());
+                    });
         } catch (RuntimeException e) {
             log.warn("Arthur id='{}' DELEGATE failed: {}", process.getId(), e.toString());
             return new ActionTurnOutcome(
@@ -1715,14 +1835,14 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                     true);
         }
 
-        // Deterministic header — built from the event's own metadata,
-        // not from anything the LLM wrote. Prevents the failure mode
-        // where the LLM names Marvin in the prefix while the source
-        // is actually Ford.
+        // The worker-attribution header that used to prefix this
+        // body ("**[Worker X → done]**") moved out of the chat text:
+        // since engine-output-translator renders Hactar/Slart plumbing
+        // into a natural answer, Arthur's RELAY now reads exactly like
+        // a direct reply and the header was visual noise. UI clients
+        // that need the source for display do so via the message's
+        // ProcessEvent metadata, not by re-parsing the body.
         StringBuilder out = new StringBuilder();
-        out.append("**[Worker ").append(sourceName)
-                .append(" → ").append(event.type().name().toLowerCase())
-                .append("]**\n\n");
         out.append(body);
 
         log.info(

@@ -1,0 +1,88 @@
+description: |
+  Internal LightLlmService config profile used by Hactar's
+  ArgsResolver. Given a JavaScript script and a free-text user
+  intent, extract concrete values for the parameters the script
+  expects via `vance.params.<name>` references.
+
+  NOT spawnable — marked `internal: true` so the standard recipe
+  selector skips it.
+
+  Pebble variables:
+    code            — full script source
+    intent          — free-text user intent / process goal
+    requiredKeys    — comma-separated list of params the script
+                      reads via vance.params.X (Hactar's regex scan)
+    suppliedKeys    — comma-separated list of keys the caller
+                      already provided (so the LLM ignores them)
+
+  Output schema (Jeltz-loop):
+    {
+      "params": { "<name>": <value>, ... },
+      "unresolved": [ "<name>", ... ]   // params the LLM couldn't infer
+    }
+
+  Hactar merges `params` with the caller-supplied scriptParams
+  before EXECUTING. `unresolved` entries trigger a FAILED status
+  with a clear "missing required parameter" message.
+engine: jeltz
+internal: true
+params:
+  model: default:fast,default:analyze
+  maxAttempts: 2
+  temperature: 0.1
+promptPrefix: |
+  You are Hactar's args-resolver. The script below declares that it
+  reads named parameters from `vance.params.<name>`. The caller may
+  have supplied some explicitly; the rest must be inferred from the
+  user's free-text intent.
+
+  ## Script
+
+  ```javascript
+  {{ code }}
+  ```
+
+  ## Parameters the script reads
+
+  {{ requiredKeys }}
+
+  {% if suppliedKeys %}
+  ## Already supplied (do NOT re-infer)
+
+  {{ suppliedKeys }}
+  {% endif %}
+
+  ## User intent
+
+  {{ intent }}
+
+  ## Your task
+
+  For each parameter the script needs that is NOT already supplied,
+  extract a concrete value from the user intent. Return STRICTLY
+  one JSON object of the form:
+
+      {
+        "params": {
+          "<name>": <number | string | bool | array | object>,
+          ...
+        },
+        "unresolved": [ "<name>", ... ]
+      }
+
+  ## Rules
+
+  - Numbers: extract as JSON number, not string.
+    "Set n to 2343" → `"n": 2343` (not `"2343"`).
+  - Strings: extract verbatim user text, no quotes added beyond JSON.
+  - Booleans: only when the intent is unambiguous ("yes/true",
+    "off/disabled" etc.).
+  - When the intent doesn't mention a parameter the script needs:
+    list it in `unresolved`, do NOT guess. Better to fail loudly
+    than to run the script with a hallucinated value.
+  - Never include keys from the "Already supplied" list — the
+    caller's explicit value wins.
+  - Reply with the JSON object only. No prose, no markdown fence.
+tags:
+  - internal
+  - hactar

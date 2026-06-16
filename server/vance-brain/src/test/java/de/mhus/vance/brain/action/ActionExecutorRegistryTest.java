@@ -83,7 +83,7 @@ class ActionExecutorRegistryTest {
         assertThatThrownBy(() -> registry.execute(
                 new TriggerAction.Workflow("w", null, null),
                 ctx,
-                TriggerKind.MANUAL))
+                TriggerKind.SCHEDULER))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("No ActionExecutor registered");
     }
@@ -92,7 +92,7 @@ class ActionExecutorRegistryTest {
     void null_action_rejected() {
         ActionExecutorRegistry registry = new ActionExecutorRegistry(List.of());
 
-        assertThatThrownBy(() -> registry.execute(null, ctx, TriggerKind.MANUAL))
+        assertThatThrownBy(() -> registry.execute(null, ctx, TriggerKind.SCHEDULER))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -113,7 +113,7 @@ class ActionExecutorRegistryTest {
         assertThatThrownBy(() -> registry.execute(
                 new TriggerAction.Recipe("r", null, null, null),
                 ctx,
-                TriggerKind.MANUAL))
+                TriggerKind.SCHEDULER))
                 .isInstanceOf(IllegalStateException.class);
     }
 

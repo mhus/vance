@@ -2,13 +2,17 @@ package de.mhus.vance.brain.hactar.phases;
 
 import de.mhus.vance.api.hactar.HactarState;
 import de.mhus.vance.api.hactar.HactarStatus;
+import de.mhus.vance.brain.hactar.HactarArgsResolver;
 import de.mhus.vance.brain.hactar.HactarService;
 import de.mhus.vance.brain.hactar.HactarService.ValidationRequest;
+import de.mhus.vance.brain.hactar.phases.ExecutingPhase;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
@@ -51,6 +55,7 @@ public class LoadingPhase {
 
     private final DocumentService documentService;
     private final HactarService hactarService;
+    private final HactarArgsResolver argsResolver;
 
     public HactarStatus execute(
             HactarState state,
@@ -135,9 +140,63 @@ public class LoadingPhase {
                 hit.get().source().name().toLowerCase(),
                 state.isValidateBeforeRun());
 
+        // Args-resolution gate — scan the script for vance.params.X
+        // references and (if missing) extract values from the
+        // process.goal / intent text via LightLlm. Failure here is
+        // terminal — we'd rather FAIL loudly than execute with
+        // undefined inputs and produce a confusing GraalJS TypeError.
+        try {
+            resolveAndPersistScriptParams(state, process, content);
+        } catch (HactarArgsResolver.MissingParamException ex) {
+            log.warn("Hactar.runLoading id='{}' args resolution failed: {}",
+                    process.getId(), ex.getMessage());
+            state.setFailureReason(ex.getMessage());
+            return HactarStatus.FAILED;
+        }
+
         return state.isValidateBeforeRun()
                 ? HactarStatus.VALIDATING
                 : HactarStatus.EXECUTING;
+    }
+
+    /**
+     * Wire the resolved {@code scriptParams} back into the process'
+     * {@code engineParams} so {@code ExecutingPhase}'s existing
+     * {@code scriptParamsBindings} pickup works unchanged. The
+     * Slart-spawned child arrives with the caller's intent on
+     * {@code process.getGoal()}; manual / Cortex / Scheduler
+     * callers may set it explicitly too.
+     */
+    @SuppressWarnings("unchecked")
+    private void resolveAndPersistScriptParams(
+            HactarState state, ThinkProcessDocument process, String code) {
+        Map<String, Object> engineParams = process.getEngineParams();
+        if (engineParams == null) engineParams = new LinkedHashMap<>();
+        Object rawParams = engineParams.get(ExecutingPhase.SCRIPT_PARAMS_KEY);
+        Map<String, Object> supplied = rawParams instanceof Map<?, ?> m
+                ? (Map<String, Object>) m
+                : Map.of();
+
+        Map<String, Object> resolved = argsResolver.resolve(
+                code,
+                supplied,
+                /*intent*/ process.getGoal(),
+                process.getTenantId(),
+                process.getProjectId(),
+                process.getId());
+
+        if (resolved.equals(supplied)) {
+            return;
+        }
+        log.info("Hactar.runLoading id='{}' resolved {} script param(s) "
+                        + "(caller-supplied={}, auto-resolved={})",
+                process.getId(),
+                resolved.size(),
+                supplied.size(),
+                resolved.size() - supplied.size());
+        engineParams.put(ExecutingPhase.SCRIPT_PARAMS_KEY,
+                new LinkedHashMap<>(resolved));
+        process.setEngineParams(engineParams);
     }
 
     // ──────────────────── Helpers ────────────────────

@@ -179,9 +179,9 @@ public final class RecipeActionExecutor implements ActionExecutor<TriggerAction.
         return switch (kind) {
             case SCHEDULER -> "scheduler";
             case EVENT -> "event";
-            case WORKFLOW_TASK -> "workflow";
+            case WORKFLOW -> "workflow";
             case TOOL -> "tool";
-            case MANUAL -> "manual";
+            case USER -> "user";
         };
     }
 

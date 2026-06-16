@@ -144,6 +144,33 @@ public interface ThinkEngine {
         return false;
     }
 
+    /**
+     * Whether this engine's terminal events (DONE / FAILED) carry a
+     * text that a parent orchestrator can RELAY verbatim to the user.
+     *
+     * <p>{@code true} (default) — LLM-driven worker engines like
+     * Ford / Marvin / Zaphod / Eddie. The {@code humanSummary} of
+     * their terminal events is already a natural-language answer
+     * authored by the engine's LLM; {@code RELAY} just forwards it.
+     *
+     * <p>{@code false} — engines that produce engine-internal output:
+     * Slartibartfast emits "Recipe persisted at …", Hactar emits
+     * "Hactar executed '…' (55ms). Return value: ```json 5489649```".
+     * Useful for forensics, but not what a human wanted to read.
+     * {@link ParentNotificationListener} routes such terminal events
+     * through the {@code engine-output-translator} LightLlm recipe
+     * before queueing them, so the parent's RELAY still ends with a
+     * natural answer matching the original user goal.
+     *
+     * <p>Recipes can override this at spawn time (recipe field
+     * {@code outputKind: user_facing | engine_plumbing}) when a
+     * project bundles a Hactar-script that, exceptionally, already
+     * produces a user-facing reply.
+     */
+    default boolean producesUserFacingOutput() {
+        return true;
+    }
+
     // ─── Lifecycle ──────────────────────────────────────────────────────
 
     /** First entry — engine initialises its state, writes greeting / plans task-tree. */

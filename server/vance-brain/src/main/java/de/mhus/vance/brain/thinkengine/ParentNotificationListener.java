@@ -57,6 +57,19 @@ public class ParentNotificationListener {
     private final ObjectProvider<ThinkEngineService> thinkEngineServiceProvider;
     private final StopInitiatorRegistry stopInitiatorRegistry;
     private final ChatMessageService chatMessageService;
+    /**
+     * Translates technical engine output (Hactar return values,
+     * Slart bookkeeping, GraalJS arity errors, …) into a natural
+     * answer in the language of the user goal — applied only when
+     * the emitting engine returns
+     * {@link ThinkEngine#producesUserFacingOutput()} {@code = false}
+     * and the event is DONE or FAILED. Lazy via {@link ObjectProvider}
+     * so the bean graph stays acyclic (LightLlmService transitively
+     * depends on RecipeResolver / model layers that reach this
+     * listener indirectly).
+     */
+    private final ObjectProvider<de.mhus.vance.brain.ai.light.LightLlmService>
+            lightLlmServiceProvider;
 
     @EventListener
     public void onStatusChanged(ThinkProcessStatusChangedEvent event) {
@@ -97,15 +110,28 @@ public class ParentNotificationListener {
             }
         }
         ParentReport report = buildReport(event.processId(), eventType, event.newStatus());
-        // Enrich the human-readable summary with the child's last
-        // ASSISTANT chat message so the parent's LLM has context
-        // about WHAT the child said, not just THAT the child
-        // transitioned. Without this, an orchestrator like Arthur
-        // sees only "Child process X status=blocked" and has to
-        // guess what the worker is asking — which leads to phantom
-        // re-spawns or endless clarification loops.
-        String enrichedSummary = enrichWithLastReply(
-                event.processId(), report.humanSummary());
+        // Engine-output translation: for engines whose terminal
+        // events carry technical plumbing (Hactar return value,
+        // Slart bookkeeping, GraalJS stack traces) rather than a
+        // user-facing reply, route DONE/FAILED through the
+        // engine-output-translator LightLlm recipe. The translated
+        // text replaces the humanSummary and we skip
+        // enrichWithLastReply so the raw engine body doesn't get
+        // re-attached as a "Last reply" block — the translator
+        // already has it as input.
+        boolean translated = false;
+        String summaryForParent = report.humanSummary();
+        if (shouldTranslateEngineOutput(event.processId(), eventType)) {
+            String translation = translateEngineOutput(
+                    event.processId(), eventType, report.humanSummary());
+            if (translation != null && !translation.isBlank()) {
+                summaryForParent = translation;
+                translated = true;
+            }
+        }
+        String enrichedSummary = translated
+                ? summaryForParent
+                : enrichWithLastReply(event.processId(), summaryForParent);
         // Attribution: which user-input turn was the worker responding
         // to when it produced this event? Lets the parent engine (e.g.
         // Arthur) distinguish a fresh reply from a stale one — without
@@ -194,6 +220,88 @@ public class ParentNotificationListener {
             log.warn("enrichWithLastReply failed for child='{}': {}",
                     childProcessId, e.toString());
             return engineSummary;
+        }
+    }
+
+    /**
+     * Decides whether the technical {@code rawSummary} of a terminal
+     * event needs to be rendered into natural language before being
+     * shipped to the parent. True iff the emitting engine signals
+     * {@link ThinkEngine#producesUserFacingOutput()} {@code = false}
+     * AND the event is {@code DONE} or {@code FAILED}. BLOCKED is
+     * out of scope here — parking events don't need a human reply
+     * (Arthur's Auto-WAIT short-circuits them entirely).
+     */
+    private boolean shouldTranslateEngineOutput(
+            String childProcessId, ProcessEventType eventType) {
+        if (eventType != ProcessEventType.DONE
+                && eventType != ProcessEventType.FAILED) {
+            return false;
+        }
+        Optional<ThinkProcessDocument> processOpt =
+                thinkProcessService.findById(childProcessId);
+        if (processOpt.isEmpty()) {
+            return false;
+        }
+        try {
+            ThinkEngine engine = thinkEngineServiceProvider.getObject()
+                    .resolveForProcess(processOpt.get());
+            return !engine.producesUserFacingOutput();
+        } catch (RuntimeException e) {
+            log.warn("producesUserFacingOutput probe failed for child='{}': {}",
+                    childProcessId, e.toString());
+            return false;
+        }
+    }
+
+    /**
+     * Calls the {@code engine-output-translator} LightLlm recipe with
+     * the user's goal, the engine identity and the raw technical
+     * summary; returns the LLM's natural-language reply (or
+     * {@code null} on any failure — the caller falls back to the raw
+     * summary so a translator outage never silences a parent
+     * notification).
+     */
+    private @Nullable String translateEngineOutput(
+            String childProcessId,
+            ProcessEventType eventType,
+            String rawSummary) {
+        Optional<ThinkProcessDocument> processOpt =
+                thinkProcessService.findById(childProcessId);
+        if (processOpt.isEmpty()) {
+            return null;
+        }
+        ThinkProcessDocument child = processOpt.get();
+        de.mhus.vance.brain.ai.light.LightLlmService service =
+                lightLlmServiceProvider.getIfAvailable();
+        if (service == null) {
+            return null;
+        }
+        java.util.Map<String, Object> vars = new java.util.LinkedHashMap<>();
+        vars.put("userGoal", child.getGoal() == null ? "" : child.getGoal());
+        vars.put("eventType", eventType.name());
+        vars.put("engineName", child.getThinkEngine() == null
+                ? "unknown" : child.getThinkEngine());
+        vars.put("rawSummary", rawSummary == null ? "" : rawSummary);
+        try {
+            String reply = service.call(
+                    de.mhus.vance.brain.ai.light.LightLlmRequest.builder()
+                            .recipeName("engine-output-translator")
+                            .userPrompt("Translate the engine output above.")
+                            .pebbleVars(vars)
+                            .tenantId(child.getTenantId())
+                            .projectId(child.getProjectId())
+                            .processId(child.getId())
+                            .build());
+            if (reply == null || reply.isBlank()) {
+                return null;
+            }
+            return reply.trim();
+        } catch (RuntimeException e) {
+            log.warn(
+                    "engine-output-translator failed for child='{}' engine='{}' event={}: {}",
+                    child.getId(), child.getThinkEngine(), eventType, e.toString());
+            return null;
         }
     }
 

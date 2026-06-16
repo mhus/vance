@@ -16,13 +16,21 @@ public enum TriggerKind {
     EVENT,
 
     /** Magrathea workflow task. Run scope provides identity. */
-    WORKFLOW_TASK,
+    WORKFLOW,
 
     /** LLM-issued tool call. Process scope (the calling ThinkProcess) provides identity. */
     TOOL,
 
-    /** Manual REST / WS call by a user. */
-    MANUAL;
+    /**
+     * Direct user-triggered call via the public REST / WS surface
+     * (Cortex {@code POST /scripts/generate}, Admin "Run now"
+     * buttons on schedulers / events, future manual ProcessCreate UIs).
+     * Distinct from {@link #TOOL} (LLM-driven) and from
+     * {@link #SCHEDULER} / {@link #EVENT} (automated triggers).
+     * Authenticated caller's user-id is on
+     * {@link TriggerContext#resolvedRunAs}.
+     */
+    USER;
 
     /**
      * Whether actions from this trigger have an enclosing Process or
@@ -30,6 +38,6 @@ public enum TriggerKind {
      * {@code VanceScriptApi} (tool calls, sub-process spawning, …).
      */
     public boolean isProcessScoped() {
-        return this == WORKFLOW_TASK || this == TOOL;
+        return this == WORKFLOW || this == TOOL;
     }
 }

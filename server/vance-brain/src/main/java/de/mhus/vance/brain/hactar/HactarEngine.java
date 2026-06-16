@@ -91,6 +91,14 @@ public class HactarEngine implements ThinkEngine {
     private final LoadingPhase loadingPhase;
     private final ValidatingPhase validatingPhase;
     private final ExecutingPhase executingPhase;
+    /**
+     * Appends one ASSISTANT chat-message at terminal transitions so
+     * {@code process_history_text(name=<hactar-process>)} returns the
+     * script's return value (or error) as queryable data — without
+     * this, Hactar's chat history is always empty and forensic /
+     * orchestrator lookups land on a {@code messageCount=0} response.
+     */
+    private final de.mhus.vance.shared.chat.ChatMessageService chatMessageService;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -130,6 +138,16 @@ public class HactarEngine implements ThinkEngine {
     @Override
     public boolean asyncSteer() {
         return true;
+    }
+
+    @Override
+    public boolean producesUserFacingOutput() {
+        // Hactar's DONE summary is "Hactar executed '<path>' (<ms>ms).
+        // Return value: ```json <value>```" — useful as forensic
+        // payload for a parent orchestrator, never as the answer text
+        // a human wanted. ParentNotificationListener routes terminal
+        // events through the engine-output-translator recipe.
+        return false;
     }
 
     // ──────────────────── Lifecycle ────────────────────
@@ -200,8 +218,10 @@ public class HactarEngine implements ThinkEngine {
             persistState(process, state);
 
             if (next == HactarStatus.DONE) {
+                persistTerminalOutcomeToChatHistory(process, state, next);
                 thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
             } else if (next == HactarStatus.FAILED) {
+                persistTerminalOutcomeToChatHistory(process, state, next);
                 thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
             } else {
                 eventEmitter.scheduleTurn(process.getId());
@@ -279,6 +299,55 @@ public class HactarEngine implements ThinkEngine {
                 "Hactar in progress — phase="
                         + (state.getStatus() == null ? "?" : state.getStatus().name()),
                 payload);
+    }
+
+    /**
+     * Persists a terminal-transition summary as an ASSISTANT chat
+     * message on the Hactar process. Mirrors the body the
+     * {@code summarizeForParent} report would carry so a lookup via
+     * {@code process_history_text(name=<hactar-process>)} returns the
+     * same information the parent (Slart, Arthur, …) sees through
+     * the ProcessEvent — without the parent's event-rendering chrome.
+     *
+     * <p>Best-effort: chat-history is a debugging surface, never
+     * part of the engine's correctness contract. Any persistence
+     * failure is logged and swallowed so the runTurn close path
+     * still completes.
+     */
+    private void persistTerminalOutcomeToChatHistory(
+            ThinkProcessDocument process,
+            HactarState state,
+            HactarStatus terminal) {
+        if (chatMessageService == null) {
+            return; // unit-test wiring may stub this out
+        }
+        try {
+            String body;
+            if (terminal == HactarStatus.DONE) {
+                body = "Hactar executed '" + state.getScriptRef() + "' ("
+                        + state.getExecutionDurationMs() + "ms). Return value:\n\n"
+                        + renderExecutionValue(state.getExecutionResult());
+            } else {
+                body = "Hactar failed: "
+                        + (state.getFailureReason() == null
+                                ? "unknown reason" : state.getFailureReason());
+                if (state.getExecutionErrorClass() != null) {
+                    body += "\n\n(errorClass=" + state.getExecutionErrorClass() + ")";
+                }
+            }
+            chatMessageService.append(
+                    de.mhus.vance.shared.chat.ChatMessageDocument.builder()
+                            .tenantId(process.getTenantId())
+                            .sessionId(process.getSessionId())
+                            .thinkProcessId(process.getId())
+                            .role(de.mhus.vance.api.chat.ChatRole.ASSISTANT)
+                            .content(body)
+                            .build());
+        } catch (RuntimeException e) {
+            log.warn(
+                    "Hactar id='{}' failed to persist terminal outcome to chat history: {}",
+                    process.getId(), e.toString());
+        }
     }
 
     private String renderExecutionValue(@Nullable Object value) {

@@ -15,10 +15,6 @@ type __VLS_PublicProps = __VLS_Props & {
 declare const _default: import("vue").DefineComponent<__VLS_PublicProps, {}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {
     "update:selectedProject": (value: string | null) => any;
 } & {
-    "project-resolved": (payload: {
-        name: string;
-        title: string;
-    }) => any;
     "session-picked": (sessionId: string) => any;
     "session-bootstrapped": (sessionId: string) => any;
     "focus-main": () => any;
@@ -26,12 +22,11 @@ declare const _default: import("vue").DefineComponent<__VLS_PublicProps, {}, {},
         name: string;
         title: string;
     }) => any;
-}, string, import("vue").PublicProps, Readonly<__VLS_PublicProps> & Readonly<{
-    "onProject-resolved"?: ((payload: {
+    "project-resolved": (payload: {
         name: string;
         title: string;
-    }) => any) | undefined;
-    "onUpdate:selectedProject"?: ((value: string | null) => any) | undefined;
+    }) => any;
+}, string, import("vue").PublicProps, Readonly<__VLS_PublicProps> & Readonly<{
     "onSession-picked"?: ((sessionId: string) => any) | undefined;
     "onSession-bootstrapped"?: ((sessionId: string) => any) | undefined;
     "onFocus-main"?: (() => any) | undefined;
@@ -39,6 +34,11 @@ declare const _default: import("vue").DefineComponent<__VLS_PublicProps, {}, {},
         name: string;
         title: string;
     }) => any) | undefined;
+    "onProject-resolved"?: ((payload: {
+        name: string;
+        title: string;
+    }) => any) | undefined;
+    "onUpdate:selectedProject"?: ((value: string | null) => any) | undefined;
 }>, {}, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;
 export default _default;
 //# sourceMappingURL=PickerView.vue.d.ts.map

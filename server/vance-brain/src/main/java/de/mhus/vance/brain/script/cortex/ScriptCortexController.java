@@ -15,11 +15,16 @@ import de.mhus.vance.api.scripts.ScriptGenerationResult;
 import de.mhus.vance.api.scripts.ScriptValidateRequest;
 import de.mhus.vance.api.scripts.ScriptValidateError;
 import de.mhus.vance.api.scripts.ScriptValidateResponse;
+import de.mhus.vance.api.action.TriggerAction;
 import de.mhus.vance.api.slartibartfast.ArchitectMode;
 import de.mhus.vance.api.slartibartfast.ArchitectState;
 import de.mhus.vance.api.slartibartfast.ArchitectStatus;
-import de.mhus.vance.api.slartibartfast.OutputSchemaType;
 import de.mhus.vance.api.slartibartfast.RecipeDraft;
+import de.mhus.vance.brain.action.ActionExecutorRegistry;
+import de.mhus.vance.brain.action.ActionInvocation;
+import de.mhus.vance.brain.action.ActionResult;
+import de.mhus.vance.brain.action.TriggerContext;
+import de.mhus.vance.brain.action.TriggerKind;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.script.JsValidationService;
 import de.mhus.vance.brain.slartibartfast.SlartibartfastEngine;
@@ -96,6 +101,7 @@ public class ScriptCortexController {
     private final ThinkEngineService thinkEngineService;
     private final RequestAuthority authority;
     private final ObjectMapper objectMapper;
+    private final ActionExecutorRegistry actionExecutorRegistry;
 
     // ──────────────────── Document CRUD ────────────────────
 
@@ -355,51 +361,54 @@ public class ScriptCortexController {
             existingScriptRef = existing.getPath();
         }
 
-        Map<String, Object> engineParams = new LinkedHashMap<>();
-        engineParams.put(SlartibartfastEngine.USER_DESCRIPTION_KEY, request.getPrompt());
-        engineParams.put(SlartibartfastEngine.OUTPUT_SCHEMA_TYPE_KEY,
-                OutputSchemaType.SCRIPT_JS.name());
-        // planOnly: Cortex only wants the authored code, not a
-        // Slart-driven Hactar-self-execute. The user runs it
-        // separately via the Run button.
-        engineParams.put(SlartibartfastEngine.PLAN_ONLY_KEY, Boolean.TRUE);
-        engineParams.put(SlartibartfastEngine.MODE_KEY, mode.name());
+        // Caller-supplied engine-params that merge ON TOP of the
+        // bundled `slart-script-author` recipe defaults (outputSchemaType
+        // + planOnly are already in the recipe; mode/userDescription/
+        // existingScriptRef/failureReason are per-call).
+        Map<String, Object> overrideParams = new LinkedHashMap<>();
+        overrideParams.put(SlartibartfastEngine.USER_DESCRIPTION_KEY,
+                request.getPrompt());
+        overrideParams.put(SlartibartfastEngine.MODE_KEY, mode.name());
         if (existingScriptRef != null) {
-            engineParams.put(SlartibartfastEngine.EXISTING_SCRIPT_REF_KEY,
+            overrideParams.put(SlartibartfastEngine.EXISTING_SCRIPT_REF_KEY,
                     existingScriptRef);
         }
         if (mode == ArchitectMode.UPDATE
                 && request.getFailureReason() != null
                 && !request.getFailureReason().isBlank()) {
-            engineParams.put(SlartibartfastEngine.FAILURE_REASON_KEY,
+            overrideParams.put(SlartibartfastEngine.FAILURE_REASON_KEY,
                     request.getFailureReason());
         }
 
-        ThinkProcessDocument process = thinkProcessService.create(
-                tenant,
-                projectId,
-                sessionId,
-                processName,
-                SlartibartfastEngine.NAME,
-                SlartibartfastEngine.VERSION,
-                "Script Cortex generation",
-                request.getPrompt(),
-                /*parentProcessId*/ null,
-                engineParams,
-                "slartibartfast",
-                /*promptOverride*/ null,
-                /*promptMode*/ null,
-                /*allowedToolsOverride*/ null);
-        try {
-            thinkEngineService.start(process);
-        } catch (RuntimeException e) {
-            log.warn("Failed to start Slart generation process='{}': {}",
-                    process.getId(), e.toString());
+        String userId = (String) httpRequest.getAttribute(AccessFilterBase.ATTR_USERNAME);
+        TriggerContext triggerCtx = new TriggerContext(
+                tenant, projectId,
+                /*resolvedRunAs*/ userId,
+                /*correlationId*/ processName,
+                /*sourceTag*/ "cortex:scripts/generate",
+                /*parentSessionId*/ sessionId,
+                /*parentProcessId*/ null);
+
+        ActionResult result = actionExecutorRegistry.execute(
+                new TriggerAction.Recipe(
+                        "slart-script-author",
+                        /*initialMessage*/ null,
+                        overrideParams,
+                        /*runAs*/ userId),
+                triggerCtx,
+                TriggerKind.USER);
+
+        if (result.outcome().isFailure()) {
+            log.warn("Cortex /scripts/generate failed: {}", result.errorMessage());
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
-                    "Failed to start Slart: " + e.getMessage());
+                    "Failed to start Slart: " + result.errorMessage());
+        }
+        if (result.spawnedId() == null || result.spawnedId().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "RecipeActionExecutor did not return a process id");
         }
         return ScriptGenerateResponse.builder()
-                .thinkProcessId(process.getId())
+                .thinkProcessId(result.spawnedId())
                 .processName(processName)
                 .build();
     }

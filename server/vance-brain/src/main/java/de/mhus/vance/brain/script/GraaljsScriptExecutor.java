@@ -188,9 +188,20 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
                 request.scopeLevel() == ScopeLevel.TRIGGER_SCOPED && spawnToolRegistry != null
                         ? spawnToolRegistry.spawnToolNames()
                         : Set.of();
+        // vance.params is sourced from the conventional `args` binding:
+        // Hactar's ExecutingPhase wraps scriptParams as `args` for the
+        // legacy top-level-variable contract; we additionally expose the
+        // same map under the namespaced `vance.params.*` surface that
+        // Slart-generated scripts and skill scripts reach for.
+        @SuppressWarnings("unchecked")
+        Map<String, Object> paramsForApi = request.bindings().get("args")
+                instanceof Map<?, ?> argsMap
+                        ? (Map<String, Object>) argsMap
+                        : Map.of();
         VanceScriptApi api = new VanceScriptApi(
                 effectiveTools, request.recipeName(), deniedToolNames,
-                documentService, request.progressEmitter(), request.notificationEmitter());
+                documentService, request.progressEmitter(),
+                request.notificationEmitter(), paramsForApi);
         ResourceLimits limits = ResourceLimits.newBuilder()
                 .statementLimit(effectiveStatements, null)
                 .build();

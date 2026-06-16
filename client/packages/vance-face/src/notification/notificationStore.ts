@@ -1,5 +1,4 @@
-import { defineStore } from 'pinia';
-import { ref } from 'vue';
+import { ref, type Ref } from 'vue';
 import type { NotificationDto, NotificationSeverity } from '@vance/generated';
 
 /**
@@ -9,17 +8,17 @@ import type { NotificationDto, NotificationSeverity } from '@vance/generated';
  *
  * <p>Spec: specification/user-notification-channel.md
  *
- * <p>This store is intentionally side-effect-only on the UI surface:
- * it does not own the WebSocket subscription itself — host components
- * (ChatApp, CortexChatPanel) wire that via
- * {@code useNotificationSubscription(socket)} and call {@link push}
- * here when a frame arrives. Decoupling keeps the store free of WS
- * lifecycle concerns and reusable from non-Vue triggers (test stubs,
- * manual dispatch).
+ * <p>Implemented as a module-level reactive singleton — not a Pinia
+ * store. The toast component is mounted globally inside EditorShell,
+ * which means every MPA in the face workspace inherits it. Coupling
+ * the global toast layer to Pinia would force every entry-point's
+ * {@code main.ts} to register Pinia (multiple don't); a plain reactive
+ * ref keeps the contract "import the shell, get toasts".
  *
- * <p>The browser-notification permission is requested lazily on the
- * first incoming notification — never up-front, so users that never
- * receive one never see a permission prompt.
+ * <p>Side-effects (WebAudio, Browser-Notification) live in this module
+ * too — the host component only consumes {@link toasts} and calls
+ * {@link dismiss}. The subscription itself lives in
+ * {@code useNotificationSubscription}.
  */
 
 const TOAST_TTL_MS = 4500;
@@ -33,117 +32,154 @@ export interface Toast {
   addedAt: number;
 }
 
-export const useNotificationStore = defineStore('notification', () => {
-  const toasts = ref<Toast[]>([]);
-  let counter = 0;
-  let permissionRequested = false;
-  let audioContext: AudioContext | null = null;
+const toastsRef: Ref<Toast[]> = ref([]);
+let counter = 0;
+let permissionRequested = false;
+let audioContext: AudioContext | null = null;
 
-  function push(notification: NotificationDto): void {
-    if (!notification?.text) return;
-    const id = `n-${Date.now()}-${++counter}`;
-    const toast: Toast = {
-      id,
-      notification,
-      addedAt: Date.now(),
+/**
+ * Hybrid render policy:
+ * <ul>
+ *   <li>Tab visible → in-app toast (the OS banner would be suppressed
+ *       by most browsers in a focused tab anyway, and the user is
+ *       looking at the page).</li>
+ *   <li>Tab hidden + permission granted → OS-native notification
+ *       (Notification Center, system banner) — that's the whole point
+ *       of going native.</li>
+ *   <li>Tab hidden + permission missing/denied → fall back to the
+ *       in-app toast so nothing is silently lost when the user
+ *       eventually focuses the tab.</li>
+ *   <li>Audio beep fires in every case (when AudioContext allows it).</li>
+ * </ul>
+ */
+function push(notification: NotificationDto): void {
+  if (!notification?.text) return;
+  void beep(notification.severity);
+
+  // We treat the page as "user not looking" when either the tab is
+  // browser-hidden (visibilityState='hidden' — other tab or minimized)
+  // OR the document doesn't have focus (other window / other app on
+  // the same desktop). `visibilityState` alone only fires when the tab
+  // is *in the same browser window* but not active; a different
+  // browser window or a different app in the foreground still leaves
+  // visibilityState='visible' — which is not what the user means by
+  // "Ich schaue nicht hin".
+  const userNotLooking = typeof document !== 'undefined'
+    && (document.visibilityState === 'hidden' || !document.hasFocus());
+  const perm = readPermission();
+
+  // Lazy permission request — once per page session. We fire it
+  // regardless of current visibility so the user is prepped for the
+  // *next* hidden-tab notification, but never up-front before the
+  // first frame arrives.
+  if (perm === 'default' && !permissionRequested) {
+    permissionRequested = true;
+    void requestNotificationPermission();
+  }
+
+  if (userNotLooking && perm === 'granted') {
+    showSystemNotification(notification);
+    return;
+  }
+  showToast(notification);
+}
+
+function showToast(notification: NotificationDto): void {
+  const id = `n-${Date.now()}-${++counter}`;
+  toastsRef.value.push({ id, notification, addedAt: Date.now() });
+  if (toastsRef.value.length > MAX_TOASTS) {
+    // Drop the oldest — a flooding caller shouldn't push the user out
+    // of the viewport.
+    toastsRef.value.splice(0, toastsRef.value.length - MAX_TOASTS);
+  }
+  window.setTimeout(() => dismiss(id), TOAST_TTL_MS);
+}
+
+function dismiss(id: string): void {
+  const idx = toastsRef.value.findIndex((t) => t.id === id);
+  if (idx >= 0) toastsRef.value.splice(idx, 1);
+}
+
+function readPermission(): NotificationPermission | 'denied' {
+  if (typeof window === 'undefined' || !('Notification' in window)) return 'denied';
+  return Notification.permission;
+}
+
+async function requestNotificationPermission(): Promise<void> {
+  if (typeof window === 'undefined' || !('Notification' in window)) return;
+  try {
+    await Notification.requestPermission();
+  } catch {
+    // Some embedders throw — treat as silent denial.
+  }
+}
+
+function showSystemNotification(n: NotificationDto): void {
+  try {
+    const title = `Vance · ${n.severity}`;
+    const opts: NotificationOptions = {
+      body: n.text,
+      // ERROR notifications stay until user dismisses them — INFO/WARN
+      // follow the OS auto-dismiss.
+      requireInteraction: n.severity === 'ERROR',
+      tag: n.sourceProcessId ?? 'vance-notify',
     };
-    toasts.value.push(toast);
-    if (toasts.value.length > MAX_TOASTS) {
-      // Drop the oldest — a flooding caller shouldn't push the user
-      // out of the viewport.
-      toasts.value.splice(0, toasts.value.length - MAX_TOASTS);
-    }
-    void beep(notification.severity);
-    void surfaceBrowserNotification(notification);
-    window.setTimeout(() => dismiss(id), TOAST_TTL_MS);
-  }
-
-  function dismiss(id: string): void {
-    const idx = toasts.value.findIndex((t) => t.id === id);
-    if (idx >= 0) toasts.value.splice(idx, 1);
-  }
-
-  async function surfaceBrowserNotification(n: NotificationDto): Promise<void> {
-    if (typeof window === 'undefined' || !('Notification' in window)) return;
-    let permission = Notification.permission;
-    // Ask for permission lazily on the first frame — never up front.
-    // Permission survives across page loads; we still only request it
-    // once per page to avoid pestering the user.
-    if (permission === 'default' && !permissionRequested) {
-      permissionRequested = true;
-      try {
-        permission = await Notification.requestPermission();
-      } catch {
-        return;
+    const sys = new Notification(title, opts);
+    sys.onclick = () => {
+      window.focus();
+      const sessionId = n.sessionId;
+      if (sessionId) {
+        // Same-tab navigation if we're already on chat.html; new tab
+        // otherwise so we don't kill the editor the user has open.
+        const onChat = window.location.pathname.endsWith('/chat.html')
+          || window.location.pathname === '/';
+        const url = `/chat.html?sessionId=${encodeURIComponent(sessionId)}`;
+        if (onChat) window.location.href = url;
+        else window.open(url, '_blank', 'noopener');
       }
-    }
-    if (permission !== 'granted') return;
-    try {
-      const title = `Vance · ${n.severity}`;
-      const opts: NotificationOptions = {
-        body: n.text,
-        // ERROR notifications stay until user dismisses them — INFO/WARN
-        // follow the OS auto-dismiss.
-        requireInteraction: n.severity === 'ERROR',
-        tag: n.sourceProcessId ?? 'vance-notify',
-      };
-      const sys = new Notification(title, opts);
-      sys.onclick = () => {
-        window.focus();
-        const sessionId = n.sessionId;
-        if (sessionId) {
-          // Same-tab navigation if we're already on chat.html; new tab
-          // otherwise so we don't kill the editor the user has open.
-          const onChat = window.location.pathname.endsWith('/chat.html')
-            || window.location.pathname === '/' ;
-          const url = `/chat.html?sessionId=${encodeURIComponent(sessionId)}`;
-          if (onChat) window.location.href = url;
-          else window.open(url, '_blank', 'noopener');
-        }
-        sys.close();
-      };
-    } catch {
-      // Some browsers (or restrictive embedders) throw on construction;
-      // fall back to the in-app toast only.
-    }
+      sys.close();
+    };
+  } catch {
+    // Some browsers (or restrictive embedders) throw on construction;
+    // fall back to the in-app toast so the event isn't silently lost.
+    showToast(n);
   }
+}
 
-  async function beep(severity: NotificationSeverity): Promise<void> {
-    if (typeof window === 'undefined') return;
-    try {
-      if (!audioContext) {
-        const Ctor = window.AudioContext
-          ?? (window as unknown as { webkitAudioContext?: typeof AudioContext })
-              .webkitAudioContext;
-        if (!Ctor) return;
-        audioContext = new Ctor();
-      }
-      // Many browsers suspend the context until a user gesture — try to
-      // resume best-effort; if it stays suspended the beep is silent
-      // which is acceptable for a side-channel.
-      if (audioContext.state === 'suspended') {
-        try { await audioContext.resume(); } catch { /* ignore */ }
-      }
-      const now = audioContext.currentTime;
-      const pitch = pitchFor(severity);
-      const osc = audioContext.createOscillator();
-      const gain = audioContext.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(pitch, now);
-      // Soft attack/release so it doesn't click.
-      gain.gain.setValueAtTime(0, now);
-      gain.gain.linearRampToValueAtTime(0.18, now + 0.015);
-      gain.gain.linearRampToValueAtTime(0, now + 0.18);
-      osc.connect(gain).connect(audioContext.destination);
-      osc.start(now);
-      osc.stop(now + 0.2);
-    } catch {
-      // AudioContext can be denied in privacy-strict embeds — silent fallback.
+async function beep(severity: NotificationSeverity): Promise<void> {
+  if (typeof window === 'undefined') return;
+  try {
+    if (!audioContext) {
+      const Ctor = window.AudioContext
+        ?? (window as unknown as { webkitAudioContext?: typeof AudioContext })
+            .webkitAudioContext;
+      if (!Ctor) return;
+      audioContext = new Ctor();
     }
+    // Many browsers suspend the context until a user gesture — try to
+    // resume best-effort; if it stays suspended the beep is silent
+    // which is acceptable for a side-channel.
+    if (audioContext.state === 'suspended') {
+      try { await audioContext.resume(); } catch { /* ignore */ }
+    }
+    const now = audioContext.currentTime;
+    const pitch = pitchFor(severity);
+    const osc = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(pitch, now);
+    // Soft attack/release so it doesn't click.
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.18, now + 0.015);
+    gain.gain.linearRampToValueAtTime(0, now + 0.18);
+    osc.connect(gain).connect(audioContext.destination);
+    osc.start(now);
+    osc.stop(now + 0.2);
+  } catch {
+    // AudioContext can be denied in privacy-strict embeds — silent
+    // fallback.
   }
-
-  return { toasts, push, dismiss };
-});
+}
 
 function pitchFor(severity: NotificationSeverity): number {
   switch (severity) {
@@ -152,4 +188,17 @@ function pitchFor(severity: NotificationSeverity): number {
     case 'INFO':
     default: return 600;
   }
+}
+
+/**
+ * Composable-shaped accessor mirroring the Pinia call site so the
+ * consumer code reads the same whether the backing store is Pinia or a
+ * plain reactive singleton.
+ */
+export function useNotificationStore(): {
+  toasts: Ref<Toast[]>;
+  push: (n: NotificationDto) => void;
+  dismiss: (id: string) => void;
+} {
+  return { toasts: toastsRef, push, dismiss };
 }

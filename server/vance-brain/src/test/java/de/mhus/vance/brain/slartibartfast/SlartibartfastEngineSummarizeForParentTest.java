@@ -81,7 +81,8 @@ class SlartibartfastEngineSummarizeForParentTest {
                 mock(de.mhus.vance.brain.slartibartfast.phases.LoadingExistingPhase.class),
                 mock(de.mhus.vance.brain.slartibartfast.phases.ExecutionPlanningPhase.class),
                 /*schemaArchitects*/ java.util.List.of(),
-                new PathCriteriaLifter());
+                new PathCriteriaLifter(),
+                mock(de.mhus.vance.shared.chat.ChatMessageService.class));
     }
 
     @Test

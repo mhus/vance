@@ -170,6 +170,27 @@ public interface SchemaArchitect {
         return ".yaml";
     }
 
+    /** Does Slart's {@code EXECUTION_VALIDATING} phase apply to
+     *  this schema? Defaults to {@code true} — recipe architects
+     *  produce file artefacts ({@code .md} / {@code .json} / etc.)
+     *  whose existence + non-trivial-content the phase verifies via
+     *  {@code ExecutionValidatingPhase} + optionally
+     *  {@code ContentValidatingPhase} (LLM judge against
+     *  USER_STATED criteria).
+     *
+     *  <p>Non-recipe schemas (e.g. {@code JsScriptArchitect}) MUST
+     *  override to {@code false}: scripts don't produce file
+     *  artefacts the path-existence-check would find, and the LLM
+     *  content judge has no meaningful Document target — running
+     *  it produces a constant FAIL that drives Slart into a
+     *  pointless recovery loop. The child's own outcome
+     *  ({@code DONE} from {@code Hactar.ExecutingPhase}) is the
+     *  authoritative success signal.
+     */
+    default boolean wantsExecutionValidation() {
+        return true;
+    }
+
     /** Direct engine-spawn for non-recipe outputs. When the
      *  architect returns a non-null descriptor, Slart's EXECUTING
      *  phase bypasses the recipe-resolver path and spawns the

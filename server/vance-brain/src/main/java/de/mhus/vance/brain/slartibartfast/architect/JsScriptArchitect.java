@@ -103,7 +103,42 @@ public class JsScriptArchitect implements SchemaArchitect {
 
             After the header, write the orchestrator as a top-level
             IIFE (`(function() { ... })();`) or as a sequence of
-            statements. The host API surface:
+            statements. **The script MUST end with a meaningful
+            return value** — Hactar surfaces the IIFE's return as
+            the run's result. A script that only logs and returns
+            nothing is broken: the caller sees "(no return value)"
+            and cannot answer the user.
+
+            ### Parametrize inputs — DO NOT hardcode
+
+            If the user goal mentions a concrete value
+            ("quadriere 2343", "send email to alice@…", "fetch the
+            last 7 days"), DO NOT bake the value into the script
+            as a constant. Read it via `vance.params.<name>`
+            instead. Hactar will auto-extract the value from the
+            user goal text and bind it for the run.
+
+            **Bad** (hardcoded — script is one-shot, not reusable):
+
+                const n = 2343;
+                return n * n;
+
+            **Good** (parametrised — same script runs with any n):
+
+                const n = vance.params.n;
+                if (typeof n !== "number") {
+                    throw new Error("Parameter 'n' must be a number.");
+                }
+                return n * n;
+
+            The header SHOULD list every parameter the script reads
+            for clarity (the runtime contract is also auto-detected
+            by Hactar from the body):
+
+                 * @description Returns the square of `n`.
+                 * @param       n  — the number to square
+
+            ### Host API surface
 
             - `vance.tools.call(toolName, args)` — call any tool
               listed in `@allowTools`. Returns the tool's result
@@ -113,9 +148,23 @@ public class JsScriptArchitect implements SchemaArchitect {
               a Vance sub-process. Use when the work needs an LLM
               loop (Arthur / Marvin / Vogon). Pure deterministic
               JS work does NOT need spawn.
+            - `vance.params.<key>` — caller-supplied script parameters,
+              e.g. `vance.params.n` if the caller passed
+              `scriptParams: { n: 7 }`. Always defined as an object
+              (empty when the caller supplied none); individual keys
+              return `undefined` when absent. **Always guard with a
+              `typeof`/`!= null` check before using** — the caller
+              may have skipped optional params or sent the wrong type.
+              Throw an explicit `Error("Missing required parameter X")`
+              on a hard-required input rather than letting a downstream
+              `TypeError` surface.
             - `vance.context.{tenantId, projectId, sessionId, processId}`
               — read-only scope info.
             - `vance.log.info(message, payload?)` — structured log.
+            - `vance.process.progress(message, payload?)` — heartbeat
+              status ping on the parent process for long-running loops.
+            - `vance.process.notify(message, severity?)` — user-visible
+              notification on inbox / right-rail. Use sparingly.
 
             ## Required tags
 
@@ -194,6 +243,20 @@ public class JsScriptArchitect implements SchemaArchitect {
         // Scripts persist their own outputs via host-API tool calls
         // (vance.tools.call('doc_create', ...)) at runtime — not
         // through a recipe YAML the substring check could see.
+        return false;
+    }
+
+    @Override
+    public boolean wantsExecutionValidation() {
+        // EXECUTION_VALIDATING is designed for recipe-output schemas
+        // — it scans subgoals for quoted .md/.json/.yaml paths and
+        // verifies the artefacts exist as Documents with ≥200 chars.
+        // Scripts produce a return-value (and optionally `.js` body
+        // under scripts/_slart/<runId>/) — neither matches the path
+        // patterns, so the structural check would always fail and
+        // drive Slart into a pointless recovery loop. Hactar's own
+        // EXECUTING outcome (DONE/FAILED) is the authoritative
+        // success signal for SCRIPT_JS runs.
         return false;
     }
 

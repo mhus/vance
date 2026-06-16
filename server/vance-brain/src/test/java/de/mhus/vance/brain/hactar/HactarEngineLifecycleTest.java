@@ -57,7 +57,8 @@ class HactarEngineLifecycleTest {
                 JsonMapper.builder().build(),
                 loadingPhase,
                 validatingPhase,
-                executingPhase);
+                executingPhase,
+                mock(de.mhus.vance.shared.chat.ChatMessageService.class));
 
         process = new ThinkProcessDocument();
         process.setId("proc-1");

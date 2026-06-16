@@ -162,7 +162,8 @@ class SlartibartfastEngineLifecycleTest {
                 /*loadingExistingPhase*/ null,
                 /*executionPlanningPhase*/ null,
                 /*schemaArchitects*/ java.util.List.of(),
-                new PathCriteriaLifter());
+                new PathCriteriaLifter(),
+                mock(de.mhus.vance.shared.chat.ChatMessageService.class));
     }
 
     @Test

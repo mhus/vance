@@ -6,17 +6,23 @@
  * per-page wiring.
  *
  * <p>Spec: specification/user-notification-channel.md
+ *
+ * <p>Severity rendering: solid card on the base-100 color, severity
+ * communicated through a 4px left-edge strip + the badge color. Avoid
+ * tinting the background itself — DaisyUI's {@code bg-{color}/{alpha}}
+ * modifier makes the card half-transparent, which reads as "broken
+ * CSS" on most user setups.
  */
 import { useNotificationStore } from './notificationStore';
 
-const store = useNotificationStore();
+const { toasts, dismiss } = useNotificationStore();
 
-function colorClass(severity: string): string {
+function severityClass(severity: string): string {
   switch (severity) {
-    case 'WARN': return 'bg-warning/15 text-warning border-warning/40';
-    case 'ERROR': return 'bg-error/15 text-error border-error/40';
+    case 'WARN': return 'notify-toast--warn';
+    case 'ERROR': return 'notify-toast--error';
     case 'INFO':
-    default: return 'bg-info/15 text-info border-info/40';
+    default: return 'notify-toast--info';
   }
 }
 
@@ -38,11 +44,11 @@ function sourceLine(n: { sourceProcessTitle?: string; sourceProcessName?: string
   <div class="notify-toast-stack" aria-live="polite" aria-atomic="false">
     <TransitionGroup name="notify-toast">
       <div
-        v-for="t in store.toasts"
+        v-for="t in toasts"
         :key="t.id"
         class="notify-toast"
-        :class="colorClass(t.notification.severity)"
-        @click="store.dismiss(t.id)"
+        :class="severityClass(t.notification.severity)"
+        @click="dismiss(t.id)"
       >
         <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide">
           <span
@@ -53,7 +59,7 @@ function sourceLine(n: { sourceProcessTitle?: string; sourceProcessName?: string
             {{ sourceLine(t.notification) }}
           </span>
         </div>
-        <div class="mt-1 text-sm break-words">{{ t.notification.text }}</div>
+        <div class="mt-1 text-sm break-words text-base-content">{{ t.notification.text }}</div>
       </div>
     </TransitionGroup>
   </div>
@@ -75,12 +81,22 @@ function sourceLine(n: { sourceProcessTitle?: string; sourceProcessName?: string
 .notify-toast {
   pointer-events: auto;
   cursor: pointer;
-  border: 1px solid;
+  border: 1px solid var(--fallback-bc, oklch(var(--bc) / 0.18));
+  border-left: 4px solid var(--fallback-in, oklch(var(--in) / 1));
   border-radius: 0.5rem;
   padding: 0.6rem 0.75rem;
-  background-color: hsl(var(--b1));
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+  /* Solid base-100 background. DaisyUI 4.x stores theme colors as
+   * OKLCH channel triples in CSS vars, so the value lookup must wrap
+   * in `oklch(... / 1)` — `hsl(var(--b1))` would emit invalid CSS and
+   * the browser falls back to transparent (which is what made the
+   * card see-through). Same fallback-var convention as EditorShell. */
+  background-color: var(--fallback-b1, oklch(var(--b1) / 1));
+  color: var(--fallback-bc, oklch(var(--bc) / 1));
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
 }
+.notify-toast--info  { border-left-color: var(--fallback-in, oklch(var(--in) / 1)); }
+.notify-toast--warn  { border-left-color: var(--fallback-wa, oklch(var(--wa) / 1)); }
+.notify-toast--error { border-left-color: var(--fallback-er, oklch(var(--er) / 1)); }
 .notify-toast-enter-from {
   opacity: 0;
   transform: translateX(20px);

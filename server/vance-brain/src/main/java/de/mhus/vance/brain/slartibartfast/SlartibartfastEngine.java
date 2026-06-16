@@ -228,6 +228,17 @@ public class SlartibartfastEngine implements ThinkEngine {
      * history.
      */
     private final PathCriteriaLifter pathCriteriaLifter;
+    /**
+     * Writes a child-execution outcome (Hactar DONE / FAILED / STOPPED)
+     * as an ASSISTANT message into Slart's own chat history so the
+     * parent orchestrator (Arthur) and ad-hoc reasoning tools see the
+     * full script return value or error via
+     * {@code process_history_text(name=<slart-process>)}. Without
+     * this, Slart's history is always empty (0 msgs) and the LLM
+     * either re-spawns the worker or guesses the result from the
+     * compact event summary.
+     */
+    private final de.mhus.vance.shared.chat.ChatMessageService chatMessageService;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -267,6 +278,17 @@ public class SlartibartfastEngine implements ThinkEngine {
         // Vogon. Sub-process spawns (M5: Marvin-recipe path) will go
         // through the same async-steer pattern Marvin uses.
         return true;
+    }
+
+    @Override
+    public boolean producesUserFacingOutput() {
+        // Slart's DONE summary mixes engine bookkeeping ("Recipe
+        // persisted at …") with the script-run report from Hactar.
+        // Neither is what a human wanted to read. The
+        // ParentNotificationListener routes the terminal event
+        // through the engine-output-translator recipe to render a
+        // natural-language answer matching the original user goal.
+        return false;
     }
 
     /**
@@ -365,15 +387,39 @@ public class SlartibartfastEngine implements ThinkEngine {
                         sb.append("\n- `").append(p).append("`");
                     }
                 }
-                // The "no path-output" hint is only meaningful when
-                // the recipe actually ran — plan-only and skipped
-                // runs have no child process whose chat history
-                // could hold the result.
+                // Result-surface depends on what the child engine
+                // produces:
+                //   - SCRIPT_JS via Hactar: a return value (lives on
+                //     Hactar's executionResult, propagated via
+                //     ProcessEvent.humanSummary into childExecutionSummary).
+                //     No chat history — Hactar doesn't have one.
+                //   - Recipe outputs (Vogon/Marvin/Zaphod): a chat
+                //     transcript on the child process if no file
+                //     paths were declared.
+                // Plan-only / skipped runs have no child at all.
                 if (outputPaths.isEmpty()
                         && !state.isPlanOnly() && !skipped) {
-                    sb.append("\nThe recipe declared no path-output "
-                            + "criteria — the result lives in the child "
-                            + "process's chat history, not as a file.");
+                    boolean isScriptOutput =
+                            state.getOutputSchemaType()
+                                    == de.mhus.vance.api.slartibartfast.OutputSchemaType.SCRIPT_JS;
+                    if (isScriptOutput) {
+                        // Surface the script's actual return value so
+                        // the parent agent can answer the user
+                        // directly without polling process_history.
+                        if (state.getChildExecutionSummary() != null
+                                && !state.getChildExecutionSummary().isBlank()) {
+                            sb.append("\n\n")
+                                    .append(state.getChildExecutionSummary());
+                        } else {
+                            sb.append("\nThe script ran to completion; "
+                                    + "see the child Hactar process's "
+                                    + "executionResult for the return value.");
+                        }
+                    } else {
+                        sb.append("\nThe recipe declared no path-output "
+                                + "criteria — the result lives in the child "
+                                + "process's chat history, not as a file.");
+                    }
                 }
                 // Skipped runs typically want a follow-up: spawn the
                 // recipe with a concrete topic. Tell the parent so
@@ -561,18 +607,30 @@ public class SlartibartfastEngine implements ThinkEngine {
             if (state.getStatus() == ArchitectStatus.DONE) {
                 log.info("Slartibartfast id='{}' DONE — recipe at '{}'",
                         process.getId(), state.getPersistedRecipePath());
+                persistAssistantNote(process,
+                        "Slartibartfast finished — recipe at `"
+                                + state.getPersistedRecipePath() + "`.");
                 thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
                 return;
             }
             if (state.getStatus() == ArchitectStatus.FAILED) {
                 log.warn("Slartibartfast id='{}' FAILED: {}",
                         process.getId(), state.getFailureReason());
+                persistAssistantNote(process,
+                        "Slartibartfast FAILED — "
+                                + (state.getFailureReason() == null
+                                        ? "no reason recorded"
+                                        : state.getFailureReason()));
                 thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
                 return;
             }
             if (state.getStatus() == ArchitectStatus.ESCALATED) {
                 log.info("Slartibartfast id='{}' ESCALATED — inbox item '{}'",
                         process.getId(), state.getEscalationInboxItemId());
+                persistAssistantNote(process,
+                        "Slartibartfast escalated — inbox item `"
+                                + state.getEscalationInboxItemId()
+                                + "` awaiting user decision.");
                 thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
                 return;
             }
@@ -582,8 +640,46 @@ public class SlartibartfastEngine implements ThinkEngine {
         } catch (RuntimeException e) {
             log.warn("Slartibartfast runTurn failed id='{}': {}",
                     process.getId(), e.toString(), e);
+            // Persist the crash to the engine's own chat history so
+            // process_history_text(name=slart-...) carries a real
+            // explanation and the engine-output-translator has facts
+            // to render instead of confabulating a plausible-looking
+            // story from the user goal alone.
+            persistAssistantNote(process,
+                    "Slartibartfast aborted: " + e.getClass().getSimpleName()
+                            + " — " + (e.getMessage() == null
+                                    ? "(no message)" : e.getMessage()));
             thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
             throw e;
+        }
+    }
+
+    /**
+     * Append a single ASSISTANT chat-message to Slart's own history.
+     * Used for lifecycle bookkeeping (phase progress, FAILED reason,
+     * ESCALATED, RuntimeException). Best-effort: failures are logged
+     * and swallowed — chat-history persistence is a debugging /
+     * orchestrator-context surface, never part of the engine's
+     * correctness contract.
+     */
+    private void persistAssistantNote(
+            ThinkProcessDocument process, String body) {
+        if (chatMessageService == null || body == null || body.isBlank()) {
+            return;
+        }
+        try {
+            chatMessageService.append(
+                    de.mhus.vance.shared.chat.ChatMessageDocument.builder()
+                            .tenantId(process.getTenantId())
+                            .sessionId(process.getSessionId())
+                            .thinkProcessId(process.getId())
+                            .role(de.mhus.vance.api.chat.ChatRole.ASSISTANT)
+                            .content(body)
+                            .build());
+        } catch (RuntimeException e) {
+            log.debug(
+                    "Slartibartfast id='{}' chat-history append failed: {}",
+                    process.getId(), e.toString());
         }
     }
 
@@ -826,6 +922,7 @@ public class SlartibartfastEngine implements ThinkEngine {
         }
         state.setChildExecutionOutcome(type.name());
         state.setChildExecutionSummary(pe.humanSummary());
+        persistChildExecutionToChatHistory(process, type, pe.humanSummary());
         if (type == ProcessEventType.DONE) {
             log.info("Slartibartfast id='{}' child '{}' DONE — flipping "
                             + "to EXECUTION_VALIDATING",
@@ -838,6 +935,63 @@ public class SlartibartfastEngine implements ThinkEngine {
                     + (pe.humanSummary() == null
                             ? "" : ": " + pe.humanSummary()));
             state.setStatus(ArchitectStatus.FAILED);
+        }
+    }
+
+    /**
+     * Append an ASSISTANT message to Slart's own chat history when
+     * the execution child terminates. Three goals:
+     *
+     * <ol>
+     *   <li><b>Make {@code process_history_text(name=slart-...)}
+     *       useful.</b> Parent engines (Arthur, Eddie) and the LLM
+     *       reach for that tool to learn what a worker produced;
+     *       Slart's history was empty until now so the tool
+     *       returned {@code messageCount=0} and the LLM either
+     *       re-spawned the worker or guessed.</li>
+     *   <li><b>Forensics.</b> A persistent, queryable record of
+     *       what the script returned (or how it failed) survives
+     *       beyond the in-memory state object.</li>
+     *   <li><b>Cheap.</b> One row, one in-process call — no extra
+     *       LLM round-trip, no tool dispatch.</li>
+     * </ol>
+     *
+     * <p>The message is best-effort: chat-history is a debugging
+     * surface, not part of the engine's correctness contract.
+     * Failures (Mongo down, oversize payload) are logged and
+     * swallowed so the lifecycle keeps moving.
+     */
+    private void persistChildExecutionToChatHistory(
+            ThinkProcessDocument process,
+            ProcessEventType type,
+            @org.jspecify.annotations.Nullable String childSummary) {
+        if (chatMessageService == null) {
+            return; // unit-test wiring may skip the service
+        }
+        try {
+            StringBuilder body = new StringBuilder();
+            switch (type) {
+                case DONE -> body.append("Script execution completed.");
+                case FAILED -> body.append("Script execution failed.");
+                case STOPPED -> body.append("Script execution was stopped.");
+                default -> body.append("Script execution event: ").append(type);
+            }
+            if (childSummary != null && !childSummary.isBlank()) {
+                body.append("\n\n").append(childSummary);
+            }
+            chatMessageService.append(
+                    de.mhus.vance.shared.chat.ChatMessageDocument.builder()
+                            .tenantId(process.getTenantId())
+                            .sessionId(process.getSessionId())
+                            .thinkProcessId(process.getId())
+                            .role(de.mhus.vance.api.chat.ChatRole.ASSISTANT)
+                            .content(body.toString())
+                            .build());
+        } catch (RuntimeException e) {
+            log.warn(
+                    "Slartibartfast id='{}' failed to persist child execution "
+                            + "outcome to chat history: {}",
+                    process.getId(), e.toString());
         }
     }
 
@@ -1108,6 +1262,15 @@ public class SlartibartfastEngine implements ThinkEngine {
             log.debug("Slartibartfast id='{}' progress emit failed: {}",
                     process.getId(), e.toString());
         }
+        // Mirror phase progress into the engine's own chat history.
+        // Without this, process_history_text(name=slart-...) stays
+        // empty until a terminal event lands, which means a Slart that
+        // crashes mid-lifecycle has no audit trail at all and parent
+        // orchestrators (Arthur) plus the engine-output-translator
+        // have to confabulate from the userGoal. One short line per
+        // phase iteration is enough — the full evidence trail lives
+        // in ArchitectState.iterations.
+        persistAssistantNote(process, text);
     }
 
     private void advanceOnePhase(
@@ -1301,15 +1464,29 @@ public class SlartibartfastEngine implements ThinkEngine {
                 // drainPending and handleChildEvent flips status.
             }
             case EXECUTION_VALIDATING -> {
-                executionValidatingPhase.execute(state, process, ctx);
-                if (state.getFailureReason() != null) {
-                    state.setStatus(ArchitectStatus.FAILED);
-                } else if (state.getPendingRecovery() != null) {
-                    // Stay in EXECUTION_VALIDATING — next runTurn
-                    // picks up the recovery and rolls back to
-                    // PROPOSING.
-                } else {
+                // Schema-aware skip: non-recipe outputs (e.g. SCRIPT_JS)
+                // have no .md/.json/.yaml file artefacts the structural
+                // check would find. The child's own EXECUTING outcome
+                // (Hactar DONE/FAILED) is the success signal we use.
+                SchemaArchitect arch = architects().get(state.getOutputSchemaType());
+                boolean skip = arch != null && !arch.wantsExecutionValidation();
+                if (skip) {
+                    log.debug("Slartibartfast id='{}' EXECUTION_VALIDATING "
+                                    + "skipped — schema {} declines via "
+                                    + "wantsExecutionValidation()",
+                            process.getId(), state.getOutputSchemaType());
                     state.setStatus(ArchitectStatus.DONE);
+                } else {
+                    executionValidatingPhase.execute(state, process, ctx);
+                    if (state.getFailureReason() != null) {
+                        state.setStatus(ArchitectStatus.FAILED);
+                    } else if (state.getPendingRecovery() != null) {
+                        // Stay in EXECUTION_VALIDATING — next runTurn
+                        // picks up the recovery and rolls back to
+                        // PROPOSING.
+                    } else {
+                        state.setStatus(ArchitectStatus.DONE);
+                    }
                 }
             }
             case ESCALATING -> {

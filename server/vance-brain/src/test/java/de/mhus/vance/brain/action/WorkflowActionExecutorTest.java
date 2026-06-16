@@ -90,7 +90,7 @@ class WorkflowActionExecutorTest {
         newExecutor(svc).execute(new ActionInvocation<>(
                 new TriggerAction.Workflow("audit", null, null),
                 customCtx,
-                TriggerKind.MANUAL));
+                TriggerKind.SCHEDULER));
 
         verify(svc).start("t1", "p1", "audit", null, "ci-bot");
     }

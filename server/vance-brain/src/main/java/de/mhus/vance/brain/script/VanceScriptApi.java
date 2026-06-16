@@ -74,6 +74,21 @@ public final class VanceScriptApi {
     public final ScriptProcessApi process;
 
     /**
+     * Caller-supplied parameters exposed as {@code vance.params.<key>}.
+     * Mirrors the legacy top-level {@code args.<key>} binding so
+     * scripts can read inputs through the {@code vance.*}-namespaced
+     * surface (which Slart-generated SCRIPT_JS scripts default to,
+     * by analogy with {@code vance.context.*}).
+     *
+     * <p>Always non-null — empty map when the caller supplied no
+     * params. Accessing {@code vance.params.missing} from JS
+     * returns {@code undefined} rather than throwing. Wrapped
+     * immutable in the constructor.
+     */
+    @HostAccess.Export
+    public final Map<String, Object> params;
+
+    /**
      * Document-access surface exposed as {@code vance.documents}. Resolves
      * scope from the bound {@link ContextToolsApi}; scripts cannot reach
      * outside their tenant/project. {@code null} when no
@@ -153,6 +168,39 @@ public final class VanceScriptApi {
         this.context = new ScriptContextView(toolsApi.scope(), recipeName);
         this.log = new ScriptLog(toolsApi.scope());
         this.process = new ScriptProcessApi(this, progressEmitter, notificationEmitter);
+        // params start empty — call sites that wire script-level params
+        // (Hactar's ExecutingPhase, ScriptCortexExecutionService) replace
+        // this with the actual map via the params-aware constructor below.
+        this.params = Map.of();
+        this.documents = documentService == null
+                ? null
+                : new ScriptDocumentApi(documentService, toolsApi.scope());
+    }
+
+    /**
+     * 7-arg constructor adding {@code paramsMap} — the per-call
+     * caller-supplied input bindings exposed as {@code vance.params.*}.
+     * Used by callers that bind script-level parameters (Hactar
+     * v2's ExecutingPhase, the Cortex run-pipeline, Skill scripts).
+     * Existing 6-arg callers get an empty {@code vance.params} via
+     * the 6-arg constructor above.
+     */
+    public VanceScriptApi(ContextToolsApi toolsApi,
+                          @Nullable String recipeName,
+                          Set<String> deniedToolNames,
+                          @Nullable DocumentService documentService,
+                          @Nullable BiConsumer<String,
+                                  @Nullable Map<String, Object>> progressEmitter,
+                          @Nullable BiConsumer<String,
+                                  @Nullable NotificationSeverity> notificationEmitter,
+                          @Nullable Map<String, Object> paramsMap) {
+        this.tools = new ScriptToolsApi(toolsApi, deniedToolNames);
+        this.context = new ScriptContextView(toolsApi.scope(), recipeName);
+        this.log = new ScriptLog(toolsApi.scope());
+        this.process = new ScriptProcessApi(this, progressEmitter, notificationEmitter);
+        this.params = paramsMap == null
+                ? Map.of()
+                : java.util.Collections.unmodifiableMap(new LinkedHashMap<>(paramsMap));
         this.documents = documentService == null
                 ? null
                 : new ScriptDocumentApi(documentService, toolsApi.scope());
@@ -241,6 +289,14 @@ public final class VanceScriptApi {
             tee("info", message, fields);
         }
 
+        /** Convenience overload — {@code vance.log.info("just a message")}.
+         *  GraalJS does not auto-resolve missing optional args, so each
+         *  arity must be its own export. */
+        @HostAccess.Export
+        public void info(String message) {
+            info(message, null);
+        }
+
         @HostAccess.Export
         public void warn(String message, @Nullable Map<String, Object> fields) {
             LOG.warn("[script] tenant={} project={} process={} {} {}",
@@ -250,11 +306,21 @@ public final class VanceScriptApi {
         }
 
         @HostAccess.Export
+        public void warn(String message) {
+            warn(message, null);
+        }
+
+        @HostAccess.Export
         public void error(String message, @Nullable Map<String, Object> fields) {
             LOG.error("[script] tenant={} project={} process={} {} {}",
                     scope.tenantId(), scope.projectId(), scope.processId(),
                     message, fields == null ? Map.of() : fields);
             tee("error", message, fields);
+        }
+
+        @HostAccess.Export
+        public void error(String message) {
+            error(message, null);
         }
 
         private static void tee(String stream, String message,

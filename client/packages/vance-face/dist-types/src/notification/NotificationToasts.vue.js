@@ -1,11 +1,11 @@
 import { useNotificationStore } from './notificationStore';
-const store = useNotificationStore();
-function colorClass(severity) {
+const { toasts, dismiss } = useNotificationStore();
+function severityClass(severity) {
     switch (severity) {
-        case 'WARN': return 'bg-warning/15 text-warning border-warning/40';
-        case 'ERROR': return 'bg-error/15 text-error border-error/40';
+        case 'WARN': return 'notify-toast--warn';
+        case 'ERROR': return 'notify-toast--error';
         case 'INFO':
-        default: return 'bg-info/15 text-info border-info/40';
+        default: return 'notify-toast--info';
     }
 }
 function badgeClass(severity) {
@@ -40,14 +40,14 @@ const __VLS_2 = __VLS_1({
     name: "notify-toast",
 }, ...__VLS_functionalComponentArgsRest(__VLS_1));
 __VLS_3.slots.default;
-for (const [t] of __VLS_getVForSourceType((__VLS_ctx.store.toasts))) {
+for (const [t] of __VLS_getVForSourceType((__VLS_ctx.toasts))) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ onClick: (...[$event]) => {
-                __VLS_ctx.store.dismiss(t.id);
+                __VLS_ctx.dismiss(t.id);
             } },
         key: (t.id),
         ...{ class: "notify-toast" },
-        ...{ class: (__VLS_ctx.colorClass(t.notification.severity)) },
+        ...{ class: (__VLS_ctx.severityClass(t.notification.severity)) },
     });
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "flex items-center gap-2 text-xs font-semibold uppercase tracking-wide" },
@@ -64,7 +64,7 @@ for (const [t] of __VLS_getVForSourceType((__VLS_ctx.store.toasts))) {
         (__VLS_ctx.sourceLine(t.notification));
     }
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "mt-1 text-sm break-words" },
+        ...{ class: "mt-1 text-sm break-words text-base-content" },
     });
     (t.notification.text);
 }
@@ -87,12 +87,14 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['mt-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
 /** @type {__VLS_StyleScopedClasses['break-words']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-base-content']} */ ;
 var __VLS_dollars;
 const __VLS_self = (await import('vue')).defineComponent({
     setup() {
         return {
-            store: store,
-            colorClass: colorClass,
+            toasts: toasts,
+            dismiss: dismiss,
+            severityClass: severityClass,
             badgeClass: badgeClass,
             sourceLine: sourceLine,
         };

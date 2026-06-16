@@ -1,0 +1,24 @@
+description: |
+  Slart-Script-Author — generates a JavaScript orchestrator script
+  from a free-text goal and **stops at PERSISTING**. No self-execute
+  via Hactar — the caller (Cortex's Generate/Update buttons, future
+  hot-fix scaffolding flows) decides whether and when to run the
+  generated script.
+
+  Companion to `slart-and-run`:
+
+  | Recipe                | planOnly | Use case                                |
+  |-----------------------|----------|-----------------------------------------|
+  | `slart-and-run`       | false    | Free-text goal → generate + execute     |
+  | `slart-script-author` | true     | Cortex Generate/Update: code only       |
+
+  Both share `engine: slartibartfast` + `outputSchemaType: SCRIPT_JS`.
+  The difference is the EXECUTING phase: planOnly=true stops cleanly
+  at DONE after PERSISTING; planOnly=false spawns Hactar.
+engine: slartibartfast
+params:
+  outputSchemaType: SCRIPT_JS
+  planOnly: true
+tags:
+  - script-author
+  - internal-cortex

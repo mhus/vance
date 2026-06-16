@@ -45,7 +45,7 @@ import tools.jackson.databind.ObjectMapper;
  * The Magrathea outcome name is derived from
  * {@link ActionOutcome} by lower-casing the enum constant.
  *
- * <p>Workflow-scoped ⇒ {@link TriggerKind#WORKFLOW_TASK}: the
+ * <p>Workflow-scoped ⇒ {@link TriggerKind#WORKFLOW}: the
  * {@code VanceScriptApi} runs PROCESS_SCOPED with the full spawn-tool
  * surface. {@code planning/trigger-actions.md} §8.
  */
@@ -90,7 +90,7 @@ public class ScriptTaskExecutor implements MagratheaTypeExecutor {
                 /*parentSessionId*/ null,
                 /*parentProcessId*/ null);
         ActionResult result = scriptActionExecutor.execute(new ActionInvocation<>(
-                action, triggerContext, TriggerKind.WORKFLOW_TASK));
+                action, triggerContext, TriggerKind.WORKFLOW));
         return Optional.of(mapOutcome(state, result));
     }
 

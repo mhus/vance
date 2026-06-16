@@ -103,6 +103,20 @@
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j-ollama</artifactId>
         </dependency>
+        <!--
+            Embedded in-process embedding model (E5-small-v2, 384-dim,
+            ONNX runtime baked into the JAR). Backs the `embedded`
+            provider — used when a tenant wants RAG without an external
+            API key. Bundle ships its own model weights, so the JAR
+            grows by ~120 MB. The langchain4j-embeddings family lives
+            on a separate beta version line from langchain4j-core, so
+            we pin it explicitly instead of riding the BOM.
+        -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-embeddings-e5-small-v2</artifactId>
+            <version>1.0.0-beta5</version>
+        </dependency>
         <dependency>
             <groupId>org.bsc.langgraph4j</groupId>
             <artifactId>langgraph4j-core</artifactId>

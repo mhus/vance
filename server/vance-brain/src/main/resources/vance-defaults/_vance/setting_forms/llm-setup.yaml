@@ -195,13 +195,15 @@ fields:
       de: "Embedding-Provider"
       en: "Embedding provider"
     help:
-      de: "Bestimmt, welches Backend RAG-Chunks vektorisiert. Unabhängig vom Chat-Provider oben."
-      en: "Backend that vectorises RAG chunks. Independent from the chat provider above."
+      de: "Bestimmt, welches Backend RAG-Chunks vektorisiert. Unabhängig vom Chat-Provider oben. `none` deaktiviert RAG komplett für diesen Tenant; `embedded` nutzt das in der JVM mitgelieferte E5-small-v2 Modell — kein API-Key, kein externer Service."
+      en: "Backend that vectorises RAG chunks. Independent from the chat provider above. `none` disables RAG entirely for this tenant; `embedded` uses the in-process E5-small-v2 model shipped with the JAR — no API key, no external service."
     bindsTo:
       key: "ai.embedding.provider"
     choices:
-      - { value: "gemini", label: { de: "Google Gemini", en: "Google Gemini" } }
-      - { value: "openai", label: { de: "OpenAI (oder OpenAI-kompatibel)", en: "OpenAI (or OpenAI-compatible)" } }
+      - { value: "none",     label: { de: "Aus (kein RAG)", en: "Off (no RAG)" } }
+      - { value: "embedded", label: { de: "In-Process (E5-small-v2)", en: "In-process (E5-small-v2)" } }
+      - { value: "gemini",   label: { de: "Google Gemini", en: "Google Gemini" } }
+      - { value: "openai",   label: { de: "OpenAI (oder OpenAI-kompatibel)", en: "OpenAI (or OpenAI-compatible)" } }
 
   - name: embeddingModel
     type: string
@@ -209,8 +211,9 @@ fields:
       de: "Embedding-Modell"
       en: "Embedding model"
     help:
-      de: "Leer = `gemini-embedding-001`. OpenAI-Beispiele: `text-embedding-3-small`, `text-embedding-3-large`. Für Ollama via OpenAI-Compat: z.B. `nomic-embed-text`."
-      en: "Empty = `gemini-embedding-001`. OpenAI examples: `text-embedding-3-small`, `text-embedding-3-large`. For Ollama via OpenAI-compat: e.g. `nomic-embed-text`."
+      de: "Leer = Provider-Default. Gemini: `gemini-embedding-001`. OpenAI: `text-embedding-3-small`/`-3-large`. Ollama via OpenAI-Compat: z.B. `nomic-embed-text`. Für `embedded` wird das Feld ignoriert."
+      en: "Empty = provider default. Gemini: `gemini-embedding-001`. OpenAI: `text-embedding-3-small`/`-3-large`. Ollama via OpenAI-compat: e.g. `nomic-embed-text`. Ignored for `embedded`."
+    showIf: "embeddingProvider != 'none' and embeddingProvider != 'embedded'"
     bindsTo:
       key: "ai.embedding.model"
 
@@ -220,8 +223,9 @@ fields:
       de: "Embedding API Key"
       en: "Embedding API Key"
     help:
-      de: "Separat vom Chat-Provider-Key. Bei keyless-Endpoints (lokales Ollama / TEI) trotzdem irgendeinen Platzhalter setzen — das Feld darf nicht leer sein."
-      en: "Separate from the chat provider key. Even for keyless endpoints (local Ollama / TEI) set some placeholder — the field must not be empty."
+      de: "Separat vom Chat-Provider-Key. Bei keyless OpenAI-kompat-Endpoints (lokales Ollama / TEI) trotzdem irgendeinen Platzhalter setzen — das Feld darf nicht leer sein."
+      en: "Separate from the chat provider key. Even for keyless OpenAI-compat endpoints (local Ollama / TEI) set some placeholder — the field must not be empty."
+    showIf: "embeddingProvider == 'gemini' or embeddingProvider == 'openai'"
     bindsTo:
       key: "ai.embedding.apiKey"
 
@@ -233,6 +237,7 @@ fields:
     help:
       de: "Nur für Provider `openai` relevant. Leer = api.openai.com. Beispiele: http://localhost:11434/v1 (Ollama), http://tei.vance.svc:8080 (TEI im Cluster)."
       en: "Only relevant for provider `openai`. Empty = api.openai.com. Examples: http://localhost:11434/v1 (Ollama), http://tei.vance.svc:8080 (TEI in-cluster)."
+    showIf: "embeddingProvider == 'openai'"
     bindsTo:
       key: "ai.embedding.baseUrl"
 

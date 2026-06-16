@@ -36,11 +36,26 @@ import org.springframework.stereotype.Service;
  * namespace ({@code ai.provider.*}). A tenant configures embeddings
  * with up to four settings, all cascading tenant→project:
  * <ul>
- *   <li>{@code ai.embedding.provider} — provider id (default
- *       {@code gemini}; available: {@code gemini}, {@code openai}).</li>
+ *   <li>{@code ai.embedding.provider} — provider id. Available values:
+ *       <ul>
+ *         <li>{@code none} (default) — RAG is disabled for the tenant.
+ *             {@link #isEmbeddingEnabled} returns {@code false},
+ *             {@link #createRag} refuses, the indexer scheduler skips
+ *             ticks. No external calls, no spam logs.</li>
+ *         <li>{@code embedded} — in-process E5-small-v2, keyless,
+ *             384-dim. Ships with vance-brain, no setup.</li>
+ *         <li>{@code gemini} — Google AI Studio API; needs
+ *             {@code ai.embedding.apiKey}.</li>
+ *         <li>{@code openai} — OpenAI proper or any OpenAI-compatible
+ *             endpoint (Ollama, TEI, vLLM, …) via
+ *             {@code ai.embedding.baseUrl}. Always needs a non-blank
+ *             {@code ai.embedding.apiKey} (placeholder string is fine
+ *             for keyless endpoints).</li>
+ *       </ul></li>
  *   <li>{@code ai.embedding.model} — model name (default
  *       {@code gemini-embedding-001}).</li>
- *   <li>{@code ai.embedding.apiKey} — credential (PASSWORD-typed).</li>
+ *   <li>{@code ai.embedding.apiKey} — credential (PASSWORD-typed).
+ *       Skipped for keyless providers ({@code embedded}).</li>
  *   <li>{@code ai.embedding.baseUrl} — optional, for OpenAI-compatible
  *       endpoints (Ollama, TEI, custom gateway).</li>
  * </ul>
@@ -57,7 +72,13 @@ public class RagService {
     private static final String SETTING_EMBED_API_KEY = "ai.embedding.apiKey";
     private static final String SETTING_EMBED_BASE_URL = "ai.embedding.baseUrl";
 
-    private static final String DEFAULT_EMBED_PROVIDER = "gemini";
+    /**
+     * Sentinel provider value that turns RAG off for a tenant. New
+     * tenants land on this default — RAG is opt-in, not opt-out.
+     */
+    public static final String PROVIDER_NONE = "none";
+
+    private static final String DEFAULT_EMBED_PROVIDER = PROVIDER_NONE;
     // text-embedding-004 was deprecated on Google's v1beta endpoint
     // ("models/text-embedding-004 is not found … for embedContent");
     // gemini-embedding-001 is the GA successor. Tenants that want a
@@ -84,13 +105,29 @@ public class RagService {
             @Nullable String description,
             int chunkSize,
             int chunkOverlap) {
-        EmbeddingConfig config = resolveEmbeddingConfig(tenantId);
+        EmbeddingConfig config = resolveEmbeddingConfig(tenantId)
+                .orElseThrow(() -> new IllegalStateException(
+                        "Cannot create RAG: embedding is disabled for tenant '"
+                                + tenantId + "' (setting '" + SETTING_EMBED_PROVIDER
+                                + "' = '" + PROVIDER_NONE + "'). Pick 'embedded', "
+                                + "'gemini' or 'openai' first."));
         EmbeddingModel model = embeddingModelService.createEmbeddingModel(config);
         int dim = probeDimension(model);
         return catalog.create(
                 tenantId, projectId, name, title, description,
                 config.provider(), config.modelName(), dim,
                 chunkSize, chunkOverlap);
+    }
+
+    /**
+     * Whether {@code tenantId} has embedding enabled — i.e. its
+     * {@code ai.embedding.provider} setting is something other than
+     * {@code none}. Callers (lifecycle, indexer-scheduler) should check
+     * this before invoking embedding-touching methods to avoid pointless
+     * Mongo / log work.
+     */
+    public boolean isEmbeddingEnabled(String tenantId) {
+        return !PROVIDER_NONE.equalsIgnoreCase(resolveProviderName(tenantId));
     }
 
     public Optional<RagDocument> findByName(String tenantId, String projectId, String name) {
@@ -184,15 +221,32 @@ public class RagService {
     // ──────────────────── Helpers ────────────────────
 
     private EmbeddingModel modelFor(RagDocument rag) {
+        // Tenant-level kill-switch wins over the RAG's stored provider.
+        // A tenant that disables embeddings (provider=none) blocks all
+        // embed/query activity, even against RAGs previously created
+        // when the tenant had a working provider — leftover RAGs do
+        // not silently keep calling external APIs.
+        if (!isEmbeddingEnabled(rag.getTenantId())) {
+            throw new IllegalStateException(
+                    "Embedding is disabled for tenant '" + rag.getTenantId()
+                            + "' (setting '" + SETTING_EMBED_PROVIDER
+                            + "' = '" + PROVIDER_NONE + "') — refusing embed/query "
+                            + "against RAG '" + rag.getName() + "'.");
+        }
         // RAG-level operation has no process scope — read from the
         // _vance/project layer of the project cascade.
-        String apiKey = settingService.getDecryptedPasswordCascade(
-                rag.getTenantId(), /*projectId*/ null, /*processId*/ null, SETTING_EMBED_API_KEY);
-        if (apiKey == null || apiKey.isBlank()) {
-            throw new IllegalStateException(
-                    "No API key for embedding provider '" + rag.getEmbeddingProvider()
-                            + "' (tenant='" + rag.getTenantId()
-                            + "', setting='" + SETTING_EMBED_API_KEY + "')");
+        String apiKey;
+        if (embeddingModelService.requiresApiKey(rag.getEmbeddingProvider())) {
+            apiKey = settingService.getDecryptedPasswordCascade(
+                    rag.getTenantId(), /*projectId*/ null, /*processId*/ null, SETTING_EMBED_API_KEY);
+            if (apiKey == null || apiKey.isBlank()) {
+                throw new IllegalStateException(
+                        "No API key for embedding provider '" + rag.getEmbeddingProvider()
+                                + "' (tenant='" + rag.getTenantId()
+                                + "', setting='" + SETTING_EMBED_API_KEY + "')");
+            }
+        } else {
+            apiKey = "";
         }
         String baseUrl = settingService.getStringValueCascade(
                 rag.getTenantId(), /*projectId*/ null, /*processId*/ null, SETTING_EMBED_BASE_URL);
@@ -201,25 +255,43 @@ public class RagService {
                 StringUtils.isBlank(baseUrl) ? null : baseUrl));
     }
 
-    private EmbeddingConfig resolveEmbeddingConfig(String tenantId) {
-        String provider = settingService.getStringValueCascade(
-                tenantId, /*projectId*/ null, /*processId*/ null, SETTING_EMBED_PROVIDER);
-        if (provider == null || provider.isBlank()) provider = DEFAULT_EMBED_PROVIDER;
+    /**
+     * Resolves the tenant-level embedding config. Returns
+     * {@link Optional#empty()} when the tenant has explicitly disabled
+     * RAG (provider={@code none}); throws on any other misconfiguration
+     * (missing API key for a keyed provider).
+     */
+    private Optional<EmbeddingConfig> resolveEmbeddingConfig(String tenantId) {
+        String provider = resolveProviderName(tenantId);
+        if (PROVIDER_NONE.equalsIgnoreCase(provider)) {
+            return Optional.empty();
+        }
         String model = settingService.getStringValueCascade(
                 tenantId, /*projectId*/ null, /*processId*/ null, SETTING_EMBED_MODEL);
         if (model == null || model.isBlank()) model = DEFAULT_EMBED_MODEL;
-        String apiKey = settingService.getDecryptedPasswordCascade(
-                tenantId, /*projectId*/ null, /*processId*/ null, SETTING_EMBED_API_KEY);
-        if (apiKey == null || apiKey.isBlank()) {
-            throw new IllegalStateException(
-                    "No API key for embedding provider '" + provider
-                            + "' (tenant='" + tenantId
-                            + "', setting='" + SETTING_EMBED_API_KEY + "')");
+        String apiKey;
+        if (embeddingModelService.requiresApiKey(provider)) {
+            apiKey = settingService.getDecryptedPasswordCascade(
+                    tenantId, /*projectId*/ null, /*processId*/ null, SETTING_EMBED_API_KEY);
+            if (apiKey == null || apiKey.isBlank()) {
+                throw new IllegalStateException(
+                        "No API key for embedding provider '" + provider
+                                + "' (tenant='" + tenantId
+                                + "', setting='" + SETTING_EMBED_API_KEY + "')");
+            }
+        } else {
+            apiKey = "";
         }
         String baseUrl = settingService.getStringValueCascade(
                 tenantId, /*projectId*/ null, /*processId*/ null, SETTING_EMBED_BASE_URL);
-        return new EmbeddingConfig(provider, model, apiKey,
-                StringUtils.isBlank(baseUrl) ? null : baseUrl);
+        return Optional.of(new EmbeddingConfig(provider, model, apiKey,
+                StringUtils.isBlank(baseUrl) ? null : baseUrl));
+    }
+
+    private String resolveProviderName(String tenantId) {
+        String provider = settingService.getStringValueCascade(
+                tenantId, /*projectId*/ null, /*processId*/ null, SETTING_EMBED_PROVIDER);
+        return (provider == null || provider.isBlank()) ? DEFAULT_EMBED_PROVIDER : provider;
     }
 
     private static int probeDimension(EmbeddingModel model) {

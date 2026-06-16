@@ -40,6 +40,7 @@ public class ProjectRagIndexScheduler {
     private final LocationService locationService;
     private final ClusterService clusterService;
     private final ProjectRagService projectRagService;
+    private final RagService ragService;
     private final DocumentService documentService;
     private final ProjectRagIndexer indexer;
     private final MeterRegistry meterRegistry;
@@ -63,6 +64,13 @@ public class ProjectRagIndexScheduler {
 
         Duration claimTtl = Duration.ofMinutes(claimTtlMinutes);
         for (ProjectDocument project : projects) {
+            // Tenant-level kill-switch wins over the per-project toggle —
+            // a tenant on provider=none has no embedding model to call,
+            // so we skip without even touching the document claim path.
+            if (!ragService.isEmbeddingEnabled(project.getTenantId())) {
+                runCounter("tenant_disabled").increment();
+                continue;
+            }
             if (!projectRagService.isEnabled(project.getTenantId(), project.getName())) {
                 runCounter("skipped").increment();
                 continue;

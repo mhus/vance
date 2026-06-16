@@ -105,6 +105,22 @@ debate collapses to a slow council.
 - A vague "synthesise the outputs" is not enough — the
   synthesizer needs a concrete task.
 
+### Synthesis-prompt for `debate`
+
+For `debate`, the synthesizer sees ONLY the final round (not the
+full debate transcript) plus a `consensusReached` flag and a
+brief reason. Design the synthesis-prompt with that in mind:
+
+- Don't ask the synthesizer to "summarise the debate" — it cannot
+  see earlier rounds. Ask it to consolidate the *final positions*.
+- If the recipe wants the synthesizer to acknowledge unresolved
+  dissent ("after N rounds, A and B still differ on X"), instruct
+  it to lean on the `consensusReached` field — the engine wires
+  this into the synthesis context automatically.
+- A `debate` synthesis-prompt that ignores the round structure is
+  not wrong, but it wastes information; reference the convergence
+  outcome if it matters for the deliverable.
+
 ## Synthesizer has NO TOOLS — engine persists deterministically
 
 The Zaphod synthesizer is a direct LLM call with **structured
@@ -139,11 +155,32 @@ recipe does NOT carry an `outputPathTemplate` field.
 - **Reusable advisory panels**: name a council ("rat-der-macher"),
   consult it with different questions over its lifetime.
 
-## When a Council does NOT fit
+## When a Debate fits (and Council doesn't)
+
+- **Adversarial questions where positions can move**: "is this
+  security control sufficient?", "should we ship this risky
+  change now?". A council collects N opinions; a debate makes the
+  opinions confront each other and converge — or makes the
+  remaining dissent visible.
+- **Decisions where the user wants to see the disagreement
+  resolve, not just be tallied**: the debate's between-round
+  consensus check is the value — the user trusts the final
+  synthesis more because heads had a chance to update.
+- **Heads with explicit antagonistic roles**: pro/contra, attacker/
+  defender, generator/critic-style pairings.
+
+If the heads don't have positions that could plausibly shift in
+response to each other, you want `council`, not `debate` — the
+extra rounds add cost without value.
+
+## When a Zaphod recipe does NOT fit
 
 - **Pure information retrieval**: "summarise this paper" — one
   head suffices; the others duplicate the work.
 - **Sequential workflows**: "outline → chapters → consolidate"
-  is a pipeline (use Vogon strategy), not a council.
+  is a pipeline (use Vogon strategy), not a council/debate.
 - **Open exploration without a decision**: synthesis needs a
   resolvable question; without one the synthesis turn is hollow.
+- **`debate` with non-positional personae**: if your heads are
+  "expert in X" / "expert in Y", they don't argue with each
+  other — they each report from their lane. Use `council`.

@@ -47,11 +47,20 @@ public class ProjectRagService {
      * project or creates a fresh one with the tenant's currently
      * configured embedding settings. Called from
      * {@code ProjectLifecycleService.bring()}.
+     *
+     * <p>Returns {@link Optional#empty()} when the tenant has embedding
+     * disabled ({@code ai.embedding.provider=none}) — that's the
+     * normal "RAG is off for this tenant" path, not an error.
      */
-    public RagDocument ensureDefaultRag(String tenantId, String projectId) {
+    public Optional<RagDocument> ensureDefaultRag(String tenantId, String projectId) {
         Optional<RagDocument> existing = catalog.findByName(
                 tenantId, projectId, RagCatalogService.DEFAULT_RAG_NAME);
-        if (existing.isPresent()) return existing.get();
+        if (existing.isPresent()) return existing;
+        if (!ragService.isEmbeddingEnabled(tenantId)) {
+            log.debug("Project-RAG ensureDefaultRag skipped tenant='{}' project='{}' — embedding disabled",
+                    tenantId, projectId);
+            return Optional.empty();
+        }
         RagDocument fresh = ragService.createRag(
                 tenantId, projectId,
                 RagCatalogService.DEFAULT_RAG_NAME,
@@ -60,7 +69,7 @@ public class ProjectRagService {
                 DEFAULT_CHUNK_SIZE, DEFAULT_CHUNK_OVERLAP);
         log.info("Project-RAG ensured tenant='{}' project='{}' id='{}'",
                 tenantId, projectId, fresh.getId());
-        return fresh;
+        return Optional.of(fresh);
     }
 
     /**

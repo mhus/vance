@@ -173,23 +173,27 @@ function openFook(): void {
       <VanceLogo size="sm" class="text-primary" />
       <span class="font-bold text-lg font-mono">vance</span>
     </a>
-    <!-- Server identity (title + backlink) from the pod-written
-         /config.json. Only rendered when set so vanilla deployments
-         keep the existing minimal "[V] vance" wordmark. -->
-    <div
-      v-if="serverTitle || serverBacklink"
-      class="flex-none flex flex-col leading-tight"
-    >
-      <span v-if="serverTitle" class="text-sm font-medium opacity-70">
-        {{ serverTitle }}
-      </span>
-      <a
-        v-if="serverBacklink"
-        :href="serverBacklink"
-        class="link link-hover text-xs opacity-50"
-        @click.stop
-      >{{ serverBacklink }}</a>
-    </div>
+    <!-- Server identity from the pod-written /config.json. The title
+         renders as a clickable link to the backlink URL when both are
+         set; otherwise it falls back to plain text (title-only) or a
+         link with the URL as its label (backlink-only). Vanilla
+         deployments with neither set keep the minimal wordmark. -->
+    <a
+      v-if="serverTitle && serverBacklink"
+      :href="serverBacklink"
+      class="flex-none link link-hover text-sm font-medium opacity-70"
+      @click.stop
+    >{{ serverTitle }}</a>
+    <span
+      v-else-if="serverTitle"
+      class="flex-none text-sm font-medium opacity-70"
+    >{{ serverTitle }}</span>
+    <a
+      v-else-if="serverBacklink"
+      :href="serverBacklink"
+      class="flex-none link link-hover text-xs opacity-50"
+      @click.stop
+    >{{ serverBacklink }}</a>
 
     <div class="flex-1 flex items-center gap-2 text-sm">
       <button

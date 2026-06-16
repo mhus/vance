@@ -1,0 +1,79 @@
+description: |
+  Internal config profile for the LightLlmService consumed by
+  ZaphodEngine's between-round consensus check (debate pattern).
+  Per round, the engine renders the current heads' last-round
+  replies into the template variables below and asks for a binary
+  JSON verdict { consensus: bool, reason: string }. NOT spawnable —
+  marked `internal: true` so the standard recipe selector skips it.
+
+  Tenants override this recipe to swap the check model, tighten or
+  loosen the consensus threshold ("only count as consensus when ALL
+  heads explicitly agree"), or change the language of the reason
+  field — no Java change required.
+engine: jeltz
+internal: true
+params:
+  # Small model is enough — the task is bounded comparison, not
+  # open-ended reasoning. Tenants pick a stronger model here when
+  # debates touch domains where the difference between consensus
+  # and dissent is subtle (legal, medical, security audits).
+  model: default:zaphod-consensus,default:fast
+  # LightLlm retries on schema-validation miss; 2 attempts is enough
+  # for a tight 2-field structured output — beyond that the model
+  # is not going to converge.
+  maxAttempts: 2
+  temperature: 0.2
+promptPrefix: |
+  Du bist die Konsens-Prüfung eines Zaphod-Debates. Entscheide, ob
+  die Köpfe nach der aktuellen Runde inhaltlich übereingekommen
+  sind oder ob eine weitere Runde sinnvoll ist.
+
+  ## Frage des Debates
+
+  {{ goal }}
+
+  ## Aktuelle Sichten (Round {{ roundIndex + 1 }} von {{ maxRounds }})
+
+  {% for head in heads %}
+  --- {{ head.name }} ---
+  {{ head.reply }}
+
+  {% endfor %}
+
+  ## Maßstab — was zählt als Konsens
+
+  Konsens heißt: die Köpfe ziehen dieselben handlungsrelevanten
+  Schlussfolgerungen.
+
+  - Unterschiedliche Begründungen für dieselbe Empfehlung → KONSENS.
+  - Ergänzende statt widersprechende Sichten (Kopf A sagt X,
+    Kopf B fügt Y hinzu, kein Widerspruch) → KONSENS.
+  - Minimale stilistische / nuancielle Unterschiede → KONSENS.
+
+  Kein Konsens heißt: die Köpfe ziehen unterschiedliche praktische
+  Schlüsse.
+
+  - Köpfe empfehlen unterschiedliche Optionen (A vs. B) → DISSENZ.
+  - Köpfe widersprechen sich in einer für die Entscheidung
+    relevanten Tatsachenfrage → DISSENZ.
+  - Ein Kopf ist klar überzeugt, ein anderer hat substanziellen
+    Vorbehalt → DISSENZ.
+
+  ## Antwort
+
+  Liefere GENAU ein JSON-Objekt nach diesem Schema. Kein Markdown-
+  Wrapper, kein Text davor oder danach:
+
+      {
+        "consensus": true,
+        "reason":    "<ein Satz Begründung — was geeint hat oder wo der Konflikt liegt>"
+      }
+
+  `reason` ist die Erklärung, die im Zaphod-State gespeichert wird
+  und in der finalen Synthese erscheinen kann — sei konkret, nenne
+  worauf sich die Köpfe einig sind bzw. wo der Konflikt liegt.
+  Schreibe in der Sprache der ursprünglichen Frage.
+tags:
+  - internal
+  - zaphod
+  - consensus

@@ -33,13 +33,29 @@ public class EmbeddingModelService {
 
     /** Builds an {@link EmbeddingModel} for {@code config}. */
     public EmbeddingModel createEmbeddingModel(EmbeddingConfig config) {
+        return lookup(config.provider()).createEmbeddingModel(config);
+    }
+
+    /**
+     * Returns whether the provider with id {@code providerName} needs a
+     * non-blank API key. Unknown providers default to {@code true} so
+     * callers fail with a clear key-missing message rather than
+     * silently treating typos as keyless.
+     */
+    public boolean requiresApiKey(String providerName) {
+        EmbeddingProvider p = providers.get(
+                providerName == null ? "" : providerName.toLowerCase(Locale.ROOT));
+        return p == null || p.requiresApiKey();
+    }
+
+    private EmbeddingProvider lookup(String providerName) {
         EmbeddingProvider provider = providers.get(
-                config.provider() == null ? "" : config.provider().toLowerCase(Locale.ROOT));
+                providerName == null ? "" : providerName.toLowerCase(Locale.ROOT));
         if (provider == null) {
             throw new IllegalArgumentException(
-                    "Unknown embedding provider '" + config.provider()
+                    "Unknown embedding provider '" + providerName
                             + "' — known: " + providers.keySet());
         }
-        return provider.createEmbeddingModel(config);
+        return provider;
     }
 }

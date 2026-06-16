@@ -39,8 +39,17 @@ public class ProjectRagIndexer {
      * untouched and let the TTL release it for retry.
      */
     public void reindexDocument(DocumentDocument doc) {
-        RagDocument defaultRag = projectRagService.ensureDefaultRag(
+        var ragOpt = projectRagService.ensureDefaultRag(
                 doc.getTenantId(), doc.getProjectId());
+        if (ragOpt.isEmpty()) {
+            // Tenant has embedding disabled — clear the dirty flag so the
+            // scheduler doesn't keep re-claiming this doc on every tick.
+            documentService.markRagClean(doc.getId());
+            log.debug("RAG skip tenant='{}' project='{}' doc='{}' (embedding disabled)",
+                    doc.getTenantId(), doc.getProjectId(), doc.getPath());
+            return;
+        }
+        RagDocument defaultRag = ragOpt.get();
 
         // Always purge old chunks first — idempotent across re-runs and the
         // single op that covers the "filter changed to exclude" case.

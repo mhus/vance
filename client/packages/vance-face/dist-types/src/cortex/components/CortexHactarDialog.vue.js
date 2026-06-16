@@ -3,11 +3,8 @@ import { VAlert, VButton, VModal, VTextarea } from '@/components';
 import { brainFetch } from '@vance/shared';
 const props = defineProps();
 const emit = defineEmits();
-// VModal opens on a false→true transition inside onMounted — see
-// specification/web-ui.md §7.7.
 const visible = ref(false);
-const prompt = ref('');
-const includeExisting = ref(true);
+const prompt = ref(initialPrompt());
 const busy = ref(false);
 const polling = ref(false);
 const error = ref(null);
@@ -15,9 +12,21 @@ const thinkProcessId = ref(null);
 const result = ref(null);
 let pollTimer = null;
 const sessionId = computed(() => props.sessionId ?? '_cortex');
+const title = computed(() => props.mode === 'UPDATE'
+    ? 'Slart · update this script'
+    : 'Slart · generate a new script');
+const cta = computed(() => props.mode === 'UPDATE' ? 'Update' : 'Generate');
+function initialPrompt() {
+    if (props.mode === 'UPDATE' && props.failureReason) {
+        return `The previous run failed with:\n\n> ${props.failureReason
+            .split('\n')
+            .join('\n> ')}\n\nPlease fix this.`;
+    }
+    return '';
+}
 async function start() {
     if (!prompt.value.trim()) {
-        error.value = 'Prompt required';
+        error.value = 'Description required';
         return;
     }
     busy.value = true;
@@ -25,9 +34,13 @@ async function start() {
     result.value = null;
     const body = {
         prompt: prompt.value,
+        mode: props.mode,
     };
-    if (includeExisting.value && props.document) {
+    if (props.mode === 'UPDATE' && props.document) {
         body.existingScriptId = props.document.id;
+    }
+    if (props.mode === 'UPDATE' && props.failureReason) {
+        body.failureReason = props.failureReason;
     }
     try {
         const resp = await brainFetch('POST', `scripts/generate?projectId=${encodeURIComponent(props.projectId)}&sessionId=${encodeURIComponent(sessionId.value)}`, { body });
@@ -102,13 +115,13 @@ const __VLS_0 = {}.VModal;
 const __VLS_1 = __VLS_asFunctionalComponent(__VLS_0, new __VLS_0({
     ...{ 'onUpdate:modelValue': {} },
     modelValue: (__VLS_ctx.visible),
-    title: "Hactar · generate / improve script",
+    title: (__VLS_ctx.title),
     closeOnBackdrop: (false),
 }));
 const __VLS_2 = __VLS_1({
     ...{ 'onUpdate:modelValue': {} },
     modelValue: (__VLS_ctx.visible),
-    title: "Hactar · generate / improve script",
+    title: (__VLS_ctx.title),
     closeOnBackdrop: (false),
 }, ...__VLS_functionalComponentArgsRest(__VLS_1));
 let __VLS_4;
@@ -130,28 +143,32 @@ if (!__VLS_ctx.result || !__VLS_ctx.result.code) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
         ...{ class: "label-text font-semibold" },
     });
+    (__VLS_ctx.mode === 'UPDATE'
+        ? 'What should change?'
+        : 'What should the script do?');
     const __VLS_9 = {}.VTextarea;
     /** @type {[typeof __VLS_components.VTextarea, ]} */ ;
     // @ts-ignore
     const __VLS_10 = __VLS_asFunctionalComponent(__VLS_9, new __VLS_9({
         modelValue: (__VLS_ctx.prompt),
         rows: (6),
-        placeholder: "Describe what the script should do. Example: 'Read a number from args.n and return its factorial via console.log.'",
+        placeholder: (__VLS_ctx.mode === 'UPDATE'
+            ? 'Example: \'Also send a Slack notification when the inbox is empty.\''
+            : 'Example: \'Read a number from args.n and return its factorial.\''),
     }));
     const __VLS_11 = __VLS_10({
         modelValue: (__VLS_ctx.prompt),
         rows: (6),
-        placeholder: "Describe what the script should do. Example: 'Read a number from args.n and return its factorial via console.log.'",
+        placeholder: (__VLS_ctx.mode === 'UPDATE'
+            ? 'Example: \'Also send a Slack notification when the inbox is empty.\''
+            : 'Example: \'Read a number from args.n and return its factorial.\''),
     }, ...__VLS_functionalComponentArgsRest(__VLS_10));
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.label, __VLS_intrinsicElements.label)({
-        ...{ class: "flex items-center gap-2 mt-2 text-sm" },
-    });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.input)({
-        type: "checkbox",
-        ...{ class: "checkbox checkbox-sm" },
-    });
-    (__VLS_ctx.includeExisting);
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+    if (__VLS_ctx.mode === 'UPDATE') {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "text-xs opacity-70 mt-1" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.em, __VLS_intrinsicElements.em)({});
+    }
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "flex items-center gap-2 mt-3" },
     });
@@ -175,6 +192,7 @@ if (!__VLS_ctx.result || !__VLS_ctx.result.code) {
         onClick: (__VLS_ctx.start)
     };
     __VLS_16.slots.default;
+    (__VLS_ctx.cta);
     var __VLS_16;
     if (__VLS_ctx.polling) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
@@ -206,18 +224,6 @@ if (__VLS_ctx.error) {
     (__VLS_ctx.error);
     var __VLS_24;
 }
-if (__VLS_ctx.result?.planSketch && !__VLS_ctx.result.code) {
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "text-sm" },
-    });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "font-semibold mb-1" },
-    });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.pre, __VLS_intrinsicElements.pre)({
-        ...{ class: "bg-base-200 p-2 rounded text-xs whitespace-pre-wrap" },
-    });
-    (__VLS_ctx.result.planSketch);
-}
 if (__VLS_ctx.result?.code) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -227,18 +233,6 @@ if (__VLS_ctx.result?.code) {
         ...{ class: "bg-base-200 p-2 rounded text-xs max-h-72 overflow-y-auto whitespace-pre-wrap font-mono" },
     });
     (__VLS_ctx.result.code);
-    if (__VLS_ctx.result.reviewerNotes) {
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-            ...{ class: "mt-2 text-xs opacity-70" },
-        });
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-            ...{ class: "font-semibold" },
-        });
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.pre, __VLS_intrinsicElements.pre)({
-            ...{ class: "whitespace-pre-wrap" },
-        });
-        (__VLS_ctx.result.reviewerNotes);
-    }
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "flex gap-2 mt-3" },
     });
@@ -322,13 +316,9 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['label']} */ ;
 /** @type {__VLS_StyleScopedClasses['label-text']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-semibold']} */ ;
-/** @type {__VLS_StyleScopedClasses['flex']} */ ;
-/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
-/** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
-/** @type {__VLS_StyleScopedClasses['mt-2']} */ ;
-/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
-/** @type {__VLS_StyleScopedClasses['checkbox']} */ ;
-/** @type {__VLS_StyleScopedClasses['checkbox-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
+/** @type {__VLS_StyleScopedClasses['mt-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['items-center']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
@@ -338,14 +328,6 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
-/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
-/** @type {__VLS_StyleScopedClasses['font-semibold']} */ ;
-/** @type {__VLS_StyleScopedClasses['mb-1']} */ ;
-/** @type {__VLS_StyleScopedClasses['bg-base-200']} */ ;
-/** @type {__VLS_StyleScopedClasses['p-2']} */ ;
-/** @type {__VLS_StyleScopedClasses['rounded']} */ ;
-/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
-/** @type {__VLS_StyleScopedClasses['whitespace-pre-wrap']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-semibold']} */ ;
 /** @type {__VLS_StyleScopedClasses['mb-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['bg-base-200']} */ ;
@@ -356,11 +338,6 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['overflow-y-auto']} */ ;
 /** @type {__VLS_StyleScopedClasses['whitespace-pre-wrap']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
-/** @type {__VLS_StyleScopedClasses['mt-2']} */ ;
-/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
-/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
-/** @type {__VLS_StyleScopedClasses['font-semibold']} */ ;
-/** @type {__VLS_StyleScopedClasses['whitespace-pre-wrap']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['mt-3']} */ ;
@@ -377,11 +354,12 @@ const __VLS_self = (await import('vue')).defineComponent({
             VTextarea: VTextarea,
             visible: visible,
             prompt: prompt,
-            includeExisting: includeExisting,
             busy: busy,
             polling: polling,
             error: error,
             result: result,
+            title: title,
+            cta: cta,
             start: start,
             applyResult: applyResult,
             close: close,

@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.BiConsumer;
 import org.graalvm.polyglot.HostAccess;
@@ -85,17 +86,24 @@ public final class VanceScriptApi {
     public final @Nullable ScriptDocumentApi documents;
 
     public VanceScriptApi(ContextToolsApi toolsApi) {
-        this(toolsApi, null, Set.of(), null);
+        this(toolsApi, null, Set.of(), null, null);
     }
 
     public VanceScriptApi(ContextToolsApi toolsApi, @Nullable String recipeName) {
-        this(toolsApi, recipeName, Set.of(), null);
+        this(toolsApi, recipeName, Set.of(), null, null);
     }
 
     public VanceScriptApi(ContextToolsApi toolsApi,
                           @Nullable String recipeName,
                           Set<String> deniedToolNames) {
-        this(toolsApi, recipeName, deniedToolNames, null);
+        this(toolsApi, recipeName, deniedToolNames, null, null);
+    }
+
+    public VanceScriptApi(ContextToolsApi toolsApi,
+                          @Nullable String recipeName,
+                          Set<String> deniedToolNames,
+                          @Nullable DocumentService documentService) {
+        this(toolsApi, recipeName, deniedToolNames, documentService, null);
     }
 
     /**
@@ -109,15 +117,25 @@ public final class VanceScriptApi {
      * binding. Pass {@code null} for scripts that mustn't touch documents
      * (legacy trigger-scoped runs); accesses then throw a
      * {@link ScriptHostException} with a clear message instead of NPE.
+     *
+     * <p>{@code progressEmitter} enables {@code vance.process.progress(...)}.
+     * Pass {@code null} for scripts that don't run inside a parent
+     * think-process (trigger-scoped runs, unit-test stubs); calls
+     * then degrade gracefully to a no-op + a SLF4J trace line.
+     * Hactar's ExecutingPhase wires this to
+     * {@link de.mhus.vance.brain.progress.ProgressEmitter#emitStatus}
+     * with {@link de.mhus.vance.api.progress.StatusTag#INFO}.
      */
     public VanceScriptApi(ContextToolsApi toolsApi,
                           @Nullable String recipeName,
                           Set<String> deniedToolNames,
-                          @Nullable DocumentService documentService) {
+                          @Nullable DocumentService documentService,
+                          @Nullable BiConsumer<String,
+                                  @Nullable Map<String, Object>> progressEmitter) {
         this.tools = new ScriptToolsApi(toolsApi, deniedToolNames);
         this.context = new ScriptContextView(toolsApi.scope(), recipeName);
         this.log = new ScriptLog(toolsApi.scope());
-        this.process = new ScriptProcessApi(this);
+        this.process = new ScriptProcessApi(this, progressEmitter);
         this.documents = documentService == null
                 ? null
                 : new ScriptDocumentApi(documentService, toolsApi.scope());
@@ -237,21 +255,70 @@ public final class VanceScriptApi {
     }
 
     /**
-     * Process surface exposed as {@code vance.process}. v1 only forwards
-     * to the {@code process_create} tool — direct event-send is not
-     * routed because no matching tool exists yet.
+     * Process surface exposed as {@code vance.process}. Two members:
+     * <ul>
+     *   <li>{@link #spawn(Map)} routes to the {@code process_create}
+     *       tool — same allow-filter / permission / quota path as the
+     *       LLM tool loop.</li>
+     *   <li>{@link #progress(String, Map)} emits a
+     *       {@code PROCESS_PROGRESS} ping for the running script's
+     *       parent think-process. No-op when the script wasn't
+     *       launched with a progress emitter (trigger-scoped runs,
+     *       unit-test stubs).</li>
+     * </ul>
      */
     public static final class ScriptProcessApi {
 
         private final VanceScriptApi parent;
+        private final @Nullable BiConsumer<String,
+                @Nullable Map<String, Object>> progressEmitter;
 
-        ScriptProcessApi(VanceScriptApi parent) {
+        ScriptProcessApi(VanceScriptApi parent,
+                @Nullable BiConsumer<String,
+                        @Nullable Map<String, Object>> progressEmitter) {
             this.parent = parent;
+            this.progressEmitter = progressEmitter;
         }
 
         @HostAccess.Export
         public Map<String, Object> spawn(Map<String, Object> params) {
             return parent.tools.call("process_create", params);
+        }
+
+        /**
+         * Emit a live progress ping on the parent think-process. The
+         * payload becomes the {@code PROCESS_PROGRESS} status text +
+         * optional extra fields the Web-UI / Cortex run-panel can
+         * surface — see {@code specification/user-progress-channel.md}.
+         *
+         * <p>No-op (with a trace log) when the script wasn't launched
+         * with a progress-capable host (e.g. trigger-scoped sandboxes,
+         * unit-test stubs). Long-running scripts (Mail-Bot, batch
+         * pipelines) should call this every few hundred items to
+         * surface progress without blowing up the event log.
+         *
+         * @param message  short human-readable progress text. Required.
+         * @param payload  optional structured fields (e.g.
+         *                 {@code { processed: 47, total: 200 }}).
+         */
+        @HostAccess.Export
+        public void progress(String message, @Nullable Map<String, Object> payload) {
+            Objects.requireNonNull(message,
+                    "vance.process.progress: message must not be null");
+            if (progressEmitter == null) {
+                LOG.trace("[script] tenant={} process={} progress (no-emitter) {} {}",
+                        parent.context.tenantId, parent.context.processId,
+                        message, payload == null ? Map.of() : payload);
+                return;
+            }
+            try {
+                progressEmitter.accept(message, payload);
+            } catch (RuntimeException e) {
+                // A broken emitter must never leak back into the script.
+                LOG.warn("[script] tenant={} process={} progress emit failed: {}",
+                        parent.context.tenantId, parent.context.processId,
+                        e.toString());
+            }
         }
     }
 

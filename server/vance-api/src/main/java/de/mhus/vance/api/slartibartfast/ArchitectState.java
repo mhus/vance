@@ -120,6 +120,36 @@ public class ArchitectState {
      *  reference unchanged constraint-keys symbolically). */
     private @Nullable Map<String, Object> existingRecipeMap;
 
+    /** UPDATE only — document path to the existing artefact that
+     *  this run modifies. For SCRIPT_JS UPDATE this is the script
+     *  document the caller (Cortex, an inbox action, …) wants
+     *  enhanced. Read by LOADING_EXISTING; PROPOSING gets the
+     *  loaded body in {@link #existingScriptCode}. Null in
+     *  CREATE/EDIT runs. */
+    private @Nullable String existingScriptRef;
+
+    /** UPDATE only — verbatim body of the artefact loaded from
+     *  {@link #existingScriptRef}. The architect's
+     *  {@code appendProposingContext} hands this to the LLM as
+     *  the "existing code" reference block. Null in CREATE/EDIT
+     *  runs. */
+    private @Nullable String existingScriptCode;
+
+    /** UPDATE only — optional failure reason from a prior Hactar
+     *  run (e.g. {@code TerminationRationale.failureReason} after
+     *  a FAILED execution). When set, the architect's
+     *  {@code appendProposingContext} adds it to the prompt so
+     *  the LLM knows what the previous attempt got wrong. Null
+     *  for plain feature-add updates.
+     *
+     *  <p>Disambiguated from {@link #failureReason} (this run's
+     *  own failure reason when {@link #status} is FAILED) by the
+     *  {@code prior} prefix — the engine-param key on the public
+     *  surface is just {@code failureReason} (planning §5.1) and
+     *  {@code SlartibartfastEngine.buildInitialState} maps it
+     *  into this field. */
+    private @Nullable String priorFailureReason;
+
     @Builder.Default
     private ArchitectStatus status = ArchitectStatus.READY;
 

@@ -1,0 +1,46 @@
+description: |
+  Slart-and-Run — generates a JavaScript orchestrator script from a
+  free-text goal and runs it in one step. Combines Slart's
+  evidence-based authoring (SCRIPT_JS schema with audit chain)
+  with Hactar's executor lifecycle. Replaces the legacy
+  "hactar" default-fallback recipe.
+
+  Workflow:
+    1. Slart's authoring pipeline runs (FRAMING → CONFIRMING →
+       GATHERING → CLASSIFYING → DECOMPOSING → BINDING → PROPOSING
+       → VALIDATING) and writes the validated script body to
+       `_vance/scripts/_slart/<runId>/<name>.js`.
+    2. Slart's EXECUTING phase spawns Hactar with the persisted
+       script ref. Hactar's LOADING re-validates (parse + header +
+       tool-allowlist), then EXECUTES the script.
+    3. Slart's EXECUTION_VALIDATING phase checks the Hactar run
+       outcome and either marks DONE or treats validation
+       failures as recovery hints for another PROPOSING pass.
+
+  Use this recipe when:
+    - The user types a free-text goal and the selector has no
+      better match (`routing.fallback.recipe` default).
+    - A caller (LLM tool, scheduler) explicitly wants "generate +
+      run a script for this goal" without thinking about Slart vs.
+      Hactar plumbing.
+
+  Use the `hactar-run` recipe instead when:
+    - The script already exists at a known path and you just want
+      to execute it (scheduler-driven cron jobs, etc.).
+engine: slartibartfast
+params:
+  outputSchemaType: SCRIPT_JS
+  planOnly: false
+tags:
+  - default
+  - script-architect
+  - script-executor
+  - engine-default
+triggers:
+  keywords:
+    - slart-and-run
+    - generate script
+    - skript erzeugen
+    - script erzeugen
+    - automate via script
+    - mach ein skript

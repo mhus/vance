@@ -10,8 +10,9 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Returned by {@code GET /scripts/generations/{thinkProcessId}/result}.
- * Carries the final state of a Script-Cortex generation; {@code code}
- * is the generated JavaScript when {@code status=DONE}.
+ * Carries the final state of a Cortex script-generation run; {@code code}
+ * is the generated JavaScript when the Slart run reached
+ * {@code status=DONE}.
  */
 @Data
 @Builder
@@ -26,17 +27,14 @@ public class ScriptGenerationResult {
     /** Mirrors {@link de.mhus.vance.api.thinkprocess.ThinkProcessStatus}. */
     private String status;
 
-    /** Mirrors Deep-Thought-state {@code reason} (DONE/FAILED). */
+    /** Mirrors {@link de.mhus.vance.api.slartibartfast.ArchitectStatus}
+     *  (DONE / FAILED / etc.). */
     private @Nullable String reason;
 
+    /** The generated JavaScript body. Present once the Slart run
+     *  reached PERSISTING — even pre-DONE runs (still in
+     *  EXECUTION_VALIDATING) carry the draft so Cortex can preview. */
     private @Nullable String code;
-
-    /** Reviewer/Validator notes — surfaced as a small banner above the
-     *  apply-button so the user sees what Deep-Thought thought of its
-     *  own output. */
-    private @Nullable String reviewerNotes;
-
-    private @Nullable String planSketch;
 
     private @Nullable String failureReason;
 }

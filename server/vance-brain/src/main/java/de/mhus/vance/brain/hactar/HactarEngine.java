@@ -5,11 +5,8 @@ import de.mhus.vance.api.hactar.HactarStatus;
 import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
-import de.mhus.vance.brain.hactar.phases.DraftingPhase;
 import de.mhus.vance.brain.hactar.phases.ExecutingPhase;
-import de.mhus.vance.brain.hactar.phases.FramingPhase;
 import de.mhus.vance.brain.hactar.phases.LoadingPhase;
-import de.mhus.vance.brain.hactar.phases.ReviewingPhase;
 import de.mhus.vance.brain.hactar.phases.ValidatingPhase;
 import de.mhus.vance.brain.thinkengine.ParentReport;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
@@ -28,34 +25,26 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Hactar — script-architect engine. Reads a goal, drafts a
- * JavaScript body, validates it parse-only, recovers on syntax errors
- * up to {@link HactarState#getMaxRecoveries()} times, and
- * (optionally) hands off to an in-engine script runner.
- *
- * <p>The accepted script lives in {@code HactarState.generatedCode}
- * — there is no separate persistence to a project document. Parents
- * read the final code through {@code summarizeForParent}.
+ * Hactar v2 — pure script-execution engine. Loads a script body
+ * from a project document, runs minimal validation (parse + header
+ * + tool-allowlist), optionally runs an LLM deep-validate gate,
+ * and executes the script via {@code ScriptExecutor}. There is
+ * no LLM-authoring — script generation moved to
+ * {@code SlartibartfastEngine} with {@code OutputSchemaType.SCRIPT_JS}.
  *
  * <p>State persists on {@code engineParams.deepThoughtState}; each
  * {@code runTurn} performs <em>one</em> phase, then yields and
- * schedules the next turn — same lane-discipline as Zaphod and
- * Vogon. The state machine:
+ * schedules the next turn. The state machine:
  *
  * <pre>
- *   READY → (framingEnabled?) → FRAMING → REVIEWING → DRAFTING → VALIDATING → DONE
- *                  ↑      │           ↑         │             ↑        │
- *                  └──────┘           └─────────┘             └────────┘
- *               (reject loop)      (skip when no reviewer)  (syntax-error recovery)
- *                                       │                              │
- *                                       └→ EXECUTING → DONE            └→ FAILED
- *                                            (if executeOnDone)        (max recoveries)
+ *   READY → LOADING → [VALIDATING] → EXECUTING → DONE
+ *               │           │            │
+ *               └───────────┴────────────┴→ FAILED
+ *             (any failure is terminal — no recovery loop)
  * </pre>
  *
- * <p>Phase implementations live as separate Spring components under
- * {@code de.mhus.vance.brain.hactar.phases} — engine is a thin
- * dispatcher that loads state, picks the next phase, and persists
- * the result.
+ * <p>VALIDATING is opt-in via {@code engineParams.validateBeforeRun}.
+ * See {@code planning/script-architect-executor-split.md} §5.2.
  */
 @Component
 @RequiredArgsConstructor
@@ -63,59 +52,43 @@ import tools.jackson.databind.ObjectMapper;
 public class HactarEngine implements ThinkEngine {
 
     public static final String NAME = "hactar";
-    public static final String VERSION = "0.1.0";
+    public static final String VERSION = "2.0.0";
 
     /** Set on {@code engineParams[STATE_KEY]} as the persisted
-     *  {@link HactarState} for this process. */
+     *  {@link HactarState} for this process. Legacy name kept for
+     *  backwards-compatibility with persisted Mongo documents. */
     public static final String STATE_KEY = "deepThoughtState";
 
-    /** {@code engineParams[GOAL_KEY]} — optional override; falls back
-     *  to {@code process.getGoal()}. */
-    public static final String GOAL_KEY = "goal";
+    /** {@code engineParams[SCRIPT_REF_KEY]} — project document path
+     *  to the script. <b>Required.</b> */
+    public static final String SCRIPT_REF_KEY = "scriptRef";
 
-    /** {@code engineParams[EXECUTE_ON_DONE_KEY]} — boolean; default false. */
-    public static final String EXECUTE_ON_DONE_KEY = "executeOnDone";
+    /** {@code engineParams[LANGUAGE_KEY]} — script language. v1
+     *  only accepts {@code "js"} (default). Reserved for a future
+     *  Python expansion. */
+    public static final String LANGUAGE_KEY = "language";
 
-    /** {@code engineParams[MAX_RECOVERIES_KEY]} — int; default 5. */
-    public static final String MAX_RECOVERIES_KEY = "maxRecoveries";
+    /** {@code engineParams[VALIDATE_BEFORE_RUN_KEY]} — boolean,
+     *  default false. When true, the {@link ValidatingPhase} runs
+     *  {@link HactarService#deepValidate} before EXECUTING. */
+    public static final String VALIDATE_BEFORE_RUN_KEY = "validateBeforeRun";
 
-    /** Plan-mode opt-in. Default false (legacy fast path READY → DRAFTING). */
-    public static final String FRAMING_ENABLED_KEY = "framingEnabled";
-
-    /** Soft-cap on FRAMING→REVIEWING retry cycles. Default 3. */
-    public static final String MAX_FRAMING_RECOVERIES_KEY = "maxFramingRecoveries";
-
-    /** {@code engineParams[SCRIPT_PATH_KEY]} — project document path
-     *  to load instead of generating a script. When set, the engine
-     *  takes the LOADING → VALIDATING → (EXECUTING) → DONE pathway,
-     *  ignoring goal-based generation entirely. Goal becomes
-     *  optional. Validation failures are final (no DRAFTING recovery
-     *  loop — we didn't draft the script). */
-    public static final String SCRIPT_PATH_KEY = "scriptPath";
-
-    // Phase params shared via the phase classes' own constants —
-    // re-exported here so external callers (Eddie, recipe authors)
-    // discover them through the engine class:
+    /** Re-export of {@link LoadingPhase#SCRIPT_ALLOWED_TOOLS_KEY}
+     *  so external callers (recipes, Cortex controller) discover
+     *  the engine-param surface through the engine class. */
     public static final String SCRIPT_ALLOWED_TOOLS_KEY =
-            de.mhus.vance.brain.hactar.phases.HactarContextRenderer
-                    .SCRIPT_ALLOWED_TOOLS_KEY;
-    public static final String MANUAL_PATHS_KEY =
-            de.mhus.vance.brain.hactar.phases.HactarContextRenderer
-                    .MANUAL_PATHS_KEY;
-    public static final String SCRIPT_ARGS_KEY = ExecutingPhase.SCRIPT_ARGS_KEY;
-    public static final String EXECUTION_TIMEOUT_KEY = ExecutingPhase.EXECUTION_TIMEOUT_KEY;
-    public static final String REVIEWER_RECIPE_KEY = ReviewingPhase.REVIEWER_RECIPE_KEY;
-    public static final String SCRIPT_ARCHITECT_TAG =
-            de.mhus.vance.brain.hactar.phases.HactarContextRenderer
-                    .SCRIPT_ARCHITECT_TAG;
+            LoadingPhase.SCRIPT_ALLOWED_TOOLS_KEY;
+
+    /** Re-export of {@link ExecutingPhase#SCRIPT_PARAMS_KEY}. */
+    public static final String SCRIPT_PARAMS_KEY = ExecutingPhase.SCRIPT_PARAMS_KEY;
+
+    /** Re-export of {@link ExecutingPhase#TIMEOUT_KEY}. */
+    public static final String TIMEOUT_KEY = ExecutingPhase.TIMEOUT_KEY;
 
     private final ThinkProcessService thinkProcessService;
     private final ProcessEventEmitter eventEmitter;
     private final ObjectMapper objectMapper;
     private final LoadingPhase loadingPhase;
-    private final FramingPhase framingPhase;
-    private final ReviewingPhase reviewingPhase;
-    private final DraftingPhase draftingPhase;
     private final ValidatingPhase validatingPhase;
     private final ExecutingPhase executingPhase;
 
@@ -128,14 +101,16 @@ public class HactarEngine implements ThinkEngine {
 
     @Override
     public String title() {
-        return "Hactar (Script Architect)";
+        return "Hactar (Script Executor)";
     }
 
     @Override
     public String description() {
-        return "Generates JavaScript orchestrator scripts from a high-level "
-                + "goal. Drafts via LLM, validates parse-only, recovers on "
-                + "syntax errors, optionally runs the script in-engine.";
+        return "Pure script-execution engine. Loads a JavaScript "
+                + "orchestrator from a project document, validates "
+                + "(parse + header + tool-allowlist; optional LLM "
+                + "deep-review), and runs it in a sandboxed GraalJS "
+                + "context. Authoring moved to Slartibartfast.";
     }
 
     @Override
@@ -145,10 +120,10 @@ public class HactarEngine implements ThinkEngine {
 
     @Override
     public Set<String> allowedTools() {
-        // Engine's own LLM tool surface is empty — DRAFTING/FRAMING
-        // use direct LLM calls, no tool_use. The executed script's
-        // tool surface comes from engineParams.scriptAllowedTools
-        // and is built inside ExecutingPhase.
+        // Engine's own LLM tool surface is empty — Hactar makes no
+        // LLM calls. The executed script's tool surface comes from
+        // engineParams.scriptAllowedTools and is built inside
+        // ExecutingPhase.
         return Set.of();
     }
 
@@ -164,11 +139,10 @@ public class HactarEngine implements ThinkEngine {
         HactarState state = buildInitialState(process);
         persistState(process, state);
         log.info("Hactar.start tenant='{}' session='{}' id='{}' "
-                        + "mode={} framingEnabled={} executeOnDone={} maxRecoveries={}",
+                        + "scriptRef='{}' language={} validateBeforeRun={}",
                 process.getTenantId(), process.getSessionId(), process.getId(),
-                state.getScriptPath() != null ? "load:" + state.getScriptPath() : "generate",
-                state.isFramingEnabled(), state.isExecuteOnDone(),
-                state.getMaxRecoveries());
+                state.getScriptRef(), state.getLanguage(),
+                state.isValidateBeforeRun());
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
         eventEmitter.scheduleTurn(process.getId());
     }
@@ -217,8 +191,8 @@ public class HactarEngine implements ThinkEngine {
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.RUNNING);
         try {
             for (SteerMessage ignored : ctx.drainPending()) {
-                // v1: ignore. Future FRAMING-with-inbox-approval will
-                // consume the answers here.
+                // v2: no inbox-driven mode (executor doesn't ask
+                // questions). Drained for hygiene only.
             }
 
             HactarStatus next = dispatch(process, ctx, state);
@@ -245,41 +219,22 @@ public class HactarEngine implements ThinkEngine {
     }
 
     /**
-     * Single-step state machine — picks the next phase based on the
-     * current status. Phase methods are responsible for mutating
-     * {@code state}; this method returns the next status only.
+     * Single-step state machine — picks the next phase based on
+     * the current status. Phase methods mutate {@code state} and
+     * return the next status.
      */
     private HactarStatus dispatch(
             ThinkProcessDocument process,
             ThinkEngineContext ctx,
             HactarState state) {
         return switch (state.getStatus()) {
-            case READY -> resolveInitialStatus(state);
+            case READY -> HactarStatus.LOADING;
             case LOADING -> loadingPhase.execute(state, process, ctx);
-            case FRAMING -> framingPhase.execute(state, process, ctx);
-            case REVIEWING -> reviewingPhase.execute(state, process, ctx);
-            case DRAFTING -> draftingPhase.execute(state, process, ctx);
             case VALIDATING -> validatingPhase.execute(state, process, ctx);
             case EXECUTING -> executingPhase.execute(state, process, ctx);
-            // DONE/FAILED handled before dispatch; defensive fall-through.
             case DONE -> HactarStatus.DONE;
             case FAILED -> HactarStatus.FAILED;
         };
-    }
-
-    /**
-     * Three modes branch off READY: load-mode (scriptPath set →
-     * LOADING), plan-mode (framingEnabled → FRAMING), or direct
-     * one-shot (DRAFTING). Load-mode wins when both scriptPath and
-     * framingEnabled are set — the explicit script is what the caller
-     * wants exercised, not a freshly generated one.
-     */
-    private static HactarStatus resolveInitialStatus(HactarState state) {
-        if (state.getScriptPath() != null && !state.getScriptPath().isBlank()) {
-            return HactarStatus.LOADING;
-        }
-        if (state.isFramingEnabled()) return HactarStatus.FRAMING;
-        return HactarStatus.DRAFTING;
     }
 
     // ──────────────────── summarizeForParent ────────────────────
@@ -298,34 +253,19 @@ public class HactarEngine implements ThinkEngine {
         payload.put("eventType", eventType.name());
         payload.put("status", state.getStatus() == null
                 ? null : state.getStatus().name());
-        payload.put("codeLength", state.getGeneratedCode() == null
-                ? 0 : state.getGeneratedCode().length());
-        payload.put("recoveryCount", state.getRecoveryCount());
-        payload.put("validationErrors", state.getValidationErrors().size());
-        if (state.isExecuteOnDone()) {
-            payload.put("executionDurationMs", state.getExecutionDurationMs());
-            if (state.getExecutionErrorClass() != null) {
-                payload.put("executionErrorClass", state.getExecutionErrorClass());
-            }
+        payload.put("scriptRef", state.getScriptRef());
+        payload.put("validationIssues", state.getValidationIssues().size());
+        payload.put("executionDurationMs", state.getExecutionDurationMs());
+        if (state.getExecutionErrorClass() != null) {
+            payload.put("executionErrorClass", state.getExecutionErrorClass());
         }
 
-        if (state.getStatus() == HactarStatus.DONE
-                && state.getGeneratedCode() != null) {
-            if (state.isExecuteOnDone()) {
-                payload.put("executionResult", state.getExecutionResult());
-                return new ParentReport(
-                        "Hactar executed the generated script ("
-                                + state.getGeneratedCode().length() + " chars, "
-                                + state.getExecutionDurationMs() + "ms). Return value:\n\n"
-                                + renderExecutionValue(state.getExecutionResult()),
-                        payload);
-            }
+        if (state.getStatus() == HactarStatus.DONE) {
+            payload.put("executionResult", state.getExecutionResult());
             return new ParentReport(
-                    "Hactar drafted a script (" + state.getGeneratedCode().length()
-                            + " chars, " + state.getRecoveryCount()
-                            + " recovery attempt(s)):\n\n```javascript\n"
-                            + state.getGeneratedCode()
-                            + "\n```\n",
+                    "Hactar executed '" + state.getScriptRef() + "' ("
+                            + state.getExecutionDurationMs() + "ms). Return value:\n\n"
+                            + renderExecutionValue(state.getExecutionResult()),
                     payload);
         }
         if (state.getStatus() == HactarStatus.FAILED) {
@@ -337,8 +277,7 @@ public class HactarEngine implements ThinkEngine {
         }
         return new ParentReport(
                 "Hactar in progress — phase="
-                        + (state.getStatus() == null ? "?" : state.getStatus().name())
-                        + ", recoveries=" + state.getRecoveryCount(),
+                        + (state.getStatus() == null ? "?" : state.getStatus().name()),
                 payload);
     }
 
@@ -359,39 +298,28 @@ public class HactarEngine implements ThinkEngine {
         Map<String, Object> p = process.getEngineParams() == null
                 ? new LinkedHashMap<>() : process.getEngineParams();
 
-        String goal = stringParam(p.get(GOAL_KEY));
-        if (goal == null) {
-            goal = process.getGoal();
-        }
-        String scriptPath = stringParam(p.get(SCRIPT_PATH_KEY));
-        boolean loadMode = scriptPath != null;
-        if (!loadMode && (goal == null || goal.isBlank())) {
+        String scriptRef = stringParam(p.get(SCRIPT_REF_KEY));
+        if (scriptRef == null || scriptRef.isBlank()) {
             throw new IllegalStateException(
-                    "Hactar.start requires either a goal or a "
-                            + "scriptPath — neither is set on engineParams "
-                            + "and process.goal is empty (id='"
+                    "Hactar.start requires engineParams['scriptRef'] — "
+                            + "no script reference is set (id='"
                             + process.getId() + "')");
         }
 
-        boolean executeOnDone = parseBoolean(p.get(EXECUTE_ON_DONE_KEY), false);
-        int maxRecoveries = parseInt(p.get(MAX_RECOVERIES_KEY), 5);
-        if (maxRecoveries < 0) maxRecoveries = 0;
-        // Load-mode: validation failure is final — we can't recover
-        // into DRAFTING because we never drafted the script. Force
-        // the budget to 0 so the first VALIDATING failure naturally
-        // flows into FAILED via the existing exhaustion path.
-        if (loadMode) maxRecoveries = 0;
-        boolean framingEnabled = parseBoolean(p.get(FRAMING_ENABLED_KEY), false);
-        int maxFramingRecoveries = parseInt(p.get(MAX_FRAMING_RECOVERIES_KEY), 3);
-        if (maxFramingRecoveries < 0) maxFramingRecoveries = 0;
+        String language = stringParam(p.get(LANGUAGE_KEY));
+        if (language == null || language.isBlank()) language = "js";
+        if (!"js".equals(language)) {
+            throw new IllegalStateException(
+                    "Hactar v2 supports only language='js' — got '"
+                            + language + "' (id='" + process.getId() + "')");
+        }
+
+        boolean validateBeforeRun = parseBoolean(p.get(VALIDATE_BEFORE_RUN_KEY), false);
 
         return HactarState.builder()
-                .goal(goal)
-                .scriptPath(scriptPath)
-                .executeOnDone(executeOnDone)
-                .maxRecoveries(maxRecoveries)
-                .framingEnabled(framingEnabled)
-                .maxFramingRecoveries(maxFramingRecoveries)
+                .scriptRef(scriptRef)
+                .language(language)
+                .validateBeforeRun(validateBeforeRun)
                 .status(HactarStatus.READY)
                 .build();
     }
@@ -423,18 +351,6 @@ public class HactarEngine implements ThinkEngine {
     private static boolean parseBoolean(@Nullable Object raw, boolean fallback) {
         if (raw instanceof Boolean b) return b;
         if (raw instanceof String s) return Boolean.parseBoolean(s.trim());
-        return fallback;
-    }
-
-    private static int parseInt(@Nullable Object raw, int fallback) {
-        if (raw instanceof Number n) return n.intValue();
-        if (raw instanceof String s) {
-            try {
-                return Integer.parseInt(s.trim());
-            } catch (NumberFormatException e) {
-                return fallback;
-            }
-        }
         return fallback;
     }
 }

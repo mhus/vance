@@ -23,6 +23,7 @@ import de.mhus.vance.api.slartibartfast.CriterionOrigin;
 import de.mhus.vance.api.slartibartfast.PendingInboxKind;
 import de.mhus.vance.brain.recipe.AppliedRecipe;
 import de.mhus.vance.brain.recipe.RecipeResolver;
+import de.mhus.vance.brain.slartibartfast.architect.SchemaArchitect;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.slartibartfast.phases.BindingPhase;
 import de.mhus.vance.brain.slartibartfast.phases.ClassifyingPhase;
@@ -156,6 +157,34 @@ public class SlartibartfastEngine implements ThinkEngine {
      *  FRAMING-LLM, but callers can override here. */
     public static final String MODIFICATION_SUMMARY_KEY = "modificationSummary";
 
+    /** {@code engineParams[MODE_KEY]} — optional caller-supplied
+     *  {@link de.mhus.vance.api.slartibartfast.ArchitectMode}
+     *  override. When unset, the engine derives the mode from the
+     *  other params: {@code existingScriptRef} non-blank → UPDATE,
+     *  {@code targetRecipeName} non-blank → EDIT, else CREATE.
+     *  Explicit values are case-insensitive; unknown values warn-
+     *  log and fall through to the derived default. */
+    public static final String MODE_KEY = "mode";
+
+    /** {@code engineParams[EXISTING_SCRIPT_REF_KEY]} — document path
+     *  to the existing artefact for an UPDATE run (e.g. the
+     *  current script the caller wants enhanced). Required when
+     *  {@code mode=UPDATE}; LOADING_EXISTING reads the document
+     *  via {@code DocumentService} and stashes the body on
+     *  {@link ArchitectState#getExistingScriptCode()}. For SCRIPT_JS
+     *  the path conventionally lives under {@code scripts/...};
+     *  recipe-UPDATE (open point) would use {@code recipes/...}. */
+    public static final String EXISTING_SCRIPT_REF_KEY = "existingScriptRef";
+
+    /** {@code engineParams[FAILURE_REASON_KEY]} — optional free-text
+     *  hint for an UPDATE run, typically a Hactar
+     *  {@code TerminationRationale.failureReason} from a prior
+     *  FAILED execution. The architect surfaces it in the
+     *  PROPOSING user prompt so the LLM understands what the
+     *  previous attempt got wrong. Null when the UPDATE is a
+     *  plain feature-add, not a bug-fix. */
+    public static final String FAILURE_REASON_KEY = "failureReason";
+
     private final ThinkProcessService thinkProcessService;
     private final ProcessEventEmitter eventEmitter;
     /** Fires per-phase progress status events so the chat user
@@ -181,6 +210,14 @@ public class SlartibartfastEngine implements ThinkEngine {
     private final ExecutionValidatingPhase executionValidatingPhase;
     private final de.mhus.vance.brain.slartibartfast.phases.LoadingExistingPhase loadingExistingPhase;
     private final de.mhus.vance.brain.slartibartfast.phases.ExecutionPlanningPhase executionPlanningPhase;
+    /** Schema-architect lookup for the EXECUTING phase — non-recipe
+     *  schemas (SCRIPT_JS) supply a direct-spawn descriptor instead
+     *  of going through the recipe-resolver. Lazy-built from the
+     *  Spring-injected {@code List<SchemaArchitect>} on first use. */
+    private final java.util.List<de.mhus.vance.brain.slartibartfast.architect.SchemaArchitect>
+            schemaArchitects;
+    private volatile java.util.Map<OutputSchemaType,
+            de.mhus.vance.brain.slartibartfast.architect.SchemaArchitect> architectsMap;
     /**
      * Deterministic lift of file-path conventions from CLASSIFYING's
      * evidence into acceptanceCriteria. Runs between CLASSIFYING and
@@ -551,12 +588,26 @@ public class SlartibartfastEngine implements ThinkEngine {
     }
 
     /**
-     * Spawn the child execution process from the persisted recipe
+     * Spawn the child execution process from the persisted artefact
      * iff none has been spawned yet for this run. Idempotent: a
      * second call after the child already exists is a no-op (the
      * engine simply parks until the child's ProcessEvent arrives).
      * Falls back to FAILED with {@code failureReason} on any
      * resolver / spawn error.
+     *
+     * <p>Two dispatch paths based on the architect:
+     * <ul>
+     *   <li>Recipe schemas ({@code isRecipeOutput=true},
+     *       persistedRecipePath under {@code _vance/recipes/...}):
+     *       strip the prefix, recipe-resolver pickup, spawn the
+     *       resolved engine with applied params.</li>
+     *   <li>Non-recipe schemas ({@code isRecipeOutput=false},
+     *       e.g. SCRIPT_JS): architect supplies
+     *       {@link SchemaArchitect#directExecutionSpawn} with a
+     *       {@code DirectExecutionSpawn}-descriptor (engineName +
+     *       engineParams). Slart inherits its own allowed-tools
+     *       into the child's {@code scriptAllowedTools}.</li>
+     * </ul>
      */
     private void executeChildIfNeeded(
             ThinkProcessDocument process, ArchitectState state) {
@@ -570,6 +621,23 @@ public class SlartibartfastEngine implements ThinkEngine {
             state.setStatus(ArchitectStatus.FAILED);
             return;
         }
+        SchemaArchitect architect = architects().get(state.getOutputSchemaType());
+        if (architect == null) {
+            state.setFailureReason("EXECUTING has no SchemaArchitect bean for "
+                    + state.getOutputSchemaType());
+            state.setStatus(ArchitectStatus.FAILED);
+            return;
+        }
+
+        // Non-recipe dispatch (SCRIPT_JS et al.) — architect-supplied
+        // direct-spawn descriptor wins. Skips the recipe-resolver.
+        SchemaArchitect.DirectExecutionSpawn direct =
+                architect.directExecutionSpawn(state);
+        if (direct != null) {
+            executeDirectChild(process, state, direct);
+            return;
+        }
+
         String recipeName = recipePath.startsWith("_vance/recipes/")
                 && recipePath.endsWith(".yaml")
                 ? recipePath.substring("_vance/recipes/".length(),
@@ -633,6 +701,106 @@ public class SlartibartfastEngine implements ThinkEngine {
                     + e.getMessage());
             state.setStatus(ArchitectStatus.FAILED);
         }
+    }
+
+    /**
+     * Direct-spawn execution for non-recipe artefacts (SCRIPT_JS et
+     * al.). The architect supplies engineName + engineParams; Slart
+     * resolves the engine and spawns a child that inherits the
+     * Slart process's effective allowed-tools as
+     * {@code scriptAllowedTools} so the spawned executor surfaces
+     * the same tool set the parent had.
+     */
+    private void executeDirectChild(
+            ThinkProcessDocument process, ArchitectState state,
+            SchemaArchitect.DirectExecutionSpawn direct) {
+        try {
+            ThinkEngineService engines = thinkEngineServiceProvider.getObject();
+            var targetEngine = engines.resolve(direct.engineName())
+                    .orElseThrow(() -> new IllegalStateException(
+                            "DirectExecutionSpawn references unknown engine '"
+                                    + direct.engineName() + "'"));
+
+            java.util.Map<String, Object> engineParams =
+                    new java.util.LinkedHashMap<>(direct.engineParams());
+            // Inherit Slart's effective allow-set (the
+            // allowedToolsOverride field on the parent process) into
+            // the child's script-level allow-set. The child's own
+            // allowed-tools (recipe-level, for LLM tool_use) is
+            // separate and stays unchanged — direct-spawn children
+            // typically don't make LLM calls themselves (Hactar has
+            // empty allowedTools).
+            java.util.Set<String> parentAllowed = process.getAllowedToolsOverride();
+            if (parentAllowed != null && !parentAllowed.isEmpty()) {
+                engineParams.putIfAbsent(
+                        de.mhus.vance.brain.hactar.HactarEngine.SCRIPT_ALLOWED_TOOLS_KEY,
+                        java.util.List.copyOf(parentAllowed));
+            }
+
+            String childName = "slart-exec-" + state.getRunId()
+                    + "-" + state.getRecoveryCount();
+            ThinkProcessDocument child = thinkProcessService.create(
+                    process.getTenantId(),
+                    process.getProjectId(),
+                    process.getSessionId(),
+                    childName,
+                    targetEngine.name(), targetEngine.version(),
+                    "Slart-spawned " + direct.engineName() + " run for "
+                            + state.getOutputSchemaType(),
+                    state.getExecutionPrompt() != null
+                            ? state.getExecutionPrompt()
+                            : state.getUserDescription(),
+                    process.getId(),
+                    engineParams,
+                    /*recipeName*/ null,
+                    /*promptOverride*/ null,
+                    /*promptOverrideAppend*/ null,
+                    /*promptMode*/ null,
+                    /*dataRelayCorrection*/ null,
+                    process.getAllowedToolsOverride(),
+                    process.getConnectionProfile(),
+                    /*defaultActiveSkills*/ null,
+                    /*allowedSkills*/ null);
+            state.setChildExecutionProcessId(child.getId());
+            persistState(process, state);
+            engines.start(child);
+            log.info("Slartibartfast id='{}' EXECUTING (direct) — spawned "
+                            + "child='{}' engine='{}' schema={}",
+                    process.getId(), child.getId(),
+                    targetEngine.name(), state.getOutputSchemaType());
+        } catch (RuntimeException e) {
+            log.warn("Slartibartfast id='{}' EXECUTING direct-spawn failed: {}",
+                    process.getId(), e.toString(), e);
+            state.setFailureReason("Failed to spawn direct execution child: "
+                    + e.getMessage());
+            state.setStatus(ArchitectStatus.FAILED);
+        }
+    }
+
+    /**
+     * Lazy-build of the {@link SchemaArchitect} lookup map from
+     * the Spring-injected list. Identical pattern to
+     * {@link de.mhus.vance.brain.slartibartfast.phases.ValidatingPhase}
+     * — duplicated here because the engine itself needs the lookup
+     * for EXECUTING and we want to keep the @RequiredArgsConstructor
+     * + @Component wiring clean.
+     */
+    private java.util.Map<OutputSchemaType, SchemaArchitect> architects() {
+        java.util.Map<OutputSchemaType, SchemaArchitect> m = architectsMap;
+        if (m != null) return m;
+        java.util.Map<OutputSchemaType, SchemaArchitect> built =
+                new java.util.EnumMap<>(OutputSchemaType.class);
+        for (SchemaArchitect a : schemaArchitects) {
+            SchemaArchitect existing = built.put(a.type(), a);
+            if (existing != null) {
+                throw new IllegalStateException(
+                        "Duplicate SchemaArchitect beans for " + a.type()
+                                + ": " + existing.getClass().getName()
+                                + " and " + a.getClass().getName());
+            }
+        }
+        architectsMap = java.util.Map.copyOf(built);
+        return architectsMap;
     }
 
     /**
@@ -943,7 +1111,9 @@ public class SlartibartfastEngine implements ThinkEngine {
                 if (state.getFailureReason() != null) {
                     state.setStatus(ArchitectStatus.FAILED);
                 } else if (state.getMode()
-                        == de.mhus.vance.api.slartibartfast.ArchitectMode.EDIT) {
+                        == de.mhus.vance.api.slartibartfast.ArchitectMode.EDIT
+                        || state.getMode()
+                        == de.mhus.vance.api.slartibartfast.ArchitectMode.UPDATE) {
                     state.setStatus(ArchitectStatus.LOADING_EXISTING);
                 } else {
                     state.setStatus(ArchitectStatus.CONFIRMING);
@@ -1116,10 +1286,17 @@ public class SlartibartfastEngine implements ThinkEngine {
         String recipeName = stringParam(p, RECIPE_NAME_KEY);
         String targetRecipeName = stringParam(p, TARGET_RECIPE_NAME_KEY);
         String modificationSummary = stringParam(p, MODIFICATION_SUMMARY_KEY);
+        String existingScriptRef = stringParam(p, EXISTING_SCRIPT_REF_KEY);
+        String failureReason = stringParam(p, FAILURE_REASON_KEY);
+        String modeRaw = stringParam(p, MODE_KEY);
+
+        // Mode derivation: explicit param > inferred-from-other-params.
+        // - CREATE: default
+        // - EDIT:   targetRecipeName set OR explicit mode=EDIT (recipe in-place)
+        // - UPDATE: existingScriptRef set OR explicit mode=UPDATE (sandbox bucket)
         de.mhus.vance.api.slartibartfast.ArchitectMode initialMode =
-                targetRecipeName.isBlank()
-                        ? de.mhus.vance.api.slartibartfast.ArchitectMode.CREATE
-                        : de.mhus.vance.api.slartibartfast.ArchitectMode.EDIT;
+                resolveInitialMode(modeRaw, targetRecipeName, existingScriptRef);
+        validateModeInputs(initialMode, targetRecipeName, existingScriptRef);
 
         return ArchitectState.builder()
                 .runId(generateRunId())
@@ -1133,8 +1310,70 @@ public class SlartibartfastEngine implements ThinkEngine {
                 .recipeName(recipeName.isBlank() ? null : recipeName)
                 .targetRecipeName(targetRecipeName.isBlank() ? null : targetRecipeName)
                 .modificationSummary(modificationSummary.isBlank() ? null : modificationSummary)
+                .existingScriptRef(existingScriptRef.isBlank() ? null : existingScriptRef)
+                .priorFailureReason(failureReason.isBlank() ? null : failureReason)
                 .status(ArchitectStatus.READY)
                 .build();
+    }
+
+    /**
+     * Resolves the run's initial {@link
+     * de.mhus.vance.api.slartibartfast.ArchitectMode} from the
+     * explicit {@code mode} engine-param (if set) or by inferring
+     * from the other params. Explicit param wins on conflict;
+     * unknown values warn-log and fall through to the inferred
+     * default.
+     */
+    private static de.mhus.vance.api.slartibartfast.ArchitectMode resolveInitialMode(
+            String modeRaw, String targetRecipeName, String existingScriptRef) {
+        if (!modeRaw.isBlank()) {
+            String norm = modeRaw.trim().toUpperCase().replace('-', '_');
+            try {
+                return de.mhus.vance.api.slartibartfast.ArchitectMode.valueOf(norm);
+            } catch (IllegalArgumentException iae) {
+                log.warn("Slartibartfast unknown mode '{}' — "
+                                + "falling back to inferred default", modeRaw);
+            }
+        }
+        if (!existingScriptRef.isBlank()) {
+            return de.mhus.vance.api.slartibartfast.ArchitectMode.UPDATE;
+        }
+        if (!targetRecipeName.isBlank()) {
+            return de.mhus.vance.api.slartibartfast.ArchitectMode.EDIT;
+        }
+        return de.mhus.vance.api.slartibartfast.ArchitectMode.CREATE;
+    }
+
+    /**
+     * Hard-fails the spawn when the mode + paired params don't
+     * match: UPDATE requires {@code existingScriptRef}; EDIT
+     * requires {@code targetRecipeName}. CREATE accepts neither
+     * (extraneous params are ignored). Throws
+     * {@link IllegalStateException} so {@code start(...)} surfaces
+     * the misconfiguration before any phase runs.
+     */
+    private static void validateModeInputs(
+            de.mhus.vance.api.slartibartfast.ArchitectMode mode,
+            String targetRecipeName, String existingScriptRef) {
+        switch (mode) {
+            case UPDATE -> {
+                if (existingScriptRef.isBlank()) {
+                    throw new IllegalStateException(
+                            "Slartibartfast mode=UPDATE requires "
+                                    + EXISTING_SCRIPT_REF_KEY + " engine-param");
+                }
+            }
+            case EDIT -> {
+                if (targetRecipeName.isBlank()) {
+                    // FRAMING-LLM may extract this from the user
+                    // description; only warn here, don't hard-fail.
+                    log.debug("Slartibartfast mode=EDIT without explicit "
+                                    + "targetRecipeName — relying on FRAMING-LLM "
+                                    + "to extract it from userDescription");
+                }
+            }
+            case CREATE -> { /* no required pair */ }
+        }
     }
 
     private static boolean parseBooleanParam(Map<String, Object> params, String key) {

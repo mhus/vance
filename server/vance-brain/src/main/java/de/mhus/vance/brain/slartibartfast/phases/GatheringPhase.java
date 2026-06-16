@@ -195,6 +195,7 @@ public class GatheringPhase {
             case VOGON_STRATEGY -> "vogon-architect";
             case MARVIN_RECIPE -> "marvin-architect";
             case ZAPHOD_RECIPE -> "zaphod-architect";
+            case SCRIPT_JS -> "js-script-architect";
         };
     }
 

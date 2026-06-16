@@ -319,10 +319,22 @@ onBeforeUnmount(() => {
 // runners later get their own (or none); the per-language gating
 // keeps the toolbar from showing buttons whose endpoint would 404.
 const showValidate = ref(false);
-const showHactar = ref(false);
+const showSlart = ref(false);
+/** Mode the script-generate dialog opens in. {@code 'CREATE'} blanks
+ *  the editor context; {@code 'UPDATE'} includes the current body
+ *  and (optionally) the prior run-failure reason from the run panel. */
+const slartMode = ref('CREATE');
 const isJsLanguage = computed(() => runAdapter.value?.id === 'js');
-function onHactarApply(code) {
+/** Heuristic: editor is "empty" when there is no content yet (new
+ *  doc) or only whitespace. Drives which of the two architect
+ *  buttons (Generate vs. Update) is shown. */
+const editorHasContent = computed(() => (props.document.inlineText ?? '').trim().length > 0);
+function onSlartApply(code) {
     emit('update', code);
+}
+function openSlart(mode) {
+    slartMode.value = mode;
+    showSlart.value = true;
 }
 function fmtResult(v) {
     if (v === null || v === undefined)
@@ -439,16 +451,34 @@ if (__VLS_ctx.isJsLanguage) {
         ...{ class: "text-xs px-2 py-0.5 rounded border border-base-300 hover:bg-base-200" },
         title: "Validate (quick + deep)",
     });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-        ...{ onClick: (...[$event]) => {
-                if (!(__VLS_ctx.isJsLanguage))
-                    return;
-                __VLS_ctx.showHactar = true;
-            } },
-        type: "button",
-        ...{ class: "text-xs px-2 py-0.5 rounded border border-base-300 hover:bg-base-200" },
-        title: "Hactar — generate or improve this script",
-    });
+    if (!__VLS_ctx.editorHasContent) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+            ...{ onClick: (...[$event]) => {
+                    if (!(__VLS_ctx.isJsLanguage))
+                        return;
+                    if (!(!__VLS_ctx.editorHasContent))
+                        return;
+                    __VLS_ctx.openSlart('CREATE');
+                } },
+            type: "button",
+            ...{ class: "text-xs px-2 py-0.5 rounded border border-base-300 hover:bg-base-200" },
+            title: "Generate a new script from a free-text description (Slart SCRIPT_JS)",
+        });
+    }
+    else {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+            ...{ onClick: (...[$event]) => {
+                    if (!(__VLS_ctx.isJsLanguage))
+                        return;
+                    if (!!(!__VLS_ctx.editorHasContent))
+                        return;
+                    __VLS_ctx.openSlart('UPDATE');
+                } },
+            type: "button",
+            ...{ class: "text-xs px-2 py-0.5 rounded border border-base-300 hover:bg-base-200" },
+            title: "Update this script — describe the change and Slart rewrites it preserving structure",
+        });
+    }
 }
 if (__VLS_ctx.propertiesUrl) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
@@ -748,7 +778,7 @@ if (__VLS_ctx.showValidate) {
     };
     var __VLS_47;
 }
-if (__VLS_ctx.showHactar && __VLS_ctx.store.projectId) {
+if (__VLS_ctx.showSlart && __VLS_ctx.store.projectId) {
     /** @type {[typeof CortexHactarDialog, ]} */ ;
     // @ts-ignore
     const __VLS_52 = __VLS_asFunctionalComponent(CortexHactarDialog, new CortexHactarDialog({
@@ -757,6 +787,7 @@ if (__VLS_ctx.showHactar && __VLS_ctx.store.projectId) {
         document: (__VLS_ctx.document),
         projectId: (__VLS_ctx.store.projectId),
         sessionId: (__VLS_ctx.sessionId ?? null),
+        mode: (__VLS_ctx.slartMode),
     }));
     const __VLS_53 = __VLS_52({
         ...{ 'onClose': {} },
@@ -764,19 +795,20 @@ if (__VLS_ctx.showHactar && __VLS_ctx.store.projectId) {
         document: (__VLS_ctx.document),
         projectId: (__VLS_ctx.store.projectId),
         sessionId: (__VLS_ctx.sessionId ?? null),
+        mode: (__VLS_ctx.slartMode),
     }, ...__VLS_functionalComponentArgsRest(__VLS_52));
     let __VLS_55;
     let __VLS_56;
     let __VLS_57;
     const __VLS_58 = {
         onClose: (...[$event]) => {
-            if (!(__VLS_ctx.showHactar && __VLS_ctx.store.projectId))
+            if (!(__VLS_ctx.showSlart && __VLS_ctx.store.projectId))
                 return;
-            __VLS_ctx.showHactar = false;
+            __VLS_ctx.showSlart = false;
         }
     };
     const __VLS_59 = {
-        onApply: (__VLS_ctx.onHactarApply)
+        onApply: (__VLS_ctx.onSlartApply)
     };
     var __VLS_54;
 }
@@ -838,6 +870,13 @@ if (__VLS_ctx.showHactar && __VLS_ctx.store.projectId) {
 /** @type {__VLS_StyleScopedClasses['rounded']} */ ;
 /** @type {__VLS_StyleScopedClasses['border']} */ ;
 /** @type {__VLS_StyleScopedClasses['w-32']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-0.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['rounded']} */ ;
+/** @type {__VLS_StyleScopedClasses['border']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;
+/** @type {__VLS_StyleScopedClasses['hover:bg-base-200']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
 /** @type {__VLS_StyleScopedClasses['px-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['py-0.5']} */ ;
@@ -1028,9 +1067,12 @@ const __VLS_self = (await import('vue')).defineComponent({
             onCancel: onCancel,
             onCloseLogPanel: onCloseLogPanel,
             showValidate: showValidate,
-            showHactar: showHactar,
+            showSlart: showSlart,
+            slartMode: slartMode,
             isJsLanguage: isJsLanguage,
-            onHactarApply: onHactarApply,
+            editorHasContent: editorHasContent,
+            onSlartApply: onSlartApply,
+            openSlart: openSlart,
             fmtResult: fmtResult,
             fmtDuration: fmtDuration,
         };

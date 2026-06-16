@@ -122,9 +122,13 @@ public class ValidatingPhase {
         // 1. SchemaType supported — resolved via the architect map
         //    above; missing entries already failed out.
 
-        // 2. YAML parses at all.
+        // 2. YAML parses at all — recipe schemas only. Non-recipe
+        //    outputs (e.g. SCRIPT_JS) deliver raw code in draft.yaml;
+        //    YAML parsing would always fail and is structurally
+        //    irrelevant. The architect's validateDraftShape is the
+        //    sole shape-validation entry point in that case.
         Map<String, Object> recipeMap = null;
-        if (firstFail == null) {
+        if (firstFail == null && architect.isRecipeOutput()) {
             try {
                 Object loaded = new Yaml().load(draft.getYaml());
                 if (!(loaded instanceof Map<?, ?> m)) {
@@ -158,8 +162,10 @@ public class ValidatingPhase {
         }
 
         // 3. Recipe has the expected shape: name + matching engine.
-        String expectedEngine = architect.expectedEngineName();
-        if (firstFail == null && recipeMap != null) {
+        //    Recipe schemas only — non-recipe outputs don't have
+        //    these top-level fields.
+        if (firstFail == null && architect.isRecipeOutput() && recipeMap != null) {
+            String expectedEngine = architect.expectedEngineName();
             Object name = recipeMap.get("name");
             Object engine = recipeMap.get("engine");
             if (!(name instanceof String n) || n.isBlank()) {
@@ -195,11 +201,15 @@ public class ValidatingPhase {
         }
 
         // 4. Schema-specific shape validation — delegated to the
-        //    architect bean. Each bean knows what its YAML shape
+        //    architect bean. Each bean knows what its output shape
         //    should look like and contributes ValidationCheck
         //    entries to the report. The first failing check (if
-        //    any) drives the recovery loop.
-        if (firstFail == null && recipeMap != null) {
+        //    any) drives the recovery loop. For non-recipe outputs
+        //    {@code recipeMap} is null — the architect works off
+        //    {@code draft.getYaml()} (which carries the raw body)
+        //    and runs its own validators (e.g. JsScriptArchitect
+        //    delegates to HactarService.validate).
+        if (firstFail == null) {
             ValidationCheck archFail = architect.validateDraftShape(
                     draft, recipeMap, process, report);
             if (archFail != null) firstFail = archFail;

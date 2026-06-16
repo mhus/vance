@@ -124,6 +124,91 @@ public interface SchemaArchitect {
         return true;
     }
 
+    /** Does this architect produce a recipe YAML? Defaults to true
+     *  — every existing architect (Vogon/Marvin/Zaphod) emits a
+     *  recipe with a top-level {@code engine:} field that
+     *  VALIDATING parses + shape-checks.
+     *
+     *  <p>Override to {@code false} for architects whose output is
+     *  NOT a recipe (e.g. JavaScript scripts in
+     *  {@code JsScriptArchitect}). When false:
+     *  <ul>
+     *    <li>VALIDATING skips YAML-parse, engine-field check,
+     *        justifications-resolve, and path-persistence check
+     *        — those are recipe-specific. The architect's
+     *        {@link #validateDraftShape} stays the single
+     *        shape-validation entry point.</li>
+     *    <li>VALIDATING passes {@code recipeMap = null} into
+     *        {@link #validateDraftShape}.</li>
+     *    <li>PERSISTING reads {@link #outputPathSegment} and
+     *        {@link #outputExtension} to decide where the body
+     *        lands (e.g. {@code _vance/scripts/_slart/<runId>/<name>.js}
+     *        instead of {@code _vance/recipes/_slart/...}).</li>
+     *  </ul>
+     */
+    default boolean isRecipeOutput() {
+        return true;
+    }
+
+    /** Top-level directory segment under {@code _vance/} where
+     *  PERSISTING writes the produced artefact. Defaults to
+     *  {@code "recipes"} — the existing recipe architects. Non-
+     *  recipe architects (e.g. {@code JsScriptArchitect}) override
+     *  to {@code "scripts"}.
+     *
+     *  <p>Full path follows the convention
+     *  {@code _vance/<segment>/_slart/<runId>/<name>.<ext>}. */
+    default String outputPathSegment() {
+        return "recipes";
+    }
+
+    /** File extension (including the leading dot) for the persisted
+     *  artefact. Defaults to {@code ".yaml"} for recipe architects.
+     *  Script architects override to {@code ".js"} (or {@code ".py"}
+     *  once Phase 6 ships). */
+    default String outputExtension() {
+        return ".yaml";
+    }
+
+    /** Direct engine-spawn for non-recipe outputs. When the
+     *  architect returns a non-null descriptor, Slart's EXECUTING
+     *  phase bypasses the recipe-resolver path and spawns the
+     *  named engine directly with the supplied params (typically
+     *  {@code scriptRef = state.persistedRecipePath} for
+     *  SCRIPT_JS).
+     *
+     *  <p>Default returns {@code null} — recipe architects use the
+     *  resolver pathway. Non-recipe architects (
+     *  {@link #isRecipeOutput()} {@code = false}) MUST override
+     *  this and return a non-null descriptor, otherwise EXECUTING
+     *  fails because the {@code persistedRecipePath} doesn't match
+     *  the legacy {@code _vance/recipes/...yaml} shape the
+     *  resolver expects.
+     *
+     *  <p>{@code scriptAllowedTools} is propagated from the Slart
+     *  process's effective allow-set automatically by Slart's
+     *  EXECUTING — the architect should NOT set it here; doing so
+     *  would override the inherited surface. */
+    default @org.jspecify.annotations.Nullable DirectExecutionSpawn
+    directExecutionSpawn(ArchitectState state) {
+        return null;
+    }
+
+    /** Engine + params descriptor for {@link #directExecutionSpawn}. */
+    record DirectExecutionSpawn(
+            String engineName, Map<String, Object> engineParams) {
+
+        public DirectExecutionSpawn {
+            if (engineName == null || engineName.isBlank()) {
+                throw new IllegalArgumentException(
+                        "DirectExecutionSpawn.engineName must not be blank");
+            }
+            engineParams = engineParams == null
+                    ? Map.of()
+                    : Map.copyOf(engineParams);
+        }
+    }
+
     /** Extracts the final recipe YAML from the LLM's PROPOSING
      *  JSON response.
      *

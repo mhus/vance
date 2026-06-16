@@ -1,0 +1,41 @@
+description: |
+  Hactar-Run — runs an existing JavaScript orchestrator script in
+  one step. Pure executor — no authoring, no LLM-review (unless
+  `validateBeforeRun: true` is set on the call).
+
+  Use this recipe when:
+    - A scheduler fires periodically and the script already lives
+      at a known document path (cron-driven mail-bot, daily-briefing
+      generator, etc.).
+    - A tool / LLM wants to invoke a known-good script by name.
+    - The user clicks "Run" on a script in Cortex.
+
+  Required engine-params from the caller:
+    scriptRef          — document path to the script (e.g.
+                          "scripts/mail-bot.js")
+  Optional engine-params:
+    language           — "js" (default; only supported v1)
+    validateBeforeRun  — bool, default false. true → Hactar runs
+                          HactarService.deepValidate (LightLlm
+                          script-review) before EXECUTING.
+    scriptAllowedTools — list, tools the script may call via
+                          vance.tools.call(...). Inherited from
+                          the parent recipe when unset.
+    scriptParams       — map, bindings the script sees as
+                          vance.params.*
+    timeout            — int (seconds) or duration string ("30s",
+                          "5m", "1h"). Wall-clock cap.
+engine: hactar
+params:
+  language: js
+  validateBeforeRun: false
+tags:
+  - script-executor
+  - scheduler-friendly
+triggers:
+  keywords:
+    - hactar-run
+    - run script
+    - skript ausführen
+    - script ausführen
+    - execute script

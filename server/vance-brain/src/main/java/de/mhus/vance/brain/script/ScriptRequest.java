@@ -4,6 +4,7 @@ import de.mhus.vance.brain.action.ScopeLevel;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import java.time.Duration;
 import java.util.Map;
+import java.util.function.BiConsumer;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -31,7 +32,8 @@ public record ScriptRequest(
         Duration timeout,
         Map<String, @Nullable Object> bindings,
         @Nullable String recipeName,
-        ScopeLevel scopeLevel) {
+        ScopeLevel scopeLevel,
+        @Nullable BiConsumer<String, @Nullable Map<String, Object>> progressEmitter) {
 
     public ScriptRequest {
         if (!"js".equals(language)) {
@@ -62,7 +64,7 @@ public record ScriptRequest(
     /**
      * Convenience constructor for the historical 5-argument shape — no
      * bindings beyond the {@code vance} host object, no recipe name,
-     * defaults to {@link ScopeLevel#PROCESS_SCOPED}.
+     * defaults to {@link ScopeLevel#PROCESS_SCOPED}, no progress emitter.
      */
     public ScriptRequest(
             String language,
@@ -70,13 +72,14 @@ public record ScriptRequest(
             @Nullable String sourceName,
             ContextToolsApi tools,
             Duration timeout) {
-        this(language, code, sourceName, tools, timeout, Map.of(), null, ScopeLevel.PROCESS_SCOPED);
+        this(language, code, sourceName, tools, timeout, Map.of(), null,
+                ScopeLevel.PROCESS_SCOPED, null);
     }
 
     /**
      * Convenience constructor for the historical 6-argument shape —
      * bindings supplied, no recipe name. Defaults to
-     * {@link ScopeLevel#PROCESS_SCOPED}.
+     * {@link ScopeLevel#PROCESS_SCOPED}, no progress emitter.
      */
     public ScriptRequest(
             String language,
@@ -85,13 +88,15 @@ public record ScriptRequest(
             ContextToolsApi tools,
             Duration timeout,
             Map<String, @Nullable Object> bindings) {
-        this(language, code, sourceName, tools, timeout, bindings, null, ScopeLevel.PROCESS_SCOPED);
+        this(language, code, sourceName, tools, timeout, bindings, null,
+                ScopeLevel.PROCESS_SCOPED, null);
     }
 
     /**
      * Convenience constructor for callers that supply a recipe name but
-     * want the default {@link ScopeLevel#PROCESS_SCOPED}. Hactar's
-     * ExecutingPhase is the original 7-argument client.
+     * want the default {@link ScopeLevel#PROCESS_SCOPED}. No progress
+     * emitter — most non-Hactar callers don't have a parent process to
+     * emit progress for.
      */
     public ScriptRequest(
             String language,
@@ -101,6 +106,25 @@ public record ScriptRequest(
             Duration timeout,
             Map<String, @Nullable Object> bindings,
             @Nullable String recipeName) {
-        this(language, code, sourceName, tools, timeout, bindings, recipeName, ScopeLevel.PROCESS_SCOPED);
+        this(language, code, sourceName, tools, timeout, bindings, recipeName,
+                ScopeLevel.PROCESS_SCOPED, null);
+    }
+
+    /**
+     * 8-argument convenience for callers that supply scopeLevel but no
+     * progress emitter (the most common case for trigger-scoped script
+     * runs — see {@link de.mhus.vance.brain.action.ScriptActionExecutor}).
+     */
+    public ScriptRequest(
+            String language,
+            String code,
+            @Nullable String sourceName,
+            ContextToolsApi tools,
+            Duration timeout,
+            Map<String, @Nullable Object> bindings,
+            @Nullable String recipeName,
+            ScopeLevel scopeLevel) {
+        this(language, code, sourceName, tools, timeout, bindings, recipeName,
+                scopeLevel, null);
     }
 }

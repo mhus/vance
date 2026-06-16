@@ -26,4 +26,13 @@ public enum OutputSchemaType {
      *  engine spawns one sub-process per head and runs the
      *  synthesis turn over their outputs. */
     ZAPHOD_RECIPE,
+
+    /** Single-file JavaScript orchestrator script. NOT a recipe —
+     *  the LLM emits {@code { name, code, justifications, shapeRationale }}
+     *  and the body lands under {@code scripts/_slart/<runId>/<name>.js}.
+     *  Validated by {@code JsScriptArchitect} via
+     *  {@code HactarService.validate(...)} (parse + header + tool
+     *  allowlist). The persisted script is executed at runtime by
+     *  Hactar (Phase 3 of the architect/executor split). */
+    SCRIPT_JS,
 }

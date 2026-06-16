@@ -408,12 +408,28 @@ onBeforeUnmount(() => {
 // keeps the toolbar from showing buttons whose endpoint would 404.
 
 const showValidate = ref(false);
-const showHactar = ref(false);
+const showSlart = ref(false);
+/** Mode the script-generate dialog opens in. {@code 'CREATE'} blanks
+ *  the editor context; {@code 'UPDATE'} includes the current body
+ *  and (optionally) the prior run-failure reason from the run panel. */
+const slartMode = ref<'CREATE' | 'UPDATE'>('CREATE');
 
 const isJsLanguage = computed<boolean>(() => runAdapter.value?.id === 'js');
 
-function onHactarApply(code: string): void {
+/** Heuristic: editor is "empty" when there is no content yet (new
+ *  doc) or only whitespace. Drives which of the two architect
+ *  buttons (Generate vs. Update) is shown. */
+const editorHasContent = computed<boolean>(
+  () => (props.document.inlineText ?? '').trim().length > 0,
+);
+
+function onSlartApply(code: string): void {
   emit('update', code);
+}
+
+function openSlart(mode: 'CREATE' | 'UPDATE'): void {
+  slartMode.value = mode;
+  showSlart.value = true;
 }
 
 function fmtResult(v: unknown): string {
@@ -506,11 +522,19 @@ function fmtDuration(ms: number | null): string {
           @click="showValidate = true"
         >✓ Validate</button>
         <button
+          v-if="!editorHasContent"
           type="button"
           class="text-xs px-2 py-0.5 rounded border border-base-300 hover:bg-base-200"
-          title="Hactar — generate or improve this script"
-          @click="showHactar = true"
-        >✨ Hactar</button>
+          title="Generate a new script from a free-text description (Slart SCRIPT_JS)"
+          @click="openSlart('CREATE')"
+        >✨ Generate</button>
+        <button
+          v-else
+          type="button"
+          class="text-xs px-2 py-0.5 rounded border border-base-300 hover:bg-base-200"
+          title="Update this script — describe the change and Slart rewrites it preserving structure"
+          @click="openSlart('UPDATE')"
+        >✨ Update</button>
       </template>
       <a
         v-if="propertiesUrl"
@@ -690,12 +714,13 @@ function fmtDuration(ms: number | null): string {
       @close="showValidate = false"
     />
     <CortexHactarDialog
-      v-if="showHactar && store.projectId"
+      v-if="showSlart && store.projectId"
       :document="document"
       :project-id="store.projectId"
       :session-id="sessionId ?? null"
-      @close="showHactar = false"
-      @apply="onHactarApply"
+      :mode="slartMode"
+      @close="showSlart = false"
+      @apply="onSlartApply"
     />
   </div>
 </template>

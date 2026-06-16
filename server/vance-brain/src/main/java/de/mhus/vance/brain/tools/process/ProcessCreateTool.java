@@ -55,8 +55,9 @@ import org.springframework.stereotype.Component;
  *       LLM for disambiguation; no trigger at all returns NONE.
  *       <br>
  *       <b>On NONE</b> the tool reads the setting
- *       {@code routing.fallback.recipe} (default {@code hactar}) and
- *       spawns that recipe so the user's goal still gets handled.
+ *       {@code routing.fallback.recipe} (default
+ *       {@code slart-and-run}) and spawns that recipe so the user's
+ *       goal still gets handled.
  *       Empty-string setting disables the fallback — the tool then
  *       returns NONE to the caller, which decides whether to ask the
  *       user or pick a recipe explicitly. The Slart-generation
@@ -93,9 +94,12 @@ public class ProcessCreateTool implements Tool {
     static final String SETTING_FALLBACK_RECIPE = "routing.fallback.recipe";
 
     /** Default value for {@link #SETTING_FALLBACK_RECIPE} when no
-     *  tenant override is set. Hactar can generate a JavaScript handler
-     *  for arbitrary goals — the most flexible default fallback. */
-    static final String DEFAULT_FALLBACK_RECIPE = "hactar";
+     *  tenant override is set. The {@code slart-and-run} recipe
+     *  generates a JavaScript orchestrator via Slart (SCRIPT_JS
+     *  schema) and executes it via Hactar in one spawn — the
+     *  most flexible default for arbitrary user goals. See
+     *  {@code planning/script-architect-executor-split.md} §6.4. */
+    static final String DEFAULT_FALLBACK_RECIPE = "slart-and-run";
 
     /** Recipe used when the selector returns NONE and no trigger was
      *  observed in the goal. This is the standard non-specialty path:
@@ -168,7 +172,7 @@ public class ProcessCreateTool implements Tool {
                 "description", "Selector-routed mode only: when the selector "
                         + "returns NONE (no recipe-name match and no trigger "
                         + "keyword hit), spawn the tenant-configured fallback "
-                        + "recipe (`routing.fallback.recipe`, default hactar) "
+                        + "recipe (`routing.fallback.recipe`, default slart-and-run) "
                         + "so the user's goal still gets handled. Default "
                         + "true. Set false to receive the bare NONE result "
                         + "and decide explicitly."));
@@ -231,7 +235,7 @@ public class ProcessCreateTool implements Tool {
                 + "name / engine-name / trigger-keyword pre-check; LLM "
                 + "only on multi-trigger ambiguity). On NONE the "
                 + "tenant fallback recipe (`routing.fallback.recipe`, "
-                + "default hactar) is spawned so the goal still gets "
+                + "default slart-and-run) is spawned so the goal still gets "
                 + "handled. "
                 + "Modes (a)/(b) return {name, status, engine, recipe?, "
                 + "steered?}. Mode (c) returns {decision, recipe, "
@@ -442,7 +446,7 @@ public class ProcessCreateTool implements Tool {
         //     path, not the configurable fallback.
         //   * triggerObserved=true: a trigger fired but no candidate
         //     matched after LLM disambiguation. Spawn the configurable
-        //     fallback recipe (routing.fallback.recipe, default hactar).
+        //     fallback recipe (routing.fallback.recipe, default slart-and-run).
         if (!fallbackOnNone) {
             log.info("process_create name='{}' goal='{}' → NONE (fallbackOnNone=false): {}",
                     name, abbrev(goal, 80), result.rationale());

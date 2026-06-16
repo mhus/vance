@@ -80,6 +80,7 @@ class SlartibartfastEngineSummarizeForParentTest {
                 mock(ExecutionValidatingPhase.class),
                 mock(de.mhus.vance.brain.slartibartfast.phases.LoadingExistingPhase.class),
                 mock(de.mhus.vance.brain.slartibartfast.phases.ExecutionPlanningPhase.class),
+                /*schemaArchitects*/ java.util.List.of(),
                 new PathCriteriaLifter());
     }
 

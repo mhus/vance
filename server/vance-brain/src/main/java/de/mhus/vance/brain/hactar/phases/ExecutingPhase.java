@@ -1,9 +1,10 @@
 package de.mhus.vance.brain.hactar.phases;
 
-import static de.mhus.vance.brain.hactar.phases.HactarContextRenderer.scriptAllowedTools;
-
 import de.mhus.vance.api.hactar.HactarState;
 import de.mhus.vance.api.hactar.HactarStatus;
+import de.mhus.vance.api.progress.StatusPayload;
+import de.mhus.vance.api.progress.StatusTag;
+import de.mhus.vance.brain.progress.ProgressEmitter;
 import de.mhus.vance.brain.script.ScriptExecutionException;
 import de.mhus.vance.brain.script.ScriptExecutor;
 import de.mhus.vance.brain.script.ScriptRequest;
@@ -15,49 +16,57 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.time.Duration;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiConsumer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
 /**
- * EXECUTING — actually runs the validated script via
- * {@link ScriptExecutor}. Builds a {@link ContextToolsApi} narrowed
- * to {@code scriptAllowedTools} so the script can only call tools
- * the caller explicitly approved.
+ * EXECUTING — runs the validated script via {@link ScriptExecutor}.
+ * Builds a {@link ContextToolsApi} narrowed to the engine-param
+ * {@code scriptAllowedTools} so the script can only call tools the
+ * caller explicitly approved.
  *
  * <p>On success the return value + duration are stored on state →
  * DONE. On {@link ScriptExecutionException} the error message +
- * class are recorded → FAILED. Runtime errors do <em>not</em> feed
- * back into the DRAFTING recovery loop (DRAFTING corrects syntax,
- * not runtime semantics).
+ * class are recorded → FAILED. Runtime errors are <em>terminal</em>
+ * — Hactar v2 doesn't author, so there's no recovery loop. The
+ * caller's next step on FAILED is to spawn Slart with
+ * {@code mode=UPDATE + existingScriptRef + failureReason} (manual,
+ * per planning §6.3).
  */
 @Component
 @RequiredArgsConstructor
 @Slf4j
 public class ExecutingPhase {
 
-    /** Engine-param key for the script's input bindings map. */
-    public static final String SCRIPT_ARGS_KEY = "scriptArgs";
+    /** Engine-param key for the script's input bindings map.
+     *  Renamed from the legacy {@code scriptArgs} per
+     *  planning §5.2. */
+    public static final String SCRIPT_PARAMS_KEY = "scriptParams";
 
-    /** Engine-param key for the EXECUTING-phase fallback timeout. */
-    public static final String EXECUTION_TIMEOUT_KEY = "executionTimeoutSeconds";
+    /** Engine-param key for the EXECUTING-phase fallback timeout.
+     *  Accepts seconds (int) or ISO-8601 duration suffix
+     *  ({@code 30s}, {@code 5m}, {@code 1h}). Renamed from the
+     *  legacy {@code executionTimeoutSeconds}. */
+    public static final String TIMEOUT_KEY = "timeout";
 
     private final ScriptExecutor scriptExecutor;
     private final ToolDispatcher toolDispatcher;
+    private final ProgressEmitter progressEmitter;
 
     public HactarStatus execute(
             HactarState state,
             ThinkProcessDocument process,
             ThinkEngineContext ctx) {
-        String code = state.getGeneratedCode();
+        String code = state.getScriptBody();
         if (code == null || code.isBlank()) {
             state.setFailureReason(
-                    "EXECUTING entered with empty generatedCode — "
-                            + "DRAFTING/VALIDATING must run first");
+                    "EXECUTING entered with empty scriptBody — "
+                            + "LOADING must run first");
             return HactarStatus.FAILED;
         }
 
@@ -67,20 +76,43 @@ public class ExecutingPhase {
                 process.getSessionId(),
                 process.getId(),
                 /*userId*/ null);
-        Set<String> scriptTools = new LinkedHashSet<>(scriptAllowedTools(process));
+        Set<String> scriptTools = LoadingPhase.scriptAllowedTools(process);
         ContextToolsApi tools = new ContextToolsApi(toolDispatcher, scope, scriptTools);
 
-        Map<String, @Nullable Object> bindings = scriptArgsBindings(process);
+        Map<String, @Nullable Object> bindings = scriptParamsBindings(process);
         Duration timeout = executionTimeout(process);
+        String sourceName = state.getScriptRef() == null
+                ? "hactar:" + process.getId()
+                : state.getScriptRef();
+
+        // vance.process.progress(...) — emits live status pings on the
+        // Hactar process so the user sees iteration progress without
+        // scraping logs. Bound here because the emitter needs both the
+        // ProgressEmitter bean and the running process document.
+        // Payload Map flattens into the status `detail` field as a
+        // compact "k=v, k=v" string — keeps the StatusPayload contract
+        // unchanged while still surfacing structured data the script
+        // wanted to share.
+        BiConsumer<String, @Nullable Map<String, Object>> progressBridge =
+                (message, payload) -> {
+                    StatusPayload.StatusPayloadBuilder builder =
+                            StatusPayload.builder()
+                                    .tag(StatusTag.INFO)
+                                    .text(message);
+                    if (payload != null && !payload.isEmpty()) {
+                        builder.detail(formatPayload(payload));
+                    }
+                    progressEmitter.emitStatus(process, builder.build());
+                };
 
         try {
-            // 7-arg ScriptRequest: pass the recipe name so the script
-            // sees it on vance.context.recipe alongside the existing
-            // tenant/project/session/process/user fields.
             ScriptResult result = scriptExecutor.run(
                     new ScriptRequest(
-                            "js", code, "hactar:" + process.getId(),
-                            tools, timeout, bindings, process.getRecipeName()));
+                            state.getLanguage() == null ? "js" : state.getLanguage(),
+                            code, sourceName,
+                            tools, timeout, bindings, process.getRecipeName(),
+                            de.mhus.vance.brain.action.ScopeLevel.PROCESS_SCOPED,
+                            progressBridge));
             state.setExecutionResult(result.value());
             state.setExecutionDurationMs(result.duration().toMillis());
             state.setExecutionError(null);
@@ -103,10 +135,10 @@ public class ExecutingPhase {
     }
 
     @SuppressWarnings("unchecked")
-    private static Map<String, @Nullable Object> scriptArgsBindings(
+    private static Map<String, @Nullable Object> scriptParamsBindings(
             ThinkProcessDocument process) {
         Map<String, Object> p = process.getEngineParams();
-        Object raw = p == null ? null : p.get(SCRIPT_ARGS_KEY);
+        Object raw = p == null ? null : p.get(SCRIPT_PARAMS_KEY);
         if (!(raw instanceof Map<?, ?> map)) {
             return Map.of("args", new LinkedHashMap<String, Object>());
         }
@@ -119,9 +151,31 @@ public class ExecutingPhase {
         return Map.of("args", args);
     }
 
+    /**
+     * Flatten a script-supplied payload map into a compact "k=v, k=v"
+     * string for the {@link StatusPayload#getDetail()} field. Trims
+     * after 500 chars so a misbehaving script can't ship a 1MB string
+     * through the status channel.
+     */
+    private static String formatPayload(Map<String, Object> payload) {
+        StringBuilder sb = new StringBuilder();
+        boolean first = true;
+        for (Map.Entry<String, Object> e : payload.entrySet()) {
+            if (!first) sb.append(", ");
+            first = false;
+            sb.append(e.getKey()).append('=').append(e.getValue());
+            if (sb.length() > 500) {
+                sb.setLength(497);
+                sb.append("...");
+                break;
+            }
+        }
+        return sb.toString();
+    }
+
     private static Duration executionTimeout(ThinkProcessDocument process) {
         Map<String, Object> p = process.getEngineParams();
-        Object raw = p == null ? null : p.get(EXECUTION_TIMEOUT_KEY);
+        Object raw = p == null ? null : p.get(TIMEOUT_KEY);
         if (raw instanceof Number n && n.longValue() > 0) {
             return Duration.ofSeconds(n.longValue());
         }

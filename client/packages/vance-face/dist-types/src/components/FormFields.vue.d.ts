@@ -32,14 +32,14 @@ interface Props {
     disabled?: boolean;
 }
 declare const _default: import("vue").DefineComponent<Props, {}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {} & {
-    "update:modelValue": (value: Record<string, FormValue>) => any;
+    "update:modelValue": any;
 }, string, import("vue").PublicProps, Readonly<Props> & Readonly<{
-    "onUpdate:modelValue"?: ((value: Record<string, FormValue>) => any) | undefined;
+    "onUpdate:modelValue"?: ((...args: any) => any) | undefined;
 }>, {
     disabled: boolean;
-    pathPrefix: string;
     errors: Record<string, string>;
     preferredLang: string;
+    pathPrefix: string;
 }, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;
 export default _default;
 //# sourceMappingURL=FormFields.vue.d.ts.map

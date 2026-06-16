@@ -19,31 +19,47 @@ import org.springframework.stereotype.Component;
 import org.yaml.snakeyaml.Yaml;
 
 /**
- * LOADING_EXISTING phase — deterministic (no LLM). Runs only
- * when {@link ArchitectState#getMode()} is
- * {@link de.mhus.vance.api.slartibartfast.ArchitectMode#EDIT}.
- * Loads the recipe identified by
- * {@link ArchitectState#getTargetRecipeName()} from the user
- * namespace (`recipes/_user/<name>.yaml`), parses it, detects
- * the {@link OutputSchemaType} from the `engine:` field, and
- * stashes the raw yaml plus parsed map on the state.
+ * LOADING_EXISTING phase — deterministic (no LLM). Runs after
+ * FRAMING when {@link ArchitectState#getMode()} is
+ * {@link de.mhus.vance.api.slartibartfast.ArchitectMode#EDIT} or
+ * {@link de.mhus.vance.api.slartibartfast.ArchitectMode#UPDATE}.
  *
- * <p>The detected schema overrides any engine-param-supplied
- * {@code outputSchemaType}. On EDIT the schema is a property of
- * the existing recipe — not of the user request.
+ * <p>Two branches, picked by mode:
+ * <ul>
+ *   <li>EDIT (recipes): loads the recipe identified by
+ *       {@link ArchitectState#getTargetRecipeName()} from
+ *       {@code recipes/_user/<name>.yaml}, YAML-parses it,
+ *       detects {@link OutputSchemaType} from the {@code engine:}
+ *       field, and stashes the raw yaml + parsed map on the
+ *       state. The detected schema overrides any engine-param-
+ *       supplied {@code outputSchemaType} — on EDIT the schema
+ *       is a property of the existing recipe, not of the user
+ *       request.</li>
+ *   <li>UPDATE (scripts in v1; recipes later): loads the
+ *       artefact at {@link ArchitectState#getExistingScriptRef()}
+ *       verbatim (no parsing), stashes the body on
+ *       {@link ArchitectState#setExistingScriptCode(String)}.
+ *       The {@code outputSchemaType} stays whatever the caller
+ *       declared — UPDATE is mode-orthogonal-to-schema.</li>
+ * </ul>
  *
  * <p>Failure modes (all transition to FAILED with a clear
  * {@code failureReason}):
  * <ul>
- *   <li>{@code targetRecipeName} is null/blank — FRAMING-LLM
+ *   <li>EDIT: {@code targetRecipeName} is null/blank — FRAMING-LLM
  *       didn't extract a name despite EDIT mode</li>
+ *   <li>UPDATE: {@code existingScriptRef} is null/blank — caller
+ *       didn't supply the engine-param (should already be caught
+ *       in {@code SlartibartfastEngine.validateModeInputs})</li>
  *   <li>document at the resolved path doesn't exist</li>
- *   <li>YAML parse fails or top-level isn't a map</li>
- *   <li>{@code engine:} field missing or names a schema Slart
- *       doesn't author (e.g. {@code engine: ford})</li>
+ *   <li>document is empty</li>
+ *   <li>EDIT only: YAML parse fails or top-level isn't a map</li>
+ *   <li>EDIT only: {@code engine:} field missing or names a
+ *       schema Slart doesn't author (e.g. {@code engine: ford})</li>
  * </ul>
  *
- * <p>See {@code planning/slart-as-project-architect.md} §D-4.
+ * <p>See {@code planning/slart-as-project-architect.md} §D-4 and
+ * {@code planning/script-architect-executor-split.md} §5.1.
  */
 @Component
 @RequiredArgsConstructor
@@ -61,6 +77,68 @@ public class LoadingExistingPhase {
             ThinkProcessDocument process,
             ThinkEngineContext ctx) {
 
+        if (state.getMode() == de.mhus.vance.api.slartibartfast.ArchitectMode.UPDATE) {
+            executeUpdate(state, process);
+            return;
+        }
+        executeEdit(state, process);
+    }
+
+    /**
+     * UPDATE branch — loads a non-recipe artefact (SCRIPT_JS body
+     * in v1) from {@link ArchitectState#getExistingScriptRef()}
+     * verbatim. No YAML parsing, no schema-detection — the caller
+     * already pinned the {@code outputSchemaType} and the
+     * artefact body is opaque text to LOADING_EXISTING.
+     */
+    private void executeUpdate(
+            ArchitectState state, ThinkProcessDocument process) {
+        String path = state.getExistingScriptRef();
+        if (path == null || path.isBlank()) {
+            state.setFailureReason("LOADING_EXISTING entered in UPDATE "
+                    + "mode without existingScriptRef — "
+                    + "SlartibartfastEngine.validateModeInputs should "
+                    + "have caught this");
+            appendFailedIteration(state, "<missing ref>",
+                    "FAILED — no existingScriptRef");
+            return;
+        }
+
+        Optional<DocumentDocument> doc = documentService.findByPath(
+                process.getTenantId(), process.getProjectId(), path);
+        if (doc.isEmpty()) {
+            state.setFailureReason("Existing artefact not found at "
+                    + path + " — check that existingScriptRef is a "
+                    + "valid document path in the current project.");
+            appendFailedIteration(state, path,
+                    "FAILED — document not found");
+            return;
+        }
+        String content = documentService.readContent(doc.get());
+        if (content == null || content.isBlank()) {
+            state.setFailureReason("Existing artefact at " + path
+                    + " is empty — nothing to update.");
+            appendFailedIteration(state, path,
+                    "FAILED — empty document");
+            return;
+        }
+
+        state.setExistingScriptCode(content);
+        log.info("Slartibartfast id='{}' LOADING_EXISTING (UPDATE) "
+                        + "loaded {} chars from '{}'",
+                process.getId(), content.length(), path);
+
+        appendPassedIteration(state, path,
+                "loaded " + content.length() + " chars (UPDATE)");
+    }
+
+    /**
+     * EDIT branch — loads an existing user-namespace recipe,
+     * YAML-parses it, and detects the schema from the
+     * {@code engine:} field. Pinned schema goes to the state.
+     */
+    private void executeEdit(
+            ArchitectState state, ThinkProcessDocument process) {
         String name = state.getTargetRecipeName();
         if (name == null || name.isBlank()) {
             state.setFailureReason("LOADING_EXISTING entered without "

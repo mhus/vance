@@ -9,19 +9,17 @@ import lombok.NoArgsConstructor;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Mutable runtime state of a Hactar process. Persisted on
- * {@code ThinkProcessDocument.engineParams.deepThoughtState}; restored
- * verbatim on resume so a Brain restart picks up at the current phase
- * without losing prior LLM-drafts or validation errors.
+ * Mutable runtime state of a Hactar process (v2 — executor-only).
+ * Persisted on {@code ThinkProcessDocument.engineParams.deepThoughtState};
+ * restored verbatim on resume so a Brain restart picks up at the
+ * current phase.
  *
- * <p>v1 carries only the fields needed for the three-phase pipeline
- * (DRAFTING → VALIDATING → DONE, with optional EXECUTING). The
- * accepted script lives in {@link #generatedCode} — there is no
- * separate persistence to a project document, the engineParams blob
- * itself is the audit trail. Multi-script-suite, gathering,
- * decomposing land in v1.1 as additional fields.
+ * <p>Hactar v2 is a pure script-execution engine — there are no
+ * LLM-authoring phases (those moved to {@code SlartibartfastEngine}
+ * with {@code OutputSchemaType.SCRIPT_JS}). Fields here cover the
+ * load + (optional) deep-validate + execute pipeline.
  *
- * <p>See {@code planning/hactar-engine.md}.
+ * <p>See {@code planning/script-architect-executor-split.md} §5.2.
  */
 @Data
 @Builder
@@ -29,69 +27,33 @@ import org.jspecify.annotations.Nullable;
 @AllArgsConstructor
 public class HactarState {
 
-    /** What the user/parent asked for, copy of the process goal at
-     *  start time so prompt-building stays deterministic across
-     *  steers that might mutate the live goal field. Optional when
-     *  {@link #scriptPath} is set (load-mode bypasses generation). */
-    private @Nullable String goal;
+    /** Document path the script was loaded from. Set by LOADING
+     *  for audit/log purposes; mirrors the {@code scriptRef}
+     *  engine-param. */
+    private @Nullable String scriptRef;
 
-    /** Project document path the script will be loaded from instead
-     *  of being generated. When set, the engine takes the LOADING →
-     *  VALIDATING → (EXECUTING) → DONE pathway and ignores
-     *  FRAMING/DRAFTING. {@code null} → normal generation pathway. */
-    private @Nullable String scriptPath;
-
-    /** Raw LLM output of the most recent DRAFTING pass — fences
-     *  stripped, ready to feed into VALIDATING. Surfaces verbatim in
-     *  {@code summarizeForParent} so the parent sees the final
-     *  script. */
-    private @Nullable String generatedCode;
-
-    /** Errors from the most recent VALIDATING pass. Populated even on
-     *  success (empty list) so the UI can render the "validated, 0
-     *  errors" badge. */
+    /** Script language — currently only {@code "js"} is supported.
+     *  Reserved for future expansion (Python via separate spec). */
     @Builder.Default
-    private List<ValidationError> validationErrors = new ArrayList<>();
+    private String language = "js";
 
-    /** Plan-mode opt-in. When true, READY transitions to FRAMING
-     *  (LLM sketch) → REVIEWING (sub-recipe worker) → DRAFTING. When
-     *  false (default), READY goes straight to DRAFTING — existing
-     *  one-shot behaviour. Copied from {@code engineParams.framingEnabled}
-     *  at start time so a steer can't change pipeline shape mid-run. */
-    private boolean framingEnabled;
+    /** Verbatim script body loaded by LOADING. EXECUTING reads
+     *  this when calling {@code ScriptExecutor.run(...)}. */
+    private @Nullable String scriptBody;
 
-    /** Plan sketch the FRAMING phase produced — Markdown describing
-     *  the script's approach, sub-steps, tools to call, edge cases.
-     *  Fed verbatim into the DRAFTING user message as additional
-     *  context. {@code null} when FRAMING wasn't run or wasn't yet
-     *  reached. */
-    private @Nullable String planSketch;
+    /** Opt-in flag — when {@code true} the VALIDATING phase runs
+     *  before EXECUTING, calling
+     *  {@code HactarService.deepValidate(...)} for a semantic LLM
+     *  review. Default {@code false} — cheap pipelines (scheduler-
+     *  driven cron runs, Slart-self-execute) skip the LLM cost. */
+    private boolean validateBeforeRun;
 
-    /** Reviewer's verdict line from the last REVIEWING pass —
-     *  {@code "APPROVED"} or {@code "REJECTED"}. {@code null} when
-     *  REVIEWING wasn't run (no reviewer configured, or framing
-     *  disabled). */
-    private @Nullable String reviewerVerdict;
-
-    /** Free-text notes / critique from the last REVIEWING pass.
-     *  Carries the reviewer's reasoning verbatim — on REJECTED this
-     *  becomes the hint fed back into the next FRAMING attempt. */
-    private @Nullable String reviewerNotes;
-
-    /** Number of completed FRAMING→REVIEWING recovery cycles.
-     *  Independent of {@link #recoveryCount} (DRAFTING↔VALIDATING).
-     *  Reaching {@link #maxFramingRecoveries} → FAILED. */
-    private int framingRecoveryCount;
-
-    /** Soft-cap on FRAMING recovery attempts. Default 3 — shorter
-     *  than DRAFTING's recovery budget because each FRAMING cycle
-     *  costs two LLM calls (drafter + reviewer), not one. */
+    /** Issues recorded by LOADING ({@code HactarService.validate})
+     *  or VALIDATING ({@code HactarService.deepValidate}). Empty
+     *  on the happy path. Persisted so the parent process /
+     *  Cortex run-panel can surface them on FAILED status. */
     @Builder.Default
-    private int maxFramingRecoveries = 3;
-
-    /** If true, transition to EXECUTING after VALIDATING; otherwise
-     *  jump straight to DONE. */
-    private boolean executeOnDone;
+    private List<ValidationIssue> validationIssues = new ArrayList<>();
 
     /** Script return value (only set on a successful EXECUTING pass).
      *  JSON-friendly Java object — primitives stay primitives, JS
@@ -100,9 +62,9 @@ public class HactarState {
      *  nothing or when EXECUTING wasn't reached. */
     private @Nullable Object executionResult;
 
-    /** Stack-trace-style error from a failed EXECUTING pass — captured
-     *  from {@code ScriptExecutionException.getMessage()}. {@code null}
-     *  on success or before EXECUTING. */
+    /** Stack-trace-style error from a failed EXECUTING pass —
+     *  captured from {@code ScriptExecutionException.getMessage()}.
+     *  {@code null} on success or before EXECUTING. */
     private @Nullable String executionError;
 
     /** Classification of an EXECUTING failure — one of
@@ -117,16 +79,6 @@ public class HactarState {
      *  {@code 0} when EXECUTING wasn't run. */
     private long executionDurationMs;
 
-    /** Number of completed DRAFTING→VALIDATING recovery cycles. Hits
-     *  {@link #maxRecoveries} → FAILED. */
-    private int recoveryCount;
-
-    /** Soft-cap on recovery attempts. Default 5 — enough to recover
-     *  from "forgot a brace" but not so high that a hallucinating
-     *  model loops forever burning tokens. */
-    @Builder.Default
-    private int maxRecoveries = 5;
-
     @Builder.Default
     private HactarStatus status = HactarStatus.READY;
 
@@ -134,20 +86,24 @@ public class HactarState {
     private @Nullable String failureReason;
 
     /**
-     * One validation error — mirrors
-     * {@code JsValidationService.JsValidationError} but lives in the
-     * API module so it can flow over the wire (e.g. into
-     * {@code summarizeForParent}). {@code line}/{@code column} 0 when
-     * the parser didn't supply a SourceSection.
+     * One validation issue — mirrors
+     * {@code HactarService.ValidationIssue} but lives in the API
+     * module so it can flow over the wire (e.g. into
+     * {@code summarizeForParent} or the Cortex result endpoint).
      */
     @Data
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class ValidationError {
-        private @Nullable String sourceName;
-        private int line;
-        private int column;
+    public static class ValidationIssue {
+        /** {@code ERROR} | {@code WARN} | {@code INFO}. */
+        private @Nullable String severity;
+        /** Short keyword: {@code syntax}, {@code invalid_header},
+         *  {@code missing_required_tool}, {@code logic}, ... */
+        private @Nullable String code;
         private @Nullable String message;
+        /** 1-based, {@code null} when not pinned. */
+        private @Nullable Integer line;
+        private @Nullable Integer column;
     }
 }

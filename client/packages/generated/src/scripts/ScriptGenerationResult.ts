@@ -8,7 +8,5 @@ export interface ScriptGenerationResult {
   status: string;
   reason?: string;
   code?: string;
-  reviewerNotes?: string;
-  planSketch?: string;
   failureReason?: string;
 }

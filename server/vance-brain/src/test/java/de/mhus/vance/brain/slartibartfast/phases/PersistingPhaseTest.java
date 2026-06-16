@@ -20,6 +20,7 @@ import de.mhus.vance.api.slartibartfast.RecipeDraft;
 import de.mhus.vance.api.slartibartfast.Subgoal;
 import de.mhus.vance.api.slartibartfast.TerminationRationale;
 import de.mhus.vance.api.slartibartfast.ValidationCheck;
+import de.mhus.vance.brain.slartibartfast.architect.SchemaArchitect;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
@@ -49,7 +50,14 @@ class PersistingPhaseTest {
     @BeforeEach
     void setUp() {
         documentService = mock(DocumentService.class);
-        phase = new PersistingPhase(documentService, JsonMapper.builder().build());
+        // Recipe-output stub architect — the tests exercise the
+        // legacy _vance/recipes/{_slart,_user}/... write paths and
+        // VOGON_STRATEGY is the schema-type they pin on the state.
+        SchemaArchitect vogonStub = stubRecipeArchitect(OutputSchemaType.VOGON_STRATEGY);
+        phase = new PersistingPhase(
+                documentService,
+                JsonMapper.builder().build(),
+                List.of(vogonStub));
 
         process = new ThinkProcessDocument();
         process.setId("proc-1");
@@ -287,5 +295,56 @@ class PersistingPhaseTest {
                 .iteration(1).phase(phase)
                 .triggeredBy("initial")
                 .outcome(PhaseIteration.IterationOutcome.PASSED).build();
+    }
+
+    /**
+     * Minimal recipe-output {@link SchemaArchitect} stub for the
+     * PERSISTING tests — only {@link SchemaArchitect#type()} matters
+     * for the lookup; all other methods fall through to the default
+     * implementations (isRecipeOutput=true, outputPathSegment="recipes",
+     * outputExtension=".yaml"). The PROPOSING/VALIDATING-specific
+     * methods are never called from this phase.
+     */
+    private static SchemaArchitect stubRecipeArchitect(OutputSchemaType schemaType) {
+        return new SchemaArchitect() {
+            @Override
+            public OutputSchemaType type() {
+                return schemaType;
+            }
+
+            @Override
+            public String proposingSystemPrompt() {
+                return "";
+            }
+
+            @Override
+            public boolean wantsSubRecipeListing() {
+                return false;
+            }
+
+            @Override
+            public void appendProposingContext(
+                    StringBuilder sb, ArchitectState state,
+                    List<de.mhus.vance.brain.recipe.ResolvedRecipe> availableRecipes) {
+                /* no-op */
+            }
+
+            @Override
+            public String expectedEngineName() {
+                return "stub";
+            }
+
+            @Override
+            public ValidationCheck validateDraftShape(
+                    RecipeDraft draft, Map<String, Object> recipeMap,
+                    ThinkProcessDocument process, List<ValidationCheck> report) {
+                return null;
+            }
+
+            @Override
+            public String recoveryHintTail(ThinkProcessDocument process) {
+                return "";
+            }
+        };
     }
 }

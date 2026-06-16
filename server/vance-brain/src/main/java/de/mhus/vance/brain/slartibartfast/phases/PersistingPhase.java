@@ -4,21 +4,23 @@ import de.mhus.vance.api.slartibartfast.ArchitectState;
 import de.mhus.vance.api.slartibartfast.ArchitectStatus;
 import de.mhus.vance.api.slartibartfast.Criterion;
 import de.mhus.vance.api.slartibartfast.CriterionOrigin;
+import de.mhus.vance.api.slartibartfast.OutputSchemaType;
 import de.mhus.vance.api.slartibartfast.PhaseIteration;
 import de.mhus.vance.api.slartibartfast.RecipeDraft;
 import de.mhus.vance.api.slartibartfast.Subgoal;
 import de.mhus.vance.api.slartibartfast.TerminationRationale;
 import de.mhus.vance.api.slartibartfast.ValidationCheck;
+import de.mhus.vance.brain.slartibartfast.architect.SchemaArchitect;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
@@ -42,7 +44,6 @@ import tools.jackson.databind.ObjectMapper;
  * {@link ArchitectStatus#DONE} and closes the process.
  */
 @Component
-@RequiredArgsConstructor
 @Slf4j
 public class PersistingPhase {
 
@@ -51,6 +52,31 @@ public class PersistingPhase {
 
     private final DocumentService documentService;
     private final ObjectMapper objectMapper;
+    /** Architect lookup — same construction pattern as ValidatingPhase
+     *  / ProposingPhase. Used to read the per-schema output-path
+     *  segment and extension for non-recipe schemas (e.g. SCRIPT_JS
+     *  writes to {@code _vance/scripts/_slart/<runId>/<name>.js}). */
+    private final Map<OutputSchemaType, SchemaArchitect> architects;
+
+    public PersistingPhase(
+            DocumentService documentService,
+            ObjectMapper objectMapper,
+            List<SchemaArchitect> schemaArchitects) {
+        this.documentService = documentService;
+        this.objectMapper = objectMapper;
+        Map<OutputSchemaType, SchemaArchitect> map = new EnumMap<>(OutputSchemaType.class);
+        for (SchemaArchitect a : schemaArchitects) {
+            SchemaArchitect existing = map.put(a.type(), a);
+            if (existing != null) {
+                throw new IllegalStateException(
+                        "Duplicate SchemaArchitect beans for "
+                                + a.type() + ": "
+                                + existing.getClass().getName()
+                                + " and " + a.getClass().getName());
+            }
+        }
+        this.architects = Map.copyOf(map);
+    }
 
     public void execute(
             ArchitectState state,
@@ -70,30 +96,53 @@ public class PersistingPhase {
             return;
         }
 
+        // Resolve the architect for this run's output schema so we
+        // know where the artefact lives (recipes vs. scripts) and
+        // what extension to use. Recipe schemas keep the legacy
+        // _vance/recipes/{_slart,_user}/... layout; non-recipe
+        // schemas (SCRIPT_JS) write to _vance/<segment>/_slart/...
+        SchemaArchitect architect = architects.get(state.getOutputSchemaType());
+        if (architect == null) {
+            state.setFailureReason("PERSISTING has no SchemaArchitect "
+                    + "bean for " + state.getOutputSchemaType());
+            return;
+        }
+        String segment = architect.outputPathSegment();
+        String extension = architect.outputExtension();
+        String slartPrefix = "_vance/" + segment + "/_slart/";
+        String userPrefix = "_vance/" + segment + "/_user/";
+
         // Phase-D write-path resolution:
-        //   EDIT                 → recipes/_user/<targetRecipeName>.yaml (overwrite)
-        //   CREATE + recipeName  → recipes/_user/<recipeName>.yaml       (refuse on collision)
-        //   CREATE anonymous     → recipes/_slart/<runId>/<draft.name>.yaml (legacy sandbox)
-        // Audit always lives next to the recipe; for EDIT the audit
-        // carries the previousRecipeYaml so the overwrite is
-        // reversible.
+        //   EDIT (recipe only)   → <userPrefix><targetRecipeName>.yaml (overwrite)
+        //   CREATE + recipeName  → <userPrefix><recipeName>.yaml       (named upsert; recipes only)
+        //   CREATE anonymous     → <slartPrefix><runId>/<draft.name><ext> (sandbox bucket)
+        //
+        // EDIT and named-CREATE are recipe-only concepts; non-recipe
+        // schemas (SCRIPT_JS) always land in the slart sandbox bucket
+        // in Phase 2a. UPDATE-mode for scripts (Phase 2b) will reuse
+        // the slart bucket — different runId per call, no in-place
+        // overwrite (planning §5.1 + Slart §8 garantie).
         String recipePath;
         String auditPath;
         boolean isUserNamespace;
-        if (state.getMode() == de.mhus.vance.api.slartibartfast.ArchitectMode.EDIT) {
+        boolean recipeMode = architect.isRecipeOutput();
+        if (recipeMode
+                && state.getMode() == de.mhus.vance.api.slartibartfast.ArchitectMode.EDIT) {
             String name = state.getTargetRecipeName();
             if (name == null || name.isBlank()) {
                 state.setFailureReason("PERSISTING in EDIT mode without "
                         + "targetRecipeName — LOADING_EXISTING must set it");
                 return;
             }
-            recipePath = USER_PREFIX + name + ".yaml";
-            auditPath = USER_PREFIX + name + ".audit.json";
+            recipePath = userPrefix + name + extension;
+            auditPath = userPrefix + name + ".audit.json";
             isUserNamespace = true;
-        } else if (state.getRecipeName() != null && !state.getRecipeName().isBlank()) {
+        } else if (recipeMode
+                && state.getRecipeName() != null
+                && !state.getRecipeName().isBlank()) {
             String name = state.getRecipeName();
-            recipePath = USER_PREFIX + name + ".yaml";
-            auditPath = USER_PREFIX + name + ".audit.json";
+            recipePath = userPrefix + name + extension;
+            auditPath = userPrefix + name + ".audit.json";
             isUserNamespace = true;
             // Named CREATE upserts — when "speicher unter 'X'"
             // hits an existing X, we treat the new run as the
@@ -110,27 +159,32 @@ public class PersistingPhase {
                         process.getId(), recipePath);
             }
         } else {
-            recipePath = SLART_PREFIX + runId + "/" + draft.getName() + ".yaml";
-            auditPath = SLART_PREFIX + runId + "/audit.json";
+            recipePath = slartPrefix + runId + "/" + draft.getName() + extension;
+            auditPath = slartPrefix + runId + "/audit.json";
             isUserNamespace = false;
         }
 
+        String artefactNoun = recipeMode ? "recipe" : "script";
         try {
             writeOrUpdate(process, recipePath, draft.getYaml(),
                     isUserNamespace
-                            ? "Slartibartfast user-namespace recipe '"
+                            ? "Slartibartfast user-namespace "
+                                    + artefactNoun + " '"
                                     + (state.getMode()
                                             == de.mhus.vance.api.slartibartfast.ArchitectMode.EDIT
                                             ? state.getTargetRecipeName()
                                             : state.getRecipeName())
                                     + "'"
-                            : "Slartibartfast-generated recipe for run " + runId);
+                            : "Slartibartfast-generated "
+                                    + artefactNoun + " for run " + runId);
         } catch (RuntimeException e) {
-            state.setFailureReason("PERSISTING failed writing recipe "
-                    + recipePath + ": " + e.getMessage());
+            state.setFailureReason("PERSISTING failed writing "
+                    + artefactNoun + " " + recipePath
+                    + ": " + e.getMessage());
             appendIteration(state,
                     "draft '" + draft.getName() + "'",
-                    "FAILED — recipe write error: " + e.getMessage(),
+                    "FAILED — " + artefactNoun + " write error: "
+                            + e.getMessage(),
                     PhaseIteration.IterationOutcome.FAILED);
             return;
         }
@@ -161,9 +215,9 @@ public class PersistingPhase {
                 "wrote " + recipePath + " (+ audit.json)",
                 PhaseIteration.IterationOutcome.PASSED);
 
-        log.info("Slartibartfast id='{}' PERSISTING wrote recipe at '{}' "
+        log.info("Slartibartfast id='{}' PERSISTING wrote {} at '{}' "
                         + "with confidence {}, {} iterations, {} recoveries",
-                process.getId(), recipePath, draft.getConfidence(),
+                process.getId(), artefactNoun, recipePath, draft.getConfidence(),
                 termination.getIterationCount(),
                 termination.getRecoveryEvents());
     }

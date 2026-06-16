@@ -6,4 +6,6 @@
 export interface ScriptGenerateRequest {
   prompt: string;
   existingScriptId?: string;
+  mode?: string;
+  failureReason?: string;
 }

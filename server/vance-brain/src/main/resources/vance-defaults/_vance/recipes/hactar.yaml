@@ -1,35 +1,39 @@
 description: |
-  Hactar engine default — script-architect. Takes a high-level
-  goal, drafts a JavaScript orchestrator script (one IIFE), validates
-  it parse-only, recovers on syntax errors up to maxRecoveries (5),
-  and returns the accepted script as a fenced code block in
-  summarizeForParent. No persistence to documents — the generated
-  code lives in engineParams.deepThoughtState.
+  Hactar engine default — pure script executor (v2). Loads a
+  JavaScript orchestrator from a project document, runs minimal
+  pre-flight validation (parse + JSDoc header + tool-allowlist
+  intersect via HactarService.validate), optionally runs deep
+  LLM-review (HactarService.deepValidate via the script-review
+  recipe), and executes the script in a sandboxed GraalJS context.
 
-  Optional params:
-    executeOnDone: bool   — if true, transition to EXECUTING (stub
-                            until Script Cortex lands)
-    maxRecoveries: int    — default 5
-    promptDocument: path  — override for the DRAFTING system prompt
-                            (default: prompts/hactar-drafting.md)
+  Script authoring lives in Slartibartfast with
+  outputSchemaType=SCRIPT_JS — see the bundled `slart-and-run`
+  recipe for "generate-and-execute in one step".
+
+  Engine params (required + optional):
+    scriptRef          string — document path to the script (REQUIRED)
+    language           string — "js" (default; only supported v1)
+    validateBeforeRun  bool   — true → opt-in LLM-review before EXEC (default false)
+    scriptAllowedTools list   — tool names the script may call (caller-supplied)
+    scriptParams       map    — bindings the script sees as vance.params.*
+    timeout            int|str — wall-clock cap, seconds or "30s"/"5m"/"1h"
 engine: hactar
 params:
-  manualPaths:
-    - manuals/
+  language: js
+  validateBeforeRun: false
 tags:
   - default
-  - script-architect
+  - script-executor
   - engine-default
 # Trigger keywords for the deterministic recipe-router pre-check
-# (see specification/recipe-routing.md §5). Hactar is also the
-# default `routing.fallback.recipe` — these triggers let the user
-# opt into Hactar explicitly via free-text goals.
+# (see specification/recipe-routing.md §5). Hactar v2 is the
+# *executor* — when a user says "run this script", route here.
+# For "generate a script" the router uses `slart-and-run` (Phase 4
+# of the architect/executor split).
 triggers:
   keywords:
     - hactar
-    - javascript
-    - js script
-    - skript erzeugen
-    - script erzeugen
-    - generate script
-    - automate via script
+    - run script
+    - execute script
+    - script ausführen
+    - skript ausführen

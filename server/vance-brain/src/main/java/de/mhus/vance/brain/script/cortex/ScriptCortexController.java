@@ -1,7 +1,5 @@
 package de.mhus.vance.brain.script.cortex;
 
-import de.mhus.vance.api.hactar.HactarState;
-import de.mhus.vance.api.hactar.HactarStatus;
 import de.mhus.vance.api.documents.DocumentDto;
 import de.mhus.vance.api.documents.DocumentListResponse;
 import de.mhus.vance.api.documents.DocumentSummary;
@@ -17,9 +15,14 @@ import de.mhus.vance.api.scripts.ScriptGenerationResult;
 import de.mhus.vance.api.scripts.ScriptValidateRequest;
 import de.mhus.vance.api.scripts.ScriptValidateError;
 import de.mhus.vance.api.scripts.ScriptValidateResponse;
-import de.mhus.vance.brain.hactar.HactarEngine;
+import de.mhus.vance.api.slartibartfast.ArchitectMode;
+import de.mhus.vance.api.slartibartfast.ArchitectState;
+import de.mhus.vance.api.slartibartfast.ArchitectStatus;
+import de.mhus.vance.api.slartibartfast.OutputSchemaType;
+import de.mhus.vance.api.slartibartfast.RecipeDraft;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.script.JsValidationService;
+import de.mhus.vance.brain.slartibartfast.SlartibartfastEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.document.DocumentDocument;
@@ -322,7 +325,7 @@ public class ScriptCortexController {
                         "Unknown executionId: " + executionId));
     }
 
-    // ──────────────────── Hactar-Generation ────────────────────
+    // ──────────────────── Script-Generation (via Slart) ────────────────────
 
     @PostMapping("/brain/{tenant}/scripts/generate")
     public ScriptGenerateResponse generate(
@@ -334,47 +337,66 @@ public class ScriptCortexController {
 
         authority.enforce(httpRequest,
                 new Resource.Project(tenant, projectId), Action.CREATE);
-        String goal = buildGoal(tenant, request);
         String processName = "script-gen-" + UUID.randomUUID().toString().substring(0, 8);
 
-        // Symmetric tool surface — DT's drafting/framing prompt renders
-        // toolInventory from scriptAllowedTools, and ScriptCortexExecutionService
-        // applies the same list as the runtime allow-set. Without this
-        // the LLM would either be told "no tools — pure JS only" (and
-        // never reach for vance.tools.call) or, worse, be promised
-        // tools the executor rejects at runtime.
-        List<String> allowedTools = toolPolicy.availableTools(
-                tenant, projectId, sessionId,
-                (String) httpRequest.getAttribute(AccessFilterBase.ATTR_USERNAME));
+        // Resolve mode + existing-script-ref. Explicit `mode` from
+        // the request wins; legacy callers (pre-Phase-5) without
+        // `mode` get the inferred default (UPDATE iff
+        // existingScriptId is set, else CREATE).
+        ArchitectMode mode = resolveMode(request);
+        String existingScriptRef = null;
+        if (mode == ArchitectMode.UPDATE) {
+            if (request.getExistingScriptId() == null
+                    || request.getExistingScriptId().isBlank()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "mode=UPDATE requires existingScriptId");
+            }
+            DocumentDocument existing = loadOwned(tenant, request.getExistingScriptId());
+            existingScriptRef = existing.getPath();
+        }
 
         Map<String, Object> engineParams = new LinkedHashMap<>();
-        engineParams.put(HactarEngine.GOAL_KEY, goal);
-        engineParams.put(HactarEngine.EXECUTE_ON_DONE_KEY, Boolean.FALSE);
-        engineParams.put(HactarEngine.MAX_RECOVERIES_KEY, 5);
-        engineParams.put(HactarEngine.SCRIPT_ALLOWED_TOOLS_KEY, allowedTools);
+        engineParams.put(SlartibartfastEngine.USER_DESCRIPTION_KEY, request.getPrompt());
+        engineParams.put(SlartibartfastEngine.OUTPUT_SCHEMA_TYPE_KEY,
+                OutputSchemaType.SCRIPT_JS.name());
+        // planOnly: Cortex only wants the authored code, not a
+        // Slart-driven Hactar-self-execute. The user runs it
+        // separately via the Run button.
+        engineParams.put(SlartibartfastEngine.PLAN_ONLY_KEY, Boolean.TRUE);
+        engineParams.put(SlartibartfastEngine.MODE_KEY, mode.name());
+        if (existingScriptRef != null) {
+            engineParams.put(SlartibartfastEngine.EXISTING_SCRIPT_REF_KEY,
+                    existingScriptRef);
+        }
+        if (mode == ArchitectMode.UPDATE
+                && request.getFailureReason() != null
+                && !request.getFailureReason().isBlank()) {
+            engineParams.put(SlartibartfastEngine.FAILURE_REASON_KEY,
+                    request.getFailureReason());
+        }
 
         ThinkProcessDocument process = thinkProcessService.create(
                 tenant,
                 projectId,
                 sessionId,
                 processName,
-                HactarEngine.NAME,
-                HactarEngine.VERSION,
+                SlartibartfastEngine.NAME,
+                SlartibartfastEngine.VERSION,
                 "Script Cortex generation",
-                goal,
+                request.getPrompt(),
                 /*parentProcessId*/ null,
                 engineParams,
-                "hactar",
+                "slartibartfast",
                 /*promptOverride*/ null,
                 /*promptMode*/ null,
                 /*allowedToolsOverride*/ null);
         try {
             thinkEngineService.start(process);
         } catch (RuntimeException e) {
-            log.warn("Failed to start Deep-Thought generation process='{}': {}",
+            log.warn("Failed to start Slart generation process='{}': {}",
                     process.getId(), e.toString());
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
-                    "Failed to start Deep-Thought: " + e.getMessage());
+                    "Failed to start Slart: " + e.getMessage());
         }
         return ScriptGenerateResponse.builder()
                 .thinkProcessId(process.getId())
@@ -391,15 +413,18 @@ public class ScriptCortexController {
         if (!tenant.equals(process.getTenantId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
-        HactarState state = loadState(process);
+        ArchitectState state = loadSlartState(process);
+        RecipeDraft draft = state == null ? null : state.getProposedRecipe();
         return ScriptGenerationResult.builder()
                 .thinkProcessId(thinkProcessId)
                 .status(process.getStatus() == null ? null : process.getStatus().name())
-                .reason(state.getStatus() == null ? null : state.getStatus().name())
-                .code(state.getGeneratedCode())
-                .reviewerNotes(state.getReviewerNotes())
-                .planSketch(state.getPlanSketch())
-                .failureReason(state.getFailureReason())
+                .reason(state == null || state.getStatus() == null
+                        ? null : state.getStatus().name())
+                // Draft.yaml carries the JS source for SCRIPT_JS — see
+                // JsScriptArchitect.extractRecipeYaml (the field-name
+                // is artefact-agnostic in the schema-agnostic phases).
+                .code(draft == null ? null : draft.getYaml())
+                .failureReason(state == null ? null : state.getFailureReason())
                 .build();
     }
 
@@ -426,29 +451,41 @@ public class ScriptCortexController {
                 "Either scriptId or code must be supplied");
     }
 
-    private String buildGoal(String tenant, ScriptGenerateRequest request) {
-        String userPrompt = request.getPrompt();
-        String existingId = request.getExistingScriptId();
-        if (existingId == null || existingId.isBlank()) {
-            return userPrompt;
-        }
-        DocumentDocument existing = loadOwned(tenant, existingId);
-        String body = documentService.readContent(existing);
-        StringBuilder sb = new StringBuilder(userPrompt.length() + body.length() + 200);
-        sb.append(userPrompt);
-        sb.append("\n\nExisting script to improve (file: `")
-                .append(existing.getPath()).append("`):\n\n```js\n");
-        sb.append(body);
-        sb.append("\n```\n");
-        return sb.toString();
+    private @Nullable ArchitectState loadSlartState(ThinkProcessDocument process) {
+        Map<String, Object> p = process.getEngineParams();
+        if (p == null) return null;
+        Object raw = p.get(SlartibartfastEngine.STATE_KEY);
+        if (raw == null) return null;
+        return objectMapper.convertValue(raw, ArchitectState.class);
     }
 
-    private HactarState loadState(ThinkProcessDocument process) {
-        Map<String, Object> p = process.getEngineParams();
-        if (p == null) return HactarState.builder().status(HactarStatus.READY).build();
-        Object raw = p.get(HactarEngine.STATE_KEY);
-        if (raw == null) return HactarState.builder().status(HactarStatus.READY).build();
-        return objectMapper.convertValue(raw, HactarState.class);
+    /**
+     * Resolve the {@link ArchitectMode} from the request — explicit
+     * {@code mode} wins, else infer from {@code existingScriptId}
+     * (set ⇒ UPDATE, unset ⇒ CREATE). Unknown explicit values fail
+     * with {@code 400 Bad Request}.
+     */
+    private static ArchitectMode resolveMode(ScriptGenerateRequest request) {
+        String raw = request.getMode();
+        if (raw != null && !raw.isBlank()) {
+            String norm = raw.trim().toUpperCase().replace('-', '_');
+            try {
+                ArchitectMode m = ArchitectMode.valueOf(norm);
+                if (m == ArchitectMode.EDIT) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "Cortex script-generate only accepts CREATE or "
+                                    + "UPDATE — EDIT is recipe-only");
+                }
+                return m;
+            } catch (IllegalArgumentException iae) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Unknown mode: '" + raw + "' (expected CREATE or UPDATE)");
+            }
+        }
+        return request.getExistingScriptId() != null
+                && !request.getExistingScriptId().isBlank()
+                ? ArchitectMode.UPDATE
+                : ArchitectMode.CREATE;
     }
 
     private void cacheDeepReview(

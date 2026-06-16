@@ -47,7 +47,7 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <p>Workflow-scoped ⇒ {@link TriggerKind#WORKFLOW}: the
  * {@code VanceScriptApi} runs PROCESS_SCOPED with the full spawn-tool
- * surface. {@code planning/trigger-actions.md} §8.
+ * surface. {@code specification/trigger-actions.md} §8.
  */
 @Component
 @ConditionalOnProperty(

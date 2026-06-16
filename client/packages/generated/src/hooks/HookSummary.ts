@@ -4,13 +4,12 @@
 */
 
 import { HookSource } from './HookSource';
-import { HookType } from './HookType';
 
 export interface HookSummary {
   name: string;
   event: string;
   source: HookSource;
-  type: HookType;
+  actionType: string;
   enabled: boolean;
   description?: string;
   tags?: string[];

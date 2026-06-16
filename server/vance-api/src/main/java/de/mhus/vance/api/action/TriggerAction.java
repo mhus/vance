@@ -16,7 +16,7 @@ import org.jspecify.annotations.Nullable;
  * Workflow-Task-Konzept ({@code shell_task} nach Rename) mit eigener
  * Workspace-Sequenzierung und ExitCode-Outcome-Mapping.
  *
- * <p>Design rationale: {@code planning/trigger-actions.md} §3.
+ * <p>Design rationale: {@code specification/trigger-actions.md} §3.
  */
 public sealed interface TriggerAction
         permits TriggerAction.Recipe,
@@ -123,7 +123,7 @@ public sealed interface TriggerAction
      *
      * <p>Sandbox scope (read-only vs. tool-call-capable) is decided
      * by the executor based on the calling trigger — see
-     * {@code planning/trigger-actions.md} §8.
+     * {@code specification/trigger-actions.md} §8.
      */
     record Script(
             ScriptSource source,

@@ -9,7 +9,7 @@ import org.jspecify.annotations.Nullable;
 /**
  * Maps a script's return value (or {@link ScriptExecutionException})
  * onto an {@link ActionResult}. The mapping rules live in
- * {@code planning/trigger-actions.md} §5.3 — permissive-structured: the
+ * {@code specification/trigger-actions.md} §5.3 — permissive-structured: the
  * explicit {@code {success: bool}} wrapper signals the outcome, plain
  * returns count as {@code success}, only kaputt returns map to
  * {@code technical_error}.

@@ -11,7 +11,7 @@
  * ({@code ThinkProcessService}, {@code MagratheaRunService},
  * {@code ScriptExecutor}, …).
  *
- * <p>Design rationale: {@code planning/trigger-actions.md} §5.3.
+ * <p>Design rationale: {@code specification/trigger-actions.md} §5.3.
  */
 @NullMarked
 package de.mhus.vance.brain.action;

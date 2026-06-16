@@ -4,7 +4,7 @@
  * manual REST call) is supposed to spawn or execute. Same shape across
  * all triggers, parsed once, dispatched by an executor.
  *
- * <p>See {@code planning/trigger-actions.md} for the design rationale
+ * <p>See {@code specification/trigger-actions.md} for the design rationale
  * and {@code specification/trigger-actions.md} (TODO) for the
  * normative spec.
  */

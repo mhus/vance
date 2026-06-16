@@ -2,7 +2,7 @@ package de.mhus.vance.api.action;
 
 /**
  * Where a {@link TriggerAction.Script} reads its code from.
- * See {@code planning/trigger-actions.md} §3.
+ * See {@code specification/trigger-actions.md} §3.
  */
 public enum ScriptSource {
 

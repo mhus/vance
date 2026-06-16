@@ -451,6 +451,7 @@ public final class SpawnActionExecutor implements ActionExecutor<TriggerAction.R
             case WORKFLOW -> "workflow";
             case TOOL -> "tool";
             case USER -> "user";
+            case HOOK -> "hook";
         };
     }
 

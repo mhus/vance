@@ -55,7 +55,7 @@ public class HookToolSupport {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("name", def.name());
         m.put("event", def.event().wireName());
-        m.put("type", def.type().name().toLowerCase(java.util.Locale.ROOT));
+        m.put("actionType", def.actionType());
         m.put("enabled", def.enabled());
         m.put("source", def.source().name().toLowerCase(java.util.Locale.ROOT));
         if (def.description() != null) m.put("description", def.description());

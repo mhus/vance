@@ -23,7 +23,7 @@ import org.springframework.stereotype.Component;
  *
  * <p>The RootDir must already exist: workspace-source scripts are
  * caller-managed, the executor never auto-creates a RootDir for them
- * (see {@code planning/trigger-actions.md} §6.1).
+ * (see {@code specification/trigger-actions.md} §6.1).
  */
 @Component
 @RequiredArgsConstructor

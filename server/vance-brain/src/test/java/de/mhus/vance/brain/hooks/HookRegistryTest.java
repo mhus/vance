@@ -2,9 +2,9 @@ package de.mhus.vance.brain.hooks;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import de.mhus.vance.api.action.TriggerAction;
 import de.mhus.vance.api.hooks.HookEventName;
 import de.mhus.vance.api.hooks.HookSource;
-import de.mhus.vance.api.hooks.HookType;
 import java.time.Duration;
 import java.util.EnumMap;
 import java.util.List;
@@ -54,12 +54,13 @@ class HookRegistryTest {
     }
 
     private static HookDef def(String name, HookEventName event) {
+        TriggerAction action = TriggerAction.Recipe.of(
+                "notify", /*initialMessage*/ null, /*params*/ null, /*runAs*/ null);
         return new HookDef(
-                name, event, HookSource.PROJECT, HookType.JS, true,
-                /*description*/ null, Duration.ofSeconds(5), null,
-                /*yamlBody*/ "type: js\nscript: noop;\n",
+                name, event, HookSource.PROJECT, true,
+                /*description*/ null, Duration.ofSeconds(5), /*tags*/ null,
+                /*yamlBody*/ "recipe: notify\n",
                 /*createdByUserId*/ null,
-                /*script*/ "log.info('hi');",
-                /*model*/ null, /*maxTokens*/ null, /*prompt*/ null);
+                action);
     }
 }

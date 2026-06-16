@@ -7,7 +7,6 @@ import de.mhus.vance.api.hooks.HookEventName;
 import de.mhus.vance.api.hooks.HookSaveRequest;
 import de.mhus.vance.api.hooks.HookSource;
 import de.mhus.vance.api.hooks.HookSummary;
-import de.mhus.vance.api.hooks.HookType;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.eventlog.EventLogDocument;
 import de.mhus.vance.shared.eventlog.EventLogService;
@@ -208,7 +207,7 @@ public class HookController {
                 .name(def.name())
                 .event(def.event().wireName())
                 .source(def.source())
-                .type(def.type())
+                .actionType(def.actionType())
                 .enabled(def.enabled())
                 .description(def.description())
                 .tags(def.tags())
@@ -223,17 +222,25 @@ public class HookController {
                 .event(def.event().wireName())
                 .yaml(def.yamlBody())
                 .source(def.source())
-                .type(def.type())
                 .enabled(def.enabled())
                 .description(def.description())
                 .timeoutMs(def.timeout().toMillis())
-                .tags(def.tags());
-        if (def.type() == HookType.JS) {
-            b.script(def.script());
-        } else {
-            b.model(def.model());
-            b.maxTokens(def.maxTokens());
-            b.prompt(def.prompt());
+                .tags(def.tags())
+                .params(def.action().params())
+                .runAs(def.action().runAs());
+        de.mhus.vance.api.action.TriggerAction action = def.action();
+        if (action instanceof de.mhus.vance.api.action.TriggerAction.Recipe r) {
+            b.recipe(r.recipe());
+            b.initialMessage(r.initialMessage());
+        } else if (action instanceof de.mhus.vance.api.action.TriggerAction.Workflow w) {
+            b.workflow(w.workflow());
+        } else if (action instanceof de.mhus.vance.api.action.TriggerAction.Script s) {
+            b.script(de.mhus.vance.api.hooks.HookScriptSpec.builder()
+                    .source(s.source().name().toLowerCase(java.util.Locale.ROOT))
+                    .dirName(s.dirName())
+                    .path(s.path())
+                    .timeoutSeconds(s.timeoutSeconds())
+                    .build());
         }
         return b.build();
     }

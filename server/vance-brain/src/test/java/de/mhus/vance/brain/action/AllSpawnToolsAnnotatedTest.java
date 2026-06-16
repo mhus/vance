@@ -20,7 +20,7 @@ import org.junit.jupiter.api.Test;
  * Anti-drift guard: every tool that spawns a Process / Workflow / Hook
  * / Scheduler / Event entry must carry the {@link SpawnTool} marker
  * so the trigger-scoped sandbox (see
- * {@code planning/trigger-actions.md} §8) can refuse to run it from
+ * {@code specification/trigger-actions.md} §8) can refuse to run it from
  * within a trigger script.
  *
  * <p>When you add a new spawn-capable tool: register its class here so

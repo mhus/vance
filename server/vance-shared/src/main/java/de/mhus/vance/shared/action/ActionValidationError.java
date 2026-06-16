@@ -3,7 +3,7 @@ package de.mhus.vance.shared.action;
 /**
  * Structured reason why a YAML map didn't parse to a valid
  * {@link de.mhus.vance.api.action.TriggerAction}. See
- * {@code planning/trigger-actions.md} §3.2.
+ * {@code specification/trigger-actions.md} §3.2.
  *
  * @param kind   coarse error category
  * @param field  the offending field (e.g. {@code "recipe"},

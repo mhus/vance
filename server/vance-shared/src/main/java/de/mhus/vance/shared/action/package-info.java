@@ -5,7 +5,7 @@
  * ({@code recipe:} | {@code script:} | {@code workflow:}) is enforced
  * in one place.
  *
- * <p>See {@code planning/trigger-actions.md} §5.2.
+ * <p>See {@code specification/trigger-actions.md} §5.2.
  */
 @NullMarked
 package de.mhus.vance.shared.action;

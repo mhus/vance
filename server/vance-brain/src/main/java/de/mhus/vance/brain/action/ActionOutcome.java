@@ -7,7 +7,7 @@ package de.mhus.vance.brain.action;
  * collapse {@link #isFailure()} into a single bit.
  *
  * <p>The mapping rules for script returns live in
- * {@code planning/trigger-actions.md} §5.3.
+ * {@code specification/trigger-actions.md} §5.3.
  */
 public enum ActionOutcome {
 

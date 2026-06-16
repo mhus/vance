@@ -3,6 +3,7 @@ package de.mhus.vance.api.hooks;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
 import java.util.List;
+import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -15,7 +16,10 @@ import org.jspecify.annotations.Nullable;
  * including comments); parsed fields are convenience for the UI to
  * render the form without re-parsing.
  *
- * <p>See {@code specification/hooks.md} §4 for the YAML schema.
+ * <p>Hook actions follow the unified {@code TriggerAction} schema:
+ * exactly one of {@link #recipe}, {@link #script}, {@link #workflow}
+ * is non-null. See {@code specification/hooks.md} and
+ * {@code specification/trigger-actions.md} for the YAML schema.
  */
 @Data
 @Builder
@@ -37,22 +41,31 @@ public class HookDto {
     /** Which cascade tier currently provides this hook. */
     private HookSource source;
 
-    // ─── Parsed convenience fields ───
+    // ─── Parsed convenience fields (mirror of YAML for the UI) ───
 
-    private HookType type;
     private boolean enabled;
     private @Nullable String description;
     /** Wall-clock timeout in milliseconds. */
     private long timeoutMs;
     private @Nullable List<String> tags;
 
-    /** Filled when {@link #type} == {@link HookType#JS}. */
-    private @Nullable String script;
+    // ─── Action variant — exactly one is set ───
 
-    /** Filled when {@link #type} == {@link HookType#LLM}. */
-    private @Nullable String model;
-    /** Filled when {@link #type} == {@link HookType#LLM}. */
-    private @Nullable Integer maxTokens;
-    /** Filled when {@link #type} == {@link HookType#LLM}. */
-    private @Nullable String prompt;
+    /** Recipe name when the action is {@code recipe:}. */
+    private @Nullable String recipe;
+
+    /** Workflow name when the action is {@code workflow:}. */
+    private @Nullable String workflow;
+
+    /** Script descriptor when the action is {@code script:}. */
+    private @Nullable HookScriptSpec script;
+
+    /** Action params (merged into the executor's params bag). */
+    private @Nullable Map<String, Object> params;
+
+    /** Initial chat message — only meaningful for {@link #recipe}-actions. */
+    private @Nullable String initialMessage;
+
+    /** User identity to run as — {@code null} falls back to the hook's {@code createdBy}. */
+    private @Nullable String runAs;
 }

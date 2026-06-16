@@ -136,7 +136,7 @@ public final class VanceScriptApi {
      * that {@link ScriptToolsApi#call} refuses outright — typically the
      * spawn-tool set in trigger-scoped runs (see
      * {@link de.mhus.vance.brain.action.SpawnToolRegistry} and
-     * {@code planning/trigger-actions.md} §8).
+     * {@code specification/trigger-actions.md} §8).
      *
      * <p>{@code documentService} enables the {@code vance.documents.*}
      * binding. Pass {@code null} for scripts that mustn't touch documents

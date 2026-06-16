@@ -220,8 +220,8 @@ export * from './hooks/HookDto';
 export * from './hooks/HookEventName';
 export * from './hooks/HookSaveRequest';
 export * from './hooks/HookSource';
+export * from './hooks/HookScriptSpec';
 export * from './hooks/HookSummary';
-export * from './hooks/HookType';
 
 export * from './server-tools/ServerToolDto';
 export * from './server-tools/ServerToolWriteRequest';

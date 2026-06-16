@@ -1,9 +1,10 @@
 package de.mhus.vance.brain.hooks;
 
+import de.mhus.vance.api.action.TriggerAction;
 import de.mhus.vance.api.hooks.HookEventName;
 import de.mhus.vance.api.hooks.HookSource;
-import de.mhus.vance.api.hooks.HookType;
-import de.mhus.vance.brain.prompt.PromptTemplateRenderer;
+import de.mhus.vance.shared.action.ActionValidationError;
+import de.mhus.vance.shared.action.TriggerActionParser;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -17,28 +18,32 @@ import org.yaml.snakeyaml.Yaml;
  * Parse and validate a hook YAML body. Single entry point —
  * {@link #parse(String, HookEventName, HookSource, String)}.
  *
- * <p>Validation is strict on shape but lenient on whitespace: trailing
- * blanks in YAML are kept verbatim so a round-trip through the editor
- * preserves the user's formatting (the parser doesn't rewrite the
- * source).
+ * <p>A hook YAML is now a regular {@link TriggerAction} document — one
+ * of {@code recipe:} / {@code script:} / {@code workflow:} at the top
+ * level — wrapped with the hook-meta-fields ({@code enabled},
+ * {@code description}, {@code timeout}, {@code tags}). The action
+ * disjunction is enforced by {@link TriggerActionParser}; this parser
+ * adds the hook-specific bits and rejects the obsolete pre-unification
+ * shape ({@code type: js|llm}) with a clear migration hint.
  *
- * <p>Pebble templates inside {@code prompt} are compiled here so a
- * syntax error fails the load, not the run. The compiled handle is
- * discarded; the runner re-compiles via Pebble's internal LRU cache
- * (same source string).
+ * <p>See {@code specification/hooks.md} and
+ * {@code specification/trigger-actions.md}.
  */
 @Component
 public class HookYamlParser {
 
-    private static final Duration DEFAULT_JS_TIMEOUT = Duration.ofSeconds(5);
-    private static final Duration DEFAULT_LLM_TIMEOUT = Duration.ofSeconds(15);
+    private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(5);
     private static final Duration MAX_TIMEOUT = Duration.ofSeconds(30);
-    private static final int DEFAULT_MAX_TOKENS = 512;
 
-    private final PromptTemplateRenderer templateRenderer;
+    private final TriggerActionParser actionParser;
 
-    public HookYamlParser(PromptTemplateRenderer templateRenderer) {
-        this.templateRenderer = templateRenderer;
+    public HookYamlParser() {
+        this(new TriggerActionParser());
+    }
+
+    /** Test seam — lets unit tests inject a parser instance directly. */
+    public HookYamlParser(TriggerActionParser actionParser) {
+        this.actionParser = actionParser;
     }
 
     /**
@@ -74,61 +79,53 @@ public class HookYamlParser {
         @SuppressWarnings("unchecked")
         Map<String, Object> spec = (Map<String, Object>) rawMap;
 
-        HookType type = parseType(spec.get("type"));
+        // ── Pre-unification migration guard ─────────────────────────────
+        if (spec.containsKey("type")) {
+            throw new HookParseException(
+                    "Hook schema changed: 'type: js|llm' is no longer supported. "
+                            + "Migrate to a TriggerAction — set one of 'recipe:', "
+                            + "'script:' (with source/path), or 'workflow:'. "
+                            + "JS-hook scripts move to a script document referenced via "
+                            + "'script: { source: document, path: ... }'. LLM-hooks "
+                            + "become a script that calls 'vance.lightllm.call(...)'. "
+                            + "See specification/hooks.md and specification/trigger-actions.md.");
+        }
+        if (spec.containsKey("prompt") || spec.containsKey("model") || spec.containsKey("maxTokens")) {
+            throw new HookParseException(
+                    "Hook schema changed: 'prompt' / 'model' / 'maxTokens' are no longer "
+                            + "supported. LLM hooks become a script that calls "
+                            + "vance.lightllm.call(...) — see specification/hooks.md.");
+        }
+
         boolean enabled = !(spec.get("enabled") instanceof Boolean b) || b;
         String description = stringOrNull(spec.get("description"));
-        Duration timeout = parseTimeout(spec.get("timeout"),
-                type == HookType.LLM ? DEFAULT_LLM_TIMEOUT : DEFAULT_JS_TIMEOUT);
+        Duration timeout = parseTimeout(spec.get("timeout"), DEFAULT_TIMEOUT);
         List<String> tags = stringList(spec.get("tags"));
 
-        String script = null;
-        String prompt = null;
-        String model = null;
-        Integer maxTokens = null;
-
-        if (type == HookType.JS) {
-            script = stringOrThrow(spec.get("script"), "script");
-            if (spec.containsKey("prompt") || spec.containsKey("model")) {
-                throw new HookParseException(
-                        "JS hook must not declare 'prompt' or 'model' — set type: llm");
+        // ── Action variant via the shared parser ────────────────────────
+        TriggerAction action;
+        try {
+            action = actionParser.parse(spec);
+        } catch (RuntimeException ex) {
+            throw new HookParseException(
+                    "hook action invalid: " + ex.getMessage(), ex);
+        }
+        List<ActionValidationError> errors = actionParser.validate(action);
+        if (!errors.isEmpty()) {
+            StringBuilder msg = new StringBuilder("hook action validation failed:");
+            for (ActionValidationError e : errors) {
+                msg.append(" [").append(e.kind()).append(' ').append(e.field())
+                        .append(": ").append(e.detail()).append(']');
             }
-        } else {
-            // LLM
-            prompt = stringOrThrow(spec.get("prompt"), "prompt");
-            model = stringOrThrow(spec.get("model"), "model");
-            maxTokens = parseMaxTokens(spec.get("maxTokens"));
-            if (spec.containsKey("script")) {
-                throw new HookParseException(
-                        "LLM hook must not declare 'script' — set type: js");
-            }
-            // Fail-fast: compile the template at load time.
-            try {
-                templateRenderer.render(prompt, Map.of());
-            } catch (RuntimeException ex) {
-                throw new HookParseException(
-                        "prompt Pebble template failed to compile: " + ex.getMessage(), ex);
-            }
+            throw new HookParseException(msg.toString());
         }
 
         return new HookDef(
-                hookName, event, source, type, enabled, description,
-                timeout, tags, yamlBody, createdByUserId,
-                script, model, maxTokens, prompt);
+                hookName, event, source, enabled, description,
+                timeout, tags, yamlBody, createdByUserId, action);
     }
 
     // ───────────────────────── Field parsers ─────────────────────────
-
-    private static HookType parseType(@Nullable Object raw) {
-        if (!(raw instanceof String s) || s.isBlank()) {
-            throw new HookParseException("'type' is required (one of: js, llm)");
-        }
-        return switch (s.trim().toLowerCase(Locale.ROOT)) {
-            case "js" -> HookType.JS;
-            case "llm" -> HookType.LLM;
-            default -> throw new HookParseException(
-                    "unknown 'type' '" + s + "' — expected js | llm");
-        };
-    }
 
     private static Duration parseTimeout(@Nullable Object raw, Duration fallback) {
         if (raw == null) return fallback;
@@ -158,7 +155,6 @@ public class HookYamlParser {
             throw new HookParseException("'timeout' is empty");
         }
         try {
-            // Accept ISO-8601 ("PT5S") natively.
             if (s.startsWith("p")) {
                 return Duration.parse(s.toUpperCase(Locale.ROOT));
             }
@@ -177,30 +173,6 @@ public class HookYamlParser {
                     "'timeout' value '" + raw + "' is not a duration — use '5s', '15s', '500ms', etc.",
                     ex);
         }
-    }
-
-    private static Integer parseMaxTokens(@Nullable Object raw) {
-        if (raw == null) return DEFAULT_MAX_TOKENS;
-        if (!(raw instanceof Number n)) {
-            throw new HookParseException("'maxTokens' must be a positive integer");
-        }
-        int v = n.intValue();
-        if (v <= 0) {
-            throw new HookParseException("'maxTokens' must be positive");
-        }
-        if (v > 8192) {
-            throw new HookParseException(
-                    "'maxTokens' is suspiciously large (" + v
-                            + ") — hooks are short classifiers; lower the cap");
-        }
-        return v;
-    }
-
-    private static String stringOrThrow(@Nullable Object raw, String fieldName) {
-        if (!(raw instanceof String s) || s.isBlank()) {
-            throw new HookParseException("'" + fieldName + "' is required");
-        }
-        return s;
     }
 
     private static @Nullable String stringOrNull(@Nullable Object raw) {

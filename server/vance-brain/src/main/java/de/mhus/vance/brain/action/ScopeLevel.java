@@ -16,7 +16,7 @@ package de.mhus.vance.brain.action;
  *       {@code VanceScriptApi} surface including spawn tools.</li>
  * </ul>
  *
- * <p>See {@code planning/trigger-actions.md} §8.
+ * <p>See {@code specification/trigger-actions.md} §8.
  */
 public enum ScopeLevel {
     TRIGGER_SCOPED,

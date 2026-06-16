@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Exhaustive table-walk over the §5.3 outcome mapping in
- * {@code planning/trigger-actions.md}.
+ * {@code specification/trigger-actions.md}.
  */
 class ScriptOutcomeMapperTest {
 

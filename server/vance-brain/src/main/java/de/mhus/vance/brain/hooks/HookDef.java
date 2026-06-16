@@ -1,42 +1,51 @@
 package de.mhus.vance.brain.hooks;
 
+import de.mhus.vance.api.action.TriggerAction;
 import de.mhus.vance.api.hooks.HookEventName;
 import de.mhus.vance.api.hooks.HookSource;
-import de.mhus.vance.api.hooks.HookType;
 import java.time.Duration;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
  * Parsed hook YAML document. Immutable record produced by
- * {@link HookYamlParser}; consumed by the runners and the registry.
+ * {@link HookYamlParser}; consumed by the registry and the dispatcher.
  *
- * <p>For {@code type == JS} only {@link #script} is populated; for
- * {@code type == LLM} only {@link #prompt} / {@link #model} /
- * {@link #maxTokens}. The parser validates that the right fields are
- * present.
+ * <p>A hook fires when its {@link #event} is published in the brain.
+ * The hook's {@link #action} is dispatched through the central
+ * {@code ActionExecutorRegistry} — same pipeline as schedulers and
+ * webhooks. See {@code specification/hooks.md} and
+ * {@code specification/trigger-actions.md}.
+ *
+ * <p>The action is one of {@code TriggerAction.Recipe},
+ * {@code TriggerAction.Script}, or {@code TriggerAction.Workflow} — the
+ * disjunction is enforced at parse time.
  */
 public record HookDef(
         String name,
         HookEventName event,
         HookSource source,
-        HookType type,
         boolean enabled,
         @Nullable String description,
         Duration timeout,
         @Nullable List<String> tags,
         String yamlBody,
         @Nullable String createdByUserId,
-
-        // JS-only
-        @Nullable String script,
-
-        // LLM-only
-        @Nullable String model,
-        @Nullable Integer maxTokens,
-        @Nullable String prompt) {
+        TriggerAction action) {
 
     public String sourceKey() {
         return HookSourceKeys.sourceFor(event.wireName(), name);
+    }
+
+    /**
+     * Convenience for UI / logs: the short label of which action
+     * variant this hook fires ({@code "recipe"} / {@code "script"} /
+     * {@code "workflow"}).
+     */
+    public String actionType() {
+        if (action instanceof TriggerAction.Recipe) return "recipe";
+        if (action instanceof TriggerAction.Script) return "script";
+        if (action instanceof TriggerAction.Workflow) return "workflow";
+        return "unknown";
     }
 }

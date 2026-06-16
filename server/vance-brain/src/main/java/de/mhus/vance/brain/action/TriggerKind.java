@@ -5,7 +5,7 @@ package de.mhus.vance.brain.action;
  * Executors use this to pick a sandbox scope ({@code TRIGGER_SCOPED}
  * vs. {@code PROCESS_SCOPED}) and to tag event-log entries.
  *
- * <p>See {@code planning/trigger-actions.md} §8.
+ * <p>See {@code specification/trigger-actions.md} §8.
  */
 public enum TriggerKind {
 
@@ -30,7 +30,17 @@ public enum TriggerKind {
      * Authenticated caller's user-id is on
      * {@link TriggerContext#resolvedRunAs}.
      */
-    USER;
+    USER,
+
+    /**
+     * Brain-internal lifecycle event (process completed, inbox item
+     * created, …) routed through the {@code HookDispatcher}. Conceptually
+     * the same as {@link #SCHEDULER} / {@link #EVENT}: a trigger anlass
+     * that fires a configured {@link de.mhus.vance.api.action.TriggerAction}.
+     * No enclosing Process — the {@code createdByUserId} of the hook
+     * document provides the identity. See {@code specification/hooks.md}.
+     */
+    HOOK;
 
     /**
      * Whether actions from this trigger have an enclosing Process or

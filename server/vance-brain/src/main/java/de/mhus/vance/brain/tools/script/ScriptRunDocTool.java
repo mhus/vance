@@ -24,7 +24,7 @@ import org.springframework.stereotype.Component;
  * {@link ScriptActionExecutor} that exposes one parameter shape
  * to the LLM and translates the result back into a tool-result map.
  *
- * <p>See {@code planning/trigger-actions.md} §4.5. The companion
+ * <p>See {@code specification/trigger-actions.md} §4.5. The companion
  * {@code script_run_workspace} tool covers workspace-resident scripts.
  *
  * <p>{@code @SpawnTool}-annotated so the trigger-scoped sandbox refuses

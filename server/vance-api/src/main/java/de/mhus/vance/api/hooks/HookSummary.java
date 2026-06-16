@@ -26,7 +26,13 @@ public class HookSummary {
     private String name;
     private String event;
     private HookSource source;
-    private HookType type;
+
+    /**
+     * Which {@code TriggerAction} variant this hook fires —
+     * {@code "recipe"} / {@code "script"} / {@code "workflow"}.
+     */
+    private String actionType;
+
     private boolean enabled;
     private @Nullable String description;
     private @Nullable List<String> tags;

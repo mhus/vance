@@ -11,7 +11,7 @@ import java.lang.annotation.Target;
  * additional execution behind the scenes.
  *
  * <p>The {@code ScopeLevel.TRIGGER_SCOPED} sandbox (see
- * {@code planning/trigger-actions.md} §8) refuses to dispatch
+ * {@code specification/trigger-actions.md} §8) refuses to dispatch
  * {@code @SpawnTool}-annotated tools, because a trigger-scoped script
  * (scheduler tick, event hit) lacks the surrounding Process/Workflow
  * that gives an LLM-issued spawn its semantics. Wer von einem Trigger

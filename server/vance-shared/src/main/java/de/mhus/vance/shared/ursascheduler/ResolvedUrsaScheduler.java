@@ -47,7 +47,7 @@ public record ResolvedUrsaScheduler(
         @Nullable String recipe,
         /** Workflow name to spawn — mutually exclusive with {@link #recipe} and {@link #script}. See {@code specification/workflows.md}. */
         @Nullable String workflow,
-        /** Script spec — mutually exclusive with {@link #recipe} and {@link #workflow}. See {@code planning/trigger-actions.md}. */
+        /** Script spec — mutually exclusive with {@link #recipe} and {@link #workflow}. See {@code specification/trigger-actions.md}. */
         @Nullable ScriptSpec script,
         Map<String, Object> params,
         @Nullable String initialMessage,

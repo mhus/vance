@@ -3,21 +3,22 @@
  Source: de.mhus.vance.api.hooks.HookDto
 */
 
+import { HookScriptSpec } from './HookScriptSpec';
 import { HookSource } from './HookSource';
-import { HookType } from './HookType';
 
 export interface HookDto {
   name: string;
   event: string;
   yaml: string;
   source: HookSource;
-  type: HookType;
   enabled: boolean;
   description?: string;
   timeoutMs: number;
   tags?: string[];
-  script?: string;
-  model?: string;
-  maxTokens?: number;
-  prompt?: string;
+  recipe?: string;
+  workflow?: string;
+  script?: HookScriptSpec;
+  params?: Record<string, any>;
+  initialMessage?: string;
+  runAs?: string;
 }

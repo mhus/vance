@@ -10,13 +10,13 @@ public enum MagratheaTaskType {
     AGENT_TASK,
     /**
      * Shell command via the {@code ExecManager}. Renamed from
-     * {@code SCRIPT_TASK} as part of {@code planning/trigger-actions.md}
+     * {@code SCRIPT_TASK} as part of {@code specification/trigger-actions.md}
      * Stufe 4 — JS scripts now live in the new {@link #SCRIPT_TASK}. §4.2
      */
     SHELL_TASK,
     /**
      * JS script via the unified {@code ScriptActionExecutor}
-     * (document / workspace source). {@code planning/trigger-actions.md}
+     * (document / workspace source). {@code specification/trigger-actions.md}
      * §4.4.
      */
     SCRIPT_TASK,

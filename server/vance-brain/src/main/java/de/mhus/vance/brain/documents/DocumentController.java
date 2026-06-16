@@ -209,6 +209,8 @@ public class DocumentController {
                 ? DocumentService.mimeFromPath(request.getPath())
                 : request.getMimeType();
 
+        Boolean ragEnabledOverride = parseRagEnabledTriState(request.getRagEnabled());
+
         DocumentDocument created;
         try {
             byte[] bytes = request.getInlineText().getBytes(java.nio.charset.StandardCharsets.UTF_8);
@@ -220,7 +222,9 @@ public class DocumentController {
                     request.getTags(),
                     mimeType,
                     new java.io.ByteArrayInputStream(bytes),
-                    username);
+                    username,
+                    request.getAutoSummary(),
+                    ragEnabledOverride);
         } catch (DocumentService.DocumentAlreadyExistsException e) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
         } catch (IllegalArgumentException e) {
@@ -718,24 +722,37 @@ public class DocumentController {
     }
 
     /**
-     * Apply the tri-state {@code ragEnabled} override from the request.
-     * Translates {@code "auto"} / {@code "on"} / {@code "off"} into the
-     * persisted {@code null} / {@code true} / {@code false}. Absent or
-     * blank input is a no-op. Anything else throws {@code 400}.
+     * Apply the tri-state {@code ragEnabled} override from an update
+     * request. Absent or blank input is a no-op (leaves the current
+     * setting untouched); a present {@code "auto"} clears the override.
      */
     private void applyRagEnabledOverride(String docId, @Nullable String raw) {
-        if (raw == null) return;
+        if (raw == null || raw.trim().isEmpty()) return;
+        documentService.setRagEnabledOverride(docId, parseRagEnabledTriState(raw));
+    }
+
+    /**
+     * Parse the tri-state {@code ragEnabled} wire value into the persisted
+     * {@link Boolean} override. {@code "auto"} (or absent/blank) → {@code null}
+     * (default eligibility), {@code "on"} → {@code true}, {@code "off"} →
+     * {@code false}. Anything else throws {@code 400}.
+     *
+     * <p>Shared between the create and update controllers so the allowed
+     * vocabulary stays in one place. Package-private so the unit test
+     * suite can verify the wire-format contract without standing up
+     * MockMvc.
+     */
+    static @Nullable Boolean parseRagEnabledTriState(@Nullable String raw) {
+        if (raw == null) return null;
         String value = raw.trim().toLowerCase();
-        if (value.isEmpty()) return;
-        Boolean target;
-        switch (value) {
-            case "auto" -> target = null;
-            case "on", "true" -> target = Boolean.TRUE;
-            case "off", "false" -> target = Boolean.FALSE;
+        if (value.isEmpty()) return null;
+        return switch (value) {
+            case "auto" -> null;
+            case "on", "true" -> Boolean.TRUE;
+            case "off", "false" -> Boolean.FALSE;
             default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "ragEnabled must be one of: auto, on, off");
-        }
-        documentService.setRagEnabledOverride(docId, target);
+        };
     }
 
     private static @Nullable Long toEpochMillis(@Nullable Instant instant) {

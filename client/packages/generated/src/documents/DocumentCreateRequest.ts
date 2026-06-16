@@ -9,4 +9,6 @@ export interface DocumentCreateRequest {
   tags?: string[];
   mimeType?: string;
   inlineText: string;
+  autoSummary?: boolean;
+  ragEnabled?: string;
 }

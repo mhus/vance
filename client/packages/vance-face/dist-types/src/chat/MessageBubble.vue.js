@@ -1,6 +1,7 @@
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { MarkdownView } from '@components/index';
 import { uiTheme, paletteStyle } from '@composables/useUiTheme';
+import { useI18n } from 'vue-i18n';
 import QuestionCanvas from './QuestionCanvas.vue';
 // Action-type values mirror constants in
 // {@code ChatMessageDocument.ACTION_TYPE_*}.
@@ -131,6 +132,41 @@ const bubbleStyle = computed(() => {
         return systemStyle.value;
     return null;
 });
+const { t: _ } = useI18n();
+/**
+ * Show the hover-Copy affordance on regular USER/ASSISTANT bubbles with
+ * non-empty content. ASK_USER, WAIT and REJECT bubbles render their own
+ * interactive surface (option buttons / progress dots) — adding a copy
+ * shortcut on top of those would muddy the visual contract.
+ */
+const canCopyContent = computed(() => !props.worker
+    && (isUser.value || isAssistant.value)
+    && !isAskUser.value
+    && !isWait.value
+    && !isReject.value
+    && (props.content?.trim().length ?? 0) > 0);
+const copyJustHappened = ref(false);
+let copyFeedbackTimer = null;
+async function onCopyMarkdown() {
+    if (!props.content)
+        return;
+    if (typeof navigator === 'undefined' || !navigator.clipboard)
+        return;
+    try {
+        await navigator.clipboard.writeText(props.content);
+        copyJustHappened.value = true;
+        if (copyFeedbackTimer)
+            clearTimeout(copyFeedbackTimer);
+        copyFeedbackTimer = setTimeout(() => {
+            copyJustHappened.value = false;
+            copyFeedbackTimer = null;
+        }, 1500);
+    }
+    catch {
+        // Browser blocked clipboard access — fail silently; the user gets
+        // no badge and can fall back to manual selection.
+    }
+}
 debugger; /* PartiallyEnd: #3632/scriptSetup.vue */
 const __VLS_withDefaultsArg = (function (t) { return t; })({
     worker: false,
@@ -140,6 +176,11 @@ const __VLS_withDefaultsArg = (function (t) { return t; })({
 const __VLS_ctx = {};
 let __VLS_components;
 let __VLS_directives;
+/** @type {__VLS_StyleScopedClasses['mb-copy-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-copy-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-copy-btn']} */ ;
+// CSS variable injection 
+// CSS variable injection end 
 if (__VLS_ctx.worker) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "flex justify-start" },
@@ -170,7 +211,7 @@ else {
         ...{ class: (__VLS_ctx.isUser ? 'justify-end' : 'justify-start') },
     });
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "rounded-2xl px-4 py-2.5 shadow-sm" },
+        ...{ class: "rounded-2xl px-4 py-2.5 shadow-sm relative group" },
         ...{ class: ([
                 __VLS_ctx.hasRichContent ? 'w-full' : 'max-w-[85%]',
                 __VLS_ctx.bubbleStyle ? '' : (__VLS_ctx.isUser ? 'bg-primary text-primary-content' : ''),
@@ -179,6 +220,18 @@ else {
             ]) },
         ...{ style: (__VLS_ctx.bubbleStyle ?? undefined) },
     });
+    if (__VLS_ctx.canCopyContent) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+            ...{ onClick: (__VLS_ctx.onCopyMarkdown) },
+            type: "button",
+            ...{ class: "mb-copy-btn" },
+            ...{ class: (__VLS_ctx.copyJustHappened ? 'mb-copy-btn--done' : '') },
+            title: (__VLS_ctx.copyJustHappened
+                ? (__VLS_ctx._?.('chat.bubble.copyDone') ?? 'Copied')
+                : (__VLS_ctx._?.('chat.bubble.copy') ?? 'Copy as Markdown')),
+        });
+        (__VLS_ctx.copyJustHappened ? '✓' : '⧉');
+    }
     if (!__VLS_ctx.isUser) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "text-xs opacity-60 mb-1 flex items-center gap-2" },
@@ -278,6 +331,9 @@ else {
 /** @type {__VLS_StyleScopedClasses['px-4']} */ ;
 /** @type {__VLS_StyleScopedClasses['py-2.5']} */ ;
 /** @type {__VLS_StyleScopedClasses['shadow-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['relative']} */ ;
+/** @type {__VLS_StyleScopedClasses['group']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-copy-btn']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
 /** @type {__VLS_StyleScopedClasses['mb-1']} */ ;
@@ -324,6 +380,10 @@ const __VLS_self = (await import('vue')).defineComponent({
             formatted: formatted,
             workerStyle: workerStyle,
             bubbleStyle: bubbleStyle,
+            _: _,
+            canCopyContent: canCopyContent,
+            copyJustHappened: copyJustHappened,
+            onCopyMarkdown: onCopyMarkdown,
         };
     },
     __typeEmits: {},

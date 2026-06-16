@@ -11,6 +11,7 @@ import {
 } from '@vance/shared';
 import type {
   ChatMessageDto,
+  DocumentDto,
   ProcessProgressNotification,
   SessionListRequest,
   SessionListResponse,
@@ -311,6 +312,22 @@ function onAcceptFollowUpFromView(): void {
   if (!suggestion) return;
   composerRef.value?.setText(suggestion + ' ');
   acceptFollowUp();
+}
+
+/**
+ * ChatView just persisted the conversation as a Markdown document.
+ * chat.html has no in-place editor surface, so we open the document
+ * in a new browser tab via documents.html — the user keeps their
+ * chat session alive in the original tab and can move/rename the
+ * export there. Cortex handles its own event by opening the document
+ * as a tab inside the same window (see CortexChatPanel).
+ */
+function onConversationExportedFromView(payload: { documentId: string; document: DocumentDto }): void {
+  const projectId = payload.document.projectId ?? chatProjectId.value;
+  if (!projectId) return;
+  const url = `/documents.html?projectId=${encodeURIComponent(projectId)}`
+    + `&documentId=${encodeURIComponent(payload.documentId)}`;
+  window.open(url, '_blank', 'noopener');
 }
 function onFollowUpAcceptedFromComposer(): void {
   acceptFollowUp();
@@ -781,6 +798,7 @@ function openInCortex(): void {
           @project-resolved="onChatViewProjectResolved"
           @last-assistant-changed="onLastAssistantChangedFromView"
           @accept-follow-up="onAcceptFollowUpFromView"
+          @conversation-exported="onConversationExportedFromView"
         />
 
         <div v-else-if="mode === 'connecting'" class="p-6 text-sm opacity-60">

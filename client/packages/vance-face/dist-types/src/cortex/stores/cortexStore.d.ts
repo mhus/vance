@@ -297,6 +297,6 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
     } | null>;
     setSelection: (sel: CortexSelection | null) => void;
     clearSelection: () => void;
-}, "clearSelection" | "loadList" | "openFile" | "reloadTab" | "moveFile" | "uploadExternalFile" | "setActiveTab" | "closeTab" | "updateActiveContent" | "saveActive" | "saveTab" | "saveAllDirty" | "createFile" | "deleteFile" | "addVirtualFolder" | "setSelection">>;
+}, "loadList" | "openFile" | "reloadTab" | "moveFile" | "uploadExternalFile" | "setActiveTab" | "closeTab" | "updateActiveContent" | "saveActive" | "saveTab" | "saveAllDirty" | "createFile" | "deleteFile" | "addVirtualFolder" | "setSelection" | "clearSelection">>;
 export {};
 //# sourceMappingURL=cortexStore.d.ts.map

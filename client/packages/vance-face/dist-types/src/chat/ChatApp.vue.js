@@ -252,6 +252,22 @@ function onAcceptFollowUpFromView() {
     composerRef.value?.setText(suggestion + ' ');
     acceptFollowUp();
 }
+/**
+ * ChatView just persisted the conversation as a Markdown document.
+ * chat.html has no in-place editor surface, so we open the document
+ * in a new browser tab via documents.html — the user keeps their
+ * chat session alive in the original tab and can move/rename the
+ * export there. Cortex handles its own event by opening the document
+ * as a tab inside the same window (see CortexChatPanel).
+ */
+function onConversationExportedFromView(payload) {
+    const projectId = payload.document.projectId ?? chatProjectId.value;
+    if (!projectId)
+        return;
+    const url = `/documents.html?projectId=${encodeURIComponent(projectId)}`
+        + `&documentId=${encodeURIComponent(payload.documentId)}`;
+    window.open(url, '_blank', 'noopener');
+}
 function onFollowUpAcceptedFromComposer() {
     acceptFollowUp();
 }
@@ -871,6 +887,7 @@ else if (__VLS_ctx.liveOk) {
         ...{ 'onProjectResolved': {} },
         ...{ 'onLastAssistantChanged': {} },
         ...{ 'onAcceptFollowUp': {} },
+        ...{ 'onConversationExported': {} },
         ref: "chatViewRef",
         key: (__VLS_ctx.activeSessionId ?? ''),
         socket: (__VLS_ctx.socket),
@@ -891,6 +908,7 @@ else if (__VLS_ctx.liveOk) {
         ...{ 'onProjectResolved': {} },
         ...{ 'onLastAssistantChanged': {} },
         ...{ 'onAcceptFollowUp': {} },
+        ...{ 'onConversationExported': {} },
         ref: "chatViewRef",
         key: (__VLS_ctx.activeSessionId ?? ''),
         socket: (__VLS_ctx.socket),
@@ -933,8 +951,11 @@ else if (__VLS_ctx.liveOk) {
     const __VLS_79 = {
         onAcceptFollowUp: (__VLS_ctx.onAcceptFollowUpFromView)
     };
+    const __VLS_80 = {
+        onConversationExported: (__VLS_ctx.onConversationExportedFromView)
+    };
     /** @type {typeof __VLS_ctx.chatViewRef} */ ;
-    var __VLS_80 = {};
+    var __VLS_81 = {};
     var __VLS_66;
 }
 else if (__VLS_ctx.mode === 'connecting') {
@@ -948,29 +969,29 @@ else if (__VLS_ctx.mode === 'connecting') {
     if (__VLS_ctx.liveOk) {
         /** @type {[typeof ChatRightPanel, ]} */ ;
         // @ts-ignore
-        const __VLS_82 = __VLS_asFunctionalComponent(ChatRightPanel, new ChatRightPanel({
+        const __VLS_83 = __VLS_asFunctionalComponent(ChatRightPanel, new ChatRightPanel({
             ...{ 'onPromptReady': {} },
             ref: "rightPanelRef",
             events: (__VLS_ctx.progressEvents),
             projectId: (__VLS_ctx.chatProjectId || undefined),
             sessionKey: (__VLS_ctx.chatProcessName ?? undefined),
         }));
-        const __VLS_83 = __VLS_82({
+        const __VLS_84 = __VLS_83({
             ...{ 'onPromptReady': {} },
             ref: "rightPanelRef",
             events: (__VLS_ctx.progressEvents),
             projectId: (__VLS_ctx.chatProjectId || undefined),
             sessionKey: (__VLS_ctx.chatProcessName ?? undefined),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_82));
-        let __VLS_85;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_83));
         let __VLS_86;
         let __VLS_87;
-        const __VLS_88 = {
+        let __VLS_88;
+        const __VLS_89 = {
             onPromptReady: (__VLS_ctx.onPromptReadyFromRightPanel)
         };
         /** @type {typeof __VLS_ctx.rightPanelRef} */ ;
-        var __VLS_89 = {};
-        var __VLS_84;
+        var __VLS_90 = {};
+        var __VLS_85;
     }
 }
 {
@@ -978,7 +999,7 @@ else if (__VLS_ctx.mode === 'connecting') {
     if (__VLS_ctx.liveOk) {
         /** @type {[typeof ChatComposer, ]} */ ;
         // @ts-ignore
-        const __VLS_91 = __VLS_asFunctionalComponent(ChatComposer, new ChatComposer({
+        const __VLS_92 = __VLS_asFunctionalComponent(ChatComposer, new ChatComposer({
             ...{ 'onHub': {} },
             ...{ 'onLocalEcho': {} },
             ...{ 'onRollbackEcho': {} },
@@ -994,7 +1015,7 @@ else if (__VLS_ctx.mode === 'connecting') {
             followUpSuggestion: (__VLS_ctx.followUpSuggestion),
             ensureConnected: (__VLS_ctx.ensureConnected),
         }));
-        const __VLS_92 = __VLS_91({
+        const __VLS_93 = __VLS_92({
             ...{ 'onHub': {} },
             ...{ 'onLocalEcho': {} },
             ...{ 'onRollbackEcho': {} },
@@ -1009,31 +1030,31 @@ else if (__VLS_ctx.mode === 'connecting') {
             mediation: (__VLS_ctx.mediation),
             followUpSuggestion: (__VLS_ctx.followUpSuggestion),
             ensureConnected: (__VLS_ctx.ensureConnected),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_91));
-        let __VLS_94;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_92));
         let __VLS_95;
         let __VLS_96;
-        const __VLS_97 = {
+        let __VLS_97;
+        const __VLS_98 = {
             onHub: (__VLS_ctx.backToHub)
         };
-        const __VLS_98 = {
+        const __VLS_99 = {
             onLocalEcho: (__VLS_ctx.onLocalEchoFromComposer)
         };
-        const __VLS_99 = {
+        const __VLS_100 = {
             onRollbackEcho: (__VLS_ctx.onRollbackEchoFromComposer)
         };
-        const __VLS_100 = {
+        const __VLS_101 = {
             onTextChanged: (__VLS_ctx.onComposerTextChanged)
         };
-        const __VLS_101 = {
+        const __VLS_102 = {
             onFollowUpAccepted: (__VLS_ctx.onFollowUpAcceptedFromComposer)
         };
-        const __VLS_102 = {
+        const __VLS_103 = {
             onFocusChanged: (__VLS_ctx.onComposerFocusChanged)
         };
         /** @type {typeof __VLS_ctx.composerRef} */ ;
-        var __VLS_103 = {};
-        var __VLS_93;
+        var __VLS_104 = {};
+        var __VLS_94;
     }
 }
 var __VLS_3;
@@ -1058,7 +1079,7 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
 // @ts-ignore
-var __VLS_81 = __VLS_80, __VLS_90 = __VLS_89, __VLS_104 = __VLS_103;
+var __VLS_82 = __VLS_81, __VLS_91 = __VLS_90, __VLS_105 = __VLS_104;
 var __VLS_dollars;
 const __VLS_self = (await import('vue')).defineComponent({
     setup() {
@@ -1103,6 +1124,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             onComposerTextChanged: onComposerTextChanged,
             onComposerFocusChanged: onComposerFocusChanged,
             onAcceptFollowUpFromView: onAcceptFollowUpFromView,
+            onConversationExportedFromView: onConversationExportedFromView,
             onFollowUpAcceptedFromComposer: onFollowUpAcceptedFromComposer,
             ensureConnected: ensureConnected,
             openAndBind: openAndBind,

@@ -21,6 +21,70 @@ marked.setOptions({
     breaks: true,
 });
 /**
+ * Match a YAML-style frontmatter block at the very start of a document
+ * (Jekyll / Obsidian / Vance chat-export convention). Without this,
+ * {@code marked} would parse the closing {@code ---} as a setext-h2
+ * underline, blowing up the last frontmatter line into a giant heading
+ * — exactly the regression the chat-export feature surfaced. The
+ * leading {@code ^---\n} is anchored so block-level {@code ---}
+ * horizontal rules in the middle of a document keep their meaning.
+ */
+const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
+function unquoteYamlScalar(raw) {
+    const v = raw.trim();
+    if (v.length >= 2) {
+        if (v.startsWith('"') && v.endsWith('"')) {
+            return v.slice(1, -1).replace(/\\\\/g, '\\').replace(/\\"/g, '"');
+        }
+        if (v.startsWith("'") && v.endsWith("'")) {
+            return v.slice(1, -1).replace(/''/g, "'");
+        }
+    }
+    return v;
+}
+/**
+ * Pull a leading YAML frontmatter block out of the source. Returns the
+ * entries (preserved in declaration order) and the body with the block
+ * stripped. The parser is intentionally minimal — we render
+ * frontmatter as a flat key/value chip strip, not a full structured
+ * panel; nested YAML, lists, anchors and block scalars fall back to
+ * raw lines.
+ */
+function extractFrontmatter(source) {
+    const match = source.match(FRONTMATTER_RE);
+    if (!match)
+        return { entries: [], body: source };
+    const inner = match[1];
+    const entries = [];
+    for (const line of inner.split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#'))
+            continue;
+        const idx = trimmed.indexOf(':');
+        if (idx <= 0) {
+            // Lines that don't look like `key: value` are surfaced verbatim
+            // so the user at least sees the original content rather than a
+            // silently dropped row.
+            entries.push({ key: '', value: trimmed });
+            continue;
+        }
+        const key = trimmed.slice(0, idx).trim();
+        const value = unquoteYamlScalar(trimmed.slice(idx + 1));
+        entries.push({ key, value });
+    }
+    return { entries, body: source.slice(match[0].length) };
+}
+function renderFrontmatterVNode(entries) {
+    if (entries.length === 0)
+        return null;
+    return h('div', { class: 'markdown-view__frontmatter', role: 'note' }, entries.map((entry) => h('div', { class: 'markdown-view__fm-row' }, [
+        entry.key
+            ? h('span', { class: 'markdown-view__fm-key' }, `${entry.key}:`)
+            : null,
+        h('span', { class: 'markdown-view__fm-val' }, entry.value),
+    ])));
+}
+/**
  * Markdown links inside chat content never address the Face UI itself
  * — a relative href like `documents/coding-modelle-vergleich.md` is
  * always meant as a Vance Document reference. Rewrite such hrefs to
@@ -437,16 +501,30 @@ export default defineComponent({
             const src = props.source ?? '';
             if (!src)
                 return '';
-            const raw = marked.parseInline(src);
+            // Inline mode (chat-bubble one-liners, picker previews) skips the
+            // frontmatter entirely — the meta strip would dominate a 1-line
+            // preview. Drop the leading block before handing to marked.
+            const { body } = extractFrontmatter(src);
+            if (!body)
+                return '';
+            const raw = marked.parseInline(body);
             return DOMPurify.sanitize(raw, SANITIZE_CONFIG);
         });
         const blockNodes = computed(() => {
             const src = props.source ?? '';
             if (!src)
                 return [];
-            const tokens = marked.lexer(src);
-            normalizeRelativeHrefs(tokens);
-            return vnodesForTokens(tokens);
+            const { entries, body } = extractFrontmatter(src);
+            const nodes = [];
+            const fm = renderFrontmatterVNode(entries);
+            if (fm)
+                nodes.push(fm);
+            if (body) {
+                const tokens = marked.lexer(body);
+                normalizeRelativeHrefs(tokens);
+                nodes.push(...vnodesForTokens(tokens));
+            }
+            return nodes;
         });
         // Click delegation for inline `vance:` links inside the rendered
         // Markdown. The browser doesn't know the scheme — left to itself

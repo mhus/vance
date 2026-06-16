@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { MarkdownView } from '@components/index';
 import { uiTheme, paletteStyle } from '@composables/useUiTheme';
+import { useI18n } from 'vue-i18n';
 import QuestionCanvas, { type QuestionOption } from './QuestionCanvas.vue';
 
 // Action-type values mirror constants in
@@ -183,6 +184,43 @@ const bubbleStyle = computed(() => {
   if (isSystem.value) return systemStyle.value;
   return null;
 });
+
+const { t: _ } = useI18n();
+
+/**
+ * Show the hover-Copy affordance on regular USER/ASSISTANT bubbles with
+ * non-empty content. ASK_USER, WAIT and REJECT bubbles render their own
+ * interactive surface (option buttons / progress dots) — adding a copy
+ * shortcut on top of those would muddy the visual contract.
+ */
+const canCopyContent = computed(() =>
+  !props.worker
+  && (isUser.value || isAssistant.value)
+  && !isAskUser.value
+  && !isWait.value
+  && !isReject.value
+  && (props.content?.trim().length ?? 0) > 0,
+);
+
+const copyJustHappened = ref(false);
+let copyFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
+
+async function onCopyMarkdown(): Promise<void> {
+  if (!props.content) return;
+  if (typeof navigator === 'undefined' || !navigator.clipboard) return;
+  try {
+    await navigator.clipboard.writeText(props.content);
+    copyJustHappened.value = true;
+    if (copyFeedbackTimer) clearTimeout(copyFeedbackTimer);
+    copyFeedbackTimer = setTimeout(() => {
+      copyJustHappened.value = false;
+      copyFeedbackTimer = null;
+    }, 1500);
+  } catch {
+    // Browser blocked clipboard access — fail silently; the user gets
+    // no badge and can fall back to manual selection.
+  }
+}
 </script>
 
 <template>
@@ -207,7 +245,7 @@ const bubbleStyle = computed(() => {
     :class="isUser ? 'justify-end' : 'justify-start'"
   >
     <div
-      class="rounded-2xl px-4 py-2.5 shadow-sm"
+      class="rounded-2xl px-4 py-2.5 shadow-sm relative group"
       :class="[
         hasRichContent ? 'w-full' : 'max-w-[85%]',
         bubbleStyle ? '' : (isUser ? 'bg-primary text-primary-content' : ''),
@@ -216,6 +254,16 @@ const bubbleStyle = computed(() => {
       ]"
       :style="bubbleStyle ?? undefined"
     >
+      <button
+        v-if="canCopyContent"
+        type="button"
+        class="mb-copy-btn"
+        :class="copyJustHappened ? 'mb-copy-btn--done' : ''"
+        :title="copyJustHappened
+          ? (_?.('chat.bubble.copyDone') ?? 'Copied')
+          : (_?.('chat.bubble.copy') ?? 'Copy as Markdown')"
+        @click="onCopyMarkdown"
+      >{{ copyJustHappened ? '✓' : '⧉' }}</button>
       <div
         v-if="!isUser"
         class="text-xs opacity-60 mb-1 flex items-center gap-2"
@@ -250,3 +298,35 @@ const bubbleStyle = computed(() => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.mb-copy-btn {
+  position: absolute;
+  top: 0.25rem;
+  right: 0.25rem;
+  border: none;
+  background: hsl(var(--b1) / 0.8);
+  backdrop-filter: blur(2px);
+  cursor: pointer;
+  font-size: 0.85rem;
+  line-height: 1;
+  padding: 0.2rem 0.4rem;
+  border-radius: 0.3rem;
+  opacity: 0;
+  transition: opacity 120ms ease-out, background 120ms ease-out;
+  color: hsl(var(--bc));
+  z-index: 1;
+}
+.group:hover .mb-copy-btn,
+.mb-copy-btn:focus-visible {
+  opacity: 0.85;
+}
+.mb-copy-btn:hover {
+  opacity: 1;
+  background: hsl(var(--b1));
+}
+.mb-copy-btn--done {
+  opacity: 1 !important;
+  color: hsl(var(--su));
+}
+</style>

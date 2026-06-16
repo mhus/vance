@@ -7,12 +7,14 @@ import type {
   ChatMessageChunkData,
   ChatMessageDto,
   ChatRole,
+  DocumentDto,
   PlanProposedNotification,
   ProcessModeChangedNotification,
   TodoItem,
   TodosUpdatedNotification,
 } from '@vance/generated';
 import { useChatHistory } from '@composables/useChatHistory';
+import { useConversationExport } from '@composables/useConversationExport';
 import { useTenantProjects } from '@composables/useTenantProjects';
 import { useDocumentRefStore } from '@/document/documentRefStore';
 import { SessionHeader, VAlert, VButton } from '@components/index';
@@ -79,6 +81,11 @@ const emit = defineEmits<{
    *  when there isn't one yet). Parent uses this to drive the
    *  follow-up suggestion fetch. */
   (event: 'last-assistant-changed', content: string | null): void;
+  /** A chat-export document was created (success). Cortex listens to
+   *  this and opens the document as a new tab; the chat editor itself
+   *  shows a transient banner via its internal {@code exportFeedback}
+   *  state. */
+  (event: 'conversation-exported', payload: { documentId: string; document: DocumentDto }): void;
 }>();
 
 const { t: _ } = useI18n();
@@ -465,8 +472,89 @@ watch(() => props.sessionId, async (newId, oldId) => {
   workerMessageIds.value = new Set();
   streamingDrafts.value = new Map();
   resetPlanModeState();
+  exportFeedback.value = null;
+  if (exportFeedbackTimer) {
+    clearTimeout(exportFeedbackTimer);
+    exportFeedbackTimer = null;
+  }
   await load(newId);
   scrollToBottom();
+});
+
+// ──────────────── Save conversation as document ────────────────
+//
+// User-facing affordance: the chat header offers a "Save as document"
+// button. The button writes a Markdown file under
+// `conversations/chat-{ts}.md` in the chat's own project, with
+// `autoSummary=false` and `ragEnabled='off'` — the conversation itself
+// is already indexed for the session, so re-summarising / re-embedding
+// the export would just duplicate work. The cortex editor additionally
+// opens the resulting document as a new tab; the chat editor only
+// shows a transient banner.
+
+const { saveConversationAsDocument } = useConversationExport();
+const exporting = ref(false);
+const exportFeedback = ref<{ kind: 'success' | 'error'; message: string } | null>(null);
+let exportFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Filtered list of turns that would actually contribute to the export.
+ *  Mirrors {@code useConversationExport}'s role-filter so the button
+ *  greys out when there is nothing exportable (empty session, only
+ *  worker side-chatter, only SYSTEM messages). */
+const exportableTurns = computed<ChatMessageDto[]>(() =>
+  allMessages.value.filter((m) => {
+    if (workerMessageIds.value.has(m.messageId)) return false;
+    const role = String(m.role);
+    if (role !== 'USER' && role !== 'ASSISTANT') return false;
+    return (m.content?.trim().length ?? 0) > 0;
+  }),
+);
+
+const canExportConversation = computed(() => exportableTurns.value.length > 0);
+
+async function onSaveConversation(): Promise<void> {
+  if (exporting.value || !canExportConversation.value) return;
+  if (!props.chatProjectId) return;
+  exporting.value = true;
+  exportFeedback.value = null;
+  try {
+    const doc = await saveConversationAsDocument({
+      projectId: props.chatProjectId,
+      sessionId: props.sessionId,
+      turns: exportableTurns.value,
+    });
+    if (!doc) {
+      exportFeedback.value = {
+        kind: 'error',
+        message: _('chat.export.saveFailed'),
+      };
+    } else {
+      exportFeedback.value = {
+        kind: 'success',
+        message: _('chat.export.saveSucceeded', { path: doc.path }),
+      };
+      emit('conversation-exported', { documentId: doc.id, document: doc });
+    }
+  } catch (e) {
+    exportFeedback.value = {
+      kind: 'error',
+      message: e instanceof Error ? e.message : _('chat.export.saveFailed'),
+    };
+  } finally {
+    exporting.value = false;
+    if (exportFeedbackTimer) clearTimeout(exportFeedbackTimer);
+    exportFeedbackTimer = setTimeout(() => {
+      exportFeedback.value = null;
+      exportFeedbackTimer = null;
+    }, 5000);
+  }
+}
+
+onBeforeUnmount(() => {
+  if (exportFeedbackTimer) {
+    clearTimeout(exportFeedbackTimer);
+    exportFeedbackTimer = null;
+  }
 });
 </script>
 
@@ -494,6 +582,14 @@ watch(() => props.sessionId, async (newId, oldId) => {
       >
         {{ modeBadge }}
       </span>
+      <VButton
+        variant="ghost"
+        size="sm"
+        :disabled="exporting || !canExportConversation"
+        :title="$t('chat.export.saveAsDocumentTooltip')"
+        :aria-label="$t('chat.export.saveAsDocumentTooltip')"
+        @click="onSaveConversation"
+      >{{ exporting ? '⌛' : '💾' }}</VButton>
     </header>
 
     <!-- Mediation banner — Eddie handed us over to a worker; the
@@ -513,6 +609,10 @@ watch(() => props.sessionId, async (newId, oldId) => {
 
     <div ref="messageContainer" class="flex-1 min-h-0 overflow-y-auto px-6 py-4">
       <div class="max-w-5xl mx-auto flex flex-col gap-3">
+        <VAlert
+          v-if="exportFeedback"
+          :variant="exportFeedback.kind"
+        >{{ exportFeedback.message }}</VAlert>
         <div v-if="historyLoading" class="text-sm opacity-60">
           {{ $t('chat.historyLoading') }}
         </div>

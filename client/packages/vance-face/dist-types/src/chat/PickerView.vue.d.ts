@@ -22,11 +22,11 @@ declare const _default: import("vue").DefineComponent<__VLS_PublicProps, {}, {},
     "project-pick": any;
 }, string, import("vue").PublicProps, Readonly<__VLS_PublicProps> & Readonly<{
     "onProject-resolved"?: ((...args: any) => any) | undefined;
-    "onUpdate:selectedProject"?: ((value: string | null) => any) | undefined;
     "onSession-picked"?: ((...args: any) => any) | undefined;
     "onSession-bootstrapped"?: ((...args: any) => any) | undefined;
     "onFocus-main"?: ((...args: any) => any) | undefined;
     "onProject-pick"?: ((...args: any) => any) | undefined;
+    "onUpdate:selectedProject"?: ((value: string | null) => any) | undefined;
 }>, {}, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;
 export default _default;
 //# sourceMappingURL=PickerView.vue.d.ts.map

@@ -1,6 +1,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useChatHistory } from '@composables/useChatHistory';
+import { useConversationExport } from '@composables/useConversationExport';
 import { useTenantProjects } from '@composables/useTenantProjects';
 import { useDocumentRefStore } from '@/document/documentRefStore';
 import { SessionHeader, VAlert, VButton } from '@components/index';
@@ -367,8 +368,89 @@ watch(() => props.sessionId, async (newId, oldId) => {
     workerMessageIds.value = new Set();
     streamingDrafts.value = new Map();
     resetPlanModeState();
+    exportFeedback.value = null;
+    if (exportFeedbackTimer) {
+        clearTimeout(exportFeedbackTimer);
+        exportFeedbackTimer = null;
+    }
     await load(newId);
     scrollToBottom();
+});
+// ──────────────── Save conversation as document ────────────────
+//
+// User-facing affordance: the chat header offers a "Save as document"
+// button. The button writes a Markdown file under
+// `conversations/chat-{ts}.md` in the chat's own project, with
+// `autoSummary=false` and `ragEnabled='off'` — the conversation itself
+// is already indexed for the session, so re-summarising / re-embedding
+// the export would just duplicate work. The cortex editor additionally
+// opens the resulting document as a new tab; the chat editor only
+// shows a transient banner.
+const { saveConversationAsDocument } = useConversationExport();
+const exporting = ref(false);
+const exportFeedback = ref(null);
+let exportFeedbackTimer = null;
+/** Filtered list of turns that would actually contribute to the export.
+ *  Mirrors {@code useConversationExport}'s role-filter so the button
+ *  greys out when there is nothing exportable (empty session, only
+ *  worker side-chatter, only SYSTEM messages). */
+const exportableTurns = computed(() => allMessages.value.filter((m) => {
+    if (workerMessageIds.value.has(m.messageId))
+        return false;
+    const role = String(m.role);
+    if (role !== 'USER' && role !== 'ASSISTANT')
+        return false;
+    return (m.content?.trim().length ?? 0) > 0;
+}));
+const canExportConversation = computed(() => exportableTurns.value.length > 0);
+async function onSaveConversation() {
+    if (exporting.value || !canExportConversation.value)
+        return;
+    if (!props.chatProjectId)
+        return;
+    exporting.value = true;
+    exportFeedback.value = null;
+    try {
+        const doc = await saveConversationAsDocument({
+            projectId: props.chatProjectId,
+            sessionId: props.sessionId,
+            turns: exportableTurns.value,
+        });
+        if (!doc) {
+            exportFeedback.value = {
+                kind: 'error',
+                message: _('chat.export.saveFailed'),
+            };
+        }
+        else {
+            exportFeedback.value = {
+                kind: 'success',
+                message: _('chat.export.saveSucceeded', { path: doc.path }),
+            };
+            emit('conversation-exported', { documentId: doc.id, document: doc });
+        }
+    }
+    catch (e) {
+        exportFeedback.value = {
+            kind: 'error',
+            message: e instanceof Error ? e.message : _('chat.export.saveFailed'),
+        };
+    }
+    finally {
+        exporting.value = false;
+        if (exportFeedbackTimer)
+            clearTimeout(exportFeedbackTimer);
+        exportFeedbackTimer = setTimeout(() => {
+            exportFeedback.value = null;
+            exportFeedbackTimer = null;
+        }, 5000);
+    }
+}
+onBeforeUnmount(() => {
+    if (exportFeedbackTimer) {
+        clearTimeout(exportFeedbackTimer);
+        exportFeedbackTimer = null;
+    }
 });
 debugger; /* PartiallyEnd: #3632/scriptSetup.vue */
 const __VLS_ctx = {};
@@ -429,6 +511,34 @@ if (__VLS_ctx.modeBadge) {
     });
     (__VLS_ctx.modeBadge);
 }
+const __VLS_9 = {}.VButton;
+/** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+// @ts-ignore
+const __VLS_10 = __VLS_asFunctionalComponent(__VLS_9, new __VLS_9({
+    ...{ 'onClick': {} },
+    variant: "ghost",
+    size: "sm",
+    disabled: (__VLS_ctx.exporting || !__VLS_ctx.canExportConversation),
+    title: (__VLS_ctx.$t('chat.export.saveAsDocumentTooltip')),
+    'aria-label': (__VLS_ctx.$t('chat.export.saveAsDocumentTooltip')),
+}));
+const __VLS_11 = __VLS_10({
+    ...{ 'onClick': {} },
+    variant: "ghost",
+    size: "sm",
+    disabled: (__VLS_ctx.exporting || !__VLS_ctx.canExportConversation),
+    title: (__VLS_ctx.$t('chat.export.saveAsDocumentTooltip')),
+    'aria-label': (__VLS_ctx.$t('chat.export.saveAsDocumentTooltip')),
+}, ...__VLS_functionalComponentArgsRest(__VLS_10));
+let __VLS_13;
+let __VLS_14;
+let __VLS_15;
+const __VLS_16 = {
+    onClick: (__VLS_ctx.onSaveConversation)
+};
+__VLS_12.slots.default;
+(__VLS_ctx.exporting ? '⌛' : '💾');
+var __VLS_12;
 if (__VLS_ctx.mediation) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "px-6 py-2 border-b border-base-300 bg-info/10 flex items-center gap-3 text-sm" },
@@ -440,32 +550,32 @@ if (__VLS_ctx.mediation) {
         ...{ class: "flex-1 min-w-0 truncate" },
     });
     (__VLS_ctx.$t('chat.mediation.banner', { project: __VLS_ctx.mediation.workerProjectName }));
-    const __VLS_9 = {}.VButton;
+    const __VLS_17 = {}.VButton;
     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
-    const __VLS_10 = __VLS_asFunctionalComponent(__VLS_9, new __VLS_9({
+    const __VLS_18 = __VLS_asFunctionalComponent(__VLS_17, new __VLS_17({
         ...{ 'onClick': {} },
         variant: "ghost",
         size: "sm",
     }));
-    const __VLS_11 = __VLS_10({
+    const __VLS_19 = __VLS_18({
         ...{ 'onClick': {} },
         variant: "ghost",
         size: "sm",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_10));
-    let __VLS_13;
-    let __VLS_14;
-    let __VLS_15;
-    const __VLS_16 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_18));
+    let __VLS_21;
+    let __VLS_22;
+    let __VLS_23;
+    const __VLS_24 = {
         onClick: (...[$event]) => {
             if (!(__VLS_ctx.mediation))
                 return;
             __VLS_ctx.emit('hub');
         }
     };
-    __VLS_12.slots.default;
+    __VLS_20.slots.default;
     (__VLS_ctx.$t('chat.mediation.backToHub'));
-    var __VLS_12;
+    var __VLS_20;
 }
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ref: "messageContainer",
@@ -475,6 +585,20 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.d
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "max-w-5xl mx-auto flex flex-col gap-3" },
 });
+if (__VLS_ctx.exportFeedback) {
+    const __VLS_25 = {}.VAlert;
+    /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
+    // @ts-ignore
+    const __VLS_26 = __VLS_asFunctionalComponent(__VLS_25, new __VLS_25({
+        variant: (__VLS_ctx.exportFeedback.kind),
+    }));
+    const __VLS_27 = __VLS_26({
+        variant: (__VLS_ctx.exportFeedback.kind),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_26));
+    __VLS_28.slots.default;
+    (__VLS_ctx.exportFeedback.message);
+    var __VLS_28;
+}
 if (__VLS_ctx.historyLoading) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "text-sm opacity-60" },
@@ -482,24 +606,24 @@ if (__VLS_ctx.historyLoading) {
     (__VLS_ctx.$t('chat.historyLoading'));
 }
 else if (__VLS_ctx.historyError) {
-    const __VLS_17 = {}.VAlert;
+    const __VLS_29 = {}.VAlert;
     /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
     // @ts-ignore
-    const __VLS_18 = __VLS_asFunctionalComponent(__VLS_17, new __VLS_17({
+    const __VLS_30 = __VLS_asFunctionalComponent(__VLS_29, new __VLS_29({
         variant: "error",
     }));
-    const __VLS_19 = __VLS_18({
+    const __VLS_31 = __VLS_30({
         variant: "error",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_18));
-    __VLS_20.slots.default;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_30));
+    __VLS_32.slots.default;
     (__VLS_ctx.historyError);
-    var __VLS_20;
+    var __VLS_32;
 }
 for (const [msg, idx] of __VLS_getVForSourceType((__VLS_ctx.allMessages))) {
     (msg.messageId);
     /** @type {[typeof MessageBubble, ]} */ ;
     // @ts-ignore
-    const __VLS_21 = __VLS_asFunctionalComponent(MessageBubble, new MessageBubble({
+    const __VLS_33 = __VLS_asFunctionalComponent(MessageBubble, new MessageBubble({
         ...{ 'onPickOption': {} },
         role: (String(msg.role)),
         content: (msg.content),
@@ -508,7 +632,7 @@ for (const [msg, idx] of __VLS_getVForSourceType((__VLS_ctx.allMessages))) {
         meta: (msg.meta),
         optionsActionable: (msg.messageId === __VLS_ctx.activeAskUserMessageId),
     }));
-    const __VLS_22 = __VLS_21({
+    const __VLS_34 = __VLS_33({
         ...{ 'onPickOption': {} },
         role: (String(msg.role)),
         content: (msg.content),
@@ -516,52 +640,52 @@ for (const [msg, idx] of __VLS_getVForSourceType((__VLS_ctx.allMessages))) {
         worker: (__VLS_ctx.workerMessageIds.has(msg.messageId)),
         meta: (msg.meta),
         optionsActionable: (msg.messageId === __VLS_ctx.activeAskUserMessageId),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_21));
-    let __VLS_24;
-    let __VLS_25;
-    let __VLS_26;
-    const __VLS_27 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_33));
+    let __VLS_36;
+    let __VLS_37;
+    let __VLS_38;
+    const __VLS_39 = {
         onPickOption: (__VLS_ctx.onPickAskUserOption)
     };
-    var __VLS_23;
+    var __VLS_35;
     if (idx === __VLS_ctx.followUpAnchorIndex && !__VLS_ctx.visibleDraft) {
         /** @type {[typeof FollowUpGhost, ]} */ ;
         // @ts-ignore
-        const __VLS_28 = __VLS_asFunctionalComponent(FollowUpGhost, new FollowUpGhost({
+        const __VLS_40 = __VLS_asFunctionalComponent(FollowUpGhost, new FollowUpGhost({
             ...{ 'onAccept': {} },
             suggestion: (__VLS_ctx.followUpSuggestion ?? null),
         }));
-        const __VLS_29 = __VLS_28({
+        const __VLS_41 = __VLS_40({
             ...{ 'onAccept': {} },
             suggestion: (__VLS_ctx.followUpSuggestion ?? null),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_28));
-        let __VLS_31;
-        let __VLS_32;
-        let __VLS_33;
-        const __VLS_34 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_40));
+        let __VLS_43;
+        let __VLS_44;
+        let __VLS_45;
+        const __VLS_46 = {
             onAccept: (__VLS_ctx.onAcceptFollowUp)
         };
-        var __VLS_30;
+        var __VLS_42;
     }
 }
 if (__VLS_ctx.visibleDraft) {
     /** @type {[typeof MessageBubble, ]} */ ;
     // @ts-ignore
-    const __VLS_35 = __VLS_asFunctionalComponent(MessageBubble, new MessageBubble({
+    const __VLS_47 = __VLS_asFunctionalComponent(MessageBubble, new MessageBubble({
         role: (String(__VLS_ctx.visibleDraft.role)),
         content: (__VLS_ctx.visibleDraft.content),
         streaming: (true),
     }));
-    const __VLS_36 = __VLS_35({
+    const __VLS_48 = __VLS_47({
         role: (String(__VLS_ctx.visibleDraft.role)),
         content: (__VLS_ctx.visibleDraft.content),
         streaming: (true),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_35));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_47));
 }
 for (const [draft] of __VLS_getVForSourceType((__VLS_ctx.visibleWorkerDrafts))) {
     /** @type {[typeof MessageBubble, ]} */ ;
     // @ts-ignore
-    const __VLS_38 = __VLS_asFunctionalComponent(MessageBubble, new MessageBubble({
+    const __VLS_50 = __VLS_asFunctionalComponent(MessageBubble, new MessageBubble({
         key: (`worker-draft-${draft.processName}`),
         role: (String(draft.role)),
         content: (draft.content),
@@ -569,27 +693,27 @@ for (const [draft] of __VLS_getVForSourceType((__VLS_ctx.visibleWorkerDrafts))) 
         processName: (draft.processName),
         streaming: (true),
     }));
-    const __VLS_39 = __VLS_38({
+    const __VLS_51 = __VLS_50({
         key: (`worker-draft-${draft.processName}`),
         role: (String(draft.role)),
         content: (draft.content),
         worker: (true),
         processName: (draft.processName),
         streaming: (true),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_38));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_50));
 }
 /** @type {[typeof PlanModeIndicator, ]} */ ;
 // @ts-ignore
-const __VLS_41 = __VLS_asFunctionalComponent(PlanModeIndicator, new PlanModeIndicator({
+const __VLS_53 = __VLS_asFunctionalComponent(PlanModeIndicator, new PlanModeIndicator({
     mode: (__VLS_ctx.chatProcessMode),
     todos: (__VLS_ctx.chatTodos),
     planMeta: (__VLS_ctx.planMeta),
 }));
-const __VLS_42 = __VLS_41({
+const __VLS_54 = __VLS_53({
     mode: (__VLS_ctx.chatProcessMode),
     todos: (__VLS_ctx.chatTodos),
     planMeta: (__VLS_ctx.planMeta),
-}, ...__VLS_functionalComponentArgsRest(__VLS_41));
+}, ...__VLS_functionalComponentArgsRest(__VLS_53));
 /** @type {__VLS_StyleScopedClasses['h-full']} */ ;
 /** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
@@ -679,6 +803,10 @@ const __VLS_self = (await import('vue')).defineComponent({
             onAcceptFollowUp: onAcceptFollowUp,
             visibleDraft: visibleDraft,
             visibleWorkerDrafts: visibleWorkerDrafts,
+            exporting: exporting,
+            exportFeedback: exportFeedback,
+            canExportConversation: canExportConversation,
+            onSaveConversation: onSaveConversation,
         };
     },
     __typeEmits: {},

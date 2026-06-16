@@ -137,6 +137,20 @@ function onLeave() {
     // different session — Cortex without a session has nothing to do.
     window.location.href = '/chat.html';
 }
+/**
+ * Open the freshly-saved conversation-export document as a Cortex tab so
+ * the user can rename/move it without leaving the editor. The chat-side
+ * banner (rendered inside ChatView) still shows the success path; this
+ * handler just adds the "open it" affordance that's unique to Cortex.
+ */
+async function onConversationExported(payload) {
+    try {
+        await cortexStore.openFile(payload.documentId);
+    }
+    catch (e) {
+        console.warn('Failed to open exported conversation in Cortex', e);
+    }
+}
 debugger; /* PartiallyEnd: #3632/scriptSetup.vue */
 const __VLS_ctx = {};
 let __VLS_components;
@@ -210,6 +224,7 @@ else {
         const __VLS_12 = __VLS_asFunctionalComponent(ChatView, new ChatView({
             ...{ 'onLeave': {} },
             ...{ 'onHub': {} },
+            ...{ 'onConversationExported': {} },
             ref: "chatViewRef",
             socket: (__VLS_ctx.socket),
             sessionId: (__VLS_ctx.sessionId),
@@ -219,6 +234,7 @@ else {
         const __VLS_13 = __VLS_12({
             ...{ 'onLeave': {} },
             ...{ 'onHub': {} },
+            ...{ 'onConversationExported': {} },
             ref: "chatViewRef",
             socket: (__VLS_ctx.socket),
             sessionId: (__VLS_ctx.sessionId),
@@ -234,8 +250,11 @@ else {
         const __VLS_19 = {
             onHub: (__VLS_ctx.onLeave)
         };
+        const __VLS_20 = {
+            onConversationExported: (__VLS_ctx.onConversationExported)
+        };
         /** @type {typeof __VLS_ctx.chatViewRef} */ ;
-        var __VLS_20 = {};
+        var __VLS_21 = {};
         var __VLS_14;
     }
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -244,7 +263,7 @@ else {
     if (__VLS_ctx.socket) {
         /** @type {[typeof ChatComposer, ]} */ ;
         // @ts-ignore
-        const __VLS_22 = __VLS_asFunctionalComponent(ChatComposer, new ChatComposer({
+        const __VLS_23 = __VLS_asFunctionalComponent(ChatComposer, new ChatComposer({
             ...{ 'onHub': {} },
             ...{ 'onLocalEcho': {} },
             ...{ 'onRollbackEcho': {} },
@@ -255,7 +274,7 @@ else {
             compactTools: (true),
             currentFileSource: (__VLS_ctx.currentFileSource),
         }));
-        const __VLS_23 = __VLS_22({
+        const __VLS_24 = __VLS_23({
             ...{ 'onHub': {} },
             ...{ 'onLocalEcho': {} },
             ...{ 'onRollbackEcho': {} },
@@ -265,22 +284,22 @@ else {
             chatProjectId: (__VLS_ctx.projectId),
             compactTools: (true),
             currentFileSource: (__VLS_ctx.currentFileSource),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_22));
-        let __VLS_25;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_23));
         let __VLS_26;
         let __VLS_27;
-        const __VLS_28 = {
+        let __VLS_28;
+        const __VLS_29 = {
             onHub: (__VLS_ctx.onLeave)
         };
-        const __VLS_29 = {
+        const __VLS_30 = {
             onLocalEcho: (__VLS_ctx.onLocalEcho)
         };
-        const __VLS_30 = {
+        const __VLS_31 = {
             onRollbackEcho: (__VLS_ctx.onRollbackEcho)
         };
         /** @type {typeof __VLS_ctx.composerRef} */ ;
-        var __VLS_31 = {};
-        var __VLS_24;
+        var __VLS_32 = {};
+        var __VLS_25;
     }
 }
 /** @type {__VLS_StyleScopedClasses['h-full']} */ ;
@@ -318,7 +337,7 @@ else {
 /** @type {__VLS_StyleScopedClasses['border-t']} */ ;
 /** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;
 // @ts-ignore
-var __VLS_21 = __VLS_20, __VLS_32 = __VLS_31;
+var __VLS_22 = __VLS_21, __VLS_33 = __VLS_32;
 var __VLS_dollars;
 const __VLS_self = (await import('vue')).defineComponent({
     setup() {
@@ -338,6 +357,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             onLocalEcho: onLocalEcho,
             onRollbackEcho: onRollbackEcho,
             onLeave: onLeave,
+            onConversationExported: onConversationExported,
         };
     },
     __typeProps: {},

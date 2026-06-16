@@ -207,6 +207,16 @@ export default {
       talkModeStop: 'Talk-Modus beenden',
       talkModeIdleOff: 'Talk-Modus wegen Inaktivität beendet.',
     },
+    bubble: {
+      copy: 'Als Markdown kopieren',
+      copyDone: 'Kopiert',
+    },
+    export: {
+      saveAsDocumentTooltip:
+        'Diese Konversation als Markdown-Dokument im Projekt des Chats speichern (Summary und RAG-Indexierung standardmäßig aus).',
+      saveSucceeded: 'Gespeichert unter {path}',
+      saveFailed: 'Konversation konnte nicht als Dokument gespeichert werden.',
+    },
     sessionHeader: {
       untitled: 'Ohne Titel',
       editTitlePlaceholder: 'Session-Titel…',

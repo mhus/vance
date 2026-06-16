@@ -8,6 +8,7 @@ import {
 } from '@vance/shared';
 import type {
   ChatMessageDto,
+  DocumentDto,
   SessionResumeRequest,
   SessionResumeResponse,
 } from '@vance/generated';
@@ -178,6 +179,22 @@ function onLeave(): void {
   // different session — Cortex without a session has nothing to do.
   window.location.href = '/chat.html';
 }
+
+/**
+ * Open the freshly-saved conversation-export document as a Cortex tab so
+ * the user can rename/move it without leaving the editor. The chat-side
+ * banner (rendered inside ChatView) still shows the success path; this
+ * handler just adds the "open it" affordance that's unique to Cortex.
+ */
+async function onConversationExported(
+  payload: { documentId: string; document: DocumentDto },
+): Promise<void> {
+  try {
+    await cortexStore.openFile(payload.documentId);
+  } catch (e) {
+    console.warn('Failed to open exported conversation in Cortex', e);
+  }
+}
 </script>
 
 <template>
@@ -214,6 +231,7 @@ function onLeave(): void {
           :chat-project-id="projectId"
           @leave="onLeave"
           @hub="onLeave"
+          @conversation-exported="onConversationExported"
         />
       </div>
       <div class="shrink-0 border-t border-base-300">

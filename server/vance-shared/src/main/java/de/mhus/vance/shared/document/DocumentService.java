@@ -556,6 +556,12 @@ public class DocumentService {
     /**
      * Creates a document. {@code content} is consumed; close it yourself if you opened it.
      *
+     * <p>Equivalent to calling
+     * {@link #create(String, String, String, String, List, String, InputStream, String, Boolean, Boolean)}
+     * with {@code null} for both override flags — auto-summary follows the
+     * mime-eligibility default and RAG-inclusion follows the
+     * path/mime-eligibility default.
+     *
      * @throws DocumentAlreadyExistsException if a document with the same {@code path}
      *         already exists in {@code (tenantId, projectId)}.
      */
@@ -568,6 +574,41 @@ public class DocumentService {
             @Nullable String mimeType,
             InputStream content,
             @Nullable String createdBy) {
+        return create(tenantId, projectId, path, title, tags, mimeType, content, createdBy,
+                /*autoSummaryOverride*/ null, /*ragEnabledOverride*/ null);
+    }
+
+    /**
+     * Creates a document with explicit overrides for the auto-summary and
+     * project-RAG flags. Intended for auto-generated artefacts (chat
+     * exports, snapshots, hook outputs) whose content is duplicative of
+     * material already summarised / indexed elsewhere.
+     *
+     * <p>Semantics:
+     * <ul>
+     *   <li>{@code autoSummaryOverride}: {@code null} = mime-eligibility default;
+     *       {@code true}/{@code false} = explicit opt-in/opt-out.</li>
+     *   <li>{@code ragEnabledOverride}: {@code null} = path/mime-eligibility default;
+     *       {@code true}/{@code false} = explicit override stored on the document
+     *       (see {@link #isRagEligible(DocumentDocument)}). When {@code false},
+     *       {@code ragDirty} stays {@code false} so the indexer never enqueues
+     *       a first embed run.</li>
+     * </ul>
+     *
+     * @throws DocumentAlreadyExistsException if a document with the same {@code path}
+     *         already exists in {@code (tenantId, projectId)}.
+     */
+    public DocumentDocument create(
+            String tenantId,
+            String projectId,
+            String path,
+            @Nullable String title,
+            @Nullable List<String> tags,
+            @Nullable String mimeType,
+            InputStream content,
+            @Nullable String createdBy,
+            @Nullable Boolean autoSummaryOverride,
+            @Nullable Boolean ragEnabledOverride) {
 
         String normalizedPath = normalizePath(path);
         if (repository.existsByTenantIdAndProjectIdAndPath(tenantId, projectId, normalizedPath)) {
@@ -577,6 +618,10 @@ public class DocumentService {
         }
 
         ContentWriteResult write = streamingStoreContent(tenantId, normalizedPath, content);
+
+        boolean autoSummary = autoSummaryOverride != null
+                ? autoSummaryOverride
+                : isAutoSummaryEligible(mimeType);
 
         DocumentDocument doc = DocumentDocument.builder()
                 .tenantId(tenantId)
@@ -591,13 +636,16 @@ public class DocumentService {
                 .compressed(write.compressed())
                 .createdBy(createdBy)
                 .status(DocumentStatus.ACTIVE)
-                .autoSummary(isAutoSummaryEligible(mimeType))
+                .autoSummary(autoSummary)
+                .ragEnabled(ragEnabledOverride)
                 .lineageId(java.util.UUID.randomUUID().toString())
                 .build();
         // Header parsing reads back through loadContent → the just-written
         // storage blob. One extra round-trip per create, but it keeps the
         // streaming-write path branch-free.
         applyHeader(doc);
+        // isRagEligible respects the override set above: if ragEnabled=false
+        // it returns false and we never enqueue an embed run.
         doc.setRagDirty(isRagEligible(doc));
 
         DocumentDocument saved = repository.save(doc);

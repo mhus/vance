@@ -184,6 +184,15 @@ declare const _default: {
             talkModeStop: string;
             talkModeIdleOff: string;
         };
+        bubble: {
+            copy: string;
+            copyDone: string;
+        };
+        export: {
+            saveAsDocumentTooltip: string;
+            saveSucceeded: string;
+            saveFailed: string;
+        };
         sessionHeader: {
             untitled: string;
             editTitlePlaceholder: string;

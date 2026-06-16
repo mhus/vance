@@ -2,12 +2,15 @@ package de.mhus.vance.brain.hooks;
 
 import de.mhus.vance.api.action.TriggerAction;
 import de.mhus.vance.api.eventlog.EventType;
+import de.mhus.vance.api.ws.Profiles;
 import de.mhus.vance.brain.action.ActionExecutorRegistry;
 import de.mhus.vance.brain.action.ActionOutcome;
 import de.mhus.vance.brain.action.ActionResult;
 import de.mhus.vance.brain.action.TriggerContext;
 import de.mhus.vance.brain.action.TriggerKind;
 import de.mhus.vance.shared.eventlog.EventLogService;
+import de.mhus.vance.shared.session.SessionDocument;
+import de.mhus.vance.shared.session.SessionService;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -47,15 +50,18 @@ public class HookDispatcher implements DisposableBean {
     private final HookRegistry registry;
     private final ActionExecutorRegistry actionRegistry;
     private final EventLogService eventLogService;
+    private final SessionService sessionService;
     private final ExecutorService runnerPool;
 
     public HookDispatcher(
             HookRegistry registry,
             ActionExecutorRegistry actionRegistry,
-            EventLogService eventLogService) {
+            EventLogService eventLogService,
+            SessionService sessionService) {
         this.registry = registry;
         this.actionRegistry = actionRegistry;
         this.eventLogService = eventLogService;
+        this.sessionService = sessionService;
         AtomicLong tid = new AtomicLong();
         ThreadFactory tf = r -> {
             Thread t = new Thread(r, "vance-hook-runner-" + tid.incrementAndGet());
@@ -104,12 +110,20 @@ public class HookDispatcher implements DisposableBean {
         // under "event". Subscribers read it via vance.params.event in
         // scripts, or as params.event in recipes/workflows.
         TriggerAction action = withEventInParams(def.action(), event.payload());
+        String runAs = def.action().runAs() != null
+                ? def.action().runAs() : def.createdByUserId();
+        // Recipe-actions need a session to spawn the ThinkProcess into.
+        // Resolve (or lazily create) a per-hook system session — same
+        // pattern Scheduler uses, with the hook source-key as the
+        // display name so re-fires reuse the same session.
+        String parentSessionId = null;
+        if (action instanceof TriggerAction.Recipe) {
+            parentSessionId = resolveSystemSession(event, def, runAs);
+        }
         TriggerContext ctx = new TriggerContext(
                 event.tenantId(), event.projectId(),
-                /*resolvedRunAs*/ def.action().runAs() != null
-                        ? def.action().runAs() : def.createdByUserId(),
-                correlationId, def.sourceKey(),
-                /*parentSessionId*/ null, /*parentProcessId*/ null);
+                runAs, correlationId, def.sourceKey(),
+                parentSessionId, /*parentProcessId*/ null);
 
         Instant start = Instant.now();
         ActionResult result;
@@ -160,6 +174,37 @@ public class HookDispatcher implements DisposableBean {
                     duration.toMillis(),
                     result.spawnedId() == null ? "" : " spawnedId=" + result.spawnedId());
         }
+    }
+
+    /**
+     * Resolves the per-hook system session, lazily creating it on
+     * first fire. Display name uses the hook's source key so the
+     * session is uniquely keyed per {@code (event, hookName)} pair
+     * within the project. The session is owned by {@code runAs} —
+     * its userId field; Inbox-routing and downstream notifications
+     * resolve from there.
+     */
+    private String resolveSystemSession(
+            HookFireableEvent event, HookDef def, @Nullable String runAs) {
+        String displayName = "_hook_" + def.event().wireName() + "_" + def.name();
+        return sessionService.findSystemSession(
+                        event.tenantId(), event.projectId(), displayName)
+                .map(SessionDocument::getSessionId)
+                .orElseGet(() -> {
+                    SessionDocument created = sessionService.create(
+                            event.tenantId(),
+                            runAs,
+                            event.projectId(),
+                            displayName,
+                            Profiles.HOOK,
+                            /*clientVersion*/ "hook",
+                            /*clientName*/ null,
+                            /*system*/ true);
+                    sessionService.markBootstrapped(created.getSessionId());
+                    log.info("Hook system-session created project='{}' name='{}' sessionId='{}' runAs='{}'",
+                            event.projectId(), displayName, created.getSessionId(), runAs);
+                    return created.getSessionId();
+                });
     }
 
     /**

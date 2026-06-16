@@ -2,8 +2,10 @@ package de.mhus.vance.brain.hactar.phases;
 
 import de.mhus.vance.api.hactar.HactarState;
 import de.mhus.vance.api.hactar.HactarStatus;
+import de.mhus.vance.api.notification.NotificationSeverity;
 import de.mhus.vance.api.progress.StatusPayload;
 import de.mhus.vance.api.progress.StatusTag;
+import de.mhus.vance.brain.notification.NotificationService;
 import de.mhus.vance.brain.progress.ProgressEmitter;
 import de.mhus.vance.brain.script.ScriptExecutionException;
 import de.mhus.vance.brain.script.ScriptExecutor;
@@ -57,6 +59,7 @@ public class ExecutingPhase {
     private final ScriptExecutor scriptExecutor;
     private final ToolDispatcher toolDispatcher;
     private final ProgressEmitter progressEmitter;
+    private final NotificationService notificationService;
 
     public HactarStatus execute(
             HactarState state,
@@ -89,21 +92,29 @@ public class ExecutingPhase {
         // Hactar process so the user sees iteration progress without
         // scraping logs. Bound here because the emitter needs both the
         // ProgressEmitter bean and the running process document.
-        // Payload Map flattens into the status `detail` field as a
-        // compact "k=v, k=v" string — keeps the StatusPayload contract
-        // unchanged while still surfacing structured data the script
-        // wanted to share.
+        // SCRIPT_PROGRESS (not INFO) — the script author called this
+        // explicitly, so it must pass the NORMAL progress-level filter
+        // by default. Payload Map flattens into the status `detail`
+        // field as a compact "k=v, k=v" string.
         BiConsumer<String, @Nullable Map<String, Object>> progressBridge =
                 (message, payload) -> {
                     StatusPayload.StatusPayloadBuilder builder =
                             StatusPayload.builder()
-                                    .tag(StatusTag.INFO)
+                                    .tag(StatusTag.SCRIPT_PROGRESS)
                                     .text(message);
                     if (payload != null && !payload.isEmpty()) {
                         builder.detail(formatPayload(payload));
                     }
                     progressEmitter.emitStatus(process, builder.build());
                 };
+
+        // vance.process.notify(...) — fires a NOTIFY frame so the user's
+        // client beeps / shows a toast / fires a system notification.
+        // Wired to NotificationService, which routes session-bound and
+        // drops on the floor when no client is connected (spec §4).
+        BiConsumer<String, @Nullable NotificationSeverity> notificationBridge =
+                (message, severity) ->
+                        notificationService.publish(process, message, severity);
 
         try {
             ScriptResult result = scriptExecutor.run(
@@ -112,7 +123,7 @@ public class ExecutingPhase {
                             code, sourceName,
                             tools, timeout, bindings, process.getRecipeName(),
                             de.mhus.vance.brain.action.ScopeLevel.PROCESS_SCOPED,
-                            progressBridge));
+                            progressBridge, notificationBridge));
             state.setExecutionResult(result.value());
             state.setExecutionDurationMs(result.duration().toMillis());
             state.setExecutionError(null);

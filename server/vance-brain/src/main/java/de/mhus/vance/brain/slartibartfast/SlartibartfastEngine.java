@@ -1012,6 +1012,72 @@ public class SlartibartfastEngine implements ThinkEngine {
      * spam-events on null-transitions (recovery rollbacks that
      * don't add an iteration).
      */
+    /**
+     * Heads-up ping emitted BEFORE each phase's heavy work runs. The
+     * companion to {@link #emitPhaseProgress} which fires AFTER the
+     * phase with the output summary — together they bracket every
+     * Slart phase so the chat user sees:
+     *
+     * <pre>
+     *   "Slartibartfast PROPOSING…"        ← this ping (phase START)
+     *   …30-60s of LLM-driven silence…
+     *   "Slartibartfast PROPOSING: <summary>"  ← emitPhaseProgress
+     * </pre>
+     *
+     * <p>READY transitions are skipped (no work to announce). All
+     * other phase entries emit a {@link de.mhus.vance.api.progress.StatusTag#INFO}
+     * ping; the filter still honours the per-process
+     * {@code ProgressLevel} via {@link de.mhus.vance.brain.progress.ProgressEmitter}.
+     */
+    private void emitPhaseStart(
+            ThinkProcessDocument process, ArchitectState state) {
+        ArchitectStatus status = state.getStatus();
+        if (status == null
+                || status == ArchitectStatus.READY
+                || status == ArchitectStatus.DONE
+                || status == ArchitectStatus.FAILED
+                || status == ArchitectStatus.ESCALATED
+                || status == ArchitectStatus.ESCALATING) {
+            return;
+        }
+        // Recovery suffix: when this phase has been entered before
+        // (recovery loop bumped us back to DECOMPOSING or PROPOSING),
+        // surface the attempt counter so the user knows the phase is
+        // re-running, not stuck on its first pass. Counts iterations
+        // of THIS phase in the audit chain — distinct from the
+        // global recoveryCount which mixes BINDING + VALIDATING.
+        int phaseAttempt = countPhaseIterations(state, status);
+        String suffix = phaseAttempt > 1
+                ? " (attempt " + phaseAttempt + "/"
+                        + Math.max(state.getMaxRecoveries(), phaseAttempt) + ")"
+                : "";
+        try {
+            progressEmitter.emitStatus(process,
+                    de.mhus.vance.api.progress.StatusTag.INFO,
+                    "Slartibartfast " + status.name() + suffix + "…");
+        } catch (RuntimeException e) {
+            log.debug("Slartibartfast id='{}' progress-start emit failed: {}",
+                    process.getId(), e.toString());
+        }
+    }
+
+    /**
+     * Count how many times the given phase has already produced a
+     * PhaseIteration entry in the audit chain. The phase-START ping
+     * fires BEFORE the current iteration is appended, so a return of
+     * {@code n} means "this is the (n+1)-th attempt". The label uses
+     * {@code n+1} directly.
+     */
+    private static int countPhaseIterations(
+            ArchitectState state, ArchitectStatus phase) {
+        int count = 1;  // the attempt we're about to start
+        for (de.mhus.vance.api.slartibartfast.PhaseIteration it
+                : state.getIterations()) {
+            if (it.getPhase() == phase) count++;
+        }
+        return count;
+    }
+
     private void emitPhaseProgress(
             ThinkProcessDocument process,
             ArchitectStatus statusBefore,
@@ -1101,6 +1167,14 @@ public class SlartibartfastEngine implements ThinkEngine {
                 state.setChildExecutionSummary(null);
             }
         }
+
+        // Phase-START ping — surfaces "Slart is now in PROPOSING…"
+        // BEFORE the (possibly minute-long) LLM call kicks off, so the
+        // chat user sees activity instead of staring at silence between
+        // PHASE_DONE events. PHASE_DONE (emitted by emitPhaseProgress
+        // after the phase) carries the actual output summary; this ping
+        // is just a heads-up.
+        emitPhaseStart(process, state);
 
         switch (state.getStatus()) {
             case READY -> {

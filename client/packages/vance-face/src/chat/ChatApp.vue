@@ -31,6 +31,7 @@ import ChatView from './ChatView.vue';
 import ChatComposer from './ChatComposer.vue';
 import ChatRightPanel from './ChatRightPanel.vue';
 import { useFollowUpSuggestion } from '@composables/useFollowUpSuggestion';
+import { useNotificationSubscription } from '@/notification/useNotificationSubscription';
 
 const { t } = useI18n();
 
@@ -41,6 +42,10 @@ type Mode = 'connecting' | 'picker' | 'live' | 'occupied' | 'failed';
 const mode = ref<Mode>('connecting');
 const errorMessage = ref<string | null>(null);
 const socket = ref<BrainWebSocket | null>(null);
+// Pipe `notify` frames into the global toast/beep store. The
+// subscription follows reconnects (socket ref is swapped, the
+// composable rebinds via watch).
+useNotificationSubscription(socket);
 const activeSessionId = ref<string | null>(null);
 /**
  * True after the live WS has closed but before a reconnect has run.
@@ -571,12 +576,20 @@ async function leaveLive(): Promise<void> {
   if (socket.value && !socket.value.closed()) {
     socket.value.sendNoReply('session-unbind');
   }
+  // The post-unbind socket can land in a half-dead state — browser tab
+  // throttling, server-side connection cleanup, or a stray frame in
+  // flight have all been observed to break the next session-bootstrap
+  // with WebSocketClosedError. Tear it down and open a fresh one so the
+  // picker starts from the same clean state a URL-less page load would.
+  // openSocketForPicker handles teardown + resets the session-scoped
+  // state (chatProjectId, chatProcessName, progressEvents).
   activeSessionId.value = null;
   pushSessionIdToUrl(null);
-  chatProcessName.value = null;
-  chatProjectId.value = '';
   sessionDisplayName.value = null;
-  progressEvents.value = [];
+  mediation.value = null;
+  previousSessionId.value = null;
+  const ok = await openSocketForPicker();
+  if (!ok) return; // mode flipped to 'failed' inside openSocketForPicker
   mode.value = 'picker';
 }
 

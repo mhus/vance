@@ -19,6 +19,7 @@ import ChatComposer, {
 } from '@/chat/ChatComposer.vue';
 import { useCortexStore } from '../stores/cortexStore';
 import type { CortexClientToolService } from '../clientToolService';
+import { useNotificationSubscription } from '@/notification/useNotificationSubscription';
 
 interface Props {
   sessionId: string;
@@ -61,6 +62,8 @@ type Status = 'connecting' | 'live' | 'occupied' | 'failed';
 const status = ref<Status>('connecting');
 const errorMessage = ref<string | null>(null);
 const socket = ref<BrainWebSocket | null>(null);
+// `notify` frames → global toast + WebAudio beep. Follows reconnects.
+useNotificationSubscription(socket);
 
 // Imperative cross-component routing — ChatComposer pushes optimistic
 // user-message echoes; ChatView appends them to its message list so the

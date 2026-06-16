@@ -16,7 +16,12 @@ public enum ProgressLevel {
     /** No metrics, no status pings; plan is still emitted (structurally important). */
     OFF,
 
-    /** Metrics emitted, status emitted for tool-boundaries — {@link StatusTag#INFO} suppressed. */
+    /**
+     * Metrics emitted, status emitted for tool-boundaries and any
+     * explicit pings (incl. {@link StatusTag#SCRIPT_PROGRESS} from
+     * {@code vance.process.progress(...)}) — only {@link StatusTag#INFO}
+     * (catch-all engine asides) is suppressed.
+     */
     NORMAL,
 
     /** All metrics, all status (including {@link StatusTag#INFO} engine asides). */

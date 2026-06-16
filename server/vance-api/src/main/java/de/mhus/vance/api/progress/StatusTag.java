@@ -60,6 +60,18 @@ public enum StatusTag {
     /** Engine stopped permanently (status CLOSED). */
     ENGINE_CLOSED,
 
+    /**
+     * Explicit progress ping from a user-authored script — emitted by
+     * {@code vance.process.progress(message, payload)} via the Hactar
+     * {@code ExecutingPhase} bridge. Unlike {@link #INFO}, this tag is
+     * an intentional act of the script author (not optional engine
+     * chatter), so it passes the {@code NORMAL} progress-level filter
+     * and is visible by default in the chat right panel. Script authors
+     * should still call it sparingly (every few hundred items in a
+     * batch loop, not per-item) to keep the side channel readable.
+     */
+    SCRIPT_PROGRESS,
+
     /** Catch-all for engine-emitted asides that don't fit a specific tag. */
     INFO
 }

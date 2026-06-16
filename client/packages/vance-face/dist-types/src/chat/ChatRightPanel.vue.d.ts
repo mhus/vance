@@ -14,9 +14,9 @@ declare function openWizard(name: string, prefill?: Record<string, string>): voi
 declare const _default: import("vue").DefineComponent<Props, {
     openWizard: typeof openWizard;
 }, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {} & {
-    "prompt-ready": any;
+    "prompt-ready": (prompt: string) => any;
 }, string, import("vue").PublicProps, Readonly<Props> & Readonly<{
-    "onPrompt-ready"?: ((...args: any) => any) | undefined;
+    "onPrompt-ready"?: ((prompt: string) => any) | undefined;
 }>, {
     projectId: string;
     sessionKey: string;

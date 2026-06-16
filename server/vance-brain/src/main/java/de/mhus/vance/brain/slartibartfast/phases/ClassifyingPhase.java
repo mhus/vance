@@ -129,6 +129,7 @@ public class ClassifyingPhase {
     private final LlmCallTracker llmCallTracker;
     private final ObjectMapper objectMapper;
     private final de.mhus.vance.brain.context.LanguageContextResolver languageContextResolver;
+    private final de.mhus.vance.brain.progress.ProgressEmitter progressEmitter;
 
     public void execute(
             ArchitectState state,
@@ -166,7 +167,11 @@ public class ClassifyingPhase {
         int rationaleSeq = rationalePool.size() + 1;
         int totalRetries = 0;
 
+        int total = state.getEvidenceSources().size();
+        int index = 0;
         for (EvidenceSource source : state.getEvidenceSources()) {
+            index++;
+            emitSourceProgress(process, index, total, source);
             ClassifyResult parsed;
             try {
                 parsed = classifyOne(state, process, source, bundle, modelAlias);
@@ -479,6 +484,33 @@ public class ClassifyingPhase {
     private static String abbrev(@Nullable String s, int max) {
         if (s == null) return "";
         return s.length() <= max ? s : s.substring(0, max - 3) + "...";
+    }
+
+    /**
+     * Sub-phase progress ping for the per-source LLM loop. Without
+     * this the user sees a single "CLASSIFYING…" phase-START emit
+     * followed by 10-N×30s of silence; with it they see one ping per
+     * source so the run feels alive. {@link StatusTag#INFO} stays
+     * out of the {@code NORMAL} progress-level filter — users who
+     * want quiet chats won't see it, those who turned on verbose
+     * progress will.
+     */
+    private void emitSourceProgress(
+            ThinkProcessDocument process, int index, int total,
+            EvidenceSource source) {
+        String path = source.getPath() == null ? source.getId() : source.getPath();
+        // Trim path to keep the side-channel readable in long manuals/ trees.
+        if (path.length() > 80) path = "…" + path.substring(path.length() - 79);
+        try {
+            progressEmitter.emitStatus(process,
+                    de.mhus.vance.api.progress.StatusTag.INFO,
+                    "Slartibartfast CLASSIFYING: source "
+                            + index + "/" + total + " — " + path);
+        } catch (RuntimeException e) {
+            log.debug("ClassifyingPhase progress emit failed for source "
+                            + "{}/{}: {}",
+                    index, total, e.toString());
+        }
     }
 
     private static String sha256Hex(String input) {

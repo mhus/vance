@@ -9,6 +9,7 @@ import {
 import { useHelp } from '@/composables/useHelp';
 import EditorTopbar, { type Crumb } from './EditorTopbar.vue';
 import MarkdownView from './MarkdownView.vue';
+import NotificationToasts from '@/notification/NotificationToasts.vue';
 
 // Re-export the breadcrumb segment type so existing consumers
 // (`import { type Crumb } from '@components'`) keep working without
@@ -410,6 +411,10 @@ onBeforeUnmount(() => {
         >‹</button>
       </template>
     </div>
+    <!-- Global toast overlay for the user-notification side-channel.
+         Mounted once at the shell level so every editor gets it for
+         free; the store + WebSocket subscription live elsewhere. -->
+    <NotificationToasts />
   </div>
 </template>
 

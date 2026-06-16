@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.script;
 
+import de.mhus.vance.api.notification.NotificationSeverity;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
@@ -86,24 +87,33 @@ public final class VanceScriptApi {
     public final @Nullable ScriptDocumentApi documents;
 
     public VanceScriptApi(ContextToolsApi toolsApi) {
-        this(toolsApi, null, Set.of(), null, null);
+        this(toolsApi, null, Set.of(), null, null, null);
     }
 
     public VanceScriptApi(ContextToolsApi toolsApi, @Nullable String recipeName) {
-        this(toolsApi, recipeName, Set.of(), null, null);
+        this(toolsApi, recipeName, Set.of(), null, null, null);
     }
 
     public VanceScriptApi(ContextToolsApi toolsApi,
                           @Nullable String recipeName,
                           Set<String> deniedToolNames) {
-        this(toolsApi, recipeName, deniedToolNames, null, null);
+        this(toolsApi, recipeName, deniedToolNames, null, null, null);
     }
 
     public VanceScriptApi(ContextToolsApi toolsApi,
                           @Nullable String recipeName,
                           Set<String> deniedToolNames,
                           @Nullable DocumentService documentService) {
-        this(toolsApi, recipeName, deniedToolNames, documentService, null);
+        this(toolsApi, recipeName, deniedToolNames, documentService, null, null);
+    }
+
+    public VanceScriptApi(ContextToolsApi toolsApi,
+                          @Nullable String recipeName,
+                          Set<String> deniedToolNames,
+                          @Nullable DocumentService documentService,
+                          @Nullable BiConsumer<String,
+                                  @Nullable Map<String, Object>> progressEmitter) {
+        this(toolsApi, recipeName, deniedToolNames, documentService, progressEmitter, null);
     }
 
     /**
@@ -124,18 +134,25 @@ public final class VanceScriptApi {
      * then degrade gracefully to a no-op + a SLF4J trace line.
      * Hactar's ExecutingPhase wires this to
      * {@link de.mhus.vance.brain.progress.ProgressEmitter#emitStatus}
-     * with {@link de.mhus.vance.api.progress.StatusTag#INFO}.
+     * with {@link de.mhus.vance.api.progress.StatusTag#SCRIPT_PROGRESS}.
+     *
+     * <p>{@code notificationEmitter} enables {@code vance.process.notify(...)}.
+     * Same null-degrade contract as {@code progressEmitter}. Hactar's
+     * ExecutingPhase wires this to
+     * {@link de.mhus.vance.brain.notification.NotificationService#publish}.
      */
     public VanceScriptApi(ContextToolsApi toolsApi,
                           @Nullable String recipeName,
                           Set<String> deniedToolNames,
                           @Nullable DocumentService documentService,
                           @Nullable BiConsumer<String,
-                                  @Nullable Map<String, Object>> progressEmitter) {
+                                  @Nullable Map<String, Object>> progressEmitter,
+                          @Nullable BiConsumer<String,
+                                  @Nullable NotificationSeverity> notificationEmitter) {
         this.tools = new ScriptToolsApi(toolsApi, deniedToolNames);
         this.context = new ScriptContextView(toolsApi.scope(), recipeName);
         this.log = new ScriptLog(toolsApi.scope());
-        this.process = new ScriptProcessApi(this, progressEmitter);
+        this.process = new ScriptProcessApi(this, progressEmitter, notificationEmitter);
         this.documents = documentService == null
                 ? null
                 : new ScriptDocumentApi(documentService, toolsApi.scope());
@@ -255,7 +272,7 @@ public final class VanceScriptApi {
     }
 
     /**
-     * Process surface exposed as {@code vance.process}. Two members:
+     * Process surface exposed as {@code vance.process}. Three members:
      * <ul>
      *   <li>{@link #spawn(Map)} routes to the {@code process_create}
      *       tool — same allow-filter / permission / quota path as the
@@ -265,6 +282,11 @@ public final class VanceScriptApi {
      *       parent think-process. No-op when the script wasn't
      *       launched with a progress emitter (trigger-scoped runs,
      *       unit-test stubs).</li>
+     *   <li>{@link #notify(String, String)} fires an attention-grabbing
+     *       {@code NOTIFY} ping (terminal bell / WebAudio beep / iOS
+     *       local notification) on the user's client. Use sparingly —
+     *       only at notable boundaries. No-op without a notification
+     *       emitter, same as {@code progress}.</li>
      * </ul>
      */
     public static final class ScriptProcessApi {
@@ -272,12 +294,17 @@ public final class VanceScriptApi {
         private final VanceScriptApi parent;
         private final @Nullable BiConsumer<String,
                 @Nullable Map<String, Object>> progressEmitter;
+        private final @Nullable BiConsumer<String,
+                @Nullable NotificationSeverity> notificationEmitter;
 
         ScriptProcessApi(VanceScriptApi parent,
                 @Nullable BiConsumer<String,
-                        @Nullable Map<String, Object>> progressEmitter) {
+                        @Nullable Map<String, Object>> progressEmitter,
+                @Nullable BiConsumer<String,
+                        @Nullable NotificationSeverity> notificationEmitter) {
             this.parent = parent;
             this.progressEmitter = progressEmitter;
+            this.notificationEmitter = notificationEmitter;
         }
 
         @HostAccess.Export
@@ -318,6 +345,58 @@ public final class VanceScriptApi {
                 LOG.warn("[script] tenant={} process={} progress emit failed: {}",
                         parent.context.tenantId, parent.context.processId,
                         e.toString());
+            }
+        }
+
+        /**
+         * Fire an attention-grabbing notification on the user's client
+         * (terminal bell / WebAudio beep / iOS local notification). Use
+         * sparingly — only at notable boundaries (batch done, long wait
+         * resolved, escalation). Status chatter belongs in
+         * {@link #progress(String, Map)}.
+         *
+         * <p>See {@code specification/user-notification-channel.md}.
+         *
+         * <p>No-op (with a trace log) when no notification emitter is
+         * wired — trigger-scoped sandboxes, unit-test stubs.
+         *
+         * @param message  short attention text. Required.
+         * @param severity {@code "INFO"} | {@code "WARN"} | {@code "ERROR"} (case-insensitive);
+         *                 {@code null} or unknown → {@link NotificationSeverity#INFO}.
+         */
+        @HostAccess.Export
+        public void notify(String message, @Nullable String severity) {
+            Objects.requireNonNull(message,
+                    "vance.process.notify: message must not be null");
+            NotificationSeverity sev = parseSeverity(severity);
+            if (notificationEmitter == null) {
+                LOG.trace("[script] tenant={} process={} notify (no-emitter) [{}] {}",
+                        parent.context.tenantId, parent.context.processId,
+                        sev, message);
+                return;
+            }
+            try {
+                notificationEmitter.accept(message, sev);
+            } catch (RuntimeException e) {
+                LOG.warn("[script] tenant={} process={} notify emit failed: {}",
+                        parent.context.tenantId, parent.context.processId,
+                        e.toString());
+            }
+        }
+
+        /** Convenience overload — no severity, defaults to INFO. */
+        @HostAccess.Export
+        public void notify(String message) {
+            notify(message, null);
+        }
+
+        private static NotificationSeverity parseSeverity(@Nullable String raw) {
+            if (raw == null || raw.isBlank()) return NotificationSeverity.INFO;
+            try {
+                return NotificationSeverity.valueOf(raw.trim().toUpperCase());
+            } catch (IllegalArgumentException e) {
+                LOG.debug("vance.process.notify: unknown severity '{}', defaulting to INFO", raw);
+                return NotificationSeverity.INFO;
             }
         }
     }

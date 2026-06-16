@@ -68,7 +68,8 @@ class ClassifyingPhaseTest {
 
         phase = new ClassifyingPhase(
                 engineChatFactory, llmCallTracker, JsonMapper.builder().build(),
-                languageContextResolver);
+                languageContextResolver,
+                mock(de.mhus.vance.brain.progress.ProgressEmitter.class));
 
         process = new ThinkProcessDocument();
         process.setId("proc-1");

@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.script;
 
+import de.mhus.vance.api.notification.NotificationSeverity;
 import de.mhus.vance.brain.action.ScopeLevel;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import java.time.Duration;
@@ -33,7 +34,8 @@ public record ScriptRequest(
         Map<String, @Nullable Object> bindings,
         @Nullable String recipeName,
         ScopeLevel scopeLevel,
-        @Nullable BiConsumer<String, @Nullable Map<String, Object>> progressEmitter) {
+        @Nullable BiConsumer<String, @Nullable Map<String, Object>> progressEmitter,
+        @Nullable BiConsumer<String, @Nullable NotificationSeverity> notificationEmitter) {
 
     public ScriptRequest {
         if (!"js".equals(language)) {
@@ -73,7 +75,7 @@ public record ScriptRequest(
             ContextToolsApi tools,
             Duration timeout) {
         this(language, code, sourceName, tools, timeout, Map.of(), null,
-                ScopeLevel.PROCESS_SCOPED, null);
+                ScopeLevel.PROCESS_SCOPED, null, null);
     }
 
     /**
@@ -89,7 +91,7 @@ public record ScriptRequest(
             Duration timeout,
             Map<String, @Nullable Object> bindings) {
         this(language, code, sourceName, tools, timeout, bindings, null,
-                ScopeLevel.PROCESS_SCOPED, null);
+                ScopeLevel.PROCESS_SCOPED, null, null);
     }
 
     /**
@@ -107,7 +109,7 @@ public record ScriptRequest(
             Map<String, @Nullable Object> bindings,
             @Nullable String recipeName) {
         this(language, code, sourceName, tools, timeout, bindings, recipeName,
-                ScopeLevel.PROCESS_SCOPED, null);
+                ScopeLevel.PROCESS_SCOPED, null, null);
     }
 
     /**
@@ -125,6 +127,27 @@ public record ScriptRequest(
             @Nullable String recipeName,
             ScopeLevel scopeLevel) {
         this(language, code, sourceName, tools, timeout, bindings, recipeName,
-                scopeLevel, null);
+                scopeLevel, null, null);
+    }
+
+    /**
+     * 9-argument convenience for callers that already supply a progress
+     * emitter (Hactar's ExecutingPhase used to live here before the
+     * notification bridge was added). Defaults {@code notificationEmitter}
+     * to {@code null} — call sites that want notifications wire it via
+     * the full canonical constructor.
+     */
+    public ScriptRequest(
+            String language,
+            String code,
+            @Nullable String sourceName,
+            ContextToolsApi tools,
+            Duration timeout,
+            Map<String, @Nullable Object> bindings,
+            @Nullable String recipeName,
+            ScopeLevel scopeLevel,
+            @Nullable BiConsumer<String, @Nullable Map<String, Object>> progressEmitter) {
+        this(language, code, sourceName, tools, timeout, bindings, recipeName,
+                scopeLevel, progressEmitter, null);
     }
 }

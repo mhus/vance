@@ -190,7 +190,7 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
                         : Set.of();
         VanceScriptApi api = new VanceScriptApi(
                 effectiveTools, request.recipeName(), deniedToolNames,
-                documentService, request.progressEmitter());
+                documentService, request.progressEmitter(), request.notificationEmitter());
         ResourceLimits limits = ResourceLimits.newBuilder()
                 .statementLimit(effectiveStatements, null)
                 .build();

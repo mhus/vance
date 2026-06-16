@@ -3,6 +3,7 @@ import { getSessionData, isAccessAlive, isRefreshAlive, refreshAccessCookie, } f
 import { useHelp } from '@/composables/useHelp';
 import EditorTopbar from './EditorTopbar.vue';
 import MarkdownView from './MarkdownView.vue';
+import NotificationToasts from '@/notification/NotificationToasts.vue';
 const props = withDefaults(defineProps(), {
     breadcrumbs: () => [],
     wideRightPanel: false,
@@ -377,6 +378,10 @@ if (__VLS_ctx.focusModel === 'auto') {
         });
     }
 }
+/** @type {[typeof NotificationToasts, ]} */ ;
+// @ts-ignore
+const __VLS_21 = __VLS_asFunctionalComponent(NotificationToasts, new NotificationToasts({}));
+const __VLS_22 = __VLS_21({}, ...__VLS_functionalComponentArgsRest(__VLS_21));
 /** @type {__VLS_StyleScopedClasses['h-screen']} */ ;
 /** @type {__VLS_StyleScopedClasses['h-dvh']} */ ;
 /** @type {__VLS_StyleScopedClasses['overflow-hidden']} */ ;
@@ -450,6 +455,7 @@ const __VLS_self = (await import('vue')).defineComponent({
         return {
             EditorTopbar: EditorTopbar,
             MarkdownView: MarkdownView,
+            NotificationToasts: NotificationToasts,
             emit: emit,
             focusZone: focusZone,
             showHelp: showHelp,

@@ -185,6 +185,22 @@ public final class MessageType {
      */
     public static final String PROCESS_PROGRESS = "process-progress";
 
+    // ─── User-Notification Side-Channel ───────────────────────────
+
+    /**
+     * Server-initiated notification: short attention-grabbing ping
+     * ("beep, process done"). Payload {@code NotificationDto} carries
+     * text + severity + optional source block (process/session) for
+     * deep-link click handling. Side-channel — never enters conversation
+     * history, not persisted, not replayed on reconnect.
+     *
+     * <p>Distinct from {@link #PROCESS_PROGRESS} (live status without
+     * audio) and from inbox items (persistent, with answer lifecycle).
+     *
+     * <p>See {@code specification/user-notification-channel.md}.
+     */
+    public static final String NOTIFY = "notify";
+
     // ─── Plan-Mode Notifications (Arthur) ─────────────────────────
 
     /**

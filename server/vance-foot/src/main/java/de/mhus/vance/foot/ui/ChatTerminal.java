@@ -305,6 +305,24 @@ public class ChatTerminal {
     }
 
     /**
+     * Fire the terminal bell ({@code BEL} — capability {@code bell}).
+     * Most terminals beep, flash, or both depending on user prefs;
+     * a few drop it silently. Either way the call is best-effort and
+     * never blocks. Used by the user-notification side-channel
+     * ({@code MessageType.NOTIFY}) to grab the user's attention.
+     */
+    public void bell() {
+        Terminal t = jlineTerminal.get();
+        if (t == null) return;
+        try {
+            t.puts(org.jline.utils.InfoCmp.Capability.bell);
+            t.flush();
+        } catch (RuntimeException ignored) {
+            // Terminal capability missing on this stack — silent drop.
+        }
+    }
+
+    /**
      * Up to {@code limit} most-recent lines (oldest first). Used by the debug
      * REST server to expose what the user has been seeing.
      */

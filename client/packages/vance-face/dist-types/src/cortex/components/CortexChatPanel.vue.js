@@ -4,6 +4,7 @@ import { VAlert, VButton } from '@/components';
 import ChatView from '@/chat/ChatView.vue';
 import ChatComposer from '@/chat/ChatComposer.vue';
 import { useCortexStore } from '../stores/cortexStore';
+import { useNotificationSubscription } from '@/notification/useNotificationSubscription';
 const props = defineProps();
 const cortexStore = useCortexStore();
 /**
@@ -28,6 +29,8 @@ const CHAT_PROCESS_NAME = 'chat';
 const status = ref('connecting');
 const errorMessage = ref(null);
 const socket = ref(null);
+// `notify` frames → global toast + WebAudio beep. Follows reconnects.
+useNotificationSubscription(socket);
 // Imperative cross-component routing — ChatComposer pushes optimistic
 // user-message echoes; ChatView appends them to its message list so the
 // user sees their message before the server frame arrives. Same dance

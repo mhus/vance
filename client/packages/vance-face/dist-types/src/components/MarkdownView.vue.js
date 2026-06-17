@@ -7,6 +7,17 @@ import LinkCard from './LinkCard.vue';
 import { hasRenderer } from '@/kindRenderers/registry';
 import { parseFenceLang } from '@/kindRenderers/parseFenceLang';
 import { isVanceUri, parseVanceUri } from '@/kindRenderers/parseVanceUri';
+/**
+ * Kinds that get an EmbeddedKindBox preview card appended underneath
+ * a paragraph when they appear as an inline {@code vance:}-link mixed
+ * with other text. Identical to the {@code MEDIA_KIND_HINTS} set in
+ * {@link EmbeddedKindBox} — duplicated locally to avoid an import
+ * cycle and because the two sets serve subtly different jobs: this
+ * one decides *whether* to render a preview at all (mixed-paragraph
+ * routing), the other decides whether the hint outranks the loaded
+ * doc.kind during render.
+ */
+const PREVIEW_MEDIA_KINDS = new Set(['image', 'svg', 'audio', 'video', 'pdf']);
 import { useDocumentRefStore } from '@/document/documentRefStore';
 import { getOpenDocumentsInNewTab } from '@/platform/webUiSession';
 import { VANCE_LINK_HANDLER_KEY } from './vanceLinkHandler';
@@ -369,6 +380,88 @@ function extractExternalUrls(token) {
     walk([token]);
     return urls;
 }
+/**
+ * Walks the token subtree of {@code token} and returns one
+ * {@link EmbedRef} per *media-kinded* {@code vance:}-link found
+ * inline. "Media-kinded" means the parsed {@code kindHint} (from
+ * explicit {@code ?kind=} or path-extension inference) is in
+ * {@link PREVIEW_MEDIA_KINDS} — image, svg, audio, video, pdf.
+ *
+ * Used to append {@link EmbeddedKindBox} preview cards underneath a
+ * paragraph that contains a vance: media link mixed with other text
+ * (e.g. "Hier ist der Report: [foo.pdf](vance:/…)"). The inline
+ * anchor stays as-is so the user can still click it as a link; the
+ * card below renders the actual preview / button. Mirrors the
+ * external-URL pattern in {@link extractExternalUrls}.
+ *
+ * Skips:
+ * - sole-vance-link paragraphs (handled higher up via
+ *   {@link isVanceLinkParagraph})
+ * - vance: links to non-media kinds (markdown, mindmap, …) — those
+ *   read fine inline
+ * - duplicates within the same block
+ */
+function extractVanceMediaRefs(token) {
+    const refs = [];
+    const seen = new Set();
+    const CAP = 3;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const walk = (ts) => {
+        if (!ts || refs.length >= CAP)
+            return;
+        for (const t of ts) {
+            if (refs.length >= CAP)
+                return;
+            if ((t.type === 'link' || t.type === 'image')) {
+                const lt = t;
+                if (isVanceUri(lt.href) && !seen.has(lt.href)) {
+                    const isImage = t.type === 'image';
+                    const text = isImage
+                        ? (lt.text ?? '')
+                        : tokensToText(lt.tokens ?? []);
+                    try {
+                        const embedRef = parseVanceUri(lt.href, { text, imageStyle: isImage });
+                        if (embedRef.kindHint && PREVIEW_MEDIA_KINDS.has(embedRef.kindHint)) {
+                            seen.add(lt.href);
+                            refs.push(embedRef);
+                        }
+                    }
+                    catch {
+                        // bad URI — leave the inline anchor in place, no preview
+                    }
+                }
+            }
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const anyT = t;
+            if (anyT.tokens)
+                walk(anyT.tokens);
+            if (Array.isArray(anyT.items)) {
+                for (const item of anyT.items) {
+                    if (item && item.tokens)
+                        walk(item.tokens);
+                }
+            }
+            if (Array.isArray(anyT.header)) {
+                for (const cell of anyT.header) {
+                    if (cell && cell.tokens)
+                        walk(cell.tokens);
+                }
+            }
+            if (Array.isArray(anyT.rows)) {
+                for (const row of anyT.rows) {
+                    if (!Array.isArray(row))
+                        continue;
+                    for (const cell of row) {
+                        if (cell && cell.tokens)
+                            walk(cell.tokens);
+                    }
+                }
+            }
+        }
+    };
+    walk([token]);
+    return refs;
+}
 function vnodesForTokens(tokens) {
     const out = [];
     const buffer = [];
@@ -457,6 +550,23 @@ function vnodesForTokens(tokens) {
             if (leftover.length > 0) {
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 flushHtmlBuffer([{ ...token, items: leftover }], out);
+            }
+            continue;
+        }
+        // Inline `vance:` media links mixed with text in the same
+        // paragraph — render the paragraph as normal Markdown (anchor
+        // stays clickable, user keeps the textual context) AND append
+        // an EmbeddedKindBox card per media link underneath so the
+        // image preview / PDF button / audio + video player still shows
+        // up. Sole-vance-link paragraphs are already handled by the
+        // {@link isVanceLinkParagraph} branch above and skip this path.
+        const vanceMedia = extractVanceMediaRefs(token);
+        if (vanceMedia.length > 0) {
+            flushHtmlBuffer(buffer, out);
+            buffer.push(token);
+            flushHtmlBuffer(buffer, out);
+            for (const embedRef of vanceMedia) {
+                out.push(h(EmbeddedKindBox, { embedRef, key: `vm:${embedRef.raw}` }));
             }
             continue;
         }

@@ -30,6 +30,7 @@ const TreeView    = defineAsyncComponent(() => import('@/document/TreeView.vue')
 const RecordsView = defineAsyncComponent(() => import('@/document/RecordsView.vue'));
 const GraphView   = defineAsyncComponent(() => import('@/document/GraphView.vue'));
 const ChartView   = defineAsyncComponent(() => import('@/document/ChartView.vue'));
+const MapView     = defineAsyncComponent(() => import('@/document/MapView.vue'));
 // Calendar's view moved to the calendar addon (Etappe 2.x). The
 // chat-stream still references it for inline-fence rendering;
 // federation gives us the same component at runtime.
@@ -67,6 +68,7 @@ export const kindRegistry: Record<string, KindRenderer> = {
   records: { inline: RecordsView, embedded: RecordsView, label: 'Records', icon: '▤'  },
   graph:   { inline: GraphView,   embedded: GraphView,   label: 'Graph',   icon: '🕸' },
   chart:   { inline: ChartView,   embedded: ChartView,   label: 'Chart',   icon: '📊' },
+  map:     { inline: MapView,     embedded: MapView,     label: 'Map',     icon: '🗺' },
   calendar: { inline: CalendarView, embedded: CalendarView, label: 'Calendar', icon: '📅' },
 
   // Slides are embedded-only by design (spec inline-and-embedded-content

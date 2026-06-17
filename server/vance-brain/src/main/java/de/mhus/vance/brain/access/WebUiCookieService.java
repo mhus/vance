@@ -63,6 +63,12 @@ public class WebUiCookieService {
      * <p>{@code chat.language} is here because the Web-UI chat composer
      * needs the resolved language at mount time (for speech
      * recognition) without an extra round-trip to {@code /profile}.
+     *
+     * <p>All entries in this set are <b>user-scoped</b>. Project-scoped
+     * config (infrastructure-style settings that depend on the
+     * currently-active project) belongs to
+     * {@code SettingsCascadeController} instead — the cookie is
+     * minted once at login and cannot follow project switches.
      */
     private static final Set<String> EXTRA_COOKIE_SETTING_KEYS = Set.of(
             LanguageResolver.Keys.CHAT_LANGUAGE);

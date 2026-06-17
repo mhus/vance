@@ -13,6 +13,7 @@ const pageCount = ref(0);
 const currentPage = ref(1);
 const loadError = ref(null);
 const loading = ref(false);
+const lightbox = ref(false);
 let pdfDoc = null;
 const url = computed(() => {
     const doc = props.document;
@@ -20,6 +21,8 @@ const url = computed(() => {
         return '';
     return documentContentUrl(doc.id);
 });
+/** True when a canvas is currently mounted — drives load-on-demand. */
+const canvasMounted = computed(() => props.mode === 'editor' || lightbox.value);
 async function loadPdf() {
     if (!url.value)
         return;
@@ -71,12 +74,41 @@ function next() {
         void renderPage(currentPage.value);
     }
 }
-onMounted(() => { void loadPdf(); });
-watch(() => url.value, () => { void loadPdf(); });
-onBeforeUnmount(() => {
+function openLightbox() {
+    lightbox.value = true;
+}
+function closeLightbox() {
+    lightbox.value = false;
+}
+function disposeDoc() {
     void pdfDoc?.destroy();
     pdfDoc = null;
+    pageCount.value = 0;
+    currentPage.value = 1;
+    loadError.value = null;
+}
+// Load on mount only for editor mode; embedded waits for the lightbox.
+// {@link canvasRef} is bound during the same flush so by the time
+// {@link loadPdf} reaches {@link renderPage} the canvas is alive.
+onMounted(() => {
+    if (canvasMounted.value)
+        void loadPdf();
 });
+// Re-load when the doc URL changes (editor switches to a different
+// PDF tab) or when the lightbox toggles. Closing the lightbox tears
+// down the loaded doc — frees the worker-side state plus any large
+// page buffers; the next open re-fetches.
+watch(() => url.value, () => {
+    if (canvasMounted.value)
+        void loadPdf();
+});
+watch(canvasMounted, (open) => {
+    if (open)
+        void loadPdf();
+    else
+        disposeDoc();
+});
+onBeforeUnmount(() => disposeDoc());
 debugger; /* PartiallyEnd: #3632/scriptSetup.vue */
 const __VLS_withDefaultsArg = (function (t) { return t; })({ mode: 'embedded' });
 const __VLS_ctx = {};
@@ -84,69 +116,196 @@ let __VLS_components;
 let __VLS_directives;
 /** @type {__VLS_StyleScopedClasses['pdf-view__canvas']} */ ;
 /** @type {__VLS_StyleScopedClasses['pdf-view__nav-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['pdf-view__open-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['pdf-view__open-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['pdf-view__lightbox-close']} */ ;
 // CSS variable injection 
 // CSS variable injection end 
-__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "pdf-view" },
-    ...{ class: (`pdf-view--${__VLS_ctx.mode}`) },
-});
-if (__VLS_ctx.loadError) {
+if (__VLS_ctx.mode === 'embedded') {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "pdf-view__error" },
+        ...{ class: "pdf-view pdf-view--card" },
     });
-    (__VLS_ctx.loadError);
-}
-else if (__VLS_ctx.loading && __VLS_ctx.pageCount === 0) {
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "pdf-view__loading" },
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+        ...{ onClick: (__VLS_ctx.openLightbox) },
+        type: "button",
+        ...{ class: "pdf-view__open-btn" },
     });
     __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-        ...{ class: "opacity-70" },
+        ...{ class: "pdf-view__open-icon" },
+        'aria-hidden': "true",
     });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+    if (__VLS_ctx.embedRef?.caption) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
+            ...{ class: "pdf-view__caption" },
+        });
+        (__VLS_ctx.embedRef.caption);
+    }
 }
 else {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "pdf-view__canvas-wrap" },
+        ...{ class: "pdf-view pdf-view--editor" },
     });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.canvas)({
-        ref: "canvasRef",
-        ...{ class: "pdf-view__canvas" },
-    });
-    /** @type {typeof __VLS_ctx.canvasRef} */ ;
+    if (__VLS_ctx.loadError) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "pdf-view__error" },
+        });
+        (__VLS_ctx.loadError);
+    }
+    else if (__VLS_ctx.loading && __VLS_ctx.pageCount === 0) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "pdf-view__loading" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "opacity-70" },
+        });
+    }
+    else {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "pdf-view__canvas-wrap" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.canvas)({
+            ref: "canvasRef",
+            ...{ class: "pdf-view__canvas" },
+        });
+        /** @type {typeof __VLS_ctx.canvasRef} */ ;
+    }
+    if (__VLS_ctx.pageCount > 1) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "pdf-view__nav" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+            ...{ onClick: (__VLS_ctx.prev) },
+            ...{ class: "pdf-view__nav-btn" },
+            disabled: (__VLS_ctx.currentPage <= 1),
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "pdf-view__nav-label" },
+        });
+        (__VLS_ctx.currentPage);
+        (__VLS_ctx.pageCount);
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+            ...{ onClick: (__VLS_ctx.next) },
+            ...{ class: "pdf-view__nav-btn" },
+            disabled: (__VLS_ctx.currentPage >= __VLS_ctx.pageCount),
+        });
+    }
+    if (__VLS_ctx.embedRef?.caption) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
+            ...{ class: "pdf-view__caption" },
+        });
+        (__VLS_ctx.embedRef.caption);
+    }
 }
-if (__VLS_ctx.pageCount > 1) {
+const __VLS_0 = {}.Teleport;
+/** @type {[typeof __VLS_components.Teleport, typeof __VLS_components.Teleport, ]} */ ;
+// @ts-ignore
+const __VLS_1 = __VLS_asFunctionalComponent(__VLS_0, new __VLS_0({
+    to: "body",
+}));
+const __VLS_2 = __VLS_1({
+    to: "body",
+}, ...__VLS_functionalComponentArgsRest(__VLS_1));
+__VLS_3.slots.default;
+if (__VLS_ctx.lightbox) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "pdf-view__nav" },
+        ...{ onClick: (__VLS_ctx.closeLightbox) },
+        ...{ onKeydown: (__VLS_ctx.closeLightbox) },
+        ...{ class: "pdf-view__lightbox" },
+        role: "dialog",
+        tabindex: "-1",
     });
     __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-        ...{ onClick: (__VLS_ctx.prev) },
-        ...{ class: "pdf-view__nav-btn" },
-        disabled: (__VLS_ctx.currentPage <= 1),
+        ...{ onClick: (__VLS_ctx.closeLightbox) },
+        type: "button",
+        ...{ class: "pdf-view__lightbox-close" },
+        'aria-label': "Close",
     });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-        ...{ class: "pdf-view__nav-label" },
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ onClick: () => { } },
+        ...{ class: "pdf-view__lightbox-inner" },
     });
-    (__VLS_ctx.currentPage);
-    (__VLS_ctx.pageCount);
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-        ...{ onClick: (__VLS_ctx.next) },
-        ...{ class: "pdf-view__nav-btn" },
-        disabled: (__VLS_ctx.currentPage >= __VLS_ctx.pageCount),
-    });
+    if (__VLS_ctx.loadError) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "pdf-view__error" },
+        });
+        (__VLS_ctx.loadError);
+    }
+    else if (__VLS_ctx.loading && __VLS_ctx.pageCount === 0) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "pdf-view__loading" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "opacity-70" },
+        });
+    }
+    else {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "pdf-view__canvas-wrap pdf-view__canvas-wrap--lightbox" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.canvas)({
+            ref: "canvasRef",
+            ...{ class: "pdf-view__canvas pdf-view__canvas--lightbox" },
+        });
+        /** @type {typeof __VLS_ctx.canvasRef} */ ;
+    }
+    if (__VLS_ctx.pageCount > 1) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "pdf-view__nav pdf-view__nav--lightbox" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+            ...{ onClick: (__VLS_ctx.prev) },
+            ...{ class: "pdf-view__nav-btn" },
+            disabled: (__VLS_ctx.currentPage <= 1),
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "pdf-view__nav-label" },
+        });
+        (__VLS_ctx.currentPage);
+        (__VLS_ctx.pageCount);
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+            ...{ onClick: (__VLS_ctx.next) },
+            ...{ class: "pdf-view__nav-btn" },
+            disabled: (__VLS_ctx.currentPage >= __VLS_ctx.pageCount),
+        });
+    }
+    if (__VLS_ctx.embedRef?.caption) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
+            ...{ class: "pdf-view__caption" },
+        });
+        (__VLS_ctx.embedRef.caption);
+    }
 }
-if (__VLS_ctx.embedRef?.caption) {
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
-        ...{ class: "pdf-view__caption" },
-    });
-    (__VLS_ctx.embedRef.caption);
-}
+var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['pdf-view']} */ ;
+/** @type {__VLS_StyleScopedClasses['pdf-view--card']} */ ;
+/** @type {__VLS_StyleScopedClasses['pdf-view__open-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['pdf-view__open-icon']} */ ;
+/** @type {__VLS_StyleScopedClasses['pdf-view__caption']} */ ;
+/** @type {__VLS_StyleScopedClasses['pdf-view']} */ ;
+/** @type {__VLS_StyleScopedClasses['pdf-view--editor']} */ ;
 /** @type {__VLS_StyleScopedClasses['pdf-view__error']} */ ;
 /** @type {__VLS_StyleScopedClasses['pdf-view__loading']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
 /** @type {__VLS_StyleScopedClasses['pdf-view__canvas-wrap']} */ ;
 /** @type {__VLS_StyleScopedClasses['pdf-view__canvas']} */ ;
 /** @type {__VLS_StyleScopedClasses['pdf-view__nav']} */ ;
+/** @type {__VLS_StyleScopedClasses['pdf-view__nav-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['pdf-view__nav-label']} */ ;
+/** @type {__VLS_StyleScopedClasses['pdf-view__nav-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['pdf-view__caption']} */ ;
+/** @type {__VLS_StyleScopedClasses['pdf-view__lightbox']} */ ;
+/** @type {__VLS_StyleScopedClasses['pdf-view__lightbox-close']} */ ;
+/** @type {__VLS_StyleScopedClasses['pdf-view__lightbox-inner']} */ ;
+/** @type {__VLS_StyleScopedClasses['pdf-view__error']} */ ;
+/** @type {__VLS_StyleScopedClasses['pdf-view__loading']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
+/** @type {__VLS_StyleScopedClasses['pdf-view__canvas-wrap']} */ ;
+/** @type {__VLS_StyleScopedClasses['pdf-view__canvas-wrap--lightbox']} */ ;
+/** @type {__VLS_StyleScopedClasses['pdf-view__canvas']} */ ;
+/** @type {__VLS_StyleScopedClasses['pdf-view__canvas--lightbox']} */ ;
+/** @type {__VLS_StyleScopedClasses['pdf-view__nav']} */ ;
+/** @type {__VLS_StyleScopedClasses['pdf-view__nav--lightbox']} */ ;
 /** @type {__VLS_StyleScopedClasses['pdf-view__nav-btn']} */ ;
 /** @type {__VLS_StyleScopedClasses['pdf-view__nav-label']} */ ;
 /** @type {__VLS_StyleScopedClasses['pdf-view__nav-btn']} */ ;
@@ -160,8 +319,11 @@ const __VLS_self = (await import('vue')).defineComponent({
             currentPage: currentPage,
             loadError: loadError,
             loading: loading,
+            lightbox: lightbox,
             prev: prev,
             next: next,
+            openLightbox: openLightbox,
+            closeLightbox: closeLightbox,
         };
     },
     __typeProps: {},

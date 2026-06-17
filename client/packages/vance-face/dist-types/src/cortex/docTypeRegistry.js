@@ -10,6 +10,7 @@ import MindmapView from '@/document/MindmapView.vue';
 const ChecklistView = defineAsyncComponent(() => import('@/document/ChecklistView.vue'));
 const ChartView = defineAsyncComponent(() => import('@/document/ChartView.vue'));
 const GraphView = defineAsyncComponent(() => import('@/document/GraphView.vue'));
+const MapView = defineAsyncComponent(() => import('@/document/MapView.vue'));
 const SlidesView = defineAsyncComponent(() => import('@/document/SlidesView.vue'));
 const DiagramView = defineAsyncComponent(() => import('@/document/DiagramView.vue'));
 import { parseList, serializeList, isListMime, } from '@/document/listItemsCodec';
@@ -19,6 +20,7 @@ import { parseRecords, serializeRecords, isRecordsMime, } from '@/document/recor
 import { parseChart, serializeChart, isChartMime, } from '@/document/chartCodec';
 import { parseSheet, serializeSheet, isSheetMime, } from '@/document/sheetCodec';
 import { parseGraph, serializeGraph, isGraphMime, } from '@/document/graphCodec';
+import { parseMap, serializeMap, isMapMime, } from '@/document/mapCodec';
 import { parseSlides, serializeSlides, isSlidesMime, } from '@/document/slidesCodec';
 import { parseDiagram, serializeDiagram, isDiagramMime, } from '@/document/diagramCodec';
 import { isBinaryDoc } from './stores/cortexStore';
@@ -74,6 +76,10 @@ const sheetCodec = {
 const graphCodec = {
     parse: (body, mime) => parseGraph(body, mime),
     serialize: (doc, mime) => serializeGraph(doc, mime),
+};
+const mapCodec = {
+    parse: (body, mime) => parseMap(body, mime),
+    serialize: (doc, mime) => serializeMap(doc, mime),
 };
 const slidesCodec = {
     parse: (body, mime) => parseSlides(body, mime),
@@ -140,6 +146,17 @@ const handRolled = [
         editLocation: 'client-memory',
         view: GraphView,
         codec: graphCodec,
+    },
+    // Map: read-only Leaflet renderer in v1 — interactive editing
+    // (drag-pin, polygon-draw) is a later layer. The doc is still
+    // editable via the Raw code tab.
+    {
+        id: 'map',
+        match: kindAndMime(['map'], isMapMime),
+        mode: 'typed-model',
+        editLocation: 'server-side',
+        view: MapView,
+        codec: mapCodec,
     },
     // ── Render-only views (no @update:doc emit in the source view) ──
     // Mindmap shares TreeDocument with TreeView; the MindmapView

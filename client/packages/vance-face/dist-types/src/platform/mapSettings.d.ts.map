@@ -1,0 +1,1 @@
+{"version":3,"file":"mapSettings.d.ts","sourceRoot":"","sources":["../../../src/platform/mapSettings.ts"],"names":[],"mappings":"AAqBA,eAAO,MAAM,gBAAgB,mDACqB,CAAC;AAEnD,eAAO,MAAM,wBAAwB,8FACsD,CAAC;AAE5F,MAAM,WAAW,SAAS;IACxB,OAAO,EAAE,MAAM,CAAC;IAChB,WAAW,EAAE,MAAM,CAAC;CACrB;AAED;;;;GAIG;AACH,wBAAsB,aAAa,CAAC,SAAS,EAAE,MAAM,GAAG,OAAO,CAAC,SAAS,CAAC,CAgBzE"}

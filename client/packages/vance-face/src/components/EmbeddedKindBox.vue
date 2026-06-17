@@ -45,7 +45,7 @@ const vanceLinkHandler = inject(VANCE_LINK_HANDLER_KEY, null);
  * the document carries domain semantics the hint can't predict — for
  * raw media the file extension is the ground truth.
  */
-const MEDIA_KIND_HINTS = new Set(['image', 'svg', 'audio', 'video']);
+const MEDIA_KIND_HINTS = new Set(['image', 'svg', 'audio', 'video', 'pdf']);
 
 const effectiveKind = computed<string>(() => {
   const hint = props.embedRef.kindHint;

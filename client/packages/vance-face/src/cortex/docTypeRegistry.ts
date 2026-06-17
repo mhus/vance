@@ -18,6 +18,9 @@ const ChartView = defineAsyncComponent(
 const GraphView = defineAsyncComponent(
   () => import('@/document/GraphView.vue'),
 );
+const MapView = defineAsyncComponent(
+  () => import('@/document/MapView.vue'),
+);
 const SlidesView = defineAsyncComponent(
   () => import('@/document/SlidesView.vue'),
 );
@@ -60,6 +63,11 @@ import {
   serializeGraph,
   isGraphMime,
 } from '@/document/graphCodec';
+import {
+  parseMap,
+  serializeMap,
+  isMapMime,
+} from '@/document/mapCodec';
 import {
   parseSlides,
   serializeSlides,
@@ -193,6 +201,11 @@ const graphCodec: DocCodec = {
   serialize: (doc, mime) =>
     serializeGraph(doc as Parameters<typeof serializeGraph>[0], mime),
 };
+const mapCodec: DocCodec = {
+  parse: (body, mime) => parseMap(body, mime),
+  serialize: (doc, mime) =>
+    serializeMap(doc as Parameters<typeof serializeMap>[0], mime),
+};
 const slidesCodec: DocCodec = {
   parse: (body, mime) => parseSlides(body, mime),
   serialize: (doc, mime) =>
@@ -277,6 +290,17 @@ const handRolled: HandRolledBinding[] = [
     editLocation: 'client-memory',
     view: GraphView,
     codec: graphCodec,
+  },
+  // Map: read-only Leaflet renderer in v1 — interactive editing
+  // (drag-pin, polygon-draw) is a later layer. The doc is still
+  // editable via the Raw code tab.
+  {
+    id: 'map',
+    match: kindAndMime(['map'], isMapMime),
+    mode: 'typed-model',
+    editLocation: 'server-side',
+    view: MapView,
+    codec: mapCodec,
   },
   // ── Render-only views (no @update:doc emit in the source view) ──
   // Mindmap shares TreeDocument with TreeView; the MindmapView

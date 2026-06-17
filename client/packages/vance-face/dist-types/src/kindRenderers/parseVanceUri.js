@@ -23,12 +23,13 @@ export class VanceUriParseError extends Error {
     }
 }
 /**
- * File-extension → render-kind. Lets `![alt](images/foo.png)` and
- * `[clip](audio/bar.mp3)` render through the matching media view
- * even when the LLM omits the `?kind=` hint and the resolved
- * Document carries a generic kind. PDF is intentionally excluded —
- * embedded PDFs are too large for a chat stream and should stay
- * link-only.
+ * File-extension → render-kind. Lets `![alt](images/foo.png)`,
+ * `[clip](audio/bar.mp3)` and `[paper](docs/foo.pdf)` route to the
+ * matching media view even when the LLM omits the `?kind=` hint and
+ * the resolved Document carries a generic kind. PDF routes to a
+ * button-triggered overlay rather than an inline render (chat stream
+ * stays compact) — that's handled inside {@code PdfView}, the kind
+ * mapping just gets the right adapter wired up.
  */
 const EXTENSION_KIND_MAP = Object.freeze({
     // Raster images
@@ -41,6 +42,8 @@ const EXTENSION_KIND_MAP = Object.freeze({
     m4a: 'audio', flac: 'audio', aac: 'audio',
     // Video
     mp4: 'video', webm: 'video', mov: 'video', m4v: 'video', ogv: 'video',
+    // PDF — button-only embedded view, full doc in a lightbox overlay
+    pdf: 'pdf',
 });
 function inferKindFromPath(path) {
     const dot = path.lastIndexOf('.');
@@ -68,7 +71,15 @@ export function parseVanceUri(href, opts) {
     const rawPath = url.pathname.replace(/^\//, '');
     const path = decodeURIComponent(rawPath);
     const explicitKind = url.searchParams.get('kind') ?? undefined;
-    const kindHint = explicitKind ?? inferKindFromPath(path);
+    const inferredKind = inferKindFromPath(path);
+    // {@code ?kind=document} is the LLM's catch-all fallback — it carries
+    // no real type information, so let a known file-extension take over
+    // when the path looks like media. Any other explicit kind
+    // (mindmap, sheet, graph, …) still wins over inference because it
+    // carries domain semantics the extension can't predict.
+    const kindHint = explicitKind && explicitKind !== 'document'
+        ? explicitKind
+        : (inferredKind ?? explicitKind);
     const modeParam = url.searchParams.get('mode');
     const caption = url.searchParams.get('caption') ?? undefined;
     const mode = modeParam === 'preview' || modeParam === 'reference'

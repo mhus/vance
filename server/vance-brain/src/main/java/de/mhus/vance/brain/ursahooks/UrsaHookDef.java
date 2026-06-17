@@ -1,8 +1,8 @@
 package de.mhus.vance.brain.ursahooks;
 
 import de.mhus.vance.api.action.TriggerAction;
-import de.mhus.vance.api.hooks.HookEventName;
-import de.mhus.vance.api.hooks.HookSource;
+import de.mhus.vance.api.ursahooks.UrsaHookEventName;
+import de.mhus.vance.api.ursahooks.UrsaHookSource;
 import java.time.Duration;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
@@ -14,7 +14,7 @@ import org.jspecify.annotations.Nullable;
  * <p>A hook fires when its {@link #event} is published in the brain.
  * The hook's {@link #action} is dispatched through the central
  * {@code ActionExecutorRegistry} — same pipeline as schedulers and
- * webhooks. See {@code specification/hooks.md} and
+ * webhooks. See {@code specification/ursahooks.md} and
  * {@code specification/trigger-actions.md}.
  *
  * <p>The action is one of {@code TriggerAction.Recipe},
@@ -23,8 +23,8 @@ import org.jspecify.annotations.Nullable;
  */
 public record UrsaHookDef(
         String name,
-        HookEventName event,
-        HookSource source,
+        UrsaHookEventName event,
+        UrsaHookSource source,
         boolean enabled,
         @Nullable String description,
         Duration timeout,

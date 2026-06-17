@@ -1,6 +1,6 @@
 package de.mhus.vance.brain.ursahooks;
 
-import de.mhus.vance.api.hooks.HookEventName;
+import de.mhus.vance.api.ursahooks.UrsaHookEventName;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -24,15 +24,15 @@ import org.springframework.stereotype.Component;
 @Component
 public class UrsaHookRegistry {
 
-    private final Map<String, Map<HookEventName, List<UrsaHookDef>>> byProject =
+    private final Map<String, Map<UrsaHookEventName, List<UrsaHookDef>>> byProject =
             new ConcurrentHashMap<>();
 
     /** Replace the project's hooks atomically. */
     public void replace(
             String tenantId, String projectId,
-            Map<HookEventName, List<UrsaHookDef>> hooksByEvent) {
-        Map<HookEventName, List<UrsaHookDef>> deepCopy = new java.util.EnumMap<>(HookEventName.class);
-        for (Map.Entry<HookEventName, List<UrsaHookDef>> e : hooksByEvent.entrySet()) {
+            Map<UrsaHookEventName, List<UrsaHookDef>> hooksByEvent) {
+        Map<UrsaHookEventName, List<UrsaHookDef>> deepCopy = new java.util.EnumMap<>(UrsaHookEventName.class);
+        for (Map.Entry<UrsaHookEventName, List<UrsaHookDef>> e : hooksByEvent.entrySet()) {
             deepCopy.put(e.getKey(), List.copyOf(e.getValue()));
         }
         byProject.put(key(tenantId, projectId), deepCopy);
@@ -46,10 +46,10 @@ public class UrsaHookRegistry {
     /** Replace a single event's slot for a project (delta refresh). */
     public void replaceEvent(
             String tenantId, String projectId,
-            HookEventName event, List<UrsaHookDef> defs) {
-        Map<HookEventName, List<UrsaHookDef>> snap = byProject.computeIfAbsent(
+            UrsaHookEventName event, List<UrsaHookDef> defs) {
+        Map<UrsaHookEventName, List<UrsaHookDef>> snap = byProject.computeIfAbsent(
                 key(tenantId, projectId),
-                k -> new java.util.EnumMap<>(HookEventName.class));
+                k -> new java.util.EnumMap<>(UrsaHookEventName.class));
         if (defs.isEmpty()) {
             snap.remove(event);
         } else {
@@ -59,8 +59,8 @@ public class UrsaHookRegistry {
 
     /** Hooks listening for this event in this project. Empty list if none. */
     public List<UrsaHookDef> hooksFor(
-            String tenantId, String projectId, HookEventName event) {
-        Map<HookEventName, List<UrsaHookDef>> snap = byProject.get(key(tenantId, projectId));
+            String tenantId, String projectId, UrsaHookEventName event) {
+        Map<UrsaHookEventName, List<UrsaHookDef>> snap = byProject.get(key(tenantId, projectId));
         if (snap == null) return List.of();
         List<UrsaHookDef> defs = snap.get(event);
         return defs == null ? List.of() : defs;
@@ -68,7 +68,7 @@ public class UrsaHookRegistry {
 
     /** Every hook in this project across all events, for {@code hook_list}. */
     public List<UrsaHookDef> allFor(String tenantId, String projectId) {
-        Map<HookEventName, List<UrsaHookDef>> snap = byProject.get(key(tenantId, projectId));
+        Map<UrsaHookEventName, List<UrsaHookDef>> snap = byProject.get(key(tenantId, projectId));
         if (snap == null) return List.of();
         List<UrsaHookDef> out = new ArrayList<>();
         for (Collection<UrsaHookDef> defs : snap.values()) {

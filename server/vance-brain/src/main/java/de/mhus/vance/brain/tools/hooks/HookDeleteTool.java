@@ -1,6 +1,6 @@
 package de.mhus.vance.brain.tools.hooks;
 
-import de.mhus.vance.api.hooks.HookEventName;
+import de.mhus.vance.api.ursahooks.UrsaHookEventName;
 import de.mhus.vance.brain.ursahooks.UrsaHookService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
@@ -48,7 +48,7 @@ public class HookDeleteTool implements Tool {
         if (ctx.projectId() == null) {
             throw new ToolException("hook_delete requires a project scope");
         }
-        HookEventName event = HookToolSupport.parseEvent(
+        UrsaHookEventName event = HookToolSupport.parseEvent(
                 support.stringOrThrow(params, "event"));
         String name = HookToolSupport.normalizeName(
                 support.stringOrThrow(params, "name"));

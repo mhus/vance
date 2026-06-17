@@ -1,6 +1,6 @@
 package de.mhus.vance.brain.ursahooks;
 
-import de.mhus.vance.api.hooks.HookEventName;
+import de.mhus.vance.api.ursahooks.UrsaHookEventName;
 import de.mhus.vance.shared.inbox.InboxItemCreatedEvent;
 import de.mhus.vance.shared.inbox.InboxItemDocument;
 import de.mhus.vance.shared.session.SessionDocument;
@@ -61,7 +61,7 @@ public class UrsaHookInboxLifecycleListener {
 
         publisher.publishEvent(UrsaHookFireableEvent.of(
                 item.getTenantId(), projectId,
-                HookEventName.INBOX_ITEM_CREATED, payload));
+                UrsaHookEventName.INBOX_ITEM_CREATED, payload));
     }
 
     private @org.jspecify.annotations.Nullable String resolveProjectId(InboxItemDocument item) {

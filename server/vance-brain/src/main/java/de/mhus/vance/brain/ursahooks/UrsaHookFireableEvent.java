@@ -1,6 +1,6 @@
 package de.mhus.vance.brain.ursahooks;
 
-import de.mhus.vance.api.hooks.HookEventName;
+import de.mhus.vance.api.ursahooks.UrsaHookEventName;
 import java.time.Instant;
 import java.util.Map;
 
@@ -20,7 +20,7 @@ import java.util.Map;
 public record UrsaHookFireableEvent(
         String tenantId,
         String projectId,
-        HookEventName event,
+        UrsaHookEventName event,
         Instant firedAt,
         Map<String, Object> payload) {
 
@@ -36,7 +36,7 @@ public record UrsaHookFireableEvent(
     public static UrsaHookFireableEvent of(
             String tenantId,
             String projectId,
-            HookEventName event,
+            UrsaHookEventName event,
             Map<String, Object> payload) {
         return new UrsaHookFireableEvent(tenantId, projectId, event, Instant.now(), payload);
     }

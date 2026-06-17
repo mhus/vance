@@ -1,4 +1,4 @@
-package de.mhus.vance.api.hooks;
+package de.mhus.vance.api.ursahooks;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
@@ -20,12 +20,12 @@ import org.jspecify.annotations.Nullable;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
-@GenerateTypeScript("hooks")
-public class HookSummary {
+@GenerateTypeScript("ursahooks")
+public class UrsaHookSummary {
 
     private String name;
     private String event;
-    private HookSource source;
+    private UrsaHookSource source;
 
     /**
      * Which {@code TriggerAction} variant this hook fires —

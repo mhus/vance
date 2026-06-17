@@ -2,11 +2,7 @@ package de.mhus.vance.brain.ursahooks;
 
 import de.mhus.vance.api.eventlog.EventLogEntryDto;
 import de.mhus.vance.api.eventlog.EventType;
-import de.mhus.vance.api.hooks.HookDto;
-import de.mhus.vance.api.hooks.HookEventName;
-import de.mhus.vance.api.hooks.HookSaveRequest;
-import de.mhus.vance.api.hooks.HookSource;
-import de.mhus.vance.api.hooks.HookSummary;
+import de.mhus.vance.api.ursahooks.*;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.eventlog.EventLogDocument;
 import de.mhus.vance.shared.eventlog.EventLogService;
@@ -56,50 +52,50 @@ public class UrsaHookController {
     // ─── List ──────────────────────────────────────────────────────────
 
     @GetMapping("/hooks")
-    public List<HookSummary> listAll(
+    public List<UrsaHookSummary> listAll(
             @PathVariable("tenant") String tenant,
             @PathVariable("project") String project,
             HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, project), Action.READ);
         List<UrsaHookDef> defs = ursaHookService.listAll(tenant, project);
-        List<HookSummary> out = new ArrayList<>(defs.size());
+        List<UrsaHookSummary> out = new ArrayList<>(defs.size());
         for (UrsaHookDef def : defs) {
             out.add(toSummary(tenant, def));
         }
         out.sort(Comparator
-                .comparing(HookSummary::getEvent)
-                .thenComparing(HookSummary::getName));
+                .comparing(UrsaHookSummary::getEvent)
+                .thenComparing(UrsaHookSummary::getName));
         return out;
     }
 
     @GetMapping("/hooks/{event}")
-    public List<HookSummary> listForEvent(
+    public List<UrsaHookSummary> listForEvent(
             @PathVariable("tenant") String tenant,
             @PathVariable("project") String project,
             @PathVariable("event") String eventName,
             HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, project), Action.READ);
-        HookEventName event = parseEvent(eventName);
+        UrsaHookEventName event = parseEvent(eventName);
         List<UrsaHookDef> defs = ursaHookService.listForEvent(tenant, project, event);
-        List<HookSummary> out = new ArrayList<>(defs.size());
+        List<UrsaHookSummary> out = new ArrayList<>(defs.size());
         for (UrsaHookDef def : defs) {
             out.add(toSummary(tenant, def));
         }
-        out.sort(Comparator.comparing(HookSummary::getName));
+        out.sort(Comparator.comparing(UrsaHookSummary::getName));
         return out;
     }
 
     // ─── Get ───────────────────────────────────────────────────────────
 
     @GetMapping("/hooks/{event}/{name}")
-    public HookDto getOne(
+    public UrsaHookDto getOne(
             @PathVariable("tenant") String tenant,
             @PathVariable("project") String project,
             @PathVariable("event") String eventName,
             @PathVariable("name") String name,
             HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, project), Action.READ);
-        HookEventName event = parseEvent(eventName);
+        UrsaHookEventName event = parseEvent(eventName);
         String norm = normalizeName(name);
         UrsaHookDef def = ursaHookService.findOne(tenant, project, event, norm)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
@@ -110,15 +106,15 @@ public class UrsaHookController {
     // ─── Save (create/update) ──────────────────────────────────────────
 
     @PutMapping("/hooks/{event}/{name}")
-    public ResponseEntity<HookDto> save(
+    public ResponseEntity<UrsaHookDto> save(
             @PathVariable("tenant") String tenant,
             @PathVariable("project") String project,
             @PathVariable("event") String eventName,
             @PathVariable("name") String name,
-            @Valid @RequestBody HookSaveRequest body,
+            @Valid @RequestBody UrsaHookSaveRequest body,
             HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, project), Action.WRITE);
-        HookEventName event = parseEvent(eventName);
+        UrsaHookEventName event = parseEvent(eventName);
         String norm = normalizeName(name);
         if (body.getYaml() == null || body.getYaml().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -127,7 +123,7 @@ public class UrsaHookController {
         // Validate before write so the call is rejected without
         // touching the document store.
         try {
-            parser.parse(body.getYaml(), event, HookSource.PROJECT, norm);
+            parser.parse(body.getYaml(), event, UrsaHookSource.PROJECT, norm);
         } catch (UrsaHookParseException ex) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage());
         }
@@ -155,7 +151,7 @@ public class UrsaHookController {
             @PathVariable("name") String name,
             HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, project), Action.WRITE);
-        HookEventName event = parseEvent(eventName);
+        UrsaHookEventName event = parseEvent(eventName);
         String norm = normalizeName(name);
         boolean removed = ursaHookService.delete(tenant, project, event, norm);
         return removed
@@ -186,7 +182,7 @@ public class UrsaHookController {
             @RequestParam(name = "limit", defaultValue = "50") int limit,
             HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, project), Action.READ);
-        HookEventName event = parseEvent(eventName);
+        UrsaHookEventName event = parseEvent(eventName);
         String norm = normalizeName(name);
         String source = UrsaHookSourceKeys.sourceFor(event.wireName(), norm);
         List<EventLogDocument> rows = eventLogService.listBySource(tenant, source, limit);
@@ -199,11 +195,11 @@ public class UrsaHookController {
 
     // ─── Mappers ───────────────────────────────────────────────────────
 
-    private HookSummary toSummary(String tenantId, UrsaHookDef def) {
+    private UrsaHookSummary toSummary(String tenantId, UrsaHookDef def) {
         Optional<EventLogDocument> last = eventLogService.findLatest(
                 tenantId, def.sourceKey(),
                 List.of(EventType.COMPLETED, EventType.FAILED, EventType.SKIPPED));
-        return HookSummary.builder()
+        return UrsaHookSummary.builder()
                 .name(def.name())
                 .event(def.event().wireName())
                 .source(def.source())
@@ -216,8 +212,8 @@ public class UrsaHookController {
                 .build();
     }
 
-    private static HookDto toDto(UrsaHookDef def) {
-        HookDto.HookDtoBuilder b = HookDto.builder()
+    private static UrsaHookDto toDto(UrsaHookDef def) {
+        UrsaHookDto.UrsaHookDtoBuilder b = UrsaHookDto.builder()
                 .name(def.name())
                 .event(def.event().wireName())
                 .yaml(def.yamlBody())
@@ -235,7 +231,7 @@ public class UrsaHookController {
         } else if (action instanceof de.mhus.vance.api.action.TriggerAction.Workflow w) {
             b.workflow(w.workflow());
         } else if (action instanceof de.mhus.vance.api.action.TriggerAction.Script s) {
-            b.script(de.mhus.vance.api.hooks.HookScriptSpec.builder()
+            b.script(UrsaHookScriptSpec.builder()
                     .source(s.source().name().toLowerCase(java.util.Locale.ROOT))
                     .dirName(s.dirName())
                     .path(s.path())
@@ -262,12 +258,12 @@ public class UrsaHookController {
                 .build();
     }
 
-    private static HookEventName parseEvent(String raw) {
-        if (raw == null || !HookEventName.isKnown(raw)) {
+    private static UrsaHookEventName parseEvent(String raw) {
+        if (raw == null || !UrsaHookEventName.isKnown(raw)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND,
                     "Unknown hook event '" + raw + "'");
         }
-        return HookEventName.ofWire(raw);
+        return UrsaHookEventName.ofWire(raw);
     }
 
     private static String normalizeName(String raw) {

@@ -1,4 +1,4 @@
-package de.mhus.vance.api.hooks;
+package de.mhus.vance.api.ursahooks;
 
 import de.mhus.vance.api.annotations.GenerateTypeScript;
 
@@ -7,10 +7,10 @@ import de.mhus.vance.api.annotations.GenerateTypeScript;
  * values are also the path component under
  * {@code _vance/hooks/<event>/<name>.yaml}.
  *
- * <p>See {@code specification/hooks.md} §3 for the catalog.
+ * <p>See {@code specification/ursahooks.md} §3 for the catalog.
  */
-@GenerateTypeScript("hooks")
-public enum HookEventName {
+@GenerateTypeScript("ursahooks")
+public enum UrsaHookEventName {
     PROCESS_COMPLETED("process.completed"),
     PROCESS_FAILED("process.failed"),
     INBOX_ITEM_CREATED("inbox.item.created"),
@@ -38,7 +38,7 @@ public enum HookEventName {
 
     private final String wireName;
 
-    HookEventName(String wireName) {
+    UrsaHookEventName(String wireName) {
         this.wireName = wireName;
     }
 
@@ -47,15 +47,15 @@ public enum HookEventName {
         return wireName;
     }
 
-    public static HookEventName ofWire(String name) {
-        for (HookEventName e : values()) {
+    public static UrsaHookEventName ofWire(String name) {
+        for (UrsaHookEventName e : values()) {
             if (e.wireName.equals(name)) return e;
         }
         throw new IllegalArgumentException("Unknown hook event: '" + name + "'");
     }
 
     public static boolean isKnown(String name) {
-        for (HookEventName e : values()) {
+        for (UrsaHookEventName e : values()) {
             if (e.wireName.equals(name)) return true;
         }
         return false;

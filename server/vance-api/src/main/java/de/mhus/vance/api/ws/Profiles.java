@@ -61,10 +61,10 @@ public final class Profiles {
     public static final String SCHEDULER = "scheduler";
 
     /**
-     * Hook-triggered system client — see {@code specification/hooks.md}.
-     * Used as the {@code profile} on the system session a hook owns when
+     * Ursahook-triggered system client — see {@code specification/ursahooks.md}.
+     * Used as the {@code profile} on the system session an ursahook owns when
      * its action is a recipe-spawn (`recipe:`). No WebSocket connection,
-     * no client-side tools. Recipe-profile-blocks can target hook-spawned
+     * no client-side tools. Recipe-profile-blocks can target ursahook-spawned
      * processes separately from human-driven ones.
      */
     public static final String HOOK = "hook";

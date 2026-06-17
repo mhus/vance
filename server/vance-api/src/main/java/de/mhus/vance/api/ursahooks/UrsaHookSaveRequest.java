@@ -1,4 +1,4 @@
-package de.mhus.vance.api.hooks;
+package de.mhus.vance.api.ursahooks;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
@@ -18,8 +18,8 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
-@GenerateTypeScript("hooks")
-public class HookSaveRequest {
+@GenerateTypeScript("ursahooks")
+public class UrsaHookSaveRequest {
 
     @NotBlank
     private String yaml;

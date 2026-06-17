@@ -1,7 +1,7 @@
 package de.mhus.vance.brain.ursahooks;
 
-import de.mhus.vance.api.hooks.HookEventName;
-import de.mhus.vance.api.hooks.HookSource;
+import de.mhus.vance.api.ursahooks.UrsaHookEventName;
+import de.mhus.vance.api.ursahooks.UrsaHookSource;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
 import java.util.ArrayList;
@@ -43,7 +43,7 @@ public class UrsaHookLoader {
      */
     public List<UrsaHookDef> listAll(String tenantId, String projectId) {
         List<UrsaHookDef> out = new ArrayList<>();
-        for (HookEventName event : HookEventName.values()) {
+        for (UrsaHookEventName event : UrsaHookEventName.values()) {
             out.addAll(listForEvent(tenantId, projectId, event));
         }
         return out;
@@ -51,7 +51,7 @@ public class UrsaHookLoader {
 
     /** All hooks for one event — Project layer overrides {@code _vance}. */
     public List<UrsaHookDef> listForEvent(
-            String tenantId, String projectId, HookEventName event) {
+            String tenantId, String projectId, UrsaHookEventName event) {
         Map<String, LookupResult> hits = documentService.listByPrefixCascade(
                 tenantId, projectId, HOOK_PATH_ROOT + event.wireName());
         if (hits.isEmpty()) return List.of();
@@ -60,7 +60,7 @@ public class UrsaHookLoader {
             String path = e.getKey();
             if (!path.endsWith(HOOK_PATH_SUFFIX)) continue;
             String hookName = deriveHookName(path);
-            HookSource source = mapSource(e.getValue().source());
+            UrsaHookSource source = mapSource(e.getValue().source());
             @Nullable String createdBy = e.getValue().document() == null
                     ? null : e.getValue().document().getCreatedBy();
             try {
@@ -76,12 +76,12 @@ public class UrsaHookLoader {
 
     /** Look up a single hook by event + name, parsed. */
     public Optional<UrsaHookDef> load(
-            String tenantId, String projectId, HookEventName event, String hookName) {
+            String tenantId, String projectId, UrsaHookEventName event, String hookName) {
         String path = HOOK_PATH_ROOT + event.wireName() + "/" + hookName + HOOK_PATH_SUFFIX;
         Optional<LookupResult> hit = documentService.lookupCascade(
                 tenantId, projectId, path);
         if (hit.isEmpty()) return Optional.empty();
-        HookSource source = mapSource(hit.get().source());
+        UrsaHookSource source = mapSource(hit.get().source());
         @Nullable String createdBy = hit.get().document() == null
                 ? null : hit.get().document().getCreatedBy();
         return Optional.of(parser.parse(
@@ -91,10 +91,10 @@ public class UrsaHookLoader {
     /**
      * Group {@link #listAll} by event for the registry-rebuild path.
      */
-    public Map<HookEventName, List<UrsaHookDef>> groupByEvent(
+    public Map<UrsaHookEventName, List<UrsaHookDef>> groupByEvent(
             String tenantId, String projectId) {
-        Map<HookEventName, List<UrsaHookDef>> out = new LinkedHashMap<>();
-        for (HookEventName event : HookEventName.values()) {
+        Map<UrsaHookEventName, List<UrsaHookDef>> out = new LinkedHashMap<>();
+        for (UrsaHookEventName event : UrsaHookEventName.values()) {
             List<UrsaHookDef> defs = listForEvent(tenantId, projectId, event);
             if (!defs.isEmpty()) {
                 out.put(event, defs);
@@ -112,12 +112,12 @@ public class UrsaHookLoader {
         return last;
     }
 
-    private static HookSource mapSource(LookupResult.Source s) {
-        // Resource layer would be HookSource — but the spec says no bundled
+    private static UrsaHookSource mapSource(LookupResult.Source s) {
+        // Resource layer would be UrsaHookSource — but the spec says no bundled
         // hooks, so any RESOURCE hit is treated as VANCE for diagnostics.
         return switch (s) {
-            case PROJECT -> HookSource.PROJECT;
-            case VANCE, RESOURCE -> HookSource.VANCE;
+            case PROJECT -> UrsaHookSource.PROJECT;
+            case VANCE, RESOURCE -> UrsaHookSource.VANCE;
         };
     }
 }

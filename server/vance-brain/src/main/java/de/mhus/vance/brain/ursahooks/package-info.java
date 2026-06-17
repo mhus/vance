@@ -6,7 +6,7 @@
  * surface (HTTP-post, inbox-create, structured logging). Hooks never
  * spawn processes and never call agent tools.
  *
- * <p>See {@code specification/hooks.md} for the design.
+ * <p>See {@code specification/ursahooks.md} for the design.
  */
 @NullMarked
 package de.mhus.vance.brain.ursahooks;

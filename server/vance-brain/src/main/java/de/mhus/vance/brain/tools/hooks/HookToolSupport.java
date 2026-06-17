@@ -1,6 +1,6 @@
 package de.mhus.vance.brain.tools.hooks;
 
-import de.mhus.vance.api.hooks.HookEventName;
+import de.mhus.vance.api.ursahooks.UrsaHookEventName;
 import de.mhus.vance.brain.ursahooks.UrsaHookDef;
 import de.mhus.vance.brain.ursahooks.UrsaHookSourceKeys;
 import de.mhus.vance.shared.eventlog.EventLogDocument;
@@ -40,14 +40,14 @@ public class HookToolSupport {
         return norm;
     }
 
-    public static HookEventName parseEvent(String raw) {
+    public static UrsaHookEventName parseEvent(String raw) {
         if (raw == null || raw.isBlank()) {
             throw new ToolException("'event' is required");
         }
-        if (!HookEventName.isKnown(raw)) {
-            throw new ToolException("Unknown event '" + raw + "' — see HookEventName");
+        if (!UrsaHookEventName.isKnown(raw)) {
+            throw new ToolException("Unknown event '" + raw + "' — see UrsaHookEventName");
         }
-        return HookEventName.ofWire(raw);
+        return UrsaHookEventName.ofWire(raw);
     }
 
     /** Tool-friendly projection of a hook definition. */
@@ -84,7 +84,7 @@ public class HookToolSupport {
         return s;
     }
 
-    public String sourceKeyFor(HookEventName event, String hookName) {
+    public String sourceKeyFor(UrsaHookEventName event, String hookName) {
         return UrsaHookSourceKeys.sourceFor(event.wireName(), hookName);
     }
 }

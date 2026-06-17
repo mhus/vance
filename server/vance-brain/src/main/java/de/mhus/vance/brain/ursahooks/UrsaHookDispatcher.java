@@ -39,7 +39,7 @@ import org.springframework.stereotype.Component;
  * bounded thread-pool".
  *
  * <p>The Brain-internal lifecycle payload (event-shape per
- * {@code HookEventName}) is merged into the action params under the
+ * {@code UrsaHookEventName}) is merged into the action params under the
  * {@code event} key — scripts read it as {@code vance.params.event},
  * recipes / workflows see it under {@code params.event}.
  */

@@ -1,4 +1,4 @@
-package de.mhus.vance.api.hooks;
+package de.mhus.vance.api.ursahooks;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
@@ -18,7 +18,7 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Hook actions follow the unified {@code TriggerAction} schema:
  * exactly one of {@link #recipe}, {@link #script}, {@link #workflow}
- * is non-null. See {@code specification/hooks.md} and
+ * is non-null. See {@code specification/ursahooks.md} and
  * {@code specification/trigger-actions.md} for the YAML schema.
  */
 @Data
@@ -26,8 +26,8 @@ import org.jspecify.annotations.Nullable;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
-@GenerateTypeScript("hooks")
-public class HookDto {
+@GenerateTypeScript("ursahooks")
+public class UrsaHookDto {
 
     /** Hook name — last path segment without extension, not stored in the YAML body. */
     private String name;
@@ -39,7 +39,7 @@ public class HookDto {
     private String yaml;
 
     /** Which cascade tier currently provides this hook. */
-    private HookSource source;
+    private UrsaHookSource source;
 
     // ─── Parsed convenience fields (mirror of YAML for the UI) ───
 
@@ -58,7 +58,7 @@ public class HookDto {
     private @Nullable String workflow;
 
     /** Script descriptor when the action is {@code script:}. */
-    private @Nullable HookScriptSpec script;
+    private @Nullable UrsaHookScriptSpec script;
 
     /** Action params (merged into the executor's params bag). */
     private @Nullable Map<String, Object> params;

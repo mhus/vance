@@ -140,8 +140,8 @@ declare const __VLS_component: import("vue").DefineComponent<__VLS_PublicProps, 
     "onUpdate:selectedProject"?: ((value: string | null) => any) | undefined;
     "onUpdate:selectedNode"?: ((value: PickerNode | null) => any) | undefined;
 }>, {
-    loading: boolean;
     error: string | null;
+    loading: boolean;
     heading: string;
     searchEnabled: boolean;
     editEnabled: boolean;

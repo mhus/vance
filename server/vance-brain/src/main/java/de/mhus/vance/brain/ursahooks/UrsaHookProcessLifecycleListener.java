@@ -1,6 +1,6 @@
 package de.mhus.vance.brain.ursahooks;
 
-import de.mhus.vance.api.hooks.HookEventName;
+import de.mhus.vance.api.ursahooks.UrsaHookEventName;
 import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
@@ -45,9 +45,9 @@ public class UrsaHookProcessLifecycleListener {
         ThinkProcessDocument doc = opt.get();
         CloseReason reason = doc.getCloseReason();
 
-        HookEventName hookEvent = (reason == CloseReason.DONE)
-                ? HookEventName.PROCESS_COMPLETED
-                : HookEventName.PROCESS_FAILED;
+        UrsaHookEventName hookEvent = (reason == CloseReason.DONE)
+                ? UrsaHookEventName.PROCESS_COMPLETED
+                : UrsaHookEventName.PROCESS_FAILED;
 
         Map<String, Object> processPayload = new LinkedHashMap<>();
         processPayload.put("id", doc.getId());

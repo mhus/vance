@@ -38,7 +38,7 @@ public enum TriggerKind {
      * the same as {@link #SCHEDULER} / {@link #EVENT}: a trigger anlass
      * that fires a configured {@link de.mhus.vance.api.action.TriggerAction}.
      * No enclosing Process — the {@code createdByUserId} of the hook
-     * document provides the identity. See {@code specification/hooks.md}.
+     * document provides the identity. See {@code specification/ursahooks.md}.
      */
     HOOK;
 

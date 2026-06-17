@@ -1,8 +1,8 @@
 package de.mhus.vance.brain.ursahooks;
 
 import de.mhus.vance.api.action.TriggerAction;
-import de.mhus.vance.api.hooks.HookEventName;
-import de.mhus.vance.api.hooks.HookSource;
+import de.mhus.vance.api.ursahooks.UrsaHookEventName;
+import de.mhus.vance.api.ursahooks.UrsaHookSource;
 import de.mhus.vance.shared.action.ActionValidationError;
 import de.mhus.vance.shared.action.TriggerActionParser;
 import java.time.Duration;
@@ -16,7 +16,7 @@ import org.yaml.snakeyaml.Yaml;
 
 /**
  * Parse and validate a hook YAML body. Single entry point —
- * {@link #parse(String, HookEventName, HookSource, String)}.
+ * {@link #parse(String, UrsaHookEventName, UrsaHookSource, String)}.
  *
  * <p>A hook YAML is now a regular {@link TriggerAction} document — one
  * of {@code recipe:} / {@code script:} / {@code workflow:} at the top
@@ -26,7 +26,7 @@ import org.yaml.snakeyaml.Yaml;
  * adds the hook-specific bits and rejects the obsolete pre-unification
  * shape ({@code type: js|llm}) with a clear migration hint.
  *
- * <p>See {@code specification/hooks.md} and
+ * <p>See {@code specification/ursahooks.md} and
  * {@code specification/trigger-actions.md}.
  */
 @Component
@@ -54,13 +54,13 @@ public class UrsaHookYamlParser {
      * @param hookName    derived from the document filename
      */
     public UrsaHookDef parse(
-            String yamlBody, HookEventName event, HookSource source, String hookName) {
+            String yamlBody, UrsaHookEventName event, UrsaHookSource source, String hookName) {
         return parse(yamlBody, event, source, hookName, null);
     }
 
     /** Variant that carries the {@code createdBy} of the underlying document. */
     public UrsaHookDef parse(
-            String yamlBody, HookEventName event, HookSource source,
+            String yamlBody, UrsaHookEventName event, UrsaHookSource source,
             String hookName, @Nullable String createdByUserId) {
         if (yamlBody == null || yamlBody.isBlank()) {
             throw new UrsaHookParseException("hook YAML is empty");
@@ -88,13 +88,13 @@ public class UrsaHookYamlParser {
                             + "JS-hook scripts move to a script document referenced via "
                             + "'script: { source: document, path: ... }'. LLM-hooks "
                             + "become a script that calls 'vance.lightllm.call(...)'. "
-                            + "See specification/hooks.md and specification/trigger-actions.md.");
+                            + "See specification/ursahooks.md and specification/trigger-actions.md.");
         }
         if (spec.containsKey("prompt") || spec.containsKey("model") || spec.containsKey("maxTokens")) {
             throw new UrsaHookParseException(
                     "Hook schema changed: 'prompt' / 'model' / 'maxTokens' are no longer "
                             + "supported. LLM hooks become a script that calls "
-                            + "vance.lightllm.call(...) — see specification/hooks.md.");
+                            + "vance.lightllm.call(...) — see specification/ursahooks.md.");
         }
 
         boolean enabled = !(spec.get("enabled") instanceof Boolean b) || b;

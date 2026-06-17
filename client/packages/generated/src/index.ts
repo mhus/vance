@@ -216,12 +216,12 @@ export * from './notification/NotificationSeverity';
 export * from './eventlog/EventLogEntryDto';
 export * from './eventlog/EventType';
 
-export * from './hooks/HookDto';
-export * from './hooks/HookEventName';
-export * from './hooks/HookSaveRequest';
-export * from './hooks/HookSource';
-export * from './hooks/HookScriptSpec';
-export * from './hooks/HookSummary';
+export * from './ursahooks/UrsaHookDto';
+export * from './ursahooks/UrsaHookEventName';
+export * from './ursahooks/UrsaHookSaveRequest';
+export * from './ursahooks/UrsaHookSource';
+export * from './ursahooks/UrsaHookScriptSpec';
+export * from './ursahooks/UrsaHookSummary';
 
 export * from './server-tools/ServerToolDto';
 export * from './server-tools/ServerToolWriteRequest';

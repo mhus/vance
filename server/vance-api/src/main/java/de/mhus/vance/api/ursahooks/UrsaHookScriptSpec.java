@@ -1,4 +1,4 @@
-package de.mhus.vance.api.hooks;
+package de.mhus.vance.api.ursahooks;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
@@ -20,8 +20,8 @@ import org.jspecify.annotations.Nullable;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
-@GenerateTypeScript("hooks")
-public class HookScriptSpec {
+@GenerateTypeScript("ursahooks")
+public class UrsaHookScriptSpec {
 
     /** {@code "document"} or {@code "workspace"}. */
     private String source;

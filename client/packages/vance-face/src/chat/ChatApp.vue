@@ -380,7 +380,11 @@ async function openSocketForPicker(): Promise<boolean> {
     socket.value = await openSocket();
   } catch (e) {
     mode.value = 'failed';
-    errorMessage.value = e instanceof Error ? e.message : t('chat.failedToOpen');
+    // e.message from WebSocketClosedError is hard-coded English (the
+    // shared layer is platform-neutral). Use the localized string so
+    // the banner doesn't mix languages with the buttons below.
+    errorMessage.value = t('chat.failedToOpen');
+    console.warn('[chat] openSocketForPicker failed:', e);
     return false;
   }
   attachSocketListeners(socket.value);
@@ -460,7 +464,8 @@ async function doReconnect(): Promise<boolean> {
     newSocket = await openSocket();
   } catch (e) {
     mode.value = 'failed';
-    errorMessage.value = e instanceof Error ? e.message : t('chat.connectionLost');
+    errorMessage.value = t('chat.connectionLost');
+    console.warn('[chat] reconnect openSocket failed:', e);
     return false;
   }
   try {
@@ -473,7 +478,8 @@ async function doReconnect(): Promise<boolean> {
       errorMessage.value = t('chat.sessionOccupiedBy', { id: sessionId });
     } else {
       mode.value = 'failed';
-      errorMessage.value = e instanceof Error ? e.message : t('chat.connectionLost');
+      errorMessage.value = t('chat.connectionLost');
+      console.warn('[chat] reconnect session-resume failed:', e);
     }
     return false;
   }
@@ -497,7 +503,8 @@ async function openAndBind(sessionId: string): Promise<boolean> {
     socket.value = await openSocket();
   } catch (e) {
     mode.value = 'failed';
-    errorMessage.value = e instanceof Error ? e.message : t('chat.failedToOpen');
+    errorMessage.value = t('chat.failedToOpen');
+    console.warn('[chat] openAndBind openSocket failed:', e);
     return false;
   }
   attachSocketListeners(socket.value);
@@ -532,7 +539,8 @@ async function openAndBind(sessionId: string): Promise<boolean> {
       }
     }
     mode.value = 'failed';
-    errorMessage.value = e instanceof Error ? e.message : t('chat.failedToResume');
+    errorMessage.value = t('chat.failedToResume');
+    console.warn('[chat] openAndBind session-resume failed:', e);
     return false;
   }
 }
@@ -597,6 +605,24 @@ function backToPicker(): void {
   errorMessage.value = null;
   pushSessionIdToUrl(null);
   mode.value = 'picker';
+}
+
+/**
+ * Retry-banner entry-point. Mirrors {@code onMounted}: if there's an
+ * active or URL-hinted session, bind to it; otherwise re-open the
+ * picker socket. Needed because the initial handshake can fail before
+ * any session is bound — without this, the failed banner would only
+ * show "Back to picker" (which can't render without a socket).
+ */
+async function retryConnect(): Promise<void> {
+  errorMessage.value = null;
+  const target = activeSessionId.value ?? urlSessionId();
+  if (target) {
+    await openAndBind(target);
+  } else {
+    const ok = await openSocketForPicker();
+    if (ok) mode.value = 'picker';
+  }
 }
 
 let switchToUnsubscribe: (() => void) | null = null;
@@ -763,14 +789,17 @@ function openInCortex(): void {
           </template>
           <template v-else-if="mode === 'failed'">
             <div class="mt-2 flex gap-2">
-              <VButton variant="secondary" @click="backToPicker">
-                {{ $t('chat.backToPicker') }}
-              </VButton>
+              <!-- "Back to picker" only makes sense once we've bound to
+                   a session — before that, there's nothing to go back to
+                   and the picker can't render without a socket anyway. -->
               <VButton
                 v-if="activeSessionId"
-                variant="ghost"
-                @click="openAndBind(activeSessionId ?? '')"
+                variant="secondary"
+                @click="backToPicker"
               >
+                {{ $t('chat.backToPicker') }}
+              </VButton>
+              <VButton variant="ghost" @click="retryConnect">
                 {{ $t('chat.tryAgain') }}
               </VButton>
             </div>

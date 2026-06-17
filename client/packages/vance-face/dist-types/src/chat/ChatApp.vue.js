@@ -316,7 +316,11 @@ async function openSocketForPicker() {
     }
     catch (e) {
         mode.value = 'failed';
-        errorMessage.value = e instanceof Error ? e.message : t('chat.failedToOpen');
+        // e.message from WebSocketClosedError is hard-coded English (the
+        // shared layer is platform-neutral). Use the localized string so
+        // the banner doesn't mix languages with the buttons below.
+        errorMessage.value = t('chat.failedToOpen');
+        console.warn('[chat] openSocketForPicker failed:', e);
         return false;
     }
     attachSocketListeners(socket.value);
@@ -393,7 +397,8 @@ async function doReconnect() {
     }
     catch (e) {
         mode.value = 'failed';
-        errorMessage.value = e instanceof Error ? e.message : t('chat.connectionLost');
+        errorMessage.value = t('chat.connectionLost');
+        console.warn('[chat] reconnect openSocket failed:', e);
         return false;
     }
     try {
@@ -407,7 +412,8 @@ async function doReconnect() {
         }
         else {
             mode.value = 'failed';
-            errorMessage.value = e instanceof Error ? e.message : t('chat.connectionLost');
+            errorMessage.value = t('chat.connectionLost');
+            console.warn('[chat] reconnect session-resume failed:', e);
         }
         return false;
     }
@@ -434,7 +440,8 @@ async function openAndBind(sessionId) {
     }
     catch (e) {
         mode.value = 'failed';
-        errorMessage.value = e instanceof Error ? e.message : t('chat.failedToOpen');
+        errorMessage.value = t('chat.failedToOpen');
+        console.warn('[chat] openAndBind openSocket failed:', e);
         return false;
     }
     attachSocketListeners(socket.value);
@@ -468,7 +475,8 @@ async function openAndBind(sessionId) {
             }
         }
         mode.value = 'failed';
-        errorMessage.value = e instanceof Error ? e.message : t('chat.failedToResume');
+        errorMessage.value = t('chat.failedToResume');
+        console.warn('[chat] openAndBind session-resume failed:', e);
         return false;
     }
 }
@@ -532,6 +540,25 @@ function backToPicker() {
     errorMessage.value = null;
     pushSessionIdToUrl(null);
     mode.value = 'picker';
+}
+/**
+ * Retry-banner entry-point. Mirrors {@code onMounted}: if there's an
+ * active or URL-hinted session, bind to it; otherwise re-open the
+ * picker socket. Needed because the initial handshake can fail before
+ * any session is bound — without this, the failed banner would only
+ * show "Back to picker" (which can't render without a socket).
+ */
+async function retryConnect() {
+    errorMessage.value = null;
+    const target = activeSessionId.value ?? urlSessionId();
+    if (target) {
+        await openAndBind(target);
+    }
+    else {
+        const ok = await openSocketForPicker();
+        if (ok)
+            mode.value = 'picker';
+    }
 }
 let switchToUnsubscribe = null;
 let onCloseUnsubscribe = null;
@@ -782,58 +809,48 @@ if (__VLS_ctx.errorMessage) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "mt-2 flex gap-2" },
         });
-        const __VLS_37 = {}.VButton;
-        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-        // @ts-ignore
-        const __VLS_38 = __VLS_asFunctionalComponent(__VLS_37, new __VLS_37({
-            ...{ 'onClick': {} },
-            variant: "secondary",
-        }));
-        const __VLS_39 = __VLS_38({
-            ...{ 'onClick': {} },
-            variant: "secondary",
-        }, ...__VLS_functionalComponentArgsRest(__VLS_38));
-        let __VLS_41;
-        let __VLS_42;
-        let __VLS_43;
-        const __VLS_44 = {
-            onClick: (__VLS_ctx.backToPicker)
-        };
-        __VLS_40.slots.default;
-        (__VLS_ctx.$t('chat.backToPicker'));
-        var __VLS_40;
         if (__VLS_ctx.activeSessionId) {
-            const __VLS_45 = {}.VButton;
+            const __VLS_37 = {}.VButton;
             /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
             // @ts-ignore
-            const __VLS_46 = __VLS_asFunctionalComponent(__VLS_45, new __VLS_45({
+            const __VLS_38 = __VLS_asFunctionalComponent(__VLS_37, new __VLS_37({
                 ...{ 'onClick': {} },
-                variant: "ghost",
+                variant: "secondary",
             }));
-            const __VLS_47 = __VLS_46({
+            const __VLS_39 = __VLS_38({
                 ...{ 'onClick': {} },
-                variant: "ghost",
-            }, ...__VLS_functionalComponentArgsRest(__VLS_46));
-            let __VLS_49;
-            let __VLS_50;
-            let __VLS_51;
-            const __VLS_52 = {
-                onClick: (...[$event]) => {
-                    if (!(__VLS_ctx.errorMessage))
-                        return;
-                    if (!!(__VLS_ctx.mode === 'occupied'))
-                        return;
-                    if (!(__VLS_ctx.mode === 'failed'))
-                        return;
-                    if (!(__VLS_ctx.activeSessionId))
-                        return;
-                    __VLS_ctx.openAndBind(__VLS_ctx.activeSessionId ?? '');
-                }
+                variant: "secondary",
+            }, ...__VLS_functionalComponentArgsRest(__VLS_38));
+            let __VLS_41;
+            let __VLS_42;
+            let __VLS_43;
+            const __VLS_44 = {
+                onClick: (__VLS_ctx.backToPicker)
             };
-            __VLS_48.slots.default;
-            (__VLS_ctx.$t('chat.tryAgain'));
-            var __VLS_48;
+            __VLS_40.slots.default;
+            (__VLS_ctx.$t('chat.backToPicker'));
+            var __VLS_40;
         }
+        const __VLS_45 = {}.VButton;
+        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+        // @ts-ignore
+        const __VLS_46 = __VLS_asFunctionalComponent(__VLS_45, new __VLS_45({
+            ...{ 'onClick': {} },
+            variant: "ghost",
+        }));
+        const __VLS_47 = __VLS_46({
+            ...{ 'onClick': {} },
+            variant: "ghost",
+        }, ...__VLS_functionalComponentArgsRest(__VLS_46));
+        let __VLS_49;
+        let __VLS_50;
+        let __VLS_51;
+        const __VLS_52 = {
+            onClick: (__VLS_ctx.retryConnect)
+        };
+        __VLS_48.slots.default;
+        (__VLS_ctx.$t('chat.tryAgain'));
+        var __VLS_48;
     }
     var __VLS_20;
 }
@@ -1147,6 +1164,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             onSessionBootstrapped: onSessionBootstrapped,
             leaveLive: leaveLive,
             backToPicker: backToPicker,
+            retryConnect: retryConnect,
             liveOk: liveOk,
             pickerMode: pickerMode,
             onTitleClick: onTitleClick,

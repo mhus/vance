@@ -115,15 +115,21 @@ public class UrsaHookDispatcher implements DisposableBean {
         // Recipe-actions need a session to spawn the ThinkProcess into.
         // Resolve (or lazily create) a per-hook system session — same
         // pattern Scheduler uses, with the hook source-key as the
-        // display name so re-fires reuse the same session.
-        String parentSessionId = null;
+        // display name so re-fires reuse the same session. Script and
+        // workflow actions don't need a session — Standalone context.
+        TriggerContext ctx;
         if (action instanceof TriggerAction.Recipe) {
-            parentSessionId = resolveSystemSession(event, def, runAs);
+            String parentSessionId = resolveSystemSession(event, def, runAs);
+            ctx = TriggerContext.sessioned(
+                    event.tenantId(), event.projectId(),
+                    runAs, correlationId, def.sourceKey(),
+                    parentSessionId, /*parentProcessId*/ null);
+        } else {
+            ctx = TriggerContext.standalone(
+                    event.tenantId(), event.projectId(),
+                    runAs, correlationId, def.sourceKey(),
+                    /*parentProcessId*/ null);
         }
-        TriggerContext ctx = new TriggerContext(
-                event.tenantId(), event.projectId(),
-                runAs, correlationId, def.sourceKey(),
-                parentSessionId, /*parentProcessId*/ null);
 
         Instant start = Instant.now();
         ActionResult result;

@@ -31,8 +31,8 @@ class ScriptActionExecutorTest {
     private ToolDispatcher toolDispatcher;
     private ScriptActionExecutor exec;
 
-    private final TriggerContext ctx = new TriggerContext(
-            "t1", "p1", "alice", "corr-1", "scheduler:foo", null, null);
+    private final TriggerContext ctx = TriggerContext.standalone(
+            "t1", "p1", "alice", "corr-1", "scheduler:foo", null);
 
     @BeforeEach
     void setUp() {

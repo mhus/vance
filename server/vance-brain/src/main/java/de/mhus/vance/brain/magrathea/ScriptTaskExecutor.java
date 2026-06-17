@@ -81,13 +81,12 @@ public class ScriptTaskExecutor implements MagratheaTypeExecutor {
             return Optional.of(TaskOutcome.failure(
                     "script_task '" + state.name() + "': " + ex.getMessage()));
         }
-        TriggerContext triggerContext = new TriggerContext(
+        TriggerContext triggerContext = TriggerContext.standalone(
                 context.tenantId(),
                 context.projectId(),
                 context.startedBy(),
                 context.workflowRunId(),
                 "workflow:" + context.workflowRunId() + ":" + state.name(),
-                /*parentSessionId*/ null,
                 /*parentProcessId*/ null);
         ActionResult result = scriptActionExecutor.execute(new ActionInvocation<>(
                 action, triggerContext, TriggerKind.WORKFLOW));

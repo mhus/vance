@@ -185,7 +185,7 @@ public class ProcessRunTool implements Tool {
                 /*initialMessage*/ null,  // sync-wait drives the steer below
                 callerParams,
                 /*runAs*/ null);
-        TriggerContext triggerCtx = new TriggerContext(
+        TriggerContext triggerCtx = TriggerContext.sessioned(
                 ctx.tenantId(), ctx.projectId(),
                 /*resolvedRunAs*/ null, /*correlationId*/ null,
                 /*sourceTag*/ "tool:process_run",

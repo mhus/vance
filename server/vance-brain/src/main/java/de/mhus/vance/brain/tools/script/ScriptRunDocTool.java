@@ -93,14 +93,27 @@ public class ScriptRunDocTool implements Tool {
         TriggerAction.Script action = new TriggerAction.Script(
                 ScriptSource.DOCUMENT, /*dirName*/ null, path,
                 timeoutSeconds, userParams, ctx.userId());
-        TriggerContext triggerCtx = new TriggerContext(
-                ctx.tenantId(),
-                StringUtils.defaultString(ctx.projectId(), ""),
-                ctx.userId(),
-                /*correlationId*/ null,
-                "tool:" + name(),
-                ctx.sessionId(),
-                ctx.processId());
+        // Script-actions don't enforce a session — but the calling
+        // tool DOES have one, and it's useful information for
+        // ScriptActionExecutor's tool-invocation context (so script
+        // tool-calls bind to the same session / process). Sessioned
+        // when we have it, Standalone otherwise.
+        TriggerContext triggerCtx = ctx.sessionId() != null
+                ? TriggerContext.sessioned(
+                        ctx.tenantId(),
+                        StringUtils.defaultString(ctx.projectId(), ""),
+                        ctx.userId(),
+                        /*correlationId*/ null,
+                        "tool:" + name(),
+                        ctx.sessionId(),
+                        ctx.processId())
+                : TriggerContext.standalone(
+                        ctx.tenantId(),
+                        StringUtils.defaultString(ctx.projectId(), ""),
+                        ctx.userId(),
+                        /*correlationId*/ null,
+                        "tool:" + name(),
+                        ctx.processId());
         ActionResult result = scriptActionExecutor.execute(new ActionInvocation<>(
                 action, triggerCtx, TriggerKind.TOOL));
         return toResultMap(result);

@@ -326,7 +326,7 @@ public class ProcessCreateTool implements Tool {
                 steerContent,
                 callerParams,
                 /*runAs*/ null);
-        TriggerContext triggerCtx = new TriggerContext(
+        TriggerContext triggerCtx = TriggerContext.sessioned(
                 ctx.tenantId(), ctx.projectId(),
                 /*resolvedRunAs*/ null, /*correlationId*/ null,
                 /*sourceTag*/ "tool:process_create",

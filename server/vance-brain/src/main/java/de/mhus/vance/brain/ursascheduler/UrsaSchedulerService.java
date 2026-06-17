@@ -616,17 +616,23 @@ public class UrsaSchedulerService {
         }
 
         // Recipe triggers need a system session up front; the executor
-        // is session-agnostic and the caller is expected to supply
-        // {@code parentSessionId} via TriggerContext.
+        // requires a TriggerContext.Sessioned for that path. Script and
+        // workflow actions don't need a session — they get a Standalone
+        // context. parentSessionId is kept as a local for the
+        // subsequent event-log rows that thread the session id through.
         String parentSessionId = null;
         if (action instanceof TriggerAction.Recipe) {
             SessionDocument session = systemSessionResolver.resolve(
                     reg.tenantId, reg.projectId, cfg.name(), runAs);
             parentSessionId = session.getSessionId();
         }
-        TriggerContext context = new TriggerContext(
-                reg.tenantId, reg.projectId, runAs, correlationId, source,
-                parentSessionId, /*parentProcessId*/ null);
+        TriggerContext context = parentSessionId != null
+                ? TriggerContext.sessioned(
+                        reg.tenantId, reg.projectId, runAs, correlationId, source,
+                        parentSessionId, /*parentProcessId*/ null)
+                : TriggerContext.standalone(
+                        reg.tenantId, reg.projectId, runAs, correlationId, source,
+                        /*parentProcessId*/ null);
 
         ActionResult result;
         try {

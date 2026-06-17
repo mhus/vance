@@ -251,7 +251,7 @@ public class UrsaEventService {
 
         // Recipe-trigger needs a system session — same pattern as the
         // scheduler. The session resolver tags it with the event name.
-        String parentSessionId = null;
+        TriggerContext context;
         if (action instanceof TriggerAction.Recipe) {
             String runAs = event.effectiveRunAs();
             if (runAs == null) {
@@ -261,16 +261,21 @@ public class UrsaEventService {
             }
             SessionDocument session = systemSessionResolver.resolve(
                     tenantId, projectId, "event_" + eventName, runAs);
-            parentSessionId = session.getSessionId();
+            context = TriggerContext.sessioned(
+                    tenantId, projectId,
+                    event.effectiveRunAs(),
+                    correlationId,
+                    "event:" + eventName,
+                    session.getSessionId(),
+                    /*parentProcessId*/ null);
+        } else {
+            context = TriggerContext.standalone(
+                    tenantId, projectId,
+                    event.effectiveRunAs(),
+                    correlationId,
+                    "event:" + eventName,
+                    /*parentProcessId*/ null);
         }
-
-        TriggerContext context = new TriggerContext(
-                tenantId, projectId,
-                event.effectiveRunAs(),
-                correlationId,
-                "event:" + eventName,
-                parentSessionId,
-                /*parentProcessId*/ null);
 
         ActionResult result;
         try {

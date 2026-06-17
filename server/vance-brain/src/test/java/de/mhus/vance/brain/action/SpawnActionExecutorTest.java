@@ -42,7 +42,7 @@ class SpawnActionExecutorTest {
     private ParentContextSpawnHelper parentContextSpawnHelper;
     private SpawnActionExecutor exec;
 
-    private final TriggerContext ctxWithSession = new TriggerContext(
+    private final TriggerContext ctxWithSession = TriggerContext.sessioned(
             "t1", "p1", "alice", "corr-1", "scheduler:morning", "sess-1", null);
 
     @BeforeEach
@@ -214,9 +214,9 @@ class SpawnActionExecutorTest {
     // ──────────────────── Failure paths ────────────────────
 
     @Test
-    void missing_parentSessionId_returns_technical_error() {
-        TriggerContext noSession = new TriggerContext(
-                "t1", "p1", "alice", null, null, /*parentSessionId*/ null, null);
+    void standalone_context_returns_technical_error() {
+        TriggerContext noSession = TriggerContext.standalone(
+                "t1", "p1", "alice", null, null, null);
 
         ActionResult r = exec.execute(new ActionInvocation<>(
                 TriggerAction.Recipe.of("analyze", null, null, null),
@@ -224,7 +224,7 @@ class SpawnActionExecutorTest {
                 TriggerKind.SCHEDULER));
 
         assertThat(r.outcome()).isEqualTo(ActionOutcome.TECHNICAL_ERROR);
-        assertThat(r.errorMessage()).contains("parentSessionId");
+        assertThat(r.errorMessage()).contains("Sessioned");
     }
 
     @Test
@@ -285,7 +285,7 @@ class SpawnActionExecutorTest {
         stubRecipe("analyze", "arthur");
         stubEngine("arthur", "1.0");
         stubCreateReturnsProcess("proc-x");
-        TriggerContext ctxWithParent = new TriggerContext(
+        TriggerContext ctxWithParent = TriggerContext.sessioned(
                 "t1", "p1", "alice", null, "tool:x", "sess-1", "parent-proc");
 
         exec.execute(new ActionInvocation<>(
@@ -325,7 +325,7 @@ class SpawnActionExecutorTest {
         when(messageRouter.dispatch(any(), any(), any())).thenReturn(true);
         when(parentContextSpawnHelper.wrap(any(), eq("parent-proc"), eq("the goal")))
                 .thenReturn("## Parent context …\n\n## Your task\n\nthe goal");
-        TriggerContext ctxWithParent = new TriggerContext(
+        TriggerContext ctxWithParent = TriggerContext.sessioned(
                 "t1", "p1", "alice", null, "tool:x", "sess-1", "parent-proc");
 
         exec.execute(new ActionInvocation<>(

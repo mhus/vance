@@ -94,15 +94,19 @@ public final class SpawnActionExecutor implements ActionExecutor<TriggerAction.R
     @Override
     public ActionResult execute(ActionInvocation<TriggerAction.Recipe> invocation) {
         TriggerAction.Recipe action = invocation.action();
-        TriggerContext ctx = invocation.context();
+        TriggerContext rawCtx = invocation.context();
 
-        if (StringUtils.isBlank(ctx.parentSessionId())) {
-            String msg = "SpawnActionExecutor requires a parentSessionId on TriggerContext "
+        // Recipe-action spawns require a session — enforced via the sealed
+        // TriggerContext hierarchy. A Standalone context is a caller bug;
+        // surface it as a structured failure instead of crashing later
+        // inside thinkProcessService.create.
+        if (!(rawCtx instanceof TriggerContext.Sessioned ctx)) {
+            String msg = "SpawnActionExecutor requires a TriggerContext.Sessioned "
                     + "(caller must resolve the session before spawning)";
             log.warn("{} — action='{}' source='{}'",
                     msg,
                     StringUtils.firstNonBlank(action.recipe(), action.engineOverride()),
-                    ctx.sourceTag());
+                    rawCtx.sourceTag());
             return ActionResult.failure(ActionOutcome.TECHNICAL_ERROR, msg, null);
         }
 

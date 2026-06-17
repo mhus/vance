@@ -88,14 +88,22 @@ public class ScriptRunWorkspaceTool implements Tool {
 
         TriggerAction.Script action = new TriggerAction.Script(
                 ScriptSource.WORKSPACE, dirName, path, timeoutSeconds, userParams, ctx.userId());
-        TriggerContext triggerCtx = new TriggerContext(
-                ctx.tenantId(),
-                StringUtils.defaultString(ctx.projectId(), ""),
-                ctx.userId(),
-                /*correlationId*/ null,
-                "tool:" + name(),
-                ctx.sessionId(),
-                ctx.processId());
+        TriggerContext triggerCtx = ctx.sessionId() != null
+                ? TriggerContext.sessioned(
+                        ctx.tenantId(),
+                        StringUtils.defaultString(ctx.projectId(), ""),
+                        ctx.userId(),
+                        /*correlationId*/ null,
+                        "tool:" + name(),
+                        ctx.sessionId(),
+                        ctx.processId())
+                : TriggerContext.standalone(
+                        ctx.tenantId(),
+                        StringUtils.defaultString(ctx.projectId(), ""),
+                        ctx.userId(),
+                        /*correlationId*/ null,
+                        "tool:" + name(),
+                        ctx.processId());
         ActionResult result = scriptActionExecutor.execute(new ActionInvocation<>(
                 action, triggerCtx, TriggerKind.TOOL));
         return ScriptRunDocTool.toResultMap(result);

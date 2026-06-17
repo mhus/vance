@@ -17,8 +17,8 @@ import org.springframework.beans.factory.ObjectProvider;
 
 class WorkflowActionExecutorTest {
 
-    private final TriggerContext ctx = new TriggerContext(
-            "t1", "p1", "alice", "corr-1", "scheduler:foo", null, null);
+    private final TriggerContext ctx = TriggerContext.standalone(
+            "t1", "p1", "alice", "corr-1", "scheduler:foo", null);
 
     @Test
     void start_succeeds_returns_scheduled_with_runId() {
@@ -84,8 +84,8 @@ class WorkflowActionExecutorTest {
     void runAs_passed_through_to_service() {
         MagratheaWorkflowService svc = mock(MagratheaWorkflowService.class);
         when(svc.start(any(), any(), any(), any(), any())).thenReturn("run-x");
-        TriggerContext customCtx = new TriggerContext(
-                "t1", "p1", "ci-bot", null, null, null, null);
+        TriggerContext customCtx = TriggerContext.standalone(
+                "t1", "p1", "ci-bot", null, null, null);
 
         newExecutor(svc).execute(new ActionInvocation<>(
                 new TriggerAction.Workflow("audit", null, null),

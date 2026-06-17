@@ -381,7 +381,7 @@ public class ScriptCortexController {
         }
 
         String userId = (String) httpRequest.getAttribute(AccessFilterBase.ATTR_USERNAME);
-        TriggerContext triggerCtx = new TriggerContext(
+        TriggerContext triggerCtx = TriggerContext.sessioned(
                 tenant, projectId,
                 /*resolvedRunAs*/ userId,
                 /*correlationId*/ processName,

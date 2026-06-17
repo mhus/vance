@@ -206,7 +206,7 @@ public class SessionBootstrapHandler implements WsHandler {
                     /*initialMessage*/ null,
                     spec.getParams(),
                     /*runAs*/ null);
-            TriggerContext triggerCtx = new TriggerContext(
+            TriggerContext triggerCtx = TriggerContext.sessioned(
                     session.getTenantId(), session.getProjectId(),
                     /*resolvedRunAs*/ null, /*correlationId*/ null,
                     /*sourceTag*/ "session-bootstrap",

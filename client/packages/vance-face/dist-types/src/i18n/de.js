@@ -574,6 +574,7 @@ export default {
             kindLabel: 'Art',
             kindNone: '(keine)',
             kindHelp: 'Optional. Erzeugt eine passende Vorlage für die gewählte Art.',
+            kindUnsupported: 'Nur verfügbar für Markdown, JSON und YAML.',
             contentLabel: 'Inhalt',
             inlineSizeNote: 'Text-Inhalt direkt eingeben. Für Datei-Uploads den Upload-Tab nutzen.',
             filesLabel: 'Dateien',
@@ -1220,6 +1221,9 @@ export default {
         deletedHint: '„{name}" gelöscht.',
         refreshedHint: '{count} Scheduler neu registriert.',
         saveFailed: 'Speichern fehlgeschlagen.',
+        fire: 'Jetzt ausführen',
+        fireHint: 'Scheduler sofort auslösen. Funktioniert auch bei deaktivierten Schedulern (Cron bleibt pausiert; der manuelle Lauf geht trotzdem durch). Log trägt trigger=manual.',
+        firedHint: '„{name}" ausgelöst — correlationId {correlationId}.',
     },
     ursahooks: {
         pickProject: 'Session oder Projekt links wählen, um Hooks zu sehen.',

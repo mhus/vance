@@ -88,6 +88,21 @@ async function createScheduler() {
         newError.value = e instanceof Error ? e.message : t('scheduler.saveFailed');
     }
 }
+async function fireCurrent() {
+    if (!props.projectId || !selectedName.value)
+        return;
+    banner.value = null;
+    try {
+        const result = await state.fire(props.projectId, selectedName.value);
+        banner.value = t('scheduler.firedHint', {
+            name: selectedName.value,
+            correlationId: result.correlationId,
+        });
+    }
+    catch {
+        /* surfaced via state.error */
+    }
+}
 async function saveCurrent() {
     if (!props.projectId || !selectedName.value)
         return;
@@ -347,38 +362,62 @@ else {
             // @ts-ignore
             const __VLS_45 = __VLS_asFunctionalComponent(__VLS_44, new __VLS_44({
                 ...{ 'onClick': {} },
-                variant: "primary",
-                disabled: (!__VLS_ctx.isModified || __VLS_ctx.state.busy.value),
+                variant: "ghost",
+                disabled: (__VLS_ctx.isModified || __VLS_ctx.state.busy.value),
+                title: (__VLS_ctx.t('scheduler.fireHint')),
             }));
             const __VLS_46 = __VLS_45({
                 ...{ 'onClick': {} },
-                variant: "primary",
-                disabled: (!__VLS_ctx.isModified || __VLS_ctx.state.busy.value),
+                variant: "ghost",
+                disabled: (__VLS_ctx.isModified || __VLS_ctx.state.busy.value),
+                title: (__VLS_ctx.t('scheduler.fireHint')),
             }, ...__VLS_functionalComponentArgsRest(__VLS_45));
             let __VLS_48;
             let __VLS_49;
             let __VLS_50;
             const __VLS_51 = {
-                onClick: (__VLS_ctx.saveCurrent)
+                onClick: (__VLS_ctx.fireCurrent)
             };
             __VLS_47.slots.default;
-            (__VLS_ctx.t('common.save'));
+            (__VLS_ctx.t('scheduler.fire'));
             var __VLS_47;
+            const __VLS_52 = {}.VButton;
+            /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+            // @ts-ignore
+            const __VLS_53 = __VLS_asFunctionalComponent(__VLS_52, new __VLS_52({
+                ...{ 'onClick': {} },
+                variant: "primary",
+                disabled: (!__VLS_ctx.isModified || __VLS_ctx.state.busy.value),
+            }));
+            const __VLS_54 = __VLS_53({
+                ...{ 'onClick': {} },
+                variant: "primary",
+                disabled: (!__VLS_ctx.isModified || __VLS_ctx.state.busy.value),
+            }, ...__VLS_functionalComponentArgsRest(__VLS_53));
+            let __VLS_56;
+            let __VLS_57;
+            let __VLS_58;
+            const __VLS_59 = {
+                onClick: (__VLS_ctx.saveCurrent)
+            };
+            __VLS_55.slots.default;
+            (__VLS_ctx.t('common.save'));
+            var __VLS_55;
         }
         var __VLS_31;
     }
     else {
-        const __VLS_52 = {}.VEmptyState;
+        const __VLS_60 = {}.VEmptyState;
         /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
         // @ts-ignore
-        const __VLS_53 = __VLS_asFunctionalComponent(__VLS_52, new __VLS_52({
+        const __VLS_61 = __VLS_asFunctionalComponent(__VLS_60, new __VLS_60({
             headline: (__VLS_ctx.t('scheduler.selectTitle')),
             body: (__VLS_ctx.t('scheduler.selectBody')),
         }));
-        const __VLS_54 = __VLS_53({
+        const __VLS_62 = __VLS_61({
             headline: (__VLS_ctx.t('scheduler.selectTitle')),
             body: (__VLS_ctx.t('scheduler.selectBody')),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_53));
+        }, ...__VLS_functionalComponentArgsRest(__VLS_61));
     }
     __VLS_asFunctionalElement(__VLS_intrinsicElements.aside, __VLS_intrinsicElements.aside)({
         ...{ class: "col-span-3 flex flex-col gap-2" },
@@ -436,18 +475,18 @@ else {
         }
     }
 }
-const __VLS_56 = {}.VModal;
+const __VLS_64 = {}.VModal;
 /** @type {[typeof __VLS_components.VModal, typeof __VLS_components.VModal, ]} */ ;
 // @ts-ignore
-const __VLS_57 = __VLS_asFunctionalComponent(__VLS_56, new __VLS_56({
+const __VLS_65 = __VLS_asFunctionalComponent(__VLS_64, new __VLS_64({
     modelValue: (__VLS_ctx.showNewModal),
     title: (__VLS_ctx.t('scheduler.newTitle')),
 }));
-const __VLS_58 = __VLS_57({
+const __VLS_66 = __VLS_65({
     modelValue: (__VLS_ctx.showNewModal),
     title: (__VLS_ctx.t('scheduler.newTitle')),
-}, ...__VLS_functionalComponentArgsRest(__VLS_57));
-__VLS_59.slots.default;
+}, ...__VLS_functionalComponentArgsRest(__VLS_65));
+__VLS_67.slots.default;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "space-y-3" },
 });
@@ -469,129 +508,129 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)(
 });
 (__VLS_ctx.t('scheduler.namePatternHint'));
 if (__VLS_ctx.newError) {
-    const __VLS_60 = {}.VAlert;
+    const __VLS_68 = {}.VAlert;
     /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
     // @ts-ignore
-    const __VLS_61 = __VLS_asFunctionalComponent(__VLS_60, new __VLS_60({
+    const __VLS_69 = __VLS_asFunctionalComponent(__VLS_68, new __VLS_68({
         variant: "error",
     }));
-    const __VLS_62 = __VLS_61({
+    const __VLS_70 = __VLS_69({
         variant: "error",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_61));
-    __VLS_63.slots.default;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_69));
+    __VLS_71.slots.default;
     (__VLS_ctx.newError);
-    var __VLS_63;
+    var __VLS_71;
 }
 {
-    const { actions: __VLS_thisSlot } = __VLS_59.slots;
-    const __VLS_64 = {}.VButton;
-    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-    // @ts-ignore
-    const __VLS_65 = __VLS_asFunctionalComponent(__VLS_64, new __VLS_64({
-        ...{ 'onClick': {} },
-        variant: "ghost",
-    }));
-    const __VLS_66 = __VLS_65({
-        ...{ 'onClick': {} },
-        variant: "ghost",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_65));
-    let __VLS_68;
-    let __VLS_69;
-    let __VLS_70;
-    const __VLS_71 = {
-        onClick: (...[$event]) => {
-            __VLS_ctx.showNewModal = false;
-        }
-    };
-    __VLS_67.slots.default;
-    (__VLS_ctx.t('common.cancel'));
-    var __VLS_67;
+    const { actions: __VLS_thisSlot } = __VLS_67.slots;
     const __VLS_72 = {}.VButton;
     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
     const __VLS_73 = __VLS_asFunctionalComponent(__VLS_72, new __VLS_72({
         ...{ 'onClick': {} },
-        variant: "primary",
-        loading: (__VLS_ctx.state.busy.value),
+        variant: "ghost",
     }));
     const __VLS_74 = __VLS_73({
         ...{ 'onClick': {} },
-        variant: "primary",
-        loading: (__VLS_ctx.state.busy.value),
+        variant: "ghost",
     }, ...__VLS_functionalComponentArgsRest(__VLS_73));
     let __VLS_76;
     let __VLS_77;
     let __VLS_78;
     const __VLS_79 = {
-        onClick: (__VLS_ctx.createScheduler)
+        onClick: (...[$event]) => {
+            __VLS_ctx.showNewModal = false;
+        }
     };
     __VLS_75.slots.default;
-    (__VLS_ctx.t('scheduler.create'));
+    (__VLS_ctx.t('common.cancel'));
     var __VLS_75;
+    const __VLS_80 = {}.VButton;
+    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+    // @ts-ignore
+    const __VLS_81 = __VLS_asFunctionalComponent(__VLS_80, new __VLS_80({
+        ...{ 'onClick': {} },
+        variant: "primary",
+        loading: (__VLS_ctx.state.busy.value),
+    }));
+    const __VLS_82 = __VLS_81({
+        ...{ 'onClick': {} },
+        variant: "primary",
+        loading: (__VLS_ctx.state.busy.value),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_81));
+    let __VLS_84;
+    let __VLS_85;
+    let __VLS_86;
+    const __VLS_87 = {
+        onClick: (__VLS_ctx.createScheduler)
+    };
+    __VLS_83.slots.default;
+    (__VLS_ctx.t('scheduler.create'));
+    var __VLS_83;
 }
-var __VLS_59;
-const __VLS_80 = {}.VModal;
+var __VLS_67;
+const __VLS_88 = {}.VModal;
 /** @type {[typeof __VLS_components.VModal, typeof __VLS_components.VModal, ]} */ ;
 // @ts-ignore
-const __VLS_81 = __VLS_asFunctionalComponent(__VLS_80, new __VLS_80({
+const __VLS_89 = __VLS_asFunctionalComponent(__VLS_88, new __VLS_88({
     modelValue: (__VLS_ctx.showDeleteModal),
     title: (__VLS_ctx.t('scheduler.deleteTitle')),
 }));
-const __VLS_82 = __VLS_81({
+const __VLS_90 = __VLS_89({
     modelValue: (__VLS_ctx.showDeleteModal),
     title: (__VLS_ctx.t('scheduler.deleteTitle')),
-}, ...__VLS_functionalComponentArgsRest(__VLS_81));
-__VLS_83.slots.default;
+}, ...__VLS_functionalComponentArgsRest(__VLS_89));
+__VLS_91.slots.default;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({});
 (__VLS_ctx.t('scheduler.deleteBody', { name: __VLS_ctx.selectedName }));
 {
-    const { actions: __VLS_thisSlot } = __VLS_83.slots;
-    const __VLS_84 = {}.VButton;
-    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-    // @ts-ignore
-    const __VLS_85 = __VLS_asFunctionalComponent(__VLS_84, new __VLS_84({
-        ...{ 'onClick': {} },
-        variant: "ghost",
-    }));
-    const __VLS_86 = __VLS_85({
-        ...{ 'onClick': {} },
-        variant: "ghost",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_85));
-    let __VLS_88;
-    let __VLS_89;
-    let __VLS_90;
-    const __VLS_91 = {
-        onClick: (...[$event]) => {
-            __VLS_ctx.showDeleteModal = false;
-        }
-    };
-    __VLS_87.slots.default;
-    (__VLS_ctx.t('common.cancel'));
-    var __VLS_87;
+    const { actions: __VLS_thisSlot } = __VLS_91.slots;
     const __VLS_92 = {}.VButton;
     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
     const __VLS_93 = __VLS_asFunctionalComponent(__VLS_92, new __VLS_92({
         ...{ 'onClick': {} },
-        variant: "danger",
-        loading: (__VLS_ctx.state.busy.value),
+        variant: "ghost",
     }));
     const __VLS_94 = __VLS_93({
         ...{ 'onClick': {} },
-        variant: "danger",
-        loading: (__VLS_ctx.state.busy.value),
+        variant: "ghost",
     }, ...__VLS_functionalComponentArgsRest(__VLS_93));
     let __VLS_96;
     let __VLS_97;
     let __VLS_98;
     const __VLS_99 = {
-        onClick: (__VLS_ctx.confirmDelete)
+        onClick: (...[$event]) => {
+            __VLS_ctx.showDeleteModal = false;
+        }
     };
     __VLS_95.slots.default;
-    (__VLS_ctx.t('common.delete'));
+    (__VLS_ctx.t('common.cancel'));
     var __VLS_95;
+    const __VLS_100 = {}.VButton;
+    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+    // @ts-ignore
+    const __VLS_101 = __VLS_asFunctionalComponent(__VLS_100, new __VLS_100({
+        ...{ 'onClick': {} },
+        variant: "danger",
+        loading: (__VLS_ctx.state.busy.value),
+    }));
+    const __VLS_102 = __VLS_101({
+        ...{ 'onClick': {} },
+        variant: "danger",
+        loading: (__VLS_ctx.state.busy.value),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_101));
+    let __VLS_104;
+    let __VLS_105;
+    let __VLS_106;
+    const __VLS_107 = {
+        onClick: (__VLS_ctx.confirmDelete)
+    };
+    __VLS_103.slots.default;
+    (__VLS_ctx.t('common.delete'));
+    var __VLS_103;
 }
-var __VLS_83;
+var __VLS_91;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
@@ -702,6 +741,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             refreshList: refreshList,
             openNewModal: openNewModal,
             createScheduler: createScheduler,
+            fireCurrent: fireCurrent,
             saveCurrent: saveCurrent,
             confirmDelete: confirmDelete,
             formatTimestamp: formatTimestamp,

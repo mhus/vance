@@ -568,6 +568,7 @@ declare const _default: {
             kindLabel: string;
             kindNone: string;
             kindHelp: string;
+            kindUnsupported: string;
             contentLabel: string;
             inlineSizeNote: string;
             filesLabel: string;
@@ -1210,6 +1211,9 @@ declare const _default: {
         deletedHint: string;
         refreshedHint: string;
         saveFailed: string;
+        fire: string;
+        fireHint: string;
+        firedHint: string;
     };
     ursahooks: {
         pickProject: string;

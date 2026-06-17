@@ -129,12 +129,22 @@ public class AgrajagEngine implements ThinkEngine {
             - UNCLEAR + expectedRecoveryAt null is allowed when evidence
               is insufficient. Use cooldownAdjustments to throttle further
               diagnosis attempts on the same signature.
+            - Cooldowns and expectedRecoveryAt are CAPPED at 24h
+              automatically. Even when the failure looks persistent,
+              keep values within that window — a manual retry after the
+              underlying fix re-evaluates the tool anyway. Don't return
+              "P7D" or similar multi-day spans.
+            - Default cooldown when in doubt: 1 hour (PT1H). Use shorter
+              values (PT5M, PT15M) for likely-transient failures, longer
+              ones (up to PT24H) only when the evidence clearly points
+              to a persistent issue.
             """;
 
     private final ThinkProcessService thinkProcessService;
     private final ToolHealthService toolHealthService;
     private final EngineChatFactory engineChatFactory;
     private final ObjectMapper objectMapper;
+    private final de.mhus.vance.brain.agrajag.AgrajagCooldownPolicy cooldownPolicy;
 
     @Override public String name() { return NAME; }
     @Override public String title() { return "Agrajag"; }
@@ -396,7 +406,8 @@ public class AgrajagEngine implements ThinkEngine {
             Map<String, Object> output) {
         ToolHealthClassification cls = parseClassification(output.get("classification"));
         String note = stringOrNull(output.get("humanNote"));
-        Instant eta = parseInstantOrNull(output.get("expectedRecoveryAt"));
+        Instant rawEta = parseInstantOrNull(output.get("expectedRecoveryAt"));
+        Instant eta = capEta(rawEta, process);
         String by = "agrajag-engine/" + process.getId();
         String tenantId = process.getTenantId();
 
@@ -438,6 +449,25 @@ public class AgrajagEngine implements ThinkEngine {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * Cap the LLM-supplied {@code expectedRecoveryAt} via the
+     * {@link de.mhus.vance.brain.agrajag.AgrajagCooldownPolicy} (setting
+     * {@code agrajag.cooldown.max}, default 24h). The diagnostic prompt
+     * occasionally returns multi-day ETAs for ambiguous failures —
+     * that locks a tool out longer than any human-in-the-loop would
+     * tolerate, and a quick manual probe after the underlying issue is
+     * fixed re-evaluates the tool anyway.
+     */
+    private @Nullable Instant capEta(@Nullable Instant eta, ThinkProcessDocument process) {
+        Instant capped = cooldownPolicy.capEta(
+                eta, process.getTenantId(), process.getProjectId(), process.getId());
+        if (eta != null && !eta.equals(capped)) {
+            log.info("Agrajag id='{}' expectedRecoveryAt capped {} → {} (agrajag.cooldown.max)",
+                    process.getId(), eta, capped);
+        }
+        return capped;
+    }
+
     private void applyCooldownAdjustments(
             ThinkProcessDocument process,
             ToolHealthScope scope,
@@ -454,7 +484,15 @@ public class AgrajagEngine implements ThinkEngine {
             Object durObj = typed.get("duration");
             if (sig == null || durObj == null) continue;
             try {
-                Duration d = Duration.parse(durObj.toString());
+                Duration parsed = Duration.parse(durObj.toString());
+                Duration d = cooldownPolicy.cap(
+                        parsed, process.getTenantId(), process.getProjectId(), process.getId());
+                if (d != null && !d.equals(parsed)) {
+                    log.info("Agrajag id='{}' cooldown adjustment for sig='{}' "
+                                    + "capped {} → {} (agrajag.cooldown.max)",
+                            process.getId(), sig, parsed, d);
+                }
+                if (d == null) continue;
                 toolHealthService.setCooldown(
                         process.getTenantId(), scope, scopeId, toolName,
                         sig, user, cls, d,

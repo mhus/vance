@@ -98,4 +98,46 @@ export function useZarniwoopInsights() {
     }
     return { instances, loading, error, load, clear, setOverride, clearOverride };
 }
+export function useToolHealth() {
+    const entries = ref([]);
+    const loading = ref(false);
+    const error = ref(null);
+    async function load(projectId) {
+        loading.value = true;
+        error.value = null;
+        try {
+            const params = new URLSearchParams({ scope: 'PROJECT', scopeId: projectId });
+            entries.value = await brainFetch('GET', `admin/tool-health?${params.toString()}`);
+        }
+        catch (e) {
+            error.value = e instanceof Error ? e.message : 'Failed to load tool health.';
+            entries.value = [];
+        }
+        finally {
+            loading.value = false;
+        }
+    }
+    function clear() {
+        entries.value = [];
+        error.value = null;
+    }
+    async function clearCooldown(projectId, toolName, errorSignature, userId) {
+        try {
+            await brainFetch('POST', 'admin/tool-health/clear-cooldown', {
+                body: {
+                    scope: 'PROJECT',
+                    scopeId: projectId,
+                    toolName,
+                    errorSignature,
+                    userId,
+                },
+            });
+            await load(projectId);
+        }
+        catch (e) {
+            error.value = e instanceof Error ? e.message : 'Failed to clear cooldown.';
+        }
+    }
+    return { entries, loading, error, load, clear, clearCooldown };
+}
 //# sourceMappingURL=useProjectInsights.js.map

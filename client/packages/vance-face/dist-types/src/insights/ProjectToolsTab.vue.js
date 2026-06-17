@@ -1,14 +1,87 @@
 import { computed, ref, watch } from 'vue';
 import { VAlert, VCheckbox, VEmptyState, VInput } from '@/components';
-import { useEffectiveTools } from '@/composables/useProjectInsights';
+import { useEffectiveTools, useToolHealth } from '@/composables/useProjectInsights';
 const props = defineProps();
 const state = useEffectiveTools();
+const health = useToolHealth();
 watch(() => props.projectId, (next) => {
-    if (next)
+    if (next) {
         state.load(next);
-    else
+        health.load(next);
+    }
+    else {
         state.clear();
+        health.clear();
+    }
 }, { immediate: true });
+// Map: toolName → health entry. Fast lookup during render.
+const healthByTool = computed(() => {
+    const m = new Map();
+    for (const h of health.entries.value)
+        m.set(h.toolName, h);
+    return m;
+});
+// Live countdown — re-evaluates every 10s so "in 27 minutes" stays fresh.
+const nowMs = ref(Date.now());
+let nowTimer = null;
+if (typeof window !== 'undefined') {
+    nowTimer = setInterval(() => {
+        nowMs.value = Date.now();
+    }, 10_000);
+}
+import { onUnmounted } from 'vue';
+onUnmounted(() => {
+    if (nowTimer)
+        clearInterval(nowTimer);
+});
+function formatCountdown(iso) {
+    if (!iso)
+        return '—';
+    const target = Date.parse(iso);
+    if (Number.isNaN(target))
+        return iso;
+    const diffMs = target - nowMs.value;
+    if (diffMs <= 0)
+        return 'expired';
+    const sec = Math.floor(diffMs / 1000);
+    if (sec < 60)
+        return `${sec}s`;
+    const min = Math.floor(sec / 60);
+    if (min < 60)
+        return `${min}m`;
+    const hr = Math.floor(min / 60);
+    const remMin = min % 60;
+    if (hr < 24)
+        return remMin > 0 ? `${hr}h ${remMin}m` : `${hr}h`;
+    const days = Math.floor(hr / 24);
+    const remHr = hr % 24;
+    return remHr > 0 ? `${days}d ${remHr}h` : `${days}d`;
+}
+function statusBadgeClass(status) {
+    switch (status) {
+        case 'DOWN':
+            return 'badge-health badge-health--down';
+        case 'DEGRADED':
+            return 'badge-health badge-health--degraded';
+        case 'OK':
+        default:
+            return 'badge-health badge-health--ok';
+    }
+}
+const expanded = ref(new Set());
+function toggleExpand(toolName) {
+    const next = new Set(expanded.value);
+    if (next.has(toolName))
+        next.delete(toolName);
+    else
+        next.add(toolName);
+    expanded.value = next;
+}
+async function onClearCooldown(toolName, cd) {
+    if (!props.projectId)
+        return;
+    await health.clearCooldown(props.projectId, toolName, cd.errorSignature, cd.userId ?? null);
+}
 function sourceClass(source) {
     switch (source) {
         case 'PROJECT':
@@ -300,6 +373,9 @@ else {
         ...{ class: "w-24" },
     });
     __VLS_asFunctionalElement(__VLS_intrinsicElements.th, __VLS_intrinsicElements.th)({
+        ...{ class: "w-28" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.th, __VLS_intrinsicElements.th)({
         ...{ class: "w-32" },
     });
     __VLS_asFunctionalElement(__VLS_intrinsicElements.th, __VLS_intrinsicElements.th)({
@@ -309,13 +385,13 @@ else {
     if (__VLS_ctx.filteredTools.length === 0) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.tr, __VLS_intrinsicElements.tr)({});
         __VLS_asFunctionalElement(__VLS_intrinsicElements.td, __VLS_intrinsicElements.td)({
-            colspan: "7",
+            colspan: "8",
             ...{ class: "opacity-60 text-center py-4" },
         });
     }
     for (const [t] of __VLS_getVForSourceType((__VLS_ctx.filteredTools))) {
+        (t.name);
         __VLS_asFunctionalElement(__VLS_intrinsicElements.tr, __VLS_intrinsicElements.tr)({
-            key: (t.name),
             ...{ class: (t.disabledByInnerLayer ? 'opacity-50 line-through' : '') },
         });
         __VLS_asFunctionalElement(__VLS_intrinsicElements.td, __VLS_intrinsicElements.td)({
@@ -364,6 +440,45 @@ else {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.td, __VLS_intrinsicElements.td)({
             ...{ class: "text-xs" },
         });
+        if (__VLS_ctx.healthByTool.get(t.name)) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.projectId))
+                            return;
+                        if (!!(__VLS_ctx.state.loading.value))
+                            return;
+                        if (!!(__VLS_ctx.state.error.value))
+                            return;
+                        if (!!(__VLS_ctx.state.tools.value.length === 0))
+                            return;
+                        if (!(__VLS_ctx.healthByTool.get(t.name)))
+                            return;
+                        __VLS_ctx.toggleExpand(t.name);
+                    } },
+                type: "button",
+                ...{ class: "inline-flex items-center gap-1.5 cursor-pointer" },
+                title: (__VLS_ctx.healthByTool.get(t.name)?.note ?? ''),
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: (__VLS_ctx.statusBadgeClass(__VLS_ctx.healthByTool.get(t.name)?.status)) },
+            });
+            (__VLS_ctx.healthByTool.get(t.name)?.status);
+            if ((__VLS_ctx.healthByTool.get(t.name)?.activeCooldowns?.length ?? 0) > 0) {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                    ...{ class: "text-warning text-[0.65rem]" },
+                    title: ((__VLS_ctx.healthByTool.get(t.name)?.activeCooldowns?.length) + ' active cooldown(s)'),
+                });
+                (__VLS_ctx.healthByTool.get(t.name)?.activeCooldowns?.length);
+            }
+        }
+        else {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "opacity-40" },
+            });
+        }
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.td, __VLS_intrinsicElements.td)({
+            ...{ class: "text-xs" },
+        });
         if (t.labels && t.labels.length) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
                 ...{ class: "font-mono opacity-70" },
@@ -381,6 +496,105 @@ else {
                 ...{ class: "text-xs text-error" },
                 title: "Disabled by an inner-layer document",
             });
+        }
+        if (__VLS_ctx.expanded.has(t.name) && __VLS_ctx.healthByTool.get(t.name)) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.tr, __VLS_intrinsicElements.tr)({
+                ...{ class: "health-detail-row" },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.td, __VLS_intrinsicElements.td)({
+                colspan: "8",
+                ...{ class: "p-3" },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "bg-base-200 rounded p-3 space-y-2 text-xs" },
+            });
+            if (__VLS_ctx.healthByTool.get(t.name)?.note) {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                    ...{ class: "opacity-80" },
+                });
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                    ...{ class: "opacity-60" },
+                });
+                (__VLS_ctx.healthByTool.get(t.name)?.note);
+            }
+            if (__VLS_ctx.healthByTool.get(t.name)?.expectedRecoveryAt) {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                    ...{ class: "opacity-80" },
+                });
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                    ...{ class: "opacity-60" },
+                });
+                (__VLS_ctx.healthByTool.get(t.name)?.expectedRecoveryAt);
+                (__VLS_ctx.formatCountdown(__VLS_ctx.healthByTool.get(t.name)?.expectedRecoveryAt));
+            }
+            if ((__VLS_ctx.healthByTool.get(t.name)?.activeCooldowns?.length ?? 0) === 0) {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                    ...{ class: "opacity-60" },
+                });
+            }
+            else {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.table, __VLS_intrinsicElements.table)({
+                    ...{ class: "table table-xs" },
+                });
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.thead, __VLS_intrinsicElements.thead)({});
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.tr, __VLS_intrinsicElements.tr)({
+                    ...{ class: "opacity-60" },
+                });
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.th, __VLS_intrinsicElements.th)({});
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.th, __VLS_intrinsicElements.th)({});
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.th, __VLS_intrinsicElements.th)({});
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.th, __VLS_intrinsicElements.th)({});
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.th, __VLS_intrinsicElements.th)({});
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.th, __VLS_intrinsicElements.th)({});
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.th, __VLS_intrinsicElements.th)({});
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.tbody, __VLS_intrinsicElements.tbody)({});
+                for (const [cd] of __VLS_getVForSourceType(((__VLS_ctx.healthByTool.get(t.name)?.activeCooldowns ?? [])))) {
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.tr, __VLS_intrinsicElements.tr)({
+                        key: (cd.errorSignature + '|' + (cd.userId ?? '*')),
+                    });
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.td, __VLS_intrinsicElements.td)({
+                        ...{ class: "font-mono" },
+                    });
+                    (cd.errorSignature);
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.td, __VLS_intrinsicElements.td)({});
+                    (cd.lastClassification ?? '—');
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.td, __VLS_intrinsicElements.td)({});
+                    (cd.hits);
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.td, __VLS_intrinsicElements.td)({});
+                    (cd.userId ?? '*');
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.td, __VLS_intrinsicElements.td)({
+                        ...{ class: "opacity-80" },
+                    });
+                    (cd.note ?? '—');
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.td, __VLS_intrinsicElements.td)({});
+                    (__VLS_ctx.formatCountdown(cd.nextSpawnAllowedAt));
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                        ...{ class: "opacity-50" },
+                    });
+                    (cd.nextSpawnAllowedAt);
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.td, __VLS_intrinsicElements.td)({});
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                        ...{ onClick: (...[$event]) => {
+                                if (!!(!__VLS_ctx.projectId))
+                                    return;
+                                if (!!(__VLS_ctx.state.loading.value))
+                                    return;
+                                if (!!(__VLS_ctx.state.error.value))
+                                    return;
+                                if (!!(__VLS_ctx.state.tools.value.length === 0))
+                                    return;
+                                if (!(__VLS_ctx.expanded.has(t.name) && __VLS_ctx.healthByTool.get(t.name)))
+                                    return;
+                                if (!!((__VLS_ctx.healthByTool.get(t.name)?.activeCooldowns?.length ?? 0) === 0))
+                                    return;
+                                __VLS_ctx.onClearCooldown(t.name, cd);
+                            } },
+                        type: "button",
+                        ...{ class: "btn btn-xs btn-outline" },
+                        title: "Clear this cooldown — the tool can fire again immediately",
+                    });
+                }
+            }
         }
     }
 }
@@ -428,6 +642,7 @@ else {
 /** @type {__VLS_StyleScopedClasses['cursor-pointer']} */ ;
 /** @type {__VLS_StyleScopedClasses['select-none']} */ ;
 /** @type {__VLS_StyleScopedClasses['w-24']} */ ;
+/** @type {__VLS_StyleScopedClasses['w-28']} */ ;
 /** @type {__VLS_StyleScopedClasses['w-32']} */ ;
 /** @type {__VLS_StyleScopedClasses['w-12']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
@@ -447,11 +662,40 @@ else {
 /** @type {__VLS_StyleScopedClasses['text-success']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-50']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['inline-flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-1.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['cursor-pointer']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-warning']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-[0.65rem]']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-40']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-50']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-error']} */ ;
+/** @type {__VLS_StyleScopedClasses['health-detail-row']} */ ;
+/** @type {__VLS_StyleScopedClasses['p-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['bg-base-200']} */ ;
+/** @type {__VLS_StyleScopedClasses['rounded']} */ ;
+/** @type {__VLS_StyleScopedClasses['p-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['space-y-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-80']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-80']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['table']} */ ;
+/** @type {__VLS_StyleScopedClasses['table-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-80']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-50']} */ ;
+/** @type {__VLS_StyleScopedClasses['btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['btn-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['btn-outline']} */ ;
 var __VLS_dollars;
 const __VLS_self = (await import('vue')).defineComponent({
     setup() {
@@ -461,6 +705,12 @@ const __VLS_self = (await import('vue')).defineComponent({
             VEmptyState: VEmptyState,
             VInput: VInput,
             state: state,
+            healthByTool: healthByTool,
+            formatCountdown: formatCountdown,
+            statusBadgeClass: statusBadgeClass,
+            expanded: expanded,
+            toggleExpand: toggleExpand,
+            onClearCooldown: onClearCooldown,
             sourceClass: sourceClass,
             sourceLabel: sourceLabel,
             search: search,

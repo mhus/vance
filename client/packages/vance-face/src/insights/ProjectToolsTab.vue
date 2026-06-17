@@ -1,21 +1,102 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import type { EffectiveToolDto } from '@vance/generated';
+import type {
+  EffectiveToolDto,
+  ToolHealthCooldownDto,
+  ToolHealthEntryDto,
+} from '@vance/generated';
 import { VAlert, VCheckbox, VEmptyState, VInput } from '@/components';
-import { useEffectiveTools } from '@/composables/useProjectInsights';
+import { useEffectiveTools, useToolHealth } from '@/composables/useProjectInsights';
 
 const props = defineProps<{ projectId: string | null }>();
 
 const state = useEffectiveTools();
+const health = useToolHealth();
 
 watch(
   () => props.projectId,
   (next) => {
-    if (next) state.load(next);
-    else state.clear();
+    if (next) {
+      state.load(next);
+      health.load(next);
+    } else {
+      state.clear();
+      health.clear();
+    }
   },
   { immediate: true },
 );
+
+// Map: toolName → health entry. Fast lookup during render.
+const healthByTool = computed<Map<string, ToolHealthEntryDto>>(() => {
+  const m = new Map<string, ToolHealthEntryDto>();
+  for (const h of health.entries.value) m.set(h.toolName, h);
+  return m;
+});
+
+// Live countdown — re-evaluates every 10s so "in 27 minutes" stays fresh.
+const nowMs = ref(Date.now());
+let nowTimer: ReturnType<typeof setInterval> | null = null;
+if (typeof window !== 'undefined') {
+  nowTimer = setInterval(() => {
+    nowMs.value = Date.now();
+  }, 10_000);
+}
+import { onUnmounted } from 'vue';
+onUnmounted(() => {
+  if (nowTimer) clearInterval(nowTimer);
+});
+
+function formatCountdown(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const target = Date.parse(iso);
+  if (Number.isNaN(target)) return iso;
+  const diffMs = target - nowMs.value;
+  if (diffMs <= 0) return 'expired';
+  const sec = Math.floor(diffMs / 1000);
+  if (sec < 60) return `${sec}s`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m`;
+  const hr = Math.floor(min / 60);
+  const remMin = min % 60;
+  if (hr < 24) return remMin > 0 ? `${hr}h ${remMin}m` : `${hr}h`;
+  const days = Math.floor(hr / 24);
+  const remHr = hr % 24;
+  return remHr > 0 ? `${days}d ${remHr}h` : `${days}d`;
+}
+
+function statusBadgeClass(status: string | undefined): string {
+  switch (status) {
+    case 'DOWN':
+      return 'badge-health badge-health--down';
+    case 'DEGRADED':
+      return 'badge-health badge-health--degraded';
+    case 'OK':
+    default:
+      return 'badge-health badge-health--ok';
+  }
+}
+
+const expanded = ref<Set<string>>(new Set());
+function toggleExpand(toolName: string): void {
+  const next = new Set(expanded.value);
+  if (next.has(toolName)) next.delete(toolName);
+  else next.add(toolName);
+  expanded.value = next;
+}
+
+async function onClearCooldown(
+  toolName: string,
+  cd: ToolHealthCooldownDto,
+): Promise<void> {
+  if (!props.projectId) return;
+  await health.clearCooldown(
+    props.projectId,
+    toolName,
+    cd.errorSignature,
+    cd.userId ?? null,
+  );
+}
 
 function sourceClass(source: string): string {
   switch (source) {
@@ -168,57 +249,141 @@ const filteredTools = computed<EffectiveToolDto[]>(() => {
             </th>
             <th>Description</th>
             <th class="w-24">Visibility</th>
+            <th class="w-28">Health</th>
             <th class="w-32">Labels</th>
             <th class="w-12"></th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="filteredTools.length === 0">
-            <td colspan="7" class="opacity-60 text-center py-4">
+            <td colspan="8" class="opacity-60 text-center py-4">
               No tools match the current filters.
             </td>
           </tr>
-          <tr
-            v-for="t in filteredTools"
-            :key="t.name"
-            :class="t.disabledByInnerLayer ? 'opacity-50 line-through' : ''"
-          >
-            <td class="font-mono">{{ t.name }}</td>
-            <td>
-              <span :class="sourceClass(t.source)">{{ sourceLabel(t.source) }}</span>
-            </td>
-            <td class="text-xs opacity-80">{{ t.type ?? '—' }}</td>
-            <td class="text-xs opacity-80">
-              {{ t.description }}
-              <div
-                v-if="t.deferred && t.searchHint"
-                class="text-[0.65rem] opacity-60 italic mt-0.5"
-                :title="t.searchHint"
-              >
-                hint: {{ t.searchHint }}
-              </div>
-            </td>
-            <td class="text-xs">
-              <span v-if="t.deferred" class="badge-deferred" title="Hidden from manifest until describe_tool activates it">deferred</span>
-              <span v-else-if="t.primary" class="text-success">primary</span>
-              <span v-else class="opacity-50">on demand</span>
-            </td>
-            <td class="text-xs">
-              <span v-if="t.labels && t.labels.length" class="font-mono opacity-70">
-                {{ t.labels.join(', ') }}
-              </span>
-              <span v-else class="opacity-50">—</span>
-            </td>
-            <td>
-              <span
-                v-if="t.disabledByInnerLayer"
-                class="text-xs text-error"
-                title="Disabled by an inner-layer document"
-              >
-                ✕
-              </span>
-            </td>
-          </tr>
+          <template v-for="t in filteredTools" :key="t.name">
+            <tr :class="t.disabledByInnerLayer ? 'opacity-50 line-through' : ''">
+              <td class="font-mono">{{ t.name }}</td>
+              <td>
+                <span :class="sourceClass(t.source)">{{ sourceLabel(t.source) }}</span>
+              </td>
+              <td class="text-xs opacity-80">{{ t.type ?? '—' }}</td>
+              <td class="text-xs opacity-80">
+                {{ t.description }}
+                <div
+                  v-if="t.deferred && t.searchHint"
+                  class="text-[0.65rem] opacity-60 italic mt-0.5"
+                  :title="t.searchHint"
+                >
+                  hint: {{ t.searchHint }}
+                </div>
+              </td>
+              <td class="text-xs">
+                <span v-if="t.deferred" class="badge-deferred" title="Hidden from manifest until describe_tool activates it">deferred</span>
+                <span v-else-if="t.primary" class="text-success">primary</span>
+                <span v-else class="opacity-50">on demand</span>
+              </td>
+              <td class="text-xs">
+                <template v-if="healthByTool.get(t.name)">
+                  <button
+                    type="button"
+                    class="inline-flex items-center gap-1.5 cursor-pointer"
+                    @click="toggleExpand(t.name)"
+                    :title="healthByTool.get(t.name)?.note ?? ''"
+                  >
+                    <span :class="statusBadgeClass(healthByTool.get(t.name)?.status)">
+                      {{ healthByTool.get(t.name)?.status }}
+                    </span>
+                    <span
+                      v-if="(healthByTool.get(t.name)?.activeCooldowns?.length ?? 0) > 0"
+                      class="text-warning text-[0.65rem]"
+                      :title="(healthByTool.get(t.name)?.activeCooldowns?.length) + ' active cooldown(s)'"
+                    >
+                      ⏳ {{ healthByTool.get(t.name)?.activeCooldowns?.length }}
+                    </span>
+                  </button>
+                </template>
+                <span v-else class="opacity-40">—</span>
+              </td>
+              <td class="text-xs">
+                <span v-if="t.labels && t.labels.length" class="font-mono opacity-70">
+                  {{ t.labels.join(', ') }}
+                </span>
+                <span v-else class="opacity-50">—</span>
+              </td>
+              <td>
+                <span
+                  v-if="t.disabledByInnerLayer"
+                  class="text-xs text-error"
+                  title="Disabled by an inner-layer document"
+                >
+                  ✕
+                </span>
+              </td>
+            </tr>
+            <tr
+              v-if="expanded.has(t.name) && healthByTool.get(t.name)"
+              class="health-detail-row"
+            >
+              <td colspan="8" class="p-3">
+                <div class="bg-base-200 rounded p-3 space-y-2 text-xs">
+                  <div v-if="healthByTool.get(t.name)?.note" class="opacity-80">
+                    <span class="opacity-60">note:</span>
+                    {{ healthByTool.get(t.name)?.note }}
+                  </div>
+                  <div
+                    v-if="healthByTool.get(t.name)?.expectedRecoveryAt"
+                    class="opacity-80"
+                  >
+                    <span class="opacity-60">recovery:</span>
+                    {{ healthByTool.get(t.name)?.expectedRecoveryAt }}
+                    (in {{ formatCountdown(healthByTool.get(t.name)?.expectedRecoveryAt) }})
+                  </div>
+                  <div v-if="(healthByTool.get(t.name)?.activeCooldowns?.length ?? 0) === 0" class="opacity-60">
+                    No active cooldowns.
+                  </div>
+                  <table v-else class="table table-xs">
+                    <thead>
+                      <tr class="opacity-60">
+                        <th>Signature</th>
+                        <th>Classification</th>
+                        <th>Hits</th>
+                        <th>User</th>
+                        <th>Note</th>
+                        <th>Expires</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr
+                        v-for="cd in (healthByTool.get(t.name)?.activeCooldowns ?? [])"
+                        :key="cd.errorSignature + '|' + (cd.userId ?? '*')"
+                      >
+                        <td class="font-mono">{{ cd.errorSignature }}</td>
+                        <td>{{ cd.lastClassification ?? '—' }}</td>
+                        <td>{{ cd.hits }}</td>
+                        <td>{{ cd.userId ?? '*' }}</td>
+                        <td class="opacity-80">{{ cd.note ?? '—' }}</td>
+                        <td>
+                          {{ formatCountdown(cd.nextSpawnAllowedAt) }}
+                          <span class="opacity-50">({{ cd.nextSpawnAllowedAt }})</span>
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            class="btn btn-xs btn-outline"
+                            @click="onClearCooldown(t.name, cd)"
+                            title="Clear this cooldown — the tool can fire again immediately"
+                          >
+                            Clear
+                          </button>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </td>
+            </tr>
+          </template>
         </tbody>
       </table>
     </template>
@@ -254,5 +419,27 @@ const filteredTools = computed<EffectiveToolDto[]>(() => {
   color: oklch(var(--wa));
   font-size: 0.7rem;
   font-weight: 500;
+}
+.badge-health {
+  display: inline-block;
+  padding: 0.05rem 0.4rem;
+  border-radius: 0.25rem;
+  font-size: 0.7rem;
+  font-weight: 500;
+}
+.badge-health--ok {
+  background: oklch(var(--su) / 0.18);
+  color: oklch(var(--su));
+}
+.badge-health--degraded {
+  background: oklch(var(--wa) / 0.22);
+  color: oklch(var(--wa));
+}
+.badge-health--down {
+  background: oklch(var(--er) / 0.22);
+  color: oklch(var(--er));
+}
+.health-detail-row > td {
+  background: transparent;
 }
 </style>

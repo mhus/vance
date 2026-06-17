@@ -3,6 +3,7 @@ import { brainFetch } from '@vance/shared';
 import type {
   EffectiveRecipeDto,
   EffectiveToolDto,
+  ToolHealthEntryDto,
   ZarniwoopInsightsDto,
 } from '@vance/generated';
 
@@ -161,4 +162,80 @@ export function useZarniwoopInsights(): UseZarniwoopInsights {
   }
 
   return { instances, loading, error, load, clear, setOverride, clearOverride };
+}
+
+/**
+ * Tool-Health + active cooldowns for a project. Pairs with the
+ * ProjectToolsTab so each tool row can show a status badge and an
+ * expandable cooldown list. {@code clearCooldown} maps to the
+ * admin-only clear-cooldown endpoint and triggers a reload.
+ */
+export interface UseToolHealth {
+  entries: Ref<ToolHealthEntryDto[]>;
+  loading: Ref<boolean>;
+  error: Ref<string | null>;
+  load: (projectId: string) => Promise<void>;
+  clear: () => void;
+  clearCooldown: (
+    projectId: string,
+    toolName: string,
+    errorSignature: string,
+    userId: string | null,
+  ) => Promise<void>;
+}
+
+export function useToolHealth(): UseToolHealth {
+  const entries = ref<ToolHealthEntryDto[]>([]);
+  const loading = ref(false);
+  const error = ref<string | null>(null);
+
+  async function load(projectId: string): Promise<void> {
+    loading.value = true;
+    error.value = null;
+    try {
+      const params = new URLSearchParams({ scope: 'PROJECT', scopeId: projectId });
+      entries.value = await brainFetch<ToolHealthEntryDto[]>(
+        'GET',
+        `admin/tool-health?${params.toString()}`,
+      );
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to load tool health.';
+      entries.value = [];
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  function clear(): void {
+    entries.value = [];
+    error.value = null;
+  }
+
+  async function clearCooldown(
+    projectId: string,
+    toolName: string,
+    errorSignature: string,
+    userId: string | null,
+  ): Promise<void> {
+    try {
+      await brainFetch<{ cleared: boolean }>(
+        'POST',
+        'admin/tool-health/clear-cooldown',
+        {
+          body: {
+            scope: 'PROJECT',
+            scopeId: projectId,
+            toolName,
+            errorSignature,
+            userId,
+          },
+        },
+      );
+      await load(projectId);
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to clear cooldown.';
+    }
+  }
+
+  return { entries, loading, error, load, clear, clearCooldown };
 }

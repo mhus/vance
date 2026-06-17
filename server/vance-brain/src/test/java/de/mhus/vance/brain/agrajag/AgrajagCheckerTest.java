@@ -38,7 +38,12 @@ class AgrajagCheckerTest {
         org.springframework.beans.factory.ObjectProvider<AgrajagSpawnerService> spawnerProvider =
                 mock(org.springframework.beans.factory.ObjectProvider.class);
         when(spawnerProvider.getIfAvailable()).thenReturn(null);
-        checker = new AgrajagChecker(resolver, healthService, spawnerProvider);
+        de.mhus.vance.shared.settings.SettingService settingService =
+                mock(de.mhus.vance.shared.settings.SettingService.class);
+        when(settingService.getStringValueCascade(anyString(), any(), any(), anyString()))
+                .thenReturn(null);
+        AgrajagCooldownPolicy cooldownPolicy = new AgrajagCooldownPolicy(settingService);
+        checker = new AgrajagChecker(resolver, healthService, spawnerProvider, cooldownPolicy);
         when(healthService.lookupActiveCooldown(
                 anyString(), any(), anyString(), anyString(), anyString(),
                 any(), any()))

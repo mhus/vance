@@ -237,6 +237,8 @@ export * from './tools/ToolSpec';
 
 export * from './toolhealth/ToolErrorCode';
 export * from './toolhealth/ToolHealthClassification';
+export * from './toolhealth/ToolHealthCooldownDto';
+export * from './toolhealth/ToolHealthEntryDto';
 export * from './toolhealth/ToolHealthScope';
 export * from './toolhealth/ToolHealthStatus';
 export * from './toolhealth/ToolSafety';

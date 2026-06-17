@@ -580,6 +580,7 @@ export default {
             kindLabel: 'Kind',
             kindNone: '(none)',
             kindHelp: 'Optional. Pre-fills a starter body matching the selected kind.',
+            kindUnsupported: 'Only available for Markdown, JSON and YAML.',
             contentLabel: 'Content',
             inlineSizeNote: 'Type the body directly. For file uploads use the upload tab.',
             filesLabel: 'Files',
@@ -1226,6 +1227,9 @@ export default {
         deletedHint: 'Deleted "{name}".',
         refreshedHint: 'Re-registered {count} scheduler(s).',
         saveFailed: 'Save failed.',
+        fire: 'Run now',
+        fireHint: 'Trigger this scheduler immediately. Works for disabled schedulers too (cron stays paused; the manual run still goes through). Log carries trigger=manual.',
+        firedHint: 'Triggered "{name}" — correlationId {correlationId}.',
     },
     ursahooks: {
         pickProject: 'Pick a session or project to see its hooks.',

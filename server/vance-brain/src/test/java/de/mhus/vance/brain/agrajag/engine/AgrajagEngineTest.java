@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.toolhealth.ToolHealthClassification;
 import de.mhus.vance.api.toolhealth.ToolHealthScope;
@@ -37,11 +38,18 @@ class AgrajagEngineTest {
     @BeforeEach
     void setUp() {
         healthService = mock(ToolHealthService.class);
+        de.mhus.vance.shared.settings.SettingService settingService =
+                mock(de.mhus.vance.shared.settings.SettingService.class);
+        when(settingService.getStringValueCascade(anyString(), any(), any(), anyString()))
+                .thenReturn(null);
+        de.mhus.vance.brain.agrajag.AgrajagCooldownPolicy cooldownPolicy =
+                new de.mhus.vance.brain.agrajag.AgrajagCooldownPolicy(settingService);
         engine = new AgrajagEngine(
                 mock(ThinkProcessService.class),
                 healthService,
                 mock(EngineChatFactory.class),
-                new ObjectMapper());
+                new ObjectMapper(),
+                cooldownPolicy);
         process = ThinkProcessDocument.builder()
                 .id("proc-1")
                 .tenantId("acme")

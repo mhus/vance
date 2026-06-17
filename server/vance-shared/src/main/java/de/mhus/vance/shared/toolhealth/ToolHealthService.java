@@ -86,6 +86,18 @@ public class ToolHealthService {
     }
 
     /**
+     * Lists every health record (independent of status) inside a
+     * {@code (scope, scopeId)} tuple. Used by the Insights UI to show
+     * a per-project / per-session health summary with cooldowns.
+     * Returns an empty list when nothing is recorded.
+     */
+    public List<ToolHealthDocument> listForScope(
+            String tenantId, ToolHealthScope scope, String scopeId) {
+        return repository.findByTenantIdAndScopeAndScopeId(
+                tenantId, scope, nullToEmpty(scopeId));
+    }
+
+    /**
      * Returns the active cooldown for {@code errorSignature} (and optional
      * {@code userId}) on the narrowest matching health entry, if any —
      * "active" meaning {@code nextSpawnAllowedAt > now}. Returns empty

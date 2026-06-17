@@ -210,6 +210,52 @@ const createMimeOptions = computed(() => {
         { value: 'text/css', label: 'CSS', group: webGroup },
     ];
 });
+// Filename-extension → mime mapping. Drives auto-switch of `createMime`
+// when the user types a filename in the create dialog. Stays in sync
+// with `createMimeOptions` above. Unknown extensions leave the mime
+// untouched.
+const EXTENSION_TO_MIME = {
+    md: 'text/markdown',
+    markdown: 'text/markdown',
+    txt: 'text/plain',
+    json: 'application/json',
+    yaml: 'application/yaml',
+    yml: 'application/yaml',
+    xml: 'application/xml',
+    js: 'application/javascript',
+    mjs: 'application/javascript',
+    cjs: 'application/javascript',
+    ts: 'application/typescript',
+    py: 'text/x-python',
+    sh: 'application/x-sh',
+    bash: 'application/x-sh',
+    r: 'text/x-r',
+    java: 'text/x-java-source',
+    sql: 'application/sql',
+    html: 'text/html',
+    htm: 'text/html',
+    css: 'text/css',
+};
+function mimeForFilename(name) {
+    const dot = name.lastIndexOf('.');
+    if (dot < 0 || dot === name.length - 1)
+        return null;
+    const ext = name.substring(dot + 1).toLowerCase();
+    return EXTENSION_TO_MIME[ext] ?? null;
+}
+// `kind:` only carries semantic weight for documents whose body is a
+// structured document language (md / json / yaml — see buildKindStub).
+// For source-code mimes (js, py, …) we hide the option to avoid the
+// dialog suggesting a kind that the server pipeline ignores.
+const KIND_ALLOWED_MIMES = new Set([
+    'text/markdown',
+    'text/x-markdown',
+    'application/json',
+    'application/yaml',
+    'application/x-yaml',
+    'text/yaml',
+]);
+const kindAllowed = computed(() => KIND_ALLOWED_MIMES.has(createMime.value));
 // Mime-type options used by the editor's "change mime type" dropdown.
 // Same list as the create form plus a sticky entry for the current
 // value when it falls outside the canonical set (e.g. application/pdf
@@ -1490,6 +1536,27 @@ watch([createKind, createMime], ([kind, mime]) => {
     const stub = buildKindStub(kind, mime);
     createContent.value = stub;
     lastGeneratedStub = stub;
+});
+// Filename drives mime: as the user types `foo.js` we flip the mime
+// dropdown to JavaScript. Unknown extensions leave the previous mime
+// untouched so an explicit pick survives a typo in the filename.
+watch(createName, (name) => {
+    if (!showCreateModal.value)
+        return;
+    if (createMode.value !== 'inline')
+        return;
+    const detected = mimeForFilename(name);
+    if (detected && detected !== createMime.value) {
+        createMime.value = detected;
+    }
+});
+// Kind only applies to md/json/yaml; for source-code mimes we clear
+// any previous kind selection so it doesn't survive an invisible
+// disabled dropdown into the submitted document.
+watch(createMime, () => {
+    if (!kindAllowed.value && createKind.value !== '') {
+        createKind.value = '';
+    }
 });
 function setCreateMode(mode) {
     createMode.value = mode;
@@ -4605,15 +4672,15 @@ if (__VLS_ctx.createMode === 'inline') {
         modelValue: (__VLS_ctx.createKind),
         options: (__VLS_ctx.kindCreateOptions),
         label: (__VLS_ctx.$t('documents.create.kindLabel')),
-        help: (__VLS_ctx.$t('documents.create.kindHelp')),
-        disabled: (__VLS_ctx.creating),
+        help: (__VLS_ctx.kindAllowed ? __VLS_ctx.$t('documents.create.kindHelp') : __VLS_ctx.$t('documents.create.kindUnsupported')),
+        disabled: (__VLS_ctx.creating || !__VLS_ctx.kindAllowed),
     }));
     const __VLS_434 = __VLS_433({
         modelValue: (__VLS_ctx.createKind),
         options: (__VLS_ctx.kindCreateOptions),
         label: (__VLS_ctx.$t('documents.create.kindLabel')),
-        help: (__VLS_ctx.$t('documents.create.kindHelp')),
-        disabled: (__VLS_ctx.creating),
+        help: (__VLS_ctx.kindAllowed ? __VLS_ctx.$t('documents.create.kindHelp') : __VLS_ctx.$t('documents.create.kindUnsupported')),
+        disabled: (__VLS_ctx.creating || !__VLS_ctx.kindAllowed),
     }, ...__VLS_functionalComponentArgsRest(__VLS_433));
     const __VLS_436 = {}.CodeEditor;
     /** @type {[typeof __VLS_components.CodeEditor, ]} */ ;
@@ -5428,6 +5495,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             creating: creating,
             uploadProgress: uploadProgress,
             createMimeOptions: createMimeOptions,
+            kindAllowed: kindAllowed,
             editMimeOptions: editMimeOptions,
             selectedAppEditorUrl: selectedAppEditorUrl,
             projectOptions: projectOptions,

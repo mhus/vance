@@ -1,5 +1,5 @@
 import { type Ref } from 'vue';
-import type { EffectiveRecipeDto, EffectiveToolDto, ZarniwoopInsightsDto } from '@vance/generated';
+import type { EffectiveRecipeDto, EffectiveToolDto, ToolHealthEntryDto, ZarniwoopInsightsDto } from '@vance/generated';
 /**
  * REST loaders for the project-level insight tabs (Recipes / Tools).
  * Both endpoints walk the cascade ({@code project → _vance →
@@ -35,4 +35,19 @@ export interface UseZarniwoopInsights {
     clearOverride: (projectId: string, instanceId: string) => Promise<void>;
 }
 export declare function useZarniwoopInsights(): UseZarniwoopInsights;
+/**
+ * Tool-Health + active cooldowns for a project. Pairs with the
+ * ProjectToolsTab so each tool row can show a status badge and an
+ * expandable cooldown list. {@code clearCooldown} maps to the
+ * admin-only clear-cooldown endpoint and triggers a reload.
+ */
+export interface UseToolHealth {
+    entries: Ref<ToolHealthEntryDto[]>;
+    loading: Ref<boolean>;
+    error: Ref<string | null>;
+    load: (projectId: string) => Promise<void>;
+    clear: () => void;
+    clearCooldown: (projectId: string, toolName: string, errorSignature: string, userId: string | null) => Promise<void>;
+}
+export declare function useToolHealth(): UseToolHealth;
 //# sourceMappingURL=useProjectInsights.d.ts.map

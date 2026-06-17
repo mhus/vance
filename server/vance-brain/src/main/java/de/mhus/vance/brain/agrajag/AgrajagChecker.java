@@ -48,6 +48,11 @@ public class AgrajagChecker {
      * pulls in the dispatcher cycle. Optional in tests.
      */
     private final ObjectProvider<AgrajagSpawnerService> spawnerProvider;
+    /**
+     * Upper-bound resolver — reads {@code agrajag.cooldown.max} from the
+     * setting cascade with a 24h fallback. See {@link AgrajagCooldownPolicy}.
+     */
+    private final AgrajagCooldownPolicy cooldownPolicy;
 
     /**
      * Triage a failing tool invocation. Side-effects (cooldown,
@@ -93,7 +98,7 @@ public class AgrajagChecker {
                     true, false, matched.getNote());
         }
 
-        Duration cooldown = resolveCooldown(matched);
+        Duration cooldown = resolveCooldown(matched, ctx);
         Instant expectedRecovery = cooldown == null
                 ? null
                 : now.plus(cooldown);
@@ -287,7 +292,12 @@ public class AgrajagChecker {
         };
     }
 
-    private static @Nullable Duration resolveCooldown(ToolErrorPattern p) {
+    private @Nullable Duration resolveCooldown(ToolErrorPattern p, ToolInvocationContext ctx) {
+        Duration raw = resolveCooldownRaw(p);
+        return cooldownPolicy.cap(raw, ctx.tenantId(), ctx.projectId(), ctx.processId());
+    }
+
+    private static @Nullable Duration resolveCooldownRaw(ToolErrorPattern p) {
         Duration explicit = p.getCooldown();
         if (explicit != null && explicit != ToolErrorPattern.COOLDOWN_FROM_RETRY_AFTER) {
             return explicit;

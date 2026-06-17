@@ -1,6 +1,13 @@
 package de.mhus.vance.brain.insights;
 
 import de.mhus.vance.api.addon.AddonInsightDto;
+import de.mhus.vance.api.toolhealth.ToolHealthClassification;
+import de.mhus.vance.api.toolhealth.ToolHealthCooldownDto;
+import de.mhus.vance.api.toolhealth.ToolHealthEntryDto;
+import de.mhus.vance.api.toolhealth.ToolHealthScope;
+import de.mhus.vance.shared.toolhealth.ToolHealthCooldown;
+import de.mhus.vance.shared.toolhealth.ToolHealthDocument;
+import de.mhus.vance.shared.toolhealth.ToolHealthService;
 import de.mhus.vance.api.insights.ActiveSkillInsightsDto;
 import de.mhus.vance.api.insights.BrainPodInsightsDto;
 import de.mhus.vance.api.insights.BrainPodProjectInsightsDto;
@@ -133,6 +140,7 @@ public class InsightsAdminController {
     private final ProjectService projectService;
     private final PrakRunService prakRunService;
     private final AddonInsightsService addonInsightsService;
+    private final ToolHealthService toolHealthService;
     private final ZarniwoopInsightsService zarniwoopInsightsService;
     private final ZarniwoopGateService zarniwoopGateService;
     private final RequestAuthority authority;
@@ -1021,5 +1029,115 @@ public class InsightsAdminController {
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
         return addonInsightsService.listForInsights();
+    }
+
+    // ─── Tool Health ───────────────────────────────────────────────────────
+
+    /**
+     * Tool-Health records for one scope — typically the
+     * {@code PROJECT}-scoped status + active cooldowns the
+     * Insights "Project Tools" tab renders next to each tool.
+     *
+     * <p>Read-only; the path-tenant is checked against the JWT and
+     * the per-record {@code tenantId} additionally validated. The
+     * paired clear-cooldown endpoint is mutating and lives below.
+     */
+    @GetMapping("/tool-health")
+    public List<ToolHealthEntryDto> listToolHealth(
+            @PathVariable("tenant") String tenant,
+            @RequestParam(value = "scope", defaultValue = "PROJECT") String scopeRaw,
+            @RequestParam("scopeId") String scopeId,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
+        ToolHealthScope scope;
+        try {
+            scope = ToolHealthScope.valueOf(scopeRaw.trim().toUpperCase());
+        } catch (IllegalArgumentException ex) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "unknown scope: " + scopeRaw);
+        }
+        Instant now = Instant.now();
+        return toolHealthService.listForScope(tenant, scope, scopeId).stream()
+                .map(doc -> toEntryDto(doc, now))
+                .toList();
+    }
+
+    /**
+     * Clear a single cooldown entry. Used by the "Clear cooldown"
+     * button in the Insights Tool-Health UI when the operator knows
+     * the underlying issue is fixed (auth renewed, target folder
+     * created, etc.).
+     */
+    @org.springframework.web.bind.annotation.PostMapping("/tool-health/clear-cooldown")
+    public java.util.Map<String, Object> clearToolHealthCooldown(
+            @PathVariable("tenant") String tenant,
+            @org.springframework.web.bind.annotation.RequestBody ClearCooldownRequest body,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
+        if (body == null || body.scope == null || body.scopeId == null
+                || body.toolName == null || body.errorSignature == null) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "scope, scopeId, toolName, errorSignature are required");
+        }
+        ToolHealthScope scope;
+        try {
+            scope = ToolHealthScope.valueOf(body.scope.trim().toUpperCase());
+        } catch (IllegalArgumentException ex) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "unknown scope: " + body.scope);
+        }
+        toolHealthService.clearCooldown(
+                tenant, scope, body.scopeId, body.toolName,
+                body.errorSignature, body.userId);
+        return java.util.Map.of("cleared", true);
+    }
+
+    public static class ClearCooldownRequest {
+        public String scope;
+        public String scopeId;
+        public String toolName;
+        public String errorSignature;
+        @Nullable public String userId;
+    }
+
+    private static ToolHealthEntryDto toEntryDto(ToolHealthDocument doc, Instant now) {
+        List<ToolHealthCooldownDto> active = (doc.getCooldowns() == null
+                ? List.<ToolHealthCooldown>of() : doc.getCooldowns()).stream()
+                .filter(cd -> cd.getNextSpawnAllowedAt() != null
+                        && cd.getNextSpawnAllowedAt().isAfter(now))
+                .map(InsightsAdminController::toCooldownDto)
+                .toList();
+        return ToolHealthEntryDto.builder()
+                .id(doc.getId())
+                .scope(doc.getScope())
+                .scopeId(doc.getScopeId())
+                .toolName(doc.getToolName())
+                .status(doc.getStatus())
+                .classification(doc.getLastClassification())
+                .statusSince(doc.getSince() == null
+                        ? null : doc.getSince().toString())
+                .expectedRecoveryAt(doc.getExpectedRecoveryAt() == null
+                        ? null : doc.getExpectedRecoveryAt().toString())
+                .note(doc.getLastNote())
+                .activeCooldowns(active)
+                .build();
+    }
+
+    private static ToolHealthCooldownDto toCooldownDto(ToolHealthCooldown cd) {
+        ToolHealthClassification cls = cd.getLastClassification();
+        return ToolHealthCooldownDto.builder()
+                .errorSignature(cd.getErrorSignature())
+                .nextSpawnAllowedAt(cd.getNextSpawnAllowedAt() == null
+                        ? null : cd.getNextSpawnAllowedAt().toString())
+                .hits(cd.getHits())
+                .lastClassification(cls)
+                .lastTriggeredAt(cd.getLastTriggeredAt() == null
+                        ? null : cd.getLastTriggeredAt().toString())
+                .note(cd.getNote())
+                .userId(cd.getUserId())
+                .build();
     }
 }

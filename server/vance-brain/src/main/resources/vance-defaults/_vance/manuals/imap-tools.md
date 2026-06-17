@@ -1,17 +1,17 @@
 ---
-triggers: IMAP, mailbox, email, e-mail, mail, inbox, Mails lesen, read mail, mailing list, support queue, triage, Postfach
-summary: How to wire a read-only IMAP mailbox tool — list folders, list messages, fetch a single message body.
+triggers: IMAP, mailbox, email, e-mail, mail, inbox, Mails lesen, read mail, mailing list, support queue, triage, Postfach, mark read, mark unread, flag mail, move mail, delete mail
+summary: How to wire an IMAP mailbox tool — list folders, list messages, fetch bodies, and (opt-in) mark/flag/move/delete.
 ---
 # IMAP mailbox tools
 
-How to wire a read-only IMAP-mailbox tool — for inbox processing,
-support-queue triage, mailing-list digest building, or whatever else
-needs „read recent mail" as a tool surface. Auth lives in user- or
-project-settings; the LLM never sees the credentials.
+How to wire an IMAP-mailbox tool — for inbox processing, support-queue
+triage, mailing-list digest building, or whatever else needs „read
+recent mail" as a tool surface. Auth lives in user- or project-settings;
+the LLM never sees the credentials.
 
 ## Scope of an `imap_mailbox` pack
 
-Three sub-tools per pack, all read-only:
+Three read sub-tools are always emitted:
 
 | Tool | What |
 |---|---|
@@ -19,15 +19,24 @@ Three sub-tools per pack, all read-only:
 | `<name>__list_messages` | Header summaries (subject/from/to/date/seen). Filterable: folder, limit, unread_only, since (ISO-8601). |
 | `<name>__get_message` | Full envelope + body for one message. Args: `messageRef` (folder index or Message-ID), optional folder. |
 
+When the pack sets `readonly: false`, four write sub-tools are added:
+
+| Tool | What |
+|---|---|
+| `<name>__set_seen` | Mark read / unread. Args: `messageRef`, `seen` (bool, default true), `folder`. |
+| `<name>__set_flagged` | Star / unstar. Args: `messageRef`, `flagged` (bool, default true), `folder`. |
+| `<name>__move_message` | Move to another folder. Args: `messageRef`, `targetFolder` (required), `folder`. Implemented as `COPY + \Deleted + EXPUNGE` — works on every IMAP server. |
+| `<name>__delete_message` | Soft-delete by default — moves to the pack's `trashFolder` (default "Trash"). `hard: true` sets `\Deleted` on the source and expunges immediately (irreversible). |
+
 Body extraction is text-first: a multipart/alternative message yields
 its `text/plain` part; HTML is the fallback. Attachments are ignored
 (v1 — explicit attachment-fetch is a v2 feature once the file-blob
 plumbing is settled).
 
-Write operations (mark-read, move, delete) are **deliberately not in
-v1**. The security model around AI-driven mailbox mutation needs more
-thought (confirmation flow, undo, audit log). For now this pack is a
-read surface only.
+The default `readonly: true` is the safe pick — most triage/digest
+flows only ever need to read. Opt into write only when the agent
+should genuinely mutate the mailbox (delegated inbox processing,
+auto-archiving, status-based moves).
 
 ## Per-user vs. per-project credentials
 
@@ -72,6 +81,11 @@ parameters:
   user:          "{{secret:project:sales.imap.user}}"
   password:      "{{secret:project:sales.imap.password}}"
   defaultFolder: "INBOX"
+  readonly:      true                # default true. Set false to enable
+                                     # set_seen / set_flagged / move /
+                                     # delete sub-tools.
+  trashFolder:   "Trash"             # ignored when readonly=true; used
+                                     # as soft-delete target otherwise.
   timeoutSeconds: 30
 promptHint: |
   ## Sales mailbox
@@ -79,6 +93,20 @@ promptHint: |
   `unread_only: true` and `since` to find recent unprocessed threads.
   `get_message` returns the plain-text body; attachments aren't
   exposed in v1.
+```
+
+Mailbox-mutation example (auto-triage moves spam to junk):
+
+```yaml
+type: imap_mailbox
+description: "Support inbox — read + auto-archive."
+parameters:
+  host:          "imap.example.com"
+  user:          "{{secret:project:support.imap.user}}"
+  password:      "{{secret:project:support.imap.password}}"
+  defaultFolder: "INBOX"
+  readonly:      false
+  trashFolder:   "Trash"
 ```
 
 ## STARTTLS vs implicit-TLS

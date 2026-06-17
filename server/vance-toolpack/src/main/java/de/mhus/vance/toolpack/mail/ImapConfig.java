@@ -21,6 +21,13 @@ import org.jspecify.annotations.Nullable;
  *     password: "{{secret:project:imap.password}}"
  *     defaultFolder: "INBOX"                    # default "INBOX"
  *     timeoutSeconds: 30
+ *     readonly: true                            # default true. false enables
+ *                                               # set_seen / set_flagged /
+ *                                               # move_message / delete_message
+ *                                               # sub-tools.
+ *     trashFolder: "Trash"                      # default "Trash". Target of
+ *                                               # soft-delete (delete_message
+ *                                               # without hard=true).
  * </pre>
  *
  * <p>The {@code {{secret:...}}} references are resolved at invoke-time,
@@ -34,18 +41,22 @@ public record ImapConfig(
         String user,
         String password,
         String defaultFolder,
-        int timeoutSeconds) {
+        int timeoutSeconds,
+        boolean readonly,
+        String trashFolder) {
 
     public static final int DEFAULT_TLS_PORT = 993;
     public static final int DEFAULT_PLAIN_PORT = 143;
     public static final int DEFAULT_TIMEOUT_SECONDS = 30;
     public static final String DEFAULT_FOLDER = "INBOX";
+    public static final String DEFAULT_TRASH_FOLDER = "Trash";
 
     public ImapConfig {
         if (host == null || host.isBlank()) {
             throw new IllegalArgumentException("imap_mailbox: 'host' is required");
         }
         if (defaultFolder == null || defaultFolder.isBlank()) defaultFolder = DEFAULT_FOLDER;
+        if (trashFolder == null || trashFolder.isBlank()) trashFolder = DEFAULT_TRASH_FOLDER;
         if (user == null) user = "";
         if (password == null) password = "";
     }
@@ -63,8 +74,10 @@ public record ImapConfig(
         String password = stringOrEmpty(params.get("password"));
         String folder = stringOrDefault(params.get("defaultFolder"), DEFAULT_FOLDER);
         int timeout = intOrDefault(params.get("timeoutSeconds"), DEFAULT_TIMEOUT_SECONDS);
+        boolean readonly = boolWithDefault(params.get("readonly"), true);
+        String trash = stringOrDefault(params.get("trashFolder"), DEFAULT_TRASH_FOLDER);
 
-        return new ImapConfig(host, port, tls, starttls, user, password, folder, timeout);
+        return new ImapConfig(host, port, tls, starttls, user, password, folder, timeout, readonly, trash);
     }
 
     /** "imaps" for implicit-TLS, "imap" for plain/STARTTLS. Drives Jakarta Mail provider lookup. */

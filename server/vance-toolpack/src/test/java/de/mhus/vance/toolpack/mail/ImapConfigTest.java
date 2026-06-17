@@ -51,4 +51,29 @@ class ImapConfigTest {
                 "defaultFolder", "Archive"));
         assertThat(cfg.defaultFolder()).isEqualTo("Archive");
     }
+
+    @Test
+    void readonly_defaults_true_and_trash_defaults_to_Trash() {
+        ImapConfig cfg = ImapConfig.fromParameters(Map.of("host", "imap.example.com"));
+        assertThat(cfg.readonly()).isTrue();
+        assertThat(cfg.trashFolder()).isEqualTo("Trash");
+    }
+
+    @Test
+    void readonly_can_be_disabled_and_trash_can_be_overridden() {
+        ImapConfig cfg = ImapConfig.fromParameters(Map.of(
+                "host", "imap.example.com",
+                "readonly", false,
+                "trashFolder", "[Gmail]/Trash"));
+        assertThat(cfg.readonly()).isFalse();
+        assertThat(cfg.trashFolder()).isEqualTo("[Gmail]/Trash");
+    }
+
+    @Test
+    void readonly_accepts_string_false() {
+        ImapConfig cfg = ImapConfig.fromParameters(Map.of(
+                "host", "imap.example.com",
+                "readonly", "false"));
+        assertThat(cfg.readonly()).isFalse();
+    }
 }

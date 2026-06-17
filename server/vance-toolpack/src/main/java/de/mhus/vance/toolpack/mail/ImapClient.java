@@ -34,9 +34,14 @@ import org.jspecify.annotations.Nullable;
  * folder-state, server-side session limits). Pool can be added later
  * if profiling shows it's worth it.
  *
- * <p>Pure read surface in v1: {@link #listFolders}, {@link #listMessages},
- * {@link #getMessage}. Mark/move/delete come in v2 once the security
- * model around AI-driven mailbox mutation is settled.
+ * <p>Read surface: {@link #listFolders}, {@link #listMessages},
+ * {@link #getMessage}.
+ *
+ * <p>Write surface (only invoked when the pack's {@code readonly} flag
+ * is false): {@link #setSeen}, {@link #setFlagged}, {@link #moveMessage},
+ * {@link #deleteMessage}. Move and soft-delete use the standard
+ * {@code COPY + \Deleted + EXPUNGE} pattern — works on every IMAP
+ * server without depending on the MOVE extension (RFC 6851).
  */
 @Slf4j
 public final class ImapClient {
@@ -138,7 +143,118 @@ public final class ImapClient {
         });
     }
 
+    /**
+     * Set or unset the {@code \Seen} flag on a single message. Returns
+     * the updated header summary.
+     */
+    public Map<String, Object> setSeen(@Nullable String folderName, String messageRef, boolean seen) {
+        return mutateOne(folderName, messageRef, (folder, msg) -> {
+            msg.setFlag(Flags.Flag.SEEN, seen);
+            return headerSummary(msg);
+        });
+    }
+
+    /**
+     * Set or unset the {@code \Flagged} flag (star/important) on a
+     * single message. Returns the updated header summary.
+     */
+    public Map<String, Object> setFlagged(@Nullable String folderName, String messageRef, boolean flagged) {
+        return mutateOne(folderName, messageRef, (folder, msg) -> {
+            msg.setFlag(Flags.Flag.FLAGGED, flagged);
+            return headerSummary(msg);
+        });
+    }
+
+    /**
+     * Copy a message to {@code targetFolderName}, then mark the source
+     * copy {@code \Deleted} and expunge — the portable equivalent of
+     * MOVE. {@code targetFolderName} must exist.
+     */
+    public Map<String, Object> moveMessage(
+            @Nullable String folderName, String messageRef, String targetFolderName) {
+        if (targetFolderName == null || targetFolderName.isBlank()) {
+            throw new IllegalArgumentException("targetFolder is required");
+        }
+        String fname = folderName == null || folderName.isBlank()
+                ? config.defaultFolder() : folderName;
+        return withStore(store -> {
+            Folder source = store.getFolder(fname);
+            if (!source.exists()) {
+                throw new IllegalArgumentException("Folder not found: " + fname);
+            }
+            Folder target = store.getFolder(targetFolderName);
+            if (!target.exists()) {
+                throw new IllegalArgumentException("Target folder not found: " + targetFolderName);
+            }
+            source.open(Folder.READ_WRITE);
+            try {
+                Message hit = resolveMessage(source, messageRef);
+                if (hit == null) {
+                    throw new IllegalArgumentException("Message not found: " + messageRef);
+                }
+                Map<String, Object> summary = new LinkedHashMap<>(headerSummary(hit));
+                source.copyMessages(new Message[] {hit}, target);
+                hit.setFlag(Flags.Flag.DELETED, true);
+                source.expunge();
+                summary.put("movedTo", targetFolderName);
+                return summary;
+            } finally {
+                try { source.close(true); } catch (MessagingException ignored) { /* swallow */ }
+            }
+        });
+    }
+
+    /**
+     * Delete a message. {@code hard=false} (default at the tool layer)
+     * moves the message to the configured trash folder; {@code hard=true}
+     * sets {@code \Deleted} on the source and expunges immediately
+     * (irreversible).
+     */
+    public Map<String, Object> deleteMessage(
+            @Nullable String folderName, String messageRef, boolean hard) {
+        if (!hard) {
+            return moveMessage(folderName, messageRef, config.trashFolder());
+        }
+        return mutateOne(folderName, messageRef, (folder, msg) -> {
+            Map<String, Object> summary = new LinkedHashMap<>(headerSummary(msg));
+            msg.setFlag(Flags.Flag.DELETED, true);
+            folder.expunge();
+            summary.put("deleted", true);
+            return summary;
+        });
+    }
+
     // ──────────────────── Internals ────────────────────
+
+    @FunctionalInterface
+    private interface MessageOp<T> {
+        T apply(Folder folder, Message msg) throws MessagingException, IOException;
+    }
+
+    private <T> T mutateOne(@Nullable String folderName, String messageRef, MessageOp<T> op) {
+        if (messageRef == null || messageRef.isBlank()) {
+            throw new IllegalArgumentException("messageRef is required");
+        }
+        String fname = folderName == null || folderName.isBlank()
+                ? config.defaultFolder() : folderName;
+        return withStore(store -> {
+            Folder folder = store.getFolder(fname);
+            if (!folder.exists()) {
+                throw new IllegalArgumentException("Folder not found: " + fname);
+            }
+            folder.open(Folder.READ_WRITE);
+            try {
+                Message hit = resolveMessage(folder, messageRef);
+                if (hit == null) {
+                    throw new IllegalArgumentException("Message not found: " + messageRef);
+                }
+                return op.apply(folder, hit);
+            } finally {
+                try { folder.close(true); } catch (MessagingException ignored) { /* swallow */ }
+            }
+        });
+    }
+
 
     /** Resolve a message by numeric folder index (1-based) or by Message-ID. */
     private static @Nullable Message resolveMessage(Folder folder, String ref) throws MessagingException {

@@ -23,9 +23,12 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
 /**
- * {@code imap_mailbox} — emits three sub-tools per configured pack:
- * {@code <name>__list_folders}, {@code <name>__list_messages},
- * {@code <name>__get_message}. The pack-level config carries the IMAP
+ * {@code imap_mailbox} — emits three read sub-tools per configured pack
+ * ({@code <name>__list_folders}, {@code <name>__list_messages},
+ * {@code <name>__get_message}) plus, when the pack sets {@code readonly:
+ * false}, four write sub-tools ({@code <name>__set_seen},
+ * {@code <name>__set_flagged}, {@code <name>__move_message},
+ * {@code <name>__delete_message}). The pack-level config carries the IMAP
  * host + auth; each invocation resolves secret templates at call time
  * via {@link SettingsSecretResolver}, so per-user / per-project secret
  * scopes work naturally.
@@ -34,6 +37,11 @@ import org.springframework.stereotype.Component;
  * tag with {@code mail}/{@code @side-effect} and the recipe filter
  * keeps them in the discovery block. Project-scoped shared mailboxes
  * (sales@, support@) override that at the pack level.
+ *
+ * <p>Read tools carry the {@code read-only} label; write tools carry
+ * {@code write} + {@code side-effect}. {@code readonly} is read at
+ * factory-build time from the document parameters (no secret-template
+ * indirection) — a pack is either read-only or read+write, not both.
  */
 @Component
 @RequiredArgsConstructor
@@ -45,14 +53,18 @@ public class ImapMailboxToolFactory implements ToolFactory {
     private static final Map<String, Object> PARAMETERS_SCHEMA = Map.of(
             "type", "object",
             "required", List.of("host"),
-            "properties", Map.of(
-                    "host", Map.of("type", "string", "description", "IMAP server hostname."),
-                    "port", Map.of("type", "integer", "description", "Default: 993 (TLS) or 143 (plain)."),
-                    "tls", Map.of("type", "boolean", "description", "Implicit-TLS connect (default true)."),
-                    "starttls", Map.of("type", "boolean", "description", "STARTTLS upgrade (default false)."),
-                    "user", Map.of("type", "string"),
-                    "password", Map.of("type", "string"),
-                    "defaultFolder", Map.of("type", "string", "description", "Default INBOX.")));
+            "properties", Map.ofEntries(
+                    Map.entry("host", Map.of("type", "string", "description", "IMAP server hostname.")),
+                    Map.entry("port", Map.of("type", "integer", "description", "Default: 993 (TLS) or 143 (plain).")),
+                    Map.entry("tls", Map.of("type", "boolean", "description", "Implicit-TLS connect (default true).")),
+                    Map.entry("starttls", Map.of("type", "boolean", "description", "STARTTLS upgrade (default false).")),
+                    Map.entry("user", Map.of("type", "string")),
+                    Map.entry("password", Map.of("type", "string")),
+                    Map.entry("defaultFolder", Map.of("type", "string", "description", "Default INBOX.")),
+                    Map.entry("readonly", Map.of("type", "boolean",
+                            "description", "Default true. False enables set_seen/set_flagged/move_message/delete_message.")),
+                    Map.entry("trashFolder", Map.of("type", "string",
+                            "description", "Soft-delete target. Default 'Trash'."))));
 
     private final SettingsSecretResolver secretResolver;
 
@@ -68,27 +80,50 @@ public class ImapMailboxToolFactory implements ToolFactory {
     public Collection<Tool> create(
             ServerToolDocument document, @Nullable ToolInvocationContext ctx) {
         String packName = document.getName();
-        Set<String> labels = labelsFor(document);
+        Map<String, Object> params = document.getParameters();
+        boolean readonly = readonlyFlag(params);
+        Set<String> readLabels = labelsFor(document, /* write */ false);
+        Set<String> writeLabels = readonly ? Set.of() : labelsFor(document, /* write */ true);
         String promptHint = document.getPromptHint() == null ? "" : document.getPromptHint();
         boolean primary = document.isPrimary();
         boolean deferred = document.isDefaultDeferred();
 
-        List<Tool> out = new ArrayList<>(3);
-        out.add(new ListFoldersTool(packName, document.getParameters(), labels, primary, deferred, promptHint));
-        out.add(new ListMessagesTool(packName, document.getParameters(), labels, primary, deferred, promptHint));
-        out.add(new GetMessageTool(packName, document.getParameters(), labels, primary, deferred, promptHint));
-        log.info("ImapMailboxToolFactory pack='{}' tenant='{}' project='{}' produced 3 tools",
-                packName, document.getTenantId(), document.getProjectId());
+        List<Tool> out = new ArrayList<>(readonly ? 3 : 7);
+        out.add(new ListFoldersTool(packName, params, readLabels, primary, deferred, promptHint));
+        out.add(new ListMessagesTool(packName, params, readLabels, primary, deferred, promptHint));
+        out.add(new GetMessageTool(packName, params, readLabels, primary, deferred, promptHint));
+        if (!readonly) {
+            out.add(new SetSeenTool(packName, params, writeLabels, primary, deferred, promptHint));
+            out.add(new SetFlaggedTool(packName, params, writeLabels, primary, deferred, promptHint));
+            out.add(new MoveMessageTool(packName, params, writeLabels, primary, deferred, promptHint));
+            out.add(new DeleteMessageTool(packName, params, writeLabels, primary, deferred, promptHint));
+        }
+        log.info("ImapMailboxToolFactory pack='{}' tenant='{}' project='{}' readonly={} produced {} tools",
+                packName, document.getTenantId(), document.getProjectId(), readonly, out.size());
         return out;
     }
 
-    private static Set<String> labelsFor(ServerToolDocument doc) {
+    /** {@code readonly} default true — write tools opt-in per pack. */
+    private static boolean readonlyFlag(@Nullable Map<String, Object> params) {
+        if (params == null) return true;
+        Object v = params.get("readonly");
+        if (v instanceof Boolean b) return b;
+        if (v instanceof String s) return !"false".equalsIgnoreCase(s.trim());
+        return true;
+    }
+
+    private static Set<String> labelsFor(ServerToolDocument doc, boolean write) {
         Set<String> out = new LinkedHashSet<>();
         if (doc.getLabels() != null) out.addAll(doc.getLabels());
         out.add("mail");
         out.add("imap");
         out.add(TYPE_ID + ":" + doc.getName());
-        out.add("read-only");
+        if (write) {
+            out.add("write");
+            out.add("side-effect");
+        } else {
+            out.add("read-only");
+        }
         return Set.copyOf(out);
     }
 
@@ -226,6 +261,149 @@ public class ImapMailboxToolFactory implements ToolFactory {
                 return resolveClient(ctx).getMessage(folder, ref);
             } catch (RuntimeException ex) {
                 throw new ToolException("get_message failed: " + ex.getMessage(), ex);
+            }
+        }
+    }
+
+    private class SetSeenTool extends BaseImapTool {
+        SetSeenTool(String pack, Map<String, Object> raw, Set<String> labels, boolean p, boolean d, String h) {
+            super(pack, "set_seen", raw, labels, p, d, h);
+        }
+
+        @Override public String description() {
+            return "Set or unset the \\Seen flag (read / unread). "
+                    + "Args: messageRef (folder index or Message-ID), seen (boolean, default true), "
+                    + "folder (optional, defaults to pack's defaultFolder).";
+        }
+
+        @Override public Map<String, Object> paramsSchema() {
+            return Map.of(
+                    "type", "object",
+                    "required", List.of("messageRef"),
+                    "properties", Map.of(
+                            "messageRef", Map.of("type", "string"),
+                            "seen", Map.of("type", "boolean"),
+                            "folder", Map.of("type", "string")));
+        }
+
+        @Override
+        public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
+            if (params == null) params = Map.of();
+            String ref = stringOrNull(params.get("messageRef"));
+            if (ref == null) throw new ToolException("missing required 'messageRef'");
+            boolean seen = boolOrDefault(params.get("seen"), true);
+            String folder = stringOrNull(params.get("folder"));
+            try {
+                return resolveClient(ctx).setSeen(folder, ref, seen);
+            } catch (RuntimeException ex) {
+                throw new ToolException("set_seen failed: " + ex.getMessage(), ex);
+            }
+        }
+    }
+
+    private class SetFlaggedTool extends BaseImapTool {
+        SetFlaggedTool(String pack, Map<String, Object> raw, Set<String> labels, boolean p, boolean d, String h) {
+            super(pack, "set_flagged", raw, labels, p, d, h);
+        }
+
+        @Override public String description() {
+            return "Set or unset the \\Flagged flag (star / important). "
+                    + "Args: messageRef, flagged (boolean, default true), folder (optional).";
+        }
+
+        @Override public Map<String, Object> paramsSchema() {
+            return Map.of(
+                    "type", "object",
+                    "required", List.of("messageRef"),
+                    "properties", Map.of(
+                            "messageRef", Map.of("type", "string"),
+                            "flagged", Map.of("type", "boolean"),
+                            "folder", Map.of("type", "string")));
+        }
+
+        @Override
+        public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
+            if (params == null) params = Map.of();
+            String ref = stringOrNull(params.get("messageRef"));
+            if (ref == null) throw new ToolException("missing required 'messageRef'");
+            boolean flagged = boolOrDefault(params.get("flagged"), true);
+            String folder = stringOrNull(params.get("folder"));
+            try {
+                return resolveClient(ctx).setFlagged(folder, ref, flagged);
+            } catch (RuntimeException ex) {
+                throw new ToolException("set_flagged failed: " + ex.getMessage(), ex);
+            }
+        }
+    }
+
+    private class MoveMessageTool extends BaseImapTool {
+        MoveMessageTool(String pack, Map<String, Object> raw, Set<String> labels, boolean p, boolean d, String h) {
+            super(pack, "move_message", raw, labels, p, d, h);
+        }
+
+        @Override public String description() {
+            return "Move a message to another folder (COPY + \\Deleted + EXPUNGE). "
+                    + "Args: messageRef, targetFolder (required, must exist), folder (source, optional).";
+        }
+
+        @Override public Map<String, Object> paramsSchema() {
+            return Map.of(
+                    "type", "object",
+                    "required", List.of("messageRef", "targetFolder"),
+                    "properties", Map.of(
+                            "messageRef", Map.of("type", "string"),
+                            "targetFolder", Map.of("type", "string"),
+                            "folder", Map.of("type", "string")));
+        }
+
+        @Override
+        public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
+            if (params == null) params = Map.of();
+            String ref = stringOrNull(params.get("messageRef"));
+            if (ref == null) throw new ToolException("missing required 'messageRef'");
+            String target = stringOrNull(params.get("targetFolder"));
+            if (target == null) throw new ToolException("missing required 'targetFolder'");
+            String folder = stringOrNull(params.get("folder"));
+            try {
+                return resolveClient(ctx).moveMessage(folder, ref, target);
+            } catch (RuntimeException ex) {
+                throw new ToolException("move_message failed: " + ex.getMessage(), ex);
+            }
+        }
+    }
+
+    private class DeleteMessageTool extends BaseImapTool {
+        DeleteMessageTool(String pack, Map<String, Object> raw, Set<String> labels, boolean p, boolean d, String h) {
+            super(pack, "delete_message", raw, labels, p, d, h);
+        }
+
+        @Override public String description() {
+            return "Delete a message. Default: soft-delete (move to pack's trashFolder). "
+                    + "Pass hard=true for permanent delete (\\Deleted + EXPUNGE on source — irreversible). "
+                    + "Args: messageRef, hard (boolean, default false), folder (optional).";
+        }
+
+        @Override public Map<String, Object> paramsSchema() {
+            return Map.of(
+                    "type", "object",
+                    "required", List.of("messageRef"),
+                    "properties", Map.of(
+                            "messageRef", Map.of("type", "string"),
+                            "hard", Map.of("type", "boolean"),
+                            "folder", Map.of("type", "string")));
+        }
+
+        @Override
+        public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
+            if (params == null) params = Map.of();
+            String ref = stringOrNull(params.get("messageRef"));
+            if (ref == null) throw new ToolException("missing required 'messageRef'");
+            boolean hard = boolOrDefault(params.get("hard"), false);
+            String folder = stringOrNull(params.get("folder"));
+            try {
+                return resolveClient(ctx).deleteMessage(folder, ref, hard);
+            } catch (RuntimeException ex) {
+                throw new ToolException("delete_message failed: " + ex.getMessage(), ex);
             }
         }
     }

@@ -1,9 +1,9 @@
 package de.mhus.vance.brain.tools.hooks;
 
 import de.mhus.vance.api.hooks.HookEventName;
-import de.mhus.vance.brain.hooks.HookDef;
-import de.mhus.vance.brain.hooks.HookParseException;
-import de.mhus.vance.brain.hooks.HookService;
+import de.mhus.vance.brain.ursahooks.UrsaHookDef;
+import de.mhus.vance.brain.ursahooks.UrsaHookParseException;
+import de.mhus.vance.brain.ursahooks.UrsaHookService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -49,7 +49,7 @@ public class HookSetTool implements Tool {
                 "required", List.of("event", "name", "yaml"));
     }
 
-    private final HookService hookService;
+    private final UrsaHookService ursaHookService;
     private final HookToolSupport support;
 
     @Override public String name() { return "hook_set"; }
@@ -77,13 +77,13 @@ public class HookSetTool implements Tool {
                 support.stringOrThrow(params, "name"));
         String yaml = support.stringOrThrow(params, "yaml");
 
-        boolean existed = hookService.findOne(ctx.tenantId(), ctx.projectId(), event, name)
+        boolean existed = ursaHookService.findOne(ctx.tenantId(), ctx.projectId(), event, name)
                 .isPresent();
-        HookDef saved;
+        UrsaHookDef saved;
         try {
-            saved = hookService.save(
+            saved = ursaHookService.save(
                     ctx.tenantId(), ctx.projectId(), event, name, yaml, ctx.userId());
-        } catch (HookParseException ex) {
+        } catch (UrsaHookParseException ex) {
             throw new ToolException("hook YAML rejected: " + ex.getMessage());
         }
         Map<String, Object> resp = new LinkedHashMap<>(support.shape(ctx.tenantId(), saved));

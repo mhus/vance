@@ -1,6 +1,6 @@
 package de.mhus.vance.brain.tools.hooks;
 
-import de.mhus.vance.brain.hooks.HookService;
+import de.mhus.vance.brain.ursahooks.UrsaHookService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -20,7 +20,7 @@ public class HookRefreshTool implements Tool {
             "properties", new LinkedHashMap<>(),
             "required", List.of());
 
-    private final HookService hookService;
+    private final UrsaHookService ursaHookService;
 
     @Override public String name() { return "hook_refresh"; }
 
@@ -38,7 +38,7 @@ public class HookRefreshTool implements Tool {
         if (ctx.projectId() == null) {
             throw new ToolException("hook_refresh requires a project scope");
         }
-        int count = hookService.refresh(ctx.tenantId(), ctx.projectId());
+        int count = ursaHookService.refresh(ctx.tenantId(), ctx.projectId());
         Map<String, Object> resp = new LinkedHashMap<>();
         resp.put("registered", count);
         return resp;

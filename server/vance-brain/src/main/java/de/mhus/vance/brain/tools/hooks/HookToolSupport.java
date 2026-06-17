@@ -1,8 +1,8 @@
 package de.mhus.vance.brain.tools.hooks;
 
 import de.mhus.vance.api.hooks.HookEventName;
-import de.mhus.vance.brain.hooks.HookDef;
-import de.mhus.vance.brain.hooks.HookSourceKeys;
+import de.mhus.vance.brain.ursahooks.UrsaHookDef;
+import de.mhus.vance.brain.ursahooks.UrsaHookSourceKeys;
 import de.mhus.vance.shared.eventlog.EventLogDocument;
 import de.mhus.vance.shared.eventlog.EventLogService;
 import de.mhus.vance.toolpack.ToolException;
@@ -51,7 +51,7 @@ public class HookToolSupport {
     }
 
     /** Tool-friendly projection of a hook definition. */
-    public Map<String, Object> shape(String tenantId, HookDef def) {
+    public Map<String, Object> shape(String tenantId, UrsaHookDef def) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("name", def.name());
         m.put("event", def.event().wireName());
@@ -85,6 +85,6 @@ public class HookToolSupport {
     }
 
     public String sourceKeyFor(HookEventName event, String hookName) {
-        return HookSourceKeys.sourceFor(event.wireName(), hookName);
+        return UrsaHookSourceKeys.sourceFor(event.wireName(), hookName);
     }
 }

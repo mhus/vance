@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.hooks;
+package de.mhus.vance.brain.ursahooks;
 
 import de.mhus.vance.api.action.TriggerAction;
 import de.mhus.vance.api.hooks.HookEventName;
@@ -9,7 +9,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Parsed hook YAML document. Immutable record produced by
- * {@link HookYamlParser}; consumed by the registry and the dispatcher.
+ * {@link UrsaHookYamlParser}; consumed by the registry and the dispatcher.
  *
  * <p>A hook fires when its {@link #event} is published in the brain.
  * The hook's {@link #action} is dispatched through the central
@@ -21,7 +21,7 @@ import org.jspecify.annotations.Nullable;
  * {@code TriggerAction.Script}, or {@code TriggerAction.Workflow} — the
  * disjunction is enforced at parse time.
  */
-public record HookDef(
+public record UrsaHookDef(
         String name,
         HookEventName event,
         HookSource source,
@@ -34,7 +34,7 @@ public record HookDef(
         TriggerAction action) {
 
     public String sourceKey() {
-        return HookSourceKeys.sourceFor(event.wireName(), name);
+        return UrsaHookSourceKeys.sourceFor(event.wireName(), name);
     }
 
     /**

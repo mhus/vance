@@ -28,8 +28,33 @@ public class ZaphodState {
     @Builder.Default
     private List<ZaphodHead> heads = new ArrayList<>();
 
-    /** Sequential cursor — index of the next pending head to drive. */
+    /** Sequential cursor — index of the next pending head to drive
+     *  within the current round. Reset to 0 at the start of every
+     *  round. */
     private int currentHeadIndex;
+
+    /** Zero-based round counter. {@code council} always stays at 0
+     *  (single-shot). {@code debate} increments after each completed
+     *  round + consensus-check that did not reach consensus, up to
+     *  {@link #maxRounds} - 1. */
+    private int currentRound;
+
+    /** Round budget. {@code council} is hard-set to 1 by the engine;
+     *  {@code debate} reads from recipe params (default 3, hard-cap
+     *  10 — see spec §13). */
+    @Builder.Default
+    private int maxRounds = 1;
+
+    /** Set to {@code true} once the consensus-check LightLlm call
+     *  returns {@code consensus: true}. Always {@code false} for
+     *  {@code council}. */
+    private boolean consensusReached;
+
+    /** One-sentence reason from the consensus-check LLM, audit/debug
+     *  + surfaced to the synthesizer so the final answer can
+     *  acknowledge whether consensus was reached or maxRounds
+     *  exhausted. {@code null} until at least one check ran. */
+    private @Nullable String consensusReason;
 
     /** Optional recipe-supplied prefix for the synthesizer prompt
      *  (becomes the leading paragraph of the synthesizer's user

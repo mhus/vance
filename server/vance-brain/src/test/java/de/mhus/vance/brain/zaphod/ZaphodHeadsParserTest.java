@@ -365,4 +365,165 @@ class ZaphodHeadsParserTest {
         assertThat(ZaphodHeadsParser.MAX_HEADS)
                 .isEqualTo(ZaphodEngine.MAX_HEADS);
     }
+
+    @Test
+    void maxRoundsConstants_stayInSyncWithEngine() {
+        assertThat(ZaphodHeadsParser.MAX_ROUNDS_HARD_CAP)
+                .isEqualTo(ZaphodEngine.MAX_ROUNDS_HARD_CAP);
+        assertThat(ZaphodHeadsParser.DEFAULT_MAX_ROUNDS)
+                .isEqualTo(ZaphodEngine.DEFAULT_MAX_ROUNDS);
+    }
+
+    // ──────────────────── Debate pattern ────────────────────
+
+    @Test
+    void parseRecipe_debatePattern_defaultMaxRounds() {
+        String yaml = """
+                name: pro-contra
+                engine: zaphod
+                params:
+                  pattern: DEBATE
+                  heads:
+                    - { name: pro, recipe: ford, persona: 'Argues FOR' }
+                    - { name: contra, recipe: ford, persona: 'Argues AGAINST' }
+                  synthesisPrompt: |
+                    Consolidate the final positions.
+                """;
+
+        ZaphodHeadsParser.Spec spec = ZaphodHeadsParser.parseRecipe(yaml, PATH);
+
+        assertThat(spec.pattern()).isEqualTo(ZaphodPattern.DEBATE);
+        assertThat(spec.maxRounds()).isEqualTo(ZaphodHeadsParser.DEFAULT_MAX_ROUNDS);
+        assertThat(spec.heads()).hasSize(2);
+    }
+
+    @Test
+    void parseRecipe_debatePattern_explicitMaxRounds() {
+        String yaml = """
+                name: pro-contra
+                engine: zaphod
+                params:
+                  pattern: DEBATE
+                  maxRounds: 5
+                  heads:
+                    - { name: pro, recipe: ford }
+                    - { name: contra, recipe: ford }
+                """;
+
+        ZaphodHeadsParser.Spec spec = ZaphodHeadsParser.parseRecipe(yaml, PATH);
+
+        assertThat(spec.maxRounds()).isEqualTo(5);
+    }
+
+    @Test
+    void parseRecipe_debateSingleHead_throws() {
+        String yaml = """
+                name: lonely
+                engine: zaphod
+                params:
+                  pattern: DEBATE
+                  heads:
+                    - { name: only, recipe: ford }
+                """;
+        assertThatThrownBy(() -> ZaphodHeadsParser.parseRecipe(yaml, PATH))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("debate requires at least 2");
+    }
+
+    @Test
+    void parseRecipe_councilSingleHead_accepted() {
+        // Council with a single head is unusual but not wrong —
+        // some workflows pre-bake the council to one head for
+        // smoke-tests. The min-2 rule only applies to debate.
+        String yaml = """
+                name: solo-council
+                engine: zaphod
+                params:
+                  pattern: COUNCIL
+                  heads:
+                    - { name: only, recipe: ford }
+                """;
+
+        ZaphodHeadsParser.Spec spec = ZaphodHeadsParser.parseRecipe(yaml, PATH);
+
+        assertThat(spec.heads()).hasSize(1);
+        assertThat(spec.maxRounds()).isEqualTo(1);
+    }
+
+    @Test
+    void parseRecipe_debateMaxRoundsZero_throws() {
+        String yaml = """
+                name: x
+                engine: zaphod
+                params:
+                  pattern: DEBATE
+                  maxRounds: 0
+                  heads:
+                    - { name: a, recipe: ford }
+                    - { name: b, recipe: ford }
+                """;
+        assertThatThrownBy(() -> ZaphodHeadsParser.parseRecipe(yaml, PATH))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("params.maxRounds=0")
+                .hasMessageContaining("at least 1");
+    }
+
+    @Test
+    void parseRecipe_debateMaxRoundsExceedsCap_throws() {
+        String yaml = """
+                name: x
+                engine: zaphod
+                params:
+                  pattern: DEBATE
+                  maxRounds: 99
+                  heads:
+                    - { name: a, recipe: ford }
+                    - { name: b, recipe: ford }
+                """;
+        assertThatThrownBy(() -> ZaphodHeadsParser.parseRecipe(yaml, PATH))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("params.maxRounds=99")
+                .hasMessageContaining("hard cap of "
+                        + ZaphodHeadsParser.MAX_ROUNDS_HARD_CAP);
+    }
+
+    @Test
+    void parseRecipe_debateMaxRoundsNotInteger_throws() {
+        String yaml = """
+                name: x
+                engine: zaphod
+                params:
+                  pattern: DEBATE
+                  maxRounds: 'lots'
+                  heads:
+                    - { name: a, recipe: ford }
+                    - { name: b, recipe: ford }
+                """;
+        assertThatThrownBy(() -> ZaphodHeadsParser.parseRecipe(yaml, PATH))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("not an integer");
+    }
+
+    @Test
+    void parseRecipe_councilMaxRoundsField_silentlyIgnored() {
+        // A council recipe with a maxRounds field (copy-pasted from
+        // a debate recipe) is accepted: the engine forces 1 for
+        // council. Better to be permissive here than to confuse
+        // someone with a "maxRounds not allowed for council" error.
+        String yaml = """
+                name: x
+                engine: zaphod
+                params:
+                  pattern: COUNCIL
+                  maxRounds: 7
+                  heads:
+                    - { name: a, recipe: ford }
+                    - { name: b, recipe: ford }
+                """;
+
+        ZaphodHeadsParser.Spec spec = ZaphodHeadsParser.parseRecipe(yaml, PATH);
+
+        assertThat(spec.pattern()).isEqualTo(ZaphodPattern.COUNCIL);
+        assertThat(spec.maxRounds()).isEqualTo(1);
+    }
 }

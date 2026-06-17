@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.hooks;
+package de.mhus.vance.brain.ursahooks;
 
 import de.mhus.vance.api.hooks.HookEventName;
 import de.mhus.vance.shared.inbox.InboxItemCreatedEvent;
@@ -26,7 +26,7 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class HookInboxLifecycleListener {
+public class UrsaHookInboxLifecycleListener {
 
     private final ApplicationEventPublisher publisher;
     private final SessionService sessionService;
@@ -59,7 +59,7 @@ public class HookInboxLifecycleListener {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("item", itemPayload);
 
-        publisher.publishEvent(HookFireableEvent.of(
+        publisher.publishEvent(UrsaHookFireableEvent.of(
                 item.getTenantId(), projectId,
                 HookEventName.INBOX_ITEM_CREATED, payload));
     }

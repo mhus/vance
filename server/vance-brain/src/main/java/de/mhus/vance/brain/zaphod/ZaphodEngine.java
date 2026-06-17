@@ -154,12 +154,32 @@ public class ZaphodEngine implements ThinkEngine {
      *  {@link de.mhus.vance.brain.thinkengine.EnginePromptResolver}. */
     private static final String SYNTHESIS_PROMPT_PATH = "_vance/prompts/zaphod-synthesis.md";
 
-    /** Soft-cap on heads per council. More than this is almost
-     *  certainly a config error; we warn + cut off. */
-    /** Soft cap on the number of heads in a single council. Public
-     *  so the Slartibartfast-side {@code ZaphodHeadsParser} can stay
-     *  in sync with the engine's own start-up validation. */
+    /** Soft cap on the number of heads in a single Zaphod process.
+     *  Public so the Slartibartfast-side {@code ZaphodHeadsParser}
+     *  can stay in sync with the engine's own start-up validation. */
     public static final int MAX_HEADS = 10;
+
+    /** Default for {@code params.maxRounds} when a {@code debate}
+     *  recipe omits it. */
+    public static final int DEFAULT_MAX_ROUNDS = 3;
+
+    /** Hard cap on {@code params.maxRounds} for {@code debate}. Higher
+     *  values are rejected at start (mirror constraint in
+     *  {@link ZaphodHeadsParser}). */
+    public static final int MAX_ROUNDS_HARD_CAP = 10;
+
+    /** Minimum head count for {@code debate}. A single-head debate
+     *  has nothing to react against. */
+    public static final int MIN_DEBATE_HEADS = 2;
+
+    /** Internal LightLlm recipe used by the between-round consensus
+     *  check. Marked {@code internal: true} so the standard recipe
+     *  selector skips it — only the engine code path consumes it. */
+    public static final String CONSENSUS_RECIPE = "zaphod-consensus";
+
+    /** {@code engineParams[MAX_ROUNDS_KEY]} — optional integer for
+     *  {@code debate}. Ignored for {@code council}. */
+    public static final String MAX_ROUNDS_KEY = "maxRounds";
 
     private final ThinkProcessService thinkProcessService;
     private final ChatMessageService chatMessageService;
@@ -178,6 +198,10 @@ public class ZaphodEngine implements ThinkEngine {
      *  guaranteed to land. */
     private final de.mhus.vance.shared.document.DocumentService documentService;
     private final ObjectProvider<ThinkEngineService> thinkEngineServiceProvider;
+    /** Used by the between-round consensus check for {@code debate}
+     *  — single-shot LLM call against the {@link #CONSENSUS_RECIPE}
+     *  config profile, no sub-process spawned. */
+    private final de.mhus.vance.brain.ai.light.LightLlmService lightLlmService;
     /** Resolves {@code chat.language} + {@code content.language} from
      *  the cascade and renders them as a "## Languages" block to
      *  append to the synthesizer's system prompt — Arthur/Eddie pick
@@ -273,8 +297,6 @@ public class ZaphodEngine implements ThinkEngine {
         // through RUNNING again, or each one re-fires a DONE-transition
         // and the parent (Arthur) gets duplicate notifications.
         if (state.getStatus() == ZaphodStatus.DONE) {
-            // Sync ThinkProcessStatus.CLOSED if not already there. The
-            // listener filters CLOSED→CLOSED so this is silent on no-ops.
             thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
             return;
         }
@@ -291,10 +313,10 @@ public class ZaphodEngine implements ThinkEngine {
                 // discard
             }
 
-            // 1. Drive the next head if any are pending.
+            // 1. Drive the next head in the current round (if any).
             if (state.getCurrentHeadIndex() < state.getHeads().size()) {
                 ZaphodHead head = state.getHeads().get(state.getCurrentHeadIndex());
-                runHeadSync(process, ctx, state, head);
+                driveHeadForRound(process, ctx, state, head);
                 state.setCurrentHeadIndex(state.getCurrentHeadIndex() + 1);
                 state.setStatus(ZaphodStatus.RUNNING);
                 persistState(process, state);
@@ -303,19 +325,60 @@ public class ZaphodEngine implements ThinkEngine {
                 return;
             }
 
-            // 2. All heads processed — run synthesis.
-            state.setStatus(ZaphodStatus.SYNTHESIZING);
-            persistState(process, state);
-            runSynthesis(process, ctx, state);
-            persistState(process, state);
-            if (state.getStatus() == ZaphodStatus.DONE) {
-                thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
-            } else {
-                thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
+            // 2. Round complete. Decide: synthesise or consensus-check?
+            //    Single-shot council OR last round of debate → straight to synthesis.
+            boolean lastRound =
+                    state.getPattern() == ZaphodPattern.COUNCIL
+                            || state.getCurrentRound() + 1 >= state.getMaxRounds();
+            if (lastRound) {
+                stopAllHeads(state, process);
+                state.setStatus(ZaphodStatus.SYNTHESIZING);
+                persistState(process, state);
+                runSynthesis(process, ctx, state);
+                persistState(process, state);
+                if (state.getStatus() == ZaphodStatus.DONE) {
+                    thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
+                } else {
+                    thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
+                }
+                return;
             }
+
+            // 3. Debate, rounds remaining — run consensus check.
+            state.setStatus(ZaphodStatus.CHECKING_CONSENSUS);
+            persistState(process, state);
+            ConsensusResult cr = runConsensusCheck(process, state);
+            state.setConsensusReached(cr.consensus());
+            state.setConsensusReason(cr.reason());
+            persistState(process, state);
+
+            if (cr.consensus()) {
+                stopAllHeads(state, process);
+                state.setStatus(ZaphodStatus.SYNTHESIZING);
+                persistState(process, state);
+                runSynthesis(process, ctx, state);
+                persistState(process, state);
+                if (state.getStatus() == ZaphodStatus.DONE) {
+                    thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
+                } else {
+                    thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
+                }
+                return;
+            }
+
+            // 4. No consensus, budget left — start the next round.
+            state.setCurrentRound(state.getCurrentRound() + 1);
+            state.setCurrentHeadIndex(0);
+            state.setStatus(ZaphodStatus.RUNNING);
+            persistState(process, state);
+            log.info("Zaphod id='{}' debate round {} starts — no consensus: {}",
+                    process.getId(), state.getCurrentRound() + 1, cr.reason());
+            eventEmitter.scheduleTurn(process.getId());
+            thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
         } catch (RuntimeException e) {
             log.warn("Zaphod runTurn failed id='{}': {}",
                     process.getId(), e.toString(), e);
+            stopAllHeads(state, process);
             thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
             throw e;
         }
@@ -323,102 +386,249 @@ public class ZaphodEngine implements ThinkEngine {
 
     // ──────────────────── Head spawn + sync drive ────────────────────
 
-    private void runHeadSync(
+    /**
+     * Drive a head through one round. For round 0 the head is spawned
+     * (recipe → child process) and started; the steer message carries
+     * the original goal + persona. For round 1+ ({@code debate} only)
+     * the SAME child process is reused (Worker's chat history carries
+     * forward what the head itself said), and the steer message is an
+     * "[Round N of M]"-prefixed block with the last-round replies of
+     * the OTHER live heads — see spec §5.
+     *
+     * <p>For {@code council} the child is stopped at the end of the
+     * (single) round. For {@code debate} the child is kept alive
+     * across rounds and stopped by {@link #stopAllHeads} when the
+     * Zaphod process finishes (success, failure, or external stop).
+     */
+    private void driveHeadForRound(
             ThinkProcessDocument process,
             ThinkEngineContext ctx,
             ZaphodState state,
             ZaphodHead head) {
-        head.setStatus(HeadStatus.RUNNING);
-        ThinkProcessDocument child;
-        try {
-            AppliedRecipe applied = recipeResolver.apply(
-                    process.getTenantId(), ctx.projectId(), head.getRecipe(),
-                    process.getConnectionProfile(), null);
-            ThinkEngine targetEngine = thinkEngineServiceProvider.getObject()
-                    .resolve(applied.engine())
-                    .orElseThrow(() -> new IllegalStateException(
-                            "Recipe '" + applied.name() + "' references unknown engine '"
-                                    + applied.engine() + "'"));
-            String childName = "zaphod-" + process.getId() + "-" + head.getName();
-            child = thinkProcessService.create(
-                    process.getTenantId(),
-                    process.getProjectId(),
-                    process.getSessionId(),
-                    childName,
-                    targetEngine.name(),
-                    targetEngine.version(),
-                    "Zaphod head: " + head.getName(),
-                    process.getGoal(),
-                    process.getId(),
-                    applied.params(),
-                    applied.name(),
-                    applied.promptOverride(),
-                    applied.promptOverrideAppend(),
-                    applied.promptMode(),
-                    applied.dataRelayCorrection(),
-                    applied.effectiveAllowedTools(),
-                    applied.connectionProfile(),
-                    applied.defaultActiveSkills(),
-                    applied.allowedSkills() == null
-                            ? null : java.util.Set.copyOf(applied.allowedSkills()));
-            head.setSpawnedProcessId(child.getId());
-            thinkEngineServiceProvider.getObject().start(child);
-            log.info("Zaphod id='{}' head '{}' spawned child='{}' recipe='{}'",
-                    process.getId(), head.getName(), child.getId(), applied.name());
-        } catch (RecipeResolver.UnknownRecipeException ure) {
-            head.setStatus(HeadStatus.FAILED);
-            head.setFailureReason("Unknown recipe: " + head.getRecipe());
-            log.warn("Zaphod id='{}' head '{}' unknown recipe '{}'",
-                    process.getId(), head.getName(), head.getRecipe());
-            return;
-        } catch (RuntimeException e) {
-            head.setStatus(HeadStatus.FAILED);
-            head.setFailureReason("Spawn failed: " + e.getMessage());
-            log.warn("Zaphod id='{}' head '{}' spawn failed: {}",
-                    process.getId(), head.getName(), e.toString());
+        // Failed heads are skipped silently — they remain failed for
+        // the rest of the run.
+        if (head.getStatus() == HeadStatus.FAILED) {
             return;
         }
-        try {
-            String steerContent = process.getGoal() == null ? "" : process.getGoal();
-            if (head.getPersona() != null && !head.getPersona().isBlank()) {
-                steerContent = steerContent
-                        + "\n\n[Deine Rolle / Persona]\n"
-                        + head.getPersona();
+
+        head.setStatus(HeadStatus.RUNNING);
+        ThinkProcessDocument child = null;
+        boolean justSpawned = false;
+
+        if (head.getSpawnedProcessId() == null) {
+            // First-time spawn — round 0 (or restart with an empty
+            // history if a head somehow lost its child id mid-run).
+            try {
+                AppliedRecipe applied = recipeResolver.apply(
+                        process.getTenantId(), ctx.projectId(), head.getRecipe(),
+                        process.getConnectionProfile(), null);
+                ThinkEngine targetEngine = thinkEngineServiceProvider.getObject()
+                        .resolve(applied.engine())
+                        .orElseThrow(() -> new IllegalStateException(
+                                "Recipe '" + applied.name() + "' references unknown engine '"
+                                        + applied.engine() + "'"));
+                String childName = "zaphod-" + process.getId() + "-" + head.getName();
+                child = thinkProcessService.create(
+                        process.getTenantId(),
+                        process.getProjectId(),
+                        process.getSessionId(),
+                        childName,
+                        targetEngine.name(),
+                        targetEngine.version(),
+                        "Zaphod head: " + head.getName(),
+                        process.getGoal(),
+                        process.getId(),
+                        applied.params(),
+                        applied.name(),
+                        applied.promptOverride(),
+                        applied.promptOverrideAppend(),
+                        applied.promptMode(),
+                        applied.dataRelayCorrection(),
+                        applied.effectiveAllowedTools(),
+                        applied.connectionProfile(),
+                        applied.defaultActiveSkills(),
+                        applied.allowedSkills() == null
+                                ? null : java.util.Set.copyOf(applied.allowedSkills()));
+                head.setSpawnedProcessId(child.getId());
+                thinkEngineServiceProvider.getObject().start(child);
+                justSpawned = true;
+                log.info("Zaphod id='{}' head '{}' spawned child='{}' recipe='{}'",
+                        process.getId(), head.getName(), child.getId(), applied.name());
+            } catch (RecipeResolver.UnknownRecipeException ure) {
+                head.setStatus(HeadStatus.FAILED);
+                head.setFailureReason("Unknown recipe: " + head.getRecipe());
+                log.warn("Zaphod id='{}' head '{}' unknown recipe '{}'",
+                        process.getId(), head.getName(), head.getRecipe());
+                return;
+            } catch (RuntimeException e) {
+                head.setStatus(HeadStatus.FAILED);
+                head.setFailureReason("Spawn failed: " + e.getMessage());
+                log.warn("Zaphod id='{}' head '{}' spawn failed: {}",
+                        process.getId(), head.getName(), e.toString());
+                return;
             }
+        } else {
+            child = thinkProcessService.findById(head.getSpawnedProcessId())
+                    .orElse(null);
+            if (child == null) {
+                head.setStatus(HeadStatus.FAILED);
+                head.setFailureReason(
+                        "Sub-process " + head.getSpawnedProcessId() + " not found");
+                log.warn("Zaphod id='{}' head '{}' lost child='{}'",
+                        process.getId(), head.getName(), head.getSpawnedProcessId());
+                return;
+            }
+        }
+
+        try {
+            String steerContent = buildSteerContent(process, state, head, justSpawned);
             driveHeadTurn(child, process.getId(), steerContent);
             String reply = readLastAssistantText(
                     process.getTenantId(), process.getSessionId(), child.getId());
-            head.setReply(reply);
-            head.setStatus(reply != null && !reply.isBlank()
-                    ? HeadStatus.DONE : HeadStatus.FAILED);
-            if (head.getStatus() == HeadStatus.FAILED) {
-                head.setFailureReason("worker produced no assistant reply");
+
+            if (reply == null || reply.isBlank()) {
+                head.setStatus(HeadStatus.FAILED);
+                head.setFailureReason(
+                        "worker produced no assistant reply in round "
+                                + state.getCurrentRound());
+                log.warn("Zaphod id='{}' head '{}' round {} empty reply",
+                        process.getId(), head.getName(), state.getCurrentRound());
+            } else {
+                head.getReplies().add(reply);
+                // status DONE only after the final round; during
+                // earlier rounds keep RUNNING so the lifecycle reads
+                // naturally (the worker is still alive).
+                boolean finalRound =
+                        state.getPattern() == ZaphodPattern.COUNCIL
+                                || state.getCurrentRound() + 1 >= state.getMaxRounds();
+                head.setStatus(finalRound ? HeadStatus.DONE : HeadStatus.RUNNING);
+                writeRoundDraft(process, state.getPattern(), head,
+                        state.getCurrentRound(), reply);
+                log.info("Zaphod id='{}' head '{}' round {} done — chars={}",
+                        process.getId(), head.getName(),
+                        state.getCurrentRound(), reply.length());
             }
-            // Persist the head reply as a draft document — same
-            // pattern as Vogon's _vogon-drafts/. Lets Arthur (or the
-            // user via the editor) re-read what each individual head
-            // said when the synthesized chat answer isn't enough.
-            // Overwrites on re-run of the same process.
-            if (reply != null && !reply.isBlank()) {
-                String draftPath = DRAFTS_PREFIX + process.getId()
-                        + "/" + head.getName() + ".md";
+        } catch (RuntimeException e) {
+            head.setStatus(HeadStatus.FAILED);
+            head.setFailureReason("Drive failed in round "
+                    + state.getCurrentRound() + ": " + e.getMessage());
+            log.warn("Zaphod id='{}' head '{}' drive failed in round {}: {}",
+                    process.getId(), head.getName(),
+                    state.getCurrentRound(), e.toString());
+        } finally {
+            // Council heads are one-shot — stop the child as soon as
+            // the (single) round is done. Debate heads stay alive
+            // across rounds and are stopped by stopAllHeads() at the
+            // end of the run (or on failure).
+            boolean stopNow =
+                    state.getPattern() == ZaphodPattern.COUNCIL
+                            || head.getStatus() == HeadStatus.FAILED;
+            if (stopNow && child != null) {
                 try {
-                    writeDraftDocument(process, draftPath, reply,
-                            "Council head '" + head.getName() + "' reply");
+                    thinkEngineServiceProvider.getObject().stop(child);
                 } catch (RuntimeException e) {
-                    log.warn("Zaphod id='{}' head '{}' draft persist failed: {}",
+                    log.warn("Zaphod id='{}' head '{}' stop failed: {}",
                             process.getId(), head.getName(), e.toString());
                 }
             }
-            log.info("Zaphod id='{}' head '{}' {} — reply chars={}",
-                    process.getId(), head.getName(), head.getStatus(),
-                    reply == null ? 0 : reply.length());
+        }
+    }
+
+    /**
+     * Build the steer message for a head in the current round.
+     * <ul>
+     *   <li>Round 0 (or just-spawned head): the original goal plus an
+     *       optional persona block.</li>
+     *   <li>Round 1+ ({@code debate} only): an "[Round N of M]"
+     *       prefix followed by the previous-round replies of the
+     *       OTHER live heads — the worker's own previous reply is
+     *       already in its chat history, so we don't echo it back.</li>
+     * </ul>
+     */
+    private String buildSteerContent(
+            ThinkProcessDocument process,
+            ZaphodState state,
+            ZaphodHead head,
+            boolean justSpawned) {
+        int round = state.getCurrentRound();
+        if (round == 0 || justSpawned) {
+            String content = process.getGoal() == null ? "" : process.getGoal();
+            if (head.getPersona() != null && !head.getPersona().isBlank()) {
+                content = content
+                        + "\n\n[Deine Rolle / Persona]\n"
+                        + head.getPersona();
+            }
+            return content;
+        }
+        // Debate, round >= 1 — show the OTHER heads' last-round replies.
+        StringBuilder sb = new StringBuilder();
+        sb.append("[Round ").append(round + 1).append(" von ")
+                .append(state.getMaxRounds()).append("]\n\n")
+                .append("Vorige Sicht der anderen Köpfe:\n");
+        int prevRound = round - 1;
+        for (ZaphodHead other : state.getHeads()) {
+            if (other.getName().equals(head.getName())) continue;
+            sb.append("\n--- ").append(other.getName()).append(" ---\n");
+            String prev = prevRound < other.getReplies().size()
+                    ? other.getReplies().get(prevRound) : null;
+            if (prev == null || prev.isBlank()) {
+                sb.append("[in vorheriger Round failed]");
+            } else {
+                sb.append(prev);
+            }
+        }
+        sb.append("\n\nNimm dazu Stellung — bestätige, präzisiere, "
+                + "widersprich. Falls deine vorherige Sicht durch ein "
+                + "anderes Argument berechtigt korrigiert wurde, sage "
+                + "das explizit.");
+        return sb.toString();
+    }
+
+    /**
+     * Persists a head's round-reply as a draft document. Path layout:
+     * {@code _zaphod-drafts/<processId>/<head>.md} for {@code council}
+     * (single round, overwrite-on-rerun) and
+     * {@code _zaphod-drafts/<processId>/<head>-round-<N>.md} for
+     * {@code debate} (one file per round so the user can audit how
+     * positions shifted).
+     */
+    private void writeRoundDraft(
+            ThinkProcessDocument process, ZaphodPattern pattern,
+            ZaphodHead head, int round, String reply) {
+        String draftPath;
+        String title;
+        if (pattern == ZaphodPattern.DEBATE) {
+            draftPath = DRAFTS_PREFIX + process.getId() + "/"
+                    + head.getName() + "-round-" + (round + 1) + ".md";
+            title = "Debate head '" + head.getName() + "' — round "
+                    + (round + 1);
+        } else {
+            draftPath = DRAFTS_PREFIX + process.getId() + "/"
+                    + head.getName() + ".md";
+            title = "Council head '" + head.getName() + "' reply";
+        }
+        try {
+            writeDraftDocument(process, draftPath, reply, title);
         } catch (RuntimeException e) {
-            head.setStatus(HeadStatus.FAILED);
-            head.setFailureReason("Drive failed: " + e.getMessage());
-            log.warn("Zaphod id='{}' head '{}' drive failed: {}",
+            log.warn("Zaphod id='{}' head '{}' draft persist failed: {}",
                     process.getId(), head.getName(), e.toString());
-        } finally {
+        }
+    }
+
+    /**
+     * Stops every still-alive head sub-process. Called when the
+     * Zaphod process leaves the run-state — synthesis just finished,
+     * the run failed, or runTurn caught an exception. Idempotent:
+     * each call surveys {@code spawnedProcessId} once and ignores
+     * children that are already closed.
+     */
+    private void stopAllHeads(ZaphodState state, ThinkProcessDocument process) {
+        for (ZaphodHead head : state.getHeads()) {
+            String childId = head.getSpawnedProcessId();
+            if (childId == null) continue;
+            ThinkProcessDocument child = thinkProcessService.findById(childId)
+                    .orElse(null);
+            if (child == null) continue;
             try {
                 thinkEngineServiceProvider.getObject().stop(child);
             } catch (RuntimeException e) {
@@ -450,6 +660,73 @@ public class ZaphodEngine implements ThinkEngine {
         }
     }
 
+    // ──────────────────── Consensus check (debate only) ────────────────────
+
+    /** Result of a between-round consensus check. */
+    private record ConsensusResult(boolean consensus, String reason) {}
+
+    /**
+     * Runs the {@link #CONSENSUS_RECIPE} LightLlm call to decide
+     * whether the heads have converged after the current round.
+     * Returns {@code consensus=false} with a "check failed" reason on
+     * any error — the engine prefers to let the round-loop continue
+     * (potentially exhausting {@code maxRounds}) over hard-failing
+     * the entire process because a small LLM-call glitched.
+     */
+    private ConsensusResult runConsensusCheck(
+            ThinkProcessDocument process, ZaphodState state) {
+        List<Map<String, Object>> heads = new ArrayList<>();
+        int round = state.getCurrentRound();
+        for (ZaphodHead h : state.getHeads()) {
+            if (h.getStatus() == HeadStatus.FAILED) continue;
+            String reply = round < h.getReplies().size()
+                    ? h.getReplies().get(round) : null;
+            if (reply == null || reply.isBlank()) continue;
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("name", h.getName());
+            entry.put("reply", reply);
+            heads.add(entry);
+        }
+        if (heads.size() < 2) {
+            // Nothing to compare — treat as "consensus" so we proceed
+            // to synthesis with what we have.
+            return new ConsensusResult(true,
+                    "Fewer than 2 heads produced a reply — nothing to debate further");
+        }
+
+        Map<String, Object> vars = new LinkedHashMap<>();
+        vars.put("goal", process.getGoal() == null ? "" : process.getGoal());
+        vars.put("roundIndex", round);
+        vars.put("maxRounds", state.getMaxRounds());
+        vars.put("heads", heads);
+
+        de.mhus.vance.brain.ai.light.LightLlmRequest req =
+                de.mhus.vance.brain.ai.light.LightLlmRequest.builder()
+                        .recipeName(CONSENSUS_RECIPE)
+                        .userPrompt("")
+                        .pebbleVars(vars)
+                        .tenantId(process.getTenantId())
+                        .projectId(process.getProjectId())
+                        .processId(process.getId())
+                        .build();
+        try {
+            Map<String, Object> json = lightLlmService.callForJson(req);
+            Object consensusRaw = json.get("consensus");
+            boolean consensus = consensusRaw instanceof Boolean b && b;
+            Object reasonRaw = json.get("reason");
+            String reason = reasonRaw instanceof String s && !s.isBlank()
+                    ? s.trim() : "(no reason provided)";
+            log.info("Zaphod id='{}' consensus-check round {} → {} ({})",
+                    process.getId(), round + 1, consensus, reason);
+            return new ConsensusResult(consensus, reason);
+        } catch (RuntimeException e) {
+            log.warn("Zaphod id='{}' consensus-check failed: {}",
+                    process.getId(), e.toString());
+            return new ConsensusResult(false,
+                    "check failed: " + e.getMessage());
+        }
+    }
+
     private @Nullable String readLastAssistantText(
             String tenantId, String sessionId, String workerProcessId) {
         List<ChatMessageDocument> history = chatMessageService.history(
@@ -470,16 +747,16 @@ public class ZaphodEngine implements ThinkEngine {
             ThinkProcessDocument process,
             ThinkEngineContext ctx,
             ZaphodState state) {
-        // Bail if nobody produced a reply — there's nothing to
-        // synthesize.
-        boolean anyDone = false;
+        // Bail if nobody produced a final-round reply — there's nothing
+        // to synthesize.
+        boolean anyReply = false;
         for (ZaphodHead h : state.getHeads()) {
-            if (h.getStatus() == HeadStatus.DONE && h.getReply() != null) {
-                anyDone = true;
+            if (h.getLastReply() != null && !h.getLastReply().isBlank()) {
+                anyReply = true;
                 break;
             }
         }
-        if (!anyDone) {
+        if (!anyReply) {
             state.setStatus(ZaphodStatus.FAILED);
             state.setFailureReason("All heads failed — nothing to synthesize.");
             log.warn("Zaphod id='{}' synthesis aborted — all {} heads failed",
@@ -496,12 +773,24 @@ public class ZaphodEngine implements ThinkEngine {
             if (state.getSynthesizerPrompt() != null && !state.getSynthesizerPrompt().isBlank()) {
                 body.append(state.getSynthesizerPrompt()).append("\n\n");
             }
-            body.append("Frage: ").append(process.getGoal() == null ? "" : process.getGoal())
-                    .append("\n\nKopf-Antworten:\n");
+            body.append("Frage: ").append(process.getGoal() == null ? "" : process.getGoal());
+            if (state.getPattern() == ZaphodPattern.DEBATE) {
+                body.append("\n\n[Debate über ")
+                        .append(state.getCurrentRound() + 1)
+                        .append(" Round(s) von ").append(state.getMaxRounds())
+                        .append(", Konsens=")
+                        .append(state.isConsensusReached()
+                                ? "ja — " : "nein (maxRounds erreicht) — ")
+                        .append(state.getConsensusReason() == null
+                                ? "—" : state.getConsensusReason())
+                        .append("]");
+            }
+            body.append("\n\nFinale Kopf-Antworten:\n");
             for (ZaphodHead h : state.getHeads()) {
                 body.append("\n--- ").append(h.getName()).append(" ---\n");
-                if (h.getStatus() == HeadStatus.DONE && h.getReply() != null) {
-                    body.append(h.getReply());
+                String reply = h.getLastReply();
+                if (reply != null && !reply.isBlank()) {
+                    body.append(reply);
                 } else {
                     body.append("[head failed: ")
                             .append(h.getFailureReason() == null ? "?" : h.getFailureReason())
@@ -518,6 +807,16 @@ public class ZaphodEngine implements ThinkEngine {
                             .forProcess(process, null)
                             .tier(de.mhus.vance.brain.ai.ModelSize.LARGE)
                             .engine(NAME);
+            // Pebble vars consumed by zaphod-synthesis.md — let the
+            // template differentiate between council single-shot and
+            // debate-with-consensus contexts.
+            synthCtxBuilder.var("pattern",
+                    state.getPattern().name().toLowerCase(java.util.Locale.ROOT));
+            synthCtxBuilder.var("rounds", state.getCurrentRound() + 1);
+            synthCtxBuilder.var("maxRounds", state.getMaxRounds());
+            synthCtxBuilder.var("consensusReached", state.isConsensusReached());
+            synthCtxBuilder.var("consensusReason",
+                    state.getConsensusReason() == null ? "" : state.getConsensusReason());
             composer.withAddons(NAME, synthCtxBuilder);
             String renderedSystem = composer.render(synthTpl, synthCtxBuilder.build());
             String langBlock = languageContextResolver.formatBlock(process);
@@ -760,14 +1059,27 @@ public class ZaphodEngine implements ThinkEngine {
         payload.put("eventType", eventType.name());
         payload.put("pattern", state.getPattern() == null
                 ? null : state.getPattern().name());
+        payload.put("currentRound", state.getCurrentRound() + 1);
+        payload.put("maxRounds", state.getMaxRounds());
+        payload.put("consensusReached", state.isConsensusReached());
+        payload.put("consensusReason", state.getConsensusReason());
         List<Map<String, Object>> headEntries = new ArrayList<>();
-        int doneCount = 0;
+        int repliedThisRound = 0;
         for (ZaphodHead h : state.getHeads()) {
             Map<String, Object> entry = new LinkedHashMap<>();
             entry.put("name", h.getName());
             entry.put("status", h.getStatus() == null ? null : h.getStatus().name());
+            entry.put("replyCount",
+                    h.getReplies() == null ? 0 : h.getReplies().size());
             headEntries.add(entry);
-            if (h.getStatus() == HeadStatus.DONE) doneCount++;
+            // "replied for this round" — used for the in-progress
+            // message below. During debate intermediate rounds a head's
+            // status is RUNNING (worker stays alive); the reliable
+            // indicator is whether replies.size() > currentRound.
+            if (h.getReplies() != null
+                    && h.getReplies().size() > state.getCurrentRound()) {
+                repliedThisRound++;
+            }
         }
         payload.put("heads", headEntries);
         payload.put("synthesisChars", state.getSynthesis() == null
@@ -775,6 +1087,9 @@ public class ZaphodEngine implements ThinkEngine {
         payload.put("synthesisTitle", state.getSynthesisTitle());
         payload.put("synthesisSummary", state.getSynthesisSummary());
         payload.put("synthesisDocumentPath", state.getSynthesisDocumentPath());
+
+        String patternLabel = state.getPattern() == null
+                ? "process" : state.getPattern().name().toLowerCase(java.util.Locale.ROOT);
 
         if (state.getStatus() == ZaphodStatus.DONE && state.getSynthesis() != null) {
             // Parent-facing chat reply: the FULL consolidated synthesis
@@ -796,15 +1111,22 @@ public class ZaphodEngine implements ThinkEngine {
         }
         if (state.getStatus() == ZaphodStatus.FAILED) {
             return new ParentReport(
-                    "Zaphod council failed: "
+                    "Zaphod " + patternLabel + " failed: "
                             + (state.getFailureReason() == null
                                     ? "unknown reason" : state.getFailureReason()),
                     payload);
         }
-        return new ParentReport(
-                "Zaphod council in progress (" + doneCount + "/"
-                        + state.getHeads().size() + " heads done)",
-                payload);
+        StringBuilder progress = new StringBuilder();
+        progress.append("Zaphod ").append(patternLabel).append(" in progress");
+        if (state.getPattern() == ZaphodPattern.DEBATE) {
+            progress.append(" (round ").append(state.getCurrentRound() + 1)
+                    .append("/").append(state.getMaxRounds()).append(", ");
+        } else {
+            progress.append(" (");
+        }
+        progress.append(repliedThisRound).append("/").append(state.getHeads().size())
+                .append(" heads done in this round)");
+        return new ParentReport(progress.toString(), payload);
     }
 
     // ──────────────────── State construction ────────────────────
@@ -827,17 +1149,23 @@ public class ZaphodEngine implements ThinkEngine {
         } catch (IllegalArgumentException e) {
             throw new IllegalStateException(
                     "Zaphod: unknown pattern '" + patternRaw
-                            + "' (V1 supports COUNCIL only)");
+                            + "' (supported: COUNCIL, DEBATE)");
         }
-        if (pattern != ZaphodPattern.COUNCIL) {
+        if (pattern != ZaphodPattern.COUNCIL && pattern != ZaphodPattern.DEBATE) {
             throw new IllegalStateException(
-                    "Zaphod V1 supports only COUNCIL pattern; got " + pattern);
+                    "Zaphod currently supports only COUNCIL and DEBATE; got "
+                            + pattern);
         }
         // Heads.
         Object headsRaw = p.get(HEADS_KEY);
         if (!(headsRaw instanceof List<?> headList) || headList.isEmpty()) {
             throw new IllegalStateException(
                     "Zaphod.start requires engineParams.heads (non-empty list)");
+        }
+        if (pattern == ZaphodPattern.DEBATE && headList.size() < MIN_DEBATE_HEADS) {
+            throw new IllegalStateException(
+                    "Zaphod debate requires at least " + MIN_DEBATE_HEADS
+                            + " heads; got " + headList.size());
         }
         if (headList.size() > MAX_HEADS) {
             log.warn("Zaphod id='{}' heads={} exceeds soft-cap {} — truncating",
@@ -866,8 +1194,12 @@ public class ZaphodEngine implements ThinkEngine {
                     .recipe(recipe)
                     .persona(persona)
                     .status(HeadStatus.PENDING)
+                    .replies(new ArrayList<>())
                     .build());
         }
+        // maxRounds — only meaningful for debate. Council forces 1.
+        int maxRounds = parseMaxRounds(p, pattern, process.getId());
+
         // Synthesizer prompt (optional).
         String synthesizerPrompt = optString(p.get(SYNTHESIS_PROMPT_KEY));
 
@@ -875,9 +1207,46 @@ public class ZaphodEngine implements ThinkEngine {
                 .pattern(pattern)
                 .heads(heads)
                 .currentHeadIndex(0)
+                .currentRound(0)
+                .maxRounds(maxRounds)
+                .consensusReached(false)
                 .synthesizerPrompt(synthesizerPrompt)
                 .status(ZaphodStatus.SPAWNING)
                 .build();
+    }
+
+    private int parseMaxRounds(
+            Map<String, Object> p, ZaphodPattern pattern, String processId) {
+        if (pattern == ZaphodPattern.COUNCIL) {
+            return 1;
+        }
+        Object raw = p.get(MAX_ROUNDS_KEY);
+        if (raw == null) {
+            return DEFAULT_MAX_ROUNDS;
+        }
+        int value;
+        if (raw instanceof Number n) {
+            value = n.intValue();
+        } else {
+            try {
+                value = Integer.parseInt(String.valueOf(raw).trim());
+            } catch (NumberFormatException e) {
+                throw new IllegalStateException(
+                        "Zaphod id='" + processId + "' params.maxRounds='"
+                                + raw + "' is not an integer");
+            }
+        }
+        if (value < 1) {
+            throw new IllegalStateException(
+                    "Zaphod id='" + processId + "' params.maxRounds="
+                            + value + " must be >= 1");
+        }
+        if (value > MAX_ROUNDS_HARD_CAP) {
+            log.warn("Zaphod id='{}' maxRounds={} exceeds hard cap {} — clamping",
+                    processId, value, MAX_ROUNDS_HARD_CAP);
+            return MAX_ROUNDS_HARD_CAP;
+        }
+        return value;
     }
 
     // ──────────────────── State persistence ────────────────────

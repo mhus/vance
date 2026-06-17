@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.hooks;
+package de.mhus.vance.brain.ursahooks;
 
 import de.mhus.vance.api.action.TriggerAction;
 import de.mhus.vance.api.eventlog.EventType;
@@ -29,9 +29,9 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
 /**
- * Subscribes to {@link HookFireableEvent} and fans every fire-able
+ * Subscribes to {@link UrsaHookFireableEvent} and fans every fire-able
  * event out to all matching hooks in the project. Each hook's
- * {@link HookDef#action()} is dispatched through the central
+ * {@link UrsaHookDef#action()} is dispatched through the central
  * {@link ActionExecutorRegistry} — same pipeline as scheduler ticks
  * and HTTP events. Hooks gain the full {@code TriggerAction}
  * vocabulary (Recipe / Script / Workflow); the dispatcher's job
@@ -45,16 +45,16 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @Slf4j
-public class HookDispatcher implements DisposableBean {
+public class UrsaHookDispatcher implements DisposableBean {
 
-    private final HookRegistry registry;
+    private final UrsaHookRegistry registry;
     private final ActionExecutorRegistry actionRegistry;
     private final EventLogService eventLogService;
     private final SessionService sessionService;
     private final ExecutorService runnerPool;
 
-    public HookDispatcher(
-            HookRegistry registry,
+    public UrsaHookDispatcher(
+            UrsaHookRegistry registry,
             ActionExecutorRegistry actionRegistry,
             EventLogService eventLogService,
             SessionService sessionService) {
@@ -73,23 +73,23 @@ public class HookDispatcher implements DisposableBean {
 
     @EventListener
     @Async
-    public void onHookFireable(HookFireableEvent event) {
+    public void onHookFireable(UrsaHookFireableEvent event) {
         dispatch(event);
     }
 
     /** Entry point — exposed for direct invocation in tests. */
-    public void dispatch(HookFireableEvent event) {
-        List<HookDef> defs = registry.hooksFor(
+    public void dispatch(UrsaHookFireableEvent event) {
+        List<UrsaHookDef> defs = registry.hooksFor(
                 event.tenantId(), event.projectId(), event.event());
         if (defs.isEmpty()) return;
 
-        for (HookDef def : defs) {
+        for (UrsaHookDef def : defs) {
             if (!def.enabled()) continue;
             runnerPool.submit(() -> runOne(def, event));
         }
     }
 
-    private void runOne(HookDef def, HookFireableEvent event) {
+    private void runOne(UrsaHookDef def, UrsaHookFireableEvent event) {
         String correlationId = "hook_" + UUID.randomUUID();
         Instant firedAt = event.firedAt() == null ? Instant.now() : event.firedAt();
 
@@ -185,7 +185,7 @@ public class HookDispatcher implements DisposableBean {
      * resolve from there.
      */
     private String resolveSystemSession(
-            HookFireableEvent event, HookDef def, @Nullable String runAs) {
+            UrsaHookFireableEvent event, UrsaHookDef def, @Nullable String runAs) {
         String displayName = "_hook_" + def.event().wireName() + "_" + def.name();
         return sessionService.findSystemSession(
                         event.tenantId(), event.projectId(), displayName)

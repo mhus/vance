@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.hooks;
+package de.mhus.vance.brain.ursahooks;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -12,13 +12,13 @@ import java.time.Duration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-class HookYamlParserTest {
+class UrsaHookYamlParserTest {
 
-    private HookYamlParser parser;
+    private UrsaHookYamlParser parser;
 
     @BeforeEach
     void setup() {
-        parser = new HookYamlParser(new TriggerActionParser());
+        parser = new UrsaHookYamlParser(new TriggerActionParser());
     }
 
     @Test
@@ -29,7 +29,7 @@ class HookYamlParserTest {
                 params:
                   url: https://example.com/hook
                 """;
-        HookDef def = parser.parse(
+        UrsaHookDef def = parser.parse(
                 yaml, HookEventName.PROCESS_COMPLETED, HookSource.PROJECT, "hello");
         assertThat(def.name()).isEqualTo("hello");
         assertThat(def.event()).isEqualTo(HookEventName.PROCESS_COMPLETED);
@@ -54,7 +54,7 @@ class HookYamlParserTest {
                 params:
                   threshold: 0.7
                 """;
-        HookDef def = parser.parse(
+        UrsaHookDef def = parser.parse(
                 yaml, HookEventName.INBOX_ITEM_CREATED, HookSource.PROJECT, "classifier");
         assertThat(def.actionType()).isEqualTo("script");
         assertThat(def.action()).isInstanceOf(TriggerAction.Script.class);
@@ -71,7 +71,7 @@ class HookYamlParserTest {
                 params:
                   processId: "${event.process.id}"
                 """;
-        HookDef def = parser.parse(
+        UrsaHookDef def = parser.parse(
                 yaml, HookEventName.PROCESS_COMPLETED, HookSource.PROJECT, "kick");
         assertThat(def.actionType()).isEqualTo("workflow");
         assertThat(def.action()).isInstanceOf(TriggerAction.Workflow.class);
@@ -86,7 +86,7 @@ class HookYamlParserTest {
                 """;
         assertThatThrownBy(() -> parser.parse(
                 yaml, HookEventName.PROCESS_COMPLETED, HookSource.PROJECT, "legacy"))
-                .isInstanceOf(HookParseException.class)
+                .isInstanceOf(UrsaHookParseException.class)
                 .hasMessageContaining("Hook schema changed")
                 .hasMessageContaining("recipe:");
     }
@@ -99,7 +99,7 @@ class HookYamlParserTest {
                 """;
         assertThatThrownBy(() -> parser.parse(
                 yaml, HookEventName.PROCESS_COMPLETED, HookSource.PROJECT, "legacy-llm"))
-                .isInstanceOf(HookParseException.class)
+                .isInstanceOf(UrsaHookParseException.class)
                 .hasMessageContaining("Hook schema changed")
                 .hasMessageContaining("lightllm");
     }
@@ -111,7 +111,7 @@ class HookYamlParserTest {
                 """;
         assertThatThrownBy(() -> parser.parse(
                 yaml, HookEventName.PROCESS_COMPLETED, HookSource.PROJECT, "x"))
-                .isInstanceOf(HookParseException.class);
+                .isInstanceOf(UrsaHookParseException.class);
     }
 
     @Test
@@ -122,7 +122,7 @@ class HookYamlParserTest {
                 """;
         assertThatThrownBy(() -> parser.parse(
                 yaml, HookEventName.PROCESS_COMPLETED, HookSource.PROJECT, "x"))
-                .isInstanceOf(HookParseException.class)
+                .isInstanceOf(UrsaHookParseException.class)
                 .hasMessageContaining("ceiling");
     }
 
@@ -132,7 +132,7 @@ class HookYamlParserTest {
                 recipe: notify
                 enabled: false
                 """;
-        HookDef def = parser.parse(
+        UrsaHookDef def = parser.parse(
                 yaml, HookEventName.PROCESS_COMPLETED, HookSource.PROJECT, "x");
         assertThat(def.enabled()).isFalse();
     }

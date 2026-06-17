@@ -1,7 +1,7 @@
 package de.mhus.vance.brain.tools.hooks;
 
 import de.mhus.vance.api.hooks.HookEventName;
-import de.mhus.vance.brain.hooks.HookService;
+import de.mhus.vance.brain.ursahooks.UrsaHookService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -28,7 +28,7 @@ public class HookDeleteTool implements Tool {
                 "required", List.of("event", "name"));
     }
 
-    private final HookService hookService;
+    private final UrsaHookService ursaHookService;
     private final HookToolSupport support;
 
     @Override public String name() { return "hook_delete"; }
@@ -52,7 +52,7 @@ public class HookDeleteTool implements Tool {
                 support.stringOrThrow(params, "event"));
         String name = HookToolSupport.normalizeName(
                 support.stringOrThrow(params, "name"));
-        boolean removed = hookService.delete(ctx.tenantId(), ctx.projectId(), event, name);
+        boolean removed = ursaHookService.delete(ctx.tenantId(), ctx.projectId(), event, name);
         Map<String, Object> resp = new LinkedHashMap<>();
         resp.put("event", event.wireName());
         resp.put("name", name);

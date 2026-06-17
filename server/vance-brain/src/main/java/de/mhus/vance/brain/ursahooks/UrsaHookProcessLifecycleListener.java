@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.hooks;
+package de.mhus.vance.brain.ursahooks;
 
 import de.mhus.vance.api.hooks.HookEventName;
 import de.mhus.vance.api.thinkprocess.CloseReason;
@@ -21,7 +21,7 @@ import org.springframework.stereotype.Component;
  * and every other terminal reason → {@code process.failed}.
  *
  * <p>The listener runs synchronously on Spring's event-thread, then
- * publishes a {@link HookFireableEvent} that the {@link HookDispatcher}
+ * publishes a {@link UrsaHookFireableEvent} that the {@link UrsaHookDispatcher}
  * picks up asynchronously. That two-step is intentional: the
  * publisher pays a few microseconds per status change even when no
  * hooks are registered, but the actual hook work happens off the
@@ -30,7 +30,7 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class HookProcessLifecycleListener {
+public class UrsaHookProcessLifecycleListener {
 
     private final ApplicationEventPublisher publisher;
     private final ThinkProcessService thinkProcessService;
@@ -65,7 +65,7 @@ public class HookProcessLifecycleListener {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("process", processPayload);
 
-        publisher.publishEvent(HookFireableEvent.of(
+        publisher.publishEvent(UrsaHookFireableEvent.of(
                 event.tenantId(), doc.getProjectId(), hookEvent, payload));
     }
 }

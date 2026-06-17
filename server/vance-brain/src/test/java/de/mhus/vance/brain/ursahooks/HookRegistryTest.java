@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.hooks;
+package de.mhus.vance.brain.ursahooks;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -15,19 +15,19 @@ class HookRegistryTest {
 
     @Test
     void replace_putsHooksForEvent() {
-        HookRegistry reg = new HookRegistry();
-        Map<HookEventName, List<HookDef>> snap = new EnumMap<>(HookEventName.class);
+        UrsaHookRegistry reg = new UrsaHookRegistry();
+        Map<HookEventName, List<UrsaHookDef>> snap = new EnumMap<>(HookEventName.class);
         snap.put(HookEventName.PROCESS_COMPLETED, List.of(def("notify", HookEventName.PROCESS_COMPLETED)));
         reg.replace("acme", "p1", snap);
 
         assertThat(reg.hooksFor("acme", "p1", HookEventName.PROCESS_COMPLETED))
-                .extracting(HookDef::name)
+                .extracting(UrsaHookDef::name)
                 .containsExactly("notify");
     }
 
     @Test
     void replaceEvent_addsAndRemoves() {
-        HookRegistry reg = new HookRegistry();
+        UrsaHookRegistry reg = new UrsaHookRegistry();
         reg.replaceEvent("acme", "p1", HookEventName.PROCESS_FAILED,
                 List.of(def("a", HookEventName.PROCESS_FAILED)));
         assertThat(reg.hooksFor("acme", "p1", HookEventName.PROCESS_FAILED)).hasSize(1);
@@ -37,8 +37,8 @@ class HookRegistryTest {
 
     @Test
     void clear_dropsEverythingForProject() {
-        HookRegistry reg = new HookRegistry();
-        Map<HookEventName, List<HookDef>> snap = new EnumMap<>(HookEventName.class);
+        UrsaHookRegistry reg = new UrsaHookRegistry();
+        Map<HookEventName, List<UrsaHookDef>> snap = new EnumMap<>(HookEventName.class);
         snap.put(HookEventName.PROCESS_COMPLETED, List.of(def("x", HookEventName.PROCESS_COMPLETED)));
         snap.put(HookEventName.PROCESS_FAILED, List.of(def("y", HookEventName.PROCESS_FAILED)));
         reg.replace("acme", "p1", snap);
@@ -49,14 +49,14 @@ class HookRegistryTest {
 
     @Test
     void hooksFor_returnsEmptyListForUnknownProject() {
-        HookRegistry reg = new HookRegistry();
+        UrsaHookRegistry reg = new UrsaHookRegistry();
         assertThat(reg.hooksFor("acme", "nope", HookEventName.PROCESS_COMPLETED)).isEmpty();
     }
 
-    private static HookDef def(String name, HookEventName event) {
+    private static UrsaHookDef def(String name, HookEventName event) {
         TriggerAction action = TriggerAction.Recipe.of(
                 "notify", /*initialMessage*/ null, /*params*/ null, /*runAs*/ null);
-        return new HookDef(
+        return new UrsaHookDef(
                 name, event, HookSource.PROJECT, true,
                 /*description*/ null, Duration.ofSeconds(5), /*tags*/ null,
                 /*yamlBody*/ "recipe: notify\n",

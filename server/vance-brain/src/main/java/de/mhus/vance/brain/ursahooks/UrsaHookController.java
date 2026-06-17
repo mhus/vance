@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.hooks;
+package de.mhus.vance.brain.ursahooks;
 
 import de.mhus.vance.api.eventlog.EventLogEntryDto;
 import de.mhus.vance.api.eventlog.EventType;
@@ -46,10 +46,10 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/brain/{tenant}/project/{project}")
 @RequiredArgsConstructor
 @Slf4j
-public class HookController {
+public class UrsaHookController {
 
-    private final HookService hookService;
-    private final HookYamlParser parser;
+    private final UrsaHookService ursaHookService;
+    private final UrsaHookYamlParser parser;
     private final EventLogService eventLogService;
     private final RequestAuthority authority;
 
@@ -61,9 +61,9 @@ public class HookController {
             @PathVariable("project") String project,
             HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, project), Action.READ);
-        List<HookDef> defs = hookService.listAll(tenant, project);
+        List<UrsaHookDef> defs = ursaHookService.listAll(tenant, project);
         List<HookSummary> out = new ArrayList<>(defs.size());
-        for (HookDef def : defs) {
+        for (UrsaHookDef def : defs) {
             out.add(toSummary(tenant, def));
         }
         out.sort(Comparator
@@ -80,9 +80,9 @@ public class HookController {
             HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, project), Action.READ);
         HookEventName event = parseEvent(eventName);
-        List<HookDef> defs = hookService.listForEvent(tenant, project, event);
+        List<UrsaHookDef> defs = ursaHookService.listForEvent(tenant, project, event);
         List<HookSummary> out = new ArrayList<>(defs.size());
-        for (HookDef def : defs) {
+        for (UrsaHookDef def : defs) {
             out.add(toSummary(tenant, def));
         }
         out.sort(Comparator.comparing(HookSummary::getName));
@@ -101,7 +101,7 @@ public class HookController {
         authority.enforce(request, new Resource.Project(tenant, project), Action.READ);
         HookEventName event = parseEvent(eventName);
         String norm = normalizeName(name);
-        HookDef def = hookService.findOne(tenant, project, event, norm)
+        UrsaHookDef def = ursaHookService.findOne(tenant, project, event, norm)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Hook '" + event.wireName() + "/" + norm + "' not found"));
         return toDto(def);
@@ -128,16 +128,16 @@ public class HookController {
         // touching the document store.
         try {
             parser.parse(body.getYaml(), event, HookSource.PROJECT, norm);
-        } catch (HookParseException ex) {
+        } catch (UrsaHookParseException ex) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage());
         }
-        boolean created = hookService.findOne(tenant, project, event, norm).isEmpty();
-        HookDef saved;
+        boolean created = ursaHookService.findOne(tenant, project, event, norm).isEmpty();
+        UrsaHookDef saved;
         try {
-            saved = hookService.save(
+            saved = ursaHookService.save(
                     tenant, project, event, norm, body.getYaml(),
                     authority.contextOf(request).subjectId());
-        } catch (HookParseException ex) {
+        } catch (UrsaHookParseException ex) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage());
         }
         return ResponseEntity
@@ -157,7 +157,7 @@ public class HookController {
         authority.enforce(request, new Resource.Project(tenant, project), Action.WRITE);
         HookEventName event = parseEvent(eventName);
         String norm = normalizeName(name);
-        boolean removed = hookService.delete(tenant, project, event, norm);
+        boolean removed = ursaHookService.delete(tenant, project, event, norm);
         return removed
                 ? ResponseEntity.noContent().build()
                 : ResponseEntity.status(HttpStatus.NOT_FOUND).build();
@@ -171,7 +171,7 @@ public class HookController {
             @PathVariable("project") String project,
             HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, project), Action.WRITE);
-        int registered = hookService.refresh(tenant, project);
+        int registered = ursaHookService.refresh(tenant, project);
         return new RefreshResult(registered);
     }
 
@@ -188,7 +188,7 @@ public class HookController {
         authority.enforce(request, new Resource.Project(tenant, project), Action.READ);
         HookEventName event = parseEvent(eventName);
         String norm = normalizeName(name);
-        String source = HookSourceKeys.sourceFor(event.wireName(), norm);
+        String source = UrsaHookSourceKeys.sourceFor(event.wireName(), norm);
         List<EventLogDocument> rows = eventLogService.listBySource(tenant, source, limit);
         List<EventLogEntryDto> out = new ArrayList<>(rows.size());
         for (EventLogDocument e : rows) {
@@ -199,7 +199,7 @@ public class HookController {
 
     // ─── Mappers ───────────────────────────────────────────────────────
 
-    private HookSummary toSummary(String tenantId, HookDef def) {
+    private HookSummary toSummary(String tenantId, UrsaHookDef def) {
         Optional<EventLogDocument> last = eventLogService.findLatest(
                 tenantId, def.sourceKey(),
                 List.of(EventType.COMPLETED, EventType.FAILED, EventType.SKIPPED));
@@ -216,7 +216,7 @@ public class HookController {
                 .build();
     }
 
-    private static HookDto toDto(HookDef def) {
+    private static HookDto toDto(UrsaHookDef def) {
         HookDto.HookDtoBuilder b = HookDto.builder()
                 .name(def.name())
                 .event(def.event().wireName())

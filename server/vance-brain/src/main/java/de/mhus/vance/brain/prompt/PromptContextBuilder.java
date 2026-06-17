@@ -274,6 +274,18 @@ public final class PromptContextBuilder {
         return this;
     }
 
+    /**
+     * Set a single top-level template variable. Engines call this for
+     * one-off context values that aren't covered by the dedicated
+     * setters above (e.g. Zaphod's {@code rounds} / {@code consensusReached}
+     * for the synthesizer prompt). Overwrites if the key already
+     * exists.
+     */
+    public PromptContextBuilder var(String key, @Nullable Object value) {
+        map.put(key, value);
+        return this;
+    }
+
     public Map<String, Object> build() {
         return Map.copyOf(map);
     }

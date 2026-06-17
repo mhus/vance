@@ -12,6 +12,11 @@ public enum ZaphodStatus {
     /** Heads are running (transient between turn-cursor moves). */
     RUNNING,
 
+    /** All heads in the current round have replied; the
+     *  between-round consensus check is in flight ({@code debate}
+     *  only — {@code council} skips this state entirely). */
+    CHECKING_CONSENSUS,
+
     /** All heads done; synthesizer LLM-call in flight. */
     SYNTHESIZING,
 

@@ -9,6 +9,6 @@
  * <p>See {@code specification/hooks.md} for the design.
  */
 @NullMarked
-package de.mhus.vance.brain.hooks;
+package de.mhus.vance.brain.ursahooks;
 
 import org.jspecify.annotations.NullMarked;

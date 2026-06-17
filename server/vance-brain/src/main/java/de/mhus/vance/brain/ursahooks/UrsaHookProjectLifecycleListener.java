@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.hooks;
+package de.mhus.vance.brain.ursahooks;
 
 import de.mhus.vance.brain.project.ProjectEnginesStartRequested;
 import de.mhus.vance.brain.project.ProjectEnginesStopRequested;
@@ -15,14 +15,14 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class HookProjectLifecycleListener {
+public class UrsaHookProjectLifecycleListener {
 
-    private final HookService hookService;
+    private final UrsaHookService ursaHookService;
 
     @EventListener
     public void onStart(ProjectEnginesStartRequested event) {
         try {
-            hookService.bootstrapProject(event.tenantId(), event.projectName());
+            ursaHookService.bootstrapProject(event.tenantId(), event.projectName());
         } catch (RuntimeException ex) {
             log.error("Hook bootstrap failed for project '{}/{}': {}",
                     event.tenantId(), event.projectName(), ex.toString(), ex);
@@ -32,7 +32,7 @@ public class HookProjectLifecycleListener {
     @EventListener
     public void onStop(ProjectEnginesStopRequested event) {
         try {
-            hookService.unloadProject(event.tenantId(), event.projectName());
+            ursaHookService.unloadProject(event.tenantId(), event.projectName());
         } catch (RuntimeException ex) {
             log.error("Hook unload failed for project '{}/{}': {}",
                     event.tenantId(), event.projectName(), ex.toString(), ex);

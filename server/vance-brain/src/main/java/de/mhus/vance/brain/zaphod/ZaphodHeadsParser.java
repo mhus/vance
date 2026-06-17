@@ -11,17 +11,20 @@ import org.jspecify.annotations.Nullable;
 import org.yaml.snakeyaml.Yaml;
 
 /**
- * Pure-logic parser + validator for Zaphod council recipes. Mirrors
- * the contract of
+ * Pure-logic parser + validator for Zaphod recipes. Mirrors the
+ * contract of
  * {@link de.mhus.vance.brain.vogon.StrategyResolver#parseStrategy}
- * but for Zaphod's {@code engine: zaphod} recipe shape:
+ * but for Zaphod's {@code engine: zaphod} recipe shape — supporting
+ * both {@code COUNCIL} (single-shot) and {@code DEBATE} (multi-round
+ * with consensus stop).
  *
  * <pre>
  * name: my-council
  * description: ...
  * engine: zaphod
  * params:
- *   pattern: COUNCIL
+ *   pattern: COUNCIL              # or DEBATE
+ *   maxRounds: 3                  # debate only, default 3, cap 10
  *   heads:
  *     - name: optimist
  *       recipe: ford
@@ -55,6 +58,20 @@ public final class ZaphodHeadsParser {
      *  learn from the recovery hint, not ship a too-large council. */
     public static final int MAX_HEADS = ZaphodEngine.MAX_HEADS;
 
+    /** Hard cap on {@code params.maxRounds} for {@code debate}.
+     *  Mirrored from {@link ZaphodEngine#MAX_ROUNDS_HARD_CAP} —
+     *  values above this are rejected at parse time (rather than
+     *  silently clamped) so the architect / author sees the limit. */
+    public static final int MAX_ROUNDS_HARD_CAP = ZaphodEngine.MAX_ROUNDS_HARD_CAP;
+
+    /** Default for {@code params.maxRounds} when a debate recipe
+     *  omits it. */
+    public static final int DEFAULT_MAX_ROUNDS = ZaphodEngine.DEFAULT_MAX_ROUNDS;
+
+    /** Minimum head count for {@code debate}. A single-head debate
+     *  has nothing to react against. */
+    public static final int MIN_DEBATE_HEADS = 2;
+
     private ZaphodHeadsParser() {}
 
     /** Successful parse result. */
@@ -62,6 +79,7 @@ public final class ZaphodHeadsParser {
             String name,
             @Nullable String description,
             ZaphodPattern pattern,
+            int maxRounds,
             List<HeadSpec> heads,
             @Nullable String synthesisPrompt) {}
 
@@ -109,12 +127,12 @@ public final class ZaphodHeadsParser {
         }
         Map<String, Object> params = toStringMap(paramsMap);
 
-        // pattern: required, COUNCIL only (V1).
+        // pattern: required, COUNCIL or DEBATE.
         Object patternRaw = params.get("pattern");
         if (patternRaw == null) {
             throw new IllegalStateException(
                     pathHint + ": params.pattern missing — "
-                            + "Zaphod V1 requires 'COUNCIL'");
+                            + "must be 'COUNCIL' or 'DEBATE'");
         }
         ZaphodPattern pattern;
         try {
@@ -125,11 +143,15 @@ public final class ZaphodHeadsParser {
                     pathHint + ": params.pattern='" + patternRaw
                             + "' is not a known ZaphodPattern");
         }
-        if (pattern != ZaphodPattern.COUNCIL) {
+        if (pattern != ZaphodPattern.COUNCIL && pattern != ZaphodPattern.DEBATE) {
             throw new IllegalStateException(
-                    pathHint + ": Zaphod V1 supports only COUNCIL "
-                            + "pattern; got " + pattern);
+                    pathHint + ": Zaphod currently supports only "
+                            + "COUNCIL and DEBATE patterns; got " + pattern);
         }
+
+        // maxRounds: ignored for COUNCIL (engine forces 1); parsed
+        // and validated for DEBATE.
+        int maxRounds = parseMaxRounds(params, pattern, pathHint);
 
         // heads: required, non-empty, ≤ MAX_HEADS, unique names.
         Object headsRaw = params.get("heads");
@@ -143,6 +165,13 @@ public final class ZaphodHeadsParser {
                             + " entries; the soft cap is " + MAX_HEADS
                             + " — split into multiple councils or drop "
                             + "less-distinct perspectives");
+        }
+        if (pattern == ZaphodPattern.DEBATE && headList.size() < MIN_DEBATE_HEADS) {
+            throw new IllegalStateException(
+                    pathHint + ": params.heads has " + headList.size()
+                            + " entry; debate requires at least "
+                            + MIN_DEBATE_HEADS
+                            + " — a single-head debate has nothing to react against");
         }
         List<HeadSpec> heads = new ArrayList<>(headList.size());
         Set<String> seenNames = new LinkedHashSet<>();
@@ -171,7 +200,45 @@ public final class ZaphodHeadsParser {
         // (a blank prompt would defeat the synthesis turn).
         String synthesisPrompt = optString(params.get("synthesisPrompt"));
 
-        return new Spec(name, description, pattern, heads, synthesisPrompt);
+        return new Spec(name, description, pattern, maxRounds, heads, synthesisPrompt);
+    }
+
+    private static int parseMaxRounds(
+            Map<String, Object> params, ZaphodPattern pattern, String pathHint) {
+        Object raw = params.get("maxRounds");
+        if (pattern == ZaphodPattern.COUNCIL) {
+            // Engine forces 1 — we accept the field for ergonomic
+            // copy-paste between council and debate recipes, but
+            // ignore the value to avoid silent confusion.
+            return 1;
+        }
+        if (raw == null) {
+            return DEFAULT_MAX_ROUNDS;
+        }
+        int value;
+        if (raw instanceof Number n) {
+            value = n.intValue();
+        } else {
+            try {
+                value = Integer.parseInt(String.valueOf(raw).trim());
+            } catch (NumberFormatException e) {
+                throw new IllegalStateException(
+                        pathHint + ": params.maxRounds='" + raw
+                                + "' is not an integer");
+            }
+        }
+        if (value < 1) {
+            throw new IllegalStateException(
+                    pathHint + ": params.maxRounds=" + value
+                            + " must be at least 1");
+        }
+        if (value > MAX_ROUNDS_HARD_CAP) {
+            throw new IllegalStateException(
+                    pathHint + ": params.maxRounds=" + value
+                            + " exceeds hard cap of " + MAX_ROUNDS_HARD_CAP
+                            + " — pick a tighter budget");
+        }
+        return value;
     }
 
     // ──────────────────── helpers ────────────────────

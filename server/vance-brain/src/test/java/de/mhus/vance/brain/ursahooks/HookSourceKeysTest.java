@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.hooks;
+package de.mhus.vance.brain.ursahooks;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -8,12 +8,12 @@ class HookSourceKeysTest {
 
     @Test
     void sourceFor_concatenatesEventAndName() {
-        assertThat(HookSourceKeys.sourceFor("process.completed", "notify"))
+        assertThat(UrsaHookSourceKeys.sourceFor("process.completed", "notify"))
                 .isEqualTo("hook:process.completed:notify");
     }
 
     @Test
     void prefix_isStable() {
-        assertThat(HookSourceKeys.SOURCE_PREFIX).isEqualTo("hook:");
+        assertThat(UrsaHookSourceKeys.SOURCE_PREFIX).isEqualTo("hook:");
     }
 }

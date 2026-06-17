@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.hooks;
+package de.mhus.vance.brain.ursahooks;
 
 import de.mhus.vance.api.hooks.HookEventName;
 import de.mhus.vance.shared.document.DocumentService;
@@ -27,7 +27,7 @@ import org.springframework.stereotype.Service;
  * <p>Responsibilities:
  * <ul>
  *   <li>Project-bootstrap: load every {@code _vance/hooks/<event>/}
- *       document and populate the {@link HookRegistry}.</li>
+ *       document and populate the {@link UrsaHookRegistry}.</li>
  *   <li>Refresh: re-read after a CRUD call edits a document.</li>
  *   <li>CRUD: create / update / delete by event + name, writing the
  *       underlying {@code DocumentDocument} via
@@ -39,13 +39,13 @@ import org.springframework.stereotype.Service;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class HookService {
+public class UrsaHookService {
 
     private static final String YAML_MIME = "application/yaml";
 
-    private final HookLoader loader;
-    private final HookRegistry registry;
-    private final HookYamlParser parser;
+    private final UrsaHookLoader loader;
+    private final UrsaHookRegistry registry;
+    private final UrsaHookYamlParser parser;
     private final DocumentService documentService;
     private final InboxItemService inboxService;
 
@@ -53,7 +53,7 @@ public class HookService {
 
     /** Register every hook visible to the project. */
     public int bootstrapProject(String tenantId, String projectId) {
-        Map<HookEventName, List<HookDef>> grouped =
+        Map<HookEventName, List<UrsaHookDef>> grouped =
                 loader.groupByEvent(tenantId, projectId);
         registry.replace(tenantId, projectId, grouped);
         int total = grouped.values().stream().mapToInt(List::size).sum();
@@ -84,11 +84,11 @@ public class HookService {
     public boolean refreshOne(
             String tenantId, String projectId,
             HookEventName event, String name) {
-        Optional<HookDef> reloaded = loader.load(tenantId, projectId, event, name);
+        Optional<UrsaHookDef> reloaded = loader.load(tenantId, projectId, event, name);
         // Re-read every hook of that event so the registry stays
         // consistent with the cascade — a single doc going away may
         // unmask a {@code _vance}-tier hook of the same name.
-        List<HookDef> remaining = loader.listForEvent(tenantId, projectId, event);
+        List<UrsaHookDef> remaining = loader.listForEvent(tenantId, projectId, event);
         registry.replaceEvent(tenantId, projectId, event, remaining);
         log.info("Hooks refreshOne '{}/{}/{}/{}' → present={} totalForEvent={}",
                 tenantId, projectId, event.wireName(), name,
@@ -98,19 +98,19 @@ public class HookService {
 
     // ───────────────────────── Read side ─────────────────────────
 
-    public List<HookDef> listAll(String tenantId, String projectId) {
+    public List<UrsaHookDef> listAll(String tenantId, String projectId) {
         return registry.allFor(tenantId, projectId);
     }
 
-    public List<HookDef> listForEvent(
+    public List<UrsaHookDef> listForEvent(
             String tenantId, String projectId, HookEventName event) {
         return registry.hooksFor(tenantId, projectId, event);
     }
 
-    public Optional<HookDef> findOne(
+    public Optional<UrsaHookDef> findOne(
             String tenantId, String projectId,
             HookEventName event, String name) {
-        for (HookDef def : registry.hooksFor(tenantId, projectId, event)) {
+        for (UrsaHookDef def : registry.hooksFor(tenantId, projectId, event)) {
             if (name.equals(def.name())) return Optional.of(def);
         }
         return Optional.empty();
@@ -121,20 +121,20 @@ public class HookService {
     /**
      * Create or update a hook document. Validates the YAML before
      * touching the document store — invalid input throws
-     * {@link HookParseException} and nothing is persisted.
+     * {@link UrsaHookParseException} and nothing is persisted.
      *
-     * @return the freshly parsed {@link HookDef}
+     * @return the freshly parsed {@link UrsaHookDef}
      */
-    public HookDef save(
+    public UrsaHookDef save(
             String tenantId, String projectId,
             HookEventName event, String name,
             String yaml, @Nullable String createdBy) {
         // Parse first so a bad YAML never lands on disk.
-        HookDef parsed = parser.parse(yaml, event,
+        UrsaHookDef parsed = parser.parse(yaml, event,
                 de.mhus.vance.api.hooks.HookSource.PROJECT, name, createdBy);
 
-        String path = HookLoader.HOOK_PATH_ROOT + event.wireName() + "/"
-                + name + HookLoader.HOOK_PATH_SUFFIX;
+        String path = UrsaHookLoader.HOOK_PATH_ROOT + event.wireName() + "/"
+                + name + UrsaHookLoader.HOOK_PATH_SUFFIX;
         Optional<de.mhus.vance.shared.document.DocumentDocument> existing =
                 documentService.findByPath(tenantId, projectId, path);
         if (existing.isPresent()) {
@@ -165,8 +165,8 @@ public class HookService {
     public boolean delete(
             String tenantId, String projectId,
             HookEventName event, String name) {
-        String path = HookLoader.HOOK_PATH_ROOT + event.wireName() + "/"
-                + name + HookLoader.HOOK_PATH_SUFFIX;
+        String path = UrsaHookLoader.HOOK_PATH_ROOT + event.wireName() + "/"
+                + name + UrsaHookLoader.HOOK_PATH_SUFFIX;
         Optional<de.mhus.vance.shared.document.DocumentDocument> existing =
                 documentService.findByPath(tenantId, projectId, path);
         if (existing.isEmpty()) {
@@ -182,12 +182,12 @@ public class HookService {
     /** Surface every parse failure as an inbox item to {@code createdBy}. */
     public void reportParseErrors(
             String tenantId, String projectId,
-            List<HookParseException> errors,
+            List<UrsaHookParseException> errors,
             @Nullable String recipientUserId) {
         if (errors.isEmpty() || recipientUserId == null || recipientUserId.isBlank()) {
             return;
         }
-        for (HookParseException ex : errors) {
+        for (UrsaHookParseException ex : errors) {
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("category", "hook-parse-error");
             inboxService.create(InboxItemDocument.builder()

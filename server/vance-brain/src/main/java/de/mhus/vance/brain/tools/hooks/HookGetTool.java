@@ -1,8 +1,8 @@
 package de.mhus.vance.brain.tools.hooks;
 
 import de.mhus.vance.api.hooks.HookEventName;
-import de.mhus.vance.brain.hooks.HookDef;
-import de.mhus.vance.brain.hooks.HookService;
+import de.mhus.vance.brain.ursahooks.UrsaHookDef;
+import de.mhus.vance.brain.ursahooks.UrsaHookService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -33,7 +33,7 @@ public class HookGetTool implements Tool {
                 "required", List.of("event", "name"));
     }
 
-    private final HookService hookService;
+    private final UrsaHookService ursaHookService;
     private final HookToolSupport support;
 
     @Override public String name() { return "hook_get"; }
@@ -55,7 +55,7 @@ public class HookGetTool implements Tool {
                 support.stringOrThrow(params, "event"));
         String name = HookToolSupport.normalizeName(
                 support.stringOrThrow(params, "name"));
-        Optional<HookDef> found = hookService.findOne(
+        Optional<UrsaHookDef> found = ursaHookService.findOne(
                 ctx.tenantId(), ctx.projectId(), event, name);
         if (found.isEmpty()) {
             throw new ToolException(

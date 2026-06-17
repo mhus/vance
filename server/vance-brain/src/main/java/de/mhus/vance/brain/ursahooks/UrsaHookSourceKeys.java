@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.hooks;
+package de.mhus.vance.brain.ursahooks;
 
 /**
  * Source-key conventions for the generic {@code event_log} rows
@@ -7,12 +7,12 @@ package de.mhus.vance.brain.hooks;
  * scheduler-shared event-log table can be queried per hook or per
  * event prefix.
  */
-public final class HookSourceKeys {
+public final class UrsaHookSourceKeys {
 
     /** Prefix shared by every hook-produced event-log row. */
     public static final String SOURCE_PREFIX = "hook:";
 
-    private HookSourceKeys() {}
+    private UrsaHookSourceKeys() {}
 
     public static String sourceFor(String eventWireName, String hookName) {
         return SOURCE_PREFIX + eventWireName + ":" + hookName;

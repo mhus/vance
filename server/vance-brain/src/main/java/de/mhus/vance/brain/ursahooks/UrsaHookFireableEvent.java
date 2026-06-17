@@ -1,11 +1,11 @@
-package de.mhus.vance.brain.hooks;
+package de.mhus.vance.brain.ursahooks;
 
 import de.mhus.vance.api.hooks.HookEventName;
 import java.time.Instant;
 import java.util.Map;
 
 /**
- * Spring application-event that fans out to {@link HookDispatcher}.
+ * Spring application-event that fans out to {@link UrsaHookDispatcher}.
  * Trigger emitters (process lifecycle, inbox, session, …) publish this
  * with a typed payload map. The dispatcher does not interpret the
  * payload — it just hands it to the runners as the {@code event} host
@@ -17,14 +17,14 @@ import java.util.Map;
  * it. Producers materialise the relevant fields into the map before
  * publishing.
  */
-public record HookFireableEvent(
+public record UrsaHookFireableEvent(
         String tenantId,
         String projectId,
         HookEventName event,
         Instant firedAt,
         Map<String, Object> payload) {
 
-    public HookFireableEvent {
+    public UrsaHookFireableEvent {
         if (firedAt == null) {
             firedAt = Instant.now();
         }
@@ -33,11 +33,11 @@ public record HookFireableEvent(
         }
     }
 
-    public static HookFireableEvent of(
+    public static UrsaHookFireableEvent of(
             String tenantId,
             String projectId,
             HookEventName event,
             Map<String, Object> payload) {
-        return new HookFireableEvent(tenantId, projectId, event, Instant.now(), payload);
+        return new UrsaHookFireableEvent(tenantId, projectId, event, Instant.now(), payload);
     }
 }

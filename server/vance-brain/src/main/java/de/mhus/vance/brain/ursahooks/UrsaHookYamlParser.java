@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.hooks;
+package de.mhus.vance.brain.ursahooks;
 
 import de.mhus.vance.api.action.TriggerAction;
 import de.mhus.vance.api.hooks.HookEventName;
@@ -30,19 +30,19 @@ import org.yaml.snakeyaml.Yaml;
  * {@code specification/trigger-actions.md}.
  */
 @Component
-public class HookYamlParser {
+public class UrsaHookYamlParser {
 
     private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(5);
     private static final Duration MAX_TIMEOUT = Duration.ofSeconds(30);
 
     private final TriggerActionParser actionParser;
 
-    public HookYamlParser() {
+    public UrsaHookYamlParser() {
         this(new TriggerActionParser());
     }
 
     /** Test seam — lets unit tests inject a parser instance directly. */
-    public HookYamlParser(TriggerActionParser actionParser) {
+    public UrsaHookYamlParser(TriggerActionParser actionParser) {
         this.actionParser = actionParser;
     }
 
@@ -53,35 +53,35 @@ public class HookYamlParser {
      * @param source      cascade tier the document was found in
      * @param hookName    derived from the document filename
      */
-    public HookDef parse(
+    public UrsaHookDef parse(
             String yamlBody, HookEventName event, HookSource source, String hookName) {
         return parse(yamlBody, event, source, hookName, null);
     }
 
     /** Variant that carries the {@code createdBy} of the underlying document. */
-    public HookDef parse(
+    public UrsaHookDef parse(
             String yamlBody, HookEventName event, HookSource source,
             String hookName, @Nullable String createdByUserId) {
         if (yamlBody == null || yamlBody.isBlank()) {
-            throw new HookParseException("hook YAML is empty");
+            throw new UrsaHookParseException("hook YAML is empty");
         }
 
         Object parsed;
         try {
             parsed = new Yaml().load(yamlBody);
         } catch (RuntimeException ex) {
-            throw new HookParseException(
+            throw new UrsaHookParseException(
                     "hook YAML invalid: " + ex.getMessage(), ex);
         }
         if (!(parsed instanceof Map<?, ?> rawMap)) {
-            throw new HookParseException("hook YAML must have a top-level map");
+            throw new UrsaHookParseException("hook YAML must have a top-level map");
         }
         @SuppressWarnings("unchecked")
         Map<String, Object> spec = (Map<String, Object>) rawMap;
 
         // ── Pre-unification migration guard ─────────────────────────────
         if (spec.containsKey("type")) {
-            throw new HookParseException(
+            throw new UrsaHookParseException(
                     "Hook schema changed: 'type: js|llm' is no longer supported. "
                             + "Migrate to a TriggerAction — set one of 'recipe:', "
                             + "'script:' (with source/path), or 'workflow:'. "
@@ -91,7 +91,7 @@ public class HookYamlParser {
                             + "See specification/hooks.md and specification/trigger-actions.md.");
         }
         if (spec.containsKey("prompt") || spec.containsKey("model") || spec.containsKey("maxTokens")) {
-            throw new HookParseException(
+            throw new UrsaHookParseException(
                     "Hook schema changed: 'prompt' / 'model' / 'maxTokens' are no longer "
                             + "supported. LLM hooks become a script that calls "
                             + "vance.lightllm.call(...) — see specification/hooks.md.");
@@ -107,7 +107,7 @@ public class HookYamlParser {
         try {
             action = actionParser.parse(spec);
         } catch (RuntimeException ex) {
-            throw new HookParseException(
+            throw new UrsaHookParseException(
                     "hook action invalid: " + ex.getMessage(), ex);
         }
         List<ActionValidationError> errors = actionParser.validate(action);
@@ -117,10 +117,10 @@ public class HookYamlParser {
                 msg.append(" [").append(e.kind()).append(' ').append(e.field())
                         .append(": ").append(e.detail()).append(']');
             }
-            throw new HookParseException(msg.toString());
+            throw new UrsaHookParseException(msg.toString());
         }
 
-        return new HookDef(
+        return new UrsaHookDef(
                 hookName, event, source, enabled, description,
                 timeout, tags, yamlBody, createdByUserId, action);
     }
@@ -135,14 +135,14 @@ public class HookYamlParser {
         } else if (raw instanceof String s) {
             d = parseDurationString(s);
         } else {
-            throw new HookParseException(
+            throw new UrsaHookParseException(
                     "'timeout' must be a number (seconds) or a duration string like '5s'");
         }
         if (d.isZero() || d.isNegative()) {
-            throw new HookParseException("'timeout' must be positive");
+            throw new UrsaHookParseException("'timeout' must be positive");
         }
         if (d.compareTo(MAX_TIMEOUT) > 0) {
-            throw new HookParseException(
+            throw new UrsaHookParseException(
                     "'timeout' exceeds the per-hook ceiling (" + MAX_TIMEOUT.getSeconds()
                             + "s) — split the work or shrink the wait");
         }
@@ -152,7 +152,7 @@ public class HookYamlParser {
     private static Duration parseDurationString(String raw) {
         String s = raw.trim().toLowerCase(Locale.ROOT);
         if (s.isEmpty()) {
-            throw new HookParseException("'timeout' is empty");
+            throw new UrsaHookParseException("'timeout' is empty");
         }
         try {
             if (s.startsWith("p")) {
@@ -169,7 +169,7 @@ public class HookYamlParser {
             }
             return Duration.ofSeconds(Long.parseLong(s));
         } catch (NumberFormatException | java.time.format.DateTimeParseException ex) {
-            throw new HookParseException(
+            throw new UrsaHookParseException(
                     "'timeout' value '" + raw + "' is not a duration — use '5s', '15s', '500ms', etc.",
                     ex);
         }
@@ -185,12 +185,12 @@ public class HookYamlParser {
     private static @Nullable List<String> stringList(@Nullable Object raw) {
         if (raw == null) return null;
         if (!(raw instanceof List<?> list)) {
-            throw new HookParseException("'tags' must be a list of strings");
+            throw new UrsaHookParseException("'tags' must be a list of strings");
         }
         List<String> out = new ArrayList<>(list.size());
         for (Object o : list) {
             if (!(o instanceof String s)) {
-                throw new HookParseException("'tags' entries must be strings");
+                throw new UrsaHookParseException("'tags' entries must be strings");
             }
             out.add(s);
         }

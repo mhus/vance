@@ -37,6 +37,8 @@ import ExecutionsTab from './ExecutionsTab.vue';
 import ClusterTab from './ClusterTab.vue';
 import AddonsTab from './AddonsTab.vue';
 import EventsTab from './EventsTab.vue';
+import SchedulerTab from './SchedulerTab.vue';
+import UrsahooksTab from './UrsahooksTab.vue';
 import WorkflowsTab from './WorkflowsTab.vue';
 import RagTab from './RagTab.vue';
 import ZarniwoopTab from './ZarniwoopTab.vue';
@@ -93,7 +95,7 @@ const filterStatus = ref<string | null>(null);
 // Sessions = the existing session-walker (default). Recipes / Tools
 // show project-scope read-only views fed from the same project filter
 // as the sidebar.
-type TopTab = 'sessions' | 'recipes' | 'tools' | 'workspace' | 'executions' | 'workflows' | 'events' | 'rag' | 'research' | 'cluster' | 'addons';
+type TopTab = 'sessions' | 'recipes' | 'tools' | 'workspace' | 'executions' | 'workflows' | 'events' | 'scheduler' | 'ursahooks' | 'rag' | 'research' | 'cluster' | 'addons';
 const topTab = ref<TopTab>('sessions');
 
 const projectFilterOptions = computed(() => [
@@ -570,6 +572,16 @@ function clickProcessByMongoId(id: string | undefined | null): void {
         >Events</button>
         <button
           class="tab"
+          :class="{ 'tab--active': topTab === 'scheduler' }"
+          @click="topTab = 'scheduler'"
+        >Scheduler</button>
+        <button
+          class="tab"
+          :class="{ 'tab--active': topTab === 'ursahooks' }"
+          @click="topTab = 'ursahooks'"
+        >Hooks</button>
+        <button
+          class="tab"
           :class="{ 'tab--active': topTab === 'rag' }"
           @click="topTab = 'rag'"
         >RAG</button>
@@ -608,6 +620,8 @@ function clickProcessByMongoId(id: string | undefined | null): void {
       <ExecutionsTab v-else-if="topTab === 'executions'" :project-id="effectiveProjectId" />
       <WorkflowsTab v-else-if="topTab === 'workflows'" :project-id="effectiveProjectId" />
       <EventsTab v-else-if="topTab === 'events'" :project-id="effectiveProjectId" />
+      <SchedulerTab v-else-if="topTab === 'scheduler'" :project-id="effectiveProjectId" />
+      <UrsahooksTab v-else-if="topTab === 'ursahooks'" :project-id="effectiveProjectId" />
       <RagTab v-else-if="topTab === 'rag'" :project-id="effectiveProjectId" />
       <ZarniwoopTab v-else-if="topTab === 'research'" :project-id="effectiveProjectId" />
       <ClusterTab v-else-if="topTab === 'cluster'" />

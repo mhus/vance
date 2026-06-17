@@ -1180,6 +1180,7 @@ declare const _default: {
     };
     scheduler: {
         pageTitle: string;
+        pickProject: string;
         tenantWide: string;
         projectLabel: string;
         listLabel: string;
@@ -1193,6 +1194,39 @@ declare const _default: {
         selectTitle: string;
         selectBody: string;
         newTitle: string;
+        nameLabel: string;
+        namePlaceholder: string;
+        namePatternHint: string;
+        invalidNameHint: string;
+        duplicateNameHint: string;
+        deleteTitle: string;
+        deleteBody: string;
+        runHistory: string;
+        noEvents: string;
+        process: string;
+        reason: string;
+        createdHint: string;
+        savedHint: string;
+        deletedHint: string;
+        refreshedHint: string;
+        saveFailed: string;
+    };
+    ursahooks: {
+        pickProject: string;
+        tenantWide: string;
+        projectLabel: string;
+        listLabel: string;
+        refresh: string;
+        new: string;
+        create: string;
+        enabled: string;
+        disabled: string;
+        emptyTitle: string;
+        emptyBody: string;
+        selectTitle: string;
+        selectBody: string;
+        newTitle: string;
+        eventLabel: string;
         nameLabel: string;
         namePlaceholder: string;
         namePatternHint: string;

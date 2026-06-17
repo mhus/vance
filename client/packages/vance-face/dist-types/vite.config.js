@@ -16,7 +16,6 @@ const editorEntries = {
     insights: resolve(__dirname, 'insights.html'),
     users: resolve(__dirname, 'users.html'),
     profile: resolve(__dirname, 'profile.html'),
-    scheduler: resolve(__dirname, 'scheduler.html'),
     cortex: resolve(__dirname, 'cortex.html'),
     'connected-accounts': resolve(__dirname, 'connected-accounts.html'),
     'oauth-providers': resolve(__dirname, 'oauth-providers.html'),

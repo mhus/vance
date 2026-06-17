@@ -12,6 +12,7 @@ import jakarta.mail.Store;
 import jakarta.mail.internet.MimeMultipart;
 import jakarta.mail.search.AndTerm;
 import jakarta.mail.search.FlagTerm;
+import jakarta.mail.search.MessageIDTerm;
 import jakarta.mail.search.ReceivedDateTerm;
 import jakarta.mail.search.SearchTerm;
 import java.io.IOException;
@@ -25,6 +26,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import lombok.extern.slf4j.Slf4j;
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
+import org.jsoup.select.NodeTraversor;
+import org.jsoup.select.NodeVisitor;
+import org.jsoup.nodes.Node;
+import org.jsoup.nodes.TextNode;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -166,9 +174,19 @@ public final class ImapClient {
     }
 
     /**
-     * Copy a message to {@code targetFolderName}, then mark the source
-     * copy {@code \Deleted} and expunge — the portable equivalent of
-     * MOVE. {@code targetFolderName} must exist.
+     * Move a message to {@code targetFolderName}. Uses the RFC-6851 IMAP
+     * MOVE extension via {@link org.eclipse.angus.mail.imap.IMAPFolder#moveMessages}
+     * when available (Zoho, Gmail, Dovecot, ...). Falls back to the
+     * portable COPY + \Deleted + EXPUNGE sequence for stores that don't
+     * support MOVE. {@code targetFolderName} must exist.
+     *
+     * <p>The fallback's {@code setFlag} step swallows
+     * {@link jakarta.mail.MessageRemovedException} — some servers
+     * implement {@code copyMessages} with an implicit move on the source
+     * (effectively the MOVE extension under the hood, even when the
+     * IMAP CAPABILITY response doesn't advertise it). When that
+     * happens, the message is already gone after the copy, and the
+     * "remove" step is a no-op rather than an error.
      */
     public Map<String, Object> moveMessage(
             @Nullable String folderName, String messageRef, String targetFolderName) {
@@ -193,13 +211,79 @@ public final class ImapClient {
                     throw new IllegalArgumentException("Message not found: " + messageRef);
                 }
                 Map<String, Object> summary = new LinkedHashMap<>(headerSummary(hit));
-                source.copyMessages(new Message[] {hit}, target);
-                hit.setFlag(Flags.Flag.DELETED, true);
-                source.expunge();
+                Message[] batch = new Message[] {hit};
+                if (source instanceof org.eclipse.angus.mail.imap.IMAPFolder imapSource) {
+                    // Atomic MOVE (RFC 6851) when the server advertises it
+                    // — Zoho, Gmail, modern Dovecot etc. No expunge needed.
+                    imapSource.moveMessages(batch, target);
+                } else {
+                    // Portable fallback: COPY then mark + expunge.
+                    source.copyMessages(batch, target);
+                    try {
+                        hit.setFlag(Flags.Flag.DELETED, true);
+                    } catch (jakarta.mail.MessageRemovedException alreadyGone) {
+                        // Server's copyMessages already removed the source —
+                        // treat as success.
+                    }
+                    try {
+                        source.expunge();
+                    } catch (MessagingException expungeIgnored) {
+                        // Expunge failure is non-critical when DELETED is set
+                        // (or when the server already moved the row).
+                    }
+                }
                 summary.put("movedTo", targetFolderName);
                 return summary;
             } finally {
                 try { source.close(true); } catch (MessagingException ignored) { /* swallow */ }
+            }
+        });
+    }
+
+    /**
+     * Triage-optimised body view. Returns the envelope plus a
+     * plain-text rendering of the body (HTML is stripped via jsoup —
+     * {@code <style>}/{@code <script>} blocks gone, inline images
+     * dropped, block tags broken with newlines). The text is truncated
+     * to {@code maxBytesOverride} (or the pack's {@code bodyMaxBytes}
+     * when negative) with a {@code [...truncated N chars]} marker.
+     *
+     * <p>Use this for "is this worth reading" decisions; use
+     * {@link #getMessage} when you need the raw body (e.g. link
+     * extraction, HTML-aware processing).
+     */
+    public Map<String, Object> previewMessage(
+            @Nullable String folderName, String messageRef, int maxBytesOverride) {
+        if (messageRef == null || messageRef.isBlank()) {
+            throw new IllegalArgumentException("messageRef is required");
+        }
+        int limit = maxBytesOverride >= 0 ? maxBytesOverride : config.bodyMaxBytes();
+        String fname = folderName == null || folderName.isBlank()
+                ? config.defaultFolder() : folderName;
+        return withStore(store -> {
+            Folder folder = store.getFolder(fname);
+            if (!folder.exists()) {
+                throw new IllegalArgumentException("Folder not found: " + fname);
+            }
+            folder.open(Folder.READ_ONLY);
+            try {
+                Message hit = resolveMessage(folder, messageRef);
+                if (hit == null) {
+                    throw new IllegalArgumentException("Message not found: " + messageRef);
+                }
+                Map<String, Object> out = new LinkedHashMap<>(headerSummary(hit));
+                String raw = extractBody(hit);
+                boolean wasHtml = looksLikeHtml(hit, raw);
+                String stripped = wasHtml ? htmlToText(raw) : raw;
+                int originalLen = stripped.length();
+                String capped = truncate(stripped, limit);
+                out.put("body", capped);
+                out.put("bodyOriginalChars", originalLen);
+                out.put("bodyTruncated", capped.length() < originalLen);
+                out.put("bodyStrippedFromHtml", wasHtml);
+                return out;
+            } finally {
+                try { folder.close(false); } catch (MessagingException ignored) { /* swallow */ }
             }
         });
     }
@@ -267,13 +351,17 @@ public final class ImapClient {
         } catch (NumberFormatException ignored) {
             // fall through to Message-ID lookup
         }
-        String needle = ref.trim();
-        for (Message m : folder.getMessages()) {
-            String[] ids = m.getHeader("Message-ID");
-            if (ids == null) continue;
-            for (String id : ids) {
-                if (id != null && id.equals(needle)) return m;
-            }
+        // Message-ID lookup via server-side SEARCH instead of iterating
+        // folder.getMessages(). The manual scan would trip
+        // MessageRemovedException on \Deleted-flagged-but-not-yet-expunged
+        // rows that linger after a half-failed previous move. SEARCH is
+        // also one IMAP round-trip vs. N FETCHes.
+        Message[] hits = folder.search(new MessageIDTerm(ref.trim()));
+        if (hits == null || hits.length == 0) return null;
+        // Skip any expunged hits that may still appear in the search
+        // result; pick the first live one.
+        for (Message m : hits) {
+            if (!m.isExpunged()) return m;
         }
         return null;
     }
@@ -336,6 +424,83 @@ public final class ImapClient {
         return "";
     }
 
+    /**
+     * Strip HTML to plain text. Drops {@code <style>}, {@code <script>}
+     * and {@code <head>}; treats block-level elements + {@code <br>} as
+     * line breaks; collapses runs of blank lines.
+     */
+    static String htmlToText(String html) {
+        if (html == null || html.isEmpty()) return "";
+        Document doc = Jsoup.parse(html);
+        doc.select("style, script, head, noscript").remove();
+        FormattingVisitor v = new FormattingVisitor();
+        NodeTraversor.traverse(v, doc.body() != null ? doc.body() : doc);
+        String text = v.toString();
+        // Collapse 3+ newlines to 2 (paragraph break), trim trailing whitespace
+        return text.replaceAll("\\n{3,}", "\n\n").trim();
+    }
+
+    /** Cheap HTML probe — used when extractBody returned something but we
+     *  didn't keep track of which mime-type it came from. */
+    private static boolean looksLikeHtml(Message m, String body) {
+        try {
+            if (m.isMimeType("text/html")) return true;
+            if (m.isMimeType("multipart/*")) {
+                // extractBody preferred text/plain; if it returned something
+                // that smells like HTML, it must've fallen through to html.
+                String trimmed = body.stripLeading();
+                return trimmed.startsWith("<") && trimmed.length() > 4
+                        && body.toLowerCase().contains("<html");
+            }
+        } catch (MessagingException ignored) { /* fall through */ }
+        return false;
+    }
+
+    /** Truncate to {@code limit} characters. {@code limit <= 0} disables the cap. */
+    static String truncate(String s, int limit) {
+        if (s == null) return "";
+        if (limit <= 0 || s.length() <= limit) return s;
+        int dropped = s.length() - limit;
+        return s.substring(0, limit) + "\n\n[...truncated " + dropped + " chars]";
+    }
+
+    /** Inserts paragraph/line breaks around block-level tags so the
+     *  triage view keeps reading structure without inline tags. */
+    private static class FormattingVisitor implements NodeVisitor {
+        private static final java.util.Set<String> BLOCK_TAGS = java.util.Set.of(
+                "p", "div", "h1", "h2", "h3", "h4", "h5", "h6",
+                "li", "tr", "blockquote", "pre", "article", "section",
+                "header", "footer", "table");
+        private final StringBuilder out = new StringBuilder();
+
+        @Override public void head(Node node, int depth) {
+            if (node instanceof TextNode tn) {
+                out.append(tn.text());
+            } else if (node instanceof Element el) {
+                String tag = el.tagName();
+                if ("br".equals(tag)) out.append('\n');
+                else if (BLOCK_TAGS.contains(tag)) {
+                    if (out.length() > 0 && out.charAt(out.length() - 1) != '\n') out.append('\n');
+                }
+            }
+        }
+
+        @Override public void tail(Node node, int depth) {
+            if (node instanceof Element el) {
+                String tag = el.tagName();
+                if (BLOCK_TAGS.contains(tag)) {
+                    if (out.length() > 0 && out.charAt(out.length() - 1) != '\n') out.append('\n');
+                    if ("p".equals(tag) || "div".equals(tag) || "blockquote".equals(tag)
+                            || "tr".equals(tag) || tag.startsWith("h")) {
+                        out.append('\n');
+                    }
+                }
+            }
+        }
+
+        @Override public String toString() { return out.toString(); }
+    }
+
     private static Message[] pickLast(Message[] msgs, int cap) {
         if (msgs.length <= cap) return msgs;
         return Arrays.copyOfRange(msgs, msgs.length - cap, msgs.length);
@@ -364,14 +529,38 @@ public final class ImapClient {
                 return op.apply(store);
             } catch (MessagingException | IOException e) {
                 throw new ImapException(
-                        "IMAP operation failed on " + config.host() + ": " + e.getMessage(), e);
+                        "IMAP operation failed on " + config.host()
+                                + ": " + describe(e), e);
             }
         } catch (MessagingException e) {
             throw new ImapException(
                     "IMAP connect/close failed on " + config.host()
                             + " port " + config.port() + " protocol " + config.protocol()
-                            + ": " + e.getMessage(), e);
+                            + ": " + describe(e), e);
         }
+    }
+
+    /**
+     * JavaMail's {@link MessagingException#getMessage()} is often
+     * {@code null} for protocol-level errors. Falls back to the
+     * exception class plus any wrapped cause, so the surfaced
+     * {@code ImapException} actually tells the operator what broke
+     * (otherwise the tool error reads "… failed: null").
+     */
+    private static String describe(Throwable e) {
+        StringBuilder sb = new StringBuilder();
+        Throwable cur = e;
+        while (cur != null) {
+            if (sb.length() > 0) sb.append(" -> ");
+            sb.append(cur.getClass().getSimpleName());
+            String msg = cur.getMessage();
+            if (msg != null && !msg.isBlank()) {
+                sb.append("(").append(msg).append(")");
+            }
+            if (cur.getCause() == cur) break;
+            cur = cur.getCause();
+        }
+        return sb.toString();
     }
 
     private Properties buildProperties() {

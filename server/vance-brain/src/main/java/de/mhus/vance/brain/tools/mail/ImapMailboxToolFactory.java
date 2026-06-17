@@ -23,12 +23,17 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
 /**
- * {@code imap_mailbox} — emits three read sub-tools per configured pack
+ * {@code imap_mailbox} — emits four read sub-tools per configured pack
  * ({@code <name>__list_folders}, {@code <name>__list_messages},
- * {@code <name>__get_message}) plus, when the pack sets {@code readonly:
- * false}, four write sub-tools ({@code <name>__set_seen},
- * {@code <name>__set_flagged}, {@code <name>__move_message},
- * {@code <name>__delete_message}). The pack-level config carries the IMAP
+ * {@code <name>__get_message}, {@code <name>__preview_message}) plus,
+ * when the pack sets {@code readonly: false}, four write sub-tools
+ * ({@code <name>__set_seen}, {@code <name>__set_flagged},
+ * {@code <name>__move_message}, {@code <name>__delete_message}).
+ *
+ * <p>{@code preview_message} is the triage-oriented variant: HTML
+ * bodies are stripped to plain text via jsoup and capped by the pack's
+ * {@code bodyMaxBytes} (default 64 KiB) so Zoho/Gmail HTML mails with
+ * inline-image CIDs and embedded CSS don't blow up the token budget. The pack-level config carries the IMAP
  * host + auth; each invocation resolves secret templates at call time
  * via {@link SettingsSecretResolver}, so per-user / per-project secret
  * scopes work naturally.
@@ -64,7 +69,9 @@ public class ImapMailboxToolFactory implements ToolFactory {
                     Map.entry("readonly", Map.of("type", "boolean",
                             "description", "Default true. False enables set_seen/set_flagged/move_message/delete_message.")),
                     Map.entry("trashFolder", Map.of("type", "string",
-                            "description", "Soft-delete target. Default 'Trash'."))));
+                            "description", "Soft-delete target. Default 'Trash'.")),
+                    Map.entry("bodyMaxBytes", Map.of("type", "integer",
+                            "description", "Default 65536. Caps preview_message body after HTML-stripping. 0 = unlimited."))));
 
     private final SettingsSecretResolver secretResolver;
 
@@ -88,10 +95,11 @@ public class ImapMailboxToolFactory implements ToolFactory {
         boolean primary = document.isPrimary();
         boolean deferred = document.isDefaultDeferred();
 
-        List<Tool> out = new ArrayList<>(readonly ? 3 : 7);
+        List<Tool> out = new ArrayList<>(readonly ? 4 : 8);
         out.add(new ListFoldersTool(packName, params, readLabels, primary, deferred, promptHint));
         out.add(new ListMessagesTool(packName, params, readLabels, primary, deferred, promptHint));
         out.add(new GetMessageTool(packName, params, readLabels, primary, deferred, promptHint));
+        out.add(new PreviewMessageTool(packName, params, readLabels, primary, deferred, promptHint));
         if (!readonly) {
             out.add(new SetSeenTool(packName, params, writeLabels, primary, deferred, promptHint));
             out.add(new SetFlaggedTool(packName, params, writeLabels, primary, deferred, promptHint));
@@ -261,6 +269,46 @@ public class ImapMailboxToolFactory implements ToolFactory {
                 return resolveClient(ctx).getMessage(folder, ref);
             } catch (RuntimeException ex) {
                 throw new ToolException("get_message failed: " + ex.getMessage(), ex);
+            }
+        }
+    }
+
+    private class PreviewMessageTool extends BaseImapTool {
+        PreviewMessageTool(String pack, Map<String, Object> raw, Set<String> labels, boolean p, boolean d, String h) {
+            super(pack, "preview_message", raw, labels, p, d, h);
+        }
+
+        @Override public String description() {
+            return "Triage-oriented body view: HTML stripped to plain text (jsoup), "
+                    + "capped at the pack's bodyMaxBytes (default 64 KiB). Returns "
+                    + "envelope + body + bodyOriginalChars + bodyTruncated + "
+                    + "bodyStrippedFromHtml. Use this for 'is this worth reading' "
+                    + "decisions; use get_message for raw bodies (link extraction etc.). "
+                    + "Args: messageRef (folder index or Message-ID), folder (optional), "
+                    + "maxBytes (optional override of pack default; 0 = unlimited).";
+        }
+
+        @Override public Map<String, Object> paramsSchema() {
+            return Map.of(
+                    "type", "object",
+                    "required", List.of("messageRef"),
+                    "properties", Map.of(
+                            "messageRef", Map.of("type", "string"),
+                            "folder", Map.of("type", "string"),
+                            "maxBytes", Map.of("type", "integer", "minimum", 0)));
+        }
+
+        @Override
+        public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
+            if (params == null) params = Map.of();
+            String ref = stringOrNull(params.get("messageRef"));
+            if (ref == null) throw new ToolException("missing required 'messageRef'");
+            String folder = stringOrNull(params.get("folder"));
+            int maxBytes = intOrDefault(params.get("maxBytes"), -1);
+            try {
+                return resolveClient(ctx).previewMessage(folder, ref, maxBytes);
+            } catch (RuntimeException ex) {
+                throw new ToolException("preview_message failed: " + ex.getMessage(), ex);
             }
         }
     }

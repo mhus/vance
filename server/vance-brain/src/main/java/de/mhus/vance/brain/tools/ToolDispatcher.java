@@ -107,9 +107,21 @@ public class ToolDispatcher {
             noteSuccess(name, ctx);
             return result;
         } catch (ToolException e) {
+            log.warn("Tool '{}' raised ToolException tenant='{}' project='{}' session='{}' process='{}': {}",
+                    name, ctx == null ? null : ctx.tenantId(),
+                    ctx == null ? null : ctx.projectId(),
+                    ctx == null ? null : ctx.sessionId(),
+                    ctx == null ? null : ctx.processId(),
+                    e.getMessage(), e);
             triage(name, e, ctx);
             throw e;
         } catch (RuntimeException e) {
+            log.warn("Tool '{}' raised RuntimeException tenant='{}' project='{}' session='{}' process='{}': {}",
+                    name, ctx == null ? null : ctx.tenantId(),
+                    ctx == null ? null : ctx.projectId(),
+                    ctx == null ? null : ctx.sessionId(),
+                    ctx == null ? null : ctx.processId(),
+                    e.toString(), e);
             triage(name, e, ctx);
             throw new ToolException(
                     "Tool '" + name + "' failed: " + e.getMessage(), e);

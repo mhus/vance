@@ -1307,6 +1307,9 @@ export default {
     deletedHint: 'Deleted "{name}".',
     refreshedHint: 'Re-registered {count} scheduler(s).',
     saveFailed: 'Save failed.',
+    fire: 'Run now',
+    fireHint: 'Trigger this scheduler immediately. Works for disabled schedulers too (cron stays paused; the manual run still goes through). Log carries trigger=manual.',
+    firedHint: 'Triggered "{name}" — correlationId {correlationId}.',
   },
 
   ursahooks: {

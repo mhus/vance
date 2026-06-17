@@ -25,13 +25,14 @@ class ImapMailboxToolFactoryTest {
             new ImapMailboxToolFactory(mock(SettingsSecretResolver.class));
 
     @Test
-    void readonly_default_yields_three_read_tools() {
+    void readonly_default_yields_four_read_tools() {
         Collection<Tool> tools = factory.create(packDoc(Map.of("host", "imap.example.com")));
 
         assertThat(toolNames(tools)).containsExactlyInAnyOrder(
                 "imap__list_folders",
                 "imap__list_messages",
-                "imap__get_message");
+                "imap__get_message",
+                "imap__preview_message");
         assertThat(tools).allSatisfy(t -> assertThat(t.labels())
                 .contains("read-only")
                 .doesNotContain("write", "side-effect"));
@@ -47,6 +48,7 @@ class ImapMailboxToolFactoryTest {
                 "imap__list_folders",
                 "imap__list_messages",
                 "imap__get_message",
+                "imap__preview_message",
                 "imap__set_seen",
                 "imap__set_flagged",
                 "imap__move_message",
@@ -76,7 +78,7 @@ class ImapMailboxToolFactoryTest {
                 "host", "imap.example.com",
                 "readonly", "false")));
 
-        assertThat(tools).hasSize(7);
+        assertThat(tools).hasSize(8);
     }
 
     private static ServerToolDocument packDoc(Map<String, Object> params) {

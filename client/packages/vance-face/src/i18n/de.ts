@@ -1315,6 +1315,9 @@ export default {
     deletedHint: '„{name}" gelöscht.',
     refreshedHint: '{count} Scheduler neu registriert.',
     saveFailed: 'Speichern fehlgeschlagen.',
+    fire: 'Jetzt ausführen',
+    fireHint: 'Scheduler sofort auslösen. Funktioniert auch bei deaktivierten Schedulern (Cron bleibt pausiert; der manuelle Lauf geht trotzdem durch). Log trägt trigger=manual.',
+    firedHint: '„{name}" ausgelöst — correlationId {correlationId}.',
   },
 
   ursahooks: {

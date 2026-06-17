@@ -14,6 +14,8 @@ import de.mhus.vance.brain.script.ScriptResult;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.ToolDispatcher;
+import de.mhus.vance.shared.session.SessionDocument;
+import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.time.Duration;
@@ -60,6 +62,7 @@ public class ExecutingPhase {
     private final ToolDispatcher toolDispatcher;
     private final ProgressEmitter progressEmitter;
     private final NotificationService notificationService;
+    private final SessionService sessionService;
 
     public HactarStatus execute(
             HactarState state,
@@ -73,12 +76,23 @@ public class ExecutingPhase {
             return HactarStatus.FAILED;
         }
 
+        // Resolve the session owner so user-scope settings-resolver
+        // lookups ({{secret:user:...}}) work for scheduler-driven runs
+        // and other system-session contexts. The cortex-run path takes
+        // userId from the HTTP-JWT; here we read it from the session
+        // the think-process belongs to. Without this, IMAP/OAuth tools
+        // bound to per-user credentials silently see an empty resolver
+        // substitution and fail with cryptic provider errors.
+        String sessionOwner = process.getSessionId() == null ? null
+                : sessionService.findBySessionId(process.getSessionId())
+                        .map(SessionDocument::getUserId)
+                        .orElse(null);
         ToolInvocationContext scope = new ToolInvocationContext(
                 process.getTenantId(),
                 process.getProjectId(),
                 process.getSessionId(),
                 process.getId(),
-                /*userId*/ null);
+                sessionOwner);
         Set<String> scriptTools = LoadingPhase.scriptAllowedTools(process);
         ContextToolsApi tools = new ContextToolsApi(toolDispatcher, scope, scriptTools);
 

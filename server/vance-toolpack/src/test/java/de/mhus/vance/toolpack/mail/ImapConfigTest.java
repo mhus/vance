@@ -76,4 +76,26 @@ class ImapConfigTest {
                 "readonly", "false"));
         assertThat(cfg.readonly()).isFalse();
     }
+
+    @Test
+    void bodyMaxBytes_defaults_to_64k() {
+        ImapConfig cfg = ImapConfig.fromParameters(Map.of("host", "imap.example.com"));
+        assertThat(cfg.bodyMaxBytes()).isEqualTo(65536);
+    }
+
+    @Test
+    void bodyMaxBytes_zero_means_unlimited() {
+        ImapConfig cfg = ImapConfig.fromParameters(Map.of(
+                "host", "imap.example.com",
+                "bodyMaxBytes", 0));
+        assertThat(cfg.bodyMaxBytes()).isEqualTo(0);
+    }
+
+    @Test
+    void bodyMaxBytes_negative_clamps_to_zero() {
+        ImapConfig cfg = ImapConfig.fromParameters(Map.of(
+                "host", "imap.example.com",
+                "bodyMaxBytes", -1));
+        assertThat(cfg.bodyMaxBytes()).isEqualTo(0);
+    }
 }

@@ -117,8 +117,12 @@ public class SessionService {
      */
     public Optional<SessionDocument> findSystemSession(
             String tenantId, String projectId, String displayName) {
-        return repository.findFirstByTenantIdAndProjectIdAndDisplayNameAndSystem(
-                tenantId, projectId, displayName, true);
+        // Filter out terminal statuses — a CLOSED or ARCHIVED row from
+        // a previous lifecycle must not shadow a fresh recreate. See
+        // {@code SessionRepository#findFirstByTenantIdAndProjectIdAndDisplayNameAndSystemAndStatusNotIn}.
+        return repository.findFirstByTenantIdAndProjectIdAndDisplayNameAndSystemAndStatusNotIn(
+                tenantId, projectId, displayName, true,
+                java.util.List.of(SessionStatus.CLOSED, SessionStatus.ARCHIVED));
     }
 
     public List<SessionDocument> listForUser(String tenantId, String userId) {

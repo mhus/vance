@@ -1,5 +1,7 @@
 package de.mhus.vance.shared.session;
 
+import de.mhus.vance.api.session.SessionStatus;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.mongodb.repository.MongoRepository;
@@ -30,4 +32,16 @@ interface SessionRepository extends MongoRepository<SessionDocument, String> {
      */
     Optional<SessionDocument> findFirstByTenantIdAndProjectIdAndDisplayNameAndSystem(
             String tenantId, String projectId, String displayName, boolean system);
+
+    /**
+     * Variant that filters out terminal statuses (typically CLOSED +
+     * ARCHIVED) — used when a caller wants the <i>active</i> system
+     * session for a slot, not a zombie row left behind by a previous
+     * lifecycle. Without this, {@link #findFirstByTenantIdAndProjectIdAndDisplayNameAndSystem}
+     * keeps returning the old terminal row and any "recreate" logic
+     * loops indefinitely.
+     */
+    Optional<SessionDocument> findFirstByTenantIdAndProjectIdAndDisplayNameAndSystemAndStatusNotIn(
+            String tenantId, String projectId, String displayName, boolean system,
+            Collection<SessionStatus> excludedStatuses);
 }

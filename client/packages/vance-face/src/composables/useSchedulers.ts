@@ -11,6 +11,12 @@ import type {
  * Read + write schedulers at one project. Mirrors {@code useAdminServerTools}
  * for the scheduler subsystem — see {@code specification/scheduler.md} §10.
  */
+/** Server response of {@code POST /scheduler/{name}/fire}. */
+export interface FireResult {
+  correlationId: string;
+  logPath: string;
+}
+
 export function useSchedulers(): {
   schedulers: Ref<SchedulerSummary[]>;
   current: Ref<SchedulerDto | null>;
@@ -24,6 +30,7 @@ export function useSchedulers(): {
   save: (projectId: string, name: string, yaml: string) => Promise<SchedulerDto>;
   remove: (projectId: string, name: string) => Promise<void>;
   refresh: (projectId: string) => Promise<number>;
+  fire: (projectId: string, name: string) => Promise<FireResult>;
   clearCurrent: () => void;
 } {
   const schedulers = ref<SchedulerSummary[]>([]);
@@ -125,6 +132,25 @@ export function useSchedulers(): {
     }
   }
 
+  async function fire(projectId: string, name: string): Promise<FireResult> {
+    busy.value = true;
+    error.value = null;
+    try {
+      const result = await brainFetch<FireResult>(
+        'POST',
+        `project/${encodeURIComponent(projectId)}/scheduler/${encodeURIComponent(name)}/fire`,
+      );
+      // Refresh the run history so the new entry shows up immediately.
+      await loadEvents(projectId, name, 20);
+      return result;
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Fire failed.';
+      throw e;
+    } finally {
+      busy.value = false;
+    }
+  }
+
   async function refresh(projectId: string): Promise<number> {
     busy.value = true;
     error.value = null;
@@ -161,6 +187,7 @@ export function useSchedulers(): {
     save,
     remove,
     refresh,
+    fire,
     clearCurrent,
   };
 }

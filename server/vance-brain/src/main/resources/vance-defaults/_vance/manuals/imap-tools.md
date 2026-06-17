@@ -11,13 +11,14 @@ the LLM never sees the credentials.
 
 ## Scope of an `imap_mailbox` pack
 
-Three read sub-tools are always emitted:
+Four read sub-tools are always emitted:
 
 | Tool | What |
 |---|---|
 | `<name>__list_folders` | Folder tree of the configured mailbox. No args. |
 | `<name>__list_messages` | Header summaries (subject/from/to/date/seen). Filterable: folder, limit, unread_only, since (ISO-8601). |
-| `<name>__get_message` | Full envelope + body for one message. Args: `messageRef` (folder index or Message-ID), optional folder. |
+| `<name>__get_message` | Envelope + raw body (text/plain preferred, text/html fallback — NOT stripped). Args: `messageRef` (folder index or Message-ID), optional folder. Use when you need the original markup (link extraction, HTML parsing). |
+| `<name>__preview_message` | Triage view: HTML stripped to plain text via jsoup (style/script/inline-image-CIDs gone), capped at the pack's `bodyMaxBytes` (default 64 KiB). Args: `messageRef`, optional `folder`, optional `maxBytes` override (0 = unlimited). Returns the envelope plus `body`, `bodyOriginalChars`, `bodyTruncated`, `bodyStrippedFromHtml`. |
 
 When the pack sets `readonly: false`, four write sub-tools are added:
 
@@ -32,6 +33,14 @@ Body extraction is text-first: a multipart/alternative message yields
 its `text/plain` part; HTML is the fallback. Attachments are ignored
 (v1 — explicit attachment-fetch is a v2 feature once the file-blob
 plumbing is settled).
+
+For **mailbox triage** (incoming inbox, deciding "is this worth
+reading"), use `preview_message` — Zoho/Gmail HTML mails routinely
+carry 50–500 KiB of embedded CSS + inline-image CIDs that explode
+the LLM token bill. The preview tool strips that to ~1–5 KiB of
+plain text. Only fall back to `get_message` when the raw markup
+actually matters (link extraction, attachment-detection by
+Content-Type sniffing, etc.).
 
 The default `readonly: true` is the safe pick — most triage/digest
 flows only ever need to read. Opt into write only when the agent
@@ -86,6 +95,7 @@ parameters:
                                      # delete sub-tools.
   trashFolder:   "Trash"             # ignored when readonly=true; used
                                      # as soft-delete target otherwise.
+  bodyMaxBytes:  65536               # preview_message cap. 0 = no cap.
   timeoutSeconds: 30
 promptHint: |
   ## Sales mailbox

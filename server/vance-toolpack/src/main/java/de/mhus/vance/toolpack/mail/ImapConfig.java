@@ -28,6 +28,11 @@ import org.jspecify.annotations.Nullable;
  *     trashFolder: "Trash"                      # default "Trash". Target of
  *                                               # soft-delete (delete_message
  *                                               # without hard=true).
+ *     bodyMaxBytes: 65536                       # default 65536. Caps the
+ *                                               # body returned by
+ *                                               # preview_message after
+ *                                               # HTML-stripping. 0 = no
+ *                                               # truncation.
  * </pre>
  *
  * <p>The {@code {{secret:...}}} references are resolved at invoke-time,
@@ -43,13 +48,15 @@ public record ImapConfig(
         String defaultFolder,
         int timeoutSeconds,
         boolean readonly,
-        String trashFolder) {
+        String trashFolder,
+        int bodyMaxBytes) {
 
     public static final int DEFAULT_TLS_PORT = 993;
     public static final int DEFAULT_PLAIN_PORT = 143;
     public static final int DEFAULT_TIMEOUT_SECONDS = 30;
     public static final String DEFAULT_FOLDER = "INBOX";
     public static final String DEFAULT_TRASH_FOLDER = "Trash";
+    public static final int DEFAULT_BODY_MAX_BYTES = 65536;
 
     public ImapConfig {
         if (host == null || host.isBlank()) {
@@ -59,6 +66,7 @@ public record ImapConfig(
         if (trashFolder == null || trashFolder.isBlank()) trashFolder = DEFAULT_TRASH_FOLDER;
         if (user == null) user = "";
         if (password == null) password = "";
+        if (bodyMaxBytes < 0) bodyMaxBytes = 0;
     }
 
     public static ImapConfig fromParameters(@Nullable Map<String, Object> params) {
@@ -76,8 +84,9 @@ public record ImapConfig(
         int timeout = intOrDefault(params.get("timeoutSeconds"), DEFAULT_TIMEOUT_SECONDS);
         boolean readonly = boolWithDefault(params.get("readonly"), true);
         String trash = stringOrDefault(params.get("trashFolder"), DEFAULT_TRASH_FOLDER);
+        int bodyMax = intOrDefault(params.get("bodyMaxBytes"), DEFAULT_BODY_MAX_BYTES);
 
-        return new ImapConfig(host, port, tls, starttls, user, password, folder, timeout, readonly, trash);
+        return new ImapConfig(host, port, tls, starttls, user, password, folder, timeout, readonly, trash, bodyMax);
     }
 
     /** "imaps" for implicit-TLS, "imap" for plain/STARTTLS. Drives Jakarta Mail provider lookup. */

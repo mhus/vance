@@ -452,12 +452,14 @@ public class UrsaSchedulerService {
      *         is currently registered for {@code (tenantId, projectId)}.
      */
     public FireOutcome fireNow(String tenantId, String projectId, String name) {
-        Registration reg = registry.get(registryKey(tenantId, projectId, name));
-        if (reg == null) {
-            throw new IllegalArgumentException(
-                    "Scheduler '" + name + "' is not registered for project '"
-                            + tenantId + "/" + projectId + "' (check spelling and that the document is enabled).");
-        }
+        Registration found = registry.get(registryKey(tenantId, projectId, name));
+        // Not in the runtime registry — happens when the YAML has
+        // `enabled: false` (cron path skipped) or after a refresh
+        // race. Manual fire must still work because it's an
+        // explicit user act, so fall back to a fresh loader lookup
+        // and build an ad-hoc Registration (not added to the
+        // registry — the cron stays off).
+        final Registration reg = found != null ? found : loadAdHoc(tenantId, projectId, name);
         // The cron path runs on a TaskScheduler thread; for a manual
         // fire we still want the same isolation — submit on the
         // scheduler pool and return the correlationId synchronously so
@@ -480,6 +482,51 @@ public class UrsaSchedulerService {
             }
         }, firedAt);
         return new FireOutcome(correlationId, firedAt);
+    }
+
+    /**
+     * Load the scheduler YAML directly and build a Registration that is
+     * NOT added to the registry — used by {@link #fireNow} when the
+     * runtime registry doesn't carry an entry for the requested name
+     * (typically {@code enabled: false}, where the cron path is
+     * intentionally skipped). Manual fire is a deliberate user act and
+     * must not be blocked by the cron-enabled flag.
+     *
+     * <p>Validation kept parallel to {@link #registerOne}: missing
+     * {@code runAs} or a missing doc throw {@link IllegalArgumentException}
+     * — which the REST layer maps to 404 with a clear message.
+     */
+    private Registration loadAdHoc(String tenantId, String projectId, String name) {
+        Optional<ResolvedUrsaScheduler> loaded;
+        try {
+            loaded = loader.load(tenantId, projectId, name);
+        } catch (UrsaSchedulerLoader.SchedulerParseException ex) {
+            throw new IllegalArgumentException(
+                    "Scheduler '" + name + "' could not be parsed: " + ex.getMessage());
+        }
+        if (loaded.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Scheduler '" + name + "' not found for project '"
+                            + tenantId + "/" + projectId + "'.");
+        }
+        ResolvedUrsaScheduler cfg = loaded.get();
+        if (cfg.effectiveRunAs() == null) {
+            throw new IllegalArgumentException(
+                    "Scheduler '" + name + "' has no runAs configured "
+                            + "(set `runAs:` in the document or rely on `createdBy`).");
+        }
+        ZoneId zone;
+        try {
+            zone = resolveZone(cfg.timezone());
+        } catch (RuntimeException ex) {
+            // Timezone is only used by the cron path — for an ad-hoc fire
+            // we don't care; fall back to UTC and log.
+            log.debug("Scheduler '{}/{}/{}' ad-hoc fire — invalid timezone '{}', "
+                    + "falling back to UTC: {}",
+                    tenantId, projectId, name, cfg.timezone(), ex.getMessage());
+            zone = ZoneId.of("UTC");
+        }
+        return new Registration(tenantId, projectId, cfg, zone, null);
     }
 
     /**

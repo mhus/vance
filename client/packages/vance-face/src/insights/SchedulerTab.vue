@@ -109,6 +109,20 @@ async function createScheduler(): Promise<void> {
   }
 }
 
+async function fireCurrent(): Promise<void> {
+  if (!props.projectId || !selectedName.value) return;
+  banner.value = null;
+  try {
+    const result = await state.fire(props.projectId, selectedName.value);
+    banner.value = t('scheduler.firedHint', {
+      name: selectedName.value,
+      correlationId: result.correlationId,
+    });
+  } catch {
+    /* surfaced via state.error */
+  }
+}
+
 async function saveCurrent(): Promise<void> {
   if (!props.projectId || !selectedName.value) return;
   banner.value = null;
@@ -214,6 +228,14 @@ function formatTimestamp(value?: Date | string | null): string {
             <template #actions>
               <VButton variant="ghost" @click="showDeleteModal = true">
                 {{ t('common.delete') }}
+              </VButton>
+              <VButton
+                variant="ghost"
+                :disabled="isModified || state.busy.value"
+                :title="t('scheduler.fireHint')"
+                @click="fireCurrent"
+              >
+                ▶ {{ t('scheduler.fire') }}
               </VButton>
               <VButton
                 variant="primary"

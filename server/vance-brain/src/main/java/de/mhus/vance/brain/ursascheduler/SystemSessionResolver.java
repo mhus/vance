@@ -3,6 +3,7 @@ package de.mhus.vance.brain.ursascheduler;
 import de.mhus.vance.api.ws.Profiles;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -30,12 +31,30 @@ public class SystemSessionResolver {
      * Returns the system session for {@code schedulerName}, creating it
      * on first use. {@code runAs} ends up as the session's {@code userId}
      * — Inbox-routing and downstream notifications go to that user.
+     *
+     * <p>If an existing system session is found with a {@code userId}
+     * different from the supplied {@code runAs}, the old session is
+     * closed and a fresh one created. This makes {@code runAs:} edits
+     * on the scheduler YAML take effect on the next fire without a
+     * brain restart or manual DB cleanup.
      */
     public SessionDocument resolve(
             String tenantId, String projectId, String schedulerName, String runAs) {
         String displayName = UrsaSchedulerSourceKeys.systemSessionDisplayName(schedulerName);
-        return sessionService.findSystemSession(tenantId, projectId, displayName)
-                .orElseGet(() -> createFresh(tenantId, projectId, runAs, displayName));
+        Optional<SessionDocument> existing =
+                sessionService.findSystemSession(tenantId, projectId, displayName);
+        if (existing.isPresent()) {
+            SessionDocument session = existing.get();
+            if (java.util.Objects.equals(session.getUserId(), runAs)) {
+                return session;
+            }
+            log.info("Scheduler system-session runAs changed project='{}' name='{}' "
+                    + "oldUser='{}' newUser='{}' — closing old session '{}' and creating fresh",
+                    projectId, displayName, session.getUserId(), runAs, session.getSessionId());
+            sessionService.close(session.getSessionId());
+            // fall through to createFresh
+        }
+        return createFresh(tenantId, projectId, runAs, displayName);
     }
 
     private SessionDocument createFresh(

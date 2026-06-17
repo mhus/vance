@@ -6,10 +6,18 @@ import { type Ref } from 'vue';
 export interface RagStatusDto {
     exists: boolean;
     ragId: string | null;
+    /** Provider baked into the existing RAG at create time. May differ from `effectiveProvider`. */
     embeddingProvider: string | null;
     embeddingModel: string | null;
     chunkCount: number;
     createdAt: string | null;
+    /**
+     * Cascade-resolved (tenant→project) `ai.embedding.provider` setting.
+     * Always present; `"none"` means RAG is disabled for this scope.
+     */
+    effectiveProvider: string;
+    /** `effectiveProvider !== "none"`. Drives whether the UI shows actions / search. */
+    enabled: boolean;
 }
 export interface ReindexResponseDto {
     rebuild: boolean;

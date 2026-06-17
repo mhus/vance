@@ -113,24 +113,27 @@ const __VLS_1 = __VLS_0({
 __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
     ...{ class: "font-bold text-lg font-mono" },
 });
-if (__VLS_ctx.serverTitle || __VLS_ctx.serverBacklink) {
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "flex-none flex flex-col leading-tight" },
+if (__VLS_ctx.serverTitle && __VLS_ctx.serverBacklink) {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
+        ...{ onClick: () => { } },
+        href: (__VLS_ctx.serverBacklink),
+        ...{ class: "flex-none link link-hover text-sm font-medium opacity-70" },
     });
-    if (__VLS_ctx.serverTitle) {
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-            ...{ class: "text-sm font-medium opacity-70" },
-        });
-        (__VLS_ctx.serverTitle);
-    }
-    if (__VLS_ctx.serverBacklink) {
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
-            ...{ onClick: () => { } },
-            href: (__VLS_ctx.serverBacklink),
-            ...{ class: "link link-hover text-xs opacity-50" },
-        });
-        (__VLS_ctx.serverBacklink);
-    }
+    (__VLS_ctx.serverTitle);
+}
+else if (__VLS_ctx.serverTitle) {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+        ...{ class: "flex-none text-sm font-medium opacity-70" },
+    });
+    (__VLS_ctx.serverTitle);
+}
+else if (__VLS_ctx.serverBacklink) {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
+        ...{ onClick: () => { } },
+        href: (__VLS_ctx.serverBacklink),
+        ...{ class: "flex-none link link-hover text-xs opacity-50" },
+    });
+    (__VLS_ctx.serverBacklink);
 }
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "flex-1 flex items-center gap-2 text-sm" },
@@ -327,12 +330,16 @@ const __VLS_6 = __VLS_5({
 /** @type {__VLS_StyleScopedClasses['text-lg']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-none']} */ ;
-/** @type {__VLS_StyleScopedClasses['flex']} */ ;
-/** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
-/** @type {__VLS_StyleScopedClasses['leading-tight']} */ ;
+/** @type {__VLS_StyleScopedClasses['link']} */ ;
+/** @type {__VLS_StyleScopedClasses['link-hover']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-medium']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-none']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-medium']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-none']} */ ;
 /** @type {__VLS_StyleScopedClasses['link']} */ ;
 /** @type {__VLS_StyleScopedClasses['link-hover']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;

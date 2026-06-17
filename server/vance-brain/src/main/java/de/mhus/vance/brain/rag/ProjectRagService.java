@@ -56,7 +56,7 @@ public class ProjectRagService {
         Optional<RagDocument> existing = catalog.findByName(
                 tenantId, projectId, RagCatalogService.DEFAULT_RAG_NAME);
         if (existing.isPresent()) return existing;
-        if (!ragService.isEmbeddingEnabled(tenantId)) {
+        if (!ragService.isEmbeddingEnabled(tenantId, projectId)) {
             log.debug("Project-RAG ensureDefaultRag skipped tenant='{}' project='{}' — embedding disabled",
                     tenantId, projectId);
             return Optional.empty();

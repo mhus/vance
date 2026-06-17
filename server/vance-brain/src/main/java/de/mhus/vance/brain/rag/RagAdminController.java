@@ -84,9 +84,12 @@ public class RagAdminController {
             @PathVariable("project") String project,
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Project(tenant, project), Action.WRITE);
+        String effectiveProvider = ragService.effectiveProvider(tenant, project);
+        boolean enabled = ragService.isEmbeddingEnabled(tenant, project);
         Optional<RagDocument> opt = projectRagService.findDefaultRag(tenant, project);
         if (opt.isEmpty()) {
-            return new StatusResponse(false, null, null, null, 0L, null);
+            return new StatusResponse(false, null, null, null, 0L, null,
+                    effectiveProvider, enabled);
         }
         RagDocument rag = ragCatalog.refreshChunkCount(opt.get());
         return new StatusResponse(
@@ -95,7 +98,9 @@ public class RagAdminController {
                 rag.getEmbeddingProvider(),
                 rag.getEmbeddingModel(),
                 rag.getChunkCount(),
-                rag.getCreatedAt());
+                rag.getCreatedAt(),
+                effectiveProvider,
+                enabled);
     }
 
     /**
@@ -149,11 +154,34 @@ public class RagAdminController {
             String content,
             double score) {}
 
+    /**
+     * @param exists              whether a {@code _documents}-RAG row currently
+     *                            exists for the project.
+     * @param ragId               Mongo id of the RAG (when {@code exists}).
+     * @param embeddingProvider   provider name baked into the RAG at create
+     *                            time (when {@code exists}). May differ from
+     *                            {@code effectiveProvider} if the tenant
+     *                            switched providers after the RAG was
+     *                            created — UI hints at the mismatch.
+     * @param embeddingModel      model name baked into the RAG at create time.
+     * @param chunkCount          number of indexed chunks (when {@code exists}).
+     * @param createdAt           when the RAG was created (when {@code exists}).
+     * @param effectiveProvider   cascade-resolved current
+     *                            {@code ai.embedding.provider} for the
+     *                            {@code (tenant, project)} scope. Always
+     *                            present; defaults to {@code none}.
+     * @param enabled             convenience flag: {@code effectiveProvider}
+     *                            is something other than {@code none}.
+     *                            UI uses this to hide search / actions when
+     *                            embedding is off.
+     */
     public record StatusResponse(
             boolean exists,
             @Nullable String ragId,
             @Nullable String embeddingProvider,
             @Nullable String embeddingModel,
             long chunkCount,
-            @Nullable Instant createdAt) {}
+            @Nullable Instant createdAt,
+            String effectiveProvider,
+            boolean enabled) {}
 }

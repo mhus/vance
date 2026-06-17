@@ -40,6 +40,17 @@ const searchDisabled = computed(() => {
   return state.searchQuery.value.trim().length === 0;
 });
 
+/** Cascade-resolved tenant/project setting — `"none"` means RAG is off here. */
+const embeddingDisabled = computed(
+  () => !!state.status.value && !state.status.value.enabled,
+);
+
+const providerMismatch = computed(() => {
+  const s = state.status.value;
+  if (!s || !s.exists) return false;
+  return !!s.embeddingProvider && s.embeddingProvider !== s.effectiveProvider;
+});
+
 async function runSearch(): Promise<void> {
   if (!props.projectId) return;
   const query = state.searchQuery.value.trim();
@@ -70,20 +81,39 @@ function fmtScore(score: number): string {
     />
 
     <template v-else>
+      <VAlert v-if="embeddingDisabled" variant="info">
+        <span>
+          RAG is disabled for this project —
+          <code>ai.embedding.provider = none</code>. Open the
+          <strong>LLM Settings</strong> form and pick <code>embedded</code>,
+          <code>gemini</code> or <code>openai</code> to enable indexing and search.
+        </span>
+      </VAlert>
+
       <VCard title="Project RAG — _documents">
         <div v-if="state.loading.value" class="opacity-70">Loading…</div>
         <template v-else-if="state.status.value">
           <dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
             <dt class="opacity-60">Status</dt>
             <dd>
-              <span v-if="state.status.value.exists" class="badge-ok">active</span>
+              <span v-if="embeddingDisabled" class="badge-empty">disabled</span>
+              <span v-else-if="state.status.value.exists" class="badge-ok">active</span>
               <span v-else class="badge-empty">not created</span>
+            </dd>
+            <dt class="opacity-60">Effective provider</dt>
+            <dd>
+              <code>{{ state.status.value.effectiveProvider }}</code>
+              <span
+                v-if="providerMismatch"
+                class="ml-2 text-xs opacity-70"
+                :title="'RAG was created with ' + state.status.value.embeddingProvider + ' — tenant now resolves to ' + state.status.value.effectiveProvider + '. Use Rebuild to migrate.'"
+              >
+                (RAG pinned to <code>{{ state.status.value.embeddingProvider }}</code>)
+              </span>
             </dd>
             <template v-if="state.status.value.exists">
               <dt class="opacity-60">RAG id</dt>
               <dd class="font-mono text-xs">{{ state.status.value.ragId }}</dd>
-              <dt class="opacity-60">Embedding provider</dt>
-              <dd>{{ state.status.value.embeddingProvider ?? '—' }}</dd>
               <dt class="opacity-60">Embedding model</dt>
               <dd>{{ state.status.value.embeddingModel ?? '—' }}</dd>
               <dt class="opacity-60">Chunks</dt>
@@ -92,13 +122,17 @@ function fmtScore(score: number): string {
               <dd>{{ fmtTime(state.status.value.createdAt) }}</dd>
             </template>
           </dl>
-          <p v-if="!state.status.value.exists" class="text-xs opacity-70 mt-2">
+          <p
+            v-if="!embeddingDisabled && !state.status.value.exists"
+            class="text-xs opacity-70 mt-2"
+          >
             The project's default RAG is created automatically the next time the
             project is brought to RUNNING, or when you press <em>Reindex</em>.
           </p>
         </template>
       </VCard>
 
+      <template v-if="!embeddingDisabled">
       <VCard title="Actions">
         <p class="text-xs opacity-70 mb-3">
           <strong>Reindex</strong> queues every active document under
@@ -210,6 +244,7 @@ function fmtScore(score: number): string {
           </ol>
         </template>
       </VCard>
+      </template>
     </template>
   </div>
 </template>

@@ -120,14 +120,27 @@ public class RagService {
     }
 
     /**
-     * Whether {@code tenantId} has embedding enabled — i.e. its
-     * {@code ai.embedding.provider} setting is something other than
-     * {@code none}. Callers (lifecycle, indexer-scheduler) should check
-     * this before invoking embedding-touching methods to avoid pointless
-     * Mongo / log work.
+     * Whether the {@code (tenant, project)} scope has embedding enabled
+     * — i.e. the cascade-resolved {@code ai.embedding.provider} is
+     * something other than {@code none}. Pass {@code projectId=null}
+     * for a tenant-only check (skipping the project layer of the
+     * cascade). Callers (lifecycle, indexer-scheduler, status endpoint)
+     * should check this before invoking embedding-touching methods to
+     * avoid pointless Mongo / log work.
      */
-    public boolean isEmbeddingEnabled(String tenantId) {
-        return !PROVIDER_NONE.equalsIgnoreCase(resolveProviderName(tenantId));
+    public boolean isEmbeddingEnabled(String tenantId, @Nullable String projectId) {
+        return !PROVIDER_NONE.equalsIgnoreCase(resolveProviderName(tenantId, projectId));
+    }
+
+    /**
+     * Cascade-resolved effective provider name for the {@code
+     * (tenant, project)} scope. Returns {@link #PROVIDER_NONE} when no
+     * level of the cascade defines a value — that's the RAG-off
+     * default for fresh tenants. Useful for the status endpoint /
+     * UI so the user understands which level disabled embeddings.
+     */
+    public String effectiveProvider(String tenantId, @Nullable String projectId) {
+        return resolveProviderName(tenantId, projectId);
     }
 
     public Optional<RagDocument> findByName(String tenantId, String projectId, String name) {
@@ -221,17 +234,18 @@ public class RagService {
     // ──────────────────── Helpers ────────────────────
 
     private EmbeddingModel modelFor(RagDocument rag) {
-        // Tenant-level kill-switch wins over the RAG's stored provider.
-        // A tenant that disables embeddings (provider=none) blocks all
-        // embed/query activity, even against RAGs previously created
-        // when the tenant had a working provider — leftover RAGs do
-        // not silently keep calling external APIs.
-        if (!isEmbeddingEnabled(rag.getTenantId())) {
+        // Cascade kill-switch wins over the RAG's stored provider. If
+        // either the tenant or the project sets provider=none, all
+        // embed/query activity is blocked — even against RAGs previously
+        // created with a working provider — so leftover RAGs cannot
+        // silently keep calling external APIs after RAG was switched off.
+        if (!isEmbeddingEnabled(rag.getTenantId(), rag.getProjectId())) {
             throw new IllegalStateException(
                     "Embedding is disabled for tenant '" + rag.getTenantId()
-                            + "' (setting '" + SETTING_EMBED_PROVIDER
-                            + "' = '" + PROVIDER_NONE + "') — refusing embed/query "
-                            + "against RAG '" + rag.getName() + "'.");
+                            + "'/project '" + rag.getProjectId() + "' (setting '"
+                            + SETTING_EMBED_PROVIDER + "' = '" + PROVIDER_NONE
+                            + "') — refusing embed/query against RAG '"
+                            + rag.getName() + "'.");
         }
         // RAG-level operation has no process scope — read from the
         // _vance/project layer of the project cascade.
@@ -262,7 +276,7 @@ public class RagService {
      * (missing API key for a keyed provider).
      */
     private Optional<EmbeddingConfig> resolveEmbeddingConfig(String tenantId) {
-        String provider = resolveProviderName(tenantId);
+        String provider = resolveProviderName(tenantId, /*projectId*/ null);
         if (PROVIDER_NONE.equalsIgnoreCase(provider)) {
             return Optional.empty();
         }
@@ -288,9 +302,9 @@ public class RagService {
                 StringUtils.isBlank(baseUrl) ? null : baseUrl));
     }
 
-    private String resolveProviderName(String tenantId) {
+    private String resolveProviderName(String tenantId, @Nullable String projectId) {
         String provider = settingService.getStringValueCascade(
-                tenantId, /*projectId*/ null, /*processId*/ null, SETTING_EMBED_PROVIDER);
+                tenantId, projectId, /*processId*/ null, SETTING_EMBED_PROVIDER);
         return (provider == null || provider.isBlank()) ? DEFAULT_EMBED_PROVIDER : provider;
     }
 

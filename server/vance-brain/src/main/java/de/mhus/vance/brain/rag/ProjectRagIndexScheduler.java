@@ -64,10 +64,10 @@ public class ProjectRagIndexScheduler {
 
         Duration claimTtl = Duration.ofMinutes(claimTtlMinutes);
         for (ProjectDocument project : projects) {
-            // Tenant-level kill-switch wins over the per-project toggle —
-            // a tenant on provider=none has no embedding model to call,
-            // so we skip without even touching the document claim path.
-            if (!ragService.isEmbeddingEnabled(project.getTenantId())) {
+            // Cascade kill-switch wins over the per-project rag.project.enabled
+            // toggle — provider=none at tenant OR project level skips the claim
+            // path entirely, no embed-model lookup, no Mongo claim roundtrip.
+            if (!ragService.isEmbeddingEnabled(project.getTenantId(), project.getName())) {
                 runCounter("tenant_disabled").increment();
                 continue;
             }

@@ -2,8 +2,10 @@ package de.mhus.vance.brain.script;
 
 import de.mhus.vance.brain.action.ScopeLevel;
 import de.mhus.vance.brain.action.SpawnToolRegistry;
+import de.mhus.vance.brain.ai.light.LightLlmService;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.workspace.NodeHandler;
 import de.mhus.vance.shared.workspace.RootDirHandle;
 import de.mhus.vance.shared.workspace.WorkspaceService;
@@ -63,6 +65,8 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
     private final @Nullable WorkspaceService workspaceService;
     private final @Nullable SpawnToolRegistry spawnToolRegistry;
     private final @Nullable DocumentService documentService;
+    private final @Nullable LightLlmService lightLlmService;
+    private final @Nullable SettingService settingService;
 
     @Autowired
     public GraaljsScriptExecutor(
@@ -71,13 +75,44 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
             ScriptEngineProperties props,
             @Autowired(required = false) @Nullable WorkspaceService workspaceService,
             @Autowired(required = false) @Nullable SpawnToolRegistry spawnToolRegistry,
-            @Autowired(required = false) @Nullable DocumentService documentService) {
+            @Autowired(required = false) @Nullable DocumentService documentService,
+            @Autowired(required = false) @Nullable LightLlmService lightLlmService,
+            @Autowired(required = false) @Nullable SettingService settingService) {
         this.engine = engine;
         this.hostAccess = hostAccess;
         this.props = props;
         this.workspaceService = workspaceService;
         this.spawnToolRegistry = spawnToolRegistry;
         this.documentService = documentService;
+        this.lightLlmService = lightLlmService;
+        this.settingService = settingService;
+    }
+
+    /** Seven-arg backwards-compat constructor — pre-SettingService.
+     *  {@code vance.settings} stays null. */
+    public GraaljsScriptExecutor(
+            Engine engine,
+            HostAccess hostAccess,
+            ScriptEngineProperties props,
+            @Nullable WorkspaceService workspaceService,
+            @Nullable SpawnToolRegistry spawnToolRegistry,
+            @Nullable DocumentService documentService,
+            @Nullable LightLlmService lightLlmService) {
+        this(engine, hostAccess, props, workspaceService, spawnToolRegistry,
+                documentService, lightLlmService, null);
+    }
+
+    /** Six-arg backwards-compat constructor — pre-LightLlmService.
+     *  {@code vance.llm} stays null. */
+    public GraaljsScriptExecutor(
+            Engine engine,
+            HostAccess hostAccess,
+            ScriptEngineProperties props,
+            @Nullable WorkspaceService workspaceService,
+            @Nullable SpawnToolRegistry spawnToolRegistry,
+            @Nullable DocumentService documentService) {
+        this(engine, hostAccess, props, workspaceService, spawnToolRegistry,
+                documentService, null, null);
     }
 
     /** Five-arg backwards-compat constructor — pre-DocumentService.
@@ -88,7 +123,7 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
             ScriptEngineProperties props,
             @Nullable WorkspaceService workspaceService,
             @Nullable SpawnToolRegistry spawnToolRegistry) {
-        this(engine, hostAccess, props, workspaceService, spawnToolRegistry, null);
+        this(engine, hostAccess, props, workspaceService, spawnToolRegistry, null, null);
     }
 
     /** Four-arg backwards-compat constructor — pre-spawn-registry. Used by
@@ -201,7 +236,8 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
         VanceScriptApi api = new VanceScriptApi(
                 effectiveTools, request.recipeName(), deniedToolNames,
                 documentService, request.progressEmitter(),
-                request.notificationEmitter(), paramsForApi);
+                request.notificationEmitter(), paramsForApi,
+                lightLlmService, settingService);
         ResourceLimits limits = ResourceLimits.newBuilder()
                 .statementLimit(effectiveStatements, null)
                 .build();

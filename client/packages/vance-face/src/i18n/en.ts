@@ -611,6 +611,7 @@ export default {
       kindLabel: 'Kind',
       kindNone: '(none)',
       kindHelp: 'Optional. Pre-fills a starter body matching the selected kind.',
+      kindUnsupported: 'Only available for Markdown, JSON and YAML.',
       contentLabel: 'Content',
       inlineSizeNote:
         'Type the body directly. For file uploads use the upload tab.',

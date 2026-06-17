@@ -1,9 +1,14 @@
 package de.mhus.vance.brain.script;
 
 import de.mhus.vance.api.notification.NotificationSeverity;
+import de.mhus.vance.brain.ai.light.LightLlmException;
+import de.mhus.vance.brain.ai.light.LightLlmRequest;
+import de.mhus.vance.brain.ai.light.LightLlmService;
+import de.mhus.vance.brain.ai.light.SchemaValidationException;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.ArrayList;
@@ -101,6 +106,27 @@ public final class VanceScriptApi {
     @HostAccess.Export
     public final @Nullable ScriptDocumentApi documents;
 
+    /**
+     * Light-LLM surface exposed as {@code vance.llm}. Single-shot calls
+     * via a recipe-as-config profile (must be {@code internal: true}).
+     * {@code null} when no {@link LightLlmService} was wired into the
+     * constructor — legacy call-sites (trigger-scoped scripts,
+     * unit-test stubs) leave this null; {@code vance.llm} is then
+     * {@code null} in JavaScript. See {@link ScriptLightLlmApi}.
+     */
+    @HostAccess.Export
+    public final @Nullable ScriptLightLlmApi llm;
+
+    /**
+     * Settings-cascade surface exposed as {@code vance.settings}.
+     * Cascade {@code think-process → project → _vance} (user-layer
+     * deliberately excluded). {@code null} when no
+     * {@link SettingService} was wired — accesses via JS throw
+     * the usual TypeError on null. See {@link ScriptSettingsApi}.
+     */
+    @HostAccess.Export
+    public final @Nullable ScriptSettingsApi settings;
+
     public VanceScriptApi(ContextToolsApi toolsApi) {
         this(toolsApi, null, Set.of(), null, null, null);
     }
@@ -175,6 +201,8 @@ public final class VanceScriptApi {
         this.documents = documentService == null
                 ? null
                 : new ScriptDocumentApi(documentService, toolsApi.scope());
+        this.llm = null;
+        this.settings = null;
     }
 
     /**
@@ -194,6 +222,41 @@ public final class VanceScriptApi {
                           @Nullable BiConsumer<String,
                                   @Nullable NotificationSeverity> notificationEmitter,
                           @Nullable Map<String, Object> paramsMap) {
+        this(toolsApi, recipeName, deniedToolNames, documentService,
+                progressEmitter, notificationEmitter, paramsMap, null, null);
+    }
+
+    public VanceScriptApi(ContextToolsApi toolsApi,
+                          @Nullable String recipeName,
+                          Set<String> deniedToolNames,
+                          @Nullable DocumentService documentService,
+                          @Nullable BiConsumer<String,
+                                  @Nullable Map<String, Object>> progressEmitter,
+                          @Nullable BiConsumer<String,
+                                  @Nullable NotificationSeverity> notificationEmitter,
+                          @Nullable Map<String, Object> paramsMap,
+                          @Nullable LightLlmService lightLlmService) {
+        this(toolsApi, recipeName, deniedToolNames, documentService,
+                progressEmitter, notificationEmitter, paramsMap, lightLlmService, null);
+    }
+
+    /**
+     * 9-arg constructor adding {@code settingService} — wires the
+     * {@code vance.settings} surface. Pass {@code null} to leave
+     * {@code vance.settings} unset. GraaljsScriptExecutor uses this
+     * constructor to inject the Spring-managed bean.
+     */
+    public VanceScriptApi(ContextToolsApi toolsApi,
+                          @Nullable String recipeName,
+                          Set<String> deniedToolNames,
+                          @Nullable DocumentService documentService,
+                          @Nullable BiConsumer<String,
+                                  @Nullable Map<String, Object>> progressEmitter,
+                          @Nullable BiConsumer<String,
+                                  @Nullable NotificationSeverity> notificationEmitter,
+                          @Nullable Map<String, Object> paramsMap,
+                          @Nullable LightLlmService lightLlmService,
+                          @Nullable SettingService settingService) {
         this.tools = new ScriptToolsApi(toolsApi, deniedToolNames);
         this.context = new ScriptContextView(toolsApi.scope(), recipeName);
         this.log = new ScriptLog(toolsApi.scope());
@@ -204,6 +267,12 @@ public final class VanceScriptApi {
         this.documents = documentService == null
                 ? null
                 : new ScriptDocumentApi(documentService, toolsApi.scope());
+        this.llm = lightLlmService == null
+                ? null
+                : new ScriptLightLlmApi(lightLlmService, toolsApi.scope());
+        this.settings = settingService == null
+                ? null
+                : new ScriptSettingsApi(settingService, toolsApi.scope());
     }
 
     /** Tool-dispatch surface exposed as {@code vance.tools}. */
@@ -613,6 +682,219 @@ public final class VanceScriptApi {
             m.put("createdAt", doc.getCreatedAt() == null ? null : doc.getCreatedAt().toString());
             m.put("version", doc.getVersion());
             return m;
+        }
+    }
+
+    /**
+     * Light-LLM surface exposed as {@code vance.llm}. Synchronous
+     * single-shot LLM calls via a recipe-as-config profile — no
+     * process spawn, no engine lane, no async event flow.
+     *
+     * <p>The recipe MUST be marked {@code internal: true}; the
+     * underlying {@link LightLlmService} rejects others. This keeps
+     * config-profile recipes (only ever invoked here) distinct from
+     * recipes spawnable as workers.
+     *
+     * <p>Tenant / project / process scope is sourced from the bound
+     * {@link ToolInvocationContext} — scripts cannot escape their
+     * scope. Setting cascades therefore honour per-project and
+     * per-process overrides automatically.
+     */
+    public static final class ScriptLightLlmApi {
+
+        private final LightLlmService service;
+        private final ToolInvocationContext scope;
+
+        ScriptLightLlmApi(LightLlmService service, ToolInvocationContext scope) {
+            this.service = service;
+            this.scope = scope;
+        }
+
+        /**
+         * Single-shot LLM call returning the LLM's reply text verbatim.
+         * Use when the script post-processes the text itself (free-text
+         * classification label, generated title, summary, etc.).
+         */
+        @HostAccess.Export
+        public String call(String recipeName, String userPrompt,
+                           @Nullable Map<String, Object> pebbleVars) {
+            validateInputs(recipeName, userPrompt);
+            try {
+                return service.call(buildRequest(recipeName, userPrompt, pebbleVars, null));
+            } catch (LightLlmException e) {
+                throw new ScriptHostException(
+                        "vance.llm.call(" + recipeName + "): " + e.getMessage(), e);
+            }
+        }
+
+        /** Convenience overload — no pebble vars. */
+        @HostAccess.Export
+        public String call(String recipeName, String userPrompt) {
+            return call(recipeName, userPrompt, null);
+        }
+
+        /**
+         * Schema-validated single-shot LLM call. Returns the parsed
+         * JSON object as a {@code Map<String, Object>}. The recipe's
+         * Pebble-rendered prompt is expected to instruct the LLM to
+         * reply with a JSON object; {@link LightLlmService#callForJson}
+         * runs the Jeltz-style schema-retry loop and surfaces a
+         * {@link ScriptHostException} when the retry budget is
+         * exhausted.
+         */
+        @HostAccess.Export
+        public Map<String, Object> callForJson(String recipeName, String userPrompt,
+                                               @Nullable Map<String, Object> pebbleVars) {
+            validateInputs(recipeName, userPrompt);
+            try {
+                return service.callForJson(
+                        buildRequest(recipeName, userPrompt, pebbleVars, null));
+            } catch (SchemaValidationException e) {
+                throw new ScriptHostException(
+                        "vance.llm.callForJson(" + recipeName + "): "
+                                + "schema validation exhausted: " + e.getMessage(), e);
+            } catch (LightLlmException e) {
+                throw new ScriptHostException(
+                        "vance.llm.callForJson(" + recipeName + "): " + e.getMessage(), e);
+            }
+        }
+
+        /** Convenience overload — no pebble vars. */
+        @HostAccess.Export
+        public Map<String, Object> callForJson(String recipeName, String userPrompt) {
+            return callForJson(recipeName, userPrompt, null);
+        }
+
+        private void validateInputs(String recipeName, String userPrompt) {
+            if (recipeName == null || recipeName.isBlank()) {
+                throw new ScriptHostException(
+                        "vance.llm: recipeName must not be empty", null);
+            }
+            if (userPrompt == null) {
+                throw new ScriptHostException(
+                        "vance.llm: userPrompt must not be null", null);
+            }
+            if (scope.tenantId() == null || scope.tenantId().isBlank()) {
+                throw new ScriptHostException(
+                        "vance.llm requires a tenant-scoped run", null);
+            }
+        }
+
+        private LightLlmRequest buildRequest(
+                String recipeName, String userPrompt,
+                @Nullable Map<String, Object> vars,
+                @Nullable Map<String, Object> schema) {
+            return LightLlmRequest.builder()
+                    .recipeName(recipeName)
+                    .userPrompt(userPrompt)
+                    .pebbleVars(vars)
+                    .schema(schema)
+                    .tenantId(scope.tenantId())
+                    .projectId(scope.projectId())
+                    .processId(scope.processId())
+                    .build();
+        }
+    }
+
+    /**
+     * Settings-cascade surface exposed as {@code vance.settings}.
+     * Walks the cascade {@code think-process → project → _vance}
+     * (user-layer deliberately excluded — see
+     * {@link SettingService#getStringValueCascade}). All accessors
+     * return the requested setting or fall back to the supplied
+     * default when no scope in the cascade defines the key.
+     *
+     * <p>Tenant / project / process scope is auto-bound from the
+     * script's {@link ToolInvocationContext} — a script cannot
+     * read another tenant's settings.
+     *
+     * <p>Password settings are filtered out by the underlying
+     * service — scripts cannot accidentally exfiltrate credentials
+     * via {@code vance.settings.get(...)}.
+     */
+    public static final class ScriptSettingsApi {
+
+        private final SettingService service;
+        private final ToolInvocationContext scope;
+
+        ScriptSettingsApi(SettingService service, ToolInvocationContext scope) {
+            this.service = service;
+            this.scope = scope;
+        }
+
+        /** Returns the raw string value, or {@code null} when no
+         *  scope in the cascade defines the key. */
+        @HostAccess.Export
+        public @Nullable String get(String key) {
+            requireScope(key);
+            return service.getStringValueCascade(
+                    scope.tenantId(), scope.projectId(), scope.processId(), key);
+        }
+
+        /** Returns the string value, or {@code defaultValue} when
+         *  no scope defines the key (or it is blank). */
+        @HostAccess.Export
+        public String get(String key, String defaultValue) {
+            String v = get(key);
+            return (v == null || v.isBlank()) ? defaultValue : v;
+        }
+
+        /** Integer accessor — parses the cascade-resolved string,
+         *  returns {@code defaultValue} on missing or unparseable. */
+        @HostAccess.Export
+        public int getInt(String key, int defaultValue) {
+            String v = get(key);
+            if (v == null || v.isBlank()) return defaultValue;
+            try {
+                return Integer.parseInt(v.trim());
+            } catch (NumberFormatException e) {
+                return defaultValue;
+            }
+        }
+
+        /** Long accessor — same semantics as {@link #getInt}. */
+        @HostAccess.Export
+        public long getLong(String key, long defaultValue) {
+            String v = get(key);
+            if (v == null || v.isBlank()) return defaultValue;
+            try {
+                return Long.parseLong(v.trim());
+            } catch (NumberFormatException e) {
+                return defaultValue;
+            }
+        }
+
+        /** Double accessor — same semantics as {@link #getInt}. */
+        @HostAccess.Export
+        public double getDouble(String key, double defaultValue) {
+            String v = get(key);
+            if (v == null || v.isBlank()) return defaultValue;
+            try {
+                return Double.parseDouble(v.trim());
+            } catch (NumberFormatException e) {
+                return defaultValue;
+            }
+        }
+
+        /** Boolean accessor — accepts {@code true|1|yes|on}
+         *  (case-insensitive). Anything else parses as false. */
+        @HostAccess.Export
+        public boolean getBoolean(String key, boolean defaultValue) {
+            requireScope(key);
+            return service.getBooleanValueCascade(
+                    scope.tenantId(), scope.projectId(), scope.processId(),
+                    key, defaultValue);
+        }
+
+        private void requireScope(String key) {
+            if (key == null || key.isBlank()) {
+                throw new ScriptHostException(
+                        "vance.settings: key must not be empty", null);
+            }
+            if (scope.tenantId() == null || scope.tenantId().isBlank()) {
+                throw new ScriptHostException(
+                        "vance.settings requires a tenant-scoped run", null);
+            }
         }
     }
 

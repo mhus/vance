@@ -159,7 +159,12 @@ public class ServerToolLoader {
                 ? HomeBootstrapService.TENANT_PROJECT_NAME : projectId;
     }
 
-    private static @Nullable String nameFromPath(String path) {
+    /**
+     * Inverse of {@link #pathFor}. Returns the tool-name encoded in a
+     * server-tool document path, or {@code null} if the path doesn't match
+     * the expected {@code <prefix><name><suffix>} shape.
+     */
+    public static @Nullable String nameFromPath(String path) {
         if (!path.startsWith(SERVER_TOOL_PATH_PREFIX)) return null;
         if (!path.endsWith(SERVER_TOOL_PATH_SUFFIX)) return null;
         String stem = path.substring(

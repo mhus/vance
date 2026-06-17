@@ -77,6 +77,27 @@ public class ServerToolRegistry {
         if (prior != null) releaseAll(prior);
     }
 
+    /**
+     * Load the scope on first access, return its current size. Idempotent
+     * and cheap when the scope is already loaded — the duplicate-load
+     * guard is the {@code scopes} map itself, which {@link
+     * #invalidateCascadeChildrenIfParent} drops whenever a cascade parent
+     * changes. That makes this method the single source of truth for
+     * "is this scope hot" — callers that previously kept their own
+     * bootstrap-once flags would have drifted when the cascade dropped
+     * the scope underneath them.
+     */
+    public synchronized int ensureBootstrapped(String tenantId, String projectId) {
+        ProjectScope scope = scopes.get(scopeKey(tenantId, projectId));
+        if (scope != null) return scope.entries.size();
+        return bootstrapProject(tenantId, projectId);
+    }
+
+    /** Whether {@code (tenantId, projectId)} has a live scope. */
+    public boolean isBootstrapped(String tenantId, String projectId) {
+        return scopes.containsKey(scopeKey(tenantId, projectId));
+    }
+
     private void releaseAll(ProjectScope scope) {
         for (ResolvedTool entry : scope.entries.values()) {
             invalidateFactory(entry.config);

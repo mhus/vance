@@ -121,7 +121,11 @@ class ServerToolServiceTest {
     // ─────── Write fan-out ───────
 
     @Test
-    void create_persists_via_documentService_and_refreshes_registry() {
+    void create_persists_via_documentService() {
+        // Refresh of the registry happens via the
+        // DocumentChangedEvent → ServerToolDocumentListener chain (see
+        // ServerToolDocumentListenerTest), not from inside ServerToolService
+        // any more. The unit test here only asserts the write fan-out.
         when(factoryRegistry.find(eq("doc_lookup")))
                 .thenReturn(Optional.of(new NoopFactory("doc_lookup")));
         when(documentService.findByPath(eq(TENANT), eq(PROJECT), eq("_vance/server-tools/new_tool.yaml")))
@@ -131,7 +135,6 @@ class ServerToolServiceTest {
                 eq(TENANT), eq(PROJECT), eq("_vance/server-tools/new_tool.yaml"),
                 any(), any(), any(), any()))
                 .thenReturn(new DocumentDocument());
-        when(registry.refreshOne(eq(TENANT), eq(PROJECT), eq("new_tool"))).thenReturn(true);
         when(registry.findConfig(eq(TENANT), eq(PROJECT), eq("new_tool")))
                 .thenReturn(Optional.of(enabledConfig("new_tool")));
 
@@ -141,7 +144,7 @@ class ServerToolServiceTest {
         verify(documentService).upsertText(
                 eq(TENANT), eq(PROJECT), eq("_vance/server-tools/new_tool.yaml"),
                 any(), any(), any(), any());
-        verify(registry, times(1)).refreshOne(TENANT, PROJECT, "new_tool");
+        verify(registry, never()).refreshOne(any(), any(), any());
     }
 
     @Test
@@ -176,7 +179,11 @@ class ServerToolServiceTest {
     }
 
     @Test
-    void delete_removes_document_and_refreshes() {
+    void delete_removes_document_and_lets_event_chain_refresh() {
+        // Refresh of the registry is driven by the DocumentChangedEvent
+        // that documentService.delete publishes — see
+        // ServerToolDocumentListenerTest. Here we only assert that the
+        // service hands off the delete and does not double-refresh.
         DocumentDocument doc = new DocumentDocument();
         doc.setId("doc-123");
         when(documentService.findByPath(eq(TENANT), eq(PROJECT), eq("_vance/server-tools/old.yaml")))
@@ -185,7 +192,7 @@ class ServerToolServiceTest {
         service.delete(TENANT, PROJECT, "old");
 
         verify(documentService).delete("doc-123");
-        verify(registry).refreshOne(TENANT, PROJECT, "old");
+        verify(registry, never()).refreshOne(any(), any(), any());
     }
 
     @Test

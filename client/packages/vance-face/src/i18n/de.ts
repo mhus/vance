@@ -607,6 +607,7 @@ export default {
       kindLabel: 'Art',
       kindNone: '(keine)',
       kindHelp: 'Optional. Erzeugt eine passende Vorlage für die gewählte Art.',
+      kindUnsupported: 'Nur verfügbar für Markdown, JSON und YAML.',
       contentLabel: 'Inhalt',
       inlineSizeNote:
         'Text-Inhalt direkt eingeben. Für Datei-Uploads den Upload-Tab nutzen.',

@@ -14,8 +14,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import org.jspecify.annotations.Nullable;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -52,9 +50,6 @@ public class ServerToolService {
 
     /** Set by the source aggregator after construction (avoids cycles). */
     private volatile BuiltInProvider builtInProvider = BuiltInProvider.EMPTY;
-
-    /** Per scope, whether the registry has been lazy-bootstrapped at least once. */
-    private final ConcurrentMap<String, Boolean> bootstrapped = new ConcurrentHashMap<>();
 
     public void setBuiltInProvider(BuiltInProvider provider) {
         this.builtInProvider = provider;
@@ -129,20 +124,12 @@ public class ServerToolService {
     }
 
     private void ensureBootstrapped(String tenantId, String projectId) {
-        String key = tenantId + "|" + projectId;
-        if (bootstrapped.containsKey(key)) return;
-        // computeIfAbsent so the bootstrap runs exactly once per (tenant, project)
-        // even with concurrent callers. Registry.bootstrapProject is itself
-        // synchronized and idempotent, so a transient race is harmless.
-        bootstrapped.computeIfAbsent(key, k -> {
-            try {
-                registry.bootstrapProject(tenantId, projectId);
-            } catch (RuntimeException ex) {
-                log.warn("ServerToolService: lazy bootstrap failed '{}/{}': {}",
-                        tenantId, projectId, ex.toString());
-            }
-            return Boolean.TRUE;
-        });
+        try {
+            registry.ensureBootstrapped(tenantId, projectId);
+        } catch (RuntimeException ex) {
+            log.warn("ServerToolService: lazy bootstrap failed '{}/{}': {}",
+                    tenantId, projectId, ex.toString());
+        }
     }
 
     // ──────────────────── CRUD (project layer) ────────────────────
@@ -180,9 +167,13 @@ public class ServerToolService {
         String norm = ServerToolLoader.normalizedName(name);
         documentService.findByPath(tenantId, projectId, ServerToolLoader.pathFor(norm))
                 .ifPresent(doc -> {
-                    documentService.delete(doc.getId());
+                    // Refresh is driven by the DocumentChangedEvent that
+                    // documentService.delete publishes — picked up by
+                    // ServerToolDocumentListener which calls
+                    // registry.refreshOne. Keeping ensureBootstrapped so
+                    // the listener's refresh actually has a scope to update.
                     ensureBootstrapped(tenantId, projectId);
-                    registry.refreshOne(tenantId, projectId, norm);
+                    documentService.delete(doc.getId());
                 });
     }
 
@@ -214,6 +205,13 @@ public class ServerToolService {
         // Sanity-check the YAML once more so we never persist something the
         // loader can't read back.
         loader.validateYaml(normName, yaml);
+        // Bootstrap before the write so the listener-driven refresh has a
+        // scope to update — without this, the first write to a fresh scope
+        // would publish the event into an empty registry. The actual
+        // refresh runs synchronously via the DocumentChangedEvent →
+        // RoutedDocumentChangedEvent → ServerToolDocumentListener chain
+        // that documentService.upsertText kicks off.
+        ensureBootstrapped(tenantId, projectId);
         documentService.upsertText(
                 tenantId, projectId,
                 ServerToolLoader.pathFor(normName),
@@ -221,8 +219,6 @@ public class ServerToolService {
                 /*tags*/ null,
                 yaml,
                 createdBy);
-        ensureBootstrapped(tenantId, projectId);
-        registry.refreshOne(tenantId, projectId, normName);
         return registry.findConfig(tenantId, projectId, normName).orElseThrow(
                 () -> new IllegalStateException(
                         "Server tool vanished immediately after write: " + normName));

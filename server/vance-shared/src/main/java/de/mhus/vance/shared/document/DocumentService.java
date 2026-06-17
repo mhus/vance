@@ -29,7 +29,9 @@ import java.util.zip.GZIPOutputStream;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.ResourcePatternResolver;
 import org.springframework.data.domain.Page;
@@ -79,6 +81,16 @@ public class DocumentService {
 
     @Value("${vance.document.inline-threshold:40960}")
     private int inlineThreshold;
+
+    /**
+     * Publisher for {@link DocumentChangedEvent}. Field-injected (instead of
+     * via the {@link RequiredArgsConstructor}) so the existing 7-arg
+     * test-constructor callers stay compilable; tests that don't wire a
+     * Spring context simply leave this {@code null} and the publish helper
+     * becomes a no-op.
+     */
+    @Autowired(required = false)
+    private @Nullable ApplicationEventPublisher eventPublisher;
 
     /**
      * Master switch for gzip-compressing document blobs on write. When
@@ -652,7 +664,7 @@ public class DocumentService {
         log.info("Created document tenantId='{}' projectId='{}' path='{}' id='{}' compressed={} size={}",
                 saved.getTenantId(), saved.getProjectId(), saved.getPath(), saved.getId(),
                 saved.isCompressed(), saved.getSize());
-        return saved;
+        return publishUpserted(saved);
     }
 
     /** Convenience for text payloads that are known to be in-memory.
@@ -853,7 +865,7 @@ public class DocumentService {
         log.info("Replaced content tenantId='{}' projectId='{}' path='{}' id='{}' size={} compressed={}",
                 saved.getTenantId(), saved.getProjectId(), saved.getPath(),
                 saved.getId(), saved.getSize(), saved.isCompressed());
-        return saved;
+        return publishUpserted(saved);
     }
 
     /**
@@ -915,7 +927,7 @@ public class DocumentService {
                         + "path='{}' id='{}' bytes={} compressed={}",
                 saved.getTenantId(), saved.getProjectId(),
                 saved.getPath(), saved.getId(), saved.getSize(), saved.isCompressed());
-        return saved;
+        return publishUpserted(saved);
     }
 
     /**
@@ -1411,7 +1423,7 @@ public class DocumentService {
         log.info("Updated document tenantId='{}' projectId='{}' id='{}' fields={}",
                 saved.getTenantId(), saved.getProjectId(), saved.getId(),
                 describeChanges(newTitle, newTags, newInlineText, newPath, newMimeType));
-        return saved;
+        return publishUpserted(saved);
     }
 
     /**
@@ -1943,6 +1955,7 @@ public class DocumentService {
                         id, doc.getLineageId(), e);
             }
             log.info("Deleted document id='{}' path='{}'", id, doc.getPath());
+            publishDeleted(doc);
         });
     }
 
@@ -2377,6 +2390,52 @@ public class DocumentService {
     public static class DocumentAlreadyExistsException extends RuntimeException {
         public DocumentAlreadyExistsException(String message) {
             super(message);
+        }
+    }
+
+    // ──────────────────── Event-bus publishing ────────────────────
+    //
+    // Fired right after a successful Mongo write (and the storage-side
+    // effects that go with it) so downstream caches — ServerToolRegistry,
+    // UrsaScheduler, UrsaHook, … — can refresh themselves through a
+    // {@code DocumentChangedEvent} listener instead of the Admin-Service
+    // having to know which subsystem cares. See
+    // {@code planning/document-change-events.md}.
+    //
+    // Publish failures are swallowed: Mongo is the source of truth. A
+    // broken listener (or a missing publisher in a test context) must not
+    // unwind the write the user already saw succeed.
+
+    private DocumentDocument publishUpserted(DocumentDocument saved) {
+        ApplicationEventPublisher publisher = this.eventPublisher;
+        if (publisher == null) return saved;
+        try {
+            publisher.publishEvent(new DocumentChangedEvent.Upserted(
+                    saved.getTenantId(),
+                    saved.getProjectId(),
+                    saved.getPath(),
+                    saved.getId()));
+        } catch (RuntimeException ex) {
+            log.warn("DocumentService: publish Upserted failed for '{}/{}/{}': {}",
+                    saved.getTenantId(), saved.getProjectId(), saved.getPath(),
+                    ex.toString());
+        }
+        return saved;
+    }
+
+    private void publishDeleted(DocumentDocument doc) {
+        ApplicationEventPublisher publisher = this.eventPublisher;
+        if (publisher == null) return;
+        try {
+            publisher.publishEvent(new DocumentChangedEvent.Deleted(
+                    doc.getTenantId(),
+                    doc.getProjectId(),
+                    doc.getPath(),
+                    doc.getId()));
+        } catch (RuntimeException ex) {
+            log.warn("DocumentService: publish Deleted failed for '{}/{}/{}': {}",
+                    doc.getTenantId(), doc.getProjectId(), doc.getPath(),
+                    ex.toString());
         }
     }
 }

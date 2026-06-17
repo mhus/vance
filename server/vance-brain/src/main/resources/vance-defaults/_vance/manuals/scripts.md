@@ -67,6 +67,34 @@ you need to read input data or persist output as a document instead
 of just returning a value, load `manual_read('script-document-api')`
 for the full surface and path conventions.
 
+### Synchronous one-shot LLM calls
+
+`vance.llm.call(recipe, prompt, vars?)` and
+`vance.llm.callForJson(recipe, prompt, vars?)` give you a synchronous
+LLM verdict inside the script — classification, title-generation,
+schema-validated extraction. No process spawn, no lane lock. The
+recipe must be marked `internal: true`. Load
+`manual_read('vance-script-llm')` for signatures, recipe shape,
+schema-loop semantics, and the when-NOT-to-use list.
+
+### Dropping items into a user's inbox
+
+`vance.tools.call('inbox_post', {...})` posts a structured inbox
+item. The `type` field is a closed enum (`APPROVAL`, `DECISION`,
+`FEEDBACK`, `OUTPUT_TEXT`, ...) — freetext types are rejected. Load
+`manual_read('inbox-post')` for the full type list, payload shapes,
+and ask-vs-output semantics.
+
+### Reading settings (configurable scripts)
+
+`vance.settings.get(key)`, `getInt`, `getLong`, `getDouble`,
+`getBoolean` read from the settings-cascade
+`think-process → project → _tenant`. Pairs with Setting-Forms
+(Web-UI Workspace tab) so users configure a script without editing
+its source. Load `manual_read('vance-script-settings')` for the
+typed-accessor list, cascade semantics, and the kit-default +
+scheduler-override pattern.
+
 ## Foot — `client.*`
 
 ```js

@@ -22,6 +22,33 @@ export class VanceUriParseError extends Error {
         this.name = 'VanceUriParseError';
     }
 }
+/**
+ * File-extension → render-kind. Lets `![alt](images/foo.png)` and
+ * `[clip](audio/bar.mp3)` render through the matching media view
+ * even when the LLM omits the `?kind=` hint and the resolved
+ * Document carries a generic kind. PDF is intentionally excluded —
+ * embedded PDFs are too large for a chat stream and should stay
+ * link-only.
+ */
+const EXTENSION_KIND_MAP = Object.freeze({
+    // Raster images
+    png: 'image', jpg: 'image', jpeg: 'image', gif: 'image',
+    webp: 'image', bmp: 'image', avif: 'image', ico: 'image', heic: 'image',
+    // Vector images — share ImageView via the `svg` registry entry
+    svg: 'svg',
+    // Audio
+    mp3: 'audio', wav: 'audio', ogg: 'audio', oga: 'audio',
+    m4a: 'audio', flac: 'audio', aac: 'audio',
+    // Video
+    mp4: 'video', webm: 'video', mov: 'video', m4v: 'video', ogv: 'video',
+});
+function inferKindFromPath(path) {
+    const dot = path.lastIndexOf('.');
+    if (dot < 0 || dot === path.length - 1)
+        return undefined;
+    const ext = path.slice(dot + 1).toLowerCase();
+    return EXTENSION_KIND_MAP[ext];
+}
 export function parseVanceUri(href, opts) {
     // URL constructor accepts custom schemes. We give it a base only
     // if needed; for `vance:` it works out of the box because the
@@ -40,7 +67,8 @@ export function parseVanceUri(href, opts) {
     // url.pathname starts with '/' for both forms; strip the leading slash.
     const rawPath = url.pathname.replace(/^\//, '');
     const path = decodeURIComponent(rawPath);
-    const kindHint = url.searchParams.get('kind') ?? undefined;
+    const explicitKind = url.searchParams.get('kind') ?? undefined;
+    const kindHint = explicitKind ?? inferKindFromPath(path);
     const modeParam = url.searchParams.get('mode');
     const caption = url.searchParams.get('caption') ?? undefined;
     const mode = modeParam === 'preview' || modeParam === 'reference'

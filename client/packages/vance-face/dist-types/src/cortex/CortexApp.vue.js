@@ -488,7 +488,16 @@ async function onUploadFiles(payload) {
 }
 function backToChat() {
     if (sessionId.value) {
-        window.location.href = `/chat.html?sessionId=${encodeURIComponent(sessionId.value)}`;
+        const params = new URLSearchParams();
+        params.set('sessionId', sessionId.value);
+        // Carry the project id over so ChatApp can seed
+        // {@link documentRefStore.currentProject} before the historical
+        // messages mount — otherwise the WS session-list lookup races the
+        // first `vance:`-link in chat history and EmbeddedKindBox fails
+        // with "No project context to resolve vance: URI".
+        if (projectId.value)
+            params.set('project', projectId.value);
+        window.location.href = `/chat.html?${params.toString()}`;
     }
     else {
         window.location.href = '/chat.html';
@@ -684,13 +693,7 @@ if (__VLS_ctx.sessionId) {
     };
     __VLS_3.slots.default;
     {
-        const { sidebar: __VLS_thisSlot } = __VLS_3.slots;
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-            ...{ class: "flex flex-col h-full min-h-0" },
-        });
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-            ...{ class: "p-3 border-b border-base-300 shrink-0 flex items-center gap-2" },
-        });
+        const { 'topbar-extra': __VLS_thisSlot } = __VLS_3.slots;
         const __VLS_8 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
         // @ts-ignore
@@ -712,6 +715,12 @@ if (__VLS_ctx.sessionId) {
         };
         __VLS_11.slots.default;
         var __VLS_11;
+    }
+    {
+        const { sidebar: __VLS_thisSlot } = __VLS_3.slots;
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "flex flex-col h-full min-h-0" },
+        });
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "flex-1 min-h-0 overflow-y-auto" },
         });
@@ -1263,13 +1272,6 @@ var __VLS_91;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
 /** @type {__VLS_StyleScopedClasses['h-full']} */ ;
 /** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
-/** @type {__VLS_StyleScopedClasses['p-3']} */ ;
-/** @type {__VLS_StyleScopedClasses['border-b']} */ ;
-/** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;
-/** @type {__VLS_StyleScopedClasses['shrink-0']} */ ;
-/** @type {__VLS_StyleScopedClasses['flex']} */ ;
-/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
-/** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
 /** @type {__VLS_StyleScopedClasses['overflow-y-auto']} */ ;

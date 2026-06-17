@@ -34,9 +34,24 @@ const loadError = ref<string | null>(null);
 // jump to documents.html.
 const vanceLinkHandler = inject(VANCE_LINK_HANDLER_KEY, null);
 
+/**
+ * Media kinds where the link/image source path (or explicit `?kind=`
+ * hint) is authoritative over a generic `doc.kind` from the resolver.
+ * Rationale: `![alt](foo.png)` is a user-visible commitment to
+ * render foo.png as an image; if the document store classified the
+ * underlying file as a plain `document`, we still want the inline
+ * preview rather than a generic doc card. The spec's "doc.kind wins"
+ * rule (§3.3) targets *structured* kinds (mindmap, sheet, …) where
+ * the document carries domain semantics the hint can't predict — for
+ * raw media the file extension is the ground truth.
+ */
+const MEDIA_KIND_HINTS = new Set(['image', 'svg', 'audio', 'video']);
+
 const effectiveKind = computed<string>(() => {
+  const hint = props.embedRef.kindHint;
+  if (hint && MEDIA_KIND_HINTS.has(hint)) return hint;
   // Loaded doc kind wins over hint (§3.3 conflict-resolution).
-  return (doc.value?.kind ?? props.embedRef.kindHint ?? 'document').toLowerCase();
+  return (doc.value?.kind ?? hint ?? 'document').toLowerCase();
 });
 
 const renderer = computed(() => resolveRenderer(effectiveKind.value, 'embedded'));

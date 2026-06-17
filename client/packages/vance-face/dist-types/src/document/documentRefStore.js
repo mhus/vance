@@ -1,6 +1,17 @@
 import { defineStore } from 'pinia';
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import { brainFetch } from '@vance/shared';
+/**
+ * How long {@link resolve} waits for the host editor to populate the
+ * current project before giving up. Chat (WS session-list) and Cortex
+ * (REST sessions) both resolve the project asynchronously after the
+ * editor mounts — a vance:-link inside a historical message can fire
+ * its EmbeddedKindBox onMounted well before either lookup returns.
+ * Five seconds covers the realistic worst case (cold WS + first-paint
+ * jitter on a slow client) without hanging the bubble forever when
+ * something is genuinely broken upstream.
+ */
+const CURRENT_PROJECT_WAIT_MS = 5_000;
 function keyFor(projectId, path) {
     return `${projectId ?? ''}::${path}`;
 }
@@ -16,8 +27,43 @@ export const useDocumentRefStore = defineStore('documentRef', () => {
     function setCurrentProject(projectName) {
         currentProject.value = projectName;
     }
+    /**
+     * Resolves once {@link currentProject} carries a non-empty value, or
+     * returns the empty string after {@link CURRENT_PROJECT_WAIT_MS}.
+     * The watcher is one-shot and stops itself either way, so no leaks
+     * on unmount. Bypasses entirely when the value is already there —
+     * the common path stays a single ref read.
+     */
+    function waitForCurrentProject() {
+        if (currentProject.value)
+            return Promise.resolve(currentProject.value);
+        return new Promise((resolveP) => {
+            let settled = false;
+            const finish = (val) => {
+                if (settled)
+                    return;
+                settled = true;
+                stop();
+                clearTimeout(timer);
+                resolveP(val);
+            };
+            const stop = watch(currentProject, (val) => {
+                if (val)
+                    finish(val);
+            });
+            const timer = setTimeout(() => finish(''), CURRENT_PROJECT_WAIT_MS);
+        });
+    }
     async function resolve(embedRef) {
-        const projectName = embedRef.project ?? currentProject.value;
+        let projectName = embedRef.project ?? currentProject.value;
+        if (!projectName) {
+            // Host editor hasn't populated the project context yet (typical
+            // when a `vance:`-link mounts inside a freshly-restored chat
+            // history before the session-list / sessions REST roundtrip
+            // returns). Wait briefly — the project *is* on its way down the
+            // pipe, we just need to let it land.
+            projectName = await waitForCurrentProject();
+        }
         if (!projectName) {
             throw new Error('No project context to resolve vance: URI');
         }

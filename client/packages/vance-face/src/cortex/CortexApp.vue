@@ -525,7 +525,15 @@ async function onUploadFiles(payload: { files: File[]; targetFolder: string }): 
 
 function backToChat(): void {
   if (sessionId.value) {
-    window.location.href = `/chat.html?sessionId=${encodeURIComponent(sessionId.value)}`;
+    const params = new URLSearchParams();
+    params.set('sessionId', sessionId.value);
+    // Carry the project id over so ChatApp can seed
+    // {@link documentRefStore.currentProject} before the historical
+    // messages mount — otherwise the WS session-list lookup races the
+    // first `vance:`-link in chat history and EmbeddedKindBox fails
+    // with "No project context to resolve vance: URI".
+    if (projectId.value) params.set('project', projectId.value);
+    window.location.href = `/chat.html?${params.toString()}`;
   } else {
     window.location.href = '/chat.html';
   }
@@ -706,11 +714,17 @@ onBeforeUnmount(() => {
     title-clickable
     @title-click="focusZone = 'sidebar'"
   >
+    <!-- Topbar action: jump back to the plain chat view for this
+         session. Mirrors the {@code Open Cortex →} button in
+         {@link ChatApp.vue} so the reverse navigation lives in the
+         same screen region (top-right of the header) and the two
+         views stay visually symmetrical. -->
+    <template #topbar-extra>
+      <VButton size="sm" variant="ghost" @click="backToChat">← Chat</VButton>
+    </template>
+
     <template #sidebar>
       <div class="flex flex-col h-full min-h-0">
-        <div class="p-3 border-b border-base-300 shrink-0 flex items-center gap-2">
-          <VButton size="sm" variant="ghost" @click="backToChat">← Chat</VButton>
-        </div>
         <div class="flex-1 min-h-0 overflow-y-auto">
           <VAlert v-if="treeError" variant="error" class="m-2">
             <span>{{ treeError }}</span>

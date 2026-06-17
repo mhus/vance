@@ -2030,6 +2030,12 @@ public class DocumentService {
         doc.setName(extractName(trashPath));
         DocumentDocument saved = repository.save(doc);
         log.info("Trashed document id='{}' from path='{}' to '{}'", id, originalPath, trashPath);
+        // Cache-coherence: a trash makes the document disappear from its
+        // original location, so listeners that key on the original path
+        // (e.g. UrsaHookDocumentListener) need a Deleted event for it.
+        // We synthesise one with the original path; the trash row itself
+        // lives under _bin/… and is filtered out by isEventPublishable.
+        publishDeleted(originalPath, doc.getTenantId(), doc.getProjectId(), saved.getId());
         return saved;
     }
 
@@ -2076,7 +2082,9 @@ public class DocumentService {
         if (headers != null) headers.remove(TRASH_ORIGINAL_PATH_HEADER);
         DocumentDocument saved = repository.save(doc);
         log.info("Restored document id='{}' from trash to path='{}'", id, target);
-        return saved;
+        // Mirror trash: a restore is an Upserted at the restored path so
+        // listeners can pick the document back into their caches.
+        return publishUpserted(saved);
     }
 
     /** {@code true} when the path lives under the project's trash
@@ -2406,9 +2414,39 @@ public class DocumentService {
     // broken listener (or a missing publisher in a test context) must not
     // unwind the write the user already saw succeed.
 
+    /**
+     * Folder prefix every config-document path begins with. Only writes
+     * under this prefix matter for cache-coherence — user documents
+     * ({@code documents/...}), chat attachments ({@code _chatbox/...}),
+     * trash ({@code _bin/...}) and Slartibartfast scratch
+     * ({@code _slart/...}) never feed any in-memory registry. Keeping
+     * the event bus to just config writes makes downstream listeners
+     * trivially cheap (their first line is a {@code startsWith}).
+     */
+    static final String EVENT_PUBLISH_INCLUDE_PREFIX = "_vance/";
+
+    /**
+     * Sub-prefix of {@link #EVENT_PUBLISH_INCLUDE_PREFIX} that holds
+     * ephemeral run logs (scheduler ticks, UrsaEvent trigger replays).
+     * Excluded from the event bus because the volume is high and no
+     * cache reads from these paths.
+     */
+    static final String EVENT_PUBLISH_EXCLUDE_LOGS_PREFIX = "_vance/logs/";
+
+    /**
+     * Decides whether a document path should fan out as a
+     * {@link DocumentChangedEvent}. Visible for tests.
+     */
+    static boolean isEventPublishable(@Nullable String path) {
+        if (path == null) return false;
+        if (!path.startsWith(EVENT_PUBLISH_INCLUDE_PREFIX)) return false;
+        return !path.startsWith(EVENT_PUBLISH_EXCLUDE_LOGS_PREFIX);
+    }
+
     private DocumentDocument publishUpserted(DocumentDocument saved) {
         ApplicationEventPublisher publisher = this.eventPublisher;
         if (publisher == null) return saved;
+        if (!isEventPublishable(saved.getPath())) return saved;
         try {
             publisher.publishEvent(new DocumentChangedEvent.Upserted(
                     saved.getTenantId(),
@@ -2424,18 +2462,26 @@ public class DocumentService {
     }
 
     private void publishDeleted(DocumentDocument doc) {
+        publishDeleted(doc.getPath(), doc.getTenantId(), doc.getProjectId(), doc.getId());
+    }
+
+    /**
+     * Overload that takes an explicit {@code path} — used by
+     * {@link #trash(String)} where the document row still exists but the
+     * <em>logical</em> location has moved away. Listeners keyed on the
+     * original path need a Deleted event for it.
+     */
+    private void publishDeleted(String path, String tenantId, String projectId,
+                                @Nullable String documentId) {
         ApplicationEventPublisher publisher = this.eventPublisher;
         if (publisher == null) return;
+        if (!isEventPublishable(path)) return;
         try {
             publisher.publishEvent(new DocumentChangedEvent.Deleted(
-                    doc.getTenantId(),
-                    doc.getProjectId(),
-                    doc.getPath(),
-                    doc.getId()));
+                    tenantId, projectId, path, documentId));
         } catch (RuntimeException ex) {
             log.warn("DocumentService: publish Deleted failed for '{}/{}/{}': {}",
-                    doc.getTenantId(), doc.getProjectId(), doc.getPath(),
-                    ex.toString());
+                    tenantId, projectId, path, ex.toString());
         }
     }
 }

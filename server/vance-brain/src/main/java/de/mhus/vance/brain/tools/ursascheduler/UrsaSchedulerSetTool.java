@@ -83,7 +83,12 @@ public class UrsaSchedulerSetTool implements Tool {
 
         ResolvedUrsaScheduler validated = support.parseOrThrow(name, yaml);
         support.upsert(ctx.tenantId(), ctx.projectId(), name, yaml, ctx.userId());
-        boolean registered = schedulerService.refreshOne(ctx.tenantId(), ctx.projectId(), name);
+        // The DocumentChangedEvent that support.upsert kicked off has
+        // already routed through UrsaSchedulerDocumentListener → refreshOne;
+        // a cheap registry probe gives us the boolean for the response
+        // without a second refresh.
+        boolean registered = schedulerService.isRegistered(
+                ctx.tenantId(), ctx.projectId(), name);
         List<String> warnings = support.crossReferenceWarnings(
                 ctx.tenantId(), ctx.projectId(), validated);
 

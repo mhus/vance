@@ -1,6 +1,5 @@
 package de.mhus.vance.brain.tools.ursascheduler;
 
-import de.mhus.vance.brain.ursascheduler.UrsaSchedulerService;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
@@ -33,7 +32,6 @@ public class UrsaSchedulerDeleteTool implements Tool {
 
     private final UrsaSchedulerToolSupport support;
     private final DocumentService documentService;
-    private final UrsaSchedulerService schedulerService;
 
     @Override public String name() { return "scheduler_delete"; }
 
@@ -61,7 +59,9 @@ public class UrsaSchedulerDeleteTool implements Tool {
                 ctx.tenantId(), ctx.projectId(),
                 UrsaSchedulerToolSupport.pathFor(name)).isPresent();
         support.deleteByPath(ctx.tenantId(), ctx.projectId(), name);
-        schedulerService.refreshOne(ctx.tenantId(), ctx.projectId(), name);
+        // refreshOne runs via the DocumentChangedEvent →
+        // UrsaSchedulerDocumentListener chain that documentService.delete
+        // already kicked off.
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("name", name);

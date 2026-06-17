@@ -106,11 +106,13 @@ public class UrsaSchedulerLoader {
         return out;
     }
 
-    private static String pathFor(String name) {
+    /** Compose the document path for {@code name}. */
+    public static String pathFor(String name) {
         return SCHEDULER_PATH_PREFIX + normalizedName(name) + SCHEDULER_PATH_SUFFIX;
     }
 
-    private static String normalizedName(String name) {
+    /** Normalised, lowercase scheduler name. */
+    public static String normalizedName(String name) {
         return name.trim().toLowerCase(Locale.ROOT);
     }
 
@@ -119,7 +121,12 @@ public class UrsaSchedulerLoader {
                 ? HomeBootstrapService.TENANT_PROJECT_NAME : projectId;
     }
 
-    private static @Nullable String nameFromPath(String path) {
+    /**
+     * Inverse of {@link #pathFor}. Returns the scheduler name encoded in
+     * a document path, or {@code null} if the path doesn't match the
+     * expected {@code <prefix><name><suffix>} shape.
+     */
+    public static @Nullable String nameFromPath(String path) {
         if (!path.startsWith(SCHEDULER_PATH_PREFIX)) return null;
         if (!path.endsWith(SCHEDULER_PATH_SUFFIX)) return null;
         String stem = path.substring(

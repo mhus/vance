@@ -133,7 +133,9 @@ public class UrsaSchedulerController {
                     yaml,
                     createdBy);
         }
-        schedulerService.refreshOne(tenant, project, norm);
+        // refreshOne is driven by the DocumentChangedEvent →
+        // UrsaSchedulerDocumentListener chain that documentService
+        // already kicked off above.
         ResolvedUrsaScheduler reloaded = loader.load(tenant, project, norm)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
                         "Scheduler vanished immediately after write"));
@@ -157,7 +159,7 @@ public class UrsaSchedulerController {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
         }
         documentService.delete(existing.get().getId());
-        schedulerService.refreshOne(tenant, project, norm);
+        // Refresh travels via the DocumentChangedEvent → listener chain.
         return ResponseEntity.noContent().build();
     }
 

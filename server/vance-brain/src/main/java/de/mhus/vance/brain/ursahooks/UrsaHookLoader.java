@@ -112,6 +112,43 @@ public class UrsaHookLoader {
         return last;
     }
 
+    /**
+     * Parsed location of a hook YAML document. Cf. {@link #parsePath(String)}.
+     *
+     * @param event    wire-name of the event (e.g. {@code "project.start"})
+     * @param hookName local name of the hook (stem of the YAML filename)
+     */
+    public record ParsedPath(String event, String hookName) {}
+
+    /**
+     * Inverse of {@code HOOK_PATH_ROOT + event + "/" + name + ".yaml"}.
+     * Returns the {@code (event, hookName)} pair encoded in the document
+     * path, or {@code null} if the path doesn't match the expected shape
+     * (missing prefix/suffix, missing event segment, empty name).
+     *
+     * <p>The wire-name is returned as a string rather than the
+     * {@link UrsaHookEventName} enum so listeners can react to events the
+     * running brain doesn't yet know about (the parsed value flows
+     * straight into {@link UrsaHookService#refreshOne}, which is the
+     * one that decides whether the wire-name is valid).
+     */
+    public static @Nullable ParsedPath parsePath(String path) {
+        if (!path.startsWith(HOOK_PATH_ROOT)) return null;
+        if (!path.endsWith(HOOK_PATH_SUFFIX)) return null;
+        String tail = path.substring(
+                HOOK_PATH_ROOT.length(),
+                path.length() - HOOK_PATH_SUFFIX.length());
+        int slash = tail.indexOf('/');
+        if (slash <= 0 || slash == tail.length() - 1) return null;
+        String event = tail.substring(0, slash);
+        String hookName = tail.substring(slash + 1);
+        if (event.isBlank() || hookName.isBlank()) return null;
+        // Defence against deeper paths — we only support a single
+        // {event}/{name} segment, never sub-folders below the event.
+        if (hookName.indexOf('/') >= 0) return null;
+        return new ParsedPath(event, hookName);
+    }
+
     private static UrsaHookSource mapSource(LookupResult.Source s) {
         // Resource layer would be UrsaHookSource — but the spec says no bundled
         // hooks, so any RESOURCE hit is treated as VANCE for diagnostics.

@@ -9,6 +9,12 @@ import org.jspecify.annotations.Nullable;
  * never payload. Listeners that need the body read it fresh via
  * {@code DocumentService.findByPath}.
  *
+ * <p><b>Publish filter:</b> only writes under {@code _vance/} fan out, and
+ * the {@code _vance/logs/} sub-tree is excluded (ephemeral run logs). User
+ * documents ({@code documents/…}), chat attachments, trash and Slartibartfast
+ * scratch never produce an event — no cache reads from those paths, and the
+ * volume would drown the bus. See {@code DocumentService.isEventPublishable}.
+ *
  * <p>Two-stage event design: this is the <b>raw</b> event published in
  * {@code DocumentService}. The brain-layer router consumes it, decides
  * which pod(s) should refresh, and re-publishes a separate

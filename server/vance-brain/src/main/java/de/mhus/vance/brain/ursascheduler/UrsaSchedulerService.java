@@ -225,6 +225,18 @@ public class UrsaSchedulerService {
     // ───────────────────────── Read-side helpers ─────────────────────────
 
     /**
+     * Whether the cascade currently has a live registration under
+     * {@code (tenantId, projectId, name)}. Cheap O(1) lookup against the
+     * in-memory registry — used by the {@code scheduler_set} tool to
+     * derive its {@code registered} response field without re-running a
+     * full {@link #refreshOne} (the {@code DocumentChangedEvent} →
+     * {@link UrsaSchedulerDocumentListener} chain has already done that).
+     */
+    public boolean isRegistered(String tenantId, String projectId, String name) {
+        return registry.containsKey(registryKey(tenantId, projectId, name));
+    }
+
+    /**
      * Snapshot of every scheduler currently registered for the project,
      * regardless of source. Used by the REST list endpoint and the
      * {@code scheduler_list} agent tool.

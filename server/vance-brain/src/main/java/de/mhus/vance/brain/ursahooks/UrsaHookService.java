@@ -153,7 +153,9 @@ public class UrsaHookService {
                     new ByteArrayInputStream(yaml.getBytes(StandardCharsets.UTF_8)),
                     createdBy);
         }
-        refreshOne(tenantId, projectId, event, name);
+        // refreshOne fires synchronously via the DocumentChangedEvent →
+        // UrsaHookDocumentListener chain that documentService.update/create
+        // already kicked off.
         return parsed;
     }
 
@@ -173,7 +175,9 @@ public class UrsaHookService {
             return false;
         }
         documentService.trash(existing.get().getId());
-        refreshOne(tenantId, projectId, event, name);
+        // documentService.trash publishes a Deleted event for the
+        // original path; UrsaHookDocumentListener picks it up and runs
+        // refreshOne for us.
         return true;
     }
 

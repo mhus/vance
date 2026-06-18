@@ -148,6 +148,92 @@ score≥7 the loop exits with the chapter approved; otherwise
 the next iteration revises (the original draft is still at the
 known path, the worker can `doc_read` + emit a revised version).
 
+## Substitution variables
+
+Phase strings (`workerInput`, postAction args, scorer params,
+`result.fields`/`result.text` — see below) can reference runtime
+values via `${…}`. Five sources:
+
+| Source | Example | Meaning |
+|---|---|---|
+| `${params.X}` | `${params.topic}` | Caller-supplied params (merged over `paramDefaults`) |
+| `${state.X}` | `${state.iterations}` | Strategy-state flag lookup (legacy alias for `${flags.X}`) |
+| `${flags.X}` | `${flags.draftPath}` | Strategy-state flags — written by checkpoint answers, scorer/decider `storeAs`, `setFlag` branch actions, `postActions` with `storeAs:` |
+| `${phases.X.<key>}` or `${phases.X.artifacts.<key>}` | `${phases.research.artifacts.result}` | Per-phase artefacts (worker reply lives under `result`; postAction outputs land under their `storeAs` key) |
+| `${result.X}` | `${result.documentPath}` | **Only available inside `result.text` (and `result.onFailure.text`)** — references a sibling `result.fields` entry. Forbidden in `result.fields` (cyclic) — strategy-load fail |
+
+Type-preservation: a template that is **exactly one** `${…}`
+(no surrounding text) returns the source value verbatim — Number,
+Boolean, List, Map, null all flow through. Interpolated
+templates (`"${params.x} - ${flags.y}"`) string-coerce as usual.
+Used for `result.fields` so the structured payload survives the
+parent-handoff with typed data, not just strings.
+
+## Strategy result — explicit hand-off (optional)
+
+By default Vogon hands back to the parent (Arthur, Eddie, another
+Vogon) a Markdown concatenation of every phase output —
+verbose, token-expensive, and rarely what the user actually
+asked for. A strategy can declare an explicit `result:` block at
+the top level to take control of the hand-off:
+
+```yaml
+result:
+  fields:
+    documentPath:   "${flags.draftPath}"      # typed: stays String
+    wordCount:      "${flags.draftWordCount}" # typed: stays Integer
+    sources:        "${phases.research.artifacts.urls}"  # typed: stays List
+  text: |
+    Report zu **${params.topic}** liegt unter
+    `${result.documentPath}` (${result.wordCount} Wörter,
+    ${result.sources} Quellen).
+  onFailure:
+    fields:
+      reason: "${flags.failureReason}"
+    text: "Strategy abgebrochen — ${result.reason}"
+```
+
+Semantics:
+- `fields` evaluates first; type-preserved entries land in the
+  REPLY payload sent to the parent. A deterministic consumer
+  (Vogon-as-parent, JS script) can read e.g. `payload.wordCount`
+  as a real Integer.
+- `text` renders second, with `${result.X}` pointing at the
+  just-evaluated fields. Becomes the REPLY content — the
+  user-facing RELAY body in Arthur's chat.
+- `onFailure` runs the same way on the FAILED path. Optional —
+  when absent, FAILED falls back to the default behavior.
+- Strategy-load fails if `${result.X}` appears in `fields` (cyclic)
+  or if `text` references a `${result.X}` that isn't declared in
+  `fields`. Boot-time check, so authoring mistakes surface at
+  registry-load, not mid-run.
+- If `result:` is absent, the legacy Markdown-concat default
+  still works — backward-compatible.
+
+**When to declare `result`:** content pipelines where the
+deliverable is a known artefact path + summary number, decision
+strategies that hand back a yes/no plus reason, anything where
+the parent doesn't need every phase output verbatim.
+
+**When to skip:** exploratory / multi-branch strategies whose
+output is genuinely the trail of phase outputs (e.g. iterative
+research without a clear endpoint).
+
+## Phase history is now visible
+
+Vogon now persists per-phase lifecycle events to its own
+chat-history — worker DONE/FAILED, scorer/decider verdicts,
+checkpoint answers, strategy completion. That means
+`process_history_text(name='<vogon-process>')` returns the
+engine's decision trail in human-readable form. Useful for the
+caller engine (Arthur) doing a forensic lookup after a long-
+running strategy, and for the user-facing Web-UI inspecting
+what happened.
+
+You don't need to do anything in the YAML for this — it's
+automatic. But you can rely on it: a strategy author can assume
+the chat history of the Vogon process IS the audit trail.
+
 ## Essay-pipeline example (with postActions)
 
 ```

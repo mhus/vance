@@ -69,7 +69,7 @@ public class VogonArchitect implements SchemaArchitect {
                   "shapeRationale": "<why this shape — 1-2 sentences>"
                 }
 
-            YAML structure (mandatory):
+            YAML structure (mandatory parts marked, result: optional):
                 name: <name, same as above>
                 description: |
                   <1-2 sentences>
@@ -78,12 +78,47 @@ public class VogonArchitect implements SchemaArchitect {
                   strategyPlanYaml: |
                     name: <strategy-name>
                     version: "1"
-                    phases:
+                    phases:                              # mandatory
                       - name: <phase-name>
                         worker: <recipe-name or ford>
                         workerInput: |
                           <prompt for the worker>
                         gate: { requires: [<phase-name>_completed] }
+                    # OPTIONAL: result-block. Strongly recommended when the
+                    # deliverable is a known artefact (document path,
+                    # decision, count) — replaces Vogon's default Markdown-
+                    # concatenation of every phase output as the REPLY the
+                    # parent (Arthur) hands the user. Without result: the
+                    # parent gets every phase reply verbatim, which is
+                    # token-expensive and rarely what the user asked for.
+                    result:
+                      fields:
+                        # ${flags.X}, ${phases.X.artifacts.<key>},
+                        # ${params.X} are valid. A field whose value is
+                        # EXACTLY one ${...} preserves the source type
+                        # (Integer, Boolean, List, …); interpolated
+                        # templates string-coerce.
+                        <field-key>: "${flags.<flag>}"
+                        <field-key>: "${phases.<phase>.artifacts.<key>}"
+                      text: |
+                        # User-facing summary. ${result.X} references the
+                        # sibling field. ${params.X} / ${phases.X.artifacts.X}
+                        # / ${flags.X} also valid here. ${result.X} is
+                        # NOT allowed in fields (cyclic) — strategy-load
+                        # rejects that.
+                        <one or two sentences for the user>
+                      # OPTIONAL: separate block for the FAILED-strategy
+                      # path. Same shape; no nested onFailure.
+                      onFailure:
+                        fields:
+                          reason: "${flags.failureReason}"
+                        text: "Strategy abgebrochen — ${result.reason}"
+
+            When to emit result: every strategy where the deliverable
+            is a concrete artefact + a short user-readable summary
+            (essay pipelines, research-report flows, decision flows).
+            Skip result: only for exploratory strategies whose value
+            IS the trail of phase outputs.
 
             PHASE CHAINING — automatic in Vogon:
 

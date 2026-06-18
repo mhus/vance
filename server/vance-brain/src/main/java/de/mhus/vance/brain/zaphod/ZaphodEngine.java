@@ -352,6 +352,10 @@ public class ZaphodEngine implements ThinkEngine {
             state.setConsensusReached(cr.consensus());
             state.setConsensusReason(cr.reason());
             persistState(process, state);
+            appendChatNote(process,
+                    "Round " + (state.getCurrentRound() + 1) + " — consensus "
+                            + (cr.consensus() ? "REACHED" : "NOT reached"),
+                    cr.reason());
 
             if (cr.consensus()) {
                 stopAllHeads(state, process);
@@ -495,6 +499,10 @@ public class ZaphodEngine implements ThinkEngine {
                                 + state.getCurrentRound());
                 log.warn("Zaphod id='{}' head '{}' round {} empty reply",
                         process.getId(), head.getName(), state.getCurrentRound());
+                appendChatNote(process,
+                        headRoundHeader(state.getPattern(), head,
+                                state.getCurrentRound()) + " — empty reply",
+                        "Head produced no assistant text. Marked failed.");
             } else {
                 head.getReplies().add(reply);
                 // status DONE only after the final round; during
@@ -509,6 +517,11 @@ public class ZaphodEngine implements ThinkEngine {
                 log.info("Zaphod id='{}' head '{}' round {} done — chars={}",
                         process.getId(), head.getName(),
                         state.getCurrentRound(), reply.length());
+                appendChatNote(process,
+                        headRoundHeader(state.getPattern(), head,
+                                state.getCurrentRound())
+                                + (finalRound ? " — done" : " — replied"),
+                        reply);
             }
         } catch (RuntimeException e) {
             head.setStatus(HeadStatus.FAILED);
@@ -517,6 +530,10 @@ public class ZaphodEngine implements ThinkEngine {
             log.warn("Zaphod id='{}' head '{}' drive failed in round {}: {}",
                     process.getId(), head.getName(),
                     state.getCurrentRound(), e.toString());
+            appendChatNote(process,
+                    headRoundHeader(state.getPattern(), head,
+                            state.getCurrentRound()) + " — FAILED",
+                    e.getMessage());
         } finally {
             // Council heads are one-shot — stop the child as soon as
             // the (single) round is done. Debate heads stay alive
@@ -584,6 +601,55 @@ public class ZaphodEngine implements ThinkEngine {
                 + "anderes Argument berechtigt korrigiert wurde, sage "
                 + "das explizit.");
         return sb.toString();
+    }
+
+    /**
+     * Header for a head-round chat-note. Council heads are
+     * single-shot — just the head name. Debate rounds carry the
+     * round-number so the chat-history reflects how positions shift
+     * across iterations.
+     */
+    private static String headRoundHeader(
+            ZaphodPattern pattern, ZaphodHead head, int round) {
+        if (pattern == ZaphodPattern.DEBATE) {
+            return "Head " + head.getName() + " — round " + (round + 1);
+        }
+        return "Head " + head.getName();
+    }
+
+    /**
+     * Appends one ASSISTANT chat-message to Zaphod's own chat-history.
+     * Mirrors per-head and per-round lifecycle events (head replies,
+     * failures, consensus decisions, synthesis aborts) so a forensic
+     * lookup via {@code process_history_text(name='<zaphod-process>')}
+     * returns the engine's decision trail. The
+     * {@link #writeRoundDraft} document copies stay as the audit
+     * asset; the chat is the primary visibility channel.
+     *
+     * <p>Best-effort: failures are logged and swallowed. Pattern
+     * parallels {@code VogonEngine.appendPhaseNote} — see
+     * {@code planning/vogon-result-spec.md} §1 for the rationale.
+     */
+    private void appendChatNote(
+            ThinkProcessDocument process, String header, @Nullable String body) {
+        if (chatMessageService == null) return;
+        StringBuilder content = new StringBuilder();
+        content.append("**[").append(header).append("]**");
+        if (body != null && !body.isBlank()) {
+            content.append("\n\n").append(body);
+        }
+        try {
+            chatMessageService.append(ChatMessageDocument.builder()
+                    .tenantId(process.getTenantId())
+                    .sessionId(process.getSessionId())
+                    .thinkProcessId(process.getId())
+                    .role(ChatRole.ASSISTANT)
+                    .content(content.toString())
+                    .build());
+        } catch (RuntimeException e) {
+            log.debug("Zaphod id='{}' chat-history append failed for '{}': {}",
+                    process.getId(), header, e.toString());
+        }
     }
 
     /**
@@ -763,6 +829,10 @@ public class ZaphodEngine implements ThinkEngine {
             state.setFailureReason("All heads failed — nothing to synthesize.");
             log.warn("Zaphod id='{}' synthesis aborted — all {} heads failed",
                     process.getId(), state.getHeads().size());
+            appendChatNote(process,
+                    "Synthesis aborted",
+                    "All " + state.getHeads().size()
+                            + " heads failed — nothing to synthesize.");
             return;
         }
         try {

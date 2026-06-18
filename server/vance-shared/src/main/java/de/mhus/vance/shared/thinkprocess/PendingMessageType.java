@@ -10,6 +10,17 @@ public enum PendingMessageType {
     USER_CHAT_INPUT,
     /** A sibling/child process emitted a life-cycle or progress event. */
     PROCESS_EVENT,
+    /**
+     * A child process emitted a semantic reply — its complete answer
+     * for one turn. Engine-side: {@code SteerMessage.Reply}. Carried
+     * via {@link #content} (full reply text), {@link #sourceProcessId}
+     * (the emitting worker), and {@link #inResponseToAt} (which user-
+     * input turn this is a reply to). Distinct from
+     * {@link #PROCESS_EVENT} which carries lifecycle markers
+     * (DONE/FAILED/STOPPED) without content. See
+     * {@code planning/process-engine-reply-channel.md}.
+     */
+    REPLY,
     /** Result of an asynchronously-dispatched tool call. */
     TOOL_RESULT,
     /** A high-level command from the client (UI button, slash-command). */

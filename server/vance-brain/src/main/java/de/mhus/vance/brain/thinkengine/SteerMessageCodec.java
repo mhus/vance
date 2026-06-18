@@ -65,6 +65,15 @@ public final class SteerMessageCodec {
                     .inResponseToAt(e.inResponseToAt())
                     .build();
 
+            case SteerMessage.Reply r -> b
+                    .type(PendingMessageType.REPLY)
+                    .sourceProcessId(r.sourceProcessId())
+                    .fromUser(r.sourceProcessName())
+                    .content(r.content())
+                    .payload(r.payload())
+                    .inResponseToAt(r.inResponseToAt())
+                    .build();
+
             case SteerMessage.ToolResult r -> b
                     .type(PendingMessageType.TOOL_RESULT)
                     .toolCallId(r.toolCallId())
@@ -123,6 +132,14 @@ public final class SteerMessageCodec {
                     d.getPayload(),
                     d.getEventId(),
                     d.getInResponseToAt());
+
+            case REPLY -> new SteerMessage.Reply(
+                    at, idem,
+                    nullToEmpty(d.getSourceProcessId()),
+                    d.getFromUser(),
+                    nullToEmpty(d.getContent()),
+                    d.getInResponseToAt(),
+                    d.getPayload());
 
             case TOOL_RESULT -> new SteerMessage.ToolResult(
                     at, idem,

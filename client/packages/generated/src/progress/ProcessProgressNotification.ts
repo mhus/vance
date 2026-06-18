@@ -6,6 +6,7 @@
 import { PlanPayload } from './PlanPayload';
 import { MetricsPayload } from './MetricsPayload';
 import { StatusPayload } from './StatusPayload';
+import { ReplyPayload } from './ReplyPayload';
 import { ProgressKind } from './ProgressKind';
 
 export interface ProcessProgressNotification {
@@ -19,5 +20,6 @@ export interface ProcessProgressNotification {
   metrics?: MetricsPayload;
   plan?: PlanPayload;
   status?: StatusPayload;
+  reply?: ReplyPayload;
   emittedAt?: Date;
 }

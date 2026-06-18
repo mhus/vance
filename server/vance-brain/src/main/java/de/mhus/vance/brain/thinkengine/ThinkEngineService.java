@@ -2,6 +2,7 @@ package de.mhus.vance.brain.thinkengine;
 
 import de.mhus.vance.brain.ai.AiModelService;
 import de.mhus.vance.brain.events.ClientEventPublisher;
+import de.mhus.vance.brain.progress.ProgressEmitter;
 import de.mhus.vance.brain.progress.ProgressToolListener;
 import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.tools.ToolDispatcher;
@@ -47,6 +48,7 @@ public class ThinkEngineService {
     private final SessionService sessionService;
     private final ThinkProcessService thinkProcessService;
     private final ProcessEventEmitter processEventEmitter;
+    private final ProgressEmitter progressEmitter;
     private final ProgressToolListener progressToolListener;
     private final LlmTraceService llmTraceService;
     private final de.mhus.vance.brain.history.HistoryTagBuilder historyTagBuilder;
@@ -65,6 +67,7 @@ public class ThinkEngineService {
             SessionService sessionService,
             ThinkProcessService thinkProcessService,
             ProcessEventEmitter processEventEmitter,
+            ProgressEmitter progressEmitter,
             ProgressToolListener progressToolListener,
             LlmTraceService llmTraceService,
             de.mhus.vance.brain.history.HistoryTagBuilder historyTagBuilder,
@@ -85,6 +88,7 @@ public class ThinkEngineService {
         this.sessionService = sessionService;
         this.thinkProcessService = thinkProcessService;
         this.processEventEmitter = processEventEmitter;
+        this.progressEmitter = progressEmitter;
         this.progressToolListener = progressToolListener;
         this.llmTraceService = llmTraceService;
         this.historyTagBuilder = historyTagBuilder;
@@ -208,6 +212,7 @@ public class ThinkEngineService {
                 aiModelService, settingService, chatMessageService,
                 toolDispatcher, eventPublisher,
                 thinkProcessService, processEventEmitter,
+                progressEmitter,
                 toolFilterResolver,
                 progressToolListener.forProcess(process),
                 decayTtl,

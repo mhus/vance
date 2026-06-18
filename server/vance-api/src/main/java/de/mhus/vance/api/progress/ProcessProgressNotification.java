@@ -56,5 +56,7 @@ public class ProcessProgressNotification {
 
     private @Nullable StatusPayload status;
 
+    private @Nullable ReplyPayload reply;
+
     private @Nullable Instant emittedAt;
 }

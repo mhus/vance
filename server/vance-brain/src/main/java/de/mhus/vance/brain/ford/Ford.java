@@ -61,6 +61,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import java.time.Instant;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
@@ -393,6 +394,21 @@ public class Ford implements ThinkEngine {
                 ctx.historyTagSink().flushTo(saved.getId(), chatLog);
             }
 
+            // Emit the worker's semantic reply on the explicit channel —
+            // independent of the lane-status that follows in the finally
+            // block. Parent's inbox gets a SteerMessage.Reply (when a
+            // parent exists), the session client gets a PROCESS_PROGRESS
+            // REPLY frame. See planning/process-engine-reply-channel.md.
+            //
+            // Reply is emitted on every Ford turn that produces an
+            // ASSISTANT message, including awaiting=false (worker
+            // closes itself with a final answer) — that's exactly the
+            // case that today's mapStatus(IDLE)→null path swallows.
+            if (finalText != null && !finalText.isBlank()) {
+                Instant inResponseToAt = lastUserInputAt(inbox);
+                ctx.emitReply(finalText, inResponseToAt, null);
+            }
+
             String preview = finalText.length() > 120 ? finalText.substring(0, 120) + "…" : finalText;
             log.info("Ford.steer id='{}' awaiting={} -> '{}'",
                     process.getId(), awaitingUserInput, preview);
@@ -406,6 +422,28 @@ public class Ford implements ThinkEngine {
                     : ThinkProcessStatus.IDLE;
             thinkProcessService.updateStatus(process.getId(), exitStatus);
         }
+    }
+
+    /**
+     * Picks the timestamp of the most recent {@code UserChatInput} in
+     * the inbox — used as {@code inResponseToAt} attribution on the
+     * emitted REPLY so the parent engine can tell a fresh reply from a
+     * stale one when multiple delegations interleave (see
+     * planning/arthur-process-event-attribution.md). Returns
+     * {@code null} when the inbox carries no user input (turn was
+     * triggered by a tool result or sibling event).
+     */
+    private static @Nullable Instant lastUserInputAt(List<SteerMessage> inbox) {
+        Instant best = null;
+        for (SteerMessage m : inbox) {
+            if (m instanceof SteerMessage.UserChatInput uci) {
+                Instant at = uci.at();
+                if (at != null && (best == null || at.isAfter(best))) {
+                    best = at;
+                }
+            }
+        }
+        return best;
     }
 
     /**

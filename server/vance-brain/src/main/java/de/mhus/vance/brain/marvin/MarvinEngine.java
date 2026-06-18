@@ -420,6 +420,15 @@ public class MarvinEngine implements ThinkEngine {
     private void consumePending(ThinkProcessDocument process, SteerMessage msg) {
         switch (msg) {
             case SteerMessage.ProcessEvent pe -> handleProcessEvent(process, pe);
+            case SteerMessage.Reply r ->
+                    // Marvin keeps child state in the tree-node Mongo doc;
+                    // it doesn't need the REPLY mirror here. The
+                    // accompanying DONE/FAILED ProcessEvent (when the
+                    // child terminates) is the trigger for tree-state
+                    // advancement.
+                    log.debug("Marvin id='{}' Reply from child='{}' length={} — tree-state owns reply text",
+                            process.getId(), r.sourceProcessId(),
+                            r.content() == null ? 0 : r.content().length());
             case SteerMessage.InboxAnswer ia -> handleInboxAnswer(process, ia);
             case SteerMessage.UserChatInput uci ->
                     log.debug("Marvin id='{}' ignoring UserChatInput from='{}' — Marvin doesn't talk directly",

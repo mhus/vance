@@ -668,6 +668,34 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                 String token = "ev" + (++eventCounter);
                 eventsByRef.put(token, pe);
             }
+            // REPLY-channel pilot: surface explicit Reply messages
+            // through the same eventRef machinery so handleRelay can
+            // resolve them. Synthesize a ProcessEvent with the
+            // legacy BEGIN/END-CHILD-REPLY wrapper around the content
+            // — unwrapChildReply already knows how to peel that. The
+            // synthetic event uses type=BLOCKED so the existing RELAY
+            // path treats it identically to a worker BLOCKED-event.
+            if (m instanceof SteerMessage.Reply r
+                    && r.content() != null && !r.content().isBlank()) {
+                String token = "ev" + (++eventCounter);
+                String wrapped = "Child reply from "
+                        + (r.sourceProcessName() == null
+                                ? r.sourceProcessId() : r.sourceProcessName())
+                        + "\n\nLast assistant reply from this child (verbatim):\n"
+                        + "--- BEGIN CHILD REPLY ---\n"
+                        + r.content()
+                        + "\n--- END CHILD REPLY ---";
+                SteerMessage.ProcessEvent synthetic = new SteerMessage.ProcessEvent(
+                        r.at(),
+                        r.idempotencyKey(),
+                        r.sourceProcessId(),
+                        de.mhus.vance.api.thinkprocess.ProcessEventType.BLOCKED,
+                        wrapped,
+                        r.payload(),
+                        java.util.UUID.randomUUID().toString(),
+                        r.inResponseToAt());
+                eventsByRef.put(token, synthetic);
+            }
         }
         currentTurnHadUserInput.put(process.getId(), hadUserInput);
         currentTurnEventsByRef.put(process.getId(), eventsByRef);
@@ -2309,8 +2337,29 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         Map<String, String> eventIdToToken = invertToShortTokens(
                 currentTurnEventsByRef.getOrDefault(process.getId(), Map.of()));
         boolean multiEventDrain = eventIdToToken.size() > 1;
+        // Coexistence dedup (process-engine-reply-channel migration):
+        // when Ford / other migrated engines emit an explicit Reply via
+        // ProgressEmitter, the lane-status BLOCKED transition still
+        // fires the legacy ParentNotificationListener path, which
+        // queues a redundant ProcessEvent(BLOCKED) with the same body
+        // wrapped in `BEGIN CHILD REPLY ... END CHILD REPLY`. Surface
+        // only the explicit Reply to the LLM — otherwise the prompt
+        // shows the same text twice and the model RELAYs twice.
+        java.util.Set<String> sourcesWithReplyInDrain = new java.util.HashSet<>();
+        for (SteerMessage m : inbox) {
+            if (m instanceof SteerMessage.Reply r && r.sourceProcessId() != null) {
+                sourcesWithReplyInDrain.add(r.sourceProcessId());
+            }
+        }
         for (SteerMessage m : inbox) {
             if (m instanceof SteerMessage.UserChatInput) continue;
+            if (m instanceof SteerMessage.ProcessEvent pe
+                    && pe.type() == de.mhus.vance.api.thinkprocess.ProcessEventType.BLOCKED
+                    && sourcesWithReplyInDrain.contains(pe.sourceProcessId())) {
+                // Skip the redundant legacy BLOCKED-with-content event
+                // — the Reply already carries the same body.
+                continue;
+            }
             String wrapped = renderForLlm(m, eventIdToToken, multiEventDrain);
             if (wrapped != null) {
                 messages.add(UserMessage.from(wrapped));
@@ -2636,6 +2685,30 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                         .append("\">")
                         .append(escapeText(pe.humanSummary()))
                         .append("</peer-event>");
+                yield sb.toString();
+            }
+            case SteerMessage.Reply r -> {
+                // A worker explicitly emitted a semantic reply via
+                // ProgressEmitter#emitReply — its complete answer for
+                // one turn. Carries the full content verbatim. See
+                // planning/process-engine-reply-channel.md.
+                StringBuilder sb = new StringBuilder();
+                sb.append("<process-event sourceProcessId=\"")
+                        .append(escapeAttr(r.sourceProcessId()))
+                        .append("\"");
+                if (r.sourceProcessName() != null && !r.sourceProcessName().isBlank()) {
+                    sb.append(" sourceProcessName=\"")
+                            .append(escapeAttr(r.sourceProcessName()))
+                            .append("\"");
+                }
+                if (r.inResponseToAt() != null) {
+                    sb.append(" respondingToTurnAt=\"")
+                            .append(escapeAttr(r.inResponseToAt().toString()))
+                            .append("\"");
+                }
+                sb.append(" type=\"reply\">");
+                sb.append(escapeText(r.content()));
+                sb.append("</process-event>");
                 yield sb.toString();
             }
         };

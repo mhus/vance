@@ -6,5 +6,6 @@
 export enum ProgressKind {
   METRICS = 'METRICS',
   PLAN = 'PLAN',
-  STATUS = 'STATUS'
+  STATUS = 'STATUS',
+  REPLY = 'REPLY'
 }

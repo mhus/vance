@@ -4,6 +4,7 @@ import de.mhus.vance.brain.ai.AiModelService;
 import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.brain.history.BufferingHistoryTagSink;
 import de.mhus.vance.brain.history.HistoryTagBuilder;
+import de.mhus.vance.brain.progress.ProgressEmitter;
 import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.ToolDispatcher;
@@ -57,6 +58,7 @@ record DefaultThinkEngineContext(
         ClientEventPublisher eventPublisher,
         ThinkProcessService thinkProcessService,
         ProcessEventEmitter processEventEmitter,
+        ProgressEmitter progressEmitter,
         BiFunction<de.mhus.vance.api.thinkprocess.ProcessMode, ToolInvocationContext, RecipeResolver.ToolFilter> toolFilterResolver,
         ToolInvocationListener toolInvocationListener,
         Duration activationDecayTtl,
@@ -159,5 +161,13 @@ record DefaultThinkEngineContext(
     public ProcessOrchestrator processes() {
         return new DefaultProcessOrchestrator(
                 process, thinkProcessService, processEventEmitter);
+    }
+
+    @Override
+    public void emitReply(
+            String content,
+            @Nullable Instant inResponseToAt,
+            @Nullable Map<String, Object> payload) {
+        progressEmitter.emitReply(process, content, inResponseToAt, payload);
     }
 }

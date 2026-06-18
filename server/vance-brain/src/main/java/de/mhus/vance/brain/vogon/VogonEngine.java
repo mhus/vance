@@ -870,6 +870,15 @@ public class VogonEngine implements ThinkEngine {
             ThinkProcessDocument process, StrategyState state, SteerMessage msg) {
         switch (msg) {
             case SteerMessage.ProcessEvent pe -> handleWorkerEvent(process, state, pe);
+            case SteerMessage.Reply r ->
+                    // Vogon's phases drive workers synchronously and pull
+                    // results from the worker's chat history directly
+                    // (see readLastAssistantText). The REPLY-event mirror
+                    // is information only — phase advancement waits for
+                    // the worker's DONE/FAILED ProcessEvent.
+                    log.debug("Vogon id='{}' Reply from worker='{}' length={} — phases pull from chat history",
+                            process.getId(), r.sourceProcessId(),
+                            r.content() == null ? 0 : r.content().length());
             case SteerMessage.InboxAnswer ia -> handleInboxAnswer(process, state, ia);
             case SteerMessage.UserChatInput uci ->
                     log.debug("Vogon id='{}' ignoring chat input from='{}' (use checkpoints)",

@@ -54,6 +54,10 @@ public enum ProgressLevel {
                 case NORMAL -> tag != StatusTag.INFO;
                 case VERBOSE -> true;
             };
+            // REPLY is semantic engine output, not chatty progress —
+            // never silenced by this filter. Parent-inbox routing is
+            // load-bearing and must not depend on UI-verbosity settings.
+            case REPLY -> true;
         };
     }
 }

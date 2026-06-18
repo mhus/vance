@@ -132,6 +132,11 @@ public class ProcessProgressHandler implements MessageHandler {
             case METRICS -> renderMetrics(src, msg.getMetrics());
             case PLAN -> renderPlan(src, msg.getPlan());
             case STATUS -> renderStatus(src, msg.getStatus());
+            // REPLY is the engine's own assistant message — already
+            // streams in via CHAT_MESSAGE_STREAM_CHUNK / appended events.
+            // Don't double-render in the CLI; we treat it as informational
+            // only. The parent-routing leg of emitReply still fires.
+            case REPLY -> { /* no-op in foot rendering */ }
         }
     }
 
@@ -182,6 +187,10 @@ public class ProcessProgressHandler implements MessageHandler {
         return switch (kind) {
             case METRICS -> Verbosity.VERBOSE;
             case PLAN, STATUS -> Verbosity.INFO;
+            // Worker reply: same channel that drives parent inbox.
+            // foot's CLI surfaces this as INFO — duplicates the
+            // assistant chat message that will follow, but cheap.
+            case REPLY -> Verbosity.INFO;
         };
     }
 

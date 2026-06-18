@@ -8,7 +8,9 @@ import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.llmtrace.LlmTraceService;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
+import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -119,6 +121,40 @@ public interface ThinkEngineContext {
      * parent through this API.
      */
     ProcessOrchestrator processes();
+
+    /**
+     * Engine emits a semantic reply for the parent process — the
+     * worker's complete answer for one turn. Routed twice:
+     * <ol>
+     *   <li>{@code PROCESS_PROGRESS} push to the session's clients so
+     *       the UI can render the reply in real time.</li>
+     *   <li>{@code SteerMessage.Reply} appended to the parent's
+     *       persistent pending inbox (if a parent exists). The parent's
+     *       lane wakes and drains it on its next turn.</li>
+     * </ol>
+     *
+     * <p>Discipline: each call ships a complete, self-contained answer.
+     * No incremental fragments — those go through
+     * {@code ProgressEmitter.emitStatus} instead. An engine may emit
+     * multiple Replies over its lifetime as long as each one is
+     * independently meaningful to the parent. See
+     * {@code planning/process-engine-reply-channel.md}.
+     *
+     * @param content         the full reply text — non-blank
+     * @param inResponseToAt  timestamp of the user-input turn the
+     *                        worker was answering, or {@code null} for
+     *                        engine-driven replies
+     * @param payload         optional structured side-channel data
+     */
+    void emitReply(
+            String content,
+            @Nullable Instant inResponseToAt,
+            @Nullable Map<String, Object> payload);
+
+    /** Convenience overload — text only. */
+    default void emitReply(String content) {
+        emitReply(content, null, null);
+    }
 
     /**
      * Whether LLM-roundtrip persistence is enabled for this turn.

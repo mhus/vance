@@ -24,6 +24,7 @@ import org.jspecify.annotations.Nullable;
 public sealed interface SteerMessage
         permits SteerMessage.UserChatInput,
                 SteerMessage.ProcessEvent,
+                SteerMessage.Reply,
                 SteerMessage.ToolResult,
                 SteerMessage.ExternalCommand,
                 SteerMessage.InboxAnswer,
@@ -146,6 +147,42 @@ public sealed interface SteerMessage
             @Nullable Map<String, Object> payload,
             @Nullable String eventId,
             @Nullable Instant inResponseToAt) implements SteerMessage {
+    }
+
+    /**
+     * A child process emitted a semantic reply — its complete answer
+     * for one turn. Distinct from {@link ProcessEvent} which carries
+     * pure lifecycle markers (DONE/FAILED/STOPPED). The parent's
+     * engine receives this on its next lane-turn via
+     * {@link ThinkEngineContext#drainPending()} and decides what to
+     * do with the content (RELAY to user, aggregate into its own
+     * state, …).
+     *
+     * <p>Multiple Replies from the same worker over its lifetime are
+     * allowed, but each must be a self-contained result the parent can
+     * interpret independently — no incremental fragments. For live
+     * progress, engines emit {@code STATUS}/{@code METRICS}/{@code PLAN}
+     * via {@code ProgressEmitter} instead. See
+     * {@code planning/process-engine-reply-channel.md}.
+     *
+     * @param sourceProcessId Mongo id of the emitting worker
+     * @param sourceProcessName cached display name of the worker; the
+     *                          parent renders this directly without an
+     *                          extra lookup
+     * @param content          full reply text
+     * @param inResponseToAt   timestamp of the user-input turn the
+     *                         worker was responding to, or
+     *                         {@code null} for engine-driven replies
+     * @param payload          optional structured side-channel data
+     */
+    record Reply(
+            Instant at,
+            @Nullable String idempotencyKey,
+            String sourceProcessId,
+            @Nullable String sourceProcessName,
+            String content,
+            @Nullable Instant inResponseToAt,
+            @Nullable Map<String, Object> payload) implements SteerMessage {
     }
 
     /**

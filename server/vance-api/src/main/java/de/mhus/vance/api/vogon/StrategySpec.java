@@ -34,4 +34,15 @@ public class StrategySpec {
      *  caller-supplied params at spawn time. */
     @Builder.Default
     private Map<String, Object> paramDefaults = new LinkedHashMap<>();
+
+    /**
+     * Optional explicit result declaration. When set, the engine
+     * evaluates this at DONE (or FAILED, if {@link ResultSpec#getOnFailure})
+     * and emits the rendered text + structured payload as a REPLY
+     * to the parent before lifecycle close. When null, the engine
+     * falls back to the legacy {@code summarizeForParent} Markdown
+     * concatenation of phase outputs. See
+     * {@code specification/vogon-engine.md} §3.2.
+     */
+    private @Nullable ResultSpec result;
 }

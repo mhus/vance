@@ -13,6 +13,7 @@ import de.mhus.vance.api.vogon.CheckpointSpec;
 import de.mhus.vance.api.vogon.CheckpointType;
 import de.mhus.vance.api.vogon.GateSpec;
 import de.mhus.vance.api.vogon.PhaseSpec;
+import de.mhus.vance.api.vogon.ResultSpec;
 import de.mhus.vance.api.vogon.ScorerSpec;
 import de.mhus.vance.api.vogon.StrategySpec;
 import de.mhus.vance.api.vogon.StrategyState;
@@ -420,6 +421,7 @@ public class VogonEngine implements ThinkEngine {
                                 ? "no phases executed"
                                 : "phases executed: "
                                         + String.join(", ", state.getPhaseHistory()));
+                emitFinalReply(process, ctx, strategy, state, /*failure*/ false);
                 thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
                 return;
             }
@@ -437,6 +439,7 @@ public class VogonEngine implements ThinkEngine {
                         "Strategy " + state.getStrategy() + " — DONE",
                         "phases executed: "
                                 + String.join(", ", state.getPhaseHistory()));
+                emitFinalReply(process, ctx, strategy, state, /*failure*/ false);
                 thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
                 return;
             }
@@ -826,6 +829,86 @@ public class VogonEngine implements ThinkEngine {
         } catch (RuntimeException e) {
             log.debug("Vogon id='{}' chat-history append failed for '{}': {}",
                     process.getId(), header, e.toString());
+        }
+    }
+
+    /**
+     * Pushes the strategy result as a REPLY to the parent before
+     * the lifecycle CLOSED transition. Three-tier evaluation:
+     *
+     * <ol>
+     *   <li>If {@code strategy.result} (or {@code strategy.result.onFailure}
+     *       on the failure path) is set — evaluate it via
+     *       {@link ResultEvaluator}. The structured fields land as
+     *       the REPLY {@code payload}, the rendered text as the
+     *       {@code content}.</li>
+     *   <li>If evaluation throws (unresolved reference, navigate
+     *       failure, …) — fall back to step 3 with a WARN log.</li>
+     *   <li>Otherwise (no result spec) — fall back to the legacy
+     *       {@code summarizeForParent} body so the parent still
+     *       sees a sensible REPLY content; payload stays empty.</li>
+     * </ol>
+     *
+     * <p>Idempotency: guarded by {@link StrategyState#isReplyEmitted},
+     * persisted before the close transition so a queued follow-up
+     * {@code runTurn} task (lane scheduler can re-enter after
+     * closeProcess) doesn't push a duplicate REPLY. See
+     * {@code specification/vogon-engine.md} §3.2 +
+     * {@code planning/process-engine-reply-channel.md}.
+     */
+    private void emitFinalReply(
+            ThinkProcessDocument process,
+            ThinkEngineContext ctx,
+            StrategySpec strategy,
+            StrategyState state,
+            boolean failure) {
+        if (process.getParentProcessId() == null
+                || process.getParentProcessId().isBlank()) {
+            return;
+        }
+        if (state.isReplyEmitted()) {
+            return;
+        }
+        ResultEvaluator.Outcome outcome = null;
+        ResultSpec spec = strategy.getResult();
+        if (failure && spec != null) {
+            spec = spec.getOnFailure();
+        }
+        if (spec != null) {
+            try {
+                outcome = ResultEvaluator.evaluate(
+                        spec, effectiveParams(process, strategy), state);
+            } catch (RuntimeException e) {
+                log.warn("Vogon id='{}' result-block evaluation failed: {} — "
+                                + "falling back to summarizeForParent",
+                        process.getId(), e.toString());
+                outcome = null;
+            }
+        }
+        String text;
+        java.util.Map<String, Object> payload;
+        if (outcome != null && outcome.text() != null && !outcome.text().isBlank()) {
+            text = outcome.text();
+            payload = outcome.payload();
+        } else {
+            ParentReport fallback = summarizeForParent(process,
+                    failure ? ProcessEventType.FAILED : ProcessEventType.DONE);
+            text = fallback == null ? null : fallback.humanSummary();
+            payload = outcome == null ? null : outcome.payload();
+            if (payload == null && fallback != null) {
+                payload = fallback.payload();
+            }
+        }
+        if (text == null || text.isBlank()) {
+            return;
+        }
+        try {
+            ctx.emitReply(text, /*inResponseToAt*/ null, payload);
+            state.setReplyEmitted(true);
+            persistState(process, state);
+        } catch (RuntimeException e) {
+            log.warn("Vogon id='{}' emitFinalReply failed: {}",
+                    process.getId(), e.toString());
         }
     }
 

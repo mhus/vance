@@ -8,6 +8,7 @@ import de.mhus.vance.api.vogon.DeciderSpec;
 import de.mhus.vance.api.vogon.GateSpec;
 import de.mhus.vance.api.vogon.LoopSpec;
 import de.mhus.vance.api.vogon.PhaseSpec;
+import de.mhus.vance.api.vogon.ResultSpec;
 import de.mhus.vance.api.vogon.ScoreMatch;
 import de.mhus.vance.api.vogon.ScorerCase;
 import de.mhus.vance.api.vogon.ScorerSpec;
@@ -142,12 +143,91 @@ public class StrategyResolver {
             phases.add(parsePhase(toStringMap(pm), pathHint + " phases[" + i + "]"));
         }
         Map<String, Object> paramDefaults = toStringMap(spec.get("paramDefaults"));
+        ResultSpec result = parseResult(spec.get("result"),
+                pathHint + " result", /*allowOnFailure*/ true);
         return StrategySpec.builder()
                 .name(name)
                 .description(description)
                 .version(version)
                 .phases(phases)
                 .paramDefaults(paramDefaults)
+                .result(result)
+                .build();
+    }
+
+    /**
+     * Parses the top-level {@code result:} block (and recursively
+     * the nested {@code onFailure:} block). Strategy-load validation
+     * per {@code specification/vogon-engine.md} §3.2:
+     *
+     * <ul>
+     *   <li>{@code ${result.X}} is forbidden inside {@code fields} —
+     *       cyclic scope. Boot-fail with the offending key/template.</li>
+     *   <li>Every {@code ${result.X}} reference in {@code text} must
+     *       point at a key declared in the sibling {@code fields}
+     *       block. Boot-fail when it doesn't.</li>
+     *   <li>{@code onFailure} runs through the same checks
+     *       independently; nested {@code onFailure} (on the failure
+     *       block itself) is ignored.</li>
+     * </ul>
+     *
+     * <p>Phase-existence and flag-existence checks across the
+     * strategy are out of scope here — the existing plan-validator
+     * (§12 Open Point) covers those when it lands.
+     */
+    private static @Nullable ResultSpec parseResult(
+            @Nullable Object raw, String trail, boolean allowOnFailure) {
+        if (raw == null) return null;
+        if (!(raw instanceof Map<?, ?> m)) {
+            throw new IllegalStateException(trail + ": must be a map");
+        }
+        Map<String, Object> spec = toStringMap(m);
+        Map<String, String> fields = new java.util.LinkedHashMap<>();
+        Object fieldsRaw = spec.get("fields");
+        if (fieldsRaw != null) {
+            if (!(fieldsRaw instanceof Map<?, ?> fm)) {
+                throw new IllegalStateException(trail + ".fields must be a map");
+            }
+            for (Map.Entry<?, ?> e : fm.entrySet()) {
+                String key = String.valueOf(e.getKey());
+                String tpl = e.getValue() == null ? "" : String.valueOf(e.getValue());
+                if (tpl.contains("${result.")) {
+                    throw new IllegalStateException(
+                            trail + ".fields[" + key + "]: '${result.X}' is "
+                                    + "not allowed inside fields (cyclic scope) "
+                                    + "— see specification/vogon-engine.md §3.2");
+                }
+                fields.put(key, tpl);
+            }
+        }
+        String text = spec.get("text") == null ? null : String.valueOf(spec.get("text"));
+        if (text != null) {
+            java.util.regex.Matcher m2 =
+                    java.util.regex.Pattern.compile("\\$\\{result\\.([^}]+)\\}")
+                            .matcher(text);
+            while (m2.find()) {
+                String refPath = m2.group(1).trim();
+                String topField = refPath.contains(".")
+                        ? refPath.substring(0, refPath.indexOf('.')) : refPath;
+                if (!fields.containsKey(topField)) {
+                    throw new IllegalStateException(
+                            trail + ".text references ${result." + refPath
+                                    + "} but '" + topField + "' is not declared "
+                                    + "in the sibling fields block — see "
+                                    + "specification/vogon-engine.md §3.2");
+                }
+            }
+        }
+        ResultSpec onFailure = null;
+        if (allowOnFailure) {
+            onFailure = parseResult(
+                    spec.get("onFailure"), trail + ".onFailure",
+                    /*allowOnFailure*/ false);
+        }
+        return ResultSpec.builder()
+                .fields(fields)
+                .text(text)
+                .onFailure(onFailure)
                 .build();
     }
 

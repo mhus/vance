@@ -86,6 +86,17 @@ public class StrategyState {
      *  the process to DONE on the next pass. */
     private boolean strategyComplete;
 
+    /**
+     * Idempotency guard for the REPLY-channel emit-path
+     * ({@code VogonEngine.emitFinalReply}). The lane scheduler can
+     * queue a follow-up {@code runTurn} task after
+     * {@code closeProcess}; without this flag the parent would
+     * receive duplicate REPLYs. Set to {@code true} once the
+     * REPLY has been pushed onto the parent's inbox. See
+     * {@code specification/vogon-engine.md} §3.2.
+     */
+    private boolean replyEmitted;
+
     @Data
     @Builder
     @NoArgsConstructor

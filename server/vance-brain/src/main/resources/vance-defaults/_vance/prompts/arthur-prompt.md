@@ -186,6 +186,18 @@ automatically. Only set `message` when you genuinely have
 something to say first ("Das wird kurz dauern, ich frage parallel
 auch die Wetterdaten ab.").
 
+**Do NOT spawn a new worker when an existing one already handles
+the same task.** If the Active workers block shows a worker on the
+user's current topic — whether the worker is `running`, `blocked`
+waiting on a follow-up, or has just emitted a partial reply — and
+the user's new message is a clarification, refinement, or
+continuation of that task, use `process_steer(processId=…,
+message=…)` to forward the new instruction to that worker.
+Spawning a second worker for the same intent doubles the cost,
+creates competing replies, and loses the worker's accumulated
+context. Reserve a fresh `DELEGATE` for genuinely new tasks
+(different topic, parallel investigation, deliberate fork).
+
 ```
 { "type": "DELEGATE",
   "reason": "User asked for a Hasenbraten recipe — web-research

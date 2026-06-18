@@ -499,6 +499,8 @@ public class MarvinEngine implements ThinkEngine {
                 nodeService.markDone(node, artifacts);
                 log.info("Marvin id='{}' user-input DONE node='{}' item='{}'",
                         process.getId(), node.getId(), answer.inboxItemId());
+                appendNodeNote(process, node, "user-input answered",
+                        String.valueOf(answer.answer().getValue()));
             }
             case INSUFFICIENT_INFO, UNDECIDABLE -> {
                 String reason = answer.answer().getReason() == null
@@ -509,6 +511,9 @@ public class MarvinEngine implements ThinkEngine {
                 log.info("Marvin id='{}' user-input {} node='{}' item='{}': {}",
                         process.getId(), answer.answer().getOutcome(),
                         node.getId(), answer.inboxItemId(),
+                        answer.answer().getReason());
+                appendNodeNote(process, node,
+                        "user-input " + answer.answer().getOutcome(),
                         answer.answer().getReason());
             }
         }
@@ -633,6 +638,8 @@ public class MarvinEngine implements ThinkEngine {
                             : new LinkedHashMap<>(node.getArtifacts());
                     art.put("spawnedChildren", sc.children().size());
                     nodeService.markDone(node, art);
+                    appendNodeNote(process, node, "spawned subtasks",
+                            sc.children().size() + " child task(s)");
                     // Self-wakeup: spawned children are PENDING and
                     // have no listener that would re-fire the lane on
                     // their own. Without this scheduleTurn the lane
@@ -679,6 +686,9 @@ public class MarvinEngine implements ThinkEngine {
                             done.validatorForced() ? " [forced]" : "");
                     emitNodeDoneStatus(process, node,
                             (done.result() == null ? 0 : done.result().length()) + " chars");
+                    appendNodeNote(process, node,
+                            done.validatorForced() ? "DONE (forced)" : "DONE",
+                            done.result());
                     return false;
                 }
                 if (trans instanceof MarvinNodeStateMachine.FinishFailed ff) {
@@ -686,6 +696,7 @@ public class MarvinEngine implements ThinkEngine {
                     nodeService.markFailed(node, ff.reason());
                     log.info("Marvin id='{}' node='{}' FAILED — {}",
                             process.getId(), node.getId(), ff.reason());
+                    appendNodeNote(process, node, "FAILED", ff.reason());
                     return false;
                 }
                 // Fall-through guard.
@@ -1991,6 +2002,53 @@ public class MarvinEngine implements ThinkEngine {
         } catch (RuntimeException pe) {
             log.debug("Marvin id='{}' NODE_DONE progress emit failed: {}",
                     process.getId(), pe.toString());
+        }
+    }
+
+    /**
+     * Appends one ASSISTANT chat-message to Marvin's own chat-history
+     * mirroring a node-lifecycle event (DONE / FAILED / spawned
+     * subtasks / user-input answered). Forensic lookups via
+     * {@code process_history_text(name='<marvin-process>')} get the
+     * tree's decision trail in human-readable form; the
+     * {@code _marvin-drafts/} document copies stay as audit assets.
+     *
+     * <p>Best-effort: failures are logged and swallowed. Pattern
+     * parallels {@code VogonEngine.appendPhaseNote} (Vogon §1) and
+     * {@code ZaphodEngine.appendChatNote} —
+     * {@code planning/vogon-result-spec.md} §1 has the rationale.
+     */
+    private void appendNodeNote(
+            ThinkProcessDocument process,
+            MarvinNodeDocument node,
+            String headerSuffix,
+            @Nullable String body) {
+        if (chatMessageService == null) return;
+        StringBuilder content = new StringBuilder();
+        content.append("**[Node ")
+                .append(node.getTaskKind() == null
+                        ? "?" : node.getTaskKind().name().toLowerCase())
+                .append(" / ")
+                .append(abbrev(node.getGoal()))
+                .append(" — ")
+                .append(headerSuffix)
+                .append("]**");
+        if (body != null && !body.isBlank()) {
+            content.append("\n\n").append(body);
+        }
+        try {
+            chatMessageService.append(
+                    de.mhus.vance.shared.chat.ChatMessageDocument.builder()
+                            .tenantId(process.getTenantId())
+                            .sessionId(process.getSessionId())
+                            .thinkProcessId(process.getId())
+                            .role(de.mhus.vance.api.chat.ChatRole.ASSISTANT)
+                            .content(content.toString())
+                            .build());
+        } catch (RuntimeException e) {
+            log.debug("Marvin id='{}' chat-history append failed for node='{}' "
+                            + "header='{}': {}",
+                    process.getId(), node.getId(), headerSuffix, e.toString());
         }
     }
 

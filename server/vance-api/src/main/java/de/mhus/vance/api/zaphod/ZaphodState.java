@@ -94,4 +94,14 @@ public class ZaphodState {
 
     /** Set when {@link #status} = {@link ZaphodStatus#FAILED}. */
     private @Nullable String failureReason;
+
+    /**
+     * Idempotency guard for the REPLY-channel emit-path
+     * ({@code ZaphodEngine.emitFinalReply}). The lane scheduler can
+     * queue a follow-up {@code runTurn} task after
+     * {@code closeProcess}; without this flag the parent would
+     * receive the synthesis twice. Set to {@code true} once the
+     * REPLY has been pushed onto the parent's inbox.
+     */
+    private boolean replyEmitted;
 }

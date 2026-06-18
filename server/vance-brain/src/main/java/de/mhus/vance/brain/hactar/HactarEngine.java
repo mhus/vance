@@ -219,9 +219,11 @@ public class HactarEngine implements ThinkEngine {
 
             if (next == HactarStatus.DONE) {
                 persistTerminalOutcomeToChatHistory(process, state, next);
+                emitFinalReply(process, ctx, state, ProcessEventType.DONE);
                 thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
             } else if (next == HactarStatus.FAILED) {
                 persistTerminalOutcomeToChatHistory(process, state, next);
+                emitFinalReply(process, ctx, state, ProcessEventType.FAILED);
                 thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
             } else {
                 eventEmitter.scheduleTurn(process.getId());
@@ -255,6 +257,45 @@ public class HactarEngine implements ThinkEngine {
             case DONE -> HactarStatus.DONE;
             case FAILED -> HactarStatus.FAILED;
         };
+    }
+
+    /**
+     * Pushes the script-execution outcome as a REPLY to the parent
+     * before the lifecycle CLOSED transition. Uses
+     * {@link #summarizeForParent} for the body — the receiving
+     * parent (typically Slart, sometimes Arthur via the
+     * {@code hactar-run} recipe) dedups against the legacy
+     * lifecycle DONE event of the same source.
+     *
+     * <p>Idempotent via {@link HactarState#isReplyEmitted()} — queued
+     * runTurn re-entries after closeProcess must not duplicate the
+     * push. See {@code planning/process-engine-reply-channel.md} §4.8.
+     */
+    private void emitFinalReply(
+            ThinkProcessDocument process,
+            ThinkEngineContext ctx,
+            HactarState state,
+            ProcessEventType eventType) {
+        if (process.getParentProcessId() == null
+                || process.getParentProcessId().isBlank()) {
+            return;
+        }
+        if (state.isReplyEmitted()) {
+            return;
+        }
+        try {
+            ParentReport report = summarizeForParent(process, eventType);
+            String body = report == null ? null : report.humanSummary();
+            if (body == null || body.isBlank()) {
+                return;
+            }
+            ctx.emitReply(body, /*inResponseToAt*/ null, report.payload());
+            state.setReplyEmitted(true);
+            persistState(process, state);
+        } catch (RuntimeException e) {
+            log.warn("Hactar id='{}' emitFinalReply failed: {}",
+                    process.getId(), e.toString());
+        }
     }
 
     // ──────────────────── summarizeForParent ────────────────────

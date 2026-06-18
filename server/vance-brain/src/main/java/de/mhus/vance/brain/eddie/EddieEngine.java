@@ -52,6 +52,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import lombok.extern.slf4j.Slf4j;
+import java.time.Instant;
 import org.jspecify.annotations.Nullable;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
@@ -148,6 +149,26 @@ public class EddieEngine extends StructuredActionEngine {
      * of truth; this is just the last resort.
      */
     private static final int DEFAULT_MAX_ITERATIONS = 6;
+
+    /**
+     * Most-recent {@code UserChatInput.at()} in the drained inbox —
+     * used as the {@code inResponseToAt} attribution on the
+     * {@code ProgressEmitter.emitReply} call so the parent (if any)
+     * can distinguish a fresh reply from a stale one across
+     * interleaved delegations.
+     */
+    private static @Nullable Instant lastUserInputAt(List<SteerMessage> inbox) {
+        Instant best = null;
+        for (SteerMessage m : inbox) {
+            if (m instanceof SteerMessage.UserChatInput uci) {
+                Instant at = uci.at();
+                if (at != null && (best == null || at.isAfter(best))) {
+                    best = at;
+                }
+            }
+        }
+        return best;
+    }
 
     /**
      * Max number of {@link de.mhus.vance.shared.eddie.WorkerLinkSnapshot}
@@ -785,6 +806,32 @@ public class EddieEngine extends StructuredActionEngine {
                 String token = "ev" + (++eventCounter);
                 eventsByRef.put(token, pe);
             }
+            // REPLY-channel: synthesize a ProcessEvent for every
+            // Reply so handleRelay's eventRef machinery resolves it
+            // identically to a legacy BLOCKED ProcessEvent — see
+            // ArthurEngine for the same pattern and
+            // planning/process-engine-reply-channel.md.
+            if (m instanceof SteerMessage.Reply r
+                    && r.content() != null && !r.content().isBlank()) {
+                String token = "ev" + (++eventCounter);
+                String wrapped = "Child reply from "
+                        + (r.sourceProcessName() == null
+                                ? r.sourceProcessId() : r.sourceProcessName())
+                        + "\n\nLast assistant reply from this child (verbatim):\n"
+                        + "--- BEGIN CHILD REPLY ---\n"
+                        + r.content()
+                        + "\n--- END CHILD REPLY ---";
+                SteerMessage.ProcessEvent synthetic = new SteerMessage.ProcessEvent(
+                        r.at(),
+                        r.idempotencyKey(),
+                        r.sourceProcessId(),
+                        de.mhus.vance.api.thinkprocess.ProcessEventType.BLOCKED,
+                        wrapped,
+                        r.payload(),
+                        java.util.UUID.randomUUID().toString(),
+                        r.inResponseToAt());
+                eventsByRef.put(token, synthetic);
+            }
         }
         currentTurnHadUserInput.put(process.getId(), hadUserInput);
         currentTurnEventsByRef.put(process.getId(), eventsByRef);
@@ -953,6 +1000,15 @@ public class EddieEngine extends StructuredActionEngine {
                 // from the dispatcher hook) onto the assistant turn.
                 if (saved != null && saved.getId() != null) {
                     ctx.historyTagSink().flushTo(saved.getId(), chatLog);
+                }
+                // REPLY-channel: notify the parent (if any) with the
+                // assistant message via the explicit Reply pathway,
+                // independent of the BLOCKED/IDLE lane-status that
+                // follows. Eddie usually is the root engine (no
+                // parent), but peer-of-peer setups can chain her.
+                if (process.getParentProcessId() != null
+                        && !process.getParentProcessId().isBlank()) {
+                    ctx.emitReply(chatMessage, lastUserInputAt(inbox), null);
                 }
                 String preview = chatMessage.length() > 120
                         ? chatMessage.substring(0, 120) + "…" : chatMessage;
@@ -2419,7 +2475,25 @@ public class EddieEngine extends StructuredActionEngine {
         Map<String, String> eventIdToToken = invertToShortTokens(
                 currentTurnEventsByRef.getOrDefault(process.getId(), Map.of()));
         boolean multiEventDrain = eventIdToToken.size() > 1;
+        // REPLY-channel dedup (process-engine-reply-channel migration):
+        // when a worker emits an explicit Reply the legacy lifecycle
+        // listener still queues a ProcessEvent for the same content
+        // — skip the redundant ProcessEvent so the LLM sees the body
+        // once. Symmetric to ArthurEngine.
+        java.util.Set<String> sourcesWithReplyInDrain = new java.util.HashSet<>();
         for (SteerMessage m : inbox) {
+            if (m instanceof SteerMessage.Reply r && r.sourceProcessId() != null) {
+                sourcesWithReplyInDrain.add(r.sourceProcessId());
+            }
+        }
+        for (SteerMessage m : inbox) {
+            if (m instanceof SteerMessage.ProcessEvent pe
+                    && sourcesWithReplyInDrain.contains(pe.sourceProcessId())
+                    && (pe.type() == de.mhus.vance.api.thinkprocess.ProcessEventType.BLOCKED
+                            || pe.type() == de.mhus.vance.api.thinkprocess.ProcessEventType.DONE
+                            || pe.type() == de.mhus.vance.api.thinkprocess.ProcessEventType.FAILED)) {
+                continue;
+            }
             String wrapped = renderForLlm(m, eventIdToToken, multiEventDrain);
             if (wrapped != null) {
                 messages.add(UserMessage.from(wrapped));
@@ -2784,6 +2858,30 @@ public class EddieEngine extends StructuredActionEngine {
                     + "\">"
                     + escapeText(String.valueOf(ec.params()))
                     + "</external-command>";
+        }
+        if (m instanceof SteerMessage.Reply r) {
+            StringBuilder sb = new StringBuilder();
+            sb.append("<process-event sourceProcessId=\"")
+                    .append(escapeAttr(r.sourceProcessId()))
+                    .append("\"");
+            String sourceName = r.sourceProcessName();
+            if (sourceName == null || sourceName.isBlank()) {
+                sourceName = lookupProcessName(r.sourceProcessId());
+            }
+            if (sourceName != null && !sourceName.isBlank()) {
+                sb.append(" sourceProcessName=\"")
+                        .append(escapeAttr(sourceName))
+                        .append("\"");
+            }
+            if (r.inResponseToAt() != null) {
+                sb.append(" respondingToTurnAt=\"")
+                        .append(escapeAttr(r.inResponseToAt().toString()))
+                        .append("\"");
+            }
+            sb.append(" type=\"reply\">");
+            sb.append(escapeText(r.content()));
+            sb.append("</process-event>");
+            return sb.toString();
         }
         return null;
     }

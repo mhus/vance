@@ -344,7 +344,13 @@ public class ParentNotificationListener {
 
     private @Nullable ProcessEventType mapStatus(String processId, ThinkProcessStatus status) {
         return switch (status) {
-            case BLOCKED -> ProcessEventType.BLOCKED;
+            // BLOCKED is pure lane state in the REPLY-channel model
+            // (planning/process-engine-reply-channel.md §2.2). Engines
+            // that have a user-facing reply emit it explicitly via
+            // {@code ProgressEmitter.emitReply}; pure parking events
+            // (Slart on Hactar, Marvin awaiting children, …) leave
+            // the parent silent. No more BLOCKED notification.
+            case BLOCKED -> null;
             case CLOSED -> mapClosedToEventType(processId);
             case INIT, RUNNING, IDLE, PAUSED, SUSPENDED -> null;
         };

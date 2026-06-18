@@ -86,6 +86,14 @@ public class HactarState {
     private @Nullable String failureReason;
 
     /**
+     * Idempotency guard for the REPLY-channel emit-path
+     * ({@code HactarEngine.emitFinalReply}). Queued runTurn tasks
+     * after closeProcess can re-enter the terminal branch; without
+     * this flag the parent would receive the script-output twice.
+     */
+    private boolean replyEmitted;
+
+    /**
      * One validation issue — mirrors
      * {@code HactarService.ValidationIssue} but lives in the API
      * module so it can flow over the wire (e.g. into

@@ -632,16 +632,14 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             return new TurnSignal(/*appendedChat=*/ false, /*toolUsed=*/ true);
         }
 
-        // ─── Auto-WAIT: a drain that contains only BLOCKED ProcessEvents
-        // from the currently delegated worker means "the child is parking
-        // on a sub-task" (typical: Slart parking on a Hactar child). No
-        // human attention is needed — the LLM would either WAIT (the
-        // correct answer) or get confused by the stale Active-Workers
-        // snapshot and emit spurious steer / delegate / ASK_USER, which
-        // is exactly what we want to suppress.
-        if (tryAutoWaitOnDelegationPointerBlocked(process, inbox)) {
-            return new TurnSignal(/*appendedChat=*/ false, /*toolUsed=*/ true);
-        }
+        // (Auto-WAIT removed alongside the REPLY-channel migration.
+        // Parking-only BLOCKED events no longer reach the parent —
+        // ParentNotificationListener#mapStatus(BLOCKED)=null — so the
+        // predicate would never fire. The original noise source it
+        // guarded against — phantom ASK_USER/process_steer on stale
+        // Active-Workers snapshots — is also gone because the LLM no
+        // longer sees a `<process-event type="blocked">` for parking
+        // children. See planning/process-engine-reply-channel.md §5.)
 
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.RUNNING);
         // Per-turn flag for handleAction: was this turn triggered by a
@@ -1050,80 +1048,6 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         // back via ProcessEvent, the next turn runs normally.
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.BLOCKED);
         return true;
-    }
-
-    /**
-     * Suppress an LLM round-trip when the only thing in the drain is
-     * one or more {@link ProcessEventType#BLOCKED} events from the
-     * worker this Arthur is currently delegating to. Semantically a
-     * BLOCKED event from the delegated worker means "the child is
-     * parking on a sub-task, no parent action required" — typical
-     * for Slart parking on a Hactar child or any engine that uses
-     * BLOCKED as a parking signal.
-     *
-     * <p>Without this short-circuit the LLM sees a stale
-     * Active-Workers snapshot ("status=blocked") together with a
-     * {@code process_steer} tool result that reports CLOSED (the
-     * child has since moved on) and routinely emits a phantom
-     * {@code ASK_USER} / {@code DELEGATE} / {@code process_steer} —
-     * exactly the noise we want to suppress.
-     *
-     * <p>Falls through to the normal LLM-mediated turn when the drain
-     * contains anything else: foreign-worker events, DONE / FAILED
-     * (where RELAY is the right response), tool-results, external
-     * commands, or user-typed input.
-     *
-     * @return {@code true} when Auto-WAIT was applied — the caller
-     *         must yield the turn; status is set to {@code IDLE}
-     *         (consistent with the regular {@code WAIT} action).
-     */
-    private boolean tryAutoWaitOnDelegationPointerBlocked(
-            ThinkProcessDocument process,
-            List<SteerMessage> inbox) {
-        String workerId = process.getActiveDelegationWorkerId();
-        if (!shouldAutoWaitOnDelegationPointerBlocked(workerId, inbox)) {
-            return false;
-        }
-        log.info(
-                "Arthur id='{}' auto-WAIT: {} BLOCKED event(s) from delegation worker '{}' — yielding turn without LLM round-trip",
-                process.getId(), inbox.size(), workerId);
-        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
-        return true;
-    }
-
-    /**
-     * Pure decision function for {@link #tryAutoWaitOnDelegationPointerBlocked}.
-     * Extracted so the auto-WAIT predicate is unit-testable without
-     * wiring the full engine + all dependencies.
-     *
-     * @return {@code true} iff the drain contains at least one
-     *         {@link ProcessEventType#BLOCKED} event from
-     *         {@code workerId} and contains nothing else — no user
-     *         input, no foreign-worker events, no DONE/FAILED, no
-     *         tool results.
-     */
-    static boolean shouldAutoWaitOnDelegationPointerBlocked(
-            @Nullable String workerId, List<SteerMessage> inbox) {
-        if (workerId == null || workerId.isBlank()) {
-            return false;
-        }
-        if (inbox == null || inbox.isEmpty()) {
-            return false;
-        }
-        boolean foundBlocked = false;
-        for (SteerMessage m : inbox) {
-            if (!(m instanceof SteerMessage.ProcessEvent pe)) {
-                return false;
-            }
-            if (!workerId.equals(pe.sourceProcessId())) {
-                return false;
-            }
-            if (pe.type() != ProcessEventType.BLOCKED) {
-                return false;
-            }
-            foundBlocked = true;
-        }
-        return foundBlocked;
     }
 
     /**
@@ -2338,13 +2262,14 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                 currentTurnEventsByRef.getOrDefault(process.getId(), Map.of()));
         boolean multiEventDrain = eventIdToToken.size() > 1;
         // Coexistence dedup (process-engine-reply-channel migration):
-        // when Ford / other migrated engines emit an explicit Reply via
-        // ProgressEmitter, the lane-status BLOCKED transition still
-        // fires the legacy ParentNotificationListener path, which
-        // queues a redundant ProcessEvent(BLOCKED) with the same body
-        // wrapped in `BEGIN CHILD REPLY ... END CHILD REPLY`. Surface
-        // only the explicit Reply to the LLM — otherwise the prompt
-        // shows the same text twice and the model RELAYs twice.
+        // when migrated engines (Ford, Marvin root, Zaphod, Slart, …)
+        // emit an explicit Reply via ProgressEmitter, the lane-status
+        // BLOCKED/DONE/FAILED transition still fires the legacy
+        // ParentNotificationListener path, which queues a redundant
+        // ProcessEvent with the same body wrapped in `BEGIN CHILD
+        // REPLY ... END CHILD REPLY`. Surface only the explicit Reply
+        // to the LLM — otherwise the prompt shows the same text
+        // twice and the model RELAYs twice.
         java.util.Set<String> sourcesWithReplyInDrain = new java.util.HashSet<>();
         for (SteerMessage m : inbox) {
             if (m instanceof SteerMessage.Reply r && r.sourceProcessId() != null) {
@@ -2354,10 +2279,14 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         for (SteerMessage m : inbox) {
             if (m instanceof SteerMessage.UserChatInput) continue;
             if (m instanceof SteerMessage.ProcessEvent pe
-                    && pe.type() == de.mhus.vance.api.thinkprocess.ProcessEventType.BLOCKED
-                    && sourcesWithReplyInDrain.contains(pe.sourceProcessId())) {
-                // Skip the redundant legacy BLOCKED-with-content event
-                // — the Reply already carries the same body.
+                    && sourcesWithReplyInDrain.contains(pe.sourceProcessId())
+                    && (pe.type() == de.mhus.vance.api.thinkprocess.ProcessEventType.BLOCKED
+                            || pe.type() == de.mhus.vance.api.thinkprocess.ProcessEventType.DONE
+                            || pe.type() == de.mhus.vance.api.thinkprocess.ProcessEventType.FAILED)) {
+                // Skip the redundant legacy lifecycle-with-content
+                // event — the Reply already carries the same body.
+                // STOPPED still flows (informational cancellation
+                // without substantive content overlap).
                 continue;
             }
             String wrapped = renderForLlm(m, eventIdToToken, multiEventDrain);

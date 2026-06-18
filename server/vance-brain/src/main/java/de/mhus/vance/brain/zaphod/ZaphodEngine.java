@@ -337,6 +337,7 @@ public class ZaphodEngine implements ThinkEngine {
                 runSynthesis(process, ctx, state);
                 persistState(process, state);
                 if (state.getStatus() == ZaphodStatus.DONE) {
+                    emitFinalReply(process, ctx, state);
                     thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
                 } else {
                     thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
@@ -359,6 +360,7 @@ public class ZaphodEngine implements ThinkEngine {
                 runSynthesis(process, ctx, state);
                 persistState(process, state);
                 if (state.getStatus() == ZaphodStatus.DONE) {
+                    emitFinalReply(process, ctx, state);
                     thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
                 } else {
                     thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
@@ -1040,6 +1042,40 @@ public class ZaphodEngine implements ThinkEngine {
                     tenantId, projectId, path, title,
                     java.util.List.of("council", "draft"),
                     content, "zaphod:" + process.getId());
+        }
+    }
+
+    /**
+     * Pushes the consolidated council/debate synthesis as a REPLY to
+     * the parent before the lifecycle DONE transition. Idempotent
+     * guard via {@link ZaphodState#isReplyEmitted()} — the runTurn
+     * task can re-enter when the lane scheduler queues a follow-up
+     * after closeProcess; without the guard the parent would receive
+     * two duplicate REPLYs.
+     */
+    private void emitFinalReply(
+            ThinkProcessDocument process,
+            ThinkEngineContext ctx,
+            ZaphodState state) {
+        if (process.getParentProcessId() == null
+                || process.getParentProcessId().isBlank()) {
+            return;
+        }
+        if (state.isReplyEmitted()) {
+            return;
+        }
+        try {
+            ParentReport report = summarizeForParent(process, ProcessEventType.DONE);
+            String body = report == null ? null : report.humanSummary();
+            if (body == null || body.isBlank()) {
+                return;
+            }
+            ctx.emitReply(body, /*inResponseToAt*/ null, report.payload());
+            state.setReplyEmitted(true);
+            persistState(process, state);
+        } catch (RuntimeException e) {
+            log.warn("Zaphod id='{}' emitFinalReply failed: {}",
+                    process.getId(), e.toString());
         }
     }
 

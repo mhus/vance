@@ -610,6 +610,7 @@ public class SlartibartfastEngine implements ThinkEngine {
                 persistAssistantNote(process,
                         "Slartibartfast finished — recipe at `"
                                 + state.getPersistedRecipePath() + "`.");
+                emitFinalReply(process, ctx, state, ProcessEventType.DONE);
                 thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
                 return;
             }
@@ -621,6 +622,7 @@ public class SlartibartfastEngine implements ThinkEngine {
                                 + (state.getFailureReason() == null
                                         ? "no reason recorded"
                                         : state.getFailureReason()));
+                emitFinalReply(process, ctx, state, ProcessEventType.FAILED);
                 thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
                 return;
             }
@@ -651,6 +653,44 @@ public class SlartibartfastEngine implements ThinkEngine {
                                     ? "(no message)" : e.getMessage()));
             thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
             throw e;
+        }
+    }
+
+    /**
+     * Pushes the Slart-finished summary as a REPLY to the parent
+     * before the lifecycle CLOSED transition. Uses
+     * {@link #summarizeForParent} so the content matches what the
+     * legacy DONE/FAILED listener path would have produced (recipe
+     * path, output paths, failure reason). The engine-output-
+     * translator continues to run on the eventual DONE/FAILED event
+     * in the listener for any parent that still consumes that
+     * legacy path; the receiving parent dedups against the REPLY.
+     * See {@code planning/process-engine-reply-channel.md} §4.7.
+     */
+    private void emitFinalReply(
+            ThinkProcessDocument process,
+            ThinkEngineContext ctx,
+            ArchitectState state,
+            ProcessEventType eventType) {
+        if (process.getParentProcessId() == null
+                || process.getParentProcessId().isBlank()) {
+            return;
+        }
+        if (state.isReplyEmitted()) {
+            return;
+        }
+        try {
+            ParentReport report = summarizeForParent(process, eventType);
+            String body = report == null ? null : report.humanSummary();
+            if (body == null || body.isBlank()) {
+                return;
+            }
+            ctx.emitReply(body, /*inResponseToAt*/ null, report.payload());
+            state.setReplyEmitted(true);
+            persistState(process, state);
+        } catch (RuntimeException e) {
+            log.warn("Slartibartfast id='{}' emitFinalReply failed: {}",
+                    process.getId(), e.toString());
         }
     }
 

@@ -362,4 +362,13 @@ public class ArchitectState {
      *  for the decision. Surfaces on DONE-payload so the caller
      *  (Arthur) can explain Slart's behavior. */
     private @Nullable String executionDecisionReason;
+
+    /**
+     * Idempotency guard for {@code SlartibartfastEngine.emitFinalReply}.
+     * The runTurn task can re-enter after closeProcess (the lane
+     * scheduler queues a follow-up); without the flag the parent
+     * would receive duplicate REPLYs. Set to {@code true} once the
+     * REPLY has been pushed onto the parent's inbox.
+     */
+    private boolean replyEmitted;
 }

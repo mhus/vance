@@ -361,6 +361,7 @@ public class MarvinEngine implements ThinkEngine {
                     nodeService.findNextActionableNode(
                             process.getId(), process.getEngineParams());
             if (nextOpt.isEmpty()) {
+                emitFinalReplyIfTreeTerminal(process, ctx);
                 finalizeIdle(process);
                 return;
             }
@@ -1941,6 +1942,40 @@ public class MarvinEngine implements ThinkEngine {
             return;
         }
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
+    }
+
+    /**
+     * Emits the Marvin tree's final synthesis as a REPLY to the
+     * parent — once, right before {@code closeProcess(DONE)}. Reuses
+     * {@link #summarizeForParent} so the text is identical to what
+     * the legacy listener-driven DONE-event would have carried, but
+     * the routing goes through the explicit REPLY channel which the
+     * receiving parent engine (Arthur/Eddie) handles via the same
+     * {@code <process-event type="reply">} render path that Ford's
+     * Reply uses. Re-entrance guard: only fires when the tree just
+     * became terminal in this turn, not on every idle reactivation.
+     * See {@code planning/process-engine-reply-channel.md} §4.4.
+     */
+    private void emitFinalReplyIfTreeTerminal(
+            ThinkProcessDocument process, ThinkEngineContext ctx) {
+        if (process.getParentProcessId() == null
+                || process.getParentProcessId().isBlank()) {
+            return;
+        }
+        if (!nodeService.isTreeTerminal(process.getId())) {
+            return;
+        }
+        try {
+            ParentReport report = summarizeForParent(process, ProcessEventType.DONE);
+            String body = report == null ? null : report.humanSummary();
+            if (body == null || body.isBlank()) {
+                return;
+            }
+            ctx.emitReply(body, /*inResponseToAt*/ null, report.payload());
+        } catch (RuntimeException e) {
+            log.warn("Marvin id='{}' emitFinalReply failed: {}",
+                    process.getId(), e.toString());
+        }
     }
 
     private boolean nodeBudgetExceeded(ThinkProcessDocument process) {

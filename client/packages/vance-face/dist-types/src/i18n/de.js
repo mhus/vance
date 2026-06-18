@@ -65,6 +65,9 @@ export default {
         giveUp: 'Verbindung konnte nicht automatisch wiederhergestellt werden.',
         tryAgain: 'Erneut versuchen',
     },
+    documentPresence: {
+        tooltip: '{n} weitere(r) Betrachter dieses Dokuments',
+    },
     header: {
         connection: {
             connected: 'Verbunden — live',

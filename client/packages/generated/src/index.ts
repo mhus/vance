@@ -279,6 +279,9 @@ export * from './users/UserUpdateRequest';
 export * from './web/LinkPreviewDto';
 
 export * from './ws/ClientAgentUploadRequest';
+export * from './ws/DocumentPresenceNotification';
+export * from './ws/DocumentSubscribeRequest';
+export * from './ws/DocumentViewer';
 export * from './ws/ErrorData';
 export * from './ws/LiveEnvelope';
 export * from './ws/ProjectGroupSummary';

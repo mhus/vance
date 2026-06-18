@@ -1,5 +1,6 @@
 import { type ComputedRef, type Ref } from 'vue';
 import { BrainWebSocket, type BrainWsApi } from '@vance/shared';
+import type { DocumentViewer } from '@vance/generated';
 export type WsStatus = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'down';
 /**
  * Ensure the tab-singleton WebSocket is open. Idempotent — returns the
@@ -32,6 +33,17 @@ export declare function bindSession(sessionId: string): Promise<BrainWsApi>;
  * open — it belongs to the tab, not the editor.
  */
 export declare function leaveChat(): void;
+/**
+ * Subscribe to presence for {@code path}. Adds to the desired-set so
+ * Reconnect-Resubscribe replays it after a socket-swap. Re-sub on the
+ * same path is idempotent on the wire but cheap.
+ */
+export declare function subscribeDocument(path: string): Promise<void>;
+/**
+ * Drop a documents-channel subscription. Removes from desired-set so it
+ * stays gone after Reconnect-Resubscribe.
+ */
+export declare function unsubscribeDocument(path: string): Promise<void>;
 /**
  * Inform the store that the server-side binding is already in place
  * (e.g. after a {@code session-bootstrap} that creates + binds in one
@@ -69,5 +81,6 @@ export declare function useWsConnection(): {
     maxReconnectAttempts: number;
     lastError: Ref<string | null>;
     isOverlayVisible: ComputedRef<boolean>;
+    documentViewers: Map<string, DocumentViewer[]>;
 };
 //# sourceMappingURL=wsConnectionStore.d.ts.map

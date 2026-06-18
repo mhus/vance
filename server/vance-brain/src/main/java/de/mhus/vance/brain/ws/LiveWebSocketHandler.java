@@ -2,6 +2,8 @@ package de.mhus.vance.brain.ws;
 
 import de.mhus.vance.api.ws.LiveEnvelope;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
+import de.mhus.vance.brain.ws.documents.DocumentChannelHandler;
+import de.mhus.vance.brain.ws.documents.DocumentSubscriberRegistry;
 import de.mhus.vance.brain.ws.live.HomePodLookupService;
 import de.mhus.vance.brain.ws.live.HomePodTarget;
 import de.mhus.vance.brain.ws.live.LiveChatTunnel;
@@ -48,12 +50,15 @@ public class LiveWebSocketHandler extends TextWebSocketHandler {
     public static final String ATTR_LIVE_PROTOCOL = "vance.live-protocol";
 
     private static final String CHANNEL_SESSION = "session";
+    private static final String CHANNEL_DOCUMENTS = "documents";
 
     private final VanceWebSocketHandler chatHandler;
     private final ObjectMapper objectMapper;
     private final WebSocketSender sender;
     private final HomePodLookupService homePodLookup;
     private final LiveChatTunnelRegistry tunnelRegistry;
+    private final DocumentChannelHandler documentChannelHandler;
+    private final DocumentSubscriberRegistry documentSubscriberRegistry;
 
     @Override
     public void afterConnectionEstablished(WebSocketSession wsSession) throws Exception {
@@ -82,12 +87,16 @@ public class LiveWebSocketHandler extends TextWebSocketHandler {
             sender.sendError(wsSession, null, 400, "Live envelope missing 'channel' field");
             return;
         }
-        if (!CHANNEL_SESSION.equals(channel)) {
-            sender.sendError(wsSession, null, 400,
+        switch (channel) {
+            case CHANNEL_SESSION -> handleSessionChannel(wsSession, ctx, live);
+            case CHANNEL_DOCUMENTS -> documentChannelHandler.handle(wsSession, ctx, live);
+            default -> sender.sendError(wsSession, null, 400,
                     "Channel not supported in v1: '" + channel + "'");
-            return;
         }
+    }
 
+    private void handleSessionChannel(WebSocketSession wsSession, ConnectionContext ctx, LiveEnvelope live)
+            throws Exception {
         if (live.getPayload() == null) {
             sender.sendError(wsSession, null, 400,
                     "session-channel frame missing 'payload'");
@@ -126,6 +135,12 @@ public class LiveWebSocketHandler extends TextWebSocketHandler {
             tunnelRegistry.closeFor(wsSession);
         } catch (RuntimeException e) {
             log.warn("LiveChatTunnel close for external='{}' failed: {}",
+                    wsSession.getId(), e.toString());
+        }
+        try {
+            documentSubscriberRegistry.unsubscribeAll(wsSession);
+        } catch (RuntimeException e) {
+            log.warn("documents.unsubscribeAll for external='{}' failed: {}",
                     wsSession.getId(), e.toString());
         }
         chatHandler.afterConnectionClosed(wsSession, status);

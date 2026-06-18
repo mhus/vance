@@ -59,6 +59,9 @@ declare const _default: {
         giveUp: string;
         tryAgain: string;
     };
+    documentPresence: {
+        tooltip: string;
+    };
     header: {
         connection: {
             connected: string;

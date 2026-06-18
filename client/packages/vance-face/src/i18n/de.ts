@@ -71,6 +71,10 @@ export default {
     tryAgain: 'Erneut versuchen',
   },
 
+  documentPresence: {
+    tooltip: '{n} weitere(r) Betrachter dieses Dokuments',
+  },
+
   header: {
     connection: {
       connected: 'Verbunden — live',

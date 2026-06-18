@@ -1,4 +1,4 @@
-import { computed, ref, type ComputedRef, type Ref } from 'vue';
+import { computed, reactive, ref, watch, type ComputedRef, type Ref } from 'vue';
 import {
   BrainWebSocket,
   type BrainWsApi,
@@ -6,6 +6,9 @@ import {
   setActiveSessionId,
 } from '@vance/shared';
 import type {
+  DocumentPresenceNotification,
+  DocumentSubscribeRequest,
+  DocumentViewer,
   SessionResumeRequest,
   SessionResumeResponse,
 } from '@vance/generated';
@@ -74,10 +77,31 @@ const lastError: Ref<string | null> = ref(null);
 const desiredSessionId: Ref<string | null> = ref(null);
 const activeSessionId: Ref<string | null> = ref(null);
 
+/**
+ * Desired-state of {@code documents}-channel subscriptions. The store is
+ * the authority — components register/unregister paths here, the store
+ * (re-)sends them over the wire to the server. On reconnect the whole
+ * set is re-emitted, which is the primary stale-state recovery
+ * mechanism (see planning/document-presence.md §5.4).
+ */
+const desiredSubscriptions: Set<string> = new Set();
+
+/**
+ * Server-pushed viewer roster per path. Reactive map — consumed by the
+ * {@code &lt;DocumentPresenceStrip&gt;} component. Server pre-filters the
+ * recipient's own editorId out of each list, so the entries are always
+ * "other people / other tabs".
+ */
+const documentViewers = reactive(new Map<string, DocumentViewer[]>());
+
+/** Listeners for the documents-channel presence push. */
+let documentsUnsubscribe: (() => void) | null = null;
+
 let releaseTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let onCloseUnsubscribe: (() => void) | null = null;
 let visibilityWired = false;
+let documentsSocketWatchStopped = false;
 
 // ─── helpers ────────────────────────────────────────────────
 
@@ -300,6 +324,81 @@ export function leaveChat(): void {
   }, SESSION_LEAVE_GRACE_MS);
 }
 
+// ─── documents-channel ──────────────────────────────────────
+
+/**
+ * Subscribe to presence for {@code path}. Adds to the desired-set so
+ * Reconnect-Resubscribe replays it after a socket-swap. Re-sub on the
+ * same path is idempotent on the wire but cheap.
+ */
+export async function subscribeDocument(path: string): Promise<void> {
+  desiredSubscriptions.add(path);
+  const sock = await ensureConnected();
+  sock.sendOnChannel('documents', 'subscribe', { path } as DocumentSubscribeRequest);
+}
+
+/**
+ * Drop a documents-channel subscription. Removes from desired-set so it
+ * stays gone after Reconnect-Resubscribe.
+ */
+export async function unsubscribeDocument(path: string): Promise<void> {
+  desiredSubscriptions.delete(path);
+  documentViewers.delete(path);
+  if (socket.value && !socket.value.closed()) {
+    socket.value.sendOnChannel('documents', 'unsubscribe', { path } as DocumentSubscribeRequest);
+  }
+}
+
+function attachDocumentsListener(sock: BrainWebSocket): void {
+  detachDocumentsListener();
+  documentsUnsubscribe = sock.onChannel<DocumentPresenceNotification>(
+    'documents',
+    'presence',
+    (data) => {
+      if (!data || !data.path) return;
+      documentViewers.set(data.path, data.viewers ?? []);
+    },
+  );
+}
+
+function detachDocumentsListener(): void {
+  if (documentsUnsubscribe) {
+    try { documentsUnsubscribe(); } catch { /* ignore */ }
+    documentsUnsubscribe = null;
+  }
+}
+
+function wireDocumentsSocketWatch(): void {
+  if (documentsSocketWatchStopped) return;
+  documentsSocketWatchStopped = true;
+  watch(socket, (next, prev) => {
+    if (prev) {
+      // Old socket gone — its server-side subscriptions are dropped by
+      // the WS-close hook. Clear the cached viewers map so we don't show
+      // stale rosters until the new sub-acks come in.
+      documentViewers.clear();
+    }
+    detachDocumentsListener();
+    if (next) {
+      attachDocumentsListener(next);
+      // Re-emit desired-set on every fresh socket. Same-as-old or
+      // brand-new — server treats subscribe as idempotent. This is the
+      // primary stale-state recovery mechanism.
+      for (const path of desiredSubscriptions) {
+        try {
+          next.sendOnChannel('documents', 'subscribe', { path } as DocumentSubscribeRequest);
+        } catch (e) {
+          console.warn(`[wsStore] reconnect-resubscribe failed for path='${path}':`, e);
+        }
+      }
+    }
+  }, { immediate: true });
+}
+
+// Wire the documents socket-watch lazily on first store use — keeps the
+// module-import side-effect-free for tests / SSR.
+wireDocumentsSocketWatch();
+
 /**
  * Inform the store that the server-side binding is already in place
  * (e.g. after a {@code session-bootstrap} that creates + binds in one
@@ -367,6 +466,7 @@ export function useWsConnection(): {
   maxReconnectAttempts: number;
   lastError: Ref<string | null>;
   isOverlayVisible: ComputedRef<boolean>;
+  documentViewers: Map<string, DocumentViewer[]>;
 } {
   return {
     socket,
@@ -379,5 +479,6 @@ export function useWsConnection(): {
     isOverlayVisible: computed(
       () => status.value === 'reconnecting' || status.value === 'down',
     ),
+    documentViewers,
   };
 }

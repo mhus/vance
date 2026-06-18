@@ -15,7 +15,16 @@ import {
  */
 export type BrainWsApi = Pick<
   BrainWebSocket,
-  'send' | 'sendNoReply' | 'on' | 'onClose' | 'closed' | 'close' | 'getWelcome' | 'getTenantId'
+  | 'send'
+  | 'sendNoReply'
+  | 'sendOnChannel'
+  | 'on'
+  | 'onChannel'
+  | 'onClose'
+  | 'closed'
+  | 'close'
+  | 'getWelcome'
+  | 'getTenantId'
 >;
 
 /** What the chat editor passes when opening a connection. */
@@ -74,6 +83,12 @@ interface PendingRequest {
 export class BrainWebSocket {
   private readonly socket: WebSocket;
   private readonly handlers = new Map<string, Set<FrameHandler>>();
+  /**
+   * Handlers for non-session channels (documents, notify, …). Keyed by
+   * {@code `${channel}:${type}`} so the same {@code type} string on
+   * different channels routes to its own subscriber set.
+   */
+  private readonly channelHandlers = new Map<string, Set<FrameHandler>>();
   private readonly pending = new Map<string, PendingRequest>();
   private readonly closeListeners = new Set<(event: CloseEvent) => void>();
 
@@ -179,6 +194,34 @@ export class BrainWebSocket {
     }
   }
 
+  /**
+   * Send a fire-and-forget frame on a non-default channel (e.g.
+   * {@code documents}). The outer envelope's {@code sessionId} is left
+   * empty — documents/notify/progress frames are not session-scoped.
+   */
+  sendOnChannel<T>(channel: string, type: string, data?: T): void {
+    if (this.isClosed) return;
+    const envelope: WebSocketEnvelope<T> = { type, data };
+    const live: LiveEnvelope = { channel, payload: envelope };
+    this.socket.send(JSON.stringify(live));
+  }
+
+  /**
+   * Subscribe to server-pushed frames of {@code type} on a non-default
+   * channel. Returns an unsubscribe function. Mirror of {@link #on} but
+   * for {@code documents}/{@code notify}/{@code progress} channels.
+   */
+  onChannel<T = unknown>(channel: string, type: string, handler: FrameHandler<T>): () => void {
+    const key = `${channel}:${type}`;
+    let set = this.channelHandlers.get(key);
+    if (!set) {
+      set = new Set();
+      this.channelHandlers.set(key, set);
+    }
+    set.add(handler as FrameHandler);
+    return () => set!.delete(handler as FrameHandler);
+  }
+
   private wrapForLive<T>(envelope: WebSocketEnvelope<T>): LiveEnvelope {
     return {
       channel: 'session',
@@ -245,11 +288,29 @@ export class BrainWebSocket {
       console.warn('Discarding non-JSON WebSocket frame', raw);
       return;
     }
-    if (outer.channel !== 'session' || outer.payload === undefined || outer.payload === null) {
-      console.warn('Discarding non-session live frame', outer.channel);
+    if (outer.payload === undefined || outer.payload === null) {
+      console.warn('Discarding live frame with empty payload', outer.channel);
       return;
     }
     const envelope = outer.payload as WebSocketEnvelope;
+
+    // Non-session channels (documents, notify, …) get their own
+    // handler-set lookup; they never participate in pending-request
+    // matching since they don't carry an `id`/`replyTo`.
+    if (outer.channel && outer.channel !== 'session') {
+      const channelKey = `${outer.channel}:${envelope.type}`;
+      const channelSubscribers = this.channelHandlers.get(channelKey);
+      if (channelSubscribers && channelSubscribers.size > 0) {
+        for (const h of channelSubscribers) {
+          try {
+            h(envelope.data);
+          } catch (e) {
+            console.error(`WS handler for '${channelKey}' threw`, e);
+          }
+        }
+      }
+      return;
+    }
 
     // Reply path: a request the client is waiting for.
     if (envelope.replyTo) {

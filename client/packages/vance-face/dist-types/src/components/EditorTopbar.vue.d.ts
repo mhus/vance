@@ -44,11 +44,11 @@ type __VLS_Slots = {} & {
     'topbar-extra'?: (props: typeof __VLS_4) => any;
 };
 declare const __VLS_component: import("vue").DefineComponent<Props, {}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {} & {
-    "title-click": any;
-    "toggle-help": any;
+    "title-click": () => any;
+    "toggle-help": () => any;
 }, string, import("vue").PublicProps, Readonly<Props> & Readonly<{
-    "onTitle-click"?: ((...args: any) => any) | undefined;
-    "onToggle-help"?: ((...args: any) => any) | undefined;
+    "onTitle-click"?: (() => any) | undefined;
+    "onToggle-help"?: (() => any) | undefined;
 }>, {
     breadcrumbs: Crumb[];
     helpOpen: boolean;

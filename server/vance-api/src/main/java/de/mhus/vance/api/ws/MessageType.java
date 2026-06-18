@@ -339,6 +339,44 @@ public final class MessageType {
      */
     public static final String SCRIPT_EXECUTION_SUBSCRIBE = "script-execution-subscribe";
 
+    // ── documents channel (Live-WS multi-channel envelope) ─────────────
+    //
+    // Inner WebSocketEnvelope.type values used **only on**
+    // LiveEnvelope.channel == "documents". See
+    // planning/document-presence.md §4.
+
+    /**
+     * Client → server: subscribe to presence/changes for a document path.
+     * Payload: {@link DocumentSubscribeRequest}. Idempotent. Triggers a
+     * server-side {@link #DOCUMENT_PRESENCE} push to the new subscriber
+     * (and to all existing subscribers of the same path).
+     */
+    public static final String DOCUMENT_SUBSCRIBE = "subscribe";
+
+    /**
+     * Client → server: drop a previously-registered subscription.
+     * Payload: {@link DocumentSubscribeRequest} (same shape — only the
+     * {@code path} field is used). Triggers a presence push to the
+     * remaining subscribers.
+     */
+    public static final String DOCUMENT_UNSUBSCRIBE = "unsubscribe";
+
+    /**
+     * Client → server: drop all of this WebSocket's documents-channel
+     * subscriptions in one frame. Convenience for app-unload paths;
+     * implicit unsubscribe happens automatically on WS close anyway. No
+     * payload.
+     */
+    public static final String DOCUMENT_UNSUBSCRIBE_ALL = "unsubscribe-all";
+
+    /**
+     * Server → client: presence roster for a document path. Payload:
+     * {@link DocumentPresenceNotification}. The {@code viewers} list is
+     * pre-filtered per recipient — the receiver's own {@code editorId}
+     * is omitted server-side so the client never sees itself.
+     */
+    public static final String DOCUMENT_PRESENCE = "presence";
+
     private MessageType() {
     }
 }

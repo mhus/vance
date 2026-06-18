@@ -12,6 +12,8 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.ws.LiveEnvelope;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
+import de.mhus.vance.brain.ws.documents.DocumentChannelHandler;
+import de.mhus.vance.brain.ws.documents.DocumentSubscriberRegistry;
 import de.mhus.vance.brain.ws.live.HomePodLookupService;
 import de.mhus.vance.brain.ws.live.HomePodTarget;
 import de.mhus.vance.brain.ws.live.LiveChatTunnelRegistry;
@@ -48,12 +50,15 @@ class LiveWebSocketHandlerTest {
         objectMapper = new ObjectMapper();
         homePodLookup = mock(HomePodLookupService.class);
         tunnelRegistry = mock(LiveChatTunnelRegistry.class);
+        DocumentChannelHandler documentChannelHandler = mock(DocumentChannelHandler.class);
+        DocumentSubscriberRegistry documentSubscriberRegistry = mock(DocumentSubscriberRegistry.class);
         // Default: every lookup resolves to LOCAL so the routing test stays
         // focused on the envelope-demux behaviour. Cross-pod routing has its
         // own dedicated tests.
         when(homePodLookup.resolve(any(), any(), any())).thenReturn(HomePodTarget.LOCAL);
         handler = new LiveWebSocketHandler(
-                chatHandler, objectMapper, sender, homePodLookup, tunnelRegistry);
+                chatHandler, objectMapper, sender, homePodLookup, tunnelRegistry,
+                documentChannelHandler, documentSubscriberRegistry);
 
         wsSession = mock(WebSocketSession.class);
         ctx = new ConnectionContext(
@@ -129,7 +134,8 @@ class LiveWebSocketHandlerTest {
 
     @Test
     void unsupportedChannel_yields400Error_andNoDispatch() throws Exception {
-        LiveEnvelope outer = new LiveEnvelope("documents", null, Map.of("path", "x.md"));
+        // 'notify' is reserved in the spec but not implemented in v1.
+        LiveEnvelope outer = new LiveEnvelope("notify", null, Map.of("text", "x"));
 
         handler.handleTextMessage(wsSession, frame(outer));
 

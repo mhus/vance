@@ -80,6 +80,26 @@ public class WebSocketSender {
         }
     }
 
+    /**
+     * Sends an {@link WebSocketEnvelope} on a specific Live-WS channel
+     * (e.g. {@code "documents"}). Always wraps in a {@link LiveEnvelope} —
+     * non-Live-WS connections (legacy chat-only) get a frame format they
+     * don't understand, so this method is intended for connections that
+     * speak the Live-WS protocol.
+     *
+     * <p>The {@code sessionId} field of the {@link LiveEnvelope} is set
+     * from the current connection context (or {@code null}) — most
+     * non-{@code session} channels treat it as informational anyway.
+     */
+    public void sendOnChannel(WebSocketSession wsSession, String channel, WebSocketEnvelope envelope)
+            throws IOException {
+        LiveEnvelope payload = new LiveEnvelope(channel, currentSessionId(wsSession), envelope);
+        String json = objectMapper.writeValueAsString(payload);
+        synchronized (wsSession) {
+            wsSession.sendMessage(new TextMessage(json));
+        }
+    }
+
     private static boolean isLiveProtocol(WebSocketSession wsSession) {
         Object flag = wsSession.getAttributes().get(LiveWebSocketHandler.ATTR_LIVE_PROTOCOL);
         return Boolean.TRUE.equals(flag);

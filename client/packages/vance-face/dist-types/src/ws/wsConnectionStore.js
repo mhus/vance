@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 import { BrainWebSocket, getTenantId, setActiveSessionId, } from '@vance/shared';
 /**
  * Per-Browser-Tab WebSocket-Connection singleton.
@@ -53,10 +53,28 @@ const lastError = ref(null);
  */
 const desiredSessionId = ref(null);
 const activeSessionId = ref(null);
+/**
+ * Desired-state of {@code documents}-channel subscriptions. The store is
+ * the authority — components register/unregister paths here, the store
+ * (re-)sends them over the wire to the server. On reconnect the whole
+ * set is re-emitted, which is the primary stale-state recovery
+ * mechanism (see planning/document-presence.md §5.4).
+ */
+const desiredSubscriptions = new Set();
+/**
+ * Server-pushed viewer roster per path. Reactive map — consumed by the
+ * {@code &lt;DocumentPresenceStrip&gt;} component. Server pre-filters the
+ * recipient's own editorId out of each list, so the entries are always
+ * "other people / other tabs".
+ */
+const documentViewers = reactive(new Map());
+/** Listeners for the documents-channel presence push. */
+let documentsUnsubscribe = null;
 let releaseTimer = null;
 let reconnectTimer = null;
 let onCloseUnsubscribe = null;
 let visibilityWired = false;
+let documentsSocketWatchStopped = false;
 // ─── helpers ────────────────────────────────────────────────
 function clearReleaseTimer() {
     if (releaseTimer !== null) {
@@ -263,6 +281,76 @@ export function leaveChat() {
         void doSendUnbind();
     }, SESSION_LEAVE_GRACE_MS);
 }
+// ─── documents-channel ──────────────────────────────────────
+/**
+ * Subscribe to presence for {@code path}. Adds to the desired-set so
+ * Reconnect-Resubscribe replays it after a socket-swap. Re-sub on the
+ * same path is idempotent on the wire but cheap.
+ */
+export async function subscribeDocument(path) {
+    desiredSubscriptions.add(path);
+    const sock = await ensureConnected();
+    sock.sendOnChannel('documents', 'subscribe', { path });
+}
+/**
+ * Drop a documents-channel subscription. Removes from desired-set so it
+ * stays gone after Reconnect-Resubscribe.
+ */
+export async function unsubscribeDocument(path) {
+    desiredSubscriptions.delete(path);
+    documentViewers.delete(path);
+    if (socket.value && !socket.value.closed()) {
+        socket.value.sendOnChannel('documents', 'unsubscribe', { path });
+    }
+}
+function attachDocumentsListener(sock) {
+    detachDocumentsListener();
+    documentsUnsubscribe = sock.onChannel('documents', 'presence', (data) => {
+        if (!data || !data.path)
+            return;
+        documentViewers.set(data.path, data.viewers ?? []);
+    });
+}
+function detachDocumentsListener() {
+    if (documentsUnsubscribe) {
+        try {
+            documentsUnsubscribe();
+        }
+        catch { /* ignore */ }
+        documentsUnsubscribe = null;
+    }
+}
+function wireDocumentsSocketWatch() {
+    if (documentsSocketWatchStopped)
+        return;
+    documentsSocketWatchStopped = true;
+    watch(socket, (next, prev) => {
+        if (prev) {
+            // Old socket gone — its server-side subscriptions are dropped by
+            // the WS-close hook. Clear the cached viewers map so we don't show
+            // stale rosters until the new sub-acks come in.
+            documentViewers.clear();
+        }
+        detachDocumentsListener();
+        if (next) {
+            attachDocumentsListener(next);
+            // Re-emit desired-set on every fresh socket. Same-as-old or
+            // brand-new — server treats subscribe as idempotent. This is the
+            // primary stale-state recovery mechanism.
+            for (const path of desiredSubscriptions) {
+                try {
+                    next.sendOnChannel('documents', 'subscribe', { path });
+                }
+                catch (e) {
+                    console.warn(`[wsStore] reconnect-resubscribe failed for path='${path}':`, e);
+                }
+            }
+        }
+    }, { immediate: true });
+}
+// Wire the documents socket-watch lazily on first store use — keeps the
+// module-import side-effect-free for tests / SSR.
+wireDocumentsSocketWatch();
 /**
  * Inform the store that the server-side binding is already in place
  * (e.g. after a {@code session-bootstrap} that creates + binds in one
@@ -327,6 +415,7 @@ export function useWsConnection() {
         maxReconnectAttempts: MAX_RECONNECT_ATTEMPTS,
         lastError,
         isOverlayVisible: computed(() => status.value === 'reconnecting' || status.value === 'down'),
+        documentViewers,
     };
 }
 //# sourceMappingURL=wsConnectionStore.js.map

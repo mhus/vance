@@ -15,6 +15,7 @@ import {
 import { brainFetch } from '@vance/shared';
 import type { SessionSummaryRichDto } from '@vance/generated';
 import { useTenantProjects } from '@composables/useTenantProjects';
+import DocumentPresenceStrip from '@/ws/DocumentPresenceStrip.vue';
 import { useCortexStore } from './stores/cortexStore';
 import { CortexClientToolService } from './clientToolService';
 import FileTreeSidebar from './components/FileTreeSidebar.vue';
@@ -720,6 +721,11 @@ onBeforeUnmount(() => {
          same screen region (top-right of the header) and the two
          views stay visually symmetrical. -->
     <template #topbar-extra>
+      <DocumentPresenceStrip
+        v-if="activeTab?.path"
+        :path="activeTab.path"
+        class="mr-2"
+      />
       <VButton size="sm" variant="ghost" @click="backToChat">← Chat</VButton>
     </template>
 

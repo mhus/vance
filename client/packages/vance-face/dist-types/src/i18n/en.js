@@ -71,6 +71,9 @@ export default {
         giveUp: 'The connection could not be restored automatically.',
         tryAgain: 'Try again',
     },
+    documentPresence: {
+        tooltip: '{n} other viewer(s) of this document',
+    },
     header: {
         connection: {
             connected: 'Connected — live',

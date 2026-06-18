@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
-import de.mhus.vance.shared.eddie.WorkerLinkSnapshot;
+import de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;

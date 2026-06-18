@@ -1,6 +1,6 @@
 package de.mhus.vance.brain.eddie.connection;
 
-import de.mhus.vance.shared.eddie.WorkerLinkSnapshot;
+import de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot;
 import jakarta.annotation.PreDestroy;
 import java.net.http.HttpClient;
 import java.time.Duration;

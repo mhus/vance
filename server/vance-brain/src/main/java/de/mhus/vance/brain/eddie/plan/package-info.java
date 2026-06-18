@@ -4,7 +4,7 @@
  * <p>Eddie observes worker plan-frames ({@code todos-updated},
  * {@code plan-proposed}, {@code process-mode-changed}) over the
  * Working-WS, mirrors the latest snapshot onto each worker's
- * {@link de.mhus.vance.shared.eddie.WorkerLinkSnapshot}, and fuses
+ * {@link de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot}, and fuses
  * the per-worker mirrors with her own todos into one
  * {@link de.mhus.vance.api.thinkprocess.TodosUpdatedNotification} so
  * the user-client sees a single TodoList — with stable source

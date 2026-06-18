@@ -7,7 +7,7 @@ import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.brain.eddie.plan.PlanFusionService;
 import de.mhus.vance.brain.events.ClientEventPublisher;
-import de.mhus.vance.shared.eddie.WorkerLinkSnapshot;
+import de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.time.Instant;

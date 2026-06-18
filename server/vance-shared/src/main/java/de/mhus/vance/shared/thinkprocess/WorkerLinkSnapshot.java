@@ -1,4 +1,4 @@
-package de.mhus.vance.shared.eddie;
+package de.mhus.vance.shared.thinkprocess;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.eddie.ChannelMode;
@@ -16,33 +16,46 @@ import lombok.NoArgsConstructor;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Eddie's per-worker mirror, embedded as an array on her own
- * {@code ThinkProcessDocument.workerLinks}. One entry per active
- * worker-process Eddie is connected to (one Working WS each — see
- * {@code specification/eddie-engine.md} §8.1).
+ * Per-worker snapshot a parent process keeps for every child it
+ * spawned. Embedded as an array on
+ * {@code ThinkProcessDocument.workerLinks}, one entry per tracked
+ * worker. The {@code workerProcessId} is the upsert key — calls to
+ * {@link ThinkProcessService#upsertWorkerLink} merge by this id and
+ * replace the whole record (no partial-merge semantics).
  *
- * <p>Two consumers share this struct:
+ * <p>The class is split into three logical field-groups that
+ * different consumers populate:
+ *
  * <ul>
- *   <li><b>Triage / Working-Memory</b>
- *       ({@code planning/eddie-moderator-erweiterung.md}) — owns the
- *       {@code triageSummary} / {@code lastCriticality} /
- *       {@code lastInboxItemId} fields.</li>
- *   <li><b>Plan-Mirror + Fusion</b>
- *       ({@code planning/eddie-plan-mode.md}) — owns the
- *       {@code workerMode} / {@code workerTodos} / {@code planVersion}
- *       fields.</li>
+ *   <li><b>Identity + lifecycle</b> ({@code workerProcessId},
+ *       {@code workerProcessName}, {@code workerTenantId},
+ *       {@code workerProjectName}, {@code workerSessionId},
+ *       {@code workerStatus}, {@code lastSeen}) — every parent
+ *       engine populates these. Arthur's pointer + active-workers
+ *       block read from here. See {@code planning/process-engine-reply-channel.md} §9.</li>
+ *   <li><b>Eddie working-WS</b> ({@code workerPodAddress},
+ *       {@code channelMode}) — Eddie-only. The
+ *       {@code WebSocketClient}-pool uses these to (re)open the
+ *       Working WS after pod reassignment. Arthur leaves them null.
+ *       See {@code specification/eddie-engine.md} §8.1.</li>
+ *   <li><b>Eddie plan-mirror + working-memory</b>
+ *       ({@code workerMode}, {@code workerTodos}, {@code planVersion},
+ *       {@code triageSummary}, {@code lastCriticality},
+ *       {@code lastInboxItemId}) — Eddie-only. See
+ *       {@code planning/eddie-moderator-erweiterung.md} (triage) and
+ *       {@code planning/eddie-plan-mode.md} (plan-mirror + fusion).</li>
  * </ul>
  *
- * <p>The connection-identity fields ({@code workerProcessId},
- * {@code workerSessionId}, {@code workerPodAddress}) are the input the
- * {@code EddieEngine} bean uses to (re)build the in-memory
- * {@code WebSocketClient} pool after pod reassignment — they survive
- * suspend/resume because the snapshot itself lives in Mongo.
+ * <p>Engines that don't use Eddie-specific fields just leave them
+ * {@code null}/default. The JSON envelope is null-tolerant; Mongo
+ * stores only the populated fields when {@code @JsonInclude(NON_NULL)}
+ * + Spring Data MongoDB mapping kick in.
  *
- * <p>{@code workerProcessId} is the upsert key. Calls to
- * {@code ThinkProcessService.upsertWorkerLink} merge by this id; new
- * field values overwrite old ones, missing fields stay untouched is
- * not supported — pass a complete snapshot.
+ * <p>The class lives in the neutral {@code shared.thinkprocess}
+ * package as of the workerLinks-consolidation refactor — pre-refactor
+ * it sat under {@code shared.eddie} because Eddie was the only
+ * consumer; today Arthur populates the identity-group from her
+ * {@link de.mhus.vance.brain.arthur} engine (other engines may follow).
  */
 @Data
 @Builder
@@ -80,7 +93,8 @@ public class WorkerLinkSnapshot {
     /**
      * Address of the worker-project's home pod ({@code ipv4:port} per
      * memory note). Used by {@code EngineWsClient} to (re)open the
-     * Working WS without re-querying the project manager.
+     * Working WS without re-querying the project manager. Eddie-only;
+     * Arthur leaves this empty.
      */
     private String workerPodAddress = "";
 
@@ -88,29 +102,32 @@ public class WorkerLinkSnapshot {
     private ChannelMode channelMode = ChannelMode.MILESTONES;
 
     /**
-     * Last time Eddie saw a frame from this worker. Drives stale-
-     * detection in the {@code <delegated_workers>} system-prompt block
-     * and the auto-rebind heuristic on idle timeout.
+     * Last time the parent saw a frame / event from this worker.
+     * Drives stale-detection in prompt-rendered active-workers blocks
+     * (Eddie's {@code <delegated_workers>}, Arthur's
+     * {@code ## Active workers}) and the auto-rebind heuristic on
+     * idle timeout. Populated by every parent engine that uses
+     * workerLinks.
      */
     private @Nullable Instant lastSeen;
 
     /**
      * Last seen worker {@link ThinkProcessStatus}. Mirrored from
-     * incoming process-events so the {@code <delegated_workers>}
-     * prompt block can render "running / blocked / done" beside the
+     * incoming process-events / replies so the active-workers prompt
+     * blocks can render "running / blocked / done" beside the
      * triage summary. {@code null} until the first event arrives.
      */
     private @Nullable ThinkProcessStatus workerStatus;
 
     // === Plan-mirror (eddie-plan-mode.md §2) ===
 
-    /** Last seen worker {@link ProcessMode}. */
+    /** Last seen worker {@link ProcessMode}. Eddie-only. */
     private @Nullable ProcessMode workerMode;
 
     /**
      * Snapshot of the worker's Todos at the last {@code todos-updated}
      * frame. Empty list = worker has no plan; {@code null} = no
-     * plan-frame received yet.
+     * plan-frame received yet. Eddie-only.
      */
     @Builder.Default
     private @Nullable List<TodoItem> workerTodos = new ArrayList<>();
@@ -118,7 +135,7 @@ public class WorkerLinkSnapshot {
     /**
      * Last seen {@code planVersion} from a {@code plan-proposed} frame.
      * Monotone-increasing per-worker. {@code 0} means no plan was ever
-     * proposed.
+     * proposed. Eddie-only.
      */
     @Builder.Default
     private int planVersion = 0;
@@ -129,16 +146,17 @@ public class WorkerLinkSnapshot {
      * Last triage-LLM summary of the worker's recent output — short
      * sentence Eddie uses in the {@code <delegated_workers>} prompt
      * block to keep the thread of conversation across hand-offs.
+     * Eddie-only.
      */
     private @Nullable String triageSummary;
 
-    /** Criticality classification of the last triage decision. */
+    /** Criticality classification of the last triage decision. Eddie-only. */
     private @Nullable Criticality lastCriticality;
 
     /**
      * Inbox-item id, if the last frame was routed to the inbox via
      * {@code RELAY_INBOX}. Lets Eddie reference „the inbox item I
-     * just put there" in subsequent answers.
+     * just put there" in subsequent answers. Eddie-only.
      */
     private @Nullable String lastInboxItemId;
 }

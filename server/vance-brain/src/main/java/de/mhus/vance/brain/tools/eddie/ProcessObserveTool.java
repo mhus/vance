@@ -5,7 +5,7 @@ import de.mhus.vance.brain.cluster.ClusterService;
 import de.mhus.vance.brain.eddie.connection.EddieFrameRouter;
 import de.mhus.vance.brain.eddie.connection.EddieWorkerConnection;
 import de.mhus.vance.brain.eddie.connection.EddieWorkerConnectionPool;
-import de.mhus.vance.shared.eddie.WorkerLinkSnapshot;
+import de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot;
 import de.mhus.vance.shared.jwt.JwtService;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;

@@ -171,7 +171,7 @@ public class EddieEngine extends StructuredActionEngine {
     }
 
     /**
-     * Max number of {@link de.mhus.vance.shared.eddie.WorkerLinkSnapshot}
+     * Max number of {@link de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot}
      * entries Eddie surfaces in the {@code <delegated_workers>} prompt
      * block. Older / DONE entries beyond this cap stay in Mongo for
      * audit but get clipped from the render so the prompt can't grow
@@ -2688,7 +2688,7 @@ public class EddieEngine extends StructuredActionEngine {
      * the engine bean.
      */
     static @Nullable String renderDelegatedWorkersBlock(
-            @Nullable List<de.mhus.vance.shared.eddie.WorkerLinkSnapshot> links,
+            @Nullable List<de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot> links,
             int maxRender,
             java.time.Instant now) {
         if (links == null || links.isEmpty()) return null;
@@ -2729,7 +2729,7 @@ public class EddieEngine extends StructuredActionEngine {
      * falls back to one of them, then to the worker process id when
      * everything is empty (defensive).
      */
-    static String workerLabel(de.mhus.vance.shared.eddie.WorkerLinkSnapshot link) {
+    static String workerLabel(de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot link) {
         String name = link.getWorkerProcessName();
         String project = link.getWorkerProjectName();
         boolean hasName = name != null && !name.isBlank();
@@ -2746,7 +2746,7 @@ public class EddieEngine extends StructuredActionEngine {
      * and a relative timestamp.
      */
     static String linkStatus(
-            de.mhus.vance.shared.eddie.WorkerLinkSnapshot link,
+            de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot link,
             java.time.Instant now) {
         StringBuilder s = new StringBuilder();
         if (link.getWorkerStatus() != null) {

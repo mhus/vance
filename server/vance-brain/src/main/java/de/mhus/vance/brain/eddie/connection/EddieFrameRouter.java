@@ -2,7 +2,7 @@ package de.mhus.vance.brain.eddie.connection;
 
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
-import de.mhus.vance.shared.eddie.WorkerLinkSnapshot;
+import de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Autowired;

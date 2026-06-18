@@ -11,7 +11,7 @@ import de.mhus.vance.brain.eddie.triage.TriageInput;
 import de.mhus.vance.brain.eddie.triage.TriageResult;
 import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
-import de.mhus.vance.shared.eddie.WorkerLinkSnapshot;
+import de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot;
 import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
 import de.mhus.vance.shared.thinkprocess.PendingMessageType;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;

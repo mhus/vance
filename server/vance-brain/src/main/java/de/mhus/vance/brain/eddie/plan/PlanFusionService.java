@@ -2,7 +2,7 @@ package de.mhus.vance.brain.eddie.plan;
 
 import de.mhus.vance.api.thinkprocess.TodoItem;
 import de.mhus.vance.api.thinkprocess.TodosUpdatedNotification;
-import de.mhus.vance.shared.eddie.WorkerLinkSnapshot;
+import de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import java.util.ArrayList;
 import java.util.List;

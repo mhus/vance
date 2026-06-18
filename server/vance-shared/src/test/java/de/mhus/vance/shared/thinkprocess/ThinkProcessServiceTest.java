@@ -362,8 +362,8 @@ class ThinkProcessServiceTest {
         when(mongoTemplate.updateFirst(any(Query.class), any(Update.class),
                 eq(ThinkProcessDocument.class))).thenReturn(ok);
 
-        de.mhus.vance.shared.eddie.WorkerLinkSnapshot snap =
-                de.mhus.vance.shared.eddie.WorkerLinkSnapshot.builder()
+        de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot snap =
+                de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot.builder()
                         .workerProcessId("w-1")
                         .workerProcessName("arthur")
                         .workerProjectName("projA")
@@ -389,8 +389,8 @@ class ThinkProcessServiceTest {
 
     @Test
     void upsertWorkerLink_rejectsBlankWorkerProcessId() {
-        de.mhus.vance.shared.eddie.WorkerLinkSnapshot bad =
-                de.mhus.vance.shared.eddie.WorkerLinkSnapshot.builder()
+        de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot bad =
+                de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot.builder()
                         .workerProcessId("")
                         .build();
 
@@ -428,9 +428,9 @@ class ThinkProcessServiceTest {
     void findWorkerLinks_returnsListFromDocument() {
         ThinkProcessDocument doc = process("eddie-1");
         doc.setWorkerLinks(new ArrayList<>(List.of(
-                de.mhus.vance.shared.eddie.WorkerLinkSnapshot.builder()
+                de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot.builder()
                         .workerProcessId("w-1").build(),
-                de.mhus.vance.shared.eddie.WorkerLinkSnapshot.builder()
+                de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot.builder()
                         .workerProcessId("w-2").build())));
         when(mongoTemplate.findOne(any(Query.class), eq(ThinkProcessDocument.class)))
                 .thenReturn(doc);
@@ -438,7 +438,7 @@ class ThinkProcessServiceTest {
         var links = service.findWorkerLinks("eddie-1");
 
         assertThat(links).extracting(
-                        de.mhus.vance.shared.eddie.WorkerLinkSnapshot::getWorkerProcessId)
+                        de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot::getWorkerProcessId)
                 .containsExactly("w-1", "w-2");
     }
 
@@ -446,14 +446,14 @@ class ThinkProcessServiceTest {
     void findWorkerLink_byId_returnsMatchOrEmpty() {
         ThinkProcessDocument doc = process("eddie-1");
         doc.setWorkerLinks(new ArrayList<>(List.of(
-                de.mhus.vance.shared.eddie.WorkerLinkSnapshot.builder()
+                de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot.builder()
                         .workerProcessId("w-1").workerProcessName("arthur").build())));
         when(mongoTemplate.findOne(any(Query.class), eq(ThinkProcessDocument.class)))
                 .thenReturn(doc);
 
         assertThat(service.findWorkerLink("eddie-1", "w-1"))
                 .isPresent()
-                .map(de.mhus.vance.shared.eddie.WorkerLinkSnapshot::getWorkerProcessName)
+                .map(de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot::getWorkerProcessName)
                 .contains("arthur");
         assertThat(service.findWorkerLink("eddie-1", "missing")).isEmpty();
     }

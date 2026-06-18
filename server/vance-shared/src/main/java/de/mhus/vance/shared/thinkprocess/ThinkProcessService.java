@@ -8,7 +8,7 @@ import de.mhus.vance.api.thinkprocess.PromptMode;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.api.thinkprocess.TodoItem;
 import de.mhus.vance.api.thinkprocess.TodoStatus;
-import de.mhus.vance.shared.eddie.WorkerLinkSnapshot;
+import de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot;
 import de.mhus.vance.shared.enginemessage.EngineMessageDocument;
 import de.mhus.vance.shared.enginemessage.EngineMessageService;
 import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
@@ -740,21 +740,25 @@ public class ThinkProcessService {
     }
 
     // ─────────────────────────────────────────────────────────────────
-    // Eddie's per-worker snapshot bookkeeping (workerLinks array).
-    // See specification/eddie-engine.md §8 + planning/eddie-*.md.
+    // Per-worker snapshot bookkeeping (workerLinks array on the parent
+    // ThinkProcessDocument). Used by Eddie (full snapshot — Working-WS
+    // pool + plan-mirror + triage working-memory) and Arthur (identity
+    // + status only). See specification/eddie-engine.md §8 and
+    // planning/process-engine-reply-channel.md §9.
     // ─────────────────────────────────────────────────────────────────
 
     /**
-     * Upserts a {@link WorkerLinkSnapshot} on the given Eddie process.
+     * Upserts a {@link WorkerLinkSnapshot} on the given parent process.
      * Match key is {@link WorkerLinkSnapshot#getWorkerProcessId()}: an
      * existing entry with the same worker id is replaced wholesale; if
      * none exists, the snapshot is appended.
      *
      * <p>Caller passes a complete snapshot — no partial-merge semantics.
-     * Channel-Adapter and Plan-Mirror update the relevant fields on the
-     * loaded snapshot, then write the whole record back. Eddie's lane
-     * is single-threaded, so this read-modify-write is race-free per
-     * process.
+     * Eddie's Channel-Adapter and Plan-Mirror update the relevant
+     * fields on the loaded snapshot, then write the whole record back.
+     * Arthur's {@code reconcileWorkerLinksFromInbox} does the same for
+     * the identity-only subset. The parent lane is single-threaded, so
+     * this read-modify-write is race-free per process.
      *
      * <p>Performed as two sequential {@code updateFirst} calls — first
      * a {@code $pull} matching by {@code workerProcessId}, then a
@@ -762,7 +766,7 @@ public class ThinkProcessService {
      * single update document used to work but MongoDB 5+ rejects it
      * with {@code ConflictingUpdateOperators} (code 40, "Updating the
      * path 'workerLinks' would create a conflict at 'workerLinks'").
-     * The pair is not atomic against an outside writer, but Eddie's
+     * The pair is not atomic against an outside writer, but the parent
      * lane serialisation makes that a non-issue in practice.
      *
      * @return {@code true} if the document existed and was modified
@@ -801,8 +805,8 @@ public class ThinkProcessService {
     }
 
     /**
-     * Reads all worker-link snapshots on the given Eddie process. Empty
-     * list when the process is unknown or has none.
+     * Reads all worker-link snapshots on the given parent process.
+     * Empty list when the process is unknown or has none.
      */
     public List<WorkerLinkSnapshot> findWorkerLinks(String processId) {
         Query query = new Query(Criteria.where("_id").is(processId));

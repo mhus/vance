@@ -2,7 +2,7 @@
  * Eddie's Output-Triage stage: decides per worker frame whether Eddie
  * passes it through verbatim, reformulates it, or routes it to the
  * user's inbox. Companion to the per-worker
- * {@link de.mhus.vance.shared.eddie.WorkerLinkSnapshot} mirror — the
+ * {@link de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot} mirror — the
  * triage result is the source of {@code triageSummary} /
  * {@code lastCriticality} on the snapshot.
  *

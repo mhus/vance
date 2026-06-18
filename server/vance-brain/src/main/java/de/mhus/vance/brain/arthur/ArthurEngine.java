@@ -1754,8 +1754,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                         thinkProcessService.updateActiveDelegationWorkerId(
                                 process.getId(), spawned.getId());
                         process.setActiveDelegationWorkerId(spawned.getId());
-                        de.mhus.vance.shared.eddie.WorkerLinkSnapshot snapshot =
-                                de.mhus.vance.shared.eddie.WorkerLinkSnapshot.builder()
+                        de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot snapshot =
+                                de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot.builder()
                                         .workerProcessId(spawned.getId())
                                         .workerProcessName(spawned.getName() == null
                                                 ? workerName : spawned.getName())
@@ -2471,7 +2471,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         // that predate workerLinks-for-Arthur the snapshot is empty;
         // fall back to the parent-process scan so legacy sessions
         // still see their children.
-        List<de.mhus.vance.shared.eddie.WorkerLinkSnapshot> links =
+        List<de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot> links =
                 thinkProcessService.findWorkerLinks(process.getId());
         if (links != null && !links.isEmpty()) {
             return renderActiveWorkersBlockFromLinks(
@@ -2492,7 +2492,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      * so the LLM sees no shape difference between the two paths.
      */
     static @Nullable String renderActiveWorkersBlockFromLinks(
-            @Nullable List<de.mhus.vance.shared.eddie.WorkerLinkSnapshot> links,
+            @Nullable List<de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot> links,
             int maxRender,
             java.time.Instant now) {
         if (links == null || links.isEmpty()) return null;

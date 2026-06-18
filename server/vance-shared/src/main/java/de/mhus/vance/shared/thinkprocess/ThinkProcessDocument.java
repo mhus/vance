@@ -261,18 +261,20 @@ public class ThinkProcessDocument {
     private @Nullable String boundProfile;
 
     /**
-     * Eddie-only: per-worker mirror entries — one per active Working WS
-     * Eddie holds to a worker {@code ThinkProcess} in another project.
-     * Holds connection identity (for reconnect after pod reassignment),
-     * the chosen {@code ChannelMode}, the last seen plan snapshot, and
-     * triage working-memory.
+     * Per-worker mirror entries — one per active child the parent
+     * engine tracks. Populated by Eddie (full snapshot: connection
+     * identity for Working WS reconnect, {@code ChannelMode}, last
+     * seen plan snapshot, triage working-memory) and by Arthur
+     * (identity + status subset; one entry per spawned worker for
+     * the lifetime of that worker). Other engines that manage
+     * children via their own structures (Marvin tree-nodes, Vogon
+     * workerProcessIds map, Zaphod heads-state) leave it empty.
      *
-     * <p>See {@code specification/eddie-engine.md} §8 +
-     * {@code planning/eddie-moderator-erweiterung.md} +
-     * {@code planning/eddie-plan-mode.md}. Empty for non-Eddie engines.
+     * <p>See {@code specification/eddie-engine.md} §8 and
+     * {@code planning/process-engine-reply-channel.md} §9.
      */
     @Builder.Default
-    private List<de.mhus.vance.shared.eddie.WorkerLinkSnapshot> workerLinks = new ArrayList<>();
+    private List<WorkerLinkSnapshot> workerLinks = new ArrayList<>();
 
     /**
      * Eddie-only: the foreign project Eddie currently coordinates with

@@ -5,7 +5,7 @@ import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.Profiles;
 import de.mhus.vance.api.ws.SessionResumeRequest;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
-import de.mhus.vance.shared.eddie.WorkerLinkSnapshot;
+import de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;

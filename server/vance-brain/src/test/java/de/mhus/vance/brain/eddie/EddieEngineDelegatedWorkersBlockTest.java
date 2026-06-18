@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import de.mhus.vance.api.eddie.ChannelMode;
 import de.mhus.vance.api.thinkprocess.ProcessMode;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
-import de.mhus.vance.shared.eddie.WorkerLinkSnapshot;
+import de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;

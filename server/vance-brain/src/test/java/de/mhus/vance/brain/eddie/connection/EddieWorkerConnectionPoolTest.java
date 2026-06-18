@@ -3,7 +3,7 @@ package de.mhus.vance.brain.eddie.connection;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import de.mhus.vance.shared.eddie.WorkerLinkSnapshot;
+import de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot;
 import java.net.http.HttpClient;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;

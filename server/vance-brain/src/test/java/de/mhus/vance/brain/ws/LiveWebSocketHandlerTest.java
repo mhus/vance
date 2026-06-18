@@ -25,7 +25,7 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * Verifies the channel demux + payload-unwrap of the new
- * {@code /brain/{tenant}/ws/live} endpoint: only {@code channel="session"}
+ * {@code /brain/{tenant}/ws} endpoint: only {@code channel="session"}
  * is accepted in v1, payloads are converted to {@link WebSocketEnvelope}
  * and handed to the underlying {@link VanceWebSocketHandler#dispatch}.
  */

@@ -16,8 +16,8 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * WebSocket handler for the new multi-channel Live-WS endpoint
- * {@code /brain/{tenant}/ws/live}.
+ * WebSocket handler for the user-facing multi-channel endpoint
+ * {@code /brain/{tenant}/ws}.
  *
  * <p>v1 only handles the {@code session} channel. The inner
  * {@link WebSocketEnvelope} payload is extracted, routed by

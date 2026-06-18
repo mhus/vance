@@ -1,5 +1,5 @@
 /**
- * Face-Pod proxy implementation for the {@code /brain/{tenant}/ws/live}
+ * Face-Pod proxy implementation for the {@code /brain/{tenant}/ws}
  * multi-channel endpoint.
  *
  * <p>When a session-channel frame arrives on a Face-Pod, the routing chain

@@ -14,8 +14,8 @@ import org.springframework.web.socket.server.standard.ServletServerContainerFact
  *
  * <p>Three endpoints:
  * <ul>
- *   <li>The user-facing multi-channel live WebSocket at
- *       {@link VanceBrainProperties.Paths#getLive()} (canonical:
+ *   <li>The user-facing multi-channel WebSocket at
+ *       {@link VanceBrainProperties.Paths#getExternal()} (canonical:
  *       {@code /brain/{tenant}/ws}), fronted by
  *       {@link VanceHandshakeInterceptor} for JWT auth. Carries the
  *       {@code session} channel (chat-frames wrapped in
@@ -58,7 +58,7 @@ public class WebSocketConfig {
             // cross-origin upgrade. We accept any origin because auth is
             // JWT-only — the upgrade itself is gated by BrainAccessFilter
             // (token + tenant cross-check) rather than the page's origin.
-            registry.addHandler(liveHandler, paths.getLive())
+            registry.addHandler(liveHandler, paths.getExternal())
                     .addInterceptors(interceptor)
                     .setAllowedOrigins("*");
             // Pod-to-pod chat tunnel: VanceWebSocketHandler pipeline with

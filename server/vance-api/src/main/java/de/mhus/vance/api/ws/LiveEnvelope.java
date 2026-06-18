@@ -10,15 +10,15 @@ import org.jspecify.annotations.Nullable;
 /**
  * Outer envelope of the multi-channel Live-WS protocol.
  *
- * <p>Carried on every frame of {@code /brain/{tenant}/ws/live}. The
+ * <p>Carried on every frame of {@code /brain/{tenant}/ws}. The
  * {@link #channel} field demuxes between channel-specific payload semantics.
  *
- * <p>v1 only implements the {@code session} channel — wraps a regular
- * {@link WebSocketEnvelope} (the chat-frame format that used to live on
- * the bare {@code /brain/{tenant}/ws} endpoint before this multi-channel
- * envelope replaced it). Future channels ({@code documents},
- * {@code notify}, {@code progress}, {@code control}) are reserved at the
- * protocol level for forward-compatibility but not handled yet.
+ * <p>v1 only implements the {@code session} channel — its payload is a
+ * regular {@link WebSocketEnvelope} (the chat-frame format that used to
+ * be exchanged raw on the endpoint before this multi-channel envelope
+ * wrapped it). Future channels ({@code documents}, {@code notify},
+ * {@code progress}, {@code control}) are reserved at the protocol level
+ * for forward-compatibility but not handled yet.
  *
  * <p>For {@code channel="session"}, {@link #payload} carries a regular
  * {@link WebSocketEnvelope}. {@link #sessionId} identifies the conversation

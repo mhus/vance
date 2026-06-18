@@ -17,7 +17,7 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * Resolves the home-pod endpoint for a session-channel frame arriving on a
- * Face-Pod's {@code /brain/{tenant}/ws/live} connection.
+ * Face-Pod's {@code /brain/{tenant}/ws} connection.
  *
  * <p>The lookup chain depends on the frame's message type:
  * <ul>

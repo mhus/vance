@@ -48,7 +48,7 @@ public class VanceBrainProperties {
          * forward-looking home of {@code documents}/{@code notify}/{@code
          * progress}/{@code control} channels once those are defined.
          */
-        private String live = "/brain/*/ws";
+        private String external = "/brain/*/ws";
 
         /**
          * Pod-to-pod chat tunnel endpoint — the home-pod's receiver-side of

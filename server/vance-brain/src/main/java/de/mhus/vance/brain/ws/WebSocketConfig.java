@@ -12,12 +12,25 @@ import org.springframework.web.socket.server.standard.ServletServerContainerFact
 /**
  * Spring wiring for the WebSocket endpoints.
  *
- * <p>Two endpoints:
+ * <p>Four endpoints:
  * <ul>
  *   <li>The user-facing chat WebSocket at
  *       {@link VanceBrainProperties.Paths#getChat()} (canonical:
  *       {@code /brain/{tenant}/ws/chat}), fronted by
  *       {@link VanceHandshakeInterceptor} for JWT auth.</li>
+ *   <li>The user-facing multi-channel live WebSocket at
+ *       {@link VanceBrainProperties.Paths#getLive()} (canonical:
+ *       {@code /brain/{tenant}/ws/live}), also fronted by
+ *       {@link VanceHandshakeInterceptor} for JWT auth. v1 only carries the
+ *       {@code session} channel and is additive — no production client hits
+ *       it until Schritt 3/4 of the Live-WS migration.</li>
+ *   <li>The pod-to-pod chat tunnel at
+ *       {@link VanceBrainProperties.Paths#getInternalChat()} (canonical:
+ *       {@code /internal/{tenant}/ws/chat}), fronted by
+ *       {@link InternalChatHandshakeInterceptor} for shared-secret +
+ *       identity-forward auth. Same {@link VanceWebSocketHandler} pipeline
+ *       as the external chat endpoint — the home-pod sees a forwarded
+ *       user-connection.</li>
  *   <li>The pod-internal {@code /internal/engine-bind} WebSocket used by
  *       cross-pod {@code EngineMessage} routing — fronted by
  *       {@link EngineWsHandshakeInterceptor} for shared-secret auth, and
@@ -33,24 +46,35 @@ public class WebSocketConfig {
     @Bean
     public WebSocketConfigurer vanceWebSocketConfigurer(
             VanceWebSocketHandler handler,
+            LiveWebSocketHandler liveHandler,
             VanceHandshakeInterceptor interceptor,
+            InternalChatHandshakeInterceptor internalChatInterceptor,
             EngineWsServerHandler engineHandler,
             EngineWsHandshakeInterceptor engineInterceptor,
             VanceBrainProperties properties) {
         return registry -> {
-            registry.addHandler(handler, properties.getPaths().getChat())
+            VanceBrainProperties.Paths paths = properties.getPaths();
+            // Browser WebSocket sends an Origin header that Spring matches
+            // against the registered allowed list; the default refuses any
+            // cross-origin upgrade. We accept any origin because auth is
+            // JWT-only — the upgrade itself is gated by BrainAccessFilter
+            // (token + tenant cross-check) rather than the page's origin.
+            registry.addHandler(handler, paths.getChat())
                     .addInterceptors(interceptor)
-                    // Browser WebSocket sends an Origin header that Spring matches
-                    // against the registered allowed list; the default refuses any
-                    // cross-origin upgrade. We accept any origin because auth is
-                    // JWT-only — the upgrade itself is gated by BrainAccessFilter
-                    // (token + tenant cross-check) rather than the page's origin.
+                    .setAllowedOrigins("*");
+            registry.addHandler(liveHandler, paths.getLive())
+                    .addInterceptors(interceptor)
+                    .setAllowedOrigins("*");
+            // Pod-to-pod chat tunnel: same VanceWebSocketHandler pipeline,
+            // identity forwarded by the face-pod, shared-secret gated.
+            // Origin is meaningless for cluster-internal traffic;
+            // InternalAccessFilter + handshake-interceptor are the real auth,
+            // K8s NetworkPolicy keeps the path off the external ingress.
+            registry.addHandler(handler, paths.getInternalChat())
+                    .addInterceptors(internalChatInterceptor)
                     .setAllowedOrigins("*");
             registry.addHandler(engineHandler, "/internal/engine-bind")
                     .addInterceptors(engineInterceptor)
-                    // Origin is meaningless for cluster-internal pod-to-pod traffic;
-                    // the InternalAccessFilter + handshake-interceptor gate is the
-                    // real auth. K8s NetworkPolicy keeps this off the ingress.
                     .setAllowedOrigins("*");
         };
     }

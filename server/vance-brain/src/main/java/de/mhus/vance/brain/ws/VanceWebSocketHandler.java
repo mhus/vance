@@ -144,20 +144,29 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
     @Override
     protected void handleTextMessage(WebSocketSession wsSession, TextMessage message) throws Exception {
         ConnectionContext ctx = resolveContext(wsSession);
-
-        if (ctx.hasSession()
-                && !sessionService.heartbeat(ctx.getSessionId(), ctx.getConnectionId())) {
-            // Another pod took the session over, or it was closed. Drop this connection.
-            wsSession.close(CloseStatus.POLICY_VIOLATION.withReason("Session no longer bound"));
-            return;
-        }
-
         WebSocketEnvelope envelope;
         try {
             envelope = objectMapper.readValue(message.getPayload(), WebSocketEnvelope.class);
         } catch (Exception parseError) {
             sender.sendError(wsSession, null, 400,
                     "Invalid message envelope: " + parseError.getMessage());
+            return;
+        }
+        dispatch(wsSession, ctx, envelope);
+    }
+
+    /**
+     * Run a parsed {@link WebSocketEnvelope} through the heartbeat check and
+     * the {@link WsHandler} dispatch chain. Public so the Live-WS handler can
+     * re-use the same processing pipeline after unwrapping its outer
+     * {@link de.mhus.vance.api.ws.LiveEnvelope}.
+     */
+    public void dispatch(WebSocketSession wsSession, ConnectionContext ctx, WebSocketEnvelope envelope)
+            throws Exception {
+        if (ctx.hasSession()
+                && !sessionService.heartbeat(ctx.getSessionId(), ctx.getConnectionId())) {
+            // Another pod took the session over, or it was closed. Drop this connection.
+            wsSession.close(CloseStatus.POLICY_VIOLATION.withReason("Session no longer bound"));
             return;
         }
 

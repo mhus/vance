@@ -280,6 +280,7 @@ export * from './web/LinkPreviewDto';
 
 export * from './ws/ClientAgentUploadRequest';
 export * from './ws/ErrorData';
+export * from './ws/LiveEnvelope';
 export * from './ws/ProjectGroupSummary';
 export * from './ws/ProjectListRequest';
 export * from './ws/ProjectListResponse';

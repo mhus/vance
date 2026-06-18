@@ -62,7 +62,7 @@ public class BrainAccessFilter extends AccessFilterBase {
      * connection itself authenticates by socket identity afterwards.
      */
     private static final Pattern WS_UPGRADE_PATH =
-            Pattern.compile("^/brain/[^/]+/ws/chat/?$");
+            Pattern.compile("^/brain/[^/]+/ws/(chat|live)/?$");
 
     /**
      * External event-trigger endpoint —

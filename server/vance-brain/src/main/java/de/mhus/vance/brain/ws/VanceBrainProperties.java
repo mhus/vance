@@ -54,17 +54,23 @@ public class VanceBrainProperties {
         private String chat = "/brain/*/ws/chat";
 
         /**
-         * User-facing multi-channel live endpoint. {@code null} = handler not
-         * registered (the v1 implementation doesn't ship this yet — see
-         * Schritt 2 of the migration).
+         * User-facing multi-channel live endpoint. Carries the {@code session}
+         * channel (chat-frames inside a {@code LiveEnvelope}) and is the
+         * forward-looking home of {@code documents}/{@code notify}/{@code
+         * progress}/{@code control} channels once those are defined.
+         * Production clients still hit {@link #chat} in v1; this endpoint is
+         * additive until Schritt 3/4 of the migration.
          */
-        private @Nullable String live;
+        private String live = "/brain/*/ws/live";
 
         /**
-         * Pod-to-pod chat tunnel for cross-pod sessions. {@code null} =
-         * handler not registered (the v1 implementation doesn't ship this
-         * yet — see Schritt 2 of the migration).
+         * Pod-to-pod chat tunnel endpoint — the home-pod's receiver-side of
+         * the cross-pod proxy flow. Off-ingress (gated by
+         * {@code InternalAccessFilter} + K8s NetworkPolicy), shared-secret
+         * authenticated, identity forwarded by the face-pod in dedicated
+         * headers. See {@link InternalChatHandshakeInterceptor} and
+         * {@code planning/live-ws.md} §8.
          */
-        private @Nullable String internalChat;
+        private String internalChat = "/internal/*/ws/chat";
     }
 }

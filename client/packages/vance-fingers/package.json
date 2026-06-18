@@ -2,7 +2,7 @@
   "name": "@vance/vance-fingers",
   "version": "0.1.0",
   "private": true,
-  "description": "Vance Fingers — touch client (React Native + Expo). Inbox, Chat with voice, Documents.",
+  "description": "ARCHIVED — Vance Fingers (React Native + Expo). Not migrated to Live-WS (see planning/live-ws.md §10 Schritt 4b); future mobile lives in @vance/facelift-bridge.",
   "license": "SEE LICENSE IN ../../LICENSE.txt",
   "main": "index.ts",
   "scripts": {

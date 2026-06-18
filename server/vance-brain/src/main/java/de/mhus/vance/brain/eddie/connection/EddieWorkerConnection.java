@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.eddie.connection;
 
 import de.mhus.vance.api.ws.HandshakeHeaders;
+import de.mhus.vance.api.ws.LiveEnvelope;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.Profiles;
 import de.mhus.vance.api.ws.SessionResumeRequest;
@@ -98,8 +99,9 @@ public class EddieWorkerConnection implements AutoCloseable {
      * caller (the pool) decides retry / close.
      */
     public void connect() {
-        // Brain's user-facing WS endpoint is /brain/{tenant}/ws/chat (see
-        // VanceBrainProperties.Paths.chat).
+        // Brain's user-facing WS endpoint is /brain/{tenant}/ws (see
+        // VanceBrainProperties.Paths.live). Frames are wrapped/unwrapped as
+        // LiveEnvelope below.
         String tenant = link.getWorkerTenantId();
         if (tenant == null || tenant.isBlank()) {
             throw new EddieWorkerConnectException(
@@ -107,7 +109,7 @@ public class EddieWorkerConnection implements AutoCloseable {
                     null);
         }
         URI uri = URI.create("ws://" + link.getWorkerPodAddress()
-                + "/brain/" + tenant + "/ws/chat"
+                + "/brain/" + tenant + "/ws"
                 + "?profile=" + Profiles.EDDIE
                 + "&clientVersion=" + CLIENT_VERSION
                 + "&name=" + CLIENT_NAME);
@@ -197,8 +199,7 @@ public class EddieWorkerConnection implements AutoCloseable {
         }
         WebSocketEnvelope env = WebSocketEnvelope.notification(type, data);
         try {
-            String json = objectMapper.writeValueAsString(env);
-            ws.sendText(json, true).get(5, TimeUnit.SECONDS);
+            ws.sendText(wrapAsLive(env), true).get(5, TimeUnit.SECONDS);
         } catch (Exception e) {
             throw new RuntimeException(
                     "Send '" + type + "' failed to worker=" + link.getWorkerProcessId(), e);
@@ -217,12 +218,21 @@ public class EddieWorkerConnection implements AutoCloseable {
         pendingReplies.put(requestId, future);
         try {
             WebSocketEnvelope env = WebSocketEnvelope.request(requestId, type, data);
-            String json = objectMapper.writeValueAsString(env);
-            ws.sendText(json, true).get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+            ws.sendText(wrapAsLive(env), true).get(timeout.toMillis(), TimeUnit.MILLISECONDS);
             return future.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
         } finally {
             pendingReplies.remove(requestId);
         }
+    }
+
+    private String wrapAsLive(WebSocketEnvelope env) throws tools.jackson.core.JacksonException {
+        // Eddie knows from the start which session he attaches to — the
+        // worker session id is on the link. Carries through every frame so
+        // the Face-Pod side can route. Pre-bind frames (session-resume
+        // itself) repeat it harmlessly — the server-side lookup uses the
+        // payload-level sessionId for resume anyway.
+        LiveEnvelope live = new LiveEnvelope("session", link.getWorkerSessionId(), env);
+        return objectMapper.writeValueAsString(live);
     }
 
     @Override
@@ -259,8 +269,15 @@ public class EddieWorkerConnection implements AutoCloseable {
                 String json = buffer.toString();
                 buffer.setLength(0);
                 try {
-                    WebSocketEnvelope env = objectMapper.readValue(json, WebSocketEnvelope.class);
-                    dispatch(env);
+                    LiveEnvelope outer = objectMapper.readValue(json, LiveEnvelope.class);
+                    if (!"session".equals(outer.getChannel()) || outer.getPayload() == null) {
+                        log.debug("Eddie working-ws: non-session live frame discarded (channel={})",
+                                outer.getChannel());
+                    } else {
+                        WebSocketEnvelope env = objectMapper.convertValue(
+                                outer.getPayload(), WebSocketEnvelope.class);
+                        dispatch(env);
+                    }
                 } catch (RuntimeException e) {
                     log.warn("Eddie working-ws: malformed frame from {}: {}",
                             link.getWorkerPodAddress(), e.toString());

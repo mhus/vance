@@ -53,6 +53,12 @@ declare const _default: {
         errorEmpty: string;
         errorGeneric: string;
     };
+    reconnect: {
+        title: string;
+        attempting: string;
+        giveUp: string;
+        tryAgain: string;
+    };
     header: {
         connection: {
             connected: string;

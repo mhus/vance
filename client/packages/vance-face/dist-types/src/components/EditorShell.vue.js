@@ -4,6 +4,9 @@ import { useHelp } from '@/composables/useHelp';
 import EditorTopbar from './EditorTopbar.vue';
 import MarkdownView from './MarkdownView.vue';
 import NotificationToasts from '@/notification/NotificationToasts.vue';
+import { closeConnection as wsCloseConnection, ensureConnected as wsEnsureConnected, useWsConnection, } from '@/ws/wsConnectionStore';
+import ReconnectOverlay from '@/ws/ReconnectOverlay.vue';
+import { useNotificationSubscription } from '@/notification/useNotificationSubscription';
 const props = withDefaults(defineProps(), {
     breadcrumbs: () => [],
     wideRightPanel: false,
@@ -143,6 +146,33 @@ function redirectToLogin() {
     const next = encodeURIComponent(currentUrl);
     window.location.href = `/index.html?next=${next}`;
 }
+// ──────────────── WebSocket lifecycle ────────────────
+//
+// The shell owns the tab-singleton WebSocket — every editor that mounts
+// it gets a live connection without any per-page boilerplate. Session
+// binding stays a consumer concern (ChatApp / CortexChatPanel call
+// {@code bindSession} / {@code leaveChat}).
+//
+// The connection status indicator in the topbar reads from the same
+// store, so every editor inherits the green/grey/red dot — including
+// REST-only editors like {@code documents.html} that just want to show
+// "live" without binding a session.
+const { socket: wsSocket, status: wsStatus } = useWsConnection();
+// Global notify-toast subscription — every editor inherits the toast
+// stack automatically. Composable re-attaches on each socket swap
+// (after reconnect / session-rebind).
+useNotificationSubscription(wsSocket);
+const derivedConnectionState = computed(() => {
+    if (wsStatus.value === 'reconnecting' || wsStatus.value === 'down')
+        return 'occupied';
+    // Green = WebSocket up. The session-bound aspect (chat-specific) is
+    // surfaced separately by ChatApp via the {@code connectionState}
+    // prop override when it wants to show e.g. 'occupied' for a 409.
+    if (wsStatus.value === 'connected')
+        return 'connected';
+    return 'idle';
+});
+const effectiveConnectionState = computed(() => props.connectionState ?? derivedConnectionState.value);
 onMounted(() => {
     void guardAccessCookie();
     expiryTimer = window.setInterval(() => {
@@ -153,6 +183,12 @@ onMounted(() => {
     // changes and lets a parent flip focusModel at runtime cleanly.
     window.addEventListener('keydown', onGlobalKeydown);
     window.addEventListener('pointerdown', onGlobalPointerdown);
+    // Eagerly open the tab-singleton WebSocket — every editor that uses
+    // EditorShell gets a live connection regardless of whether it later
+    // binds a session. Silent on failure (no tenant before login,
+    // network down on initial boot) because the store's reconnect loop
+    // and the &lt;ReconnectOverlay&gt; take it from here.
+    void wsEnsureConnected().catch(() => { });
 });
 onBeforeUnmount(() => {
     if (expiryTimer != null) {
@@ -161,6 +197,11 @@ onBeforeUnmount(() => {
     }
     window.removeEventListener('keydown', onGlobalKeydown);
     window.removeEventListener('pointerdown', onGlobalPointerdown);
+    // The shell unmounts on full-page navigation only (MPA pattern), and
+    // at that point the browser is destroying the Vue app anyway. Close
+    // explicitly so the reconnect loop stops cleanly instead of racing
+    // against the browser killing the socket.
+    wsCloseConnection();
 });
 debugger; /* PartiallyEnd: #3632/scriptSetup.vue */
 const __VLS_withDefaultsArg = (function (t) { return t; })({
@@ -213,7 +254,7 @@ const __VLS_0 = __VLS_asFunctionalComponent(EditorTopbar, new EditorTopbar({
     ...{ 'onTitleClick': {} },
     title: (__VLS_ctx.title),
     breadcrumbs: (__VLS_ctx.breadcrumbs),
-    connectionState: (__VLS_ctx.connectionState),
+    connectionState: (__VLS_ctx.effectiveConnectionState),
     connectionTooltip: (__VLS_ctx.connectionTooltip),
     helpPath: (__VLS_ctx.helpPath),
     helpOpen: (__VLS_ctx.showHelp),
@@ -224,7 +265,7 @@ const __VLS_1 = __VLS_0({
     ...{ 'onTitleClick': {} },
     title: (__VLS_ctx.title),
     breadcrumbs: (__VLS_ctx.breadcrumbs),
-    connectionState: (__VLS_ctx.connectionState),
+    connectionState: (__VLS_ctx.effectiveConnectionState),
     connectionTooltip: (__VLS_ctx.connectionTooltip),
     helpPath: (__VLS_ctx.helpPath),
     helpOpen: (__VLS_ctx.showHelp),
@@ -382,6 +423,10 @@ if (__VLS_ctx.focusModel === 'auto') {
 // @ts-ignore
 const __VLS_21 = __VLS_asFunctionalComponent(NotificationToasts, new NotificationToasts({}));
 const __VLS_22 = __VLS_21({}, ...__VLS_functionalComponentArgsRest(__VLS_21));
+/** @type {[typeof ReconnectOverlay, ]} */ ;
+// @ts-ignore
+const __VLS_24 = __VLS_asFunctionalComponent(ReconnectOverlay, new ReconnectOverlay({}));
+const __VLS_25 = __VLS_24({}, ...__VLS_functionalComponentArgsRest(__VLS_24));
 /** @type {__VLS_StyleScopedClasses['h-screen']} */ ;
 /** @type {__VLS_StyleScopedClasses['h-dvh']} */ ;
 /** @type {__VLS_StyleScopedClasses['overflow-hidden']} */ ;
@@ -456,6 +501,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             EditorTopbar: EditorTopbar,
             MarkdownView: MarkdownView,
             NotificationToasts: NotificationToasts,
+            ReconnectOverlay: ReconnectOverlay,
             emit: emit,
             focusZone: focusZone,
             showHelp: showHelp,
@@ -469,6 +515,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             effectiveFocusZone: effectiveFocusZone,
             onZonePointerdown: onZonePointerdown,
             onFooterFocusin: onFooterFocusin,
+            effectiveConnectionState: effectiveConnectionState,
         };
     },
     __typeEmits: {},

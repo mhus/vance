@@ -7,9 +7,9 @@ declare function openWizard(name: string, prefill?: Record<string, string>): Pro
 declare const _default: import("vue").DefineComponent<Props, {
     openWizard: typeof openWizard;
 }, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {} & {
-    promptReady: (prompt: string) => any;
+    promptReady: any;
 }, string, import("vue").PublicProps, Readonly<Props> & Readonly<{
-    onPromptReady?: ((prompt: string) => any) | undefined;
+    onPromptReady?: ((...args: any) => any) | undefined;
 }>, {
     projectId: string;
     sessionKey: string;

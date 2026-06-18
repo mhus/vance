@@ -1,11 +1,15 @@
 package de.mhus.vance.api.ws.client;
 
 import de.mhus.vance.api.ws.HandshakeHeaders;
+import de.mhus.vance.api.ws.LiveEnvelope;
+import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.Nullable;
 import tools.jackson.core.JacksonException;
@@ -38,6 +42,23 @@ public class VanceWebSocketClient implements AutoCloseable {
      */
     private final AtomicReference<CompletableFuture<Void>> sendChain =
             new AtomicReference<>(CompletableFuture.completedFuture(null));
+
+    /**
+     * Tracks {@code envelope.id} → {@code envelope.type} for outgoing
+     * requests so the inbound dispatch can auto-update
+     * {@link #currentSessionId} when a {@code session-create} or
+     * {@code session-resume} reply arrives.
+     */
+    private final Map<String, String> pendingTypes = new ConcurrentHashMap<>();
+
+    /**
+     * Bound session id, mirrored from the server side. Filled when a
+     * {@code session-create} or {@code session-resume} reply arrives,
+     * cleared on {@code session-unbind}. Travels in the outer
+     * {@link LiveEnvelope} so the Face-Pod can route session-channel
+     * frames to the project's home-pod (see planning/live-ws.md §7).
+     */
+    private volatile @Nullable String currentSessionId;
 
     public VanceWebSocketClient(VanceWebSocketConfig config, VanceWebSocketClientListener listener) {
         this(config, listener, defaultObjectMapper(), HttpClient.newHttpClient());
@@ -81,9 +102,20 @@ public class VanceWebSocketClient implements AutoCloseable {
             failed.completeExceptionally(new IllegalStateException("WebSocket is not connected"));
             return failed;
         }
+        // Remember the type so the inbound dispatch can update
+        // currentSessionId when this particular request gets its reply.
+        if (envelope.getId() != null) {
+            pendingTypes.put(envelope.getId(), envelope.getType());
+        }
+        // session-unbind is fire-and-forget — clear the cached id right away
+        // so subsequent envelopes drop back to the unbound state.
+        if (MessageType.SESSION_UNBIND.equals(envelope.getType())) {
+            currentSessionId = null;
+        }
         String json;
         try {
-            json = objectMapper.writeValueAsString(envelope);
+            LiveEnvelope wrapped = new LiveEnvelope("session", currentSessionId, envelope);
+            json = objectMapper.writeValueAsString(wrapped);
         } catch (JacksonException e) {
             CompletableFuture<Void> failed = new CompletableFuture<>();
             failed.completeExceptionally(e);
@@ -142,7 +174,23 @@ public class VanceWebSocketClient implements AutoCloseable {
                 String full = fragmentBuffer.toString();
                 fragmentBuffer.setLength(0);
                 try {
-                    WebSocketEnvelope envelope = objectMapper.readValue(full, WebSocketEnvelope.class);
+                    LiveEnvelope outer = objectMapper.readValue(full, LiveEnvelope.class);
+                    if (!"session".equals(outer.getChannel()) || outer.getPayload() == null) {
+                        // Non-session channel frames are reserved for future
+                        // use; ignore so a forward-compatible server can ship
+                        // them without breaking older clients.
+                        ws.request(1);
+                        return null;
+                    }
+                    WebSocketEnvelope envelope =
+                            objectMapper.convertValue(outer.getPayload(), WebSocketEnvelope.class);
+                    if (envelope.getReplyTo() != null) {
+                        String requestType = pendingTypes.remove(envelope.getReplyTo());
+                        if (MessageType.SESSION_CREATE.equals(requestType)
+                                || MessageType.SESSION_RESUME.equals(requestType)) {
+                            extractSessionIdInto(envelope);
+                        }
+                    }
                     listener.onMessage(envelope);
                 } catch (Exception parseError) {
                     listener.onError(parseError);
@@ -150,6 +198,20 @@ public class VanceWebSocketClient implements AutoCloseable {
             }
             ws.request(1);
             return null;
+        }
+
+        private void extractSessionIdInto(WebSocketEnvelope envelope) {
+            Object data = envelope.getData();
+            if (data == null) return;
+            try {
+                Map<?, ?> asMap = objectMapper.convertValue(data, Map.class);
+                Object sid = asMap.get("sessionId");
+                if (sid instanceof String s && !s.isBlank()) {
+                    currentSessionId = s;
+                }
+            } catch (RuntimeException ignored) {
+                // Reply data did not parse as a map — leave currentSessionId alone.
+            }
         }
 
         @Override

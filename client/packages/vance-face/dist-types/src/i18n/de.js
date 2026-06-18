@@ -59,6 +59,12 @@ export default {
         errorEmpty: 'Bitte beschreibe das Problem oder den Wunsch.',
         errorGeneric: 'Übermittlung fehlgeschlagen. Bitte erneut versuchen oder Admin kontaktieren.',
     },
+    reconnect: {
+        title: 'Verbindung verloren',
+        attempting: 'Versuche, die Verbindung wiederherzustellen … (Versuch {n}/{total})',
+        giveUp: 'Verbindung konnte nicht automatisch wiederhergestellt werden.',
+        tryAgain: 'Erneut versuchen',
+    },
     header: {
         connection: {
             connected: 'Verbunden — live',

@@ -2,10 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
-  BrainWebSocket,
   WebSocketRequestError,
-  type BrainWsApi,
-  getTenantId,
   getUsername,
   setActiveSessionId,
 } from '@vance/shared';
@@ -15,10 +12,15 @@ import type {
   ProcessProgressNotification,
   SessionListRequest,
   SessionListResponse,
-  SessionResumeRequest,
-  SessionResumeResponse,
   SwitchToNotification,
 } from '@vance/generated';
+import {
+  bindSession,
+  ensureConnected as wsEnsureConnected,
+  markBound,
+  unbindNow,
+  useWsConnection,
+} from '@/ws/wsConnectionStore';
 import {
   type Crumb,
   EditorShell,
@@ -31,32 +33,34 @@ import ChatView from './ChatView.vue';
 import ChatComposer from './ChatComposer.vue';
 import ChatRightPanel from './ChatRightPanel.vue';
 import { useFollowUpSuggestion } from '@composables/useFollowUpSuggestion';
-import { useNotificationSubscription } from '@/notification/useNotificationSubscription';
 
 const { t } = useI18n();
-
-const CLIENT_VERSION = '0.1.0';
 
 type Mode = 'connecting' | 'picker' | 'live' | 'occupied' | 'failed';
 
 const mode = ref<Mode>('connecting');
 const errorMessage = ref<string | null>(null);
-const socket = ref<BrainWebSocket | null>(null);
-// Pipe `notify` frames into the global toast/beep store. The
-// subscription follows reconnects (socket ref is swapped, the
-// composable rebinds via watch).
-useNotificationSubscription(socket);
-const activeSessionId = ref<string | null>(null);
+
+// Tab-singleton WebSocket: store owns lifecycle, reconnect, and the
+// active session binding. ChatApp only drives mode + session-picker UX
+// on top of it.
+const {
+  socket,
+  status: wsStatus,
+  activeSessionId,
+} = useWsConnection();
+
 /**
- * True after the live WS has closed but before a reconnect has run.
- * In this state the editor stays mounted (composer text + ChatView
- * scroll position survive) and the next user-initiated send goes
- * through {@link ensureConnected} to transparently re-open the socket.
- * Set back to false on successful reconnect; on reconnect-failure we
- * fall through to {@code mode = 'failed'} so the existing Retry banner
- * picks it up.
+ * True while the store reports the underlying WebSocket is not in the
+ * happy {@code 'connected'} state — i.e. reconnecting or down. Drives
+ * the chip in the top-right ({@link connectionState}) and the
+ * lazy-reconnect path for the composer. The actual user-facing
+ * "Verbindung verloren" UX is rendered by {@code &lt;ReconnectOverlay&gt;}
+ * which is mounted globally inside {@link EditorShell}.
  */
-const socketDown = ref(false);
+const socketDown = computed(
+  () => wsStatus.value === 'reconnecting' || wsStatus.value === 'down',
+);
 
 /**
  * Banner / UI state shown while the WS is bound to a session Eddie
@@ -224,7 +228,6 @@ async function resolveSessionAndProcess(sessionId: string): Promise<void> {
 
 const PROGRESS_CAP = 50;
 const progressEvents = ref<ProcessProgressNotification[]>([]);
-let progressUnsubscribe: (() => void) | null = null;
 
 function recordProgress(data: ProcessProgressNotification): void {
   progressEvents.value.push(data);
@@ -361,23 +364,17 @@ function pushSessionIdToUrl(sessionId: string | null): void {
 }
 
 // ──────────────── WS socket lifecycle ────────────────
-
-async function openSocket(): Promise<BrainWebSocket> {
-  const tenant = getTenantId();
-  if (!tenant) {
-    throw new Error('Missing tenant — cannot open chat connection.');
-  }
-  return BrainWebSocket.connect({
-    tenant,
-    profile: 'web',
-    clientVersion: CLIENT_VERSION,
-  });
-}
+//
+// The tab-singleton WebSocket lives in {@code wsConnectionStore}.
+// ChatApp drives session-binding through the store and lets the store
+// handle connect + reconnect + auto-resume after socket loss. The
+// &lt;ReconnectOverlay&gt; renders the user-facing "Verbindung verloren"
+// state; ChatApp's {@code mode} only flips to {@code 'failed'} for
+// session-level errors (404/403) or initial-handshake refusal.
 
 async function openSocketForPicker(): Promise<boolean> {
-  await teardownCurrentSocket();
   try {
-    socket.value = await openSocket();
+    await wsEnsureConnected();
   } catch (e) {
     mode.value = 'failed';
     // e.message from WebSocketClosedError is hard-coded English (the
@@ -387,132 +384,66 @@ async function openSocketForPicker(): Promise<boolean> {
     console.warn('[chat] openSocketForPicker failed:', e);
     return false;
   }
-  attachSocketListeners(socket.value);
-  return true;
-}
-
-async function teardownCurrentSocket(): Promise<void> {
-  switchToUnsubscribe?.();
-  switchToUnsubscribe = null;
-  onCloseUnsubscribe?.();
-  onCloseUnsubscribe = null;
-  progressUnsubscribe?.();
-  progressUnsubscribe = null;
-  if (socket.value) {
-    socket.value.close();
-    socket.value = null;
-  }
-  // Reset session-bound state — these belong to the now-dead WS.
+  // Picker mode has no session bound — drop any leftover binding so the
+  // singleton socket lands in the same "no session" state a fresh tab
+  // would be in. Reset session-scoped UI state.
+  await unbindNow();
   progressEvents.value = [];
   chatProcessName.value = null;
   chatProjectId.value = '';
-}
-
-function attachSocketListeners(s: BrainWsApi): void {
-  onCloseUnsubscribe = s.onClose(() => {
-    if (mode.value === 'live') {
-      // Keep ChatView/Composer mounted (their local state — composer
-      // text, scroll position, in-flight uploads — would otherwise be
-      // discarded). {@link ensureConnected} re-opens the socket lazily
-      // on the next send.
-      socketDown.value = true;
-    } else if (mode.value === 'picker' || mode.value === 'occupied') {
-      mode.value = 'failed';
-      errorMessage.value = t('chat.connectionClosed');
-    }
-  });
-  switchToUnsubscribe = s.on<SwitchToNotification>(
-    'switch-to', (data) => { void onSwitchTo(data); });
-  progressUnsubscribe = s.on<ProcessProgressNotification>(
-    'process-progress', recordProgress);
-}
-
-/**
- * Coalesced reconnect entry-point handed to ChatComposer. Returns
- * {@code true} if the socket is (or becomes) usable, {@code false} if
- * the reconnect failed — in which case {@code mode} has been flipped
- * to {@code 'failed'} and the Retry banner is showing.
- *
- * <p>The composer calls this before each WS send when
- * {@code socket.closed()}. Concurrent calls share the same in-flight
- * promise so two near-simultaneous sends produce one reconnect.
- */
-let reconnectInFlight: Promise<boolean> | null = null;
-
-async function ensureConnected(): Promise<boolean> {
-  if (!socketDown.value && socket.value && !socket.value.closed()) {
-    return true;
-  }
-  if (reconnectInFlight) return reconnectInFlight;
-  reconnectInFlight = doReconnect();
-  try {
-    return await reconnectInFlight;
-  } finally {
-    reconnectInFlight = null;
-  }
-}
-
-async function doReconnect(): Promise<boolean> {
-  const sessionId = activeSessionId.value;
-  if (!sessionId) {
-    mode.value = 'failed';
-    errorMessage.value = t('chat.connectionLost');
-    return false;
-  }
-  let newSocket: BrainWebSocket;
-  try {
-    newSocket = await openSocket();
-  } catch (e) {
-    mode.value = 'failed';
-    errorMessage.value = t('chat.connectionLost');
-    console.warn('[chat] reconnect openSocket failed:', e);
-    return false;
-  }
-  try {
-    await newSocket.send<SessionResumeRequest, SessionResumeResponse>(
-      'session-resume', { sessionId });
-  } catch (e) {
-    newSocket.close();
-    if (e instanceof WebSocketRequestError && e.errorCode === 409) {
-      mode.value = 'occupied';
-      errorMessage.value = t('chat.sessionOccupiedBy', { id: sessionId });
-    } else {
-      mode.value = 'failed';
-      errorMessage.value = t('chat.connectionLost');
-      console.warn('[chat] reconnect session-resume failed:', e);
-    }
-    return false;
-  }
-  // Drop subscribers bound to the dead socket; attach fresh ones to the
-  // new socket before swapping it into the reactive ref so ChatView's
-  // socket-watch sees the replacement and re-attaches its own.
-  const oldSocket = socket.value;
-  switchToUnsubscribe?.(); switchToUnsubscribe = null;
-  onCloseUnsubscribe?.(); onCloseUnsubscribe = null;
-  progressUnsubscribe?.(); progressUnsubscribe = null;
-  attachSocketListeners(newSocket);
-  socket.value = newSocket;
-  socketDown.value = false;
-  oldSocket?.close();
   return true;
 }
 
-async function openAndBind(sessionId: string): Promise<boolean> {
-  await teardownCurrentSocket();
+// Re-subscribe to switch-to + progress on every socket swap (e.g. after
+// an auto-reconnect by the store). The notification subscription has
+// its own composable that does the same dance internally.
+let switchToUnsubscribe: (() => void) | null = null;
+let progressUnsubscribe: (() => void) | null = null;
+
+watch(
+  socket,
+  (next) => {
+    switchToUnsubscribe?.();
+    switchToUnsubscribe = null;
+    progressUnsubscribe?.();
+    progressUnsubscribe = null;
+    if (next) {
+      switchToUnsubscribe = next.on<SwitchToNotification>(
+        'switch-to', (data) => { void onSwitchTo(data); });
+      progressUnsubscribe = next.on<ProcessProgressNotification>(
+        'process-progress', recordProgress);
+    }
+  },
+  { immediate: true },
+);
+
+/**
+ * Composer-facing reconnect hook. Returns {@code true} once the
+ * tab-singleton WebSocket is up; the store's auto-reconnect loop is
+ * already running in the background, so this just awaits its result.
+ * Falsy result triggers the composer's "send failed" banner.
+ */
+async function ensureConnected(): Promise<boolean> {
   try {
-    socket.value = await openSocket();
+    await wsEnsureConnected();
+    return socket.value !== null;
+  } catch {
+    return false;
+  }
+}
+
+async function openAndBind(sessionId: string): Promise<boolean> {
+  try {
+    await wsEnsureConnected();
   } catch (e) {
     mode.value = 'failed';
     errorMessage.value = t('chat.failedToOpen');
-    console.warn('[chat] openAndBind openSocket failed:', e);
+    console.warn('[chat] openAndBind ensureConnected failed:', e);
     return false;
   }
-  attachSocketListeners(socket.value);
 
   try {
-    await socket.value.send<SessionResumeRequest, SessionResumeResponse>(
-      'session-resume', { sessionId });
-    activeSessionId.value = sessionId;
+    await bindSession(sessionId);
     setActiveSessionId(sessionId);
     pushSessionIdToUrl(sessionId);
     errorMessage.value = null;
@@ -573,25 +504,20 @@ async function onSessionPicked(sessionId: string): Promise<void> {
 
 async function onSessionBootstrapped(sessionId: string): Promise<void> {
   errorMessage.value = null;
-  activeSessionId.value = sessionId;
-  setActiveSessionId(sessionId);
+  // session-bootstrap creates + binds in one roundtrip; sync the store's
+  // view of "what's bound" without sending another session-resume.
+  markBound(sessionId);
   pushSessionIdToUrl(sessionId);
   mode.value = 'live';
   await resolveSessionAndProcess(sessionId);
 }
 
 async function leaveLive(): Promise<void> {
-  if (socket.value && !socket.value.closed()) {
-    socket.value.sendNoReply('session-unbind');
-  }
-  // The post-unbind socket can land in a half-dead state — browser tab
-  // throttling, server-side connection cleanup, or a stray frame in
-  // flight have all been observed to break the next session-bootstrap
-  // with WebSocketClosedError. Tear it down and open a fresh one so the
-  // picker starts from the same clean state a URL-less page load would.
-  // openSocketForPicker handles teardown + resets the session-scoped
-  // state (chatProjectId, chatProcessName, progressEvents).
-  activeSessionId.value = null;
+  // Drop the session binding immediately — the user explicitly wants
+  // out of this conversation. {@link openSocketForPicker} below also
+  // resets session-scoped UI state (chatProjectId, chatProcessName,
+  // progressEvents).
+  await unbindNow();
   pushSessionIdToUrl(null);
   sessionDisplayName.value = null;
   mediation.value = null;
@@ -624,9 +550,6 @@ async function retryConnect(): Promise<void> {
     if (ok) mode.value = 'picker';
   }
 }
-
-let switchToUnsubscribe: (() => void) | null = null;
-let onCloseUnsubscribe: (() => void) | null = null;
 
 /**
  * Browser back/forward routes through here. Reads the current URL
@@ -676,9 +599,10 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   window.removeEventListener('popstate', onPopstate);
   switchToUnsubscribe?.();
-  onCloseUnsubscribe?.();
   progressUnsubscribe?.();
-  socket.value?.close();
+  // Don't close the singleton socket — the store owns it and may share
+  // it across HMR / future-SPA navigations. Just let the session go.
+  void unbindNow();
 });
 
 // Mode-driven cleanup: when we leave live mode (back to picker / failed),

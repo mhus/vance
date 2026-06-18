@@ -10,6 +10,13 @@ import { useHelp } from '@/composables/useHelp';
 import EditorTopbar, { type Crumb } from './EditorTopbar.vue';
 import MarkdownView from './MarkdownView.vue';
 import NotificationToasts from '@/notification/NotificationToasts.vue';
+import {
+  closeConnection as wsCloseConnection,
+  ensureConnected as wsEnsureConnected,
+  useWsConnection,
+} from '@/ws/wsConnectionStore';
+import ReconnectOverlay from '@/ws/ReconnectOverlay.vue';
+import { useNotificationSubscription } from '@/notification/useNotificationSubscription';
 
 // Re-export the breadcrumb segment type so existing consumers
 // (`import { type Crumb } from '@components'`) keep working without
@@ -275,6 +282,38 @@ function redirectToLogin(): void {
   window.location.href = `/index.html?next=${next}`;
 }
 
+// ──────────────── WebSocket lifecycle ────────────────
+//
+// The shell owns the tab-singleton WebSocket — every editor that mounts
+// it gets a live connection without any per-page boilerplate. Session
+// binding stays a consumer concern (ChatApp / CortexChatPanel call
+// {@code bindSession} / {@code leaveChat}).
+//
+// The connection status indicator in the topbar reads from the same
+// store, so every editor inherits the green/grey/red dot — including
+// REST-only editors like {@code documents.html} that just want to show
+// "live" without binding a session.
+
+const { socket: wsSocket, status: wsStatus } = useWsConnection();
+
+// Global notify-toast subscription — every editor inherits the toast
+// stack automatically. Composable re-attaches on each socket swap
+// (after reconnect / session-rebind).
+useNotificationSubscription(wsSocket);
+
+const derivedConnectionState = computed<'connected' | 'idle' | 'occupied'>(() => {
+  if (wsStatus.value === 'reconnecting' || wsStatus.value === 'down') return 'occupied';
+  // Green = WebSocket up. The session-bound aspect (chat-specific) is
+  // surfaced separately by ChatApp via the {@code connectionState}
+  // prop override when it wants to show e.g. 'occupied' for a 409.
+  if (wsStatus.value === 'connected') return 'connected';
+  return 'idle';
+});
+
+const effectiveConnectionState = computed<'connected' | 'idle' | 'occupied' | undefined>(
+  () => props.connectionState ?? derivedConnectionState.value,
+);
+
 onMounted(() => {
   void guardAccessCookie();
   expiryTimer = window.setInterval(() => {
@@ -285,6 +324,12 @@ onMounted(() => {
   // changes and lets a parent flip focusModel at runtime cleanly.
   window.addEventListener('keydown', onGlobalKeydown);
   window.addEventListener('pointerdown', onGlobalPointerdown);
+  // Eagerly open the tab-singleton WebSocket — every editor that uses
+  // EditorShell gets a live connection regardless of whether it later
+  // binds a session. Silent on failure (no tenant before login,
+  // network down on initial boot) because the store's reconnect loop
+  // and the &lt;ReconnectOverlay&gt; take it from here.
+  void wsEnsureConnected().catch(() => { /* surfaced via overlay */ });
 });
 
 onBeforeUnmount(() => {
@@ -294,6 +339,11 @@ onBeforeUnmount(() => {
   }
   window.removeEventListener('keydown', onGlobalKeydown);
   window.removeEventListener('pointerdown', onGlobalPointerdown);
+  // The shell unmounts on full-page navigation only (MPA pattern), and
+  // at that point the browser is destroying the Vue app anyway. Close
+  // explicitly so the reconnect loop stops cleanly instead of racing
+  // against the browser killing the socket.
+  wsCloseConnection();
 });
 </script>
 
@@ -302,7 +352,7 @@ onBeforeUnmount(() => {
     <EditorTopbar
       :title="title"
       :breadcrumbs="breadcrumbs"
-      :connection-state="connectionState"
+      :connection-state="effectiveConnectionState"
       :connection-tooltip="connectionTooltip"
       :help-path="helpPath"
       :help-open="showHelp"
@@ -415,6 +465,11 @@ onBeforeUnmount(() => {
          Mounted once at the shell level so every editor gets it for
          free; the store + WebSocket subscription live elsewhere. -->
     <NotificationToasts />
+    <!-- Global reconnect overlay — visible whenever the tab-singleton
+         WebSocket is reconnecting or down. Renders a blocking modal so
+         every editor (chat, cortex, documents, …) automatically
+         inherits the "Verbindung verloren / Erneut versuchen" UX. -->
+    <ReconnectOverlay />
   </div>
 </template>
 

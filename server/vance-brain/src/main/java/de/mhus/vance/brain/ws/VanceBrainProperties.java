@@ -1,8 +1,8 @@
 package de.mhus.vance.brain.ws;
 
+import de.mhus.vance.api.ws.LiveEnvelope;
 import java.util.List;
 import lombok.Data;
-import org.jspecify.annotations.Nullable;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
@@ -11,12 +11,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * <p>Bound from the {@code vance.ws.*} namespace in {@code application.yml}.
  * Defaults are picked so the server runs out of the box in dev.
  *
- * <p>The {@link Paths} substructure carries the WebSocket endpoint paths.
- * It exists as a phase-transition vehicle for the Live-WS refactor (see
- * {@code planning/live-ws.md}): during migration we carry both the legacy
- * chat path and the new multi-channel + internal paths here. The end-state
- * keeps only {@link Paths#getChat()}, eventually renamed back to the bare
- * {@code /brain/{tenant}/ws} once the {@code /ws/chat} suffix is obsolete.
+ * <p>The {@link Paths} substructure carries the WebSocket endpoint paths:
+ * the user-facing multi-channel endpoint and the pod-to-pod chat tunnel.
+ * See {@code planning/live-ws.md} for the protocol details.
  */
 @Data
 @ConfigurationProperties(prefix = "vance.ws")
@@ -38,30 +35,20 @@ public class VanceBrainProperties {
     private Paths paths = new Paths();
 
     /**
-     * Endpoint paths grouped so the migration phases can carry the legacy
-     * chat path alongside the new endpoints without renaming config keys
-     * mid-migration. See {@code planning/live-ws.md} §10 for the full
-     * migration sequence.
+     * Endpoint paths grouped so the migration phases can re-shape them
+     * without churning the rest of the config surface. See
+     * {@code planning/live-ws.md} §10 for the full migration sequence.
      */
     @Data
     public static class Paths {
 
         /**
-         * User-facing chat endpoint. Canonical path is {@code /brain/*\/ws/chat}
-         * (since Schritt 1 of the Live-WS migration). End-state: this field
-         * disappears in favour of {@link #live} (renamed to bare {@code /ws}).
-         */
-        private String chat = "/brain/*/ws/chat";
-
-        /**
-         * User-facing multi-channel live endpoint. Carries the {@code session}
-         * channel (chat-frames inside a {@code LiveEnvelope}) and is the
+         * User-facing multi-channel endpoint. Carries the {@code session}
+         * channel (chat-frames inside a {@link LiveEnvelope}) and is the
          * forward-looking home of {@code documents}/{@code notify}/{@code
          * progress}/{@code control} channels once those are defined.
-         * Production clients still hit {@link #chat} in v1; this endpoint is
-         * additive until Schritt 3/4 of the migration.
          */
-        private String live = "/brain/*/ws/live";
+        private String live = "/brain/*/ws";
 
         /**
          * Pod-to-pod chat tunnel endpoint — the home-pod's receiver-side of

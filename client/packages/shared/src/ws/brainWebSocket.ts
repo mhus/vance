@@ -1,4 +1,4 @@
-import type { PingData, PongData, WelcomeData } from '@vance/generated';
+import type { LiveEnvelope, PingData, PongData, WelcomeData } from '@vance/generated';
 import { brainBaseUrl } from '../rest/restClient';
 import {
   WebSocketClosedError,
@@ -82,6 +82,14 @@ export class BrainWebSocket {
   private welcome: WelcomeData | null = null;
   private isClosed = false;
   private keepAliveTimer: ReturnType<typeof setInterval> | null = null;
+  /**
+   * Bound session id, mirrored from the server side. Filled when a
+   * `session-create` or `session-resume` reply arrives, cleared on
+   * `session-unbind`. Travels in the outer {@link LiveEnvelope} so the
+   * Face-Pod can route session-channel frames to the project's home-pod
+   * (see planning/live-ws.md §5.2, §7).
+   */
+  private currentSessionId: string | null = null;
 
   private constructor(socket: WebSocket, tenant: string) {
     this.socket = socket;
@@ -155,7 +163,7 @@ export class BrainWebSocket {
         resolve: (raw) => resolve(raw as TResponse),
         reject,
       });
-      this.socket.send(JSON.stringify(envelope));
+      this.socket.send(JSON.stringify(this.wrapForLive(envelope)));
     });
   }
 
@@ -163,7 +171,20 @@ export class BrainWebSocket {
   sendNoReply<T>(type: string, data?: T): void {
     if (this.isClosed) return;
     const envelope: WebSocketEnvelope<T> = { type, data };
-    this.socket.send(JSON.stringify(envelope));
+    this.socket.send(JSON.stringify(this.wrapForLive(envelope)));
+    // `session-unbind` is fire-and-forget — clear the cached id now so the
+    // next request's LiveEnvelope reflects the unbound state.
+    if (type === 'session-unbind') {
+      this.currentSessionId = null;
+    }
+  }
+
+  private wrapForLive<T>(envelope: WebSocketEnvelope<T>): LiveEnvelope {
+    return {
+      channel: 'session',
+      sessionId: this.currentSessionId ?? undefined,
+      payload: envelope,
+    };
   }
 
   /**
@@ -215,15 +236,20 @@ export class BrainWebSocket {
   private readonly handleMessage = (event: MessageEvent): void => {
     const raw = typeof event.data === 'string' ? event.data : '';
     if (!raw) return;
-    let envelope: WebSocketEnvelope;
+    let outer: LiveEnvelope;
     try {
-      envelope = JSON.parse(raw) as WebSocketEnvelope;
+      outer = JSON.parse(raw) as LiveEnvelope;
     } catch {
       // Malformed frame — log to console; protocol violation, but don't
       // crash the editor.
       console.warn('Discarding non-JSON WebSocket frame', raw);
       return;
     }
+    if (outer.channel !== 'session' || outer.payload === undefined || outer.payload === null) {
+      console.warn('Discarding non-session live frame', outer.channel);
+      return;
+    }
+    const envelope = outer.payload as WebSocketEnvelope;
 
     // Reply path: a request the client is waiting for.
     if (envelope.replyTo) {
@@ -237,6 +263,17 @@ export class BrainWebSocket {
             pending.type,
             err?.errorMessage ?? `Server error on ${pending.type}`));
         } else {
+          // Auto-track the bound sessionId so subsequent frames carry it
+          // in the LiveEnvelope (face-pod routing needs it for everything
+          // except session-create/resume/bootstrap themselves).
+          if (pending.type === 'session-create'
+              || pending.type === 'session-resume'
+              || pending.type === 'session-bootstrap') {
+            const sid = (envelope.data as { sessionId?: string } | undefined)?.sessionId;
+            if (typeof sid === 'string' && sid.length > 0) {
+              this.currentSessionId = sid;
+            }
+          }
           pending.resolve(envelope.data);
         }
         return;
@@ -335,5 +372,5 @@ function buildBrainWsUrl(options: BrainWebSocketOptions): string {
   if (options.jwt) {
     params.set('token', options.jwt);
   }
-  return `${wsOrigin}/brain/${encodeURIComponent(options.tenant)}/ws/chat?${params}`;
+  return `${wsOrigin}/brain/${encodeURIComponent(options.tenant)}/ws?${params}`;
 }

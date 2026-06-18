@@ -1,4 +1,8 @@
-# @vance/vance-fingers (Vance Fingers)
+# @vance/vance-fingers (Vance Fingers) — **ARCHIVIERT**
+
+> **Status: archiviert (Live-WS-Refactor, 2026-06).** Dieses Package wird **nicht** auf die neue Live-WS-Architektur (`/brain/{tenant}/ws/live` mit `LiveEnvelope`-Wrapping; siehe `planning/live-ws.md`) migriert. Eine spätere Mobile-Variante wird voraussichtlich als Extension von [`@vance/facelift-bridge`](../facelift-bridge) (Capacitor-Wrapper um die Vue-Web-UI) realisiert und erbt dann automatisch `/ws/live`. Code bleibt im Repo, Build-Skripte sind nicht mehr aktiv (kein `build`-Script, kein Anschluss an `pnpm -r build`). Keine Connection-Layer-Änderungen mehr; das letzte funktionierende Boot-Adapter-Stage bleibt unangetastet bis zum endgültigen Entfernen oder Wiederbeleben.
+
+---
 
 React-Native + Expo client for Vance. iOS and Android. Phase A — boot adapter only; the rest of the views land in B–F.
 

@@ -12,25 +12,24 @@ import org.springframework.web.socket.server.standard.ServletServerContainerFact
 /**
  * Spring wiring for the WebSocket endpoints.
  *
- * <p>Four endpoints:
+ * <p>Three endpoints:
  * <ul>
- *   <li>The user-facing chat WebSocket at
- *       {@link VanceBrainProperties.Paths#getChat()} (canonical:
- *       {@code /brain/{tenant}/ws/chat}), fronted by
- *       {@link VanceHandshakeInterceptor} for JWT auth.</li>
  *   <li>The user-facing multi-channel live WebSocket at
  *       {@link VanceBrainProperties.Paths#getLive()} (canonical:
- *       {@code /brain/{tenant}/ws/live}), also fronted by
- *       {@link VanceHandshakeInterceptor} for JWT auth. v1 only carries the
- *       {@code session} channel and is additive — no production client hits
- *       it until Schritt 3/4 of the Live-WS migration.</li>
+ *       {@code /brain/{tenant}/ws}), fronted by
+ *       {@link VanceHandshakeInterceptor} for JWT auth. Carries the
+ *       {@code session} channel (chat-frames wrapped in
+ *       {@link de.mhus.vance.api.ws.LiveEnvelope}). Future channels
+ *       ({@code documents}, {@code notify}, {@code progress},
+ *       {@code control}) are reserved at the protocol level.</li>
  *   <li>The pod-to-pod chat tunnel at
  *       {@link VanceBrainProperties.Paths#getInternalChat()} (canonical:
  *       {@code /internal/{tenant}/ws/chat}), fronted by
  *       {@link InternalChatHandshakeInterceptor} for shared-secret +
- *       identity-forward auth. Same {@link VanceWebSocketHandler} pipeline
- *       as the external chat endpoint — the home-pod sees a forwarded
- *       user-connection.</li>
+ *       identity-forward auth. Carries raw {@code WebSocketEnvelope}s
+ *       (no live wrapping) — the Face-Pod {@link LiveChatTunnel} peels
+ *       and re-wraps. Same {@link VanceWebSocketHandler} pipeline as the
+ *       legacy external chat endpoint used before the Live-WS migration.</li>
  *   <li>The pod-internal {@code /internal/engine-bind} WebSocket used by
  *       cross-pod {@code EngineMessage} routing — fronted by
  *       {@link EngineWsHandshakeInterceptor} for shared-secret auth, and
@@ -59,13 +58,10 @@ public class WebSocketConfig {
             // cross-origin upgrade. We accept any origin because auth is
             // JWT-only — the upgrade itself is gated by BrainAccessFilter
             // (token + tenant cross-check) rather than the page's origin.
-            registry.addHandler(handler, paths.getChat())
-                    .addInterceptors(interceptor)
-                    .setAllowedOrigins("*");
             registry.addHandler(liveHandler, paths.getLive())
                     .addInterceptors(interceptor)
                     .setAllowedOrigins("*");
-            // Pod-to-pod chat tunnel: same VanceWebSocketHandler pipeline,
+            // Pod-to-pod chat tunnel: VanceWebSocketHandler pipeline with
             // identity forwarded by the face-pod, shared-secret gated.
             // Origin is meaningless for cluster-internal traffic;
             // InternalAccessFilter + handshake-interceptor are the real auth,

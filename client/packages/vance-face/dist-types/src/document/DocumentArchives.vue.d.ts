@@ -14,11 +14,11 @@ type __VLS_Props = {
     document: DocumentDto | null;
 };
 declare const _default: import("vue").DefineComponent<__VLS_Props, {}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {} & {
-    restored: (restored: DocumentDto) => any;
-    "update:count": (count: number) => any;
+    restored: any;
+    "update:count": any;
 }, string, import("vue").PublicProps, Readonly<__VLS_Props> & Readonly<{
-    onRestored?: ((restored: DocumentDto) => any) | undefined;
-    "onUpdate:count"?: ((count: number) => any) | undefined;
+    onRestored?: ((...args: any) => any) | undefined;
+    "onUpdate:count"?: ((...args: any) => any) | undefined;
 }>, {}, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;
 export default _default;
 //# sourceMappingURL=DocumentArchives.vue.d.ts.map

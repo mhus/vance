@@ -1,17 +1,17 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
-  BrainWebSocket,
   WebSocketRequestError,
-  getTenantId,
-  setActiveSessionId,
 } from '@vance/shared';
 import type {
   ChatMessageDto,
   DocumentDto,
-  SessionResumeRequest,
-  SessionResumeResponse,
 } from '@vance/generated';
+import {
+  bindSession,
+  leaveChat,
+  useWsConnection,
+} from '@/ws/wsConnectionStore';
 import { VAlert, VButton } from '@/components';
 import ChatView from '@/chat/ChatView.vue';
 import ChatComposer, {
@@ -19,7 +19,6 @@ import ChatComposer, {
 } from '@/chat/ChatComposer.vue';
 import { useCortexStore } from '../stores/cortexStore';
 import type { CortexClientToolService } from '../clientToolService';
-import { useNotificationSubscription } from '@/notification/useNotificationSubscription';
 
 interface Props {
   sessionId: string;
@@ -49,8 +48,6 @@ const currentFileSource = computed<ComposerCurrentFileSource | null>(() => {
   return { documentId: tab.id, label: tab.path };
 });
 
-const CLIENT_VERSION = '0.1.0';
-
 // The chat-process name is fixed by {@code SessionChatBootstrapper} to
 // "chat" — exactly one per session, see chat/ChatApp.vue's
 // resolveSessionAndProcess. We don't need a session-list lookup here;
@@ -59,11 +56,47 @@ const CHAT_PROCESS_NAME = 'chat';
 
 type Status = 'connecting' | 'live' | 'occupied' | 'failed';
 
-const status = ref<Status>('connecting');
-const errorMessage = ref<string | null>(null);
-const socket = ref<BrainWebSocket | null>(null);
-// `notify` frames → global toast + WebAudio beep. Follows reconnects.
-useNotificationSubscription(socket);
+const { socket, activeSessionId, status: wsStatus } = useWsConnection();
+const bindError = ref<string | null>(null);
+const occupied = ref(false);
+
+const status = computed<Status>(() => {
+  if (occupied.value) return 'occupied';
+  if (bindError.value) return 'failed';
+  if (activeSessionId.value === props.sessionId
+      && (wsStatus.value === 'connected' || wsStatus.value === 'reconnecting')) {
+    return 'live';
+  }
+  return 'connecting';
+});
+
+const errorMessage = computed<string | null>(() => {
+  if (occupied.value) {
+    return 'Another connection holds this session — close that tab and retry.';
+  }
+  return bindError.value;
+});
+
+// ToolService attach follows the singleton socket — re-attach after
+// every fresh socket (e.g. after an auto-reconnect).
+let attachedToolSocket: typeof socket.value = null;
+watch(
+  socket,
+  (next) => {
+    if (!props.toolService) return;
+    if (next && next !== attachedToolSocket) {
+      try {
+        void props.toolService.attach(next);
+        attachedToolSocket = next;
+      } catch (regError) {
+        console.warn('Failed to register Cortex client tools', regError);
+      }
+    } else if (!next && attachedToolSocket) {
+      attachedToolSocket = null;
+    }
+  },
+  { immediate: true },
+);
 
 // Imperative cross-component routing — ChatComposer pushes optimistic
 // user-message echoes; ChatView appends them to its message list so the
@@ -72,93 +105,39 @@ useNotificationSubscription(socket);
 const chatViewRef = ref<InstanceType<typeof ChatView> | null>(null);
 const composerRef = ref<InstanceType<typeof ChatComposer> | null>(null);
 
-let onCloseUnsubscribe: (() => void) | null = null;
-
-async function openSocket(): Promise<BrainWebSocket> {
-  const tenant = getTenantId();
-  if (!tenant) {
-    throw new Error('Missing tenant — cannot open chat connection.');
-  }
-  return BrainWebSocket.connect({
-    tenant,
-    profile: 'web',
-    clientVersion: CLIENT_VERSION,
-  });
-}
-
-async function open(): Promise<void> {
-  status.value = 'connecting';
-  errorMessage.value = null;
+async function bindToSession(): Promise<void> {
+  bindError.value = null;
+  occupied.value = false;
   try {
-    socket.value = await openSocket();
-  } catch (e) {
-    status.value = 'failed';
-    errorMessage.value = e instanceof Error ? e.message : 'Failed to open chat connection.';
-    return;
-  }
-  onCloseUnsubscribe = socket.value.onClose(() => {
-    if (status.value === 'live') {
-      status.value = 'failed';
-      errorMessage.value = 'Chat connection lost.';
-    }
-  });
-  try {
-    await socket.value.send<SessionResumeRequest, SessionResumeResponse>(
-      'session-resume',
-      { sessionId: props.sessionId },
-    );
-    setActiveSessionId(props.sessionId);
-    status.value = 'live';
-    // Push the Cortex tool surface as soon as the bind succeeds —
-    // failures here are non-fatal for the chat itself (the user can
-    // still talk to the agent without doc tools), but log them so we
-    // can spot a broken registration in practice.
-    if (props.toolService && socket.value) {
-      try {
-        await props.toolService.attach(socket.value);
-      } catch (regError) {
-        console.warn('Failed to register Cortex client tools', regError);
-      }
-    }
+    await bindSession(props.sessionId);
   } catch (e) {
     if (e instanceof WebSocketRequestError && e.errorCode === 409) {
-      status.value = 'occupied';
-      errorMessage.value = 'Another connection holds this session — close that tab and retry.';
+      occupied.value = true;
     } else if (e instanceof WebSocketRequestError && e.errorCode === 404) {
-      status.value = 'failed';
-      errorMessage.value = `Session ${props.sessionId} not found.`;
+      bindError.value = `Session ${props.sessionId} not found.`;
     } else if (e instanceof WebSocketRequestError && e.errorCode === 403) {
-      status.value = 'failed';
-      errorMessage.value = 'Access to this session was denied.';
+      bindError.value = 'Access to this session was denied.';
     } else {
-      status.value = 'failed';
-      errorMessage.value = e instanceof Error ? e.message : 'Failed to bind chat session.';
+      bindError.value = e instanceof Error
+        ? e.message
+        : 'Failed to bind chat session.';
     }
   }
-}
-
-async function teardown(): Promise<void> {
-  onCloseUnsubscribe?.();
-  onCloseUnsubscribe = null;
-  props.toolService?.detach();
-  if (socket.value && !socket.value.closed()) {
-    socket.value.sendNoReply('session-unbind');
-  }
-  socket.value?.close();
-  socket.value = null;
 }
 
 async function retry(): Promise<void> {
-  await teardown();
-  await open();
+  await bindToSession();
 }
 
 onMounted(() => {
-  void open();
+  void bindToSession();
 });
 
 onBeforeUnmount(() => {
-  void teardown();
+  props.toolService?.detach();
+  // 10s grace timer — if the user comes back to a Cortex panel for the
+  // same session within 10s, the bind survives and no roundtrip is made.
+  leaveChat();
 });
 
 // ─── Cross-component routing (subset of ChatApp.vue) ───

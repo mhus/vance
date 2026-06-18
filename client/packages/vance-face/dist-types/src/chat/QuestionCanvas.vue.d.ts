@@ -11,9 +11,9 @@ interface Props {
     actionable: boolean;
 }
 declare const _default: import("vue").DefineComponent<Props, {}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {} & {
-    pick: (label: string) => any;
+    pick: any;
 }, string, import("vue").PublicProps, Readonly<Props> & Readonly<{
-    onPick?: ((label: string) => any) | undefined;
+    onPick?: ((...args: any) => any) | undefined;
 }>, {}, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;
 export default _default;
 //# sourceMappingURL=QuestionCanvas.vue.d.ts.map

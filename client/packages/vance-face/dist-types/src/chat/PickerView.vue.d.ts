@@ -15,30 +15,18 @@ type __VLS_PublicProps = __VLS_Props & {
 declare const _default: import("vue").DefineComponent<__VLS_PublicProps, {}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {
     "update:selectedProject": (value: string | null) => any;
 } & {
-    "project-pick": (payload: {
-        name: string;
-        title: string;
-    }) => any;
-    "focus-main": () => any;
-    "session-picked": (sessionId: string) => any;
-    "session-bootstrapped": (sessionId: string) => any;
-    "project-resolved": (payload: {
-        name: string;
-        title: string;
-    }) => any;
+    "project-resolved": any;
+    "session-picked": any;
+    "session-bootstrapped": any;
+    "focus-main": any;
+    "project-pick": any;
 }, string, import("vue").PublicProps, Readonly<__VLS_PublicProps> & Readonly<{
-    "onProject-pick"?: ((payload: {
-        name: string;
-        title: string;
-    }) => any) | undefined;
-    "onFocus-main"?: (() => any) | undefined;
+    "onProject-resolved"?: ((...args: any) => any) | undefined;
     "onUpdate:selectedProject"?: ((value: string | null) => any) | undefined;
-    "onSession-picked"?: ((sessionId: string) => any) | undefined;
-    "onSession-bootstrapped"?: ((sessionId: string) => any) | undefined;
-    "onProject-resolved"?: ((payload: {
-        name: string;
-        title: string;
-    }) => any) | undefined;
+    "onSession-picked"?: ((...args: any) => any) | undefined;
+    "onSession-bootstrapped"?: ((...args: any) => any) | undefined;
+    "onFocus-main"?: ((...args: any) => any) | undefined;
+    "onProject-pick"?: ((...args: any) => any) | undefined;
 }>, {}, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;
 export default _default;
 //# sourceMappingURL=PickerView.vue.d.ts.map

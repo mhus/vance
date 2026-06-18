@@ -70,6 +70,13 @@ export default {
     errorGeneric: 'Submission failed. Please try again or contact an admin.',
   },
 
+  reconnect: {
+    title: 'Connection lost',
+    attempting: 'Trying to restore the connection… (attempt {n}/{total})',
+    giveUp: 'The connection could not be restored automatically.',
+    tryAgain: 'Try again',
+  },
+
   header: {
     connection: {
       connected: 'Connected — live',

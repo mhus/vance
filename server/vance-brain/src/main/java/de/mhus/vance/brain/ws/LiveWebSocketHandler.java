@@ -39,6 +39,14 @@ import tools.jackson.databind.ObjectMapper;
 @Slf4j
 public class LiveWebSocketHandler extends TextWebSocketHandler {
 
+    /**
+     * WebSocket-session attribute marker: when present and {@code true}, the
+     * connection speaks the {@link de.mhus.vance.api.ws.LiveEnvelope}-wrapped
+     * protocol. {@link WebSocketSender} reads this flag to decide whether to
+     * wrap outgoing frames.
+     */
+    public static final String ATTR_LIVE_PROTOCOL = "vance.live-protocol";
+
     private static final String CHANNEL_SESSION = "session";
 
     private final VanceWebSocketHandler chatHandler;
@@ -49,6 +57,10 @@ public class LiveWebSocketHandler extends TextWebSocketHandler {
 
     @Override
     public void afterConnectionEstablished(WebSocketSession wsSession) throws Exception {
+        // Mark the connection so WebSocketSender wraps outgoing frames in a
+        // LiveEnvelope. Must happen before chatHandler.afterConnectionEstablished
+        // because that already sends the welcome through WebSocketSender.
+        wsSession.getAttributes().put(ATTR_LIVE_PROTOCOL, Boolean.TRUE);
         chatHandler.afterConnectionEstablished(wsSession);
     }
 

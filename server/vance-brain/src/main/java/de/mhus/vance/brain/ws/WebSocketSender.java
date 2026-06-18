@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.ws;
 
 import de.mhus.vance.api.ws.ErrorData;
+import de.mhus.vance.api.ws.LiveEnvelope;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import java.io.IOException;
@@ -70,9 +71,25 @@ public class WebSocketSender {
      * which is the cheap, correct fix for the few KHz of writes we see.
      */
     public void send(WebSocketSession wsSession, WebSocketEnvelope envelope) throws IOException {
-        String json = objectMapper.writeValueAsString(envelope);
+        Object payload = isLiveProtocol(wsSession)
+                ? new LiveEnvelope("session", currentSessionId(wsSession), envelope)
+                : envelope;
+        String json = objectMapper.writeValueAsString(payload);
         synchronized (wsSession) {
             wsSession.sendMessage(new TextMessage(json));
         }
+    }
+
+    private static boolean isLiveProtocol(WebSocketSession wsSession) {
+        Object flag = wsSession.getAttributes().get(LiveWebSocketHandler.ATTR_LIVE_PROTOCOL);
+        return Boolean.TRUE.equals(flag);
+    }
+
+    private static @Nullable String currentSessionId(WebSocketSession wsSession) {
+        Object ctx = wsSession.getAttributes().get(VanceHandshakeInterceptor.ATTR_CONNECTION);
+        if (ctx instanceof ConnectionContext c && c.hasSession()) {
+            return c.getSessionId();
+        }
+        return null;
     }
 }

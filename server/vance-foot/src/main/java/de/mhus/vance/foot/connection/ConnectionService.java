@@ -104,7 +104,7 @@ public class ConnectionService {
                     + java.time.Instant.ofEpochMilli(token.getExpiresAtTimestamp()));
 
             URI wsUri = URI.create(config.getBrain().getWsBase()
-                    + "/brain/" + config.getAuth().getTenant() + "/ws");
+                    + "/brain/" + config.getAuth().getTenant() + "/ws/chat");
             String profile = config.getClient().getProfile();
             if (profile == null || profile.isBlank()) {
                 profile = Profiles.FOOT;

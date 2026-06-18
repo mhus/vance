@@ -335,5 +335,5 @@ function buildBrainWsUrl(options: BrainWebSocketOptions): string {
   if (options.jwt) {
     params.set('token', options.jwt);
   }
-  return `${wsOrigin}/brain/${encodeURIComponent(options.tenant)}/ws?${params}`;
+  return `${wsOrigin}/brain/${encodeURIComponent(options.tenant)}/ws/chat?${params}`;
 }

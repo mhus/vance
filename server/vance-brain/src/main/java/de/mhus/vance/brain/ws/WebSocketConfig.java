@@ -14,8 +14,9 @@ import org.springframework.web.socket.server.standard.ServletServerContainerFact
  *
  * <p>Two endpoints:
  * <ul>
- *   <li>The user-facing WebSocket at {@link VanceBrainProperties#getPath()}
- *       (typically {@code /brain/{tenant}/ws}) — fronted by
+ *   <li>The user-facing chat WebSocket at
+ *       {@link VanceBrainProperties.Paths#getChat()} (canonical:
+ *       {@code /brain/{tenant}/ws/chat}), fronted by
  *       {@link VanceHandshakeInterceptor} for JWT auth.</li>
  *   <li>The pod-internal {@code /internal/engine-bind} WebSocket used by
  *       cross-pod {@code EngineMessage} routing — fronted by
@@ -37,7 +38,7 @@ public class WebSocketConfig {
             EngineWsHandshakeInterceptor engineInterceptor,
             VanceBrainProperties properties) {
         return registry -> {
-            registry.addHandler(handler, properties.getPath())
+            registry.addHandler(handler, properties.getPaths().getChat())
                     .addInterceptors(interceptor)
                     // Browser WebSocket sends an Origin header that Spring matches
                     // against the registered allowed list; the default refuses any

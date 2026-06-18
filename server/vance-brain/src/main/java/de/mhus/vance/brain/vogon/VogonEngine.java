@@ -414,6 +414,12 @@ public class VogonEngine implements ThinkEngine {
             if (state.isStrategyComplete()) {
                 log.info("Vogon id='{}' strategy '{}' complete — DONE",
                         process.getId(), state.getStrategy());
+                appendPhaseNote(process,
+                        "Strategy " + state.getStrategy() + " — DONE",
+                        state.getPhaseHistory().isEmpty()
+                                ? "no phases executed"
+                                : "phases executed: "
+                                        + String.join(", ", state.getPhaseHistory()));
                 thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
                 return;
             }
@@ -427,6 +433,10 @@ public class VogonEngine implements ThinkEngine {
             if (phase == null) {
                 state.setStrategyComplete(true);
                 persistState(process, state);
+                appendPhaseNote(process,
+                        "Strategy " + state.getStrategy() + " — DONE",
+                        "phases executed: "
+                                + String.join(", ", state.getPhaseHistory()));
                 thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
                 return;
             }
@@ -647,6 +657,9 @@ public class VogonEngine implements ThinkEngine {
             int replyChars = reply == null ? 0 : reply.length();
             log.info("Vogon id='{}' phase '{}' worker DONE — {} chars captured",
                     process.getId(), phase.getName(), replyChars);
+            appendPhaseNote(process,
+                    "Phase " + phase.getName() + " — worker DONE",
+                    reply);
             try {
                 progressEmitter.emitStatus(process,
                         de.mhus.vance.api.progress.StatusTag.PHASE_DONE,
@@ -680,6 +693,9 @@ public class VogonEngine implements ThinkEngine {
                     process.getId(), phase.getName(), e.toString());
             state.getFlags().put(phaseFlag(phase.getName(), "failed"), true);
             persistState(process, state);
+            appendPhaseNote(process,
+                    "Phase " + phase.getName() + " — worker FAILED",
+                    e.getMessage());
         } finally {
             try {
                 thinkEngineServiceProvider.getObject().stop(child);
@@ -719,6 +735,11 @@ public class VogonEngine implements ThinkEngine {
                 log.info("Vogon id='{}' phase '{}' scorer COMPLETED → {}",
                         process.getId(), phase.getName(),
                         r.branchResult() == null ? "no-op" : r.branchResult().kind());
+                appendPhaseNote(process,
+                        "Phase " + phase.getName() + " — scorer COMPLETED",
+                        r.branchResult() == null
+                                ? "(no branch)"
+                                : "branch: " + r.branchResult().kind());
                 return r.branchResult();
             }
             if (attempts >= max) {
@@ -727,6 +748,9 @@ public class VogonEngine implements ThinkEngine {
                         process.getId(), phase.getName(), attempts, r.correctionHint());
                 state.getFlags().put(phaseFlag(phase.getName(), "failed"), true);
                 persistState(process, state);
+                appendPhaseNote(process,
+                        "Phase " + phase.getName() + " — scorer FAILED",
+                        "after " + attempts + " corrections: " + r.correctionHint());
                 return null;
             }
             attempts++;
@@ -768,6 +792,40 @@ public class VogonEngine implements ThinkEngine {
             throw new RuntimeException(
                     "Vogon worker turn failed child='" + child.getId()
                             + "': " + cause.getMessage(), cause);
+        }
+    }
+
+    /**
+     * Appends one ASSISTANT chat-message to Vogon's own chat-history.
+     * Used to mirror per-phase lifecycle events (worker DONE/FAILED,
+     * scorer/decider verdicts, checkpoint answers) so a forensic
+     * lookup via {@code process_history_text(name='<vogon-process>')}
+     * returns the engine's decision-trail. Best-effort: failures are
+     * logged and swallowed — chat-history persistence is a debugging
+     * surface, never part of the engine's correctness contract. See
+     * {@code planning/vogon-result-spec.md} §1.
+     */
+    private void appendPhaseNote(
+            ThinkProcessDocument process,
+            String header,
+            @Nullable String body) {
+        if (chatMessageService == null) return;
+        StringBuilder content = new StringBuilder();
+        content.append("**[").append(header).append("]**");
+        if (body != null && !body.isBlank()) {
+            content.append("\n\n").append(body);
+        }
+        try {
+            chatMessageService.append(ChatMessageDocument.builder()
+                    .tenantId(process.getTenantId())
+                    .sessionId(process.getSessionId())
+                    .thinkProcessId(process.getId())
+                    .role(ChatRole.ASSISTANT)
+                    .content(content.toString())
+                    .build());
+        } catch (RuntimeException e) {
+            log.debug("Vogon id='{}' chat-history append failed for '{}': {}",
+                    process.getId(), header, e.toString());
         }
     }
 
@@ -951,6 +1009,11 @@ public class VogonEngine implements ThinkEngine {
                 log.info("Vogon id='{}' phase '{}' checkpoint DECIDED storeAs='{}' value='{}'",
                         process.getId(), pending.getPhaseName(),
                         pending.getStoreAs(), value);
+                appendPhaseNote(process,
+                        "Phase " + pending.getPhaseName()
+                                + " — checkpoint DECIDED",
+                        (pending.getStoreAs() == null ? "" : pending.getStoreAs() + " = ")
+                                + String.valueOf(value));
             }
             case INSUFFICIENT_INFO, UNDECIDABLE -> {
                 state.setPendingCheckpoint(null);
@@ -962,6 +1025,10 @@ public class VogonEngine implements ThinkEngine {
                 log.info("Vogon id='{}' phase '{}' checkpoint {} reason='{}' — phase failed",
                         process.getId(), pending.getPhaseName(),
                         payload.getOutcome(), payload.getReason());
+                appendPhaseNote(process,
+                        "Phase " + pending.getPhaseName()
+                                + " — checkpoint " + payload.getOutcome(),
+                        payload.getReason());
             }
         }
     }
@@ -1279,6 +1346,12 @@ public class VogonEngine implements ThinkEngine {
                 log.info("Vogon id='{}' phase '{}' decider COMPLETED token='{}' → {}",
                         process.getId(), phase.getName(), r.chosenToken(),
                         r.branchResult() == null ? "no-op" : r.branchResult().kind());
+                appendPhaseNote(process,
+                        "Phase " + phase.getName() + " — decider COMPLETED",
+                        "token: " + r.chosenToken()
+                                + (r.branchResult() == null
+                                        ? ""
+                                        : " → branch: " + r.branchResult().kind()));
                 return r.branchResult();
             }
             if (attempts >= max) {

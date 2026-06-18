@@ -1060,6 +1060,18 @@ public class SlartibartfastEngine implements ThinkEngine {
                         + "outcome={}",
                 process.getId(), state.getPendingInboxKind(), approved,
                 answer.getOutcome());
+        // Mirror the user's verdict into chat history. emitPhaseProgress
+        // already logs the phase-side of an inbox cycle (CONFIRMING /
+        // ESCALATING posted), but the answer itself doesn't trigger a
+        // phase advance with a fresh iteration — without this hook the
+        // chat trail jumps from "ESCALATING: posted" straight to the
+        // next phase, omitting "user said yes/no". Symmetric to the
+        // Vogon checkpoint-answer + Marvin user-input-answer notes.
+        persistAssistantNote(process,
+                "**[Slartibartfast " + state.getPendingInboxKind()
+                        + " — " + answer.getOutcome().name() + "]**\n\n"
+                        + describeInboxAnswer(state.getPendingInboxKind(),
+                                approved, answer));
 
         switch (state.getPendingInboxKind()) {
             case CONFIRMATION -> applyConfirmationAnswer(state, approved);
@@ -1070,6 +1082,32 @@ public class SlartibartfastEngine implements ThinkEngine {
         }
         state.setPendingInboxItemId(null);
         state.setPendingInboxKind(PendingInboxKind.NONE);
+    }
+
+    /**
+     * Renders a one-line human-readable body for the inbox-answer
+     * chat-note. Covers the four combinations of
+     * (CONFIRMATION / ESCALATION) × (approved / rejected) plus the
+     * non-DECIDED outcomes (INSUFFICIENT_INFO / UNDECIDABLE) where
+     * the answer.reason() carries the explanation.
+     */
+    private static String describeInboxAnswer(
+            PendingInboxKind kind, boolean approved, AnswerPayload answer) {
+        if (answer.getOutcome() != AnswerOutcome.DECIDED) {
+            String reason = answer.getReason() == null ? "" : answer.getReason();
+            return reason.isBlank() ? "(no reason given)" : reason;
+        }
+        return switch (kind) {
+            case CONFIRMATION -> approved
+                    ? "User confirmed assumed criteria."
+                    : "User declined to confirm — assumed criteria stay tentative."
+                            + " ConfirmingPhase will partition by threshold.";
+            case ESCALATION -> approved
+                    ? "User approved retry — recovery budget reset, lifecycle "
+                            + "resumes at PROPOSING."
+                    : "User aborted — strategy ends as ESCALATED.";
+            case NONE -> "(no pending kind)";
+        };
     }
 
     /**

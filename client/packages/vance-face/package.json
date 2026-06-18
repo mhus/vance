@@ -7,6 +7,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:1": "FACE_PORT=9901 BRAIN_PORT=9991 vite",
+    "dev:2": "FACE_PORT=9902 BRAIN_PORT=9992 vite",
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist *.tsbuildinfo"

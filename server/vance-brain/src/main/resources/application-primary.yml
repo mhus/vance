@@ -1,0 +1,15 @@
+server:
+  port: 9991
+
+# Local multi-pod test profile: primary brain instance speaks to the
+# local Redis container (Docker, port 6379) so cross-pod live-features
+# (document presence, future documents.changed-push) can be exercised
+# against a second brain started with --spring.profiles.active=secondary.
+# When running without Redis (single-pod local dev), leave the
+# `vance.redis.enabled` default (false) — Live-features just stay
+# pod-local then.
+vance:
+  redis:
+    enabled: true
+    host: localhost
+    port: 6379

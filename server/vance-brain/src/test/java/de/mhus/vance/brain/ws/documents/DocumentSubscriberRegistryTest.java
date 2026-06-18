@@ -10,25 +10,36 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.ws.DocumentPresenceNotification;
+import de.mhus.vance.api.ws.DocumentViewer;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
+import de.mhus.vance.brain.cluster.ClusterService;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
+import de.mhus.vance.shared.redis.VanceRedisMessagingService;
 import java.io.IOException;
+import java.util.function.BiConsumer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.web.socket.WebSocketSession;
+import tools.jackson.databind.ObjectMapper;
 
 class DocumentSubscriberRegistryTest {
 
     private WebSocketSender sender;
+    private VanceRedisMessagingService messaging;
+    private ClusterService clusterService;
     private DocumentSubscriberRegistry registry;
 
     @BeforeEach
     void setUp() {
         sender = mock(WebSocketSender.class);
-        registry = new DocumentSubscriberRegistry(sender);
+        messaging = mock(VanceRedisMessagingService.class);
+        clusterService = mock(ClusterService.class);
+        when(clusterService.selfNodeName()).thenReturn("pod-self");
+        registry = new DocumentSubscriberRegistry(
+                sender, messaging, clusterService, new ObjectMapper());
     }
 
     @Test
@@ -154,6 +165,147 @@ class DocumentSubscriberRegistryTest {
         verify(sender, times(2)).sendOnChannel(eq(ws), eq("documents"), any());
     }
 
+    // ── cross-pod sync ────────────────────────────────────────
+
+    @Test
+    void subscribe_publishesAddDeltaOnRedis() throws Exception {
+        WebSocketSession ws = wsSession("ws-1");
+        registry.subscribe(ws, contextFor("ed-1", "alice", "Alice"), "notes.md");
+
+        ArgumentCaptor<String> json = ArgumentCaptor.forClass(String.class);
+        verify(messaging).publish(eq("acme"), eq("documents.presence"), json.capture());
+        PresenceDelta delta = new ObjectMapper().readValue(json.getValue(), PresenceDelta.class);
+        assertThat(delta.getAction()).isEqualTo(PresenceDelta.Action.ADD);
+        assertThat(delta.getPath()).isEqualTo("notes.md");
+        assertThat(delta.getViewer().getEditorId()).isEqualTo("ed-1");
+        assertThat(delta.getPodId()).isEqualTo("pod-self");
+        assertThat(delta.getTenantId()).isEqualTo("acme");
+    }
+
+    @Test
+    void unsubscribe_publishesRemoveDeltaOnRedis() throws Exception {
+        WebSocketSession ws = wsSession("ws-1");
+        registry.subscribe(ws, contextFor("ed-1", "alice", "Alice"), "notes.md");
+        org.mockito.Mockito.reset(messaging);
+
+        registry.unsubscribe(ws, "notes.md");
+
+        ArgumentCaptor<String> json = ArgumentCaptor.forClass(String.class);
+        verify(messaging).publish(eq("acme"), eq("documents.presence"), json.capture());
+        PresenceDelta delta = new ObjectMapper().readValue(json.getValue(), PresenceDelta.class);
+        assertThat(delta.getAction()).isEqualTo(PresenceDelta.Action.REMOVE);
+        assertThat(delta.getViewer().getEditorId()).isEqualTo("ed-1");
+    }
+
+    @Test
+    void remoteAdd_isMergedIntoViewersAndBroadcast() throws Exception {
+        WebSocketSession localWs = wsSession("ws-local");
+        registry.subscribe(localWs, contextFor("ed-local", "alice", "Alice"), "shared.md");
+        org.mockito.Mockito.reset(sender);
+
+        BiConsumer<String, String> remoteHandler = captureRemoteHandler();
+        PresenceDelta remoteAdd = PresenceDelta.builder()
+                .podId("pod-other")
+                .tenantId("acme")
+                .action(PresenceDelta.Action.ADD)
+                .path("shared.md")
+                .viewer(DocumentViewer.builder()
+                        .editorId("ed-remote")
+                        .userId("bob")
+                        .displayName("Bob")
+                        .build())
+                .build();
+        remoteHandler.accept("vance:acme:documents.presence",
+                new ObjectMapper().writeValueAsString(remoteAdd));
+
+        DocumentPresenceNotification push = captureLastPresencePush(localWs);
+        assertThat(push.getViewers()).extracting("editorId").containsExactly("ed-remote");
+        assertThat(registry.viewersOf("shared.md"))
+                .extracting("editorId")
+                .containsExactlyInAnyOrder("ed-local", "ed-remote");
+    }
+
+    @Test
+    void remoteRemove_dropsRemoteViewerAndBroadcasts() throws Exception {
+        WebSocketSession localWs = wsSession("ws-local");
+        registry.subscribe(localWs, contextFor("ed-local", "alice", "Alice"), "shared.md");
+        BiConsumer<String, String> remoteHandler = captureRemoteHandler();
+        ObjectMapper json = new ObjectMapper();
+        DocumentViewer remoteViewer = DocumentViewer.builder()
+                .editorId("ed-remote").userId("bob").displayName("Bob").build();
+        remoteHandler.accept("vance:acme:documents.presence", json.writeValueAsString(
+                PresenceDelta.builder().podId("pod-other").tenantId("acme")
+                        .action(PresenceDelta.Action.ADD).path("shared.md").viewer(remoteViewer).build()));
+        org.mockito.Mockito.reset(sender);
+
+        remoteHandler.accept("vance:acme:documents.presence", json.writeValueAsString(
+                PresenceDelta.builder().podId("pod-other").tenantId("acme")
+                        .action(PresenceDelta.Action.REMOVE).path("shared.md").viewer(remoteViewer).build()));
+
+        assertThat(registry.viewersOf("shared.md"))
+                .extracting("editorId").containsExactly("ed-local");
+    }
+
+    @Test
+    void remoteClearPod_dropsAllEntriesForThatPod() throws Exception {
+        WebSocketSession localWs = wsSession("ws-local");
+        registry.subscribe(localWs, contextFor("ed-local", "alice", "Alice"), "a.md");
+        registry.subscribe(localWs, contextFor("ed-local", "alice", "Alice"), "b.md");
+        BiConsumer<String, String> remoteHandler = captureRemoteHandler();
+        ObjectMapper json = new ObjectMapper();
+        DocumentViewer v1 = DocumentViewer.builder()
+                .editorId("ed-r1").userId("bob").displayName("Bob").build();
+        DocumentViewer v2 = DocumentViewer.builder()
+                .editorId("ed-r2").userId("bob").displayName("Bob").build();
+        remoteHandler.accept("vance:acme:documents.presence", json.writeValueAsString(
+                PresenceDelta.builder().podId("pod-other").tenantId("acme")
+                        .action(PresenceDelta.Action.ADD).path("a.md").viewer(v1).build()));
+        remoteHandler.accept("vance:acme:documents.presence", json.writeValueAsString(
+                PresenceDelta.builder().podId("pod-other").tenantId("acme")
+                        .action(PresenceDelta.Action.ADD).path("b.md").viewer(v2).build()));
+
+        remoteHandler.accept("vance:acme:documents.presence", json.writeValueAsString(
+                PresenceDelta.builder().podId("pod-other").tenantId("acme")
+                        .action(PresenceDelta.Action.CLEAR_POD).build()));
+
+        assertThat(registry.viewersOf("a.md")).extracting("editorId").containsExactly("ed-local");
+        assertThat(registry.viewersOf("b.md")).extracting("editorId").containsExactly("ed-local");
+    }
+
+    @Test
+    void ownPodDelta_loopback_isIgnored() throws Exception {
+        BiConsumer<String, String> remoteHandler = captureRemoteHandler();
+        DocumentViewer phantom = DocumentViewer.builder()
+                .editorId("ed-phantom").userId("alice").displayName("Alice").build();
+        remoteHandler.accept("vance:acme:documents.presence", new ObjectMapper().writeValueAsString(
+                PresenceDelta.builder().podId("pod-self") // ← own pod
+                        .tenantId("acme").action(PresenceDelta.Action.ADD)
+                        .path("notes.md").viewer(phantom).build()));
+
+        // Phantom must NOT show up — own publishes shouldn't double-count.
+        assertThat(registry.viewersOf("notes.md")).isEmpty();
+    }
+
+    @Test
+    void pruneDeadPods_dropsEntriesForOfflinePods() throws Exception {
+        WebSocketSession localWs = wsSession("ws-local");
+        registry.subscribe(localWs, contextFor("ed-local", "alice", "Alice"), "shared.md");
+        BiConsumer<String, String> remoteHandler = captureRemoteHandler();
+        DocumentViewer remoteViewer = DocumentViewer.builder()
+                .editorId("ed-remote").userId("bob").displayName("Bob").build();
+        remoteHandler.accept("vance:acme:documents.presence", new ObjectMapper().writeValueAsString(
+                PresenceDelta.builder().podId("pod-dead").tenantId("acme")
+                        .action(PresenceDelta.Action.ADD).path("shared.md")
+                        .viewer(remoteViewer).build()));
+        assertThat(registry.viewersOf("shared.md")).hasSize(2);
+
+        when(clusterService.liveClusterNodeNames()).thenReturn(java.util.Set.of("pod-self"));
+        registry.pruneDeadPods();
+
+        assertThat(registry.viewersOf("shared.md"))
+                .extracting("editorId").containsExactly("ed-local");
+    }
+
     // ── helpers ────────────────────────────────────────────────
 
     private static WebSocketSession wsSession(String id) {
@@ -175,5 +327,21 @@ class DocumentSubscriberRegistryTest {
         WebSocketEnvelope last = cap.getAllValues().get(cap.getAllValues().size() - 1);
         assertThat(last.getType()).isEqualTo(MessageType.DOCUMENT_PRESENCE);
         return (DocumentPresenceNotification) last.getData();
+    }
+
+    /**
+     * Pull the cross-pod-delta handler out of the messaging mock — that's
+     * how the registry hooked into Redis-pubsub in its {@code @PostConstruct}.
+     */
+    @SuppressWarnings("unchecked")
+    private BiConsumer<String, String> captureRemoteHandler() {
+        // Invoke @PostConstruct explicitly — Mockito-only setup doesn't
+        // trigger Spring lifecycle hooks.
+        registry.start();
+        ArgumentCaptor<BiConsumer<String, String>> cap =
+                ArgumentCaptor.forClass(BiConsumer.class);
+        verify(messaging, org.mockito.Mockito.atLeastOnce())
+                .subscribeAcrossTenants(eq("documents.presence"), cap.capture());
+        return cap.getValue();
     }
 }

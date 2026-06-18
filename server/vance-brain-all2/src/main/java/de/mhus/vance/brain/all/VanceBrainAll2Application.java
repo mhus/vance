@@ -16,7 +16,7 @@ import org.springframework.boot.SpringApplication;
  * {@code META-INF/spring/.../AutoConfiguration.imports} files without
  * any code change here.
  */
-public class VanceBrainAllApplication {
+public class VanceBrainAll2Application {
 
     public static void main(String[] args) {
         SpringApplication.run(VanceBrainApplication.class, args);

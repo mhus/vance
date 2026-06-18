@@ -1,0 +1,57 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>de.mhus.vance</groupId>
+        <artifactId>vance</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>vance-brain-all2</artifactId>
+    <name>vance-brain-all2</name>
+    <description>Dev-bundle Brain build: ships vance-brain plus every first-party addon JAR on the classpath. Used as the IDE launch target — VanceBrainAllApplication extends VanceBrainApplication so its inherited @SpringBootApplication still scans brain + shared while Spring discovers the addons via their META-INF/spring/AutoConfiguration.imports files. Not the production deployment unit; production picks addons per distribution-variant.</description>
+    <packaging>jar</packaging>
+
+    <dependencies>
+        <dependency>
+            <groupId>de.mhus.vance</groupId>
+            <artifactId>vance-brain</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>de.mhus.vance</groupId>
+            <artifactId>vance-addon-brain-slideshow</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>de.mhus.vance</groupId>
+            <artifactId>vance-addon-brain-kanban</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>de.mhus.vance</groupId>
+            <artifactId>vance-addon-brain-calendar</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>de.mhus.vance</groupId>
+            <artifactId>vance-addon-brain-rlang</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <mainClass>de.mhus.vance.brain.all.VanceBrainAll2Application</mainClass>
+                    <classifier>exec</classifier>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

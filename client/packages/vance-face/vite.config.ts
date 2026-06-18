@@ -179,7 +179,11 @@ export default defineConfig({
     vanceAddonDevServe(),
   ],
   server: {
-    port: 9900,
+    // FACE_PORT / BRAIN_PORT override the defaults for local multi-pod
+    // dev: `BRAIN_PORT=9991 FACE_PORT=9901 pnpm dev` pairs one face
+    // dev-server with one brain instance. See package.json scripts
+    // `dev:1` and `dev:2`.
+    port: Number(process.env.FACE_PORT ?? 9900),
     proxy: {
       '/brain': {
         // Dev-server proxy target — only used by `pnpm dev`. Production
@@ -187,7 +191,7 @@ export default defineConfig({
         // served by the brain in docker / k8s, and the (forthcoming)
         // runtime config.json carries the public URL when the two
         // are split.
-        target: 'http://localhost:9990',
+        target: `http://localhost:${process.env.BRAIN_PORT ?? 9990}`,
         changeOrigin: true,
         ws: true,
       },

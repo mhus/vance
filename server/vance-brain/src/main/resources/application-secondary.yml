@@ -1,0 +1,12 @@
+server:
+  port: 9992
+
+# Sibling of application-primary.yml — second brain instance on the same
+# host that joins the same Redis bus, so the two brains see each other's
+# document-presence membership deltas (and future documents.changed
+# events).
+vance:
+  redis:
+    enabled: true
+    host: localhost
+    port: 6379

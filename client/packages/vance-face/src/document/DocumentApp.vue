@@ -29,6 +29,7 @@ import { exportToFiles } from '@/platform/faceliftFiles';
 import type { FollowUpRequestDto, FollowUpResponseDto } from '@vance/generated';
 import type { FollowUpExtensionOptions } from '@/components';
 import { consumeDocumentDraft } from '@/platform';
+import DocumentPresenceStrip from '@/ws/DocumentPresenceStrip.vue';
 import DocumentPreview from './DocumentPreview.vue';
 import DocumentIcon from './DocumentIcon.vue';
 import DocumentArchives from './DocumentArchives.vue';
@@ -2085,6 +2086,13 @@ const formatBytes = (n: number): string => {
     title-clickable
     @title-click="focusZone = 'sidebar'"
   >
+    <!-- ─── Topbar: presence avatars for the currently selected doc ───
+         Only renders when a document is selected. The strip is empty
+         (no DOM) when nobody else is on the path. ─── -->
+    <template v-if="docsState.selected.value?.path" #topbar-extra>
+      <DocumentPresenceStrip :path="docsState.selected.value.path" class="mr-2" />
+    </template>
+
     <!-- ─── Sidebar: project picker + folder navigation ──────────────
          Project list at top uses the shared {@link ProjectListSidebar}
          component (same instance backs chat). Folder navigation below

@@ -13,11 +13,12 @@ import org.jspecify.annotations.Nullable;
  * <p>Carried on every frame of {@code /brain/{tenant}/ws/live}. The
  * {@link #channel} field demuxes between channel-specific payload semantics.
  *
- * <p>v1 only implements the {@code session} channel — chat-frames as they
- * would arrive on the legacy {@code /brain/{tenant}/ws/chat} endpoint, just
- * wrapped here. Future channels ({@code documents}, {@code notify},
- * {@code progress}, {@code control}) are reserved at the protocol level for
- * forward-compatibility but not handled by the current server.
+ * <p>v1 only implements the {@code session} channel — wraps a regular
+ * {@link WebSocketEnvelope} (the chat-frame format that used to live on
+ * the bare {@code /brain/{tenant}/ws} endpoint before this multi-channel
+ * envelope replaced it). Future channels ({@code documents},
+ * {@code notify}, {@code progress}, {@code control}) are reserved at the
+ * protocol level for forward-compatibility but not handled yet.
  *
  * <p>For {@code channel="session"}, {@link #payload} carries a regular
  * {@link WebSocketEnvelope}. {@link #sessionId} identifies the conversation

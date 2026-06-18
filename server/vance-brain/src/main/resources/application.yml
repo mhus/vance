@@ -45,8 +45,6 @@ vance:
     # projects, demo documents, _vance system project, init-settings
     # YAML import). Set to false for production deployments.
     acme: true
-  ws:
-    # paths.chat defaults to /brain/*/ws/chat — see VanceBrainProperties.Paths
   storage:
     chunk-size: 524288            # 512 KB
     cleanup-interval-ms: 900000   # 15 min

@@ -697,6 +697,13 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         }
         currentTurnHadUserInput.put(process.getId(), hadUserInput);
         currentTurnEventsByRef.put(process.getId(), eventsByRef);
+
+        // Reconcile workerLinks against the inbox: REPLY/PROGRESS-style
+        // events refresh lastSeen + workerStatus; terminal events
+        // (DONE/FAILED/STOPPED) drop the link entirely and clear the
+        // delegation pointer if it matched the closed worker.
+        reconcileWorkerLinksFromInbox(process, inbox);
+
         // Default IDLE on any abnormal exit — matches legacy lifecycle.
         // Reset to outcome.awaitingUserInput() inside the try.
         boolean awaitingUserInput = false;
@@ -1006,10 +1013,18 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             return false;
         }
         if (target.getStatus() != ThinkProcessStatus.BLOCKED) {
+            // Worker is still RUNNING (or transient state like INIT /
+            // IDLE while reaching the next turn). Auto-forward is only
+            // safe when the worker is explicitly BLOCKED awaiting user
+            // input — anything else risks routing a new topic to a
+            // worker mid-task. Fall through to the LLM so it can
+            // decide via the Active-Workers prompt block, BUT keep
+            // the pointer so the LLM still sees there's an active
+            // delegation (fixes the spurious re-DELEGATE noted in
+            // analysis/sess_97483d45/FINDINGS.md Bug #2).
             log.info(
-                    "Arthur id='{}' delegation target '{}' is {} (not BLOCKED) — clearing pointer, falling through to LLM",
+                    "Arthur id='{}' delegation target '{}' is {} (not BLOCKED) — falling through to LLM with pointer intact",
                     process.getId(), target.getName(), target.getStatus());
-            thinkProcessService.updateActiveDelegationWorkerId(process.getId(), null);
             return false;
         }
 
@@ -1051,70 +1066,106 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     }
 
     /**
-     * Sets / clears {@link ThinkProcessDocument#activeDelegationWorkerId}
-     * based on what just happened.
+     * Lifecycle / status reconciliation between Arthur's drained
+     * inbox and her own {@code workerLinks} snapshot of spawned
+     * workers. Called once per turn at the top of
+     * {@code runTurnFor}.
      *
-     * <p>Three cases:
      * <ul>
-     *   <li>{@code awaitingUserInput=true} AND inbox contained exactly
-     *       one BLOCKED ProcessEvent → set the pointer to that
-     *       worker. Arthur just relayed a worker's clarification
-     *       question; the next user-input should auto-forward back.</li>
-     *   <li>{@code awaitingUserInput=true} otherwise → clear the
-     *       pointer. Arthur is explicitly waiting on the user for
-     *       a non-worker reason (ANSWER, REJECT, generic ASK_USER,
-     *       RELAY on DONE/FAILED), so the previous delegate is no
-     *       longer the auto-forward target.</li>
-     *   <li>{@code awaitingUserInput=false} → leave the pointer
-     *       untouched. The worker is still doing background work;
-     *       the pointer (set by {@code handleDelegate} on the
-     *       initial spawn or by an earlier RELAY-on-BLOCKED) must
-     *       survive a WAIT / LEARN / silent turn so subsequent
-     *       BLOCKED events from the same worker still hit the
-     *       Auto-WAIT short-circuit.</li>
+     *   <li>{@link SteerMessage.Reply} or non-terminal
+     *       {@link SteerMessage.ProcessEvent} from a tracked worker
+     *       → refresh {@code lastSeen} + {@code workerStatus} so the
+     *       Active-Workers prompt block has fresh data.</li>
+     *   <li>{@link SteerMessage.ProcessEvent} with
+     *       {@link ProcessEventType#DONE} / {@link ProcessEventType#FAILED}
+     *       / {@link ProcessEventType#STOPPED} → drop the link via
+     *       {@code removeWorkerLink}; if the closed worker was the
+     *       active delegation target, clear the pointer too.</li>
      * </ul>
+     *
+     * <p>Pre-Phase-3 sessions can have {@code workerLinks} empty —
+     * the helpers are no-op when the link doesn't exist, so older
+     * processes degrade gracefully without crashing.
+     */
+    private void reconcileWorkerLinksFromInbox(
+            ThinkProcessDocument process, List<SteerMessage> inbox) {
+        java.time.Instant now = java.time.Instant.now();
+        String pointer = process.getActiveDelegationWorkerId();
+        for (SteerMessage m : inbox) {
+            String sourceId = null;
+            ThinkProcessStatus sourceStatus = null;
+            boolean terminal = false;
+            if (m instanceof SteerMessage.ProcessEvent pe) {
+                sourceId = pe.sourceProcessId();
+                ProcessEventType type = pe.type();
+                if (type == ProcessEventType.DONE
+                        || type == ProcessEventType.FAILED
+                        || type == ProcessEventType.STOPPED) {
+                    terminal = true;
+                } else if (type == ProcessEventType.BLOCKED) {
+                    sourceStatus = ThinkProcessStatus.BLOCKED;
+                }
+            } else if (m instanceof SteerMessage.Reply r) {
+                sourceId = r.sourceProcessId();
+                // Reply implies the worker reached a turn-end; the
+                // exit status (BLOCKED for awaiting=true, IDLE for
+                // awaiting=false) lands as a separate ProcessEvent
+                // later if at all. Refresh lastSeen only.
+            }
+            if (sourceId == null || sourceId.isBlank()) {
+                continue;
+            }
+            if (terminal) {
+                boolean removed = thinkProcessService.removeWorkerLink(
+                        process.getId(), sourceId);
+                if (removed) {
+                    log.debug("Arthur id='{}' workerLink removed for terminated child '{}'",
+                            process.getId(), sourceId);
+                }
+                if (sourceId.equals(pointer)) {
+                    thinkProcessService.updateActiveDelegationWorkerId(
+                            process.getId(), null);
+                    process.setActiveDelegationWorkerId(null);
+                    pointer = null;
+                    log.info("Arthur id='{}' delegation pointer cleared (worker '{}' closed)",
+                            process.getId(), sourceId);
+                }
+                continue;
+            }
+            // Non-terminal: refresh the snapshot. findWorkerLink + upsert
+            // is cheaper than re-resolving identity from the worker doc.
+            // Final aliases for the lambda — lookup happens per-iteration.
+            final ThinkProcessStatus statusForLambda = sourceStatus;
+            final java.time.Instant lastSeenForLambda = now;
+            thinkProcessService.findWorkerLink(process.getId(), sourceId)
+                    .ifPresent(snap -> {
+                        if (statusForLambda != null) {
+                            snap.setWorkerStatus(statusForLambda);
+                        }
+                        snap.setLastSeen(lastSeenForLambda);
+                        thinkProcessService.upsertWorkerLink(process.getId(), snap);
+                    });
+        }
+    }
+
+    /**
+     * Pointer maintenance is now entirely event-driven —
+     * {@link #handleDelegate} arms the pointer on spawn, and
+     * {@link #reconcileWorkerLinksFromInbox} clears it when the
+     * pointer-worker terminates. The post-action callback no longer
+     * mutates the pointer; the legacy "single BLOCKED source pickup
+     * after RELAY" path went away with the BLOCKED-listener slim-down
+     * (planning/process-engine-reply-channel.md §9). The method
+     * remains as a single call site so future hooks have one place
+     * to add post-action policy.
      */
     private void updateDelegationPointer(
             ThinkProcessDocument process,
             List<SteerMessage> inbox,
             boolean awaitingUserInput) {
-        if (!awaitingUserInput) {
-            return;
-        }
-        String currentWorker = process.getActiveDelegationWorkerId();
-        String nextWorker = singleBlockedSourceProcessId(inbox);
-        if (java.util.Objects.equals(currentWorker, nextWorker)) {
-            return;
-        }
-        thinkProcessService.updateActiveDelegationWorkerId(process.getId(), nextWorker);
-        process.setActiveDelegationWorkerId(nextWorker);
-        if (nextWorker != null) {
-            log.info("Arthur id='{}' delegation pointer set → worker id='{}'",
-                    process.getId(), nextWorker);
-        } else if (currentWorker != null) {
-            log.info("Arthur id='{}' delegation pointer cleared", process.getId());
-        }
-    }
-
-    /**
-     * Returns the {@code sourceProcessId} when the inbox contained
-     * exactly one BLOCKED-typed {@link SteerMessage.ProcessEvent},
-     * otherwise {@code null}. Multi-clarification fan-in stays
-     * LLM-mediated — disambiguating two simultaneous worker questions
-     * is a planning decision, not a routing one.
-     */
-    private static @Nullable String singleBlockedSourceProcessId(List<SteerMessage> inbox) {
-        String found = null;
-        for (SteerMessage m : inbox) {
-            if (m instanceof SteerMessage.ProcessEvent pe
-                    && pe.type() == de.mhus.vance.api.thinkprocess.ProcessEventType.BLOCKED) {
-                if (found != null) {
-                    return null;
-                }
-                found = pe.sourceProcessId();
-            }
-        }
-        return found;
+        // No-op — see javadoc. Intentionally kept for symmetry with
+        // the runTurnFor call site so the action-handler contract
+        // documents where pointer policy lives.
     }
 
     // ──────────────────── Structured-action contract ────────────────────
@@ -1689,14 +1740,12 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                 log.info("Arthur id='{}' DELEGATE via selector worker='{}' reason='{}'",
                         process.getId(), workerName, summariseReason(action.reason()));
             }
-            // Arm the delegation pointer immediately so the next
-            // inbound BLOCKED event from this worker auto-WAITs
-            // (see tryAutoWaitOnDelegationPointerBlocked) without
-            // an LLM round-trip. Without this, the first BLOCKED
-            // event after a fresh DELEGATE always falls through to
-            // the LLM with a stale Active-Workers snapshot,
-            // routinely producing phantom "previous worker already
-            // finished" messages right before the real DONE event.
+            // Arm the delegation pointer immediately so subsequent
+            // user input auto-forwards to the worker once it goes
+            // BLOCKED, and register the worker in workerLinks so the
+            // Active-Workers prompt block + lifecycle-cleanup paths
+            // see it. See planning/process-engine-reply-channel.md
+            // §9 (Arthur pointer + workerLinks consolidation).
             thinkProcessService.findByName(
                             process.getTenantId(),
                             process.getSessionId(),
@@ -1705,6 +1754,21 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                         thinkProcessService.updateActiveDelegationWorkerId(
                                 process.getId(), spawned.getId());
                         process.setActiveDelegationWorkerId(spawned.getId());
+                        de.mhus.vance.shared.eddie.WorkerLinkSnapshot snapshot =
+                                de.mhus.vance.shared.eddie.WorkerLinkSnapshot.builder()
+                                        .workerProcessId(spawned.getId())
+                                        .workerProcessName(spawned.getName() == null
+                                                ? workerName : spawned.getName())
+                                        .workerTenantId(spawned.getTenantId() == null
+                                                ? process.getTenantId() : spawned.getTenantId())
+                                        .workerProjectName(spawned.getProjectId() == null
+                                                ? process.getProjectId() : spawned.getProjectId())
+                                        .workerSessionId(spawned.getSessionId() == null
+                                                ? process.getSessionId() : spawned.getSessionId())
+                                        .workerStatus(spawned.getStatus())
+                                        .lastSeen(java.time.Instant.now())
+                                        .build();
+                        thinkProcessService.upsertWorkerLink(process.getId(), snapshot);
                         log.info(
                                 "Arthur id='{}' delegation pointer armed → worker '{}' (id='{}') on DELEGATE",
                                 process.getId(), workerName, spawned.getId());
@@ -2402,17 +2466,79 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      * spawned, Ford's stale reply arrived, Arthur conflated them).
      */
     private @Nullable String composeActiveWorkersBlock(ThinkProcessDocument process) {
+        // Prefer workerLinks (canonical in-doc view, updated by
+        // reconcileWorkerLinksFromInbox on every turn). For sessions
+        // that predate workerLinks-for-Arthur the snapshot is empty;
+        // fall back to the parent-process scan so legacy sessions
+        // still see their children.
+        List<de.mhus.vance.shared.eddie.WorkerLinkSnapshot> links =
+                thinkProcessService.findWorkerLinks(process.getId());
+        if (links != null && !links.isEmpty()) {
+            return renderActiveWorkersBlockFromLinks(
+                    links, ACTIVE_WORKERS_MAX_RENDER, java.time.Instant.now());
+        }
         List<ThinkProcessDocument> children = thinkProcessService
                 .findByParentProcessId(process.getId());
         return renderActiveWorkersBlock(children, ACTIVE_WORKERS_MAX_RENDER, java.time.Instant.now());
     }
 
     /**
-     * Pure-function render of the active-workers block so the format
-     * can be unit-tested without spinning up the engine bean. Returns
-     * {@code null} when there are no active (non-CLOSED) children to
-     * surface — keeps the prompt clean when Arthur is doing direct
-     * work.
+     * Render active-workers from the persisted {@code workerLinks}
+     * snapshot — the new canonical view (set by
+     * {@link #handleDelegate}, refreshed by
+     * {@link #reconcileWorkerLinksFromInbox}, removed on terminal
+     * events). Equivalent format to
+     * {@link #renderActiveWorkersBlock(List, int, java.time.Instant)}
+     * so the LLM sees no shape difference between the two paths.
+     */
+    static @Nullable String renderActiveWorkersBlockFromLinks(
+            @Nullable List<de.mhus.vance.shared.eddie.WorkerLinkSnapshot> links,
+            int maxRender,
+            java.time.Instant now) {
+        if (links == null || links.isEmpty()) return null;
+        var visible = links.stream()
+                .filter(l -> l.getWorkerStatus() != ThinkProcessStatus.CLOSED)
+                .sorted((a, b) -> {
+                    java.time.Instant ai = a.getLastSeen();
+                    java.time.Instant bi = b.getLastSeen();
+                    if (ai == null && bi == null) return 0;
+                    if (ai == null) return 1;
+                    if (bi == null) return -1;
+                    return bi.compareTo(ai);
+                })
+                .limit(maxRender)
+                .toList();
+        if (visible.isEmpty()) return null;
+        StringBuilder sb = new StringBuilder();
+        sb.append("## Active workers\n\n");
+        sb.append("Workers you have spawned that have not closed yet. Use this "
+                + "to ground RELAY / process_steer / process_stop targets and to "
+                + "decide whether to spawn another one — never claim a worker has "
+                + "finished if it still appears here.\n\n");
+        for (var l : visible) {
+            String name = l.getWorkerProcessName() == null
+                    || l.getWorkerProcessName().isBlank()
+                    ? l.getWorkerProcessId() : l.getWorkerProcessName();
+            sb.append("- ").append(name);
+            sb.append(" (status=").append(l.getWorkerStatus() == null
+                    ? "running"
+                    : l.getWorkerStatus().name().toLowerCase(java.util.Locale.ROOT));
+            java.time.Instant updated = l.getLastSeen();
+            if (updated != null && now != null) {
+                long ageSec = Math.max(0, java.time.Duration.between(updated, now).getSeconds());
+                sb.append(", last activity ").append(formatAge(ageSec)).append(" ago");
+            }
+            sb.append(")\n");
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Legacy fallback: render active-workers from a Mongo scan over
+     * {@code thinkProcessService.findByParentProcessId}. Used for
+     * sessions that pre-date Arthur's workerLinks bookkeeping (no
+     * {@code workerLinks} entries on the chat-process). Pure function
+     * for unit-testability.
      */
     static @Nullable String renderActiveWorkersBlock(
             @Nullable List<ThinkProcessDocument> children,

@@ -46,7 +46,7 @@ public class InsightsInternalController {
         return SessionClientToolsDto.builder()
                 .sessionId(sessionId)
                 .bound(true)
-                .connectionId(e.connectionId())
+                .editorId(e.editorId())
                 .tools(List.copyOf(e.tools().values()))
                 .build();
     }

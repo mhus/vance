@@ -1,4 +1,5 @@
 import type { LiveEnvelope, PingData, PongData, WelcomeData } from '@vance/generated';
+import { setCurrentEditorId } from '../auth/jwtStorage';
 import { brainBaseUrl } from '../rest/restClient';
 import {
   WebSocketClosedError,
@@ -130,6 +131,12 @@ export class BrainWebSocket {
         if (settled) return;
         settled = true;
         instance.welcome = data;
+        // Expose the per-connection editorId in the module-level
+        // identity slot so REST writes (brainSendRaw, brainFetch) can
+        // forward it as the X-Editor-Id header — without this the brain
+        // can't distinguish "I (the writer) just saved" from "someone
+        // else saved", and the writer's tab sees its own banner.
+        setCurrentEditorId(data.editorId);
         // Brain expects client-driven heartbeat pings (see vance-foot's
         // ConnectionService.startKeepAlive). Without these the server's
         // session bookkeeping treats the connection as idle and may
@@ -388,6 +395,10 @@ export class BrainWebSocket {
   private readonly handleClose = (event: CloseEvent): void => {
     this.isClosed = true;
     this.stopKeepAlive();
+    // The editorId is socket-scoped; clear it so a stale value isn't
+    // accidentally attached to REST writes after disconnect. The next
+    // welcome on a fresh socket sets a new one.
+    setCurrentEditorId(null);
     for (const [id, pending] of this.pending) {
       pending.reject(new WebSocketClosedError(
         `WebSocket closed (code ${event.code}) — request '${pending.type}' (${id}) abandoned`));

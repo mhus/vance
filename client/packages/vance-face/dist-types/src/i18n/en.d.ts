@@ -301,6 +301,12 @@ declare const _default: {
     documents: {
         pageTitle: string;
         breadcrumbRoot: string;
+        externallyChanged: {
+            upserted: string;
+            upsertedTooltip: string;
+            deleted: string;
+            deletedTooltip: string;
+        };
         followUp: {
             acceptHint: string;
         };

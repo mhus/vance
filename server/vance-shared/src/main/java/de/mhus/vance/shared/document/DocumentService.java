@@ -4,6 +4,7 @@ import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.storage.StorageService;
 import jakarta.annotation.PreDestroy;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -823,18 +824,60 @@ public class DocumentService {
             String id,
             InputStream content,
             @Nullable String newMimeType) {
+        return replaceContent(id, content, newMimeType, EDITOR_ID_TOOL);
+    }
+
+    /**
+     * Same as {@link #replaceContent(String, InputStream, String)} but with
+     * an optional {@code editorId} — the identity of the editor instance
+     * that initiated the write (typically the REST {@code X-Editor-Id}
+     * header). Forwarded into the live-broadcast event so the writer's own
+     * WebSocket can be skipped during local fan-out.
+     */
+    public DocumentDocument replaceContent(
+            String id,
+            InputStream content,
+            @Nullable String newMimeType,
+            @Nullable String editorId) {
         DocumentDocument doc = repository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Unknown document id='" + id + "'"));
+
+        // Buffer the new body so we can short-circuit no-op writes. The
+        // editor's auto-save in Cortex fires on bare clicks too, sending
+        // a PUT with byte-identical content; without this gate every
+        // click would spin a fresh storage blob, an archive (if eligible),
+        // a Mongo save, and a documents.changed broadcast. Costs one heap
+        // allocation per save — same memory profile as the streamed path,
+        // because the streaming-store layer reads the stream into a
+        // ByteArrayOutputStream further down anyway when gzip is in play.
+        byte[] newBytes;
+        try {
+            newBytes = content.readAllBytes();
+        } catch (IOException e) {
+            throw new IllegalStateException(
+                    "Failed to buffer new content for id='" + id + "'", e);
+        }
+
+        boolean mimeChanged = newMimeType != null
+                && !newMimeType.isBlank()
+                && !newMimeType.equals(doc.getMimeType());
+        boolean contentChanged = isContentDifferent(doc, newBytes);
+        if (!mimeChanged && !contentChanged) {
+            log.debug("Skipping no-op content replace tenantId='{}' projectId='{}' path='{}' id='{}' size={}",
+                    doc.getTenantId(), doc.getProjectId(), doc.getPath(), id, newBytes.length);
+            return doc;
+        }
+
         if (doc.getLineageId() == null || doc.getLineageId().isBlank()) {
             doc.setLineageId(java.util.UUID.randomUUID().toString());
         }
-        if (newMimeType != null && !newMimeType.isBlank()) {
+        if (mimeChanged) {
             doc.setMimeType(newMimeType);
         }
 
         boolean archived = false;
-        if (shouldArchiveOnSave(doc)) {
+        if (contentChanged && shouldArchiveOnSave(doc)) {
             try {
                 archiveService.archiveCurrent(doc);
                 doc.setLastArchivedAt(Instant.now());
@@ -847,7 +890,7 @@ public class DocumentService {
         String oldStorageId = doc.getStorageId();
 
         ContentWriteResult write = streamingStoreContent(
-                doc.getTenantId(), doc.getPath(), content);
+                doc.getTenantId(), doc.getPath(), new ByteArrayInputStream(newBytes));
         doc.setStorageId(write.storageId());
         doc.setCompressed(write.compressed());
         doc.setSize(write.originalSize());
@@ -857,15 +900,36 @@ public class DocumentService {
             deleteStorageBlobQuietly(oldStorageId, id);
         }
 
-        doc.setSummaryDirty(true);
+        if (contentChanged) {
+            doc.setSummaryDirty(true);
+            doc.setRagDirty(isRagEligible(doc));
+        }
         applyHeader(doc);
-        doc.setRagDirty(isRagEligible(doc));
 
         DocumentDocument saved = repository.save(doc);
         log.info("Replaced content tenantId='{}' projectId='{}' path='{}' id='{}' size={} compressed={}",
                 saved.getTenantId(), saved.getProjectId(), saved.getPath(),
                 saved.getId(), saved.getSize(), saved.isCompressed());
-        return publishUpserted(saved);
+        return publishUpserted(saved, contentChanged, editorId);
+    }
+
+    /**
+     * Cheap byte-equality check used to short-circuit no-op writes in
+     * {@link #replaceContent}. Falls back to "changed" (returns {@code true})
+     * on any read failure — the safe direction is to proceed with the
+     * write rather than silently drop a real edit.
+     */
+    private boolean isContentDifferent(DocumentDocument doc, byte[] newBytes) {
+        if (doc.getSize() != newBytes.length) return true;
+        try (InputStream existing = loadContent(doc);
+                ByteArrayOutputStream sink = new ByteArrayOutputStream(newBytes.length)) {
+            existing.transferTo(sink);
+            return !java.util.Arrays.equals(sink.toByteArray(), newBytes);
+        } catch (IOException | RuntimeException e) {
+            log.debug("isContentDifferent: read failed for id='{}', treating as changed: {}",
+                    doc.getId(), e.toString());
+            return true;
+        }
     }
 
     /**
@@ -1310,6 +1374,28 @@ public class DocumentService {
             @Nullable Boolean newSummaryDirty,
             @Nullable Boolean newRagEnabled,
             @Nullable String newMimeType) {
+        return update(id, newTitle, newTags, newInlineText, newPath,
+                newAutoSummary, newSummaryDirty, newRagEnabled, newMimeType,
+                EDITOR_ID_TOOL);
+    }
+
+    /**
+     * Overload that also accepts the writer's {@code editorId} — typically
+     * the REST {@code X-Editor-Id} header. Forwarded into the live-broadcast
+     * event so the writer's own WebSocket is skipped during local fan-out;
+     * see {@link DocumentLiveChangedEvent}.
+     */
+    public DocumentDocument update(
+            String id,
+            @Nullable String newTitle,
+            @Nullable List<String> newTags,
+            @Nullable String newInlineText,
+            @Nullable String newPath,
+            @Nullable Boolean newAutoSummary,
+            @Nullable Boolean newSummaryDirty,
+            @Nullable Boolean newRagEnabled,
+            @Nullable String newMimeType,
+            @Nullable String editorId) {
 
         DocumentDocument doc = repository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown document id='" + id + "'"));
@@ -1335,10 +1421,18 @@ public class DocumentService {
             doc.setMimeType(newMimeType);
         }
 
+        // Tracked across the branches below and consulted at the bottom
+        // when deciding whether to emit a DocumentLiveChangedEvent. Live
+        // subscribers only care about body / path movement — metadata
+        // edits (title/tags/mime) do not warrant a "document changed"
+        // banner in the editor.
+        boolean contentChanged = false;
+        boolean pathChanged = false;
+
         if (newInlineText != null) {
             byte[] bytes = newInlineText.getBytes(StandardCharsets.UTF_8);
             String currentContent = readAsString(doc);
-            boolean contentChanged = !newInlineText.equals(currentContent);
+            contentChanged = !newInlineText.equals(currentContent);
 
             // Archive the *current* version before overwriting — but only
             // when (a) the content is actually changing, (b) archiving is
@@ -1408,6 +1502,7 @@ public class DocumentService {
                 }
                 doc.setPath(normalized);
                 doc.setName(extractName(normalized));
+                pathChanged = true;
             }
         }
 
@@ -1423,7 +1518,7 @@ public class DocumentService {
         log.info("Updated document tenantId='{}' projectId='{}' id='{}' fields={}",
                 saved.getTenantId(), saved.getProjectId(), saved.getId(),
                 describeChanges(newTitle, newTags, newInlineText, newPath, newMimeType));
-        return publishUpserted(saved);
+        return publishUpserted(saved, contentChanged || pathChanged, editorId);
     }
 
     /**
@@ -1933,6 +2028,17 @@ public class DocumentService {
      * inside the same project.
      */
     public void delete(String id) {
+        delete(id, EDITOR_ID_TOOL);
+    }
+
+    /**
+     * Same as {@link #delete(String)} but with the writer's
+     * {@code editorId} — typically the REST {@code X-Editor-Id} header.
+     * Forwarded into the live-broadcast event so the deleter's own
+     * WebSocket can be filtered out of the {@code documents.changed}
+     * fan-out (no banner on the tab that just performed the delete).
+     */
+    public void delete(String id, @Nullable String editorId) {
         repository.findById(id).ifPresent(doc -> {
             String sid = doc.getStorageId();
             if (sid != null) {
@@ -1955,7 +2061,7 @@ public class DocumentService {
                         id, doc.getLineageId(), e);
             }
             log.info("Deleted document id='{}' path='{}'", id, doc.getPath());
-            publishDeleted(doc);
+            publishDeleted(doc, editorId);
         });
     }
 
@@ -2004,6 +2110,16 @@ public class DocumentService {
      * @throws IllegalArgumentException if the id is unknown.
      */
     public DocumentDocument trash(String id) {
+        return trash(id, EDITOR_ID_TOOL);
+    }
+
+    /**
+     * Same as {@link #trash(String)} but with the writer's
+     * {@code editorId} — forwarded into the synthetic
+     * {@code DocumentLiveChangedEvent.DELETED} event so the live-broadcast
+     * layer can skip the deleter's own WebSocket.
+     */
+    public DocumentDocument trash(String id, @Nullable String editorId) {
         DocumentDocument doc = repository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown document id='" + id + "'"));
         if (isTrash(doc.getPath())) {
@@ -2035,7 +2151,8 @@ public class DocumentService {
         // (e.g. UrsaHookDocumentListener) need a Deleted event for it.
         // We synthesise one with the original path; the trash row itself
         // lives under _bin/… and is filtered out by isEventPublishable.
-        publishDeleted(originalPath, doc.getTenantId(), doc.getProjectId(), saved.getId());
+        publishDeleted(originalPath, doc.getTenantId(), doc.getProjectId(), saved.getId(),
+                editorId);
         return saved;
     }
 
@@ -2434,6 +2551,18 @@ public class DocumentService {
     static final String EVENT_PUBLISH_EXCLUDE_LOGS_PREFIX = "_vance/logs/";
 
     /**
+     * Path prefixes that never fan out as {@link DocumentLiveChangedEvent}.
+     * Higher volume than the narrow cache event and zero user-facing
+     * subscribers expected on these paths. Anything not on this list IS
+     * eligible — including {@code documents/...} and {@code _vance/...}.
+     */
+    static final java.util.List<String> LIVE_EVENT_EXCLUDE_PREFIXES = java.util.List.of(
+            EVENT_PUBLISH_EXCLUDE_LOGS_PREFIX,
+            "_bin/",
+            "_slart/",
+            "_chatbox/");
+
+    /**
      * Decides whether a document path should fan out as a
      * {@link DocumentChangedEvent}. Visible for tests.
      */
@@ -2443,26 +2572,88 @@ public class DocumentService {
         return !path.startsWith(EVENT_PUBLISH_EXCLUDE_LOGS_PREFIX);
     }
 
+    /**
+     * Decides whether a path should fan out as a
+     * {@link DocumentLiveChangedEvent} (live-WS push). Wider than
+     * {@link #isEventPublishable}: includes everything not on the
+     * {@link #LIVE_EVENT_EXCLUDE_PREFIXES} noise list. Visible for tests.
+     */
+    static boolean isLiveEventPublishable(@Nullable String path) {
+        if (path == null) return false;
+        for (String prefix : LIVE_EVENT_EXCLUDE_PREFIXES) {
+            if (path.startsWith(prefix)) return false;
+        }
+        return true;
+    }
+
+    /**
+     * Sentinel editor identity attached to writes that originate
+     * server-side — LLM-invoked tools, scripts, Slartibartfast,
+     * schedulers, kit installers, restore-from-trash. Distinct from any
+     * real client editorId (those are random UUIDs from the WS handshake),
+     * so the live-broadcast layer never accidentally suppresses a
+     * legitimate viewer, while logs and the wire-payload stay informative
+     * about the origin of the write.
+     */
+    public static final String EDITOR_ID_TOOL = "_tool";
+
+    /**
+     * Default overload — assumes the write produced a real change worth
+     * a live broadcast (true for create, content-replace, restore-from-trash:
+     * cases where the body/storage moved) and uses the
+     * {@link #EDITOR_ID_TOOL} sentinel as the writer identity. Caller paths
+     * that have a real editorId (REST writes with X-Editor-Id) must use
+     * {@link #publishUpserted(DocumentDocument, boolean, String)} so the
+     * writer's own connection is filtered out of the local fan-out.
+     */
     private DocumentDocument publishUpserted(DocumentDocument saved) {
+        return publishUpserted(saved, true, EDITOR_ID_TOOL);
+    }
+
+    private DocumentDocument publishUpserted(DocumentDocument saved, boolean contentChanged) {
+        return publishUpserted(saved, contentChanged, EDITOR_ID_TOOL);
+    }
+
+    private DocumentDocument publishUpserted(DocumentDocument saved, boolean contentChanged,
+            @Nullable String editorId) {
         ApplicationEventPublisher publisher = this.eventPublisher;
         if (publisher == null) return saved;
-        if (!isEventPublishable(saved.getPath())) return saved;
-        try {
-            publisher.publishEvent(new DocumentChangedEvent.Upserted(
-                    saved.getTenantId(),
-                    saved.getProjectId(),
-                    saved.getPath(),
-                    saved.getId()));
-        } catch (RuntimeException ex) {
-            log.warn("DocumentService: publish Upserted failed for '{}/{}/{}': {}",
-                    saved.getTenantId(), saved.getProjectId(), saved.getPath(),
-                    ex.toString());
+        log.trace("publishUpserted tenantId='{}' projectId='{}' path='{}' contentChanged={} liveEligible={}",
+                saved.getTenantId(), saved.getProjectId(), saved.getPath(),
+                contentChanged, isLiveEventPublishable(saved.getPath()));
+        if (isEventPublishable(saved.getPath())) {
+            try {
+                publisher.publishEvent(new DocumentChangedEvent.Upserted(
+                        saved.getTenantId(),
+                        saved.getProjectId(),
+                        saved.getPath(),
+                        saved.getId()));
+            } catch (RuntimeException ex) {
+                log.warn("DocumentService: publish Upserted failed for '{}/{}/{}': {}",
+                        saved.getTenantId(), saved.getProjectId(), saved.getPath(),
+                        ex.toString());
+            }
+        }
+        if (contentChanged && isLiveEventPublishable(saved.getPath())) {
+            try {
+                publisher.publishEvent(new DocumentLiveChangedEvent(
+                        saved.getTenantId(),
+                        saved.getProjectId(),
+                        saved.getPath(),
+                        DocumentLiveChangedEvent.Kind.UPSERTED,
+                        editorId));
+            } catch (RuntimeException ex) {
+                log.warn("DocumentService: publish LiveUpserted failed for '{}/{}/{}': {}",
+                        saved.getTenantId(), saved.getProjectId(), saved.getPath(),
+                        ex.toString());
+            }
         }
         return saved;
     }
 
-    private void publishDeleted(DocumentDocument doc) {
-        publishDeleted(doc.getPath(), doc.getTenantId(), doc.getProjectId(), doc.getId());
+    private void publishDeleted(DocumentDocument doc, @Nullable String editorId) {
+        publishDeleted(doc.getPath(), doc.getTenantId(), doc.getProjectId(), doc.getId(),
+                editorId);
     }
 
     /**
@@ -2472,16 +2663,29 @@ public class DocumentService {
      * original path need a Deleted event for it.
      */
     private void publishDeleted(String path, String tenantId, String projectId,
-                                @Nullable String documentId) {
+                                @Nullable String documentId,
+                                @Nullable String editorId) {
         ApplicationEventPublisher publisher = this.eventPublisher;
         if (publisher == null) return;
-        if (!isEventPublishable(path)) return;
-        try {
-            publisher.publishEvent(new DocumentChangedEvent.Deleted(
-                    tenantId, projectId, path, documentId));
-        } catch (RuntimeException ex) {
-            log.warn("DocumentService: publish Deleted failed for '{}/{}/{}': {}",
-                    tenantId, projectId, path, ex.toString());
+        if (isEventPublishable(path)) {
+            try {
+                publisher.publishEvent(new DocumentChangedEvent.Deleted(
+                        tenantId, projectId, path, documentId));
+            } catch (RuntimeException ex) {
+                log.warn("DocumentService: publish Deleted failed for '{}/{}/{}': {}",
+                        tenantId, projectId, path, ex.toString());
+            }
+        }
+        if (isLiveEventPublishable(path)) {
+            try {
+                publisher.publishEvent(new DocumentLiveChangedEvent(
+                        tenantId, projectId, path,
+                        DocumentLiveChangedEvent.Kind.DELETED,
+                        editorId));
+            } catch (RuntimeException ex) {
+                log.warn("DocumentService: publish LiveDeleted failed for '{}/{}/{}': {}",
+                        tenantId, projectId, path, ex.toString());
+            }
         }
     }
 }

@@ -130,6 +130,7 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
                 .userId(ctx.getUserId())
                 .displayName(ctx.getDisplayName())
                 .tenantId(ctx.getTenantId())
+                .editorId(ctx.getEditorId())
                 .server(ServerInfo.builder()
                         .version(properties.getServerVersion())
                         .protocolVersion(properties.getProtocolVersion())
@@ -164,7 +165,7 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
     public void dispatch(WebSocketSession wsSession, ConnectionContext ctx, WebSocketEnvelope envelope)
             throws Exception {
         if (ctx.hasSession()
-                && !sessionService.heartbeat(ctx.getSessionId(), ctx.getConnectionId())) {
+                && !sessionService.heartbeat(ctx.getSessionId(), ctx.getEditorId())) {
             // Another pod took the session over, or it was closed. Drop this connection.
             wsSession.close(CloseStatus.POLICY_VIOLATION.withReason("Session no longer bound"));
             return;
@@ -216,7 +217,7 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
                 }
             }
         });
-        executionRegistry.removeByFootClient(ctx.getConnectionId());
+        executionRegistry.removeByFootClient(ctx.getEditorId());
         scriptExecutionWsRegistry.unregisterAllFor(wsSession);
         if (ctx.hasSession()) {
             String sessionId = ctx.getSessionId();
@@ -227,7 +228,7 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
             clientToolRegistry.unregister(sessionId);
             markClientToolsUnavailable(ctx.getTenantId(), sessionId, clientTools);
             connectionRegistry.unregister(sessionId);
-            sessionService.unbind(sessionId, ctx.getConnectionId());
+            sessionService.unbind(sessionId, ctx.getEditorId());
             // Drive the per-session onDisconnect policy AFTER the connection
             // bookkeeping has been cleared. The lifecycle service may
             // suspend / close the session; engines on the lane finish at

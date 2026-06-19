@@ -314,23 +314,23 @@ public class SessionService {
      *         the session is closed/archived, missing, or held by another
      *         connection whose heartbeat is still fresh.
      */
-    public boolean tryBind(String sessionId, String connectionId) {
+    public boolean tryBind(String sessionId, String editorId) {
         Instant now = Instant.now();
         Instant staleBefore = now.minus(bindStaleAfter);
         Criteria base = Criteria.where(F_SESSION_ID).is(sessionId)
                 .and(F_STATUS).nin(SessionStatus.CLOSED, SessionStatus.ARCHIVED);
         Criteria takeoverPredicate = new Criteria().orOperator(
                 Criteria.where(F_BOUND_CONNECTION).isNull(),
-                Criteria.where(F_BOUND_CONNECTION).is(connectionId),
+                Criteria.where(F_BOUND_CONNECTION).is(editorId),
                 Criteria.where(F_LAST_ACTIVITY).lt(staleBefore));
         Query query = new Query(new Criteria().andOperator(base, takeoverPredicate));
         Update update = new Update()
-                .set(F_BOUND_CONNECTION, connectionId)
+                .set(F_BOUND_CONNECTION, editorId)
                 .set(F_LAST_ACTIVITY, now);
         UpdateResult result = mongoTemplate.updateFirst(query, update, SessionDocument.class);
         boolean bound = result.getModifiedCount() == 1;
         if (bound) {
-            log.debug("Bound session '{}' to connection '{}'", sessionId, connectionId);
+            log.debug("Bound session '{}' to editor '{}'", sessionId, editorId);
         } else {
             log.debug("Bind rejected for session '{}' — no matching non-CLOSED/-ARCHIVED record with stale or free bind",
                     sessionId);
@@ -374,15 +374,15 @@ public class SessionService {
      * Releases the connection lock if this caller still owns it. Safe to call
      * on sessions that were already unbound — it just does nothing.
      */
-    public void unbind(String sessionId, String connectionId) {
+    public void unbind(String sessionId, String editorId) {
         Query query = new Query(Criteria.where(F_SESSION_ID).is(sessionId)
-                .and(F_BOUND_CONNECTION).is(connectionId));
+                .and(F_BOUND_CONNECTION).is(editorId));
         Update update = new Update()
                 .set(F_BOUND_CONNECTION, null)
                 .set(F_LAST_ACTIVITY, Instant.now());
         UpdateResult result = mongoTemplate.updateFirst(query, update, SessionDocument.class);
         if (result.getModifiedCount() == 1) {
-            log.debug("Unbound session '{}' from connection '{}'", sessionId, connectionId);
+            log.debug("Unbound session '{}' from editor '{}'", sessionId, editorId);
         }
     }
 
@@ -449,9 +449,9 @@ public class SessionService {
      * been lost (session closed, taken over, unbound) — the caller should
      * then drop the connection.
      */
-    public boolean heartbeat(String sessionId, String connectionId) {
+    public boolean heartbeat(String sessionId, String editorId) {
         Query query = new Query(Criteria.where(F_SESSION_ID).is(sessionId)
-                .and(F_BOUND_CONNECTION).is(connectionId));
+                .and(F_BOUND_CONNECTION).is(editorId));
         Update update = new Update().set(F_LAST_ACTIVITY, Instant.now());
         UpdateResult result = mongoTemplate.updateFirst(query, update, SessionDocument.class);
         return result.getModifiedCount() == 1;

@@ -172,8 +172,8 @@ public class InternalChatHandshakeInterceptor implements HandshakeInterceptor {
                 UUID.randomUUID().toString(),
                 clientIp);
         attributes.put(VanceHandshakeInterceptor.ATTR_CONNECTION, ctx);
-        log.debug("Internal chat handshake ok: user='{}' tenant='{}' profile={} clientName='{}' connectionId='{}'",
-                forwardedUser, forwardedTenant, profile, clientName, ctx.getConnectionId());
+        log.debug("Internal chat handshake ok: user='{}' tenant='{}' profile={} clientName='{}' editorId='{}'",
+                forwardedUser, forwardedTenant, profile, clientName, ctx.getEditorId());
         return true;
     }
 

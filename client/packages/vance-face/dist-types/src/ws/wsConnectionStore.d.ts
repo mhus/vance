@@ -45,6 +45,32 @@ export declare function subscribeDocument(path: string): Promise<void>;
  */
 export declare function unsubscribeDocument(path: string): Promise<void>;
 /**
+ * Register a callback for the {@code documents.changed} frame of the
+ * given path. Returns an unsubscribe function. Editors use this to learn
+ * when "their" document was written or deleted on any pod in the
+ * cluster — typically called from an editor's {@code onMounted} hook
+ * once it knows which path it is showing, paired with the
+ * {@link subscribeDocument} call (presence subscribe implies the server
+ * fires changed-events to this connection too).
+ *
+ * <p>Handlers receive the wire {@code kind} string
+ * ({@code "upserted"} / {@code "deleted"}).
+ *
+ * @example
+ * onMounted(() => {
+ *   void subscribeDocument(currentPath);
+ *   stopChangedHandler = onDocumentChanged(currentPath, (kind) => {
+ *     if (kind === 'deleted') showDeletedBanner();
+ *     else markStale();
+ *   });
+ * });
+ * onBeforeUnmount(() => {
+ *   stopChangedHandler?.();
+ *   void unsubscribeDocument(currentPath);
+ * });
+ */
+export declare function onDocumentChanged(path: string, handler: (kind: string) => void): () => void;
+/**
  * Inform the store that the server-side binding is already in place
  * (e.g. after a {@code session-bootstrap} that creates + binds in one
  * roundtrip). Updates the store state without sending another frame.

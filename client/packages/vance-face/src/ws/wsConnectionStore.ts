@@ -6,6 +6,7 @@ import {
   setActiveSessionId,
 } from '@vance/shared';
 import type {
+  DocumentChangedNotification,
   DocumentPresenceNotification,
   DocumentSubscribeRequest,
   DocumentViewer,
@@ -96,6 +97,16 @@ const documentViewers = reactive(new Map<string, DocumentViewer[]>());
 
 /** Listeners for the documents-channel presence push. */
 let documentsUnsubscribe: (() => void) | null = null;
+
+/**
+ * Per-path callback registrations for the {@code documents.changed}
+ * frame ({@link onDocumentChanged}). The store dispatches the wire
+ * event to every handler registered under the affected path; nothing
+ * fires when nobody is listening. Cleared on socket-swap together with
+ * the listener — the path-set on the *server* is re-established by the
+ * subscribe replay, so handlers stay alive across reconnects.
+ */
+const documentChangedListeners = new Map<string, Set<(kind: string) => void>>();
 
 let releaseTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -349,9 +360,52 @@ export async function unsubscribeDocument(path: string): Promise<void> {
   }
 }
 
+/**
+ * Register a callback for the {@code documents.changed} frame of the
+ * given path. Returns an unsubscribe function. Editors use this to learn
+ * when "their" document was written or deleted on any pod in the
+ * cluster — typically called from an editor's {@code onMounted} hook
+ * once it knows which path it is showing, paired with the
+ * {@link subscribeDocument} call (presence subscribe implies the server
+ * fires changed-events to this connection too).
+ *
+ * <p>Handlers receive the wire {@code kind} string
+ * ({@code "upserted"} / {@code "deleted"}).
+ *
+ * @example
+ * onMounted(() => {
+ *   void subscribeDocument(currentPath);
+ *   stopChangedHandler = onDocumentChanged(currentPath, (kind) => {
+ *     if (kind === 'deleted') showDeletedBanner();
+ *     else markStale();
+ *   });
+ * });
+ * onBeforeUnmount(() => {
+ *   stopChangedHandler?.();
+ *   void unsubscribeDocument(currentPath);
+ * });
+ */
+export function onDocumentChanged(
+  path: string,
+  handler: (kind: string) => void,
+): () => void {
+  let set = documentChangedListeners.get(path);
+  if (!set) {
+    set = new Set();
+    documentChangedListeners.set(path, set);
+  }
+  set.add(handler);
+  return () => {
+    const current = documentChangedListeners.get(path);
+    if (!current) return;
+    current.delete(handler);
+    if (current.size === 0) documentChangedListeners.delete(path);
+  };
+}
+
 function attachDocumentsListener(sock: BrainWebSocket): void {
   detachDocumentsListener();
-  documentsUnsubscribe = sock.onChannel<DocumentPresenceNotification>(
+  const presenceOff = sock.onChannel<DocumentPresenceNotification>(
     'documents',
     'presence',
     (data) => {
@@ -359,6 +413,27 @@ function attachDocumentsListener(sock: BrainWebSocket): void {
       documentViewers.set(data.path, data.viewers ?? []);
     },
   );
+  const changedOff = sock.onChannel<DocumentChangedNotification>(
+    'documents',
+    'changed',
+    (data) => {
+      if (!data || !data.path) return;
+      const listeners = documentChangedListeners.get(data.path);
+      if (!listeners || listeners.size === 0) return;
+      const kind = data.kind ?? 'upserted';
+      for (const handler of Array.from(listeners)) {
+        try {
+          handler(kind);
+        } catch (e) {
+          console.warn(`[wsStore] document-changed handler for '${data.path}' threw:`, e);
+        }
+      }
+    },
+  );
+  documentsUnsubscribe = () => {
+    try { presenceOff(); } catch { /* ignore */ }
+    try { changedOff(); } catch { /* ignore */ }
+  };
 }
 
 function detachDocumentsListener(): void {

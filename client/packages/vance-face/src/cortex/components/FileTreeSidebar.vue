@@ -15,6 +15,7 @@ const emit = defineEmits<{
   (e: 'delete-file', id: string): void;
   (e: 'move-file', payload: { id: string; targetFolder: string }): void;
   (e: 'upload-files', payload: { files: File[]; targetFolder: string }): void;
+  (e: 'reload'): void;
 }>();
 
 // Root pre-expanded so the project's top-level structure is visible
@@ -99,6 +100,12 @@ function revealActiveFile(): void {
         title="Reveal active file in tree"
         @click="revealActiveFile"
       >🎯</button>
+      <button
+        type="button"
+        class="text-xs px-1.5 py-0.5 rounded opacity-60 hover:opacity-100 hover:bg-base-200"
+        title="Reload document tree"
+        @click="emit('reload')"
+      >🔄</button>
     </div>
     <FileTreeNode
       :node="root"

@@ -63,7 +63,7 @@ class InternalChatHandshakeInterceptorTest {
         assertThat(ctx.getClientVersion()).isEqualTo("1.2.3");
         assertThat(ctx.getClientName()).isEqualTo("alice-laptop");
         assertThat(ctx.getPodIp()).isEqualTo("10.0.0.7");
-        assertThat(ctx.getConnectionId()).isNotBlank();
+        assertThat(ctx.getEditorId()).isNotBlank();
     }
 
     @Test

@@ -10,3 +10,9 @@ vance:
     enabled: true
     host: localhost
     port: 6379
+
+logging:
+  file:
+    name: vance-brain2.log
+  level:
+    de.mhus.vance: TRACE

@@ -78,7 +78,7 @@ public class ExecEventHandler implements WsHandler {
     }
 
     private void applyEvent(ConnectionContext ctx, ExecEvent.Kind kind, ExecEvent event) {
-        ExecutionOwner owner = new ExecutionOwner.Foot(ctx.getConnectionId());
+        ExecutionOwner owner = new ExecutionOwner.Foot(ctx.getEditorId());
         switch (kind) {
             case STARTED -> registry.register(new ExecutionRegistryEntry(
                     event.getExecutionId(),

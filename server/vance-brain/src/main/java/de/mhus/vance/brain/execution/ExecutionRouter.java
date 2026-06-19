@@ -99,7 +99,7 @@ public class ExecutionRouter {
 
     private Map<String, Object> invokeOnFoot(
             String clientId, String toolName, Map<String, Object> params) {
-        ClientToolRegistry.Entry entry = clientToolRegistry.entryByConnection(clientId)
+        ClientToolRegistry.Entry entry = clientToolRegistry.entryByEditor(clientId)
                 .orElseThrow(() -> new ToolException(
                         "Foot client '" + clientId + "' is not connected — "
                                 + "cannot route '" + toolName + "'"));
@@ -129,12 +129,12 @@ public class ExecutionRouter {
     /**
      * The {@link ClientToolRegistry} pending map keys correlations by
      * sessionId; we don't have a sessionId here in the router context,
-     * so use the connectionId as a stable label. Cleanup logic in the
+     * so use the editorId as a stable label. Cleanup logic in the
      * registry only uses sessionId to fail pendings on session unbind,
      * which is exactly the semantic we want.
      */
     private static String resolveSessionId(ClientToolRegistry.Entry entry) {
-        return entry.connectionId();
+        return entry.editorId();
     }
 
     private static Map<String, Object> renderTail(

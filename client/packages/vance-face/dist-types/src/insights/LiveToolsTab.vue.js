@@ -59,11 +59,11 @@ else if (__VLS_ctx.state.data.value) {
         ...{ class: (__VLS_ctx.state.data.value.bound ? 'badge-bound' : 'badge-unbound') },
     });
     (__VLS_ctx.state.data.value.bound ? 'bound' : 'not bound');
-    if (__VLS_ctx.state.data.value.connectionId) {
+    if (__VLS_ctx.state.data.value.editorId) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
             ...{ class: "font-mono" },
         });
-        (__VLS_ctx.state.data.value.connectionId);
+        (__VLS_ctx.state.data.value.editorId);
     }
     else {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({

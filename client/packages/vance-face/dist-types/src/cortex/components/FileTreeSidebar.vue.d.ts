@@ -14,6 +14,7 @@ declare const _default: import("vue").DefineComponent<Props, {}, {}, {}, {}, imp
         files: File[];
         targetFolder: string;
     }) => any;
+    reload: () => any;
 }, string, import("vue").PublicProps, Readonly<Props> & Readonly<{
     "onOpen-file"?: ((id: string) => any) | undefined;
     "onDelete-file"?: ((id: string) => any) | undefined;
@@ -25,6 +26,7 @@ declare const _default: import("vue").DefineComponent<Props, {}, {}, {}, {}, imp
         files: File[];
         targetFolder: string;
     }) => any) | undefined;
+    onReload?: (() => any) | undefined;
 }>, {}, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;
 export default _default;
 //# sourceMappingURL=FileTreeSidebar.vue.d.ts.map

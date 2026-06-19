@@ -42,8 +42,8 @@ function paramNames(schema: Record<string, unknown> | undefined): string[] {
           class="px-1.5 py-0.5 rounded"
           :class="state.data.value.bound ? 'badge-bound' : 'badge-unbound'"
         >{{ state.data.value.bound ? 'bound' : 'not bound' }}</span>
-        <span v-if="state.data.value.connectionId" class="font-mono">
-          conn: {{ state.data.value.connectionId }}
+        <span v-if="state.data.value.editorId" class="font-mono">
+          editor: {{ state.data.value.editorId }}
         </span>
         <span v-else class="opacity-60">no active connection</span>
       </div>

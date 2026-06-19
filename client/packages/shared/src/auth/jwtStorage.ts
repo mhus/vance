@@ -32,6 +32,25 @@ export function setActiveSessionId(sessionId: string | null): void {
 }
 
 /**
+ * Per-WebSocket-connection identity assigned by the server in the
+ * {@code welcome} frame. Kept in module-level state (not persisted) so
+ * REST writes can include it as the {@code X-Editor-Id} header — the
+ * brain's live-broadcast layer uses it to filter the writer's own
+ * connection out of {@code documents.changed} fan-out, preventing the
+ * "saw my own save as an external change" banner. The value is reset
+ * to {@code null} on disconnect; a reconnect produces a fresh value.
+ */
+let currentEditorId: string | null = null;
+
+export function getCurrentEditorId(): string | null {
+  return currentEditorId;
+}
+
+export function setCurrentEditorId(editorId: string | null): void {
+  currentEditorId = editorId;
+}
+
+/**
  * Migrate from a previous-era localStorage install. Removes the
  * legacy `vance.jwt`, `vance.tenantId`, `vance.username` entries that
  * the Web UI used before the cookie-based auth landed. Idempotent —

@@ -896,7 +896,7 @@ public class InsightsAdminController {
                 .map(e -> SessionClientToolsDto.builder()
                         .sessionId(sessionId)
                         .bound(true)
-                        .connectionId(e.connectionId())
+                        .editorId(e.editorId())
                         .tools(List.copyOf(e.tools().values()))
                         .build())
                 .orElseGet(() -> SessionClientToolsDto.builder()

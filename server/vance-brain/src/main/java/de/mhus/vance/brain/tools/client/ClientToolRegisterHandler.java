@@ -53,7 +53,7 @@ public class ClientToolRegisterHandler implements WsHandler {
         }
         registry.register(
                 ctx.getSessionId(),
-                ctx.getConnectionId(),
+                ctx.getEditorId(),
                 wsSession,
                 List.copyOf(request.getTools()));
         sender.sendReply(wsSession, envelope, MessageType.CLIENT_TOOL_REGISTER, null);

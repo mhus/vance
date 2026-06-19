@@ -31,5 +31,18 @@ public class WelcomeData {
 
     private String tenantId;
 
+    /**
+     * Per-connection identifier the server assigned at handshake time.
+     * Client surfaces it back to the server on REST writes via the
+     * {@code X-Editor-Id} header so the live-broadcast layer can filter
+     * the writer's own connection out of the {@code documents.changed}
+     * fan-out — no self-banner on the tab that triggered the save.
+     *
+     * <p>Stable for the lifetime of the WebSocket; a reconnect produces a
+     * fresh value (and a fresh banner-eligibility, which is what users
+     * expect: "I crashed, this is a new editor instance now").
+     */
+    private String editorId;
+
     private ServerInfo server;
 }

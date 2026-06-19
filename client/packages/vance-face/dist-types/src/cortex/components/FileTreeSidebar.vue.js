@@ -93,6 +93,14 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElement
     disabled: (!__VLS_ctx.activeFileId),
     title: "Reveal active file in tree",
 });
+__VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+    ...{ onClick: (...[$event]) => {
+            __VLS_ctx.emit('reload');
+        } },
+    type: "button",
+    ...{ class: "text-xs px-1.5 py-0.5 rounded opacity-60 hover:opacity-100 hover:bg-base-200" },
+    title: "Reload document tree",
+});
 /** @type {[typeof FileTreeNode, ]} */ ;
 // @ts-ignore
 const __VLS_0 = __VLS_asFunctionalComponent(FileTreeNode, new FileTreeNode({
@@ -154,6 +162,13 @@ var __VLS_2;
 /** @type {__VLS_StyleScopedClasses['enabled:hover:opacity-100']} */ ;
 /** @type {__VLS_StyleScopedClasses['enabled:hover:bg-base-200']} */ ;
 /** @type {__VLS_StyleScopedClasses['disabled:cursor-default']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-1.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-0.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['rounded']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['hover:opacity-100']} */ ;
+/** @type {__VLS_StyleScopedClasses['hover:bg-base-200']} */ ;
 var __VLS_dollars;
 const __VLS_self = (await import('vue')).defineComponent({
     setup() {

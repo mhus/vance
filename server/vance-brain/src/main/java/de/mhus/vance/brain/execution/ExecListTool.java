@@ -36,7 +36,7 @@ public class ExecListTool implements Tool {
                             "type", "string",
                             "description",
                                     "Restrict to a single owner: 'brain', or "
-                                            + "'foot:<connectionId>' for a specific "
+                                            + "'foot:<editorId>' for a specific "
                                             + "foot client.")));
 
     private final ExecutionRegistryService registry;
@@ -50,7 +50,7 @@ public class ExecListTool implements Tool {
     public String description() {
         return "List shell executions across brain and connected foot "
                 + "clients within the caller's tenant + project. Each "
-                + "entry carries owner ('brain' or 'foot:<connectionId>'), "
+                + "entry carries owner ('brain' or 'foot:<editorId>'), "
                 + "status, command, lastOutputAt, exitCode. Use exec_stat "
                 + "for details and exec_tail for output.";
     }

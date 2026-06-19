@@ -53,7 +53,7 @@ public class SessionUnbindHandler implements WsHandler {
             ConnectionContext ctx, WebSocketSession wsSession, WebSocketEnvelope envelope)
             throws IOException {
         String sessionId = ctx.getSessionId();
-        String connectionId = ctx.getConnectionId();
+        String editorId = ctx.getEditorId();
         if (sessionId == null) {
             // canExecute gates on hasSession, but be defensive.
             sender.sendError(wsSession, envelope, 409, "No session bound");
@@ -63,11 +63,11 @@ public class SessionUnbindHandler implements WsHandler {
                 new Resource.Session(ctx.getTenantId(),
                         ctx.getProjectId() == null ? "" : ctx.getProjectId(), sessionId),
                 Action.EXECUTE);
-        sessionService.unbind(sessionId, connectionId);
+        sessionService.unbind(sessionId, editorId);
         clientToolRegistry.unregister(sessionId);
         connectionRegistry.unregister(sessionId);
         ctx.unbindSession();
-        log.info("Session '{}' unbound from connection '{}'", sessionId, connectionId);
+        log.info("Session '{}' unbound from editor '{}'", sessionId, editorId);
         sender.sendReply(wsSession, envelope, MessageType.SESSION_UNBIND, null);
     }
 }

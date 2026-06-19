@@ -30,6 +30,7 @@ import type { FollowUpRequestDto, FollowUpResponseDto } from '@vance/generated';
 import type { FollowUpExtensionOptions } from '@/components';
 import { consumeDocumentDraft } from '@/platform';
 import DocumentPresenceStrip from '@/ws/DocumentPresenceStrip.vue';
+import { onDocumentChanged } from '@/ws/wsConnectionStore';
 import DocumentPreview from './DocumentPreview.vue';
 import DocumentIcon from './DocumentIcon.vue';
 import DocumentArchives from './DocumentArchives.vue';
@@ -549,6 +550,46 @@ watch(
     pushQueryParams({ documentId: id });
   },
 );
+
+/**
+ * External-change indicator for the document currently in the editor.
+ * Set by the {@code documents.changed} WS frame; cleared when the user
+ * reloads or when the path changes to a different document. The badge
+ * sits in the topbar next to the presence strip and the only action it
+ * exposes is "Reload" — auto-reload would clobber unsaved edits, so we
+ * stay explicit at v1.
+ */
+const externallyChangedKind = ref<string | null>(null);
+let externalChangeUnsubscribe: (() => void) | null = null;
+
+watch(
+  () => docsState.selected.value?.path ?? null,
+  (path) => {
+    externallyChangedKind.value = null;
+    if (externalChangeUnsubscribe) {
+      externalChangeUnsubscribe();
+      externalChangeUnsubscribe = null;
+    }
+    if (!path) return;
+    externalChangeUnsubscribe = onDocumentChanged(path, (kind) => {
+      externallyChangedKind.value = kind;
+    });
+  },
+  { immediate: true },
+);
+
+onBeforeUnmount(() => {
+  externalChangeUnsubscribe?.();
+  externalChangeUnsubscribe = null;
+});
+
+async function reloadAfterExternalChange(): Promise<void> {
+  const sel = docsState.selected.value;
+  externallyChangedKind.value = null;
+  if (!sel) return;
+  await docsState.loadOne(sel.id);
+  await fillEditor();
+}
 
 // True while the user is editing an _app.yaml manifest in the generic
 // document editor (typically reached via the per-row "edit as file"
@@ -2090,6 +2131,25 @@ const formatBytes = (n: number): string => {
          Only renders when a document is selected. The strip is empty
          (no DOM) when nobody else is on the path. ─── -->
     <template v-if="docsState.selected.value?.path" #topbar-extra>
+      <!-- External-change banner: appears when a peer (other tab,
+           other pod, another user) wrote the open document. Explicit
+           Reload — never auto, would destroy unsaved edits. -->
+      <button
+        v-if="externallyChangedKind"
+        type="button"
+        class="mr-3 inline-flex items-center gap-1.5 rounded-md
+               border border-warning/40 bg-warning/15 px-2 py-1
+               text-xs font-medium text-warning-content hover:bg-warning/25"
+        :title="externallyChangedKind === 'deleted'
+                ? $t('documents.externallyChanged.deletedTooltip')
+                : $t('documents.externallyChanged.upsertedTooltip')"
+        @click="reloadAfterExternalChange()"
+      >
+        <span aria-hidden="true">●</span>
+        {{ externallyChangedKind === 'deleted'
+           ? $t('documents.externallyChanged.deleted')
+           : $t('documents.externallyChanged.upserted') }}
+      </button>
       <DocumentPresenceStrip :path="docsState.selected.value.path" class="mr-2" />
     </template>
 

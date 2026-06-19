@@ -1,4 +1,4 @@
-import { getTenantId } from '../auth/jwtStorage';
+import { getCurrentEditorId, getTenantId } from '../auth/jwtStorage';
 import { getRestConfig, getStorage } from '../platform/index';
 import { StorageKeys } from '../storage/keys';
 
@@ -44,6 +44,19 @@ interface RestOptions {
   body?: unknown;
   /** Extra headers to merge in. */
   headers?: Record<string, string>;
+  /**
+   * Override / suppress the auto-attached {@code X-Editor-Id} header.
+   *
+   * - Default ({@code undefined}): read the current value from
+   *   {@link getCurrentEditorId} and attach if non-null. This covers
+   *   the common case — components don't need to thread the editor id
+   *   through their REST calls explicitly.
+   * - String: use this value verbatim (rarely needed; useful when a
+   *   pre-handshake bootstrap fires a write with a known id).
+   * - {@code false}: skip the header entirely (login/refresh flows
+   *   that run before any WebSocket exists).
+   */
+  editorId?: string | false;
 }
 
 /**
@@ -95,6 +108,16 @@ async function doFetch(url: string, method: string, options: RestOptions): Promi
   if (config.authMode === 'bearer' && options.authenticated !== false) {
     const token = getStorage().secureStore.get(StorageKeys.authAccessToken);
     if (token !== null) headers['Authorization'] = `Bearer ${token}`;
+  }
+  // X-Editor-Id: forwards the per-connection identity assigned by the
+  // brain in its `welcome` frame. Server-side documents.changed broadcast
+  // uses it to skip the writer's own WS during local fan-out — without
+  // the header the writer's tab sees its own save as an external change.
+  // Only set when we have an open socket; skip explicitly when caller
+  // opts out (some prefetch/login flows run before the socket is up).
+  if (options.editorId !== false) {
+    const editorId = options.editorId ?? getCurrentEditorId();
+    if (editorId) headers['X-Editor-Id'] = editorId;
   }
   let body: BodyInit | undefined;
   if (options.body !== undefined) {
@@ -274,6 +297,12 @@ export async function brainSendRaw<T>(
       const token = getStorage().secureStore.get(StorageKeys.authAccessToken);
       if (token !== null) headers['Authorization'] = `Bearer ${token}`;
     }
+    // Same X-Editor-Id contract as brainFetch — see doFetch above.
+    // brainSendRaw is the document-content save path in particular, so
+    // missing the header here is exactly the case the live-broadcast
+    // writer-skip needs to defend against.
+    const editorId = getCurrentEditorId();
+    if (editorId) headers['X-Editor-Id'] = editorId;
     return fetch(url, {
       method,
       headers,

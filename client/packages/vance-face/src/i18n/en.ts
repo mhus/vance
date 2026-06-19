@@ -337,6 +337,12 @@ export default {
   documents: {
     pageTitle: 'Documents',
     breadcrumbRoot: 'Documents',
+    externallyChanged: {
+      upserted: 'Changed externally — reload',
+      upsertedTooltip: 'Another tab or user just wrote this document. Reload to see the new contents.',
+      deleted: 'Deleted externally — reload',
+      deletedTooltip: 'This document was deleted on another tab or pod. Reload to refresh.',
+    },
     followUp: {
       acceptHint: '↹ Tab',
     },

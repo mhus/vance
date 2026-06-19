@@ -12,7 +12,7 @@ import org.springframework.web.socket.WebSocketSession;
  * <p>Created by {@link VanceHandshakeInterceptor} once JWT + profile +
  * client-version have been validated. At that point the identity (tenant /
  * user / displayName / profile / clientVersion / clientName) and the
- * {@code connectionId} used for atomic session-binds are fixed — they don't
+ * {@code editorId} used for atomic session-binds are fixed — they don't
  * change for the lifetime of the HTTP upgrade.
  *
  * <p>A session is <em>not</em> bound at handshake. It is explicitly created
@@ -37,7 +37,7 @@ public class ConnectionContext {
     private final String profile;
     private final String clientVersion;
     private final @Nullable String clientName;
-    private final String connectionId;
+    private final String editorId;
     private final String podIp;
 
     private volatile @Nullable WebSocketSession webSocketSession;

@@ -35,8 +35,8 @@ public class SessionClientToolsDto {
     /** {@code true} when the registry currently holds an entry for the session. */
     private boolean bound;
 
-    /** WebSocket connection id the client used at registration time. */
-    private @Nullable String connectionId;
+    /** WebSocket editor id the client used at registration time. */
+    private @Nullable String editorId;
 
     /** Tool specs the client pushed at register-time, in registration order. */
     private List<ToolSpec> tools;

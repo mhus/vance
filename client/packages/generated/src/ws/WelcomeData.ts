@@ -9,5 +9,6 @@ export interface WelcomeData {
   userId: string;
   displayName?: string;
   tenantId: string;
+  editorId: string;
   server: ServerInfo;
 }

@@ -29,7 +29,7 @@ public class ExecutionInsightsDto {
 
     /**
      * Owner-side label. {@code "brain"} for jobs run by the brain pod,
-     * {@code "foot:<connectionId>"} for jobs run on a foot client.
+     * {@code "foot:<editorId>"} for jobs run on a foot client.
      */
     private String owner;
 

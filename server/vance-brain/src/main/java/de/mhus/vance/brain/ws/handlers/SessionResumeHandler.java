@@ -101,7 +101,7 @@ public class SessionResumeHandler implements WsHandler {
         }
 
         boolean bound = sessionService.tryBind(
-                doc.getSessionId(), ctx.getConnectionId());
+                doc.getSessionId(), ctx.getEditorId());
         if (!bound) {
             sender.sendError(wsSession, envelope, 409,
                     "Session '" + doc.getSessionId() + "' is already bound to another connection");

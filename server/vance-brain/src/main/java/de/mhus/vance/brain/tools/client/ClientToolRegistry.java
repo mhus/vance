@@ -40,14 +40,14 @@ public class ClientToolRegistry {
     /** Overwrites any prior registration for {@code sessionId}. */
     public void register(
             String sessionId,
-            String connectionId,
+            String editorId,
             WebSocketSession wsSession,
             List<ToolSpec> tools) {
         Map<String, ToolSpec> byName = new java.util.LinkedHashMap<>();
         for (ToolSpec t : tools) {
             byName.put(t.getName(), t);
         }
-        bySession.put(sessionId, new Entry(connectionId, wsSession, Map.copyOf(byName)));
+        bySession.put(sessionId, new Entry(editorId, wsSession, Map.copyOf(byName)));
         log.info("ClientToolRegistry session='{}' registered {} tools: {}",
                 sessionId, byName.size(), byName.keySet());
     }
@@ -86,14 +86,14 @@ public class ClientToolRegistry {
     }
 
     /**
-     * Find the entry for a connectionId. Used by the cross-side execution
+     * Find the entry for an editorId. Used by the cross-side execution
      * registry to route {@code exec_kill}/{@code exec_stat}/{@code exec_tail}
      * to the foot client that owns a particular execution. Linear scan —
      * client count per pod is small.
      */
-    public Optional<Entry> entryByConnection(String connectionId) {
+    public Optional<Entry> entryByEditor(String editorId) {
         for (Entry e : bySession.values()) {
-            if (e.connectionId.equals(connectionId)) return Optional.of(e);
+            if (e.editorId.equals(editorId)) return Optional.of(e);
         }
         return Optional.empty();
     }
@@ -172,7 +172,7 @@ public class ClientToolRegistry {
 
     /** Per-session routing data. Package-private so the source can read it. */
     public record Entry(
-            String connectionId,
+            String editorId,
             WebSocketSession wsSession,
             Map<String, ToolSpec> tools) {}
 

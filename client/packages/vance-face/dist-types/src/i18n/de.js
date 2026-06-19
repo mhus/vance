@@ -307,6 +307,12 @@ export default {
     documents: {
         pageTitle: 'Dokumente',
         breadcrumbRoot: 'Dokumente',
+        externallyChanged: {
+            upserted: 'Extern geändert — Neu laden',
+            upsertedTooltip: 'Ein anderer Tab oder Nutzer hat dieses Dokument gerade geschrieben. Klick zum Neuladen.',
+            deleted: 'Extern gelöscht — Aktualisieren',
+            deletedTooltip: 'Dieses Dokument wurde von einem anderen Tab oder Pod gelöscht. Klick zum Aktualisieren.',
+        },
         followUp: {
             acceptHint: '↹ Tab',
         },

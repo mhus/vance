@@ -377,6 +377,24 @@ public final class MessageType {
      */
     public static final String DOCUMENT_PRESENCE = "presence";
 
+    /**
+     * Server → client: a document at {@code path} was written or deleted
+     * on some pod in the cluster. Payload:
+     * {@link DocumentChangedNotification} (path + kind). The frame is a
+     * pure invalidation signal — no body, no diff. Clients refetch via
+     * REST or take whatever editor-specific action they want (reload
+     * banner, soft-merge, ignore).
+     *
+     * <p>Sent only to WebSocket sessions that have a live
+     * {@link #DOCUMENT_SUBSCRIBE} on the affected path. Cross-pod
+     * fan-out runs through Redis pub/sub on the {@code documents.changed}
+     * topic — independent from the brain-internal cache-coherence
+     * dispatcher ({@code /internal/document/changed}), which only
+     * targets project-home pods and therefore cannot reach WS-subscribers
+     * on other pods.
+     */
+    public static final String DOCUMENT_CHANGED = "changed";
+
     private MessageType() {
     }
 }

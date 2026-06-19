@@ -316,12 +316,12 @@ public class SessionBootstrapHandler implements WsHandler {
                 .toList();
         for (SessionDocument candidate : candidates) {
             if (sessionService.tryBind(
-                    candidate.getSessionId(), ctx.getConnectionId())) {
+                    candidate.getSessionId(), ctx.getEditorId())) {
                 try {
                     projectManager.claimForLocalPod(
                             candidate.getTenantId(), candidate.getProjectId());
                 } catch (RuntimeException claimFailed) {
-                    sessionService.unbind(candidate.getSessionId(), ctx.getConnectionId());
+                    sessionService.unbind(candidate.getSessionId(), ctx.getEditorId());
                     throw claimFailed;
                 }
                 return Optional.of(candidate);
@@ -361,7 +361,7 @@ public class SessionBootstrapHandler implements WsHandler {
                 ctx.getClientVersion(),
                 ctx.getClientName());
         boolean bound = sessionService.tryBind(
-                fresh.getSessionId(), ctx.getConnectionId());
+                fresh.getSessionId(), ctx.getEditorId());
         if (!bound) {
             log.warn("Freshly created session '{}' failed to bind", fresh.getSessionId());
             sender.sendError(wsSession, envelope, 500,
@@ -396,7 +396,7 @@ public class SessionBootstrapHandler implements WsHandler {
         }
         projectManager.claimForLocalPod(doc.getTenantId(), doc.getProjectId());
         boolean bound = sessionService.tryBind(
-                doc.getSessionId(), ctx.getConnectionId());
+                doc.getSessionId(), ctx.getEditorId());
         if (!bound) {
             sender.sendError(wsSession, envelope, 409,
                     "Session '" + doc.getSessionId() + "' is already bound to another connection");

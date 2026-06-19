@@ -30,7 +30,7 @@ import org.springframework.web.socket.server.HandshakeInterceptor;
  * interceptor:
  * <ul>
  *   <li>reads the WebSocket-specific headers (client type / version),</li>
- *   <li>generates a fresh {@code connectionId} and records this pod's IP,</li>
+ *   <li>generates a fresh {@code editorId} and records this pod's IP,</li>
  *   <li>attaches a {@link ConnectionContext} (without a session) to the
  *       handshake attributes so the dispatcher can route frames against it.</li>
  * </ul>
@@ -123,9 +123,9 @@ public class VanceHandshakeInterceptor implements HandshakeInterceptor {
                 UUID.randomUUID().toString(),
                 locationService.getPodIp());
         attributes.put(ATTR_CONNECTION, ctx);
-        log.debug("Handshake ok: user='{}' tenant='{}' profile={} clientName='{}' connectionId='{}' podIp='{}'",
+        log.debug("Handshake ok: user='{}' tenant='{}' profile={} clientName='{}' editorId='{}' podIp='{}'",
                 claims.username(), claims.tenantId(), profile, clientName,
-                ctx.getConnectionId(), ctx.getPodIp());
+                ctx.getEditorId(), ctx.getPodIp());
         return true;
     }
 

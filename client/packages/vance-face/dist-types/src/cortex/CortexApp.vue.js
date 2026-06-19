@@ -3,6 +3,7 @@ import { EditorShell, VAlert, VANCE_LINK_HANDLER_KEY, VButton, VEmptyState, VInp
 import { brainFetch } from '@vance/shared';
 import { useTenantProjects } from '@composables/useTenantProjects';
 import DocumentPresenceStrip from '@/ws/DocumentPresenceStrip.vue';
+import { onDocumentChanged } from '@/ws/wsConnectionStore';
 import { useCortexStore } from './stores/cortexStore';
 import { CortexClientToolService } from './clientToolService';
 import FileTreeSidebar from './components/FileTreeSidebar.vue';
@@ -276,6 +277,39 @@ function onPopState() {
     }
 }
 const activeTab = computed(() => store.activeTab);
+/**
+ * External-change indicator for the currently-active document tab.
+ * Wired to the {@code documents.changed} WS frame via
+ * {@link onDocumentChanged}. We track only the active tab — when the
+ * user switches tabs the listener swaps. Other tabs' invalidations are
+ * not signalled in v1 (the user notices on switch since the next reload
+ * is a click away).
+ */
+const externallyChangedKind = ref(null);
+let externalChangeUnsubscribe = null;
+watch(() => activeTab.value?.path ?? null, (path) => {
+    externallyChangedKind.value = null;
+    if (externalChangeUnsubscribe) {
+        externalChangeUnsubscribe();
+        externalChangeUnsubscribe = null;
+    }
+    if (!path)
+        return;
+    externalChangeUnsubscribe = onDocumentChanged(path, (kind) => {
+        externallyChangedKind.value = kind;
+    });
+}, { immediate: true });
+onBeforeUnmount(() => {
+    externalChangeUnsubscribe?.();
+    externalChangeUnsubscribe = null;
+});
+async function reloadActiveTabAfterExternalChange() {
+    const tab = activeTab.value;
+    externallyChangedKind.value = null;
+    if (!tab)
+        return;
+    await store.reloadTab(tab.id);
+}
 const chatBoundDocumentPath = computed(() => {
     const id = chatBoundDocumentId.value;
     if (!id)
@@ -695,6 +729,28 @@ if (__VLS_ctx.sessionId) {
     __VLS_3.slots.default;
     {
         const { 'topbar-extra': __VLS_thisSlot } = __VLS_3.slots;
+        if (__VLS_ctx.externallyChangedKind && __VLS_ctx.activeTab?.path) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!(__VLS_ctx.sessionId))
+                            return;
+                        if (!(__VLS_ctx.externallyChangedKind && __VLS_ctx.activeTab?.path))
+                            return;
+                        __VLS_ctx.reloadActiveTabAfterExternalChange();
+                    } },
+                type: "button",
+                ...{ class: "\u006d\u0072\u002d\u0033\u0020\u0069\u006e\u006c\u0069\u006e\u0065\u002d\u0066\u006c\u0065\u0078\u0020\u0069\u0074\u0065\u006d\u0073\u002d\u0063\u0065\u006e\u0074\u0065\u0072\u0020\u0067\u0061\u0070\u002d\u0031\u002e\u0035\u0020\u0072\u006f\u0075\u006e\u0064\u0065\u0064\u002d\u006d\u0064\u000a\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0062\u006f\u0072\u0064\u0065\u0072\u0020\u0062\u006f\u0072\u0064\u0065\u0072\u002d\u0077\u0061\u0072\u006e\u0069\u006e\u0067\u002f\u0034\u0030\u0020\u0062\u0067\u002d\u0077\u0061\u0072\u006e\u0069\u006e\u0067\u002f\u0031\u0035\u0020\u0070\u0078\u002d\u0032\u0020\u0070\u0079\u002d\u0031\u000a\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0074\u0065\u0078\u0074\u002d\u0078\u0073\u0020\u0066\u006f\u006e\u0074\u002d\u006d\u0065\u0064\u0069\u0075\u006d\u0020\u0074\u0065\u0078\u0074\u002d\u0077\u0061\u0072\u006e\u0069\u006e\u0067\u002d\u0063\u006f\u006e\u0074\u0065\u006e\u0074\u0020\u0068\u006f\u0076\u0065\u0072\u003a\u0062\u0067\u002d\u0077\u0061\u0072\u006e\u0069\u006e\u0067\u002f\u0032\u0035" },
+                title: (__VLS_ctx.externallyChangedKind === 'deleted'
+                    ? __VLS_ctx.$t('documents.externallyChanged.deletedTooltip')
+                    : __VLS_ctx.$t('documents.externallyChanged.upsertedTooltip')),
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                'aria-hidden': "true",
+            });
+            (__VLS_ctx.externallyChangedKind === 'deleted'
+                ? __VLS_ctx.$t('documents.externallyChanged.deleted')
+                : __VLS_ctx.$t('documents.externallyChanged.upserted'));
+        }
         if (__VLS_ctx.activeTab?.path) {
             /** @type {[typeof DocumentPresenceStrip, ]} */ ;
             // @ts-ignore
@@ -762,6 +818,7 @@ if (__VLS_ctx.sessionId) {
                 ...{ 'onDeleteFile': {} },
                 ...{ 'onMoveFile': {} },
                 ...{ 'onUploadFiles': {} },
+                ...{ 'onReload': {} },
                 root: (__VLS_ctx.store.fileTree),
                 activeFileId: (__VLS_ctx.store.activeTabId),
             }));
@@ -770,6 +827,7 @@ if (__VLS_ctx.sessionId) {
                 ...{ 'onDeleteFile': {} },
                 ...{ 'onMoveFile': {} },
                 ...{ 'onUploadFiles': {} },
+                ...{ 'onReload': {} },
                 root: (__VLS_ctx.store.fileTree),
                 activeFileId: (__VLS_ctx.store.activeTabId),
             }, ...__VLS_functionalComponentArgsRest(__VLS_23));
@@ -788,24 +846,27 @@ if (__VLS_ctx.sessionId) {
             const __VLS_32 = {
                 onUploadFiles: (__VLS_ctx.onUploadFiles)
             };
+            const __VLS_33 = {
+                onReload: (() => __VLS_ctx.projectId && __VLS_ctx.store.loadList(__VLS_ctx.projectId))
+            };
             var __VLS_25;
         }
         else if (__VLS_ctx.bootError) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                 ...{ class: "p-3 text-sm" },
             });
-            const __VLS_33 = {}.VAlert;
+            const __VLS_34 = {}.VAlert;
             /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
             // @ts-ignore
-            const __VLS_34 = __VLS_asFunctionalComponent(__VLS_33, new __VLS_33({
+            const __VLS_35 = __VLS_asFunctionalComponent(__VLS_34, new __VLS_34({
                 variant: "error",
             }));
-            const __VLS_35 = __VLS_34({
+            const __VLS_36 = __VLS_35({
                 variant: "error",
-            }, ...__VLS_functionalComponentArgsRest(__VLS_34));
-            __VLS_36.slots.default;
+            }, ...__VLS_functionalComponentArgsRest(__VLS_35));
+            __VLS_37.slots.default;
             (__VLS_ctx.bootError);
-            var __VLS_36;
+            var __VLS_37;
         }
         else {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -991,59 +1052,59 @@ if (__VLS_ctx.sessionId) {
     }
     /** @type {[typeof EditorTabs, ]} */ ;
     // @ts-ignore
-    const __VLS_37 = __VLS_asFunctionalComponent(EditorTabs, new EditorTabs({
+    const __VLS_38 = __VLS_asFunctionalComponent(EditorTabs, new EditorTabs({
         ...{ 'onSelect': {} },
         ...{ 'onClose': {} },
         tabs: (__VLS_ctx.store.openTabs),
         activeTabId: (__VLS_ctx.store.activeTabId),
     }));
-    const __VLS_38 = __VLS_37({
+    const __VLS_39 = __VLS_38({
         ...{ 'onSelect': {} },
         ...{ 'onClose': {} },
         tabs: (__VLS_ctx.store.openTabs),
         activeTabId: (__VLS_ctx.store.activeTabId),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_37));
-    let __VLS_40;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_38));
     let __VLS_41;
     let __VLS_42;
-    const __VLS_43 = {
+    let __VLS_43;
+    const __VLS_44 = {
         onSelect: (__VLS_ctx.store.setActiveTab)
     };
-    const __VLS_44 = {
+    const __VLS_45 = {
         onClose: (__VLS_ctx.store.closeTab)
     };
-    var __VLS_39;
+    var __VLS_40;
     if (__VLS_ctx.saveError) {
-        const __VLS_45 = {}.VAlert;
+        const __VLS_46 = {}.VAlert;
         /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
         // @ts-ignore
-        const __VLS_46 = __VLS_asFunctionalComponent(__VLS_45, new __VLS_45({
+        const __VLS_47 = __VLS_asFunctionalComponent(__VLS_46, new __VLS_46({
             variant: "error",
             ...{ class: "m-2" },
         }));
-        const __VLS_47 = __VLS_46({
+        const __VLS_48 = __VLS_47({
             variant: "error",
             ...{ class: "m-2" },
-        }, ...__VLS_functionalComponentArgsRest(__VLS_46));
-        __VLS_48.slots.default;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_47));
+        __VLS_49.slots.default;
         (__VLS_ctx.saveError);
-        var __VLS_48;
+        var __VLS_49;
     }
     if (!__VLS_ctx.activeTab) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "flex-1 flex items-center justify-center" },
         });
-        const __VLS_49 = {}.VEmptyState;
+        const __VLS_50 = {}.VEmptyState;
         /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
         // @ts-ignore
-        const __VLS_50 = __VLS_asFunctionalComponent(__VLS_49, new __VLS_49({
+        const __VLS_51 = __VLS_asFunctionalComponent(__VLS_50, new __VLS_50({
             headline: "No document open",
             body: "Pick one from the tree on the left, or create a new file.",
         }));
-        const __VLS_51 = __VLS_50({
+        const __VLS_52 = __VLS_51({
             headline: "No document open",
             body: "Pick one from the tree on the left, or create a new file.",
-        }, ...__VLS_functionalComponentArgsRest(__VLS_50));
+        }, ...__VLS_functionalComponentArgsRest(__VLS_51));
     }
     else {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -1051,41 +1112,41 @@ if (__VLS_ctx.sessionId) {
         });
         /** @type {[typeof TabRendererHost, ]} */ ;
         // @ts-ignore
-        const __VLS_53 = __VLS_asFunctionalComponent(TabRendererHost, new TabRendererHost({
+        const __VLS_54 = __VLS_asFunctionalComponent(TabRendererHost, new TabRendererHost({
             ...{ 'onUpdate': {} },
             document: (__VLS_ctx.activeTab),
             sessionId: (__VLS_ctx.sessionId),
         }));
-        const __VLS_54 = __VLS_53({
+        const __VLS_55 = __VLS_54({
             ...{ 'onUpdate': {} },
             document: (__VLS_ctx.activeTab),
             sessionId: (__VLS_ctx.sessionId),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_53));
-        let __VLS_56;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_54));
         let __VLS_57;
         let __VLS_58;
-        const __VLS_59 = {
+        let __VLS_59;
+        const __VLS_60 = {
             onUpdate: (__VLS_ctx.store.updateActiveContent)
         };
-        var __VLS_55;
+        var __VLS_56;
     }
     {
         const { 'right-panel': __VLS_thisSlot } = __VLS_3.slots;
         if (__VLS_ctx.sessionId && __VLS_ctx.projectId) {
             /** @type {[typeof CortexRightPanel, ]} */ ;
             // @ts-ignore
-            const __VLS_60 = __VLS_asFunctionalComponent(CortexRightPanel, new CortexRightPanel({
+            const __VLS_61 = __VLS_asFunctionalComponent(CortexRightPanel, new CortexRightPanel({
                 sessionId: (__VLS_ctx.sessionId),
                 projectId: (__VLS_ctx.projectId),
                 toolService: (__VLS_ctx.clientToolService),
                 activeDocument: (__VLS_ctx.activeTab),
             }));
-            const __VLS_61 = __VLS_60({
+            const __VLS_62 = __VLS_61({
                 sessionId: (__VLS_ctx.sessionId),
                 projectId: (__VLS_ctx.projectId),
                 toolService: (__VLS_ctx.clientToolService),
                 activeDocument: (__VLS_ctx.activeTab),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_60));
+            }, ...__VLS_functionalComponentArgsRest(__VLS_61));
         }
         else {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -1095,192 +1156,206 @@ if (__VLS_ctx.sessionId) {
     }
     var __VLS_3;
 }
-const __VLS_63 = {}.VModal;
+const __VLS_64 = {}.VModal;
 /** @type {[typeof __VLS_components.VModal, typeof __VLS_components.VModal, ]} */ ;
 // @ts-ignore
-const __VLS_64 = __VLS_asFunctionalComponent(__VLS_63, new __VLS_63({
+const __VLS_65 = __VLS_asFunctionalComponent(__VLS_64, new __VLS_64({
     modelValue: (__VLS_ctx.showCreate),
     title: "New document",
 }));
-const __VLS_65 = __VLS_64({
+const __VLS_66 = __VLS_65({
     modelValue: (__VLS_ctx.showCreate),
     title: "New document",
-}, ...__VLS_functionalComponentArgsRest(__VLS_64));
-__VLS_66.slots.default;
+}, ...__VLS_functionalComponentArgsRest(__VLS_65));
+__VLS_67.slots.default;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.form, __VLS_intrinsicElements.form)({
     ...{ onSubmit: (__VLS_ctx.confirmCreate) },
     ...{ class: "space-y-3 p-2" },
 });
-const __VLS_67 = {}.VInput;
+const __VLS_68 = {}.VInput;
 /** @type {[typeof __VLS_components.VInput, ]} */ ;
 // @ts-ignore
-const __VLS_68 = __VLS_asFunctionalComponent(__VLS_67, new __VLS_67({
+const __VLS_69 = __VLS_asFunctionalComponent(__VLS_68, new __VLS_68({
     modelValue: (__VLS_ctx.createDir),
     label: "Path",
     placeholder: "(project root)",
 }));
-const __VLS_69 = __VLS_68({
+const __VLS_70 = __VLS_69({
     modelValue: (__VLS_ctx.createDir),
     label: "Path",
     placeholder: "(project root)",
-}, ...__VLS_functionalComponentArgsRest(__VLS_68));
-const __VLS_71 = {}.VInput;
+}, ...__VLS_functionalComponentArgsRest(__VLS_69));
+const __VLS_72 = {}.VInput;
 /** @type {[typeof __VLS_components.VInput, ]} */ ;
 // @ts-ignore
-const __VLS_72 = __VLS_asFunctionalComponent(__VLS_71, new __VLS_71({
+const __VLS_73 = __VLS_asFunctionalComponent(__VLS_72, new __VLS_72({
     modelValue: (__VLS_ctx.createName),
     label: "Name",
     placeholder: "idea.md",
     disabled: (__VLS_ctx.creating),
 }));
-const __VLS_73 = __VLS_72({
+const __VLS_74 = __VLS_73({
     modelValue: (__VLS_ctx.createName),
     label: "Name",
     placeholder: "idea.md",
     disabled: (__VLS_ctx.creating),
-}, ...__VLS_functionalComponentArgsRest(__VLS_72));
+}, ...__VLS_functionalComponentArgsRest(__VLS_73));
 if (__VLS_ctx.createError) {
-    const __VLS_75 = {}.VAlert;
+    const __VLS_76 = {}.VAlert;
     /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
     // @ts-ignore
-    const __VLS_76 = __VLS_asFunctionalComponent(__VLS_75, new __VLS_75({
+    const __VLS_77 = __VLS_asFunctionalComponent(__VLS_76, new __VLS_76({
         variant: "error",
     }));
-    const __VLS_77 = __VLS_76({
+    const __VLS_78 = __VLS_77({
         variant: "error",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_76));
-    __VLS_78.slots.default;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_77));
+    __VLS_79.slots.default;
     (__VLS_ctx.createError);
-    var __VLS_78;
+    var __VLS_79;
 }
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "flex justify-end gap-2 pt-2" },
 });
-const __VLS_79 = {}.VButton;
+const __VLS_80 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
 // @ts-ignore
-const __VLS_80 = __VLS_asFunctionalComponent(__VLS_79, new __VLS_79({
+const __VLS_81 = __VLS_asFunctionalComponent(__VLS_80, new __VLS_80({
     ...{ 'onClick': {} },
     type: "button",
     variant: "ghost",
 }));
-const __VLS_81 = __VLS_80({
+const __VLS_82 = __VLS_81({
     ...{ 'onClick': {} },
     type: "button",
     variant: "ghost",
-}, ...__VLS_functionalComponentArgsRest(__VLS_80));
-let __VLS_83;
+}, ...__VLS_functionalComponentArgsRest(__VLS_81));
 let __VLS_84;
 let __VLS_85;
-const __VLS_86 = {
+let __VLS_86;
+const __VLS_87 = {
     onClick: (...[$event]) => {
         __VLS_ctx.showCreate = false;
     }
 };
-__VLS_82.slots.default;
-var __VLS_82;
-const __VLS_87 = {}.VButton;
+__VLS_83.slots.default;
+var __VLS_83;
+const __VLS_88 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
 // @ts-ignore
-const __VLS_88 = __VLS_asFunctionalComponent(__VLS_87, new __VLS_87({
+const __VLS_89 = __VLS_asFunctionalComponent(__VLS_88, new __VLS_88({
     type: "submit",
     variant: "primary",
     loading: (__VLS_ctx.creating),
 }));
-const __VLS_89 = __VLS_88({
+const __VLS_90 = __VLS_89({
     type: "submit",
     variant: "primary",
     loading: (__VLS_ctx.creating),
-}, ...__VLS_functionalComponentArgsRest(__VLS_88));
-__VLS_90.slots.default;
-var __VLS_90;
-var __VLS_66;
-const __VLS_91 = {}.VModal;
+}, ...__VLS_functionalComponentArgsRest(__VLS_89));
+__VLS_91.slots.default;
+var __VLS_91;
+var __VLS_67;
+const __VLS_92 = {}.VModal;
 /** @type {[typeof __VLS_components.VModal, typeof __VLS_components.VModal, ]} */ ;
 // @ts-ignore
-const __VLS_92 = __VLS_asFunctionalComponent(__VLS_91, new __VLS_91({
+const __VLS_93 = __VLS_asFunctionalComponent(__VLS_92, new __VLS_92({
     modelValue: (__VLS_ctx.showNewFolder),
     title: "New folder",
 }));
-const __VLS_93 = __VLS_92({
+const __VLS_94 = __VLS_93({
     modelValue: (__VLS_ctx.showNewFolder),
     title: "New folder",
-}, ...__VLS_functionalComponentArgsRest(__VLS_92));
-__VLS_94.slots.default;
+}, ...__VLS_functionalComponentArgsRest(__VLS_93));
+__VLS_95.slots.default;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.form, __VLS_intrinsicElements.form)({
     ...{ onSubmit: (__VLS_ctx.confirmNewFolder) },
     ...{ class: "space-y-3 p-2" },
 });
-const __VLS_95 = {}.VInput;
+const __VLS_96 = {}.VInput;
 /** @type {[typeof __VLS_components.VInput, ]} */ ;
 // @ts-ignore
-const __VLS_96 = __VLS_asFunctionalComponent(__VLS_95, new __VLS_95({
+const __VLS_97 = __VLS_asFunctionalComponent(__VLS_96, new __VLS_96({
     modelValue: (__VLS_ctx.newFolderPath),
     label: "Folder path",
     placeholder: "documents/notes",
 }));
-const __VLS_97 = __VLS_96({
+const __VLS_98 = __VLS_97({
     modelValue: (__VLS_ctx.newFolderPath),
     label: "Folder path",
     placeholder: "documents/notes",
-}, ...__VLS_functionalComponentArgsRest(__VLS_96));
+}, ...__VLS_functionalComponentArgsRest(__VLS_97));
 __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
     ...{ class: "text-xs opacity-60" },
 });
 if (__VLS_ctx.newFolderError) {
-    const __VLS_99 = {}.VAlert;
+    const __VLS_100 = {}.VAlert;
     /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
     // @ts-ignore
-    const __VLS_100 = __VLS_asFunctionalComponent(__VLS_99, new __VLS_99({
+    const __VLS_101 = __VLS_asFunctionalComponent(__VLS_100, new __VLS_100({
         variant: "error",
     }));
-    const __VLS_101 = __VLS_100({
+    const __VLS_102 = __VLS_101({
         variant: "error",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_100));
-    __VLS_102.slots.default;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_101));
+    __VLS_103.slots.default;
     (__VLS_ctx.newFolderError);
-    var __VLS_102;
+    var __VLS_103;
 }
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "flex justify-end gap-2 pt-2" },
 });
-const __VLS_103 = {}.VButton;
+const __VLS_104 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
 // @ts-ignore
-const __VLS_104 = __VLS_asFunctionalComponent(__VLS_103, new __VLS_103({
+const __VLS_105 = __VLS_asFunctionalComponent(__VLS_104, new __VLS_104({
     ...{ 'onClick': {} },
     type: "button",
     variant: "ghost",
 }));
-const __VLS_105 = __VLS_104({
+const __VLS_106 = __VLS_105({
     ...{ 'onClick': {} },
     type: "button",
     variant: "ghost",
-}, ...__VLS_functionalComponentArgsRest(__VLS_104));
-let __VLS_107;
+}, ...__VLS_functionalComponentArgsRest(__VLS_105));
 let __VLS_108;
 let __VLS_109;
-const __VLS_110 = {
+let __VLS_110;
+const __VLS_111 = {
     onClick: (...[$event]) => {
         __VLS_ctx.showNewFolder = false;
     }
 };
-__VLS_106.slots.default;
-var __VLS_106;
-const __VLS_111 = {}.VButton;
+__VLS_107.slots.default;
+var __VLS_107;
+const __VLS_112 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
 // @ts-ignore
-const __VLS_112 = __VLS_asFunctionalComponent(__VLS_111, new __VLS_111({
+const __VLS_113 = __VLS_asFunctionalComponent(__VLS_112, new __VLS_112({
     type: "submit",
     variant: "primary",
 }));
-const __VLS_113 = __VLS_112({
+const __VLS_114 = __VLS_113({
     type: "submit",
     variant: "primary",
-}, ...__VLS_functionalComponentArgsRest(__VLS_112));
-__VLS_114.slots.default;
-var __VLS_114;
-var __VLS_94;
+}, ...__VLS_functionalComponentArgsRest(__VLS_113));
+__VLS_115.slots.default;
+var __VLS_115;
+var __VLS_95;
+/** @type {__VLS_StyleScopedClasses['mr-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['inline-flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-1.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['rounded-md']} */ ;
+/** @type {__VLS_StyleScopedClasses['border']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-warning/40']} */ ;
+/** @type {__VLS_StyleScopedClasses['bg-warning/15']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-medium']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-warning-content']} */ ;
+/** @type {__VLS_StyleScopedClasses['hover:bg-warning/25']} */ ;
 /** @type {__VLS_StyleScopedClasses['mr-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
@@ -1438,6 +1513,8 @@ const __VLS_self = (await import('vue')).defineComponent({
             title: title,
             breadcrumbs: breadcrumbs,
             activeTab: activeTab,
+            externallyChangedKind: externallyChangedKind,
+            reloadActiveTabAfterExternalChange: reloadActiveTabAfterExternalChange,
             hasDirtyTabs: hasDirtyTabs,
             isActiveTabBound: isActiveTabBound,
             chatBoundDocumentPathDisplay: chatBoundDocumentPathDisplay,

@@ -70,7 +70,7 @@ public class DocumentSubscriberRegistry {
             WebSocketSession wsSession, ConnectionContext context) {
         DocumentViewer asViewer() {
             return DocumentViewer.builder()
-                    .editorId(context.getConnectionId())
+                    .editorId(context.getEditorId())
                     .userId(context.getUserId())
                     .displayName(context.getDisplayName() != null
                             ? context.getDisplayName() : context.getUserId())
@@ -139,7 +139,7 @@ public class DocumentSubscriberRegistry {
                 if (sub == null) continue;
                 try {
                     String tenantId = sub.context().getTenantId();
-                    redis.hashDelete(tenantId, hashSubKey(path), sub.context().getConnectionId());
+                    redis.hashDelete(tenantId, hashSubKey(path), sub.context().getEditorId());
                     redis.publish(tenantId, CHANNEL, encodeChangedPayload(path));
                 } catch (RuntimeException ex) {
                     log.debug("documents shutdown cleanup failed for ws={} path={}: {}",
@@ -170,7 +170,7 @@ public class DocumentSubscriberRegistry {
         LocalSubscriber sub = bySessionInfo.get(wsId);
         String tenantId = sub != null ? sub.context().getTenantId() : null;
         if (tenantId != null) {
-            redis.hashDelete(tenantId, hashSubKey(path), sub.context().getConnectionId());
+            redis.hashDelete(tenantId, hashSubKey(path), sub.context().getEditorId());
             redis.publish(tenantId, CHANNEL, encodeChangedPayload(path));
             broadcastPresence(path, tenantId);
         }
@@ -198,7 +198,7 @@ public class DocumentSubscriberRegistry {
                 if (ids.isEmpty()) localSubsByPath.remove(path);
             }
             if (tenantId != null && sub != null) {
-                redis.hashDelete(tenantId, hashSubKey(path), sub.context().getConnectionId());
+                redis.hashDelete(tenantId, hashSubKey(path), sub.context().getEditorId());
                 redis.publish(tenantId, CHANNEL, encodeChangedPayload(path));
                 broadcastPresence(path, tenantId);
             }
@@ -209,6 +209,30 @@ public class DocumentSubscriberRegistry {
     public Set<String> pathsOf(WebSocketSession wsSession) {
         Set<String> paths = bySession.get(wsSession.getId());
         return paths == null ? Collections.emptySet() : Set.copyOf(paths);
+    }
+
+    /**
+     * Invoke {@code action} for every WS session on this pod that is
+     * subscribed to {@code path}. Used by sibling services (e.g.
+     * {@code DocumentChangedBroadcaster}) that need to push a frame to
+     * the same audience as the presence broadcasts. Returns immediately
+     * when nobody on this pod listens to the path.
+     */
+    public void forEachLocalSubscriber(String path,
+            java.util.function.BiConsumer<WebSocketSession, ConnectionContext> action) {
+        Set<String> wsIds = localSubsByPath.get(path);
+        if (wsIds == null || wsIds.isEmpty()) return;
+        for (String wsId : wsIds) {
+            LocalSubscriber sub = bySessionInfo.get(wsId);
+            if (sub == null) continue;
+            action.accept(sub.wsSession(), sub.context());
+        }
+    }
+
+    /** {@code true} when at least one WS session on this pod subscribes to {@code path}. */
+    public boolean hasLocalSubscribers(String path) {
+        Set<String> wsIds = localSubsByPath.get(path);
+        return wsIds != null && !wsIds.isEmpty();
     }
 
     /**
@@ -290,7 +314,7 @@ public class DocumentSubscriberRegistry {
         for (String wsId : localIds) {
             LocalSubscriber recipient = bySessionInfo.get(wsId);
             if (recipient == null) continue;
-            String selfEditorId = recipient.context().getConnectionId();
+            String selfEditorId = recipient.context().getEditorId();
             List<DocumentViewer> filtered = new ArrayList<>(allViewers.size());
             for (DocumentViewer v : allViewers) {
                 if (!Objects.equals(v.getEditorId(), selfEditorId)) {
@@ -316,13 +340,13 @@ public class DocumentSubscriberRegistry {
 
     private void writeToRedis(String tenantId, String path, ConnectionContext ctx) {
         StoredViewer sv = new StoredViewer(
-                ctx.getConnectionId(),
+                ctx.getEditorId(),
                 ctx.getUserId(),
                 ctx.getDisplayName(),
                 podId);
         try {
             String json = objectMapper.writeValueAsString(sv);
-            redis.hashPut(tenantId, hashSubKey(path), ctx.getConnectionId(), json, VIEWER_KEY_TTL);
+            redis.hashPut(tenantId, hashSubKey(path), ctx.getEditorId(), json, VIEWER_KEY_TTL);
             redis.publish(tenantId, CHANNEL, encodeChangedPayload(path));
         } catch (JacksonException e) {
             log.warn("documents: failed to serialise viewer for path={}: {}", path, e.toString());

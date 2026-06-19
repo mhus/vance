@@ -52,11 +52,11 @@ public class ExecListSnapshotHandler implements WsHandler {
                     "Invalid exec-list-snapshot payload: " + e.getMessage());
             return;
         }
-        ExecutionOwner owner = new ExecutionOwner.Foot(ctx.getConnectionId());
+        ExecutionOwner owner = new ExecutionOwner.Foot(ctx.getEditorId());
 
-        int dropped = registry.removeByFootClient(ctx.getConnectionId());
+        int dropped = registry.removeByFootClient(ctx.getEditorId());
         log.debug("exec-list-snapshot: dropped {} stale entries for client '{}'",
-                dropped, ctx.getConnectionId());
+                dropped, ctx.getEditorId());
 
         if (snapshot == null || snapshot.getExecutions() == null) return;
         for (ExecEvent e : snapshot.getExecutions()) {

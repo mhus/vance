@@ -16,6 +16,7 @@ import { brainFetch } from '@vance/shared';
 import type { SessionSummaryRichDto } from '@vance/generated';
 import { useTenantProjects } from '@composables/useTenantProjects';
 import DocumentPresenceStrip from '@/ws/DocumentPresenceStrip.vue';
+import { onDocumentChanged } from '@/ws/wsConnectionStore';
 import { useCortexStore } from './stores/cortexStore';
 import { CortexClientToolService } from './clientToolService';
 import FileTreeSidebar from './components/FileTreeSidebar.vue';
@@ -313,6 +314,45 @@ function onPopState(): void {
 }
 
 const activeTab = computed(() => store.activeTab);
+
+/**
+ * External-change indicator for the currently-active document tab.
+ * Wired to the {@code documents.changed} WS frame via
+ * {@link onDocumentChanged}. We track only the active tab — when the
+ * user switches tabs the listener swaps. Other tabs' invalidations are
+ * not signalled in v1 (the user notices on switch since the next reload
+ * is a click away).
+ */
+const externallyChangedKind = ref<string | null>(null);
+let externalChangeUnsubscribe: (() => void) | null = null;
+
+watch(
+  () => activeTab.value?.path ?? null,
+  (path) => {
+    externallyChangedKind.value = null;
+    if (externalChangeUnsubscribe) {
+      externalChangeUnsubscribe();
+      externalChangeUnsubscribe = null;
+    }
+    if (!path) return;
+    externalChangeUnsubscribe = onDocumentChanged(path, (kind) => {
+      externallyChangedKind.value = kind;
+    });
+  },
+  { immediate: true },
+);
+
+onBeforeUnmount(() => {
+  externalChangeUnsubscribe?.();
+  externalChangeUnsubscribe = null;
+});
+
+async function reloadActiveTabAfterExternalChange(): Promise<void> {
+  const tab = activeTab.value;
+  externallyChangedKind.value = null;
+  if (!tab) return;
+  await store.reloadTab(tab.id);
+}
 
 const chatBoundDocumentPath = computed<string | null>(() => {
   const id = chatBoundDocumentId.value;
@@ -721,6 +761,22 @@ onBeforeUnmount(() => {
          same screen region (top-right of the header) and the two
          views stay visually symmetrical. -->
     <template #topbar-extra>
+      <button
+        v-if="externallyChangedKind && activeTab?.path"
+        type="button"
+        class="mr-3 inline-flex items-center gap-1.5 rounded-md
+               border border-warning/40 bg-warning/15 px-2 py-1
+               text-xs font-medium text-warning-content hover:bg-warning/25"
+        :title="externallyChangedKind === 'deleted'
+                ? $t('documents.externallyChanged.deletedTooltip')
+                : $t('documents.externallyChanged.upsertedTooltip')"
+        @click="reloadActiveTabAfterExternalChange()"
+      >
+        <span aria-hidden="true">●</span>
+        {{ externallyChangedKind === 'deleted'
+           ? $t('documents.externallyChanged.deleted')
+           : $t('documents.externallyChanged.upserted') }}
+      </button>
       <DocumentPresenceStrip
         v-if="activeTab?.path"
         :path="activeTab.path"
@@ -743,6 +799,7 @@ onBeforeUnmount(() => {
             @delete-file="onDelete"
             @move-file="onMoveFile"
             @upload-files="onUploadFiles"
+            @reload="() => projectId && store.loadList(projectId)"
           />
           <div v-else-if="bootError" class="p-3 text-sm">
             <VAlert variant="error">{{ bootError }}</VAlert>

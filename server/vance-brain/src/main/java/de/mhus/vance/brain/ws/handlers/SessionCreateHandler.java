@@ -126,7 +126,7 @@ public class SessionCreateHandler implements WsHandler {
                 ctx.getClientName());
 
         boolean bound = sessionService.tryBind(
-                created.getSessionId(), ctx.getConnectionId());
+                created.getSessionId(), ctx.getEditorId());
         if (!bound) {
             // Freshly created — nobody else could have bound it. If this ever
             // happens, surface the problem and leave the session in Mongo for

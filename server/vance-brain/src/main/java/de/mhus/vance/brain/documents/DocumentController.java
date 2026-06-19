@@ -33,6 +33,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.data.domain.Page;
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -314,6 +315,7 @@ public class DocumentController {
             @PathVariable("tenant") String tenant,
             @PathVariable("id") String id,
             @RequestParam(value = "download", defaultValue = "false") boolean download,
+            @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false) @Nullable String ifNoneMatch,
             HttpServletRequest httpRequest) {
         DocumentDocument doc = documentService.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
@@ -322,6 +324,21 @@ public class DocumentController {
         }
         authority.enforce(httpRequest,
                 new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.READ);
+
+        // Content version = storageId. Streaming-store hands a fresh id on
+        // every write, so the moment the body changes the ETag changes too;
+        // re-using the same id implies byte-identical content. Falls back
+        // to the document id (immutable) when storageId is missing (inline
+        // docs from before the storage migration / empty content).
+        String version = doc.getStorageId() != null ? doc.getStorageId() : doc.getId();
+        String etag = "\"" + version + "\"";
+        if (ifNoneMatch != null && etagsMatch(ifNoneMatch, etag)) {
+            return ResponseEntity.status(HttpStatus.NOT_MODIFIED)
+                    .eTag(etag)
+                    .cacheControl(CacheControl.noCache().cachePrivate())
+                    .build();
+        }
+
         InputStream stream = documentService.loadContent(doc);
         MediaType contentType = parseMimeType(doc.getMimeType());
         HttpHeaders headers = new HttpHeaders();
@@ -334,12 +351,29 @@ public class DocumentController {
         String dispositionType = download ? "attachment" : "inline";
         headers.set(HttpHeaders.CONTENT_DISPOSITION,
                 dispositionType + "; filename*=UTF-8''" + urlEncode(filename));
-        // Cache hint — content for a given document id is immutable
-        // (storage-backed), and inline-text changes via PUT bump the
-        // server-side version anyway. Aggressive cache is OK for
-        // image / PDF re-renders within a session.
-        headers.setCacheControl("private, max-age=300");
+        // no-cache (NOT no-store) = browser caches the bytes but must revalidate
+        // with If-None-Match before reuse. Combined with the ETag above this
+        // gives us fresh content on every save and a cheap 304 on no-op
+        // reloads. The previous `max-age=300` skipped revalidation entirely
+        // and was the cause of "reload shows stale content" after a peer
+        // write — see live-WS documents.changed wiring.
+        headers.setETag(etag);
+        headers.setCacheControl("private, no-cache");
         return ResponseEntity.ok().headers(headers).body(new InputStreamResource(stream));
+    }
+
+    /**
+     * Lenient match — covers the {@code If-None-Match: *} wildcard and the
+     * comma-separated list form. Both quoted and unquoted entries match the
+     * server's quoted ETag literal.
+     */
+    private static boolean etagsMatch(String ifNoneMatch, String etag) {
+        String header = ifNoneMatch.trim();
+        if ("*".equals(header)) return true;
+        for (String raw : header.split(",")) {
+            if (raw.trim().equals(etag)) return true;
+        }
+        return false;
     }
 
     private static MediaType parseMimeType(@Nullable String raw) {
@@ -371,6 +405,7 @@ public class DocumentController {
             @PathVariable("tenant") String tenant,
             @PathVariable("id") String id,
             @RequestHeader(value = HttpHeaders.CONTENT_TYPE, required = false) @Nullable String contentType,
+            @RequestHeader(value = HEADER_EDITOR_ID, required = false) @Nullable String editorId,
             HttpServletRequest httpRequest) throws IOException {
 
         DocumentDocument existing = documentService.findById(id)
@@ -395,7 +430,7 @@ public class DocumentController {
 
         DocumentDocument updated;
         try (InputStream body = httpRequest.getInputStream()) {
-            updated = documentService.replaceContent(id, body, mime);
+            updated = documentService.replaceContent(id, body, mime, editorId);
         }
         return ResponseEntity.ok(toDto(updated));
     }
@@ -405,6 +440,7 @@ public class DocumentController {
             @PathVariable("tenant") String tenant,
             @PathVariable("id") String id,
             @Valid @RequestBody DocumentUpdateRequest request,
+            @RequestHeader(value = HEADER_EDITOR_ID, required = false) @Nullable String editorId,
             HttpServletRequest httpRequest) {
 
         DocumentDocument existing = documentService.findById(id)
@@ -432,7 +468,8 @@ public class DocumentController {
                     request.getAutoSummary(),
                     request.getSummaryDirty(),
                     /* ragEnabled handled atomically above */ null,
-                    request.getMimeType());
+                    request.getMimeType(),
+                    editorId);
         } catch (DocumentService.DocumentAlreadyExistsException e) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
         } catch (IllegalArgumentException e) {
@@ -440,6 +477,15 @@ public class DocumentController {
         }
         return ResponseEntity.ok(toDto(updated));
     }
+
+    /**
+     * Optional REST header carrying the writer's WebSocket-connection
+     * identity (the {@code editorId} from the {@code welcome} frame).
+     * Forwarded to {@link DocumentService} so the live-broadcast can
+     * skip the writer's own connection during local fan-out — without
+     * it, the tab that just saved sees its own "extern geändert" banner.
+     */
+    private static final String HEADER_EDITOR_ID = "X-Editor-Id";
 
     /**
      * Two-stage delete: documents that live outside the project's
@@ -486,6 +532,7 @@ public class DocumentController {
     public ResponseEntity<Void> delete(
             @PathVariable("tenant") String tenant,
             @PathVariable("id") String id,
+            @RequestHeader(value = HEADER_EDITOR_ID, required = false) @Nullable String editorId,
             HttpServletRequest httpRequest) {
         DocumentDocument existing = documentService.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
@@ -495,9 +542,9 @@ public class DocumentController {
         authority.enforce(httpRequest,
                 new Resource.Document(tenant, existing.getProjectId(), existing.getPath()), Action.DELETE);
         if (DocumentService.isTrash(existing.getPath())) {
-            documentService.delete(id);
+            documentService.delete(id, editorId);
         } else {
-            documentService.trash(id);
+            documentService.trash(id, editorId);
         }
         return ResponseEntity.noContent().build();
     }

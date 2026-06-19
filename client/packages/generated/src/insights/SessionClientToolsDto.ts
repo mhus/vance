@@ -8,6 +8,6 @@ import { ToolSpec } from '../tools/ToolSpec';
 export interface SessionClientToolsDto {
   sessionId: string;
   bound: boolean;
-  connectionId?: string;
+  editorId?: string;
   tools: ToolSpec[];
 }

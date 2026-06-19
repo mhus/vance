@@ -8,6 +8,7 @@ import { brainFetch, brainFetchBlob, documentContentUrl, isFacelift } from '@van
 import { exportToFiles } from '@/platform/faceliftFiles';
 import { consumeDocumentDraft } from '@/platform';
 import DocumentPresenceStrip from '@/ws/DocumentPresenceStrip.vue';
+import { onDocumentChanged } from '@/ws/wsConnectionStore';
 import DocumentPreview from './DocumentPreview.vue';
 import DocumentIcon from './DocumentIcon.vue';
 import DocumentArchives from './DocumentArchives.vue';
@@ -442,6 +443,40 @@ async function onPopstate() {
 watch(() => docsState.selected.value?.id ?? null, (id) => {
     pushQueryParams({ documentId: id });
 });
+/**
+ * External-change indicator for the document currently in the editor.
+ * Set by the {@code documents.changed} WS frame; cleared when the user
+ * reloads or when the path changes to a different document. The badge
+ * sits in the topbar next to the presence strip and the only action it
+ * exposes is "Reload" — auto-reload would clobber unsaved edits, so we
+ * stay explicit at v1.
+ */
+const externallyChangedKind = ref(null);
+let externalChangeUnsubscribe = null;
+watch(() => docsState.selected.value?.path ?? null, (path) => {
+    externallyChangedKind.value = null;
+    if (externalChangeUnsubscribe) {
+        externalChangeUnsubscribe();
+        externalChangeUnsubscribe = null;
+    }
+    if (!path)
+        return;
+    externalChangeUnsubscribe = onDocumentChanged(path, (kind) => {
+        externallyChangedKind.value = kind;
+    });
+}, { immediate: true });
+onBeforeUnmount(() => {
+    externalChangeUnsubscribe?.();
+    externalChangeUnsubscribe = null;
+});
+async function reloadAfterExternalChange() {
+    const sel = docsState.selected.value;
+    externallyChangedKind.value = null;
+    if (!sel)
+        return;
+    await docsState.loadOne(sel.id);
+    await fillEditor();
+}
 // True while the user is editing an _app.yaml manifest in the generic
 // document editor (typically reached via the per-row "edit as file"
 // shortcut, or via a Cortex deep-link). The detail strip surfaces a
@@ -1970,6 +2005,28 @@ __VLS_3.slots.default;
 if (__VLS_ctx.docsState.selected.value?.path) {
     {
         const { 'topbar-extra': __VLS_thisSlot } = __VLS_3.slots;
+        if (__VLS_ctx.externallyChangedKind) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!(__VLS_ctx.docsState.selected.value?.path))
+                            return;
+                        if (!(__VLS_ctx.externallyChangedKind))
+                            return;
+                        __VLS_ctx.reloadAfterExternalChange();
+                    } },
+                type: "button",
+                ...{ class: "\u006d\u0072\u002d\u0033\u0020\u0069\u006e\u006c\u0069\u006e\u0065\u002d\u0066\u006c\u0065\u0078\u0020\u0069\u0074\u0065\u006d\u0073\u002d\u0063\u0065\u006e\u0074\u0065\u0072\u0020\u0067\u0061\u0070\u002d\u0031\u002e\u0035\u0020\u0072\u006f\u0075\u006e\u0064\u0065\u0064\u002d\u006d\u0064\u000a\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0062\u006f\u0072\u0064\u0065\u0072\u0020\u0062\u006f\u0072\u0064\u0065\u0072\u002d\u0077\u0061\u0072\u006e\u0069\u006e\u0067\u002f\u0034\u0030\u0020\u0062\u0067\u002d\u0077\u0061\u0072\u006e\u0069\u006e\u0067\u002f\u0031\u0035\u0020\u0070\u0078\u002d\u0032\u0020\u0070\u0079\u002d\u0031\u000a\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0074\u0065\u0078\u0074\u002d\u0078\u0073\u0020\u0066\u006f\u006e\u0074\u002d\u006d\u0065\u0064\u0069\u0075\u006d\u0020\u0074\u0065\u0078\u0074\u002d\u0077\u0061\u0072\u006e\u0069\u006e\u0067\u002d\u0063\u006f\u006e\u0074\u0065\u006e\u0074\u0020\u0068\u006f\u0076\u0065\u0072\u003a\u0062\u0067\u002d\u0077\u0061\u0072\u006e\u0069\u006e\u0067\u002f\u0032\u0035" },
+                title: (__VLS_ctx.externallyChangedKind === 'deleted'
+                    ? __VLS_ctx.$t('documents.externallyChanged.deletedTooltip')
+                    : __VLS_ctx.$t('documents.externallyChanged.upsertedTooltip')),
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                'aria-hidden': "true",
+            });
+            (__VLS_ctx.externallyChangedKind === 'deleted'
+                ? __VLS_ctx.$t('documents.externallyChanged.deleted')
+                : __VLS_ctx.$t('documents.externallyChanged.upserted'));
+        }
         /** @type {[typeof DocumentPresenceStrip, ]} */ ;
         // @ts-ignore
         const __VLS_9 = __VLS_asFunctionalComponent(DocumentPresenceStrip, new DocumentPresenceStrip({
@@ -5087,6 +5144,20 @@ var __VLS_390;
     }
 }
 var __VLS_3;
+/** @type {__VLS_StyleScopedClasses['mr-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['inline-flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-1.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['rounded-md']} */ ;
+/** @type {__VLS_StyleScopedClasses['border']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-warning/40']} */ ;
+/** @type {__VLS_StyleScopedClasses['bg-warning/15']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-medium']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-warning-content']} */ ;
+/** @type {__VLS_StyleScopedClasses['hover:bg-warning/25']} */ ;
 /** @type {__VLS_StyleScopedClasses['mr-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
@@ -5515,6 +5586,8 @@ const __VLS_self = (await import('vue')).defineComponent({
             createMimeOptions: createMimeOptions,
             kindAllowed: kindAllowed,
             editMimeOptions: editMimeOptions,
+            externallyChangedKind: externallyChangedKind,
+            reloadAfterExternalChange: reloadAfterExternalChange,
             selectedAppEditorUrl: selectedAppEditorUrl,
             projectOptions: projectOptions,
             focusZone: focusZone,

@@ -70,14 +70,6 @@ const desiredSubscriptions = new Set();
 const documentViewers = reactive(new Map());
 /** Listeners for the documents-channel presence push. */
 let documentsUnsubscribe = null;
-/**
- * Per-path callback registrations for the {@code documents.changed}
- * frame ({@link onDocumentChanged}). The store dispatches the wire
- * event to every handler registered under the affected path; nothing
- * fires when nobody is listening. Cleared on socket-swap together with
- * the listener — the path-set on the *server* is re-established by the
- * subscribe replay, so handlers stay alive across reconnects.
- */
 const documentChangedListeners = new Map();
 let releaseTimer = null;
 let reconnectTimer = null;
@@ -321,21 +313,11 @@ export async function unsubscribeDocument(path) {
  * {@link subscribeDocument} call (presence subscribe implies the server
  * fires changed-events to this connection too).
  *
- * <p>Handlers receive the wire {@code kind} string
- * ({@code "upserted"} / {@code "deleted"}).
- *
- * @example
- * onMounted(() => {
- *   void subscribeDocument(currentPath);
- *   stopChangedHandler = onDocumentChanged(currentPath, (kind) => {
- *     if (kind === 'deleted') showDeletedBanner();
- *     else markStale();
- *   });
- * });
- * onBeforeUnmount(() => {
- *   stopChangedHandler?.();
- *   void unsubscribeDocument(currentPath);
- * });
+ * <p>Handlers receive the full {@link DocumentChangedNotification}
+ * with {@code path}, {@code kind} ({@code "upserted"} / {@code "deleted"})
+ * and the writer's identity ({@code editorId} / {@code editorUserId} /
+ * {@code editorDisplayName} — useful for the {@code ⏺ name} awareness
+ * badge after a silent merge).
  */
 export function onDocumentChanged(path, handler) {
     let set = documentChangedListeners.get(path);
@@ -366,10 +348,9 @@ function attachDocumentsListener(sock) {
         const listeners = documentChangedListeners.get(data.path);
         if (!listeners || listeners.size === 0)
             return;
-        const kind = data.kind ?? 'upserted';
         for (const handler of Array.from(listeners)) {
             try {
-                handler(kind);
+                handler(data);
             }
             catch (e) {
                 console.warn(`[wsStore] document-changed handler for '${data.path}' threw:`, e);

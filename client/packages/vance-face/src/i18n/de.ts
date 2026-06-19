@@ -340,6 +340,9 @@ export default {
       keepLocal: 'Meine behalten',
       acceptRemote: 'Remote übernehmen',
     },
+    recentEditor: {
+      tooltip: '{name} hat das Dokument gerade bearbeitet',
+    },
     followUp: {
       acceptHint: '↹ Tab',
     },

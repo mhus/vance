@@ -100,13 +100,13 @@ let documentsUnsubscribe: (() => void) | null = null;
 
 /**
  * Per-path callback registrations for the {@code documents.changed}
- * frame ({@link onDocumentChanged}). The store dispatches the wire
- * event to every handler registered under the affected path; nothing
- * fires when nobody is listening. Cleared on socket-swap together with
- * the listener — the path-set on the *server* is re-established by the
- * subscribe replay, so handlers stay alive across reconnects.
+ * frame ({@link onDocumentChanged}). Handlers receive the full
+ * {@link DocumentChangedNotification} so they can branch on the
+ * {@code kind} *and* see who authored the change (for the
+ * {@code ⏺ name} awareness badge).
  */
-const documentChangedListeners = new Map<string, Set<(kind: string) => void>>();
+type DocumentChangedHandler = (notification: DocumentChangedNotification) => void;
+const documentChangedListeners = new Map<string, Set<DocumentChangedHandler>>();
 
 let releaseTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -369,25 +369,15 @@ export async function unsubscribeDocument(path: string): Promise<void> {
  * {@link subscribeDocument} call (presence subscribe implies the server
  * fires changed-events to this connection too).
  *
- * <p>Handlers receive the wire {@code kind} string
- * ({@code "upserted"} / {@code "deleted"}).
- *
- * @example
- * onMounted(() => {
- *   void subscribeDocument(currentPath);
- *   stopChangedHandler = onDocumentChanged(currentPath, (kind) => {
- *     if (kind === 'deleted') showDeletedBanner();
- *     else markStale();
- *   });
- * });
- * onBeforeUnmount(() => {
- *   stopChangedHandler?.();
- *   void unsubscribeDocument(currentPath);
- * });
+ * <p>Handlers receive the full {@link DocumentChangedNotification}
+ * with {@code path}, {@code kind} ({@code "upserted"} / {@code "deleted"})
+ * and the writer's identity ({@code editorId} / {@code editorUserId} /
+ * {@code editorDisplayName} — useful for the {@code ⏺ name} awareness
+ * badge after a silent merge).
  */
 export function onDocumentChanged(
   path: string,
-  handler: (kind: string) => void,
+  handler: DocumentChangedHandler,
 ): () => void {
   let set = documentChangedListeners.get(path);
   if (!set) {
@@ -420,10 +410,9 @@ function attachDocumentsListener(sock: BrainWebSocket): void {
       if (!data || !data.path) return;
       const listeners = documentChangedListeners.get(data.path);
       if (!listeners || listeners.size === 0) return;
-      const kind = data.kind ?? 'upserted';
       for (const handler of Array.from(listeners)) {
         try {
-          handler(kind);
+          handler(data);
         } catch (e) {
           console.warn(`[wsStore] document-changed handler for '${data.path}' threw:`, e);
         }

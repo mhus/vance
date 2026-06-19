@@ -90,23 +90,24 @@ public class DocumentChangedBroadcaster {
         String tenant = event.tenantId();
         String path = event.path();
         String kind = wireKind(event.kind());
-        String writerEditorId = event.editorId();
-        log.trace("documents.changed[local] podId={} tenant={} path={} kind={} writerEditorId={} → publish + broadcast",
-                podId, tenant, path, kind, writerEditorId);
+        WriterMeta writer = new WriterMeta(
+                event.editorId(), event.editorUserId(), event.editorDisplayName());
+        log.trace("documents.changed[local] podId={} tenant={} path={} kind={} writer={} → publish + broadcast",
+                podId, tenant, path, kind, writer);
         try {
-            redis.publish(tenant, CHANNEL, encodePayload(path, kind, writerEditorId));
+            redis.publish(tenant, CHANNEL, encodePayload(path, kind, writer));
         } catch (RuntimeException ex) {
             log.warn("documents.changed[local] redis publish failed for '{}/{}': {}",
                     tenant, path, ex.toString());
         }
-        broadcastLocal(path, kind, writerEditorId, "local");
+        broadcastLocal(path, kind, writer, "local");
     }
 
     private void onRemoteChanged(String topic, String body) {
-        // Wire format: "{podId}|{base64(path)}|{kind}" (3 parts, legacy)
-        //          or  "{podId}|{base64(path)}|{kind}|{editorId}" (4 parts).
-        // editorId may be empty when the writer didn't supply the
-        // X-Editor-Id header (server-side write, script, scheduler).
+        // Wire format (variable-length, all suffix fields optional):
+        //   {podId}|{base64(path)}|{kind}[|{editorId}[|{base64(displayName)}[|{userId}]]]
+        // Pods on older rolling-deploy code may still publish 3-part
+        // frames; we accept anything ≥3 parts gracefully.
         String[] parts = body.split("\\|", -1);
         if (parts.length < 3) {
             log.debug("documents.changed[remote] malformed body on {}: '{}'", topic, body);
@@ -117,20 +118,23 @@ public class DocumentChangedBroadcaster {
             log.trace("documents.changed[remote] self-echo on {} ignored", topic);
             return;
         }
-
         String path = decodePath(parts[1]);
         if (path == null) {
             log.debug("documents.changed[remote] undecodable path on {}: '{}'", topic, parts[1]);
             return;
         }
         String kind = parts[2];
-        String writerEditorId = parts.length >= 4 && !parts[3].isEmpty() ? parts[3] : null;
-        log.trace("documents.changed[remote] from pod={} on topic={} path={} kind={} writerEditorId={}",
-                senderPodId, topic, path, kind, writerEditorId);
-        broadcastLocal(path, kind, writerEditorId, "remote");
+        String editorId = parts.length >= 4 && !parts[3].isEmpty() ? parts[3] : null;
+        String displayName = parts.length >= 5 && !parts[4].isEmpty()
+                ? decodePath(parts[4]) : null;
+        String userId = parts.length >= 6 && !parts[5].isEmpty() ? parts[5] : null;
+        WriterMeta writer = new WriterMeta(editorId, userId, displayName);
+        log.trace("documents.changed[remote] from pod={} on topic={} path={} kind={} writer={}",
+                senderPodId, topic, path, kind, writer);
+        broadcastLocal(path, kind, writer, "remote");
     }
 
-    private void broadcastLocal(String path, String kind, @Nullable String writerEditorId,
+    private void broadcastLocal(String path, String kind, WriterMeta writer,
             String source) {
         if (!registry.hasLocalSubscribers(path)) {
             log.debug("documents.changed[{}] no local subscribers for path={} → drop", source, path);
@@ -139,6 +143,9 @@ public class DocumentChangedBroadcaster {
         DocumentChangedNotification payload = DocumentChangedNotification.builder()
                 .path(path)
                 .kind(kind)
+                .editorId(writer.editorId())
+                .editorUserId(writer.userId())
+                .editorDisplayName(writer.displayName())
                 .build();
         WebSocketEnvelope envelope = WebSocketEnvelope.notification(
                 MessageType.DOCUMENT_CHANGED, payload);
@@ -148,8 +155,8 @@ public class DocumentChangedBroadcaster {
         registry.forEachLocalSubscriber(path, (wsSession, ctx) -> {
             // Skip the writer's own connection — they just performed the
             // save themselves, they already have the freshest content.
-            if (writerEditorId != null
-                    && Objects.equals(ctx.getEditorId(), writerEditorId)) {
+            if (writer.editorId() != null
+                    && Objects.equals(ctx.getEditorId(), writer.editorId())) {
                 skipped[0]++;
                 log.trace("documents.changed[{}] skip writer ws='{}' editorId='{}' path={}",
                         source, wsSession.getId(), ctx.getEditorId(), path);
@@ -171,11 +178,22 @@ public class DocumentChangedBroadcaster {
 
     // ─── wire helpers ──────────────────────────────────────────────────
 
-    private String encodePayload(String path, String kind, @Nullable String editorId) {
+    private record WriterMeta(
+            @Nullable String editorId,
+            @Nullable String userId,
+            @Nullable String displayName) {}
+
+    private String encodePayload(String path, String kind, WriterMeta writer) {
+        String displayName = writer.displayName();
+        String encodedDisplay = displayName == null ? "" :
+                Base64.getUrlEncoder().withoutPadding()
+                        .encodeToString(displayName.getBytes(StandardCharsets.UTF_8));
         return podId + "|" + Base64.getUrlEncoder().withoutPadding()
                 .encodeToString(path.getBytes(StandardCharsets.UTF_8))
                 + "|" + kind
-                + "|" + (editorId == null ? "" : editorId);
+                + "|" + (writer.editorId() == null ? "" : writer.editorId())
+                + "|" + encodedDisplay
+                + "|" + (writer.userId() == null ? "" : writer.userId());
     }
 
     private static @Nullable String decodePath(String encoded) {

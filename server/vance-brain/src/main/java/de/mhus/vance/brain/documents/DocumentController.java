@@ -430,7 +430,7 @@ public class DocumentController {
 
         DocumentDocument updated;
         try (InputStream body = httpRequest.getInputStream()) {
-            updated = documentService.replaceContent(id, body, mime, editorId);
+            updated = documentService.replaceContent(id, body, mime, writerIdentity(httpRequest, editorId));
         }
         return ResponseEntity.ok(toDto(updated));
     }
@@ -469,13 +469,36 @@ public class DocumentController {
                     request.getSummaryDirty(),
                     /* ragEnabled handled atomically above */ null,
                     request.getMimeType(),
-                    editorId);
+                    writerIdentity(httpRequest, editorId));
         } catch (DocumentService.DocumentAlreadyExistsException e) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
         return ResponseEntity.ok(toDto(updated));
+    }
+
+    /**
+     * Build a {@link DocumentService.WriterIdentity} from the inbound REST
+     * request — combines the JWT-authenticated user (via the
+     * {@link de.mhus.vance.shared.permission.SecurityContext}) with the
+     * client-supplied {@code X-Editor-Id} header. Used to drive the
+     * live-broadcast layer's writer-skip filter and the {@code ⏺ name}
+     * awareness badge. No separate display-name field exists in
+     * {@code UserDocument} today, so the username doubles as both
+     * {@code userId} and {@code displayName}.
+     */
+    private DocumentService.WriterIdentity writerIdentity(
+            HttpServletRequest request, @Nullable String editorId) {
+        try {
+            de.mhus.vance.shared.permission.SecurityContext ctx = authority.contextOf(request);
+            String username = ctx.subjectId();
+            return DocumentService.WriterIdentity.of(editorId, username, username);
+        } catch (RuntimeException e) {
+            // Auth context not resolvable (system path, anonymous, …) —
+            // fall back to editorId-only so the broadcast still happens.
+            return DocumentService.WriterIdentity.of(editorId, null, null);
+        }
     }
 
     /**
@@ -541,10 +564,11 @@ public class DocumentController {
         }
         authority.enforce(httpRequest,
                 new Resource.Document(tenant, existing.getProjectId(), existing.getPath()), Action.DELETE);
+        DocumentService.WriterIdentity identity = writerIdentity(httpRequest, editorId);
         if (DocumentService.isTrash(existing.getPath())) {
-            documentService.delete(id, editorId);
+            documentService.delete(id, identity);
         } else {
-            documentService.trash(id, editorId);
+            documentService.trash(id, identity);
         }
         return ResponseEntity.noContent().build();
     }

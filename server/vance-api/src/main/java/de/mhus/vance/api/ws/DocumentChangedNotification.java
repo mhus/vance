@@ -38,4 +38,20 @@ public class DocumentChangedNotification {
 
     /** {@code "upserted"} (create or content-replace) or {@code "deleted"}. */
     private String kind;
+
+    /**
+     * Writer identity — the editor instance that performed the write,
+     * as captured by the REST {@code X-Editor-Id} header. Used by the
+     * server to skip the writer's own connection during local fan-out
+     * (so it never appears here). Recipients with multiple tabs on the
+     * same WS that this event reached can still use it as a routing
+     * signal; otherwise informational.
+     */
+    private @org.jspecify.annotations.Nullable String editorId;
+
+    /** User id of the writer — for the {@code ⏺ name} awareness badge. */
+    private @org.jspecify.annotations.Nullable String editorUserId;
+
+    /** Display name of the writer — same as above; preferred for UI. */
+    private @org.jspecify.annotations.Nullable String editorDisplayName;
 }

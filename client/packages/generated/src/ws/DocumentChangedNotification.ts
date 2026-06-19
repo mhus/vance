@@ -6,4 +6,7 @@
 export interface DocumentChangedNotification {
   path: string;
   kind: string;
+  editorId?: string;
+  editorUserId?: string;
+  editorDisplayName?: string;
 }

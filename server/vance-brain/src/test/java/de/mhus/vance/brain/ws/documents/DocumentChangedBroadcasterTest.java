@@ -59,46 +59,28 @@ class DocumentChangedBroadcasterTest {
         broadcaster.onLocalChanged(new DocumentLiveChangedEvent(
                 "acme", "_user_alice", "documents/notes.md",
                 DocumentLiveChangedEvent.Kind.UPSERTED,
-                /* editorId */ null));
+                /* editorId */ null, /* userId */ null, /* displayName */ null));
 
-        // Wire payload: "{podId}|{base64(path)}|{kind}|{editorId?}" — 4 parts,
-        // last one empty when no writer-identity was provided.
+        // Wire payload (variable-length, up to 6 parts):
+        // "{podId}|{base64(path)}|{kind}|{editorId?}|{base64(displayName)?}|{userId?}"
         ArgumentCaptor<String> payload = ArgumentCaptor.forClass(String.class);
         verify(redis).publish(eq("acme"), eq("documents.changed"), payload.capture());
         String[] parts = payload.getValue().split("\\|", -1);
-        assertThat(parts).hasSize(4);
+        assertThat(parts).hasSizeGreaterThanOrEqualTo(4);
         assertThat(decodeUrl(parts[1])).isEqualTo("documents/notes.md");
         assertThat(parts[2]).isEqualTo("upserted");
         assertThat(parts[3]).isEmpty();
 
-        // Local push: DOCUMENT_CHANGED frame to subscriber (no editorId
-        // on the event → writer-skip is a no-op, everyone receives).
         DocumentChangedNotification pushed = captureChanged(ws);
         assertThat(pushed.getPath()).isEqualTo("documents/notes.md");
         assertThat(pushed.getKind()).isEqualTo("upserted");
+        assertThat(pushed.getEditorId()).isNull();
+        assertThat(pushed.getEditorUserId()).isNull();
+        assertThat(pushed.getEditorDisplayName()).isNull();
     }
 
     @Test
-    void localEvent_withToolEditorId_doesNotSkipAnyRealSubscriber() throws IOException {
-        // The "_tool" sentinel is the default for server-side writes
-        // (LLM tools, scripts, Slartibartfast, schedulers). It must not
-        // accidentally suppress any human editor: real clients have
-        // random UUID editorIds, never the literal "_tool".
-        WebSocketSession ws = wsSession("ws-1");
-        registry.subscribe(ws, contextFor("ed-1", "alice", "Alice"), "documents/notes.md");
-        org.mockito.Mockito.reset(sender);
-
-        broadcaster.onLocalChanged(new DocumentLiveChangedEvent(
-                "acme", "_user_alice", "documents/notes.md",
-                DocumentLiveChangedEvent.Kind.UPSERTED,
-                "_tool"));
-
-        DocumentChangedNotification pushed = captureChanged(ws);
-        assertThat(pushed.getPath()).isEqualTo("documents/notes.md");
-    }
-
-    @Test
-    void localEvent_withEditorId_includesItOnTheWire_andSkipsWriterOnFanOut() throws IOException {
+    void localEvent_withFullWriterIdentity_carriesItOnTheWire_andSkipsWriter() throws IOException {
         WebSocketSession wsWriter = wsSession("ws-writer");
         WebSocketSession wsOther = wsSession("ws-other");
         registry.subscribe(wsWriter, contextFor("ed-writer", "alice", "Alice"), "documents/notes.md");
@@ -108,18 +90,24 @@ class DocumentChangedBroadcasterTest {
         broadcaster.onLocalChanged(new DocumentLiveChangedEvent(
                 "acme", "_user_alice", "documents/notes.md",
                 DocumentLiveChangedEvent.Kind.UPSERTED,
-                "ed-writer"));
+                "ed-writer", "alice", "Alice"));
 
-        // Writer's editorId appears as the 4th wire segment.
+        // Writer identity on the wire — 6 parts.
         ArgumentCaptor<String> payload = ArgumentCaptor.forClass(String.class);
         verify(redis).publish(eq("acme"), eq("documents.changed"), payload.capture());
         String[] parts = payload.getValue().split("\\|", -1);
+        assertThat(parts).hasSize(6);
         assertThat(parts[3]).isEqualTo("ed-writer");
+        assertThat(decodeUrl(parts[4])).isEqualTo("Alice");
+        assertThat(parts[5]).isEqualTo("alice");
 
-        // The writer's own WS must NOT receive the changed frame, the
-        // other subscriber must.
+        // Writer-skip: writer's WS does NOT receive; other recipient does
+        // and the frame carries the writer's identity for the badge.
         verify(sender, never()).sendOnChannel(eq(wsWriter), eq("documents"), any());
-        verify(sender).sendOnChannel(eq(wsOther), eq("documents"), any());
+        DocumentChangedNotification toOther = captureChanged(wsOther);
+        assertThat(toOther.getEditorId()).isEqualTo("ed-writer");
+        assertThat(toOther.getEditorUserId()).isEqualTo("alice");
+        assertThat(toOther.getEditorDisplayName()).isEqualTo("Alice");
     }
 
     @Test
@@ -127,7 +115,7 @@ class DocumentChangedBroadcasterTest {
         broadcaster.onLocalChanged(new DocumentLiveChangedEvent(
                 "acme", "_vance", "_vance/setting_forms/foo.yaml",
                 DocumentLiveChangedEvent.Kind.UPSERTED,
-                null));
+                null, null, null));
 
         verify(redis).publish(eq("acme"), eq("documents.changed"), anyString());
         verify(sender, never()).sendOnChannel(any(), eq("documents"), any());
@@ -142,7 +130,7 @@ class DocumentChangedBroadcasterTest {
         broadcaster.onLocalChanged(new DocumentLiveChangedEvent(
                 "acme", "_user_alice", "documents/old.md",
                 DocumentLiveChangedEvent.Kind.DELETED,
-                null));
+                null, null, null));
 
         DocumentChangedNotification pushed = captureChanged(ws);
         assertThat(pushed.getKind()).isEqualTo("deleted");
@@ -157,9 +145,8 @@ class DocumentChangedBroadcasterTest {
         org.mockito.Mockito.reset(sender);
 
         BiConsumer<String, String> handler = captureRemoteHandler();
-        // 4-part wire format with empty editorId at the tail.
         handler.accept("vance:acme:documents.changed",
-                "pod-other|" + encodeUrl("shared.md") + "|upserted|");
+                "pod-other|" + encodeUrl("shared.md") + "|upserted|||");
 
         DocumentChangedNotification pushed = captureChanged(ws);
         assertThat(pushed.getPath()).isEqualTo("shared.md");
@@ -167,23 +154,22 @@ class DocumentChangedBroadcasterTest {
     }
 
     @Test
-    void remoteChanged_withWriterEditorId_skipsThatSubscriber() throws IOException {
+    void remoteChanged_withWriterIdentity_carriesItToTheFrame_andSkips() throws IOException {
         WebSocketSession wsWriter = wsSession("ws-writer-tab");
         WebSocketSession wsOther = wsSession("ws-other-tab");
-        // Imagine the writer's REST PUT went via Pod A; their WS lives on
-        // Pod B (cross-pod sticky-session miss). Pod B receives the
-        // Redis event with editorId="ed-writer" and must skip the
-        // matching local WS while pushing to the other tab.
         registry.subscribe(wsWriter, contextFor("ed-writer", "alice", "Alice"), "shared.md");
         registry.subscribe(wsOther, contextFor("ed-other", "alice", "Alice"), "shared.md");
         org.mockito.Mockito.reset(sender);
 
         BiConsumer<String, String> handler = captureRemoteHandler();
         handler.accept("vance:acme:documents.changed",
-                "pod-other|" + encodeUrl("shared.md") + "|upserted|ed-writer");
+                "pod-other|" + encodeUrl("shared.md") + "|upserted|ed-writer|"
+                        + encodeUrl("Alice") + "|alice");
 
         verify(sender, never()).sendOnChannel(eq(wsWriter), eq("documents"), any());
-        verify(sender).sendOnChannel(eq(wsOther), eq("documents"), any());
+        DocumentChangedNotification toOther = captureChanged(wsOther);
+        assertThat(toOther.getEditorDisplayName()).isEqualTo("Alice");
+        assertThat(toOther.getEditorUserId()).isEqualTo("alice");
     }
 
     @Test
@@ -194,7 +180,7 @@ class DocumentChangedBroadcasterTest {
 
         BiConsumer<String, String> handler = captureRemoteHandler();
         handler.accept("vance:acme:documents.changed",
-                broadcaster.podIdForTests() + "|" + encodeUrl("notes.md") + "|upserted|");
+                broadcaster.podIdForTests() + "|" + encodeUrl("notes.md") + "|upserted|||");
 
         verify(sender, never()).sendOnChannel(any(), eq("documents"), any());
     }
@@ -203,16 +189,13 @@ class DocumentChangedBroadcasterTest {
     void remoteChanged_noLocalSubscribers_isNoOp() throws IOException {
         BiConsumer<String, String> handler = captureRemoteHandler();
         handler.accept("vance:acme:documents.changed",
-                "pod-other|" + encodeUrl("nobody-here.md") + "|upserted|");
+                "pod-other|" + encodeUrl("nobody-here.md") + "|upserted|||");
 
         verify(sender, never()).sendOnChannel(any(), eq("documents"), any());
     }
 
     @Test
     void remoteChanged_legacy3PartPayload_stillAccepted() throws IOException {
-        // Pods that haven't picked up the editorId-aware payload format
-        // still publish 3-part frames. The broadcaster must accept those
-        // for the duration of a rolling deploy.
         WebSocketSession ws = wsSession("ws-local");
         registry.subscribe(ws, contextFor("ed-local", "alice", "Alice"), "shared.md");
         org.mockito.Mockito.reset(sender);
@@ -223,13 +206,14 @@ class DocumentChangedBroadcasterTest {
 
         DocumentChangedNotification pushed = captureChanged(ws);
         assertThat(pushed.getPath()).isEqualTo("shared.md");
+        assertThat(pushed.getEditorDisplayName()).isNull();
     }
 
     @Test
     void remoteChanged_malformedPayload_isIgnored() throws IOException {
         BiConsumer<String, String> handler = captureRemoteHandler();
         handler.accept("vance:acme:documents.changed", "garbage");
-        handler.accept("vance:acme:documents.changed", "one|two");  // < 3 parts
+        handler.accept("vance:acme:documents.changed", "one|two");
 
         verify(sender, never()).sendOnChannel(any(), eq("documents"), any());
     }

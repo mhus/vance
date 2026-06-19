@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, provide, ref, watch, type Ref } from 'vue';
 import {
   type Crumb,
   EditorShell,
@@ -16,10 +16,12 @@ import { brainFetch } from '@vance/shared';
 import type { SessionSummaryRichDto } from '@vance/generated';
 import { useTenantProjects } from '@composables/useTenantProjects';
 import DocumentPresenceStrip from '@/ws/DocumentPresenceStrip.vue';
+import { brainFetchText } from '@vance/shared';
 import {
   isAudioVideoMime,
-  useDocumentChangeReaction,
+  tryThreeWayMerge,
 } from '@/composables/useDocumentChangeReaction';
+import { onDocumentChanged } from '@/ws/wsConnectionStore';
 import { isBinaryMime } from './stores/cortexStore';
 import { useCortexStore } from './stores/cortexStore';
 import { CortexClientToolService } from './clientToolService';
@@ -320,31 +322,213 @@ function onPopState(): void {
 const activeTab = computed(() => store.activeTab);
 
 /**
- * Live-change reaction for the *currently-active* document tab. Other
- * tabs' remote changes are not signalled in v1 — the user notices on
- * switch because the next reload is one click away. The composable
- * swaps its subscription automatically when {@link activeTab} changes.
+ * Live-change reactions, one per open document tab. Per-tab subscriptions
+ * (rather than a single one bound to {@link activeTab}) make Cortex
+ * race-free across tab-switches: an event for path A always merges
+ * against tab A's baseline + buffer, regardless of which tab the user
+ * is currently looking at. The active tab's reaction state surfaces in
+ * the topbar banner via {@link activePendingChange}.
+ *
+ * <p>Subscriptions follow {@link store.openTabs}: tabs added → a fresh
+ * subscription is created; tabs closed → the subscription is torn down.
+ * On path renames the old subscription is dropped and a new one set up
+ * for the new path.
  */
-const changeReaction = useDocumentChangeReaction({
-  path: computed(() => activeTab.value?.path ?? null),
-  tryApply: async (_kind) => {
-    const tab = activeTab.value;
-    if (!tab) return true;
-    const mime = tab.mimeType ?? '';
-    // Audio/video: never silent-reload (may be in mid-playback).
-    if (isAudioVideoMime(mime)) return false;
-    // Text with unsaved edits: protect the buffer.
-    if (!isBinaryMime(mime) && tab.dirty) return false;
-    // Clean text or non-AV binary → safe to refetch.
-    await store.reloadTab(tab.id);
+interface TabReaction {
+  /** Path this subscription was created for; used to detect renames. */
+  path: string;
+  /** {@code kind} when the tab's editor cannot absorb the change silently. */
+  pendingChange: Ref<string | null>;
+  /** Awareness badge state — auto-cleared by a timer. */
+  recentEditor: Ref<{ displayName: string; setAt: number } | null>;
+  unsubscribe: () => void;
+  /** Pending fade-out timer for {@link recentEditor}. */
+  fadeTimer: ReturnType<typeof setTimeout> | null;
+}
+
+const tabReactions = new Map<string, TabReaction>();
+const tabReactionRevision = ref(0);  // bumped to make active* computeds re-evaluate
+const RECENT_EDITOR_TTL_MS = 2500;
+
+function tryApplyForTab(
+  tabId: string,
+  notification: { kind?: string },
+): Promise<boolean> {
+  const tab = store.openTabs.find((t) => t.id === tabId);
+  if (!tab) {
+    console.debug(
+      `[documents.changed] tab id='${tabId}' gone, skipping ${notification.kind}`,
+    );
+    return Promise.resolve(true);
+  }
+  return runTryApply(tab, notification.kind ?? 'upserted');
+}
+
+async function runTryApply(
+  tab: ReturnType<typeof store.openTabs.find> & object,
+  kind: string,
+): Promise<boolean> {
+  const mime = tab.mimeType ?? '';
+  // Audio/video: never silent-reload (may be in mid-playback).
+  if (isAudioVideoMime(mime)) {
+    console.debug(`[documents.changed] tab='${tab.path}' kind=${kind} → banner (AV)`);
+    return false;
+  }
+  // Text with unsaved edits → try a 3-way merge of baseline + local
+  // buffer + freshly-fetched remote body. Clean merge applies silently;
+  // conflict bubbles up to the banner.
+  if (!isBinaryMime(mime) && tab.dirty) {
+    const remoteText = await brainFetchText(
+      `documents/${encodeURIComponent(tab.id)}/content`,
+    );
+    if (remoteText === null) {
+      console.debug(`[documents.changed] tab='${tab.path}' remote fetch null → banner`);
+      return false;
+    }
+    const outcome = tryThreeWayMerge(
+      tab.baselineInlineText,
+      tab.inlineText,
+      remoteText,
+    );
+    if (!outcome.ok) {
+      console.debug(`[documents.changed] tab='${tab.path}' conflict → banner`);
+      return false;
+    }
+    // Apply the merged buffer in-place — keeps the editor mounted,
+    // preserves Vue reactivity on the tab. Baseline tracks the new
+    // remote so a subsequent merge sees the right ancestor. dirty
+    // collapses when the merged buffer happens to equal the remote
+    // (user's edits got absorbed wholesale).
+    tab.inlineText = outcome.merged;
+    tab.baselineInlineText = outcome.remote;
+    tab.dirty = outcome.merged !== outcome.remote;
+    console.debug(`[documents.changed] tab='${tab.path}' merged silently`);
     return true;
+  }
+  // Clean text or non-AV binary → safe to refetch.
+  await store.reloadTab(tab.id);
+  console.debug(`[documents.changed] tab='${tab.path}' silent reload`);
+  return true;
+}
+
+function attachTabReaction(tab: ReturnType<typeof store.openTabs.find> & object): void {
+  const pending: Ref<string | null> = ref(null);
+  const recent: Ref<{ displayName: string; setAt: number } | null> = ref(null);
+  const path = tab.path;
+  const reaction: TabReaction = {
+    path,
+    pendingChange: pending,
+    recentEditor: recent,
+    unsubscribe: () => {},
+    fadeTimer: null,
+  };
+  reaction.unsubscribe = onDocumentChanged(path, async (notification) => {
+    const kind = notification.kind ?? 'upserted';
+    try {
+      const handled = await tryApplyForTab(tab.id, notification);
+      if (!handled) {
+        pending.value = kind;
+        tabReactionRevision.value++;
+      } else {
+        // Silent apply succeeded — raise the awareness badge.
+        const name = notification.editorDisplayName ?? notification.editorUserId ?? null;
+        if (name) {
+          recent.value = { displayName: name, setAt: Date.now() };
+          if (reaction.fadeTimer) clearTimeout(reaction.fadeTimer);
+          reaction.fadeTimer = setTimeout(() => {
+            recent.value = null;
+            reaction.fadeTimer = null;
+            tabReactionRevision.value++;
+          }, RECENT_EDITOR_TTL_MS);
+          tabReactionRevision.value++;
+        }
+      }
+    } catch (e) {
+      console.warn(`[documents.changed] tryApply threw for tab='${path}':`, e);
+      pending.value = kind;
+      tabReactionRevision.value++;
+    }
+  });
+  tabReactions.set(tab.id, reaction);
+}
+
+function detachTabReaction(tabId: string): void {
+  const r = tabReactions.get(tabId);
+  if (!r) return;
+  try { r.unsubscribe(); } catch { /* ignore */ }
+  if (r.fadeTimer) { clearTimeout(r.fadeTimer); r.fadeTimer = null; }
+  tabReactions.delete(tabId);
+  tabReactionRevision.value++;
+}
+
+// Drive subscriptions from store.openTabs. Re-runs on add/remove/rename.
+watch(
+  () => store.openTabs.map((t) => ({ id: t.id, path: t.path })),
+  (current, previous) => {
+    const currentIds = new Set(current.map((t) => t.id));
+    // Drop subscriptions for closed tabs.
+    for (const old of previous ?? []) {
+      if (!currentIds.has(old.id)) detachTabReaction(old.id);
+    }
+    // Add or refresh.
+    for (const t of current) {
+      const existing = tabReactions.get(t.id);
+      if (!existing) {
+        const tabObj = store.openTabs.find((x) => x.id === t.id);
+        if (tabObj) attachTabReaction(tabObj);
+      } else if (existing.path !== t.path) {
+        // Rename — drop old, re-subscribe on new path.
+        detachTabReaction(t.id);
+        const tabObj = store.openTabs.find((x) => x.id === t.id);
+        if (tabObj) attachTabReaction(tabObj);
+      }
+    }
   },
-  forceApply: async () => {
-    const tab = activeTab.value;
-    if (!tab) return;
-    await store.reloadTab(tab.id);
-  },
+  { immediate: true, deep: true },
+);
+
+onBeforeUnmount(() => {
+  for (const id of Array.from(tabReactions.keys())) detachTabReaction(id);
 });
+
+/** Banner-bound state: kind of the active tab's pending change, or null. */
+const activePendingChange = computed<string | null>(() => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+  tabReactionRevision.value;
+  const id = activeTab.value?.id;
+  if (!id) return null;
+  return tabReactions.get(id)?.pendingChange.value ?? null;
+});
+
+/** Awareness-badge state for the active tab, or null when faded. */
+const activeRecentEditor = computed<{ displayName: string } | null>(() => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+  tabReactionRevision.value;
+  const id = activeTab.value?.id;
+  if (!id) return null;
+  return tabReactions.get(id)?.recentEditor.value ?? null;
+});
+
+function keepLocalForActive(): void {
+  const id = activeTab.value?.id;
+  if (!id) return;
+  const r = tabReactions.get(id);
+  if (r) {
+    r.pendingChange.value = null;
+    tabReactionRevision.value++;
+  }
+}
+
+async function acceptRemoteForActive(): Promise<void> {
+  const tab = activeTab.value;
+  if (!tab) return;
+  const r = tabReactions.get(tab.id);
+  if (r) {
+    r.pendingChange.value = null;
+    tabReactionRevision.value++;
+  }
+  await store.reloadTab(tab.id);
+}
 
 const chatBoundDocumentPath = computed<string | null>(() => {
   const id = chatBoundDocumentId.value;
@@ -753,24 +937,36 @@ onBeforeUnmount(() => {
          same screen region (top-right of the header) and the two
          views stay visually symmetrical. -->
     <template #topbar-extra>
+      <transition name="recent-editor-fade">
+        <span
+          v-if="activeRecentEditor && activeTab?.path"
+          class="mr-2 inline-flex items-center gap-1 text-xs
+                 text-base-content/70 font-medium select-none"
+          :title="$t('documents.recentEditor.tooltip', { name: activeRecentEditor.displayName })"
+        >
+          <span aria-hidden="true" class="text-success">⏺</span>
+          {{ activeRecentEditor.displayName }}
+        </span>
+      </transition>
+
       <div
-        v-if="changeReaction.pendingChange.value && activeTab?.path"
+        v-if="activePendingChange && activeTab?.path"
         class="mr-3 inline-flex items-center gap-2 rounded-md
                border border-warning/40 bg-warning/15 px-2 py-1
                text-xs font-medium text-warning-content"
-        :title="changeReaction.pendingChange.value === 'deleted'
+        :title="activePendingChange === 'deleted'
                 ? $t('documents.externallyChanged.deletedTooltip')
                 : $t('documents.externallyChanged.upsertedTooltip')"
       >
         <span aria-hidden="true">●</span>
-        <span>{{ changeReaction.pendingChange.value === 'deleted'
+        <span>{{ activePendingChange === 'deleted'
                  ? $t('documents.externallyChanged.deleted')
                  : $t('documents.externallyChanged.upserted') }}</span>
         <button
           type="button"
           class="rounded border border-warning/50 px-1.5 py-0.5
                  hover:bg-warning/30"
-          @click="changeReaction.keepLocal()"
+          @click="keepLocalForActive()"
         >
           {{ $t('documents.externallyChanged.keepLocal') }}
         </button>
@@ -778,7 +974,7 @@ onBeforeUnmount(() => {
           type="button"
           class="rounded border border-warning/50 px-1.5 py-0.5
                  hover:bg-warning/30"
-          @click="changeReaction.acceptRemote()"
+          @click="acceptRemoteForActive()"
         >
           {{ $t('documents.externallyChanged.acceptRemote') }}
         </button>
@@ -987,6 +1183,19 @@ onBeforeUnmount(() => {
 </template>
 
 <style>
+/* Awareness badge fade-in/out (Vue transition class names). Used in
+ * the topbar after a silent merge from a peer — keep visible briefly,
+ * fade out gently. Matches the timing budget set by the composable's
+ * RECENT_EDITOR_TTL_MS. */
+.recent-editor-fade-enter-active,
+.recent-editor-fade-leave-active {
+  transition: opacity 0.6s ease-in-out;
+}
+.recent-editor-fade-enter-from,
+.recent-editor-fade-leave-to {
+  opacity: 0;
+}
+
 /* Cortex-specific responsive override (intentionally unscoped — Cortex
  * is its own MPA entry, so this CSS only ships with cortex.html).
  *

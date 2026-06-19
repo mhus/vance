@@ -3,7 +3,9 @@ import { EditorShell, VAlert, VANCE_LINK_HANDLER_KEY, VButton, VEmptyState, VInp
 import { brainFetch } from '@vance/shared';
 import { useTenantProjects } from '@composables/useTenantProjects';
 import DocumentPresenceStrip from '@/ws/DocumentPresenceStrip.vue';
-import { isAudioVideoMime, useDocumentChangeReaction, } from '@/composables/useDocumentChangeReaction';
+import { brainFetchText } from '@vance/shared';
+import { isAudioVideoMime, tryThreeWayMerge, } from '@/composables/useDocumentChangeReaction';
+import { onDocumentChanged } from '@/ws/wsConnectionStore';
 import { isBinaryMime } from './stores/cortexStore';
 import { useCortexStore } from './stores/cortexStore';
 import { CortexClientToolService } from './clientToolService';
@@ -278,36 +280,180 @@ function onPopState() {
     }
 }
 const activeTab = computed(() => store.activeTab);
-/**
- * Live-change reaction for the *currently-active* document tab. Other
- * tabs' remote changes are not signalled in v1 — the user notices on
- * switch because the next reload is one click away. The composable
- * swaps its subscription automatically when {@link activeTab} changes.
- */
-const changeReaction = useDocumentChangeReaction({
-    path: computed(() => activeTab.value?.path ?? null),
-    tryApply: async (_kind) => {
-        const tab = activeTab.value;
-        if (!tab)
-            return true;
-        const mime = tab.mimeType ?? '';
-        // Audio/video: never silent-reload (may be in mid-playback).
-        if (isAudioVideoMime(mime))
+const tabReactions = new Map();
+const tabReactionRevision = ref(0); // bumped to make active* computeds re-evaluate
+const RECENT_EDITOR_TTL_MS = 2500;
+function tryApplyForTab(tabId, notification) {
+    const tab = store.openTabs.find((t) => t.id === tabId);
+    if (!tab) {
+        console.debug(`[documents.changed] tab id='${tabId}' gone, skipping ${notification.kind}`);
+        return Promise.resolve(true);
+    }
+    return runTryApply(tab, notification.kind ?? 'upserted');
+}
+async function runTryApply(tab, kind) {
+    const mime = tab.mimeType ?? '';
+    // Audio/video: never silent-reload (may be in mid-playback).
+    if (isAudioVideoMime(mime)) {
+        console.debug(`[documents.changed] tab='${tab.path}' kind=${kind} → banner (AV)`);
+        return false;
+    }
+    // Text with unsaved edits → try a 3-way merge of baseline + local
+    // buffer + freshly-fetched remote body. Clean merge applies silently;
+    // conflict bubbles up to the banner.
+    if (!isBinaryMime(mime) && tab.dirty) {
+        const remoteText = await brainFetchText(`documents/${encodeURIComponent(tab.id)}/content`);
+        if (remoteText === null) {
+            console.debug(`[documents.changed] tab='${tab.path}' remote fetch null → banner`);
             return false;
-        // Text with unsaved edits: protect the buffer.
-        if (!isBinaryMime(mime) && tab.dirty)
+        }
+        const outcome = tryThreeWayMerge(tab.baselineInlineText, tab.inlineText, remoteText);
+        if (!outcome.ok) {
+            console.debug(`[documents.changed] tab='${tab.path}' conflict → banner`);
             return false;
-        // Clean text or non-AV binary → safe to refetch.
-        await store.reloadTab(tab.id);
+        }
+        // Apply the merged buffer in-place — keeps the editor mounted,
+        // preserves Vue reactivity on the tab. Baseline tracks the new
+        // remote so a subsequent merge sees the right ancestor. dirty
+        // collapses when the merged buffer happens to equal the remote
+        // (user's edits got absorbed wholesale).
+        tab.inlineText = outcome.merged;
+        tab.baselineInlineText = outcome.remote;
+        tab.dirty = outcome.merged !== outcome.remote;
+        console.debug(`[documents.changed] tab='${tab.path}' merged silently`);
         return true;
-    },
-    forceApply: async () => {
-        const tab = activeTab.value;
-        if (!tab)
-            return;
-        await store.reloadTab(tab.id);
-    },
+    }
+    // Clean text or non-AV binary → safe to refetch.
+    await store.reloadTab(tab.id);
+    console.debug(`[documents.changed] tab='${tab.path}' silent reload`);
+    return true;
+}
+function attachTabReaction(tab) {
+    const pending = ref(null);
+    const recent = ref(null);
+    const path = tab.path;
+    const reaction = {
+        path,
+        pendingChange: pending,
+        recentEditor: recent,
+        unsubscribe: () => { },
+        fadeTimer: null,
+    };
+    reaction.unsubscribe = onDocumentChanged(path, async (notification) => {
+        const kind = notification.kind ?? 'upserted';
+        try {
+            const handled = await tryApplyForTab(tab.id, notification);
+            if (!handled) {
+                pending.value = kind;
+                tabReactionRevision.value++;
+            }
+            else {
+                // Silent apply succeeded — raise the awareness badge.
+                const name = notification.editorDisplayName ?? notification.editorUserId ?? null;
+                if (name) {
+                    recent.value = { displayName: name, setAt: Date.now() };
+                    if (reaction.fadeTimer)
+                        clearTimeout(reaction.fadeTimer);
+                    reaction.fadeTimer = setTimeout(() => {
+                        recent.value = null;
+                        reaction.fadeTimer = null;
+                        tabReactionRevision.value++;
+                    }, RECENT_EDITOR_TTL_MS);
+                    tabReactionRevision.value++;
+                }
+            }
+        }
+        catch (e) {
+            console.warn(`[documents.changed] tryApply threw for tab='${path}':`, e);
+            pending.value = kind;
+            tabReactionRevision.value++;
+        }
+    });
+    tabReactions.set(tab.id, reaction);
+}
+function detachTabReaction(tabId) {
+    const r = tabReactions.get(tabId);
+    if (!r)
+        return;
+    try {
+        r.unsubscribe();
+    }
+    catch { /* ignore */ }
+    if (r.fadeTimer) {
+        clearTimeout(r.fadeTimer);
+        r.fadeTimer = null;
+    }
+    tabReactions.delete(tabId);
+    tabReactionRevision.value++;
+}
+// Drive subscriptions from store.openTabs. Re-runs on add/remove/rename.
+watch(() => store.openTabs.map((t) => ({ id: t.id, path: t.path })), (current, previous) => {
+    const currentIds = new Set(current.map((t) => t.id));
+    // Drop subscriptions for closed tabs.
+    for (const old of previous ?? []) {
+        if (!currentIds.has(old.id))
+            detachTabReaction(old.id);
+    }
+    // Add or refresh.
+    for (const t of current) {
+        const existing = tabReactions.get(t.id);
+        if (!existing) {
+            const tabObj = store.openTabs.find((x) => x.id === t.id);
+            if (tabObj)
+                attachTabReaction(tabObj);
+        }
+        else if (existing.path !== t.path) {
+            // Rename — drop old, re-subscribe on new path.
+            detachTabReaction(t.id);
+            const tabObj = store.openTabs.find((x) => x.id === t.id);
+            if (tabObj)
+                attachTabReaction(tabObj);
+        }
+    }
+}, { immediate: true, deep: true });
+onBeforeUnmount(() => {
+    for (const id of Array.from(tabReactions.keys()))
+        detachTabReaction(id);
 });
+/** Banner-bound state: kind of the active tab's pending change, or null. */
+const activePendingChange = computed(() => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+    tabReactionRevision.value;
+    const id = activeTab.value?.id;
+    if (!id)
+        return null;
+    return tabReactions.get(id)?.pendingChange.value ?? null;
+});
+/** Awareness-badge state for the active tab, or null when faded. */
+const activeRecentEditor = computed(() => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+    tabReactionRevision.value;
+    const id = activeTab.value?.id;
+    if (!id)
+        return null;
+    return tabReactions.get(id)?.recentEditor.value ?? null;
+});
+function keepLocalForActive() {
+    const id = activeTab.value?.id;
+    if (!id)
+        return;
+    const r = tabReactions.get(id);
+    if (r) {
+        r.pendingChange.value = null;
+        tabReactionRevision.value++;
+    }
+}
+async function acceptRemoteForActive() {
+    const tab = activeTab.value;
+    if (!tab)
+        return;
+    const r = tabReactions.get(tab.id);
+    if (r) {
+        r.pendingChange.value = null;
+        tabReactionRevision.value++;
+    }
+    await store.reloadTab(tab.id);
+}
 const chatBoundDocumentPath = computed(() => {
     const id = chatBoundDocumentId.value;
     if (!id)
@@ -727,10 +873,32 @@ if (__VLS_ctx.sessionId) {
     __VLS_3.slots.default;
     {
         const { 'topbar-extra': __VLS_thisSlot } = __VLS_3.slots;
-        if (__VLS_ctx.changeReaction.pendingChange.value && __VLS_ctx.activeTab?.path) {
+        const __VLS_8 = {}.transition;
+        /** @type {[typeof __VLS_components.Transition, typeof __VLS_components.transition, typeof __VLS_components.Transition, typeof __VLS_components.transition, ]} */ ;
+        // @ts-ignore
+        const __VLS_9 = __VLS_asFunctionalComponent(__VLS_8, new __VLS_8({
+            name: "recent-editor-fade",
+        }));
+        const __VLS_10 = __VLS_9({
+            name: "recent-editor-fade",
+        }, ...__VLS_functionalComponentArgsRest(__VLS_9));
+        __VLS_11.slots.default;
+        if (__VLS_ctx.activeRecentEditor && __VLS_ctx.activeTab?.path) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "\u006d\u0072\u002d\u0032\u0020\u0069\u006e\u006c\u0069\u006e\u0065\u002d\u0066\u006c\u0065\u0078\u0020\u0069\u0074\u0065\u006d\u0073\u002d\u0063\u0065\u006e\u0074\u0065\u0072\u0020\u0067\u0061\u0070\u002d\u0031\u0020\u0074\u0065\u0078\u0074\u002d\u0078\u0073\u000a\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0074\u0065\u0078\u0074\u002d\u0062\u0061\u0073\u0065\u002d\u0063\u006f\u006e\u0074\u0065\u006e\u0074\u002f\u0037\u0030\u0020\u0066\u006f\u006e\u0074\u002d\u006d\u0065\u0064\u0069\u0075\u006d\u0020\u0073\u0065\u006c\u0065\u0063\u0074\u002d\u006e\u006f\u006e\u0065" },
+                title: (__VLS_ctx.$t('documents.recentEditor.tooltip', { name: __VLS_ctx.activeRecentEditor.displayName })),
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                'aria-hidden': "true",
+                ...{ class: "text-success" },
+            });
+            (__VLS_ctx.activeRecentEditor.displayName);
+        }
+        var __VLS_11;
+        if (__VLS_ctx.activePendingChange && __VLS_ctx.activeTab?.path) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                 ...{ class: "\u006d\u0072\u002d\u0033\u0020\u0069\u006e\u006c\u0069\u006e\u0065\u002d\u0066\u006c\u0065\u0078\u0020\u0069\u0074\u0065\u006d\u0073\u002d\u0063\u0065\u006e\u0074\u0065\u0072\u0020\u0067\u0061\u0070\u002d\u0032\u0020\u0072\u006f\u0075\u006e\u0064\u0065\u0064\u002d\u006d\u0064\u000a\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0062\u006f\u0072\u0064\u0065\u0072\u0020\u0062\u006f\u0072\u0064\u0065\u0072\u002d\u0077\u0061\u0072\u006e\u0069\u006e\u0067\u002f\u0034\u0030\u0020\u0062\u0067\u002d\u0077\u0061\u0072\u006e\u0069\u006e\u0067\u002f\u0031\u0035\u0020\u0070\u0078\u002d\u0032\u0020\u0070\u0079\u002d\u0031\u000a\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0074\u0065\u0078\u0074\u002d\u0078\u0073\u0020\u0066\u006f\u006e\u0074\u002d\u006d\u0065\u0064\u0069\u0075\u006d\u0020\u0074\u0065\u0078\u0074\u002d\u0077\u0061\u0072\u006e\u0069\u006e\u0067\u002d\u0063\u006f\u006e\u0074\u0065\u006e\u0074" },
-                title: (__VLS_ctx.changeReaction.pendingChange.value === 'deleted'
+                title: (__VLS_ctx.activePendingChange === 'deleted'
                     ? __VLS_ctx.$t('documents.externallyChanged.deletedTooltip')
                     : __VLS_ctx.$t('documents.externallyChanged.upsertedTooltip')),
             });
@@ -738,16 +906,16 @@ if (__VLS_ctx.sessionId) {
                 'aria-hidden': "true",
             });
             __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
-            (__VLS_ctx.changeReaction.pendingChange.value === 'deleted'
+            (__VLS_ctx.activePendingChange === 'deleted'
                 ? __VLS_ctx.$t('documents.externallyChanged.deleted')
                 : __VLS_ctx.$t('documents.externallyChanged.upserted'));
             __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
                 ...{ onClick: (...[$event]) => {
                         if (!(__VLS_ctx.sessionId))
                             return;
-                        if (!(__VLS_ctx.changeReaction.pendingChange.value && __VLS_ctx.activeTab?.path))
+                        if (!(__VLS_ctx.activePendingChange && __VLS_ctx.activeTab?.path))
                             return;
-                        __VLS_ctx.changeReaction.keepLocal();
+                        __VLS_ctx.keepLocalForActive();
                     } },
                 type: "button",
                 ...{ class: "\u0072\u006f\u0075\u006e\u0064\u0065\u0064\u0020\u0062\u006f\u0072\u0064\u0065\u0072\u0020\u0062\u006f\u0072\u0064\u0065\u0072\u002d\u0077\u0061\u0072\u006e\u0069\u006e\u0067\u002f\u0035\u0030\u0020\u0070\u0078\u002d\u0031\u002e\u0035\u0020\u0070\u0079\u002d\u0030\u002e\u0035\u000a\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0068\u006f\u0076\u0065\u0072\u003a\u0062\u0067\u002d\u0077\u0061\u0072\u006e\u0069\u006e\u0067\u002f\u0033\u0030" },
@@ -757,9 +925,9 @@ if (__VLS_ctx.sessionId) {
                 ...{ onClick: (...[$event]) => {
                         if (!(__VLS_ctx.sessionId))
                             return;
-                        if (!(__VLS_ctx.changeReaction.pendingChange.value && __VLS_ctx.activeTab?.path))
+                        if (!(__VLS_ctx.activePendingChange && __VLS_ctx.activeTab?.path))
                             return;
-                        __VLS_ctx.changeReaction.acceptRemote();
+                        __VLS_ctx.acceptRemoteForActive();
                     } },
                 type: "button",
                 ...{ class: "\u0072\u006f\u0075\u006e\u0064\u0065\u0064\u0020\u0062\u006f\u0072\u0064\u0065\u0072\u0020\u0062\u006f\u0072\u0064\u0065\u0072\u002d\u0077\u0061\u0072\u006e\u0069\u006e\u0067\u002f\u0035\u0030\u0020\u0070\u0078\u002d\u0031\u002e\u0035\u0020\u0070\u0079\u002d\u0030\u002e\u0035\u000a\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0068\u006f\u0076\u0065\u0072\u003a\u0062\u0067\u002d\u0077\u0061\u0072\u006e\u0069\u006e\u0067\u002f\u0033\u0030" },
@@ -769,36 +937,36 @@ if (__VLS_ctx.sessionId) {
         if (__VLS_ctx.activeTab?.path) {
             /** @type {[typeof DocumentPresenceStrip, ]} */ ;
             // @ts-ignore
-            const __VLS_8 = __VLS_asFunctionalComponent(DocumentPresenceStrip, new DocumentPresenceStrip({
+            const __VLS_12 = __VLS_asFunctionalComponent(DocumentPresenceStrip, new DocumentPresenceStrip({
                 path: (__VLS_ctx.activeTab.path),
                 ...{ class: "mr-2" },
             }));
-            const __VLS_9 = __VLS_8({
+            const __VLS_13 = __VLS_12({
                 path: (__VLS_ctx.activeTab.path),
                 ...{ class: "mr-2" },
-            }, ...__VLS_functionalComponentArgsRest(__VLS_8));
+            }, ...__VLS_functionalComponentArgsRest(__VLS_12));
         }
-        const __VLS_11 = {}.VButton;
+        const __VLS_15 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
         // @ts-ignore
-        const __VLS_12 = __VLS_asFunctionalComponent(__VLS_11, new __VLS_11({
+        const __VLS_16 = __VLS_asFunctionalComponent(__VLS_15, new __VLS_15({
             ...{ 'onClick': {} },
             size: "sm",
             variant: "ghost",
         }));
-        const __VLS_13 = __VLS_12({
+        const __VLS_17 = __VLS_16({
             ...{ 'onClick': {} },
             size: "sm",
             variant: "ghost",
-        }, ...__VLS_functionalComponentArgsRest(__VLS_12));
-        let __VLS_15;
-        let __VLS_16;
-        let __VLS_17;
-        const __VLS_18 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_16));
+        let __VLS_19;
+        let __VLS_20;
+        let __VLS_21;
+        const __VLS_22 = {
             onClick: (__VLS_ctx.backToChat)
         };
-        __VLS_14.slots.default;
-        var __VLS_14;
+        __VLS_18.slots.default;
+        var __VLS_18;
     }
     {
         const { sidebar: __VLS_thisSlot } = __VLS_3.slots;
@@ -809,26 +977,26 @@ if (__VLS_ctx.sessionId) {
             ...{ class: "flex-1 min-h-0 overflow-y-auto" },
         });
         if (__VLS_ctx.treeError) {
-            const __VLS_19 = {}.VAlert;
+            const __VLS_23 = {}.VAlert;
             /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
             // @ts-ignore
-            const __VLS_20 = __VLS_asFunctionalComponent(__VLS_19, new __VLS_19({
+            const __VLS_24 = __VLS_asFunctionalComponent(__VLS_23, new __VLS_23({
                 variant: "error",
                 ...{ class: "m-2" },
             }));
-            const __VLS_21 = __VLS_20({
+            const __VLS_25 = __VLS_24({
                 variant: "error",
                 ...{ class: "m-2" },
-            }, ...__VLS_functionalComponentArgsRest(__VLS_20));
-            __VLS_22.slots.default;
+            }, ...__VLS_functionalComponentArgsRest(__VLS_24));
+            __VLS_26.slots.default;
             __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
             (__VLS_ctx.treeError);
-            var __VLS_22;
+            var __VLS_26;
         }
         if (__VLS_ctx.projectId) {
             /** @type {[typeof FileTreeSidebar, ]} */ ;
             // @ts-ignore
-            const __VLS_23 = __VLS_asFunctionalComponent(FileTreeSidebar, new FileTreeSidebar({
+            const __VLS_27 = __VLS_asFunctionalComponent(FileTreeSidebar, new FileTreeSidebar({
                 ...{ 'onOpenFile': {} },
                 ...{ 'onDeleteFile': {} },
                 ...{ 'onMoveFile': {} },
@@ -837,7 +1005,7 @@ if (__VLS_ctx.sessionId) {
                 root: (__VLS_ctx.store.fileTree),
                 activeFileId: (__VLS_ctx.store.activeTabId),
             }));
-            const __VLS_24 = __VLS_23({
+            const __VLS_28 = __VLS_27({
                 ...{ 'onOpenFile': {} },
                 ...{ 'onDeleteFile': {} },
                 ...{ 'onMoveFile': {} },
@@ -845,43 +1013,43 @@ if (__VLS_ctx.sessionId) {
                 ...{ 'onReload': {} },
                 root: (__VLS_ctx.store.fileTree),
                 activeFileId: (__VLS_ctx.store.activeTabId),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_23));
-            let __VLS_26;
-            let __VLS_27;
-            let __VLS_28;
-            const __VLS_29 = {
+            }, ...__VLS_functionalComponentArgsRest(__VLS_27));
+            let __VLS_30;
+            let __VLS_31;
+            let __VLS_32;
+            const __VLS_33 = {
                 onOpenFile: ((id) => { __VLS_ctx.focusZone = 'main'; __VLS_ctx.store.openFile(id); })
             };
-            const __VLS_30 = {
+            const __VLS_34 = {
                 onDeleteFile: (__VLS_ctx.onDelete)
             };
-            const __VLS_31 = {
+            const __VLS_35 = {
                 onMoveFile: (__VLS_ctx.onMoveFile)
             };
-            const __VLS_32 = {
+            const __VLS_36 = {
                 onUploadFiles: (__VLS_ctx.onUploadFiles)
             };
-            const __VLS_33 = {
+            const __VLS_37 = {
                 onReload: (() => __VLS_ctx.projectId && __VLS_ctx.store.loadList(__VLS_ctx.projectId))
             };
-            var __VLS_25;
+            var __VLS_29;
         }
         else if (__VLS_ctx.bootError) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                 ...{ class: "p-3 text-sm" },
             });
-            const __VLS_34 = {}.VAlert;
+            const __VLS_38 = {}.VAlert;
             /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
             // @ts-ignore
-            const __VLS_35 = __VLS_asFunctionalComponent(__VLS_34, new __VLS_34({
+            const __VLS_39 = __VLS_asFunctionalComponent(__VLS_38, new __VLS_38({
                 variant: "error",
             }));
-            const __VLS_36 = __VLS_35({
+            const __VLS_40 = __VLS_39({
                 variant: "error",
-            }, ...__VLS_functionalComponentArgsRest(__VLS_35));
-            __VLS_37.slots.default;
+            }, ...__VLS_functionalComponentArgsRest(__VLS_39));
+            __VLS_41.slots.default;
             (__VLS_ctx.bootError);
-            var __VLS_37;
+            var __VLS_41;
         }
         else {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -1067,59 +1235,59 @@ if (__VLS_ctx.sessionId) {
     }
     /** @type {[typeof EditorTabs, ]} */ ;
     // @ts-ignore
-    const __VLS_38 = __VLS_asFunctionalComponent(EditorTabs, new EditorTabs({
+    const __VLS_42 = __VLS_asFunctionalComponent(EditorTabs, new EditorTabs({
         ...{ 'onSelect': {} },
         ...{ 'onClose': {} },
         tabs: (__VLS_ctx.store.openTabs),
         activeTabId: (__VLS_ctx.store.activeTabId),
     }));
-    const __VLS_39 = __VLS_38({
+    const __VLS_43 = __VLS_42({
         ...{ 'onSelect': {} },
         ...{ 'onClose': {} },
         tabs: (__VLS_ctx.store.openTabs),
         activeTabId: (__VLS_ctx.store.activeTabId),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_38));
-    let __VLS_41;
-    let __VLS_42;
-    let __VLS_43;
-    const __VLS_44 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_42));
+    let __VLS_45;
+    let __VLS_46;
+    let __VLS_47;
+    const __VLS_48 = {
         onSelect: (__VLS_ctx.store.setActiveTab)
     };
-    const __VLS_45 = {
+    const __VLS_49 = {
         onClose: (__VLS_ctx.store.closeTab)
     };
-    var __VLS_40;
+    var __VLS_44;
     if (__VLS_ctx.saveError) {
-        const __VLS_46 = {}.VAlert;
+        const __VLS_50 = {}.VAlert;
         /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
         // @ts-ignore
-        const __VLS_47 = __VLS_asFunctionalComponent(__VLS_46, new __VLS_46({
+        const __VLS_51 = __VLS_asFunctionalComponent(__VLS_50, new __VLS_50({
             variant: "error",
             ...{ class: "m-2" },
         }));
-        const __VLS_48 = __VLS_47({
+        const __VLS_52 = __VLS_51({
             variant: "error",
             ...{ class: "m-2" },
-        }, ...__VLS_functionalComponentArgsRest(__VLS_47));
-        __VLS_49.slots.default;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_51));
+        __VLS_53.slots.default;
         (__VLS_ctx.saveError);
-        var __VLS_49;
+        var __VLS_53;
     }
     if (!__VLS_ctx.activeTab) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "flex-1 flex items-center justify-center" },
         });
-        const __VLS_50 = {}.VEmptyState;
+        const __VLS_54 = {}.VEmptyState;
         /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
         // @ts-ignore
-        const __VLS_51 = __VLS_asFunctionalComponent(__VLS_50, new __VLS_50({
+        const __VLS_55 = __VLS_asFunctionalComponent(__VLS_54, new __VLS_54({
             headline: "No document open",
             body: "Pick one from the tree on the left, or create a new file.",
         }));
-        const __VLS_52 = __VLS_51({
+        const __VLS_56 = __VLS_55({
             headline: "No document open",
             body: "Pick one from the tree on the left, or create a new file.",
-        }, ...__VLS_functionalComponentArgsRest(__VLS_51));
+        }, ...__VLS_functionalComponentArgsRest(__VLS_55));
     }
     else {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -1127,41 +1295,41 @@ if (__VLS_ctx.sessionId) {
         });
         /** @type {[typeof TabRendererHost, ]} */ ;
         // @ts-ignore
-        const __VLS_54 = __VLS_asFunctionalComponent(TabRendererHost, new TabRendererHost({
+        const __VLS_58 = __VLS_asFunctionalComponent(TabRendererHost, new TabRendererHost({
             ...{ 'onUpdate': {} },
             document: (__VLS_ctx.activeTab),
             sessionId: (__VLS_ctx.sessionId),
         }));
-        const __VLS_55 = __VLS_54({
+        const __VLS_59 = __VLS_58({
             ...{ 'onUpdate': {} },
             document: (__VLS_ctx.activeTab),
             sessionId: (__VLS_ctx.sessionId),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_54));
-        let __VLS_57;
-        let __VLS_58;
-        let __VLS_59;
-        const __VLS_60 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_58));
+        let __VLS_61;
+        let __VLS_62;
+        let __VLS_63;
+        const __VLS_64 = {
             onUpdate: (__VLS_ctx.store.updateActiveContent)
         };
-        var __VLS_56;
+        var __VLS_60;
     }
     {
         const { 'right-panel': __VLS_thisSlot } = __VLS_3.slots;
         if (__VLS_ctx.sessionId && __VLS_ctx.projectId) {
             /** @type {[typeof CortexRightPanel, ]} */ ;
             // @ts-ignore
-            const __VLS_61 = __VLS_asFunctionalComponent(CortexRightPanel, new CortexRightPanel({
+            const __VLS_65 = __VLS_asFunctionalComponent(CortexRightPanel, new CortexRightPanel({
                 sessionId: (__VLS_ctx.sessionId),
                 projectId: (__VLS_ctx.projectId),
                 toolService: (__VLS_ctx.clientToolService),
                 activeDocument: (__VLS_ctx.activeTab),
             }));
-            const __VLS_62 = __VLS_61({
+            const __VLS_66 = __VLS_65({
                 sessionId: (__VLS_ctx.sessionId),
                 projectId: (__VLS_ctx.projectId),
                 toolService: (__VLS_ctx.clientToolService),
                 activeDocument: (__VLS_ctx.activeTab),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_61));
+            }, ...__VLS_functionalComponentArgsRest(__VLS_65));
         }
         else {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -1171,192 +1339,201 @@ if (__VLS_ctx.sessionId) {
     }
     var __VLS_3;
 }
-const __VLS_64 = {}.VModal;
+const __VLS_68 = {}.VModal;
 /** @type {[typeof __VLS_components.VModal, typeof __VLS_components.VModal, ]} */ ;
 // @ts-ignore
-const __VLS_65 = __VLS_asFunctionalComponent(__VLS_64, new __VLS_64({
+const __VLS_69 = __VLS_asFunctionalComponent(__VLS_68, new __VLS_68({
     modelValue: (__VLS_ctx.showCreate),
     title: "New document",
 }));
-const __VLS_66 = __VLS_65({
+const __VLS_70 = __VLS_69({
     modelValue: (__VLS_ctx.showCreate),
     title: "New document",
-}, ...__VLS_functionalComponentArgsRest(__VLS_65));
-__VLS_67.slots.default;
+}, ...__VLS_functionalComponentArgsRest(__VLS_69));
+__VLS_71.slots.default;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.form, __VLS_intrinsicElements.form)({
     ...{ onSubmit: (__VLS_ctx.confirmCreate) },
     ...{ class: "space-y-3 p-2" },
 });
-const __VLS_68 = {}.VInput;
-/** @type {[typeof __VLS_components.VInput, ]} */ ;
-// @ts-ignore
-const __VLS_69 = __VLS_asFunctionalComponent(__VLS_68, new __VLS_68({
-    modelValue: (__VLS_ctx.createDir),
-    label: "Path",
-    placeholder: "(project root)",
-}));
-const __VLS_70 = __VLS_69({
-    modelValue: (__VLS_ctx.createDir),
-    label: "Path",
-    placeholder: "(project root)",
-}, ...__VLS_functionalComponentArgsRest(__VLS_69));
 const __VLS_72 = {}.VInput;
 /** @type {[typeof __VLS_components.VInput, ]} */ ;
 // @ts-ignore
 const __VLS_73 = __VLS_asFunctionalComponent(__VLS_72, new __VLS_72({
+    modelValue: (__VLS_ctx.createDir),
+    label: "Path",
+    placeholder: "(project root)",
+}));
+const __VLS_74 = __VLS_73({
+    modelValue: (__VLS_ctx.createDir),
+    label: "Path",
+    placeholder: "(project root)",
+}, ...__VLS_functionalComponentArgsRest(__VLS_73));
+const __VLS_76 = {}.VInput;
+/** @type {[typeof __VLS_components.VInput, ]} */ ;
+// @ts-ignore
+const __VLS_77 = __VLS_asFunctionalComponent(__VLS_76, new __VLS_76({
     modelValue: (__VLS_ctx.createName),
     label: "Name",
     placeholder: "idea.md",
     disabled: (__VLS_ctx.creating),
 }));
-const __VLS_74 = __VLS_73({
+const __VLS_78 = __VLS_77({
     modelValue: (__VLS_ctx.createName),
     label: "Name",
     placeholder: "idea.md",
     disabled: (__VLS_ctx.creating),
-}, ...__VLS_functionalComponentArgsRest(__VLS_73));
+}, ...__VLS_functionalComponentArgsRest(__VLS_77));
 if (__VLS_ctx.createError) {
-    const __VLS_76 = {}.VAlert;
+    const __VLS_80 = {}.VAlert;
     /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
     // @ts-ignore
-    const __VLS_77 = __VLS_asFunctionalComponent(__VLS_76, new __VLS_76({
+    const __VLS_81 = __VLS_asFunctionalComponent(__VLS_80, new __VLS_80({
         variant: "error",
     }));
-    const __VLS_78 = __VLS_77({
+    const __VLS_82 = __VLS_81({
         variant: "error",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_77));
-    __VLS_79.slots.default;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_81));
+    __VLS_83.slots.default;
     (__VLS_ctx.createError);
-    var __VLS_79;
+    var __VLS_83;
 }
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "flex justify-end gap-2 pt-2" },
 });
-const __VLS_80 = {}.VButton;
+const __VLS_84 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
 // @ts-ignore
-const __VLS_81 = __VLS_asFunctionalComponent(__VLS_80, new __VLS_80({
+const __VLS_85 = __VLS_asFunctionalComponent(__VLS_84, new __VLS_84({
     ...{ 'onClick': {} },
     type: "button",
     variant: "ghost",
 }));
-const __VLS_82 = __VLS_81({
+const __VLS_86 = __VLS_85({
     ...{ 'onClick': {} },
     type: "button",
     variant: "ghost",
-}, ...__VLS_functionalComponentArgsRest(__VLS_81));
-let __VLS_84;
-let __VLS_85;
-let __VLS_86;
-const __VLS_87 = {
+}, ...__VLS_functionalComponentArgsRest(__VLS_85));
+let __VLS_88;
+let __VLS_89;
+let __VLS_90;
+const __VLS_91 = {
     onClick: (...[$event]) => {
         __VLS_ctx.showCreate = false;
     }
 };
-__VLS_83.slots.default;
-var __VLS_83;
-const __VLS_88 = {}.VButton;
+__VLS_87.slots.default;
+var __VLS_87;
+const __VLS_92 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
 // @ts-ignore
-const __VLS_89 = __VLS_asFunctionalComponent(__VLS_88, new __VLS_88({
-    type: "submit",
-    variant: "primary",
-    loading: (__VLS_ctx.creating),
-}));
-const __VLS_90 = __VLS_89({
-    type: "submit",
-    variant: "primary",
-    loading: (__VLS_ctx.creating),
-}, ...__VLS_functionalComponentArgsRest(__VLS_89));
-__VLS_91.slots.default;
-var __VLS_91;
-var __VLS_67;
-const __VLS_92 = {}.VModal;
-/** @type {[typeof __VLS_components.VModal, typeof __VLS_components.VModal, ]} */ ;
-// @ts-ignore
 const __VLS_93 = __VLS_asFunctionalComponent(__VLS_92, new __VLS_92({
-    modelValue: (__VLS_ctx.showNewFolder),
-    title: "New folder",
+    type: "submit",
+    variant: "primary",
+    loading: (__VLS_ctx.creating),
 }));
 const __VLS_94 = __VLS_93({
-    modelValue: (__VLS_ctx.showNewFolder),
-    title: "New folder",
+    type: "submit",
+    variant: "primary",
+    loading: (__VLS_ctx.creating),
 }, ...__VLS_functionalComponentArgsRest(__VLS_93));
 __VLS_95.slots.default;
+var __VLS_95;
+var __VLS_71;
+const __VLS_96 = {}.VModal;
+/** @type {[typeof __VLS_components.VModal, typeof __VLS_components.VModal, ]} */ ;
+// @ts-ignore
+const __VLS_97 = __VLS_asFunctionalComponent(__VLS_96, new __VLS_96({
+    modelValue: (__VLS_ctx.showNewFolder),
+    title: "New folder",
+}));
+const __VLS_98 = __VLS_97({
+    modelValue: (__VLS_ctx.showNewFolder),
+    title: "New folder",
+}, ...__VLS_functionalComponentArgsRest(__VLS_97));
+__VLS_99.slots.default;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.form, __VLS_intrinsicElements.form)({
     ...{ onSubmit: (__VLS_ctx.confirmNewFolder) },
     ...{ class: "space-y-3 p-2" },
 });
-const __VLS_96 = {}.VInput;
+const __VLS_100 = {}.VInput;
 /** @type {[typeof __VLS_components.VInput, ]} */ ;
 // @ts-ignore
-const __VLS_97 = __VLS_asFunctionalComponent(__VLS_96, new __VLS_96({
+const __VLS_101 = __VLS_asFunctionalComponent(__VLS_100, new __VLS_100({
     modelValue: (__VLS_ctx.newFolderPath),
     label: "Folder path",
     placeholder: "documents/notes",
 }));
-const __VLS_98 = __VLS_97({
+const __VLS_102 = __VLS_101({
     modelValue: (__VLS_ctx.newFolderPath),
     label: "Folder path",
     placeholder: "documents/notes",
-}, ...__VLS_functionalComponentArgsRest(__VLS_97));
+}, ...__VLS_functionalComponentArgsRest(__VLS_101));
 __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
     ...{ class: "text-xs opacity-60" },
 });
 if (__VLS_ctx.newFolderError) {
-    const __VLS_100 = {}.VAlert;
+    const __VLS_104 = {}.VAlert;
     /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
     // @ts-ignore
-    const __VLS_101 = __VLS_asFunctionalComponent(__VLS_100, new __VLS_100({
+    const __VLS_105 = __VLS_asFunctionalComponent(__VLS_104, new __VLS_104({
         variant: "error",
     }));
-    const __VLS_102 = __VLS_101({
+    const __VLS_106 = __VLS_105({
         variant: "error",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_101));
-    __VLS_103.slots.default;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_105));
+    __VLS_107.slots.default;
     (__VLS_ctx.newFolderError);
-    var __VLS_103;
+    var __VLS_107;
 }
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "flex justify-end gap-2 pt-2" },
 });
-const __VLS_104 = {}.VButton;
+const __VLS_108 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
 // @ts-ignore
-const __VLS_105 = __VLS_asFunctionalComponent(__VLS_104, new __VLS_104({
+const __VLS_109 = __VLS_asFunctionalComponent(__VLS_108, new __VLS_108({
     ...{ 'onClick': {} },
     type: "button",
     variant: "ghost",
 }));
-const __VLS_106 = __VLS_105({
+const __VLS_110 = __VLS_109({
     ...{ 'onClick': {} },
     type: "button",
     variant: "ghost",
-}, ...__VLS_functionalComponentArgsRest(__VLS_105));
-let __VLS_108;
-let __VLS_109;
-let __VLS_110;
-const __VLS_111 = {
+}, ...__VLS_functionalComponentArgsRest(__VLS_109));
+let __VLS_112;
+let __VLS_113;
+let __VLS_114;
+const __VLS_115 = {
     onClick: (...[$event]) => {
         __VLS_ctx.showNewFolder = false;
     }
 };
-__VLS_107.slots.default;
-var __VLS_107;
-const __VLS_112 = {}.VButton;
+__VLS_111.slots.default;
+var __VLS_111;
+const __VLS_116 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
 // @ts-ignore
-const __VLS_113 = __VLS_asFunctionalComponent(__VLS_112, new __VLS_112({
+const __VLS_117 = __VLS_asFunctionalComponent(__VLS_116, new __VLS_116({
     type: "submit",
     variant: "primary",
 }));
-const __VLS_114 = __VLS_113({
+const __VLS_118 = __VLS_117({
     type: "submit",
     variant: "primary",
-}, ...__VLS_functionalComponentArgsRest(__VLS_113));
-__VLS_115.slots.default;
-var __VLS_115;
-var __VLS_95;
+}, ...__VLS_functionalComponentArgsRest(__VLS_117));
+__VLS_119.slots.default;
+var __VLS_119;
+var __VLS_99;
+/** @type {__VLS_StyleScopedClasses['mr-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['inline-flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-base-content/70']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-medium']} */ ;
+/** @type {__VLS_StyleScopedClasses['select-none']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-success']} */ ;
 /** @type {__VLS_StyleScopedClasses['mr-3']} */ ;
 /** @type {__VLS_StyleScopedClasses['inline-flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['items-center']} */ ;
@@ -1539,7 +1716,10 @@ const __VLS_self = (await import('vue')).defineComponent({
             title: title,
             breadcrumbs: breadcrumbs,
             activeTab: activeTab,
-            changeReaction: changeReaction,
+            activePendingChange: activePendingChange,
+            activeRecentEditor: activeRecentEditor,
+            keepLocalForActive: keepLocalForActive,
+            acceptRemoteForActive: acceptRemoteForActive,
             hasDirtyTabs: hasDirtyTabs,
             isActiveTabBound: isActiveTabBound,
             chatBoundDocumentPathDisplay: chatBoundDocumentPathDisplay,

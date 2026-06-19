@@ -309,6 +309,9 @@ declare const _default: {
             keepLocal: string;
             acceptRemote: string;
         };
+        recentEditor: {
+            tooltip: string;
+        };
         followUp: {
             acceptHint: string;
         };

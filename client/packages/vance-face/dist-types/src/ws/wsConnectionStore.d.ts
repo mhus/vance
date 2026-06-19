@@ -1,7 +1,15 @@
 import { type ComputedRef, type Ref } from 'vue';
 import { BrainWebSocket, type BrainWsApi } from '@vance/shared';
-import type { DocumentViewer } from '@vance/generated';
+import type { DocumentChangedNotification, DocumentViewer } from '@vance/generated';
 export type WsStatus = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'down';
+/**
+ * Per-path callback registrations for the {@code documents.changed}
+ * frame ({@link onDocumentChanged}). Handlers receive the full
+ * {@link DocumentChangedNotification} so they can branch on the
+ * {@code kind} *and* see who authored the change (for the
+ * {@code ⏺ name} awareness badge).
+ */
+type DocumentChangedHandler = (notification: DocumentChangedNotification) => void;
 /**
  * Ensure the tab-singleton WebSocket is open. Idempotent — returns the
  * existing socket if already connected, otherwise opens one. Throws on
@@ -53,23 +61,13 @@ export declare function unsubscribeDocument(path: string): Promise<void>;
  * {@link subscribeDocument} call (presence subscribe implies the server
  * fires changed-events to this connection too).
  *
- * <p>Handlers receive the wire {@code kind} string
- * ({@code "upserted"} / {@code "deleted"}).
- *
- * @example
- * onMounted(() => {
- *   void subscribeDocument(currentPath);
- *   stopChangedHandler = onDocumentChanged(currentPath, (kind) => {
- *     if (kind === 'deleted') showDeletedBanner();
- *     else markStale();
- *   });
- * });
- * onBeforeUnmount(() => {
- *   stopChangedHandler?.();
- *   void unsubscribeDocument(currentPath);
- * });
+ * <p>Handlers receive the full {@link DocumentChangedNotification}
+ * with {@code path}, {@code kind} ({@code "upserted"} / {@code "deleted"})
+ * and the writer's identity ({@code editorId} / {@code editorUserId} /
+ * {@code editorDisplayName} — useful for the {@code ⏺ name} awareness
+ * badge after a silent merge).
  */
-export declare function onDocumentChanged(path: string, handler: (kind: string) => void): () => void;
+export declare function onDocumentChanged(path: string, handler: DocumentChangedHandler): () => void;
 /**
  * Inform the store that the server-side binding is already in place
  * (e.g. after a {@code session-bootstrap} that creates + binds in one
@@ -109,4 +107,5 @@ export declare function useWsConnection(): {
     isOverlayVisible: ComputedRef<boolean>;
     documentViewers: Map<string, DocumentViewer[]>;
 };
+export {};
 //# sourceMappingURL=wsConnectionStore.d.ts.map

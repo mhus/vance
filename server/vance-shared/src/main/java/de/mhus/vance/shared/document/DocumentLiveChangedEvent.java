@@ -37,7 +37,9 @@ public record DocumentLiveChangedEvent(
         String projectId,
         String path,
         Kind kind,
-        @Nullable String editorId) {
+        @Nullable String editorId,
+        @Nullable String editorUserId,
+        @Nullable String editorDisplayName) {
 
     public enum Kind {
         UPSERTED,

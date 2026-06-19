@@ -345,6 +345,9 @@ export default {
       keepLocal: 'Keep mine',
       acceptRemote: 'Use remote',
     },
+    recentEditor: {
+      tooltip: '{name} just modified this document',
+    },
     followUp: {
       acceptHint: '↹ Tab',
     },

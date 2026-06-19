@@ -32,6 +32,7 @@ import { consumeDocumentDraft } from '@/platform';
 import DocumentPresenceStrip from '@/ws/DocumentPresenceStrip.vue';
 import {
   isAudioVideoMime,
+  tryThreeWayMerge,
   useDocumentChangeReaction,
 } from '@/composables/useDocumentChangeReaction';
 import DocumentPreview from './DocumentPreview.vue';
@@ -581,14 +582,41 @@ async function applyRemoteReload(): Promise<void> {
 
 const changeReaction = useDocumentChangeReaction({
   path: computed(() => docsState.selected.value?.path ?? null),
-  tryApply: async (_kind) => {
+  tryApply: async (_notification) => {
     const sel = docsState.selected.value;
     if (!sel) return true;  // nothing open → no banner needed
     const mime = sel.mimeType ?? '';
     // Audio/video: never silent-reload, the user might be in mid-playback.
     if (isAudioVideoMime(mime)) return false;
-    // Text with unsaved edits: protect the buffer.
-    if (canEditInline(mime) && isInlineEditorDirty.value) return false;
+    // Text with unsaved edits — try a 3-way merge against the freshly
+    // fetched remote body. Clean merge wins silently; only a real
+    // conflict raises the banner. See planning/document-presence.md §"Phase B".
+    if (canEditInline(mime) && isInlineEditorDirty.value) {
+      const remoteText = await docsState.loadContent(sel.id);
+      if (remoteText === null) {
+        console.debug(`[documents.changed] path='${sel.path}' remote fetch null → banner`);
+        return false;  // 404 / load error → banner
+      }
+      const outcome = tryThreeWayMerge(
+        baselineInlineText.value,
+        editInlineText.value,
+        remoteText,
+      );
+      if (!outcome.ok) {
+        console.debug(`[documents.changed] path='${sel.path}' conflict → banner`);
+        return false;
+      }
+      console.debug(`[documents.changed] path='${sel.path}' merged silently`);
+      // Apply the merged buffer in place — keeps the editor mounted
+      // and preserves Vue reactivity on downstream views that read
+      // sel.inlineText. Baseline tracks the new remote snapshot so a
+      // subsequent merge starts from the right common ancestor.
+      editInlineText.value = outcome.merged;
+      sel.inlineText = outcome.merged;
+      sel.inline = true;
+      baselineInlineText.value = outcome.remote;
+      return true;
+    }
     // Clean text OR non-AV binary (image / PDF / generic blob).
     await applyRemoteReload();
     return true;
@@ -2144,6 +2172,21 @@ const formatBytes = (n: number): string => {
          Only renders when a document is selected. The strip is empty
          (no DOM) when nobody else is on the path. ─── -->
     <template v-if="docsState.selected.value?.path" #topbar-extra>
+      <!-- Awareness badge: a peer just wrote silently into the editor.
+           Fades after ~2.5s via the composable's timer. Cleanly inert
+           when nobody's writing. -->
+      <transition name="recent-editor-fade">
+        <span
+          v-if="changeReaction.recentEditor.value"
+          class="mr-2 inline-flex items-center gap-1 text-xs
+                 text-base-content/70 font-medium select-none"
+          :title="$t('documents.recentEditor.tooltip', { name: changeReaction.recentEditor.value.displayName })"
+        >
+          <span aria-hidden="true" class="text-success">⏺</span>
+          {{ changeReaction.recentEditor.value.displayName }}
+        </span>
+      </transition>
+
       <!-- External-change conflict banner. The reaction composable raises
            changeReaction.pendingChange only when the change cannot be
            absorbed silently (text with unsaved edits, or audio/video where
@@ -3367,6 +3410,17 @@ const formatBytes = (n: number): string => {
 </template>
 
 <style scoped>
+/* Awareness badge fade-in/out after a silent peer-merge. Matches the
+ * composable's RECENT_EDITOR_TTL_MS lifetime. */
+.recent-editor-fade-enter-active,
+.recent-editor-fade-leave-active {
+  transition: opacity 0.6s ease-in-out;
+}
+.recent-editor-fade-enter-from,
+.recent-editor-fade-leave-to {
+  opacity: 0;
+}
+
 /* Sub-folder row in the main file list — clickable, descends into
  * that folder when activated. Sized to match the {@code <VDataList>}
  * row underneath visually. */

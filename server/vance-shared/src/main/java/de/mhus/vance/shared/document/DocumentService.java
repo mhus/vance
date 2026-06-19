@@ -824,21 +824,36 @@ public class DocumentService {
             String id,
             InputStream content,
             @Nullable String newMimeType) {
-        return replaceContent(id, content, newMimeType, EDITOR_ID_TOOL);
+        return replaceContent(id, content, newMimeType, TOOL_IDENTITY);
     }
 
     /**
-     * Same as {@link #replaceContent(String, InputStream, String)} but with
-     * an optional {@code editorId} — the identity of the editor instance
-     * that initiated the write (typically the REST {@code X-Editor-Id}
-     * header). Forwarded into the live-broadcast event so the writer's own
-     * WebSocket can be skipped during local fan-out.
+     * Single-editorId-overload — used by callers that only have the
+     * editorId on hand (no user identity). Translates to a
+     * {@link WriterIdentity} with null user fields.
      */
     public DocumentDocument replaceContent(
             String id,
             InputStream content,
             @Nullable String newMimeType,
             @Nullable String editorId) {
+        return replaceContent(id, content, newMimeType,
+                WriterIdentity.of(editorId, null, null));
+    }
+
+    /**
+     * Same as {@link #replaceContent(String, InputStream, String)} but
+     * with full {@link WriterIdentity} — used by REST controllers that
+     * have a JWT-bound user and the X-Editor-Id header. Forwarded into
+     * the live-broadcast event so the writer's own WebSocket can be
+     * skipped during local fan-out and subscribers can render the
+     * {@code ⏺ name} awareness badge.
+     */
+    public DocumentDocument replaceContent(
+            String id,
+            InputStream content,
+            @Nullable String newMimeType,
+            WriterIdentity identity) {
         DocumentDocument doc = repository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Unknown document id='" + id + "'"));
@@ -910,7 +925,7 @@ public class DocumentService {
         log.info("Replaced content tenantId='{}' projectId='{}' path='{}' id='{}' size={} compressed={}",
                 saved.getTenantId(), saved.getProjectId(), saved.getPath(),
                 saved.getId(), saved.getSize(), saved.isCompressed());
-        return publishUpserted(saved, contentChanged, editorId);
+        return publishUpserted(saved, contentChanged, identity);
     }
 
     /**
@@ -1376,14 +1391,13 @@ public class DocumentService {
             @Nullable String newMimeType) {
         return update(id, newTitle, newTags, newInlineText, newPath,
                 newAutoSummary, newSummaryDirty, newRagEnabled, newMimeType,
-                EDITOR_ID_TOOL);
+                TOOL_IDENTITY);
     }
 
     /**
-     * Overload that also accepts the writer's {@code editorId} — typically
-     * the REST {@code X-Editor-Id} header. Forwarded into the live-broadcast
-     * event so the writer's own WebSocket is skipped during local fan-out;
-     * see {@link DocumentLiveChangedEvent}.
+     * Single-editorId-overload — kept for callers that have only the
+     * editorId on hand. Translates to a {@link WriterIdentity} with
+     * null user fields.
      */
     public DocumentDocument update(
             String id,
@@ -1396,6 +1410,27 @@ public class DocumentService {
             @Nullable Boolean newRagEnabled,
             @Nullable String newMimeType,
             @Nullable String editorId) {
+        return update(id, newTitle, newTags, newInlineText, newPath,
+                newAutoSummary, newSummaryDirty, newRagEnabled, newMimeType,
+                WriterIdentity.of(editorId, null, null));
+    }
+
+    /**
+     * Same as the {@code String editorId} overload but with full
+     * {@link WriterIdentity} — used by REST controllers that have a
+     * JWT-bound user along with the X-Editor-Id header.
+     */
+    public DocumentDocument update(
+            String id,
+            @Nullable String newTitle,
+            @Nullable List<String> newTags,
+            @Nullable String newInlineText,
+            @Nullable String newPath,
+            @Nullable Boolean newAutoSummary,
+            @Nullable Boolean newSummaryDirty,
+            @Nullable Boolean newRagEnabled,
+            @Nullable String newMimeType,
+            WriterIdentity identity) {
 
         DocumentDocument doc = repository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown document id='" + id + "'"));
@@ -1518,7 +1553,7 @@ public class DocumentService {
         log.info("Updated document tenantId='{}' projectId='{}' id='{}' fields={}",
                 saved.getTenantId(), saved.getProjectId(), saved.getId(),
                 describeChanges(newTitle, newTags, newInlineText, newPath, newMimeType));
-        return publishUpserted(saved, contentChanged || pathChanged, editorId);
+        return publishUpserted(saved, contentChanged || pathChanged, identity);
     }
 
     /**
@@ -2028,17 +2063,20 @@ public class DocumentService {
      * inside the same project.
      */
     public void delete(String id) {
-        delete(id, EDITOR_ID_TOOL);
+        delete(id, TOOL_IDENTITY);
+    }
+
+    /** Single-editorId-overload — used by callers that only have the editorId. */
+    public void delete(String id, @Nullable String editorId) {
+        delete(id, WriterIdentity.of(editorId, null, null));
     }
 
     /**
-     * Same as {@link #delete(String)} but with the writer's
-     * {@code editorId} — typically the REST {@code X-Editor-Id} header.
-     * Forwarded into the live-broadcast event so the deleter's own
-     * WebSocket can be filtered out of the {@code documents.changed}
-     * fan-out (no banner on the tab that just performed the delete).
+     * Same as {@link #delete(String)} but with full {@link WriterIdentity} —
+     * forwarded into the live-broadcast event so the deleter's own
+     * WebSocket is filtered out and subscribers can show {@code ⏺ name}.
      */
-    public void delete(String id, @Nullable String editorId) {
+    public void delete(String id, WriterIdentity identity) {
         repository.findById(id).ifPresent(doc -> {
             String sid = doc.getStorageId();
             if (sid != null) {
@@ -2061,7 +2099,7 @@ public class DocumentService {
                         id, doc.getLineageId(), e);
             }
             log.info("Deleted document id='{}' path='{}'", id, doc.getPath());
-            publishDeleted(doc, editorId);
+            publishDeleted(doc, identity);
         });
     }
 
@@ -2110,16 +2148,21 @@ public class DocumentService {
      * @throws IllegalArgumentException if the id is unknown.
      */
     public DocumentDocument trash(String id) {
-        return trash(id, EDITOR_ID_TOOL);
+        return trash(id, TOOL_IDENTITY);
+    }
+
+    /** Single-editorId-overload — used by callers that only have the editorId. */
+    public DocumentDocument trash(String id, @Nullable String editorId) {
+        return trash(id, WriterIdentity.of(editorId, null, null));
     }
 
     /**
-     * Same as {@link #trash(String)} but with the writer's
-     * {@code editorId} — forwarded into the synthetic
-     * {@code DocumentLiveChangedEvent.DELETED} event so the live-broadcast
-     * layer can skip the deleter's own WebSocket.
+     * Same as {@link #trash(String)} but with full {@link WriterIdentity} —
+     * forwarded into the synthetic {@code DocumentLiveChangedEvent.DELETED}
+     * event so the live-broadcast layer can skip the deleter's own WebSocket
+     * and subscribers can render {@code ⏺ name}.
      */
-    public DocumentDocument trash(String id, @Nullable String editorId) {
+    public DocumentDocument trash(String id, WriterIdentity identity) {
         DocumentDocument doc = repository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown document id='" + id + "'"));
         if (isTrash(doc.getPath())) {
@@ -2152,7 +2195,7 @@ public class DocumentService {
         // We synthesise one with the original path; the trash row itself
         // lives under _bin/… and is filtered out by isEventPublishable.
         publishDeleted(originalPath, doc.getTenantId(), doc.getProjectId(), saved.getId(),
-                editorId);
+                identity);
         return saved;
     }
 
@@ -2598,29 +2641,69 @@ public class DocumentService {
     public static final String EDITOR_ID_TOOL = "_tool";
 
     /**
+     * Identity of the writer attached to a document mutation — propagated
+     * through {@link DocumentLiveChangedEvent} into the live-broadcast
+     * wire payload, so subscribers can render an "⏺ Bob" awareness
+     * badge after a silent merge. All three fields are nullable; the
+     * REST controller fills them from the request's JWT + the
+     * {@code X-Editor-Id} header. Tool / script / scheduler paths use
+     * {@link #TOOL_IDENTITY}.
+     */
+    public record WriterIdentity(
+            @Nullable String editorId,
+            @Nullable String userId,
+            @Nullable String displayName) {
+        public static WriterIdentity of(
+                @Nullable String editorId,
+                @Nullable String userId,
+                @Nullable String displayName) {
+            return new WriterIdentity(editorId, userId, displayName);
+        }
+    }
+
+    /**
+     * Identity placeholder for writes that don't come from a real
+     * editor — LLM tools, scripts, schedulers, kit installers. The
+     * {@code editorId} carries the {@link #EDITOR_ID_TOOL} sentinel;
+     * {@code userId}/{@code displayName} are left {@code null} so the
+     * client-side badge doesn't render a misleading user name.
+     */
+    public static final WriterIdentity TOOL_IDENTITY =
+            WriterIdentity.of(EDITOR_ID_TOOL, null, null);
+
+    /**
      * Default overload — assumes the write produced a real change worth
      * a live broadcast (true for create, content-replace, restore-from-trash:
      * cases where the body/storage moved) and uses the
-     * {@link #EDITOR_ID_TOOL} sentinel as the writer identity. Caller paths
-     * that have a real editorId (REST writes with X-Editor-Id) must use
-     * {@link #publishUpserted(DocumentDocument, boolean, String)} so the
-     * writer's own connection is filtered out of the local fan-out.
+     * {@link #TOOL_IDENTITY} sentinel as the writer. Caller paths that
+     * have a real client identity (REST writes with X-Editor-Id + JWT)
+     * must use the WriterIdentity overload so the writer's own
+     * connection is filtered out of the local fan-out and the
+     * "⏺ name" badge gets a useful display name.
      */
     private DocumentDocument publishUpserted(DocumentDocument saved) {
-        return publishUpserted(saved, true, EDITOR_ID_TOOL);
+        return publishUpserted(saved, true, TOOL_IDENTITY);
     }
 
     private DocumentDocument publishUpserted(DocumentDocument saved, boolean contentChanged) {
-        return publishUpserted(saved, contentChanged, EDITOR_ID_TOOL);
+        return publishUpserted(saved, contentChanged, TOOL_IDENTITY);
+    }
+
+    /** Legacy single-arg-editorId overload — kept for callers that have
+     *  only the editorId on hand (no user info). Defaults user fields to null. */
+    private DocumentDocument publishUpserted(DocumentDocument saved, boolean contentChanged,
+            @Nullable String editorId) {
+        return publishUpserted(saved, contentChanged,
+                WriterIdentity.of(editorId, null, null));
     }
 
     private DocumentDocument publishUpserted(DocumentDocument saved, boolean contentChanged,
-            @Nullable String editorId) {
+            WriterIdentity identity) {
         ApplicationEventPublisher publisher = this.eventPublisher;
         if (publisher == null) return saved;
-        log.trace("publishUpserted tenantId='{}' projectId='{}' path='{}' contentChanged={} liveEligible={}",
+        log.trace("publishUpserted tenantId='{}' projectId='{}' path='{}' contentChanged={} liveEligible={} writer={}",
                 saved.getTenantId(), saved.getProjectId(), saved.getPath(),
-                contentChanged, isLiveEventPublishable(saved.getPath()));
+                contentChanged, isLiveEventPublishable(saved.getPath()), identity);
         if (isEventPublishable(saved.getPath())) {
             try {
                 publisher.publishEvent(new DocumentChangedEvent.Upserted(
@@ -2641,7 +2724,9 @@ public class DocumentService {
                         saved.getProjectId(),
                         saved.getPath(),
                         DocumentLiveChangedEvent.Kind.UPSERTED,
-                        editorId));
+                        identity.editorId(),
+                        identity.userId(),
+                        identity.displayName()));
             } catch (RuntimeException ex) {
                 log.warn("DocumentService: publish LiveUpserted failed for '{}/{}/{}': {}",
                         saved.getTenantId(), saved.getProjectId(), saved.getPath(),
@@ -2651,9 +2736,9 @@ public class DocumentService {
         return saved;
     }
 
-    private void publishDeleted(DocumentDocument doc, @Nullable String editorId) {
+    private void publishDeleted(DocumentDocument doc, WriterIdentity identity) {
         publishDeleted(doc.getPath(), doc.getTenantId(), doc.getProjectId(), doc.getId(),
-                editorId);
+                identity);
     }
 
     /**
@@ -2664,7 +2749,7 @@ public class DocumentService {
      */
     private void publishDeleted(String path, String tenantId, String projectId,
                                 @Nullable String documentId,
-                                @Nullable String editorId) {
+                                WriterIdentity identity) {
         ApplicationEventPublisher publisher = this.eventPublisher;
         if (publisher == null) return;
         if (isEventPublishable(path)) {
@@ -2681,7 +2766,9 @@ public class DocumentService {
                 publisher.publishEvent(new DocumentLiveChangedEvent(
                         tenantId, projectId, path,
                         DocumentLiveChangedEvent.Kind.DELETED,
-                        editorId));
+                        identity.editorId(),
+                        identity.userId(),
+                        identity.displayName()));
             } catch (RuntimeException ex) {
                 log.warn("DocumentService: publish LiveDeleted failed for '{}/{}/{}': {}",
                         tenantId, projectId, path, ex.toString());

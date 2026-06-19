@@ -27,7 +27,9 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -510,6 +512,84 @@ public class DocumentController {
      */
     private static final String HEADER_EDITOR_ID = "X-Editor-Id";
 
+    // ─── sticky notes ────────────────────────────────────────────────────
+    //
+    // Notes are embedded in the document and come back with every GET.
+    // The CRUD endpoints below are the only mutation path — clients
+    // never touch DocumentDto.notes via PUT /documents/{id}. The
+    // userId is taken from the authenticated request, never trusted from
+    // the body, so a client can't impersonate another user.
+
+    @PostMapping("/brain/{tenant}/documents/{id}/notes")
+    public ResponseEntity<de.mhus.vance.api.documents.DocumentNoteDto> createNote(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("id") String id,
+            @Valid @RequestBody de.mhus.vance.api.documents.DocumentNoteCreateRequest request,
+            HttpServletRequest httpRequest) {
+        DocumentDocument existing = documentService.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        if (!tenant.equals(existing.getTenantId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
+        authority.enforce(httpRequest,
+                new Resource.Document(tenant, existing.getProjectId(), existing.getPath()), Action.READ);
+
+        String userId;
+        try {
+            userId = authority.contextOf(httpRequest).subjectId();
+        } catch (RuntimeException e) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "No authenticated user");
+        }
+        try {
+            de.mhus.vance.shared.document.DocumentNote note = documentService.addNote(
+                    id, request.getText(), userId, request.getLine());
+            return ResponseEntity.status(HttpStatus.CREATED).body(noteToDto(note));
+        } catch (DocumentService.NotesLimitExceededException e) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+        }
+    }
+
+    @PutMapping("/brain/{tenant}/documents/{id}/notes/{noteId}")
+    public ResponseEntity<de.mhus.vance.api.documents.DocumentNoteDto> updateNote(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("id") String id,
+            @PathVariable("noteId") String noteId,
+            @Valid @RequestBody de.mhus.vance.api.documents.DocumentNoteUpdateRequest request,
+            HttpServletRequest httpRequest) {
+        DocumentDocument existing = documentService.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        if (!tenant.equals(existing.getTenantId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
+        authority.enforce(httpRequest,
+                new Resource.Document(tenant, existing.getProjectId(), existing.getPath()), Action.READ);
+
+        de.mhus.vance.shared.document.DocumentNote updated = documentService.updateNote(
+                id, noteId, request.getText(), request.getDone(), request.getLine())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Unknown note id='" + noteId + "' on document id='" + id + "'"));
+        return ResponseEntity.ok(noteToDto(updated));
+    }
+
+    @DeleteMapping("/brain/{tenant}/documents/{id}/notes/{noteId}")
+    public ResponseEntity<Void> deleteNote(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("id") String id,
+            @PathVariable("noteId") String noteId,
+            HttpServletRequest httpRequest) {
+        DocumentDocument existing = documentService.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        if (!tenant.equals(existing.getTenantId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
+        authority.enforce(httpRequest,
+                new Resource.Document(tenant, existing.getProjectId(), existing.getPath()), Action.READ);
+        documentService.deleteNote(id, noteId);
+        return ResponseEntity.noContent().build();
+    }
+
     /**
      * Two-stage delete: documents that live outside the project's
      * trash folder get soft-deleted (moved to {@code _bin/}
@@ -789,6 +869,46 @@ public class DocumentController {
                 .summarizedAtMs(toEpochMillis(doc.getSummarizedAt()))
                 .ragEnabled(doc.getRagEnabled())
                 .expiresAtMs(toEpochMillis(doc.getExpiresAt()))
+                .notes(notesToDto(doc.getNotes()))
+                .build();
+    }
+
+    /**
+     * Project the embedded {@code DocumentNote} map onto its wire DTO
+     * counterpart. Instants are folded into epoch-ms; insertion order is
+     * preserved by funneling through {@link java.util.LinkedHashMap}.
+     */
+    private static Map<String, de.mhus.vance.api.documents.DocumentNoteDto>
+            notesToDto(@Nullable Map<String, de.mhus.vance.shared.document.DocumentNote> src) {
+        Map<String, de.mhus.vance.api.documents.DocumentNoteDto> out = new LinkedHashMap<>();
+        if (src == null) return out;
+        for (Map.Entry<String, de.mhus.vance.shared.document.DocumentNote> e : src.entrySet()) {
+            de.mhus.vance.shared.document.DocumentNote n = e.getValue();
+            if (n == null) continue;
+            out.put(e.getKey(), de.mhus.vance.api.documents.DocumentNoteDto.builder()
+                    .id(n.getId())
+                    .text(n.getText())
+                    .userId(n.getUserId())
+                    .createdAtMs(n.getCreatedAt() == null ? 0L : n.getCreatedAt().toEpochMilli())
+                    .updatedAtMs(n.getUpdatedAt() == null ? 0L : n.getUpdatedAt().toEpochMilli())
+                    .done(n.isDone())
+                    .line(n.getLine())
+                    .build());
+        }
+        return out;
+    }
+
+    /** Same projection as {@link #notesToDto} but for a single note — used by the CRUD endpoints. */
+    private static de.mhus.vance.api.documents.DocumentNoteDto noteToDto(
+            de.mhus.vance.shared.document.DocumentNote n) {
+        return de.mhus.vance.api.documents.DocumentNoteDto.builder()
+                .id(n.getId())
+                .text(n.getText())
+                .userId(n.getUserId())
+                .createdAtMs(n.getCreatedAt() == null ? 0L : n.getCreatedAt().toEpochMilli())
+                .updatedAtMs(n.getUpdatedAt() == null ? 0L : n.getUpdatedAt().toEpochMilli())
+                .done(n.isDone())
+                .line(n.getLine())
                 .build();
     }
 

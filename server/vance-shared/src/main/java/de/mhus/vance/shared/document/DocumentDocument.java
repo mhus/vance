@@ -223,4 +223,22 @@ public class DocumentDocument {
      */
     @Indexed(expireAfterSeconds = 0)
     private @Nullable Instant expiresAt;
+
+    /**
+     * Sticky-notes annotating this document. Keyed by note id (also
+     * stored on the value as {@link DocumentNote#getId()} for convenience
+     * when the map is unwrapped to a list).
+     *
+     * <p>Mutated through {@link DocumentService}'s atomic
+     * {@code addNote}/{@code updateNote}/{@code deleteNote} methods —
+     * the field is never written via a full {@code save(doc)}, so a
+     * note edit never produces a new archive entry. Hard-capped at
+     * {@link DocumentService#NOTES_MAX} entries per document; further
+     * adds are rejected.
+     *
+     * <p>Carried into the archive snapshot as-is when an archive is
+     * created from a content change — note history is implicit in the
+     * version history.
+     */
+    private Map<String, DocumentNote> notes = new LinkedHashMap<>();
 }

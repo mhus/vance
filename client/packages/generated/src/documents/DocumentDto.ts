@@ -3,6 +3,8 @@
  Source: de.mhus.vance.api.documents.DocumentDto
 */
 
+import { DocumentNoteDto } from './DocumentNoteDto';
+
 export interface DocumentDto {
   id: string;
   projectId: string;
@@ -27,4 +29,5 @@ export interface DocumentDto {
   lastDeepReviewWarningsJson?: string;
   lastDeepReviewedAtMs?: number;
   expiresAtMs?: number;
+  notes: Record<string, DocumentNoteDto>;
 }

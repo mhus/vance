@@ -93,6 +93,33 @@ class DocumentArchiveServiceTest {
                 .hasMessageContaining("lineageId");
     }
 
+    @Test
+    void archiveCurrent_carriesNotesIntoArchive() {
+        DocumentDocument doc = baseDoc().storageId("blob-n").size(100).build();
+        doc.setId("doc-n");
+        doc.setLineageId("lin-n");
+        java.util.Map<String, DocumentNote> notes = new java.util.LinkedHashMap<>();
+        notes.put("n-1", DocumentNote.builder()
+                .id("n-1").text("note 1").userId("alice").done(false)
+                .createdAt(java.time.Instant.parse("2026-06-19T10:00:00Z"))
+                .updatedAt(java.time.Instant.parse("2026-06-19T10:00:00Z"))
+                .build());
+        notes.put("n-2", DocumentNote.builder()
+                .id("n-2").text("done").userId("bob").done(true)
+                .createdAt(java.time.Instant.parse("2026-06-19T10:01:00Z"))
+                .updatedAt(java.time.Instant.parse("2026-06-19T10:02:00Z"))
+                .build());
+        doc.setNotes(notes);
+
+        DocumentArchiveDocument saved = service.archiveCurrent(doc);
+
+        // Notes copied (not shared — defensive copy) into the archive entry.
+        assertThat(saved.getNotes()).containsOnlyKeys("n-1", "n-2");
+        assertThat(saved.getNotes().get("n-1").getText()).isEqualTo("note 1");
+        assertThat(saved.getNotes().get("n-2").isDone()).isTrue();
+        assertThat(saved.getNotes()).isNotSameAs(doc.getNotes());
+    }
+
     // ──── restore ───────────────────────────────────────────────────────
 
     @Test

@@ -2775,4 +2775,154 @@ public class DocumentService {
             }
         }
     }
+
+    // ─── sticky notes ──────────────────────────────────────────────────
+    //
+    // Notes are mutated through atomic MongoTemplate ops — never via
+    // repository.save(doc) — so a note CRUD never touches the document
+    // body, never bumps storageId/updatedAt, and never triggers the
+    // archive-on-save logic. The notes map is also unchanged in shape
+    // from the editor's perspective: storage migration + summary
+    // pipelines simply don't observe it.
+    //
+    // See specification/documents-channel.md is not the home; notes
+    // have their own (forthcoming) spec — for now the design is captured
+    // in DocumentNote's class doc.
+
+    /** Hard cap — additional notes are rejected once a document reaches this. */
+    public static final int NOTES_MAX = 1000;
+
+    public static class NotesLimitExceededException extends RuntimeException {
+        public NotesLimitExceededException(String docId) {
+            super("Document id='" + docId + "' already has " + NOTES_MAX + " notes");
+        }
+    }
+
+    /**
+     * Append a new note to {@code docId}. Generates a fresh UUID for the
+     * note. Atomic against the {@link #NOTES_MAX} cap via an {@code $expr}
+     * size-check inside the {@code findAndModify} criteria; concurrent
+     * adds that would push past the limit lose the race and throw
+     * {@link NotesLimitExceededException}.
+     *
+     * @return the persisted note with its id + timestamps populated.
+     * @throws IllegalArgumentException when the document is unknown.
+     */
+    public DocumentNote addNote(
+            String docId,
+            String text,
+            String userId,
+            @Nullable Integer line) {
+        if (!repository.existsById(docId)) {
+            throw new IllegalArgumentException("Unknown document id='" + docId + "'");
+        }
+        Instant now = Instant.now();
+        DocumentNote note = DocumentNote.builder()
+                .id(java.util.UUID.randomUUID().toString())
+                .text(text)
+                .userId(userId)
+                .createdAt(now)
+                .updatedAt(now)
+                .done(false)
+                .line(line)
+                .build();
+
+        // $expr: { $lt: [ { $size: { $objectToArray: { $ifNull: [ "$notes", {} ] } } }, NOTES_MAX ] }
+        org.bson.Document sizeExpr = new org.bson.Document("$lt", java.util.List.of(
+                new org.bson.Document("$size", new org.bson.Document("$objectToArray",
+                        new org.bson.Document("$ifNull", java.util.List.of("$notes",
+                                new org.bson.Document())))),
+                NOTES_MAX));
+        Query query = Query.query(new Criteria().andOperator(
+                Criteria.where("_id").is(docId),
+                new Criteria("$expr").is(sizeExpr)));
+        Update update = new Update().set("notes." + note.getId(), note);
+
+        DocumentDocument modified = mongoTemplate.findAndModify(
+                query, update, FindAndModifyOptions.options().returnNew(true),
+                DocumentDocument.class);
+        if (modified == null) {
+            // Either the document is gone (covered above) or the cap was hit.
+            throw new NotesLimitExceededException(docId);
+        }
+        log.debug("Added note id='{}' to document id='{}' by user='{}'",
+                note.getId(), docId, userId);
+        return note;
+    }
+
+    /**
+     * Patch {@code text} / {@code done} on an existing note. Either field
+     * may be {@code null} to leave it untouched. Bumps {@link DocumentNote#getUpdatedAt()}.
+     *
+     * @return the patched note, or empty if the document or note id is unknown.
+     */
+    /**
+     * Patch one or more fields on an existing note. {@code null} on a
+     * field means "leave untouched"; passing an explicit value (including
+     * empty string for {@code text}) writes it.
+     *
+     * <p>{@code line} uses a sentinel value of {@link Integer#MIN_VALUE} to
+     * mean "explicitly clear / unset" because plain {@code null} already
+     * means "leave untouched". Pragmatic: callers rarely need the unset
+     * path; the line field stays where it was on every typical update.
+     *
+     * @return the patched note, or empty if the document or note id is unknown.
+     */
+    public Optional<DocumentNote> updateNote(
+            String docId,
+            String noteId,
+            @Nullable String newText,
+            @Nullable Boolean newDone,
+            @Nullable Integer newLine) {
+        Update update = new Update().set("notes." + noteId + ".updatedAt", Instant.now());
+        if (newText != null) update.set("notes." + noteId + ".text", newText);
+        if (newDone != null) update.set("notes." + noteId + ".done", newDone);
+        if (newLine != null) {
+            if (newLine == Integer.MIN_VALUE) {
+                update.unset("notes." + noteId + ".line");
+            } else {
+                update.set("notes." + noteId + ".line", newLine);
+            }
+        }
+
+        Query query = Query.query(Criteria.where("_id").is(docId)
+                .and("notes." + noteId).exists(true));
+        DocumentDocument modified = mongoTemplate.findAndModify(
+                query, update, FindAndModifyOptions.options().returnNew(true),
+                DocumentDocument.class);
+        if (modified == null) return Optional.empty();
+        log.debug("Updated note id='{}' on document id='{}'", noteId, docId);
+        return Optional.ofNullable(modified.getNotes()).map(m -> m.get(noteId));
+    }
+
+    /**
+     * Drop a note from {@code docId}. Idempotent — removing a missing
+     * note is a silent no-op. Returns {@code true} when the note existed
+     * and was removed, {@code false} otherwise.
+     */
+    public boolean deleteNote(String docId, String noteId) {
+        Query query = Query.query(Criteria.where("_id").is(docId)
+                .and("notes." + noteId).exists(true));
+        Update update = new Update().unset("notes." + noteId);
+        long modified = mongoTemplate.updateFirst(query, update, DocumentDocument.class)
+                .getModifiedCount();
+        if (modified > 0) {
+            log.debug("Deleted note id='{}' from document id='{}'", noteId, docId);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Snapshot of all notes attached to {@code docId}. Returns an empty
+     * list when the document is unknown or has no notes. Map order is
+     * preserved (insertion-order via {@code LinkedHashMap}).
+     */
+    public List<DocumentNote> listNotes(String docId) {
+        return repository.findById(docId)
+                .map(DocumentDocument::getNotes)
+                .map(m -> new ArrayList<>(m.values()))
+                .map(list -> (List<DocumentNote>) list)
+                .orElse(java.util.Collections.emptyList());
+    }
 }

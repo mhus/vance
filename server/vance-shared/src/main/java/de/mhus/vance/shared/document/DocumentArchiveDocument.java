@@ -99,4 +99,13 @@ public class DocumentArchiveDocument {
     /** Wall-clock at which this version was archived. Also acts as the
      *  human-readable version label in the UI. */
     private Instant archivedAt = Instant.EPOCH;
+
+    /**
+     * Sticky-notes carried over from the live document at archive-time —
+     * mirrors {@link DocumentDocument#getNotes()}. Note edits after this
+     * snapshot land on the *live* document only; archive entries are
+     * immutable. Empty when the archived version had no notes.
+     */
+    @Builder.Default
+    private Map<String, DocumentNote> notes = new LinkedHashMap<>();
 }

@@ -102,6 +102,9 @@ public class DocumentArchiveService {
                         : new LinkedHashMap<>(doc.getHeaders()))
                 .createdBy(doc.getCreatedBy())
                 .archivedAt(Instant.now())
+                .notes(doc.getNotes() == null
+                        ? new LinkedHashMap<>()
+                        : new LinkedHashMap<>(doc.getNotes()))
                 .build();
         DocumentArchiveDocument saved = repository.save(entry);
         if (movedStorageId != null) {

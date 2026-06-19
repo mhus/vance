@@ -121,4 +121,12 @@ public class DocumentDto {
      * writers such as the scheduler-log retention path.
      */
     private @Nullable Long expiresAtMs;
+
+    /**
+     * Sticky-notes embedded in this document — keyed by note id (also
+     * present as {@code DocumentNoteDto.id}). Mutated through dedicated
+     * {@code /notes} REST endpoints; never via {@code PUT /documents/{id}}.
+     * Empty when the document has no notes.
+     */
+    private Map<String, DocumentNoteDto> notes = new LinkedHashMap<>();
 }

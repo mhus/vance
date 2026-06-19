@@ -1968,9 +1968,15 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      *       (e.g. {@code "ev1"}). Token map matches what was
      *       rendered in the prompt, so the only way to fail is a
      *       fabricated token.</li>
-     *   <li>{@code eventRef} absent AND drain has exactly one event
-     *       → auto-pick. Single-event drains don't need any id; the
-     *       LLM emits {@code {type: RELAY}} with no id field.</li>
+     *   <li>{@code eventRef} absent → collapse events per
+     *       {@code sourceProcessId} (Reply + lifecycle DONE/FAILED
+     *       from the same worker are semantic duplicates) and
+     *       auto-pick if the effective drain has exactly one event.
+     *       Catches the common case where a worker that finishes
+     *       its turn produces both an {@code emitReply} and a
+     *       lifecycle DONE notification — both refer to the same
+     *       answer text, so the LLM should not be forced to
+     *       disambiguate.</li>
      *   <li>Legacy {@code source} field present (older prompt) →
      *       resolve to a single event by process-id or process-name.
      *       Logged as drift warning.</li>
@@ -1985,9 +1991,10 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             Map<String, SteerMessage.ProcessEvent> available) {
         String eventRef = action.stringParam(ArthurActionSchema.PARAM_EVENT_REF);
         if (eventRef != null && !eventRef.isBlank()) {
-            // Tier 1: short-token lookup. Also tolerate the LLM
-            // pasting the bare UUID (some models echo what they
-            // see in logs); scan values for matching eventId.
+            // Tier 1: short-token lookup against the FULL drain.
+            // Also tolerate the LLM pasting the bare UUID (some
+            // models echo what they see in logs); scan values for
+            // matching eventId.
             SteerMessage.ProcessEvent byToken = available.get(eventRef);
             if (byToken != null) return byToken;
             for (SteerMessage.ProcessEvent ev : available.values()) {
@@ -1995,17 +2002,107 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             }
             return null;
         }
-        // Tier 2: auto-pick on single-event drain.
+        // Tier 2: auto-pick on single-event drain — collapsing per
+        // sourceProcessId first so a worker that emitted both a
+        // Reply and a lifecycle DONE doesn't force the LLM to choose
+        // between two events that carry the same answer.
         if (available.size() == 1) {
             return available.values().iterator().next();
         }
-        // Tier 3: legacy `source` field, resolve to a single match.
+        Map<String, SteerMessage.ProcessEvent> collapsed =
+                collapseBySourceProcessId(available);
+        if (collapsed.size() == 1) {
+            return collapsed.values().iterator().next();
+        }
+        // Tier 3: legacy `source` field, resolve to a single match
+        // against the full drain (don't lose options to the collapse).
         String legacySource = action.stringParam("source");
         if (legacySource == null || legacySource.isBlank()) return null;
         List<SteerMessage.ProcessEvent> matches = available.values().stream()
                 .filter(ev -> matchesLegacySource(ev, legacySource))
                 .toList();
         return matches.size() == 1 ? matches.get(0) : null;
+    }
+
+    /**
+     * Collapse drained events that share a {@code sourceProcessId},
+     * keeping one representative per worker. Used by Tier 2 of
+     * {@link #resolveRelayEvent} so a worker that emits both an
+     * {@code emitReply} (synthesised as a {@code BLOCKED}-typed
+     * event by the inbox renderer above) and a lifecycle
+     * {@code DONE} notification from {@code ParentNotificationListener}
+     * collapses to a single semantic event.
+     *
+     * <p>Preference order per group (lower priority value wins):
+     * <ol>
+     *   <li>{@code BLOCKED} — synthetic Reply event; carries the
+     *       worker's actual answer.</li>
+     *   <li>{@code SUMMARY} — deliberate progress summary.</li>
+     *   <li>{@code DONE} — terminal lifecycle, enriched by
+     *       {@link de.mhus.vance.brain.thinkengine.ParentNotificationListener}
+     *       with the last assistant reply.</li>
+     *   <li>{@code FAILED} — terminal lifecycle, failure context.</li>
+     *   <li>{@code STOPPED} — terminal lifecycle, force-stopped.</li>
+     *   <li>everything else (e.g. {@code STARTED},
+     *       {@code SCHEDULED_WAKEUP}, {@code EXEC_*}).</li>
+     * </ol>
+     * Same-priority ties break in favour of the later
+     * {@link SteerMessage.ProcessEvent#at()} timestamp.
+     *
+     * <p>Package-private for {@link ArthurEngineRelayCollapseTest}.
+     */
+    static Map<String, SteerMessage.ProcessEvent> collapseBySourceProcessId(
+            Map<String, SteerMessage.ProcessEvent> available) {
+        // Track the best entry seen per sourceProcessId. We preserve
+        // insertion order by remembering the original token under
+        // which the winner was rendered to the LLM, so Tier-2's
+        // pick still matches what the LLM would see in the prompt.
+        Map<String, Map.Entry<String, SteerMessage.ProcessEvent>> bestByPid =
+                new LinkedHashMap<>();
+        for (Map.Entry<String, SteerMessage.ProcessEvent> entry : available.entrySet()) {
+            SteerMessage.ProcessEvent ev = entry.getValue();
+            String pid = ev.sourceProcessId();
+            if (pid == null) {
+                // Events without a source can't be collapsed against anything.
+                bestByPid.put(entry.getKey(), entry);
+                continue;
+            }
+            Map.Entry<String, SteerMessage.ProcessEvent> prev = bestByPid.get(pid);
+            if (prev == null || preferReplaceForRelay(prev.getValue(), ev)) {
+                bestByPid.put(pid, entry);
+            }
+        }
+        Map<String, SteerMessage.ProcessEvent> result = new LinkedHashMap<>();
+        for (Map.Entry<String, SteerMessage.ProcessEvent> entry : bestByPid.values()) {
+            result.put(entry.getKey(), entry.getValue());
+        }
+        return result;
+    }
+
+    private static boolean preferReplaceForRelay(
+            SteerMessage.ProcessEvent prev, SteerMessage.ProcessEvent next) {
+        int prevP = relayPriority(prev.type());
+        int nextP = relayPriority(next.type());
+        if (nextP < prevP) return true;
+        if (nextP > prevP) return false;
+        // Same priority: prefer the later event.
+        java.time.Instant prevAt = prev.at();
+        java.time.Instant nextAt = next.at();
+        if (nextAt == null) return false;
+        if (prevAt == null) return true;
+        return nextAt.isAfter(prevAt);
+    }
+
+    private static int relayPriority(de.mhus.vance.api.thinkprocess.ProcessEventType type) {
+        if (type == null) return 99;
+        return switch (type) {
+            case BLOCKED -> 0;   // synthesised from Reply — actual answer
+            case SUMMARY -> 1;
+            case DONE -> 2;
+            case FAILED -> 3;
+            case STOPPED -> 4;
+            default -> 5;
+        };
     }
 
     private boolean matchesLegacySource(

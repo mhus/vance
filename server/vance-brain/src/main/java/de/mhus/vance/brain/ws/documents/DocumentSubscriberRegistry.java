@@ -4,20 +4,23 @@ import de.mhus.vance.api.ws.DocumentPresenceNotification;
 import de.mhus.vance.api.ws.DocumentViewer;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
-import de.mhus.vance.brain.cluster.ClusterService;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.shared.redis.VanceRedisMessagingService;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -28,36 +31,60 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Per-pod registry of {@code documents}-channel subscribers, with
- * cross-pod presence aggregation via Redis pub/sub.
+ * {@code documents}-channel subscriber registry — Redis is the source
+ * of truth for the cross-pod viewer roster.
  *
- * <p>Local state ({@code byPath}, {@code bySession}) tracks subscribers
- * that opened their WebSocket on **this** pod. A separate shadow map
- * ({@code remoteByPath}) tracks viewers reported by **other** pods via
- * the {@code vance:{tenant}:documents.presence} Redis topic. Presence
- * broadcasts merge both views.
+ * <p>Per path, a Redis HASH at {@code vance:{tenant}:documents:viewers:{base64path}}
+ * stores one entry per active viewer (field = editorId, value = JSON
+ * {@link StoredViewer}). Each {@link #subscribe} writes the field and
+ * publishes {@code "podId|path"} on {@code documents.presence}; every
+ * pod listening to that pattern re-reads the HASH and pushes a fresh
+ * presence frame to its local subscribers.
  *
- * <p>The shared {@link VanceRedisMessagingService} is the only
- * cross-pod transport — same bus we'll use for {@code documents.changed},
- * cross-session NOTIFY, inbox-push and friends. See
- * {@code planning/document-presence.md} §5.5.
+ * <p>TTL on the key (90s) plus a 30s heartbeat replace the old
+ * cluster-liveness prune logic — a crashed pod simply stops refreshing
+ * its fields and they expire on their own.
+ *
+ * <p>When {@code vance.redis.enabled=false}, Redis-backed operations are
+ * no-ops: documents-channel still loads, but the presence-roster stays
+ * empty (brain works, live features don't).
  */
 @Service
 @Slf4j
 public class DocumentSubscriberRegistry {
 
-    private static final String CHANNEL = "documents.presence";
-    private static final String CHANNEL_TENANT_KEY = "documents.presence";
+    /** Pub/Sub channel used for cross-pod "path changed" signals. */
+    static final String CHANNEL = "documents.presence";
 
-    /** Single-document subscriber entry: who is subscribed and how to reach them. */
-    private record Subscriber(
-            WebSocketSession wsSession,
+    /** Subkey prefix for hash storage; combined with base64(path). */
+    static final String HASH_SUBKEY_PREFIX = "documents:viewers:";
+
+    static final Duration VIEWER_KEY_TTL = Duration.ofSeconds(90);
+    static final Duration HEARTBEAT_INTERVAL = Duration.ofSeconds(30);
+
+    /**
+     * Local WS-side state — never sent over the wire, used to push
+     * presence frames to this pod's own subscribers.
+     */
+    private record LocalSubscriber(
+            WebSocketSession wsSession, ConnectionContext context) {
+        DocumentViewer asViewer() {
+            return DocumentViewer.builder()
+                    .editorId(context.getConnectionId())
+                    .userId(context.getUserId())
+                    .displayName(context.getDisplayName() != null
+                            ? context.getDisplayName() : context.getUserId())
+                    .build();
+        }
+    }
+
+    /** Persisted in Redis as JSON. */
+    private record StoredViewer(
             String editorId,
             String userId,
             @Nullable String displayName,
-            String tenantId) {
-
-        DocumentViewer asViewer() {
+            String podId) {
+        DocumentViewer toApi() {
             return DocumentViewer.builder()
                     .editorId(editorId)
                     .userId(userId)
@@ -66,110 +93,117 @@ public class DocumentSubscriberRegistry {
         }
     }
 
-    /** path → subscribers on this pod. */
-    private final Map<String, Set<Subscriber>> byPath = new ConcurrentHashMap<>();
+    /** path → ws-session-ids on this pod that subscribe (broadcast targeting). */
+    private final Map<String, Set<String>> localSubsByPath = new ConcurrentHashMap<>();
 
-    /** ws-session-id → set of paths this session is subscribed to (cleanup index). */
+    /** ws-session-id → set of paths (cleanup + heartbeat index). */
     private final Map<String, Set<String>> bySession = new ConcurrentHashMap<>();
 
-    /**
-     * Remote presence shadow: path → (sourcePodId → set of viewers reported
-     * by that pod). Updated on incoming Redis {@link PresenceDelta} messages,
-     * purged when a pod drops out of the cluster (see {@link #pruneDeadPods}).
-     */
-    private final Map<String, Map<String, Set<DocumentViewer>>> remoteByPath = new ConcurrentHashMap<>();
+    /** ws-session-id → LocalSubscriber snapshot (push target). */
+    private final Map<String, LocalSubscriber> bySessionInfo = new ConcurrentHashMap<>();
 
     private final WebSocketSender sender;
-    private final VanceRedisMessagingService messaging;
-    private final ClusterService clusterService;
+    private final VanceRedisMessagingService redis;
     private final ObjectMapper objectMapper;
+
+    /**
+     * Random per-process identity. Used to ignore our own pub/sub echoes
+     * — the publish-side adds it so listeners can skip self-loopback.
+     */
+    private final String podId = UUID.randomUUID().toString();
 
     public DocumentSubscriberRegistry(
             WebSocketSender sender,
-            VanceRedisMessagingService messaging,
-            ClusterService clusterService,
+            VanceRedisMessagingService redis,
             ObjectMapper objectMapper) {
         this.sender = sender;
-        this.messaging = messaging;
-        this.clusterService = clusterService;
+        this.redis = redis;
         this.objectMapper = objectMapper;
     }
 
     @PostConstruct
     public void start() {
-        // Single pattern subscription covers every tenant — incoming
-        // payload carries the tenantId so we don't need to subscribe per
-        // tenant. Saves listeners.
-        messaging.subscribeAcrossTenants(CHANNEL_TENANT_KEY, this::onRemoteDelta);
-        log.debug("DocumentSubscriberRegistry: subscribed to Redis topic vance:*:{}", CHANNEL);
+        redis.subscribeAcrossTenants(CHANNEL, this::onRemoteChanged);
+        log.debug("DocumentSubscriberRegistry: podId={} redis.enabled={}",
+                podId, redis.isEnabled());
     }
 
     @PreDestroy
     public void stop() {
-        try {
-            // Best-effort: tell peer pods to drop our presence so users
-            // see roster updates instantly on graceful shutdown instead
-            // of waiting for the heartbeat-driven pruning.
-            for (Subscriber sub : allLocalSubscribers()) {
-                publishDelta(sub.tenantId, PresenceDelta.Action.CLEAR_POD, null, null);
-                break; // one CLEAR_POD per tenant is enough; emit once per known tenantId
+        // Best-effort: clear our entries from every active path so peers
+        // don't have to wait for TTL to drop us out of the roster.
+        for (Map.Entry<String, Set<String>> e : new HashSet<>(localSubsByPath.entrySet())) {
+            String path = e.getKey();
+            for (String wsId : new HashSet<>(e.getValue())) {
+                LocalSubscriber sub = bySessionInfo.get(wsId);
+                if (sub == null) continue;
+                try {
+                    String tenantId = sub.context().getTenantId();
+                    redis.hashDelete(tenantId, hashSubKey(path), sub.context().getConnectionId());
+                    redis.publish(tenantId, CHANNEL, encodeChangedPayload(path));
+                } catch (RuntimeException ex) {
+                    log.debug("documents shutdown cleanup failed for ws={} path={}: {}",
+                            wsId, path, ex.toString());
+                }
             }
-            Set<String> tenants = new HashSet<>();
-            for (Subscriber sub : allLocalSubscribers()) tenants.add(sub.tenantId);
-            for (String t : tenants) {
-                publishDelta(t, PresenceDelta.Action.CLEAR_POD, null, null);
-            }
-        } catch (RuntimeException e) {
-            log.debug("DocumentSubscriberRegistry: graceful CLEAR_POD broadcast failed: {}", e.toString());
         }
-        messaging.unsubscribeAcrossTenants(CHANNEL_TENANT_KEY);
+        redis.unsubscribeAcrossTenants(CHANNEL);
     }
 
     // ─── public API ─────────────────────────────────────────────────────
 
     public void subscribe(WebSocketSession wsSession, ConnectionContext ctx, String path) {
-        Subscriber subscriber = new Subscriber(
-                wsSession, ctx.getConnectionId(), ctx.getUserId(),
-                ctx.getDisplayName(), ctx.getTenantId());
-        boolean added = byPath
-                .computeIfAbsent(path, p -> ConcurrentHashMap.newKeySet())
-                .add(subscriber);
-        if (added) {
-            bySession
-                    .computeIfAbsent(wsSession.getId(), s -> ConcurrentHashMap.newKeySet())
-                    .add(path);
-            publishDelta(ctx.getTenantId(), PresenceDelta.Action.ADD, path, subscriber.asViewer());
-            log.debug("documents.subscribe: ws='{}' user='{}' path='{}'",
-                    wsSession.getId(), ctx.getUserId(), path);
-        }
-        broadcastPresence(path);
+        String wsId = wsSession.getId();
+        bySession.computeIfAbsent(wsId, k -> ConcurrentHashMap.newKeySet()).add(path);
+        bySessionInfo.putIfAbsent(wsId, new LocalSubscriber(wsSession, ctx));
+        localSubsByPath.computeIfAbsent(path, k -> ConcurrentHashMap.newKeySet()).add(wsId);
+
+        writeToRedis(ctx.getTenantId(), path, ctx);
+        broadcastPresence(path, ctx.getTenantId());
+        log.debug("documents.subscribe: ws='{}' user='{}' path='{}'",
+                wsId, ctx.getUserId(), path);
     }
 
     public void unsubscribe(WebSocketSession wsSession, String path) {
-        Subscriber removed = removeSubscriberFromPath(wsSession, path);
-        if (removed != null) {
-            publishDelta(removed.tenantId, PresenceDelta.Action.REMOVE, path, removed.asViewer());
-            log.debug("documents.unsubscribe: ws='{}' path='{}'", wsSession.getId(), path);
-            broadcastPresence(path);
+        String wsId = wsSession.getId();
+        if (!removeLocal(wsId, path)) return;
+        LocalSubscriber sub = bySessionInfo.get(wsId);
+        String tenantId = sub != null ? sub.context().getTenantId() : null;
+        if (tenantId != null) {
+            redis.hashDelete(tenantId, hashSubKey(path), sub.context().getConnectionId());
+            redis.publish(tenantId, CHANNEL, encodeChangedPayload(path));
+            broadcastPresence(path, tenantId);
         }
+        // If this was the session's last path, drop the info entry too.
+        Set<String> remaining = bySession.get(wsId);
+        if (remaining == null || remaining.isEmpty()) {
+            bySessionInfo.remove(wsId);
+        }
+        log.debug("documents.unsubscribe: ws='{}' path='{}'", wsId, path);
     }
 
     public void unsubscribeAll(WebSocketSession wsSession) {
-        Set<String> paths = bySession.remove(wsSession.getId());
-        if (paths == null || paths.isEmpty()) return;
-        List<Subscriber> removedSubs = new ArrayList<>(paths.size());
+        String wsId = wsSession.getId();
+        Set<String> paths = bySession.remove(wsId);
+        if (paths == null || paths.isEmpty()) {
+            bySessionInfo.remove(wsId);
+            return;
+        }
+        LocalSubscriber sub = bySessionInfo.remove(wsId);
+        String tenantId = sub != null ? sub.context().getTenantId() : null;
         for (String path : paths) {
-            Subscriber removed = removeSubscriberFromPath(wsSession, path);
-            if (removed != null) removedSubs.add(removed);
+            Set<String> ids = localSubsByPath.get(path);
+            if (ids != null) {
+                ids.remove(wsId);
+                if (ids.isEmpty()) localSubsByPath.remove(path);
+            }
+            if (tenantId != null && sub != null) {
+                redis.hashDelete(tenantId, hashSubKey(path), sub.context().getConnectionId());
+                redis.publish(tenantId, CHANNEL, encodeChangedPayload(path));
+                broadcastPresence(path, tenantId);
+            }
         }
-        for (Subscriber removed : removedSubs) {
-            publishDelta(removed.tenantId(), PresenceDelta.Action.REMOVE,
-                    pathForViewerOnSession(removed, paths), removed.asViewer());
-        }
-        for (String path : paths) {
-            broadcastPresence(path);
-        }
-        log.debug("documents.unsubscribeAll: ws='{}' paths={}", wsSession.getId(), paths.size());
+        log.debug("documents.unsubscribeAll: ws='{}' paths={}", wsId, paths.size());
     }
 
     public Set<String> pathsOf(WebSocketSession wsSession) {
@@ -178,108 +212,88 @@ public class DocumentSubscriberRegistry {
     }
 
     /**
-     * Aggregated viewer view for tests / admin: local + remote, no
-     * self-filter applied (caller does the per-recipient projection).
+     * Full viewer roster for {@code path} as Redis sees it — local +
+     * cross-pod, no self-filter applied. Used by tests / admin probes.
+     * Returns empty when Redis is disabled.
      */
     public List<DocumentViewer> viewersOf(String path) {
-        List<DocumentViewer> viewers = new ArrayList<>();
-        Set<Subscriber> local = byPath.get(path);
-        if (local != null) {
-            for (Subscriber s : local) viewers.add(s.asViewer());
-        }
-        Map<String, Set<DocumentViewer>> remote = remoteByPath.get(path);
-        if (remote != null) {
-            for (Set<DocumentViewer> perPod : remote.values()) {
-                viewers.addAll(perPod);
+        // We need a tenant to read; pick one from any local subscriber
+        // on this path. Tests that call viewersOf usually have one set up.
+        Set<String> localIds = localSubsByPath.get(path);
+        if (localIds == null || localIds.isEmpty()) return Collections.emptyList();
+        String wsId = localIds.iterator().next();
+        LocalSubscriber any = bySessionInfo.get(wsId);
+        if (any == null) return Collections.emptyList();
+        return viewersOf(any.context().getTenantId(), path);
+    }
+
+    /** Same as {@link #viewersOf(String)} but tenant is given explicitly. */
+    public List<DocumentViewer> viewersOf(String tenantId, String path) {
+        Map<String, String> hash = redis.hashGetAll(tenantId, hashSubKey(path));
+        if (hash.isEmpty()) return Collections.emptyList();
+        List<DocumentViewer> out = new ArrayList<>(hash.size());
+        for (String json : hash.values()) {
+            try {
+                StoredViewer sv = objectMapper.readValue(json, StoredViewer.class);
+                out.add(sv.toApi());
+            } catch (JacksonException e) {
+                log.debug("documents: skipping malformed viewer entry: {}", e.toString());
             }
         }
-        return viewers;
+        return out;
     }
+
+    // ─── heartbeat ──────────────────────────────────────────────────────
 
     /**
-     * Periodic cleanup: drop {@link #remoteByPath} entries for pods that
-     * are no longer in {@link ClusterService#liveClusterNodeNames}.
-     * Re-broadcasts presence on every affected path.
+     * Refresh every local subscriber's Redis-hash field so the key-TTL
+     * stays alive. Skips work entirely when Redis is disabled.
      */
-    @Scheduled(fixedDelayString = "${vance.documents.presence.prune-interval-ms:30000}",
-            initialDelayString = "${vance.documents.presence.prune-interval-ms:30000}")
-    public void pruneDeadPods() {
-        Set<String> live;
-        try {
-            live = clusterService.liveClusterNodeNames();
-        } catch (RuntimeException e) {
-            log.debug("Cluster liveness lookup failed during presence prune: {}", e.toString());
-            return;
-        }
-        Set<String> affectedPaths = new HashSet<>();
-        for (Map.Entry<String, Map<String, Set<DocumentViewer>>> e : remoteByPath.entrySet()) {
-            Map<String, Set<DocumentViewer>> perPod = e.getValue();
-            boolean changed = perPod.keySet().retainAll(live);
-            if (changed) affectedPaths.add(e.getKey());
-            if (perPod.isEmpty()) {
-                remoteByPath.compute(e.getKey(),
-                        (k, v) -> (v == null || v.isEmpty()) ? null : v);
+    @Scheduled(
+            fixedDelayString = "${vance.documents.presence.heartbeat-ms:30000}",
+            initialDelayString = "${vance.documents.presence.heartbeat-ms:30000}")
+    public void heartbeat() {
+        if (!redis.isEnabled()) return;
+        for (Map.Entry<String, LocalSubscriber> e : bySessionInfo.entrySet()) {
+            LocalSubscriber sub = e.getValue();
+            Set<String> paths = bySession.get(e.getKey());
+            if (paths == null) continue;
+            for (String path : paths) {
+                writeToRedis(sub.context().getTenantId(), path, sub.context());
             }
-        }
-        for (String path : affectedPaths) {
-            broadcastPresence(path);
         }
     }
 
-    // ─── internals ──────────────────────────────────────────────────────
+    // ─── cross-pod sync ────────────────────────────────────────────────
 
-    private @Nullable Subscriber removeSubscriberFromPath(WebSocketSession wsSession, String path) {
-        Set<Subscriber> subs = byPath.get(path);
-        if (subs == null) return null;
-        Subscriber removed = null;
-        for (Subscriber s : subs) {
-            if (Objects.equals(s.wsSession.getId(), wsSession.getId())) {
-                removed = s;
-                break;
-            }
-        }
-        if (removed != null) subs.remove(removed);
-        if (subs.isEmpty()) {
-            byPath.compute(path, (p, current) -> (current == null || current.isEmpty()) ? null : current);
-        }
-        Set<String> paths = bySession.get(wsSession.getId());
-        if (paths != null) {
-            paths.remove(path);
-            if (paths.isEmpty()) {
-                bySession.compute(wsSession.getId(),
-                        (k, v) -> (v == null || v.isEmpty()) ? null : v);
-            }
-        }
-        return removed;
+    private void onRemoteChanged(String topic, String body) {
+        // topic format: vance:{tenantId}:documents.presence
+        String tenantId = parseTenantFromTopic(topic);
+        if (tenantId == null) return;
+        String[] parts = body.split("\\|", 2);
+        if (parts.length != 2) return;
+        String senderPodId = parts[0];
+        if (Objects.equals(senderPodId, podId)) return;  // own echo
+        String path = decodeChangedPath(parts[1]);
+        if (path == null) return;
+        broadcastPresence(path, tenantId);
     }
 
-    private void broadcastPresence(String path) {
-        Set<Subscriber> localSubs = byPath.get(path);
-        Map<String, Set<DocumentViewer>> remoteSubs = remoteByPath.get(path);
-        if ((localSubs == null || localSubs.isEmpty())
-                && (remoteSubs == null || remoteSubs.isEmpty())) {
-            // Both sides empty — nothing to push. Local subscribers got
-            // their last presence push before they left; nobody's listening.
-            return;
-        }
+    // ─── broadcast ─────────────────────────────────────────────────────
 
-        // Snapshot all viewers (local + remote) once.
-        List<DocumentViewer> allViewers = new ArrayList<>();
-        Set<Subscriber> localSnapshot = localSubs == null ? Set.of() : new HashSet<>(localSubs);
-        for (Subscriber s : localSnapshot) allViewers.add(s.asViewer());
-        if (remoteSubs != null) {
-            for (Set<DocumentViewer> perPod : remoteSubs.values()) {
-                allViewers.addAll(perPod);
-            }
-        }
+    private void broadcastPresence(String path, String tenantId) {
+        Set<String> localIds = localSubsByPath.get(path);
+        if (localIds == null || localIds.isEmpty()) return;
 
-        // Only local subscribers receive the push; remote pods do their
-        // own presence-push to their local subscribers via the Redis
-        // delta we publish from subscribe/unsubscribe.
-        for (Subscriber recipient : localSnapshot) {
+        List<DocumentViewer> allViewers = viewersOf(tenantId, path);
+
+        for (String wsId : localIds) {
+            LocalSubscriber recipient = bySessionInfo.get(wsId);
+            if (recipient == null) continue;
+            String selfEditorId = recipient.context().getConnectionId();
             List<DocumentViewer> filtered = new ArrayList<>(allViewers.size());
             for (DocumentViewer v : allViewers) {
-                if (!Objects.equals(v.getEditorId(), recipient.editorId)) {
+                if (!Objects.equals(v.getEditorId(), selfEditorId)) {
                     filtered.add(v);
                 }
             }
@@ -290,101 +304,73 @@ public class DocumentSubscriberRegistry {
             WebSocketEnvelope envelope = WebSocketEnvelope.notification(
                     MessageType.DOCUMENT_PRESENCE, payload);
             try {
-                sender.sendOnChannel(recipient.wsSession, "documents", envelope);
+                sender.sendOnChannel(recipient.wsSession(), "documents", envelope);
             } catch (IOException e) {
-                log.debug("documents.presence push failed for ws='{}' path='{}': {}",
-                        recipient.wsSession.getId(), path, e.toString());
+                log.debug("documents.presence push failed ws='{}' path='{}': {}",
+                        recipient.wsSession().getId(), path, e.toString());
             }
         }
     }
 
-    // ─── Redis cross-pod sync ──────────────────────────────────────────
+    // ─── helpers ───────────────────────────────────────────────────────
 
-    private void publishDelta(String tenantId, PresenceDelta.Action action,
-            @Nullable String path, @Nullable DocumentViewer viewer) {
-        PresenceDelta delta = PresenceDelta.builder()
-                .podId(clusterService.selfNodeName())
-                .tenantId(tenantId)
-                .action(action)
-                .path(path)
-                .viewer(viewer)
-                .build();
+    private void writeToRedis(String tenantId, String path, ConnectionContext ctx) {
+        StoredViewer sv = new StoredViewer(
+                ctx.getConnectionId(),
+                ctx.getUserId(),
+                ctx.getDisplayName(),
+                podId);
         try {
-            String json = objectMapper.writeValueAsString(delta);
-            messaging.publish(tenantId, CHANNEL_TENANT_KEY, json);
+            String json = objectMapper.writeValueAsString(sv);
+            redis.hashPut(tenantId, hashSubKey(path), ctx.getConnectionId(), json, VIEWER_KEY_TTL);
+            redis.publish(tenantId, CHANNEL, encodeChangedPayload(path));
         } catch (JacksonException e) {
-            log.warn("DocumentSubscriberRegistry: serialise delta failed: {}", e.toString());
-        } catch (RuntimeException e) {
-            log.warn("DocumentSubscriberRegistry: redis publish failed: {}", e.toString());
+            log.warn("documents: failed to serialise viewer for path={}: {}", path, e.toString());
         }
     }
 
-    private void onRemoteDelta(String topic, String json) {
-        PresenceDelta delta;
+    /** Remove a (wsId, path) local mapping. Returns {@code true} if state changed. */
+    private boolean removeLocal(String wsId, String path) {
+        Set<String> paths = bySession.get(wsId);
+        if (paths == null || !paths.remove(path)) return false;
+        if (paths.isEmpty()) bySession.remove(wsId);
+        Set<String> ids = localSubsByPath.get(path);
+        if (ids != null) {
+            ids.remove(wsId);
+            if (ids.isEmpty()) localSubsByPath.remove(path);
+        }
+        return true;
+    }
+
+    static String hashSubKey(String path) {
+        return HASH_SUBKEY_PREFIX + Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(path.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private String encodeChangedPayload(String path) {
+        return podId + "|" + Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(path.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static @Nullable String decodeChangedPath(String encoded) {
         try {
-            delta = objectMapper.readValue(json, PresenceDelta.class);
-        } catch (RuntimeException e) {
-            log.warn("DocumentSubscriberRegistry: malformed remote delta on {}: {}", topic, e.toString());
-            return;
-        }
-        if (delta.getPodId() == null) return;
-        // Ignore our own publishes that loop back.
-        if (Objects.equals(delta.getPodId(), clusterService.selfNodeName())) return;
-
-        switch (delta.getAction()) {
-            case ADD -> applyRemoteAdd(delta);
-            case REMOVE -> applyRemoteRemove(delta);
-            case CLEAR_POD -> applyRemoteClearPod(delta);
+            return new String(Base64.getUrlDecoder().decode(encoded), StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException e) {
+            return null;
         }
     }
 
-    private void applyRemoteAdd(PresenceDelta delta) {
-        if (delta.getPath() == null || delta.getViewer() == null) return;
-        remoteByPath
-                .computeIfAbsent(delta.getPath(), p -> new ConcurrentHashMap<>())
-                .computeIfAbsent(delta.getPodId(), p -> ConcurrentHashMap.newKeySet())
-                .add(delta.getViewer());
-        broadcastPresence(delta.getPath());
+    private static @Nullable String parseTenantFromTopic(String topic) {
+        // vance:{tenantId}:documents.presence — tenantId is the middle segment.
+        if (!topic.startsWith("vance:")) return null;
+        int firstColon = "vance:".length();
+        int secondColon = topic.indexOf(':', firstColon);
+        if (secondColon < 0) return null;
+        return topic.substring(firstColon, secondColon);
     }
 
-    private void applyRemoteRemove(PresenceDelta delta) {
-        if (delta.getPath() == null || delta.getViewer() == null) return;
-        Map<String, Set<DocumentViewer>> perPod = remoteByPath.get(delta.getPath());
-        if (perPod == null) return;
-        Set<DocumentViewer> viewers = perPod.get(delta.getPodId());
-        if (viewers == null) return;
-        viewers.removeIf(v -> Objects.equals(v.getEditorId(), delta.getViewer().getEditorId()));
-        if (viewers.isEmpty()) perPod.remove(delta.getPodId());
-        if (perPod.isEmpty()) {
-            remoteByPath.compute(delta.getPath(),
-                    (k, v) -> (v == null || v.isEmpty()) ? null : v);
-        }
-        broadcastPresence(delta.getPath());
-    }
-
-    private void applyRemoteClearPod(PresenceDelta delta) {
-        Set<String> affected = new HashSet<>();
-        for (Map.Entry<String, Map<String, Set<DocumentViewer>>> e : remoteByPath.entrySet()) {
-            if (e.getValue().remove(delta.getPodId()) != null) {
-                affected.add(e.getKey());
-            }
-        }
-        for (String path : affected) {
-            broadcastPresence(path);
-        }
-    }
-
-    // ─── tiny helpers ───────────────────────────────────────────────────
-
-    private List<Subscriber> allLocalSubscribers() {
-        List<Subscriber> out = new ArrayList<>();
-        for (Set<Subscriber> subs : byPath.values()) out.addAll(subs);
-        return out;
-    }
-
-    private @Nullable String pathForViewerOnSession(Subscriber sub, Set<String> paths) {
-        // Best-effort — used only for log/audit; correctness doesn't depend
-        // on this since CLEAR_POD covers all paths anyway.
-        return paths.isEmpty() ? null : paths.iterator().next();
+    /** Test hook: stable pod identity for assertions. */
+    String podIdForTests() {
+        return podId;
     }
 }

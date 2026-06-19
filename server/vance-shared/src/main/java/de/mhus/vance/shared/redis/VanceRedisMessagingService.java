@@ -1,5 +1,7 @@
 package de.mhus.vance.shared.redis;
 
+import java.time.Duration;
+import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
@@ -7,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.redis.connection.MessageListener;
+import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.listener.ChannelTopic;
 import org.springframework.data.redis.listener.PatternTopic;
@@ -14,8 +17,10 @@ import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 import org.springframework.stereotype.Service;
 
 /**
- * Thin Pub/Sub wrapper around Spring's Redis primitives — the single
- * cross-pod messaging bus for Vance.
+ * Cross-pod live-feature primitives on top of Spring's Redis client —
+ * the only place that talks to Redis directly. Two concerns under one
+ * roof: {@link #publish}/{@link #subscribe} (Pub/Sub) and
+ * {@link #hashPut}/{@link #hashGetAll} (ephemeral HASH state with TTL).
  *
  * <p>Topic-Konvention:
  * <ul>
@@ -177,6 +182,55 @@ public class VanceRedisMessagingService {
         if (listener != null) {
             container.removeMessageListener(listener, ChannelTopic.of(topic));
         }
+    }
+
+    // ─── tenant-scoped HASH state with TTL ────────────────────────────
+    //
+    // Hash keys are tenant-prefixed exactly like pub/sub topics
+    // (`vance:{tenant}:{subKey}`) so a tenant-wide Redis FLUSH or scoped
+    // ACL works across both surfaces. The TTL is on the *key* — every
+    // hashPut refreshes it, so heartbeating any field keeps the whole
+    // path's roster alive. When a pod crashes its fields stop being
+    // refreshed and the key expires on its own — that's how we replace
+    // the old cluster-liveness prune logic.
+
+    /**
+     * Set {@code field → value} on the tenant-scoped hash at {@code subKey}
+     * and (re)set the key TTL. Idempotent. No-op when Redis is disabled.
+     */
+    public void hashPut(String tenantId, String subKey, String field, String value, Duration ttl) {
+        if (!enabled) return;
+        String key = topicOf(tenantId, subKey);
+        HashOperations<String, String, String> ops = redis.opsForHash();
+        ops.put(key, field, value);
+        redis.expire(key, ttl);
+    }
+
+    /**
+     * Read all fields of the tenant-scoped hash at {@code subKey}.
+     * Returns an empty map when Redis is disabled or the key is missing.
+     */
+    public Map<String, String> hashGetAll(String tenantId, String subKey) {
+        if (!enabled) return Collections.emptyMap();
+        String key = topicOf(tenantId, subKey);
+        return redis.<String, String>opsForHash().entries(key);
+    }
+
+    /**
+     * Drop one field from the tenant-scoped hash. If that empties the
+     * hash, Redis removes the key automatically. No-op when disabled.
+     */
+    public void hashDelete(String tenantId, String subKey, String field) {
+        if (!enabled) return;
+        String key = topicOf(tenantId, subKey);
+        redis.<String, String>opsForHash().delete(key, field);
+    }
+
+    /** Refresh the TTL of an existing hash key. No-op when disabled. */
+    public void hashRefreshTtl(String tenantId, String subKey, Duration ttl) {
+        if (!enabled) return;
+        String key = topicOf(tenantId, subKey);
+        redis.expire(key, ttl);
     }
 
     // ─── topic naming ─────────────────────────────────────────────────

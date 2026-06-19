@@ -707,6 +707,14 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         // Default IDLE on any abnormal exit — matches legacy lifecycle.
         // Reset to outcome.awaitingUserInput() inside the try.
         boolean awaitingUserInput = false;
+        // True iff this turn exited through the action-loop fallback
+        // path (LLM couldn't produce a parseable action within the
+        // budget). For sub-process workers this triggers a terminal
+        // close — the worker has emitted its best free-text reply
+        // already, and leaving it BLOCKED would pin the parent's
+        // {@code activeDelegationWorkerId} to a dead-end. Top-level
+        // chat processes keep the legacy BLOCKED-awaits-user behaviour.
+        boolean actionLoopFallback = false;
         try {
             ChatMessageService chatLog = ctx.chatMessageService();
 
@@ -864,6 +872,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                         narration == null ? 0 : narration.length());
                 outcome = new ActionTurnOutcome(chatNote, /*awaiting*/ false);
             } else {
+                actionLoopFallback = true;
                 String text = loopResult.fallbackText();
                 if (text != null && !text.isBlank()) {
                     // LLM emitted free text but no action — surface it
@@ -944,10 +953,25 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         } finally {
             currentTurnHadUserInput.remove(process.getId());
             currentTurnEventsByRef.remove(process.getId());
-            ThinkProcessStatus exitStatus = awaitingUserInput
-                    ? ThinkProcessStatus.BLOCKED
-                    : ThinkProcessStatus.IDLE;
-            thinkProcessService.updateStatus(process.getId(), exitStatus);
+            if (actionLoopFallback && awaitingUserInput
+                    && process.getParentProcessId() != null) {
+                // Sub-process worker fell out of the action loop without
+                // a parseable action. The best Free-Text reply has
+                // already been appended to chat history; close
+                // terminally so the parent's delegation pointer releases
+                // (ParentNotificationListener turns CLOSED+DONE into a
+                // DONE ProcessEvent on the parent's inbox). Without
+                // this the worker stays BLOCKED and every subsequent
+                // user message auto-forwards into a dead-end.
+                log.info("Arthur id='{}' worker action-loop fallback — closing DONE so parent '{}' releases delegation pointer",
+                        process.getId(), process.getParentProcessId());
+                thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
+            } else {
+                ThinkProcessStatus exitStatus = awaitingUserInput
+                        ? ThinkProcessStatus.BLOCKED
+                        : ThinkProcessStatus.IDLE;
+                thinkProcessService.updateStatus(process.getId(), exitStatus);
+            }
         }
     }
 

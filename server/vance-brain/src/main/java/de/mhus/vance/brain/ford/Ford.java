@@ -288,6 +288,14 @@ public class Ford implements ThinkEngine {
         // Set to outcome.awaitingUserInput() inside the try when the
         // tool-loop returns cleanly.
         boolean awaitingUserInput = false;
+        // True iff this turn exited via the maxIter / LLM-collapse
+        // recovery path (i.e. {@code runToolLoop} returned
+        // {@code needsFormatCorrection=true}). For sub-process workers
+        // this triggers a terminal close — a worker that exhausted
+        // its budget cannot make further progress on its own and
+        // leaving it BLOCKED pins the parent's
+        // {@code activeDelegationWorkerId} to a dead-end.
+        boolean recoveredFromMaxIter = false;
         try {
             ChatMessageService chatLog = ctx.chatMessageService();
             // Persist UserChatInput entries to chat history so future
@@ -373,6 +381,7 @@ public class Ford implements ThinkEngine {
                     aiChat, toolSpecs, tools, messages, ctx, process,
                     maxIters, validation, modelAlias);
             if (outcome.needsFormatCorrection()) {
+                recoveredFromMaxIter = true;
                 outcome = runFormatCorrectionLoop(
                         aiChat, toolSpecs, process, outcome.finalText(), modelAlias, ctx);
             }
@@ -417,10 +426,25 @@ public class Ford implements ThinkEngine {
             // Drain one-shot skills before the next turn — they only
             // ever apply to the turn that activated them.
             dropOneShotSkills(process);
-            ThinkProcessStatus exitStatus = awaitingUserInput
-                    ? ThinkProcessStatus.BLOCKED
-                    : ThinkProcessStatus.IDLE;
-            thinkProcessService.updateStatus(process.getId(), exitStatus);
+            if (recoveredFromMaxIter && process.getParentProcessId() != null) {
+                // Sub-process worker exhausted its iteration budget.
+                // The best Free-Text reply has already been appended to
+                // chat history and emitted on the REPLY channel above;
+                // close terminally so the parent's delegation pointer
+                // releases (ParentNotificationListener turns
+                // CLOSED+DONE into a DONE ProcessEvent on the parent's
+                // inbox). Without this the worker stays BLOCKED and
+                // every subsequent user message auto-forwards into a
+                // dead-end.
+                log.info("Ford id='{}' worker hit maxIter — closing DONE so parent '{}' releases delegation pointer",
+                        process.getId(), process.getParentProcessId());
+                thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
+            } else {
+                ThinkProcessStatus exitStatus = awaitingUserInput
+                        ? ThinkProcessStatus.BLOCKED
+                        : ThinkProcessStatus.IDLE;
+                thinkProcessService.updateStatus(process.getId(), exitStatus);
+            }
         }
     }
 

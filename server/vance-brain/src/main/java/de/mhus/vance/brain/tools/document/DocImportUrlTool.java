@@ -19,6 +19,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -95,8 +97,22 @@ public class DocImportUrlTool implements Tool {
                                     + "intermediate, where AIA chasing "
                                     + "also fails. Only set when the user "
                                     + "explicitly asks; the call is logged "
-                                    + "as a warning.")),
+                                    + "as a warning."),
+                    "ifExists", Map.of(
+                            "type", "string",
+                            "enum", List.of("reuse", "update", "error"),
+                            "description", "What to do when a document "
+                                    + "already exists at the target path. "
+                                    + "'reuse' (default): return the existing "
+                                    + "doc without re-fetching — idempotent, "
+                                    + "use this when the URL may have been "
+                                    + "imported before. 'update': fetch the "
+                                    + "URL and replace the existing body and "
+                                    + "mime-type (title and tags are kept). "
+                                    + "'error': fail with an error.")),
             "required", List.of("url"));
+
+    private static final Set<String> VALID_IF_EXISTS = Set.of("reuse", "update", "error");
 
     private final HttpClient http = HttpClient.newBuilder()
             .followRedirects(HttpClient.Redirect.NORMAL)
@@ -121,7 +137,9 @@ public class DocImportUrlTool implements Tool {
         return "Fetch a URL and persist the body as a project "
                 + "document. Use when the user wants to keep / refer "
                 + "to the page (article, doc, snippet). For one-shot "
-                + "reads use web_fetch instead.";
+                + "reads use web_fetch instead. Idempotent by default: "
+                + "if the target path already exists the existing doc "
+                + "is returned (set ifExists='update' to refresh).";
     }
 
     @Override
@@ -172,6 +190,37 @@ public class DocImportUrlTool implements Tool {
 
         ProjectDocument project = eddieContext.resolveProject(params, ctx, false);
 
+        String ifExists = paramString(params, "ifExists");
+        if (ifExists == null) {
+            ifExists = "reuse";
+        } else {
+            ifExists = ifExists.toLowerCase(java.util.Locale.ROOT);
+            if (!VALID_IF_EXISTS.contains(ifExists)) {
+                throw new ToolException("'ifExists' must be one of "
+                        + VALID_IF_EXISTS + ", got '" + ifExists + "'");
+            }
+        }
+
+        Optional<DocumentDocument> existing = documentService.findByPath(
+                ctx.tenantId(), project.getName(), path);
+        if (existing.isPresent()) {
+            DocumentDocument doc = existing.get();
+            switch (ifExists) {
+                case "reuse" -> {
+                    log.info("DocImportUrl reuse tenant='{}' project='{}' path='{}' from='{}' id='{}'",
+                            ctx.tenantId(), project.getName(), doc.getPath(), rawUrl, doc.getId());
+                    return reuseResponse(doc, rawUrl);
+                }
+                case "error" -> throw new ToolException(
+                        "Document '" + doc.getPath() + "' already exists in "
+                                + ctx.tenantId() + "/" + project.getName()
+                                + " — set ifExists='reuse' to use the existing "
+                                + "doc, or ifExists='update' to overwrite it.");
+                // 'update' falls through to fetch + replaceContent below.
+                default -> { /* update — fall through */ }
+            }
+        }
+
         boolean insecure = paramBoolean(params, "insecure");
         byte[] body;
         String contentType;
@@ -216,44 +265,83 @@ public class DocImportUrlTool implements Tool {
             throw new ToolException("Fetch failed: " + e.getMessage(), e);
         }
 
-        DocumentDocument created;
-        try {
-            created = documentService.create(
-                    ctx.tenantId(),
-                    project.getName(),
-                    path,
-                    title,
-                    tags,
-                    contentType,
+        DocumentDocument result;
+        boolean updated = false;
+        if (existing.isPresent()) {
+            // ifExists='update' — replace the body and mime-type on the
+            // pre-existing doc. Title and tags stay as the user originally
+            // imported them; an LLM-driven refresh shouldn't silently
+            // rewrite human-curated metadata.
+            result = documentService.replaceContent(
+                    existing.get().getId(),
                     new ByteArrayInputStream(body),
-                    ctx.userId());
-        } catch (DocumentService.DocumentAlreadyExistsException e) {
-            throw new ToolException(e.getMessage(), e);
+                    contentType);
+            updated = true;
+        } else {
+            try {
+                result = documentService.create(
+                        ctx.tenantId(),
+                        project.getName(),
+                        path,
+                        title,
+                        tags,
+                        contentType,
+                        new ByteArrayInputStream(body),
+                        ctx.userId());
+            } catch (DocumentService.DocumentAlreadyExistsException e) {
+                // Race with a concurrent import on the same path. The
+                // fetched body is discarded — falling back to reuse is
+                // friendlier to the caller than failing the call, since
+                // the LLM would otherwise spin on the same retry.
+                DocumentDocument doc = documentService.findByPath(
+                        ctx.tenantId(), project.getName(), path)
+                        .orElseThrow(() -> new ToolException(e.getMessage(), e));
+                log.info("DocImportUrl race-recovered tenant='{}' project='{}' path='{}' id='{}'",
+                        ctx.tenantId(), project.getName(), doc.getPath(), doc.getId());
+                return reuseResponse(doc, rawUrl);
+            }
         }
 
         // Optional caller-supplied summary — important for binaries
         // (images, PDFs) where the auto-summary scheduler doesn't run.
         String summary = paramString(params, "summary");
         if (summary != null) {
-            documentService.setSummary(created.getId(), summary);
+            documentService.setSummary(result.getId(), summary);
         }
 
-        log.info("DocImportUrl tenant='{}' project='{}' path='{}' from='{}' bytes={} summary={}",
-                ctx.tenantId(), project.getName(), path, rawUrl, body.length,
-                summary != null);
+        log.info("DocImportUrl {} tenant='{}' project='{}' path='{}' from='{}' bytes={} summary={}",
+                updated ? "update" : "create",
+                ctx.tenantId(), project.getName(), result.getPath(), rawUrl,
+                body.length, summary != null);
 
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("id", created.getId());
-        out.put("projectId", created.getProjectId());
-        out.put("path", created.getPath());
-        out.put("name", created.getName());
-        if (created.getTitle() != null) out.put("title", created.getTitle());
-        out.put("mimeType", created.getMimeType());
-        out.put("size", created.getSize());
-        out.put("tags", created.getTags() == null ? List.of() : created.getTags());
+        out.put("id", result.getId());
+        out.put("projectId", result.getProjectId());
+        out.put("path", result.getPath());
+        out.put("name", result.getName());
+        if (result.getTitle() != null) out.put("title", result.getTitle());
+        out.put("mimeType", result.getMimeType());
+        out.put("size", result.getSize());
+        out.put("tags", result.getTags() == null ? List.of() : result.getTags());
         if (summary != null) out.put("summary", summary);
         out.put("sourceUrl", rawUrl);
         out.put("httpStatus", status);
+        if (updated) out.put("updated", true);
+        return out;
+    }
+
+    private static Map<String, Object> reuseResponse(DocumentDocument doc, String rawUrl) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("id", doc.getId());
+        out.put("projectId", doc.getProjectId());
+        out.put("path", doc.getPath());
+        out.put("name", doc.getName());
+        if (doc.getTitle() != null) out.put("title", doc.getTitle());
+        if (doc.getMimeType() != null) out.put("mimeType", doc.getMimeType());
+        out.put("size", doc.getSize());
+        out.put("tags", doc.getTags() == null ? List.of() : doc.getTags());
+        out.put("sourceUrl", rawUrl);
+        out.put("reused", true);
         return out;
     }
 

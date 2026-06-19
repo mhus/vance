@@ -266,6 +266,37 @@ public class ThinkProcessService {
     }
 
     /**
+     * Sub-process workers stuck in {@link ThinkProcessStatus#BLOCKED} with
+     * an empty pending queue and no progress since {@code cutoff}. These
+     * are the "dangling delegation" pattern: a parent armed
+     * {@code activeDelegationWorkerId} on the worker, the worker hit a
+     * dead-end (LLM stuck, recovery path didn't fire, …), nothing in the
+     * worker's inbox will wake it up, and the parent stays BLOCKED on the
+     * pointer forever.
+     *
+     * <p>The {@link de.mhus.vance.brain.thinkengine.DelegationDeadlockWatchdog}
+     * sweeps these on the cluster master and closes them with
+     * {@link CloseReason#STOPPED}; that fires a terminal ProcessEvent on
+     * the parent's inbox which clears its delegation pointer through
+     * {@code reconcileWorkerLinksFromInbox}.
+     *
+     * <p>Result is intentionally not paginated — under normal operation
+     * the watchdog matches at most a handful of rows per sweep. If it
+     * starts matching hundreds, the underlying engine bug, not the query
+     * shape, needs fixing.
+     */
+    public List<ThinkProcessDocument> findStalledDelegatedWorkers(Instant cutoff) {
+        Query query = new Query()
+                .addCriteria(Criteria.where("parentProcessId").exists(true).ne(null))
+                .addCriteria(Criteria.where("status").is(ThinkProcessStatus.BLOCKED))
+                .addCriteria(Criteria.where("updatedAt").lt(cutoff))
+                .addCriteria(new Criteria().orOperator(
+                        Criteria.where("pendingMessages").exists(false),
+                        Criteria.where("pendingMessages").size(0)));
+        return mongoTemplate.find(query, ThinkProcessDocument.class);
+    }
+
+    /**
      * All children of {@code parentProcessId} across all sessions of
      * the tenant. Used by cross-project orchestrators (Eddie) that
      * own workers in their own sessions.

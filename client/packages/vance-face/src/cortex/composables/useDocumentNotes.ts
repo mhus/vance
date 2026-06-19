@@ -28,10 +28,23 @@ export function useDocumentNotes(doc: Ref<CortexDocument | null>) {
     () => doc.value?.notes ?? {},
   );
 
-  /** Notes sorted by createdAt ascending — same order as Mongo's LinkedHashMap insertion. */
-  const notes = computed<DocumentNoteDto[]>(() =>
-    Object.values(notesMap.value).sort((a, b) => a.createdAtMs - b.createdAtMs),
-  );
+  /**
+   * Notes sorted by {@code (order ?? createdAtMs)} ascending. Notes
+   * without an explicit order fall back to insertion-time, so a freshly
+   * created note naturally lands at the bottom; drag-reorder writes an
+   * explicit {@code order} (midpoint of neighbours) and that takes over.
+   */
+  const notes = computed<DocumentNoteDto[]>(() => {
+    const sortKey = (n: DocumentNoteDto): number =>
+      typeof n.order === 'number' ? n.order : n.createdAtMs;
+    return Object.values(notesMap.value).sort((a, b) => {
+      const diff = sortKey(a) - sortKey(b);
+      // Stable tie-breaker on id keeps the order deterministic when two
+      // notes happen to share a sort key (rare with floats, common when
+      // both fall back to createdAt at the same millisecond).
+      return diff !== 0 ? diff : a.id.localeCompare(b.id);
+    });
+  });
 
   /** Lines that have at least one anchored note — fed to the CodeEditor gutter. */
   const linesWithNotes = computed<number[]>(() =>
@@ -60,7 +73,7 @@ export function useDocumentNotes(doc: Ref<CortexDocument | null>) {
 
   async function updateNote(
     noteId: string,
-    patch: { text?: string; done?: boolean; line?: number },
+    patch: { text?: string; done?: boolean; line?: number; order?: number },
   ): Promise<DocumentNoteDto | null> {
     const d = doc.value;
     if (!d) return null;
@@ -68,6 +81,7 @@ export function useDocumentNotes(doc: Ref<CortexDocument | null>) {
     if (patch.text !== undefined) body.text = patch.text;
     if (patch.done !== undefined) body.done = patch.done;
     if (patch.line !== undefined) body.line = patch.line;
+    if (patch.order !== undefined) body.order = patch.order;
     const updated = await brainFetch<DocumentNoteDto>(
       'PUT',
       `documents/${encodeURIComponent(d.id)}/notes/${encodeURIComponent(noteId)}`,
@@ -75,6 +89,40 @@ export function useDocumentNotes(doc: Ref<CortexDocument | null>) {
     );
     d.notes = { ...(d.notes ?? {}), [noteId]: updated };
     return updated;
+  }
+
+  /**
+   * Drag-reorder helper — compute a new {@code order} value for {@code noteId}
+   * given the sorted index it should land at after the drop. Uses the
+   * "midpoint of neighbours" technique so reordering N notes never
+   * requires re-numbering. Adjacent boundary cases:
+   * <ul>
+   *   <li>landing at position 0 → {@code (first.order ?? createdAt) - 1}</li>
+   *   <li>landing at the end → {@code (last.order ?? createdAt) + 1}</li>
+   *   <li>else → midpoint of the two neighbours</li>
+   * </ul>
+   *
+   * <p>Last-writer-wins is harmless: two concurrent reorders just settle
+   * on the latest server value. Float precision is sufficient for the
+   * 1000-note cap many orders of magnitude over.
+   */
+  async function moveNoteTo(noteId: string, toIndex: number): Promise<void> {
+    const list = notes.value;
+    const without = list.filter((n) => n.id !== noteId);
+    const target = Math.max(0, Math.min(toIndex, without.length));
+    const sortKey = (n: DocumentNoteDto): number =>
+      typeof n.order === 'number' ? n.order : n.createdAtMs;
+    let newOrder: number;
+    if (without.length === 0) {
+      newOrder = Date.now();
+    } else if (target === 0) {
+      newOrder = sortKey(without[0]) - 1;
+    } else if (target >= without.length) {
+      newOrder = sortKey(without[without.length - 1]) + 1;
+    } else {
+      newOrder = (sortKey(without[target - 1]) + sortKey(without[target])) / 2;
+    }
+    await updateNote(noteId, { order: newOrder });
   }
 
   async function deleteNote(noteId: string): Promise<void> {
@@ -140,5 +188,6 @@ export function useDocumentNotes(doc: Ref<CortexDocument | null>) {
     addNote,
     updateNote,
     deleteNote,
+    moveNoteTo,
   };
 }

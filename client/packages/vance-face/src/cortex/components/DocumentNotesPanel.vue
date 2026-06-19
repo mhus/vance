@@ -11,8 +11,16 @@
  * <p>The composable does the REST round-trips and the local-map updates
  * — this component is pure presentation.
  */
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, onUpdated, ref, watch } from 'vue';
+import { VueDraggable } from 'vue-draggable-plus';
 import type { DocumentNoteDto } from '@vance/generated';
+
+/**
+ * Max textarea height for sticky notes. Beyond this the textarea
+ * scrolls internally instead of growing further — keeps a few-page-long
+ * note from pushing every other card off-screen.
+ */
+const TEXTAREA_MAX_PX = 320;
 
 interface Props {
   notes: DocumentNoteDto[];
@@ -29,7 +37,42 @@ const emit = defineEmits<{
   (e: 'update', noteId: string, patch: { text?: string; done?: boolean }): void;
   (e: 'delete', noteId: string): void;
   (e: 'jump-to-line', line: number): void;
+  /**
+   * Drag-reorder finished. {@code toIndex} is the new position in the
+   * sorted list; host composable computes the midpoint-between-neighbours
+   * order value and patches the server.
+   */
+  (e: 'reorder', noteId: string, toIndex: number): void;
 }>();
+
+/**
+ * Mutable working copy of {@link Props.notes} — VueDraggable mutates
+ * the bound array in place during drag. We resync from the parent on
+ * every prop change so live-updates from other clients overwrite our
+ * local mid-drag state cleanly.
+ */
+const draggable = ref<DocumentNoteDto[]>([...props.notes]);
+watch(
+  () => props.notes,
+  (next) => {
+    draggable.value = [...next];
+  },
+  { deep: true },
+);
+
+function onDragEnd(): void {
+  // Diff the final draggable order against props.notes to identify the
+  // single note that moved. With single-item drag we expect exactly one
+  // id at a different index — pick it and emit.
+  for (let i = 0; i < draggable.value.length; i++) {
+    const id = draggable.value[i].id;
+    const oldIndex = props.notes.findIndex((n) => n.id === id);
+    if (oldIndex !== i) {
+      emit('reorder', id, i);
+      return;
+    }
+  }
+}
 
 /** Per-note dirty buffer for inline-edit. Server is patched on blur. */
 const draftText = ref<Record<string, string>>({});
@@ -69,6 +112,37 @@ const cardRefs = ref<Record<string, HTMLElement | null>>({});
 function setCardRef(noteId: string, el: HTMLElement | null) {
   cardRefs.value[noteId] = el;
 }
+
+/**
+ * Auto-grow the textareas so the visible card height tracks the note's
+ * content length. The text-area's {@code rows} attribute would only
+ * grow the min-size; we drive {@code style.height} dynamically from
+ * {@code scrollHeight}, capped at {@link TEXTAREA_MAX_PX} so very long
+ * notes scroll internally instead of dominating the panel.
+ */
+const textareaRefs = ref<Record<string, HTMLTextAreaElement | null>>({});
+function setTextareaRef(noteId: string, el: HTMLTextAreaElement | null) {
+  textareaRefs.value[noteId] = el;
+  if (el) autoResize(el);
+}
+function autoResize(el: HTMLTextAreaElement) {
+  el.style.height = 'auto';
+  const target = Math.min(el.scrollHeight, TEXTAREA_MAX_PX);
+  el.style.height = `${target}px`;
+}
+function onTextInput(note: DocumentNoteDto, e: Event) {
+  const ta = e.target as HTMLTextAreaElement;
+  draftText.value[note.id] = ta.value;
+  autoResize(ta);
+}
+// Resize after every render — covers external mutations from live
+// events that update note.text without going through onTextInput.
+onUpdated(() => {
+  for (const id of Object.keys(textareaRefs.value)) {
+    const el = textareaRefs.value[id];
+    if (el) autoResize(el);
+  }
+});
 watch(
   () => props.highlightedNoteId,
   (id) => {
@@ -102,9 +176,19 @@ const isEmpty = computed(() => props.notes.length === 0);
       Keine Notizen. Klick neben eine Zeilennummer oder den ＋-Button.
     </div>
 
-    <div v-else class="notes-panel-list">
+    <VueDraggable
+      v-else
+      v-model="draggable"
+      class="notes-panel-list"
+      :animation="150"
+      handle=".note-drag-handle"
+      ghost-class="note-card--ghost"
+      chosen-class="note-card--chosen"
+      drag-class="note-card--drag"
+      @end="onDragEnd"
+    >
       <article
-        v-for="note in notes"
+        v-for="note in draggable"
         :key="note.id"
         :ref="(el) => setCardRef(note.id, el as HTMLElement | null)"
         class="note-card"
@@ -113,12 +197,13 @@ const isEmpty = computed(() => props.notes.length === 0);
           'note-card--pulse': highlightedNoteId === note.id,
         }"
       >
-        <header class="note-card-header">
+        <header class="note-card-header note-drag-handle" title="Zum Verschieben ziehen">
           <input
             type="checkbox"
             :checked="note.done"
             :title="note.done ? 'Erledigt' : 'Als erledigt markieren'"
             @change="toggleDone(note)"
+            @mousedown.stop
           />
           <span class="text-xs font-semibold truncate" :title="note.userId">
             {{ note.userId }}
@@ -129,7 +214,8 @@ const isEmpty = computed(() => props.notes.length === 0);
             class="text-xs px-1 rounded bg-base-100/60 border border-base-300/60
                    hover:bg-base-100"
             :title="`Sprung zu Zeile ${note.line}`"
-            @click="emit('jump-to-line', note.line!)"
+            @click.stop="emit('jump-to-line', note.line!)"
+            @mousedown.stop
           >📍 Z. {{ note.line }}</button>
           <span class="flex-1" />
           <span class="text-[10px] opacity-60" :title="new Date(note.updatedAtMs).toLocaleString()">
@@ -139,19 +225,22 @@ const isEmpty = computed(() => props.notes.length === 0);
             type="button"
             class="opacity-50 hover:opacity-100 hover:text-error"
             title="Löschen"
-            @click="emit('delete', note.id)"
+            @click.stop="emit('delete', note.id)"
+            @mousedown.stop
           >×</button>
         </header>
         <textarea
           :value="draftText[note.id] ?? note.text"
+          :ref="(el) => setTextareaRef(note.id, el as HTMLTextAreaElement | null)"
           class="note-card-text"
-          rows="2"
+          rows="1"
           @focus="startEdit(note)"
-          @input="(e) => (draftText[note.id] = (e.target as HTMLTextAreaElement).value)"
+          @input="(e) => onTextInput(note, e)"
           @blur="commit(note)"
+          @mousedown.stop
         />
       </article>
-    </div>
+    </VueDraggable>
   </aside>
 </template>
 
@@ -220,17 +309,49 @@ const isEmpty = computed(() => props.notes.length === 0);
 .note-card-header input[type='checkbox'] {
   margin: 0;
 }
+.note-drag-handle {
+  cursor: grab;
+}
+.note-drag-handle:active {
+  cursor: grabbing;
+}
+/* Buttons + inputs inside the drag handle should keep their pointer
+ * cursor so the user knows they're clickable, not draggable. The
+ * @mousedown.stop in the template prevents the drag from starting on
+ * these targets. */
+.note-drag-handle button,
+.note-drag-handle input,
+.note-drag-handle textarea {
+  cursor: auto;
+}
+
+/* Drag visuals — VueDraggable applies these classes during a drag. */
+.note-card--ghost {
+  opacity: 0.4;
+  border-style: dashed;
+}
+.note-card--chosen {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+}
+.note-card--drag {
+  cursor: grabbing;
+}
 
 .note-card-text {
   width: 100%;
   background: transparent;
   border: none;
-  resize: vertical;
+  /* JS auto-grows to fit content up to TEXTAREA_MAX_PX (320px). Beyond
+   * that the textarea scrolls internally. Manual resize is disabled —
+   * the height tracks the content, no user-action needed. */
+  resize: none;
+  overflow-y: auto;
   font-family: inherit;
   font-size: 0.85rem;
   line-height: 1.35;
   outline: none;
-  min-height: 2.2rem;
+  min-height: 1.5rem;
+  max-height: 320px;
   color: inherit;
 }
 .note-card-text:focus {

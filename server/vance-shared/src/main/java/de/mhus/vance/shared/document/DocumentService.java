@@ -2892,7 +2892,7 @@ public class DocumentService {
             @Nullable String newText,
             @Nullable Boolean newDone,
             @Nullable Integer newLine) {
-        return updateNote(docId, noteId, newText, newDone, newLine, null);
+        return updateNote(docId, noteId, newText, newDone, newLine, null, null);
     }
 
     /** {@link #updateNote} with the writer's editorId for live-broadcast routing. */
@@ -2903,9 +2903,27 @@ public class DocumentService {
             @Nullable Boolean newDone,
             @Nullable Integer newLine,
             @Nullable String editorId) {
+        return updateNote(docId, noteId, newText, newDone, newLine, null, editorId);
+    }
+
+    /**
+     * Full-arg {@link #updateNote} overload that also accepts a new
+     * {@code order} value (drag-reorder writes a midpoint between
+     * neighbours' values). All scalar patch-fields follow the same
+     * "null = leave alone" convention.
+     */
+    public Optional<DocumentNote> updateNote(
+            String docId,
+            String noteId,
+            @Nullable String newText,
+            @Nullable Boolean newDone,
+            @Nullable Integer newLine,
+            @Nullable Double newOrder,
+            @Nullable String editorId) {
         Update update = new Update().set("notes." + noteId + ".updatedAt", Instant.now());
         if (newText != null) update.set("notes." + noteId + ".text", newText);
         if (newDone != null) update.set("notes." + noteId + ".done", newDone);
+        if (newOrder != null) update.set("notes." + noteId + ".order", newOrder);
         if (newLine != null) {
             if (newLine == Integer.MIN_VALUE) {
                 update.unset("notes." + noteId + ".line");

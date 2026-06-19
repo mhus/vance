@@ -25,7 +25,9 @@ export declare function useDocumentNotes(doc: Ref<CortexDocument | null>): {
         text?: string;
         done?: boolean;
         line?: number;
+        order?: number;
     }) => Promise<DocumentNoteDto | null>;
     deleteNote: (noteId: string) => Promise<void>;
+    moveNoteTo: (noteId: string, toIndex: number) => Promise<void>;
 };
 //# sourceMappingURL=useDocumentNotes.d.ts.map

@@ -59,4 +59,13 @@ public class DocumentNote {
      * unrelated text. Editors should make that visible to the user.
      */
     private @Nullable Integer line;
+
+    /**
+     * Display-order key. UI sorts ascending by
+     * {@code (order ?? createdAtMs)} — notes without an explicit order
+     * fall back to insertion order. Drag-reorder writes a midpoint
+     * between the two neighbours' values, so reordering N notes never
+     * needs a renumbering pass.
+     */
+    private @Nullable Double order;
 }

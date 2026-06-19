@@ -139,6 +139,10 @@ async function onDeleteNote(noteId: string): Promise<void> {
   if (highlightedNoteId.value === noteId) highlightedNoteId.value = null;
 }
 
+async function onReorderNote(noteId: string, toIndex: number): Promise<void> {
+  await docNotes.moveNoteTo(noteId, toIndex);
+}
+
 function onJumpToLine(_line: number): void {
   // Editor scroll-to-line is a v2 — for now the gutter dot is visible
   // anyway when the user opens the panel. Hook left intentionally
@@ -831,6 +835,7 @@ function fmtDuration(ms: number | null): string {
         @update="onUpdateNote"
         @delete="onDeleteNote"
         @jump-to-line="onJumpToLine"
+        @reorder="onReorderNote"
       />
     </div>
 

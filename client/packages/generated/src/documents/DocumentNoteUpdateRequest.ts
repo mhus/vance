@@ -7,4 +7,5 @@ export interface DocumentNoteUpdateRequest {
   text?: string;
   done?: boolean;
   line?: number;
+  order?: number;
 }

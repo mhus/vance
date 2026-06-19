@@ -35,4 +35,11 @@ public class DocumentNoteUpdateRequest {
 
     /** {@code Integer.MIN_VALUE} = unset; positiver Wert = neue Zeile. */
     private @Nullable Integer line;
+
+    /**
+     * Optional Sortierschlüssel. {@code null} = "nicht ändern" (gleiche
+     * Konvention wie die anderen Patch-Felder). Drag-Reorder berechnet
+     * den Midpoint zwischen den Nachbarn und schickt den Float-Wert.
+     */
+    private @Nullable Double order;
 }

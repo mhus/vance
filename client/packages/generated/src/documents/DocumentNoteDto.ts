@@ -11,4 +11,5 @@ export interface DocumentNoteDto {
   updatedAtMs: number;
   done: boolean;
   line?: number;
+  order?: number;
 }

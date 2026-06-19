@@ -569,7 +569,8 @@ public class DocumentController {
                 new Resource.Document(tenant, existing.getProjectId(), existing.getPath()), Action.READ);
 
         de.mhus.vance.shared.document.DocumentNote updated = documentService.updateNote(
-                id, noteId, request.getText(), request.getDone(), request.getLine(), editorId)
+                id, noteId, request.getText(), request.getDone(), request.getLine(),
+                request.getOrder(), editorId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Unknown note id='" + noteId + "' on document id='" + id + "'"));
         return ResponseEntity.ok(noteToDto(updated));
@@ -896,6 +897,7 @@ public class DocumentController {
                     .updatedAtMs(n.getUpdatedAt() == null ? 0L : n.getUpdatedAt().toEpochMilli())
                     .done(n.isDone())
                     .line(n.getLine())
+                    .order(n.getOrder())
                     .build());
         }
         return out;
@@ -912,6 +914,7 @@ public class DocumentController {
                 .updatedAtMs(n.getUpdatedAt() == null ? 0L : n.getUpdatedAt().toEpochMilli())
                 .done(n.isDone())
                 .line(n.getLine())
+                .order(n.getOrder())
                 .build();
     }
 

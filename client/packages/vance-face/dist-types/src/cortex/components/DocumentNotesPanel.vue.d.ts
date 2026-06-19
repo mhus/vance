@@ -7,19 +7,21 @@ interface Props {
 declare const _default: import("vue").DefineComponent<Props, {}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {} & {
     add: () => any;
     delete: (noteId: string) => any;
+    "jump-to-line": (line: number) => any;
     update: (noteId: string, patch: {
         text?: string;
         done?: boolean;
     }) => any;
-    "jump-to-line": (line: number) => any;
+    reorder: (noteId: string, toIndex: number) => any;
 }, string, import("vue").PublicProps, Readonly<Props> & Readonly<{
     onAdd?: (() => any) | undefined;
     onDelete?: ((noteId: string) => any) | undefined;
+    "onJump-to-line"?: ((line: number) => any) | undefined;
     onUpdate?: ((noteId: string, patch: {
         text?: string;
         done?: boolean;
     }) => any) | undefined;
-    "onJump-to-line"?: ((line: number) => any) | undefined;
+    onReorder?: ((noteId: string, toIndex: number) => any) | undefined;
 }>, {
     highlightedNoteId: string | null;
 }, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;

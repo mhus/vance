@@ -227,6 +227,7 @@ public class DocumentNotesBroadcaster {
                 .updatedAtMs(n.getUpdatedAt() == null ? 0L : n.getUpdatedAt().toEpochMilli())
                 .done(n.isDone())
                 .line(n.getLine())
+                .order(n.getOrder())
                 .build();
     }
 

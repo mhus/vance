@@ -99,6 +99,9 @@ async function onDeleteNote(noteId) {
     if (highlightedNoteId.value === noteId)
         highlightedNoteId.value = null;
 }
+async function onReorderNote(noteId, toIndex) {
+    await docNotes.moveNoteTo(noteId, toIndex);
+}
 function onJumpToLine(_line) {
     // Editor scroll-to-line is a v2 — for now the gutter dot is visible
     // anyway when the user opens the panel. Hook left intentionally
@@ -909,6 +912,7 @@ if (__VLS_ctx.notesOpen) {
         ...{ 'onUpdate': {} },
         ...{ 'onDelete': {} },
         ...{ 'onJumpToLine': {} },
+        ...{ 'onReorder': {} },
         notes: (__VLS_ctx.docNotes.notes.value),
         highlightedNoteId: (__VLS_ctx.highlightedNoteId),
     }));
@@ -917,6 +921,7 @@ if (__VLS_ctx.notesOpen) {
         ...{ 'onUpdate': {} },
         ...{ 'onDelete': {} },
         ...{ 'onJumpToLine': {} },
+        ...{ 'onReorder': {} },
         notes: (__VLS_ctx.docNotes.notes.value),
         highlightedNoteId: (__VLS_ctx.highlightedNoteId),
     }, ...__VLS_functionalComponentArgsRest(__VLS_54));
@@ -935,35 +940,38 @@ if (__VLS_ctx.notesOpen) {
     const __VLS_63 = {
         onJumpToLine: (__VLS_ctx.onJumpToLine)
     };
+    const __VLS_64 = {
+        onReorder: (__VLS_ctx.onReorderNote)
+    };
     var __VLS_56;
 }
 if (__VLS_ctx.showValidate) {
     /** @type {[typeof CortexValidateDialog, ]} */ ;
     // @ts-ignore
-    const __VLS_64 = __VLS_asFunctionalComponent(CortexValidateDialog, new CortexValidateDialog({
+    const __VLS_65 = __VLS_asFunctionalComponent(CortexValidateDialog, new CortexValidateDialog({
         ...{ 'onClose': {} },
         document: (__VLS_ctx.document),
     }));
-    const __VLS_65 = __VLS_64({
+    const __VLS_66 = __VLS_65({
         ...{ 'onClose': {} },
         document: (__VLS_ctx.document),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_64));
-    let __VLS_67;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_65));
     let __VLS_68;
     let __VLS_69;
-    const __VLS_70 = {
+    let __VLS_70;
+    const __VLS_71 = {
         onClose: (...[$event]) => {
             if (!(__VLS_ctx.showValidate))
                 return;
             __VLS_ctx.showValidate = false;
         }
     };
-    var __VLS_66;
+    var __VLS_67;
 }
 if (__VLS_ctx.showSlart && __VLS_ctx.store.projectId) {
     /** @type {[typeof CortexHactarDialog, ]} */ ;
     // @ts-ignore
-    const __VLS_71 = __VLS_asFunctionalComponent(CortexHactarDialog, new CortexHactarDialog({
+    const __VLS_72 = __VLS_asFunctionalComponent(CortexHactarDialog, new CortexHactarDialog({
         ...{ 'onClose': {} },
         ...{ 'onApply': {} },
         document: (__VLS_ctx.document),
@@ -971,28 +979,28 @@ if (__VLS_ctx.showSlart && __VLS_ctx.store.projectId) {
         sessionId: (__VLS_ctx.sessionId ?? null),
         mode: (__VLS_ctx.slartMode),
     }));
-    const __VLS_72 = __VLS_71({
+    const __VLS_73 = __VLS_72({
         ...{ 'onClose': {} },
         ...{ 'onApply': {} },
         document: (__VLS_ctx.document),
         projectId: (__VLS_ctx.store.projectId),
         sessionId: (__VLS_ctx.sessionId ?? null),
         mode: (__VLS_ctx.slartMode),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_71));
-    let __VLS_74;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_72));
     let __VLS_75;
     let __VLS_76;
-    const __VLS_77 = {
+    let __VLS_77;
+    const __VLS_78 = {
         onClose: (...[$event]) => {
             if (!(__VLS_ctx.showSlart && __VLS_ctx.store.projectId))
                 return;
             __VLS_ctx.showSlart = false;
         }
     };
-    const __VLS_78 = {
+    const __VLS_79 = {
         onApply: (__VLS_ctx.onSlartApply)
     };
-    var __VLS_73;
+    var __VLS_74;
 }
 /** @type {__VLS_StyleScopedClasses['h-full']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
@@ -1258,6 +1266,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             onAddUnanchoredNote: onAddUnanchoredNote,
             onUpdateNote: onUpdateNote,
             onDeleteNote: onDeleteNote,
+            onReorderNote: onReorderNote,
             onJumpToLine: onJumpToLine,
             onNoteAnchorClick: onNoteAnchorClick,
             onNoteGutterClick: onNoteGutterClick,

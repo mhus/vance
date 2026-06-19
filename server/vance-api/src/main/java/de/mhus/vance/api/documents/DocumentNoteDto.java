@@ -44,4 +44,11 @@ public class DocumentNoteDto {
      * unanchored / file-level. Statisch: bewegt sich nicht mit Edits.
      */
     private @Nullable Integer line;
+
+    /**
+     * Optional display-order key. UI sortiert nach
+     * {@code (order ?? createdAtMs)} aufsteigend. Drag-Reorder schreibt
+     * den Midpoint der beiden Nachbarn rein — keine N-mal-Renumbering.
+     */
+    private @Nullable Double order;
 }

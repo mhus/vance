@@ -306,6 +306,8 @@ declare const _default: {
             upsertedTooltip: string;
             deleted: string;
             deletedTooltip: string;
+            keepLocal: string;
+            acceptRemote: string;
         };
         followUp: {
             acceptHint: string;

@@ -30,7 +30,10 @@ import type { FollowUpRequestDto, FollowUpResponseDto } from '@vance/generated';
 import type { FollowUpExtensionOptions } from '@/components';
 import { consumeDocumentDraft } from '@/platform';
 import DocumentPresenceStrip from '@/ws/DocumentPresenceStrip.vue';
-import { onDocumentChanged } from '@/ws/wsConnectionStore';
+import {
+  isAudioVideoMime,
+  useDocumentChangeReaction,
+} from '@/composables/useDocumentChangeReaction';
 import DocumentPreview from './DocumentPreview.vue';
 import DocumentIcon from './DocumentIcon.vue';
 import DocumentArchives from './DocumentArchives.vue';
@@ -552,44 +555,48 @@ watch(
 );
 
 /**
- * External-change indicator for the document currently in the editor.
- * Set by the {@code documents.changed} WS frame; cleared when the user
- * reloads or when the path changes to a different document. The badge
- * sits in the topbar next to the presence strip and the only action it
- * exposes is "Reload" — auto-reload would clobber unsaved edits, so we
- * stay explicit at v1.
+ * Snapshot of the inline-text content the editor was last in sync with
+ * — set by {@link fillEditor} on load and after a successful save.
+ * Drives the "dirty" check that decides whether a remote
+ * {@code documents.changed} event can be silently absorbed or needs a
+ * conflict banner. Phase B will additionally use it as the {@code text1}
+ * side of a 3-way merge with {@code diff-match-patch}.
  */
-const externallyChangedKind = ref<string | null>(null);
-let externalChangeUnsubscribe: (() => void) | null = null;
-
-watch(
-  () => docsState.selected.value?.path ?? null,
-  (path) => {
-    externallyChangedKind.value = null;
-    if (externalChangeUnsubscribe) {
-      externalChangeUnsubscribe();
-      externalChangeUnsubscribe = null;
-    }
-    if (!path) return;
-    externalChangeUnsubscribe = onDocumentChanged(path, (kind) => {
-      externallyChangedKind.value = kind;
-    });
-  },
-  { immediate: true },
+const baselineInlineText = ref<string>('');
+const isInlineEditorDirty = computed<boolean>(
+  () => editInlineText.value !== baselineInlineText.value,
 );
 
-onBeforeUnmount(() => {
-  externalChangeUnsubscribe?.();
-  externalChangeUnsubscribe = null;
-});
-
-async function reloadAfterExternalChange(): Promise<void> {
+/**
+ * Adopt the latest server-side state for the currently-selected doc —
+ * shared between the silent path of the change-reaction composable and
+ * the "Remote übernehmen" banner action.
+ */
+async function applyRemoteReload(): Promise<void> {
   const sel = docsState.selected.value;
-  externallyChangedKind.value = null;
   if (!sel) return;
   await docsState.loadOne(sel.id);
   await fillEditor();
 }
+
+const changeReaction = useDocumentChangeReaction({
+  path: computed(() => docsState.selected.value?.path ?? null),
+  tryApply: async (_kind) => {
+    const sel = docsState.selected.value;
+    if (!sel) return true;  // nothing open → no banner needed
+    const mime = sel.mimeType ?? '';
+    // Audio/video: never silent-reload, the user might be in mid-playback.
+    if (isAudioVideoMime(mime)) return false;
+    // Text with unsaved edits: protect the buffer.
+    if (canEditInline(mime) && isInlineEditorDirty.value) return false;
+    // Clean text OR non-AV binary (image / PDF / generic blob).
+    await applyRemoteReload();
+    return true;
+  },
+  forceApply: async () => {
+    await applyRemoteReload();
+  },
+});
 
 // True while the user is editing an _app.yaml manifest in the generic
 // document editor (typically reached via the per-row "edit as file"
@@ -808,9 +815,11 @@ async function fillEditor(): Promise<void> {
     sel.inlineText = content;
     sel.inline = true;
     editInlineText.value = content;
+    baselineInlineText.value = content;
   } else {
     if (sel) sel.inline = false;
     editInlineText.value = '';
+    baselineInlineText.value = '';
   }
   editAutoSummary.value = sel?.autoSummary ?? false;
   editSummaryDirty.value = sel?.summaryDirty ?? false;
@@ -1955,6 +1964,10 @@ async function apply(): Promise<boolean> {
         editError.value = docsState.error.value;
         return false;
       }
+      // Successful save → the editor buffer is now the new baseline; the
+      // change-reaction logic needs to see "no dirty edits" so the next
+      // remote change is absorbed silently rather than via banner.
+      baselineInlineText.value = editInlineText.value;
     }
     if (body.newPath && docsState.selected.value) {
       // Server normalised the path; reflect that back into the
@@ -2131,25 +2144,41 @@ const formatBytes = (n: number): string => {
          Only renders when a document is selected. The strip is empty
          (no DOM) when nobody else is on the path. ─── -->
     <template v-if="docsState.selected.value?.path" #topbar-extra>
-      <!-- External-change banner: appears when a peer (other tab,
-           other pod, another user) wrote the open document. Explicit
-           Reload — never auto, would destroy unsaved edits. -->
-      <button
-        v-if="externallyChangedKind"
-        type="button"
-        class="mr-3 inline-flex items-center gap-1.5 rounded-md
+      <!-- External-change conflict banner. The reaction composable raises
+           changeReaction.pendingChange only when the change cannot be
+           absorbed silently (text with unsaved edits, or audio/video where
+           a silent re-bind would interrupt playback). Otherwise the
+           change has already been applied silently when this rendered. -->
+      <div
+        v-if="changeReaction.pendingChange.value"
+        class="mr-3 inline-flex items-center gap-2 rounded-md
                border border-warning/40 bg-warning/15 px-2 py-1
-               text-xs font-medium text-warning-content hover:bg-warning/25"
-        :title="externallyChangedKind === 'deleted'
+               text-xs font-medium text-warning-content"
+        :title="changeReaction.pendingChange.value === 'deleted'
                 ? $t('documents.externallyChanged.deletedTooltip')
                 : $t('documents.externallyChanged.upsertedTooltip')"
-        @click="reloadAfterExternalChange()"
       >
         <span aria-hidden="true">●</span>
-        {{ externallyChangedKind === 'deleted'
-           ? $t('documents.externallyChanged.deleted')
-           : $t('documents.externallyChanged.upserted') }}
-      </button>
+        <span>{{ changeReaction.pendingChange.value === 'deleted'
+                 ? $t('documents.externallyChanged.deleted')
+                 : $t('documents.externallyChanged.upserted') }}</span>
+        <button
+          type="button"
+          class="rounded border border-warning/50 px-1.5 py-0.5
+                 hover:bg-warning/30"
+          @click="changeReaction.keepLocal()"
+        >
+          {{ $t('documents.externallyChanged.keepLocal') }}
+        </button>
+        <button
+          type="button"
+          class="rounded border border-warning/50 px-1.5 py-0.5
+                 hover:bg-warning/30"
+          @click="changeReaction.acceptRemote()"
+        >
+          {{ $t('documents.externallyChanged.acceptRemote') }}
+        </button>
+      </div>
       <DocumentPresenceStrip :path="docsState.selected.value.path" class="mr-2" />
     </template>
 

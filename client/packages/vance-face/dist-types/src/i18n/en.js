@@ -314,10 +314,12 @@ export default {
         pageTitle: 'Documents',
         breadcrumbRoot: 'Documents',
         externallyChanged: {
-            upserted: 'Changed externally — reload',
-            upsertedTooltip: 'Another tab or user just wrote this document. Reload to see the new contents.',
-            deleted: 'Deleted externally — reload',
-            deletedTooltip: 'This document was deleted on another tab or pod. Reload to refresh.',
+            upserted: 'Changed externally',
+            upsertedTooltip: 'Another tab or user just wrote this document. Choose whether to keep your unsaved edits or load the remote version.',
+            deleted: 'Deleted externally',
+            deletedTooltip: 'This document was deleted on another tab or pod. Choose whether to keep your local copy or accept the deletion.',
+            keepLocal: 'Keep mine',
+            acceptRemote: 'Use remote',
         },
         followUp: {
             acceptHint: '↹ Tab',

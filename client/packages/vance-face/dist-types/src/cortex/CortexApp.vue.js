@@ -3,7 +3,8 @@ import { EditorShell, VAlert, VANCE_LINK_HANDLER_KEY, VButton, VEmptyState, VInp
 import { brainFetch } from '@vance/shared';
 import { useTenantProjects } from '@composables/useTenantProjects';
 import DocumentPresenceStrip from '@/ws/DocumentPresenceStrip.vue';
-import { onDocumentChanged } from '@/ws/wsConnectionStore';
+import { isAudioVideoMime, useDocumentChangeReaction, } from '@/composables/useDocumentChangeReaction';
+import { isBinaryMime } from './stores/cortexStore';
 import { useCortexStore } from './stores/cortexStore';
 import { CortexClientToolService } from './clientToolService';
 import FileTreeSidebar from './components/FileTreeSidebar.vue';
@@ -278,38 +279,35 @@ function onPopState() {
 }
 const activeTab = computed(() => store.activeTab);
 /**
- * External-change indicator for the currently-active document tab.
- * Wired to the {@code documents.changed} WS frame via
- * {@link onDocumentChanged}. We track only the active tab — when the
- * user switches tabs the listener swaps. Other tabs' invalidations are
- * not signalled in v1 (the user notices on switch since the next reload
- * is a click away).
+ * Live-change reaction for the *currently-active* document tab. Other
+ * tabs' remote changes are not signalled in v1 — the user notices on
+ * switch because the next reload is one click away. The composable
+ * swaps its subscription automatically when {@link activeTab} changes.
  */
-const externallyChangedKind = ref(null);
-let externalChangeUnsubscribe = null;
-watch(() => activeTab.value?.path ?? null, (path) => {
-    externallyChangedKind.value = null;
-    if (externalChangeUnsubscribe) {
-        externalChangeUnsubscribe();
-        externalChangeUnsubscribe = null;
-    }
-    if (!path)
-        return;
-    externalChangeUnsubscribe = onDocumentChanged(path, (kind) => {
-        externallyChangedKind.value = kind;
-    });
-}, { immediate: true });
-onBeforeUnmount(() => {
-    externalChangeUnsubscribe?.();
-    externalChangeUnsubscribe = null;
+const changeReaction = useDocumentChangeReaction({
+    path: computed(() => activeTab.value?.path ?? null),
+    tryApply: async (_kind) => {
+        const tab = activeTab.value;
+        if (!tab)
+            return true;
+        const mime = tab.mimeType ?? '';
+        // Audio/video: never silent-reload (may be in mid-playback).
+        if (isAudioVideoMime(mime))
+            return false;
+        // Text with unsaved edits: protect the buffer.
+        if (!isBinaryMime(mime) && tab.dirty)
+            return false;
+        // Clean text or non-AV binary → safe to refetch.
+        await store.reloadTab(tab.id);
+        return true;
+    },
+    forceApply: async () => {
+        const tab = activeTab.value;
+        if (!tab)
+            return;
+        await store.reloadTab(tab.id);
+    },
 });
-async function reloadActiveTabAfterExternalChange() {
-    const tab = activeTab.value;
-    externallyChangedKind.value = null;
-    if (!tab)
-        return;
-    await store.reloadTab(tab.id);
-}
 const chatBoundDocumentPath = computed(() => {
     const id = chatBoundDocumentId.value;
     if (!id)
@@ -729,27 +727,44 @@ if (__VLS_ctx.sessionId) {
     __VLS_3.slots.default;
     {
         const { 'topbar-extra': __VLS_thisSlot } = __VLS_3.slots;
-        if (__VLS_ctx.externallyChangedKind && __VLS_ctx.activeTab?.path) {
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-                ...{ onClick: (...[$event]) => {
-                        if (!(__VLS_ctx.sessionId))
-                            return;
-                        if (!(__VLS_ctx.externallyChangedKind && __VLS_ctx.activeTab?.path))
-                            return;
-                        __VLS_ctx.reloadActiveTabAfterExternalChange();
-                    } },
-                type: "button",
-                ...{ class: "\u006d\u0072\u002d\u0033\u0020\u0069\u006e\u006c\u0069\u006e\u0065\u002d\u0066\u006c\u0065\u0078\u0020\u0069\u0074\u0065\u006d\u0073\u002d\u0063\u0065\u006e\u0074\u0065\u0072\u0020\u0067\u0061\u0070\u002d\u0031\u002e\u0035\u0020\u0072\u006f\u0075\u006e\u0064\u0065\u0064\u002d\u006d\u0064\u000a\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0062\u006f\u0072\u0064\u0065\u0072\u0020\u0062\u006f\u0072\u0064\u0065\u0072\u002d\u0077\u0061\u0072\u006e\u0069\u006e\u0067\u002f\u0034\u0030\u0020\u0062\u0067\u002d\u0077\u0061\u0072\u006e\u0069\u006e\u0067\u002f\u0031\u0035\u0020\u0070\u0078\u002d\u0032\u0020\u0070\u0079\u002d\u0031\u000a\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0074\u0065\u0078\u0074\u002d\u0078\u0073\u0020\u0066\u006f\u006e\u0074\u002d\u006d\u0065\u0064\u0069\u0075\u006d\u0020\u0074\u0065\u0078\u0074\u002d\u0077\u0061\u0072\u006e\u0069\u006e\u0067\u002d\u0063\u006f\u006e\u0074\u0065\u006e\u0074\u0020\u0068\u006f\u0076\u0065\u0072\u003a\u0062\u0067\u002d\u0077\u0061\u0072\u006e\u0069\u006e\u0067\u002f\u0032\u0035" },
-                title: (__VLS_ctx.externallyChangedKind === 'deleted'
+        if (__VLS_ctx.changeReaction.pendingChange.value && __VLS_ctx.activeTab?.path) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "\u006d\u0072\u002d\u0033\u0020\u0069\u006e\u006c\u0069\u006e\u0065\u002d\u0066\u006c\u0065\u0078\u0020\u0069\u0074\u0065\u006d\u0073\u002d\u0063\u0065\u006e\u0074\u0065\u0072\u0020\u0067\u0061\u0070\u002d\u0032\u0020\u0072\u006f\u0075\u006e\u0064\u0065\u0064\u002d\u006d\u0064\u000a\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0062\u006f\u0072\u0064\u0065\u0072\u0020\u0062\u006f\u0072\u0064\u0065\u0072\u002d\u0077\u0061\u0072\u006e\u0069\u006e\u0067\u002f\u0034\u0030\u0020\u0062\u0067\u002d\u0077\u0061\u0072\u006e\u0069\u006e\u0067\u002f\u0031\u0035\u0020\u0070\u0078\u002d\u0032\u0020\u0070\u0079\u002d\u0031\u000a\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0074\u0065\u0078\u0074\u002d\u0078\u0073\u0020\u0066\u006f\u006e\u0074\u002d\u006d\u0065\u0064\u0069\u0075\u006d\u0020\u0074\u0065\u0078\u0074\u002d\u0077\u0061\u0072\u006e\u0069\u006e\u0067\u002d\u0063\u006f\u006e\u0074\u0065\u006e\u0074" },
+                title: (__VLS_ctx.changeReaction.pendingChange.value === 'deleted'
                     ? __VLS_ctx.$t('documents.externallyChanged.deletedTooltip')
                     : __VLS_ctx.$t('documents.externallyChanged.upsertedTooltip')),
             });
             __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
                 'aria-hidden': "true",
             });
-            (__VLS_ctx.externallyChangedKind === 'deleted'
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+            (__VLS_ctx.changeReaction.pendingChange.value === 'deleted'
                 ? __VLS_ctx.$t('documents.externallyChanged.deleted')
                 : __VLS_ctx.$t('documents.externallyChanged.upserted'));
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!(__VLS_ctx.sessionId))
+                            return;
+                        if (!(__VLS_ctx.changeReaction.pendingChange.value && __VLS_ctx.activeTab?.path))
+                            return;
+                        __VLS_ctx.changeReaction.keepLocal();
+                    } },
+                type: "button",
+                ...{ class: "\u0072\u006f\u0075\u006e\u0064\u0065\u0064\u0020\u0062\u006f\u0072\u0064\u0065\u0072\u0020\u0062\u006f\u0072\u0064\u0065\u0072\u002d\u0077\u0061\u0072\u006e\u0069\u006e\u0067\u002f\u0035\u0030\u0020\u0070\u0078\u002d\u0031\u002e\u0035\u0020\u0070\u0079\u002d\u0030\u002e\u0035\u000a\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0068\u006f\u0076\u0065\u0072\u003a\u0062\u0067\u002d\u0077\u0061\u0072\u006e\u0069\u006e\u0067\u002f\u0033\u0030" },
+            });
+            (__VLS_ctx.$t('documents.externallyChanged.keepLocal'));
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!(__VLS_ctx.sessionId))
+                            return;
+                        if (!(__VLS_ctx.changeReaction.pendingChange.value && __VLS_ctx.activeTab?.path))
+                            return;
+                        __VLS_ctx.changeReaction.acceptRemote();
+                    } },
+                type: "button",
+                ...{ class: "\u0072\u006f\u0075\u006e\u0064\u0065\u0064\u0020\u0062\u006f\u0072\u0064\u0065\u0072\u0020\u0062\u006f\u0072\u0064\u0065\u0072\u002d\u0077\u0061\u0072\u006e\u0069\u006e\u0067\u002f\u0035\u0030\u0020\u0070\u0078\u002d\u0031\u002e\u0035\u0020\u0070\u0079\u002d\u0030\u002e\u0035\u000a\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0068\u006f\u0076\u0065\u0072\u003a\u0062\u0067\u002d\u0077\u0061\u0072\u006e\u0069\u006e\u0067\u002f\u0033\u0030" },
+            });
+            (__VLS_ctx.$t('documents.externallyChanged.acceptRemote'));
         }
         if (__VLS_ctx.activeTab?.path) {
             /** @type {[typeof DocumentPresenceStrip, ]} */ ;
@@ -1345,7 +1360,7 @@ var __VLS_95;
 /** @type {__VLS_StyleScopedClasses['mr-3']} */ ;
 /** @type {__VLS_StyleScopedClasses['inline-flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['items-center']} */ ;
-/** @type {__VLS_StyleScopedClasses['gap-1.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['rounded-md']} */ ;
 /** @type {__VLS_StyleScopedClasses['border']} */ ;
 /** @type {__VLS_StyleScopedClasses['border-warning/40']} */ ;
@@ -1355,7 +1370,18 @@ var __VLS_95;
 /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-medium']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-warning-content']} */ ;
-/** @type {__VLS_StyleScopedClasses['hover:bg-warning/25']} */ ;
+/** @type {__VLS_StyleScopedClasses['rounded']} */ ;
+/** @type {__VLS_StyleScopedClasses['border']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-warning/50']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-1.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-0.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['hover:bg-warning/30']} */ ;
+/** @type {__VLS_StyleScopedClasses['rounded']} */ ;
+/** @type {__VLS_StyleScopedClasses['border']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-warning/50']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-1.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-0.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['hover:bg-warning/30']} */ ;
 /** @type {__VLS_StyleScopedClasses['mr-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
@@ -1513,8 +1539,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             title: title,
             breadcrumbs: breadcrumbs,
             activeTab: activeTab,
-            externallyChangedKind: externallyChangedKind,
-            reloadActiveTabAfterExternalChange: reloadActiveTabAfterExternalChange,
+            changeReaction: changeReaction,
             hasDirtyTabs: hasDirtyTabs,
             isActiveTabBound: isActiveTabBound,
             chatBoundDocumentPathDisplay: chatBoundDocumentPathDisplay,

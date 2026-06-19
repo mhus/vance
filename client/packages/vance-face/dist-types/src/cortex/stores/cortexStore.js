@@ -110,9 +110,11 @@ export const useCortexStore = defineStore('cortex', () => {
             kind: s.kind ?? null,
             inlineText: '', // populated on full load via openFile
             dirty: false,
+            baselineInlineText: '',
         };
     }
     function dtoToDocument(d) {
+        const text = d.inlineText ?? '';
         return {
             id: d.id,
             path: d.path,
@@ -120,8 +122,10 @@ export const useCortexStore = defineStore('cortex', () => {
             title: d.title ?? null,
             mimeType: d.mimeType ?? null,
             kind: d.kind ?? null,
-            inlineText: d.inlineText ?? '',
+            inlineText: text,
             dirty: false,
+            // Fresh load — baseline equals the content we just received.
+            baselineInlineText: text,
             lastDeepReviewedHash: d.lastDeepReviewedHash ?? null,
             lastDeepReviewWarningsJson: d.lastDeepReviewWarningsJson ?? null,
         };
@@ -163,6 +167,10 @@ export const useCortexStore = defineStore('cortex', () => {
         if (!isBinaryMime(dto.mimeType)) {
             const text = await brainFetchText(`documents/${encodeURIComponent(id)}/content`);
             file.inlineText = text ?? '';
+            // dtoToDocument seeded baseline from the (null) DTO inlineText;
+            // overwrite it with the actually-loaded body so the live-change
+            // reaction can compute "dirty" correctly from the first edit.
+            file.baselineInlineText = file.inlineText;
         }
         openTabs.value = [...openTabs.value, file];
         activeTabId.value = id;
@@ -234,6 +242,7 @@ export const useCortexStore = defineStore('cortex', () => {
         if (!isBinaryMime(dto.mimeType)) {
             const text = await brainFetchText(`documents/${encodeURIComponent(id)}/content`);
             fresh.inlineText = text ?? '';
+            fresh.baselineInlineText = fresh.inlineText;
         }
         openTabs.value = [
             ...openTabs.value.slice(0, idx),
@@ -290,6 +299,10 @@ export const useCortexStore = defineStore('cortex', () => {
         const fresh = dtoToDocument(dto);
         Object.assign(tab, fresh);
         tab.inlineText = preservedText;
+        // Save succeeded → the editor buffer is the new baseline. Without
+        // this the live-change reaction would still see the tab as dirty
+        // and pop a banner on the next remote echo.
+        tab.baselineInlineText = preservedText;
         tab.dirty = false;
         const li = files.value.findIndex((f) => f.id === tab.id);
         if (li >= 0) {

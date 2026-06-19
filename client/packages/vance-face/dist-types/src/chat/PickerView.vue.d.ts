@@ -27,12 +27,12 @@ declare const _default: import("vue").DefineComponent<__VLS_PublicProps, {}, {},
         title: string;
     }) => any;
 }, string, import("vue").PublicProps, Readonly<__VLS_PublicProps> & Readonly<{
+    "onUpdate:selectedProject"?: ((value: string | null) => any) | undefined;
     "onProject-pick"?: ((payload: {
         name: string;
         title: string;
     }) => any) | undefined;
     "onFocus-main"?: (() => any) | undefined;
-    "onUpdate:selectedProject"?: ((value: string | null) => any) | undefined;
     "onSession-picked"?: ((sessionId: string) => any) | undefined;
     "onSession-bootstrapped"?: ((sessionId: string) => any) | undefined;
     "onProject-resolved"?: ((payload: {

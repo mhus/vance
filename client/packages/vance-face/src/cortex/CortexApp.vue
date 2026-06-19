@@ -16,7 +16,11 @@ import { brainFetch } from '@vance/shared';
 import type { SessionSummaryRichDto } from '@vance/generated';
 import { useTenantProjects } from '@composables/useTenantProjects';
 import DocumentPresenceStrip from '@/ws/DocumentPresenceStrip.vue';
-import { onDocumentChanged } from '@/ws/wsConnectionStore';
+import {
+  isAudioVideoMime,
+  useDocumentChangeReaction,
+} from '@/composables/useDocumentChangeReaction';
+import { isBinaryMime } from './stores/cortexStore';
 import { useCortexStore } from './stores/cortexStore';
 import { CortexClientToolService } from './clientToolService';
 import FileTreeSidebar from './components/FileTreeSidebar.vue';
@@ -316,43 +320,31 @@ function onPopState(): void {
 const activeTab = computed(() => store.activeTab);
 
 /**
- * External-change indicator for the currently-active document tab.
- * Wired to the {@code documents.changed} WS frame via
- * {@link onDocumentChanged}. We track only the active tab — when the
- * user switches tabs the listener swaps. Other tabs' invalidations are
- * not signalled in v1 (the user notices on switch since the next reload
- * is a click away).
+ * Live-change reaction for the *currently-active* document tab. Other
+ * tabs' remote changes are not signalled in v1 — the user notices on
+ * switch because the next reload is one click away. The composable
+ * swaps its subscription automatically when {@link activeTab} changes.
  */
-const externallyChangedKind = ref<string | null>(null);
-let externalChangeUnsubscribe: (() => void) | null = null;
-
-watch(
-  () => activeTab.value?.path ?? null,
-  (path) => {
-    externallyChangedKind.value = null;
-    if (externalChangeUnsubscribe) {
-      externalChangeUnsubscribe();
-      externalChangeUnsubscribe = null;
-    }
-    if (!path) return;
-    externalChangeUnsubscribe = onDocumentChanged(path, (kind) => {
-      externallyChangedKind.value = kind;
-    });
+const changeReaction = useDocumentChangeReaction({
+  path: computed(() => activeTab.value?.path ?? null),
+  tryApply: async (_kind) => {
+    const tab = activeTab.value;
+    if (!tab) return true;
+    const mime = tab.mimeType ?? '';
+    // Audio/video: never silent-reload (may be in mid-playback).
+    if (isAudioVideoMime(mime)) return false;
+    // Text with unsaved edits: protect the buffer.
+    if (!isBinaryMime(mime) && tab.dirty) return false;
+    // Clean text or non-AV binary → safe to refetch.
+    await store.reloadTab(tab.id);
+    return true;
   },
-  { immediate: true },
-);
-
-onBeforeUnmount(() => {
-  externalChangeUnsubscribe?.();
-  externalChangeUnsubscribe = null;
+  forceApply: async () => {
+    const tab = activeTab.value;
+    if (!tab) return;
+    await store.reloadTab(tab.id);
+  },
 });
-
-async function reloadActiveTabAfterExternalChange(): Promise<void> {
-  const tab = activeTab.value;
-  externallyChangedKind.value = null;
-  if (!tab) return;
-  await store.reloadTab(tab.id);
-}
 
 const chatBoundDocumentPath = computed<string | null>(() => {
   const id = chatBoundDocumentId.value;
@@ -761,22 +753,36 @@ onBeforeUnmount(() => {
          same screen region (top-right of the header) and the two
          views stay visually symmetrical. -->
     <template #topbar-extra>
-      <button
-        v-if="externallyChangedKind && activeTab?.path"
-        type="button"
-        class="mr-3 inline-flex items-center gap-1.5 rounded-md
+      <div
+        v-if="changeReaction.pendingChange.value && activeTab?.path"
+        class="mr-3 inline-flex items-center gap-2 rounded-md
                border border-warning/40 bg-warning/15 px-2 py-1
-               text-xs font-medium text-warning-content hover:bg-warning/25"
-        :title="externallyChangedKind === 'deleted'
+               text-xs font-medium text-warning-content"
+        :title="changeReaction.pendingChange.value === 'deleted'
                 ? $t('documents.externallyChanged.deletedTooltip')
                 : $t('documents.externallyChanged.upsertedTooltip')"
-        @click="reloadActiveTabAfterExternalChange()"
       >
         <span aria-hidden="true">●</span>
-        {{ externallyChangedKind === 'deleted'
-           ? $t('documents.externallyChanged.deleted')
-           : $t('documents.externallyChanged.upserted') }}
-      </button>
+        <span>{{ changeReaction.pendingChange.value === 'deleted'
+                 ? $t('documents.externallyChanged.deleted')
+                 : $t('documents.externallyChanged.upserted') }}</span>
+        <button
+          type="button"
+          class="rounded border border-warning/50 px-1.5 py-0.5
+                 hover:bg-warning/30"
+          @click="changeReaction.keepLocal()"
+        >
+          {{ $t('documents.externallyChanged.keepLocal') }}
+        </button>
+        <button
+          type="button"
+          class="rounded border border-warning/50 px-1.5 py-0.5
+                 hover:bg-warning/30"
+          @click="changeReaction.acceptRemote()"
+        >
+          {{ $t('documents.externallyChanged.acceptRemote') }}
+        </button>
+      </div>
       <DocumentPresenceStrip
         v-if="activeTab?.path"
         :path="activeTab.path"

@@ -21,6 +21,15 @@ export interface CortexDocument {
   /** True when {@link inlineText} has been edited since load/save. */
   dirty: boolean;
   /**
+   * Snapshot of {@link inlineText} as of the last server-acknowledged
+   * sync — set on every load and after every successful save. Drives the
+   * dirty check the live-change reaction layer consults to decide
+   * whether a {@code documents.changed} event can be absorbed silently
+   * or needs a conflict banner; Phase B will also use it as the
+   * {@code text1} side of a 3-way merge.
+   */
+  baselineInlineText: string;
+  /**
    * Last hash the deep-validator reviewed. Populated from
    * {@code DocumentDto.lastDeepReviewedHash}; the cached-warnings
    * panel uses it to decide whether the cached findings still apply

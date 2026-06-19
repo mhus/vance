@@ -333,10 +333,12 @@ export default {
     pageTitle: 'Dokumente',
     breadcrumbRoot: 'Dokumente',
     externallyChanged: {
-      upserted: 'Extern geändert — Neu laden',
-      upsertedTooltip: 'Ein anderer Tab oder Nutzer hat dieses Dokument gerade geschrieben. Klick zum Neuladen.',
-      deleted: 'Extern gelöscht — Aktualisieren',
-      deletedTooltip: 'Dieses Dokument wurde von einem anderen Tab oder Pod gelöscht. Klick zum Aktualisieren.',
+      upserted: 'Extern geändert',
+      upsertedTooltip: 'Ein anderer Tab oder Nutzer hat dieses Dokument gerade geschrieben. Entscheide, ob deine ungespeicherten Änderungen erhalten bleiben oder die Remote-Version übernommen wird.',
+      deleted: 'Extern gelöscht',
+      deletedTooltip: 'Dieses Dokument wurde von einem anderen Tab oder Pod gelöscht. Entscheide, ob du deine lokale Kopie behalten oder das Löschen übernehmen willst.',
+      keepLocal: 'Meine behalten',
+      acceptRemote: 'Remote übernehmen',
     },
     followUp: {
       acceptHint: '↹ Tab',

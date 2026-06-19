@@ -29,6 +29,6 @@ vance:
 logging:
   level:
     root: WARN
-    de.mhus.vance: INFO
+    de.mhus.vance: TRACE
   pattern:
     console: "%d{HH:mm:ss.SSS} %-5level %logger{36} - %msg%n"

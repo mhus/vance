@@ -19,6 +19,8 @@ import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.brain.events.StreamingProperties;
 import de.mhus.vance.brain.history.BufferingHistoryTagSink;
 import de.mhus.vance.brain.progress.LlmCallTracker;
+import de.mhus.vance.brain.thinkengine.EnginePromptResolver;
+import de.mhus.vance.brain.thinkengine.SystemPromptComposer;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
@@ -59,6 +61,8 @@ class LunkwillEngineSkeletonTest {
     private BufferingHistoryTagSink tagSink;
     private ScriptedStreamingChatModel chatModel;
     private ObjectMapper objectMapper;
+    private EnginePromptResolver enginePromptResolver;
+    private SystemPromptComposer systemPromptComposer;
 
     private LunkwillEngine engine;
     private LunkwillProperties properties;
@@ -90,9 +94,17 @@ class LunkwillEngineSkeletonTest {
 
         lenient().when(tools.primaryAsLc4j()).thenReturn(List.of());
 
+        enginePromptResolver = mock(EnginePromptResolver.class);
+        systemPromptComposer = mock(SystemPromptComposer.class);
+        lenient().when(enginePromptResolver.resolve(any(), any(), any()))
+                .thenAnswer(inv -> inv.getArgument(2));
+        lenient().when(systemPromptComposer.compose(any(), any(), any()))
+                .thenAnswer(inv -> inv.getArgument(1));
+
         engine = new LunkwillEngine(
                 thinkProcessService, properties, engineChatFactory,
-                llmCallTracker, streaming, objectMapper);
+                llmCallTracker, streaming, objectMapper,
+                enginePromptResolver, systemPromptComposer);
 
         process = new ThinkProcessDocument();
         process.setId(PROC_ID);
@@ -242,7 +254,7 @@ class LunkwillEngineSkeletonTest {
     void metadata_returnsExpectedValues() {
         assertThat(engine.name()).isEqualTo("lunkwill");
         assertThat(engine.title()).contains("Lunkwill");
-        assertThat(engine.version()).isEqualTo("0.2.0");
+        assertThat(engine.version()).isEqualTo("0.3.0");
         assertThat(engine.description()).isNotBlank();
     }
 

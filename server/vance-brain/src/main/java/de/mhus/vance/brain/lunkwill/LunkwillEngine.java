@@ -12,7 +12,10 @@ import de.mhus.vance.brain.events.ChunkBatcher;
 import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.brain.events.StreamingProperties;
 import de.mhus.vance.brain.progress.LlmCallTracker;
+import de.mhus.vance.brain.prompt.PromptContextBuilder;
+import de.mhus.vance.brain.thinkengine.EnginePromptResolver;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
+import de.mhus.vance.brain.thinkengine.SystemPromptComposer;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.brain.tools.ContextToolsApi;
@@ -84,30 +87,28 @@ import tools.jackson.databind.ObjectMapper;
 public class LunkwillEngine implements ThinkEngine {
 
     public static final String NAME = "lunkwill";
-    public static final String VERSION = "0.2.0";
+    public static final String VERSION = "0.3.0";
 
     /**
-     * Engine-default system prompt — minimal fallback when no recipe
-     * supplies a {@code promptPrefix}. Recipe-driven prompt resolution
-     * via the document cascade lands in a follow-up; this keeps
-     * the engine bootable in the meantime.
+     * Document cascade path for the engine-default system prompt.
+     * Recipe param {@code promptDocument} can override the path; the
+     * recipe's {@code promptPrefix} is then overlaid by
+     * {@link SystemPromptComposer}.
+     */
+    private static final String DEFAULT_PROMPT_PATH = "_vance/prompts/lunkwill-prompt.md";
+
+    /**
+     * Last-resort hardcoded system prompt — used only when neither the
+     * document cascade nor a recipe-supplied prompt resolve. Keep tiny
+     * on purpose so a misconfigured spawn still produces a coherent
+     * (if generic) worker rather than an unprompted LLM.
      */
     private static final String ENGINE_FALLBACK_PROMPT =
-            """
-            You are Lunkwill, a focused worker. Carry out the task in
-            multiple turns until it is done, then stop.
-
-            Loop discipline:
-            - When you have a final answer, just send it as plain text
-              with no tool calls — that ends the loop.
-            - When you have an explicit task-complete tool available,
-              call it with a short summary instead.
-            - Don't chat. Don't ask follow-up questions unless you
-              truly cannot proceed without one. Do the work.
-            - If a tool result confuses you, re-read it before
-              re-calling the same tool — running in circles burns
-              your time budget.
-            """;
+            "You are Lunkwill, a focused worker. Drive the task in multiple turns "
+                    + "using the available tools, then stop. When you have a final "
+                    + "answer, reply with plain text and no tool call — that ends "
+                    + "the loop. Use the recipe's task-complete tool (if any) for "
+                    + "explicit structured completion.";
 
     private final ThinkProcessService thinkProcessService;
     private final LunkwillProperties properties;
@@ -115,6 +116,8 @@ public class LunkwillEngine implements ThinkEngine {
     private final LlmCallTracker llmCallTracker;
     private final StreamingProperties streamingProperties;
     private final ObjectMapper objectMapper;
+    private final EnginePromptResolver enginePromptResolver;
+    private final SystemPromptComposer systemPromptComposer;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -327,16 +330,17 @@ public class LunkwillEngine implements ThinkEngine {
     // ──────────────────── Prompt assembly ────────────────────
 
     /**
-     * Minimal prompt assembly — base system prompt, persisted chat
-     * history, then turn-local extras. Recipe-driven prompt overlay
-     * + manual injection land in a follow-up.
+     * Builds the message list for one LLM iteration: composed system
+     * prompt (engine-default from the document cascade + recipe
+     * overlay rendered by {@link SystemPromptComposer}), persisted
+     * chat history, then turn-local extras as user-role messages.
      */
     private List<ChatMessage> buildPromptMessages(
             ThinkProcessDocument process,
             ChatMessageService chatLog,
             List<SteerMessage> inboxExtras) {
         List<ChatMessage> messages = new ArrayList<>();
-        messages.add(SystemMessage.from(ENGINE_FALLBACK_PROMPT));
+        messages.add(SystemMessage.from(composeSystemPrompt(process)));
         for (ChatMessageDocument msg : chatLog.activeHistory(
                 process.getTenantId(), process.getSessionId(), process.getId())) {
             messages.add(toLangchain(msg));
@@ -348,6 +352,33 @@ public class LunkwillEngine implements ThinkEngine {
             }
         }
         return messages;
+    }
+
+    /**
+     * Resolve engine default ({@code _vance/prompts/lunkwill-prompt.md}
+     * via cascade, recipe-overridable through param
+     * {@code promptDocument}), then let {@link SystemPromptComposer}
+     * fold in the recipe's {@code promptPrefix},
+     * {@code promptPrefixAppend} (profile-level), and any addon
+     * sections. Falls back to {@link #ENGINE_FALLBACK_PROMPT} if
+     * neither cascade nor recipe yield anything usable.
+     */
+    private String composeSystemPrompt(ThinkProcessDocument process) {
+        String basePath = paramString(process, "promptDocument", DEFAULT_PROMPT_PATH);
+        String engineDefault = enginePromptResolver.resolve(
+                process, basePath, ENGINE_FALLBACK_PROMPT);
+        PromptContextBuilder ctxBuilder = PromptContextBuilder
+                .forProcess(process, /*modelInfo*/ null)
+                .engine(NAME);
+        return systemPromptComposer.compose(process, engineDefault, ctxBuilder);
+    }
+
+    private static @Nullable String paramString(
+            ThinkProcessDocument process, String key, @Nullable String fallback) {
+        Map<String, Object> params = process.getEngineParams();
+        if (params == null) return fallback;
+        Object v = params.get(key);
+        return v instanceof String s && !s.isBlank() ? s : fallback;
     }
 
     private static ChatMessage toLangchain(ChatMessageDocument msg) {

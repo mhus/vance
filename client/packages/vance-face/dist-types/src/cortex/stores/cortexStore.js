@@ -137,6 +137,10 @@ export const useCortexStore = defineStore('cortex', () => {
             autoSummary: d.autoSummary ?? null,
             summaryDirty: d.summaryDirty ?? null,
             ragEnabled: d.ragEnabled ?? null,
+            // Defensive copy — server returns a plain map; we want our own
+            // reference so the composable's d.notes = {...} mutations are
+            // local to this tab and don't share with other tab copies.
+            notes: d.notes ? { ...d.notes } : {},
         };
     }
     /**

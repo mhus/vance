@@ -99,6 +99,7 @@ const dtoForArchives = computed<DocumentDto>(() => ({
   autoSummary: props.document.autoSummary ?? false,
   summaryDirty: props.document.summaryDirty ?? false,
   summary: props.document.summary ?? undefined,
+  notes: props.document.notes ?? {},
 }));
 
 async function onRestored(): Promise<void> {

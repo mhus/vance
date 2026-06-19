@@ -57,6 +57,13 @@ export interface CortexDocument {
   autoSummary?: boolean | null;
   summaryDirty?: boolean | null;
   ragEnabled?: boolean | null;
+  /**
+   * Sticky-notes attached to this document, keyed by note id. Loaded
+   * once together with the document; mutated through the dedicated
+   * {@code /notes} REST endpoints via the {@code useDocumentNotes}
+   * composable. Empty when the document has no notes.
+   */
+  notes?: Record<string, import('@vance/generated').DocumentNoteDto>;
 }
 
 /**

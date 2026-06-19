@@ -22,7 +22,7 @@
  *    Calendar). Same render contract as {@code typed-model}; the host
  *    just sourced the entry differently.
  */
-import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, shallowRef, toRef, watch } from 'vue';
 import { CodeEditor, MarkdownView } from '@/components';
 import type { DocumentDto } from '@vance/generated';
 import ImageView from '@/document/ImageView.vue';
@@ -32,9 +32,11 @@ import { useCortexStore } from '../stores/cortexStore';
 import { resolveBinding } from '../docTypeRegistry';
 import { resolveRunAdapter } from '../runners/runnerRegistry';
 import type { RunHandle } from '../runners/types';
+import { useDocumentNotes } from '../composables/useDocumentNotes';
 import CortexValidateDialog from './CortexValidateDialog.vue';
 import CortexHactarDialog from './CortexHactarDialog.vue';
 import DocumentPropertiesPanel from './DocumentPropertiesPanel.vue';
+import DocumentNotesPanel from './DocumentNotesPanel.vue';
 
 interface Props {
   document: CortexDocument;
@@ -88,6 +90,75 @@ watch(propertiesOpen, (v) => {
     sessionStorage.setItem(PROPS_OPEN_KEY, v ? '1' : '0');
   } catch { /* sessionStorage unavailable */ }
 });
+
+// Notes panel state — same sessionStorage pattern as propertiesOpen.
+// Open per-browser-tab default; survives doc-switches within the same
+// editor session but doesn't bleed across browser tabs.
+const NOTES_OPEN_KEY = 'editor:notesOpen';
+function loadNotesOpen(): boolean {
+  try {
+    return sessionStorage.getItem(NOTES_OPEN_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+const notesOpen = ref(loadNotesOpen());
+watch(notesOpen, (v) => {
+  try {
+    sessionStorage.setItem(NOTES_OPEN_KEY, v ? '1' : '0');
+  } catch { /* sessionStorage unavailable */ }
+});
+
+// Sticky-notes composable — wired to this tab's document. Mutates the
+// document's embedded `notes` map directly (it's the same reactive
+// object the store owns), so the editor's gutter dots and the panel
+// list update without a parent refetch.
+const documentRef = toRef(props, 'document') as unknown as
+    import('vue').Ref<CortexDocument | null>;
+const docNotes = useDocumentNotes(documentRef);
+
+/**
+ * Highlighted note in the panel — set by a click on a gutter anchor in
+ * the editor. The panel watches this and scroll-into-view + pulses the
+ * matching card briefly.
+ */
+const highlightedNoteId = ref<string | null>(null);
+
+async function onAddUnanchoredNote(): Promise<void> {
+  if (!notesOpen.value) notesOpen.value = true;
+  const created = await docNotes.addNote('', null);
+  if (created) highlightedNoteId.value = created.id;
+}
+
+async function onUpdateNote(noteId: string, patch: { text?: string; done?: boolean }): Promise<void> {
+  await docNotes.updateNote(noteId, patch);
+}
+
+async function onDeleteNote(noteId: string): Promise<void> {
+  await docNotes.deleteNote(noteId);
+  if (highlightedNoteId.value === noteId) highlightedNoteId.value = null;
+}
+
+function onJumpToLine(_line: number): void {
+  // Editor scroll-to-line is a v2 — for now the gutter dot is visible
+  // anyway when the user opens the panel. Hook left intentionally
+  // empty until CodeEditor gains a programmatic-scroll API.
+}
+
+/** Editor → panel: clicked the dot at this line. */
+function onNoteAnchorClick(line: number): void {
+  const note = docNotes.noteAtLine(line);
+  if (!note) return;
+  if (!notesOpen.value) notesOpen.value = true;
+  highlightedNoteId.value = note.id;
+}
+
+/** Editor → panel: clicked the empty gutter at this line. Create new note. */
+async function onNoteGutterClick(line: number): Promise<void> {
+  if (!notesOpen.value) notesOpen.value = true;
+  const created = await docNotes.addNote('', line);
+  if (created) highlightedNoteId.value = created.id;
+}
 
 // Derive a language hint for CodeEditor. Path extension wins over the
 // server-supplied mime: a file named {@code foo.js} should highlight
@@ -160,6 +231,7 @@ const docDtoForView = computed<DocumentDto>(() => ({
   headers: {},
   autoSummary: false,
   summaryDirty: false,
+  notes: props.document.notes ?? {},
 }));
 
 // ─── Parse / serialize for typed-model + kind-registry modes ─────
@@ -552,6 +624,13 @@ function fmtDuration(ms: number | null): string {
         :title="propertiesOpen ? 'Hide properties' : 'Show properties'"
         @click="propertiesOpen = !propertiesOpen"
       >Properties</button>
+      <button
+        type="button"
+        class="opacity-60 hover:opacity-100 hover:bg-base-200 rounded px-1.5 py-0.5 text-xs"
+        :class="{ 'bg-base-300 opacity-100': notesOpen }"
+        :title="notesOpen ? 'Notizen ausblenden' : 'Notizen einblenden'"
+        @click="notesOpen = !notesOpen"
+      >📝 {{ docNotes.notes.value.length }}</button>
       <span
         v-if="document.dirty && binding.editLocation === 'client-memory'"
         class="opacity-60"
@@ -577,6 +656,13 @@ function fmtDuration(ms: number | null): string {
       <DocumentPropertiesPanel :document="document" />
     </div>
 
+    <!-- Editor body + optional notes side-panel. The body branches below
+         live in a flex-col on the LEFT; the notes panel slots in as a
+         fixed-width column on the RIGHT when toggled. Keeps both side-by-side
+         even when the Cortex right-panel (chat) is also present. -->
+    <div class="flex-1 flex flex-row min-h-0">
+      <div class="flex-1 flex flex-col min-h-0">
+
     <!-- Code mode: CodeEditor on the raw text. Markdown takes the same
          branch but adds a rendered Preview/Edit toggle on top. -->
     <div
@@ -592,8 +678,11 @@ function fmtDuration(ms: number | null): string {
       <CodeEditor
         :model-value="document.inlineText"
         :mime-type="effectiveMimeType"
+        :note-lines="docNotes.linesWithNotes.value"
         @update:model-value="(v: string) => emit('update', v)"
         @selection-changed="onSelectionChanged"
+        @note-anchor-click="onNoteAnchorClick"
+        @note-gutter-click="onNoteGutterClick"
       />
     </div>
 
@@ -639,8 +728,11 @@ function fmtDuration(ms: number | null): string {
         <CodeEditor
           :model-value="document.inlineText"
           :mime-type="effectiveMimeType"
+          :note-lines="docNotes.linesWithNotes.value"
           @update:model-value="(v: string) => emit('update', v)"
           @selection-changed="onSelectionChanged"
+          @note-anchor-click="onNoteAnchorClick"
+          @note-gutter-click="onNoteGutterClick"
         />
       </div>
       <!-- Parse error fallback — show the raw text in a CodeEditor so
@@ -657,8 +749,11 @@ function fmtDuration(ms: number | null): string {
           <CodeEditor
             :model-value="document.inlineText"
             :mime-type="effectiveMimeType"
+            :note-lines="docNotes.linesWithNotes.value"
             @update:model-value="(v: string) => emit('update', v)"
             @selection-changed="onSelectionChanged"
+            @note-anchor-click="onNoteAnchorClick"
+            @note-gutter-click="onNoteGutterClick"
           />
         </div>
       </div>
@@ -725,6 +820,18 @@ function fmtDuration(ms: number | null): string {
         <div class="opacity-60 mb-1">result:</div>
         {{ fmtResult(runHandle.result.value) }}
       </div>
+    </div>
+
+      </div>
+      <DocumentNotesPanel
+        v-if="notesOpen"
+        :notes="docNotes.notes.value"
+        :highlighted-note-id="highlightedNoteId"
+        @add="onAddUnanchoredNote"
+        @update="onUpdateNote"
+        @delete="onDeleteNote"
+        @jump-to-line="onJumpToLine"
+      />
     </div>
 
     <CortexValidateDialog

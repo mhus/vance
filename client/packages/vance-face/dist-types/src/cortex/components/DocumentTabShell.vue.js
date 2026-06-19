@@ -1,13 +1,15 @@
-import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, shallowRef, toRef, watch } from 'vue';
 import { CodeEditor, MarkdownView } from '@/components';
 import ImageView from '@/document/ImageView.vue';
 import DocumentPreview from '@/document/DocumentPreview.vue';
 import { useCortexStore } from '../stores/cortexStore';
 import { resolveBinding } from '../docTypeRegistry';
 import { resolveRunAdapter } from '../runners/runnerRegistry';
+import { useDocumentNotes } from '../composables/useDocumentNotes';
 import CortexValidateDialog from './CortexValidateDialog.vue';
 import CortexHactarDialog from './CortexHactarDialog.vue';
 import DocumentPropertiesPanel from './DocumentPropertiesPanel.vue';
+import DocumentNotesPanel from './DocumentNotesPanel.vue';
 const props = defineProps();
 const emit = defineEmits();
 const store = useCortexStore();
@@ -51,6 +53,74 @@ watch(propertiesOpen, (v) => {
     }
     catch { /* sessionStorage unavailable */ }
 });
+// Notes panel state — same sessionStorage pattern as propertiesOpen.
+// Open per-browser-tab default; survives doc-switches within the same
+// editor session but doesn't bleed across browser tabs.
+const NOTES_OPEN_KEY = 'editor:notesOpen';
+function loadNotesOpen() {
+    try {
+        return sessionStorage.getItem(NOTES_OPEN_KEY) === '1';
+    }
+    catch {
+        return false;
+    }
+}
+const notesOpen = ref(loadNotesOpen());
+watch(notesOpen, (v) => {
+    try {
+        sessionStorage.setItem(NOTES_OPEN_KEY, v ? '1' : '0');
+    }
+    catch { /* sessionStorage unavailable */ }
+});
+// Sticky-notes composable — wired to this tab's document. Mutates the
+// document's embedded `notes` map directly (it's the same reactive
+// object the store owns), so the editor's gutter dots and the panel
+// list update without a parent refetch.
+const documentRef = toRef(props, 'document');
+const docNotes = useDocumentNotes(documentRef);
+/**
+ * Highlighted note in the panel — set by a click on a gutter anchor in
+ * the editor. The panel watches this and scroll-into-view + pulses the
+ * matching card briefly.
+ */
+const highlightedNoteId = ref(null);
+async function onAddUnanchoredNote() {
+    if (!notesOpen.value)
+        notesOpen.value = true;
+    const created = await docNotes.addNote('', null);
+    if (created)
+        highlightedNoteId.value = created.id;
+}
+async function onUpdateNote(noteId, patch) {
+    await docNotes.updateNote(noteId, patch);
+}
+async function onDeleteNote(noteId) {
+    await docNotes.deleteNote(noteId);
+    if (highlightedNoteId.value === noteId)
+        highlightedNoteId.value = null;
+}
+function onJumpToLine(_line) {
+    // Editor scroll-to-line is a v2 — for now the gutter dot is visible
+    // anyway when the user opens the panel. Hook left intentionally
+    // empty until CodeEditor gains a programmatic-scroll API.
+}
+/** Editor → panel: clicked the dot at this line. */
+function onNoteAnchorClick(line) {
+    const note = docNotes.noteAtLine(line);
+    if (!note)
+        return;
+    if (!notesOpen.value)
+        notesOpen.value = true;
+    highlightedNoteId.value = note.id;
+}
+/** Editor → panel: clicked the empty gutter at this line. Create new note. */
+async function onNoteGutterClick(line) {
+    if (!notesOpen.value)
+        notesOpen.value = true;
+    const created = await docNotes.addNote('', line);
+    if (created)
+        highlightedNoteId.value = created.id;
+}
 // Derive a language hint for CodeEditor. Path extension wins over the
 // server-supplied mime: a file named {@code foo.js} should highlight
 // as JS whether the server returns {@code text/javascript},
@@ -124,6 +194,7 @@ const docDtoForView = computed(() => ({
     headers: {},
     autoSummary: false,
     summaryDirty: false,
+    notes: props.document.notes ?? {},
 }));
 const codecPair = computed(() => {
     const b = binding.value;
@@ -499,6 +570,16 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElement
     ...{ class: ({ 'bg-base-300 opacity-100': __VLS_ctx.propertiesOpen }) },
     title: (__VLS_ctx.propertiesOpen ? 'Hide properties' : 'Show properties'),
 });
+__VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+    ...{ onClick: (...[$event]) => {
+            __VLS_ctx.notesOpen = !__VLS_ctx.notesOpen;
+        } },
+    type: "button",
+    ...{ class: "opacity-60 hover:opacity-100 hover:bg-base-200 rounded px-1.5 py-0.5 text-xs" },
+    ...{ class: ({ 'bg-base-300 opacity-100': __VLS_ctx.notesOpen }) },
+    title: (__VLS_ctx.notesOpen ? 'Notizen ausblenden' : 'Notizen einblenden'),
+});
+(__VLS_ctx.docNotes.notes.value.length);
 if (__VLS_ctx.document.dirty && __VLS_ctx.binding.editLocation === 'client-memory') {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
         ...{ class: "opacity-60" },
@@ -526,6 +607,12 @@ if (__VLS_ctx.propertiesOpen) {
         document: (__VLS_ctx.document),
     }, ...__VLS_functionalComponentArgsRest(__VLS_0));
 }
+__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+    ...{ class: "flex-1 flex flex-row min-h-0" },
+});
+__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+    ...{ class: "flex-1 flex flex-col min-h-0" },
+});
 if (__VLS_ctx.binding.mode === 'code' && __VLS_ctx.isMarkdownDocument && __VLS_ctx.viewEditMode === 'view') {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "flex-1 min-h-0 overflow-auto px-4 py-2" },
@@ -550,14 +637,20 @@ else if (__VLS_ctx.binding.mode === 'code') {
     const __VLS_8 = __VLS_asFunctionalComponent(__VLS_7, new __VLS_7({
         ...{ 'onUpdate:modelValue': {} },
         ...{ 'onSelectionChanged': {} },
+        ...{ 'onNoteAnchorClick': {} },
+        ...{ 'onNoteGutterClick': {} },
         modelValue: (__VLS_ctx.document.inlineText),
         mimeType: (__VLS_ctx.effectiveMimeType),
+        noteLines: (__VLS_ctx.docNotes.linesWithNotes.value),
     }));
     const __VLS_9 = __VLS_8({
         ...{ 'onUpdate:modelValue': {} },
         ...{ 'onSelectionChanged': {} },
+        ...{ 'onNoteAnchorClick': {} },
+        ...{ 'onNoteGutterClick': {} },
         modelValue: (__VLS_ctx.document.inlineText),
         mimeType: (__VLS_ctx.effectiveMimeType),
+        noteLines: (__VLS_ctx.docNotes.linesWithNotes.value),
     }, ...__VLS_functionalComponentArgsRest(__VLS_8));
     let __VLS_11;
     let __VLS_12;
@@ -568,6 +661,12 @@ else if (__VLS_ctx.binding.mode === 'code') {
     const __VLS_15 = {
         onSelectionChanged: (__VLS_ctx.onSelectionChanged)
     };
+    const __VLS_16 = {
+        onNoteAnchorClick: (__VLS_ctx.onNoteAnchorClick)
+    };
+    const __VLS_17 = {
+        onNoteGutterClick: (__VLS_ctx.onNoteGutterClick)
+    };
     var __VLS_10;
 }
 else if (__VLS_ctx.binding.mode === 'image') {
@@ -576,14 +675,14 @@ else if (__VLS_ctx.binding.mode === 'image') {
     });
     /** @type {[typeof ImageView, ]} */ ;
     // @ts-ignore
-    const __VLS_16 = __VLS_asFunctionalComponent(ImageView, new ImageView({
+    const __VLS_18 = __VLS_asFunctionalComponent(ImageView, new ImageView({
         mode: "editor",
         document: (__VLS_ctx.docDtoForView),
     }));
-    const __VLS_17 = __VLS_16({
+    const __VLS_19 = __VLS_18({
         mode: "editor",
         document: (__VLS_ctx.docDtoForView),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_16));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_18));
 }
 else if (__VLS_ctx.binding.mode === 'preview') {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -611,45 +710,57 @@ else if (__VLS_ctx.binding.mode === 'preview') {
     });
     /** @type {[typeof DocumentPreview, ]} */ ;
     // @ts-ignore
-    const __VLS_19 = __VLS_asFunctionalComponent(DocumentPreview, new DocumentPreview({
+    const __VLS_21 = __VLS_asFunctionalComponent(DocumentPreview, new DocumentPreview({
         documentId: (__VLS_ctx.document.id),
         mimeType: (__VLS_ctx.document.mimeType ?? null),
     }));
-    const __VLS_20 = __VLS_19({
+    const __VLS_22 = __VLS_21({
         documentId: (__VLS_ctx.document.id),
         mimeType: (__VLS_ctx.document.mimeType ?? null),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_19));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_21));
 }
 else if (__VLS_ctx.isViewMode) {
     if (__VLS_ctx.showRawEditor) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "flex-1 min-h-0 overflow-hidden cortex-code-host" },
         });
-        const __VLS_22 = {}.CodeEditor;
+        const __VLS_24 = {}.CodeEditor;
         /** @type {[typeof __VLS_components.CodeEditor, ]} */ ;
         // @ts-ignore
-        const __VLS_23 = __VLS_asFunctionalComponent(__VLS_22, new __VLS_22({
+        const __VLS_25 = __VLS_asFunctionalComponent(__VLS_24, new __VLS_24({
             ...{ 'onUpdate:modelValue': {} },
             ...{ 'onSelectionChanged': {} },
+            ...{ 'onNoteAnchorClick': {} },
+            ...{ 'onNoteGutterClick': {} },
             modelValue: (__VLS_ctx.document.inlineText),
             mimeType: (__VLS_ctx.effectiveMimeType),
+            noteLines: (__VLS_ctx.docNotes.linesWithNotes.value),
         }));
-        const __VLS_24 = __VLS_23({
+        const __VLS_26 = __VLS_25({
             ...{ 'onUpdate:modelValue': {} },
             ...{ 'onSelectionChanged': {} },
+            ...{ 'onNoteAnchorClick': {} },
+            ...{ 'onNoteGutterClick': {} },
             modelValue: (__VLS_ctx.document.inlineText),
             mimeType: (__VLS_ctx.effectiveMimeType),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_23));
-        let __VLS_26;
-        let __VLS_27;
+            noteLines: (__VLS_ctx.docNotes.linesWithNotes.value),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_25));
         let __VLS_28;
-        const __VLS_29 = {
+        let __VLS_29;
+        let __VLS_30;
+        const __VLS_31 = {
             'onUpdate:modelValue': ((v) => __VLS_ctx.emit('update', v))
         };
-        const __VLS_30 = {
+        const __VLS_32 = {
             onSelectionChanged: (__VLS_ctx.onSelectionChanged)
         };
-        var __VLS_25;
+        const __VLS_33 = {
+            onNoteAnchorClick: (__VLS_ctx.onNoteAnchorClick)
+        };
+        const __VLS_34 = {
+            onNoteGutterClick: (__VLS_ctx.onNoteGutterClick)
+        };
+        var __VLS_27;
     }
     else if (__VLS_ctx.parseResult.error) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -663,55 +774,67 @@ else if (__VLS_ctx.isViewMode) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "flex-1 min-h-0 overflow-hidden cortex-code-host" },
         });
-        const __VLS_31 = {}.CodeEditor;
+        const __VLS_35 = {}.CodeEditor;
         /** @type {[typeof __VLS_components.CodeEditor, ]} */ ;
         // @ts-ignore
-        const __VLS_32 = __VLS_asFunctionalComponent(__VLS_31, new __VLS_31({
+        const __VLS_36 = __VLS_asFunctionalComponent(__VLS_35, new __VLS_35({
             ...{ 'onUpdate:modelValue': {} },
             ...{ 'onSelectionChanged': {} },
+            ...{ 'onNoteAnchorClick': {} },
+            ...{ 'onNoteGutterClick': {} },
             modelValue: (__VLS_ctx.document.inlineText),
             mimeType: (__VLS_ctx.effectiveMimeType),
+            noteLines: (__VLS_ctx.docNotes.linesWithNotes.value),
         }));
-        const __VLS_33 = __VLS_32({
+        const __VLS_37 = __VLS_36({
             ...{ 'onUpdate:modelValue': {} },
             ...{ 'onSelectionChanged': {} },
+            ...{ 'onNoteAnchorClick': {} },
+            ...{ 'onNoteGutterClick': {} },
             modelValue: (__VLS_ctx.document.inlineText),
             mimeType: (__VLS_ctx.effectiveMimeType),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_32));
-        let __VLS_35;
-        let __VLS_36;
-        let __VLS_37;
-        const __VLS_38 = {
+            noteLines: (__VLS_ctx.docNotes.linesWithNotes.value),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_36));
+        let __VLS_39;
+        let __VLS_40;
+        let __VLS_41;
+        const __VLS_42 = {
             'onUpdate:modelValue': ((v) => __VLS_ctx.emit('update', v))
         };
-        const __VLS_39 = {
+        const __VLS_43 = {
             onSelectionChanged: (__VLS_ctx.onSelectionChanged)
         };
-        var __VLS_34;
+        const __VLS_44 = {
+            onNoteAnchorClick: (__VLS_ctx.onNoteAnchorClick)
+        };
+        const __VLS_45 = {
+            onNoteGutterClick: (__VLS_ctx.onNoteGutterClick)
+        };
+        var __VLS_38;
     }
     else {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "flex-1 min-h-0 overflow-auto" },
         });
-        const __VLS_40 = ((__VLS_ctx.activeView));
+        const __VLS_46 = ((__VLS_ctx.activeView));
         // @ts-ignore
-        const __VLS_41 = __VLS_asFunctionalComponent(__VLS_40, new __VLS_40({
+        const __VLS_47 = __VLS_asFunctionalComponent(__VLS_46, new __VLS_46({
             ...{ 'onUpdate:doc': {} },
             mode: "editor",
             ...(__VLS_ctx.viewBindings),
         }));
-        const __VLS_42 = __VLS_41({
+        const __VLS_48 = __VLS_47({
             ...{ 'onUpdate:doc': {} },
             mode: "editor",
             ...(__VLS_ctx.viewBindings),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_41));
-        let __VLS_44;
-        let __VLS_45;
-        let __VLS_46;
-        const __VLS_47 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_47));
+        let __VLS_50;
+        let __VLS_51;
+        let __VLS_52;
+        const __VLS_53 = {
             'onUpdate:doc': (__VLS_ctx.onModelUpdate)
         };
-        var __VLS_43;
+        var __VLS_49;
     }
 }
 if (__VLS_ctx.runHandle) {
@@ -778,33 +901,69 @@ if (__VLS_ctx.runHandle) {
         (__VLS_ctx.fmtResult(__VLS_ctx.runHandle.result.value));
     }
 }
+if (__VLS_ctx.notesOpen) {
+    /** @type {[typeof DocumentNotesPanel, ]} */ ;
+    // @ts-ignore
+    const __VLS_54 = __VLS_asFunctionalComponent(DocumentNotesPanel, new DocumentNotesPanel({
+        ...{ 'onAdd': {} },
+        ...{ 'onUpdate': {} },
+        ...{ 'onDelete': {} },
+        ...{ 'onJumpToLine': {} },
+        notes: (__VLS_ctx.docNotes.notes.value),
+        highlightedNoteId: (__VLS_ctx.highlightedNoteId),
+    }));
+    const __VLS_55 = __VLS_54({
+        ...{ 'onAdd': {} },
+        ...{ 'onUpdate': {} },
+        ...{ 'onDelete': {} },
+        ...{ 'onJumpToLine': {} },
+        notes: (__VLS_ctx.docNotes.notes.value),
+        highlightedNoteId: (__VLS_ctx.highlightedNoteId),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_54));
+    let __VLS_57;
+    let __VLS_58;
+    let __VLS_59;
+    const __VLS_60 = {
+        onAdd: (__VLS_ctx.onAddUnanchoredNote)
+    };
+    const __VLS_61 = {
+        onUpdate: (__VLS_ctx.onUpdateNote)
+    };
+    const __VLS_62 = {
+        onDelete: (__VLS_ctx.onDeleteNote)
+    };
+    const __VLS_63 = {
+        onJumpToLine: (__VLS_ctx.onJumpToLine)
+    };
+    var __VLS_56;
+}
 if (__VLS_ctx.showValidate) {
     /** @type {[typeof CortexValidateDialog, ]} */ ;
     // @ts-ignore
-    const __VLS_48 = __VLS_asFunctionalComponent(CortexValidateDialog, new CortexValidateDialog({
+    const __VLS_64 = __VLS_asFunctionalComponent(CortexValidateDialog, new CortexValidateDialog({
         ...{ 'onClose': {} },
         document: (__VLS_ctx.document),
     }));
-    const __VLS_49 = __VLS_48({
+    const __VLS_65 = __VLS_64({
         ...{ 'onClose': {} },
         document: (__VLS_ctx.document),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_48));
-    let __VLS_51;
-    let __VLS_52;
-    let __VLS_53;
-    const __VLS_54 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_64));
+    let __VLS_67;
+    let __VLS_68;
+    let __VLS_69;
+    const __VLS_70 = {
         onClose: (...[$event]) => {
             if (!(__VLS_ctx.showValidate))
                 return;
             __VLS_ctx.showValidate = false;
         }
     };
-    var __VLS_50;
+    var __VLS_66;
 }
 if (__VLS_ctx.showSlart && __VLS_ctx.store.projectId) {
     /** @type {[typeof CortexHactarDialog, ]} */ ;
     // @ts-ignore
-    const __VLS_55 = __VLS_asFunctionalComponent(CortexHactarDialog, new CortexHactarDialog({
+    const __VLS_71 = __VLS_asFunctionalComponent(CortexHactarDialog, new CortexHactarDialog({
         ...{ 'onClose': {} },
         ...{ 'onApply': {} },
         document: (__VLS_ctx.document),
@@ -812,28 +971,28 @@ if (__VLS_ctx.showSlart && __VLS_ctx.store.projectId) {
         sessionId: (__VLS_ctx.sessionId ?? null),
         mode: (__VLS_ctx.slartMode),
     }));
-    const __VLS_56 = __VLS_55({
+    const __VLS_72 = __VLS_71({
         ...{ 'onClose': {} },
         ...{ 'onApply': {} },
         document: (__VLS_ctx.document),
         projectId: (__VLS_ctx.store.projectId),
         sessionId: (__VLS_ctx.sessionId ?? null),
         mode: (__VLS_ctx.slartMode),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_55));
-    let __VLS_58;
-    let __VLS_59;
-    let __VLS_60;
-    const __VLS_61 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_71));
+    let __VLS_74;
+    let __VLS_75;
+    let __VLS_76;
+    const __VLS_77 = {
         onClose: (...[$event]) => {
             if (!(__VLS_ctx.showSlart && __VLS_ctx.store.projectId))
                 return;
             __VLS_ctx.showSlart = false;
         }
     };
-    const __VLS_62 = {
+    const __VLS_78 = {
         onApply: (__VLS_ctx.onSlartApply)
     };
-    var __VLS_57;
+    var __VLS_73;
 }
 /** @type {__VLS_StyleScopedClasses['h-full']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
@@ -924,6 +1083,15 @@ if (__VLS_ctx.showSlart && __VLS_ctx.store.projectId) {
 /** @type {__VLS_StyleScopedClasses['bg-base-300']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-100']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['hover:opacity-100']} */ ;
+/** @type {__VLS_StyleScopedClasses['hover:bg-base-200']} */ ;
+/** @type {__VLS_StyleScopedClasses['rounded']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-1.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-0.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['bg-base-300']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-100']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-50']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
@@ -931,6 +1099,14 @@ if (__VLS_ctx.showSlart && __VLS_ctx.store.projectId) {
 /** @type {__VLS_StyleScopedClasses['shrink-0']} */ ;
 /** @type {__VLS_StyleScopedClasses['max-h-[50%]']} */ ;
 /** @type {__VLS_StyleScopedClasses['overflow-y-auto']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-row']} */ ;
+/** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
+/** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
 /** @type {__VLS_StyleScopedClasses['overflow-auto']} */ ;
@@ -1069,12 +1245,22 @@ const __VLS_self = (await import('vue')).defineComponent({
             CortexValidateDialog: CortexValidateDialog,
             CortexHactarDialog: CortexHactarDialog,
             DocumentPropertiesPanel: DocumentPropertiesPanel,
+            DocumentNotesPanel: DocumentNotesPanel,
             emit: emit,
             store: store,
             binding: binding,
             reloading: reloading,
             onReload: onReload,
             propertiesOpen: propertiesOpen,
+            notesOpen: notesOpen,
+            docNotes: docNotes,
+            highlightedNoteId: highlightedNoteId,
+            onAddUnanchoredNote: onAddUnanchoredNote,
+            onUpdateNote: onUpdateNote,
+            onDeleteNote: onDeleteNote,
+            onJumpToLine: onJumpToLine,
+            onNoteAnchorClick: onNoteAnchorClick,
+            onNoteGutterClick: onNoteGutterClick,
             effectiveMimeType: effectiveMimeType,
             onSelectionChanged: onSelectionChanged,
             docDtoForView: docDtoForView,

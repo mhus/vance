@@ -76,6 +76,7 @@ const dtoForArchives = computed(() => ({
     autoSummary: props.document.autoSummary ?? false,
     summaryDirty: props.document.summaryDirty ?? false,
     summary: props.document.summary ?? undefined,
+    notes: props.document.notes ?? {},
 }));
 async function onRestored() {
     // Re-pull the document so the body + meta in the tab match the

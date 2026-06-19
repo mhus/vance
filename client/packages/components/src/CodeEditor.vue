@@ -1,7 +1,14 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { Compartment, EditorState, type Extension } from '@codemirror/state';
-import { EditorView, keymap, lineNumbers, highlightActiveLine } from '@codemirror/view';
+import {
+  EditorView,
+  GutterMarker,
+  gutter,
+  highlightActiveLine,
+  keymap,
+  lineNumbers,
+} from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import {
   bracketMatching,
@@ -62,6 +69,24 @@ interface Props {
    * {@code v-if="…"} so a fresh editor mounts when the toggle flips.
    */
   followUp?: FollowUpExtensionOptions | null;
+
+  /**
+   * Optional 1-based line numbers that should carry a sticky-note
+   * anchor dot in a dedicated gutter to the left of the line-numbers
+   * column. When provided (even as an empty array), a clickable
+   * "notes gutter" is rendered. Reactive — updating the array
+   * dispatches a state-effect that re-evaluates the markers.
+   *
+   * <p>Click handling — see the two emits:
+   * <ul>
+   *   <li>Click on a line that <em>is</em> in {@link noteLines} →
+   *       {@code note-anchor-click(line)}.</li>
+   *   <li>Click on a line that is <em>not</em> in {@link noteLines} →
+   *       {@code note-gutter-click(line)} (host typically opens an
+   *       "add note here" affordance).</li>
+   * </ul>
+   */
+  noteLines?: number[];
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -84,15 +109,61 @@ export interface CodeEditorSelection {
 const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void;
   (e: 'selection-changed', selection: CodeEditorSelection): void;
+  /** Click on an existing-note dot in the notes gutter. */
+  (e: 'note-anchor-click', line: number): void;
+  /** Click on the notes gutter at a line without a note. */
+  (e: 'note-gutter-click', line: number): void;
 }>();
 
 const host = ref<HTMLDivElement | null>(null);
 let view: EditorView | null = null;
 
-// Compartments so language and read-only can be reconfigured at
-// runtime without rebuilding the whole editor state.
+// Compartments so language, read-only, and the optional notes gutter
+// can be reconfigured at runtime without rebuilding the whole editor
+// state.
 const languageCompartment = new Compartment();
 const readOnlyCompartment = new Compartment();
+const notesGutterCompartment = new Compartment();
+
+/** Marker rendered on lines that have an anchored note. */
+class NoteAnchorMarker extends GutterMarker {
+  override toDOM(): HTMLElement {
+    const dot = document.createElement('span');
+    dot.className = 'cm-note-anchor-dot';
+    dot.textContent = '●';
+    return dot;
+  }
+}
+const SHARED_MARKER = new NoteAnchorMarker();
+
+/**
+ * Build the notes-gutter extension. When {@code lines} is undefined the
+ * caller has opted out — return an empty extension array (no gutter
+ * mounted). Otherwise we mount a dedicated gutter that renders dots on
+ * the given line numbers and emits clicks to the host.
+ */
+function notesGutterExt(lines: number[] | undefined): Extension {
+  if (lines === undefined) return [];
+  const lineSet = new Set(lines);
+  return gutter({
+    class: 'cm-notes-gutter',
+    lineMarker: (cmView, line) => {
+      const ln = cmView.state.doc.lineAt(line.from).number;
+      return lineSet.has(ln) ? SHARED_MARKER : null;
+    },
+    // Reserve column width even on lines without a dot so the gutter
+    // doesn't jitter as the marker set changes.
+    initialSpacer: () => SHARED_MARKER,
+    domEventHandlers: {
+      click: (cmView, line) => {
+        const ln = cmView.state.doc.lineAt(line.from).number;
+        if (lineSet.has(ln)) emit('note-anchor-click', ln);
+        else emit('note-gutter-click', ln);
+        return true;
+      },
+    },
+  });
+}
 
 /** Map mime-type → CodeMirror language extension. */
 function languageFor(mimeType: string | null | undefined): Extension {
@@ -159,6 +230,10 @@ function readOnlyExt(disabled: boolean): Extension {
 onMounted(() => {
   if (!host.value) return;
   const baseExtensions: Extension[] = [
+    // Notes gutter sits to the LEFT of the line-numbers column so the
+    // dot reads as an annotation *of* a line rather than an inline
+    // numbering element. Mounted first so it lands leftmost.
+    notesGutterCompartment.of(notesGutterExt(props.noteLines)),
     lineNumbers(),
     foldGutter(),
     history(),
@@ -222,6 +297,19 @@ watch(
 );
 
 watch(
+  // Deep watch — the array is reactive but identity-stable; clone to a
+  // sorted joined string so adds/removes trigger a reconfigure even
+  // when the reference is preserved.
+  () => (props.noteLines ?? []).slice().sort((a, b) => a - b).join(','),
+  () => {
+    if (!view) return;
+    view.dispatch({
+      effects: notesGutterCompartment.reconfigure(notesGutterExt(props.noteLines)),
+    });
+  },
+);
+
+watch(
   () => [props.disabled, props.readOnly] as const,
   ([d, r]) => {
     if (!view) return;
@@ -271,5 +359,29 @@ onBeforeUnmount(() => {
 
 .code-editor--disabled {
   opacity: 0.6;
+}
+
+/* Sticky-note gutter: thin column to the left of line numbers. Cursor
+ * is pointer on the whole column so the user notices the empty space
+ * is interactive (click → new note at line). Dots sit centred. */
+.code-editor :deep(.cm-notes-gutter) {
+  min-width: 14px;
+  cursor: pointer;
+  background: transparent;
+}
+.code-editor :deep(.cm-notes-gutter .cm-gutterElement) {
+  padding: 0 2px;
+  text-align: center;
+}
+.code-editor :deep(.cm-note-anchor-dot) {
+  color: #c8a90a;    /* yellow-amber, matches the sticky-note bg */
+  font-size: 0.7rem;
+  line-height: 1;
+  display: inline-block;
+  transform: translateY(-1px);
+}
+.code-editor :deep(.cm-notes-gutter .cm-gutterElement:hover .cm-note-anchor-dot),
+.code-editor :deep(.cm-notes-gutter .cm-gutterElement:hover) {
+  background: rgba(200, 169, 10, 0.12);
 }
 </style>

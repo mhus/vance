@@ -71,6 +71,7 @@ const documentViewers = reactive(new Map());
 /** Listeners for the documents-channel presence push. */
 let documentsUnsubscribe = null;
 const documentChangedListeners = new Map();
+const documentNoteChangedListeners = new Map();
 let releaseTimer = null;
 let reconnectTimer = null;
 let onCloseUnsubscribe = null;
@@ -335,6 +336,32 @@ export function onDocumentChanged(path, handler) {
             documentChangedListeners.delete(path);
     };
 }
+/**
+ * Register a callback for the {@code documents.note-changed} frame —
+ * fires when a sticky-note on the path is added / updated / deleted by
+ * another connection. Returns an unsubscribe function. Server-side
+ * already filters out the local writer's echo via the X-Editor-Id
+ * header, so handlers only see events from *other* connections.
+ *
+ * <p>Subscribe via {@link subscribeDocument} (presence subscribe implies
+ * notes events fire too — same channel, same path-set on the server).
+ */
+export function onDocumentNoteChanged(path, handler) {
+    let set = documentNoteChangedListeners.get(path);
+    if (!set) {
+        set = new Set();
+        documentNoteChangedListeners.set(path, set);
+    }
+    set.add(handler);
+    return () => {
+        const current = documentNoteChangedListeners.get(path);
+        if (!current)
+            return;
+        current.delete(handler);
+        if (current.size === 0)
+            documentNoteChangedListeners.delete(path);
+    };
+}
 function attachDocumentsListener(sock) {
     detachDocumentsListener();
     const presenceOff = sock.onChannel('documents', 'presence', (data) => {
@@ -357,6 +384,21 @@ function attachDocumentsListener(sock) {
             }
         }
     });
+    const noteChangedOff = sock.onChannel('documents', 'note-changed', (data) => {
+        if (!data || !data.path)
+            return;
+        const listeners = documentNoteChangedListeners.get(data.path);
+        if (!listeners || listeners.size === 0)
+            return;
+        for (const handler of Array.from(listeners)) {
+            try {
+                handler(data);
+            }
+            catch (e) {
+                console.warn(`[wsStore] document-note-changed handler for '${data.path}' threw:`, e);
+            }
+        }
+    });
     documentsUnsubscribe = () => {
         try {
             presenceOff();
@@ -364,6 +406,10 @@ function attachDocumentsListener(sock) {
         catch { /* ignore */ }
         try {
             changedOff();
+        }
+        catch { /* ignore */ }
+        try {
+            noteChangedOff();
         }
         catch { /* ignore */ }
     };

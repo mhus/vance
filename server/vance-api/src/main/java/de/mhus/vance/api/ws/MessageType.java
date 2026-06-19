@@ -395,6 +395,20 @@ public final class MessageType {
      */
     public static final String DOCUMENT_CHANGED = "changed";
 
+    /**
+     * Server → client: a sticky-note on the document at {@code path}
+     * was added / updated / deleted. Payload:
+     * {@code DocumentNoteChangedNotification}. Sent only to subscribers
+     * of the affected path; the writer's own connection is filtered out
+     * server-side via {@code editorId} so the user doesn't see their
+     * own edits echo back.
+     *
+     * <p>Conflict policy is intentionally simple: last-writer-wins. The
+     * client merges the change verbatim into its local notes map (or
+     * removes the entry on {@code deleted}).
+     */
+    public static final String DOCUMENT_NOTE_CHANGED = "note-changed";
+
     private MessageType() {
     }
 }

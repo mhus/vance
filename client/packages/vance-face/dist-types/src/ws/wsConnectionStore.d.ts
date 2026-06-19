@@ -1,6 +1,6 @@
 import { type ComputedRef, type Ref } from 'vue';
 import { BrainWebSocket, type BrainWsApi } from '@vance/shared';
-import type { DocumentChangedNotification, DocumentViewer } from '@vance/generated';
+import type { DocumentChangedNotification, DocumentNoteChangedNotification, DocumentViewer } from '@vance/generated';
 export type WsStatus = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'down';
 /**
  * Per-path callback registrations for the {@code documents.changed}
@@ -10,6 +10,13 @@ export type WsStatus = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'd
  * {@code ⏺ name} awareness badge).
  */
 type DocumentChangedHandler = (notification: DocumentChangedNotification) => void;
+/**
+ * Per-path callbacks for the {@code documents.note-changed} frame —
+ * fired when a sticky-note on the path was added / updated / deleted by
+ * another connection. Local-write echoes are filtered server-side via
+ * the writer's editorId.
+ */
+type DocumentNoteChangedHandler = (notification: DocumentNoteChangedNotification) => void;
 /**
  * Ensure the tab-singleton WebSocket is open. Idempotent — returns the
  * existing socket if already connected, otherwise opens one. Throws on
@@ -68,6 +75,17 @@ export declare function unsubscribeDocument(path: string): Promise<void>;
  * badge after a silent merge).
  */
 export declare function onDocumentChanged(path: string, handler: DocumentChangedHandler): () => void;
+/**
+ * Register a callback for the {@code documents.note-changed} frame —
+ * fires when a sticky-note on the path is added / updated / deleted by
+ * another connection. Returns an unsubscribe function. Server-side
+ * already filters out the local writer's echo via the X-Editor-Id
+ * header, so handlers only see events from *other* connections.
+ *
+ * <p>Subscribe via {@link subscribeDocument} (presence subscribe implies
+ * notes events fire too — same channel, same path-set on the server).
+ */
+export declare function onDocumentNoteChanged(path: string, handler: DocumentNoteChangedHandler): () => void;
 /**
  * Inform the store that the server-side binding is already in place
  * (e.g. after a {@code session-bootstrap} that creates + binds in one

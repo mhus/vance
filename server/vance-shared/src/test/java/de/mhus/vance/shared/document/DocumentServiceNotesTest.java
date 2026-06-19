@@ -130,6 +130,9 @@ class DocumentServiceNotesTest {
 
     @Test
     void deleteNote_existing_returnsTrue() {
+        DocumentDocument doc = new DocumentDocument();
+        doc.setId("doc-1");
+        when(repository.findById("doc-1")).thenReturn(Optional.of(doc));
         UpdateResult result = mock(UpdateResult.class);
         when(result.getModifiedCount()).thenReturn(1L);
         when(mongoTemplate.updateFirst(any(Query.class), any(Update.class),
@@ -140,12 +143,21 @@ class DocumentServiceNotesTest {
 
     @Test
     void deleteNote_missing_returnsFalse() {
+        DocumentDocument doc = new DocumentDocument();
+        doc.setId("doc-1");
+        when(repository.findById("doc-1")).thenReturn(Optional.of(doc));
         UpdateResult result = mock(UpdateResult.class);
         when(result.getModifiedCount()).thenReturn(0L);
         when(mongoTemplate.updateFirst(any(Query.class), any(Update.class),
                 eq(DocumentDocument.class))).thenReturn(result);
 
         assertThat(service.deleteNote("doc-1", "missing-note")).isFalse();
+    }
+
+    @Test
+    void deleteNote_unknownDocument_returnsFalse() {
+        when(repository.findById("ghost")).thenReturn(Optional.empty());
+        assertThat(service.deleteNote("ghost", "n-1")).isFalse();
     }
 
     // ── listNotes ──────────────────────────────────────────────────────

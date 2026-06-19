@@ -2813,6 +2813,22 @@ public class DocumentService {
             String text,
             String userId,
             @Nullable Integer line) {
+        return addNote(docId, text, userId, line, null);
+    }
+
+    /**
+     * Same as {@link #addNote(String, String, String, Integer)} but with
+     * the writing connection's {@code editorId} — forwarded into the
+     * {@link DocumentNotesChangedEvent} so the live-broadcast layer can
+     * skip the writer's own WebSocket and the user doesn't see their
+     * own add echo back into the UI.
+     */
+    public DocumentNote addNote(
+            String docId,
+            String text,
+            String userId,
+            @Nullable Integer line,
+            @Nullable String editorId) {
         if (!repository.existsById(docId)) {
             throw new IllegalArgumentException("Unknown document id='" + docId + "'");
         }
@@ -2847,6 +2863,8 @@ public class DocumentService {
         }
         log.debug("Added note id='{}' to document id='{}' by user='{}'",
                 note.getId(), docId, userId);
+        publishNoteEvent(modified, DocumentNotesChangedEvent.Kind.ADDED,
+                note.getId(), note, editorId);
         return note;
     }
 
@@ -2874,6 +2892,17 @@ public class DocumentService {
             @Nullable String newText,
             @Nullable Boolean newDone,
             @Nullable Integer newLine) {
+        return updateNote(docId, noteId, newText, newDone, newLine, null);
+    }
+
+    /** {@link #updateNote} with the writer's editorId for live-broadcast routing. */
+    public Optional<DocumentNote> updateNote(
+            String docId,
+            String noteId,
+            @Nullable String newText,
+            @Nullable Boolean newDone,
+            @Nullable Integer newLine,
+            @Nullable String editorId) {
         Update update = new Update().set("notes." + noteId + ".updatedAt", Instant.now());
         if (newText != null) update.set("notes." + noteId + ".text", newText);
         if (newDone != null) update.set("notes." + noteId + ".done", newDone);
@@ -2892,7 +2921,12 @@ public class DocumentService {
                 DocumentDocument.class);
         if (modified == null) return Optional.empty();
         log.debug("Updated note id='{}' on document id='{}'", noteId, docId);
-        return Optional.ofNullable(modified.getNotes()).map(m -> m.get(noteId));
+        DocumentNote refreshed = modified.getNotes() == null ? null : modified.getNotes().get(noteId);
+        if (refreshed != null) {
+            publishNoteEvent(modified, DocumentNotesChangedEvent.Kind.UPDATED,
+                    noteId, refreshed, editorId);
+        }
+        return Optional.ofNullable(refreshed);
     }
 
     /**
@@ -2901,6 +2935,14 @@ public class DocumentService {
      * and was removed, {@code false} otherwise.
      */
     public boolean deleteNote(String docId, String noteId) {
+        return deleteNote(docId, noteId, null);
+    }
+
+    /** {@link #deleteNote(String, String)} with the writer's editorId. */
+    public boolean deleteNote(String docId, String noteId, @Nullable String editorId) {
+        // Resolve the doc once so the event can carry tenantId/projectId/path.
+        DocumentDocument doc = repository.findById(docId).orElse(null);
+        if (doc == null) return false;
         Query query = Query.query(Criteria.where("_id").is(docId)
                 .and("notes." + noteId).exists(true));
         Update update = new Update().unset("notes." + noteId);
@@ -2908,9 +2950,40 @@ public class DocumentService {
                 .getModifiedCount();
         if (modified > 0) {
             log.debug("Deleted note id='{}' from document id='{}'", noteId, docId);
+            publishNoteEvent(doc, DocumentNotesChangedEvent.Kind.DELETED,
+                    noteId, null, editorId);
             return true;
         }
         return false;
+    }
+
+    /**
+     * Emit a {@link DocumentNotesChangedEvent} for the live-broadcast
+     * layer. Swallows runtime errors so a broken event listener never
+     * unwinds a successful Mongo write.
+     */
+    private void publishNoteEvent(
+            DocumentDocument doc,
+            DocumentNotesChangedEvent.Kind kind,
+            String noteId,
+            @Nullable DocumentNote note,
+            @Nullable String editorId) {
+        ApplicationEventPublisher publisher = this.eventPublisher;
+        if (publisher == null) return;
+        try {
+            publisher.publishEvent(new DocumentNotesChangedEvent(
+                    doc.getTenantId(),
+                    doc.getProjectId(),
+                    doc.getPath(),
+                    kind,
+                    noteId,
+                    note,
+                    editorId));
+        } catch (RuntimeException ex) {
+            log.warn("DocumentService: publish NotesChanged failed for '{}/{}/{}' kind={} noteId='{}': {}",
+                    doc.getTenantId(), doc.getProjectId(), doc.getPath(),
+                    kind, noteId, ex.toString());
+        }
     }
 
     /**

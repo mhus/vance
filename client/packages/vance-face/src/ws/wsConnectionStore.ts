@@ -7,6 +7,7 @@ import {
 } from '@vance/shared';
 import type {
   DocumentChangedNotification,
+  DocumentNoteChangedNotification,
   DocumentPresenceNotification,
   DocumentSubscribeRequest,
   DocumentViewer,
@@ -107,6 +108,15 @@ let documentsUnsubscribe: (() => void) | null = null;
  */
 type DocumentChangedHandler = (notification: DocumentChangedNotification) => void;
 const documentChangedListeners = new Map<string, Set<DocumentChangedHandler>>();
+
+/**
+ * Per-path callbacks for the {@code documents.note-changed} frame —
+ * fired when a sticky-note on the path was added / updated / deleted by
+ * another connection. Local-write echoes are filtered server-side via
+ * the writer's editorId.
+ */
+type DocumentNoteChangedHandler = (notification: DocumentNoteChangedNotification) => void;
+const documentNoteChangedListeners = new Map<string, Set<DocumentNoteChangedHandler>>();
 
 let releaseTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -393,6 +403,34 @@ export function onDocumentChanged(
   };
 }
 
+/**
+ * Register a callback for the {@code documents.note-changed} frame —
+ * fires when a sticky-note on the path is added / updated / deleted by
+ * another connection. Returns an unsubscribe function. Server-side
+ * already filters out the local writer's echo via the X-Editor-Id
+ * header, so handlers only see events from *other* connections.
+ *
+ * <p>Subscribe via {@link subscribeDocument} (presence subscribe implies
+ * notes events fire too — same channel, same path-set on the server).
+ */
+export function onDocumentNoteChanged(
+  path: string,
+  handler: DocumentNoteChangedHandler,
+): () => void {
+  let set = documentNoteChangedListeners.get(path);
+  if (!set) {
+    set = new Set();
+    documentNoteChangedListeners.set(path, set);
+  }
+  set.add(handler);
+  return () => {
+    const current = documentNoteChangedListeners.get(path);
+    if (!current) return;
+    current.delete(handler);
+    if (current.size === 0) documentNoteChangedListeners.delete(path);
+  };
+}
+
 function attachDocumentsListener(sock: BrainWebSocket): void {
   detachDocumentsListener();
   const presenceOff = sock.onChannel<DocumentPresenceNotification>(
@@ -419,9 +457,26 @@ function attachDocumentsListener(sock: BrainWebSocket): void {
       }
     },
   );
+  const noteChangedOff = sock.onChannel<DocumentNoteChangedNotification>(
+    'documents',
+    'note-changed',
+    (data) => {
+      if (!data || !data.path) return;
+      const listeners = documentNoteChangedListeners.get(data.path);
+      if (!listeners || listeners.size === 0) return;
+      for (const handler of Array.from(listeners)) {
+        try {
+          handler(data);
+        } catch (e) {
+          console.warn(`[wsStore] document-note-changed handler for '${data.path}' threw:`, e);
+        }
+      }
+    },
+  );
   documentsUnsubscribe = () => {
     try { presenceOff(); } catch { /* ignore */ }
     try { changedOff(); } catch { /* ignore */ }
+    try { noteChangedOff(); } catch { /* ignore */ }
   };
 }
 

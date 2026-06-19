@@ -525,6 +525,7 @@ public class DocumentController {
             @PathVariable("tenant") String tenant,
             @PathVariable("id") String id,
             @Valid @RequestBody de.mhus.vance.api.documents.DocumentNoteCreateRequest request,
+            @RequestHeader(value = HEADER_EDITOR_ID, required = false) @Nullable String editorId,
             HttpServletRequest httpRequest) {
         DocumentDocument existing = documentService.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
@@ -542,7 +543,7 @@ public class DocumentController {
         }
         try {
             de.mhus.vance.shared.document.DocumentNote note = documentService.addNote(
-                    id, request.getText(), userId, request.getLine());
+                    id, request.getText(), userId, request.getLine(), editorId);
             return ResponseEntity.status(HttpStatus.CREATED).body(noteToDto(note));
         } catch (DocumentService.NotesLimitExceededException e) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
@@ -557,6 +558,7 @@ public class DocumentController {
             @PathVariable("id") String id,
             @PathVariable("noteId") String noteId,
             @Valid @RequestBody de.mhus.vance.api.documents.DocumentNoteUpdateRequest request,
+            @RequestHeader(value = HEADER_EDITOR_ID, required = false) @Nullable String editorId,
             HttpServletRequest httpRequest) {
         DocumentDocument existing = documentService.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
@@ -567,7 +569,7 @@ public class DocumentController {
                 new Resource.Document(tenant, existing.getProjectId(), existing.getPath()), Action.READ);
 
         de.mhus.vance.shared.document.DocumentNote updated = documentService.updateNote(
-                id, noteId, request.getText(), request.getDone(), request.getLine())
+                id, noteId, request.getText(), request.getDone(), request.getLine(), editorId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Unknown note id='" + noteId + "' on document id='" + id + "'"));
         return ResponseEntity.ok(noteToDto(updated));
@@ -578,6 +580,7 @@ public class DocumentController {
             @PathVariable("tenant") String tenant,
             @PathVariable("id") String id,
             @PathVariable("noteId") String noteId,
+            @RequestHeader(value = HEADER_EDITOR_ID, required = false) @Nullable String editorId,
             HttpServletRequest httpRequest) {
         DocumentDocument existing = documentService.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
@@ -586,7 +589,7 @@ public class DocumentController {
         }
         authority.enforce(httpRequest,
                 new Resource.Document(tenant, existing.getProjectId(), existing.getPath()), Action.READ);
-        documentService.deleteNote(id, noteId);
+        documentService.deleteNote(id, noteId, editorId);
         return ResponseEntity.noContent().build();
     }
 

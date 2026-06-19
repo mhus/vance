@@ -1,10 +1,11 @@
-import { computed, type Ref } from 'vue';
+import { computed, onBeforeUnmount, watch, type Ref } from 'vue';
 import { brainFetch } from '@vance/shared';
 import type {
   DocumentNoteCreateRequest,
   DocumentNoteDto,
   DocumentNoteUpdateRequest,
 } from '@vance/generated';
+import { onDocumentNoteChanged } from '@/ws/wsConnectionStore';
 import type { CortexDocument } from '../types';
 
 /**
@@ -87,6 +88,50 @@ export function useDocumentNotes(doc: Ref<CortexDocument | null>) {
     delete next[noteId];
     d.notes = next;
   }
+
+  // ─── Live updates (documents.note-changed) ──────────────────────
+  //
+  // Last-writer-wins: remote add/update writes the note verbatim into
+  // the local map, remote delete drops it. Server already filters out
+  // the local writer's echo via the X-Editor-Id header. The composable
+  // swaps the subscription whenever the watched document's path
+  // changes (different tab activated, doc renamed, …) and tears it
+  // down on unmount.
+  let unsubscribe: (() => void) | null = null;
+
+  function attach(path: string): void {
+    unsubscribe = onDocumentNoteChanged(path, (notification) => {
+      const d = doc.value;
+      if (!d || d.path !== notification.path) return;
+      const next = { ...(d.notes ?? {}) };
+      if (notification.kind === 'deleted') {
+        delete next[notification.noteId];
+      } else if (notification.note) {
+        next[notification.noteId] = notification.note;
+      }
+      d.notes = next;
+    });
+  }
+
+  function detach(): void {
+    if (unsubscribe) {
+      try { unsubscribe(); } catch { /* ignore */ }
+      unsubscribe = null;
+    }
+  }
+
+  watch(
+    () => doc.value?.path ?? null,
+    (path) => {
+      detach();
+      if (path) attach(path);
+    },
+    { immediate: true },
+  );
+
+  onBeforeUnmount(() => {
+    detach();
+  });
 
   return {
     notes,

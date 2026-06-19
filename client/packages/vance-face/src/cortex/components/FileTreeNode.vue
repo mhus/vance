@@ -21,6 +21,11 @@ const emit = defineEmits<{
   (e: 'upload-files', payload: { files: File[]; targetFolder: string }): void;
 }>();
 
+interface MovePayload { id: string; targetFolder: string }
+interface UploadPayload { files: File[]; targetFolder: string }
+function onChildMove(payload: MovePayload): void { emit('move-file', payload); }
+function onChildUpload(payload: UploadPayload): void { emit('upload-files', payload); }
+
 function isOpen(path: string): boolean {
   return path === '' || props.expanded.has(path);
 }
@@ -148,8 +153,8 @@ function onFolderDrop(ev: DragEvent): void {
         @toggle="(p: string) => emit('toggle', p)"
         @open-file="(id: string) => emit('open-file', id)"
         @delete-file="(id: string) => emit('delete-file', id)"
-        @move-file="(payload) => emit('move-file', payload)"
-        @upload-files="(payload) => emit('upload-files', payload)"
+        @move-file="onChildMove"
+        @upload-files="onChildUpload"
       />
       <div
         v-for="file in node.files"

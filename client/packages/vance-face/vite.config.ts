@@ -18,6 +18,7 @@ const editorEntries = {
   users: resolve(__dirname, 'users.html'),
   profile: resolve(__dirname, 'profile.html'),
   cortex: resolve(__dirname, 'cortex.html'),
+  notepad: resolve(__dirname, 'notepad.html'),
   'connected-accounts': resolve(__dirname, 'connected-accounts.html'),
   'oauth-providers': resolve(__dirname, 'oauth-providers.html'),
   'tool-templates': resolve(__dirname, 'tool-templates.html'),

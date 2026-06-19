@@ -768,8 +768,8 @@ export default defineComponent({
         }
       }
 
-      const url = `/documents.html?projectId=${encodeURIComponent(projectId)}`
-        + `&documentId=${encodeURIComponent(documentId)}`;
+      const url = `/notepad.html?project=${encodeURIComponent(projectId)}`
+        + `&doc=${encodeURIComponent(documentId)}`;
       // Hosts that provide a {@link VanceLinkHandler} (Cortex) keep
       // their existing behaviour even when the handler decided not to
       // claim this click — the page already gives the user a tab-aware

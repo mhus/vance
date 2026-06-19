@@ -1,6 +1,8 @@
 import { computed, inject } from 'vue';
 const props = defineProps();
 const emit = defineEmits();
+function onChildMove(payload) { emit('move-file', payload); }
+function onChildUpload(payload) { emit('upload-files', payload); }
 function isOpen(path) {
     return path === '' || props.expanded.has(path);
 }
@@ -167,10 +169,10 @@ if (__VLS_ctx.isOpen(__VLS_ctx.node.path)) {
             onDeleteFile: ((id) => __VLS_ctx.emit('delete-file', id))
         };
         const __VLS_10 = {
-            onMoveFile: ((payload) => __VLS_ctx.emit('move-file', payload))
+            onMoveFile: (__VLS_ctx.onChildMove)
         };
         const __VLS_11 = {
-            onUploadFiles: ((payload) => __VLS_ctx.emit('upload-files', payload))
+            onUploadFiles: (__VLS_ctx.onChildUpload)
         };
         var __VLS_3;
     }
@@ -267,6 +269,8 @@ const __VLS_self = (await import('vue')).defineComponent({
     setup() {
         return {
             emit: emit,
+            onChildMove: onChildMove,
+            onChildUpload: onChildUpload,
             isOpen: isOpen,
             fileIcon: fileIcon,
             indentStyle: indentStyle,

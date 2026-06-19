@@ -42,6 +42,21 @@ export interface CortexDocument {
    * can show "cached findings" without an extra fetch.
    */
   lastDeepReviewWarningsJson?: string | null;
+
+  // ─── Mirrored DocumentDto metadata ──────────────────────────────
+  // Populated on the full {@code openFile} fetch (not on the list
+  // summary) so the Properties panel can render them without an
+  // extra round-trip. Stay {@code null}/undefined on documents that
+  // are still represented only by their {@link DocumentSummary}.
+  tags?: string[] | null;
+  size?: number | null;
+  createdAtMs?: number | null;
+  createdBy?: string | null;
+  summary?: string | null;
+  summarizedAtMs?: number | null;
+  autoSummary?: boolean | null;
+  summaryDirty?: boolean | null;
+  ragEnabled?: boolean | null;
 }
 
 /**

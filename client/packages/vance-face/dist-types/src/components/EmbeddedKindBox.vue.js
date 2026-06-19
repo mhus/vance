@@ -84,8 +84,8 @@ async function onOpen(event) {
             // Fall through to default navigation rather than swallow.
         }
     }
-    const url = `/documents.html?projectId=${encodeURIComponent(projectId)}`
-        + `&documentId=${encodeURIComponent(documentId)}`;
+    const url = `/notepad.html?project=${encodeURIComponent(projectId)}`
+        + `&doc=${encodeURIComponent(documentId)}`;
     if (newTab) {
         window.open(url, '_blank', 'noopener');
     }

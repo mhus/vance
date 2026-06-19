@@ -54,6 +54,8 @@ function ancestorPathsFor(node, fileId) {
     }
     return null;
 }
+function onMoveFile(payload) { emit('move-file', payload); }
+function onUploadFiles(payload) { emit('upload-files', payload); }
 function revealActiveFile() {
     const id = props.activeFileId;
     if (!id)
@@ -138,10 +140,10 @@ const __VLS_8 = {
     onDeleteFile: ((id) => __VLS_ctx.emit('delete-file', id))
 };
 const __VLS_9 = {
-    onMoveFile: ((payload) => __VLS_ctx.emit('move-file', payload))
+    onMoveFile: (__VLS_ctx.onMoveFile)
 };
 const __VLS_10 = {
-    onUploadFiles: ((payload) => __VLS_ctx.emit('upload-files', payload))
+    onUploadFiles: (__VLS_ctx.onUploadFiles)
 };
 var __VLS_2;
 /** @type {__VLS_StyleScopedClasses['p-2']} */ ;
@@ -178,6 +180,8 @@ const __VLS_self = (await import('vue')).defineComponent({
             expanded: expanded,
             sidebarEl: sidebarEl,
             toggle: toggle,
+            onMoveFile: onMoveFile,
+            onUploadFiles: onUploadFiles,
             revealActiveFile: revealActiveFile,
         };
     },

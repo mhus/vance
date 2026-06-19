@@ -7,6 +7,7 @@ import { resolveBinding } from '../docTypeRegistry';
 import { resolveRunAdapter } from '../runners/runnerRegistry';
 import CortexValidateDialog from './CortexValidateDialog.vue';
 import CortexHactarDialog from './CortexHactarDialog.vue';
+import DocumentPropertiesPanel from './DocumentPropertiesPanel.vue';
 const props = defineProps();
 const emit = defineEmits();
 const store = useCortexStore();
@@ -31,15 +32,24 @@ async function onReload() {
         reloading.value = false;
     }
 }
-const propertiesUrl = computed(() => {
-    const pid = store.projectId;
-    if (!pid)
-        return null;
-    const params = new URLSearchParams({
-        projectId: pid,
-        documentId: props.document.id,
-    });
-    return `/documents.html?${params.toString()}`;
+// Properties panel state — persisted per browser tab in sessionStorage
+// so the user's preference survives doc switches inside the same
+// session, but doesn't bleed across browser tabs / restarts.
+const PROPS_OPEN_KEY = 'editor:propertiesOpen';
+function loadPropsOpen() {
+    try {
+        return sessionStorage.getItem(PROPS_OPEN_KEY) === '1';
+    }
+    catch {
+        return false;
+    }
+}
+const propertiesOpen = ref(loadPropsOpen());
+watch(propertiesOpen, (v) => {
+    try {
+        sessionStorage.setItem(PROPS_OPEN_KEY, v ? '1' : '0');
+    }
+    catch { /* sessionStorage unavailable */ }
 });
 // Derive a language hint for CodeEditor. Path extension wins over the
 // server-supplied mime: a file named {@code foo.js} should highlight
@@ -480,15 +490,15 @@ if (__VLS_ctx.isJsLanguage) {
         });
     }
 }
-if (__VLS_ctx.propertiesUrl) {
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
-        href: (__VLS_ctx.propertiesUrl),
-        target: "_blank",
-        rel: "noopener",
-        ...{ class: "opacity-60 hover:opacity-100 hover:bg-base-200 rounded px-1 leading-none" },
-        title: "Open document properties in a new tab",
-    });
-}
+__VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+    ...{ onClick: (...[$event]) => {
+            __VLS_ctx.propertiesOpen = !__VLS_ctx.propertiesOpen;
+        } },
+    type: "button",
+    ...{ class: "opacity-60 hover:opacity-100 hover:bg-base-200 rounded px-1.5 py-0.5 text-xs" },
+    ...{ class: ({ 'bg-base-300 opacity-100': __VLS_ctx.propertiesOpen }) },
+    title: (__VLS_ctx.propertiesOpen ? 'Hide properties' : 'Show properties'),
+});
 if (__VLS_ctx.document.dirty && __VLS_ctx.binding.editLocation === 'client-memory') {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
         ...{ class: "opacity-60" },
@@ -503,49 +513,62 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.
 });
 (__VLS_ctx.binding.id);
 (__VLS_ctx.binding.mode === 'code' ? __VLS_ctx.effectiveMimeType : (__VLS_ctx.document.mimeType ?? __VLS_ctx.binding.mode));
+if (__VLS_ctx.propertiesOpen) {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "shrink-0 max-h-[50%] overflow-y-auto" },
+    });
+    /** @type {[typeof DocumentPropertiesPanel, ]} */ ;
+    // @ts-ignore
+    const __VLS_0 = __VLS_asFunctionalComponent(DocumentPropertiesPanel, new DocumentPropertiesPanel({
+        document: (__VLS_ctx.document),
+    }));
+    const __VLS_1 = __VLS_0({
+        document: (__VLS_ctx.document),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_0));
+}
 if (__VLS_ctx.binding.mode === 'code' && __VLS_ctx.isMarkdownDocument && __VLS_ctx.viewEditMode === 'view') {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "flex-1 min-h-0 overflow-auto px-4 py-2" },
     });
-    const __VLS_0 = {}.MarkdownView;
+    const __VLS_3 = {}.MarkdownView;
     /** @type {[typeof __VLS_components.MarkdownView, ]} */ ;
     // @ts-ignore
-    const __VLS_1 = __VLS_asFunctionalComponent(__VLS_0, new __VLS_0({
+    const __VLS_4 = __VLS_asFunctionalComponent(__VLS_3, new __VLS_3({
         source: (__VLS_ctx.document.inlineText),
     }));
-    const __VLS_2 = __VLS_1({
+    const __VLS_5 = __VLS_4({
         source: (__VLS_ctx.document.inlineText),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_1));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_4));
 }
 else if (__VLS_ctx.binding.mode === 'code') {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "flex-1 min-h-0 overflow-hidden cortex-code-host" },
     });
-    const __VLS_4 = {}.CodeEditor;
+    const __VLS_7 = {}.CodeEditor;
     /** @type {[typeof __VLS_components.CodeEditor, ]} */ ;
     // @ts-ignore
-    const __VLS_5 = __VLS_asFunctionalComponent(__VLS_4, new __VLS_4({
+    const __VLS_8 = __VLS_asFunctionalComponent(__VLS_7, new __VLS_7({
         ...{ 'onUpdate:modelValue': {} },
         ...{ 'onSelectionChanged': {} },
         modelValue: (__VLS_ctx.document.inlineText),
         mimeType: (__VLS_ctx.effectiveMimeType),
     }));
-    const __VLS_6 = __VLS_5({
+    const __VLS_9 = __VLS_8({
         ...{ 'onUpdate:modelValue': {} },
         ...{ 'onSelectionChanged': {} },
         modelValue: (__VLS_ctx.document.inlineText),
         mimeType: (__VLS_ctx.effectiveMimeType),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_5));
-    let __VLS_8;
-    let __VLS_9;
-    let __VLS_10;
-    const __VLS_11 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_8));
+    let __VLS_11;
+    let __VLS_12;
+    let __VLS_13;
+    const __VLS_14 = {
         'onUpdate:modelValue': ((v) => __VLS_ctx.emit('update', v))
     };
-    const __VLS_12 = {
+    const __VLS_15 = {
         onSelectionChanged: (__VLS_ctx.onSelectionChanged)
     };
-    var __VLS_7;
+    var __VLS_10;
 }
 else if (__VLS_ctx.binding.mode === 'image') {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -553,14 +576,14 @@ else if (__VLS_ctx.binding.mode === 'image') {
     });
     /** @type {[typeof ImageView, ]} */ ;
     // @ts-ignore
-    const __VLS_13 = __VLS_asFunctionalComponent(ImageView, new ImageView({
+    const __VLS_16 = __VLS_asFunctionalComponent(ImageView, new ImageView({
         mode: "editor",
         document: (__VLS_ctx.docDtoForView),
     }));
-    const __VLS_14 = __VLS_13({
+    const __VLS_17 = __VLS_16({
         mode: "editor",
         document: (__VLS_ctx.docDtoForView),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_13));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_16));
 }
 else if (__VLS_ctx.binding.mode === 'preview') {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -588,45 +611,45 @@ else if (__VLS_ctx.binding.mode === 'preview') {
     });
     /** @type {[typeof DocumentPreview, ]} */ ;
     // @ts-ignore
-    const __VLS_16 = __VLS_asFunctionalComponent(DocumentPreview, new DocumentPreview({
+    const __VLS_19 = __VLS_asFunctionalComponent(DocumentPreview, new DocumentPreview({
         documentId: (__VLS_ctx.document.id),
         mimeType: (__VLS_ctx.document.mimeType ?? null),
     }));
-    const __VLS_17 = __VLS_16({
+    const __VLS_20 = __VLS_19({
         documentId: (__VLS_ctx.document.id),
         mimeType: (__VLS_ctx.document.mimeType ?? null),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_16));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_19));
 }
 else if (__VLS_ctx.isViewMode) {
     if (__VLS_ctx.showRawEditor) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "flex-1 min-h-0 overflow-hidden cortex-code-host" },
         });
-        const __VLS_19 = {}.CodeEditor;
+        const __VLS_22 = {}.CodeEditor;
         /** @type {[typeof __VLS_components.CodeEditor, ]} */ ;
         // @ts-ignore
-        const __VLS_20 = __VLS_asFunctionalComponent(__VLS_19, new __VLS_19({
+        const __VLS_23 = __VLS_asFunctionalComponent(__VLS_22, new __VLS_22({
             ...{ 'onUpdate:modelValue': {} },
             ...{ 'onSelectionChanged': {} },
             modelValue: (__VLS_ctx.document.inlineText),
             mimeType: (__VLS_ctx.effectiveMimeType),
         }));
-        const __VLS_21 = __VLS_20({
+        const __VLS_24 = __VLS_23({
             ...{ 'onUpdate:modelValue': {} },
             ...{ 'onSelectionChanged': {} },
             modelValue: (__VLS_ctx.document.inlineText),
             mimeType: (__VLS_ctx.effectiveMimeType),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_20));
-        let __VLS_23;
-        let __VLS_24;
-        let __VLS_25;
-        const __VLS_26 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_23));
+        let __VLS_26;
+        let __VLS_27;
+        let __VLS_28;
+        const __VLS_29 = {
             'onUpdate:modelValue': ((v) => __VLS_ctx.emit('update', v))
         };
-        const __VLS_27 = {
+        const __VLS_30 = {
             onSelectionChanged: (__VLS_ctx.onSelectionChanged)
         };
-        var __VLS_22;
+        var __VLS_25;
     }
     else if (__VLS_ctx.parseResult.error) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -640,55 +663,55 @@ else if (__VLS_ctx.isViewMode) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "flex-1 min-h-0 overflow-hidden cortex-code-host" },
         });
-        const __VLS_28 = {}.CodeEditor;
+        const __VLS_31 = {}.CodeEditor;
         /** @type {[typeof __VLS_components.CodeEditor, ]} */ ;
         // @ts-ignore
-        const __VLS_29 = __VLS_asFunctionalComponent(__VLS_28, new __VLS_28({
+        const __VLS_32 = __VLS_asFunctionalComponent(__VLS_31, new __VLS_31({
             ...{ 'onUpdate:modelValue': {} },
             ...{ 'onSelectionChanged': {} },
             modelValue: (__VLS_ctx.document.inlineText),
             mimeType: (__VLS_ctx.effectiveMimeType),
         }));
-        const __VLS_30 = __VLS_29({
+        const __VLS_33 = __VLS_32({
             ...{ 'onUpdate:modelValue': {} },
             ...{ 'onSelectionChanged': {} },
             modelValue: (__VLS_ctx.document.inlineText),
             mimeType: (__VLS_ctx.effectiveMimeType),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_29));
-        let __VLS_32;
-        let __VLS_33;
-        let __VLS_34;
-        const __VLS_35 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_32));
+        let __VLS_35;
+        let __VLS_36;
+        let __VLS_37;
+        const __VLS_38 = {
             'onUpdate:modelValue': ((v) => __VLS_ctx.emit('update', v))
         };
-        const __VLS_36 = {
+        const __VLS_39 = {
             onSelectionChanged: (__VLS_ctx.onSelectionChanged)
         };
-        var __VLS_31;
+        var __VLS_34;
     }
     else {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "flex-1 min-h-0 overflow-auto" },
         });
-        const __VLS_37 = ((__VLS_ctx.activeView));
+        const __VLS_40 = ((__VLS_ctx.activeView));
         // @ts-ignore
-        const __VLS_38 = __VLS_asFunctionalComponent(__VLS_37, new __VLS_37({
+        const __VLS_41 = __VLS_asFunctionalComponent(__VLS_40, new __VLS_40({
             ...{ 'onUpdate:doc': {} },
             mode: "editor",
             ...(__VLS_ctx.viewBindings),
         }));
-        const __VLS_39 = __VLS_38({
+        const __VLS_42 = __VLS_41({
             ...{ 'onUpdate:doc': {} },
             mode: "editor",
             ...(__VLS_ctx.viewBindings),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_38));
-        let __VLS_41;
-        let __VLS_42;
-        let __VLS_43;
-        const __VLS_44 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_41));
+        let __VLS_44;
+        let __VLS_45;
+        let __VLS_46;
+        const __VLS_47 = {
             'onUpdate:doc': (__VLS_ctx.onModelUpdate)
         };
-        var __VLS_40;
+        var __VLS_43;
     }
 }
 if (__VLS_ctx.runHandle) {
@@ -758,30 +781,30 @@ if (__VLS_ctx.runHandle) {
 if (__VLS_ctx.showValidate) {
     /** @type {[typeof CortexValidateDialog, ]} */ ;
     // @ts-ignore
-    const __VLS_45 = __VLS_asFunctionalComponent(CortexValidateDialog, new CortexValidateDialog({
+    const __VLS_48 = __VLS_asFunctionalComponent(CortexValidateDialog, new CortexValidateDialog({
         ...{ 'onClose': {} },
         document: (__VLS_ctx.document),
     }));
-    const __VLS_46 = __VLS_45({
+    const __VLS_49 = __VLS_48({
         ...{ 'onClose': {} },
         document: (__VLS_ctx.document),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_45));
-    let __VLS_48;
-    let __VLS_49;
-    let __VLS_50;
-    const __VLS_51 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_48));
+    let __VLS_51;
+    let __VLS_52;
+    let __VLS_53;
+    const __VLS_54 = {
         onClose: (...[$event]) => {
             if (!(__VLS_ctx.showValidate))
                 return;
             __VLS_ctx.showValidate = false;
         }
     };
-    var __VLS_47;
+    var __VLS_50;
 }
 if (__VLS_ctx.showSlart && __VLS_ctx.store.projectId) {
     /** @type {[typeof CortexHactarDialog, ]} */ ;
     // @ts-ignore
-    const __VLS_52 = __VLS_asFunctionalComponent(CortexHactarDialog, new CortexHactarDialog({
+    const __VLS_55 = __VLS_asFunctionalComponent(CortexHactarDialog, new CortexHactarDialog({
         ...{ 'onClose': {} },
         ...{ 'onApply': {} },
         document: (__VLS_ctx.document),
@@ -789,28 +812,28 @@ if (__VLS_ctx.showSlart && __VLS_ctx.store.projectId) {
         sessionId: (__VLS_ctx.sessionId ?? null),
         mode: (__VLS_ctx.slartMode),
     }));
-    const __VLS_53 = __VLS_52({
+    const __VLS_56 = __VLS_55({
         ...{ 'onClose': {} },
         ...{ 'onApply': {} },
         document: (__VLS_ctx.document),
         projectId: (__VLS_ctx.store.projectId),
         sessionId: (__VLS_ctx.sessionId ?? null),
         mode: (__VLS_ctx.slartMode),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_52));
-    let __VLS_55;
-    let __VLS_56;
-    let __VLS_57;
-    const __VLS_58 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_55));
+    let __VLS_58;
+    let __VLS_59;
+    let __VLS_60;
+    const __VLS_61 = {
         onClose: (...[$event]) => {
             if (!(__VLS_ctx.showSlart && __VLS_ctx.store.projectId))
                 return;
             __VLS_ctx.showSlart = false;
         }
     };
-    const __VLS_59 = {
+    const __VLS_62 = {
         onApply: (__VLS_ctx.onSlartApply)
     };
-    var __VLS_54;
+    var __VLS_57;
 }
 /** @type {__VLS_StyleScopedClasses['h-full']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
@@ -895,13 +918,19 @@ if (__VLS_ctx.showSlart && __VLS_ctx.store.projectId) {
 /** @type {__VLS_StyleScopedClasses['hover:opacity-100']} */ ;
 /** @type {__VLS_StyleScopedClasses['hover:bg-base-200']} */ ;
 /** @type {__VLS_StyleScopedClasses['rounded']} */ ;
-/** @type {__VLS_StyleScopedClasses['px-1']} */ ;
-/** @type {__VLS_StyleScopedClasses['leading-none']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-1.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-0.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['bg-base-300']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-100']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-50']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
+/** @type {__VLS_StyleScopedClasses['shrink-0']} */ ;
+/** @type {__VLS_StyleScopedClasses['max-h-[50%]']} */ ;
+/** @type {__VLS_StyleScopedClasses['overflow-y-auto']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
 /** @type {__VLS_StyleScopedClasses['overflow-auto']} */ ;
@@ -1039,12 +1068,13 @@ const __VLS_self = (await import('vue')).defineComponent({
             DocumentPreview: DocumentPreview,
             CortexValidateDialog: CortexValidateDialog,
             CortexHactarDialog: CortexHactarDialog,
+            DocumentPropertiesPanel: DocumentPropertiesPanel,
             emit: emit,
             store: store,
             binding: binding,
             reloading: reloading,
             onReload: onReload,
-            propertiesUrl: propertiesUrl,
+            propertiesOpen: propertiesOpen,
             effectiveMimeType: effectiveMimeType,
             onSelectionChanged: onSelectionChanged,
             docDtoForView: docDtoForView,

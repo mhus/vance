@@ -73,6 +73,11 @@ function ancestorPathsFor(node: FolderNode, fileId: string): string[] | null {
   return null;
 }
 
+interface MovePayload { id: string; targetFolder: string }
+interface UploadPayload { files: File[]; targetFolder: string }
+function onMoveFile(payload: MovePayload): void { emit('move-file', payload); }
+function onUploadFiles(payload: UploadPayload): void { emit('upload-files', payload); }
+
 function revealActiveFile(): void {
   const id = props.activeFileId;
   if (!id) return;
@@ -115,8 +120,8 @@ function revealActiveFile(): void {
       @toggle="toggle"
       @open-file="(id: string) => emit('open-file', id)"
       @delete-file="(id: string) => emit('delete-file', id)"
-      @move-file="(payload) => emit('move-file', payload)"
-      @upload-files="(payload) => emit('upload-files', payload)"
+      @move-file="onMoveFile"
+      @upload-files="onUploadFiles"
     />
   </div>
 </template>

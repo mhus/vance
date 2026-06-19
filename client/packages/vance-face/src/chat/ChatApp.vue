@@ -333,8 +333,8 @@ function onAcceptFollowUpFromView(): void {
 function onConversationExportedFromView(payload: { documentId: string; document: DocumentDto }): void {
   const projectId = payload.document.projectId ?? chatProjectId.value;
   if (!projectId) return;
-  const url = `/documents.html?projectId=${encodeURIComponent(projectId)}`
-    + `&documentId=${encodeURIComponent(payload.documentId)}`;
+  const url = `/notepad.html?project=${encodeURIComponent(projectId)}`
+    + `&doc=${encodeURIComponent(payload.documentId)}`;
   window.open(url, '_blank', 'noopener');
 }
 function onFollowUpAcceptedFromComposer(): void {

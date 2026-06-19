@@ -25,6 +25,13 @@ interface CreateBody {
     mimeType?: string | null;
     inlineText?: string;
 }
+export interface MetaUpdateBody {
+    title?: string | null;
+    tags?: string[];
+    autoSummary?: boolean;
+    summaryDirty?: boolean;
+    ragEnabled?: 'auto' | 'on' | 'off';
+}
 /**
  * Holds open-tabs state, the active-tab pointer, and the project's full
  * document list for the Cortex view. Persists nothing across reloads in
@@ -65,6 +72,15 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         baselineInlineText: string;
         lastDeepReviewedHash?: (string | null) | undefined;
         lastDeepReviewWarningsJson?: (string | null) | undefined;
+        tags?: (string[] | null) | undefined;
+        size?: (number | null) | undefined;
+        createdAtMs?: (number | null) | undefined;
+        createdBy?: (string | null) | undefined;
+        summary?: (string | null) | undefined;
+        summarizedAtMs?: (number | null) | undefined;
+        autoSummary?: (boolean | null) | undefined;
+        summaryDirty?: (boolean | null) | undefined;
+        ragEnabled?: (boolean | null) | undefined;
     }[], CortexDocument[] | {
         id: string;
         path: string;
@@ -77,6 +93,15 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         baselineInlineText: string;
         lastDeepReviewedHash?: (string | null) | undefined;
         lastDeepReviewWarningsJson?: (string | null) | undefined;
+        tags?: (string[] | null) | undefined;
+        size?: (number | null) | undefined;
+        createdAtMs?: (number | null) | undefined;
+        createdBy?: (string | null) | undefined;
+        summary?: (string | null) | undefined;
+        summarizedAtMs?: (number | null) | undefined;
+        autoSummary?: (boolean | null) | undefined;
+        summaryDirty?: (boolean | null) | undefined;
+        ragEnabled?: (boolean | null) | undefined;
     }[]>;
     openTabs: import("vue").Ref<{
         id: string;
@@ -90,6 +115,15 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         baselineInlineText: string;
         lastDeepReviewedHash?: (string | null) | undefined;
         lastDeepReviewWarningsJson?: (string | null) | undefined;
+        tags?: (string[] | null) | undefined;
+        size?: (number | null) | undefined;
+        createdAtMs?: (number | null) | undefined;
+        createdBy?: (string | null) | undefined;
+        summary?: (string | null) | undefined;
+        summarizedAtMs?: (number | null) | undefined;
+        autoSummary?: (boolean | null) | undefined;
+        summaryDirty?: (boolean | null) | undefined;
+        ragEnabled?: (boolean | null) | undefined;
     }[], CortexDocument[] | {
         id: string;
         path: string;
@@ -102,6 +136,15 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         baselineInlineText: string;
         lastDeepReviewedHash?: (string | null) | undefined;
         lastDeepReviewWarningsJson?: (string | null) | undefined;
+        tags?: (string[] | null) | undefined;
+        size?: (number | null) | undefined;
+        createdAtMs?: (number | null) | undefined;
+        createdBy?: (string | null) | undefined;
+        summary?: (string | null) | undefined;
+        summarizedAtMs?: (number | null) | undefined;
+        autoSummary?: (boolean | null) | undefined;
+        summaryDirty?: (boolean | null) | undefined;
+        ragEnabled?: (boolean | null) | undefined;
     }[]>;
     activeTabId: import("vue").Ref<string | null, string | null>;
     activeTab: import("vue").ComputedRef<CortexDocument | null>;
@@ -121,6 +164,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
     saveAllDirty: () => Promise<void>;
     createFile: (body: CreateBody) => Promise<CortexDocument>;
     deleteFile: (id: string) => Promise<void>;
+    updateMeta: (id: string, body: MetaUpdateBody) => Promise<void>;
     addVirtualFolder: (path: string) => void;
     currentSelection: import("vue").Ref<{
         docId: string;
@@ -137,7 +181,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
     } | null>;
     setSelection: (sel: CortexSelection | null) => void;
     clearSelection: () => void;
-}, "error" | "projectId" | "files" | "openTabs" | "activeTabId" | "loading" | "currentSelection">, Pick<{
+}, "projectId" | "files" | "openTabs" | "activeTabId" | "loading" | "error" | "currentSelection">, Pick<{
     projectId: import("vue").Ref<string | null, string | null>;
     files: import("vue").Ref<{
         id: string;
@@ -151,6 +195,15 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         baselineInlineText: string;
         lastDeepReviewedHash?: (string | null) | undefined;
         lastDeepReviewWarningsJson?: (string | null) | undefined;
+        tags?: (string[] | null) | undefined;
+        size?: (number | null) | undefined;
+        createdAtMs?: (number | null) | undefined;
+        createdBy?: (string | null) | undefined;
+        summary?: (string | null) | undefined;
+        summarizedAtMs?: (number | null) | undefined;
+        autoSummary?: (boolean | null) | undefined;
+        summaryDirty?: (boolean | null) | undefined;
+        ragEnabled?: (boolean | null) | undefined;
     }[], CortexDocument[] | {
         id: string;
         path: string;
@@ -163,6 +216,15 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         baselineInlineText: string;
         lastDeepReviewedHash?: (string | null) | undefined;
         lastDeepReviewWarningsJson?: (string | null) | undefined;
+        tags?: (string[] | null) | undefined;
+        size?: (number | null) | undefined;
+        createdAtMs?: (number | null) | undefined;
+        createdBy?: (string | null) | undefined;
+        summary?: (string | null) | undefined;
+        summarizedAtMs?: (number | null) | undefined;
+        autoSummary?: (boolean | null) | undefined;
+        summaryDirty?: (boolean | null) | undefined;
+        ragEnabled?: (boolean | null) | undefined;
     }[]>;
     openTabs: import("vue").Ref<{
         id: string;
@@ -176,6 +238,15 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         baselineInlineText: string;
         lastDeepReviewedHash?: (string | null) | undefined;
         lastDeepReviewWarningsJson?: (string | null) | undefined;
+        tags?: (string[] | null) | undefined;
+        size?: (number | null) | undefined;
+        createdAtMs?: (number | null) | undefined;
+        createdBy?: (string | null) | undefined;
+        summary?: (string | null) | undefined;
+        summarizedAtMs?: (number | null) | undefined;
+        autoSummary?: (boolean | null) | undefined;
+        summaryDirty?: (boolean | null) | undefined;
+        ragEnabled?: (boolean | null) | undefined;
     }[], CortexDocument[] | {
         id: string;
         path: string;
@@ -188,6 +259,15 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         baselineInlineText: string;
         lastDeepReviewedHash?: (string | null) | undefined;
         lastDeepReviewWarningsJson?: (string | null) | undefined;
+        tags?: (string[] | null) | undefined;
+        size?: (number | null) | undefined;
+        createdAtMs?: (number | null) | undefined;
+        createdBy?: (string | null) | undefined;
+        summary?: (string | null) | undefined;
+        summarizedAtMs?: (number | null) | undefined;
+        autoSummary?: (boolean | null) | undefined;
+        summaryDirty?: (boolean | null) | undefined;
+        ragEnabled?: (boolean | null) | undefined;
     }[]>;
     activeTabId: import("vue").Ref<string | null, string | null>;
     activeTab: import("vue").ComputedRef<CortexDocument | null>;
@@ -207,6 +287,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
     saveAllDirty: () => Promise<void>;
     createFile: (body: CreateBody) => Promise<CortexDocument>;
     deleteFile: (id: string) => Promise<void>;
+    updateMeta: (id: string, body: MetaUpdateBody) => Promise<void>;
     addVirtualFolder: (path: string) => void;
     currentSelection: import("vue").Ref<{
         docId: string;
@@ -237,6 +318,15 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         baselineInlineText: string;
         lastDeepReviewedHash?: (string | null) | undefined;
         lastDeepReviewWarningsJson?: (string | null) | undefined;
+        tags?: (string[] | null) | undefined;
+        size?: (number | null) | undefined;
+        createdAtMs?: (number | null) | undefined;
+        createdBy?: (string | null) | undefined;
+        summary?: (string | null) | undefined;
+        summarizedAtMs?: (number | null) | undefined;
+        autoSummary?: (boolean | null) | undefined;
+        summaryDirty?: (boolean | null) | undefined;
+        ragEnabled?: (boolean | null) | undefined;
     }[], CortexDocument[] | {
         id: string;
         path: string;
@@ -249,6 +339,15 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         baselineInlineText: string;
         lastDeepReviewedHash?: (string | null) | undefined;
         lastDeepReviewWarningsJson?: (string | null) | undefined;
+        tags?: (string[] | null) | undefined;
+        size?: (number | null) | undefined;
+        createdAtMs?: (number | null) | undefined;
+        createdBy?: (string | null) | undefined;
+        summary?: (string | null) | undefined;
+        summarizedAtMs?: (number | null) | undefined;
+        autoSummary?: (boolean | null) | undefined;
+        summaryDirty?: (boolean | null) | undefined;
+        ragEnabled?: (boolean | null) | undefined;
     }[]>;
     openTabs: import("vue").Ref<{
         id: string;
@@ -262,6 +361,15 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         baselineInlineText: string;
         lastDeepReviewedHash?: (string | null) | undefined;
         lastDeepReviewWarningsJson?: (string | null) | undefined;
+        tags?: (string[] | null) | undefined;
+        size?: (number | null) | undefined;
+        createdAtMs?: (number | null) | undefined;
+        createdBy?: (string | null) | undefined;
+        summary?: (string | null) | undefined;
+        summarizedAtMs?: (number | null) | undefined;
+        autoSummary?: (boolean | null) | undefined;
+        summaryDirty?: (boolean | null) | undefined;
+        ragEnabled?: (boolean | null) | undefined;
     }[], CortexDocument[] | {
         id: string;
         path: string;
@@ -274,6 +382,15 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         baselineInlineText: string;
         lastDeepReviewedHash?: (string | null) | undefined;
         lastDeepReviewWarningsJson?: (string | null) | undefined;
+        tags?: (string[] | null) | undefined;
+        size?: (number | null) | undefined;
+        createdAtMs?: (number | null) | undefined;
+        createdBy?: (string | null) | undefined;
+        summary?: (string | null) | undefined;
+        summarizedAtMs?: (number | null) | undefined;
+        autoSummary?: (boolean | null) | undefined;
+        summaryDirty?: (boolean | null) | undefined;
+        ragEnabled?: (boolean | null) | undefined;
     }[]>;
     activeTabId: import("vue").Ref<string | null, string | null>;
     activeTab: import("vue").ComputedRef<CortexDocument | null>;
@@ -293,6 +410,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
     saveAllDirty: () => Promise<void>;
     createFile: (body: CreateBody) => Promise<CortexDocument>;
     deleteFile: (id: string) => Promise<void>;
+    updateMeta: (id: string, body: MetaUpdateBody) => Promise<void>;
     addVirtualFolder: (path: string) => void;
     currentSelection: import("vue").Ref<{
         docId: string;
@@ -309,6 +427,6 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
     } | null>;
     setSelection: (sel: CortexSelection | null) => void;
     clearSelection: () => void;
-}, "loadList" | "openFile" | "reloadTab" | "moveFile" | "uploadExternalFile" | "setActiveTab" | "closeTab" | "updateActiveContent" | "saveActive" | "saveTab" | "saveAllDirty" | "createFile" | "deleteFile" | "addVirtualFolder" | "setSelection" | "clearSelection">>;
+}, "loadList" | "openFile" | "reloadTab" | "moveFile" | "uploadExternalFile" | "setActiveTab" | "closeTab" | "updateActiveContent" | "saveActive" | "saveTab" | "saveAllDirty" | "createFile" | "deleteFile" | "updateMeta" | "addVirtualFolder" | "setSelection" | "clearSelection">>;
 export {};
 //# sourceMappingURL=cortexStore.d.ts.map

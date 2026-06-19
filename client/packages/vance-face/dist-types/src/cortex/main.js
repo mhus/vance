@@ -1,10 +1,10 @@
 import '@/platform/bootWeb';
-import { createApp } from 'vue';
+import { createApp, h } from 'vue';
 import { createPinia } from 'pinia';
 import { ensureAuthenticated } from '@/platform/ensureAuthenticatedWeb';
 import { loadAddonRegistrations } from '@/platform/loadAddonRegistrations';
 import { registerBuiltInKinds } from '@/document/builtInKinds';
-import CortexApp from './CortexApp.vue';
+import EditorApp from './EditorApp.vue';
 import { i18n } from '@/i18n';
 import '@/style/app.css';
 await ensureAuthenticated();
@@ -13,5 +13,10 @@ await ensureAuthenticated();
 // and DocumentTabShell's resolveBinding can dispatch via the registry.
 registerBuiltInKinds();
 await loadAddonRegistrations();
-createApp(CortexApp).use(i18n).use(createPinia()).mount('#app');
+createApp({
+    render: () => h(EditorApp, { mode: 'cortex' }),
+})
+    .use(i18n)
+    .use(createPinia())
+    .mount('#app');
 //# sourceMappingURL=main.js.map

@@ -34,6 +34,7 @@ import { resolveRunAdapter } from '../runners/runnerRegistry';
 import type { RunHandle } from '../runners/types';
 import CortexValidateDialog from './CortexValidateDialog.vue';
 import CortexHactarDialog from './CortexHactarDialog.vue';
+import DocumentPropertiesPanel from './DocumentPropertiesPanel.vue';
 
 interface Props {
   document: CortexDocument;
@@ -70,14 +71,22 @@ async function onReload(): Promise<void> {
   }
 }
 
-const propertiesUrl = computed<string | null>(() => {
-  const pid = store.projectId;
-  if (!pid) return null;
-  const params = new URLSearchParams({
-    projectId: pid,
-    documentId: props.document.id,
-  });
-  return `/documents.html?${params.toString()}`;
+// Properties panel state — persisted per browser tab in sessionStorage
+// so the user's preference survives doc switches inside the same
+// session, but doesn't bleed across browser tabs / restarts.
+const PROPS_OPEN_KEY = 'editor:propertiesOpen';
+function loadPropsOpen(): boolean {
+  try {
+    return sessionStorage.getItem(PROPS_OPEN_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+const propertiesOpen = ref(loadPropsOpen());
+watch(propertiesOpen, (v) => {
+  try {
+    sessionStorage.setItem(PROPS_OPEN_KEY, v ? '1' : '0');
+  } catch { /* sessionStorage unavailable */ }
 });
 
 // Derive a language hint for CodeEditor. Path extension wins over the
@@ -536,14 +545,13 @@ function fmtDuration(ms: number | null): string {
           @click="openSlart('UPDATE')"
         >✨ Update</button>
       </template>
-      <a
-        v-if="propertiesUrl"
-        :href="propertiesUrl"
-        target="_blank"
-        rel="noopener"
-        class="opacity-60 hover:opacity-100 hover:bg-base-200 rounded px-1 leading-none"
-        title="Open document properties in a new tab"
-      >↗</a>
+      <button
+        type="button"
+        class="opacity-60 hover:opacity-100 hover:bg-base-200 rounded px-1.5 py-0.5 text-xs"
+        :class="{ 'bg-base-300 opacity-100': propertiesOpen }"
+        :title="propertiesOpen ? 'Hide properties' : 'Show properties'"
+        @click="propertiesOpen = !propertiesOpen"
+      >Properties</button>
       <span
         v-if="document.dirty && binding.editLocation === 'client-memory'"
         class="opacity-60"
@@ -556,6 +564,17 @@ function fmtDuration(ms: number | null): string {
         [{{ binding.id }}]
         {{ binding.mode === 'code' ? effectiveMimeType : (document.mimeType ?? binding.mode) }}
       </span>
+    </div>
+
+    <!-- Collapsible Properties panel — sits between the header strip
+         and the body. Toggle button in the header drives the visibility;
+         the panel owns its own scroll so a long Archives list doesn't
+         push the editor off-screen. -->
+    <div
+      v-if="propertiesOpen"
+      class="shrink-0 max-h-[50%] overflow-y-auto"
+    >
+      <DocumentPropertiesPanel :document="document" />
     </div>
 
     <!-- Code mode: CodeEditor on the raw text. Markdown takes the same

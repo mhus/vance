@@ -4,7 +4,6 @@ interface Props {
     activeFileId?: string | null;
 }
 declare const _default: import("vue").DefineComponent<Props, {}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {} & {
-    reload: () => any;
     "open-file": (id: string) => any;
     "delete-file": (id: string) => any;
     "move-file": (payload: {
@@ -15,8 +14,8 @@ declare const _default: import("vue").DefineComponent<Props, {}, {}, {}, {}, imp
         files: File[];
         targetFolder: string;
     }) => any;
+    reload: () => any;
 }, string, import("vue").PublicProps, Readonly<Props> & Readonly<{
-    onReload?: (() => any) | undefined;
     "onOpen-file"?: ((id: string) => any) | undefined;
     "onDelete-file"?: ((id: string) => any) | undefined;
     "onMove-file"?: ((payload: {
@@ -27,6 +26,7 @@ declare const _default: import("vue").DefineComponent<Props, {}, {}, {}, {}, imp
         files: File[];
         targetFolder: string;
     }) => any) | undefined;
+    onReload?: (() => any) | undefined;
 }>, {}, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;
 export default _default;
 //# sourceMappingURL=FileTreeSidebar.vue.d.ts.map

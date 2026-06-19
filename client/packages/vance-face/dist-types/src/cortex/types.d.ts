@@ -42,6 +42,15 @@ export interface CortexDocument {
      * can show "cached findings" without an extra fetch.
      */
     lastDeepReviewWarningsJson?: string | null;
+    tags?: string[] | null;
+    size?: number | null;
+    createdAtMs?: number | null;
+    createdBy?: string | null;
+    summary?: string | null;
+    summarizedAtMs?: number | null;
+    autoSummary?: boolean | null;
+    summaryDirty?: boolean | null;
+    ragEnabled?: boolean | null;
 }
 /**
  * Folder-tree node, built client-side by aggregating the path prefixes

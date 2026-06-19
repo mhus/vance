@@ -128,7 +128,48 @@ export const useCortexStore = defineStore('cortex', () => {
             baselineInlineText: text,
             lastDeepReviewedHash: d.lastDeepReviewedHash ?? null,
             lastDeepReviewWarningsJson: d.lastDeepReviewWarningsJson ?? null,
+            tags: d.tags ?? [],
+            size: d.size ?? null,
+            createdAtMs: d.createdAtMs ?? null,
+            createdBy: d.createdBy ?? null,
+            summary: d.summary ?? null,
+            summarizedAtMs: d.summarizedAtMs ?? null,
+            autoSummary: d.autoSummary ?? null,
+            summaryDirty: d.summaryDirty ?? null,
+            ragEnabled: d.ragEnabled ?? null,
         };
+    }
+    /**
+     * Persist editable metadata fields (title, tags) without touching
+     * the document body. Mirrors the {@code PUT /documents/{id}}
+     * surface the legacy DocumentApp used.
+     */
+    async function updateMeta(id, body) {
+        const dto = await brainFetch('PUT', `documents/${encodeURIComponent(id)}`, { body });
+        const tabIdx = openTabs.value.findIndex((t) => t.id === id);
+        if (tabIdx >= 0) {
+            const tab = openTabs.value[tabIdx];
+            const preservedText = tab.inlineText;
+            const preservedDirty = tab.dirty;
+            const fresh = dtoToDocument(dto);
+            openTabs.value = [
+                ...openTabs.value.slice(0, tabIdx),
+                { ...fresh, inlineText: preservedText, dirty: preservedDirty, baselineInlineText: tab.baselineInlineText },
+                ...openTabs.value.slice(tabIdx + 1),
+            ];
+        }
+        const fIdx = files.value.findIndex((f) => f.id === id);
+        if (fIdx >= 0) {
+            files.value = [
+                ...files.value.slice(0, fIdx),
+                {
+                    ...files.value[fIdx],
+                    title: dto.title ?? null,
+                    mimeType: dto.mimeType ?? null,
+                },
+                ...files.value.slice(fIdx + 1),
+            ];
+        }
     }
     async function loadList(pid) {
         projectId.value = pid;
@@ -457,6 +498,7 @@ export const useCortexStore = defineStore('cortex', () => {
         saveAllDirty,
         createFile,
         deleteFile,
+        updateMeta,
         addVirtualFolder,
         currentSelection,
         setSelection,

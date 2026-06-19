@@ -231,6 +231,8 @@ public class EddieEngine extends StructuredActionEngine {
     private final de.mhus.vance.brain.discovery.DiscoveryService discoveryService;
     private final de.mhus.vance.brain.tools.client.CortexPromptResolver cortexPromptResolver;
     private final ObjectMapper objectMapper;
+    private final de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeService
+            actionLoopJudgeService;
 
     /**
      * Per-process flag tracking whether the in-flight turn was
@@ -278,7 +280,8 @@ public class EddieEngine extends StructuredActionEngine {
             de.mhus.vance.brain.memory.MemoryCompactionService memoryCompactionService,
             @org.springframework.context.annotation.Lazy
                     de.mhus.vance.brain.discovery.DiscoveryService discoveryService,
-            de.mhus.vance.brain.tools.client.CortexPromptResolver cortexPromptResolver) {
+            de.mhus.vance.brain.tools.client.CortexPromptResolver cortexPromptResolver,
+            de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeService actionLoopJudgeService) {
         super(streamingProperties, llmCallTracker, objectMapper, composer);
         this.thinkProcessService = thinkProcessService;
         this.modelCatalog = modelCatalog;
@@ -300,6 +303,7 @@ public class EddieEngine extends StructuredActionEngine {
         this.discoveryService = discoveryService;
         this.cortexPromptResolver = cortexPromptResolver;
         this.objectMapper = objectMapper;
+        this.actionLoopJudgeService = actionLoopJudgeService;
     }
 
     // ──────────────────── Metadata ────────────────────
@@ -897,6 +901,55 @@ public class EddieEngine extends StructuredActionEngine {
                     aiChat, ContextToolsApi::primaryAsLc4j,
                     messages, ctx, process, maxIters, modelAlias,
                     modelInfo.actionLoopCorrections());
+
+            // Action-loop judge: same wiring as in ArthurEngine — when
+            // the loop max-iters out and isn't in the plan-mode-yield
+            // case, ask the judge whether to extend or synthesise from
+            // what's already gathered. See ActionLoopJudgeService.
+            int extensionsLeft = de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeHelpers
+                    .JUDGE_MAX_EXTENSIONS;
+            while ("max-iters".equals(loopResult.fallbackReason())
+                    && !de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeHelpers
+                            .isPlanModeYieldCase(process, loopResult)) {
+                de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeService.JudgeRequest req =
+                        new de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeService.JudgeRequest(
+                                process,
+                                de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeHelpers
+                                        .lastUserGoal(inbox, process),
+                                loopResult.fallbackText() == null
+                                        ? "" : loopResult.fallbackText(),
+                                de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeHelpers
+                                        .extractToolCallNames(messages),
+                                loopResult.toolInvocations(),
+                                extensionsLeft);
+                de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeService.Judgment j =
+                        actionLoopJudgeService.judge(req);
+                if (j.extend() && extensionsLeft > 0) {
+                    log.info("Eddie.turn id='{}' judge extends action loop "
+                                    + "(+{} iters, {} extension(s) left after this, reason='{}')",
+                            process.getId(),
+                            de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeHelpers
+                                    .JUDGE_EXTENSION_ITERS,
+                            extensionsLeft - 1, j.reason());
+                    extensionsLeft--;
+                    loopResult = runStructuredActionLoop(
+                            aiChat, ContextToolsApi::primaryAsLc4j,
+                            messages, ctx, process,
+                            de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeHelpers
+                                    .JUDGE_EXTENSION_ITERS,
+                            modelAlias, modelInfo.actionLoopCorrections());
+                    continue;
+                }
+                log.info("Eddie.turn id='{}' judge synthesises "
+                                + "(answer-chars={}, reason='{}')",
+                        process.getId(),
+                        j.synthesizedAnswer() == null ? 0 : j.synthesizedAnswer().length(),
+                        j.reason());
+                loopResult = new ActionLoopResult(
+                        null, j.synthesizedAnswer(),
+                        "judge-synthesize", null, loopResult.toolInvocations());
+                break;
+            }
 
             ActionTurnOutcome outcome;
             // actionType is non-null only when the LLM produced a parseable

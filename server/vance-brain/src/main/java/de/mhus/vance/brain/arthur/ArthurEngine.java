@@ -199,22 +199,6 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      */
     private static final String DEFAULT_PROMPT_PATH = "_vance/prompts/arthur-prompt.md";
 
-    /**
-     * Maximum number of action-loop extensions the judge may grant
-     * after the initial {@code maxIters} budget is exhausted. With
-     * {@code maxIters=12} and {@code JUDGE_EXTENSION_ITERS=6}, total
-     * upper bound is {@code 12 + JUDGE_MAX_EXTENSIONS * 6} iterations
-     * per turn.
-     */
-    private static final int JUDGE_MAX_EXTENSIONS = 1;
-
-    /**
-     * Iteration budget granted on each judge-approved extension. Kept
-     * deliberately smaller than the initial {@code maxIters} so a
-     * runaway loop can't repeatedly buy a full budget.
-     */
-    private static final int JUDGE_EXTENSION_ITERS = 6;
-
     private final ThinkProcessService thinkProcessService;
     private final ArthurProperties arthurProperties;
     private final RecipeLoader recipeLoader;
@@ -856,16 +840,20 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             // {@code JUDGE_EXTENSION_ITERS} iterations each. Plan-mode
             // turns are skipped because the engine's own multi-turn
             // continuation already handles their iteration overrun.
-            int extensionsLeft = JUDGE_MAX_EXTENSIONS;
+            int extensionsLeft = de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeHelpers
+                    .JUDGE_MAX_EXTENSIONS;
             while ("max-iters".equals(loopResult.fallbackReason())
-                    && !isPlanModeYieldCase(process, loopResult)) {
+                    && !de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeHelpers
+                            .isPlanModeYieldCase(process, loopResult)) {
                 de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeService.JudgeRequest req =
                         new de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeService.JudgeRequest(
                                 process,
-                                lastUserGoal(inbox, process),
+                                de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeHelpers
+                                        .lastUserGoal(inbox, process),
                                 loopResult.fallbackText() == null
                                         ? "" : loopResult.fallbackText(),
-                                extractToolCallNames(messages),
+                                de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeHelpers
+                                        .extractToolCallNames(messages),
                                 loopResult.toolInvocations(),
                                 extensionsLeft);
                 de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeService.Judgment j =
@@ -873,13 +861,17 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                 if (j.extend() && extensionsLeft > 0) {
                     log.info("Arthur.turn id='{}' judge extends action loop "
                                     + "(+{} iters, {} extension(s) left after this, reason='{}')",
-                            process.getId(), JUDGE_EXTENSION_ITERS,
+                            process.getId(),
+                            de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeHelpers
+                                    .JUDGE_EXTENSION_ITERS,
                             extensionsLeft - 1, j.reason());
                     extensionsLeft--;
                     loopResult = runStructuredActionLoop(
                             aiChat, ContextToolsApi::primaryAsLc4j,
-                            messages, ctx, process, JUDGE_EXTENSION_ITERS, modelAlias,
-                            modelInfo.actionLoopCorrections());
+                            messages, ctx, process,
+                            de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeHelpers
+                                    .JUDGE_EXTENSION_ITERS,
+                            modelAlias, modelInfo.actionLoopCorrections());
                     continue;
                 }
                 log.info("Arthur.turn id='{}' judge synthesises "
@@ -3076,78 +3068,4 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         return fallback;
     }
 
-    // ──────────────────── Action-loop judge helpers ────────────────────
-
-    /**
-     * True when a max-iters fallback would be handled by the
-     * plan-mode-yield branch in {@code runTurnFor} (multi-turn
-     * continuation), not by the user-facing fallback. Mirror of the
-     * condition in that branch — kept private here so the judge loop
-     * gates symmetrically.
-     */
-    private static boolean isPlanModeYieldCase(
-            ThinkProcessDocument process, ActionLoopResult loopResult) {
-        if (!"max-iters".equals(loopResult.fallbackReason())) {
-            return false;
-        }
-        if (!loopResult.madeProgress()) {
-            return false;
-        }
-        de.mhus.vance.api.thinkprocess.ProcessMode mode = process.getMode();
-        return mode == de.mhus.vance.api.thinkprocess.ProcessMode.EXECUTING
-                || mode == de.mhus.vance.api.thinkprocess.ProcessMode.EXPLORING
-                || mode == de.mhus.vance.api.thinkprocess.ProcessMode.PLANNING;
-    }
-
-    /**
-     * Most-recent user-chat-input text from the current turn's inbox.
-     * Falls back to {@code process.getGoal()} when the turn was
-     * triggered by a non-UCI event (worker reply, scheduler, …) so the
-     * judge still has SOMETHING to anchor its decision on. Returns
-     * empty string rather than null — the recipe template doesn't
-     * need to handle absent vars.
-     */
-    private static String lastUserGoal(
-            List<SteerMessage> inbox, ThinkProcessDocument process) {
-        for (int i = inbox.size() - 1; i >= 0; i--) {
-            SteerMessage m = inbox.get(i);
-            if (m instanceof SteerMessage.UserChatInput uci
-                    && uci.content() != null
-                    && !uci.content().isBlank()) {
-                return uci.content().trim();
-            }
-        }
-        String goal = process.getGoal();
-        return goal == null ? "" : goal.trim();
-    }
-
-    /**
-     * Walk the per-turn message list and pull out the names (and a
-     * short arg preview) of every tool the LLM called this turn — the
-     * judge uses this list to spot "called the same fetch three times"
-     * style loops. Limited to {@value #JUDGE_TOOLS_USED_MAX} entries
-     * to keep the prompt cheap; older calls drop off the front.
-     */
-    private static List<String> extractToolCallNames(List<ChatMessage> messages) {
-        java.util.ArrayList<String> out = new java.util.ArrayList<>();
-        for (ChatMessage m : messages) {
-            if (m instanceof dev.langchain4j.data.message.AiMessage am
-                    && am.hasToolExecutionRequests()) {
-                for (dev.langchain4j.agent.tool.ToolExecutionRequest call
-                        : am.toolExecutionRequests()) {
-                    String args = call.arguments();
-                    if (args != null && args.length() > 80) {
-                        args = args.substring(0, 80) + "…";
-                    }
-                    out.add(call.name() + "(" + (args == null ? "" : args) + ")");
-                }
-            }
-        }
-        if (out.size() > JUDGE_TOOLS_USED_MAX) {
-            out.subList(0, out.size() - JUDGE_TOOLS_USED_MAX).clear();
-        }
-        return out;
-    }
-
-    private static final int JUDGE_TOOLS_USED_MAX = 30;
 }

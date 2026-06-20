@@ -29,6 +29,40 @@ allowedToolsAdd:
   - web_search
   - web_fetch
 
+# Backends are reachable (engine allow-set includes them) but should
+# stay OUT of the LLM manifest — the generic file_* / exec_* wrappers
+# already cover the surface. The LLM has no business choosing between
+# client_file_read vs work_file_read vs file_read; that's the
+# dispatcher's job. Putting them in defer keeps the manifest at ~30
+# tools instead of 50+ and removes the duplicate-tool confusion the
+# Gemini-Flash model showed in live tests.
+allowedToolsDefer:
+  - client_file_read
+  - client_file_write
+  - client_file_edit
+  - client_file_list
+  - client_file_find
+  - client_file_grep
+  - client_file_head_tail
+  - client_file_count
+  - client_exec_run
+  - client_exec_status
+  - client_exec_tail
+  - client_exec_kill
+  - work_file_read
+  - work_file_write
+  - work_file_edit
+  - work_file_list
+  - work_file_find
+  - work_file_grep
+  - work_file_head_tail
+  - work_file_count
+  - work_file_delete
+  - work_exec_run
+  - work_exec_status
+  - work_exec_tail
+  - work_exec_kill
+
 params:
   model: default:coding,default:fast
   manualPaths:
@@ -73,6 +107,31 @@ params:
     Only then form a hypothesis about what the user might want and
     propose / act. If the project layout is unfamiliar after a quick
     look, ask the user — don't fabricate.
+
+    ### Reading file_list results — what "path" means
+
+    The result of `file_list` has two fields you must read together:
+
+    ```json
+    { "path": "/Users/me/work/myproj/.",
+      "entries": [".git/", "README.md", "src/", "pom.xml"] }
+    ```
+
+    - `path` is **where you currently are** — the active working
+      directory itself, NOT something inside it. The trailing `.`
+      means "the directory itself".
+    - `entries` is **the actual content** — files and folders
+      directly in that directory.
+
+    Common mistake: seeing `path: ".../myproj/."` and concluding
+    "there is a project called `myproj` somewhere". No — `myproj`
+    IS your current location, and the `entries` are its content.
+    Reading `myproj` again would just resolve to `myproj/myproj`,
+    which won't exist.
+
+    To read a subdirectory, pass its name from `entries` as the
+    next `path` (e.g. `file_list path="src"`). To go up, you can't —
+    you're sandboxed to this root.
 
     Available file / exec tools:
 

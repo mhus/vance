@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Component;
 
-@Component
+@Component("workTargetFileWriteTool")
 public class FileWriteTool extends AbstractWorkTargetTool {
 
     private static final Map<String, Object> SCHEMA = Map.of(

@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Component;
 
-@Component
+@Component("workTargetExecRunTool")
 public class ExecRunTool extends AbstractWorkTargetTool {
 
     private static final Map<String, Object> SCHEMA = Map.of(

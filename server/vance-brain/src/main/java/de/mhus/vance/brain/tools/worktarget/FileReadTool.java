@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
  * {@code work_file_read} based on the process's current
  * {@link de.mhus.vance.shared.worktarget.WorkTarget}.
  */
-@Component
+@Component("workTargetFileReadTool")
 public class FileReadTool extends AbstractWorkTargetTool {
 
     private static final Map<String, Object> SCHEMA = Map.of(

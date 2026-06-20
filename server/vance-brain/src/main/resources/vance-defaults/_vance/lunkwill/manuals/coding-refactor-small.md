@@ -5,7 +5,7 @@ one file restructure, or pulling a helper out. Anything broader is
 "large" and probably needs Marvin first.
 
 1. **Read the call sites first.** Before renaming/moving anything,
-   use `client_file_grep` to count usages. A "small" refactor with
+   use `file_grep` to count usages. A "small" refactor with
    200 call sites becomes large — re-evaluate.
 2. **Plan the edit set** mentally before touching the first file.
    List the files you'll touch. If the list grows past ~5, stop —

@@ -1,6 +1,6 @@
 # Workflow: add a test
 
-1. **Find where similar tests live.** `client_file_find` for the
+1. **Find where similar tests live.** `file_find` for the
    nearest `*Test.java` / `test_*.py` / `*.spec.ts` next to the code
    under test. Match the project's convention — Vance has no global
    "tests next to source" rule; per-language norms apply.
@@ -16,7 +16,7 @@
 5. **Avoid mocks for things you own.** Mock external boundaries
    (HTTP, DB, filesystem) only. Mocking internal classes makes
    tests brittle and lets implementation drift go unnoticed.
-6. **Run the test** via `client_exec_run`. New tests must pass
+6. **Run the test** via `exec_run`. New tests must pass
    from the first run — a test that "passes" by chance has no
    value. Read the output, not just the exit code.
 

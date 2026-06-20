@@ -1,74 +1,69 @@
-# Coding-Worker on the Lunkwill engine. Reads and edits files in the
-# user's local working directory through the Foot client, runs build /
-# test commands via client_exec_run, spawns Marvin for hard plan
-# decisions. The first validating recipe for Lunkwill — see
-# planning/coding-recipe.md and planning/lunkwill-engine.md.
+# Coding-Worker on the Lunkwill engine. Reads and edits files at the
+# active work target (the user's local working directory via Foot CLI
+# when one is connected, otherwise a Brain-server workspace RootDir),
+# runs build / test commands via exec_run, spawns Marvin for hard
+# plan decisions.
+#
+# Generic file_* / exec_* tools come for free via Lunkwill's
+# engine-default set (BaseEngineTools.WORK_TARGET) — no allowedToolsAdd
+# needed for the file/exec surface. The recipe just picks the default
+# work target per profile.
+#
+# See planning/coding-recipe.md and planning/work-target-and-tool-rename.md.
 
 description: |
-  Coding worker. Reads and edits files in the Foot client's working
-  directory, runs build/test commands, spawns deep-think workers for
-  strategy questions. Use for: bug fixes, adding tests, small
-  refactors, code reviews with edits. Not for large architecture
-  decisions — delegate those to Marvin.
+  Coding worker. Reads and edits files at the active work target,
+  runs build/test commands, spawns deep-think workers for strategy
+  questions. Use for: bug fixes, adding tests, small refactors, code
+  reviews with edits. Not for large architecture decisions — delegate
+  those to Marvin.
 
 engine: lunkwill
-
-# Domain-specific tools — added on top of Lunkwill's engine baseline
-# (discovery + sub-worker spawn + notify + basics, see
-# LunkwillEngine.ENGINE_DEFAULT_TOOLS). The resolver computes the
-# effective set as (engineDefault ∪ allowedToolsAdd). Keeping this
-# list explicit avoids leaking the full tenant tool buffet (IntelliJ
-# MCP, Slack/Gmail/Jira/Drive/Calendar REST packs, image/kanban
-# tools, …) which blows the per-turn token budget past 30k for no
-# benefit to a coding worker.
-allowedToolsAdd:
-  # File reading (Foot-CLI workdir-bound)
-  - client_file_read
-  - client_file_head_tail
-  - client_file_list
-  - client_file_find
-  - client_file_grep
-  - client_file_count
-  # File mutation (Foot-CLI workdir-bound)
-  - client_file_edit
-  - client_file_write
-  # Shell (Foot-CLI workdir-bound)
-  - client_exec_run
-  - client_exec_status
-  - client_exec_tail
-  - client_exec_kill
 
 params:
   model: default:coding,default:fast
   manualPaths:
     - lunkwill/manuals/   # engine-intrinsic + coding-specific manuals
     - manuals/            # global Vance manuals as fallback
+  # Default work-target when the LLM doesn't switch explicitly.
+  # Default profile (web / API) targets the Brain-server workspace
+  # RootDir. The 'foot' profile below overrides to CLIENT so a user
+  # running 'vance-foot chat' edits their own files.
+  workTarget:
+    kind: WORK
   promptPrefix: |
     ## Task domain — coding
 
-    You are running under the `coding` recipe. You operate on files in
-    the user's local working directory through the Foot client. Foot
-    exposes:
+    You are running under the `coding` recipe. Files and shell calls
+    go through the generic `file_*` and `exec_*` tools, which
+    dispatch to the active **work target**:
 
-    - File reading: `client_file_read`, `client_file_head_tail`,
-      `client_file_find`, `client_file_grep`, `client_file_list`,
-      `client_file_count`.
-    - File mutation: `client_file_edit`, `client_file_write`.
-    - Shell: `client_exec_run`, `client_exec_tail`, `client_exec_status`,
-      `client_exec_kill`.
+    - **CLIENT**: the user's local host via Foot CLI (their files,
+      their shell, their working dir).
+    - **WORK**: a workspace RootDir on the Brain server (ephemeral —
+      good for build scratch, generated artefacts, isolated experiments).
 
-    All file paths are relative to the user's `--workdir`. You cannot
-    reach files outside that directory.
+    Call `work_target_get` to see which one is active right now and
+    `work_target_set(kind=CLIENT|WORK, dirName=...)` to switch. The
+    same `file_read` / `file_edit` / `exec_run` calls work in both;
+    only the destination changes.
+
+    Available file / exec tools:
+
+    - File reading: `file_read`, `file_head_tail`, `file_find`,
+      `file_grep`, `file_list`, `file_count`.
+    - File mutation: `file_edit`, `file_write`.
+    - Shell: `exec_run`, `exec_status`, `exec_tail`, `exec_kill`.
 
     ## Operating principles
 
-    1. **Read before edit.** Always `client_file_read` a file before
-       `client_file_edit`. Never edit blind.
+    1. **Read before edit.** Always `file_read` a file before
+       `file_edit`. Never edit blind.
     2. **One logical change per edit.** If a refactor touches five
        files, make five sequential edit calls — don't bundle.
     3. **Verify after non-trivial change.** Run the relevant tests
-       (`client_exec_run` with the project's test command) or at
-       least a syntax check before declaring done.
+       (`exec_run` with the project's test command) or at least a
+       syntax check before declaring done.
     4. **Skill-load on demand.** Before claiming "I cannot do X",
        call `manual_read('coding-X')` — check whether a workflow
        manual exists.
@@ -84,8 +79,8 @@ params:
     ## Anti-patterns
 
     - Never edit a file without reading it first.
-    - Never run `client_exec_run` with `rm -rf`, `sudo`, or commands
-      that touch paths outside the project root without explicit user
+    - Never run `exec_run` with `rm -rf`, `sudo`, or commands that
+      touch paths outside the project root without explicit user
       approval.
     - Never assume a test passes — always run it and read the exit
       code and tail.
@@ -99,6 +94,15 @@ params:
     - The relevant tests (or syntax check) pass.
     - Your final reply summarises what changed and which files were
       touched.
+
+profiles:
+  # Foot CLI connected — operate on the user's local files by
+  # default. Workspace RootDirs stay reachable via
+  # work_target_set(kind=WORK, dirName=...).
+  foot:
+    params:
+      workTarget:
+        kind: CLIENT
 
 tags:
   - worker

@@ -2,12 +2,12 @@
 
 Standard sequence when the user reports a bug:
 
-1. **Reproduce.** Run the failing case via `client_exec_run` first.
+1. **Reproduce.** Run the failing case via `exec_run` first.
    If you can't reproduce, ask the user for the exact steps before
    guessing. A bug you can't reproduce is a bug you can't verify
    you fixed.
-2. **Localise.** Use `client_file_grep` for keywords from the error
-   message or stack trace. Use `client_file_find` to locate the
+2. **Localise.** Use `file_grep` for keywords from the error
+   message or stack trace. Use `file_find` to locate the
    relevant module. Read the surrounding code before forming a
    hypothesis.
 3. **Write a failing test first** when the codebase has tests for

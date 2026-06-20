@@ -2,13 +2,13 @@
 
 When the user asks "how does X work?" or "explain Y":
 
-1. **Find the entry point** with `client_file_grep`. Look for `main`,
+1. **Find the entry point** with `file_grep`. Look for `main`,
    `Application`, `index`, `app`, or whatever idiom the language
    uses. For services: the HTTP route registration. For CLIs: the
    command dispatcher.
-2. **Sketch the layout** with `client_file_list` / `client_file_find`.
+2. **Sketch the layout** with `file_list` / `file_find`.
    You want package/module structure before diving into one file.
-3. **Read the README / docs first.** `client_file_read` on
+3. **Read the README / docs first.** `file_read` on
    `README*`, `docs/`, `CLAUDE.md`, `AGENTS.md`. Project authors
    write the high-level model there; reading code first means
    re-deriving things they already wrote down.

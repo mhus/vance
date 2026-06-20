@@ -1,15 +1,15 @@
 # Workflow: before committing
 
-You can run git via `client_exec_run`. The user typically runs the
+You can run git via `exec_run`. The user typically runs the
 commit themselves — your job is to make the diff committable.
 
 ## Pre-commit checklist
 
-1. **Check project conventions.** `client_file_read` on `CLAUDE.md`,
+1. **Check project conventions.** `file_read` on `CLAUDE.md`,
    `AGENTS.md`, or `.github/CONTRIBUTING.md` if present. They
    usually pin commit-message format and "do not commit" rules
    (`-A`, secrets, lockfiles, …).
-2. **Review the diff.** `client_exec_run git status` then
+2. **Review the diff.** `exec_run git status` then
    `git diff --stat`. Look for files you didn't expect to touch
    (lockfiles regenerated, .DS_Store, .env). Unstage those.
 3. **Run tests once more.** A pre-commit hook may run them, but

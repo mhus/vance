@@ -335,6 +335,11 @@ class LunkwillEngineSkeletonTest {
         assertThat(set).contains("process_create");
         // User-facing signal
         assertThat(set).contains("vance_notify");
+        // Generic work-target file / exec wrappers + work_target_get/set
+        assertThat(set).contains("file_read", "file_write", "file_edit",
+                "file_list", "file_find", "file_grep", "file_head_tail",
+                "file_count", "exec_run", "exec_status", "exec_tail",
+                "exec_kill", "work_target_get", "work_target_set");
     }
 
     // ──────────────────── ScriptedStreamingChatModel ─────────────────────

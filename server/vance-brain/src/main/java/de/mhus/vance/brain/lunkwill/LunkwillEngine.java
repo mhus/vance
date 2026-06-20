@@ -105,24 +105,33 @@ public class LunkwillEngine implements ThinkEngine {
      * restriction" and the LLM would see the full tenant tool buffet
      * (~130 schemas, ~35k input tokens) on every turn.
      */
-    private static final Set<String> ENGINE_DEFAULT_TOOLS = Set.of(
-            // discovery / introspection
-            "find_tools",
-            "describe_tool",
-            "how_do_i",
-            "manual_read",
-            "manual_list",
-            "recipe_describe",
-            "tool_result_read",
-            // sub-worker spawn — Lunkwill's escape hatch when a task
-            // needs strategic planning or different skill set
-            "process_create",
-            "process_status",
-            // user-facing signals
-            "vance_notify",
-            // basics
-            "current_time",
-            "whoami");
+    private static final Set<String> ENGINE_DEFAULT_TOOLS;
+    static {
+        java.util.LinkedHashSet<String> base = new java.util.LinkedHashSet<>();
+        // discovery / introspection
+        base.add("find_tools");
+        base.add("describe_tool");
+        base.add("how_do_i");
+        base.add("manual_read");
+        base.add("manual_list");
+        base.add("recipe_describe");
+        base.add("tool_result_read");
+        // sub-worker spawn — Lunkwill's escape hatch when a task
+        // needs strategic planning or different skill set
+        base.add("process_create");
+        base.add("process_status");
+        // user-facing signals
+        base.add("vance_notify");
+        // basics
+        base.add("current_time");
+        base.add("whoami");
+        // Generic work-target file/exec wrappers + work_target_get/set.
+        // The 12 file_*/exec_* tools dispatch to client_* or work_*
+        // backends per the per-process WorkTarget; see
+        // de.mhus.vance.brain.tools.worktarget.BaseEngineTools.
+        base.addAll(de.mhus.vance.brain.tools.worktarget.BaseEngineTools.WORK_TARGET);
+        ENGINE_DEFAULT_TOOLS = java.util.Collections.unmodifiableSet(base);
+    }
 
     /**
      * Document cascade path for the engine-default system prompt.

@@ -1,3 +1,9 @@
+---
+triggers: tests, testing, unit tests, run tests, pytest, junit, mvn test, npm test
+summary: Detect the project's test command from marker files and run it.
+requires-tools: exec_run, file_read
+---
+
 # Workflow: run the project's tests
 
 You don't always know the test command. Detect it.

@@ -1,3 +1,9 @@
+---
+triggers: bug, bugfix, error, fix, reproduce, fehler, defect, regression
+summary: Reproduce → localise → write failing test → apply fix → verify.
+requires-tools: file_read, file_edit, exec_run, file_grep
+---
+
 # Workflow: bug fix
 
 Standard sequence when the user reports a bug:

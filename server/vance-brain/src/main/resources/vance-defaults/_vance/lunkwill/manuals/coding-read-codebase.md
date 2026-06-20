@@ -1,3 +1,9 @@
+---
+triggers: code verstehen, explain code, architektur, codebase, was macht, how does this work
+summary: Entry-point → layout → README → follow data; ignore the rest.
+requires-tools: file_read, file_grep, file_find, file_list
+---
+
 # Workflow: understand a codebase
 
 When the user asks "how does X work?" or "explain Y":

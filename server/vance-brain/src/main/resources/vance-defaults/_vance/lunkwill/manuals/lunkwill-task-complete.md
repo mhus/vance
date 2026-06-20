@@ -1,3 +1,8 @@
+---
+triggers: task complete, done, finished, terminate, _terminate signal
+summary: When to call task_complete vs ending naturally; tool _terminate convention.
+---
+
 # When and how to signal task-complete
 
 The Lunkwill loop ends naturally when you stop calling tools — your

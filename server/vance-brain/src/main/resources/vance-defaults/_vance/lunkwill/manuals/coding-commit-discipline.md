@@ -1,3 +1,9 @@
+---
+triggers: commit, git, commit message, einchecken, push, before merge
+summary: Read CLAUDE.md / AGENTS.md conventions, check diff, no -A, no --no-verify.
+requires-tools: file_read, exec_run
+---
+
 # Workflow: before committing
 
 You can run git via `exec_run`. The user typically runs the

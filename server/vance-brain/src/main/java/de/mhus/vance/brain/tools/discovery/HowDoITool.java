@@ -3,7 +3,9 @@ package de.mhus.vance.brain.tools.discovery;
 import de.mhus.vance.brain.ai.light.LightLlmException;
 import de.mhus.vance.brain.discovery.DiscoveryResult;
 import de.mhus.vance.brain.discovery.DiscoveryService;
+import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolBus;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.ArrayList;
@@ -99,6 +101,30 @@ public class HowDoITool implements Tool {
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
+        return doInvoke(params, ctx, null);
+    }
+
+    @Override
+    public Map<String, Object> invoke(
+            Map<String, Object> params, ToolInvocationContext ctx, ToolBus bus) {
+        // The discovery filter wants the calling engine's allow-set so
+        // suggestions for non-callable tools / manuals don't surface.
+        // The bus is a ContextToolsApi in the brain runtime; defensive
+        // cast for tests / foot-side that pass NOOP.
+        java.util.Set<String> allowedTools = null;
+        if (bus instanceof ContextToolsApi cta) {
+            java.util.Set<String> snapshot = cta.allowed();
+            if (snapshot != null && !snapshot.isEmpty()) {
+                allowedTools = snapshot;
+            }
+        }
+        return doInvoke(params, ctx, allowedTools);
+    }
+
+    private Map<String, Object> doInvoke(
+            Map<String, Object> params,
+            ToolInvocationContext ctx,
+            @org.jspecify.annotations.Nullable Set<String> allowedTools) {
         if (ctx == null || ctx.tenantId() == null || ctx.tenantId().isBlank()) {
             throw new ToolException("how_do_i requires a tenant scope");
         }
@@ -114,8 +140,16 @@ public class HowDoITool implements Tool {
 
         DiscoveryResult result;
         try {
-            result = discoveryService.discover(
-                    intent, ctx.tenantId(), ctx.projectId(), ctx.processId());
+            // Route through the 4-arg overload when no allow-set is
+            // available (foot-side / tests with bus = NOOP) so the
+            // existing call signature stays the documented entry
+            // point.
+            result = allowedTools == null
+                    ? discoveryService.discover(
+                            intent, ctx.tenantId(), ctx.projectId(), ctx.processId())
+                    : discoveryService.discover(
+                            intent, ctx.tenantId(), ctx.projectId(), ctx.processId(),
+                            allowedTools);
         } catch (LightLlmException e) {
             // Surface light-LLM errors as a tool exception so the
             // caller can fall back to manual_list / manual_read.

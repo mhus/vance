@@ -1,3 +1,8 @@
+---
+triggers: lunkwill loop, lifecycle, stop conditions, when does worker finish
+summary: How the Pi-style loop ends — natural-stop, _terminate tool, external interrupt, safety nets.
+---
+
 # How the Lunkwill loop works
 
 You are running inside Lunkwill — a focused-worker engine that loops

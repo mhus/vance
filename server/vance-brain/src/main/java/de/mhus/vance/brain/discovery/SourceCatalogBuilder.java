@@ -13,8 +13,10 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -79,16 +81,21 @@ public class SourceCatalogBuilder {
      */
     public CatalogSnapshot build(String tenantId, @Nullable String projectId) {
         StringBuilder md = new StringBuilder(8192);
-        appendManuals(md, tenantId, projectId);
-        appendSkills(md, tenantId, projectId);
-        appendTools(md);
+        Map<String, CatalogSnapshot.EntrySpec> entries = new LinkedHashMap<>();
+        appendManuals(md, entries, tenantId, projectId);
+        appendSkills(md, entries, tenantId, projectId);
+        appendTools(md, entries);
         String text = md.toString();
-        return new CatalogSnapshot(text, sha256(text));
+        return new CatalogSnapshot(text, sha256(text), entries);
     }
 
     // ──────────────────── Manuals ────────────────────
 
-    private void appendManuals(StringBuilder md, String tenantId, @Nullable String projectId) {
+    private void appendManuals(
+            StringBuilder md,
+            Map<String, CatalogSnapshot.EntrySpec> metaOut,
+            String tenantId,
+            @Nullable String projectId) {
         Map<String, LookupResult> hits = documentService.listByPrefixCascade(
                 tenantId, projectId == null ? "" : projectId, MANUALS_PREFIX);
         if (hits.isEmpty()) return;
@@ -105,9 +112,28 @@ public class SourceCatalogBuilder {
             if (name.isBlank()) continue;
             String content = e.getValue().content();
             if (content == null || content.isBlank()) continue;
+            FrontMatter fm = parseFrontMatter(content);
             md.append("### ").append(name).append("\n\n")
-                    .append(renderManualCard(content)).append("\n");
+                    .append(renderManualCard(fm)).append("\n");
+            metaOut.put(name, new CatalogSnapshot.EntrySpec(
+                    "manual", parseRequiresTools(fm.values.get("requires-tools"))));
         }
+    }
+
+    /**
+     * Parse the {@code requires-tools} header value — a comma-separated
+     * list of tool names. Empty / null / missing → empty set (no
+     * requirement). Used by {@link CatalogFilter} to drop manuals whose
+     * required tools aren't in the calling engine's allow-set.
+     */
+    static Set<String> parseRequiresTools(@Nullable Object raw) {
+        if (!(raw instanceof String s) || s.isBlank()) return Set.of();
+        Set<String> out = new LinkedHashSet<>();
+        for (String part : s.split(",")) {
+            String t = part.trim();
+            if (!t.isEmpty()) out.add(t);
+        }
+        return out;
     }
 
     /**
@@ -127,8 +153,10 @@ public class SourceCatalogBuilder {
      * </ul>
      */
     static String renderManualCard(String content) {
-        FrontMatter fm = parseFrontMatter(content);
+        return renderManualCard(parseFrontMatter(content));
+    }
 
+    static String renderManualCard(FrontMatter fm) {
         var h1Matcher = H1_LINE.matcher(fm.body);
         String title = h1Matcher.find() ? h1Matcher.group("title").trim() : "";
 
@@ -272,7 +300,11 @@ public class SourceCatalogBuilder {
 
     // ──────────────────── Skills ────────────────────
 
-    private void appendSkills(StringBuilder md, String tenantId, @Nullable String projectId) {
+    private void appendSkills(
+            StringBuilder md,
+            Map<String, CatalogSnapshot.EntrySpec> metaOut,
+            String tenantId,
+            @Nullable String projectId) {
         SkillScopeContext scope = SkillScopeContext.of(tenantId, null, projectId);
         List<ResolvedSkill> available;
         try {
@@ -303,6 +335,9 @@ public class SourceCatalogBuilder {
             if (!triggers.isBlank()) {
                 md.append("**Triggers:** ").append(triggers).append("\n\n");
             }
+            // Skills have their own activation mechanism — no
+            // engine-allow-set requirement is enforced here.
+            metaOut.put(s.name(), new CatalogSnapshot.EntrySpec("skill", Set.of()));
         }
     }
 
@@ -320,7 +355,8 @@ public class SourceCatalogBuilder {
 
     // ──────────────────── Tools ────────────────────
 
-    private void appendTools(StringBuilder md) {
+    private void appendTools(
+            StringBuilder md, Map<String, CatalogSnapshot.EntrySpec> metaOut) {
         if (tools == null || tools.isEmpty()) return;
         List<Tool> primary = new ArrayList<>();
         for (Tool t : tools) {
@@ -338,6 +374,10 @@ public class SourceCatalogBuilder {
             if (!description.isBlank()) {
                 md.append(description.trim()).append("\n\n");
             }
+            // A tool entry trivially "requires" itself — CatalogFilter
+            // drops it when the engine's allow-set doesn't carry the name.
+            metaOut.put(t.name(),
+                    new CatalogSnapshot.EntrySpec("tool", Set.of(t.name())));
         }
     }
 

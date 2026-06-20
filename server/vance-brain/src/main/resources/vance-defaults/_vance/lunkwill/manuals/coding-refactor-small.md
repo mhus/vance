@@ -1,3 +1,9 @@
+---
+triggers: refactor, rename, umbenennen, extract, kleine änderung
+summary: Read call sites first, plan edit set, no drive-by changes.
+requires-tools: file_read, file_edit, file_grep, exec_run
+---
+
 # Workflow: small refactor
 
 Rule of thumb: "small" = one symbol rename, one method extraction,

@@ -1,3 +1,9 @@
+---
+triggers: spawn, sub worker, delegate, process_create, marvin, planning
+summary: When to spawn a sub-worker (Marvin / research / long-running) vs do it yourself.
+requires-tools: process_create
+---
+
 # When to spawn another process
 
 You are a focused worker — keep your loop tight. Spawn a sub-process

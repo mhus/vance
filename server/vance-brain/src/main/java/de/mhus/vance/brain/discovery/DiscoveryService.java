@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -108,7 +109,48 @@ public class DiscoveryService {
         if (tenantId == null || tenantId.isBlank()) {
             throw new IllegalArgumentException("tenantId is required");
         }
-        String catalog = catalogService.renderForTenant(tenantId, projectId);
+        return discoverWithCatalog(
+                intent, tenantId, projectId, processId,
+                catalogService.renderForTenant(tenantId, projectId));
+    }
+
+    /**
+     * Allow-set-aware variant. {@code allowedTools} is the calling
+     * engine's tool whitelist (typically {@code ContextToolsApi.allowed()}).
+     * The source catalog is filtered against this set via
+     * {@link CatalogFilter} before being passed to the LLM — tools
+     * the engine cannot invoke and manuals whose {@code requires-tools}
+     * header isn't fully satisfied are dropped. {@code null} or empty
+     * means "no restriction" (full catalog).
+     */
+    public DiscoveryResult discover(
+            String intent,
+            String tenantId,
+            @Nullable String projectId,
+            @Nullable String processId,
+            @Nullable Set<String> allowedTools) {
+        if (intent == null || intent.isBlank()) {
+            throw new IllegalArgumentException("intent is required");
+        }
+        if (tenantId == null || tenantId.isBlank()) {
+            throw new IllegalArgumentException("tenantId is required");
+        }
+        String catalog;
+        if (allowedTools == null || allowedTools.isEmpty()) {
+            catalog = catalogService.renderForTenant(tenantId, projectId);
+        } else {
+            CatalogSnapshot snapshot = catalogService.snapshotFor(tenantId, projectId);
+            catalog = CatalogFilter.filter(snapshot, allowedTools);
+        }
+        return discoverWithCatalog(intent, tenantId, projectId, processId, catalog);
+    }
+
+    private DiscoveryResult discoverWithCatalog(
+            String intent,
+            String tenantId,
+            @Nullable String projectId,
+            @Nullable String processId,
+            String catalog) {
         List<String> badPicks = new ArrayList<>();
 
         for (int attempt = 1; attempt <= MAX_DISCOVERY_ATTEMPTS; attempt++) {

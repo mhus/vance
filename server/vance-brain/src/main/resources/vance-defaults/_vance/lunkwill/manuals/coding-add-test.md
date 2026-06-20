@@ -1,3 +1,9 @@
+---
+triggers: test, schreibe test, add test, write test, junit, pytest, spec
+summary: Find a sibling test file, match its style, single-behaviour AAA.
+requires-tools: file_read, file_write, file_find, exec_run
+---
+
 # Workflow: add a test
 
 1. **Find where similar tests live.** `file_find` for the

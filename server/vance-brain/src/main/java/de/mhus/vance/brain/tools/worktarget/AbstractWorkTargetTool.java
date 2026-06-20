@@ -34,9 +34,9 @@ abstract class AbstractWorkTargetTool implements Tool {
 
     @Override
     public final Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        throw new de.mhus.vance.toolpack.ToolException(
-                name() + " requires the sibling-call ToolBus surface — "
-                        + "engine must use the 3-arg Tool.invoke overload.");
+        // 2-arg path (Agrajag probes, internal callers). The dispatcher
+        // falls back to ToolDispatcher when no bus is available.
+        return dispatcher.dispatch(ctx, null, clientBackend(), workBackend(), params);
     }
 
     @Override

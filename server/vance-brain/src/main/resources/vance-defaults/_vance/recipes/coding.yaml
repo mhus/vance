@@ -52,10 +52,10 @@ params:
     - **WORK**: a workspace RootDir on the Brain server (ephemeral —
       good for build scratch, generated artefacts, isolated experiments).
 
-    Call `work_target_get` to see which one is active right now and
-    `work_target_set(kind=CLIENT|WORK, dirName=...)` to switch. The
-    same `file_read` / `file_edit` / `exec_run` calls work in both;
-    only the destination changes.
+    The backend is picked from the recipe profile and stays stable
+    for the whole session — you don't need to inspect or switch it.
+    Just call `file_read` / `file_edit` / `exec_run` and they hit the
+    right side automatically.
 
     ## Start of every task — orient yourself
 
@@ -63,10 +63,8 @@ params:
     system, or even the working directory — they expect you to look
     around. Before suggesting anything substantial:
 
-    1. Call `work_target_get` to learn which backend is active and
-       what dirNames / foot-connection are available.
-    2. Call `file_list` (path=`.`) to see the project root.
-    3. If a `README.md`, `CLAUDE.md`, `AGENTS.md`, `package.json`,
+    1. Call `file_list` (path=`.`) to see the project root.
+    2. If a `README.md`, `CLAUDE.md`, `AGENTS.md`, `package.json`,
        `pom.xml`, `Cargo.toml`, `pyproject.toml`, or similar marker
        is visible, `file_read` it. That's the project's own
        "what am I" description and saves you (and the user) a lot

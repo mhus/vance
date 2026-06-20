@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.tools.worktarget;
 
+import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.shared.worktarget.WorkTarget;
@@ -11,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 /**
@@ -23,11 +25,20 @@ import org.springframework.stereotype.Service;
  * wrappers stay thin and consistent.
  */
 @Service
-@RequiredArgsConstructor
 public class WorkTargetDispatcher {
 
     private final WorkTargetService workTargetService;
     private final ThinkProcessService thinkProcessService;
+    private final ToolDispatcher toolDispatcher;
+
+    public WorkTargetDispatcher(
+            WorkTargetService workTargetService,
+            ThinkProcessService thinkProcessService,
+            @Lazy ToolDispatcher toolDispatcher) {
+        this.workTargetService = workTargetService;
+        this.thinkProcessService = thinkProcessService;
+        this.toolDispatcher = toolDispatcher;
+    }
 
     /**
      * Dispatches a generic call to the right backend based on the
@@ -74,9 +85,12 @@ public class WorkTargetDispatcher {
             backendName = workName;
         }
         if (bus == null) {
-            throw new ToolException(
-                    "Generic " + clientName + "/" + workName + " dispatch needs a "
-                            + "ToolBus (use the 3-arg Tool.invoke overload).");
+            // 2-arg invoke path (typical: Agrajag-probe, internal
+            // calls that don't carry an engine surface). Go straight
+            // through the ToolDispatcher; the backend tool is gated
+            // by its own permission checks, no allow-set filter
+            // applies here.
+            return toolDispatcher.invoke(backendName, p, ctx);
         }
         return bus.invoke(backendName, p);
     }

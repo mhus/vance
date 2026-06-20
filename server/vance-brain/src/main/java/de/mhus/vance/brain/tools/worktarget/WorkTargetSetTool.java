@@ -70,7 +70,10 @@ public class WorkTargetSetTool implements Tool {
 
     @Override
     public boolean primary() {
-        return true;
+        // Not primary — the work target normally comes from the recipe
+        // and the LLM doesn't switch live. Reachable via find_tools
+        // when an exotic switch is genuinely needed.
+        return false;
     }
 
     @Override

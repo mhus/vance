@@ -53,7 +53,10 @@ public class WorkTargetGetTool implements Tool {
 
     @Override
     public boolean primary() {
-        return true;
+        // Not primary — the work target is set per-spawn from the
+        // recipe and rarely needs LLM-side inspection. Available via
+        // find_tools / describe_tool when the LLM genuinely needs it.
+        return false;
     }
 
     @Override

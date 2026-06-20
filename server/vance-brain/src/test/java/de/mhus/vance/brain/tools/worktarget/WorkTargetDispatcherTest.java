@@ -42,7 +42,8 @@ class WorkTargetDispatcherTest {
         thinkProcessService = mock(ThinkProcessService.class);
         clientToolRegistry = mock(ClientToolRegistry.class);
         workTargetService = new WorkTargetService(thinkProcessService, clientToolRegistry);
-        dispatcher = new WorkTargetDispatcher(workTargetService, thinkProcessService);
+        dispatcher = new WorkTargetDispatcher(workTargetService, thinkProcessService,
+                mock(de.mhus.vance.brain.tools.ToolDispatcher.class));
         bus = mock(ToolBus.class);
         ctx = mock(ToolInvocationContext.class);
         lenient().when(ctx.processId()).thenReturn(PROC_ID);

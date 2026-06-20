@@ -131,26 +131,52 @@ class LunkwillEngineSkeletonTest {
         lenient().when(thinkProcessService.findById(PROC_ID)).thenReturn(Optional.of(process));
     }
 
-    // ─── Stop path 1: natural stop ──────────────────────────────────────
+    // ─── Stop path 1: natural stop (always IDLE, both modes) ────────────
 
     @Test
-    void naturalStop_emitsAssistantMessageAndClosesDone() {
+    void naturalStop_emitsAssistantMessageAndStaysIdle() {
         chatModel.script(AiMessage.from("Done. Renamed two methods."));
 
         engine.runTurn(process, ctx);
 
         verify(thinkProcessService).updateStatus(PROC_ID, ThinkProcessStatus.RUNNING);
-        verify(thinkProcessService).closeProcess(PROC_ID, CloseReason.DONE);
+        // Context stays alive — exits IDLE, not CLOSED.
+        verify(thinkProcessService).updateStatus(PROC_ID, ThinkProcessStatus.IDLE);
+        verify(thinkProcessService, never()).closeProcess(eq(PROC_ID), any());
         // Final assistant message persisted to chat log.
         verify(chatMessageService).append(any());
         // Reply emitted to parent / progress channel.
         verify(ctx).emitReply(eq("Done. Renamed two methods."), any(), any());
     }
 
-    // ─── Stop path 2: tool-driven terminate ─────────────────────────────
+    // ─── Stop path 1b: empty LLM response (model collapse) ──────────────
 
     @Test
-    void toolTerminate_closesDoneAfterBatch() {
+    void emptyLlmResponse_persistsErrorMessageAndBlocks() {
+        // Gemini-style collapse: no text, no tool calls, finish=STOP.
+        // langchain4j AiMessage rejects null text — empty string
+        // exercises the same engine branch (text().isBlank() == true,
+        // hasToolExecutionRequests() == false).
+        chatModel.script(AiMessage.from(""));
+
+        engine.runTurn(process, ctx);
+
+        // The standard natural-stop path would have silently dropped the turn
+        // (no chat append, status IDLE). The empty-response branch instead:
+        verify(thinkProcessService).updateStatus(PROC_ID, ThinkProcessStatus.BLOCKED);
+        verify(thinkProcessService, never()).closeProcess(eq(PROC_ID), any());
+        // Assistant message persisted so the user sees the worker bailed.
+        verify(chatMessageService).append(any());
+        // Reply emitted so a parent (worker mode) or UI (session-primary)
+        // sees the error too.
+        verify(ctx).emitReply(org.mockito.ArgumentMatchers.contains("leere Antwort"), any(), any());
+    }
+
+    // ─── Stop path 2: tool-driven terminate (mode-aware) ────────────────
+
+    @Test
+    void toolTerminate_workerMode_closesDoneAfterBatch() {
+        process.setParentProcessId("parent-arthur-1");
         ToolExecutionRequest call = ToolExecutionRequest.builder()
                 .id("call-1")
                 .name("task_complete")
@@ -166,7 +192,32 @@ class LunkwillEngineSkeletonTest {
         engine.runTurn(process, ctx);
 
         verify(tools).invoke(eq("task_complete"), any());
+        // Worker: explicit "done forever" → process is closed.
         verify(thinkProcessService).closeProcess(PROC_ID, CloseReason.DONE);
+    }
+
+    @Test
+    void toolTerminate_sessionPrimaryMode_staysIdle() {
+        // No parent → session-primary.
+        process.setParentProcessId(null);
+        ToolExecutionRequest call = ToolExecutionRequest.builder()
+                .id("call-1")
+                .name("task_complete")
+                .arguments("{\"summary\":\"all done\"}")
+                .build();
+        chatModel.script(AiMessage.from("", List.of(call)));
+
+        when(tools.invoke(eq("task_complete"), any()))
+                .thenReturn(java.util.Map.of(
+                        "summary", "all done",
+                        LunkwillTermination.RESULT_TERMINATE_KEY, true));
+
+        engine.runTurn(process, ctx);
+
+        verify(tools).invoke(eq("task_complete"), any());
+        // Session-primary: signal received but session stays open.
+        verify(thinkProcessService, never()).closeProcess(eq(PROC_ID), any());
+        verify(thinkProcessService).updateStatus(PROC_ID, ThinkProcessStatus.IDLE);
     }
 
     // ─── Stop path 3: external interrupt ────────────────────────────────
@@ -254,7 +305,7 @@ class LunkwillEngineSkeletonTest {
     void metadata_returnsExpectedValues() {
         assertThat(engine.name()).isEqualTo("lunkwill");
         assertThat(engine.title()).contains("Lunkwill");
-        assertThat(engine.version()).isEqualTo("0.3.0");
+        assertThat(engine.version()).isEqualTo("0.4.1");
         assertThat(engine.description()).isNotBlank();
     }
 

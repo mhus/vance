@@ -87,7 +87,7 @@ import tools.jackson.databind.ObjectMapper;
 public class LunkwillEngine implements ThinkEngine {
 
     public static final String NAME = "lunkwill";
-    public static final String VERSION = "0.3.0";
+    public static final String VERSION = "0.4.1";
 
     /**
      * Document cascade path for the engine-default system prompt.
@@ -96,6 +96,19 @@ public class LunkwillEngine implements ThinkEngine {
      * {@link SystemPromptComposer}.
      */
     private static final String DEFAULT_PROMPT_PATH = "_vance/prompts/lunkwill-prompt.md";
+
+    /**
+     * Surfaced as the assistant message when the LLM returns neither
+     * text nor tool calls — a model-side collapse, not a clean
+     * natural stop. Without this message the user just sees the
+     * turn stall silently and has no clue the worker bailed.
+     */
+    private static final String MODEL_COLLAPSE_MESSAGE =
+            "_Das Modell hat eine leere Antwort geliefert — "
+                    + "vermutlich Kontext zu groß oder Modell-seitiger Collapse. "
+                    + "Formuliere die Frage neu, kürze den Verlauf, oder "
+                    + "wechsle das Modell. Der Worker bleibt BLOCKED bis zur "
+                    + "nächsten Eingabe._";
 
     /**
      * Last-resort hardcoded system prompt — used only when neither the
@@ -182,13 +195,33 @@ public class LunkwillEngine implements ThinkEngine {
      * iterates LLM → tools → LLM until one of the stop paths fires.
      * Each iteration checks for an external interrupt first so a
      * STOP request from outside is honoured promptly.
+     *
+     * <p>Lifecycle matrix:
+     * <pre>
+     *   Stop path                | Worker (has parent)     | Session-primary
+     *   -------------------------+-------------------------+----------------
+     *   Natural stop             | IDLE  (await steer)     | IDLE (await user)
+     *   Tool-terminate           | CLOSED + DONE           | IDLE (signal, no close)
+     *   External interrupt       | already set externally  | same
+     *   Wallclock / idle-stuck   | BLOCKED                 | same
+     * </pre>
+     * The single branching point is {@code _terminate}: workers close
+     * out so the parent's delegation pointer can release; session-
+     * primary processes stay alive because the user is still talking
+     * to them.
      */
     @Override
     public void runTurn(ThinkProcessDocument process, ThinkEngineContext ctx) {
         long startMs = effectiveStartedAtMs(process);
         long deadlineMs = startMs + (long) properties.getMaxWallclockMinutes() * 60_000L;
+        boolean isWorker = process.getParentProcessId() != null
+                && !process.getParentProcessId().isBlank();
 
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.RUNNING);
+        // Exit status to write in finally — null means "leave alone"
+        // (status already set externally, or the engine has closed
+        // the process itself).
+        ThinkProcessStatus exitStatus = ThinkProcessStatus.IDLE;
         try {
             // 1) Persist user input from inbox, collect non-UCI items as turn-local extras.
             ChatMessageService chatLog = ctx.chatMessageService();
@@ -216,6 +249,7 @@ public class LunkwillEngine implements ThinkEngine {
                         || current == ThinkProcessStatus.CLOSED) {
                     log.info("Lunkwill id='{}' external interrupt (status={}) — exiting loop",
                             process.getId(), current);
+                    exitStatus = null;
                     return;
                 }
 
@@ -223,7 +257,7 @@ public class LunkwillEngine implements ThinkEngine {
                 if (System.currentTimeMillis() > deadlineMs) {
                     log.warn("Lunkwill id='{}' wallclock exceeded ({} min) — BLOCKED",
                             process.getId(), properties.getMaxWallclockMinutes());
-                    thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.BLOCKED);
+                    exitStatus = ThinkProcessStatus.BLOCKED;
                     return;
                 }
 
@@ -234,13 +268,38 @@ public class LunkwillEngine implements ThinkEngine {
                 AiMessage reply = streamOneIteration(
                         aiChat, req.build(), ctx, process, modelAlias);
 
-                // Stop path: natural stop (no tool calls).
+                // Stop path: natural stop (no tool calls). Always
+                // transition to IDLE — context stays alive for a
+                // follow-up turn (parent's process_steer in worker
+                // mode, user's next chat message in session-primary
+                // mode). Explicit "done forever" only happens via
+                // tool-terminate below.
+                //
+                // Edge case: empty LLM response. When the model
+                // returns neither text nor tool calls — typically a
+                // model-side collapse from over-large context or a
+                // provider timeout — the standard natural-stop path
+                // would silently drop the turn (nothing persisted,
+                // user sees no reply). Treat it as a stall instead:
+                // surface a clear assistant message so the user
+                // knows the worker bailed, and park BLOCKED so the
+                // attention is on the broken state rather than
+                // looking ready for the next input.
                 if (!reply.hasToolExecutionRequests()) {
                     String finalText = reply.text() == null ? "" : reply.text();
+                    if (finalText.isBlank()) {
+                        log.warn(
+                                "Lunkwill id='{}' empty LLM response (no text, no tool calls) — BLOCKED",
+                                process.getId());
+                        persistAssistantReply(process, chatLog, ctx,
+                                MODEL_COLLAPSE_MESSAGE, drained);
+                        exitStatus = ThinkProcessStatus.BLOCKED;
+                        return;
+                    }
                     persistAssistantReply(process, chatLog, ctx, finalText, drained);
-                    log.info("Lunkwill id='{}' natural stop — DONE ({} chars)",
+                    log.info("Lunkwill id='{}' natural stop — awaiting follow-up ({} chars)",
                             process.getId(), finalText.length());
-                    thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
+                    exitStatus = ThinkProcessStatus.IDLE;
                     return;
                 }
 
@@ -249,7 +308,7 @@ public class LunkwillEngine implements ThinkEngine {
                 if (isIdleStuck(recentToolHashes, batchHash)) {
                     log.warn("Lunkwill id='{}' idle-stuck on '{}' — BLOCKED",
                             process.getId(), batchHash);
-                    thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.BLOCKED);
+                    exitStatus = ThinkProcessStatus.BLOCKED;
                     return;
                 }
 
@@ -259,11 +318,28 @@ public class LunkwillEngine implements ThinkEngine {
                         reply.toolExecutionRequests(), tools, messages, process.getId());
 
                 if (terminate) {
-                    log.info("Lunkwill id='{}' tool-driven terminate — DONE", process.getId());
-                    // No additional assistant text on this path — the
-                    // task-complete tool's summary is the canonical
-                    // outcome and lives in tool-result history.
-                    thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
+                    if (isWorker) {
+                        // Worker: explicit "done forever" — close so
+                        // the parent's delegation pointer releases.
+                        // No additional assistant text — the task-
+                        // complete tool's summary is the canonical
+                        // outcome and lives in tool-result history;
+                        // ParentNotificationListener.enrichWithLastReply
+                        // attaches the last assistant message to the
+                        // DONE event for the parent.
+                        log.info("Lunkwill id='{}' worker tool-terminate — CLOSED (DONE)",
+                                process.getId());
+                        thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
+                        exitStatus = null;
+                    } else {
+                        // Session-primary: the recipe's task-complete
+                        // tool signals "this task is finished" but the
+                        // session keeps going — the user can ask the
+                        // next thing. Stay IDLE.
+                        log.info("Lunkwill id='{}' session-primary tool-terminate — IDLE",
+                                process.getId());
+                        exitStatus = ThinkProcessStatus.IDLE;
+                    }
                     return;
                 }
 
@@ -271,8 +347,12 @@ public class LunkwillEngine implements ThinkEngine {
             }
         } catch (RuntimeException ex) {
             log.warn("Lunkwill id='{}' turn aborted: {}", process.getId(), ex.toString());
-            thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.BLOCKED);
+            exitStatus = ThinkProcessStatus.BLOCKED;
             throw ex;
+        } finally {
+            if (exitStatus != null) {
+                thinkProcessService.updateStatus(process.getId(), exitStatus);
+            }
         }
     }
 

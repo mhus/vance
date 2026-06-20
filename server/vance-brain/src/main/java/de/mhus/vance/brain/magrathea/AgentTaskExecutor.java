@@ -79,13 +79,12 @@ public class AgentTaskExecutor implements MagratheaTypeExecutor {
         }
         Map<String, Object> callerParams = readParamsMap(state);
 
-        Optional<AppliedRecipe> appliedOpt;
+        AppliedRecipe applied;
         try {
-            appliedOpt = recipeResolver.applyDefaulting(
+            applied = recipeResolver.applyDefaulting(
                     context.tenantId(),
                     context.projectId(),
                     recipeName,
-                    /* engineName */ null,
                     /* connectionProfile */ null,
                     callerParams);
         } catch (RuntimeException ex) {
@@ -94,11 +93,6 @@ public class AgentTaskExecutor implements MagratheaTypeExecutor {
             return Optional.of(TaskOutcome.failure(
                     "Recipe '" + recipeName + "' resolve failed: " + ex.getMessage()));
         }
-        if (appliedOpt.isEmpty()) {
-            return Optional.of(TaskOutcome.failure(
-                    "Recipe '" + recipeName + "' not found in cascade"));
-        }
-        AppliedRecipe applied = appliedOpt.get();
 
         ThinkEngine engine = thinkEngineService.resolve(applied.engine())
                 .orElse(null);

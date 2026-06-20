@@ -20,7 +20,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -36,16 +35,11 @@ import org.springframework.stereotype.Component;
  * REST ({@code ScriptCortexController}), WebSocket
  * ({@code SessionBootstrapHandler}).
  *
- * <p>Handles both action paths (see {@link TriggerAction.Recipe}):
- *
- * <ul>
- *   <li><b>Recipe-driven</b> — {@code action.recipe()} set: cascade-resolve
- *       via {@link RecipeResolver#applyDefaulting}. Unknown recipe names
- *       fail strict with a Levenshtein-suggestion list mounted under
- *       {@code output.suggestions} — caller decides how to surface it.</li>
- *   <li><b>Engine-direct</b> — {@code action.engineOverride()} set: no
- *       recipe lookup, just engine resolution + caller params.</li>
- * </ul>
+ * <p>Recipe-driven only: cascade-resolved via
+ * {@link RecipeResolver#applyDefaulting} (blank recipe defaults to
+ * {@code "default"}). Unknown recipe names fail strict with a Levenshtein
+ * suggestion list mounted under {@code output.suggestions} — caller decides
+ * how to surface it.
  *
  * <p><b>Soft-failure: already-exists.</b> Returns
  * {@link ActionResult#success(Map)} (not failure) with
@@ -104,46 +98,27 @@ public final class SpawnActionExecutor implements ActionExecutor<TriggerAction.R
             String msg = "SpawnActionExecutor requires a TriggerContext.Sessioned "
                     + "(caller must resolve the session before spawning)";
             log.warn("{} — action='{}' source='{}'",
-                    msg,
-                    StringUtils.firstNonBlank(action.recipe(), action.engineOverride()),
-                    rawCtx.sourceTag());
+                    msg, action.recipe(), rawCtx.sourceTag());
             return ActionResult.failure(ActionOutcome.TECHNICAL_ERROR, msg, null);
         }
 
-        // ── Resolve recipe or engine ─────────────────────────────────────
+        // ── Resolve recipe ───────────────────────────────────────────────
         String effectiveProfile = action.connectionProfile() != null
                 ? action.connectionProfile()
                 : deriveConnectionProfileFromKind(invocation.triggerKind());
 
-        @Nullable AppliedRecipe applied;
+        AppliedRecipe applied;
         ThinkEngine engine;
         try {
-            if (StringUtils.isNotBlank(action.recipe())) {
-                Optional<AppliedRecipe> opt = recipeResolver.applyDefaulting(
-                        ctx.tenantId(), ctx.projectId(),
-                        action.recipe(), /*engineName*/ null,
-                        effectiveProfile, action.params());
-                if (opt.isEmpty()) {
-                    return ActionResult.failure(ActionOutcome.TECHNICAL_ERROR,
-                            "unknown recipe '" + action.recipe() + "'",
-                            buildUnknownRecipeOutput(action.recipe(),
-                                    ctx.tenantId(), ctx.projectId()));
-                }
-                applied = opt.get();
-                engine = thinkEngineServiceProvider.getObject()
-                        .resolve(applied.engine())
-                        .orElseThrow(() -> new IllegalStateException(
-                                "Recipe '" + applied.name() + "' references unknown engine '"
-                                        + applied.engine() + "'"));
-            } else {
-                applied = null;
-                String engineName = action.engineOverride();
-                engine = thinkEngineServiceProvider.getObject()
-                        .resolve(engineName)
-                        .orElseThrow(() -> new IllegalStateException(
-                                "Unknown engine '" + engineName + "' — known: "
-                                        + thinkEngineServiceProvider.getObject().listEngines()));
-            }
+            applied = recipeResolver.applyDefaulting(
+                    ctx.tenantId(), ctx.projectId(),
+                    action.recipe(),
+                    effectiveProfile, action.params());
+            engine = thinkEngineServiceProvider.getObject()
+                    .resolve(applied.engine())
+                    .orElseThrow(() -> new IllegalStateException(
+                            "Recipe '" + applied.name() + "' references unknown engine '"
+                                    + applied.engine() + "'"));
         } catch (RecipeResolver.UnknownRecipeException ure) {
             return ActionResult.failure(ActionOutcome.TECHNICAL_ERROR,
                     ure.getMessage(),
@@ -153,8 +128,8 @@ public final class SpawnActionExecutor implements ActionExecutor<TriggerAction.R
             return ActionResult.failure(ActionOutcome.TECHNICAL_ERROR,
                     uee.getMessage(), null);
         } catch (RuntimeException ex) {
-            log.warn("SpawnActionExecutor: resolution failed (recipe='{}' engine='{}'): {}",
-                    action.recipe(), action.engineOverride(), ex.toString());
+            log.warn("SpawnActionExecutor: resolution failed (recipe='{}'): {}",
+                    action.recipe(), ex.toString());
             return ActionResult.failure(ActionOutcome.TECHNICAL_ERROR,
                     "resolution: " + ex.getMessage(), null);
         }
@@ -170,47 +145,33 @@ public final class SpawnActionExecutor implements ActionExecutor<TriggerAction.R
         // ── Create think-process — handle name-collision as soft-success ─
         ThinkProcessDocument fresh;
         try {
-            if (applied != null) {
-                fresh = thinkProcessService.create(
-                        ctx.tenantId(),
-                        ctx.projectId(),
-                        ctx.parentSessionId(),
-                        processName,
-                        engine.name(),
-                        engine.version(),
-                        title,
-                        action.goal(),
-                        ctx.parentProcessId(),
-                        applied.params(),
-                        applied.name(),
-                        applied.promptOverride(),
-                        applied.promptOverrideAppend(),
-                        applied.promptMode(),
-                        applied.dataRelayCorrection(),
-                        applied.effectiveAllowedTools(),
-                        applied.connectionProfile(),
-                        applied.defaultActiveSkills(),
-                        applied.allowedSkills() == null
-                                ? null : Set.copyOf(applied.allowedSkills()));
-            } else {
-                fresh = thinkProcessService.create(
-                        ctx.tenantId(),
-                        ctx.projectId(),
-                        ctx.parentSessionId(),
-                        processName,
-                        engine.name(),
-                        engine.version(),
-                        title,
-                        action.goal(),
-                        ctx.parentProcessId(),
-                        action.params());
-            }
+            fresh = thinkProcessService.create(
+                    ctx.tenantId(),
+                    ctx.projectId(),
+                    ctx.parentSessionId(),
+                    processName,
+                    engine.name(),
+                    engine.version(),
+                    title,
+                    action.goal(),
+                    ctx.parentProcessId(),
+                    applied.params(),
+                    applied.name(),
+                    applied.promptOverride(),
+                    applied.promptOverrideAppend(),
+                    applied.promptMode(),
+                    applied.dataRelayCorrection(),
+                    applied.effectiveAllowedTools(),
+                    applied.connectionProfile(),
+                    applied.defaultActiveSkills(),
+                    applied.allowedSkills() == null
+                            ? null : Set.copyOf(applied.allowedSkills()));
         } catch (ThinkProcessService.ThinkProcessAlreadyExistsException ae) {
             return buildAlreadyExistsSoftSuccess(
                     ctx.tenantId(), ctx.parentSessionId(), processName);
         } catch (RuntimeException ex) {
-            log.warn("SpawnActionExecutor: process_create failed (name='{}' recipe='{}' engine='{}'): {}",
-                    processName, action.recipe(), action.engineOverride(), ex.toString());
+            log.warn("SpawnActionExecutor: process_create failed (name='{}' recipe='{}'): {}",
+                    processName, action.recipe(), ex.toString());
             return ActionResult.failure(ActionOutcome.TECHNICAL_ERROR,
                     "process_create: " + ex.getMessage(), null);
         }
@@ -219,8 +180,8 @@ public final class SpawnActionExecutor implements ActionExecutor<TriggerAction.R
         try {
             thinkEngineServiceProvider.getObject().start(fresh);
         } catch (RuntimeException ex) {
-            log.warn("SpawnActionExecutor: engine.start failed for id='{}' recipe='{}' engine='{}': {}",
-                    fresh.getId(), action.recipe(), action.engineOverride(), ex.toString());
+            log.warn("SpawnActionExecutor: engine.start failed for id='{}' recipe='{}': {}",
+                    fresh.getId(), action.recipe(), ex.toString());
             return ActionResult.failure(ActionOutcome.TECHNICAL_ERROR,
                     "engine_start: " + ex.getMessage(),
                     Map.of("processId", fresh.getId()));
@@ -322,7 +283,7 @@ public final class SpawnActionExecutor implements ActionExecutor<TriggerAction.R
 
     private Map<String, Object> buildSpawnOutput(
             ThinkProcessDocument fresh,
-            @Nullable AppliedRecipe applied,
+            AppliedRecipe applied,
             boolean initialMessageSet,
             boolean steered) {
         ThinkProcessDocument refreshed = thinkProcessService.findById(fresh.getId())
@@ -333,7 +294,7 @@ public final class SpawnActionExecutor implements ActionExecutor<TriggerAction.R
         out.put("status", refreshed.getStatus() == null ? null : refreshed.getStatus().name());
         out.put("engine", refreshed.getThinkEngine());
         out.put("engineVersion", refreshed.getThinkEngineVersion());
-        if (applied != null && refreshed.getRecipeName() != null) {
+        if (refreshed.getRecipeName() != null) {
             out.put("recipe", refreshed.getRecipeName());
         }
         if (initialMessageSet) {
@@ -465,7 +426,7 @@ public final class SpawnActionExecutor implements ActionExecutor<TriggerAction.R
             return tag;
         }
         TriggerAction.Recipe a = invocation.action();
-        String label = StringUtils.firstNonBlank(a.recipe(), a.engineOverride());
+        String label = StringUtils.defaultIfBlank(a.recipe(), "default");
         return invocation.triggerKind().name() + ": " + label;
     }
 }

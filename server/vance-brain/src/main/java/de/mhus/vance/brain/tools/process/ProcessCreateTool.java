@@ -25,7 +25,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * Spawns a new think-process inside the current session. Smart router
- * over the central {@link ActionExecutorRegistry} — handles three input
+ * over the central {@link ActionExecutorRegistry} — handles two input
  * shapes, then dispatches a {@link TriggerAction.Recipe}.
  *
  * <ul>
@@ -33,15 +33,13 @@ import org.springframework.stereotype.Component;
  *       via the executor. Unknown recipe names fail strict with a
  *       Levenshtein-suggestion list embedded in the {@code ToolException}
  *       message — the LLM corrects on the next turn.</li>
- *   <li><b>Direct-engine.</b> {@code recipe} omitted (or "auto"),
- *       {@code engine="ford"} → engine-direct spawn without recipe
- *       defaults.</li>
- *   <li><b>Selector-routed.</b> Both omitted → {@link RecipeSelectorService}
- *       runs the trigger-gated pre-check on {@code goal}. A
- *       deterministic match spawns the matched recipe; NONE falls back
- *       to the configured tenant default ({@code routing.fallback.recipe},
- *       default {@code slart-and-run}) or, when no trigger was observed,
- *       to the bundled {@code default} recipe.</li>
+ *   <li><b>Selector-routed.</b> {@code recipe} omitted (or "auto") →
+ *       {@link RecipeSelectorService} runs the trigger-gated pre-check
+ *       on {@code goal}. A deterministic match spawns the matched
+ *       recipe; NONE falls back to the configured tenant default
+ *       ({@code routing.fallback.recipe}, default {@code slart-and-run})
+ *       or, when no trigger was observed, to the bundled {@code default}
+ *       recipe.</li>
  * </ul>
  *
  * <p>The selector decision (decision / recipe / engine / rationale /
@@ -53,10 +51,6 @@ import org.springframework.stereotype.Component;
  * The executor wraps it with the parent's chat-history (via
  * {@code ParentContextSpawnHelper}) when {@code recipe.inheritContext}
  * is set, then pushes the wrapped message as USER_CHAT_INPUT.
- *
- * <p>If both {@code recipe} and {@code engine} are set, {@code recipe}
- * wins and {@code engine} is logged-and-ignored — easier to reason about
- * than failing.
  */
 @Component
 @RequiredArgsConstructor
@@ -101,14 +95,13 @@ public class ProcessCreateTool implements Tool {
                 "type", "string",
                 "description", "What the spawned process should accomplish. "
                         + "Used by engines that surface a goal (Marvin, "
-                        + "Vogon, Slartibartfast) AND — when neither "
-                        + "`recipe` nor `engine` is supplied — by the "
-                        + "selector to pick a matching project recipe. "
-                        + "Be specific: 'write a research report on gRPC "
-                        + "vs REST' is better than 'do something with "
-                        + "research'. The field `prompt` is also accepted "
-                        + "as an alias if you only pass that (tolerance "
-                        + "for the arthur_action DELEGATE shape)."));
+                        + "Vogon, Slartibartfast) AND — when `recipe` is "
+                        + "omitted — by the selector to pick a matching "
+                        + "project recipe. Be specific: 'write a research "
+                        + "report on gRPC vs REST' is better than 'do "
+                        + "something with research'. The field `prompt` is "
+                        + "also accepted as an alias if you only pass that "
+                        + "(tolerance for the arthur_action DELEGATE shape)."));
         properties.put("recipe", Map.of(
                 "type", "string",
                 "description", "Preferred routing: recipe name for cascade "
@@ -116,13 +109,6 @@ public class ProcessCreateTool implements Tool {
                         + "selector picks a recipe from `goal`. Unknown "
                         + "names fail strict with a suggestion list — "
                         + "consult `recipe_list` if unsure."));
-        properties.put("engine", Map.of(
-                "type", "string",
-                "description", "Direct-engine path: engine name "
-                        + "(e.g. 'ford'). Ignored when `recipe` is set. "
-                        + "Only useful when you need a specific engine "
-                        + "WITHOUT recipe defaults; otherwise leave "
-                        + "empty and let the selector route."));
         properties.put("title", Map.of(
                 "type", "string",
                 "description", "Optional human-readable title."));
@@ -166,22 +152,20 @@ public class ProcessCreateTool implements Tool {
     @Override
     public String description() {
         return "Create a new think-process in the current session and "
-                + "start its engine. Three routing modes: (a) pass "
+                + "start its engine. Two routing modes: (a) pass "
                 + "`recipe` to spawn a known recipe directly — unknown "
                 + "names fail strict with a suggestion list so you can "
-                + "retry with a fixed name. (b) pass `engine` for a "
-                + "direct-engine spawn without recipe defaults. (c) "
-                + "leave both empty so the trigger-gated selector picks "
-                + "a recipe from `goal`. On NONE the tenant fallback "
-                + "recipe (`routing.fallback.recipe`, default "
-                + "slart-and-run) is spawned. Modes (a)/(b) return "
-                + "{name, status, engine, recipe?, steered?}. Mode (c) "
-                + "returns {decision, recipe, engine, rationale, "
-                + "fallback?, process?} — the spawn metadata is nested "
-                + "under `process` on a MATCH or when the fallback "
-                + "recipe was spawned. Pass `steerContent` to atomically "
-                + "push an initial USER_CHAT_INPUT into the new process's "
-                + "pending queue.";
+                + "retry with a fixed name. (b) leave `recipe` empty so "
+                + "the trigger-gated selector picks a recipe from "
+                + "`goal`. On NONE the tenant fallback recipe "
+                + "(`routing.fallback.recipe`, default slart-and-run) "
+                + "is spawned. Mode (a) returns {name, status, engine, "
+                + "recipe?, steered?}. Mode (b) returns {decision, "
+                + "recipe, engine, rationale, fallback?, process?} — "
+                + "the spawn metadata is nested under `process` on a "
+                + "MATCH or when the fallback recipe was spawned. Pass "
+                + "`steerContent` to atomically push an initial "
+                + "USER_CHAT_INPUT into the new process's pending queue.";
     }
 
     @Override
@@ -207,26 +191,19 @@ public class ProcessCreateTool implements Tool {
         String name = stringOrThrow(params, "name");
         String goal = resolveGoalWithPromptAlias(params, name);
         String recipeName = normaliseRecipeParam(optString(params, "recipe"));
-        String engineName = optString(params, "engine");
         String title = optString(params, "title");
         String steerContent = optString(params, "steerContent");
         Map<String, Object> callerParams = optMap(params, "params");
         boolean fallbackOnNone = optBoolean(params, "fallbackOnNone", true);
 
-        if (recipeName != null && engineName != null) {
-            log.info("process_create called with both recipe='{}' and engine='{}' — recipe wins",
-                    recipeName, engineName);
-            engineName = null;
-        }
-
         // ── Selector-routed mode (decide recipe before dispatch) ─────────
-        if (recipeName == null && engineName == null) {
+        if (recipeName == null) {
             return invokeSelectorRouted(
                     ctx, name, goal, title, steerContent, callerParams, fallbackOnNone);
         }
 
-        // ── Explicit recipe / direct-engine dispatch ─────────────────────
-        return dispatch(ctx, name, title, goal, recipeName, engineName,
+        // ── Explicit recipe dispatch ─────────────────────────────────────
+        return dispatch(ctx, name, title, goal, recipeName,
                 steerContent, callerParams);
     }
 
@@ -254,7 +231,7 @@ public class ProcessCreateTool implements Tool {
 
         if (result.decision() == RecipeSelectorService.Result.Decision.MATCH) {
             Map<String, Object> spawn = dispatch(ctx, name, title, goal,
-                    result.recipeName(), /*engine*/ null, steerContent, callerParams);
+                    result.recipeName(), steerContent, callerParams);
             out.put("process", spawn);
             log.info("process_create name='{}' → spawned recipe='{}' via selector",
                     name, result.recipeName());
@@ -277,7 +254,7 @@ public class ProcessCreateTool implements Tool {
             fallbackInfo.put("source", "default-recipe (no trigger)");
             out.put("fallback", fallbackInfo);
             Map<String, Object> spawn = dispatch(ctx, name, title, goal,
-                    DEFAULT_RECIPE, /*engine*/ null, steerContent, callerParams);
+                    DEFAULT_RECIPE, steerContent, callerParams);
             out.put("process", spawn);
             return out;
         }
@@ -298,7 +275,7 @@ public class ProcessCreateTool implements Tool {
         out.put("fallback", fallbackInfo);
 
         Map<String, Object> spawn = dispatch(ctx, name, title, goal,
-                fallbackRecipe, /*engine*/ null, steerContent, callerParams);
+                fallbackRecipe, steerContent, callerParams);
         out.put("process", spawn);
         return out;
     }
@@ -312,12 +289,11 @@ public class ProcessCreateTool implements Tool {
      */
     private Map<String, Object> dispatch(
             ToolInvocationContext ctx, String name, @Nullable String title,
-            String goal, @Nullable String recipeName, @Nullable String engineName,
+            String goal, @Nullable String recipeName,
             @Nullable String steerContent, @Nullable Map<String, Object> callerParams) {
         String parentProfile = parentConnectionProfile(ctx.processId());
         TriggerAction.Recipe action = new TriggerAction.Recipe(
                 recipeName,
-                engineName,
                 name,
                 title,
                 goal,

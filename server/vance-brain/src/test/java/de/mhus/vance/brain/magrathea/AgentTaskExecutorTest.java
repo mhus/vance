@@ -77,18 +77,19 @@ class AgentTaskExecutorTest {
 
     @Test
     void unknown_recipe_returns_failure() {
-        when(recipeResolver.applyDefaulting(any(), any(), eq("ghost"), any(), any(), any()))
-                .thenReturn(Optional.empty());
+        when(recipeResolver.applyDefaulting(any(), any(), eq("ghost"), any(), any()))
+                .thenThrow(new de.mhus.vance.brain.recipe.RecipeResolver
+                        .UnknownRecipeException("ghost"));
 
         Optional<TaskOutcome> outcome = executor.execute(ctx(agentState("ghost", Map.of())));
 
         assertThat(outcome.get().outcome()).isEqualTo(TaskCompletedEvent.OUTCOME_FAILURE);
-        assertThat(outcome.get().errorMessage()).contains("not found");
+        assertThat(outcome.get().errorMessage()).contains("ghost");
     }
 
     @Test
     void recipe_resolver_exception_returns_failure() {
-        when(recipeResolver.applyDefaulting(any(), any(), eq("boom"), any(), any(), any()))
+        when(recipeResolver.applyDefaulting(any(), any(), eq("boom"), any(), any()))
                 .thenThrow(new RuntimeException("YAML invalid"));
 
         Optional<TaskOutcome> outcome = executor.execute(ctx(agentState("boom", Map.of())));
@@ -146,8 +147,8 @@ class AgentTaskExecutorTest {
                 RecipeSource.PROJECT,
                 /*overriddenParamKeys*/ List.of(),
                 /*sessionLifecycleConfig*/ null);
-        when(recipeResolver.applyDefaulting(any(), any(), eq(recipeName), any(), any(), any()))
-                .thenReturn(Optional.of(applied));
+        when(recipeResolver.applyDefaulting(any(), any(), eq(recipeName), any(), any()))
+                .thenReturn(applied);
     }
 
     private static ThinkEngine mockEngine(String name, String version) {

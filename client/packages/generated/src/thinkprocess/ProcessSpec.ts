@@ -4,7 +4,6 @@
 */
 
 export interface ProcessSpec {
-  engine?: string;
   recipe?: string;
   name: string;
   title?: string;

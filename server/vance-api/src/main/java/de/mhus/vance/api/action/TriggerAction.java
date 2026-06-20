@@ -40,20 +40,10 @@ public sealed interface TriggerAction
     // ──────────────────── Recipe ────────────────────
 
     /**
-     * Spawn a ThinkProcess. Two paths:
-     *
-     * <ul>
-     *   <li><b>Recipe-driven:</b> {@code recipe} set, {@code engineOverride}
-     *       null. Resolved through the {@code RecipeResolver} cascade
-     *       (project → _vance → bundled). Engine + params + prompt-prefix
-     *       come from the recipe.</li>
-     *   <li><b>Engine-direct:</b> {@code engineOverride} set, {@code recipe}
-     *       null. No recipe lookup; engine is resolved by name and
-     *       caller-supplied {@code params} apply directly.</li>
-     * </ul>
-     *
-     * <p>The two paths are <b>mutually exclusive</b> — exactly one of
-     * {@code recipe} / {@code engineOverride} must be non-blank.
+     * Spawn a ThinkProcess. {@code recipe} is resolved through the
+     * {@code RecipeResolver} cascade (project → _vance → bundled).
+     * Engine + params + prompt-prefix come from the recipe. A blank
+     * {@code recipe} defaults to {@code "default"}.
      *
      * <p>Most callers use the minimal-form factory {@link #of(String,
      * String, Map, String)} which fills the spawn-detail fields with
@@ -63,7 +53,6 @@ public sealed interface TriggerAction
      */
     record Recipe(
             @Nullable String recipe,
-            @Nullable String engineOverride,
             @Nullable String processName,
             @Nullable String title,
             @Nullable String goal,
@@ -72,17 +61,6 @@ public sealed interface TriggerAction
             @Nullable String initialMessage,
             @Nullable Map<String, Object> params,
             @Nullable String runAs) implements TriggerAction {
-
-        public Recipe {
-            boolean hasRecipe = recipe != null && !recipe.isBlank();
-            boolean hasEngine = engineOverride != null && !engineOverride.isBlank();
-            if (hasRecipe == hasEngine) {
-                throw new IllegalArgumentException(
-                        "TriggerAction.Recipe: exactly one of recipe or engineOverride "
-                                + "must be non-blank (recipe='" + recipe
-                                + "', engineOverride='" + engineOverride + "')");
-            }
-        }
 
         /**
          * Minimal-form factory for callers that only need the
@@ -98,7 +76,6 @@ public sealed interface TriggerAction
                 @Nullable String runAs) {
             return new Recipe(
                     recipe,
-                    /*engineOverride*/ null,
                     /*processName*/ null,
                     /*title*/ null,
                     /*goal*/ null,

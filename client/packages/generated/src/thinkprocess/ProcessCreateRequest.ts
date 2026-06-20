@@ -4,7 +4,6 @@
 */
 
 export interface ProcessCreateRequest {
-  engine?: string;
   recipe?: string;
   name: string;
   title?: string;

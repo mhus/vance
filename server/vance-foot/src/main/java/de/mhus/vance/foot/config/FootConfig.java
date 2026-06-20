@@ -102,6 +102,12 @@ public class FootConfig {
         /** If set, resume this session instead of creating a new one. */
         private @Nullable String sessionId;
         private List<BootstrapProcess> processes = new ArrayList<>();
+        /**
+         * Optional recipe override for the session-chat process — see
+         * {@code SessionBootstrapRequest.chatRecipe}. Applies only on
+         * session create; ignored on resume.
+         */
+        private @Nullable String chatRecipe;
         /** Optional first chat message steered to the first process. */
         private @Nullable String initialMessage;
         /**
@@ -232,14 +238,9 @@ public class FootConfig {
     @Data
     public static class BootstrapProcess {
         /**
-         * Engine name (e.g. {@code "ford"}) — one of {@code engine}
-         * or {@link #recipe} must be set. If both, {@code recipe}
-         * wins.
+         * Recipe name for the recipe cascade. {@code null}/empty falls
+         * back to the bundled {@code "default"} recipe.
          */
-        private String engine = "";
-
-        /** Recipe name for the recipe cascade. Preferred over
-         *  {@link #engine}. */
         private @Nullable String recipe;
 
         private String name = "";

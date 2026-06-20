@@ -11,10 +11,10 @@ import java.util.List;
 import org.springframework.stereotype.Component;
 
 /**
- * {@code /process-create <engine> [name]} — instantiate a think-process from
- * a registered engine in the bound session. If {@code name} is omitted, the
- * engine name is used as the process name. Sets the new process as the
- * active one so the next free-text line steers it directly.
+ * {@code /process-create <recipe> [name]} — instantiate a think-process from
+ * a recipe in the bound session. If {@code name} is omitted, the recipe name
+ * is used as the process name. Sets the new process as the active one so the
+ * next free-text line steers it directly.
  */
 @Component
 public class ProcessCreateCommand implements SlashCommand {
@@ -38,22 +38,22 @@ public class ProcessCreateCommand implements SlashCommand {
 
     @Override
     public String description() {
-        return "Create a think-process from an engine. Args: <engine> [name].";
+        return "Create a think-process from a recipe. Args: <recipe> [name].";
     }
 
     @Override
     public void execute(List<String> args) throws Exception {
         if (args.isEmpty() || args.size() > 2) {
-            terminal.error("Usage: /process-create <engine> [name]");
+            terminal.error("Usage: /process-create <recipe> [name]");
             return;
         }
-        String engine = args.get(0);
-        String processName = args.size() == 2 ? args.get(1) : engine;
+        String recipe = args.get(0);
+        String processName = args.size() == 2 ? args.get(1) : recipe;
 
         ProcessCreateResponse response = connection.request(
                 MessageType.PROCESS_CREATE,
                 ProcessCreateRequest.builder()
-                        .engine(engine)
+                        .recipe(recipe)
                         .name(processName)
                         .build(),
                 ProcessCreateResponse.class,

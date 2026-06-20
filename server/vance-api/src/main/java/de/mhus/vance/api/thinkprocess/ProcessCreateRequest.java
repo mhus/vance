@@ -15,9 +15,9 @@ import org.jspecify.annotations.Nullable;
  * Body of {@code process-create} — client spawns a think-process in its
  * currently bound session.
  *
- * <p>The {@code engine} is the registry name (e.g. {@code "ford"}).
- * {@code name} is the process's identifier within the session; it must be
- * unique per session.
+ * <p>{@code name} is the process's identifier within the session; it must be
+ * unique per session. {@code recipe} drives resolution through the recipe
+ * cascade (when blank the resolver defaults to the {@code "default"} recipe).
  */
 @Data
 @Builder
@@ -26,13 +26,6 @@ import org.jspecify.annotations.Nullable;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @GenerateTypeScript("thinkprocess")
 public class ProcessCreateRequest {
-
-    /**
-     * Engine name from the registry. One of {@code engine} or
-     * {@link #recipe} must be set; if both are set, {@code recipe}
-     * wins.
-     */
-    private @Nullable String engine;
 
     /** Recipe name for resolution via the recipe cascade. */
     private @Nullable String recipe;

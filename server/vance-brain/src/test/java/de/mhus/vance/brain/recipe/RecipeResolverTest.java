@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -60,11 +59,10 @@ class RecipeResolverTest {
     void applyDefaulting_withRecipeName_resolvesThatRecipe() {
         stub("analyze");
 
-        Optional<AppliedRecipe> r = resolver.applyDefaulting(
-                "acme", "proj", "analyze", null, null, null);
+        AppliedRecipe r = resolver.applyDefaulting(
+                "acme", "proj", "analyze", null, null);
 
-        assertThat(r).isPresent();
-        assertThat(r.get().name()).isEqualTo("analyze");
+        assertThat(r.name()).isEqualTo("analyze");
         verify(loader).load("acme", "proj", "analyze");
     }
 
@@ -73,43 +71,19 @@ class RecipeResolverTest {
         when(loader.load(any(), any(), eq("missing"))).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> resolver.applyDefaulting(
-                "acme", "proj", "missing", null, null, null))
+                "acme", "proj", "missing", null, null))
                 .isInstanceOf(RecipeResolver.UnknownRecipeException.class)
                 .hasMessageContaining("missing");
     }
 
     @Test
-    void applyDefaulting_withEngineName_andMatchingRecipe_usesRecipe() {
-        stub("arthur");
-
-        Optional<AppliedRecipe> r = resolver.applyDefaulting(
-                "acme", "proj", null, "arthur", null, null);
-
-        assertThat(r).isPresent();
-        assertThat(r.get().name()).isEqualTo("arthur");
-    }
-
-    @Test
-    void applyDefaulting_withEngineName_andNoMatchingRecipe_returnsEmpty_forCallerFallback() {
-        when(loader.load(any(), any(), eq("custom-engine"))).thenReturn(Optional.empty());
-
-        Optional<AppliedRecipe> r = resolver.applyDefaulting(
-                "acme", "proj", null, "custom-engine", null, null);
-
-        // The caller is expected to fall back to engine-direct spawning
-        // when no recipe with the engine's name exists.
-        assertThat(r).isEmpty();
-    }
-
-    @Test
-    void applyDefaulting_withNeitherSet_resolvesDefaultRecipe() {
+    void applyDefaulting_withBlankRecipeName_resolvesDefaultRecipe() {
         stub("default");
 
-        Optional<AppliedRecipe> r = resolver.applyDefaulting(
-                "acme", "proj", null, null, null, null);
+        AppliedRecipe r = resolver.applyDefaulting(
+                "acme", "proj", null, null, null);
 
-        assertThat(r).isPresent();
-        assertThat(r.get().name()).isEqualTo("default");
+        assertThat(r.name()).isEqualTo("default");
         verify(loader).load("acme", "proj", "default");
     }
 
@@ -117,25 +91,10 @@ class RecipeResolverTest {
     void applyDefaulting_treatsBlankAsAbsent() {
         stub("default");
 
-        Optional<AppliedRecipe> r = resolver.applyDefaulting(
-                "acme", "proj", "  ", "  ", null, null);
+        AppliedRecipe r = resolver.applyDefaulting(
+                "acme", "proj", "  ", null, null);
 
-        assertThat(r).isPresent();
-        assertThat(r.get().name()).isEqualTo("default");
-    }
-
-    @Test
-    void applyDefaulting_recipeNamePrecedesEngineName() {
-        // Both set → recipeName wins; engineName is never consulted.
-        stub("recipe-a");
-
-        Optional<AppliedRecipe> r = resolver.applyDefaulting(
-                "acme", "proj", "recipe-a", "arthur", null, null);
-
-        assertThat(r).isPresent();
-        assertThat(r.get().name()).isEqualTo("recipe-a");
-        verify(loader).load("acme", "proj", "recipe-a");
-        verify(loader, never()).load(any(), any(), eq("arthur"));
+        assertThat(r.name()).isEqualTo("default");
     }
 
     // ──── param merge rules ──────────────────────────────────────────────

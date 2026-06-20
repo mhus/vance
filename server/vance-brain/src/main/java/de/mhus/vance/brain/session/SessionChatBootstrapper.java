@@ -55,10 +55,21 @@ public class SessionChatBootstrapper {
     private final ProjectService projectService;
 
     /**
-     * @see #ensureChatProcess(SessionDocument, String) — defaults to no parent.
+     * @see #ensureChatProcess(SessionDocument, String, String) — defaults
+     *      to no parent and no recipe override.
      */
     public Optional<ThinkProcessDocument> ensureChatProcess(SessionDocument session) {
-        return ensureChatProcess(session, null);
+        return ensureChatProcess(session, null, null);
+    }
+
+    /**
+     * @see #ensureChatProcess(SessionDocument, String, String) — defaults
+     *      to no recipe override.
+     */
+    public Optional<ThinkProcessDocument> ensureChatProcess(
+            SessionDocument session,
+            @org.jspecify.annotations.Nullable String parentProcessId) {
+        return ensureChatProcess(session, parentProcessId, null);
     }
 
     /**
@@ -71,6 +82,13 @@ public class SessionChatBootstrapper {
      * report status/done events back to them. {@code null} for
      * regular session-create flows.
      *
+     * <p>{@code chatRecipeOverride} (optional) names the recipe to
+     * spawn the chat-process from. When set, the cascade-resolved
+     * recipe wins over the tenant default
+     * ({@code session.defaultChatEngine} setting and bundled
+     * {@code arthur} fallback); the engine is read from the recipe.
+     * Hub projects ignore this — they always use the hub engine.
+     *
      * <p>The engine's {@code start} runs on the chat-process's lane
      * and is awaited synchronously, so the caller can read the
      * greeting from {@code chat-message-history} the moment this
@@ -78,7 +96,8 @@ public class SessionChatBootstrapper {
      */
     public Optional<ThinkProcessDocument> ensureChatProcess(
             SessionDocument session,
-            @org.jspecify.annotations.Nullable String parentProcessId) {
+            @org.jspecify.annotations.Nullable String parentProcessId,
+            @org.jspecify.annotations.Nullable String chatRecipeOverride) {
         // Already linked → just resolve the doc.
         if (session.getChatProcessId() != null) {
             Optional<ThinkProcessDocument> linked = thinkProcessService.findById(
@@ -101,18 +120,21 @@ public class SessionChatBootstrapper {
             return existing;
         }
 
+        boolean hubProject = isHubProject(session.getTenantId(), session.getProjectId());
         // Hub-chat sessions live inside SYSTEM-kind projects (see
         // specification/vance-engine.md §2). They always run the
-        // 'vance' engine, regardless of the tenant default — the
-        // default applies to regular chat sessions only.
-        String engineName;
-        if (isHubProject(session.getTenantId(), session.getProjectId())) {
-            engineName = HUB_CHAT_ENGINE;
+        // hub engine, regardless of the tenant default or the
+        // per-bootstrap recipe override.
+        String recipeLookup;
+        if (hubProject) {
+            recipeLookup = HUB_CHAT_ENGINE;
+        } else if (chatRecipeOverride != null && !chatRecipeOverride.isBlank()) {
+            recipeLookup = chatRecipeOverride;
         } else {
             String configured = settingService.getStringValueCascade(
                     session.getTenantId(), session.getProjectId(),
                     /*processId*/ null, SETTING_DEFAULT_CHAT_ENGINE);
-            engineName = (configured == null || configured.isBlank())
+            recipeLookup = (configured == null || configured.isBlank())
                     ? DEFAULT_CHAT_ENGINE : configured;
         }
 
@@ -120,35 +142,59 @@ public class SessionChatBootstrapper {
         // hub recipes) bypass recipe resolution — their persona and
         // params live in code, not in recipes.yaml. See
         // specification/vance-engine.md §1.2.
-        ThinkEngine engine = thinkEngineService.resolve(engineName)
-                .orElseThrow(() -> new IllegalStateException(
-                        "Configured chat engine '" + engineName
-                                + "' is not registered — known: "
-                                + thinkEngineService.listEngines()));
-        Optional<EngineBundledConfig> bundled = engine.bundledConfig(
-                session.getTenantId(), session.getProjectId());
+        boolean explicitRecipeOverride = !hubProject
+                && chatRecipeOverride != null && !chatRecipeOverride.isBlank();
+        ThinkEngine engine = thinkEngineService.resolve(recipeLookup)
+                .orElse(null);
 
         AppliedRecipe applied = null;
-        if (bundled.isEmpty()) {
-            // Auto-apply the engine-named recipe (e.g. "arthur") so the
-            // chat-process inherits the engine's default prompt and
-            // validator templates from recipes.yaml — same path the LLM
-            // takes when it spawns a worker via process_create.
-            AppliedRecipe resolved = recipeResolver.applyDefaulting(
+        if (explicitRecipeOverride) {
+            // Explicit override: recipe must exist; surface failure.
+            applied = recipeResolver.applyDefaulting(
                     session.getTenantId(),
                     /*projectId*/ session.getProjectId(),
-                    /*recipeName*/ null,
-                    engineName,
+                    recipeLookup,
                     session.getProfile(),
-                    /*callerParams*/ null).orElse(null);
-            applied = resolved;
-            if (resolved != null) {
+                    /*callerParams*/ null);
+            final AppliedRecipe override = applied;
+            engine = thinkEngineService.resolve(applied.engine())
+                    .orElseThrow(() -> new IllegalStateException(
+                            "Recipe '" + override.name()
+                                    + "' references unknown engine '"
+                                    + override.engine() + "'"));
+        } else if (engine == null) {
+            throw new IllegalStateException(
+                    "Configured chat engine '" + recipeLookup
+                            + "' is not registered — known: "
+                            + thinkEngineService.listEngines());
+        }
+        Optional<EngineBundledConfig> bundled = engine.bundledConfig(
+                session.getTenantId(), session.getProjectId());
+        if (!explicitRecipeOverride && bundled.isEmpty()) {
+            // Auto-apply the engine-named recipe (e.g. "arthur") so
+            // the chat-process inherits the engine's default prompt
+            // and validator templates — same path the LLM takes when
+            // it spawns a worker via process_create.
+            try {
+                applied = recipeResolver.applyDefaulting(
+                        session.getTenantId(),
+                        /*projectId*/ session.getProjectId(),
+                        /*recipeName*/ recipeLookup,
+                        session.getProfile(),
+                        /*callerParams*/ null);
+            } catch (RecipeResolver.UnknownRecipeException e) {
+                // No engine-named recipe in the cascade — chat-process
+                // starts engine-default (no recipe overrides).
+                applied = null;
+            }
+            if (applied != null) {
                 // The recipe may redirect to a different engine.
-                engine = thinkEngineService.resolve(resolved.engine())
+                final AppliedRecipe finalResolved = applied;
+                engine = thinkEngineService.resolve(applied.engine())
                         .orElseThrow(() -> new IllegalStateException(
-                                "Recipe '" + resolved.name()
+                                "Recipe '" + finalResolved.name()
                                         + "' references unknown engine '"
-                                        + resolved.engine() + "'"));
+                                        + finalResolved.engine() + "'"));
             }
         }
 

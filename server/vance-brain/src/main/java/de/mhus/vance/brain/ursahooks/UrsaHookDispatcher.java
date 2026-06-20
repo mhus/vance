@@ -229,7 +229,7 @@ public class UrsaHookDispatcher implements DisposableBean {
         }
         return switch (action) {
             case TriggerAction.Recipe r -> new TriggerAction.Recipe(
-                    r.recipe(), r.engineOverride(), r.processName(),
+                    r.recipe(), r.processName(),
                     r.title(), r.goal(), r.inheritContextLevel(),
                     r.connectionProfile(), r.initialMessage(),
                     merged, r.runAs());

@@ -115,14 +115,10 @@ public class AutoBootstrapService {
                 ? List.of() : b.getProcesses();
         List<ProcessSpec> specs = new ArrayList<>(configured.size());
         for (FootConfig.BootstrapProcess p : configured) {
-            String engine = p.getEngine() == null || p.getEngine().isBlank()
-                    ? null : p.getEngine();
             String recipe = p.getRecipe() == null || p.getRecipe().isBlank()
                     ? null : p.getRecipe();
-            String defaultName = recipe != null ? recipe
-                    : (engine != null ? engine : "process");
+            String defaultName = recipe != null ? recipe : "process";
             specs.add(ProcessSpec.builder()
-                    .engine(engine)
                     .recipe(recipe)
                     .name(p.getName() == null || p.getName().isBlank()
                             ? defaultName : p.getName())
@@ -136,6 +132,7 @@ public class AutoBootstrapService {
                 .projectId(b.getProjectId())
                 .sessionId(b.getSessionId())
                 .processes(specs)
+                .chatRecipe(b.getChatRecipe())
                 .initialMessage(b.getInitialMessage())
                 .build();
 

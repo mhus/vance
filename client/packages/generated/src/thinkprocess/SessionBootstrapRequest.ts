@@ -9,5 +9,6 @@ export interface SessionBootstrapRequest {
   projectId?: string;
   sessionId?: string;
   processes: ProcessSpec[];
+  chatRecipe?: string;
   initialMessage?: string;
 }

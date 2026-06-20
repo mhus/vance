@@ -120,34 +120,6 @@ class SpawnActionExecutorTest {
         verify(messageRouter, never()).dispatch(any(), any(), any());
     }
 
-    // ──────────────────── Engine-direct path ────────────────────
-
-    @Test
-    void engine_override_skips_recipe_resolution_and_spawns() {
-        stubEngine("ford", "1.0");
-        stubCreateReturnsProcess("proc-engine", "ford", /*recipe*/ null);
-
-        ActionResult r = exec.execute(new ActionInvocation<>(
-                new TriggerAction.Recipe(
-                        /*recipe*/ null,
-                        "ford",
-                        "explicit-name",
-                        "Engine Spawn",
-                        "do the thing",
-                        /*inheritContextLevel*/ null,
-                        /*connectionProfile*/ "tool",
-                        /*initialMessage*/ null,
-                        Map.of("model", "default:fast"),
-                        /*runAs*/ null),
-                ctxWithSession,
-                TriggerKind.TOOL));
-
-        assertThat(r.outcome()).isEqualTo(ActionOutcome.SCHEDULED);
-        assertThat(r.output().get("engine")).isEqualTo("ford");
-        assertThat(r.output()).doesNotContainKey("recipe");
-        verify(recipeResolver, never()).applyDefaulting(any(), any(), any(), any(), any(), any());
-    }
-
     // ──────────────────── Soft-success: already-exists ────────────────────
 
     @Test
@@ -170,7 +142,7 @@ class SpawnActionExecutorTest {
 
         ActionResult r = exec.execute(new ActionInvocation<>(
                 new TriggerAction.Recipe(
-                        "analyze", null, "dup", null, null, null, null, null, null, null),
+                        "analyze", "dup", null, null, null, null, null, null, null),
                 ctxWithSession,
                 TriggerKind.TOOL));
 
@@ -187,8 +159,8 @@ class SpawnActionExecutorTest {
 
     @Test
     void unknown_recipe_returns_failure_with_suggestions() {
-        when(recipeResolver.applyDefaulting(any(), any(), eq("ghost"), any(), any(), any()))
-                .thenReturn(Optional.empty());
+        when(recipeResolver.applyDefaulting(any(), any(), eq("ghost"), any(), any()))
+                .thenThrow(new RecipeResolver.UnknownRecipeException("ghost"));
         when(recipeLoader.listAll(any(), any())).thenReturn(List.of(
                 stubResolvedRecipe("analyze"),
                 stubResolvedRecipe("research"),
@@ -200,7 +172,7 @@ class SpawnActionExecutorTest {
                 TriggerKind.SCHEDULER));
 
         assertThat(r.outcome()).isEqualTo(ActionOutcome.TECHNICAL_ERROR);
-        assertThat(r.errorMessage()).contains("unknown recipe 'ghost'");
+        assertThat(r.errorMessage()).contains("ghost");
         assertThat(r.output()).isNotNull();
         assertThat(r.output().get("requested")).isEqualTo("ghost");
         @SuppressWarnings("unchecked")
@@ -229,7 +201,7 @@ class SpawnActionExecutorTest {
 
     @Test
     void recipe_resolver_throwing_maps_to_technical_error() {
-        when(recipeResolver.applyDefaulting(any(), any(), any(), any(), any(), any()))
+        when(recipeResolver.applyDefaulting(any(), any(), any(), any(), any()))
                 .thenThrow(new RuntimeException("cascade broken"));
 
         ActionResult r = exec.execute(new ActionInvocation<>(
@@ -307,7 +279,7 @@ class SpawnActionExecutorTest {
 
         exec.execute(new ActionInvocation<>(
                 new TriggerAction.Recipe(
-                        "analyze", null, "explicit-name", null, null, null, null, null, null, null),
+                        "analyze", "explicit-name", null, null, null, null, null, null, null),
                 ctxWithSession,
                 TriggerKind.TOOL));
 
@@ -357,8 +329,8 @@ class SpawnActionExecutorTest {
                 RecipeSource.PROJECT,
                 /*overriddenParamKeys*/ List.of(),
                 /*sessionLifecycleConfig*/ null);
-        when(recipeResolver.applyDefaulting(any(), any(), eq(recipeName), any(), any(), any()))
-                .thenReturn(Optional.of(applied));
+        when(recipeResolver.applyDefaulting(any(), any(), eq(recipeName), any(), any()))
+                .thenReturn(applied);
     }
 
     private void stubEngine(String name, String version) {

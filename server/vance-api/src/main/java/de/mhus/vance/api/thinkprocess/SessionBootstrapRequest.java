@@ -46,6 +46,16 @@ public class SessionBootstrapRequest {
     @Builder.Default
     private List<ProcessSpec> processes = new ArrayList<>();
 
+    /**
+     * Optional override for the session-chat recipe. When set on a
+     * {@code create} bootstrap, the session-chat process is spawned
+     * from this recipe (cascade-resolved) instead of the tenant
+     * default ({@code session.defaultChatEngine}) — the engine is
+     * derived from the recipe. Ignored when resuming a session: the
+     * existing chat-process is reused as-is.
+     */
+    private @Nullable String chatRecipe;
+
     /** Optional chat message steered to the first process after creation. */
     private @Nullable String initialMessage;
 }

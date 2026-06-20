@@ -23,15 +23,11 @@ import org.jspecify.annotations.Nullable;
 public class ProcessSpec {
 
     /**
-     * Engine name from the registry (e.g. {@code "ford"}). One of
-     * {@code engine} or {@link #recipe} must be set; if both are set,
-     * {@code recipe} wins and {@code engine} is treated as advisory.
-     */
-    private @Nullable String engine;
-
-    /**
-     * Recipe name for resolution via the recipe cascade. Preferred
-     * over {@link #engine} — Arthur's default delegation path.
+     * Recipe name for resolution via the recipe cascade. Required —
+     * spawn always goes through a recipe. To pick "just the engine",
+     * use the engine-named bundled recipe (e.g. {@code "ford"},
+     * {@code "arthur"}); otherwise the resolver falls back to
+     * {@code "default"} when this is blank.
      */
     private @Nullable String recipe;
 

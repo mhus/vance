@@ -123,6 +123,13 @@ public class VanceFootCommand implements Callable<Integer> {
                     + "configured session-id (start fresh).")
     @Nullable String project;
 
+    @Option(names = "--recipe",
+            paramLabel = "<name>",
+            description = "Use this recipe as the session-chat orchestrator "
+                    + "on bootstrap. Sets vance.bootstrap.chat-recipe — "
+                    + "applies on session create, ignored on resume.")
+    @Nullable String recipe;
+
     @Option(names = "--intellij-claude",
             description = "Connect to a running Claude Code IDE plugin "
                     + "for editor context (at_mentioned, selection_changed, "
@@ -232,6 +239,9 @@ public class VanceFootCommand implements Callable<Integer> {
             config.getBootstrap().setProjectId(project);
             config.getBootstrap().setSessionId(null);
         }
+        if (recipe != null && !recipe.isBlank()) {
+            config.getBootstrap().setChatRecipe(recipe.trim());
+        }
         if (profile != null && !profile.isBlank()) {
             config.getClient().setProfile(profile);
         }
@@ -325,4 +335,5 @@ public class VanceFootCommand implements Callable<Integer> {
         }
         noTools = true;
     }
+
 }

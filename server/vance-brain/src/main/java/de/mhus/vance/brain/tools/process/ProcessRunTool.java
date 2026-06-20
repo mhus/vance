@@ -46,11 +46,10 @@ import org.springframework.stereotype.Component;
  * orchestrate per-chapter / per-step sub-workers without the engine
  * being JS-aware.
  *
- * <p>The caller picks either {@code recipe} (recipe-cascade resolution)
- * or {@code engine} (direct engine name) — mutually exclusive. Steer
- * content is what the worker receives as its first user-message; if a
- * worker recipe expects a structured input shape, the caller fills it
- * in here.
+ * <p>The caller passes {@code recipe} for cascade resolution; blank
+ * defaults to the bundled {@code "default"} recipe. Steer content is
+ * what the worker receives as its first user-message; if a worker
+ * recipe expects a structured input shape, the caller fills it in here.
  *
  * <p>Timeout protects against worker turns that hang on a slow external
  * call. Default 300 s; configurable per call up to {@link #MAX_TIMEOUT}.
@@ -84,13 +83,8 @@ public class ProcessRunTool implements Tool {
         properties.put("recipe", Map.of(
                 "type", "string",
                 "description", "Recipe name (e.g. 'ford', 'analyze'). "
-                        + "Resolved through the cascade. Mutually "
-                        + "exclusive with 'engine'."));
-        properties.put("engine", Map.of(
-                "type", "string",
-                "description", "Direct engine name (e.g. 'ford'). "
-                        + "Use when you don't want a recipe's defaults. "
-                        + "Mutually exclusive with 'recipe'."));
+                        + "Resolved through the cascade; defaults to "
+                        + "the bundled 'default' recipe when omitted."));
         properties.put("params", Map.of(
                 "type", "object",
                 "description", "Engine-specific params merged over "
@@ -129,8 +123,8 @@ public class ProcessRunTool implements Tool {
                 + "completion of one turn, and return the worker's last "
                 + "ASSISTANT reply. Use this when you orchestrate sub-"
                 + "workers from a skill-bound script and need each reply "
-                + "before starting the next one. Pick recipe OR engine, "
-                + "pass steerContent as the worker's user-message, get "
+                + "before starting the next one. Pass the recipe name "
+                + "and steerContent as the worker's user-message, get "
                 + "back {processId, status, reply}.";
     }
 
@@ -155,18 +149,9 @@ public class ProcessRunTool implements Tool {
         String goal = requireString(params, "goal");
         String steerContent = requireString(params, "steerContent");
         String recipeName = optString(params, "recipe");
-        String engineName = optString(params, "engine");
         Map<String, Object> callerParams = optMap(params, "params");
         Duration timeout = resolveTimeout(params);
 
-        if (recipeName != null && engineName != null) {
-            throw new ToolException(
-                    "process_run: pick exactly one of 'recipe' or 'engine'");
-        }
-        if (recipeName == null && engineName == null) {
-            throw new ToolException(
-                    "process_run: one of 'recipe' or 'engine' is required");
-        }
         if (ctx == null || ctx.sessionId() == null || ctx.sessionId().isBlank()) {
             throw new ToolException(
                     "process_run must be invoked from a process with a session");
@@ -176,7 +161,6 @@ public class ProcessRunTool implements Tool {
         String parentProfile = parentConnectionProfile(ctx.processId());
         TriggerAction.Recipe action = new TriggerAction.Recipe(
                 recipeName,
-                engineName,
                 name,
                 /*title*/ null,
                 goal,

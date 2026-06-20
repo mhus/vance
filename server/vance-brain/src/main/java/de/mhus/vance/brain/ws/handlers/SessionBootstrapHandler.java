@@ -160,7 +160,9 @@ public class SessionBootstrapHandler implements WsHandler {
         // whole bootstrap — log and leave chatProcess null in the response.
         ThinkProcessDocument chatProcess = null;
         try {
-            chatProcess = chatBootstrapper.ensureChatProcess(session).orElse(null);
+            chatProcess = chatBootstrapper.ensureChatProcess(
+                    session, /*parentProcessId*/ null,
+                    request.getChatRecipe()).orElse(null);
         } catch (RuntimeException e) {
             log.error("Chat-process bootstrap failed for session '{}'",
                     session.getSessionId(), e);
@@ -187,17 +189,8 @@ public class SessionBootstrapHandler implements WsHandler {
                 continue;
             }
 
-            boolean hasRecipe = !isBlank(spec.getRecipe());
-            boolean hasEngine = !isBlank(spec.getEngine());
-            if (!hasRecipe && !hasEngine) {
-                sender.sendError(wsSession, envelope, 400,
-                        "process spec '" + spec.getName()
-                                + "' needs either recipe or engine");
-                return;
-            }
             TriggerAction.Recipe action = new TriggerAction.Recipe(
-                    hasRecipe ? spec.getRecipe() : null,
-                    hasRecipe ? null : spec.getEngine(),
+                    spec.getRecipe(),
                     spec.getName(),
                     spec.getTitle(),
                     spec.getGoal(),

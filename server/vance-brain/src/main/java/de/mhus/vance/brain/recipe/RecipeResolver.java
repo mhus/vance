@@ -476,49 +476,31 @@ public class RecipeResolver {
 
     /**
      * Applies the spawn-cascade for a {@code process_create}-style
-     * call where the caller may have given a recipe, an engine, or
-     * neither:
+     * call:
      *
      * <ol>
      *   <li>If {@code recipeName} is set → resolve it (error if
      *       missing).</li>
-     *   <li>Else if {@code engineName} is set → try to resolve a
-     *       recipe with that name. If found, use it. If not,
-     *       returns empty so the caller can take the engine-direct
-     *       fallback (no recipe overrides applied).</li>
      *   <li>Else → resolve recipe {@code "default"} (error if
      *       missing — the bundled YAML must contain it).</li>
      * </ol>
      *
      * <p>This puts the entire defaulting policy in one place; the
-     * three create-paths (tool, handler, bootstrap, plus the
-     * session-chat bootstrapper) all call it.
-     *
-     * @return the applied recipe, or {@link Optional#empty()} only
-     *         when {@code engineName} is set and no matching recipe
-     *         exists. Other "missing recipe" cases throw.
+     * four create-paths (tool, handler, bootstrap, plus the
+     * session-chat bootstrapper) all call it. The engine-direct
+     * spawn-path no longer exists — engine is always derived from
+     * the recipe.
      */
-    public Optional<AppliedRecipe> applyDefaulting(
+    public AppliedRecipe applyDefaulting(
             String tenantId,
             @Nullable String projectId,
             @Nullable String recipeName,
-            @Nullable String engineName,
             @Nullable String connectionProfile,
             @Nullable Map<String, Object> callerParams) {
-        if (recipeName != null && !recipeName.isBlank()) {
-            return Optional.of(apply(tenantId, projectId, recipeName,
-                    connectionProfile, callerParams));
-        }
-        if (engineName != null && !engineName.isBlank()) {
-            // Engine-direct path with auto-recipe-by-engine-name.
-            if (resolve(tenantId, projectId, engineName).isPresent()) {
-                return Optional.of(apply(tenantId, projectId, engineName,
-                        connectionProfile, callerParams));
-            }
-            return Optional.empty(); // caller falls back to engine-direct
-        }
-        return Optional.of(apply(tenantId, projectId, "default",
-                connectionProfile, callerParams));
+        String effectiveRecipe = (recipeName != null && !recipeName.isBlank())
+                ? recipeName : "default";
+        return apply(tenantId, projectId, effectiveRecipe,
+                connectionProfile, callerParams);
     }
 
     private static String effectiveProjectId(@Nullable String projectId) {

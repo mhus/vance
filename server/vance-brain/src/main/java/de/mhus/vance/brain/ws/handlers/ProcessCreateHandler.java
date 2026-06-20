@@ -22,8 +22,6 @@ import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.io.IOException;
-import java.util.List;
-import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -33,11 +31,12 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * Creates a think-process in the caller's bound session and kicks off its
- * lifecycle via {@link ThinkEngine#start}. Two paths — recipe-based or
- * direct-engine. See {@code specification/recipes.md}. Any chat messages
- * the engine produced during startup (typically a greeting) are pushed to
- * the client as {@link MessageType#CHAT_MESSAGE_APPENDED} notifications
- * before the ack.
+ * lifecycle via {@link ThinkEngine#start}. Recipe-driven only — engine is
+ * always derived from the resolved recipe (cascade: caller recipe → bundled
+ * {@code "default"}). See {@code specification/recipes.md}. Any chat
+ * messages the engine produced during startup (typically a greeting) are
+ * pushed to the client as {@link MessageType#CHAT_MESSAGE_APPENDED}
+ * notifications before the ack.
  */
 @Component
 @RequiredArgsConstructor
@@ -72,10 +71,6 @@ public class ProcessCreateHandler implements WsHandler {
             sender.sendError(wsSession, envelope, 400, "name is required");
             return;
         }
-        if (!isBlank(request.getRecipe()) && !isBlank(request.getEngine())) {
-            log.info("process-create payload has both recipe='{}' and engine='{}' — recipe wins",
-                    request.getRecipe(), request.getEngine());
-        }
 
         String tenantId = ctx.getTenantId();
         String sessionId = ctx.getSessionId();
@@ -90,11 +85,11 @@ public class ProcessCreateHandler implements WsHandler {
                 new Resource.Session(tenantId, projectId == null ? "" : projectId, sessionId),
                 Action.START);
 
-        java.util.Optional<AppliedRecipe> applied;
+        AppliedRecipe applied;
         try {
             applied = recipeResolver.applyDefaulting(
                     tenantId, projectId,
-                    request.getRecipe(), request.getEngine(),
+                    request.getRecipe(),
                     ctx.getProfile(), request.getParams());
         } catch (RecipeResolver.UnknownRecipeException e) {
             sender.sendError(wsSession, envelope, 404, e.getMessage());
@@ -104,16 +99,35 @@ public class ProcessCreateHandler implements WsHandler {
             return;
         }
 
+        ThinkEngine engine = thinkEngineService.resolve(applied.engine())
+                .orElse(null);
+        if (engine == null) {
+            sender.sendError(wsSession, envelope, 404,
+                    "Recipe '" + applied.name() + "' references unknown engine '"
+                            + applied.engine() + "'");
+            return;
+        }
+
         ThinkProcessDocument created;
         try {
-            created = applied.isPresent()
-                    ? createFromRecipeApplied(request, tenantId, projectId, sessionId, applied.get())
-                    : createFromEngine(request, tenantId, projectId, sessionId);
+            created = thinkProcessService.create(
+                    tenantId, projectId, sessionId, request.getName(),
+                    engine.name(), engine.version(),
+                    request.getTitle(), request.getGoal(),
+                    /*parentProcessId*/ null,
+                    applied.params(),
+                    applied.name(),
+                    applied.promptOverride(),
+                    applied.promptOverrideAppend(),
+                    applied.promptMode(),
+                    applied.dataRelayCorrection(),
+                    applied.effectiveAllowedTools(),
+                    applied.connectionProfile(),
+                    applied.defaultActiveSkills(),
+                    applied.allowedSkills() == null
+                            ? null : java.util.Set.copyOf(applied.allowedSkills()));
         } catch (ThinkProcessService.ThinkProcessAlreadyExistsException e) {
             sender.sendError(wsSession, envelope, 409, e.getMessage());
-            return;
-        } catch (UnknownEngineWsException e) {
-            sender.sendError(wsSession, envelope, 404, e.getMessage());
             return;
         }
 
@@ -141,48 +155,6 @@ public class ProcessCreateHandler implements WsHandler {
         sender.sendReply(wsSession, envelope, MessageType.PROCESS_CREATE, response);
     }
 
-    private ThinkProcessDocument createFromRecipeApplied(
-            ProcessCreateRequest request, String tenantId,
-            @org.jspecify.annotations.Nullable String projectId,
-            String sessionId, AppliedRecipe applied) {
-        ThinkEngine engine = thinkEngineService.resolve(applied.engine())
-                .orElseThrow(() -> new UnknownEngineWsException(
-                        "Recipe '" + applied.name() + "' references unknown engine '"
-                                + applied.engine() + "'"));
-        return thinkProcessService.create(
-                tenantId, projectId, sessionId, request.getName(),
-                engine.name(), engine.version(),
-                request.getTitle(), request.getGoal(),
-                /*parentProcessId*/ null,
-                applied.params(),
-                applied.name(),
-                applied.promptOverride(),
-                applied.promptOverrideAppend(),
-                applied.promptMode(),
-                applied.dataRelayCorrection(),
-                applied.effectiveAllowedTools(),
-                applied.connectionProfile(),
-                applied.defaultActiveSkills(),
-                applied.allowedSkills() == null
-                        ? null : java.util.Set.copyOf(applied.allowedSkills()));
-    }
-
-    private ThinkProcessDocument createFromEngine(
-            ProcessCreateRequest request, String tenantId,
-            @org.jspecify.annotations.Nullable String projectId,
-            String sessionId) {
-        ThinkEngine engine = thinkEngineService.resolve(request.getEngine())
-                .orElseThrow(() -> new UnknownEngineWsException(
-                        "Unknown think-engine '" + request.getEngine()
-                                + "' — registered: " + thinkEngineService.listEngines()));
-        return thinkProcessService.create(
-                tenantId, projectId, sessionId, request.getName(),
-                engine.name(), engine.version(),
-                request.getTitle(), request.getGoal(),
-                /*parentProcessId*/ null,
-                request.getParams());
-    }
-
     private static ChatMessageAppendedData toDto(ChatMessageDocument doc, String processName) {
         return ChatMessageAppendedData.builder()
                 .chatMessageId(doc.getId())
@@ -196,9 +168,5 @@ public class ProcessCreateHandler implements WsHandler {
 
     private static boolean isBlank(@Nullable String s) {
         return s == null || s.isBlank();
-    }
-
-    private static class UnknownEngineWsException extends RuntimeException {
-        UnknownEngineWsException(String message) { super(message); }
     }
 }

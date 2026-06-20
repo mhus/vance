@@ -21,18 +21,18 @@ import org.springframework.stereotype.Component;
  *
  * <h2>Syntax</h2>
  * <pre>
- *   /session-bootstrap &lt;projectId&gt; &lt;engine&gt;[:name] [more...] [-- &lt;initial message&gt;]
- *   /session-bootstrap @&lt;sessionId&gt; &lt;engine&gt;[:name] [more...] [-- &lt;initial message&gt;]
+ *   /session-bootstrap &lt;projectId&gt; &lt;recipe&gt;[:name] [more...] [-- &lt;initial message&gt;]
+ *   /session-bootstrap @&lt;sessionId&gt; &lt;recipe&gt;[:name] [more...] [-- &lt;initial message&gt;]
  * </pre>
  *
  * <p>Examples:
  * <ul>
  *   <li>{@code /session-bootstrap instant-hole ford} —
- *       new session in instant-hole with one ford process</li>
+ *       new session in instant-hole, spawn the {@code ford} recipe</li>
  *   <li>{@code /session-bootstrap instant-hole ford marvin -- Hallo Bots} —
  *       new session, two processes, initial message steered to the first</li>
- *   <li>{@code /session-bootstrap @sess_xyz ford:bot1} —
- *       resume session, ensure a bot1 (engine ford) exists</li>
+ *   <li>{@code /session-bootstrap @sess_xyz analyze:bot1} —
+ *       resume session, ensure a {@code bot1} (recipe analyze) exists</li>
  * </ul>
  *
  * <p>The active process is set automatically — to the steered process if an
@@ -101,13 +101,13 @@ public class SessionBootstrapCommand implements SlashCommand {
         List<ProcessSpec> specs = new ArrayList<>();
         for (String token : head.subList(1, head.size())) {
             int colon = token.indexOf(':');
-            String engine = colon < 0 ? token : token.substring(0, colon);
+            String recipe = colon < 0 ? token : token.substring(0, colon);
             String processName = colon < 0 ? token : token.substring(colon + 1);
-            if (engine.isEmpty() || processName.isEmpty()) {
-                terminal.error("Invalid process spec: '" + token + "' — expected <engine> or <engine>:<name>.");
+            if (recipe.isEmpty() || processName.isEmpty()) {
+                terminal.error("Invalid process spec: '" + token + "' — expected <recipe> or <recipe>:<name>.");
                 return;
             }
-            specs.add(ProcessSpec.builder().engine(engine).name(processName).build());
+            specs.add(ProcessSpec.builder().recipe(recipe).name(processName).build());
         }
 
         SessionBootstrapResponse response = connection.request(
@@ -149,6 +149,6 @@ public class SessionBootstrapCommand implements SlashCommand {
     }
 
     private void printUsage() {
-        terminal.error("Usage: /session-bootstrap <projectId>|@<sessionId> <engine>[:name] [more...] [-- <initial message>]");
+        terminal.error("Usage: /session-bootstrap <projectId>|@<sessionId> <recipe>[:name] [more...] [-- <initial message>]");
     }
 }

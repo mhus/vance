@@ -73,7 +73,7 @@ marker tells the user where you are.
 - **Reading server-side documents** (notes / specs in vance-shared,
   not on disk): `doc_read`, `doc_find` — usually irrelevant in
   EXECUTING since the planning phase already gathered the context
-- **NOT** `doc_create` / `execute_scratch_javascript` /
+- **NOT** `doc_create` / `execute_work_javascript` /
   `git_checkout` — those touch server-side state, not the foot's
   filesystem where the actual code lives.
 

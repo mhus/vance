@@ -1,6 +1,6 @@
 ---
 triggers: execute_javascript, JavaScript, JS script, vance.tools.call, GraalJS, scratch javascript, client_javascript, host bindings, vance.*, client.*, multi-tool plumbing
-summary: How to call tools from JavaScript on brain (vance.*) or foot (client.*) — execute_javascript, execute_scratch_javascript, client_javascript.
+summary: How to call tools from JavaScript on brain (vance.*) or foot (client.*) — execute_javascript, execute_work_javascript, client_javascript.
 ---
 # Scripts that call tools
 
@@ -11,7 +11,7 @@ Two execution surfaces, picked by which tool you call:
 
 - `execute_javascript code=…` — runs on the **brain**. Host binding:
   `vance.*`. Can call any server tool you're allowed to use.
-- `execute_scratch_javascript path=…` — same engine, but loads the
+- `execute_work_javascript path=…` — same engine, but loads the
   source from a `.js` file in the project scratch area. Stack traces show
   the file path. Pairs with `work_file_write` for iterate-and-rerun.
 - `client_javascript code=…` — runs on the **foot** (user's machine).
@@ -203,8 +203,8 @@ out;
 
 ```text
 1. work_file_write path=compute.js content="let x = 2+2; x;"
-2. execute_scratch_javascript path=compute.js
+2. execute_work_javascript path=compute.js
    → { "value": 4, "durationMs": 3, "path": "compute.js", ... }
 3. work_file_write path=compute.js content="..."   # tweak
-4. execute_scratch_javascript path=compute.js    # rerun
+4. execute_work_javascript path=compute.js    # rerun
 ```

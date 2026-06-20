@@ -37,7 +37,7 @@ This is your **first reach when the user says "write a script and
 run it"** — whether the body is "compute X" or "mark 100 mails as
 read". Value of the last expression is returned.
 
-### `execute_scratch_javascript` — JS with scratch FS access
+### `execute_work_javascript` — JS with scratch FS access
 
 Same engine, plus read/write access to the project scratch area.
 Use for short scripts that touch scratch files but don't need a

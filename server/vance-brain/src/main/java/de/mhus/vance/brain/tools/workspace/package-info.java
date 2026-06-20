@@ -1,6 +1,6 @@
 /**
  * Brain-side workspace tooling. The {@code workspace_*} brain tools
- * (read/write/list/delete + execute_scratch_javascript) plus the
+ * (read/write/list/delete + execute_work_javascript) plus the
  * {@link de.mhus.vance.brain.tools.workspace.WorkspaceDirResolver}
  * helper that bridges {@link
  * de.mhus.vance.toolpack.ToolInvocationContext} to the {@code

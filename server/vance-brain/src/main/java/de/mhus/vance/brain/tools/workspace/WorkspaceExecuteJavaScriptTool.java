@@ -54,7 +54,7 @@ public class WorkspaceExecuteJavaScriptTool implements Tool {
 
     @Override
     public String name() {
-        return "execute_scratch_javascript";
+        return "execute_work_javascript";
     }
 
     @Override
@@ -93,7 +93,7 @@ public class WorkspaceExecuteJavaScriptTool implements Tool {
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         throw new ToolException(
-                "execute_scratch_javascript requires the bound tools surface — "
+                "execute_work_javascript requires the bound tools surface — "
                         + "call via the engine's ContextToolsApi");
     }
 

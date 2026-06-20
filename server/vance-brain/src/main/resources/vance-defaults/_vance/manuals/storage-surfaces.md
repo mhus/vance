@@ -32,7 +32,7 @@ later"* → Document.
 ### Scratch — short-lived work files
 
 Tools: `work_file_write`, `work_file_read`, `work_file_grep`,
-`python_run`, `work_exec_run`, `execute_scratch_javascript`.
+`python_run`, `work_exec_run`, `execute_work_javascript`.
 
 The project's on-disk sandbox. Use for:
 

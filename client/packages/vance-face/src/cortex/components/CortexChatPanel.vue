@@ -225,6 +225,7 @@ async function onConversationExported(
           :chat-project-id="projectId"
           :compact-tools="true"
           :current-file-source="currentFileSource"
+          :draft-key="`cortex:${sessionId}`"
           @hub="onLeave"
           @local-echo="onLocalEcho"
           @rollback-echo="onRollbackEcho"

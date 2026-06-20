@@ -800,6 +800,7 @@ function openInCortex(): void {
         :mediation="mediation"
         :follow-up-suggestion="followUpSuggestion"
         :ensure-connected="ensureConnected"
+        :draft-key="activeSessionId ?? undefined"
         @hub="backToHub"
         @local-echo="onLocalEchoFromComposer"
         @rollback-echo="onRollbackEchoFromComposer"

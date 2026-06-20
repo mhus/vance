@@ -79,6 +79,12 @@ const props = defineProps<{
    *  the reconnect failed — in which case the parent has already
    *  switched to its failure UI and the send is aborted. */
   ensureConnected?: () => Promise<boolean>;
+  /** Stable per-chat identifier used to persist the in-progress
+   *  composer draft to {@code sessionStorage}, so the user's typed
+   *  text survives a WS reconnect (the parent destroys the composer
+   *  via {@code v-if="liveOk"} when the socket drops — e.g. after the
+   *  laptop wakes from sleep). When unset, draft persistence is off. */
+  draftKey?: string | null;
 }>();
 
 /**
@@ -129,15 +135,48 @@ const { t } = useI18n();
 
 // ──────────────── Composer state ────────────────
 
-const composerText = ref('');
+// Draft persistence. The composer lives behind a {@code v-if} on the
+// WS-liveness flag, so a reconnect (laptop sleep/wake, idle close)
+// destroys and recreates it — without persistence the user's typed
+// text is gone. We mirror {@link composerText} into sessionStorage
+// under a per-chat key so the same chat in the same tab restores it,
+// and a different chat (or a fresh tab) gets a clean slate.
+const DRAFT_STORAGE_PREFIX = 'vance.chat.composerDraft:';
+
+function draftStorageKey(): string | null {
+  return props.draftKey ? `${DRAFT_STORAGE_PREFIX}${props.draftKey}` : null;
+}
+
+function readDraft(): string {
+  const key = draftStorageKey();
+  if (!key) return '';
+  try {
+    return window.sessionStorage.getItem(key) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function writeDraft(value: string): void {
+  const key = draftStorageKey();
+  if (!key) return;
+  try {
+    if (value) window.sessionStorage.setItem(key, value);
+    else window.sessionStorage.removeItem(key);
+  } catch { /* quota / disabled — silently skip */ }
+}
+
+const composerText = ref(readDraft());
 const sending = ref(false);
 const uploading = ref(false);
 const sendError = ref<string | null>(null);
 
 // Mirror composer text upward so the parent can drive the follow-up
-// ghost-bubble visibility (only shown while the composer is empty).
+// ghost-bubble visibility (only shown while the composer is empty),
+// and into sessionStorage so a WS reconnect doesn't lose the draft.
 watch(composerText, (next) => {
   emit('text-changed', next);
+  writeDraft(next);
 }, { immediate: true });
 
 const selectedFiles = ref<File[]>([]);

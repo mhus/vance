@@ -50,10 +50,10 @@ public class WorkspaceHeadTailTool implements Tool {
 
     private final WorkspaceService workspace;
 
-    @Override public String name() { return "scratch_head_tail"; }
+    @Override public String name() { return "work_file_head_tail"; }
     @Override public String description() {
         return "Return the first N lines (head) and / or last N lines (tail) "
-                + "of a scratch file. At least one of head / tail must be > 0. "
+                + "of a workspace file. At least one of head / tail must be > 0. "
                 + "Lines are 1-based; the response carries lineNumber so the LLM "
                 + "can address them again.";
     }

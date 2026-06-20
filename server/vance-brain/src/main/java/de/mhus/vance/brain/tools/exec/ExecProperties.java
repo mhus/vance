@@ -16,7 +16,7 @@ public class ExecProperties {
      */
     private String baseDir = "data/exec";
 
-    /** Milliseconds {@code exec_run} blocks before handing back the id. */
+    /** Milliseconds {@code work_exec_run} blocks before handing back the id. */
     private long defaultWaitMs = 15_000;
 
     /** Inline stdout/stderr cap in characters. Files on disk stay complete. */
@@ -30,7 +30,7 @@ public class ExecProperties {
      * {@code EXEC_FINISHED} push event. Just enough for the LLM to
      * spot the error message or success marker without round-tripping
      * the full log — full output stays on disk and is fetchable via
-     * {@code exec_tail} on demand.
+     * {@code work_exec_tail} on demand.
      */
     private int completionTailLines = 40;
 }

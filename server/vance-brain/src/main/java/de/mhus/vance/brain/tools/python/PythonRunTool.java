@@ -22,7 +22,7 @@ import org.springframework.stereotype.Component;
  * Runs a Python file inside the named Python RootDir's venv. The
  * working directory is the RootDir, so relative imports and file
  * accesses resolve as expected. Long-running scripts come back still
- * RUNNING with a job id; the LLM follows up via {@code exec_status}.
+ * RUNNING with a job id; the LLM follows up via {@code work_exec_status}.
  */
 @Component
 @RequiredArgsConstructor
@@ -70,8 +70,8 @@ public class PythonRunTool implements Tool {
     public String description() {
         return "Run a Python file with the named Python RootDir's venv "
                 + "interpreter. Working directory is the RootDir. Returns "
-                + "the same shape as exec_run; long-running scripts come "
-                + "back with status=RUNNING and a job id for exec_status.";
+                + "the same shape as work_exec_run; long-running scripts come "
+                + "back with status=RUNNING and a job id for work_exec_status.";
     }
 
     @Override

@@ -13,7 +13,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * Reads a UTF-8 text file from a project scratch RootDir. Truncates
+ * Reads a UTF-8 text file from a project workspace RootDir. Truncates
  * at {@link WorkspaceProperties#getDefaultReadCharCap()} by default.
  * When {@code dirName} is omitted, the per-process temp RootDir is
  * used.
@@ -45,12 +45,12 @@ public class WorkspaceReadTool implements Tool {
 
     @Override
     public String name() {
-        return "scratch_read";
+        return "work_file_read";
     }
 
     @Override
     public String description() {
-        return "Read a text file from a project scratch RootDir. Returns "
+        return "Read a text file from a project workspace RootDir. Returns "
                 + "the file content; if longer than the cap, only the prefix "
                 + "is returned and 'truncated' is true.";
     }

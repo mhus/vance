@@ -13,7 +13,7 @@ import org.springframework.stereotype.Component;
 /**
  * Last N lines of a job's stdout or stderr log file. Cheap targeted
  * read for "what is this thing currently spitting out?" — avoids
- * round-tripping the full inline output through {@code exec_status}.
+ * round-tripping the full inline output through {@code work_exec_status}.
  */
 @Component
 @RequiredArgsConstructor
@@ -27,7 +27,7 @@ public class ExecTailTool implements Tool {
             "properties", Map.of(
                     "id", Map.of(
                             "type", "string",
-                            "description", "Job id returned by exec_run."),
+                            "description", "Job id returned by work_exec_run."),
                     "n", Map.of(
                             "type", "integer",
                             "description", "Number of lines to return (default 10, max 500)."),
@@ -41,7 +41,7 @@ public class ExecTailTool implements Tool {
 
     @Override
     public String name() {
-        return "exec_tail";
+        return "work_exec_tail";
     }
 
     @Override

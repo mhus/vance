@@ -14,7 +14,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * Force-decision watchdog check on a long-running exec job. Unlike
- * {@code exec_status} (passive read), this tool requires the LLM to
+ * {@code work_exec_status} (passive read), this tool requires the LLM to
  * commit to an action in case the job is still running:
  *
  * <ul>
@@ -28,7 +28,7 @@ import org.springframework.stereotype.Component;
  *
  * When the job is already terminal, the {@code ifRunning} verb is
  * ignored — the response carries the final status and output the same
- * way {@code exec_status} would, plus {@code terminal: true}.
+ * way {@code work_exec_status} would, plus {@code terminal: true}.
  *
  * <p>Plan: {@code planning/wakeup-and-exec.md} §4.2.
  */
@@ -41,7 +41,7 @@ public class ExecCheckTool implements Tool {
             "properties", Map.of(
                     "id", Map.of(
                             "type", "string",
-                            "description", "Job id returned by exec_run."),
+                            "description", "Job id returned by work_exec_run."),
                     "ifRunning", Map.of(
                             "type", "string",
                             "enum", List.of("extend", "kill", "wait"),
@@ -64,7 +64,7 @@ public class ExecCheckTool implements Tool {
 
     @Override
     public String name() {
-        return "exec_check";
+        return "work_exec_check";
     }
 
     @Override
@@ -73,7 +73,7 @@ public class ExecCheckTool implements Tool {
                 + "atomic step. Use as the heartbeat for long-running jobs "
                 + "started with deadlineSeconds — pair with wakeup_in to "
                 + "wake yourself up periodically and extend the lease. "
-                + "Returns the same fields as exec_status plus 'decision' "
+                + "Returns the same fields as work_exec_status plus 'decision' "
                 + "and (on extend) 'newDeadline'.";
     }
 

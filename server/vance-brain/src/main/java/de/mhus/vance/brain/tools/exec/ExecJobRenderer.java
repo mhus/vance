@@ -7,7 +7,7 @@ import java.util.Map;
 
 /**
  * Projects an {@link ExecJob} onto the flat map shape tools return to
- * the LLM. Centralised so {@code exec_run} and {@code exec_status}
+ * the LLM. Centralised so {@code work_exec_run} and {@code work_exec_status}
  * agree on field names and truncation rules.
  */
 final class ExecJobRenderer {
@@ -35,7 +35,7 @@ final class ExecJobRenderer {
         if (stdout.length() > inlineCap || stderr.length() > inlineCap) {
             out.put("truncated", true);
             out.put("hint",
-                    "Output truncated. Use another exec_run with bounded commands "
+                    "Output truncated. Use another work_exec_run with bounded commands "
                             + "(head -N / tail -N / sed -n 'A,Bp' <path> / grep -m N) "
                             + "against stdoutPath/stderrPath to page through.");
         }

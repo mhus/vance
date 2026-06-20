@@ -1656,7 +1656,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                             + "next iteration call read/write tools "
                             + "(client_file_read, client_file_edit, "
                             + "client_file_write, client_exec_run, "
-                            + "scratch_read, scratch_grep, etc.) to "
+                            + "work_file_read, work_file_grep, etc.) to "
                             + "actually make progress on this item. Once the "
                             + "work is done, emit TODO_UPDATE to mark it "
                             + "COMPLETED and pick the next item.");

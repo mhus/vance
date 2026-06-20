@@ -14,8 +14,8 @@ import org.springframework.stereotype.Component;
  * List every shell execution the brain knows about — its own jobs and
  * foot-side jobs reported via {@code exec-event} — within the caller's
  * tenant + project. The {@code owner} field tells callers which side
- * runs each entry; pair with {@code exec_stat} / {@code exec_tail} /
- * {@code exec_kill}, which now route via the registry.
+ * runs each entry; pair with {@code work_exec_stat} / {@code work_exec_tail} /
+ * {@code work_exec_kill}, which now route via the registry.
  */
 @Component
 @RequiredArgsConstructor
@@ -43,7 +43,7 @@ public class ExecListTool implements Tool {
 
     @Override
     public String name() {
-        return "exec_list";
+        return "work_exec_list";
     }
 
     @Override
@@ -51,8 +51,8 @@ public class ExecListTool implements Tool {
         return "List shell executions across brain and connected foot "
                 + "clients within the caller's tenant + project. Each "
                 + "entry carries owner ('brain' or 'foot:<editorId>'), "
-                + "status, command, lastOutputAt, exitCode. Use exec_stat "
-                + "for details and exec_tail for output.";
+                + "status, command, lastOutputAt, exitCode. Use work_exec_stat "
+                + "for details and work_exec_tail for output.";
     }
 
     @Override

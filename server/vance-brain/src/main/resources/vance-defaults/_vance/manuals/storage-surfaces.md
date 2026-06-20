@@ -31,8 +31,8 @@ later"* → Document.
 
 ### Scratch — short-lived work files
 
-Tools: `scratch_write`, `scratch_read`, `scratch_grep`,
-`python_run`, `exec_run`, `execute_scratch_javascript`.
+Tools: `work_file_write`, `work_file_read`, `work_file_grep`,
+`python_run`, `work_exec_run`, `execute_scratch_javascript`.
 
 The project's on-disk sandbox. Use for:
 
@@ -43,7 +43,7 @@ The project's on-disk sandbox. Use for:
 
 **Not searchable, not part of the user's knowledge base, may be
 discarded on suspend.** When a scratch file turns out worth
-keeping, promote it: `scratch_to_doc`.
+keeping, promote it: `work_file_to_doc`.
 
 ### Client file — the user's own filesystem
 

@@ -62,8 +62,8 @@ public class WakeupInTool implements Tool {
                 + "you can pass to wakeup_cancel to revoke before it fires. "
                 + "\n"
                 + "Heartbeat pattern for long-running exec jobs: pair with "
-                + "exec_run(deadlineSeconds=N) and exec_check. On each wakeup, "
-                + "call exec_check(jobId, ifRunning='extend', extendSeconds=N) "
+                + "work_exec_run(deadlineSeconds=N) and work_exec_check. On each wakeup, "
+                + "call work_exec_check(jobId, ifRunning='extend', extendSeconds=N) "
                 + "to push the lease out, then queue the next wakeup_in(N/2, "
                 + "...). If you forget a heartbeat the watchdog kills the job "
                 + "and emits EXEC_TIMEOUT — the lease is your safety net.";

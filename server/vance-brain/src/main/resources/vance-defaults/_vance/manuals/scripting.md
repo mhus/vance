@@ -76,7 +76,7 @@ external process, can't call other Vance tools from inside.
 ### `python_run` (+ `python_create`, `python_install`)
 
 For **persisted multi-file Python projects**: explicit
-`python_create(dirName=…)` followed by `scratch_write` of the
+`python_create(dirName=…)` followed by `work_file_write` of the
 files and `python_run(file=…, dirName=…)` to execute. Use when
 your Python work spans multiple files or you want the project
 checked into git (RootDir suspend/resume cycles). For

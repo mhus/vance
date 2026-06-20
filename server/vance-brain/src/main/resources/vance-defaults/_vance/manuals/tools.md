@@ -17,18 +17,18 @@ explore beyond the primary set advertised every turn.
 
 Per-project sandbox the LLM controls in the brain:
 
-- `scratch_write / read / list / delete` — UTF-8 files under
+- `work_file_write / read / list / delete` — UTF-8 files under
   `~/.vance/workspaces/<tenant>/<projectId>/`. Survives restarts;
   visible to every session in the same project.
 - `execute_javascript code=…` / `execute_scratch_javascript path=…`
   — sandboxed GraalJS. Scripts can call other tools through the
   `vance.*` host binding. See `manual_read scripts`.
-- `exec_run command=… [waitMs=…]` — shell command in the project
+- `work_exec_run command=… [waitMs=…]` — shell command in the project
   scratch area (CWD = scratch root). Returns a job id if it doesn't
-  finish in time. `exec_status id=…` and `exec_kill id=…` follow up.
+  finish in time. `work_exec_status id=…` and `work_exec_kill id=…` follow up.
 
-Typical flow: `scratch_write` a file → `exec_run` to act on it (`git
-clone`, build, grep) → `scratch_read` to inspect outputs.
+Typical flow: `work_file_write` a file → `work_exec_run` to act on it (`git
+clone`, build, grep) → `work_file_read` to inspect outputs.
 
 ## Client-side filesystem + exec
 

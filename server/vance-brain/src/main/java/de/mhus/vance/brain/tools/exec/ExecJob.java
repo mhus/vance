@@ -24,7 +24,7 @@ final class ExecJob {
     private final Instant startedAt;
     /**
      * Subprocess environment to install. {@code null} = inherit JVM env
-     * (legacy default for {@code exec_run} callers). When non-null the
+     * (legacy default for {@code work_exec_run} callers). When non-null the
      * runner wipes inherited vars and installs only these — used by
      * script-execution paths that need a sealed env (e.g. Python with
      * {@code VANCE_TOKEN}).

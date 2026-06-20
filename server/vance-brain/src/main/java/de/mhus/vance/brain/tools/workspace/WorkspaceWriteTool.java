@@ -44,24 +44,25 @@ public class WorkspaceWriteTool implements Tool {
 
     @Override
     public String name() {
-        return "scratch_write";
+        return "work_file_write";
     }
 
     @Override
     public String description() {
-        return "Create or overwrite a short-lived SCRATCH file in "
-                + "the project's scratch directory on disk. Use this "
-                + "for scripts, scratch data, intermediate artifacts "
-                + "or anything you want to operate on with python_run "
-                + "/ exec_run / scratch_grep next. The scratch area is "
-                + "a sandbox — files here are not searchable knowledge "
-                + "and may be discarded when the project suspends. "
-                + "NOT for: lasting knowledge the user will want to "
-                + "find/read later (use doc_create), or files on "
-                + "the user's own machine (use client_file_write). "
-                + "Use relative paths; parent directories are created "
-                + "automatically. Promote a scratch file to a real "
-                + "document with scratch_to_doc when it earns it.";
+        return "Create or overwrite a text file in a project workspace "
+                + "RootDir on the brain server. Use this for scripts, "
+                + "intermediate artifacts, build outputs, or anything "
+                + "you want to operate on with python_run / "
+                + "work_exec_run / work_file_grep next. Workspace "
+                + "RootDirs are a sandbox — files here are not "
+                + "searchable knowledge and may be discarded when the "
+                + "project suspends. NOT for: lasting knowledge the "
+                + "user will want to find/read later (use doc_create), "
+                + "or files on the user's own machine (use "
+                + "client_file_write). Use relative paths; parent "
+                + "directories are created automatically. Promote a "
+                + "workspace file to a real document with "
+                + "work_file_to_doc when it earns it.";
     }
 
     @Override
@@ -77,7 +78,9 @@ public class WorkspaceWriteTool implements Tool {
     @Override
     public java.util.Set<String> labels() {
         // "scratch" tells the history-tagging hook to encode the
-        // returned "path" as a SCRATCH: resource key — see
+        // returned "path" as a SCRATCH: resource key — kept as
+        // backward-compat after the tool rename to work_file_*; see
+        // HistoryTagBuilder.LABEL_SCRATCH and
         // planning/process-history-search.md §5.1.
         return java.util.Set.of("write", "side-effect", "scratch");
     }

@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component;
 /**
  * Force-kills a still-running exec job. Secondary — the LLM should
  * reach for it explicitly after finding a runaway via
- * {@code exec_status}, not reflexively.
+ * {@code work_exec_status}, not reflexively.
  */
 @Component
 @RequiredArgsConstructor
@@ -30,7 +30,7 @@ public class ExecKillTool implements Tool {
 
     @Override
     public String name() {
-        return "exec_kill";
+        return "work_exec_kill";
     }
 
     @Override

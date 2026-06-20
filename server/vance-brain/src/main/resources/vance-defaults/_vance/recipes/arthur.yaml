@@ -81,7 +81,7 @@ _destructive_excludes: &destructive_excludes
   - kit_install
   - kit_update
   - kit_export
-  - scratch_delete
+  - work_file_delete
   - peer_notify
   - git_checkout
 
@@ -170,8 +170,8 @@ profiles:
       ## Client context — web browser
 
       You are reachable from a web browser — there is no local
-      filesystem on the client side. Use `scratch_read` /
-      `scratch_write` for files stored in the project. If the user
+      filesystem on the client side. Use `work_file_read` /
+      `work_file_write` for files stored in the project. If the user
       references local files (`~/Documents/foo.md`, paths on their
       machine), explain that you can't reach them from a web client
       and offer alternatives: upload to the workspace, or reconnect

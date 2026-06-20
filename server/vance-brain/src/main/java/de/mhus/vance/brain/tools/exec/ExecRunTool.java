@@ -17,7 +17,7 @@ import org.springframework.stereotype.Component;
 /**
  * Runs a shell command in the session scratch. Blocks briefly so
  * short commands return synchronously; longer ones come back still
- * RUNNING and the LLM follows up with {@code exec_status} by id.
+ * RUNNING and the LLM follows up with {@code work_exec_status} by id.
  */
 @Component
 @RequiredArgsConstructor
@@ -32,7 +32,7 @@ public class ExecRunTool implements Tool {
                                     "Shell command to run (bash via /bin/sh -c on "
                                             + "Linux/macOS, cmd.exe /c on Windows). "
                                             + "Full shell syntax allowed; cwd is the "
-                                            + "named scratch RootDir."),
+                                            + "named workspace RootDir."),
                     "dirName", Map.of(
                             "type", "string",
                             "description",
@@ -56,7 +56,7 @@ public class ExecRunTool implements Tool {
                                             + "deadlineSeconds=3600 with waitMs=1000 — "
                                             + "you'll get the jobId back fast and the "
                                             + "watchdog handles termination. Extend with "
-                                            + "exec_check(jobId, ifRunning='extend').")),
+                                            + "work_exec_check(jobId, ifRunning='extend').")),
             "required", List.of("command"));
 
     private final ExecManager execManager;
@@ -66,7 +66,7 @@ public class ExecRunTool implements Tool {
 
     @Override
     public String name() {
-        return "exec_run";
+        return "work_exec_run";
     }
 
     @Override
@@ -74,15 +74,15 @@ public class ExecRunTool implements Tool {
         return "Execute a shell command in the session scratch and wait up "
                 + "to ~15s for completion. If it finishes in time you get "
                 + "status + stdout + stderr; otherwise you get the job id and "
-                + "follow up with exec_status. stdoutPath / stderrPath are the "
+                + "follow up with work_exec_status. stdoutPath / stderrPath are the "
                 + "complete log files on disk — page through them with bounded "
-                + "further exec_run calls (head, tail, grep -m, sed -n 'A,Bp')."
+                + "further work_exec_run calls (head, tail, grep -m, sed -n 'A,Bp')."
                 + "\n"
                 + "Push-completion: when the job finally exits you also get an "
                 + "EXEC_FINISHED event in your inbox (or EXEC_TIMEOUT if the "
-                + "watchdog killed it) — no need to keep polling exec_status. "
+                + "watchdog killed it) — no need to keep polling work_exec_status. "
                 + "For genuinely long-running jobs pass deadlineSeconds, then "
-                + "use the wakeup_in + exec_check heartbeat pattern to keep "
+                + "use the wakeup_in + work_exec_check heartbeat pattern to keep "
                 + "the lease alive (or let it expire and the watchdog cleans "
                 + "up automatically).";
     }

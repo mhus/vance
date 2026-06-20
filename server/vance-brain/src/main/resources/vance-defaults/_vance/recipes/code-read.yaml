@@ -19,8 +19,8 @@ promptPrefix: |
 allowedToolsRemove:
   - client_file_write
   - client_file_edit
-  - scratch_write
-  - scratch_delete
+  - work_file_write
+  - work_file_delete
 profiles:
   foot:
     params:
@@ -47,7 +47,7 @@ profiles:
     promptPrefixAppend: |
       ## Client context — web browser
 
-      No local filesystem on the client side. Use `scratch_read`
+      No local filesystem on the client side. Use `work_file_read`
       for project files.
 
   # Catch-all for unknown / future / API-only profiles — defensive.
@@ -62,7 +62,7 @@ profiles:
     promptPrefixAppend: |
       ## Client context — non-CLI client
 
-      No local filesystem; use `scratch_read` for project files.
+      No local filesystem; use `work_file_read` for project files.
 tags:
   - code
   - read

@@ -58,7 +58,7 @@ public class ToolResultStorage {
      * filename without the {@code .txt} suffix); the LLM never
      * sees an absolute disk path. Earlier versions exposed
      * {@code _storagePath} — that lured Ford into calling
-     * {@code scratch_read} on a path outside the scratch RootDir,
+     * {@code work_file_read} on a path outside the scratch RootDir,
      * which burned the per-turn tool-iteration budget and aborted
      * the worker.
      */

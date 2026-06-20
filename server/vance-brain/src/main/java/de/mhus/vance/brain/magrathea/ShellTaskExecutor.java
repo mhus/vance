@@ -19,7 +19,7 @@ import tools.jackson.databind.ObjectMapper;
  * Shell-task executor (plan §4.2). Delegates to the existing
  * {@link ExecManager} via {@code submitTrackedAndRender} so workflow
  * shell commands flow through the same registry, log-files and
- * watchdog the agent {@code exec_run} tool uses — no parallel exec
+ * watchdog the agent {@code work_exec_run} tool uses — no parallel exec
  * surface.
  *
  * <p>Synchronous from the executor's point of view: it waits up to

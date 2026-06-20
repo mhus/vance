@@ -2621,7 +2621,7 @@ public class EddieEngine extends StructuredActionEngine {
                     .append("`. Always pass `projectId=\"")
                     .append(userProject)
                     .append("\"` to `doc_create`, `doc_edit`, "
-                    + "`scratch_write`, etc. — the "
+                    + "`work_file_write`, etc. — the "
                     + "default routes to `_tenant` and gets rejected "
                     + "because the hub is SYSTEM-protected.");
         }

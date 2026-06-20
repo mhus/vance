@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * Looks up a previously submitted exec job by id, within the caller's
- * session scope. Returns the same shape as {@code exec_run}.
+ * session scope. Returns the same shape as {@code work_exec_run}.
  */
 @Component
 @RequiredArgsConstructor
@@ -22,7 +22,7 @@ public class ExecStatusTool implements Tool {
             "properties", Map.of(
                     "id", Map.of(
                             "type", "string",
-                            "description", "Job id returned by exec_run.")),
+                            "description", "Job id returned by work_exec_run.")),
             "required", List.of("id"));
 
     private final ExecManager execManager;
@@ -30,14 +30,14 @@ public class ExecStatusTool implements Tool {
 
     @Override
     public String name() {
-        return "exec_status";
+        return "work_exec_status";
     }
 
     @Override
     public String description() {
         return "Check status and inline output of a previously started exec "
-                + "job by id. Returns the same shape as exec_run. Passive "
-                + "read — use exec_check instead when you need to commit to "
+                + "job by id. Returns the same shape as work_exec_run. Passive "
+                + "read — use work_exec_check instead when you need to commit to "
                 + "extend / kill in the same call (the watchdog heartbeat).";
     }
 

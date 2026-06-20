@@ -16,7 +16,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * Reads a file from a project scratch RootDir and ingests its content
- * into a RAG. Convenience composition over {@code scratch_read} +
+ * into a RAG. Convenience composition over {@code work_file_read} +
  * {@code rag_add_text}. {@code sourceRef} defaults to the file's
  * relative path so re-ingesting the same file replaces its prior
  * chunks instead of duplicating. When {@code dirName} is omitted, the

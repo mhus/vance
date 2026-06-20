@@ -65,9 +65,9 @@ public class WorkspaceGrepTool implements Tool {
 
     private final WorkspaceService workspace;
 
-    @Override public String name() { return "scratch_grep"; }
+    @Override public String name() { return "work_file_grep"; }
     @Override public String description() {
-        return "Recursively grep regex patterns across files in a scratch RootDir. "
+        return "Recursively grep regex patterns across files in a workspace RootDir. "
                 + "Returns matching lines with file path + 1-based line number, "
                 + "optionally with context lines. Binary / oversized files are skipped.";
     }

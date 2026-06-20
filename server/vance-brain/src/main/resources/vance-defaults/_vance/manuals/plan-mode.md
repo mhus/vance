@@ -22,7 +22,7 @@ When in doubt, propose. Alignment up-front is cheaper than churn.
 **Do not** enter plan mode for:
 
 - One-shot factual questions answerable with a single `ANSWER`.
-- Simple read operations (`scratch_read`, `doc_read`, ...).
+- Simple read operations (`work_file_read`, `doc_read`, ...).
 - Trivial single-file edits the user already described in detail.
 
 ## The four actions

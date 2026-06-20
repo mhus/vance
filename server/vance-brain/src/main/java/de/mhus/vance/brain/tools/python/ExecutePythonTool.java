@@ -79,7 +79,7 @@ public class ExecutePythonTool implements Tool {
                                     "Wall-clock timeout in milliseconds. Long-"
                                             + "running scripts return early with "
                                             + "status=RUNNING and a job id for "
-                                            + "exec_status.")),
+                                            + "work_exec_status.")),
             "required", List.of("code"));
 
     private final WorkspaceService workspaceService;
@@ -153,7 +153,7 @@ public class ExecutePythonTool implements Tool {
 
         // Write the inline script. Timestamp suffix keeps successive
         // calls from clobbering each other if the previous run is
-        // still RUNNING and the user / LLM follows up via exec_status.
+        // still RUNNING and the user / LLM follows up via work_exec_status.
         String fileName = "_inline_" + System.currentTimeMillis() + ".py";
         try {
             Path written = workspaceService.write(tenantId, projectId, dirName, fileName, code);

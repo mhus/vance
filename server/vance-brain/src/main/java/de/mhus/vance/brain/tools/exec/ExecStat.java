@@ -5,8 +5,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Compact status snapshot for a single exec job — no inline stdout/stderr
- * bodies (use {@code exec_tail} for that). Cheap enough to call in a poll
- * loop and small enough to fit a long {@code exec_list} response.
+ * bodies (use {@code work_exec_tail} for that). Cheap enough to call in a poll
+ * loop and small enough to fit a long {@code work_exec_list} response.
  */
 public record ExecStat(
         String id,

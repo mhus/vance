@@ -23,7 +23,7 @@ import org.springframework.stereotype.Component;
  * <p>Without this tool the LLM has no clean way to recover the full
  * result — the previous design exposed the absolute disk path under
  * {@code _storagePath}, which led Ford workers to try
- * {@code scratch_read} on it. Scratch has its own RootDir, so the
+ * {@code work_file_read} on it. Scratch has its own RootDir, so the
  * read always failed with "Path escapes RootDir"; the worker burned
  * its per-turn tool-iteration budget on retries and the parent Vogon
  * phase ended STALE (observed live on 2026-05-17 in the

@@ -107,7 +107,7 @@ public class ExecManager {
      * Variant that binds the job to an owning think-process. When set,
      * the job's natural terminal transition triggers a {@code
      * ProcessEvent(EXEC_FINISHED)} delivery to that process's inbox so
-     * the LLM doesn't have to poll {@code exec_status}. See
+     * the LLM doesn't have to poll {@code work_exec_status}. See
      * {@code planning/wakeup-and-exec.md} §4.2.
      */
     public ExecJob submit(
@@ -186,7 +186,7 @@ public class ExecManager {
      * Pushes the deadline of {@code jobId} out by {@code extension}
      * from now. Returns {@code false} when the job is unknown or no
      * longer RUNNING (e.g. the natural-completion / watchdog-kill
-     * already happened — the caller's {@code exec_check} will see
+     * already happened — the caller's {@code work_exec_check} will see
      * the terminal status reflected on the next read).
      */
     public boolean extendDeadline(
@@ -228,7 +228,7 @@ public class ExecManager {
      * type: starts the command in the named RootDir, registers it with
      * {@link ExecutionRegistryService}, waits up to {@code waitMs} for
      * completion, and returns the renderer's response map (same shape
-     * as {@code exec_run}).
+     * as {@code work_exec_run}).
      */
     public Map<String, Object> submitTrackedAndRender(
             String tenantId, String projectId,
@@ -312,7 +312,7 @@ public class ExecManager {
     /**
      * Public snapshot for a previously-submitted job. Returns the
      * same {@code Map<String, Object>} shape as the LLM-facing
-     * {@code exec_status} / {@code exec_run} tools — REST clients
+     * {@code work_exec_status} / {@code work_exec_run} tools — REST clients
      * read {@code status} / {@code stdout} / {@code stderr} /
      * {@code exitCode} / {@code durationMs}. Empty when the job id
      * doesn't belong to this project (or has been evicted).
@@ -581,7 +581,7 @@ public class ExecManager {
      * status — COMPLETED, FAILED, or KILLED via the
      * {@link #kill(String, String, String)} path that flips status
      * outside the worker). The event lets the LLM react to job
-     * termination without polling {@code exec_status}.
+     * termination without polling {@code work_exec_status}.
      *
      * <p>No-op when the job has no owner (background submitter that
      * doesn't care about completion delivery — e.g. internal Python

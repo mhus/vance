@@ -62,9 +62,9 @@ public class WorkspaceCountTool implements Tool {
 
     private final WorkspaceService workspace;
 
-    @Override public String name() { return "scratch_count"; }
+    @Override public String name() { return "work_file_count"; }
     @Override public String description() {
-        return "Count lines, characters, and bytes for a single scratch file or "
+        return "Count lines, characters, and bytes for a single workspace file or "
                 + "across many files matching a glob. Optional regex narrows the "
                 + "line-count to matches (wc-style line/char/byte stats).";
     }

@@ -19,7 +19,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * Read a scratch file and turn it into a project document — the
- * other half of the {@code doc_to_scratch} bridge.
+ * other half of the {@code doc_to_work_file} bridge.
  *
  * <p>Two modes:
  * <ul>
@@ -59,7 +59,7 @@ public class WorkspaceToDocTool implements Tool {
     private final KindToolSupport support;
     private final WorkspaceService workspace;
 
-    @Override public String name() { return "scratch_to_doc"; }
+    @Override public String name() { return "work_file_to_doc"; }
     @Override public String description() {
         return "Import a scratch file into the project's document pool. Creates the document "
                 + "when `documentPath` is unused, updates the existing one when it's already there. "

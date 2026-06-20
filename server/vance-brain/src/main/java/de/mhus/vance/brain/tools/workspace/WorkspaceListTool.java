@@ -12,7 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * Lists files inside a project scratch RootDir (recursive). Returns
+ * Lists files inside a project workspace RootDir (recursive). Returns
  * relative paths, sorted. Directories are not included. When {@code
  * dirName} is omitted, the per-process temp RootDir is used.
  */
@@ -34,12 +34,12 @@ public class WorkspaceListTool implements Tool {
 
     @Override
     public String name() {
-        return "scratch_list";
+        return "work_file_list";
     }
 
     @Override
     public String description() {
-        return "List files in a project scratch RootDir (recursive). "
+        return "List files in a project workspace RootDir (recursive). "
                 + "Returns relative paths.";
     }
 

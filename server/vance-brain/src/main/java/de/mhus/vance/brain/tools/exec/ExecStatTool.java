@@ -14,7 +14,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * Compact status snapshot of a running or finished exec job — no
- * stdout/stderr bodies. Cheap enough to poll; pair with {@code exec_tail}
+ * stdout/stderr bodies. Cheap enough to poll; pair with {@code work_exec_tail}
  * when the LLM needs to see actual output. {@code lastOutputAt} answers
  * "is this thing still doing anything?" honestly.
  */
@@ -27,14 +27,14 @@ public class ExecStatTool implements Tool {
             "properties", Map.of(
                     "id", Map.of(
                             "type", "string",
-                            "description", "Job id returned by exec_run.")),
+                            "description", "Job id returned by work_exec_run.")),
             "required", List.of("id"));
 
     private final ExecutionRouter router;
 
     @Override
     public String name() {
-        return "exec_stat";
+        return "work_exec_stat";
     }
 
     @Override
@@ -43,7 +43,7 @@ public class ExecStatTool implements Tool {
                 + "lastOutputAt, finishedAt, exitCode, runtime, log "
                 + "sizes/mtimes. Routes via the cross-side execution "
                 + "registry so brain- and foot-side jobs answer the "
-                + "same way. No stdout/stderr bodies — use exec_tail "
+                + "same way. No stdout/stderr bodies — use work_exec_tail "
                 + "for those.";
     }
 

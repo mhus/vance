@@ -87,7 +87,7 @@ public class ClientToolRegistry {
 
     /**
      * Find the entry for an editorId. Used by the cross-side execution
-     * registry to route {@code exec_kill}/{@code exec_stat}/{@code exec_tail}
+     * registry to route {@code work_exec_kill}/{@code work_exec_stat}/{@code work_exec_tail}
      * to the foot client that owns a particular execution. Linear scan —
      * client count per pod is small.
      */

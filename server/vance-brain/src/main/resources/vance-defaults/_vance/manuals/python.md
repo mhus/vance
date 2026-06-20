@@ -19,7 +19,7 @@ recipe does):
 - `python_run` — execute a Python file in the venv
 - `python_set_interpreter` — swap interpreter binary, rebuild venv
 
-`scratch_read` / `scratch_write` / `scratch_list` and friends
+`work_file_read` / `work_file_write` / `work_file_list` and friends
 resolve files inside the RootDir without needing a `dirName` argument
 when it's set as the working RootDir.
 
@@ -75,16 +75,16 @@ python_install package="cryptography" flags="--no-binary :all:"
 
 ## Running scripts
 
-`python_run` submits via the same execution machinery as `exec_run`,
+`python_run` submits via the same execution machinery as `work_exec_run`,
 so long-running scripts return `status=RUNNING` with a `jobId`. Poll
-via `exec_status` / `exec_tail`, kill with `exec_kill` — the same
+via `work_exec_status` / `work_exec_tail`, kill with `work_exec_kill` — the same
 verbs you'd use for any shell job.
 
 ```text
 python_run file="train.py" args=["--epochs=10", "--lr=1e-4"]
 → { "status": "RUNNING", "id": "abc12345", "stdoutPath": "…/stdout.log", ... }
-exec_status id="abc12345"
-exec_tail   id="abc12345" lines=50
+work_exec_status id="abc12345"
+work_exec_tail   id="abc12345" lines=50
 ```
 
 `args` is a string list (escaped per-element). `flags` carries
@@ -98,7 +98,7 @@ python_run file="bench.py" flags="-O" args=["--quick"]
 For a one-liner without a file, write it first:
 
 ```text
-scratch_write path="check.py" content="import sys; print(sys.version_info)"
+work_file_write path="check.py" content="import sys; print(sys.version_info)"
 python_run file="check.py"
 ```
 
@@ -138,7 +138,7 @@ Suspend persists Python work via the same Git mechanism the
 - **Without `repoUrl`** — `python_create` initialised an empty local
   repo. Suspend would fail with `WorkspaceSuspendNotConfiguredException`
   because there's no remote to push to. Either set a remote first
-  (`exec_run command="cd python && git remote add origin …"`) or
+  (`work_exec_run command="cd python && git remote add origin …"`) or
   accept that the env is local-only.
 
 Recovery on the target pod re-clones, rebuilds the venv, reinstalls
@@ -146,7 +146,7 @@ from the lockfile.
 
 ## What NOT to do
 
-- **Don't write into `.venv/`** with `scratch_write`. The
+- **Don't write into `.venv/`** with `work_file_write`. The
   filesystem layout is `pip`-managed; pip will not notice your edits
   and the next `python_install` may overwrite them anyway. If you
   need behaviour changes, install a package instead.
@@ -165,7 +165,7 @@ from the lockfile.
 ```text
 python_create
 python_install packages=["pandas", "numpy", "matplotlib"]
-scratch_write path="analyze.py" content="import pandas as pd; print(pd.__version__)"
+work_file_write path="analyze.py" content="import pandas as pd; print(pd.__version__)"
 python_run file="analyze.py"
 ```
 
@@ -183,9 +183,9 @@ python_run file="pipeline/main.py" args=["--dry-run"]
 python_run file="train.py" args=["--epochs=50"] waitMs=2000
 # returned with status=RUNNING, id="job123"
 # … in a later turn:
-exec_status id="job123"
+work_exec_status id="job123"
 # when status=COMPLETED:
-exec_tail id="job123" lines=80
+work_exec_tail id="job123" lines=80
 ```
 
 ### Switch interpreter, keep code + deps

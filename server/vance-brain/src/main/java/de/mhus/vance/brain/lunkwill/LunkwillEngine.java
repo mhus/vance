@@ -42,6 +42,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import lombok.RequiredArgsConstructor;
@@ -87,7 +88,41 @@ import tools.jackson.databind.ObjectMapper;
 public class LunkwillEngine implements ThinkEngine {
 
     public static final String NAME = "lunkwill";
-    public static final String VERSION = "0.4.1";
+    public static final String VERSION = "0.5.0";
+
+    /**
+     * Engine-intrinsic tool baseline — the minimum every Lunkwill
+     * recipe needs, regardless of domain. Domain-specific tools
+     * ({@code client_file_*}, {@code client_exec_*}, GitHub-API for
+     * fook-upstream, MCP-reconnect for repair, …) come from each
+     * recipe via {@code allowedToolsAdd}.
+     *
+     * <p>Returned by {@link #allowedTools()} so {@link
+     * de.mhus.vance.brain.recipe.RecipeResolver#computeAllowed} treats
+     * it as the engine default: effective set =
+     * {@code (engineDefault ∪ recipe.add) ∖ recipe.remove}. Without
+     * this override Lunkwill would default to "no engine-level
+     * restriction" and the LLM would see the full tenant tool buffet
+     * (~130 schemas, ~35k input tokens) on every turn.
+     */
+    private static final Set<String> ENGINE_DEFAULT_TOOLS = Set.of(
+            // discovery / introspection
+            "find_tools",
+            "describe_tool",
+            "how_do_i",
+            "manual_read",
+            "manual_list",
+            "recipe_describe",
+            "tool_result_read",
+            // sub-worker spawn — Lunkwill's escape hatch when a task
+            // needs strategic planning or different skill set
+            "process_create",
+            "process_status",
+            // user-facing signals
+            "vance_notify",
+            // basics
+            "current_time",
+            "whoami");
 
     /**
      * Document cascade path for the engine-default system prompt.
@@ -153,6 +188,11 @@ public class LunkwillEngine implements ThinkEngine {
     @Override
     public String version() {
         return VERSION;
+    }
+
+    @Override
+    public Set<String> allowedTools() {
+        return ENGINE_DEFAULT_TOOLS;
     }
 
     // ──────────────────── Lifecycle ────────────────────

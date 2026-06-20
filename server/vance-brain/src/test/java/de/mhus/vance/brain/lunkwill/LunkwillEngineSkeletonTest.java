@@ -305,7 +305,7 @@ class LunkwillEngineSkeletonTest {
     void metadata_returnsExpectedValues() {
         assertThat(engine.name()).isEqualTo("lunkwill");
         assertThat(engine.title()).contains("Lunkwill");
-        assertThat(engine.version()).isEqualTo("0.4.1");
+        assertThat(engine.version()).isEqualTo("0.5.0");
         assertThat(engine.description()).isNotBlank();
     }
 
@@ -318,6 +318,23 @@ class LunkwillEngineSkeletonTest {
     @Test
     void terminationConventionKey_isStable() {
         assertThat(LunkwillTermination.RESULT_TERMINATE_KEY).isEqualTo("_terminate");
+    }
+
+    @Test
+    void allowedTools_engineBaselineSetExposed() {
+        // Lunkwill returns a non-empty engine-default set so the resolver
+        // can compute (engineDefault ∪ recipe.add) ∖ recipe.remove instead
+        // of falling through to "no engine-level restriction" (which would
+        // dump the full tenant tool buffet into every LLM call).
+        var set = engine.allowedTools();
+        assertThat(set).isNotEmpty();
+        // Discovery + intro essentials
+        assertThat(set).contains("find_tools", "describe_tool", "how_do_i",
+                "manual_read", "tool_result_read");
+        // Sub-worker spawn — Lunkwill's escape hatch
+        assertThat(set).contains("process_create");
+        // User-facing signal
+        assertThat(set).contains("vance_notify");
     }
 
     // ──────────────────── ScriptedStreamingChatModel ─────────────────────

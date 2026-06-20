@@ -13,6 +13,31 @@ description: |
 
 engine: lunkwill
 
+# Domain-specific tools — added on top of Lunkwill's engine baseline
+# (discovery + sub-worker spawn + notify + basics, see
+# LunkwillEngine.ENGINE_DEFAULT_TOOLS). The resolver computes the
+# effective set as (engineDefault ∪ allowedToolsAdd). Keeping this
+# list explicit avoids leaking the full tenant tool buffet (IntelliJ
+# MCP, Slack/Gmail/Jira/Drive/Calendar REST packs, image/kanban
+# tools, …) which blows the per-turn token budget past 30k for no
+# benefit to a coding worker.
+allowedToolsAdd:
+  # File reading (Foot-CLI workdir-bound)
+  - client_file_read
+  - client_file_head_tail
+  - client_file_list
+  - client_file_find
+  - client_file_grep
+  - client_file_count
+  # File mutation (Foot-CLI workdir-bound)
+  - client_file_edit
+  - client_file_write
+  # Shell (Foot-CLI workdir-bound)
+  - client_exec_run
+  - client_exec_status
+  - client_exec_tail
+  - client_exec_kill
+
 params:
   model: default:coding,default:fast
   manualPaths:

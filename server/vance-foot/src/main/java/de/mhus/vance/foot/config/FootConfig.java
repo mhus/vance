@@ -139,6 +139,25 @@ public class FootConfig {
         private Colors colors = new Colors();
         private StatusBar statusBar = new StatusBar();
         private WindowTitle windowTitle = new WindowTitle();
+        private ToolOutput toolOutput = new ToolOutput();
+    }
+
+    /**
+     * Pretty-printed display of local {@link de.mhus.vance.foot.tools.ClientTool}
+     * invocations. When {@link #enabled} the foot terminal prints a
+     * cosmetic two-line block per tool call — header
+     * ({@code ⏺ Read(/path)}) and result tail ({@code   ⎿  Read 1234
+     * chars}). Suppress with {@code --no-tool-output} or
+     * {@code vance.ui.tool-output.enabled=false}.
+     *
+     * <p>{@link #header} / {@link #result} accept the same JLine style
+     * grammar as the other {@link Colors} entries.
+     */
+    @Data
+    public static class ToolOutput {
+        private boolean enabled = true;
+        private String header = "fg:cyan,bold";
+        private String result = "fg:bright-black";
     }
 
     /**

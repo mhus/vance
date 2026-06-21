@@ -58,6 +58,12 @@ public class StatusBar {
     private volatile long busyStartedMillis = -1;
     /** Phrase chosen at the most recent idle → busy transition. Stable for the whole busy period. */
     private volatile String currentPhrase = "thinking";
+    /**
+     * Pseudo-attribution paired with {@link #currentPhrase} for the same
+     * busy period. {@code null} when the author list is empty (or for the
+     * initial idle state). Rendered as {@code phrase — Author…}.
+     */
+    private volatile @org.jspecify.annotations.Nullable String currentAuthor;
 
     public StatusBar(SessionService sessions,
                      BusyIndicator busy,
@@ -86,6 +92,7 @@ public class StatusBar {
             if (busyStartedMillis < 0) {
                 busyStartedMillis = System.currentTimeMillis();
                 currentPhrase = phrases.random();
+                currentAuthor = phrases.randomAuthor();
                 // Fresh busy cycle — drop counters from the previous
                 // turn so the spinner doesn't start with stale numbers.
                 liveUsage.clear();
@@ -106,7 +113,8 @@ public class StatusBar {
                     : "●";
             long elapsed = (System.currentTimeMillis() - busyStartedMillis) / 1000;
             String usage = formatUsage();
-            String line = ESC + "[33m· " + currentPhrase + "… " + marker
+            String attribution = currentAuthor == null ? "" : " — " + currentAuthor;
+            String line = ESC + "[33m· " + currentPhrase + attribution + "… " + marker
                     + ESC + "[0m  " + ESC + "[2m(" + elapsed + "s"
                     + usage + ")" + ESC + "[0m";
             return clamp(line, width, true);

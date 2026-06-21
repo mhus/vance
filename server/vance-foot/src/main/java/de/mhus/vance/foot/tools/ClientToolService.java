@@ -83,10 +83,13 @@ public class ClientToolService {
      */
     private final Map<String, Tool> packByName = new ConcurrentHashMap<>();
 
+    private final ObjectProvider<ClientToolPrettyRenderer> rendererProvider;
+
     public ClientToolService(
             List<ClientTool> tools,
             ClientSecurityService security,
-            ObjectProvider<ConnectionService> connectionProvider) {
+            ObjectProvider<ConnectionService> connectionProvider,
+            ObjectProvider<ClientToolPrettyRenderer> rendererProvider) {
         this.beanByName = tools.stream().collect(Collectors.toMap(
                 ClientTool::name,
                 t -> t,
@@ -98,6 +101,7 @@ public class ClientToolService {
                 ConcurrentHashMap::new));
         this.security = security;
         this.connectionProvider = connectionProvider;
+        this.rendererProvider = rendererProvider;
         log.info("ClientToolService — {} bean tool(s): {}", beanByName.size(), beanByName.keySet());
     }
 
@@ -243,6 +247,10 @@ public class ClientToolService {
         if (!security.permit(toolName, safeParams)) {
             return error(correlationId, security.denyReason(toolName, safeParams));
         }
+        ClientToolPrettyRenderer renderer = rendererProvider.getIfAvailable();
+        if (renderer != null) {
+            renderer.renderInvocation(toolName, safeParams);
+        }
         try {
             // Foot has no tenant/session/process state per dispatch — we
             // synthesise a thin context so the unified Tool interface
@@ -250,12 +258,19 @@ public class ClientToolService {
             // via the EnvSecretResolver, not via this context.
             ToolInvocationContext ctx = bootstrapContext();
             Map<String, Object> result = tool.invoke(safeParams, ctx);
+            Map<String, Object> safeResult = result == null ? new LinkedHashMap<>() : result;
+            if (renderer != null) {
+                renderer.renderResult(toolName, safeResult);
+            }
             return ClientToolInvokeResponse.builder()
                     .correlationId(correlationId)
-                    .result(result == null ? new LinkedHashMap<>() : result)
+                    .result(safeResult)
                     .build();
         } catch (RuntimeException e) {
             log.warn("ClientTool '{}' threw: {}", toolName, e.toString());
+            if (renderer != null) {
+                renderer.renderError(toolName, e.getMessage());
+            }
             return error(correlationId, "Tool failed: " + e.getMessage());
         }
     }

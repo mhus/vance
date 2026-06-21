@@ -13,32 +13,48 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 /**
- * Loads a fixed list of short "thinking" phrases from the bundled
- * {@code foot/thinking-phrases.txt} classpath resource and exposes a
- * {@link #random()} pick. Used by the {@link StatusBar} busy indicator
- * to vary what gets displayed next to the spinner — purely cosmetic,
- * no behavior depends on it.
+ * Loads two bundled classpath resources used by the {@link StatusBar}
+ * busy indicator:
  *
- * <p>Comments ({@code #}) and blank lines in the resource are skipped.
- * Each remaining line is a phrase, trimmed.
+ * <ul>
+ *   <li>{@code foot/thinking-phrases.txt} — short "thinking" phrases,
+ *       displayed next to the spinner.</li>
+ *   <li>{@code foot/phrase-authors.txt} — pseudo-attributions appended
+ *       to each phrase for comedic effect ({@code phrase — Author…}).</li>
+ * </ul>
+ *
+ * <p>Each pick is independent of the other, so a random phrase is
+ * paired with a random author every busy cycle — the deliberate mismatch
+ * (movie one-liner attributed to a serious thinker) is the joke.
+ *
+ * <p>Comments ({@code #}) and blank lines in either resource are
+ * skipped. Each remaining line is one entry, trimmed. Purely cosmetic —
+ * no behavior depends on the picks.
  */
 @Component
 @Slf4j
 public class ThinkingPhrases {
 
-    private static final String RESOURCE_PATH = "foot/thinking-phrases.txt";
+    private static final String PHRASES_PATH = "foot/thinking-phrases.txt";
+    private static final String AUTHORS_PATH = "foot/phrase-authors.txt";
     private static final String FALLBACK = "thinking";
 
     private List<String> phrases = List.of(FALLBACK);
+    private List<String> authors = List.of();
 
     @PostConstruct
     void load() {
+        phrases = loadList(PHRASES_PATH, List.of(FALLBACK));
+        authors = loadList(AUTHORS_PATH, List.of());
+    }
+
+    private List<String> loadList(String path, List<String> fallback) {
         try (InputStream in = ThinkingPhrases.class.getClassLoader()
-                .getResourceAsStream(RESOURCE_PATH)) {
+                .getResourceAsStream(path)) {
             if (in == null) {
-                log.warn("ThinkingPhrases: resource '{}' not found — using fallback",
-                        RESOURCE_PATH);
-                return;
+                log.warn("ThinkingPhrases: resource '{}' not found — using fallback ({})",
+                        path, fallback.isEmpty() ? "empty" : fallback.size() + " entries");
+                return fallback;
             }
             List<String> loaded = new ArrayList<>();
             try (BufferedReader r = new BufferedReader(
@@ -51,14 +67,15 @@ public class ThinkingPhrases {
                 }
             }
             if (loaded.isEmpty()) {
-                log.warn("ThinkingPhrases: '{}' is empty — using fallback", RESOURCE_PATH);
-                return;
+                log.warn("ThinkingPhrases: '{}' is empty — using fallback", path);
+                return fallback;
             }
-            this.phrases = List.copyOf(loaded);
-            log.debug("ThinkingPhrases: loaded {} phrases", loaded.size());
+            log.debug("ThinkingPhrases: loaded {} entries from '{}'", loaded.size(), path);
+            return List.copyOf(loaded);
         } catch (IOException e) {
             log.warn("ThinkingPhrases: failed to load '{}': {} — using fallback",
-                    RESOURCE_PATH, e.toString());
+                    path, e.toString());
+            return fallback;
         }
     }
 
@@ -66,5 +83,15 @@ public class ThinkingPhrases {
     public String random() {
         if (phrases.isEmpty()) return FALLBACK;
         return phrases.get(ThreadLocalRandom.current().nextInt(phrases.size()));
+    }
+
+    /**
+     * Returns a uniformly-random author for the pseudo-attribution.
+     * {@code null} when no author list is loaded — the caller then
+     * renders just the phrase, without the {@code — Author} suffix.
+     */
+    public @org.jspecify.annotations.Nullable String randomAuthor() {
+        if (authors.isEmpty()) return null;
+        return authors.get(ThreadLocalRandom.current().nextInt(authors.size()));
     }
 }

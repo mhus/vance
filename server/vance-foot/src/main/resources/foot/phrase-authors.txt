@@ -1,0 +1,176 @@
+# Vance Foot — random "authors" for the busy phrase attribution.
+# One name per line, # for comments. Empty lines skipped.
+# Half the gag is the mismatch between movie one-liner and the attributed
+# fictional character, so this list is fictional characters from movies,
+# TV, books, comics and cartoons. Add freely.
+
+# Star Wars
+Han Solo
+Yoda
+Darth Vader
+Obi-Wan Kenobi
+Princess Leia
+Luke Skywalker
+Chewbacca
+Lando Calrissian
+Boba Fett
+Jabba the Hutt
+Mace Windu
+Padmé Amidala
+Kylo Ren
+The Mandalorian
+Grogu
+
+# Star Trek
+Captain Kirk
+Mr. Spock
+Jean-Luc Picard
+Data
+Worf
+Khan Noonien Singh
+Scotty
+Captain Janeway
+
+# Lord of the Rings
+Gandalf
+Frodo Beutlin
+Aragorn
+Gollum
+Bilbo Beutlin
+Legolas
+Saruman
+Sauron
+
+# Harry Potter
+Albus Dumbledore
+Lord Voldemort
+Severus Snape
+Hermione Granger
+Hagrid
+Dobby
+
+# Marvel
+Tony Stark
+Captain America
+Thor
+Hulk
+Spider-Man
+Deadpool
+Loki
+Doctor Strange
+Black Widow
+Thanos
+
+# DC
+Batman
+Superman
+The Joker
+Wonder Woman
+Lex Luthor
+Catwoman
+
+# Other movies
+Beetlejuice
+Indiana Jones
+James Bond
+Dr. No
+Ernst Stavro Blofeld
+Forrest Gump
+Tony Montana
+Don Vito Corleone
+Michael Corleone
+Jules Winnfield
+The Dude
+Walter Sobchak
+Rick Blaine
+Travis Bickle
+Hannibal Lecter
+Norman Bates
+John McClane
+Ellen Ripley
+Sarah Connor
+The Terminator
+Jack Sparrow
+Mary Poppins
+Willy Wonka
+
+# Sherlock & co.
+Sherlock Holmes
+Dr. Watson
+Professor Moriarty
+Hercule Poirot
+Miss Marple
+
+# The Matrix
+Neo
+Morpheus
+Agent Smith
+Trinity
+
+# Toy Story / Pixar
+Woody
+Buzz Lightyear
+Mr. Incredible
+Wall-E
+
+# Disney villains
+Maleficent
+Cruella de Vil
+Scar
+Ursula
+Captain Hook
+
+# Sitcoms & TV
+Walter White
+Heisenberg
+Jesse Pinkman
+Saul Goodman
+Tyrion Lannister
+Jon Snow
+Daenerys Targaryen
+Cersei Lannister
+Dale Cooper
+Fox Mulder
+Dana Scully
+The Doctor
+Michael Scott
+Dwight Schrute
+George Costanza
+Cosmo Kramer
+Joey Tribbiani
+
+# Animation
+Homer Simpson
+Bart Simpson
+Mr. Burns
+Ned Flanders
+Eric Cartman
+Bender
+Professor Farnsworth
+Dr. Zoidberg
+Peter Griffin
+Stewie Griffin
+Rick Sanchez
+Morty Smith
+SpongeBob SquarePants
+
+# Looney Tunes & classics
+Bugs Bunny
+Daffy Duck
+Wile E. Coyote
+Road Runner
+Mickey Mouse
+Donald Duck
+Dagobert Duck
+
+# Europe / German classics
+Asterix
+Obelix
+Lucky Luke
+Tim und Struppi
+Kapitän Haddock
+Werner Brösel
+Käpt'n Blaubär
+Pumuckl
+Pippi Langstrumpf
+Räuber Hotzenplotz

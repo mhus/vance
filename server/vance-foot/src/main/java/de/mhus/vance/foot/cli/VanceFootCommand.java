@@ -98,6 +98,11 @@ public class VanceFootCommand implements Callable<Integer> {
                     + "file transfer, IDE bridge). Use for web-style restricted clients.")
     boolean noTools;
 
+    @Option(names = "--no-tool-output",
+            description = "Suppress the cosmetic 'tool used' block in the chat output. "
+                    + "Equivalent to vance.ui.tool-output.enabled=false.")
+    boolean noToolOutput;
+
     @Option(names = "--profile",
             paramLabel = "<name>",
             description = "WebSocket profile sent on connect "
@@ -257,6 +262,9 @@ public class VanceFootCommand implements Callable<Integer> {
             clientTools.setSuppressed(true);
             agentDoc.setSuppressed(true);
             transfers.setSuppressed(true);
+        }
+        if (noToolOutput) {
+            config.getUi().getToolOutput().setEnabled(false);
         }
         if (agentFile != null) {
             agentDoc.setOverridePath(agentFile);

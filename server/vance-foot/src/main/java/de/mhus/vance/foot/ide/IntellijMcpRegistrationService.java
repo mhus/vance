@@ -5,7 +5,10 @@ import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.foot.config.FootConfig;
 import de.mhus.vance.foot.connection.ConnectionService;
 import de.mhus.vance.foot.ui.ChatTerminal;
+import jakarta.annotation.PreDestroy;
 import java.time.Duration;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
@@ -21,6 +24,13 @@ import org.springframework.stereotype.Service;
  * <p>No-op when the URL is not configured. Idempotent — re-running with
  * the same URL is a server-side no-op; a different URL updates the
  * existing document.
+ *
+ * <h2>Threading</h2>
+ * {@link #registerIfConfigured()} is called by {@code WelcomeHandler} on
+ * the WebSocket-listener thread. {@link ConnectionService#request} would
+ * deadlock there (the reply travels through the same listener), so the
+ * actual register call hops to a dedicated single-thread executor —
+ * mirroring {@link de.mhus.vance.foot.session.AutoBootstrapService}.
  */
 @Service
 @Slf4j
@@ -31,6 +41,12 @@ public class IntellijMcpRegistrationService {
     private final FootConfig config;
     private final ConnectionService connection;
     private final ChatTerminal terminal;
+
+    private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "vance-foot-intellij-mcp-register");
+        t.setDaemon(true);
+        return t;
+    });
 
     /**
      * {@code @Lazy} on {@link ConnectionService} mirrors the same trick
@@ -49,7 +65,10 @@ public class IntellijMcpRegistrationService {
     /**
      * Sends the register frame if the bridge is configured. Best-effort —
      * any failure logs a warning and the foot keeps running; the user
-     * just won't see the IntelliJ tools in this session.
+     * just won't see the IntelliJ tools in this session. Returns
+     * immediately; the actual request runs on the service's executor so
+     * the WS-listener thread (which carries the welcome frame) is free
+     * to receive the reply.
      */
     public void registerIfConfigured() {
         String url = config.getIde().getIntellijMcp().getUrl();
@@ -60,6 +79,10 @@ public class IntellijMcpRegistrationService {
             log.debug("intellij-mcp-register skipped — not connected");
             return;
         }
+        executor.submit(() -> runRegister(url));
+    }
+
+    private void runRegister(String url) {
         try {
             connection.request(
                     MessageType.INTELLIJ_MCP_REGISTER,
@@ -72,5 +95,10 @@ public class IntellijMcpRegistrationService {
             log.warn("intellij-mcp-register failed: {}", e.toString());
             terminal.warn("IntelliJ MCP register failed: " + e.getMessage());
         }
+    }
+
+    @PreDestroy
+    void shutdown() {
+        executor.shutdownNow();
     }
 }

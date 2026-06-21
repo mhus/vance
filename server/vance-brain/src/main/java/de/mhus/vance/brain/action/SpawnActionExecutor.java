@@ -79,6 +79,7 @@ public final class SpawnActionExecutor implements ActionExecutor<TriggerAction.R
     private final ThinkProcessService thinkProcessService;
     private final ObjectProvider<EngineMessageRouter> messageRouterProvider;
     private final ParentContextSpawnHelper parentContextSpawnHelper;
+    private final de.mhus.vance.brain.tools.worktarget.WorkTargetService workTargetService;
 
     @Override
     public Class<TriggerAction.Recipe> actionType() {
@@ -142,6 +143,14 @@ public final class SpawnActionExecutor implements ActionExecutor<TriggerAction.R
                 ? action.title()
                 : titleFor(invocation);
 
+        // ── Inherit the parent's WorkTarget when the recipe didn't
+        // pin one explicitly. Sub-workers spawned from a coding
+        // worker land in the same backend by default; a recipe that
+        // wants its own (e.g. sandbox-experiment with WORK) keeps
+        // precedence.
+        Map<String, Object> spawnParams = workTargetService.resolveSpawnParams(
+                applied.params(), ctx.parentProcessId());
+
         // ── Create think-process — handle name-collision as soft-success ─
         ThinkProcessDocument fresh;
         try {
@@ -155,7 +164,7 @@ public final class SpawnActionExecutor implements ActionExecutor<TriggerAction.R
                     title,
                     action.goal(),
                     ctx.parentProcessId(),
-                    applied.params(),
+                    spawnParams,
                     applied.name(),
                     applied.promptOverride(),
                     applied.promptOverrideAppend(),

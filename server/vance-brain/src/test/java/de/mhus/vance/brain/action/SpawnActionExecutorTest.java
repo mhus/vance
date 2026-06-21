@@ -55,13 +55,19 @@ class SpawnActionExecutorTest {
         parentContextSpawnHelper = mock(ParentContextSpawnHelper.class);
         when(parentContextSpawnHelper.wrap(any(), any(), any()))
                 .thenAnswer(inv -> inv.getArgument(2));
+        de.mhus.vance.brain.tools.worktarget.WorkTargetService workTargetService =
+                mock(de.mhus.vance.brain.tools.worktarget.WorkTargetService.class);
+        // Pass-through: no inheritance unless the test wires it up.
+        when(workTargetService.resolveSpawnParams(any(), any())).thenAnswer(
+                inv -> inv.getArgument(0));
         exec = new SpawnActionExecutor(
                 recipeResolver,
                 recipeLoader,
                 providerOf(engineService),
                 processService,
                 providerOf(messageRouter),
-                parentContextSpawnHelper);
+                parentContextSpawnHelper,
+                workTargetService);
     }
 
     // ──────────────────── Happy path ────────────────────

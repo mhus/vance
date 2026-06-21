@@ -117,6 +117,52 @@ public class WorkTargetService {
         return sessionId != null && clientToolRegistry.entry(sessionId).isPresent();
     }
 
+    /**
+     * Computes the {@code engineParams} map a freshly-spawned child
+     * process should carry. Inheritance rules (high → low precedence):
+     *
+     * <ol>
+     *   <li>Caller-supplied {@code recipeParams} (recipe defaults
+     *       + any explicit caller override).</li>
+     *   <li>Parent's persisted {@code workTarget}, if {@code parentProcessId}
+     *       resolves and {@code recipeParams} doesn't already carry one
+     *       (Unix-style cwd-inheritance — sub-workers land in the same
+     *       backend as the spawning worker by default).</li>
+     *   <li>No injection — the child's own
+     *       {@link #defaultFor(ThinkProcessDocument)} resolves at first
+     *       use.</li>
+     * </ol>
+     *
+     * <p>Returns a fresh mutable {@link LinkedHashMap} suitable for
+     * passing to {@code ThinkProcessService.create}. Never throws —
+     * a missing parent or malformed parent target is treated as
+     * "no inheritance".
+     */
+    public Map<String, Object> resolveSpawnParams(
+            @Nullable Map<String, Object> recipeParams,
+            @Nullable String parentProcessId) {
+        Map<String, Object> out = recipeParams == null
+                ? new LinkedHashMap<>() : new LinkedHashMap<>(recipeParams);
+        if (out.containsKey(WorkTarget.KEY)) {
+            return out;
+        }
+        if (parentProcessId == null || parentProcessId.isBlank()) {
+            return out;
+        }
+        try {
+            thinkProcessService.findById(parentProcessId).ifPresent(parent -> {
+                Object inherited = readWorkTargetEntry(parent);
+                if (inherited instanceof Map<?, ?> map) {
+                    out.put(WorkTarget.KEY, new LinkedHashMap<>(map));
+                }
+            });
+        } catch (RuntimeException ex) {
+            log.warn("WorkTargetService.resolveSpawnParams: parent lookup failed for '{}' — skipping inheritance ({})",
+                    parentProcessId, ex.toString());
+        }
+        return out;
+    }
+
     private static @Nullable Object readWorkTargetEntry(ThinkProcessDocument process) {
         Map<String, Object> params = process.getEngineParams();
         return params == null ? null : params.get(WorkTarget.KEY);

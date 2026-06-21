@@ -56,6 +56,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.regex.Pattern;
@@ -216,6 +217,80 @@ public class Ford implements ThinkEngine {
     @Override
     public String version() {
         return VERSION;
+    }
+
+    /**
+     * Engine-default tool baseline. Until 2026-06-21 Ford returned
+     * an empty set ("no restriction" — the LLM saw every primary
+     * tool in the tenant). That worked, but the manifest was big
+     * enough that Gemini-Flash-class models lost focus and called
+     * variants of the same operation interchangeably (see live tests
+     * with the work-target wrappers).
+     *
+     * <p>Ford now follows the Lunkwill pattern: a curated default
+     * set plus the {@link de.mhus.vance.brain.tools.worktarget.BaseEngineTools#WORK_TARGET}
+     * layer. Domain tools that a specific recipe needs
+     * ({@code python_*}, {@code research_*}, mutating {@code doc_*})
+     * are pulled in by that recipe via {@code allowedToolsAdd}.
+     */
+    private static final Set<String> ENGINE_DEFAULT_TOOLS;
+    static {
+        java.util.LinkedHashSet<String> base = new java.util.LinkedHashSet<>();
+        // Discovery / introspection — Ford's bread-and-butter loop
+        base.add("find_tools");
+        base.add("describe_tool");
+        base.add("how_do_i");
+        base.add("manual_read");
+        base.add("manual_list");
+        base.add("recipe_describe");
+        base.add("tool_result_read");
+        // Reply / completion contract (Ford's structured exit path)
+        base.add("respond");
+        // Sub-worker spawn — Ford recipes occasionally delegate
+        base.add("process_create");
+        base.add("process_status");
+        // User-facing signal
+        base.add("vance_notify");
+        // Basics
+        base.add("current_time");
+        base.add("whoami");
+        // Read-side document operations — common across Ford recipes
+        // (code-read, analyze, quick-lookup). Mutating doc_* / kit_*
+        // / scratch-write paths stay opt-in per recipe.
+        base.add("doc_read");
+        base.add("doc_read_lines");
+        base.add("doc_info");
+        base.add("doc_summary");
+        base.add("doc_list");
+        base.add("doc_list_folders");
+        base.add("doc_list_in_folder");
+        base.add("doc_list_by_tag");
+        base.add("doc_find");
+        base.add("doc_grep");
+        base.add("doc_grep_path");
+        base.add("document_link");
+        // Research — analyze / web-research / quick-lookup all need
+        // these; pulling them into the default avoids per-recipe
+        // duplication.
+        base.add("web_fetch");
+        base.add("web_search");
+        base.add("research_search");
+        base.add("research_investigate");
+        base.add("research_rich");
+        base.add("research_providers");
+        base.add("memory_search");
+        // Generic file/exec dispatch layer (BaseEngineTools.WORK_TARGET)
+        // — 12 primary wrappers + 2 meta tools + 24 deferred backends.
+        // Recipes pick the active target via params.workTarget and
+        // can defer the backend names out of the LLM manifest with
+        // allowedToolsDefer (see coding.yaml as the reference).
+        base.addAll(de.mhus.vance.brain.tools.worktarget.BaseEngineTools.WORK_TARGET);
+        ENGINE_DEFAULT_TOOLS = java.util.Collections.unmodifiableSet(base);
+    }
+
+    @Override
+    public Set<String> allowedTools() {
+        return ENGINE_DEFAULT_TOOLS;
     }
 
     // ──────────────────── Lifecycle ────────────────────

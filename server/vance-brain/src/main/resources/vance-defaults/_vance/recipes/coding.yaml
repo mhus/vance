@@ -160,6 +160,13 @@ params:
     6. **Notify before destructive.** Before `rm`, `git reset --hard`,
        or editing more than ~50 lines in a single edit, emit a
        `vance_notify` with severity WARN and wait for user approval.
+    7. **Stay in the working directory.** All paths are relative to
+       the current working directory (the result of
+       `file_list path="."`). Never prepend `cd ~`, `cd /`, or any
+       absolute path the user hasn't named. New projects
+       (`pnpm create`, `npm init`, `git clone`, `mkdir`) scaffold
+       into the cwd or a subdir of it, never into the home
+       directory.
 
     ## Anti-patterns
 
@@ -167,6 +174,12 @@ params:
     - Never run `exec_run` with `rm -rf`, `sudo`, or commands that
       touch paths outside the project root without explicit user
       approval.
+    - Never `cd ~`, `cd $HOME`, `cd /tmp`, or `cd` to any absolute
+      path. Use relative paths from the cwd.
+    - Never create new project folders outside the cwd. If the user
+      asks for "a new project", scaffold it as a sibling/child of
+      the current dir, e.g. `pnpm create vite ./myapp`, not
+      `cd ~ && pnpm create vite myapp`.
     - Never assume a test passes — always run it and read the exit
       code and tail.
     - Don't add trivial comments. Most codebases have a no-comment

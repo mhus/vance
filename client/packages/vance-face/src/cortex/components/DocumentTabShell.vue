@@ -356,18 +356,25 @@ const showToggle = computed<boolean>(
 // For typed-model and kind-registry modes the user can flip between
 // the rendered view (Mermaid diagram, Marpit slides, ListView,
 // ChecklistView, …) and the raw source in a CodeEditor — mirrors the
-// preview / raw tab pair in DocumentApp.vue. Defaults to 'view' and
-// resets on tab switch so opening a fresh doc always starts rendered.
+// preview / raw tab pair in DocumentApp.vue. Persisted per browser
+// tab in sessionStorage (same pattern as propertiesOpen/notesOpen) so
+// a user who prefers 'edit' keeps it across doc switches.
 
 type ViewEditMode = 'view' | 'edit';
-const viewEditMode = ref<ViewEditMode>('view');
-
-watch(
-  () => props.document.id,
-  () => {
-    viewEditMode.value = 'view';
-  },
-);
+const VIEW_EDIT_KEY = 'editor:viewEditMode';
+function loadViewEditMode(): ViewEditMode {
+  try {
+    return sessionStorage.getItem(VIEW_EDIT_KEY) === 'edit' ? 'edit' : 'view';
+  } catch {
+    return 'view';
+  }
+}
+const viewEditMode = ref<ViewEditMode>(loadViewEditMode());
+watch(viewEditMode, (v) => {
+  try {
+    sessionStorage.setItem(VIEW_EDIT_KEY, v);
+  } catch { /* sessionStorage unavailable */ }
+});
 
 // In a view-capable mode, 'edit' falls back to the same CodeEditor
 // the catch-all 'code' mode uses — same selection-tracking, same

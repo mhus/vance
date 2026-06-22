@@ -318,6 +318,10 @@ export default {
         recentEditor: {
             tooltip: '{name} hat das Dokument gerade bearbeitet',
         },
+        agentEditing: {
+            label: 'AI bearbeitet…',
+            tooltip: 'Ein Agent in dieser Session schreibt gerade auf diesem oder einem anderen offenen Dokument.',
+        },
         followUp: {
             acceptHint: '↹ Tab',
         },

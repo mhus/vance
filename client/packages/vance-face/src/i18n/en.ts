@@ -348,6 +348,10 @@ export default {
     recentEditor: {
       tooltip: '{name} just modified this document',
     },
+    agentEditing: {
+      label: 'AI editing…',
+      tooltip: 'An agent in this session is writing on this or another open document.',
+    },
     followUp: {
       acceptHint: '↹ Tab',
     },

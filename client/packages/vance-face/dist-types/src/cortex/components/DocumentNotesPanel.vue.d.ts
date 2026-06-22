@@ -5,17 +5,23 @@ interface Props {
     highlightedNoteId?: string | null;
 }
 declare const _default: import("vue").DefineComponent<Props, {}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {} & {
-    delete: any;
-    add: any;
-    update: any;
-    "jump-to-line": any;
-    reorder: any;
+    delete: (noteId: string) => any;
+    add: () => any;
+    update: (noteId: string, patch: {
+        text?: string;
+        done?: boolean;
+    }) => any;
+    "jump-to-line": (line: number) => any;
+    reorder: (noteId: string, toIndex: number) => any;
 }, string, import("vue").PublicProps, Readonly<Props> & Readonly<{
-    onDelete?: ((...args: any) => any) | undefined;
-    onAdd?: ((...args: any) => any) | undefined;
-    onUpdate?: ((...args: any) => any) | undefined;
-    "onJump-to-line"?: ((...args: any) => any) | undefined;
-    onReorder?: ((...args: any) => any) | undefined;
+    onDelete?: ((noteId: string) => any) | undefined;
+    onAdd?: (() => any) | undefined;
+    onUpdate?: ((noteId: string, patch: {
+        text?: string;
+        done?: boolean;
+    }) => any) | undefined;
+    "onJump-to-line"?: ((line: number) => any) | undefined;
+    onReorder?: ((noteId: string, toIndex: number) => any) | undefined;
 }>, {
     highlightedNoteId: string | null;
 }, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;

@@ -9,6 +9,7 @@ import { onDocumentChanged } from '@/ws/wsConnectionStore';
 import { isBinaryMime } from './stores/cortexStore';
 import { useCortexStore } from './stores/cortexStore';
 import { CortexClientToolService } from './clientToolService';
+import { useDocumentInvalidate } from './composables/useDocumentInvalidate';
 import FileTreeSidebar from './components/FileTreeSidebar.vue';
 import EditorTabs from './components/EditorTabs.vue';
 import TabRendererHost from './components/TabRendererHost.vue';
@@ -395,6 +396,34 @@ onBeforeUnmount(() => {
     for (const id of Array.from(tabReactions.keys()))
         detachTabReaction(id);
 });
+// Session-channel {@code document-invalidate} frames — server-side
+// tools (doc_write / doc_edit / doc_note_*) telling us their target was
+// just mutated on behalf of this session. Cross-pod fallback for the
+// documents-channel push that needs Redis. Debounce + 3-way-merge on
+// dirty tabs (same path as the documents.changed handler above), and
+// expose an {@code isAgentEditing} flag for the topbar banner.
+const openTabIdsRef = computed(() => store.openTabs.map((t) => t.id));
+const { isAgentEditing } = useDocumentInvalidate({
+    openDocumentIds: openTabIdsRef,
+    apply: async (docId, _kind) => {
+        const tab = store.openTabs.find((t) => t.id === docId);
+        if (!tab)
+            return;
+        try {
+            const handled = await runTryApply(tab, 'upserted');
+            if (!handled) {
+                const r = tabReactions.get(tab.id);
+                if (r) {
+                    r.pendingChange.value = 'upserted';
+                    tabReactionRevision.value++;
+                }
+            }
+        }
+        catch (e) {
+            console.warn(`[document-invalidate] apply for tab='${tab.path}' threw:`, e);
+        }
+    },
+});
 const activePendingChange = computed(() => {
     // eslint-disable-next-line @typescript-eslint/no-unused-expressions
     tabReactionRevision.value;
@@ -469,12 +498,6 @@ const bindIconTooltip = computed(() => {
  */
 const clientToolService = isCortex.value
     ? new CortexClientToolService({
-        getBoundDocument: () => {
-            const id = chatBoundDocumentId.value;
-            if (!id)
-                return null;
-            return store.openTabs.find((t) => t.id === id) ?? null;
-        },
         getSelection: () => store.currentSelection,
         getActiveTab: () => {
             const tab = store.activeTab;
@@ -796,6 +819,27 @@ if (__VLS_ctx.bootReadyKey) {
             name: "recent-editor-fade",
         }, ...__VLS_functionalComponentArgsRest(__VLS_9));
         __VLS_11.slots.default;
+        if (__VLS_ctx.isAgentEditing) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "\u006d\u0072\u002d\u0032\u0020\u0069\u006e\u006c\u0069\u006e\u0065\u002d\u0066\u006c\u0065\u0078\u0020\u0069\u0074\u0065\u006d\u0073\u002d\u0063\u0065\u006e\u0074\u0065\u0072\u0020\u0067\u0061\u0070\u002d\u0031\u0020\u0074\u0065\u0078\u0074\u002d\u0078\u0073\u000a\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0074\u0065\u0078\u0074\u002d\u0069\u006e\u0066\u006f\u0020\u0066\u006f\u006e\u0074\u002d\u006d\u0065\u0064\u0069\u0075\u006d\u0020\u0073\u0065\u006c\u0065\u0063\u0074\u002d\u006e\u006f\u006e\u0065\u0020\u0061\u006e\u0069\u006d\u0061\u0074\u0065\u002d\u0070\u0075\u006c\u0073\u0065" },
+                title: (__VLS_ctx.$t('documents.agentEditing.tooltip')),
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                'aria-hidden': "true",
+            });
+            (__VLS_ctx.$t('documents.agentEditing.label'));
+        }
+        var __VLS_11;
+        const __VLS_12 = {}.transition;
+        /** @type {[typeof __VLS_components.Transition, typeof __VLS_components.transition, typeof __VLS_components.Transition, typeof __VLS_components.transition, ]} */ ;
+        // @ts-ignore
+        const __VLS_13 = __VLS_asFunctionalComponent(__VLS_12, new __VLS_12({
+            name: "recent-editor-fade",
+        }));
+        const __VLS_14 = __VLS_13({
+            name: "recent-editor-fade",
+        }, ...__VLS_functionalComponentArgsRest(__VLS_13));
+        __VLS_15.slots.default;
         if (__VLS_ctx.activeRecentEditor && __VLS_ctx.activeTab?.path) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
                 ...{ class: "\u006d\u0072\u002d\u0032\u0020\u0069\u006e\u006c\u0069\u006e\u0065\u002d\u0066\u006c\u0065\u0078\u0020\u0069\u0074\u0065\u006d\u0073\u002d\u0063\u0065\u006e\u0074\u0065\u0072\u0020\u0067\u0061\u0070\u002d\u0031\u0020\u0074\u0065\u0078\u0074\u002d\u0078\u0073\u000a\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0074\u0065\u0078\u0074\u002d\u0062\u0061\u0073\u0065\u002d\u0063\u006f\u006e\u0074\u0065\u006e\u0074\u002f\u0037\u0030\u0020\u0066\u006f\u006e\u0074\u002d\u006d\u0065\u0064\u0069\u0075\u006d\u0020\u0073\u0065\u006c\u0065\u0063\u0074\u002d\u006e\u006f\u006e\u0065" },
@@ -807,7 +851,7 @@ if (__VLS_ctx.bootReadyKey) {
             });
             (__VLS_ctx.activeRecentEditor.displayName);
         }
-        var __VLS_11;
+        var __VLS_15;
         if (__VLS_ctx.activePendingChange && __VLS_ctx.activeTab?.path) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                 ...{ class: "\u006d\u0072\u002d\u0033\u0020\u0069\u006e\u006c\u0069\u006e\u0065\u002d\u0066\u006c\u0065\u0078\u0020\u0069\u0074\u0065\u006d\u0073\u002d\u0063\u0065\u006e\u0074\u0065\u0072\u0020\u0067\u0061\u0070\u002d\u0032\u0020\u0072\u006f\u0075\u006e\u0064\u0065\u0064\u002d\u006d\u0064\u000a\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0062\u006f\u0072\u0064\u0065\u0072\u0020\u0062\u006f\u0072\u0064\u0065\u0072\u002d\u0077\u0061\u0072\u006e\u0069\u006e\u0067\u002f\u0034\u0030\u0020\u0062\u0067\u002d\u0077\u0061\u0072\u006e\u0069\u006e\u0067\u002f\u0031\u0035\u0020\u0070\u0078\u002d\u0032\u0020\u0070\u0079\u002d\u0031\u000a\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0074\u0065\u0078\u0074\u002d\u0078\u0073\u0020\u0066\u006f\u006e\u0074\u002d\u006d\u0065\u0064\u0069\u0075\u006d\u0020\u0074\u0065\u0078\u0074\u002d\u0077\u0061\u0072\u006e\u0069\u006e\u0067\u002d\u0063\u006f\u006e\u0074\u0065\u006e\u0074" },
@@ -850,37 +894,37 @@ if (__VLS_ctx.bootReadyKey) {
         if (__VLS_ctx.activeTab?.path) {
             /** @type {[typeof DocumentPresenceStrip, ]} */ ;
             // @ts-ignore
-            const __VLS_12 = __VLS_asFunctionalComponent(DocumentPresenceStrip, new DocumentPresenceStrip({
+            const __VLS_16 = __VLS_asFunctionalComponent(DocumentPresenceStrip, new DocumentPresenceStrip({
                 path: (__VLS_ctx.activeTab.path),
                 ...{ class: "mr-2" },
             }));
-            const __VLS_13 = __VLS_12({
+            const __VLS_17 = __VLS_16({
                 path: (__VLS_ctx.activeTab.path),
                 ...{ class: "mr-2" },
-            }, ...__VLS_functionalComponentArgsRest(__VLS_12));
+            }, ...__VLS_functionalComponentArgsRest(__VLS_16));
         }
-        const __VLS_15 = {}.VButton;
+        const __VLS_19 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
         // @ts-ignore
-        const __VLS_16 = __VLS_asFunctionalComponent(__VLS_15, new __VLS_15({
+        const __VLS_20 = __VLS_asFunctionalComponent(__VLS_19, new __VLS_19({
             ...{ 'onClick': {} },
             size: "sm",
             variant: "ghost",
         }));
-        const __VLS_17 = __VLS_16({
+        const __VLS_21 = __VLS_20({
             ...{ 'onClick': {} },
             size: "sm",
             variant: "ghost",
-        }, ...__VLS_functionalComponentArgsRest(__VLS_16));
-        let __VLS_19;
-        let __VLS_20;
-        let __VLS_21;
-        const __VLS_22 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_20));
+        let __VLS_23;
+        let __VLS_24;
+        let __VLS_25;
+        const __VLS_26 = {
             onClick: (__VLS_ctx.backHome)
         };
-        __VLS_18.slots.default;
+        __VLS_22.slots.default;
         (__VLS_ctx.backLabel);
-        var __VLS_18;
+        var __VLS_22;
     }
     {
         const { sidebar: __VLS_thisSlot } = __VLS_3.slots;
@@ -891,26 +935,26 @@ if (__VLS_ctx.bootReadyKey) {
             ...{ class: "flex-1 min-h-0 overflow-y-auto" },
         });
         if (__VLS_ctx.treeError) {
-            const __VLS_23 = {}.VAlert;
+            const __VLS_27 = {}.VAlert;
             /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
             // @ts-ignore
-            const __VLS_24 = __VLS_asFunctionalComponent(__VLS_23, new __VLS_23({
+            const __VLS_28 = __VLS_asFunctionalComponent(__VLS_27, new __VLS_27({
                 variant: "error",
                 ...{ class: "m-2" },
             }));
-            const __VLS_25 = __VLS_24({
+            const __VLS_29 = __VLS_28({
                 variant: "error",
                 ...{ class: "m-2" },
-            }, ...__VLS_functionalComponentArgsRest(__VLS_24));
-            __VLS_26.slots.default;
+            }, ...__VLS_functionalComponentArgsRest(__VLS_28));
+            __VLS_30.slots.default;
             __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
             (__VLS_ctx.treeError);
-            var __VLS_26;
+            var __VLS_30;
         }
         if (__VLS_ctx.projectId) {
             /** @type {[typeof FileTreeSidebar, ]} */ ;
             // @ts-ignore
-            const __VLS_27 = __VLS_asFunctionalComponent(FileTreeSidebar, new FileTreeSidebar({
+            const __VLS_31 = __VLS_asFunctionalComponent(FileTreeSidebar, new FileTreeSidebar({
                 ...{ 'onOpenFile': {} },
                 ...{ 'onDeleteFile': {} },
                 ...{ 'onMoveFile': {} },
@@ -919,7 +963,7 @@ if (__VLS_ctx.bootReadyKey) {
                 root: (__VLS_ctx.store.fileTree),
                 activeFileId: (__VLS_ctx.store.activeTabId),
             }));
-            const __VLS_28 = __VLS_27({
+            const __VLS_32 = __VLS_31({
                 ...{ 'onOpenFile': {} },
                 ...{ 'onDeleteFile': {} },
                 ...{ 'onMoveFile': {} },
@@ -927,43 +971,43 @@ if (__VLS_ctx.bootReadyKey) {
                 ...{ 'onReload': {} },
                 root: (__VLS_ctx.store.fileTree),
                 activeFileId: (__VLS_ctx.store.activeTabId),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_27));
-            let __VLS_30;
-            let __VLS_31;
-            let __VLS_32;
-            const __VLS_33 = {
+            }, ...__VLS_functionalComponentArgsRest(__VLS_31));
+            let __VLS_34;
+            let __VLS_35;
+            let __VLS_36;
+            const __VLS_37 = {
                 onOpenFile: ((id) => { __VLS_ctx.focusZone = 'main'; __VLS_ctx.store.openFile(id); })
             };
-            const __VLS_34 = {
+            const __VLS_38 = {
                 onDeleteFile: (__VLS_ctx.onDelete)
             };
-            const __VLS_35 = {
+            const __VLS_39 = {
                 onMoveFile: (__VLS_ctx.onMoveFile)
             };
-            const __VLS_36 = {
+            const __VLS_40 = {
                 onUploadFiles: (__VLS_ctx.onUploadFiles)
             };
-            const __VLS_37 = {
+            const __VLS_41 = {
                 onReload: (() => __VLS_ctx.projectId && __VLS_ctx.store.loadList(__VLS_ctx.projectId))
             };
-            var __VLS_29;
+            var __VLS_33;
         }
         else if (__VLS_ctx.bootError) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                 ...{ class: "p-3 text-sm" },
             });
-            const __VLS_38 = {}.VAlert;
+            const __VLS_42 = {}.VAlert;
             /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
             // @ts-ignore
-            const __VLS_39 = __VLS_asFunctionalComponent(__VLS_38, new __VLS_38({
+            const __VLS_43 = __VLS_asFunctionalComponent(__VLS_42, new __VLS_42({
                 variant: "error",
             }));
-            const __VLS_40 = __VLS_39({
+            const __VLS_44 = __VLS_43({
                 variant: "error",
-            }, ...__VLS_functionalComponentArgsRest(__VLS_39));
-            __VLS_41.slots.default;
+            }, ...__VLS_functionalComponentArgsRest(__VLS_43));
+            __VLS_45.slots.default;
             (__VLS_ctx.bootError);
-            var __VLS_41;
+            var __VLS_45;
         }
         else {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -1158,59 +1202,59 @@ if (__VLS_ctx.bootReadyKey) {
     }
     /** @type {[typeof EditorTabs, ]} */ ;
     // @ts-ignore
-    const __VLS_42 = __VLS_asFunctionalComponent(EditorTabs, new EditorTabs({
+    const __VLS_46 = __VLS_asFunctionalComponent(EditorTabs, new EditorTabs({
         ...{ 'onSelect': {} },
         ...{ 'onClose': {} },
         tabs: (__VLS_ctx.store.openTabs),
         activeTabId: (__VLS_ctx.store.activeTabId),
     }));
-    const __VLS_43 = __VLS_42({
+    const __VLS_47 = __VLS_46({
         ...{ 'onSelect': {} },
         ...{ 'onClose': {} },
         tabs: (__VLS_ctx.store.openTabs),
         activeTabId: (__VLS_ctx.store.activeTabId),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_42));
-    let __VLS_45;
-    let __VLS_46;
-    let __VLS_47;
-    const __VLS_48 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_46));
+    let __VLS_49;
+    let __VLS_50;
+    let __VLS_51;
+    const __VLS_52 = {
         onSelect: (__VLS_ctx.store.setActiveTab)
     };
-    const __VLS_49 = {
+    const __VLS_53 = {
         onClose: (__VLS_ctx.store.closeTab)
     };
-    var __VLS_44;
+    var __VLS_48;
     if (__VLS_ctx.saveError) {
-        const __VLS_50 = {}.VAlert;
+        const __VLS_54 = {}.VAlert;
         /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
         // @ts-ignore
-        const __VLS_51 = __VLS_asFunctionalComponent(__VLS_50, new __VLS_50({
+        const __VLS_55 = __VLS_asFunctionalComponent(__VLS_54, new __VLS_54({
             variant: "error",
             ...{ class: "m-2" },
         }));
-        const __VLS_52 = __VLS_51({
+        const __VLS_56 = __VLS_55({
             variant: "error",
             ...{ class: "m-2" },
-        }, ...__VLS_functionalComponentArgsRest(__VLS_51));
-        __VLS_53.slots.default;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_55));
+        __VLS_57.slots.default;
         (__VLS_ctx.saveError);
-        var __VLS_53;
+        var __VLS_57;
     }
     if (!__VLS_ctx.activeTab) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "flex-1 flex items-center justify-center" },
         });
-        const __VLS_54 = {}.VEmptyState;
+        const __VLS_58 = {}.VEmptyState;
         /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
         // @ts-ignore
-        const __VLS_55 = __VLS_asFunctionalComponent(__VLS_54, new __VLS_54({
+        const __VLS_59 = __VLS_asFunctionalComponent(__VLS_58, new __VLS_58({
             headline: "No document open",
             body: "Pick one from the tree on the left, or create a new file.",
         }));
-        const __VLS_56 = __VLS_55({
+        const __VLS_60 = __VLS_59({
             headline: "No document open",
             body: "Pick one from the tree on the left, or create a new file.",
-        }, ...__VLS_functionalComponentArgsRest(__VLS_55));
+        }, ...__VLS_functionalComponentArgsRest(__VLS_59));
     }
     else {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -1218,23 +1262,23 @@ if (__VLS_ctx.bootReadyKey) {
         });
         /** @type {[typeof TabRendererHost, ]} */ ;
         // @ts-ignore
-        const __VLS_58 = __VLS_asFunctionalComponent(TabRendererHost, new TabRendererHost({
+        const __VLS_62 = __VLS_asFunctionalComponent(TabRendererHost, new TabRendererHost({
             ...{ 'onUpdate': {} },
             document: (__VLS_ctx.activeTab),
             sessionId: (__VLS_ctx.sessionId),
         }));
-        const __VLS_59 = __VLS_58({
+        const __VLS_63 = __VLS_62({
             ...{ 'onUpdate': {} },
             document: (__VLS_ctx.activeTab),
             sessionId: (__VLS_ctx.sessionId),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_58));
-        let __VLS_61;
-        let __VLS_62;
-        let __VLS_63;
-        const __VLS_64 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_62));
+        let __VLS_65;
+        let __VLS_66;
+        let __VLS_67;
+        const __VLS_68 = {
             onUpdate: (__VLS_ctx.store.updateActiveContent)
         };
-        var __VLS_60;
+        var __VLS_64;
     }
     if (__VLS_ctx.isCortex) {
         {
@@ -1242,18 +1286,18 @@ if (__VLS_ctx.bootReadyKey) {
             if (__VLS_ctx.sessionId && __VLS_ctx.projectId && __VLS_ctx.clientToolService) {
                 /** @type {[typeof CortexRightPanel, ]} */ ;
                 // @ts-ignore
-                const __VLS_65 = __VLS_asFunctionalComponent(CortexRightPanel, new CortexRightPanel({
+                const __VLS_69 = __VLS_asFunctionalComponent(CortexRightPanel, new CortexRightPanel({
                     sessionId: (__VLS_ctx.sessionId),
                     projectId: (__VLS_ctx.projectId),
                     toolService: (__VLS_ctx.clientToolService),
                     activeDocument: (__VLS_ctx.activeTab),
                 }));
-                const __VLS_66 = __VLS_65({
+                const __VLS_70 = __VLS_69({
                     sessionId: (__VLS_ctx.sessionId),
                     projectId: (__VLS_ctx.projectId),
                     toolService: (__VLS_ctx.clientToolService),
                     activeDocument: (__VLS_ctx.activeTab),
-                }, ...__VLS_functionalComponentArgsRest(__VLS_65));
+                }, ...__VLS_functionalComponentArgsRest(__VLS_69));
             }
             else {
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -1266,46 +1310,55 @@ if (__VLS_ctx.bootReadyKey) {
 }
 /** @type {[typeof CreateDocumentModal, ]} */ ;
 // @ts-ignore
-const __VLS_68 = __VLS_asFunctionalComponent(CreateDocumentModal, new CreateDocumentModal({
+const __VLS_72 = __VLS_asFunctionalComponent(CreateDocumentModal, new CreateDocumentModal({
     ...{ 'onConfirm': {} },
     open: (__VLS_ctx.showCreate),
     projectId: (__VLS_ctx.projectId),
     initialPath: (__VLS_ctx.createPrefill?.path ?? ''),
     consumeDraft: (!__VLS_ctx.isCortex),
 }));
-const __VLS_69 = __VLS_68({
+const __VLS_73 = __VLS_72({
     ...{ 'onConfirm': {} },
     open: (__VLS_ctx.showCreate),
     projectId: (__VLS_ctx.projectId),
     initialPath: (__VLS_ctx.createPrefill?.path ?? ''),
     consumeDraft: (!__VLS_ctx.isCortex),
-}, ...__VLS_functionalComponentArgsRest(__VLS_68));
-let __VLS_71;
-let __VLS_72;
-let __VLS_73;
-const __VLS_74 = {
+}, ...__VLS_functionalComponentArgsRest(__VLS_72));
+let __VLS_75;
+let __VLS_76;
+let __VLS_77;
+const __VLS_78 = {
     onConfirm: (__VLS_ctx.onCreateConfirm)
 };
-var __VLS_70;
+var __VLS_74;
 /** @type {[typeof NewFolderModal, ]} */ ;
 // @ts-ignore
-const __VLS_75 = __VLS_asFunctionalComponent(NewFolderModal, new NewFolderModal({
+const __VLS_79 = __VLS_asFunctionalComponent(NewFolderModal, new NewFolderModal({
     ...{ 'onConfirm': {} },
     open: (__VLS_ctx.showNewFolder),
     initialPath: (__VLS_ctx.newFolderInitial),
 }));
-const __VLS_76 = __VLS_75({
+const __VLS_80 = __VLS_79({
     ...{ 'onConfirm': {} },
     open: (__VLS_ctx.showNewFolder),
     initialPath: (__VLS_ctx.newFolderInitial),
-}, ...__VLS_functionalComponentArgsRest(__VLS_75));
-let __VLS_78;
-let __VLS_79;
-let __VLS_80;
-const __VLS_81 = {
+}, ...__VLS_functionalComponentArgsRest(__VLS_79));
+let __VLS_82;
+let __VLS_83;
+let __VLS_84;
+const __VLS_85 = {
     onConfirm: (__VLS_ctx.onNewFolderConfirm)
 };
-var __VLS_77;
+var __VLS_81;
+/** @type {__VLS_StyleScopedClasses['mr-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['inline-flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-info']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-medium']} */ ;
+/** @type {__VLS_StyleScopedClasses['select-none']} */ ;
+/** @type {__VLS_StyleScopedClasses['animate-pulse']} */ ;
 /** @type {__VLS_StyleScopedClasses['mr-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['inline-flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['items-center']} */ ;
@@ -1480,6 +1533,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             title: title,
             breadcrumbs: breadcrumbs,
             activeTab: activeTab,
+            isAgentEditing: isAgentEditing,
             activePendingChange: activePendingChange,
             activeRecentEditor: activeRecentEditor,
             keepLocalForActive: keepLocalForActive,

@@ -409,6 +409,26 @@ public final class MessageType {
      */
     public static final String DOCUMENT_NOTE_CHANGED = "note-changed";
 
+    /**
+     * Server → client (session-channel side-channel): the document at
+     * {@code documentId} was mutated by a server-side tool on behalf of
+     * the bound session — body or notes. Cortex tabs that have the doc
+     * open should refresh it (with merge if the buffer is dirty).
+     *
+     * <p>Complements the documents-channel {@link #DOCUMENT_CHANGED} /
+     * {@link #DOCUMENT_NOTE_CHANGED}: those need a subscribe roster and
+     * cross-pod fan-out via Redis. This frame travels the chat-WS
+     * tunnel that the user is already on, so it works without Redis and
+     * without an explicit subscribe. Fired only for the originating
+     * session; other sessions watching the same doc rely on the
+     * documents-channel (when Redis is enabled).
+     *
+     * <p>Payload:
+     * {@link de.mhus.vance.api.documents.DocumentInvalidateNotification}.
+     * See {@code planning/cortex-document-invalidation.md}.
+     */
+    public static final String DOCUMENT_INVALIDATE = "document-invalidate";
+
     private MessageType() {
     }
 }

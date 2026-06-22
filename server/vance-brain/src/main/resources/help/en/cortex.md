@@ -43,17 +43,17 @@ target it. The bound document is shown in the topbar as
 *🔗 path/of/file*; click it to bind the current tab. *Open in
 Cortex* auto-binds the first document the user opens.
 
-The agent can:
+The agent can read and edit the bound document directly. When it
+does, the open tab refreshes itself — no save prompt, no reload
+button. If you have unsaved local edits while the agent writes,
+your changes are merged on top of the agent's; if the merge
+can't be resolved cleanly the tab keeps your version and shows a
+banner so you can decide.
 
-- read the bound document (`cortex_read`),
-- ask for the user's current selection (`cortex_get_selection`),
-- replace exact strings (`cortex_edit`), append text
-  (`cortex_append`), or rewrite the file (`cortex_write`).
-
-All edits stage in the browser; auto-save persists them after a
-2-second pause. While a tool is running the topbar shows *agent
-editing…*; tools stay registered (no hard lock) but you should
-avoid simultaneous keystrokes on the same range.
+While the agent is writing, the topbar shows *AI editing…*. The
+agent can also see what you have selected and which tab you're
+currently looking at, so phrases like *"this part"* or *"the
+file I just opened"* work.
 
 ## Save
 

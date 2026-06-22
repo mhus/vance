@@ -23,11 +23,27 @@ engine: lunkwill
 # Research surface — useful for "what does library X do", "best
 # practice for Y in language Z", etc. Lunkwill's engine baseline
 # does not include these (other recipes may not need them).
+#
+# Document-mutation tools — needed when the caller wants Lunkwill to
+# refactor or rewrite a MongoDB-stored document (project notes, specs,
+# recipes, the user's docs in /documents/...). Without them the worker
+# falls back to file_*/work_file_* which look at the workspace
+# filesystem and can't find documents. Read-only doc_* tools are
+# already on the engine baseline.
 allowedToolsAdd:
   - research_investigate
   - research_search
   - web_search
   - web_fetch
+  - doc_write
+  - doc_edit
+  - doc_append
+  - doc_replace_lines
+  - doc_create
+  - doc_note_list
+  - doc_note_add
+  - doc_note_update
+  - doc_note_delete
 
 # Backends are reachable (engine allow-set includes them) but should
 # stay OUT of the LLM manifest — the generic file_* / exec_* wrappers

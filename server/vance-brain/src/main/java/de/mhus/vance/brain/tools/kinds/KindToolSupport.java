@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.tools.kinds;
 
 import de.mhus.vance.brain.documents.DocumentBufferService;
+import de.mhus.vance.brain.documents.DocumentInvalidationEmitter;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.brain.tools.eddie.EddieContext;
@@ -26,14 +27,17 @@ public class KindToolSupport {
     private final DocumentBufferService bufferService;
     private final DocumentService documentService;
     private final EddieContext eddieContext;
+    private final DocumentInvalidationEmitter invalidationEmitter;
 
     public KindToolSupport(
             DocumentBufferService bufferService,
             DocumentService documentService,
-            EddieContext eddieContext) {
+            EddieContext eddieContext,
+            DocumentInvalidationEmitter invalidationEmitter) {
         this.bufferService = bufferService;
         this.documentService = documentService;
         this.eddieContext = eddieContext;
+        this.invalidationEmitter = invalidationEmitter;
     }
 
     public DocumentBufferService buffer() {
@@ -132,12 +136,36 @@ public class KindToolSupport {
 
     /**
      * Write a fresh body into the buffer for this process and
-     * document. Subsequent reads see the new body; the actual Mongo
-     * write is deferred until the buffer's flush deadline or the
-     * process closes.
+     * document. Force-flushes the buffer immediately afterwards so
+     * downstream readers (notably the Cortex tab that re-fetches on
+     * {@link de.mhus.vance.api.ws.MessageType#DOCUMENT_INVALIDATE})
+     * see the new content and not the stale on-disk version.
+     *
+     * <p>Trade-off: each tool-side body-mutation triggers one Mongo
+     * write rather than the buffer's idle-flush coalescing. Acceptable
+     * for the LLM tool cadence (≤ 1 mutation/second per process); the
+     * buffer keeps its read-after-write consistency role for tool
+     * callers within the same process turn.
+     *
+     * <p>Always emits a body invalidation frame to the originating
+     * session — the Cortex tab decides whether to react based on its
+     * own openDocumentIds.
      */
     public void writeBody(DocumentDocument doc, String newBody, ToolInvocationContext ctx) {
         bufferService.writeBody(ctx.processId(), doc.getId(), newBody);
+        bufferService.flush(ctx.processId(), doc.getId());
+        invalidationEmitter.emitBody(ctx.sessionId(), doc);
+    }
+
+    /**
+     * Emit a {@code notes}-kind invalidation for the given document on
+     * the session-WS. Called from {@code doc_note_*} tools after a
+     * successful {@link DocumentService#addNote}/{@code updateNote}/
+     * {@code deleteNote} — those bypass the body-buffer and persist
+     * atomically, so no flush is needed here.
+     */
+    public void emitNotesInvalidate(DocumentDocument doc, ToolInvocationContext ctx) {
+        invalidationEmitter.emitNotes(ctx.sessionId(), doc);
     }
 
     // ── Parameter helpers ─────────────────────────────────────────

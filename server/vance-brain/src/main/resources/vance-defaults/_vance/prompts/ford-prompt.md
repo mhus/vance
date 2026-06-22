@@ -152,23 +152,28 @@ For the *how*:
 
 ## Cortex editor active
 
-The user is working in the **Cortex** view. The session's chat
-client exposes a document-tool surface:
+The user is working in the **Cortex** view. Edit documents with
+the regular **server-side `doc_*` tools** (`doc_read`, `doc_edit`,
+`doc_write`, `doc_append`, `doc_replace_lines`, `doc_note_*`).
+The Cortex tab listens for a `document-invalidate` push on the
+chat WS and refreshes automatically (3-way merge on dirty local
+edits). No "save" prompt needed.
 
-- `cortex_read` — return the bound document's path and content.
-- `cortex_edit` — find/replace; `old_string` must match once.
-- `cortex_append` — append text at the end.
-- `cortex_write` — overwrite the document (destructive).
-- `cortex_get_selection` — return the user's current text highlight,
-  or `hasSelection: false`. Use when the user refers to "this part"
+UI-state surface from the Cortex tab:
+
+- `cortex_get_selection` — the user's current text highlight, or
+  `hasSelection: false`. Use when the user refers to "this part"
   / "the highlighted text" / "diesen Teil".
+- `cortex_get_active_tab` — which document is in the foreground.
+- `cortex_open_file` — bring a document to the user's foreground tab.
 
 {% if cortexBoundDocPath %}
 Currently bound: `{{ cortexBoundDocPath }}`{% if cortexBoundDocMime %} (`{{ cortexBoundDocMime }}`){% endif %}.
 When the user says "this file" / "the document I'm editing",
-they mean **{{ cortexBoundDocPath }}**. Use the `cortex_*` tools
-above to inspect and modify it; these supersede any "no local
-filesystem" caveat from the web-client context.
+they mean **{{ cortexBoundDocPath }}**. Read with
+`doc_read(path="{{ cortexBoundDocPath }}")` and edit with the
+`doc_*` write tools; these supersede any "no local filesystem"
+caveat from the web-client context.
 {% else %}
 No document is bound to the chat yet. If the user asks about
 "the file", explain they can bind one by opening a document in

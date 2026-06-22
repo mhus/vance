@@ -38,6 +38,7 @@ import { onDocumentChanged } from '@/ws/wsConnectionStore';
 import { isBinaryMime } from './stores/cortexStore';
 import { useCortexStore } from './stores/cortexStore';
 import { CortexClientToolService } from './clientToolService';
+import { useDocumentInvalidate } from './composables/useDocumentInvalidate';
 import FileTreeSidebar from './components/FileTreeSidebar.vue';
 import EditorTabs from './components/EditorTabs.vue';
 import TabRendererHost from './components/TabRendererHost.vue';
@@ -471,6 +472,33 @@ onBeforeUnmount(() => {
   for (const id of Array.from(tabReactions.keys())) detachTabReaction(id);
 });
 
+// Session-channel {@code document-invalidate} frames — server-side
+// tools (doc_write / doc_edit / doc_note_*) telling us their target was
+// just mutated on behalf of this session. Cross-pod fallback for the
+// documents-channel push that needs Redis. Debounce + 3-way-merge on
+// dirty tabs (same path as the documents.changed handler above), and
+// expose an {@code isAgentEditing} flag for the topbar banner.
+const openTabIdsRef = computed(() => store.openTabs.map((t) => t.id));
+const { isAgentEditing } = useDocumentInvalidate({
+  openDocumentIds: openTabIdsRef,
+  apply: async (docId, _kind) => {
+    const tab = store.openTabs.find((t) => t.id === docId);
+    if (!tab) return;
+    try {
+      const handled = await runTryApply(tab, 'upserted');
+      if (!handled) {
+        const r = tabReactions.get(tab.id);
+        if (r) {
+          r.pendingChange.value = 'upserted';
+          tabReactionRevision.value++;
+        }
+      }
+    } catch (e) {
+      console.warn(`[document-invalidate] apply for tab='${tab.path}' threw:`, e);
+    }
+  },
+});
+
 const activePendingChange = computed<string | null>(() => {
   // eslint-disable-next-line @typescript-eslint/no-unused-expressions
   tabReactionRevision.value;
@@ -549,11 +577,6 @@ const bindIconTooltip = computed<string>(() => {
  */
 const clientToolService = isCortex.value
   ? new CortexClientToolService({
-    getBoundDocument: () => {
-      const id = chatBoundDocumentId.value;
-      if (!id) return null;
-      return store.openTabs.find((t) => t.id === id) ?? null;
-    },
     getSelection: () => store.currentSelection,
     getActiveTab: () => {
       const tab = store.activeTab;
@@ -841,6 +864,18 @@ const bootReadyKey = computed(() => (isCortex.value ? !!sessionId.value : !!proj
     @title-click="focusZone = 'sidebar'"
   >
     <template #topbar-extra>
+      <transition name="recent-editor-fade">
+        <span
+          v-if="isAgentEditing"
+          class="mr-2 inline-flex items-center gap-1 text-xs
+                 text-info font-medium select-none animate-pulse"
+          :title="$t('documents.agentEditing.tooltip')"
+        >
+          <span aria-hidden="true">✎</span>
+          {{ $t('documents.agentEditing.label') }}
+        </span>
+      </transition>
+
       <transition name="recent-editor-fade">
         <span
           v-if="activeRecentEditor && activeTab?.path"

@@ -312,6 +312,10 @@ declare const _default: {
         recentEditor: {
             tooltip: string;
         };
+        agentEditing: {
+            label: string;
+            tooltip: string;
+        };
         followUp: {
             acceptHint: string;
         };

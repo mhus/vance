@@ -185,7 +185,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
     } | null>;
     setSelection: (sel: CortexSelection | null) => void;
     clearSelection: () => void;
-}, "projectId" | "loading" | "error" | "files" | "openTabs" | "activeTabId" | "currentSelection">, Pick<{
+}, "projectId" | "files" | "openTabs" | "activeTabId" | "loading" | "error" | "currentSelection">, Pick<{
     projectId: import("vue").Ref<string | null, string | null>;
     files: import("vue").Ref<{
         id: string;

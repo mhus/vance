@@ -1,6 +1,5 @@
 import { type Ref } from 'vue';
 import type { BrainWsApi } from '@vance/shared';
-import type { CortexDocument } from './types';
 import type { CortexSelection } from './stores/cortexStore';
 /**
  * Vance Brain's client-tool protocol (mirrors {@code vance-foot}'s
@@ -10,28 +9,23 @@ import type { CortexSelection } from './stores/cortexStore';
  * same correlation id. The brain blocks the LLM sampling loop on the
  * pending future until we answer (or the 30s timeout fires).
  *
- * <p>Cortex registers tools that operate on the chat-bound document.
- * They're deliberately small and stable so the LLM can use them with
- * minimal trial-and-error:
- * <ul>
- *   <li>{@code cortex_read} — return the current bound doc's content.</li>
- *   <li>{@code cortex_edit} — exact-match find/replace.</li>
- *   <li>{@code cortex_append} — append text at the end.</li>
- *   <li>{@code cortex_write} — full overwrite (use sparingly).</li>
- * </ul>
+ * <p>Cortex registers a small set of <b>UI-state</b> tools — reading
+ * the user's selection, the active tab, and opening files. The body /
+ * note edit tools that used to live here ({@code cortex_read /
+ * cortex_edit / cortex_append / cortex_write}) were removed: the agent
+ * uses the server-side {@code doc_*} family instead, and the Cortex
+ * tab refreshes via {@code DOCUMENT_INVALIDATE} frames (see
+ * {@code planning/cortex-document-invalidation.md}).
  *
- * <p>The bound document is read from a getter (not a constructor
- * argument) so changes propagate without re-registration. When no
- * document is bound, every tool fails fast with a clear error — the
- * agent sees that the chat has nothing to operate on.
+ * <p>Tool surface today:
+ * <ul>
+ *   <li>{@code cortex_get_selection} — user's current text selection.</li>
+ *   <li>{@code cortex_get_active_tab} — which tab is in the
+ *       foreground.</li>
+ *   <li>{@code cortex_open_file} — bring a document to the user's tab.</li>
+ * </ul>
  */
 export interface CortexToolDeps {
-    /**
-     * Returns the currently chat-bound document or {@code null}. Read
-     * fresh on every tool invocation so the agent always sees the latest
-     * binding without us having to re-push the registration.
-     */
-    getBoundDocument(): CortexDocument | null;
     /**
      * Returns the user's current editor selection or {@code null} when
      * nothing is highlighted. The renderer mirrors the CodeEditor's
@@ -96,12 +90,5 @@ export declare class CortexClientToolService {
     private endExecuting;
     private toolSpecs;
     private registerCortexHandlers;
-    private requireBound;
-    /**
-     * Variant of {@link requireBound} that also rejects binary documents.
-     * Write tools need a text body to operate on; images / binaries
-     * surface a clear error rather than silently corrupting the document.
-     */
-    private requireTextBound;
 }
 //# sourceMappingURL=clientToolService.d.ts.map

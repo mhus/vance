@@ -195,7 +195,7 @@ public final class PromptContextBuilder {
      * Mime-type of the bound Cortex document — companion to
      * {@link #cortexBoundDocPath(String)}. Lets the template tell the
      * agent up front when the bound document is a binary type
-     * (image/PDF) so it doesn't waste a call on {@code cortex_read}
+     * (image/PDF) so it doesn't waste a call on {@code doc_read}
      * just to discover the text tools won't apply.
      */
     public PromptContextBuilder cortexBoundDocMime(@Nullable String mime) {

@@ -47,6 +47,7 @@ export * from './documents/DocumentCreateRequest';
 export * from './documents/DocumentDto';
 export * from './documents/DocumentFolderListResponse';
 export * from './documents/DocumentFoldersResponse';
+export * from './documents/DocumentInvalidateNotification';
 export * from './documents/DocumentKindsResponse';
 export * from './documents/DocumentListResponse';
 export * from './documents/DocumentNoteCreateRequest';

@@ -1,6 +1,5 @@
 import { ref, type Ref } from 'vue';
 import type { BrainWsApi } from '@vance/shared';
-import type { CortexDocument } from './types';
 import type { CortexSelection } from './stores/cortexStore';
 
 // Wire-format mirrors of the brain DTOs. Inlined deliberately: the
@@ -47,29 +46,23 @@ interface ClientToolInvokeResponse {
  * same correlation id. The brain blocks the LLM sampling loop on the
  * pending future until we answer (or the 30s timeout fires).
  *
- * <p>Cortex registers tools that operate on the chat-bound document.
- * They're deliberately small and stable so the LLM can use them with
- * minimal trial-and-error:
- * <ul>
- *   <li>{@code cortex_read} — return the current bound doc's content.</li>
- *   <li>{@code cortex_edit} — exact-match find/replace.</li>
- *   <li>{@code cortex_append} — append text at the end.</li>
- *   <li>{@code cortex_write} — full overwrite (use sparingly).</li>
- * </ul>
+ * <p>Cortex registers a small set of <b>UI-state</b> tools — reading
+ * the user's selection, the active tab, and opening files. The body /
+ * note edit tools that used to live here ({@code cortex_read /
+ * cortex_edit / cortex_append / cortex_write}) were removed: the agent
+ * uses the server-side {@code doc_*} family instead, and the Cortex
+ * tab refreshes via {@code DOCUMENT_INVALIDATE} frames (see
+ * {@code planning/cortex-document-invalidation.md}).
  *
- * <p>The bound document is read from a getter (not a constructor
- * argument) so changes propagate without re-registration. When no
- * document is bound, every tool fails fast with a clear error — the
- * agent sees that the chat has nothing to operate on.
+ * <p>Tool surface today:
+ * <ul>
+ *   <li>{@code cortex_get_selection} — user's current text selection.</li>
+ *   <li>{@code cortex_get_active_tab} — which tab is in the
+ *       foreground.</li>
+ *   <li>{@code cortex_open_file} — bring a document to the user's tab.</li>
+ * </ul>
  */
 export interface CortexToolDeps {
-  /**
-   * Returns the currently chat-bound document or {@code null}. Read
-   * fresh on every tool invocation so the agent always sees the latest
-   * binding without us having to re-push the registration.
-   */
-  getBoundDocument(): CortexDocument | null;
-
   /**
    * Returns the user's current editor selection or {@code null} when
    * nothing is highlighted. The renderer mirrors the CodeEditor's
@@ -217,84 +210,6 @@ export class CortexClientToolService {
         requiresEngineRoles: [],
       },
       {
-        name: 'cortex_read',
-        description:
-          'Read the document currently bound to the Cortex chat. '
-          + 'Returns the document path and full content. '
-          + 'Use this before editing so subsequent cortex_edit calls can '
-          + 'reference exact strings from the current text.',
-        primary: true,
-        source: 'cortex',
-        paramsSchema: {
-          type: 'object',
-          properties: {},
-          required: [],
-        },
-        labels: ['read-only', 'cortex'],
-        allowedProfiles: ['web'],
-        deferred: false,
-        searchHint: '',
-        safety: 'SAFE_PROBE',
-        requiresEngineRoles: [],
-      },
-      {
-        name: 'cortex_edit',
-        description:
-          'Find-and-replace edit on the Cortex-bound document. '
-          + 'old_string must match the existing text exactly once; '
-          + 'new_string replaces it. The change is staged in the browser '
-          + '(the user must Save to persist). Read first via cortex_read '
-          + 'so old_string is precise; otherwise the call fails.',
-        primary: true,
-        source: 'cortex',
-        paramsSchema: {
-          type: 'object',
-          properties: {
-            old_string: {
-              type: 'string',
-              description: 'Exact text in the document to replace. Must match once.',
-            },
-            new_string: {
-              type: 'string',
-              description: 'Replacement text.',
-            },
-          },
-          required: ['old_string', 'new_string'],
-        },
-        labels: ['write', 'cortex'],
-        allowedProfiles: ['web'],
-        deferred: false,
-        searchHint: '',
-        safety: 'MUTATING',
-        requiresEngineRoles: [],
-      },
-      {
-        name: 'cortex_append',
-        description:
-          'Append text to the end of the Cortex-bound document. '
-          + 'Use for additive notes; for inline edits use cortex_edit instead. '
-          + 'The change is staged in the browser (user must Save to persist).',
-        primary: true,
-        source: 'cortex',
-        paramsSchema: {
-          type: 'object',
-          properties: {
-            content: {
-              type: 'string',
-              description: 'Text appended at the end. A leading newline is added '
-                + 'automatically if the document does not end with one.',
-            },
-          },
-          required: ['content'],
-        },
-        labels: ['write', 'cortex'],
-        allowedProfiles: ['web'],
-        deferred: false,
-        searchHint: '',
-        safety: 'MUTATING',
-        requiresEngineRoles: [],
-      },
-      {
         name: 'cortex_get_active_tab',
         description:
           'Return the document currently shown in the foreground of the '
@@ -348,32 +263,6 @@ export class CortexClientToolService {
         safety: 'SAFE_PROBE',
         requiresEngineRoles: [],
       },
-      {
-        name: 'cortex_write',
-        description:
-          'Overwrite the Cortex-bound document with new content. '
-          + 'Destructive — prefer cortex_edit for small changes. '
-          + 'Useful when the document is empty, or when restructuring '
-          + 'requires more changes than a series of find/replace edits.',
-        primary: true,
-        source: 'cortex',
-        paramsSchema: {
-          type: 'object',
-          properties: {
-            content: {
-              type: 'string',
-              description: 'New full content for the document.',
-            },
-          },
-          required: ['content'],
-        },
-        labels: ['write', 'cortex'],
-        allowedProfiles: ['web'],
-        deferred: false,
-        searchHint: '',
-        safety: 'MUTATING',
-        requiresEngineRoles: [],
-      },
     ];
   }
 
@@ -391,57 +280,6 @@ export class CortexClientToolService {
         to: sel.to,
         length: sel.text.length,
       };
-    });
-
-    this.handlers.set('cortex_read', () => {
-      const doc = this.requireBound();
-      if (isBinaryMime(doc.mimeType)) {
-        return {
-          path: doc.path,
-          mimeType: doc.mimeType ?? null,
-          content: null,
-          note: 'Binary document — content not readable as text.',
-        };
-      }
-      return {
-        path: doc.path,
-        mimeType: doc.mimeType ?? null,
-        content: doc.inlineText,
-        dirty: doc.dirty,
-      };
-    });
-
-    this.handlers.set('cortex_edit', (params) => {
-      const doc = this.requireTextBound();
-      const oldString = requireString(params, 'old_string');
-      const newString = requireString(params, 'new_string');
-      const occurrences = countOccurrences(doc.inlineText, oldString);
-      if (occurrences === 0) {
-        throw new Error(
-          `old_string not found in ${doc.path}. Call cortex_read to get the current content.`,
-        );
-      }
-      if (occurrences > 1) {
-        throw new Error(
-          `old_string matches ${occurrences} times in ${doc.path}. `
-          + 'Provide more context to make the match unique.',
-        );
-      }
-      doc.inlineText = doc.inlineText.replace(oldString, newString);
-      doc.dirty = true;
-      return { path: doc.path, replaced: 1 };
-    });
-
-    this.handlers.set('cortex_append', (params) => {
-      const doc = this.requireTextBound();
-      const content = requireString(params, 'content');
-      const needsLeadingNewline = doc.inlineText.length > 0
-        && !doc.inlineText.endsWith('\n');
-      doc.inlineText = doc.inlineText
-        + (needsLeadingNewline ? '\n' : '')
-        + content;
-      doc.dirty = true;
-      return { path: doc.path, appendedChars: content.length };
     });
 
     this.handlers.set('cortex_get_active_tab', () => {
@@ -475,59 +313,7 @@ export class CortexClientToolService {
       };
     });
 
-    this.handlers.set('cortex_write', (params) => {
-      const doc = this.requireTextBound();
-      const content = requireString(params, 'content');
-      doc.inlineText = content;
-      doc.dirty = true;
-      return { path: doc.path, length: content.length };
-    });
   }
-
-  private requireBound(): CortexDocument {
-    const doc = this.deps.getBoundDocument();
-    if (!doc) {
-      throw new Error(
-        'No document is currently bound to the Cortex chat. '
-        + 'Ask the user to open a document and bind the chat to it.',
-      );
-    }
-    return doc;
-  }
-
-  /**
-   * Variant of {@link requireBound} that also rejects binary documents.
-   * Write tools need a text body to operate on; images / binaries
-   * surface a clear error rather than silently corrupting the document.
-   */
-  private requireTextBound(): CortexDocument {
-    const doc = this.requireBound();
-    if (isBinaryMime(doc.mimeType)) {
-      throw new Error(
-        `Bound document ${doc.path} is a binary type (${doc.mimeType}) — `
-        + 'text edit tools do not apply. Ask the user to bind a text document.',
-      );
-    }
-    return doc;
-  }
-}
-
-/**
- * Heuristic for "this document is not text we can edit through the
- * text tools". Anything starting with {@code image/}, {@code audio/},
- * {@code video/}, or the common archive types counts as binary.
- * Errs on the side of false positives — when in doubt the agent gets a
- * clear error and asks the user.
- */
-function isBinaryMime(mime: string | null | undefined): boolean {
-  const m = (mime ?? '').toLowerCase();
-  if (!m) return false;
-  if (m.startsWith('image/')) return true;
-  if (m.startsWith('audio/')) return true;
-  if (m.startsWith('video/')) return true;
-  if (m === 'application/pdf' || m === 'application/zip'
-      || m === 'application/octet-stream') return true;
-  return false;
 }
 
 function requireString(params: Record<string, unknown>, name: string): string {
@@ -536,15 +322,4 @@ function requireString(params: Record<string, unknown>, name: string): string {
     throw new Error(`Tool parameter '${name}' must be a string.`);
   }
   return v;
-}
-
-function countOccurrences(haystack: string, needle: string): number {
-  if (needle.length === 0) return 0;
-  let count = 0;
-  let idx = haystack.indexOf(needle);
-  while (idx !== -1) {
-    count += 1;
-    idx = haystack.indexOf(needle, idx + needle.length);
-  }
-  return count;
 }

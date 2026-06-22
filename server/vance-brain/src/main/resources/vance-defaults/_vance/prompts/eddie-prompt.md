@@ -824,18 +824,25 @@ hilfreich, halt es kurz, halt es gesprochen.
 ## Cortex editor active
 
 The user is working in the **Cortex** view — a web editor docked
-alongside this chat. The session's chat client exposes a
-document-tool surface:
+alongside this chat.
 
-- `cortex_read` — return the bound document's path and content.
-- `cortex_edit` — find/replace; `old_string` must match once.
-  Read first via `cortex_read` so the match is precise.
-- `cortex_append` — append text at the end of the bound document.
-- `cortex_write` — overwrite the document (destructive; prefer
-  `cortex_edit` for small changes).
-- `cortex_get_selection` — return the user's highlighted text (or
+Edit the user's documents with the regular **server-side `doc_*`
+tools** (`doc_read`, `doc_edit`, `doc_write`, `doc_append`,
+`doc_replace_lines`, `doc_note_*`). The Cortex tab listens for a
+`document-invalidate` push on the chat WS and refreshes
+automatically (with a 3-way merge if there are unsaved local
+edits). Don't ask the user to "save".
+
+Cortex also exposes a small **UI-state** surface for reading what
+the user is looking at:
+
+- `cortex_get_selection` — the user's highlighted text (or
   `hasSelection: false`). Use when the user refers to "this part"
   / "the highlighted text" / "diesen Teil".
+- `cortex_get_active_tab` — which document is in the foreground
+  (may differ from the chat-bound doc).
+- `cortex_open_file` — bring a document to the user's foreground
+  tab.
 
 {% if cortexBoundDocPath %}
 A document is currently bound to this chat:
@@ -843,10 +850,9 @@ A document is currently bound to this chat:
 {% if cortexBoundDocMime %}- type: `{{ cortexBoundDocMime }}`{% endif %}
 
 When the user says "this file", "the document I'm editing", "the
-current notebook", they mean **{{ cortexBoundDocPath }}**. Use
-the `cortex_*` tools above — do not delegate this to a worker
-when the user just wants to know what's open or to make a small
-edit. Workers don't see the Cortex tools.
+current notebook", they mean **{{ cortexBoundDocPath }}**. Read
+with `doc_read(path="{{ cortexBoundDocPath }}")` and edit
+in-place — do not delegate small edits to a worker.
 {% else %}
 No document is bound to the chat yet. If the user asks about
 "the file", explain they can bind one by opening a document in

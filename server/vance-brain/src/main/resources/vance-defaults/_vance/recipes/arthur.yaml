@@ -93,8 +93,26 @@ modes:
     # task fits the plan-then-execute pattern. Without this Arthur
     # falls back to spawning Marvin workers via tool-name resolution,
     # which historically stalls on substantial creative tasks.
+    #
+    # Document mutations (doc_*) are @write-labeled but they're the
+    # bread-and-butter of in-session work — the user asks Arthur to
+    # update notes, refactor a doc, add a sticky-note. Without these
+    # as primary tools Arthur sees only doc_read/doc_grep/doc_find and
+    # falls back to delegating to a worker recipe (coding/marvin),
+    # which then often lacks doc_* itself and tries file_* on the
+    # workspace instead — see planning/cortex-document-invalidation.md
+    # §post-mortem.
     allowedToolsAdd:
       - process_create
+      - doc_write
+      - doc_edit
+      - doc_append
+      - doc_replace_lines
+      - doc_create
+      - doc_note_list
+      - doc_note_add
+      - doc_note_update
+      - doc_note_delete
     allowedToolsDefer:
       - "@write"
       - "@executive"

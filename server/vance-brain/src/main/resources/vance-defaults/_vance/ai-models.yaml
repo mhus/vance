@@ -374,12 +374,60 @@ openai:
     contextWindowTokens: 203000
     defaultMaxOutputTokens: 8192
     size: SMALL
+  glm-5:
+    contextWindowTokens: 202752
+    defaultMaxOutputTokens: 8192
+    size: LARGE
+  glm-5.1:
+    contextWindowTokens: 202752
+    defaultMaxOutputTokens: 8192
+    size: LARGE
+  # GLM-5.2 — flagship multimodal model for long-horizon agentic tasks.
+  # Cortecs advertises 1M-token spec but currently exposes a 131K
+  # context window via the gateway; track the gateway value here.
+  glm-5.2:
+    contextWindowTokens: 131000
+    defaultMaxOutputTokens: 8192
+    size: LARGE
+  glm-5-turbo:
+    contextWindowTokens: 202752
+    defaultMaxOutputTokens: 8192
+    size: LARGE
+  # glm-5v-turbo — multimodal variant of GLM-5-turbo (the `v` is for
+  # vision). Same context / pricing tier as glm-5-turbo, plus image input.
+  glm-5v-turbo:
+    contextWindowTokens: 202752
+    defaultMaxOutputTokens: 8192
+    size: LARGE
+    capabilities: [vision]
 
   # ── MiniMax (open-weight) ─────────────────────────────────────
   minimax-m2.5:
     contextWindowTokens: 196608
     defaultMaxOutputTokens: 8192
     size: LARGE
+  # MiniMax M3 — multimodal frontier model with 1M-token context,
+  # built for coding + agentic workflows. Cortecs pricing 0.355 / 1.775 EUR.
+  minimax-m3:
+    contextWindowTokens: 1048576
+    defaultMaxOutputTokens: 8192
+    size: LARGE
+    capabilities: [vision]
+
+  # ── Moonshot Kimi (open-weight) ───────────────────────────────
+  # Agentic coding models, large context windows. Cortecs cache-read
+  # pricing makes them attractive for long-running Lunkwill loops.
+  kimi-k2.6:
+    contextWindowTokens: 256000
+    defaultMaxOutputTokens: 8192
+    size: LARGE
+    capabilities: [vision]
+  # kimi-k2.7-code — code-specialised variant with 262K context.
+  kimi-k2.7-code:
+    contextWindowTokens: 262144
+    defaultMaxOutputTokens: 8192
+    size: LARGE
+    capabilities: [vision]
 
   # ── Nous Research Hermes (open-weight, Llama-based fine-tunes) ─
   hermes-4-70b:

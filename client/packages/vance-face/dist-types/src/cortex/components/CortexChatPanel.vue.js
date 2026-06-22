@@ -259,6 +259,7 @@ else {
             chatProjectId: (__VLS_ctx.projectId),
             compactTools: (true),
             currentFileSource: (__VLS_ctx.currentFileSource),
+            draftKey: (`cortex:${__VLS_ctx.sessionId}`),
         }));
         const __VLS_24 = __VLS_23({
             ...{ 'onHub': {} },
@@ -270,6 +271,7 @@ else {
             chatProjectId: (__VLS_ctx.projectId),
             compactTools: (true),
             currentFileSource: (__VLS_ctx.currentFileSource),
+            draftKey: (`cortex:${__VLS_ctx.sessionId}`),
         }, ...__VLS_functionalComponentArgsRest(__VLS_23));
         let __VLS_26;
         let __VLS_27;

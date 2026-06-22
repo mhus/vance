@@ -58,7 +58,7 @@ params:
   concludeMaxRetries: 2
   thinking: high
   manualPaths:
-    - manuals/
+    - _vance/manuals/
 tags:
   - deep-think
   - orchestrator

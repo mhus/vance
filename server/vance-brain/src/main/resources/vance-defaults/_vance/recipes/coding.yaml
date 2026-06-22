@@ -64,10 +64,10 @@ allowedToolsDefer:
   - work_exec_kill
 
 params:
-  model: default:coding,default:fast
+  model: default:code,default:fast
   manualPaths:
-    - lunkwill/manuals/   # engine-intrinsic + coding-specific manuals
-    - manuals/            # global Vance manuals as fallback
+    - _vance/lunkwill/manuals/   # engine-intrinsic + coding-specific manuals
+    - _vance/manuals/            # global Vance manuals as fallback
   # Default work-target when the LLM doesn't switch explicitly.
   # Default profile (web / API) targets the Brain-server workspace
   # RootDir. The 'foot' profile below overrides to CLIENT so a user

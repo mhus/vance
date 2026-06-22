@@ -955,6 +955,7 @@ else if (__VLS_ctx.mode === 'connecting') {
             mediation: (__VLS_ctx.mediation),
             followUpSuggestion: (__VLS_ctx.followUpSuggestion),
             ensureConnected: (__VLS_ctx.ensureConnected),
+            draftKey: (__VLS_ctx.activeSessionId ?? undefined),
         }));
         const __VLS_93 = __VLS_92({
             ...{ 'onHub': {} },
@@ -971,6 +972,7 @@ else if (__VLS_ctx.mode === 'connecting') {
             mediation: (__VLS_ctx.mediation),
             followUpSuggestion: (__VLS_ctx.followUpSuggestion),
             ensureConnected: (__VLS_ctx.ensureConnected),
+            draftKey: (__VLS_ctx.activeSessionId ?? undefined),
         }, ...__VLS_functionalComponentArgsRest(__VLS_92));
         let __VLS_95;
         let __VLS_96;

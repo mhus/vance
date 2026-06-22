@@ -103,18 +103,26 @@ public class StandardAiChat implements AiChat {
         //     ↑
         //   SanitizingChatModel (engines see cleaned; ONLY when the
         //                       model carries stripThinkTags=true)
+        //     ↑
+        //   ToolArgumentNormalizingChatModel (hack-fix for the
+        //                       DeepSeek-V4-Pro tool-call quirk;
+        //                       wrapped unconditionally so the same
+        //                       defence covers future strict OpenAI-
+        //                       compatible proxies)
         //
         // The sanitizer wrap is skipped when the flag is false so
         // straightforward (non-reasoning) models keep the old
         // call-graph exactly.
         this.sync = sync == null
                 ? null
-                : maybeSanitize(
-                        new LoggingChatModel(
-                                name, sync,
-                                options.getLlmTraceWriter(),
-                                options.getMetricService()),
-                        sanitizer, stripThinkTags);
+                : new ToolArgumentNormalizingChatModel(
+                        maybeSanitize(
+                                new LoggingChatModel(
+                                        name, sync,
+                                        options.getLlmTraceWriter(),
+                                        options.getMetricService()),
+                                sanitizer, stripThinkTags),
+                        name, options.getMetricService());
         this.streaming = wrapStreaming(name, streaming, options);
         this.options = options;
     }
@@ -151,9 +159,14 @@ public class StandardAiChat implements AiChat {
         }
         StreamingChatModel logged = new LoggingStreamingChatModel(
                 name, raw, options.getLlmTraceWriter(), options.getMetricService());
-        return new ResilientStreamingChatModel(
+        StreamingChatModel resilient = new ResilientStreamingChatModel(
                 List.of(new ChainEntry(logged, name, RetryPolicy.DEFAULT)),
                 options.getUserNotifier());
+        // Outermost: hack-fix for DeepSeek-V4-Pro tool-call quirk
+        // (function.arguments with trailing garbage). Wrapped
+        // unconditionally — see ToolArgumentNormalizer.
+        return new ToolArgumentNormalizingStreamingChatModel(
+                resilient, name, options.getMetricService());
     }
 
     @Override

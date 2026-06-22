@@ -6,7 +6,7 @@ description: |
 engine: vogon
 params:
   manualPaths:
-    - manuals/
+    - _vance/manuals/
   strategy: waterfall
   workerRecipes:
     planning: analyze

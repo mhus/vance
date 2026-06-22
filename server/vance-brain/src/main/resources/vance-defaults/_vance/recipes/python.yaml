@@ -9,7 +9,7 @@ params:
   validation: true
   maxIterations: 12
   manualPaths:
-    - manuals/
+    - _vance/manuals/
 allowedToolsAdd:
   - python_create
   - python_install

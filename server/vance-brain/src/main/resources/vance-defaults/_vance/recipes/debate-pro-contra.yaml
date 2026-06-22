@@ -10,7 +10,7 @@ description: |
 engine: zaphod
 params:
   manualPaths:
-    - manuals/
+    - _vance/manuals/
   pattern: DEBATE
   maxRounds: 3
   # Synthesis turn weighs the final-round positions of two opposing

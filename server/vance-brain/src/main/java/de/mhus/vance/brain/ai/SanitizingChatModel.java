@@ -62,9 +62,16 @@ public class SanitizingChatModel implements ChatModel {
             return raw;
         }
         ChatResponse.Builder b = ChatResponse.builder().aiMessage(clonedAi);
-        if (raw.tokenUsage() != null) b.tokenUsage(raw.tokenUsage());
-        if (raw.finishReason() != null) b.finishReason(raw.finishReason());
-        if (raw.metadata() != null) b.metadata(raw.metadata());
+        // metadata() already contains tokenUsage + finishReason; the
+        // builder rejects setting both groups ("Cannot set both
+        // 'metadata' and 'tokenUsage'"). Prefer metadata; the discrete
+        // setters are only the fallback when no metadata was provided.
+        if (raw.metadata() != null) {
+            b.metadata(raw.metadata());
+        } else {
+            if (raw.tokenUsage() != null) b.tokenUsage(raw.tokenUsage());
+            if (raw.finishReason() != null) b.finishReason(raw.finishReason());
+        }
         return b.build();
     }
 

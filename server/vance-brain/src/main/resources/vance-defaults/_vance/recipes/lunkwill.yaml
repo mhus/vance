@@ -20,8 +20,8 @@ params:
   # Recipe-specific manuals (coding-*, repair-*, …) live in
   # lunkwill/manuals/ too — same folder, distinguishing prefix.
   manualPaths:
-    - lunkwill/manuals/
-    - manuals/
+    - _vance/lunkwill/manuals/
+    - _vance/manuals/
 
 tags:
   - worker

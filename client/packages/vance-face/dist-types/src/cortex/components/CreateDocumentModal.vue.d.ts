@@ -27,11 +27,11 @@ export type CreateModalResult = {
     tags: string[] | undefined;
 };
 declare const _default: import("vue").DefineComponent<Props, {}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {} & {
-    "update:open": (open: boolean) => any;
-    confirm: (result: CreateModalResult) => any;
+    "update:open": any;
+    confirm: any;
 }, string, import("vue").PublicProps, Readonly<Props> & Readonly<{
-    "onUpdate:open"?: ((open: boolean) => any) | undefined;
-    onConfirm?: ((result: CreateModalResult) => any) | undefined;
+    "onUpdate:open"?: ((...args: any) => any) | undefined;
+    onConfirm?: ((...args: any) => any) | undefined;
 }>, {
     initialPath: string;
     consumeDraft: boolean;

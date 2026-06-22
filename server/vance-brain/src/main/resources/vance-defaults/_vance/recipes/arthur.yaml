@@ -33,7 +33,7 @@ params:
   # how-tos into <project>/manuals/ or _vance/manuals/ without touching this
   # recipe. Recipe order = precedence on duplicate filenames.
   manualPaths:
-    - manuals/
+    - _vance/manuals/
   # Default prompt lives in the document cascade — the Arthur engine
   # loads prompts/arthur-prompt.md (project → _vance → classpath:
   # vance-defaults/prompts/) as the engineDefault. The file is a

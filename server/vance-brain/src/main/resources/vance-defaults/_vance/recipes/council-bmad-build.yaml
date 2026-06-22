@@ -9,7 +9,7 @@ description: |
 engine: zaphod
 params:
   manualPaths:
-    - manuals/
+    - _vance/manuals/
   pattern: COUNCIL
   # BMAD-Synthese verschmilzt drei Rollen-Sichten zu einer
   # Story+Architecture+Implementation-Empfehlung — moderates

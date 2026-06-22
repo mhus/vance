@@ -25,7 +25,7 @@ params:
   fallbackModels:
     - default:fast
   manualPaths:
-    - manuals/
+    - _vance/manuals/
   # Default prompt lives in the document cascade — the Ford engine
   # loads prompts/ford-prompt.md (project → _vance → classpath:
   # vance-defaults/prompts/) as the engineDefault. The file is a

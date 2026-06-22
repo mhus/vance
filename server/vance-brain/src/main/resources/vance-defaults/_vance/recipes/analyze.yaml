@@ -17,7 +17,7 @@ params:
   # Ollama think=true. Requires the resolved model to support it.
   thinking: medium
   manualPaths:
-    - manuals/
+    - _vance/manuals/
 promptPrefix: |
   {% if tier == "small" %}
   You are an analysis worker. Step by step:

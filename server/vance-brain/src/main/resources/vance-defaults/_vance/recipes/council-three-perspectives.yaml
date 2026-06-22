@@ -6,7 +6,7 @@ description: |
 engine: zaphod
 params:
   manualPaths:
-    - manuals/
+    - _vance/manuals/
   pattern: COUNCIL
   # Synthesis turn benefits from reconciling three perspectives —
   # set a moderate reasoning budget on Zaphod's combine-step. The

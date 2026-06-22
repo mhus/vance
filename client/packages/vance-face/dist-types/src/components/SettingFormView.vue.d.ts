@@ -1,4 +1,3 @@
-import type { AppliedSettingDto } from '@vance/generated';
 /**
  * Wrapper around {@link FormFields} for a single Setting Form. Owns
  * the apply / validate / reset workflow and renders the live cascade
@@ -24,11 +23,11 @@ interface Props {
     reloadKey?: string | number;
 }
 declare const _default: import("vue").DefineComponent<Props, {}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {} & {
-    closed: () => any;
-    applied: (applied: AppliedSettingDto[]) => any;
+    closed: any;
+    applied: any;
 }, string, import("vue").PublicProps, Readonly<Props> & Readonly<{
-    onClosed?: (() => any) | undefined;
-    onApplied?: ((applied: AppliedSettingDto[]) => any) | undefined;
+    onClosed?: ((...args: any) => any) | undefined;
+    onApplied?: ((...args: any) => any) | undefined;
 }>, {
     projectId: string;
     reloadKey: string | number;

@@ -7,7 +7,7 @@ params:
   validation: true
   maxIterations: 10
   manualPaths:
-    - manuals/
+    - _vance/manuals/
   # Specialist worker — wants the highlights of the parent's
   # conversation, not the full chatter. `strong` = summary + active
   # history filtered to STRONG/PINNED (plus untagged fallback).

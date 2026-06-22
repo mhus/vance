@@ -6,7 +6,7 @@ description: |
 engine: zaphod
 params:
   manualPaths:
-    - manuals/
+    - _vance/manuals/
   # Synthesis call falls through to fast tier if the tenant default
   # is rate-limited.
   fallbackModels:

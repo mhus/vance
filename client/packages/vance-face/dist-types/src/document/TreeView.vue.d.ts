@@ -24,15 +24,15 @@ type __VLS_Props = {
     embedRef?: EmbedRef;
 };
 declare const _default: import("vue").DefineComponent<__VLS_Props, {}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {} & {
-    "update:doc": (doc: TreeDocument) => any;
+    "update:doc": any;
 }, string, import("vue").PublicProps, Readonly<__VLS_Props> & Readonly<{
-    "onUpdate:doc"?: ((doc: TreeDocument) => any) | undefined;
+    "onUpdate:doc"?: ((...args: any) => any) | undefined;
 }>, {
     meta: FenceMeta;
-    items: TreeItem[];
     mode: "editor" | "inline" | "embedded";
     doc: TreeDocument | null;
     pathPrefix: number[];
+    items: TreeItem[];
 }, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;
 export default _default;
 //# sourceMappingURL=TreeView.vue.d.ts.map

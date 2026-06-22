@@ -1,5 +1,4 @@
 import { type BrainWsApi } from '@vance/shared';
-import type { ChatMessageDto } from '@vance/generated';
 /**
  * Mirrors {@code ChatApp.MediationState}. Non-null while the bound
  * session is one Eddie switched us into. Lets {@link send} intercept
@@ -41,6 +40,12 @@ type __VLS_Props = {
      *  the reconnect failed — in which case the parent has already
      *  switched to its failure UI and the send is aborted. */
     ensureConnected?: () => Promise<boolean>;
+    /** Stable per-chat identifier used to persist the in-progress
+     *  composer draft to {@code sessionStorage}, so the user's typed
+     *  text survives a WS reconnect (the parent destroys the composer
+     *  via {@code v-if="liveOk"} when the socket drops — e.g. after the
+     *  laptop wakes from sleep). When unset, draft persistence is off. */
+    draftKey?: string | null;
 };
 /**
  * Reference to an already-existing document in the chat's project that
@@ -72,19 +77,19 @@ declare const _default: import("vue").DefineComponent<__VLS_Props, {
     setText: typeof setText;
     setTextAndSend: typeof setTextAndSend;
 }, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {} & {
-    hub: () => any;
-    "local-echo": (message: ChatMessageDto) => any;
-    "rollback-echo": (messageId: string) => any;
-    "text-changed": (text: string) => any;
-    "follow-up-accepted": () => any;
-    "focus-changed": (focused: boolean) => any;
+    hub: any;
+    "local-echo": any;
+    "rollback-echo": any;
+    "text-changed": any;
+    "follow-up-accepted": any;
+    "focus-changed": any;
 }, string, import("vue").PublicProps, Readonly<__VLS_Props> & Readonly<{
-    onHub?: (() => any) | undefined;
-    "onLocal-echo"?: ((message: ChatMessageDto) => any) | undefined;
-    "onRollback-echo"?: ((messageId: string) => any) | undefined;
-    "onText-changed"?: ((text: string) => any) | undefined;
-    "onFollow-up-accepted"?: (() => any) | undefined;
-    "onFocus-changed"?: ((focused: boolean) => any) | undefined;
+    onHub?: ((...args: any) => any) | undefined;
+    "onLocal-echo"?: ((...args: any) => any) | undefined;
+    "onRollback-echo"?: ((...args: any) => any) | undefined;
+    "onText-changed"?: ((...args: any) => any) | undefined;
+    "onFollow-up-accepted"?: ((...args: any) => any) | undefined;
+    "onFocus-changed"?: ((...args: any) => any) | undefined;
 }>, {}, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;
 export default _default;
 //# sourceMappingURL=ChatComposer.vue.d.ts.map

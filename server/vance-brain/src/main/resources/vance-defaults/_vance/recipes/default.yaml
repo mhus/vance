@@ -16,7 +16,7 @@ params:
   validation: true
   maxIterations: 8
   manualPaths:
-    - manuals/
+    - _vance/manuals/
   # Selector-routed fallback recipe — used for Arthur's DELEGATE
   # without preset. Worker needs the parent's conversation as
   # background (same rationale as `ford.yaml`). See

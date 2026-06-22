@@ -8,7 +8,7 @@ params:
   validation: true
   maxIterations: 3
   manualPaths:
-    - manuals/
+    - _vance/manuals/
   # Cheap one-shot — no parent context needed. The goal carries
   # everything; loading conversation history would just inflate
   # tokens for a single-tool lookup.

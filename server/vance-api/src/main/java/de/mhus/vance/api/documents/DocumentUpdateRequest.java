@@ -31,12 +31,20 @@ public class DocumentUpdateRequest {
     private @Nullable String title;
 
     /**
-     * Accent color override. Same "null = unchanged" semantics as the other
-     * fields — a v1 PATCH cannot clear an already-set color (matches the
-     * session-metadata patch contract). Add a separate tri-state field
-     * later if "clear" is needed.
+     * Accent color override. {@code null} = leave untouched (Jackson cannot
+     * distinguish "absent" from "explicit null" on a typed enum field); to
+     * remove an already-set color, send {@link #clearColor} = {@code true}
+     * instead. {@code color} and {@code clearColor} are mutually exclusive
+     * — when both are present, {@code clearColor} wins.
      */
     private @Nullable AccentColor color;
+
+    /**
+     * Explicit "remove the color" marker — {@code true} clears any
+     * existing color and ignores {@link #color}. Sent by the UI when the
+     * user picks the "no color" swatch.
+     */
+    private @Nullable Boolean clearColor;
 
     private @Nullable List<String> tags;
 

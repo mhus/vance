@@ -8,6 +8,7 @@ import { AccentColor } from '../common/AccentColor';
 export interface DocumentUpdateRequest {
   title?: string;
   color?: AccentColor;
+  clearColor?: boolean;
   tags?: string[];
   inlineText?: string;
   mimeType?: string;

@@ -74,11 +74,19 @@ async function onSave(): Promise<void> {
       .split(',')
       .map((s) => s.trim())
       .filter((s) => s.length > 0);
-    await store.updateMeta(props.document.id, {
+    const wasColor = props.document.color ?? null;
+    const body: import('../stores/cortexStore').MetaUpdateBody = {
       title: editTitle.value.trim() || null,
-      color: editColor.value,
       tags,
-    });
+    };
+    if (editColor.value !== wasColor) {
+      if (editColor.value === null) {
+        body.clearColor = true;
+      } else {
+        body.color = editColor.value;
+      }
+    }
+    await store.updateMeta(props.document.id, body);
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to save properties';
   } finally {

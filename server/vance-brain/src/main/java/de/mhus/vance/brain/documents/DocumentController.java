@@ -461,8 +461,14 @@ public class DocumentController {
 
         // Accent color rides on the same single-field-atomic pattern —
         // keeps the update(...) overload chain stable and matches how
-        // session-metadata patches handle their color field.
-        documentService.setColor(id, request.getColor());
+        // session-metadata patches handle their color field. A typed
+        // enum can't distinguish "absent" from "explicit null", so
+        // clearing goes through a separate boolean flag.
+        if (Boolean.TRUE.equals(request.getClearColor())) {
+            documentService.clearColor(id);
+        } else {
+            documentService.setColor(id, request.getColor());
+        }
 
         DocumentDocument updated;
         try {

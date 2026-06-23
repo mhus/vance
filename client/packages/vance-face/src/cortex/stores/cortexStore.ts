@@ -86,7 +86,14 @@ interface CreateBody {
 
 export interface MetaUpdateBody {
   title?: string | null;
+  /**
+   * Set the accent color. Sending {@code null} (or omitting the field)
+   * leaves the current value untouched — use {@link clearColor} to
+   * actively remove an existing color.
+   */
   color?: AccentColor | null;
+  /** Send {@code true} to clear an already-set color. */
+  clearColor?: boolean;
   tags?: string[];
   autoSummary?: boolean;
   summaryDirty?: boolean;

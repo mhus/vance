@@ -1,5 +1,5 @@
 import { computed, onBeforeUnmount, ref, shallowRef, toRef, watch } from 'vue';
-import { CodeEditor, MarkdownView } from '@/components';
+import { CodeEditor, MarkdownView, accentColorDotClass } from '@/components';
 import ImageView from '@/document/ImageView.vue';
 import DocumentPreview from '@/document/DocumentPreview.vue';
 import { useCortexStore } from '../stores/cortexStore';
@@ -475,6 +475,13 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElement
 __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
     ...{ class: (__VLS_ctx.reloading ? 'animate-spin inline-block' : '') },
 });
+if (__VLS_ctx.document.color) {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span)({
+        ...{ class: "size-2.5 rounded-full flex-shrink-0" },
+        ...{ class: (__VLS_ctx.accentColorDotClass(__VLS_ctx.document.color)) },
+        'aria-label': (`color ${__VLS_ctx.document.color}`),
+    });
+}
 __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
     ...{ class: "font-mono opacity-80 truncate" },
 });
@@ -1034,6 +1041,9 @@ if (__VLS_ctx.showSlart && __VLS_ctx.store.projectId) {
 /** @type {__VLS_StyleScopedClasses['rounded']} */ ;
 /** @type {__VLS_StyleScopedClasses['px-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['leading-none']} */ ;
+/** @type {__VLS_StyleScopedClasses['size-2.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['rounded-full']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-shrink-0']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-80']} */ ;
 /** @type {__VLS_StyleScopedClasses['truncate']} */ ;
@@ -1260,6 +1270,7 @@ const __VLS_self = (await import('vue')).defineComponent({
         return {
             CodeEditor: CodeEditor,
             MarkdownView: MarkdownView,
+            accentColorDotClass: accentColorDotClass,
             ImageView: ImageView,
             DocumentPreview: DocumentPreview,
             CortexValidateDialog: CortexValidateDialog,

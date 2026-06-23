@@ -28,7 +28,14 @@ interface CreateBody {
 }
 export interface MetaUpdateBody {
     title?: string | null;
+    /**
+     * Set the accent color. Sending {@code null} (or omitting the field)
+     * leaves the current value untouched — use {@link clearColor} to
+     * actively remove an existing color.
+     */
     color?: AccentColor | null;
+    /** Send {@code true} to clear an already-set color. */
+    clearColor?: boolean;
     tags?: string[];
     autoSummary?: boolean;
     summaryDirty?: boolean;
@@ -191,7 +198,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
     } | null>;
     setSelection: (sel: CortexSelection | null) => void;
     clearSelection: () => void;
-}, "projectId" | "loading" | "error" | "files" | "openTabs" | "activeTabId" | "currentSelection">, Pick<{
+}, "projectId" | "files" | "openTabs" | "activeTabId" | "loading" | "error" | "currentSelection">, Pick<{
     projectId: import("vue").Ref<string | null, string | null>;
     files: import("vue").Ref<{
         id: string;

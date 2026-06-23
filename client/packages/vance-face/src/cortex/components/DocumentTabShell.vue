@@ -23,7 +23,7 @@
  *    just sourced the entry differently.
  */
 import { computed, onBeforeUnmount, ref, shallowRef, toRef, watch } from 'vue';
-import { CodeEditor, MarkdownView } from '@/components';
+import { CodeEditor, MarkdownView, accentColorDotClass } from '@/components';
 import type { DocumentDto } from '@vance/generated';
 import ImageView from '@/document/ImageView.vue';
 import DocumentPreview from '@/document/DocumentPreview.vue';
@@ -554,6 +554,12 @@ function fmtDuration(ms: number | null): string {
       >
         <span :class="reloading ? 'animate-spin inline-block' : ''">⟳</span>
       </button>
+      <span
+        v-if="document.color"
+        class="size-2.5 rounded-full flex-shrink-0"
+        :class="accentColorDotClass(document.color)"
+        :aria-label="`color ${document.color}`"
+      />
       <span class="font-mono opacity-80 truncate">{{ document.path }}</span>
       <div
         v-if="showToggle"

@@ -285,6 +285,12 @@ export default {
       filterNoMatch: 'No projects match "{filter}".',
       sessionFilterPlaceholder: 'Filter sessions…',
       sessionFilterNoMatch: 'No sessions match "{filter}".',
+      recipeModalTitle: 'Start new session',
+      recipeModalIntro: 'Pick a recipe for the new session. "Default" uses the project default.',
+      recipeDefaultName: 'Default',
+      recipeDefaultDescription: 'Use the project default recipe — same as starting without picking one.',
+      recipeLoadFailed: 'Failed to load recipes.',
+      recipeBadgeTooltip: 'Recipe of the session-chat process',
     },
     search: {
       title: 'Search sessions',

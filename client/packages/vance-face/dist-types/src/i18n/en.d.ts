@@ -251,6 +251,12 @@ declare const _default: {
             filterNoMatch: string;
             sessionFilterPlaceholder: string;
             sessionFilterNoMatch: string;
+            recipeModalTitle: string;
+            recipeModalIntro: string;
+            recipeDefaultName: string;
+            recipeDefaultDescription: string;
+            recipeLoadFailed: string;
+            recipeBadgeTooltip: string;
         };
         search: {
             title: string;
@@ -1084,6 +1090,7 @@ declare const _default: {
             teamsTitle: string;
             addUser: string;
             addTeam: string;
+            showInternalUsers: string;
             memberCountSingular: string;
             memberCountPlural: string;
             disabledSuffix: string;

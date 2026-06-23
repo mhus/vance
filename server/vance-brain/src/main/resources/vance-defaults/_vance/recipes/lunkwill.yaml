@@ -7,6 +7,8 @@
 # via _terminate key, external interrupt via STOPPED/SUSPENDED status,
 # wallclock + idle-stuck safety nets).
 
+title: "Lunkwill — Focused Worker"
+listed: true
 description: |
   Generic Lunkwill worker — Pi-style loop, drains inbox, calls the LLM,
   executes tools, repeats until natural stop or tool-driven terminate.

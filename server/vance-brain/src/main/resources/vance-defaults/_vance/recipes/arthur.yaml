@@ -3,6 +3,8 @@
 # into the chat. Default for engine 'arthur' when no specific recipe
 # is named.
 
+title: "Arthur — Reactive Chat"
+listed: true
 description: |
   Reactive session-chat orchestrator. Talks to the user, delegates
   operational work to worker recipes, synthesises worker results

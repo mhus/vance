@@ -71,6 +71,22 @@ public record ResolvedRecipe(
          * service that owns them. Default {@code false}.
          */
         boolean internal,
+        /**
+         * Opt-in flag: when {@code true}, the recipe is exposed by the
+         * tenant-facing "listed recipes" endpoint that drives the Web-UI
+         * recipe picker (and any future client recipe pickers). Defaults
+         * to {@code false} so that helper/config recipes
+         * ({@code internal: true} or otherwise infrastructure-only)
+         * stay out of the user-facing list unless their author explicitly
+         * opts in. See {@code specification/recipes.md}.
+         */
+        boolean listed,
+        /**
+         * Optional human-readable display name for clients that surface
+         * the recipe to the user (Web-UI recipe picker, future mobile
+         * UIs). When {@code null}, the {@link #name} is used as fallback.
+         */
+        @Nullable String title,
         List<String> tags,
         RecipeSource source) {
 }

@@ -173,6 +173,8 @@ class RecipeResolverTest {
                 List.of(),
                 locked,
                 false, // internal
+                false, // listed
+                null, // title
                 List.of(),
                 RecipeSource.RESOURCE);
     }

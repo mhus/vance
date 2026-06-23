@@ -11,6 +11,8 @@
 #
 # See planning/coding-recipe.md and planning/work-target-and-tool-rename.md.
 
+title: "Coding"
+listed: true
 description: |
   Coding worker. Reads and edits files at the active work target,
   runs build/test commands, spawns deep-think workers for strategy

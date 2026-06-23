@@ -390,6 +390,8 @@ class SpawnActionExecutorTest {
                 /*triggerKeywords*/ List.of(),
                 /*locked*/ false,
                 /*internal*/ false,
+                /*listed*/ false,
+                /*title*/ null,
                 /*tags*/ List.of(),
                 RecipeSource.PROJECT);
     }

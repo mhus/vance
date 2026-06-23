@@ -609,6 +609,8 @@ class ValidatingPhaseTest {
                 /*triggerKeywords*/ java.util.List.of(),
                 /*locked*/ false,
                 /*internal*/ false,
+                /*listed*/ false,
+                /*title*/ null,
                 java.util.List.of(),
                 de.mhus.vance.brain.recipe.RecipeSource.PROJECT);
     }

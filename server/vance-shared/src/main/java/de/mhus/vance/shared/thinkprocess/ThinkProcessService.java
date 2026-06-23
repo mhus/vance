@@ -251,6 +251,16 @@ public class ThinkProcessService {
         return repository.findById(id);
     }
 
+    /**
+     * Batch read by id. Missing ids are silently dropped — callers that
+     * need a per-id miss/hit map should compare result-{@link
+     * ThinkProcessDocument#getId} against the input.
+     */
+    public List<ThinkProcessDocument> findByIds(java.util.Collection<String> ids) {
+        if (ids == null || ids.isEmpty()) return List.of();
+        return repository.findAllById(ids);
+    }
+
     public Optional<ThinkProcessDocument> findByName(
             String tenantId, String sessionId, String name) {
         return repository.findByTenantIdAndSessionIdAndName(tenantId, sessionId, name);

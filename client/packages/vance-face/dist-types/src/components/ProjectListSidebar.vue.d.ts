@@ -110,6 +110,7 @@ declare const __VLS_component: import("vue").DefineComponent<__VLS_PublicProps, 
     "update:selectedProject": (value: string | null) => any;
     "update:selectedNode": (value: PickerNode | null) => any;
 } & {
+    "focus-main": () => any;
     "project-pick": (payload: {
         name: string;
         title: string;
@@ -118,31 +119,29 @@ declare const __VLS_component: import("vue").DefineComponent<__VLS_PublicProps, 
         name: string;
         title: string;
     }) => any;
-    "focus-main": () => any;
     "data-changed": (payload: {
         kind: "group" | "project";
         name: string;
     }) => any;
 }, string, import("vue").PublicProps, Readonly<__VLS_PublicProps> & Readonly<{
+    "onUpdate:selectedProject"?: ((value: string | null) => any) | undefined;
+    "onFocus-main"?: (() => any) | undefined;
     "onProject-pick"?: ((payload: {
         name: string;
         title: string;
     }) => any) | undefined;
+    "onUpdate:selectedNode"?: ((value: PickerNode | null) => any) | undefined;
     "onGroup-pick"?: ((payload: {
         name: string;
         title: string;
     }) => any) | undefined;
-    "onFocus-main"?: (() => any) | undefined;
     "onData-changed"?: ((payload: {
         kind: "group" | "project";
         name: string;
     }) => any) | undefined;
-    "onUpdate:selectedProject"?: ((value: string | null) => any) | undefined;
-    "onUpdate:selectedNode"?: ((value: PickerNode | null) => any) | undefined;
 }>, {
     loading: boolean;
     error: string | null;
-    heading: string;
     searchEnabled: boolean;
     editEnabled: boolean;
     showGroupRows: boolean;
@@ -151,6 +150,7 @@ declare const __VLS_component: import("vue").DefineComponent<__VLS_PublicProps, 
         label: string;
     }[];
     hideKitField: boolean;
+    heading: string;
     filterPlaceholder: string;
     ungroupedLabel: string;
     emptyHeadline: string;

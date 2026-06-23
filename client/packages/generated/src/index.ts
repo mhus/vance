@@ -219,6 +219,8 @@ export * from './magrathea/MagratheaWorkflowSummary';
 export * from './notification/NotificationDto';
 export * from './notification/NotificationSeverity';
 
+export * from './recipe/RecipeListedDto';
+
 export * from './eventlog/EventLogEntryDto';
 export * from './eventlog/EventType';
 

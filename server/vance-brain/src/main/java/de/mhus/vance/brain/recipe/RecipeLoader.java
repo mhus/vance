@@ -192,6 +192,8 @@ public class RecipeLoader {
         List<String> triggerKeywords = parseTriggerKeywords(spec.get("triggers"));
         boolean locked = spec.get("locked") instanceof Boolean b && b;
         boolean internal = spec.get("internal") instanceof Boolean ib && ib;
+        boolean listed = spec.get("listed") instanceof Boolean lb && lb;
+        String title = stringOrNull(spec.get("title"));
         List<String> tags = stringList(spec.get("tags"), "tags");
 
         return new ResolvedRecipe(
@@ -201,7 +203,7 @@ public class RecipeLoader {
                 add, remove, defer, baseModes, profiles,
                 defaultActiveSkills, allowedSkills,
                 triggerKeywords,
-                locked, internal, tags,
+                locked, internal, listed, title, tags,
                 mapSource(hit.source()));
     }
 

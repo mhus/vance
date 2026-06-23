@@ -286,9 +286,21 @@ const isMarkdownDocument = computed(() => {
     return (props.document.mimeType ?? '').toLowerCase().startsWith('text/markdown');
 });
 const showToggle = computed(() => isViewMode.value || isMarkdownDocument.value);
-const viewEditMode = ref('view');
-watch(() => props.document.id, () => {
-    viewEditMode.value = 'view';
+const VIEW_EDIT_KEY = 'editor:viewEditMode';
+function loadViewEditMode() {
+    try {
+        return sessionStorage.getItem(VIEW_EDIT_KEY) === 'edit' ? 'edit' : 'view';
+    }
+    catch {
+        return 'view';
+    }
+}
+const viewEditMode = ref(loadViewEditMode());
+watch(viewEditMode, (v) => {
+    try {
+        sessionStorage.setItem(VIEW_EDIT_KEY, v);
+    }
+    catch { /* sessionStorage unavailable */ }
 });
 // In a view-capable mode, 'edit' falls back to the same CodeEditor
 // the catch-all 'code' mode uses — same selection-tracking, same

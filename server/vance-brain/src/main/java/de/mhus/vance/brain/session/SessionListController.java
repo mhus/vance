@@ -8,10 +8,15 @@ import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -43,6 +48,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class SessionListController {
 
     private final SessionService sessionService;
+    private final ThinkProcessService thinkProcessService;
     private final RequestAuthority authority;
 
     @GetMapping
@@ -70,11 +76,39 @@ public class SessionListController {
                     new Resource.Project(tenant, projectId), Action.READ);
         }
 
+        Map<String, String> recipeByProcessId = collectChatRecipes(sessions);
         List<SessionSummaryRichDto> out = new ArrayList<>(sessions.size());
         for (SessionDocument s : sessions) {
-            out.add(toDto(s));
+            String recipe = s.getChatProcessId() == null
+                    ? null
+                    : recipeByProcessId.get(s.getChatProcessId());
+            out.add(toDto(s, recipe));
         }
         return out;
+    }
+
+    /**
+     * Batch-resolve {@code chatProcessId → recipeName} for the listed
+     * sessions in one repo call. Sessions without a linked chat process
+     * (newly created, pre-bootstrapper) and processes spawned without
+     * a recipe (engine-default) both surface as {@code null} on the DTO.
+     */
+    private Map<String, String> collectChatRecipes(List<SessionDocument> sessions) {
+        Set<String> chatProcessIds = new LinkedHashSet<>();
+        for (SessionDocument s : sessions) {
+            String id = s.getChatProcessId();
+            if (id != null && !id.isBlank()) {
+                chatProcessIds.add(id);
+            }
+        }
+        if (chatProcessIds.isEmpty()) return Map.of();
+        Map<String, String> byProcessId = new HashMap<>(chatProcessIds.size());
+        for (ThinkProcessDocument p : thinkProcessService.findByIds(chatProcessIds)) {
+            if (p.getRecipeName() != null && !p.getRecipeName().isBlank()) {
+                byProcessId.put(p.getId(), p.getRecipeName());
+            }
+        }
+        return byProcessId;
     }
 
     private static Set<SessionStatus> resolveStatuses(
@@ -105,7 +139,17 @@ public class SessionListController {
         return parsed;
     }
 
+    /**
+     * Search hits don't carry the chat-recipe today — the search service
+     * builds DTOs from {@link SessionDocument} alone and {@link
+     * de.mhus.vance.shared.thinkprocess.ThinkProcessService} isn't on its
+     * dependency surface. The list endpoint above does the join.
+     */
     static SessionSummaryRichDto toDto(SessionDocument s) {
+        return toDto(s, null);
+    }
+
+    static SessionSummaryRichDto toDto(SessionDocument s, @Nullable String chatRecipe) {
         List<String> tags = s.getTags() == null
                 ? List.of()
                 : new ArrayList<>(s.getTags());
@@ -125,6 +169,7 @@ public class SessionListController {
                 .color(s.getColor())
                 .tags(tags)
                 .pinned(s.isPinned())
+                .chatRecipe(chatRecipe)
                 .firstUserMessage(s.getFirstUserMessage())
                 .lastMessagePreview(s.getLastMessagePreview())
                 .lastMessageRole(s.getLastMessageRole())

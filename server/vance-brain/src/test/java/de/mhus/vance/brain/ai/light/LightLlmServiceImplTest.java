@@ -335,6 +335,8 @@ class LightLlmServiceImplTest {
                 List.of(),
                 false,        // locked
                 internal,     // internal
+                false,        // listed
+                null,         // title
                 List.of(),
                 RecipeSource.PROJECT);
     }
@@ -355,6 +357,8 @@ class LightLlmServiceImplTest {
                 List.of(),
                 false,
                 true,         // internal
+                false,        // listed
+                null,         // title
                 List.of(),
                 RecipeSource.PROJECT);
     }

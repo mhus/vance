@@ -22,6 +22,7 @@ export interface SessionSummaryRichDto {
   color?: SessionColor;
   tags: string[];
   pinned: boolean;
+  chatRecipe?: string;
   firstUserMessage?: string;
   lastMessagePreview?: string;
   lastMessageRole?: string;

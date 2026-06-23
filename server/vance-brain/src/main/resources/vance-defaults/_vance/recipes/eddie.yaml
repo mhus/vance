@@ -3,6 +3,8 @@
 # STEER_PROJECT, posts inbox items for follow-up. Default for engine
 # 'eddie' when no specific recipe is named.
 
+title: "Eddie — Personal Hub"
+listed: true
 description: |
   Personal hub assistant. Single conversational entry point that
   speaks across the user's projects, delegates operational work to

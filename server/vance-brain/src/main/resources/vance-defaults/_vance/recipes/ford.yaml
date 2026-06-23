@@ -3,6 +3,8 @@
 # recipes (analyze, web-research, code-read…) sit on top of this —
 # pick the most specific one when applicable.
 
+title: "Ford — Generalist Worker"
+listed: true
 description: |
   Generalist Ford-engine default. Auto-applied when a process
   is spawned with `engine="ford"` but no specific recipe.

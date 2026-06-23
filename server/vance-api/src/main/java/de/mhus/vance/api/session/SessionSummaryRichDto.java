@@ -65,6 +65,17 @@ public class SessionSummaryRichDto {
 
     private boolean pinned;
 
+    /**
+     * Recipe name the session-chat process was spawned from, or
+     * {@code null} when the chat process was spawned without an
+     * explicit recipe (engine-default). Surfaced for UI attribution —
+     * pickers render it as a small badge next to status / last-activity
+     * so users can spot which recipe a session runs on without opening
+     * it. Sourced from the chat process's {@code recipeName} field at
+     * list-time; the session itself does not persist the recipe.
+     */
+    private @Nullable String chatRecipe;
+
     // ─── Denormalised chat preview (set by ChatMessageService.append) ───
 
     /** Stable topic — first user message, truncated. */

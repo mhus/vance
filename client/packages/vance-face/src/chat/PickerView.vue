@@ -4,12 +4,14 @@ import { useI18n } from 'vue-i18n';
 import {
   type BrainWsApi,
   WebSocketRequestError,
+  listProjectRecipes,
   listSessions,
   reactivateSession,
 } from '@vance/shared';
 import {
   SessionColor,
   SessionStatus,
+  type RecipeListedDto,
   type SessionBootstrapRequest,
   type SessionBootstrapResponse,
   type SessionSummaryRichDto,
@@ -22,6 +24,7 @@ import {
   VCheckbox,
   VEmptyState,
   VInput,
+  VModal,
 } from '@components/index';
 import SessionSearchModal from './SessionSearchModal.vue';
 
@@ -81,6 +84,17 @@ const reactivating = ref<string | null>(null);
 const searchOpen = ref(false);
 
 /**
+ * Recipe picker — opens on the "+" button. {@code null} entry is the
+ * always-present "Default" choice that triggers a bootstrap without
+ * {@code chatRecipe}, falling back to the server's default-recipe
+ * resolution.
+ */
+const recipeModalOpen = ref(false);
+const recipeOptions = ref<RecipeListedDto[]>([]);
+const recipesLoading = ref(false);
+const recipesError = ref<string | null>(null);
+
+/**
  * Free-text filter for the sessions list in the main area — matches
  * against the displayed session title (case-insensitive substring).
  */
@@ -136,14 +150,36 @@ async function reactivateAndOpen(session: SessionSummaryRichDto): Promise<void> 
   }
 }
 
-async function bootstrapNew(): Promise<void> {
+async function openRecipeModal(): Promise<void> {
+  if (!selectedProjectName.value) return;
+  bootstrapError.value = null;
+  recipesError.value = null;
+  recipeModalOpen.value = true;
+  recipesLoading.value = true;
+  try {
+    recipeOptions.value = await listProjectRecipes(selectedProjectName.value);
+  } catch (e) {
+    recipesError.value = describeError(e, t('chat.picker.recipeLoadFailed'));
+    recipeOptions.value = [];
+  } finally {
+    recipesLoading.value = false;
+  }
+}
+
+async function bootstrapNew(chatRecipe: string | null): Promise<void> {
   if (!selectedProjectName.value) return;
   bootstrapping.value = true;
   bootstrapError.value = null;
   try {
+    const payload: SessionBootstrapRequest = {
+      projectId: selectedProjectName.value,
+      processes: [],
+    };
+    if (chatRecipe) payload.chatRecipe = chatRecipe;
     const response = await props.socket.send<SessionBootstrapRequest, SessionBootstrapResponse>(
       'session-bootstrap',
-      { projectId: selectedProjectName.value, processes: [] });
+      payload);
+    recipeModalOpen.value = false;
     emit('session-bootstrapped', response.sessionId);
   } catch (e) {
     bootstrapError.value = describeError(e, t('chat.picker.failedToStartSession'));
@@ -379,7 +415,7 @@ watch(showArchived, async () => {
             :disabled="!selectedProjectName || bootstrapping"
             :loading="bootstrapping"
             :title="$t('chat.picker.newSession')"
-            @click="bootstrapNew"
+            @click="openRecipeModal"
           >
             +
           </VButton>
@@ -464,8 +500,15 @@ watch(showArchived, async () => {
                 >
                   {{ session.lastMessagePreview }}
                 </div>
-                <div class="text-xs opacity-60 truncate mt-0.5">
-                  {{ session.status }} · {{ formatRelativeTime(session.lastActivityAt) }}
+                <div class="text-xs opacity-60 truncate mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                  <span>{{ session.status }} · {{ formatRelativeTime(session.lastActivityAt) }}</span>
+                  <span
+                    v-if="session.chatRecipe"
+                    class="font-mono opacity-70"
+                    :title="$t('chat.picker.recipeBadgeTooltip')"
+                  >
+                    🧪 {{ session.chatRecipe }}
+                  </span>
                 </div>
                 <div
                   v-if="session.tags && session.tags.length > 0"
@@ -506,6 +549,73 @@ watch(showArchived, async () => {
       @close="searchOpen = false"
       @pick="onSearchPick"
     />
+
+    <VModal
+      v-model="recipeModalOpen"
+      :title="$t('chat.picker.recipeModalTitle')"
+    >
+      <div class="space-y-3">
+        <p class="text-sm opacity-70">{{ $t('chat.picker.recipeModalIntro') }}</p>
+
+        <VAlert v-if="recipesError" variant="error">{{ recipesError }}</VAlert>
+        <VAlert v-if="bootstrapError" variant="error">{{ bootstrapError }}</VAlert>
+
+        <ul class="flex flex-col gap-2 max-h-[60vh] overflow-y-auto">
+          <li>
+            <button
+              type="button"
+              class="w-full text-left rounded-lg border border-base-300 hover:border-primary p-3 transition-colors"
+              :disabled="bootstrapping"
+              @click="bootstrapNew(null)"
+            >
+              <div class="font-semibold">{{ $t('chat.picker.recipeDefaultName') }}</div>
+              <div class="text-xs opacity-70 mt-1">
+                {{ $t('chat.picker.recipeDefaultDescription') }}
+              </div>
+            </button>
+          </li>
+
+          <li v-if="recipesLoading" class="text-sm opacity-60 px-1">
+            {{ $t('chat.picker.sessionsLoading') }}
+          </li>
+
+          <li
+            v-for="recipe in recipeOptions"
+            :key="recipe.name"
+          >
+            <button
+              type="button"
+              class="w-full text-left rounded-lg border border-base-300 hover:border-primary p-3 transition-colors"
+              :disabled="bootstrapping"
+              @click="bootstrapNew(recipe.name)"
+            >
+              <div class="flex items-baseline gap-2 min-w-0">
+                <span class="font-semibold truncate">
+                  {{ recipe.title || recipe.name }}
+                </span>
+                <span
+                  v-if="recipe.title"
+                  class="text-xs opacity-50 font-mono truncate"
+                >
+                  {{ recipe.name }}
+                </span>
+              </div>
+              <div
+                v-if="recipe.description"
+                class="text-xs opacity-70 mt-1 whitespace-pre-line line-clamp-3"
+              >
+                {{ recipe.description }}
+              </div>
+            </button>
+          </li>
+        </ul>
+      </div>
+      <template #actions>
+        <VButton variant="ghost" :disabled="bootstrapping" @click="recipeModalOpen = false">
+          {{ $t('common.cancel') }}
+        </VButton>
+      </template>
+    </VModal>
   </div>
 </template>
 

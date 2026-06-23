@@ -19,12 +19,15 @@ import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.brain.events.StreamingProperties;
 import de.mhus.vance.brain.history.BufferingHistoryTagSink;
 import de.mhus.vance.brain.progress.LlmCallTracker;
+import de.mhus.vance.brain.skill.SkillPromptComposer;
+import de.mhus.vance.brain.skill.SkillResolver;
 import de.mhus.vance.brain.thinkengine.EnginePromptResolver;
 import de.mhus.vance.brain.thinkengine.SystemPromptComposer;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
+import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
@@ -63,6 +66,9 @@ class LunkwillEngineSkeletonTest {
     private ObjectMapper objectMapper;
     private EnginePromptResolver enginePromptResolver;
     private SystemPromptComposer systemPromptComposer;
+    private SkillResolver skillResolver;
+    private SkillPromptComposer skillPromptComposer;
+    private SessionService sessionService;
 
     private LunkwillEngine engine;
     private LunkwillProperties properties;
@@ -93,6 +99,9 @@ class LunkwillEngineSkeletonTest {
         lenient().when(engineChatFactory.forProcess(any(), any(), any())).thenReturn(bundle);
 
         lenient().when(tools.primaryAsLc4j()).thenReturn(List.of());
+        // Skills add no extra tools by default — the per-turn allow-set
+        // stays untouched. `withAdditional(empty)` returns `this`.
+        lenient().when(tools.withAdditional(any())).thenReturn(tools);
 
         enginePromptResolver = mock(EnginePromptResolver.class);
         systemPromptComposer = mock(SystemPromptComposer.class);
@@ -101,10 +110,19 @@ class LunkwillEngineSkeletonTest {
         lenient().when(systemPromptComposer.compose(any(), any(), any()))
                 .thenAnswer(inv -> inv.getArgument(1));
 
+        skillResolver = mock(SkillResolver.class);
+        skillPromptComposer = mock(SkillPromptComposer.class);
+        sessionService = mock(SessionService.class);
+        lenient().when(skillPromptComposer.mergedTools(any()))
+                .thenReturn(java.util.Set.of());
+        lenient().when(skillPromptComposer.compose(any(), any())).thenReturn(null);
+        lenient().when(sessionService.findBySessionId(any())).thenReturn(Optional.empty());
+
         engine = new LunkwillEngine(
                 thinkProcessService, properties, engineChatFactory,
                 llmCallTracker, streaming, objectMapper,
-                enginePromptResolver, systemPromptComposer);
+                enginePromptResolver, systemPromptComposer,
+                skillResolver, skillPromptComposer, sessionService);
 
         process = new ThinkProcessDocument();
         process.setId(PROC_ID);

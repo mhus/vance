@@ -1,4 +1,5 @@
 import { computed, inject } from 'vue';
+import { accentColorDotClass } from '@/components';
 const props = defineProps();
 const emit = defineEmits();
 function onChildMove(payload) { emit('move-file', payload); }
@@ -201,6 +202,13 @@ if (__VLS_ctx.isOpen(__VLS_ctx.node.path)) {
             ...{ class: "opacity-50 w-6 text-xs font-mono" },
         });
         (__VLS_ctx.fileIcon(file.name));
+        if (file.color) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span)({
+                ...{ class: "size-2 rounded-full flex-shrink-0" },
+                ...{ class: (__VLS_ctx.accentColorDotClass(file.color)) },
+                'aria-label': (`color ${file.color}`),
+            });
+        }
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
             ...{ class: "truncate" },
         });
@@ -256,6 +264,9 @@ if (__VLS_ctx.isOpen(__VLS_ctx.node.path)) {
 /** @type {__VLS_StyleScopedClasses['w-6']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
+/** @type {__VLS_StyleScopedClasses['size-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['rounded-full']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-shrink-0']} */ ;
 /** @type {__VLS_StyleScopedClasses['truncate']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-50']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
@@ -268,6 +279,7 @@ var __VLS_dollars;
 const __VLS_self = (await import('vue')).defineComponent({
     setup() {
         return {
+            accentColorDotClass: accentColorDotClass,
             emit: emit,
             onChildMove: onChildMove,
             onChildUpload: onChildUpload,

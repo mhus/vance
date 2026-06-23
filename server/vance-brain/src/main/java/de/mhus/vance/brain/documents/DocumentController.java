@@ -459,6 +459,11 @@ public class DocumentController {
         // which collapses those two cases.
         applyRagEnabledOverride(id, request.getRagEnabled());
 
+        // Accent color rides on the same single-field-atomic pattern —
+        // keeps the update(...) overload chain stable and matches how
+        // session-metadata patches handle their color field.
+        documentService.setColor(id, request.getColor());
+
         DocumentDocument updated;
         try {
             updated = documentService.update(
@@ -842,6 +847,7 @@ public class DocumentController {
                 .path(doc.getPath())
                 .name(doc.getName())
                 .title(doc.getTitle())
+                .color(doc.getColor())
                 .mimeType(doc.getMimeType())
                 .size(doc.getSize())
                 .tags(doc.getTags())
@@ -858,6 +864,7 @@ public class DocumentController {
                 .path(doc.getPath())
                 .name(doc.getName())
                 .title(doc.getTitle())
+                .color(doc.getColor())
                 .mimeType(doc.getMimeType())
                 .size(doc.getSize())
                 .tags(doc.getTags())

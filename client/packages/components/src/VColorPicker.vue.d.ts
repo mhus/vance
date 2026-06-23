@@ -1,6 +1,6 @@
-import { SessionColor } from '@vance/generated';
+import { AccentColor } from '@vance/generated';
 interface Props {
-    modelValue: SessionColor | null | undefined;
+    modelValue: AccentColor | null | undefined;
     /** When true, an extra "no color" chip is shown so the user can clear the choice. */
     allowClear?: boolean;
     disabled?: boolean;
@@ -8,9 +8,9 @@ interface Props {
     label?: string;
 }
 declare const _default: import("vue").DefineComponent<Props, {}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {} & {
-    "update:modelValue": (value: SessionColor | null) => any;
+    "update:modelValue": (value: AccentColor | null) => any;
 }, string, import("vue").PublicProps, Readonly<Props> & Readonly<{
-    "onUpdate:modelValue"?: ((value: SessionColor | null) => any) | undefined;
+    "onUpdate:modelValue"?: ((value: AccentColor | null) => any) | undefined;
 }>, {
     disabled: boolean;
     allowClear: boolean;

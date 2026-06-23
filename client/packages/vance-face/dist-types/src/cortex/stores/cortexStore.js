@@ -106,6 +106,7 @@ export const useCortexStore = defineStore('cortex', () => {
             path: s.path,
             name: s.name,
             title: s.title ?? null,
+            color: s.color ?? null,
             mimeType: s.mimeType ?? null,
             kind: s.kind ?? null,
             inlineText: '', // populated on full load via openFile
@@ -120,6 +121,7 @@ export const useCortexStore = defineStore('cortex', () => {
             path: d.path,
             name: d.name,
             title: d.title ?? null,
+            color: d.color ?? null,
             mimeType: d.mimeType ?? null,
             kind: d.kind ?? null,
             inlineText: text,
@@ -169,6 +171,7 @@ export const useCortexStore = defineStore('cortex', () => {
                 {
                     ...files.value[fIdx],
                     title: dto.title ?? null,
+                    color: dto.color ?? null,
                     mimeType: dto.mimeType ?? null,
                 },
                 ...files.value.slice(fIdx + 1),

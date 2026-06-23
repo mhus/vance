@@ -13,7 +13,7 @@ import com.googlecode.lanterna.gui2.LinearLayout;
 import com.googlecode.lanterna.gui2.Panel;
 import com.googlecode.lanterna.gui2.TextBox;
 import com.googlecode.lanterna.gui2.Window;
-import de.mhus.vance.api.session.SessionColor;
+import de.mhus.vance.api.common.AccentColor;
 import de.mhus.vance.api.session.SessionMetadataDto;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.SessionListRequest;
@@ -172,7 +172,7 @@ public class SessionMetaCommand implements SlashCommand {
             grid.addComponent(new Label("Color"));
             ComboBox<String> colorBox = new ComboBox<>();
             colorBox.addItem(NO_COLOR);
-            for (SessionColor c : SessionColor.values()) {
+            for (AccentColor c : AccentColor.values()) {
                 colorBox.addItem(c.name());
             }
             colorBox.setSelectedItem(draft.color == null ? NO_COLOR : draft.color.name());
@@ -197,7 +197,7 @@ public class SessionMetaCommand implements SlashCommand {
                 String selectedColor = colorBox.getSelectedItem();
                 draft.color = (selectedColor == null || NO_COLOR.equals(selectedColor))
                         ? null
-                        : SessionColor.valueOf(selectedColor);
+                        : AccentColor.valueOf(selectedColor);
                 draft.tags = normaliseTags(tagsBox.getText());
                 draft.pinned = pinBox.isChecked();
                 saved.set(true);
@@ -255,7 +255,7 @@ public class SessionMetaCommand implements SlashCommand {
     private static final class FormResult {
         @Nullable String title;
         @Nullable String icon;
-        @Nullable SessionColor color;
+        @Nullable AccentColor color;
         List<String> tags = new ArrayList<>();
         boolean pinned;
     }

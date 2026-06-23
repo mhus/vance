@@ -3,6 +3,7 @@
  Source: de.mhus.vance.api.documents.DocumentDto
 */
 
+import { AccentColor } from '../common/AccentColor';
 import { DocumentNoteDto } from './DocumentNoteDto';
 
 export interface DocumentDto {
@@ -11,6 +12,7 @@ export interface DocumentDto {
   path: string;
   name: string;
   title?: string;
+  color?: AccentColor;
   mimeType?: string;
   size: number;
   tags: string[];

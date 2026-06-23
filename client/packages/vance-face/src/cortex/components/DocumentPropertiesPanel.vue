@@ -11,8 +11,8 @@
  *    existing component as-is; restores re-fetch the doc into the tab).
  */
 import { computed, ref, watch } from 'vue';
-import { VAlert, VButton, VInput } from '@/components';
-import type { DocumentDto } from '@vance/generated';
+import { VAlert, VButton, VColorPicker, VInput } from '@/components';
+import type { AccentColor, DocumentDto } from '@vance/generated';
 import DocumentArchives from '@/document/DocumentArchives.vue';
 import type { CortexDocument } from '../types';
 import { useCortexStore } from '../stores/cortexStore';
@@ -25,6 +25,7 @@ const store = useCortexStore();
 
 const editTitle = ref('');
 const editTags = ref('');
+const editColor = ref<AccentColor | null>(null);
 const saving = ref(false);
 const error = ref<string | null>(null);
 
@@ -36,6 +37,7 @@ watch(
   () => {
     editTitle.value = props.document.title ?? '';
     editTags.value = (props.document.tags ?? []).join(', ');
+    editColor.value = props.document.color ?? null;
     error.value = null;
   },
   { immediate: true },
@@ -44,7 +46,12 @@ watch(
 const isDirty = computed<boolean>(() => {
   const titleNow = props.document.title ?? '';
   const tagsNow = (props.document.tags ?? []).join(', ');
-  return editTitle.value !== titleNow || editTags.value !== tagsNow;
+  const colorNow = props.document.color ?? null;
+  return (
+    editTitle.value !== titleNow
+    || editTags.value !== tagsNow
+    || editColor.value !== colorNow
+  );
 });
 
 function formatSize(bytes: number | null | undefined): string {
@@ -69,6 +76,7 @@ async function onSave(): Promise<void> {
       .filter((s) => s.length > 0);
     await store.updateMeta(props.document.id, {
       title: editTitle.value.trim() || null,
+      color: editColor.value,
       tags,
     });
   } catch (e) {
@@ -87,6 +95,7 @@ const dtoForArchives = computed<DocumentDto>(() => ({
   path: props.document.path,
   name: props.document.name,
   title: props.document.title ?? undefined,
+  color: props.document.color ?? undefined,
   mimeType: props.document.mimeType ?? undefined,
   size: props.document.size ?? 0,
   tags: props.document.tags ?? [],
@@ -124,6 +133,12 @@ async function onRestored(): Promise<void> {
           label="Tags"
           placeholder="comma, separated"
           help="Comma-separated"
+          :disabled="saving"
+        />
+        <VColorPicker
+          v-model="editColor"
+          label="Color"
+          allow-clear
           :disabled="saving"
         />
       </div>

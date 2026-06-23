@@ -19,6 +19,7 @@ import {
   VButton,
   VEmptyState,
   VInput,
+  accentColorDotClass,
   type FocusZone,
 } from '@/components';
 import { useI18n } from 'vue-i18n';
@@ -355,7 +356,15 @@ function gotoPage(p: number): void {
                 <DocumentIcon :kind="doc.kind ?? null" :mime-type="doc.mimeType ?? null" />
               </td>
               <td class="px-2 py-1.5">
-                <div class="font-medium truncate">{{ doc.title || fileBasename(doc.path) }}</div>
+                <div class="flex items-center gap-2 min-w-0">
+                  <span
+                    v-if="doc.color"
+                    class="size-2 rounded-full flex-shrink-0"
+                    :class="accentColorDotClass(doc.color)"
+                    :aria-label="`color ${doc.color}`"
+                  />
+                  <div class="font-medium truncate">{{ doc.title || fileBasename(doc.path) }}</div>
+                </div>
                 <div class="text-xs opacity-60 font-mono truncate">{{ doc.path }}</div>
               </td>
               <td class="px-2 py-1.5 text-xs opacity-70">{{ doc.kind ?? '—' }}</td>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { VButton, VColorPicker, VEmojiPicker, VTagEditor } from '@vance/components';
 import {
-  SessionColor,
+  AccentColor,
   SessionStatus,
   type SessionMetadataPatchRequest,
   type SessionSummaryRichDto,
@@ -109,18 +109,18 @@ const displayTitle = computed(() => {
 const colorAccentClass = computed(() => {
   // Match VColorPicker swatches at /15 opacity for a subtle left-border accent.
   switch (session.value?.color) {
-    case SessionColor.SLATE: return 'border-l-4 border-slate-500';
-    case SessionColor.RED: return 'border-l-4 border-red-500';
-    case SessionColor.ORANGE: return 'border-l-4 border-orange-500';
-    case SessionColor.AMBER: return 'border-l-4 border-amber-500';
-    case SessionColor.GREEN: return 'border-l-4 border-green-500';
-    case SessionColor.TEAL: return 'border-l-4 border-teal-500';
-    case SessionColor.CYAN: return 'border-l-4 border-cyan-500';
-    case SessionColor.BLUE: return 'border-l-4 border-blue-500';
-    case SessionColor.INDIGO: return 'border-l-4 border-indigo-500';
-    case SessionColor.PURPLE: return 'border-l-4 border-purple-500';
-    case SessionColor.PINK: return 'border-l-4 border-pink-500';
-    case SessionColor.ROSE: return 'border-l-4 border-rose-500';
+    case AccentColor.SLATE: return 'border-l-4 border-slate-500';
+    case AccentColor.RED: return 'border-l-4 border-red-500';
+    case AccentColor.ORANGE: return 'border-l-4 border-orange-500';
+    case AccentColor.AMBER: return 'border-l-4 border-amber-500';
+    case AccentColor.GREEN: return 'border-l-4 border-green-500';
+    case AccentColor.TEAL: return 'border-l-4 border-teal-500';
+    case AccentColor.CYAN: return 'border-l-4 border-cyan-500';
+    case AccentColor.BLUE: return 'border-l-4 border-blue-500';
+    case AccentColor.INDIGO: return 'border-l-4 border-indigo-500';
+    case AccentColor.PURPLE: return 'border-l-4 border-purple-500';
+    case AccentColor.PINK: return 'border-l-4 border-pink-500';
+    case AccentColor.ROSE: return 'border-l-4 border-rose-500';
     default: return '';
   }
 });
@@ -188,7 +188,7 @@ async function onIcon(value: string | null): Promise<void> {
   await patch({ icon: value ?? '' });
 }
 
-async function onColor(value: SessionColor | null): Promise<void> {
+async function onColor(value: AccentColor | null): Promise<void> {
   if (isArchived.value) return;
   // PATCH only sets values — null means "don't change". To honour
   // "clear color" the controller would need a sentinel; left for v2.

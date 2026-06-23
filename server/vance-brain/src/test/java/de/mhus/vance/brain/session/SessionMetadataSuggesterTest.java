@@ -10,7 +10,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.chat.ChatRole;
-import de.mhus.vance.api.session.SessionColor;
+import de.mhus.vance.api.common.AccentColor;
 import de.mhus.vance.brain.ai.light.LightLlmException;
 import de.mhus.vance.brain.ai.light.LightLlmRequest;
 import de.mhus.vance.brain.ai.light.LightLlmService;
@@ -58,7 +58,7 @@ class SessionMetadataSuggesterTest {
         suggester.suggest(session);
 
         verify(sessionService).applyAutoSuggestedMetadata(
-                "s-1", "JWT rotation debugging", "🐛", SessionColor.AMBER);
+                "s-1", "JWT rotation debugging", "🐛", AccentColor.AMBER);
     }
 
     @Test
@@ -110,7 +110,7 @@ class SessionMetadataSuggesterTest {
         SessionDocument session = freshSession();
         session.setTitle("manual");
         session.setIcon("📌");
-        session.setColor(SessionColor.SLATE);
+        session.setColor(AccentColor.SLATE);
 
         suggester.suggest(session);
 

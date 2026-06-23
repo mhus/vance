@@ -1,6 +1,8 @@
 // Hand-maintained re-export of all DTOs generated from vance-api.
 // Add a new line here when a new @GenerateTypeScript-annotated DTO appears.
 
+export * from './common/AccentColor';
+
 export * from './access/AccessTokenRequest';
 export * from './access/AccessTokenResponse';
 export * from './access/RefreshTokenResponse';
@@ -251,7 +253,6 @@ export * from './toolhealth/ToolSafety';
 
 export * from './session/DisconnectPolicy';
 export * from './session/IdlePolicy';
-export * from './session/SessionColor';
 export * from './session/SessionLifecycleConfig';
 export * from './session/SessionMetadataDto';
 export * from './session/SessionMetadataPatchRequest';

@@ -3,12 +3,12 @@
  Source: de.mhus.vance.api.session.SessionMetadataPatchRequest
 */
 
-import { SessionColor } from './SessionColor';
+import { AccentColor } from '../common/AccentColor';
 
 export interface SessionMetadataPatchRequest {
   title?: string;
   icon?: string;
-  color?: SessionColor;
+  color?: AccentColor;
   tags?: string[];
   pinned?: boolean;
 }

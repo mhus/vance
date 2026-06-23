@@ -1,5 +1,5 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { EditorShell, ProjectListSidebar, VAlert, VButton, VEmptyState, VInput, } from '@/components';
+import { EditorShell, ProjectListSidebar, VAlert, VButton, VEmptyState, VInput, accentColorDotClass, } from '@/components';
 import { useI18n } from 'vue-i18n';
 import { useTenantProjects } from '@composables/useTenantProjects';
 import { useDocuments } from '@composables/useDocuments';
@@ -517,6 +517,16 @@ else {
                 ...{ class: "px-2 py-1.5" },
             });
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "flex items-center gap-2 min-w-0" },
+            });
+            if (doc.color) {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span)({
+                    ...{ class: "size-2 rounded-full flex-shrink-0" },
+                    ...{ class: (__VLS_ctx.accentColorDotClass(doc.color)) },
+                    'aria-label': (`color ${doc.color}`),
+                });
+            }
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                 ...{ class: "font-medium truncate" },
             });
             (doc.title || __VLS_ctx.fileBasename(doc.path));
@@ -732,6 +742,13 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['py-1.5']} */ ;
 /** @type {__VLS_StyleScopedClasses['px-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['py-1.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['min-w-0']} */ ;
+/** @type {__VLS_StyleScopedClasses['size-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['rounded-full']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-shrink-0']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-medium']} */ ;
 /** @type {__VLS_StyleScopedClasses['truncate']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
@@ -781,6 +798,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             VButton: VButton,
             VEmptyState: VEmptyState,
             VInput: VInput,
+            accentColorDotClass: accentColorDotClass,
             DocumentIcon: DocumentIcon,
             t: t,
             projectsState: projectsState,

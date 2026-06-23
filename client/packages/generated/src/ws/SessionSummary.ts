@@ -3,7 +3,7 @@
  Source: de.mhus.vance.api.ws.SessionSummary
 */
 
-import { SessionColor } from '../session/SessionColor';
+import { AccentColor } from '../common/AccentColor';
 
 export interface SessionSummary {
   sessionId: string;
@@ -15,7 +15,7 @@ export interface SessionSummary {
   displayName?: string;
   title?: string;
   icon?: string;
-  color?: SessionColor;
+  color?: AccentColor;
   tags: string[];
   pinned: boolean;
   profile?: string;

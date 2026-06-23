@@ -2,7 +2,7 @@ package de.mhus.vance.shared.session;
 
 import com.mongodb.client.result.UpdateResult;
 import de.mhus.vance.api.session.IdlePolicy;
-import de.mhus.vance.api.session.SessionColor;
+import de.mhus.vance.api.common.AccentColor;
 import de.mhus.vance.api.session.SessionLifecycleConfig;
 import de.mhus.vance.api.session.SessionMetadataPatchRequest;
 import de.mhus.vance.api.session.SessionStatus;
@@ -866,7 +866,7 @@ public class SessionService {
             String sessionId,
             @Nullable String suggestedTitle,
             @Nullable String suggestedIcon,
-            @Nullable SessionColor suggestedColor) {
+            @Nullable AccentColor suggestedColor) {
         if (suggestedTitle != null && !suggestedTitle.isBlank()) {
             String title = suggestedTitle.trim();
             if (title.length() > TITLE_MAX_CHARS) title = title.substring(0, TITLE_MAX_CHARS);

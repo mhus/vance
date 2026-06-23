@@ -1,7 +1,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { WebSocketRequestError, listProjectRecipes, listSessions, reactivateSession, } from '@vance/shared';
-import { SessionColor, SessionStatus, } from '@vance/generated';
+import { AccentColor, SessionStatus, } from '@vance/generated';
 import { useTenantProjects } from '@composables/useTenantProjects';
 import { ProjectListSidebar, VAlert, VButton, VCheckbox, VEmptyState, VInput, VModal, } from '@components/index';
 import SessionSearchModal from './SessionSearchModal.vue';
@@ -203,18 +203,18 @@ function sessionTitle(session) {
     return t('chat.sessionHeader.untitled');
 }
 const COLOR_BORDER = {
-    [SessionColor.SLATE]: 'border-l-slate-500',
-    [SessionColor.RED]: 'border-l-red-500',
-    [SessionColor.ORANGE]: 'border-l-orange-500',
-    [SessionColor.AMBER]: 'border-l-amber-500',
-    [SessionColor.GREEN]: 'border-l-green-500',
-    [SessionColor.TEAL]: 'border-l-teal-500',
-    [SessionColor.CYAN]: 'border-l-cyan-500',
-    [SessionColor.BLUE]: 'border-l-blue-500',
-    [SessionColor.INDIGO]: 'border-l-indigo-500',
-    [SessionColor.PURPLE]: 'border-l-purple-500',
-    [SessionColor.PINK]: 'border-l-pink-500',
-    [SessionColor.ROSE]: 'border-l-rose-500',
+    [AccentColor.SLATE]: 'border-l-slate-500',
+    [AccentColor.RED]: 'border-l-red-500',
+    [AccentColor.ORANGE]: 'border-l-orange-500',
+    [AccentColor.AMBER]: 'border-l-amber-500',
+    [AccentColor.GREEN]: 'border-l-green-500',
+    [AccentColor.TEAL]: 'border-l-teal-500',
+    [AccentColor.CYAN]: 'border-l-cyan-500',
+    [AccentColor.BLUE]: 'border-l-blue-500',
+    [AccentColor.INDIGO]: 'border-l-indigo-500',
+    [AccentColor.PURPLE]: 'border-l-purple-500',
+    [AccentColor.PINK]: 'border-l-pink-500',
+    [AccentColor.ROSE]: 'border-l-rose-500',
 };
 function colorBorderClass(session) {
     if (session.color === undefined)

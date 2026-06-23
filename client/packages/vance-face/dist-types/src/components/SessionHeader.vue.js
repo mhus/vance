@@ -1,5 +1,5 @@
 import { VButton, VColorPicker, VEmojiPicker, VTagEditor } from '@vance/components';
-import { SessionColor, SessionStatus, } from '@vance/generated';
+import { AccentColor, SessionStatus, } from '@vance/generated';
 import { archiveSession, deleteSession, listSessions, patchSessionMetadata, reactivateSession, } from '@vance/shared';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -80,18 +80,18 @@ const displayTitle = computed(() => {
 const colorAccentClass = computed(() => {
     // Match VColorPicker swatches at /15 opacity for a subtle left-border accent.
     switch (session.value?.color) {
-        case SessionColor.SLATE: return 'border-l-4 border-slate-500';
-        case SessionColor.RED: return 'border-l-4 border-red-500';
-        case SessionColor.ORANGE: return 'border-l-4 border-orange-500';
-        case SessionColor.AMBER: return 'border-l-4 border-amber-500';
-        case SessionColor.GREEN: return 'border-l-4 border-green-500';
-        case SessionColor.TEAL: return 'border-l-4 border-teal-500';
-        case SessionColor.CYAN: return 'border-l-4 border-cyan-500';
-        case SessionColor.BLUE: return 'border-l-4 border-blue-500';
-        case SessionColor.INDIGO: return 'border-l-4 border-indigo-500';
-        case SessionColor.PURPLE: return 'border-l-4 border-purple-500';
-        case SessionColor.PINK: return 'border-l-4 border-pink-500';
-        case SessionColor.ROSE: return 'border-l-4 border-rose-500';
+        case AccentColor.SLATE: return 'border-l-4 border-slate-500';
+        case AccentColor.RED: return 'border-l-4 border-red-500';
+        case AccentColor.ORANGE: return 'border-l-4 border-orange-500';
+        case AccentColor.AMBER: return 'border-l-4 border-amber-500';
+        case AccentColor.GREEN: return 'border-l-4 border-green-500';
+        case AccentColor.TEAL: return 'border-l-4 border-teal-500';
+        case AccentColor.CYAN: return 'border-l-4 border-cyan-500';
+        case AccentColor.BLUE: return 'border-l-4 border-blue-500';
+        case AccentColor.INDIGO: return 'border-l-4 border-indigo-500';
+        case AccentColor.PURPLE: return 'border-l-4 border-purple-500';
+        case AccentColor.PINK: return 'border-l-4 border-pink-500';
+        case AccentColor.ROSE: return 'border-l-4 border-rose-500';
         default: return '';
     }
 });

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, inject, type Ref } from 'vue';
+import { accentColorDotClass } from '@/components';
 import type { FolderNode } from '../types';
 
 interface Props {
@@ -174,6 +175,12 @@ function onFolderDrop(ev: DragEvent): void {
           @click="emit('open-file', file.id)"
         >
           <span class="opacity-50 w-6 text-xs font-mono">{{ fileIcon(file.name) }}</span>
+          <span
+            v-if="file.color"
+            class="size-2 rounded-full flex-shrink-0"
+            :class="accentColorDotClass(file.color)"
+            :aria-label="`color ${file.color}`"
+          />
           <span class="truncate">{{ file.name }}</span>
           <span v-if="file.dirty" class="opacity-50 text-xs">●</span>
         </button>

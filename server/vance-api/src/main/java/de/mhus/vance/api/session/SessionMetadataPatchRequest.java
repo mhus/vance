@@ -2,6 +2,7 @@ package de.mhus.vance.api.session;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
+import de.mhus.vance.api.common.AccentColor;
 import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -34,7 +35,7 @@ public class SessionMetadataPatchRequest {
 
     private @Nullable String icon;
 
-    private @Nullable SessionColor color;
+    private @Nullable AccentColor color;
 
     /**
      * If present, replaces the tag set. Empty list = clear tags. Omit

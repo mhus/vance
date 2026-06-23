@@ -1,7 +1,7 @@
 package de.mhus.vance.brain.session;
 
 import de.mhus.vance.api.chat.ChatRole;
-import de.mhus.vance.api.session.SessionColor;
+import de.mhus.vance.api.common.AccentColor;
 import de.mhus.vance.brain.ai.light.LightLlmRequest;
 import de.mhus.vance.brain.ai.light.LightLlmService;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
@@ -141,11 +141,11 @@ public class SessionMetadataSuggester {
     static @Nullable Suggestion parseReply(Map<String, Object> raw) {
         String title = readString(raw, FIELD_TITLE);
         String icon = readString(raw, FIELD_ICON);
-        SessionColor color = null;
+        AccentColor color = null;
         String colorRaw = readString(raw, FIELD_COLOR);
         if (colorRaw != null) {
             try {
-                color = SessionColor.valueOf(colorRaw.trim().toUpperCase(Locale.ROOT));
+                color = AccentColor.valueOf(colorRaw.trim().toUpperCase(Locale.ROOT));
             } catch (IllegalArgumentException ignored) {
                 // Unknown color from LLM — drop and let other fields apply.
             }
@@ -164,6 +164,6 @@ public class SessionMetadataSuggester {
     record Suggestion(
             @Nullable String title,
             @Nullable String icon,
-            @Nullable SessionColor color) {
+            @Nullable AccentColor color) {
     }
 }

@@ -42,6 +42,13 @@ export interface CortexDocument {
      * can show "cached findings" without an extra fetch.
      */
     lastDeepReviewWarningsJson?: string | null;
+    /**
+     * Accent color from the restricted 12-value palette; {@code null}
+     * means no color set. Mirrors {@code DocumentDto.color} /
+     * {@code DocumentSummary.color} so the file tree and the properties
+     * panel render the same accent without an extra fetch.
+     */
+    color?: import('@vance/generated').AccentColor | null;
     tags?: string[] | null;
     size?: number | null;
     createdAtMs?: number | null;

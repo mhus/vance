@@ -1,4 +1,5 @@
 import type { CortexDocument, FolderNode } from '../types';
+import type { AccentColor } from '@vance/generated';
 /**
  * Heuristic for "this document is not text we should pull as inline
  * content". Mirrors the same check in clientToolService.ts — images
@@ -27,6 +28,7 @@ interface CreateBody {
 }
 export interface MetaUpdateBody {
     title?: string | null;
+    color?: AccentColor | null;
     tags?: string[];
     autoSummary?: boolean;
     summaryDirty?: boolean;
@@ -72,6 +74,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         baselineInlineText: string;
         lastDeepReviewedHash?: (string | null) | undefined;
         lastDeepReviewWarningsJson?: (string | null) | undefined;
+        color?: (import("@vance/generated").AccentColor | null) | undefined;
         tags?: (string[] | null) | undefined;
         size?: (number | null) | undefined;
         createdAtMs?: (number | null) | undefined;
@@ -94,6 +97,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         baselineInlineText: string;
         lastDeepReviewedHash?: (string | null) | undefined;
         lastDeepReviewWarningsJson?: (string | null) | undefined;
+        color?: (import("@vance/generated").AccentColor | null) | undefined;
         tags?: (string[] | null) | undefined;
         size?: (number | null) | undefined;
         createdAtMs?: (number | null) | undefined;
@@ -117,6 +121,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         baselineInlineText: string;
         lastDeepReviewedHash?: (string | null) | undefined;
         lastDeepReviewWarningsJson?: (string | null) | undefined;
+        color?: (import("@vance/generated").AccentColor | null) | undefined;
         tags?: (string[] | null) | undefined;
         size?: (number | null) | undefined;
         createdAtMs?: (number | null) | undefined;
@@ -139,6 +144,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         baselineInlineText: string;
         lastDeepReviewedHash?: (string | null) | undefined;
         lastDeepReviewWarningsJson?: (string | null) | undefined;
+        color?: (import("@vance/generated").AccentColor | null) | undefined;
         tags?: (string[] | null) | undefined;
         size?: (number | null) | undefined;
         createdAtMs?: (number | null) | undefined;
@@ -185,7 +191,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
     } | null>;
     setSelection: (sel: CortexSelection | null) => void;
     clearSelection: () => void;
-}, "loading" | "error" | "projectId" | "files" | "openTabs" | "activeTabId" | "currentSelection">, Pick<{
+}, "projectId" | "loading" | "error" | "files" | "openTabs" | "activeTabId" | "currentSelection">, Pick<{
     projectId: import("vue").Ref<string | null, string | null>;
     files: import("vue").Ref<{
         id: string;
@@ -199,6 +205,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         baselineInlineText: string;
         lastDeepReviewedHash?: (string | null) | undefined;
         lastDeepReviewWarningsJson?: (string | null) | undefined;
+        color?: (import("@vance/generated").AccentColor | null) | undefined;
         tags?: (string[] | null) | undefined;
         size?: (number | null) | undefined;
         createdAtMs?: (number | null) | undefined;
@@ -221,6 +228,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         baselineInlineText: string;
         lastDeepReviewedHash?: (string | null) | undefined;
         lastDeepReviewWarningsJson?: (string | null) | undefined;
+        color?: (import("@vance/generated").AccentColor | null) | undefined;
         tags?: (string[] | null) | undefined;
         size?: (number | null) | undefined;
         createdAtMs?: (number | null) | undefined;
@@ -244,6 +252,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         baselineInlineText: string;
         lastDeepReviewedHash?: (string | null) | undefined;
         lastDeepReviewWarningsJson?: (string | null) | undefined;
+        color?: (import("@vance/generated").AccentColor | null) | undefined;
         tags?: (string[] | null) | undefined;
         size?: (number | null) | undefined;
         createdAtMs?: (number | null) | undefined;
@@ -266,6 +275,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         baselineInlineText: string;
         lastDeepReviewedHash?: (string | null) | undefined;
         lastDeepReviewWarningsJson?: (string | null) | undefined;
+        color?: (import("@vance/generated").AccentColor | null) | undefined;
         tags?: (string[] | null) | undefined;
         size?: (number | null) | undefined;
         createdAtMs?: (number | null) | undefined;
@@ -326,6 +336,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         baselineInlineText: string;
         lastDeepReviewedHash?: (string | null) | undefined;
         lastDeepReviewWarningsJson?: (string | null) | undefined;
+        color?: (import("@vance/generated").AccentColor | null) | undefined;
         tags?: (string[] | null) | undefined;
         size?: (number | null) | undefined;
         createdAtMs?: (number | null) | undefined;
@@ -348,6 +359,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         baselineInlineText: string;
         lastDeepReviewedHash?: (string | null) | undefined;
         lastDeepReviewWarningsJson?: (string | null) | undefined;
+        color?: (import("@vance/generated").AccentColor | null) | undefined;
         tags?: (string[] | null) | undefined;
         size?: (number | null) | undefined;
         createdAtMs?: (number | null) | undefined;
@@ -371,6 +383,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         baselineInlineText: string;
         lastDeepReviewedHash?: (string | null) | undefined;
         lastDeepReviewWarningsJson?: (string | null) | undefined;
+        color?: (import("@vance/generated").AccentColor | null) | undefined;
         tags?: (string[] | null) | undefined;
         size?: (number | null) | undefined;
         createdAtMs?: (number | null) | undefined;
@@ -393,6 +406,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         baselineInlineText: string;
         lastDeepReviewedHash?: (string | null) | undefined;
         lastDeepReviewWarningsJson?: (string | null) | undefined;
+        color?: (import("@vance/generated").AccentColor | null) | undefined;
         tags?: (string[] | null) | undefined;
         size?: (number | null) | undefined;
         createdAtMs?: (number | null) | undefined;
@@ -439,6 +453,6 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
     } | null>;
     setSelection: (sel: CortexSelection | null) => void;
     clearSelection: () => void;
-}, "clearSelection" | "loadList" | "openFile" | "reloadTab" | "moveFile" | "uploadExternalFile" | "setActiveTab" | "closeTab" | "updateActiveContent" | "saveActive" | "saveTab" | "saveAllDirty" | "createFile" | "deleteFile" | "updateMeta" | "addVirtualFolder" | "setSelection">>;
+}, "loadList" | "openFile" | "reloadTab" | "moveFile" | "uploadExternalFile" | "setActiveTab" | "closeTab" | "updateActiveContent" | "saveActive" | "saveTab" | "saveAllDirty" | "createFile" | "deleteFile" | "updateMeta" | "addVirtualFolder" | "setSelection" | "clearSelection">>;
 export {};
 //# sourceMappingURL=cortexStore.d.ts.map

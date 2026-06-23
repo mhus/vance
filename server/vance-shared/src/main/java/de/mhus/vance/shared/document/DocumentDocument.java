@@ -1,5 +1,6 @@
 package de.mhus.vance.shared.document;
 
+import de.mhus.vance.api.common.AccentColor;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -65,6 +66,12 @@ public class DocumentDocument {
 
     /** Human-readable title. Nullable; UI falls back to {@link #name}. */
     private @Nullable String title;
+
+    /**
+     * Accent color from the restricted 12-value palette ({@link AccentColor}).
+     * {@code null} means no color set; the UI renders neutral.
+     */
+    private @Nullable AccentColor color;
 
     /** Orthogonal tag set — the second organizing axis next to {@link #path}. */
     @Indexed

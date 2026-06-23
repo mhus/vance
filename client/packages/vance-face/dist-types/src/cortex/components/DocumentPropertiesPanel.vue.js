@@ -1,11 +1,12 @@
 import { computed, ref, watch } from 'vue';
-import { VAlert, VButton, VInput } from '@/components';
+import { VAlert, VButton, VColorPicker, VInput } from '@/components';
 import DocumentArchives from '@/document/DocumentArchives.vue';
 import { useCortexStore } from '../stores/cortexStore';
 const props = defineProps();
 const store = useCortexStore();
 const editTitle = ref('');
 const editTags = ref('');
+const editColor = ref(null);
 const saving = ref(false);
 const error = ref(null);
 // Seed editable fields whenever the document changes (tab switch or
@@ -14,12 +15,16 @@ const error = ref(null);
 watch(() => props.document.id, () => {
     editTitle.value = props.document.title ?? '';
     editTags.value = (props.document.tags ?? []).join(', ');
+    editColor.value = props.document.color ?? null;
     error.value = null;
 }, { immediate: true });
 const isDirty = computed(() => {
     const titleNow = props.document.title ?? '';
     const tagsNow = (props.document.tags ?? []).join(', ');
-    return editTitle.value !== titleNow || editTags.value !== tagsNow;
+    const colorNow = props.document.color ?? null;
+    return (editTitle.value !== titleNow
+        || editTags.value !== tagsNow
+        || editColor.value !== colorNow);
 });
 function formatSize(bytes) {
     if (bytes == null)
@@ -45,6 +50,7 @@ async function onSave() {
             .filter((s) => s.length > 0);
         await store.updateMeta(props.document.id, {
             title: editTitle.value.trim() || null,
+            color: editColor.value,
             tags,
         });
     }
@@ -64,6 +70,7 @@ const dtoForArchives = computed(() => ({
     path: props.document.path,
     name: props.document.name,
     title: props.document.title ?? undefined,
+    color: props.document.color ?? undefined,
     mimeType: props.document.mimeType ?? undefined,
     size: props.document.size ?? 0,
     tags: props.document.tags ?? [],
@@ -128,6 +135,21 @@ const __VLS_6 = __VLS_5({
     help: "Comma-separated",
     disabled: (__VLS_ctx.saving),
 }, ...__VLS_functionalComponentArgsRest(__VLS_5));
+const __VLS_8 = {}.VColorPicker;
+/** @type {[typeof __VLS_components.VColorPicker, ]} */ ;
+// @ts-ignore
+const __VLS_9 = __VLS_asFunctionalComponent(__VLS_8, new __VLS_8({
+    modelValue: (__VLS_ctx.editColor),
+    label: "Color",
+    allowClear: true,
+    disabled: (__VLS_ctx.saving),
+}));
+const __VLS_10 = __VLS_9({
+    modelValue: (__VLS_ctx.editColor),
+    label: "Color",
+    allowClear: true,
+    disabled: (__VLS_ctx.saving),
+}, ...__VLS_functionalComponentArgsRest(__VLS_9));
 __VLS_asFunctionalElement(__VLS_intrinsicElements.dl, __VLS_intrinsicElements.dl)({
     ...{ class: "grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 text-xs" },
 });
@@ -187,66 +209,66 @@ if (__VLS_ctx.document.summary) {
     (__VLS_ctx.document.summary);
 }
 if (__VLS_ctx.error) {
-    const __VLS_8 = {}.VAlert;
+    const __VLS_12 = {}.VAlert;
     /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
     // @ts-ignore
-    const __VLS_9 = __VLS_asFunctionalComponent(__VLS_8, new __VLS_8({
+    const __VLS_13 = __VLS_asFunctionalComponent(__VLS_12, new __VLS_12({
         variant: "error",
         ...{ class: "mt-3" },
     }));
-    const __VLS_10 = __VLS_9({
+    const __VLS_14 = __VLS_13({
         variant: "error",
         ...{ class: "mt-3" },
-    }, ...__VLS_functionalComponentArgsRest(__VLS_9));
-    __VLS_11.slots.default;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_13));
+    __VLS_15.slots.default;
     (__VLS_ctx.error);
-    var __VLS_11;
+    var __VLS_15;
 }
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "mt-3 flex justify-end" },
 });
-const __VLS_12 = {}.VButton;
+const __VLS_16 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
 // @ts-ignore
-const __VLS_13 = __VLS_asFunctionalComponent(__VLS_12, new __VLS_12({
+const __VLS_17 = __VLS_asFunctionalComponent(__VLS_16, new __VLS_16({
     ...{ 'onClick': {} },
     size: "sm",
     variant: "primary",
     disabled: (!__VLS_ctx.isDirty),
     loading: (__VLS_ctx.saving),
 }));
-const __VLS_14 = __VLS_13({
+const __VLS_18 = __VLS_17({
     ...{ 'onClick': {} },
     size: "sm",
     variant: "primary",
     disabled: (!__VLS_ctx.isDirty),
     loading: (__VLS_ctx.saving),
-}, ...__VLS_functionalComponentArgsRest(__VLS_13));
-let __VLS_16;
-let __VLS_17;
-let __VLS_18;
-const __VLS_19 = {
+}, ...__VLS_functionalComponentArgsRest(__VLS_17));
+let __VLS_20;
+let __VLS_21;
+let __VLS_22;
+const __VLS_23 = {
     onClick: (__VLS_ctx.onSave)
 };
-__VLS_15.slots.default;
-var __VLS_15;
+__VLS_19.slots.default;
+var __VLS_19;
 /** @type {[typeof DocumentArchives, ]} */ ;
 // @ts-ignore
-const __VLS_20 = __VLS_asFunctionalComponent(DocumentArchives, new DocumentArchives({
+const __VLS_24 = __VLS_asFunctionalComponent(DocumentArchives, new DocumentArchives({
     ...{ 'onRestored': {} },
     document: (__VLS_ctx.dtoForArchives),
 }));
-const __VLS_21 = __VLS_20({
+const __VLS_25 = __VLS_24({
     ...{ 'onRestored': {} },
     document: (__VLS_ctx.dtoForArchives),
-}, ...__VLS_functionalComponentArgsRest(__VLS_20));
-let __VLS_23;
-let __VLS_24;
-let __VLS_25;
-const __VLS_26 = {
+}, ...__VLS_functionalComponentArgsRest(__VLS_24));
+let __VLS_27;
+let __VLS_28;
+let __VLS_29;
+const __VLS_30 = {
     onRestored: (__VLS_ctx.onRestored)
 };
-var __VLS_22;
+var __VLS_26;
 /** @type {__VLS_StyleScopedClasses['border-b']} */ ;
 /** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;
 /** @type {__VLS_StyleScopedClasses['bg-base-100']} */ ;
@@ -297,10 +319,12 @@ const __VLS_self = (await import('vue')).defineComponent({
         return {
             VAlert: VAlert,
             VButton: VButton,
+            VColorPicker: VColorPicker,
             VInput: VInput,
             DocumentArchives: DocumentArchives,
             editTitle: editTitle,
             editTags: editTags,
+            editColor: editColor,
             saving: saving,
             error: error,
             isDirty: isDirty,

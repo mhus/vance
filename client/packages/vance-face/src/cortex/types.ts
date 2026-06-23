@@ -43,6 +43,14 @@ export interface CortexDocument {
    */
   lastDeepReviewWarningsJson?: string | null;
 
+  /**
+   * Accent color from the restricted 12-value palette; {@code null}
+   * means no color set. Mirrors {@code DocumentDto.color} /
+   * {@code DocumentSummary.color} so the file tree and the properties
+   * panel render the same accent without an extra fetch.
+   */
+  color?: import('@vance/generated').AccentColor | null;
+
   // ─── Mirrored DocumentDto metadata ──────────────────────────────
   // Populated on the full {@code openFile} fetch (not on the list
   // summary) so the Properties panel can render them without an

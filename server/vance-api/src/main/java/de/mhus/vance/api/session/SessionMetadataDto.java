@@ -2,6 +2,7 @@ package de.mhus.vance.api.session;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
+import de.mhus.vance.api.common.AccentColor;
 import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -49,7 +50,7 @@ public class SessionMetadataDto {
      * Accent color from the restricted palette. {@code null} means no
      * accent set.
      */
-    private @Nullable SessionColor color;
+    private @Nullable AccentColor color;
 
     /**
      * User-supplied tags (lowercase, deduped, ≤20 entries, each ≤50 chars).

@@ -2,7 +2,7 @@ package de.mhus.vance.api.ws;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
-import de.mhus.vance.api.session.SessionColor;
+import de.mhus.vance.api.common.AccentColor;
 import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -57,7 +57,7 @@ public class SessionSummary {
     private @Nullable String icon;
 
     /** Accent color from the restricted palette; {@code null} if unset. */
-    private @Nullable SessionColor color;
+    private @Nullable AccentColor color;
 
     /** User-supplied tags (lowercase, deduped). Empty list when untagged. */
     private List<String> tags = List.of();

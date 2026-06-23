@@ -2,6 +2,7 @@ package de.mhus.vance.api.session;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
+import de.mhus.vance.api.common.AccentColor;
 import java.time.Instant;
 import java.util.List;
 import lombok.AllArgsConstructor;
@@ -59,7 +60,7 @@ public class SessionSummaryRichDto {
 
     private @Nullable String icon;
 
-    private @Nullable SessionColor color;
+    private @Nullable AccentColor color;
 
     private List<String> tags = List.of();
 

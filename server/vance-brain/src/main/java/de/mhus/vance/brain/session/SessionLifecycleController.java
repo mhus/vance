@@ -1,6 +1,6 @@
 package de.mhus.vance.brain.session;
 
-import de.mhus.vance.api.session.SessionColor;
+import de.mhus.vance.api.common.AccentColor;
 import de.mhus.vance.api.session.SessionCortexStateRequest;
 import de.mhus.vance.api.session.SessionMetadataDto;
 import de.mhus.vance.api.session.SessionMetadataPatchRequest;
@@ -209,7 +209,7 @@ public class SessionLifecycleController {
     }
 
     private static SessionMetadataDto toDto(SessionDocument session) {
-        SessionColor color = session.getColor();
+        AccentColor color = session.getColor();
         List<String> tags = session.getTags() == null
                 ? List.of()
                 : new ArrayList<>(session.getTags());

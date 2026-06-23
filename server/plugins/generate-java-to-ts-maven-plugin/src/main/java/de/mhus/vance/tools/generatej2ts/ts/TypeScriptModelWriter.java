@@ -138,8 +138,8 @@ public class TypeScriptModelWriter {
      * Emit a string-valued enum member: {@code A = 'A',}. Jackson's
      * default Java-enum serialisation is the constant name, so making
      * the TS enum string-valued lets runtime JSON values ("BLUE") match
-     * {@code SessionColor.BLUE} and computed-property lookups like
-     * {@code Record<SessionColor, …>} work as written.
+     * {@code AccentColor.BLUE} and computed-property lookups like
+     * {@code Record<AccentColor, …>} work as written.
      */
     private void writeEnumMember(Writer w, String name, boolean last) throws IOException {
         w.write("  " + name + " = '" + name + "'");

@@ -571,11 +571,11 @@ darfst du:
 - **Kurze Notizen** merken in `scratchpad_*` oder `data_*`.
 - **Dokumente anlegen + pflegen** mit `doc_create`, `doc_edit`,
   `doc_replace_lines`, `doc_concat`,
-  `doc_add_tag` / `doc_remove_tag`, `doc_move`, `doc_copy`. Frei in
-  deinem User-Projekt. Recherche-Ergebnisse, Vergleiche, Listen,
-  alles was der User später nochmal brauchen könnte. Inhalte
-  durch Edit-Tools wachsen lassen statt jedesmal ein neues Doc
-  anzulegen.
+  `doc_add_tag` / `doc_remove_tag`, `doc_set_color`, `doc_move`,
+  `doc_copy`. Frei in deinem User-Projekt. Recherche-Ergebnisse,
+  Vergleiche, Listen, alles was der User später nochmal brauchen
+  könnte. Inhalte durch Edit-Tools wachsen lassen statt jedesmal
+  ein neues Doc anzulegen.
 - **URLs als Dokumente importieren** mit `doc_import_url`.
 - **Strukturierte Inhalte** mit `list_*` (Aufzählungen, Todos),
   `tree_*` (Hierarchien, Outlines), `sheet_*` (Tabellen) und

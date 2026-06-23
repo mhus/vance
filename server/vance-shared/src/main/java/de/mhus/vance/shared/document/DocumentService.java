@@ -1,5 +1,6 @@
 package de.mhus.vance.shared.document;
 
+import de.mhus.vance.api.common.AccentColor;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.storage.StorageService;
 import jakarta.annotation.PreDestroy;
@@ -2006,6 +2007,29 @@ public class DocumentService {
      * means "leave untouched"). Pass {@code null} to clear the override
      * (auto mode), {@code true}/{@code false} to force include/exclude.
      */
+    /**
+     * Set the accent color (palette-restricted). Atomic, single-field
+     * update — does not bump the optimistic-locking version through the
+     * full {@link #update} path and avoids touching {@code summaryDirty}
+     * / {@code ragDirty}. Pass {@code null} to leave the value untouched
+     * (use {@link #clearColor} to remove an existing color).
+     */
+    public void setColor(String id, @Nullable AccentColor value) {
+        if (value == null) return;
+        mongoTemplate.updateFirst(
+                Query.query(Criteria.where("_id").is(id)),
+                new Update().set("color", value),
+                DocumentDocument.class);
+    }
+
+    /** Companion to {@link #setColor} — clears the color back to neutral. */
+    public void clearColor(String id) {
+        mongoTemplate.updateFirst(
+                Query.query(Criteria.where("_id").is(id)),
+                new Update().unset("color"),
+                DocumentDocument.class);
+    }
+
     public void setRagEnabledOverride(String id, @Nullable Boolean value) {
         Update u = new Update().set("ragDirty", true);
         if (value == null) {

@@ -3,6 +3,7 @@
 // dialog, ...) directly. Editors and addons compose their views from
 // these components. See specification/web-ui.md §7.3.
 
+export { accentColorDotClass } from './accentColor';
 export { default as CodeEditor } from './CodeEditor.vue';
 export {
   followUpExtension,

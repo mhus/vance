@@ -3,8 +3,11 @@
  Source: de.mhus.vance.api.documents.DocumentUpdateRequest
 */
 
+import { AccentColor } from '../common/AccentColor';
+
 export interface DocumentUpdateRequest {
   title?: string;
+  color?: AccentColor;
   tags?: string[];
   inlineText?: string;
   mimeType?: string;

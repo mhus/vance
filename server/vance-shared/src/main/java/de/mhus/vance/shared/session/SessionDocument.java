@@ -2,7 +2,7 @@ package de.mhus.vance.shared.session;
 
 import de.mhus.vance.api.session.DisconnectPolicy;
 import de.mhus.vance.api.session.IdlePolicy;
-import de.mhus.vance.api.session.SessionColor;
+import de.mhus.vance.api.common.AccentColor;
 import de.mhus.vance.api.session.SessionStatus;
 import de.mhus.vance.api.session.SuspendCause;
 import de.mhus.vance.api.session.SuspendPolicy;
@@ -241,7 +241,7 @@ public class SessionDocument {
      * Accent color from the restricted 12-value palette. {@code null}
      * means no color set; UI renders neutral.
      */
-    private @Nullable SessionColor color;
+    private @Nullable AccentColor color;
 
     /**
      * User-supplied tags. Stored normalised (lowercase, trimmed, deduped,

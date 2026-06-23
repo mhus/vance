@@ -1,1 +1,1 @@
-{"version":3,"file":"DocumentPropertiesPanel.vue.d.ts","sourceRoot":"","sources":["../../../../src/cortex/components/DocumentPropertiesPanel.vue"],"names":[],"mappings":"AA6LA,OAAO,KAAK,EAAE,cAAc,EAAE,MAAM,UAAU,CAAC;AAG/C,KAAK,WAAW,GAAG;IACjB,QAAQ,EAAE,cAAc,CAAC;CAC1B,CAAC;;AAgVF,wBAMG"}
+{"version":3,"file":"DocumentPropertiesPanel.vue.d.ts","sourceRoot":"","sources":["../../../../src/cortex/components/DocumentPropertiesPanel.vue"],"names":[],"mappings":"AA4MA,OAAO,KAAK,EAAE,cAAc,EAAE,MAAM,UAAU,CAAC;AAG/C,KAAK,WAAW,GAAG;IACjB,QAAQ,EAAE,cAAc,CAAC;CAC1B,CAAC;;AA0WF,wBAMG"}

@@ -2,6 +2,7 @@ package de.mhus.vance.api.documents;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
+import de.mhus.vance.api.common.AccentColor;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.AllArgsConstructor;
@@ -40,6 +41,9 @@ public class DocumentSummary {
     private String name;
 
     private @Nullable String title;
+
+    /** Accent color from the restricted 12-value palette; {@code null} means no color set. */
+    private @Nullable AccentColor color;
 
     private @Nullable String mimeType;
 

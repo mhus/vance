@@ -3,12 +3,15 @@
  Source: de.mhus.vance.api.documents.DocumentSummary
 */
 
+import { AccentColor } from '../common/AccentColor';
+
 export interface DocumentSummary {
   id: string;
   projectId: string;
   path: string;
   name: string;
   title?: string;
+  color?: AccentColor;
   mimeType?: string;
   size: number;
   tags: string[];

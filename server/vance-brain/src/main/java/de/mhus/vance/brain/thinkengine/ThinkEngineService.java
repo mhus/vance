@@ -152,7 +152,18 @@ public class ThinkEngineService {
                         "Process '" + process.getId()
                                 + "' references missing session '"
                                 + process.getSessionId() + "'"));
-        String projectId = session.getProjectId();
+        // Cross-project workers (spawned via engines with
+        // allowsCrossProjectSpawn=true — e.g. Trillian-User's
+        // cross_process_create) can have a process.projectId that
+        // differs from session.projectId. Tools rely on ctx.projectId()
+        // to scope their operations (doc_*, file_*, exec_*) — so the
+        // process's own projectId is the authoritative source. Fall
+        // back to session.projectId only when the process didn't pin
+        // one (legacy spawns without explicit project).
+        String processProjectId = process.getProjectId();
+        String projectId = processProjectId != null && !processProjectId.isBlank()
+                ? processProjectId
+                : session.getProjectId();
         String userId = session.getUserId();
         ThinkEngine engine = resolveForProcess(process);
         // Recipe-applied override beats engine default. Empty allow-set

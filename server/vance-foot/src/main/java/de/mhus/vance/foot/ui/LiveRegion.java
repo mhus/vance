@@ -515,6 +515,16 @@ public class LiveRegion {
                         handleCsi(payload, r);
                         continue;
                     }
+                    if (next == 'b' || next == 'B') {
+                        // Option/Alt + Left (readline meta-b) → backward-word.
+                        if (moveWordLeft()) paintLive();
+                        continue;
+                    }
+                    if (next == 'f' || next == 'F') {
+                        // Option/Alt + Right (readline meta-f) → forward-word.
+                        if (moveWordRight()) paintLive();
+                        continue;
+                    }
                     // Other meta combos — drop.
                     continue;
                 }
@@ -615,6 +625,32 @@ public class LiveRegion {
         }
         cursorIdx++;
         return true;
+    }
+
+    private synchronized boolean moveWordLeft() {
+        int c = Math.min(Math.max(cursorIdx, 0), inputText.length());
+        if (c <= 0) return false;
+        // Skip separators left, then skip word chars left — readline semantics.
+        while (c > 0 && !isWordChar(inputText.charAt(c - 1))) c--;
+        while (c > 0 && isWordChar(inputText.charAt(c - 1))) c--;
+        if (c == cursorIdx) return false;
+        cursorIdx = c;
+        return true;
+    }
+
+    private synchronized boolean moveWordRight() {
+        int len = inputText.length();
+        int c = Math.min(Math.max(cursorIdx, 0), len);
+        if (c >= len) return false;
+        while (c < len && !isWordChar(inputText.charAt(c))) c++;
+        while (c < len && isWordChar(inputText.charAt(c))) c++;
+        if (c == cursorIdx) return false;
+        cursorIdx = c;
+        return true;
+    }
+
+    private static boolean isWordChar(char ch) {
+        return Character.isLetterOrDigit(ch) || ch == '_';
     }
 
     private synchronized boolean moveHome() {
@@ -808,6 +844,13 @@ public class LiveRegion {
             case "B":  changed = moveDown();  break;
             case "C":  changed = moveRight(); break;
             case "D":  changed = moveLeft();  break;
+            // Option/Alt or Ctrl + Left/Right → word jump. Terminals
+            // disagree on the modifier byte (3 = Alt, 5 = Ctrl), so
+            // accept both.
+            case "1;3C":
+            case "1;5C": changed = moveWordRight(); break;
+            case "1;3D":
+            case "1;5D": changed = moveWordLeft();  break;
             case "H":
             case "1~":
             case "7~": changed = moveHome();  break;

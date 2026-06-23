@@ -1178,6 +1178,7 @@ export default {
       teamsTitle: 'Teams',
       addUser: '+ User',
       addTeam: '+ Team',
+      showInternalUsers: 'Show internal users',
       memberCountSingular: '{count} member',
       memberCountPlural: '{count} members',
       disabledSuffix: '· disabled',

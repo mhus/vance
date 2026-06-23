@@ -1,0 +1,67 @@
+# Trillian Control — Nature-0
+#
+# The session's primary chat process when foot connects with
+# --recipe trillian-control. Pairs with a Trillian-User worker that
+# TrillianSessionBootstrapper spawns alongside.
+#
+# Uses the dedicated TrillianControlEngine — a reply-style chat host
+# without Arthur's structured-action schema. The engine carries the
+# 'trillian-control' role, so the task_enqueue + user_* tools
+# require that role and stay invisible to other chat engines.
+#
+# See planning/trillian-engine.md §2 + §4 + §11.
+
+description: |
+  Trillian Control — Nature-0. Reactive chat host that discusses tasks
+  with the human and enqueues them into a paired Trillian UserProcess.
+
+engine: trillian-control
+
+params:
+  # Trillian-Nature this recipe pins. Engines may branch internal
+  # behaviour on this value when later natures (A, B, …) ship; for
+  # Nature-0 it's metadata only.
+  nature: '0'
+  # default:analyze first — gemini-2.5-flash (the typical default:fast)
+  # exhibits a quirk where it sometimes finishes with finish=STOP and
+  # zero output tokens when given multiple function-call options. The
+  # analyze tier (sonnet / gpt-4-class) is more reliable for the
+  # function-calling pattern Trillian-Control uses.
+  model: default:analyze,default:fast
+  fallbackModels:
+    - default:fast
+
+# Engine-defaults already cover the trillian-control tools
+# (task_enqueue, user_*) plus the basics — no per-mode filter needed.
+# Mode-level allowedToolsAdd is per-turn classification-only, not
+# membership; spawn-time membership is the engine.allowedTools() ∪
+# this recipe's top-level allowedToolsAdd. Keeping the recipe empty
+# of tool overrides lets the engine speak for itself.
+
+profiles:
+  foot:
+    session:
+      onDisconnect: KEEP_OPEN
+      onIdle: SUSPEND
+      onSuspend: KEEP
+      idleTimeoutMs: 3600000
+      suspendKeepDurationMs: 86400000
+  web:
+    session:
+      onDisconnect: KEEP_OPEN
+      onIdle: SUSPEND
+      onSuspend: KEEP
+      idleTimeoutMs: 1800000
+      suspendKeepDurationMs: 86400000
+  default:
+    session:
+      onDisconnect: KEEP_OPEN
+      onIdle: SUSPEND
+      onSuspend: KEEP
+      idleTimeoutMs: 1800000
+      suspendKeepDurationMs: 86400000
+
+tags:
+  - trillian
+  - control
+  - chat

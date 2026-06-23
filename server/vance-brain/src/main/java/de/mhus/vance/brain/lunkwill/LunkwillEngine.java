@@ -442,6 +442,9 @@ public class LunkwillEngine implements ThinkEngine {
             String finalText,
             List<SteerMessage> originalInbox) {
         if (finalText.isBlank()) return;
+        // Always persist to Mongo so peer_read_chat_memory can read
+        // the worker's transcript later — only the live UI-emit is
+        // suppressed for hidden processes.
         ChatMessageDocument saved = chatLog.append(ChatMessageDocument.builder()
                 .tenantId(process.getTenantId())
                 .sessionId(process.getSessionId())
@@ -451,6 +454,9 @@ public class LunkwillEngine implements ThinkEngine {
                 .build());
         if (saved != null && saved.getId() != null) {
             ctx.historyTagSink().flushTo(saved.getId(), chatLog);
+        }
+        if (process.isHiddenFromUi()) {
+            return;
         }
         Instant inResponseToAt = lastUserInputAt(originalInbox);
         ctx.emitReply(finalText, inResponseToAt, null);
@@ -572,10 +578,15 @@ public class LunkwillEngine implements ThinkEngine {
         String sessionId = process.getSessionId();
         long startMs = System.currentTimeMillis();
 
+        // Hidden processes (e.g. Trillian-User) don't push streaming
+        // chunks to the session chat-panel — their text output is
+        // internal-only. See ThinkProcessDocument.hiddenFromUi.
+        boolean hidden = process.isHiddenFromUi();
         ChunkBatcher batcher = new ChunkBatcher(
                 streamingProperties.getChunkCharThreshold(),
                 streamingProperties.getChunkFlushMs(),
                 chunk -> {
+                    if (hidden) return;
                     ChatMessageChunkData data = ChatMessageChunkData.builder()
                             .thinkProcessId(process.getId())
                             .processName(process.getName())

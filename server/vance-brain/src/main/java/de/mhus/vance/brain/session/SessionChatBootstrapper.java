@@ -6,6 +6,7 @@ import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.thinkengine.EngineBundledConfig;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
+import de.mhus.vance.brain.trillian.TrillianSessionBootstrapper;
 import de.mhus.vance.shared.project.ProjectKind;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.session.SessionDocument;
@@ -53,6 +54,7 @@ public class SessionChatBootstrapper {
     private final LaneScheduler laneScheduler;
     private final RecipeResolver recipeResolver;
     private final ProjectService projectService;
+    private final TrillianSessionBootstrapper trillianSessionBootstrapper;
 
     /**
      * @see #ensureChatProcess(SessionDocument, String, String) — defaults
@@ -297,6 +299,11 @@ public class SessionChatBootstrapper {
 
         log.info("Bootstrapped chat-process id='{}' engine='{}' session='{}'",
                 fresh.getId(), engine.name(), session.getSessionId());
+
+        // Trillian-Control sessions get a paired UserProcess + service-
+        // account spawned here. No-op for every other recipe.
+        trillianSessionBootstrapper.maybeBootstrap(session, fresh);
+
         return thinkProcessService.findById(fresh.getId());
     }
 

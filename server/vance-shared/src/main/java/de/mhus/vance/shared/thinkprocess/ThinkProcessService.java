@@ -378,6 +378,26 @@ public class ThinkProcessService {
     }
 
     /**
+     * Marks a process as hidden from the session chat-panel. Engines
+     * that honour the flag (currently Lunkwill) suppress streaming
+     * chunks + the final {@code emitReply} so the worker doesn't
+     * pollute the human's chat. The process keeps running normally;
+     * only the UI-emit channel is muted.
+     *
+     * <p>See {@link ThinkProcessDocument#isHiddenFromUi}.
+     *
+     * @return {@code true} when the row existed and the flag value
+     *         actually changed
+     */
+    public boolean setHiddenFromUi(String id, boolean hidden) {
+        Query query = new Query(Criteria.where("_id").is(id));
+        Update update = new Update().set("hiddenFromUi", hidden);
+        UpdateResult result = mongoTemplate.updateFirst(
+                query, update, ThinkProcessDocument.class);
+        return result.getModifiedCount() > 0;
+    }
+
+    /**
      * Atomically replaces the {@code activeSkills} list. Used by the
      * skill-steer pipeline (activate/clear) and by the engine itself
      * after draining one-shot skills at end-of-turn.

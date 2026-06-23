@@ -122,6 +122,23 @@ public class ThinkProcessDocument {
     private @Nullable String connectionProfile;
 
     /**
+     * Marks this process as not user-visible in the session chat-panel.
+     * Engines that respect the flag suppress chat-stream chunks and the
+     * final {@code emitReply} so the worker can talk to its parent via
+     * the structured event channel without polluting the human's chat
+     * window.
+     *
+     * <p>Default {@code false} — every regular process is visible.
+     * Trillian's user-process is the first consumer (Lunkwill-side
+     * suppression, set by {@code TrillianSessionBootstrapper}).
+     *
+     * <p>Cosmetic / UX only. Persistence, tool-dispatch, and event
+     * routing are unaffected; chat-history is still appended to Mongo
+     * so {@code peer_read_chat_memory} can introspect.
+     */
+    private boolean hiddenFromUi;
+
+    /**
      * Recipe-derived system-prompt fragment, optionally Pebble-
      * templated. Engines blend the rendered text with their built-in
      * prompt according to {@link #promptMode}. {@code null} means

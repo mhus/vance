@@ -59,6 +59,12 @@ type Selection =
 const selection = ref<Selection | null>(null);
 const banner = ref<string | null>(null);
 const formError = ref<string | null>(null);
+const showInternalUsers = ref(false);
+
+const visibleUsers = computed<UserDto[]>(() =>
+  showInternalUsers.value
+    ? usersState.users.value
+    : usersState.users.value.filter(u => !u.name.startsWith('_')));
 
 // Sidebar (users + teams tree) vs. main (detail form) vs. right
 // (help). Same focus convention as DocumentApp / ScopesApp etc.
@@ -459,11 +465,17 @@ function fmt(value: unknown): string {
               {{ $t('users.sidebar.addUser') }}
             </VButton>
           </div>
+          <div class="px-2 mb-1">
+            <VCheckbox
+              v-model="showInternalUsers"
+              :label="$t('users.sidebar.showInternalUsers')"
+            />
+          </div>
           <div v-if="usersState.loading.value" class="px-2 text-xs opacity-60">
             {{ $t('users.loading') }}
           </div>
           <button
-            v-for="u in usersState.users.value"
+            v-for="u in visibleUsers"
             :key="'u-' + u.name"
             type="button"
             class="row-item"

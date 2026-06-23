@@ -143,10 +143,7 @@ public class AutoBootstrapService {
 
         SessionBootstrapResponse response;
         try {
-            response = connection.request(
-                    MessageType.SESSION_BOOTSTRAP, req,
-                    SessionBootstrapResponse.class,
-                    Duration.ofSeconds(30));
+            response = sendBootstrap(req);
         } catch (BrainException e) {
             terminal.error("Auto-bootstrap failed: " + e.getMessage());
             return;
@@ -223,6 +220,56 @@ public class AutoBootstrapService {
                 inFlight.set(false);
             }
         });
+    }
+
+    /**
+     * Sends the bootstrap envelope with a one-shot retry on transient
+     * connection-dropped errors. Bootstrap is idempotent on the brain side
+     * (resume vs. create is decided by sessionId/projectId, and process
+     * specs are name-keyed), so re-sending after a mid-send WS recycle is
+     * safe.
+     *
+     * <p>Race we recover from: the welcome-frame trigger runs on a separate
+     * executor; between {@code ConnectionService.isOpen()} and the actual
+     * {@code WebSocket.send} call the WS can be recycled by the brain (e.g.
+     * tenant-authority sweep, lingering close from a previous connect).
+     * {@link ConnectionService#request} surfaces this as
+     * {@link IllegalStateException} — we wait briefly for the next welcome
+     * to bring the connection back to {@code OPEN} and retry once.
+     */
+    private SessionBootstrapResponse sendBootstrap(SessionBootstrapRequest req) throws Exception {
+        try {
+            return connection.request(
+                    MessageType.SESSION_BOOTSTRAP, req,
+                    SessionBootstrapResponse.class,
+                    Duration.ofSeconds(30));
+        } catch (IllegalStateException e) {
+            terminal.verbose("Auto-bootstrap: transient send failure ("
+                    + e.getMessage() + ") — waiting briefly for reconnect, then retrying once.");
+            if (!waitForOpen(Duration.ofSeconds(2))) {
+                throw new IllegalStateException(
+                        "Connection did not recover within 2s — use /bootstrap after reconnecting.", e);
+            }
+            return connection.request(
+                    MessageType.SESSION_BOOTSTRAP, req,
+                    SessionBootstrapResponse.class,
+                    Duration.ofSeconds(30));
+        }
+    }
+
+    /**
+     * Polls {@link ConnectionService#isOpen()} every 100 ms up to {@code timeout}.
+     * Returns true once the connection is open again, false on timeout.
+     */
+    private boolean waitForOpen(Duration timeout) throws InterruptedException {
+        long deadline = System.nanoTime() + timeout.toNanos();
+        while (System.nanoTime() < deadline) {
+            if (connection.isOpen()) {
+                return true;
+            }
+            Thread.sleep(100);
+        }
+        return connection.isOpen();
     }
 
     @PreDestroy

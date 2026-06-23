@@ -1,0 +1,36 @@
+# Trillian User — Nature-0 (v2)
+#
+# The worker loop process in the Trillian-User-Session (separate
+# session owned by the _trillian-0XXXX service-account, headless).
+# Spawned alongside trillian-control by TrillianSessionBootstrapper.
+#
+# Uses the dedicated TrillianUserEngine — endless-but-sleepy loop,
+# cross-project capable (allowsCrossProjectSpawn=true), no
+# file/exec/client tools. Trillian-User delegates real work to
+# spawned worker processes via process_create.
+#
+# See planning/trillian-engine.md §2 + §6 + §9.
+
+description: |
+  Trillian User worker-loop — Nature-0 v2. Picks task_request events,
+  spawns workers via process_create, observes, validates, reports
+  back to Control via task_complete / task_failed / task_needs_input.
+  Runs as _trillian-0XXXX in its own headless session.
+
+engine: trillian-user
+
+params:
+  # Pinned Nature (see trillian-0.yaml for the architectural note).
+  nature: '0'
+  # default:analyze tends to be more reliable for the orchestrator
+  # role (handles structured tool decisions better than the typical
+  # default:fast). Fallback to fast if analyze is exhausted/slow.
+  model: default:analyze,default:fast
+  fallbackModels:
+    - default:fast
+
+tags:
+  - trillian
+  - user
+  - worker
+  - orchestrator

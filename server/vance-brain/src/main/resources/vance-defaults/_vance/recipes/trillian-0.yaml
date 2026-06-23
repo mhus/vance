@@ -42,21 +42,33 @@ profiles:
   foot:
     session:
       onDisconnect: KEEP_OPEN
-      onIdle: SUSPEND
+      # Trillian ist daemon-like: User-Loop arbeitet async, sendet
+      # task_done-Events zurück. Wenn Control idle-suspendiert,
+      # landen die Events in pending und der Mensch sieht's erst
+      # beim Reconnect. NONE hält Control wach.
+      onIdle: NONE
       onSuspend: KEEP
       idleTimeoutMs: 3600000
       suspendKeepDurationMs: 86400000
   web:
     session:
       onDisconnect: KEEP_OPEN
-      onIdle: SUSPEND
+      # Trillian ist daemon-like: User-Loop arbeitet async, sendet
+      # task_done-Events zurück. Wenn Control idle-suspendiert,
+      # landen die Events in pending und der Mensch sieht's erst
+      # beim Reconnect. NONE hält Control wach.
+      onIdle: NONE
       onSuspend: KEEP
       idleTimeoutMs: 1800000
       suspendKeepDurationMs: 86400000
   default:
     session:
       onDisconnect: KEEP_OPEN
-      onIdle: SUSPEND
+      # Trillian ist daemon-like: User-Loop arbeitet async, sendet
+      # task_done-Events zurück. Wenn Control idle-suspendiert,
+      # landen die Events in pending und der Mensch sieht's erst
+      # beim Reconnect. NONE hält Control wach.
+      onIdle: NONE
       onSuspend: KEEP
       idleTimeoutMs: 1800000
       suspendKeepDurationMs: 86400000

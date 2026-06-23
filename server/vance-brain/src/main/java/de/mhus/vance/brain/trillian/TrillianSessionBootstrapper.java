@@ -1,5 +1,9 @@
 package de.mhus.vance.brain.trillian;
 
+import de.mhus.vance.api.session.DisconnectPolicy;
+import de.mhus.vance.api.session.IdlePolicy;
+import de.mhus.vance.api.session.SessionLifecycleConfig;
+import de.mhus.vance.api.session.SuspendPolicy;
 import de.mhus.vance.brain.recipe.AppliedRecipe;
 import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
@@ -253,6 +257,20 @@ public class TrillianSessionBootstrapper {
         // Link the user-process as the user-session's chatProcessId so
         // session-close cascades reach it via the standard path.
         sessionService.setChatProcessId(userSession.getSessionId(), userProc.getId());
+
+        // Pin daemon-style lifecycle on the user-session: never
+        // auto-suspend, keep across disconnects (it has no
+        // connection anyway), keep-on-suspend for the standard
+        // 24h. Redundant with safeDefault today, but explicit —
+        // protects against future changes to safeDefault and
+        // documents intent at the spawn site.
+        sessionService.applyLifecycleConfig(
+                userSession.getSessionId(),
+                SessionLifecycleConfig.builder()
+                        .onDisconnect(DisconnectPolicy.KEEP_OPEN)
+                        .onIdle(IdlePolicy.NONE)
+                        .onSuspend(SuspendPolicy.KEEP)
+                        .build());
         sessionService.markBootstrapped(userSession.getSessionId());
 
         // 5. Record cross-references on the control-process too.

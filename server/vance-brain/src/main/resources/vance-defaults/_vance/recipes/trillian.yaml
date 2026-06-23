@@ -29,21 +29,21 @@ profiles:
   foot:
     session:
       onDisconnect: KEEP_OPEN
-      onIdle: SUSPEND
+      onIdle: NONE
       onSuspend: KEEP
       idleTimeoutMs: 3600000
       suspendKeepDurationMs: 86400000
   web:
     session:
       onDisconnect: KEEP_OPEN
-      onIdle: SUSPEND
+      onIdle: NONE
       onSuspend: KEEP
       idleTimeoutMs: 1800000
       suspendKeepDurationMs: 86400000
   default:
     session:
       onDisconnect: KEEP_OPEN
-      onIdle: SUSPEND
+      onIdle: NONE
       onSuspend: KEEP
       idleTimeoutMs: 1800000
       suspendKeepDurationMs: 86400000

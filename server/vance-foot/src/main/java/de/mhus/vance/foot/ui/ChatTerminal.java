@@ -1,6 +1,8 @@
 package de.mhus.vance.foot.ui;
 
 import de.mhus.vance.foot.config.FootConfig;
+import de.mhus.vance.foot.markdown.MarkdownAnsiRenderer;
+import de.mhus.vance.foot.markdown.MarkdownRenderState;
 import java.io.PrintWriter;
 import java.time.Instant;
 import java.util.ArrayDeque;
@@ -13,6 +15,7 @@ import org.jline.utils.AttributedString;
 import org.jline.utils.AttributedStringBuilder;
 import org.jline.utils.AttributedStyle;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
@@ -47,6 +50,8 @@ public class ChatTerminal {
     private final Object bufferLock = new Object();
     private final FootConfig config;
     private final LiveRegion liveRegion;
+    private final AtomicReference<@Nullable MarkdownAnsiRenderer> markdownRenderer = new AtomicReference<>();
+    private final AtomicReference<@Nullable MarkdownRenderState> markdownState = new AtomicReference<>();
 
     private final @Nullable AttributedStyle styleChat;
     private final @Nullable AttributedStyle styleWorker;
@@ -71,6 +76,18 @@ public class ChatTerminal {
         this.styleDebug = StyleParser.parse(c.getDebug());
         this.styleWarn = StyleParser.parse(c.getWarn());
         this.styleError = StyleParser.parse(c.getError());
+    }
+
+    /**
+     * Setter injection so the optional markdown wiring doesn't widen the
+     * constructor signature (kept stable for hand-built test stubs).
+     * Called automatically by Spring; tests that don't need markdown
+     * rendering can leave it unset.
+     */
+    @Autowired(required = false)
+    public void setMarkdown(MarkdownAnsiRenderer renderer, MarkdownRenderState state) {
+        this.markdownRenderer.set(renderer);
+        this.markdownState.set(state);
     }
 
     public Verbosity threshold() {
@@ -145,6 +162,35 @@ public class ChatTerminal {
             return;
         }
         emitWithStyle(Verbosity.INFO, message, styleChat, false);
+    }
+
+    /**
+     * Renders an assistant chat turn through the lite markdown renderer
+     * (headings coloured, tables rendered, {@code **bold**} translated
+     * to ANSI etc.) when the toggle is on. Header is emitted as a plain
+     * styled line; {@code content} is fed through the renderer. When
+     * the toggle is off — or no renderer wired (tests) — the call falls
+     * through to {@link #chat(String)} with header and content
+     * concatenated, matching the legacy behaviour bit-for-bit.
+     */
+    public void chatMarkdown(String header, String content) {
+        if (!threshold.get().shows(Verbosity.INFO)) return;
+        MarkdownRenderState state = markdownState.get();
+        MarkdownAnsiRenderer renderer = markdownRenderer.get();
+        if (state == null || renderer == null || !state.isEnabled()) {
+            chat(header + content);
+            return;
+        }
+        emitWithStyle(Verbosity.INFO, header, styleChat, false);
+        for (AttributedString line : renderer.render(content)) {
+            String plain = line.toString();
+            record(Verbosity.INFO, plain);
+            if (line.length() == 0) {
+                emit("");
+            } else {
+                emitStyled(line);
+            }
+        }
     }
 
     /**

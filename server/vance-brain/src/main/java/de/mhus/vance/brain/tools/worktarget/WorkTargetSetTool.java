@@ -64,8 +64,9 @@ public class WorkTargetSetTool implements Tool {
     public String description() {
         return "Switch where the generic file_* / exec_* tools dispatch "
                 + "to. Persists on the process; subsequent turns see the "
-                + "new target. Use work_target_get first to learn what "
-                + "alternatives are available.";
+                + "new target. The recipe sets the default — only use "
+                + "this for the rare case the LLM needs an explicit "
+                + "switch mid-task.";
     }
 
     @Override
@@ -74,6 +75,15 @@ public class WorkTargetSetTool implements Tool {
         // and the LLM doesn't switch live. Reachable via find_tools
         // when an exotic switch is genuinely needed.
         return false;
+    }
+
+    @Override
+    public boolean deferred() {
+        // Same rationale as WorkTargetGetTool#deferred: stay out of the
+        // classified-engine primary manifest. The recipe owns the
+        // initial target; explicit mid-task switches are rare enough to
+        // earn the find_tools / describe_tool detour.
+        return true;
     }
 
     @Override

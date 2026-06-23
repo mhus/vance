@@ -7,7 +7,6 @@ import de.mhus.vance.shared.workspace.WorkspaceException;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
@@ -99,8 +98,8 @@ public class WorkspaceCountTool implements Tool {
                 throw new ToolException(e.getMessage(), e);
             }
         }
-        PathMatcher matcher = (singlePath == null && pathGlob != null)
-                ? FileSystems.getDefault().getPathMatcher("glob:" + pathGlob)
+        PathMatcher matcher = singlePath == null
+                ? GlobMatchers.buildGlobMatcher(pathGlob)
                 : null;
 
         long totalLines = 0;

@@ -78,14 +78,21 @@ public class WebSocketConfig {
     /**
      * Bumps WebSocket frame size limits past the JSR-356 default of 8 KiB
      * so {@code transfer-chunk} frames (default 64 KiB raw, ~88 KiB after
-     * Base64 + JSON envelope) and large session-list / agent-doc payloads
-     * fit. 1 MiB matches the spec's per-chunk hard limit.
+     * Base64 + JSON envelope), large session-list / agent-doc payloads
+     * and bulk tool-result frames (a 200-hit {@code file_grep} with
+     * context across a big codebase legitimately serialises to
+     * ~1–4 MiB) fit. Tomcat closes the socket with code 1009 when an
+     * inbound frame exceeds this — the corresponding close-reason is
+     * {@code "The decoded text message was too big for the output buffer
+     * and the endpoint does not support partial messages"}. Bumped from
+     * 1 MiB to 8 MiB to leave headroom for large client-side tool
+     * results without rebuilding the chunking protocol.
      */
     @Bean
     public ServletServerContainerFactoryBean webSocketContainer() {
         ServletServerContainerFactoryBean container = new ServletServerContainerFactoryBean();
-        container.setMaxTextMessageBufferSize(1024 * 1024);
-        container.setMaxBinaryMessageBufferSize(1024 * 1024);
+        container.setMaxTextMessageBufferSize(8 * 1024 * 1024);
+        container.setMaxBinaryMessageBufferSize(8 * 1024 * 1024);
         return container;
     }
 }

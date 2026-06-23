@@ -60,6 +60,18 @@ public class WorkTargetGetTool implements Tool {
     }
 
     @Override
+    public boolean deferred() {
+        // Hide from the classified-engine primary manifest (Lunkwill /
+        // Eddie / Marvin etc.). The recipe's promptPrefix already tells
+        // the LLM which backend its file_*/exec_* calls hit, so shipping
+        // this tool's schema every turn just baits an unnecessary
+        // round-trip ("let me check work_target_get just to be sure").
+        // Still reachable via find_tools / describe_tool for the rare
+        // case the LLM really needs to introspect.
+        return true;
+    }
+
+    @Override
     public Map<String, Object> paramsSchema() {
         return SCHEMA;
     }

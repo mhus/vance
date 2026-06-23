@@ -44,8 +44,8 @@ public class FileReadTool extends AbstractWorkTargetTool {
     @Override public String description() {
         return "Read a text file from the active work target. Dispatches "
                 + "to client_file_read (CLIENT) or work_file_read (WORK) "
-                + "transparently. Use work_target_get to see which "
-                + "backend will run, work_target_set to switch.";
+                + "transparently — the recipe picks the backend, you just "
+                + "call this with a path.";
     }
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
     @Override public java.util.Set<String> labels() { return java.util.Set.of("read-only"); }

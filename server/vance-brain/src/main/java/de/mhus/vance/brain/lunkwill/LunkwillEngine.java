@@ -272,7 +272,12 @@ public class LunkwillEngine implements ThinkEngine {
      */
     @Override
     public void runTurn(ThinkProcessDocument process, ThinkEngineContext ctx) {
-        long startMs = effectiveStartedAtMs(process);
+        // Wallclock budget is per-turn, not per-process-lifetime. Resuming
+        // a session that's been idle for a day must not trip the safety
+        // net on its first re-steer just because the process was created
+        // long ago — the LunkwillEngine.runTurn invocation is the unit we
+        // want to bound.
+        long startMs = System.currentTimeMillis();
         long deadlineMs = startMs + (long) properties.getMaxWallclockMinutes() * 60_000L;
         boolean isWorker = process.getParentProcessId() != null
                 && !process.getParentProcessId().isBlank();
@@ -776,11 +781,6 @@ public class LunkwillEngine implements ThinkEngine {
     }
 
     // ──────────────────── Safety / interrupt helpers ────────────────────
-
-    private long effectiveStartedAtMs(ThinkProcessDocument process) {
-        Instant createdAt = process.getCreatedAt();
-        return createdAt != null ? createdAt.toEpochMilli() : System.currentTimeMillis();
-    }
 
     private ThinkProcessStatus readCurrentStatus(ThinkProcessDocument process) {
         return thinkProcessService.findById(process.getId())

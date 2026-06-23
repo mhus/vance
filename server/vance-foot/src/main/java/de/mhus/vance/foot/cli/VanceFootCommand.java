@@ -4,6 +4,7 @@ import de.mhus.vance.foot.agent.ClientAgentDocService;
 import de.mhus.vance.foot.config.FootConfig;
 import de.mhus.vance.foot.connection.ConnectionService;
 import de.mhus.vance.foot.ide.IdeBridgeService;
+import de.mhus.vance.foot.markdown.MarkdownRenderState;
 import de.mhus.vance.foot.session.AutoBootstrapService;
 import de.mhus.vance.foot.session.SessionResumeFlow;
 import de.mhus.vance.foot.tools.ClientToolService;
@@ -103,6 +104,12 @@ public class VanceFootCommand implements Callable<Integer> {
                     + "Equivalent to vance.ui.tool-output.enabled=false.")
     boolean noToolOutput;
 
+    @Option(names = "--no-markdown",
+            description = "Skip the lite markdown renderer for assistant replies; "
+                    + "print raw text instead. Useful for copy-paste and debugging. "
+                    + "Toggle at runtime with /markdown on|off.")
+    boolean noMarkdown;
+
     @Option(names = "--profile",
             paramLabel = "<name>",
             description = "WebSocket profile sent on connect "
@@ -127,6 +134,14 @@ public class VanceFootCommand implements Callable<Integer> {
             description = "Override vance.bootstrap.project-id. Clears any "
                     + "configured session-id (start fresh).")
     @Nullable String project;
+
+    @Option(names = "--session",
+            paramLabel = "<id>",
+            description = "Resume this exact session by id (skips the "
+                    + "--resume picker). Sets vance.bootstrap.session-id; "
+                    + "the brain decides whether the project is implied "
+                    + "from the session.")
+    @Nullable String sessionId;
 
     @Option(names = "--recipe",
             paramLabel = "<name>",
@@ -189,6 +204,7 @@ public class VanceFootCommand implements Callable<Integer> {
     private final FootTransferService transfers;
     private final SessionResumeFlow resumeFlow;
     private final WindowTitleService windowTitle;
+    private final MarkdownRenderState markdownState;
 
     public VanceFootCommand(ChatRepl repl,
                             ConnectionService connection,
@@ -199,7 +215,8 @@ public class VanceFootCommand implements Callable<Integer> {
                             ClientToolService clientTools,
                             FootTransferService transfers,
                             SessionResumeFlow resumeFlow,
-                            WindowTitleService windowTitle) {
+                            WindowTitleService windowTitle,
+                            MarkdownRenderState markdownState) {
         this.repl = repl;
         this.connection = connection;
         this.terminal = terminal;
@@ -210,6 +227,7 @@ public class VanceFootCommand implements Callable<Integer> {
         this.transfers = transfers;
         this.resumeFlow = resumeFlow;
         this.windowTitle = windowTitle;
+        this.markdownState = markdownState;
     }
 
     @Override
@@ -231,6 +249,13 @@ public class VanceFootCommand implements Callable<Integer> {
             terminal.error("--eddie and --project are mutually exclusive.");
             return 2;
         }
+        // --session is the explicit resume-by-id form. It bypasses the
+        // picker entirely, so combining it with --resume / --last / --eddie
+        // is a contradiction.
+        if (sessionId != null && !sessionId.isBlank() && (resume || last || eddie)) {
+            terminal.error("--session is mutually exclusive with --resume / --last / --eddie.");
+            return 2;
+        }
         if (resume) {
             // Skip the welcome-handler auto-bootstrap; SessionResumeFlow
             // will fire bootstrap manually after the picker resolves.
@@ -243,6 +268,14 @@ public class VanceFootCommand implements Callable<Integer> {
         if (project != null && !project.isBlank()) {
             config.getBootstrap().setProjectId(project);
             config.getBootstrap().setSessionId(null);
+        }
+        // --session wins over --project's session-clear: order matters
+        // because --project intentionally drops a stale configured
+        // sessionId to "start fresh"; the explicit --session form
+        // re-arms it so the user can pin both project and session in one
+        // command (project for filtering, session for the exact resume).
+        if (sessionId != null && !sessionId.isBlank()) {
+            config.getBootstrap().setSessionId(sessionId.trim());
         }
         if (recipe != null && !recipe.isBlank()) {
             config.getBootstrap().setChatRecipe(recipe.trim());
@@ -265,6 +298,10 @@ public class VanceFootCommand implements Callable<Integer> {
         }
         if (noToolOutput) {
             config.getUi().getToolOutput().setEnabled(false);
+        }
+        if (noMarkdown) {
+            config.getUi().getMarkdown().setEnabled(false);
+            markdownState.setEnabled(false);
         }
         if (agentFile != null) {
             agentDoc.setOverridePath(agentFile);

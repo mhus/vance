@@ -2,7 +2,6 @@ package de.mhus.vance.foot.tools.file;
 
 import de.mhus.vance.foot.tools.ClientTool;
 import java.io.IOException;
-import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
@@ -92,9 +91,7 @@ public class ClientFileFindTool implements ClientTool {
         if (!Files.isDirectory(root)) {
             throw new IllegalArgumentException("Not a directory: " + root.toAbsolutePath());
         }
-        PathMatcher matcher = pathGlob == null
-                ? null
-                : FileSystems.getDefault().getPathMatcher("glob:" + pathGlob);
+        PathMatcher matcher = GlobMatchers.buildGlobMatcher(pathGlob);
 
         List<Entry> entries = new ArrayList<>();
         int totalConsidered = 0;

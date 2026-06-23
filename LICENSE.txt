@@ -1,109 +1,127 @@
-Vance Non-Commercial, Non-Production Copyleft License (v1.0)
+Business Source License 1.1
 
-Copyright (c) 2025 Mike Hummel
-All rights reserved.
+License text copyright (c) 2017 MariaDB Corporation Ab, All Rights Reserved.
+"Business Source License" is a trademark of MariaDB Corporation Ab.
 
-============================================================
-1. Grant of Rights – Free of Charge
-============================================================
+-----------------------------------------------------------------------------
 
-The Software is provided free of charge.
+Parameters
 
-Permission is granted to use, copy, and modify the Software solely
-for non-commercial, non-production purposes, including testing,
-evaluation, research, and experimentation.
+Licensor:             Mike Hummel
+Licensed Work:        Vance
+                      The Licensed Work is (c) 2025-2026 Mike Hummel.
 
-No fees, payments, or other compensation are required or expected.
-No support, maintenance, update, or service obligations are provided.
+Additional Use Grant: You may use the Licensed Work for:
 
-============================================================
-2. Non-Production / Non-Operational Use Only
-============================================================
+                        - personal use
+                        - educational use
+                        - research
+                        - internal business purposes
+                        - consulting and professional services
+                        - customer specific deployments
 
-The Software must not be used in production, operational, or
-business-critical environments.
+                      You may not provide the Licensed Work as a hosted,
+                      managed, or SaaS offering to third parties where the
+                      Licensed Work constitutes a substantial part of the
+                      service.
 
-“Production or operational use” includes, but is not limited to:
-- running the Software in systems intended for ongoing or long-term use,
-- deploying the Software in environments affecting real users, data,
-  or decisions beyond testing or evaluation,
-- using the Software as part of operational workflows, services,
-  or infrastructure,
-- continuous, automated, or unattended execution.
+Change Date:          2029-06-23
 
-Any use beyond temporary, experimental, or evaluative purposes
-is strictly prohibited.
+Change License:       GNU Affero General Public License, version 3.0
+                      (AGPL-3.0-or-later)
 
-============================================================
-3. Non-Commercial Restriction
-============================================================
+-----------------------------------------------------------------------------
 
-The Software may not be used for any commercial purpose.
+For information about alternative licensing arrangements for the Licensed
+Work — including commercial licenses that lift the restrictions of this
+License — please contact the Licensor at <contact-email>.
 
-Commercial purposes include, but are not limited to:
-- selling, sublicensing, or monetizing the Software,
-- integrating the Software into commercial or revenue-generating
-  products or services,
-- using the Software for commercial advantage or within profit-oriented
-  or business operations.
+A dual commercial license is available for parties whose intended use is
+outside the scope of the Additional Use Grant above (for example, providing
+Vance as a hosted multi-tenant service to third parties). Commercial license
+terms are negotiated separately and override the restrictions of this
+License for the licensee.
 
-============================================================
-4. Copyleft – Same License for Modifications
-============================================================
+-----------------------------------------------------------------------------
 
-If you modify the Software and make the modified version available
-to any third party, you must:
+Notice
 
-- make the complete corresponding source code publicly available, and
-- license the modified version under the exact same license terms
-  as this License.
+The Business Source License (this document, or the "License") is not an
+Open Source license. However, the Licensed Work will eventually be made
+available under an Open Source License, as stated in this License.
 
-Private modifications that are not distributed or made accessible
-to third parties are permitted.
+-----------------------------------------------------------------------------
 
-============================================================
-5. Redistribution Conditions
-============================================================
+License
 
-Any permitted redistribution of the Software, modified or unmodified,
-must:
-- include this License in full,
-- retain all copyright notices,
-- not impose additional restrictions beyond this License.
+Terms
 
-============================================================
-6. No Transfer of Ownership
-============================================================
+The Licensor hereby grants you the right to copy, modify, create derivative
+works, redistribute, and make non-production use of the Licensed Work. The
+Licensor may make an Additional Use Grant, above, permitting limited
+production use.
 
-This License does not grant ownership of the Software.
-All rights not expressly granted are reserved by the copyright holder.
+Effective on the Change Date, or the fourth anniversary of the first
+publicly available distribution of a specific version of the Licensed Work
+under this License, whichever comes first, the Licensor hereby grants you
+rights under the terms of the Change License, and the rights granted in the
+paragraph above terminate.
 
-============================================================
-7. Termination
-============================================================
+If your use of the Licensed Work does not comply with the requirements
+currently in effect as described in this License, you must purchase a
+commercial license from the Licensor, its affiliated entities, or
+authorized resellers, or you must refrain from using the Licensed Work.
 
-Any violation of this License automatically terminates all rights
-granted herein.
+All copies of the original and modified Licensed Work, and derivative works
+of the Licensed Work, are subject to this License. This License applies
+separately for each version of the Licensed Work and the Change Date may
+vary for each version of the Licensed Work released by Licensor.
 
-Upon termination, all use of the Software must cease immediately.
+You must conspicuously display this License on each original or modified
+copy of the Licensed Work. If you receive the Licensed Work in original or
+modified form from a third party, the terms and conditions set forth in
+this License apply to your use of that work.
 
-============================================================
-8. No Warranty and Limitation of Liability
-============================================================
+Any use of the Licensed Work in violation of this License will
+automatically terminate your rights under this License for the current and
+all other versions of the Licensed Work.
 
-THE SOFTWARE IS PROVIDED FREE OF CHARGE AND "AS IS", WITHOUT WARRANTY
-OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
-WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE,
-CORRECTNESS, OR FITNESS FOR ANY PARTICULAR USE.
+This License does not grant you any right in any trademark or logo of
+Licensor or its affiliates (provided that you may use a trademark or logo
+of Licensor as expressly required by this License).
 
-TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, THE ENTIRE RISK
-ARISING OUT OF THE USE OF THE SOFTWARE REMAINS WITH THE USER.
+TO THE EXTENT PERMITTED BY APPLICABLE LAW, THE LICENSED WORK IS PROVIDED ON
+AN "AS IS" BASIS. LICENSOR HEREBY DISCLAIMS ALL WARRANTIES AND CONDITIONS,
+EXPRESS OR IMPLIED, INCLUDING (WITHOUT LIMITATION) WARRANTIES OF
+MERCHANTABILITY, NON-INFRINGEMENT, AND FITNESS FOR A PARTICULAR PURPOSE.
 
-IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE
-SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+MariaDB hereby grants you permission to use this License's text to license
+your works, and to refer to it using the trademark "Business Source
+License", as long as you comply with the Covenants of Licensor below.
 
-============================================================
+-----------------------------------------------------------------------------
 
-End of Vance License v1.0
+Covenants of Licensor
+
+In consideration of the right to use this License's text and the "Business
+Source License" name and trademark, Licensor covenants to MariaDB, and to
+all other recipients of the Licensed Work to be provided by Licensor:
+
+1. To specify as the Change License the GPL Version 2.0 or any later
+   version, or a license that is compatible with GPL Version 2.0 or a
+   later version, where "compatible" means that software provided under
+   the Change License can be included in a program with software provided
+   under GPL Version 2.0 or a later version. Licensor may specify
+   additional Change Licenses without limitation.
+
+2. To either: (a) specify an additional grant of rights to use that does
+   not impose any additional restriction on the right granted in this
+   License, as the Additional Use Grant; or (b) insert the text "None".
+
+3. To specify a Change Date.
+
+4. Not to modify this License in any other way.
+
+-----------------------------------------------------------------------------
+
+End of Business Source License 1.1 — Vance

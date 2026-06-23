@@ -140,6 +140,39 @@ public class FootConfig {
         private StatusBar statusBar = new StatusBar();
         private WindowTitle windowTitle = new WindowTitle();
         private ToolOutput toolOutput = new ToolOutput();
+        private Markdown markdown = new Markdown();
+    }
+
+    /**
+     * Lite-Markdown-Renderer for assistant chat replies. When
+     * {@link #enabled} the terminal interprets headings (colour + blank
+     * lines around), tables ({@code | a | b |}-style → aligned ASCII
+     * grid), code fences, blockquotes and the inline markers
+     * {@code **bold**}, {@code *italic* / _italic_}, {@code `code`}.
+     * Disable via {@code --no-markdown} or {@code /markdown off} when
+     * you want raw output for copy-paste or debugging.
+     *
+     * <p>Side-effect: with markdown ON the live char-by-char
+     * streaming of the main process is replaced by a buffered
+     * commit-time render — code fences and tables need block context,
+     * so we can only render once the full assistant turn arrives.
+     */
+    @Data
+    public static class Markdown {
+        private boolean enabled = true;
+        private String heading = "fg:cyan,bold";
+        private String code = "fg:bright-black";
+        private String blockquote = "fg:bright-black,italic";
+        private String tableBorder = "fg:bright-black";
+        /**
+         * Max column width for flowing prose (paragraphs, list items,
+         * blockquotes). Tables, code fences and heading lines are
+         * exempt — they need to keep their own layout. Set to {@code 0}
+         * to disable wrapping. Splits at the last space within the
+         * budget; very long unbroken tokens are emitted as one
+         * over-long line rather than mid-word-cut.
+         */
+        private int wrapWidth = 120;
     }
 
     /**

@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import org.springframework.stereotype.Component;
 
 /**
@@ -22,6 +23,7 @@ public class MessageDispatcher {
     private final Map<String, MessageHandler> handlers;
     private final ChatTerminal terminal;
     private final Map<String, CompletableFuture<WebSocketEnvelope>> pendingReplies = new ConcurrentHashMap<>();
+    private final AtomicLong lastInboundAtMs = new AtomicLong(0);
 
     public MessageDispatcher(List<MessageHandler> handlerBeans, ChatTerminal terminal) {
         this.terminal = terminal;
@@ -40,6 +42,7 @@ public class MessageDispatcher {
     }
 
     public void dispatch(WebSocketEnvelope envelope) {
+        lastInboundAtMs.set(System.currentTimeMillis());
         String replyTo = envelope.getReplyTo();
         if (replyTo != null) {
             CompletableFuture<WebSocketEnvelope> waiting = pendingReplies.remove(replyTo);
@@ -77,6 +80,18 @@ public class MessageDispatcher {
     /** Cancels a pending reply registration — used when the send itself fails. */
     public void cancelPendingReply(String id) {
         pendingReplies.remove(id);
+    }
+
+    /**
+     * Wall-clock millis when the last inbound envelope was received (any
+     * type, including spontaneous push frames). Used by
+     * {@link ConnectionService#request} to implement an idle-timeout
+     * (reset on activity) instead of a hard absolute timeout — so a
+     * long-running engine turn that keeps streaming progress/text frames
+     * doesn't false-positive into a TimeoutException.
+     */
+    public long lastInboundAtMs() {
+        return lastInboundAtMs.get();
     }
 
     /** Fails all pending replies. Called by {@link ConnectionService} on disconnect. */

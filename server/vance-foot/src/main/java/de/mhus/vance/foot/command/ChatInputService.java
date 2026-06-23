@@ -37,8 +37,19 @@ import org.springframework.stereotype.Service;
 @Service
 public class ChatInputService {
 
-    /** Default timeout for the chat round-trip to the brain. */
-    public static final Duration DEFAULT_CHAT_TIMEOUT = Duration.ofSeconds(120);
+    /**
+     * Default <em>idle</em> timeout for the chat round-trip to the brain.
+     * Interpreted by {@link de.mhus.vance.foot.connection.ConnectionService#request}
+     * as "give up if nothing inbound arrives for this long" — not as an
+     * absolute wall-clock cap on the turn. Streaming frames
+     * ({@code CHAT_MESSAGE_APPENDED}, {@code PROCESS_PROGRESS}, tool-result
+     * pushes, PING heartbeats, …) reset the clock, so a Lunkwill / Marvin
+     * turn that keeps producing output happily runs for as long as it
+     * needs. 10 min of <em>complete silence</em> from the brain is the
+     * "something is genuinely wrong" threshold; below that, the user can
+     * still interrupt via {@code /stop} or {@code /pause}.
+     */
+    public static final Duration DEFAULT_CHAT_TIMEOUT = Duration.ofMinutes(10);
 
     /** Timeout for fire-and-forget pause requests. Short — pause is a side-channel. */
     public static final Duration PAUSE_TIMEOUT = Duration.ofSeconds(10);

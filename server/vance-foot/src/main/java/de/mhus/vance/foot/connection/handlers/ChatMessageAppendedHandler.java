@@ -61,7 +61,8 @@ public class ChatMessageAppendedHandler implements MessageHandler {
             return;
         }
         String role = data.getRole() == null ? "?" : data.getRole().name().toLowerCase();
-        String line = "[" + data.getProcessName() + " · " + role + "] " + data.getContent();
+        String header = "[" + data.getProcessName() + " · " + role + "] ";
+        String content = data.getContent() == null ? "" : data.getContent();
 
         // Only the bound main process (Arthur) writes into the main
         // chat — that's the user-facing conversation. Workers run
@@ -75,9 +76,9 @@ public class ChatMessageAppendedHandler implements MessageHandler {
         // the user can see what the workers are doing, but not as
         // primary conversation content.
         if (isMainProcess(data.getProcessName())) {
-            terminal.chat(line);
+            terminal.chatMarkdown(header, content);
         } else {
-            terminal.worker(line);
+            terminal.worker(header + content);
         }
         maybeUpdatePicker(data);
     }

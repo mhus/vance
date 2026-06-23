@@ -249,7 +249,18 @@ public class ConnectionService {
      * id is generated here so callers do not have to. {@code error} replies
      * surface as {@link BrainException}; transport problems surface as
      * {@link IllegalStateException} (not connected) or {@link TimeoutException}
-     * (no reply within {@code timeout}).
+     * (no inbound activity within {@code timeout}).
+     *
+     * <p>{@code timeout} is interpreted as an <em>idle</em> timeout: it
+     * counts time since the last inbound envelope on this connection (any
+     * type — spontaneous push frames like {@code CHAT_MESSAGE_APPENDED} /
+     * {@code PROCESS_PROGRESS} reset it as well as the matching reply
+     * itself). This is what makes long-running engine turns (Lunkwill,
+     * Marvin, Trillian, …) survive: as long as the brain is streaming
+     * <em>anything</em> back the request stays alive; only true silence
+     * for the full {@code timeout} window trips the abort. Connection
+     * heartbeats (PING/PONG) also reset the clock — they prove the brain
+     * is reachable, so callers don't need to special-case them.
      */
     public <T> T request(String type, @Nullable Object payload, Class<T> replyType, Duration timeout)
             throws BrainException, TimeoutException, InterruptedException {
@@ -260,20 +271,61 @@ public class ConnectionService {
         CompletableFuture<WebSocketEnvelope> future = new CompletableFuture<>();
         dispatcher.registerPendingReply(id, future);
 
+        long sendAtMs = System.currentTimeMillis();
         if (!send(WebSocketEnvelope.request(id, type, payload))) {
             dispatcher.cancelPendingReply(id);
             throw new IllegalStateException("Send failed — connection dropped between check and send.");
         }
         terminal.println(Verbosity.DEBUG, "→ %s (id=%s)", type, id);
 
-        WebSocketEnvelope reply;
+        long timeoutMs = timeout.toMillis();
+        // Floor for the moving deadline. Bumped to `now` when an idle
+        // window elapses so the next "still waiting" notice fires another
+        // `timeoutMs` later, not immediately on the next loop pass.
+        long baselineMs = sendAtMs;
+        WebSocketEnvelope reply = null;
         try {
-            reply = future.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
-        } catch (TimeoutException e) {
-            dispatcher.cancelPendingReply(id);
-            throw e;
+            while (true) {
+                long now = System.currentTimeMillis();
+                // Reset deadline on every inbound envelope (including frames
+                // unrelated to this request — they prove the brain is alive
+                // and streaming). Floor at the current baseline so a quiet
+                // socket still trips the "still waiting" notice within
+                // `timeoutMs` of the last activity.
+                long lastActivity = Math.max(baselineMs, dispatcher.lastInboundAtMs());
+                long deadline = lastActivity + timeoutMs;
+                long waitMs = deadline - now;
+                if (waitMs <= 0) {
+                    // Idle window elapsed without any inbound frame. Treat
+                    // this as a soft "still waiting" notice rather than an
+                    // abort: long-running engines (Lunkwill, Marvin, …) can
+                    // legitimately be deep in a single tool-call without
+                    // emitting progress; the user retains control via
+                    // /stop / /pause, and a real connection drop still
+                    // surfaces as IllegalStateException via failAllPending.
+                    long idleSec = Math.max(timeoutMs / 1000L,
+                            (now - lastActivity) / 1000L);
+                    terminal.println(Verbosity.INFO,
+                            "… still waiting for brain (no activity for %ds, request id=%s)",
+                            idleSec, id);
+                    baselineMs = now;
+                    continue;
+                }
+                // Wake up periodically to re-check the moving deadline.
+                // 2s gives the streaming heartbeats room to land between
+                // polls without burning CPU.
+                long sliceMs = Math.min(waitMs, 2_000L);
+                try {
+                    reply = future.get(sliceMs, TimeUnit.MILLISECONDS);
+                    break;
+                } catch (TimeoutException slice) {
+                    // Not a real timeout yet — loop and re-evaluate the
+                    // moving deadline based on freshly arrived frames.
+                }
+            }
         } catch (java.util.concurrent.ExecutionException e) {
             // Pending future failed via failAllPending(...) on disconnect.
+            dispatcher.cancelPendingReply(id);
             Throwable cause = e.getCause();
             throw new IllegalStateException(cause == null ? "Request failed" : cause.getMessage(), cause);
         }

@@ -7,7 +7,6 @@ import de.mhus.vance.shared.workspace.WorkspaceException;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
@@ -92,9 +91,7 @@ public class WorkspaceGrepTool implements Tool {
             throw new ToolException("Invalid regex: " + e.getMessage());
         }
 
-        PathMatcher matcher = pathGlob == null
-                ? null
-                : FileSystems.getDefault().getPathMatcher("glob:" + pathGlob);
+        PathMatcher matcher = GlobMatchers.buildGlobMatcher(pathGlob);
 
         List<String> files;
         try {

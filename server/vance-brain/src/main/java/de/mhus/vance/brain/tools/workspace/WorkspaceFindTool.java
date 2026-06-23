@@ -6,7 +6,6 @@ import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.workspace.WorkspaceException;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import java.io.IOException;
-import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
@@ -90,9 +89,7 @@ public class WorkspaceFindTool implements Tool {
         String sortBy = stringOrNull(params, "sortBy");
         int limit = clampLimit(intOrNull(params, "limit"));
 
-        PathMatcher matcher = pathGlob == null
-                ? null
-                : FileSystems.getDefault().getPathMatcher("glob:" + pathGlob);
+        PathMatcher matcher = GlobMatchers.buildGlobMatcher(pathGlob);
 
         List<String> all;
         try {

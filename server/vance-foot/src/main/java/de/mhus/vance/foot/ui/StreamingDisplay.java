@@ -1,6 +1,7 @@
 package de.mhus.vance.foot.ui;
 
 import de.mhus.vance.api.chat.ChatRole;
+import de.mhus.vance.foot.markdown.MarkdownRenderState;
 import de.mhus.vance.foot.session.SessionService;
 import java.util.Map;
 import java.util.Objects;
@@ -37,14 +38,17 @@ public class StreamingDisplay {
     private final ChatTerminal terminal;
     private final PromptGate promptGate;
     private final SessionService sessions;
+    private final MarkdownRenderState markdownState;
     private final Map<String, ProcessStream> streams = new ConcurrentHashMap<>();
 
     public StreamingDisplay(ChatTerminal terminal,
                             PromptGate promptGate,
-                            SessionService sessions) {
+                            SessionService sessions,
+                            MarkdownRenderState markdownState) {
         this.terminal = terminal;
         this.promptGate = promptGate;
         this.sessions = sessions;
+        this.markdownState = markdownState;
     }
 
     /** Append a delta to the per-process stream. */
@@ -67,7 +71,12 @@ public class StreamingDisplay {
             // path to make it part of Arthur's voice, avoiding
             // dual-voice confusion in the main scroll.
             boolean main = isMainProcess(state.processName);
-            if (main && promptGate.isExclusive()) {
+            // Markdown-render mode needs full block context (code
+            // fences, tables) — buffer until commit even when the
+            // prompt-gate would normally allow inline raw streaming.
+            // The user gets the rendered turn as one block, no live
+            // char-by-char, which is the documented trade-off.
+            if (main && promptGate.isExclusive() && !markdownState.isEnabled()) {
                 if (!state.headerEmitted) {
                     terminal.streamRaw(header(state.processName, state.role));
                     state.headerEmitted = true;
@@ -140,17 +149,17 @@ public class StreamingDisplay {
             }
             if (state.buffered.length() > 0) {
                 // Buffered stream — flush via printAbove so the prompt
-                // redraws cleanly below. Main-process replies render
-                // in default chat (white, full); worker replies render
-                // in green and truncated as a side-channel audit
-                // trail — Arthur's RELAY pulls their content into the
-                // main chat as needed.
-                String line = header(state.processName, state.role)
-                        + state.buffered;
+                // redraws cleanly below. Main-process replies go
+                // through the markdown-aware renderer (header on its
+                // own line, content rendered or raw based on the
+                // toggle); worker replies stay in the green
+                // side-channel and are truncated as an audit trail.
+                String head = header(state.processName, state.role);
+                String body = state.buffered.toString();
                 if (isMainProcess(state.processName)) {
-                    terminal.chat(line);
+                    terminal.chatMarkdown(head, body);
                 } else {
-                    terminal.worker(line);
+                    terminal.worker(head + body);
                 }
                 return true;
             }

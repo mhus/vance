@@ -3,7 +3,6 @@ package de.mhus.vance.foot.tools.file;
 import de.mhus.vance.foot.tools.ClientTool;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
@@ -30,6 +29,18 @@ public class ClientFileGrepTool implements ClientTool {
     private static final int MAX_LIMIT = 1_000;
     private static final int DEFAULT_MAX_DEPTH = 12;
     private static final long MAX_FILE_BYTES = 2L * 1024 * 1024;
+    /**
+     * Hard cap on a single match's {@code line} (and each context-line)
+     * payload. Generated/minified files routinely contain multi-MB lines
+     * — without this cap a single grep match could blow past the
+     * WebSocket {@code maxTextMessageBufferSize} on the brain (close
+     * code 1009). 600 chars is wide enough to read a normal line of
+     * code with surrounding context and narrow enough that 200 matches
+     * stay well under 1 MiB total.
+     */
+    private static final int MAX_LINE_CHARS = 600;
+    /** Truncation marker appended when a line exceeds {@link #MAX_LINE_CHARS}. */
+    private static final String TRUNCATE_MARK = "…[truncated]";
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
@@ -96,9 +107,7 @@ public class ClientFileGrepTool implements ClientTool {
         if (!Files.isDirectory(root)) {
             throw new IllegalArgumentException("Not a directory: " + root.toAbsolutePath());
         }
-        PathMatcher matcher = pathGlob == null
-                ? null
-                : FileSystems.getDefault().getPathMatcher("glob:" + pathGlob);
+        PathMatcher matcher = GlobMatchers.buildGlobMatcher(pathGlob);
 
         List<Map<String, Object>> matches = new ArrayList<>();
         int filesScanned = 0;
@@ -128,14 +137,16 @@ public class ClientFileGrepTool implements ClientTool {
                     Map<String, Object> m = new LinkedHashMap<>();
                     m.put("path", rel.toString());
                     m.put("lineNumber", i + 1);
-                    m.put("line", lines[i]);
+                    m.put("line", clipLine(lines[i]));
                     if (before > 0 || after > 0) {
                         List<Map<String, Object>> ctxLines = new ArrayList<>();
                         int from = Math.max(0, i - before);
                         int to = Math.min(lines.length - 1, i + after);
                         for (int j = from; j <= to; j++) {
                             if (j == i) continue;
-                            ctxLines.add(Map.of("lineNumber", j + 1, "line", lines[j]));
+                            ctxLines.add(Map.of(
+                                    "lineNumber", j + 1,
+                                    "line", clipLine(lines[j])));
                         }
                         if (!ctxLines.isEmpty()) m.put("context", ctxLines);
                     }
@@ -155,6 +166,11 @@ public class ClientFileGrepTool implements ClientTool {
         out.put("truncated", truncated);
         out.put("matches", matches);
         return out;
+    }
+
+    private static String clipLine(String line) {
+        if (line == null || line.length() <= MAX_LINE_CHARS) return line;
+        return line.substring(0, MAX_LINE_CHARS) + TRUNCATE_MARK;
     }
 
     private static int clampNonNeg(Integer raw) { return raw == null ? 0 : Math.max(0, raw); }

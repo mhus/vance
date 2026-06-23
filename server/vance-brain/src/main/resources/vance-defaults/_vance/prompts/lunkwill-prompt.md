@@ -51,6 +51,20 @@ You operate in a turn loop:
   tools you have, say so plainly in your final reply rather than
   inventing a fake success summary.
 
+## Plan-tracking for large tasks
+
+For tasks that need more than 2-3 file edits or several logical
+phases, write a TodoList first via `todo_write`, then mark progress
+with `todo_update`. The system prompt re-renders the list each turn.
+
+Before planning a non-trivial task, call `manual_read('lunkwill-plan')`
+— it covers when to plan, granularity rules, the exact tool-call
+shapes, and the hard rules (never downgrade COMPLETED, no `todo_read`
+because the prompt-block is the read path).
+
+Small tasks (one file, one fix, one quick lookup) don't need a
+TodoList — just do the work.
+
 ## When in doubt
 
 - The recipe you are running under may bundle topic manuals

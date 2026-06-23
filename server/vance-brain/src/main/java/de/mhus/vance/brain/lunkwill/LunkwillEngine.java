@@ -4,6 +4,8 @@ import de.mhus.vance.api.chat.ChatMessageChunkData;
 import de.mhus.vance.api.chat.ChatRole;
 import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
+import de.mhus.vance.api.thinkprocess.TodoItem;
+import de.mhus.vance.api.thinkprocess.TodoStatus;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.brain.ai.AiChat;
 import de.mhus.vance.brain.ai.AiChatException;
@@ -133,6 +135,14 @@ public class LunkwillEngine implements ThinkEngine {
         // basics
         base.add("current_time");
         base.add("whoami");
+        // Plan-tracking (reduced Plan-Mode variant — see
+        // specification/lunkwill-engine.md §9). Two mutating tools that
+        // operate on ThinkProcessDocument.todos via ThinkProcessService;
+        // both emit todos-updated WebSocket notifications through the
+        // PlanModeEventEmitter so Foot / Web-UI render the TodoList
+        // engine-agnostically.
+        base.add("todo_write");
+        base.add("todo_update");
         // Generic work-target file/exec wrappers + work_target_get/set.
         // The 12 file_*/exec_* tools dispatch to client_* or work_*
         // backends per the per-process WorkTarget; see
@@ -318,8 +328,16 @@ public class LunkwillEngine implements ThinkEngine {
 
             while (true) {
                 // External interrupt — graceful exit between turns.
+                // PAUSED is treated the same as SUSPENDED here: the
+                // ProcessPauseHandler has flipped the status because
+                // the user (or an upstream) pressed ESC / /pause, and
+                // we want the lane to stop *before* the next LLM call
+                // / tool batch instead of grinding through one more
+                // round. The user's "I'm reconsidering" intent is the
+                // whole point of the pause.
                 ThinkProcessStatus current = readCurrentStatus(process);
                 if (current == ThinkProcessStatus.SUSPENDED
+                        || current == ThinkProcessStatus.PAUSED
                         || current == ThinkProcessStatus.CLOSED) {
                     log.info("Lunkwill id='{}' external interrupt (status={}) — exiting loop",
                             process.getId(), current);
@@ -327,8 +345,14 @@ public class LunkwillEngine implements ThinkEngine {
                     return;
                 }
 
-                // Wallclock safety net.
-                if (System.currentTimeMillis() > deadlineMs) {
+                // Wallclock safety net. Strict ">" left a 1-ms window
+                // where a hot-JVM iteration could beat the timer (visible
+                // as a JIT-warmup flake of `wallclockExceeded_setsBlocked`
+                // — the maxWallclockMinutes=0 boundary case trips at
+                // currentTimeMillis == deadlineMs, not strictly after).
+                // ">=" closes that window without changing semantics in
+                // the normal non-zero-minute case.
+                if (System.currentTimeMillis() >= deadlineMs) {
                     log.warn("Lunkwill id='{}' wallclock exceeded ({} min) — BLOCKED",
                             process.getId(), properties.getMaxWallclockMinutes());
                     exitStatus = ThinkProcessStatus.BLOCKED;
@@ -518,6 +542,14 @@ public class LunkwillEngine implements ThinkEngine {
         if (skillSection != null && !skillSection.isBlank()) {
             messages.add(SystemMessage.from(skillSection));
         }
+        // Reduced Plan-Mode variant — when the process has todos, drop
+        // a per-turn TodoList block so the LLM sees the current plan,
+        // the current step, and how to update both. See
+        // specification/lunkwill-engine.md §9.2.
+        String todoBlock = buildTodoListBlock(process);
+        if (!todoBlock.isBlank()) {
+            messages.add(SystemMessage.from(todoBlock));
+        }
         for (ChatMessageDocument msg : chatLog.activeHistory(
                 process.getTenantId(), process.getSessionId(), process.getId())) {
             messages.add(toLangchain(msg));
@@ -529,6 +561,79 @@ public class LunkwillEngine implements ThinkEngine {
             }
         }
         return messages;
+    }
+
+    // ──────────────────── TodoList prompt block (§9.2) ────────────────────
+
+    /**
+     * Renders the per-turn TodoList prompt block when the process has a
+     * non-empty TodoList. Lunkwill's reduced Plan-Mode variant —
+     * mode-less, no approval gate. Returns the empty string when there
+     * is nothing to track, in which case the engine skips the block
+     * entirely so short tasks don't pay the prompt-overhead of a
+     * structure they don't need.
+     *
+     * <p>Marker convention matches the full Plan-Mode block in
+     * {@code EddieEngine.buildTodoListBlock} so Foot / Web-UI can use the
+     * same renderer engine-agnostically: {@code [ ]} PENDING,
+     * {@code [~]} IN_PROGRESS, {@code [✓]} COMPLETED. {@code activeForm}
+     * surfaces for IN_PROGRESS items when present.
+     *
+     * <p>The current-step pointer picks the first non-COMPLETED item.
+     * That matches the convention the LLM is asked to follow — work
+     * top-to-bottom, mark IN_PROGRESS when picking up, COMPLETED when
+     * done. When everything is COMPLETED, the pointer is absent and the
+     * guidance tells the LLM to call the recipe's task-complete tool.
+     */
+    String buildTodoListBlock(ThinkProcessDocument process) {
+        List<TodoItem> todos = process.getTodos();
+        if (todos == null || todos.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("## Active Plan\n\n");
+        TodoItem current = null;
+        for (TodoItem t : todos) {
+            TodoStatus s = t.getStatus() == null ? TodoStatus.PENDING : t.getStatus();
+            String marker = switch (s) {
+                case PENDING -> "[ ]";
+                case IN_PROGRESS -> "[~]";
+                case COMPLETED -> "[✓]";
+            };
+            String content = t.getContent() == null ? "" : t.getContent();
+            if (s == TodoStatus.IN_PROGRESS
+                    && t.getActiveForm() != null && !t.getActiveForm().isBlank()) {
+                content = t.getActiveForm();
+            }
+            sb.append(marker).append(' ')
+                    .append("(id=").append(t.getId() == null ? "" : t.getId()).append(") ")
+                    .append(content).append('\n');
+            if (current == null && s != TodoStatus.COMPLETED) {
+                current = t;
+            }
+        }
+        sb.append('\n');
+        if (current != null) {
+            String label = current.getStatus() == TodoStatus.IN_PROGRESS
+                    && current.getActiveForm() != null && !current.getActiveForm().isBlank()
+                    ? current.getActiveForm()
+                    : (current.getContent() == null ? "" : current.getContent());
+            sb.append("Current step: **(id=")
+                    .append(current.getId() == null ? "" : current.getId())
+                    .append(")** ").append(label).append("\n\n");
+        } else {
+            sb.append("All steps COMPLETED. Call the recipe's task-complete tool "
+                    + "(e.g. `task_complete(summary=...)`) to end the worker.\n\n");
+        }
+        sb.append("To mark progress: ")
+                .append("`todo_update({\"updates\":[{\"id\":\"<id>\",\"status\":\"IN_PROGRESS|COMPLETED\"}]})`.\n")
+                .append("To revise the plan structurally: ")
+                .append("`todo_write({\"items\":[{\"id\":\"1\",\"content\":\"...\"}, ...]})`.\n\n")
+                .append("Hard rules:\n")
+                .append("- Never downgrade a [✓] COMPLETED item.\n")
+                .append("- Never edit todos through any tool other than `todo_write` / `todo_update`.\n")
+                .append("- Work top-to-bottom: take the first non-[✓] item, mark it IN_PROGRESS, do the work, mark COMPLETED.\n");
+        return sb.toString();
     }
 
     // ──────────────────── Skills (Layer 1+2) ────────────────────

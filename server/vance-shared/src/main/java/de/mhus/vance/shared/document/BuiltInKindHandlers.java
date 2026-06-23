@@ -33,4 +33,5 @@ public class BuiltInKindHandlers {
     @Bean public KindHandler schemaKindHandler() { return () -> "schema"; }
     @Bean public KindHandler diagramKindHandler() { return () -> "diagram"; }
     @Bean public KindHandler applicationKindHandler() { return () -> "application"; }
+    @Bean public KindHandler texComposeKindHandler() { return () -> "tex-compose"; }
 }

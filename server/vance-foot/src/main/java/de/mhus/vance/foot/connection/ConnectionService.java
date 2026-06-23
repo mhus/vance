@@ -245,25 +245,73 @@ public class ConnectionService {
     }
 
     /**
-     * Sends a request and waits synchronously for the matching reply. The
-     * id is generated here so callers do not have to. {@code error} replies
-     * surface as {@link BrainException}; transport problems surface as
-     * {@link IllegalStateException} (not connected) or {@link TimeoutException}
-     * (no inbound activity within {@code timeout}).
+     * Sends a request and waits synchronously for the matching reply.
+     * Strict timeout — fails with {@link TimeoutException} after
+     * {@code timeout} elapses regardless of other connection activity.
+     * Right default for short, bounded round-trips: PING, session-list,
+     * tool-registration, kit-install, etc. — anything where "no reply
+     * inside this window" really means "give up and report".
      *
-     * <p>{@code timeout} is interpreted as an <em>idle</em> timeout: it
-     * counts time since the last inbound envelope on this connection (any
-     * type — spontaneous push frames like {@code CHAT_MESSAGE_APPENDED} /
-     * {@code PROCESS_PROGRESS} reset it as well as the matching reply
-     * itself). This is what makes long-running engine turns (Lunkwill,
-     * Marvin, Trillian, …) survive: as long as the brain is streaming
-     * <em>anything</em> back the request stays alive; only true silence
-     * for the full {@code timeout} window trips the abort. Connection
-     * heartbeats (PING/PONG) also reset the clock — they prove the brain
-     * is reachable, so callers don't need to special-case them.
+     * <p>For chat-style requests that can legitimately take many
+     * minutes while the brain streams unrelated progress frames, use
+     * {@link #requestStreaming} instead — that one resets the deadline
+     * on every inbound envelope and never throws.
      */
     public <T> T request(String type, @Nullable Object payload, Class<T> replyType, Duration timeout)
             throws BrainException, TimeoutException, InterruptedException {
+        if (!isOpen()) {
+            throw new IllegalStateException("Not connected — /connect first.");
+        }
+        String id = type + "_" + requestCounter.incrementAndGet();
+        CompletableFuture<WebSocketEnvelope> future = new CompletableFuture<>();
+        dispatcher.registerPendingReply(id, future);
+
+        if (!send(WebSocketEnvelope.request(id, type, payload))) {
+            dispatcher.cancelPendingReply(id);
+            throw new IllegalStateException("Send failed — connection dropped between check and send.");
+        }
+        terminal.println(Verbosity.DEBUG, "→ %s (id=%s)", type, id);
+
+        WebSocketEnvelope reply;
+        try {
+            reply = future.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (TimeoutException e) {
+            dispatcher.cancelPendingReply(id);
+            throw e;
+        } catch (java.util.concurrent.ExecutionException e) {
+            // Pending future failed via failAllPending(...) on disconnect.
+            Throwable cause = e.getCause();
+            throw new IllegalStateException(cause == null ? "Request failed" : cause.getMessage(), cause);
+        }
+        terminal.println(Verbosity.DEBUG, "← %s (replyTo=%s)", reply.getType(), reply.getReplyTo());
+
+        if (MessageType.ERROR.equals(reply.getType())) {
+            ErrorData err = json.convertValue(reply.getData(), ErrorData.class);
+            throw new BrainException(err.getErrorCode(),
+                    err.getErrorMessage() == null ? "(no message)" : err.getErrorMessage());
+        }
+        return json.convertValue(reply.getData(), replyType);
+    }
+
+    /**
+     * Streaming variant of {@link #request} — never throws on timeout.
+     * Used by the chat-steer path so a long-running engine turn
+     * (Lunkwill, Marvin, Trillian, …) that keeps pushing progress
+     * frames doesn't false-positive into a timeout abort.
+     *
+     * <p>{@code idleTimeout} counts time since the <em>last inbound
+     * envelope on the connection</em> (any type — push frames like
+     * {@code CHAT_MESSAGE_APPENDED} / {@code PROCESS_PROGRESS} reset
+     * it). When the window elapses without any inbound traffic, the
+     * method emits a "still waiting" notice on the terminal and keeps
+     * waiting — it does NOT abort. A real connection drop still
+     * surfaces as {@link IllegalStateException} via
+     * {@code failAllPending}. Callers who need a hard cap should use
+     * the strict {@link #request} overload above.
+     */
+    public <T> T requestStreaming(
+            String type, @Nullable Object payload, Class<T> replyType, Duration idleTimeout)
+            throws BrainException, InterruptedException {
         if (!isOpen()) {
             throw new IllegalStateException("Not connected — /connect first.");
         }
@@ -276,33 +324,21 @@ public class ConnectionService {
             dispatcher.cancelPendingReply(id);
             throw new IllegalStateException("Send failed — connection dropped between check and send.");
         }
-        terminal.println(Verbosity.DEBUG, "→ %s (id=%s)", type, id);
+        terminal.println(Verbosity.DEBUG, "→ %s (id=%s, streaming)", type, id);
 
-        long timeoutMs = timeout.toMillis();
+        long timeoutMs = idleTimeout.toMillis();
         // Floor for the moving deadline. Bumped to `now` when an idle
-        // window elapses so the next "still waiting" notice fires another
-        // `timeoutMs` later, not immediately on the next loop pass.
+        // window elapses so the next "still waiting" notice fires
+        // another `timeoutMs` later, not immediately on the next loop.
         long baselineMs = sendAtMs;
         WebSocketEnvelope reply = null;
         try {
             while (true) {
                 long now = System.currentTimeMillis();
-                // Reset deadline on every inbound envelope (including frames
-                // unrelated to this request — they prove the brain is alive
-                // and streaming). Floor at the current baseline so a quiet
-                // socket still trips the "still waiting" notice within
-                // `timeoutMs` of the last activity.
                 long lastActivity = Math.max(baselineMs, dispatcher.lastInboundAtMs());
                 long deadline = lastActivity + timeoutMs;
                 long waitMs = deadline - now;
                 if (waitMs <= 0) {
-                    // Idle window elapsed without any inbound frame. Treat
-                    // this as a soft "still waiting" notice rather than an
-                    // abort: long-running engines (Lunkwill, Marvin, …) can
-                    // legitimately be deep in a single tool-call without
-                    // emitting progress; the user retains control via
-                    // /stop / /pause, and a real connection drop still
-                    // surfaces as IllegalStateException via failAllPending.
                     long idleSec = Math.max(timeoutMs / 1000L,
                             (now - lastActivity) / 1000L);
                     terminal.println(Verbosity.INFO,
@@ -311,20 +347,15 @@ public class ConnectionService {
                     baselineMs = now;
                     continue;
                 }
-                // Wake up periodically to re-check the moving deadline.
-                // 2s gives the streaming heartbeats room to land between
-                // polls without burning CPU.
                 long sliceMs = Math.min(waitMs, 2_000L);
                 try {
                     reply = future.get(sliceMs, TimeUnit.MILLISECONDS);
                     break;
                 } catch (TimeoutException slice) {
-                    // Not a real timeout yet — loop and re-evaluate the
-                    // moving deadline based on freshly arrived frames.
+                    // Not a real timeout — loop and re-evaluate the deadline.
                 }
             }
         } catch (java.util.concurrent.ExecutionException e) {
-            // Pending future failed via failAllPending(...) on disconnect.
             dispatcher.cancelPendingReply(id);
             Throwable cause = e.getCause();
             throw new IllegalStateException(cause == null ? "Request failed" : cause.getMessage(), cause);

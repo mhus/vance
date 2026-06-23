@@ -270,17 +270,26 @@ public class ProcessSteerHandler implements WsHandler {
                 closed.add(name);
             }
         }
+        // The user paused YOU (this process) — pause is a course-correction
+        // signal, not "more of the same please". The previous tool-batch
+        // / planning step was interrupted; the new message below should be
+        // treated as redirect/correction, not a continuation of whatever
+        // strategy was running.
         StringBuilder b = new StringBuilder();
-        b.append("[system: the user paused this session before sending this message");
+        b.append("[system: USER INTERRUPTED — RECONSIDER. The user pressed pause on this process ");
+        b.append("before sending the message below. Treat the new message as a correction or ");
+        b.append("redirect of your current direction, not as an additional task on top of what ");
+        b.append("you were doing. Any in-flight tool calls were cancelled. If you were stuck in a ");
+        b.append("retry loop or going down the wrong path, this is where you stop and re-plan");
         if (!paused.isEmpty()) {
-            b.append("; workers currently PAUSED: ").append(paused);
+            b.append("; child workers currently PAUSED: ").append(paused);
             b.append(" — call process_resume to wake one before steering it");
         }
         if (!closed.isEmpty()) {
-            b.append("; workers already CLOSED: ").append(closed);
+            b.append("; child workers already CLOSED: ").append(closed);
             b.append(" — you cannot reach them anymore, spawn fresh ones with process_create");
         }
-        b.append(". Call process_list if unsure of current state.]\n\n");
+        b.append(".]\n\n");
         return b.toString();
     }
 

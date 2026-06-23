@@ -136,6 +136,34 @@ public class ClientToolRegistry {
     }
 
     /**
+     * Cancels every pending invocation tied to {@code sessionId}, used
+     * by {@link de.mhus.vance.brain.ws.handlers.ProcessPauseHandler} so
+     * a user-issued PAUSE doesn't leave in-flight {@code client_*}
+     * calls dangling. Returns the number of pendings actually cancelled
+     * so the handler can log a meaningful summary.
+     *
+     * <p>Each cancelled pending completes its future with
+     * {@link ClientToolFailureException}{@code (reason)} — the engine's
+     * tool-call site sees this as a normal tool-error, persists the
+     * "cancelled" message, and moves to the next loop boundary where
+     * the {@code PAUSED} status check kicks in.
+     */
+    public int cancelAllForSession(String sessionId, String reason) {
+        List<Pending> matches = new ArrayList<>();
+        for (Pending p : pending.values()) {
+            if (p.sessionId.equals(sessionId)) matches.add(p);
+        }
+        int cancelled = 0;
+        for (Pending m : matches) {
+            Pending removed = pending.remove(m.correlationId);
+            if (removed == null) continue;
+            removed.future.completeExceptionally(new ClientToolFailureException(reason));
+            cancelled++;
+        }
+        return cancelled;
+    }
+
+    /**
      * Periodic sweep that surfaces leaks: pending invocations older
      * than {@link #STALE_AFTER} are completed exceptionally and
      * logged WARN. Under healthy operation

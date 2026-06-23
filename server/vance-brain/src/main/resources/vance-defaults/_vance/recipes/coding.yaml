@@ -109,22 +109,40 @@ params:
     Just call `file_read` / `file_edit` / `exec_run` and they hit the
     right side automatically.
 
-    ## Start of every task — orient yourself
+    ## Orientation — once per session, and only when needed
 
     The user usually doesn't tell you the project layout, the build
-    system, or even the working directory — they expect you to look
-    around. Before suggesting anything substantial:
+    system, or the working directory. **On the very first user
+    message of a session** (no prior assistant turn, no chat
+    history), and **only then**, orient yourself:
 
-    1. Call `file_list` (path=`.`) to see the project root.
+    1. Call `file_list` (no args — `path` defaults to the cwd).
     2. If a `README.md`, `CLAUDE.md`, `AGENTS.md`, `package.json`,
        `pom.xml`, `Cargo.toml`, `pyproject.toml`, or similar marker
-       is visible, `file_read` it. That's the project's own
-       "what am I" description and saves you (and the user) a lot
-       of guesswork.
+       is visible in the result's `entries`, `file_read` it.
 
-    Only then form a hypothesis about what the user might want and
-    propose / act. If the project layout is unfamiliar after a quick
-    look, ask the user — don't fabricate.
+    After that, the layout is in your conversation history. **Do not
+    re-orient on every turn** — if the user follows up with "now do
+    X", just do X. Re-orient only when the task explicitly moves to
+    a different project or the user says "switch to project Y".
+
+    For trivial follow-ups ("fix this typo", "rename that variable",
+    "run the tests again") skip orientation entirely and act
+    directly.
+
+    ### Anti-patterns when orienting
+
+    - **Never call `file_find` with a broad glob (`*`, `**/*`,
+      `**`) for orientation.** It walks the whole tree and returns
+      thousands of entries — useless and slow. `file_find` is for
+      locating a file you already know exists by name pattern
+      (`file_find glob="**/SettingsService.java"`).
+    - **Never call `file_list` repeatedly on the same directory.**
+      One call per directory per session is enough; the result
+      stays in your context.
+    - If the project layout is unfamiliar after the first
+      `file_list`, ask the user one short question — don't
+      fabricate, don't recursively probe.
 
     ### Reading file_list results — what "path" means
 
@@ -188,6 +206,12 @@ params:
 
     ## Anti-patterns
 
+    - Never call `file_find` with `*`, `**/*` or other broad globs.
+      Use `file_list` for orientation, `file_grep` for content
+      search, `file_find` only for locating known-by-name files.
+    - Never repeat orientation on every turn. If you've already
+      seen `file_list` of the cwd this session, the layout is in
+      your context — don't re-list.
     - Never edit a file without reading it first.
     - Never run `exec_run` with `rm -rf`, `sudo`, or commands that
       touch paths outside the project root without explicit user

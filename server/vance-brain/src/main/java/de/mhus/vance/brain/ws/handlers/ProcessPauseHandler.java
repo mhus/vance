@@ -10,6 +10,7 @@ import de.mhus.vance.brain.progress.ProgressEmitter;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.session.SessionLifecycleService;
+import de.mhus.vance.brain.tools.client.ClientToolRegistry;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.brain.ws.WsHandler;
@@ -54,6 +55,7 @@ public class ProcessPauseHandler implements WsHandler {
     private final LaneScheduler laneScheduler;
     private final ProgressEmitter progressEmitter;
     private final RequestAuthority authority;
+    private final ClientToolRegistry clientToolRegistry;
 
     @Override
     public String type() {
@@ -126,6 +128,22 @@ public class ProcessPauseHandler implements WsHandler {
                     return;
                 }
             }
+        }
+
+        // Cancel any in-flight client_* tool dispatches for this
+        // session. Without this, foot-side calls (e.g. file_grep,
+        // exec_run) still return whatever they were doing and the
+        // result lands in chat history as if nothing happened — which
+        // contradicts the user's "stop, I'm reconsidering" intent.
+        // The futures complete exceptionally with a ClientToolFailure;
+        // the engine's tool-call site treats that as a normal tool
+        // error and the next loop check picks up the PAUSED status
+        // (see LunkwillEngine.runTurn external-interrupt block).
+        int cancelled = clientToolRegistry.cancelAllForSession(
+                sessionId, "process paused — invocation cancelled");
+        if (cancelled > 0) {
+            log.info("process-pause sessionId='{}' cancelled {} pending client-tool call(s)",
+                    sessionId, cancelled);
         }
 
         log.info("process-pause sessionId='{}' paused={}", sessionId, paused);

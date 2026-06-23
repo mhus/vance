@@ -183,6 +183,9 @@ public class ChatInputService {
     public void requestPause() {
         SessionService.BoundSession bound = sessions.current();
         if (bound == null) {
+            // No session bound — nothing to pause. Stay silent rather
+            // than confusing the user with "pause failed: no session"
+            // for a benign idle-state ESC press.
             return;
         }
         boolean sent = connection.send(de.mhus.vance.api.ws.WebSocketEnvelope.request(
@@ -193,6 +196,12 @@ public class ChatInputService {
             chatTerminal.error("pause failed: not connected");
             return;
         }
+        // Surface a positive confirmation. Previously this path was
+        // silent on success, so when the brain dropped the PAUSE
+        // frame (or didn't pause Lunkwill for some other reason) the
+        // user had no way to tell from the foot side whether the
+        // intent had even left the building.
+        chatTerminal.info("↳ pause requested (ESC)");
         // Drop the busy spinner immediately. The pending chat-request
         // (PROCESS_STEER) is still waiting for its reply on the
         // asyncExecutor — but from the user's POV, /pause means "I'm
@@ -300,7 +309,16 @@ public class ChatInputService {
                     .ideContext(ideContextBuilder.buildAndConsumeForSteer().orElse(null))
                     .voiceMode(voiceMode ? Boolean.TRUE : null)
                     .build();
-            ProcessSteerResponse response = connection.request(
+            // Chat-steer uses the streaming variant: a single engine
+            // turn (Lunkwill, Marvin, …) can legitimately run for many
+            // minutes while the brain pushes progress / tool / chat
+            // frames in between. Strict request() would false-positive
+            // abort. requestStreaming resets the deadline on every
+            // inbound envelope and only nags ("still waiting") when
+            // the brain has been completely silent for the timeout
+            // window — connection drops still surface as
+            // IllegalStateException via failAllPending.
+            ProcessSteerResponse response = connection.requestStreaming(
                     MessageType.PROCESS_STEER,
                     steer,
                     ProcessSteerResponse.class,

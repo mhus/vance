@@ -18,7 +18,7 @@ Vance ist mehr als ein Chatbot oder Code-Assistent. Es ist ein Server, auf dem A
 - **Project Kits & Cascade.** Recipes, Prompts, Tools, Settings kommen per Cascade: Bundled-Defaults → Tenant → Projekt. Project Kits sind Git-Bundles, die ein Projekt sofort produktiv machen (`kernel-security`, `python-data-science`, eigene). Teams pflegen ihre Kits zentral, Projekte ziehen sich was sie brauchen.
 - **Scopes von Anfang an.** Tenant → Projekt-Gruppe → Projekt → Session → Think-Process. Memory kaskadiert nach unten, ist seitlich isoliert. Rechte, Quotas und Settings hängen am Scope — Grundlage für Mehrbenutzerbetrieb.
 - **Live-Arbeitsumfeld mit Documents und Notizen.** Cortex vereint Chat, Document und Execute in einer Oberfläche. Documents kommen in vielen Kinds (Markdown, Mindmap, Sheet, Kanban, Slides, Graph, Diagram, Checklist, …) und werden live geteilt — Presence, 3-way-Merge, Versionierung inklusive. Notizen am Document sind Teil des Auftrags, nicht externe Verwaltung.
-- **Mehrere Clients, ein Brain.** CLI (`vance-foot`), Web-UI (`vance-face`), Mobile (`facelift-bridge` — Capacitor-Wrapper um die deployte Web-UI, ein nativer WKWebView pro Account für vollständige Cookie-Isolation). Brain ist Single Source of Truth, Clients sind unterschiedliche Zugänge — keine Views auf dasselbe.
+- **Mehrere Clients, ein Brain.** CLI (`vance-foot`), Web-UI (`vance-face`), Mobile (`vance-facelift` — Capacitor-Wrapper um die deployte Web-UI, ein nativer WKWebView pro Account für vollständige Cookie-Isolation). Brain ist Single Source of Truth, Clients sind unterschiedliche Zugänge — keine Views auf dasselbe.
 
 ## Für Teams, nicht nur Einzelpersonen
 
@@ -70,7 +70,7 @@ Kein Team-Chat-Ersatz (Slack/Teams), kein Projektmanagement-Tool (Jira/Linear), 
 
 ## Tech-Stack
 
-Java 25 + Spring Boot 4 + MongoDB + langchain4j/langgraph4j (Brain) · TypeScript + Vue 3 + Vite (Web) · Capacitor + WKWebView (Mobile, iOS via `facelift-bridge`) · Picocli + JLine 3 + Lanterna (CLI).
+Java 25 + Spring Boot 4 + MongoDB + langchain4j/langgraph4j (Brain) · TypeScript + Vue 3 + Vite (Web) · Capacitor + WKWebView (Mobile, iOS via `vance-facelift`) · Picocli + JLine 3 + Lanterna (CLI).
 
 ## Status
 

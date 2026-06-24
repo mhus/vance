@@ -718,6 +718,8 @@ public class DocumentService {
             case "r" -> "text/x-r";
             case "java" -> "text/x-java";
             case "sql" -> "application/sql";
+            case "tex" -> "text/x-tex";
+            case "sty", "cls" -> "text/x-tex";
             default -> "text/plain";
         };
     }

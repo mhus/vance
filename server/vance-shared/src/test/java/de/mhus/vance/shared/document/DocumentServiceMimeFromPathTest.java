@@ -37,6 +37,16 @@ class DocumentServiceMimeFromPathTest {
     }
 
     @Test
+    void texExtension_mapsToTextXTex() {
+        assertThat(DocumentService.mimeFromPath("thesis/main.tex"))
+                .isEqualTo("text/x-tex");
+        assertThat(DocumentService.mimeFromPath("custom.sty"))
+                .isEqualTo("text/x-tex");
+        assertThat(DocumentService.mimeFromPath("article.cls"))
+                .isEqualTo("text/x-tex");
+    }
+
+    @Test
     void caseInsensitive_extensionMatch() {
         assertThat(DocumentService.mimeFromPath("File.MD"))
                 .isEqualTo("text/markdown");

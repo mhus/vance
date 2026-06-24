@@ -31,6 +31,7 @@ import { sql } from '@codemirror/lang-sql';
 import { java } from '@codemirror/lang-java';
 import { shell } from '@codemirror/legacy-modes/mode/shell';
 import { r } from '@codemirror/legacy-modes/mode/r';
+import { stex } from '@codemirror/legacy-modes/mode/stex';
 import { followUpExtension, type FollowUpExtensionOptions } from './followUpExtension';
 
 interface Props {
@@ -220,6 +221,12 @@ function languageFor(mimeType: string | null | undefined): Extension {
     mt === 'text/x-java' ||
     mt === 'application/x-java-source'
   ) return java();
+  // LaTeX / TeX — legacy-mode StreamLanguage.
+  if (
+    mt === 'text/x-tex' ||
+    mt === 'application/x-tex' ||
+    mt === 'text/x-latex'
+  ) return StreamLanguage.define(stex);
   return [];
 }
 

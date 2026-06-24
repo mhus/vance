@@ -200,8 +200,9 @@ public class ProcessProgressHandler implements MessageHandler {
         // at INFO if the per-roundtrip cadence gets too chatty.
         // Tokens come first (LLM cost driver), chars next (raw context
         // size, useful when tokens aren't reported by the provider).
+        String fill = formatContextFill(m);
         String line = String.format(
-                "[hud] %s · %d calls · %s in / %s out tokens · %s in / %s out chars · %.1fs%s",
+                "[hud] %s · %d calls · %s in / %s out tokens · %s in / %s out chars · %.1fs%s%s",
                 src,
                 m.getLlmCallCount(),
                 formatTokens(m.getTokensInTotal()),
@@ -209,8 +210,29 @@ public class ProcessProgressHandler implements MessageHandler {
                 formatTokens(m.getCharsInTotal()),
                 formatTokens(m.getCharsOutTotal()),
                 m.getElapsedMs() / 1000.0,
-                m.getModelAlias() == null ? "" : " · " + m.getModelAlias());
+                m.getModelAlias() == null ? "" : " · " + m.getModelAlias(),
+                fill);
         terminal.printlnStyled(Verbosity.VERBOSE, dim(line));
+    }
+
+    /**
+     * Builds the " · ctx N/M (P%)" suffix when the server reported both
+     * a context-window size and the just-sent input-token count. Empty
+     * string otherwise — older brains and engines that didn't propagate
+     * {@code ModelInfo} simply don't get the suffix.
+     */
+    private static String formatContextFill(MetricsPayload m) {
+        Integer window = m.getContextWindowTokens();
+        Integer lastIn = m.getLastCallTokensIn();
+        if (window == null || window <= 0 || lastIn == null || lastIn <= 0) {
+            return "";
+        }
+        double pct = 100.0 * lastIn / window;
+        return String.format(
+                " · ctx %s/%s (%.0f%%)",
+                formatTokens(lastIn),
+                formatTokens(window),
+                pct);
     }
 
     private void renderPlan(String src, @Nullable PlanPayload p) {

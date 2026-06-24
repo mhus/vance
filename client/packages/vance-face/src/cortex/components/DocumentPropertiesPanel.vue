@@ -6,7 +6,8 @@
  * v1 surfaces:
  *  - Editable: name (rename — folder stays), title, tags
  *    (comma-separated), color, mime type
- *  - Read-only: path, kind, size, createdAt, createdBy, summary
+ *  - Read-only: path, kind, size, createdAt, createdBy, summary,
+ *    front-matter headers
  *  - Nested: {@link DocumentArchives} for the versions list (uses the
  *    existing component as-is; restores re-fetch the doc into the tab).
  */
@@ -50,6 +51,8 @@ const mimeOptions = computed(() => {
     { value: 'text/x-r', label: 'R (.r)', group: codeGroup },
     { value: 'text/x-java-source', label: 'Java (.java)', group: codeGroup },
     { value: 'application/sql', label: 'SQL', group: codeGroup },
+    { value: 'text/x-tex', label: 'LaTeX (.tex, .sty, .cls, .ltx, .dtx)', group: codeGroup },
+    { value: 'text/x-bibtex', label: 'BibTeX (.bib, .bst)', group: codeGroup },
     { value: 'text/html', label: 'HTML', group: webGroup },
     { value: 'text/css', label: 'CSS', group: webGroup },
   ];
@@ -108,6 +111,13 @@ function buildRenamedPath(): string | null {
   const slash = path.lastIndexOf('/');
   return slash < 0 ? trimmed : `${path.substring(0, slash + 1)}${trimmed}`;
 }
+
+// Read-only front-matter / upload-inferred headers from
+// {@code DocumentDocument.headers}. Sorted by key for stable display.
+const headerEntries = computed<Array<[string, string]>>(() => {
+  const map = props.document.headers ?? {};
+  return Object.entries(map).sort(([a], [b]) => a.localeCompare(b));
+});
 
 function formatSize(bytes: number | null | undefined): string {
   if (bytes == null) return '—';
@@ -175,7 +185,7 @@ const dtoForArchives = computed<DocumentDto>(() => ({
   inline: !!props.document.inlineText,
   inlineText: props.document.inlineText || undefined,
   kind: props.document.kind ?? undefined,
-  headers: {},
+  headers: props.document.headers ?? {},
   autoSummary: props.document.autoSummary ?? false,
   summaryDirty: props.document.summaryDirty ?? false,
   summary: props.document.summary ?? undefined,
@@ -237,6 +247,16 @@ async function onRestored(): Promise<void> {
         <dd>{{ formatDate(document.createdAtMs) }}</dd>
         <dt class="opacity-60">By</dt>
         <dd>{{ document.createdBy ?? '—' }}</dd>
+      </dl>
+    </div>
+
+    <div v-if="headerEntries.length > 0" class="mt-3 text-xs">
+      <div class="opacity-60 mb-1">Headers</div>
+      <dl class="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 bg-base-200 rounded px-2 py-1">
+        <template v-for="[k, v] in headerEntries" :key="k">
+          <dt class="font-mono opacity-70">{{ k }}</dt>
+          <dd class="font-mono break-all whitespace-pre-wrap">{{ v }}</dd>
+        </template>
       </dl>
     </div>
 

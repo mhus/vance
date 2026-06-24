@@ -41,6 +41,14 @@ public enum StatusTag {
     NODE_DONE,
     /** Vogon phase completed — {@link StatusPayload#getUsage()} carries the phase subtotal. */
     PHASE_DONE,
+    /**
+     * Memory compaction folded older history into an
+     * {@code ARCHIVED_CHAT} memory. {@link StatusPayload#getText()}
+     * carries a short summary like
+     * {@code "SOFT · 8 msgs → 1240 chars (memory='abc…')"} so the user
+     * sees that the conversation just got rebased onto a summary.
+     */
+    COMPACTION,
 
     // ─── Engine lifecycle ──────────────────────────────────────────
     // Surface state transitions of the think-process itself, not the

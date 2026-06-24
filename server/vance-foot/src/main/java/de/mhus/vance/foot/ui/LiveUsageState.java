@@ -33,7 +33,9 @@ public class LiveUsageState {
                 m.getTokensOutTotal(),
                 m.getCharsInTotal(),
                 m.getCharsOutTotal(),
-                m.getLlmCallCount()));
+                m.getLlmCallCount(),
+                m.getLastCallTokensIn(),
+                m.getContextWindowTokens()));
     }
 
     /** Drop the snapshot — called when the brain finishes a turn. */
@@ -45,11 +47,20 @@ public class LiveUsageState {
         return latest.get();
     }
 
-    /** Immutable view of the last cumulative metrics push. */
+    /**
+     * Immutable view of the last cumulative metrics push. The cumulative
+     * fields ({@code tokensIn}, {@code tokensOut}, …) sum across every
+     * call in the active busy cycle and grow without bound; the
+     * per-call fields ({@code lastCallTokensIn}, {@code contextWindowTokens})
+     * carry the most recent round-trip so the status bar can show a
+     * meaningful "X% of the model's context window" indicator.
+     */
     public record Snapshot(
             long tokensIn,
             long tokensOut,
             long charsIn,
             long charsOut,
-            int calls) {}
+            int calls,
+            @Nullable Integer lastCallTokensIn,
+            @Nullable Integer contextWindowTokens) {}
 }

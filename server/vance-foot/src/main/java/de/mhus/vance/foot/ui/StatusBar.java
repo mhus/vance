@@ -200,6 +200,17 @@ public class StatusBar {
                     .append(formatNum(s.charsIn())).append('/')
                     .append(formatNum(s.charsOut())).append(" ch");
         }
+        // Context-window fill: lastCallTokensIn / contextWindow — the
+        // cumulative tokensIn is the wrong number here (sums across
+        // calls, can exceed the window). Only render when the brain
+        // shipped both numbers; older brains and engines that don't
+        // resolve ModelInfo simply don't get the suffix.
+        Integer lastIn = s.lastCallTokensIn();
+        Integer window = s.contextWindowTokens();
+        if (lastIn != null && lastIn > 0 && window != null && window > 0) {
+            long pct = Math.round(100.0 * lastIn / window);
+            sb.append(" · ").append(pct).append("% ctx");
+        }
         return sb.toString();
     }
 

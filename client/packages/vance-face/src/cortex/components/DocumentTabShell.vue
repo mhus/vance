@@ -189,7 +189,8 @@ const effectiveMimeType = computed<string>(() => {
   if (lower.endsWith('.css')) return 'text/css';
   if (lower.endsWith('.xml')) return 'application/xml';
   if (lower.endsWith('.sql')) return 'application/sql';
-  if (lower.endsWith('.tex') || lower.endsWith('.sty') || lower.endsWith('.cls')) return 'text/x-tex';
+  if (lower.endsWith('.tex') || lower.endsWith('.sty') || lower.endsWith('.cls') || lower.endsWith('.ltx') || lower.endsWith('.dtx')) return 'text/x-tex';
+  if (lower.endsWith('.bib') || lower.endsWith('.bst')) return 'text/x-bibtex';
   const explicit = props.document.mimeType;
   return explicit && explicit.trim() ? explicit : 'text/plain';
 });

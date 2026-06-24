@@ -15,4 +15,5 @@ export interface MetricsPayload {
   lastCallTokensOut?: number;
   lastCallCharsIn?: number;
   lastCallCharsOut?: number;
+  contextWindowTokens?: number;
 }

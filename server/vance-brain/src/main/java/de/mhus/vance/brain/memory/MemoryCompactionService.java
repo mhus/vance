@@ -236,6 +236,16 @@ public class MemoryCompactionService {
         metricService.summary("vance.memory.compaction.messages", "mode", modeLabel)
                 .record(olderIds.size());
 
+        // Client side-channel: surface the compaction event in the chat
+        // panel as a [compaction] status ping so the user sees that the
+        // history just got rebased onto an ARCHIVED_CHAT summary. Same
+        // rendering path as [tool_start] etc. — engine-agnostic.
+        progressEmitter.emitStatus(
+                process,
+                de.mhus.vance.api.progress.StatusTag.COMPACTION,
+                mode.name() + " · " + olderIds.size()
+                        + " msgs → " + summary.length() + " chars summary");
+
         runSideChannel(process, older, projectId,
                 "compaction-side-channel:" + modeLabel);
 

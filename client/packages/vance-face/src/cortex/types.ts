@@ -66,6 +66,12 @@ export interface CortexDocument {
   summaryDirty?: boolean | null;
   ragEnabled?: boolean | null;
   /**
+   * Parsed front-matter (or upload-inferred) headers from the backend's
+   * {@code DocumentDocument.headers}. Read-only metadata surfaced in
+   * the Properties panel. Empty for documents without front matter.
+   */
+  headers?: Record<string, string>;
+  /**
    * Sticky-notes attached to this document, keyed by note id. Loaded
    * once together with the document; mutated through the dedicated
    * {@code /notes} REST endpoints via the {@code useDocumentNotes}

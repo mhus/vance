@@ -49,6 +49,24 @@ public class LlmCallTracker {
             @Nullable ChatResponse response,
             long elapsedMs,
             @Nullable String modelAlias) {
+        record(process, request, response, elapsedMs, modelAlias, null);
+    }
+
+    /**
+     * Same as {@link #record(ThinkProcessDocument, ChatRequest, ChatResponse, long, String)}
+     * plus the model's context-window size, so the emitted
+     * {@link MetricsPayload} can carry a fill-ratio hint
+     * ({@code lastCallTokensIn / contextWindowTokens}) for the client HUD.
+     * Pass {@code null} when the context window is unknown — the field is
+     * optional on the wire.
+     */
+    public void record(
+            ThinkProcessDocument process,
+            @Nullable ChatRequest request,
+            @Nullable ChatResponse response,
+            long elapsedMs,
+            @Nullable String modelAlias,
+            @Nullable Integer contextWindowTokens) {
 
         if (process.getId() == null) {
             return;
@@ -77,6 +95,10 @@ public class LlmCallTracker {
                 .lastCallTokensOut(dTokensOut == 0 ? null : dTokensOut)
                 .lastCallCharsIn(dCharsIn == 0 ? null : dCharsIn)
                 .lastCallCharsOut(dCharsOut == 0 ? null : dCharsOut)
+                .contextWindowTokens(
+                        contextWindowTokens != null && contextWindowTokens > 0
+                                ? contextWindowTokens
+                                : null)
                 .build());
 
         // Prometheus telemetry: per-model-alias call count + token

@@ -225,7 +225,8 @@ function languageFor(mimeType: string | null | undefined): Extension {
   if (
     mt === 'text/x-tex' ||
     mt === 'application/x-tex' ||
-    mt === 'text/x-latex'
+    mt === 'text/x-latex' ||
+    mt === 'text/x-bibtex'
   ) return StreamLanguage.define(stex);
   return [];
 }

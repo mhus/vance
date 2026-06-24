@@ -124,6 +124,18 @@ class LunkwillEngineSkeletonTest {
 
         de.mhus.vance.brain.ai.ModelCatalog modelCatalog =
                 mock(de.mhus.vance.brain.ai.ModelCatalog.class);
+        de.mhus.vance.brain.ai.ModelInfo fakeModelInfo = new de.mhus.vance.brain.ai.ModelInfo(
+                "test", "test-model",
+                /*contextWindowTokens*/ 128_000,
+                /*defaultMaxOutputTokens*/ 4096,
+                de.mhus.vance.brain.ai.ModelSize.LARGE,
+                java.util.Set.of(),
+                /*timeoutSeconds*/ 60,
+                /*actionLoopCorrections*/ 2,
+                /*stripThinkTags*/ false);
+        lenient().when(modelCatalog.lookupOrDefault(
+                        any(), any(), any(), any(), any()))
+                .thenReturn(fakeModelInfo);
         de.mhus.vance.brain.memory.MemoryCompactionService memoryCompactionService =
                 mock(de.mhus.vance.brain.memory.MemoryCompactionService.class);
         lenient().when(memoryCompactionService.compactIfNeeded(any(), any(), any(), any()))

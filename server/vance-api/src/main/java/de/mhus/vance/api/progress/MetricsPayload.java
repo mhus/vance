@@ -46,4 +46,14 @@ public class MetricsPayload {
     private @Nullable Integer lastCallCharsIn;
 
     private @Nullable Integer lastCallCharsOut;
+
+    /**
+     * Context-window size of the model used for the last LLM call.
+     * Clients can render a fill ratio by dividing
+     * {@link #lastCallTokensIn} by this number ("the prompt we just sent
+     * was X% of the model's context"). Null when the engine path doesn't
+     * resolve a {@code ModelInfo} or the model has no declared context
+     * window.
+     */
+    private @Nullable Integer contextWindowTokens;
 }

@@ -432,7 +432,10 @@ public class LunkwillEngine implements ThinkEngine {
                     req.toolSpecifications(toolSpecs);
                 }
                 AiMessage reply = streamOneIteration(
-                        aiChat, req.build(), ctx, process, modelAlias);
+                        aiChat, req.build(), ctx, process, modelAlias,
+                        modelInfo.contextWindowTokens() > 0
+                                ? modelInfo.contextWindowTokens()
+                                : null);
 
                 // Stop path: natural stop (no tool calls). Always
                 // transition to IDLE — context stays alive for a
@@ -863,7 +866,8 @@ public class LunkwillEngine implements ThinkEngine {
             ChatRequest request,
             ThinkEngineContext ctx,
             ThinkProcessDocument process,
-            String modelAlias) {
+            String modelAlias,
+            @Nullable Integer contextWindowTokens) {
         CompletableFuture<ChatResponse> done = new CompletableFuture<>();
         ClientEventPublisher events = ctx.events();
         String sessionId = process.getSessionId();
@@ -915,7 +919,8 @@ public class LunkwillEngine implements ThinkEngine {
             ChatResponse response = done.get();
             llmCallTracker.record(
                     process, request, response,
-                    System.currentTimeMillis() - startMs, modelAlias);
+                    System.currentTimeMillis() - startMs, modelAlias,
+                    contextWindowTokens);
             return response.aiMessage();
         } catch (ExecutionException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;

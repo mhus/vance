@@ -11,6 +11,7 @@ import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
 /**
@@ -30,6 +31,19 @@ import org.springframework.stereotype.Component;
  *
  * <p>Failures are logged + swallowed — the engine's main loop has
  * already succeeded by the time we get here.
+ *
+ * <p><b>Async on purpose.</b> {@link ChatMessageService#append} fires
+ * {@link ChatMessageAppendedEvent} synchronously on the engine's lane
+ * thread (Spring's default {@code SimpleApplicationEventMulticaster}),
+ * so a slow Prak run would block the engine's turn from terminating —
+ * a live regression shipped {@code default:fast} stuck in a
+ * {@code HttpTimeoutException} retry loop for 87 seconds, and Lunkwill
+ * couldn't transition {@code RUNNING -> IDLE} until Prak finished. The
+ * trigger itself does heavy lifting (LLM call, Mongo writes, memory
+ * promotions) that has no business living on the lane critical path.
+ * {@code @Async} hands the work off to the default Spring task
+ * executor — failures still log + swallow, and the engine's chat
+ * message persistence has already happened before this listener runs.
  */
 @Component
 @RequiredArgsConstructor
@@ -40,6 +54,7 @@ public class PrakPeriodicListener {
     private final ThinkProcessService thinkProcessService;
     private final SessionService sessionService;
 
+    @Async
     @EventListener
     public void onChatMessageAppended(ChatMessageAppendedEvent event) {
         if (event == null) return;

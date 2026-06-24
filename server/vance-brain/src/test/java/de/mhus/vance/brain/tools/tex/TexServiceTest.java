@@ -300,7 +300,7 @@ class TexServiceTest {
                 files:
                   - thesis.tex
                 """);
-        mockSourceFile("thesis.tex", "content");
+        mockSourceFile("docs/thesis/thesis.tex", "content");
         when(workspaceService.createRootDir(any(RootDirSpec.class))).thenReturn(mockRootDir());
 
         // We can't verify createOrReplaceBinary because latexmk isn't available,
@@ -314,6 +314,30 @@ class TexServiceTest {
 
         // Verify compose doc was looked up at the right path
         verify(documentService).findByPath(TENANT, PROJECT, "docs/thesis/tex-compose.yaml");
+    }
+
+    @Test
+    void compile_resolvesFilesRelativeToComposeDir() {
+        // Files in the manifest are relative to the compose document's directory.
+        // composePath = "docs/thesis/tex-compose.yaml"
+        // file "thesis.tex" → looked up as "docs/thesis/thesis.tex"
+        mockComposeDoc("""
+                main: thesis.tex
+                files:
+                  - thesis.tex
+                """);
+        // mock at the resolved path, not the bare path
+        mockSourceFile("docs/thesis/thesis.tex", "content");
+        when(workspaceService.createRootDir(any(RootDirSpec.class))).thenReturn(mockRootDir());
+
+        try {
+            texService.compile(TENANT, PROJECT, "docs/thesis/tex-compose.yaml", "proc-1");
+        } catch (Exception ignored) {
+            // latexmk not available
+        }
+
+        // Verify source file was looked up at the resolved path
+        verify(documentService).findByPath(TENANT, PROJECT, "docs/thesis/thesis.tex");
     }
 
     // ── result types ──────────────────────────────────────────────

@@ -358,6 +358,57 @@ class ModelCatalogTest {
         return m == null ? null : "image";
     }
 
+    // ──── Pricing block parsing ────────────────────────────────────────
+
+    @Test
+    void bundled_glm_5_2_has_cortecs_pricing() {
+        ModelInfo info = catalog.lookupOrDefault("openai", "glm-5.2");
+        assertThat(info.pricing()).isNotNull();
+        assertThat(info.pricing().currency()).isEqualTo("EUR");
+        assertThat(info.pricing().inputPerMTok()).isEqualTo(0.355);
+        assertThat(info.pricing().outputPerMTok()).isEqualTo(1.775);
+        assertThat(info.pricing().cacheReadPerMTok()).isNull();
+        assertThat(info.pricing().cacheWritePerMTok()).isNull();
+    }
+
+    @Test
+    void bundled_sonnet_4_5_has_anthropic_pricing_including_cache() {
+        ModelInfo info = catalog.lookupOrDefault("anthropic", "claude-sonnet-4-5");
+        assertThat(info.pricing()).isNotNull();
+        assertThat(info.pricing().currency()).isEqualTo("USD");
+        assertThat(info.pricing().inputPerMTok()).isEqualTo(3.00);
+        assertThat(info.pricing().outputPerMTok()).isEqualTo(15.00);
+        assertThat(info.pricing().cacheReadPerMTok()).isEqualTo(0.30);
+        assertThat(info.pricing().cacheWritePerMTok()).isEqualTo(3.75);
+    }
+
+    @Test
+    void model_without_pricing_block_returns_null() {
+        // claude-opus-4 has no pricing in bundled YAML — unpriced model.
+        ModelInfo info = catalog.lookupOrDefault("anthropic", "claude-opus-4");
+        assertThat(info.pricing()).isNull();
+    }
+
+    @Test
+    void project_pricing_overrides_bundled() {
+        String projectYaml = """
+                openai:
+                  glm-5.2:
+                    pricing:
+                      currency: USD
+                      inputPerMTok: 0.50
+                      outputPerMTok: 2.00
+                """;
+        stubMissing(TENANT, VANCE);
+        stubDocument(TENANT, PROJECT, projectYaml);
+
+        ModelInfo info = catalog.lookupOrDefault(TENANT, PROJECT, "openai", "glm-5.2");
+        assertThat(info.pricing()).isNotNull();
+        assertThat(info.pricing().currency()).isEqualTo("USD");
+        assertThat(info.pricing().inputPerMTok()).isEqualTo(0.50);
+        assertThat(info.pricing().outputPerMTok()).isEqualTo(2.00);
+    }
+
     // ──── Helpers ──────────────────────────────────────────────────────
 
     private void stubDocument(String tenantId, String projectId, String yaml) {

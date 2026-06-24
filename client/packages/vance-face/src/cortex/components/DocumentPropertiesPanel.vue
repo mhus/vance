@@ -200,14 +200,13 @@ async function onRestored(): Promise<void> {
 </script>
 
 <template>
-  <div class="border-b border-base-300 bg-base-100 px-4 py-3 text-sm">
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-      <div class="flex flex-col gap-2">
+  <div class="properties-panel border-b border-base-300 bg-base-100 px-3 py-2 text-xs">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1">
+      <div class="grid grid-cols-2 gap-x-2 gap-y-1">
         <VInput
           v-model="editName"
           label="Name"
           placeholder="filename"
-          help="Filename only — folder stays. No slashes."
           :disabled="saving"
         />
         <VInput
@@ -220,13 +219,6 @@ async function onRestored(): Promise<void> {
           v-model="editTags"
           label="Tags"
           placeholder="comma, separated"
-          help="Comma-separated"
-          :disabled="saving"
-        />
-        <VColorPicker
-          v-model="editColor"
-          label="Color"
-          allow-clear
           :disabled="saving"
         />
         <VSelect
@@ -235,8 +227,16 @@ async function onRestored(): Promise<void> {
           label="MIME"
           :disabled="saving"
         />
+        <div class="col-span-2">
+          <VColorPicker
+            v-model="editColor"
+            label="Color"
+            allow-clear
+            :disabled="saving"
+          />
+        </div>
       </div>
-      <dl class="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 text-xs">
+      <dl class="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-0.5 self-start">
         <dt class="opacity-60">Path</dt>
         <dd class="font-mono break-all">{{ document.path }}</dd>
         <dt class="opacity-60">Kind</dt>
@@ -250,9 +250,9 @@ async function onRestored(): Promise<void> {
       </dl>
     </div>
 
-    <div v-if="headerEntries.length > 0" class="mt-3 text-xs">
-      <div class="opacity-60 mb-1">Headers</div>
-      <dl class="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 bg-base-200 rounded px-2 py-1">
+    <div v-if="headerEntries.length > 0" class="mt-2">
+      <div class="opacity-60 mb-0.5">Headers</div>
+      <dl class="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-0.5 bg-base-200 rounded px-2 py-1">
         <template v-for="[k, v] in headerEntries" :key="k">
           <dt class="font-mono opacity-70">{{ k }}</dt>
           <dd class="font-mono break-all whitespace-pre-wrap">{{ v }}</dd>
@@ -260,16 +260,16 @@ async function onRestored(): Promise<void> {
       </dl>
     </div>
 
-    <div v-if="document.summary" class="mt-3 text-xs">
-      <div class="opacity-60 mb-1">Summary</div>
+    <div v-if="document.summary" class="mt-2">
+      <div class="opacity-60 mb-0.5">Summary</div>
       <div class="bg-base-200 rounded px-2 py-1 whitespace-pre-wrap">
         {{ document.summary }}
       </div>
     </div>
 
-    <VAlert v-if="error" variant="error" class="mt-3">{{ error }}</VAlert>
+    <VAlert v-if="error" variant="error" class="mt-2">{{ error }}</VAlert>
 
-    <div class="mt-3 flex justify-end">
+    <div class="mt-2 flex justify-end">
       <VButton
         size="sm"
         variant="primary"
@@ -285,3 +285,26 @@ async function onRestored(): Promise<void> {
     />
   </div>
 </template>
+
+<style scoped>
+/* Tighter form-control footprint than the DaisyUI defaults: the panel
+ * sits above the document body and the user wants it compact, not the
+ * roomy default we use in modals. We target the form-control children
+ * via :deep() because VInput / VSelect / VColorPicker live in
+ * @vance/components and ship the standard DaisyUI markup. */
+.properties-panel :deep(.label) {
+  padding: 0.125rem 0.25rem;
+}
+.properties-panel :deep(.label-text) {
+  font-size: 0.7rem;
+  opacity: 0.7;
+}
+.properties-panel :deep(.input),
+.properties-panel :deep(.select) {
+  height: 1.75rem;
+  min-height: 1.75rem;
+  font-size: 0.75rem;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+</style>

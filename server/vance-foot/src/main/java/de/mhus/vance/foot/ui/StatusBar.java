@@ -114,7 +114,8 @@ public class StatusBar {
             long elapsed = (System.currentTimeMillis() - busyStartedMillis) / 1000;
             String usage = formatUsage();
             String attribution = currentAuthor == null ? "" : " — " + currentAuthor;
-            String line = ESC + "[33m· " + currentPhrase + attribution + "… " + marker
+            String line = ESC + "[33m· " + ESC + "[3m„" + currentPhrase + "“" + ESC + "[23m"
+                    + attribution + " " + marker
                     + ESC + "[0m  " + ESC + "[2m(" + elapsed + "s"
                     + usage + ")" + ESC + "[0m";
             return clamp(line, width, true);

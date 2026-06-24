@@ -101,6 +101,7 @@ class LlmResponseSanitizerTest {
                 Set.<ModelCapability>of(),
                 ModelInfo.DEFAULT_TIMEOUT_SECONDS,
                 ModelInfo.DEFAULT_ACTION_LOOP_CORRECTIONS,
-                strip);
+                strip,
+                /*pricing*/ null);
     }
 }

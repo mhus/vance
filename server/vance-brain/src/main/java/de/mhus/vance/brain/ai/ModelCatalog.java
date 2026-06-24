@@ -73,7 +73,8 @@ public class ModelCatalog {
             "?", "?", 8192, 4096, ModelSize.LARGE, Set.of(),
             ModelInfo.DEFAULT_TIMEOUT_SECONDS,
             ModelInfo.DEFAULT_ACTION_LOOP_CORRECTIONS,
-            false);
+            false,
+            /*pricing*/ null);
 
     private final DocumentService documentService;
 
@@ -456,8 +457,54 @@ public class ModelCatalog {
                 FALLBACK_TEMPLATE.actionLoopCorrections());
         boolean stripThinkTags = readBoolean(spec.get("stripThinkTags"),
                 FALLBACK_TEMPLATE.stripThinkTags());
+        ModelInfo.Pricing pricing = readPricing(spec.get("pricing"), provider, modelName);
         return new ModelInfo(provider, modelName, ctx, out, size, caps,
-                timeout, corrections, stripThinkTags);
+                timeout, corrections, stripThinkTags, pricing);
+    }
+
+    /**
+     * Parses the per-model {@code pricing:} block. Returns {@code null}
+     * when the block is missing, malformed, or lacks the two required
+     * fields ({@code inputPerMTok}, {@code outputPerMTok}) — the model
+     * is then treated as "unpriced" by usage reports rather than
+     * silently zero-costing the calls.
+     */
+    @SuppressWarnings("unchecked")
+    private static ModelInfo.@Nullable Pricing readPricing(
+            @Nullable Object raw, String provider, String modelName) {
+        if (raw == null) return null;
+        if (!(raw instanceof Map<?, ?> m)) {
+            log.warn("ModelCatalog: '{}/{}' has non-map pricing '{}' — ignored",
+                    provider, modelName, raw);
+            return null;
+        }
+        Map<String, Object> map = (Map<String, Object>) m;
+        Double input = readDouble(map.get("inputPerMTok"));
+        Double output = readDouble(map.get("outputPerMTok"));
+        if (input == null || output == null) {
+            log.warn("ModelCatalog: '{}/{}' pricing missing inputPerMTok/outputPerMTok — ignored",
+                    provider, modelName);
+            return null;
+        }
+        Double cacheRead = readDouble(map.get("cacheReadPerMTok"));
+        Double cacheWrite = readDouble(map.get("cacheWritePerMTok"));
+        Object currencyRaw = map.get("currency");
+        String currency = currencyRaw == null ? "USD" : currencyRaw.toString().trim();
+        if (currency.isEmpty()) currency = "USD";
+        return new ModelInfo.Pricing(currency, input, output, cacheRead, cacheWrite);
+    }
+
+    private static @Nullable Double readDouble(@Nullable Object raw) {
+        if (raw == null) return null;
+        if (raw instanceof Number n) return n.doubleValue();
+        if (raw instanceof String s) {
+            try {
+                return Double.parseDouble(s.trim());
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
     }
 
     private static ModelInfo fallback(@Nullable String provider, @Nullable String modelName) {
@@ -474,7 +521,8 @@ public class ModelCatalog {
                 FALLBACK_TEMPLATE.capabilities(),
                 FALLBACK_TEMPLATE.timeoutSeconds(),
                 FALLBACK_TEMPLATE.actionLoopCorrections(),
-                FALLBACK_TEMPLATE.stripThinkTags());
+                FALLBACK_TEMPLATE.stripThinkTags(),
+                /*pricing*/ null);
     }
 
     private static boolean readBoolean(@Nullable Object raw, boolean fallback) {

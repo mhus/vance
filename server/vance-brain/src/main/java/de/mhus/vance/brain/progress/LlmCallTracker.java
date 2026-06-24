@@ -2,12 +2,16 @@ package de.mhus.vance.brain.progress;
 
 import de.mhus.vance.api.progress.MetricsPayload;
 import de.mhus.vance.brain.ai.LlmCallStatsLogger;
+import de.mhus.vance.brain.ai.ModelCatalog;
+import de.mhus.vance.brain.ai.ModelInfo;
+import de.mhus.vance.shared.llmusage.LlmUsageService;
 import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.output.TokenUsage;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicReference;
@@ -33,6 +37,8 @@ public class LlmCallTracker {
 
     private final ProgressEmitter emitter;
     private final MetricService metricService;
+    private final LlmUsageService llmUsageService;
+    private final ModelCatalog modelCatalog;
 
     private final ConcurrentMap<String, AtomicReference<Counters>> byProcess = new ConcurrentHashMap<>();
 
@@ -49,16 +55,61 @@ public class LlmCallTracker {
             @Nullable ChatResponse response,
             long elapsedMs,
             @Nullable String modelAlias) {
-        record(process, request, response, elapsedMs, modelAlias, null);
+        // Auto-resolve ModelInfo from the alias so engines that don't
+        // already hand one in (Arthur/Eddie/Ford/Trillian/Marvin/...)
+        // still get context-window + pricing in their MetricsPayload
+        // and in the usage ledger. Engines with a local ModelInfo
+        // (Lunkwill) keep the explicit 6-arg path.
+        ModelInfo resolved = resolveModelInfo(process, modelAlias);
+        record(process, request, response, elapsedMs, modelAlias, resolved);
+    }
+
+    /**
+     * Parses {@code "provider:modelName"} (the canonical {@code
+     * modelAlias} format used throughout the brain) and looks it up in
+     * the catalog with the process's tenant/project scope so per-scope
+     * pricing overrides apply. Returns {@code null} when the alias is
+     * malformed, missing, or the catalog can't resolve it — those
+     * paths simply skip usage persistence and emit a MetricsPayload
+     * without {@code contextWindowTokens}.
+     */
+    private @Nullable ModelInfo resolveModelInfo(
+            ThinkProcessDocument process, @Nullable String modelAlias) {
+        if (modelAlias == null || modelAlias.isBlank()) return null;
+        int sep = modelAlias.indexOf(':');
+        if (sep <= 0 || sep == modelAlias.length() - 1) return null;
+        String provider = modelAlias.substring(0, sep);
+        String modelName = modelAlias.substring(sep + 1);
+        try {
+            return modelCatalog.lookupOrDefault(
+                    process.getTenantId(), process.getProjectId(),
+                    provider, modelName);
+        } catch (RuntimeException e) {
+            log.debug("ModelInfo resolution failed alias='{}' process='{}': {}",
+                    modelAlias, process.getId(), e.toString());
+            return null;
+        }
     }
 
     /**
      * Same as {@link #record(ThinkProcessDocument, ChatRequest, ChatResponse, long, String)}
-     * plus the model's context-window size, so the emitted
-     * {@link MetricsPayload} can carry a fill-ratio hint
-     * ({@code lastCallTokensIn / contextWindowTokens}) for the client HUD.
-     * Pass {@code null} when the context window is unknown — the field is
-     * optional on the wire.
+     * plus the {@link ModelInfo} that the call hit. Carries two extra
+     * effects:
+     *
+     * <ul>
+     *   <li>the emitted {@link MetricsPayload} gets {@code contextWindowTokens}
+     *       so the client HUD can render a fill ratio
+     *       ({@code lastCallTokensIn / contextWindowTokens});
+     *   <li>when the model has a {@code pricing:} block in
+     *       {@code ai-models.yaml} and the provider reported token
+     *       counts, a row is persisted to {@code llm_usage_records}
+     *       via {@link LlmUsageService} — the rate snapshot is
+     *       verewigt so later YAML edits do not rewrite history.
+     * </ul>
+     *
+     * Pass {@code null} for {@code modelInfo} when the engine path
+     * doesn't resolve a catalog entry — both effects fall away
+     * gracefully.
      */
     public void record(
             ThinkProcessDocument process,
@@ -66,7 +117,7 @@ public class LlmCallTracker {
             @Nullable ChatResponse response,
             long elapsedMs,
             @Nullable String modelAlias,
-            @Nullable Integer contextWindowTokens) {
+            @Nullable ModelInfo modelInfo) {
 
         if (process.getId() == null) {
             return;
@@ -83,6 +134,10 @@ public class LlmCallTracker {
                 .updateAndGet(prev -> prev.plus(
                         dTokensIn, dTokensOut, dCharsIn, dCharsOut, elapsedMs));
 
+        Integer contextWindowTokens = modelInfo != null && modelInfo.contextWindowTokens() > 0
+                ? modelInfo.contextWindowTokens()
+                : null;
+
         emitter.emitMetrics(process, MetricsPayload.builder()
                 .tokensInTotal(next.tokensIn)
                 .tokensOutTotal(next.tokensOut)
@@ -95,10 +150,7 @@ public class LlmCallTracker {
                 .lastCallTokensOut(dTokensOut == 0 ? null : dTokensOut)
                 .lastCallCharsIn(dCharsIn == 0 ? null : dCharsIn)
                 .lastCallCharsOut(dCharsOut == 0 ? null : dCharsOut)
-                .contextWindowTokens(
-                        contextWindowTokens != null && contextWindowTokens > 0
-                                ? contextWindowTokens
-                                : null)
+                .contextWindowTokens(contextWindowTokens)
                 .build());
 
         // Prometheus telemetry: per-model-alias call count + token
@@ -117,6 +169,55 @@ public class LlmCallTracker {
         }
         if (dTokensOut > 0) {
             metricService.summary("vance.llm.tokens.output", "model", alias).record(dTokensOut);
+        }
+
+        // Durable cost ledger. Only written when the model has a
+        // pricing block in ai-models.yaml AND the provider reported
+        // tokens — otherwise the row would either be unpriced (no
+        // value for reports) or zero-token (no value period). Cache
+        // tokens are not yet pulled from langchain4j's TokenUsage —
+        // future Anthropic/Gemini-specific shims will fill them.
+        persistUsage(process, modelAlias, modelInfo, dTokensIn, dTokensOut, elapsedMs);
+    }
+
+    private void persistUsage(
+            ThinkProcessDocument process,
+            @Nullable String modelAlias,
+            @Nullable ModelInfo modelInfo,
+            int dTokensIn,
+            int dTokensOut,
+            long elapsedMs) {
+        if (modelInfo == null || modelInfo.pricing() == null) return;
+        if (dTokensIn <= 0 && dTokensOut <= 0) return;
+        ModelInfo.Pricing p = modelInfo.pricing();
+        try {
+            llmUsageService.record(LlmUsageService.UsageWrite.builder()
+                    .tenantId(process.getTenantId())
+                    .projectId(process.getProjectId())
+                    .sessionId(process.getSessionId())
+                    .processId(process.getId())
+                    .recipeName(process.getRecipeName())
+                    .engineName(process.getThinkEngine())
+                    .providerInstance(modelInfo.provider())
+                    .providerType(null)
+                    .providerModel(modelInfo.modelName())
+                    .modelAlias(modelAlias)
+                    .tokensIn(dTokensIn)
+                    .tokensOut(dTokensOut)
+                    .cacheReadTokens(0)
+                    .cacheWriteTokens(0)
+                    .priceInputPerMTok(p.inputPerMTok())
+                    .priceOutputPerMTok(p.outputPerMTok())
+                    .priceCacheReadPerMTok(p.cacheReadPerMTok())
+                    .priceCacheWritePerMTok(p.cacheWritePerMTok())
+                    .currency(p.currency())
+                    .durationMs(elapsedMs)
+                    .contextWindowTokens(modelInfo.contextWindowTokens())
+                    .createdAt(Instant.now())
+                    .build());
+        } catch (RuntimeException e) {
+            log.warn("LlmUsage persistence failed for process='{}': {}",
+                    process.getId(), e.toString());
         }
     }
 

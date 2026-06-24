@@ -37,6 +37,13 @@ export interface MetaUpdateBody {
     /** Send {@code true} to clear an already-set color. */
     clearColor?: boolean;
     tags?: string[];
+    mimeType?: string | null;
+    /**
+     * Move/rename via full path. Server re-derives {@code name} from the
+     * trailing segment; for a pure rename the caller swaps the last
+     * segment of the current path and leaves the rest untouched.
+     */
+    newPath?: string | null;
     autoSummary?: boolean;
     summaryDirty?: boolean;
     ragEnabled?: 'auto' | 'on' | 'off';
@@ -91,6 +98,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         autoSummary?: (boolean | null) | undefined;
         summaryDirty?: (boolean | null) | undefined;
         ragEnabled?: (boolean | null) | undefined;
+        headers?: Record<string, string> | undefined;
         notes?: Record<string, import("@vance/generated").DocumentNoteDto> | undefined;
     }[], CortexDocument[] | {
         id: string;
@@ -114,6 +122,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         autoSummary?: (boolean | null) | undefined;
         summaryDirty?: (boolean | null) | undefined;
         ragEnabled?: (boolean | null) | undefined;
+        headers?: Record<string, string> | undefined;
         notes?: Record<string, import("@vance/generated").DocumentNoteDto> | undefined;
     }[]>;
     openTabs: import("vue").Ref<{
@@ -138,6 +147,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         autoSummary?: (boolean | null) | undefined;
         summaryDirty?: (boolean | null) | undefined;
         ragEnabled?: (boolean | null) | undefined;
+        headers?: Record<string, string> | undefined;
         notes?: Record<string, import("@vance/generated").DocumentNoteDto> | undefined;
     }[], CortexDocument[] | {
         id: string;
@@ -161,6 +171,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         autoSummary?: (boolean | null) | undefined;
         summaryDirty?: (boolean | null) | undefined;
         ragEnabled?: (boolean | null) | undefined;
+        headers?: Record<string, string> | undefined;
         notes?: Record<string, import("@vance/generated").DocumentNoteDto> | undefined;
     }[]>;
     activeTabId: import("vue").Ref<string | null, string | null>;
@@ -222,6 +233,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         autoSummary?: (boolean | null) | undefined;
         summaryDirty?: (boolean | null) | undefined;
         ragEnabled?: (boolean | null) | undefined;
+        headers?: Record<string, string> | undefined;
         notes?: Record<string, import("@vance/generated").DocumentNoteDto> | undefined;
     }[], CortexDocument[] | {
         id: string;
@@ -245,6 +257,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         autoSummary?: (boolean | null) | undefined;
         summaryDirty?: (boolean | null) | undefined;
         ragEnabled?: (boolean | null) | undefined;
+        headers?: Record<string, string> | undefined;
         notes?: Record<string, import("@vance/generated").DocumentNoteDto> | undefined;
     }[]>;
     openTabs: import("vue").Ref<{
@@ -269,6 +282,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         autoSummary?: (boolean | null) | undefined;
         summaryDirty?: (boolean | null) | undefined;
         ragEnabled?: (boolean | null) | undefined;
+        headers?: Record<string, string> | undefined;
         notes?: Record<string, import("@vance/generated").DocumentNoteDto> | undefined;
     }[], CortexDocument[] | {
         id: string;
@@ -292,6 +306,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         autoSummary?: (boolean | null) | undefined;
         summaryDirty?: (boolean | null) | undefined;
         ragEnabled?: (boolean | null) | undefined;
+        headers?: Record<string, string> | undefined;
         notes?: Record<string, import("@vance/generated").DocumentNoteDto> | undefined;
     }[]>;
     activeTabId: import("vue").Ref<string | null, string | null>;
@@ -353,6 +368,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         autoSummary?: (boolean | null) | undefined;
         summaryDirty?: (boolean | null) | undefined;
         ragEnabled?: (boolean | null) | undefined;
+        headers?: Record<string, string> | undefined;
         notes?: Record<string, import("@vance/generated").DocumentNoteDto> | undefined;
     }[], CortexDocument[] | {
         id: string;
@@ -376,6 +392,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         autoSummary?: (boolean | null) | undefined;
         summaryDirty?: (boolean | null) | undefined;
         ragEnabled?: (boolean | null) | undefined;
+        headers?: Record<string, string> | undefined;
         notes?: Record<string, import("@vance/generated").DocumentNoteDto> | undefined;
     }[]>;
     openTabs: import("vue").Ref<{
@@ -400,6 +417,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         autoSummary?: (boolean | null) | undefined;
         summaryDirty?: (boolean | null) | undefined;
         ragEnabled?: (boolean | null) | undefined;
+        headers?: Record<string, string> | undefined;
         notes?: Record<string, import("@vance/generated").DocumentNoteDto> | undefined;
     }[], CortexDocument[] | {
         id: string;
@@ -423,6 +441,7 @@ export declare const useCortexStore: import("pinia").StoreDefinition<"cortex", P
         autoSummary?: (boolean | null) | undefined;
         summaryDirty?: (boolean | null) | undefined;
         ragEnabled?: (boolean | null) | undefined;
+        headers?: Record<string, string> | undefined;
         notes?: Record<string, import("@vance/generated").DocumentNoteDto> | undefined;
     }[]>;
     activeTabId: import("vue").Ref<string | null, string | null>;

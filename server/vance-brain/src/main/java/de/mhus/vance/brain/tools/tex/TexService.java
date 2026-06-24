@@ -37,8 +37,8 @@ import org.yaml.snakeyaml.Yaml;
  *   <li>Dispose the temp RootDir (always, even on failure)</li>
  * </ol>
  *
- * <p>Timeout: 120s via latexmk's own {@code -timeout} flag, 150s as a
- * hard {@code Process.waitFor} dead-man's-switch. Concurrency: each
+ * <p>Timeout: 150s hard {@code Process.waitFor} dead-man's-switch.
+ * Concurrency: each
  * build gets its own UUID-named RootDir, so parallel builds are isolated.
  */
 @Service
@@ -50,7 +50,6 @@ public class TexService {
     private final WorkspaceService workspaceService;
 
     private static final long PROCESS_TIMEOUT_SECONDS = 150;
-    private static final int LATEXMK_TIMEOUT_SECONDS = 120;
     private static final int LOG_EXCERPT_LINES = 50;
 
     public TexCompileResult compile(String tenantId, String projectId, String composePath,
@@ -63,6 +62,9 @@ public class TexService {
                 .orElseThrow(() -> new ToolException(
                         "tex-compose document not found: " + composePath));
         TexComposeManifest manifest = parseManifest(documentService.readContent(composeDoc));
+        String composeDir = composePath.contains("/")
+                ? composePath.substring(0, composePath.lastIndexOf('/'))
+                : "";
 
         // 2. Create temp workspace RootDir
         String dirName = "tex-build-" + UUID.randomUUID();
@@ -80,7 +82,7 @@ public class TexService {
 
         try {
             // 3. Transport files
-            transportFiles(tenantId, projectId, manifest, rootDir);
+            transportFiles(tenantId, projectId, composePath, manifest, rootDir);
 
             // 4. Run latexmk
             LatexmkResult result = runLatexmk(rootDir, manifest);
@@ -102,7 +104,7 @@ public class TexService {
             }
 
             byte[] pdfBytes = Files.readAllBytes(pdfPath);
-            String pdfDocPath = derivePdfPath(composePath, manifest.effectiveOutput());
+            String pdfDocPath = manifest.resolvePdfDocPath(composeDir);
 
             documentService.createOrReplaceBinary(
                     tenantId, projectId, pdfDocPath,
@@ -165,6 +167,7 @@ public class TexService {
                 readString(map, "engine"),
                 readString(map, "passes"),
                 readString(map, "output"),
+                readString(map, "outputPath"),
                 files);
     }
 
@@ -177,14 +180,21 @@ public class TexService {
 
     // ──────────────────── file transport ────────────────────
 
-    private void transportFiles(String tenantId, String projectId,
+    private void transportFiles(String tenantId, String projectId, String composePath,
                                 TexComposeManifest manifest, Path rootDir) throws IOException {
+        String composeDir = composePath.contains("/")
+                ? composePath.substring(0, composePath.lastIndexOf('/'))
+                : "";
         for (String filePath : manifest.files()) {
+            // File paths in the manifest are relative to the compose document's directory.
+            // Resolve them to full document paths for lookup.
+            String fullDocPath = composeDir.isEmpty() ? filePath : composeDir + "/" + filePath;
             DocumentDocument doc = documentService
-                    .findByPath(tenantId, projectId, filePath)
+                    .findByPath(tenantId, projectId, fullDocPath)
                     .orElseThrow(() -> new ToolException(
-                            "tex2pdf: source file not found: " + filePath));
+                            "tex2pdf: source file not found: " + fullDocPath));
 
+            // In the workspace, keep the relative path so latexmk can find them.
             Path target = rootDir.resolve(filePath);
             Path parent = target.getParent();
             if (parent != null && !Files.exists(parent)) {
@@ -199,6 +209,59 @@ public class TexService {
 
     // ──────────────────── latexmk execution ────────────────────
 
+    /**
+     * On macOS, TeX Live installs into {@code /Library/TeX/texbin} which is
+     * added to PATH by {@code path_helper} in login shells — but the JVM
+     * inherits only the minimal GUI PATH. We prepend the common TeX
+     * locations so that {@code latexmk} is found without manual PATH setup.
+     */
+    /**
+     * Resolves the absolute path to {@code latexmk}. On macOS, the JVM
+     * inherits only the minimal GUI PATH which does not include TeX Live
+     * locations. Instead of relying on PATH resolution, we check the known
+     * locations directly and return the first match. Falls back to
+     * "latexmk" (bare name) so that on Linux/Docker the normal PATH lookup
+     * still works.
+     */
+    private String resolveLatexmkBin() {
+        List<String> candidates = List.of(
+                "/Library/TeX/texbin/latexmk",                                   // macOS — MacTeX
+                "/usr/local/texlive/2024/bin/universal-darwin/latexmk",          // TeX Live 2024
+                "/usr/local/texlive/2024/bin/x86_64-darwin/latexmk",
+                "/usr/local/texlive/2023/bin/universal-darwin/latexmk",          // TeX Live 2023
+                "/usr/local/texlive/2023/bin/x86_64-darwin/latexmk",
+                "/usr/local/bin/latexmk",                                        // Homebrew
+                "/opt/homebrew/bin/latexmk",                                     // Apple Silicon Homebrew
+                "/usr/bin/latexmk");                                             // Linux
+        for (String candidate : candidates) {
+            if (Files.isExecutable(Path.of(candidate))) {
+                log.debug("tex2pdf: found latexmk at {}", candidate);
+                return candidate;
+            }
+        }
+        log.debug("tex2pdf: latexmk not found in known locations, falling back to bare 'latexmk'");
+        return "latexmk";
+    }
+
+    private void augmentPath(ProcessBuilder pb) {
+        String path = pb.environment().get("PATH");
+        if (path == null) path = "";
+        List<String> extra = List.of(
+                "/Library/TeX/texbin",           // macOS — MacTeX
+                "/usr/local/texlive/2024/bin/universal-darwin",
+                "/usr/local/texlive/2023/bin/universal-darwin",
+                "/opt/homebrew/bin");             // Apple Silicon homebrew
+        List<String> toAdd = new ArrayList<>();
+        for (String dir : extra) {
+            if (!path.contains(dir)) toAdd.add(dir);
+        }
+        if (!toAdd.isEmpty()) {
+            String newPath = String.join(":", toAdd) + (path.isEmpty() ? "" : ":" + path);
+            pb.environment().put("PATH", newPath);
+            log.debug("tex2pdf: augmented PATH to {}", newPath);
+        }
+    }
+
     private LatexmkResult runLatexmk(Path rootDir, TexComposeManifest manifest) throws IOException {
         String engineFlag = switch (manifest.effectiveEngine()) {
             case "xelatex" -> "-pdfxe";
@@ -206,17 +269,18 @@ public class TexService {
             default -> "-pdf";
         };
 
+        String latexmkBin = resolveLatexmkBin();
         List<String> cmd = List.of(
-                "latexmk",
+                latexmkBin,
                 engineFlag,
                 "-interaction=nonstopmode",
                 "-halt-on-error",
-                "-timeout=" + LATEXMK_TIMEOUT_SECONDS,
                 manifest.main());
 
         ProcessBuilder pb = new ProcessBuilder(cmd)
                 .directory(rootDir.toFile())
                 .redirectErrorStream(true);
+        augmentPath(pb);
         Process p;
         try {
             p = pb.start();
@@ -268,12 +332,6 @@ public class TexService {
 
     private static String truncate(String s, int max) {
         return s.length() <= max ? s : s.substring(0, max) + "...(truncated)";
-    }
-
-    private static String derivePdfPath(String composePath, String outputName) {
-        int slash = composePath.lastIndexOf('/');
-        String dir = slash >= 0 ? composePath.substring(0, slash) : "";
-        return dir.isEmpty() ? outputName : dir + "/" + outputName;
     }
 
     // ──────────────────── result types ────────────────────

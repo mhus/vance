@@ -150,6 +150,8 @@ export * from './insights/PrakRunInsightsDto';
 export * from './insights/SessionClientToolsDto';
 export * from './insights/SessionInsightsDto';
 export * from './insights/ThinkProcessInsightsDto';
+export * from './insights/UsageBucketDto';
+export * from './insights/UsageReportDto';
 export * from './insights/ZarniwoopInsightsDto';
 
 export * from './progress/MetricsPayload';

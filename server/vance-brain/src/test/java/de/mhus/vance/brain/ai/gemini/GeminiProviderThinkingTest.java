@@ -20,7 +20,8 @@ class GeminiProviderThinkingTest {
         return new ModelInfo("gemini", "test-model", 1_000_000, 8192, ModelSize.LARGE, set,
                 ModelInfo.DEFAULT_TIMEOUT_SECONDS,
                 ModelInfo.DEFAULT_ACTION_LOOP_CORRECTIONS,
-                false);
+                false,
+                /*pricing*/ null);
     }
 
     @Test

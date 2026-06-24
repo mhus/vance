@@ -339,6 +339,39 @@ public class SessionService {
     }
 
     /**
+     * Same as {@link #tryBind} but unconditionally takes over the bind from
+     * any other connection currently holding it. The caller MUST have
+     * already verified that the requesting user owns the session
+     * (matches {@link SessionDocument#getUserId()}). Used by the explicit
+     * resume paths so a user re-opening a session from a fresh tab / pod
+     * doesn't have to wait for the previous owner's heartbeat to go stale.
+     * Different users still can't reach this method because the resume
+     * handlers reject mismatched {@code userId} with a 403 before binding.
+     *
+     * <p>The previous owner's in-memory state on the other pod (connection
+     * registry, WS handle) goes stale but does no harm — the next frame
+     * from that connection gets rejected because Mongo's
+     * {@code boundConnectionId} no longer matches.
+     */
+    public boolean tryBindWithUserTakeover(String sessionId, String editorId) {
+        Instant now = Instant.now();
+        Query query = new Query(Criteria.where(F_SESSION_ID).is(sessionId)
+                .and(F_STATUS).nin(SessionStatus.CLOSED, SessionStatus.ARCHIVED));
+        Update update = new Update()
+                .set(F_BOUND_CONNECTION, editorId)
+                .set(F_LAST_ACTIVITY, now);
+        UpdateResult result = mongoTemplate.updateFirst(query, update, SessionDocument.class);
+        boolean bound = result.getMatchedCount() == 1;
+        if (bound) {
+            log.debug("Bound session '{}' to editor '{}' via same-user takeover", sessionId, editorId);
+        } else {
+            log.debug("Bind rejected for session '{}' — no matching non-CLOSED/-ARCHIVED record",
+                    sessionId);
+        }
+        return bound;
+    }
+
+    /**
      * Force-release the connection lock regardless of which connection
      * currently owns it. Used by Eddie's {@code MEDIATE} action when
      * the user explicitly asks to take over a session that another

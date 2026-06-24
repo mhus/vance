@@ -132,7 +132,8 @@ class LunkwillEngineSkeletonTest {
                 java.util.Set.of(),
                 /*timeoutSeconds*/ 60,
                 /*actionLoopCorrections*/ 2,
-                /*stripThinkTags*/ false);
+                /*stripThinkTags*/ false,
+                /*pricing*/ null);
         lenient().when(modelCatalog.lookupOrDefault(
                         any(), any(), any(), any(), any()))
                 .thenReturn(fakeModelInfo);

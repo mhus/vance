@@ -24,6 +24,7 @@
  */
 import { computed, onBeforeUnmount, ref, shallowRef, toRef, watch } from 'vue';
 import { CodeEditor, MarkdownView, accentColorDotClass } from '@/components';
+import { brainFetchBlob } from '@vance/shared';
 import type { DocumentDto } from '@vance/generated';
 import ImageView from '@/document/ImageView.vue';
 import DocumentPreview from '@/document/DocumentPreview.vue';
@@ -54,6 +55,33 @@ const store = useCortexStore();
 const binding = computed(() => resolveBinding(props.document));
 
 const reloading = ref(false);
+const downloading = ref(false);
+
+async function onDownload(): Promise<void> {
+  if (downloading.value) return;
+  downloading.value = true;
+  try {
+    const { blob, filename } = await brainFetchBlob(
+      `documents/${encodeURIComponent(props.document.id)}/content?download=true`,
+    );
+    const url = URL.createObjectURL(blob);
+    try {
+      const a = window.document.createElement('a');
+      a.href = url;
+      a.download = filename ?? props.document.name;
+      a.style.display = 'none';
+      window.document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } finally {
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+    }
+  } catch (e) {
+    console.warn('Failed to download document', e);
+  } finally {
+    downloading.value = false;
+  }
+}
 
 async function onReload(): Promise<void> {
   if (reloading.value) return;
@@ -636,6 +664,17 @@ function fmtDuration(ms: number | null): string {
           @click="openSlart('UPDATE')"
         >✨ Update</button>
       </template>
+      <button
+        type="button"
+        class="opacity-60 enabled:hover:opacity-100 enabled:hover:bg-base-200 disabled:cursor-default
+               rounded px-1.5 py-0.5 text-xs"
+        :disabled="downloading"
+        :title="`Download ${document.name}`"
+        :aria-label="`Download ${document.name}`"
+        @click="onDownload"
+      >
+        <span :class="downloading ? 'animate-pulse' : ''">⬇</span>
+      </button>
       <button
         type="button"
         class="opacity-60 hover:opacity-100 hover:bg-base-200 rounded px-1.5 py-0.5 text-xs"

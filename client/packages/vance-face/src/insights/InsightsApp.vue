@@ -41,6 +41,7 @@ import SchedulerTab from './SchedulerTab.vue';
 import UrsahooksTab from './UrsahooksTab.vue';
 import WorkflowsTab from './WorkflowsTab.vue';
 import RagTab from './RagTab.vue';
+import UsageCostTab from './UsageCostTab.vue';
 import ZarniwoopTab from './ZarniwoopTab.vue';
 import {
   ChatRole,
@@ -95,7 +96,7 @@ const filterStatus = ref<string | null>(null);
 // Sessions = the existing session-walker (default). Recipes / Tools
 // show project-scope read-only views fed from the same project filter
 // as the sidebar.
-type TopTab = 'sessions' | 'recipes' | 'tools' | 'workspace' | 'executions' | 'workflows' | 'events' | 'scheduler' | 'ursahooks' | 'rag' | 'research' | 'cluster' | 'addons';
+type TopTab = 'sessions' | 'recipes' | 'tools' | 'workspace' | 'executions' | 'workflows' | 'events' | 'scheduler' | 'ursahooks' | 'rag' | 'research' | 'cluster' | 'addons' | 'usage';
 const topTab = ref<TopTab>('sessions');
 
 const projectFilterOptions = computed(() => [
@@ -600,10 +601,15 @@ function clickProcessByMongoId(id: string | undefined | null): void {
           :class="{ 'tab--active': topTab === 'addons' }"
           @click="topTab = 'addons'"
         >Addons</button>
+        <button
+          class="tab"
+          :class="{ 'tab--active': topTab === 'usage' }"
+          @click="topTab = 'usage'"
+        >Usage &amp; Cost</button>
       </div>
 
       <div
-        v-if="topTab !== 'sessions' && topTab !== 'cluster' && topTab !== 'addons' && projectContextSource"
+        v-if="topTab !== 'sessions' && topTab !== 'cluster' && topTab !== 'addons' && topTab !== 'usage' && projectContextSource"
         class="text-xs opacity-70 -mt-1 mb-1"
       >
         Showing
@@ -626,6 +632,7 @@ function clickProcessByMongoId(id: string | undefined | null): void {
       <ZarniwoopTab v-else-if="topTab === 'research'" :project-id="effectiveProjectId" />
       <ClusterTab v-else-if="topTab === 'cluster'" />
       <AddonsTab v-else-if="topTab === 'addons'" />
+      <UsageCostTab v-else-if="topTab === 'usage'" />
 
       <template v-else-if="topTab === 'sessions'">
         <VEmptyState

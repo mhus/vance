@@ -86,6 +86,12 @@ anthropic:
     defaultMaxOutputTokens: 8192
     size: LARGE
     capabilities: [vision, pdf, thinking]
+    pricing:
+      currency: USD
+      inputPerMTok: 3.00
+      outputPerMTok: 15.00
+      cacheReadPerMTok: 0.30
+      cacheWritePerMTok: 3.75
   claude-opus-4:
     contextWindowTokens: 200000
     defaultMaxOutputTokens: 8192
@@ -114,6 +120,10 @@ gemini:
     size: SMALL
     capabilities: [vision, pdf]
     timeoutSeconds: 45
+    pricing:
+      currency: USD
+      inputPerMTok: 0.30
+      outputPerMTok: 2.50
   gemini-2.5-pro:
     contextWindowTokens: 2097152
     defaultMaxOutputTokens: 8192
@@ -128,6 +138,10 @@ gemini:
     # default is 2 corrections before the action-loop falls back to
     # the best free-text seen; Pro needs more head-room.
     actionLoopCorrections: 4
+    pricing:
+      currency: USD
+      inputPerMTok: 1.25
+      outputPerMTok: 10.00
   gemini-2.0-flash:
     contextWindowTokens: 1048576
     defaultMaxOutputTokens: 8192
@@ -389,6 +403,13 @@ openai:
     contextWindowTokens: 131000
     defaultMaxOutputTokens: 8192
     size: LARGE
+    # Cortecs gateway pricing (EUR-billed). Cache discount not yet
+    # surfaced via the OpenAI-compatible API used here — leave cache
+    # fields empty until the provider exposes them.
+    pricing:
+      currency: EUR
+      inputPerMTok: 0.355
+      outputPerMTok: 1.775
   glm-5-turbo:
     contextWindowTokens: 202752
     defaultMaxOutputTokens: 8192

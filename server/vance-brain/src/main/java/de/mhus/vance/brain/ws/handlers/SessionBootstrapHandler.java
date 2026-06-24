@@ -388,11 +388,15 @@ public class SessionBootstrapHandler implements WsHandler {
             return Optional.empty();
         }
         projectManager.claimForLocalPod(doc.getTenantId(), doc.getProjectId());
-        boolean bound = sessionService.tryBind(
+        // Same-user takeover: the userId-match check above guarantees the
+        // existing bind (if any) belongs to the same human. Allow them to
+        // resume from a fresh tab/pod without waiting for the previous
+        // editor's heartbeat to go stale.
+        boolean bound = sessionService.tryBindWithUserTakeover(
                 doc.getSessionId(), ctx.getEditorId());
         if (!bound) {
             sender.sendError(wsSession, envelope, 409,
-                    "Session '" + doc.getSessionId() + "' is already bound to another connection");
+                    "Session '" + doc.getSessionId() + "' is closed or archived");
             return Optional.empty();
         }
         return Optional.of(doc);

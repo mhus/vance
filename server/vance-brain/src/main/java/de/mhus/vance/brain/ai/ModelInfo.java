@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.ai;
 
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Static facts about a provider/model pair — context window, a
@@ -27,7 +28,34 @@ public record ModelInfo(
         Set<ModelCapability> capabilities,
         int timeoutSeconds,
         int actionLoopCorrections,
-        boolean stripThinkTags) {
+        boolean stripThinkTags,
+        @Nullable Pricing pricing) {
+
+    /**
+     * Per-million-token rates that drive cost accounting. Pulled from
+     * the {@code pricing:} block of an {@code ai-models.yaml} entry,
+     * snapshotted into every {@code LlmUsageDocument} write so a later
+     * rate change doesn't rewrite history.
+     *
+     * <p>{@code cacheReadPerMTok} / {@code cacheWritePerMTok} are
+     * optional — only providers with prompt-caching support (Anthropic
+     * today, Gemini partial) populate them. Missing values mean "no
+     * cache pricing" and cost stays zero for that bucket.
+     */
+    public record Pricing(
+            String currency,
+            double inputPerMTok,
+            double outputPerMTok,
+            @Nullable Double cacheReadPerMTok,
+            @Nullable Double cacheWritePerMTok) {
+
+        public Pricing {
+            if (currency == null || currency.isBlank()) {
+                throw new IllegalArgumentException("Pricing.currency is required");
+            }
+            currency = currency.trim().toUpperCase(java.util.Locale.ROOT);
+        }
+    }
 
     /**
      * Conservative per-call timeout used when neither the catalog

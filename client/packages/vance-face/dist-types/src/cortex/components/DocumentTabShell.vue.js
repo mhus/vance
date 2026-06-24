@@ -160,6 +160,10 @@ const effectiveMimeType = computed(() => {
         return 'application/xml';
     if (lower.endsWith('.sql'))
         return 'application/sql';
+    if (lower.endsWith('.tex') || lower.endsWith('.sty') || lower.endsWith('.cls') || lower.endsWith('.ltx') || lower.endsWith('.dtx'))
+        return 'text/x-tex';
+    if (lower.endsWith('.bib') || lower.endsWith('.bst'))
+        return 'text/x-bibtex';
     const explicit = props.document.mimeType;
     return explicit && explicit.trim() ? explicit : 'text/plain';
 });

@@ -252,6 +252,12 @@ profiles:
     params:
       workTarget:
         kind: CLIENT
+      # Splice the foot-uploaded agent.md / CLAUDE.md (whatever was in
+      # the user's cwd when the session connected) into the per-turn
+      # memory block. Without this flag MemoryContextLoader skips the
+      # client-uploaded doc entirely — see MemoryContextLoader.
+      # USE_CLIENT_AGENT_DOC_PARAM and ClientAgentDocService.
+      useClientAgentDoc: true
 
 tags:
   - worker

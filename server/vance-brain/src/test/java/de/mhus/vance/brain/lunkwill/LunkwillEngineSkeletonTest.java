@@ -118,11 +118,16 @@ class LunkwillEngineSkeletonTest {
         lenient().when(skillPromptComposer.compose(any(), any())).thenReturn(null);
         lenient().when(sessionService.findBySessionId(any())).thenReturn(Optional.empty());
 
+        de.mhus.vance.brain.memory.MemoryContextLoader memoryContextLoader =
+                mock(de.mhus.vance.brain.memory.MemoryContextLoader.class);
+        lenient().when(memoryContextLoader.composeBlock(any())).thenReturn(null);
+
         engine = new LunkwillEngine(
                 thinkProcessService, properties, engineChatFactory,
                 llmCallTracker, streaming, objectMapper,
                 enginePromptResolver, systemPromptComposer,
-                skillResolver, skillPromptComposer, sessionService);
+                skillResolver, skillPromptComposer, sessionService,
+                memoryContextLoader);
 
         process = new ThinkProcessDocument();
         process.setId(PROC_ID);

@@ -13,6 +13,7 @@ import de.mhus.vance.brain.ai.EngineChatFactory;
 import de.mhus.vance.brain.events.ChunkBatcher;
 import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.brain.events.StreamingProperties;
+import de.mhus.vance.brain.memory.MemoryContextLoader;
 import de.mhus.vance.brain.progress.LlmCallTracker;
 import de.mhus.vance.brain.prompt.PromptContextBuilder;
 import de.mhus.vance.brain.skill.ResolvedSkill;
@@ -196,6 +197,7 @@ public class LunkwillEngine implements ThinkEngine {
     private final SkillResolver skillResolver;
     private final SkillPromptComposer skillPromptComposer;
     private final SessionService sessionService;
+    private final MemoryContextLoader memoryContextLoader;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -575,8 +577,17 @@ public class LunkwillEngine implements ThinkEngine {
         String basePath = paramString(process, "promptDocument", DEFAULT_PROMPT_PATH);
         String engineDefault = enginePromptResolver.resolve(
                 process, basePath, ENGINE_FALLBACK_PROMPT);
-        messages.add(SystemMessage.from(
-                systemPromptComposer.compose(process, engineDefault, ctxBuilder)));
+        String base = systemPromptComposer.compose(process, engineDefault, ctxBuilder);
+        // Project memory: language hints, memory.* settings, project
+        // agent.md from the document cascade, foot-uploaded agent.md /
+        // CLAUDE.md (when recipe profile sets useClientAgentDoc:true),
+        // RAG auto-inject. Same block other LLM-driven engines append
+        // (Ford / Arthur / Eddie) — no engine-specific shape.
+        String memoryBlock = memoryContextLoader.composeBlock(process);
+        if (memoryBlock != null && !memoryBlock.isBlank()) {
+            base = base + "\n\n" + memoryBlock;
+        }
+        messages.add(SystemMessage.from(base));
         String skillSection = skillPromptComposer.compose(activeSkills, ctxBuilder.build());
         if (skillSection != null && !skillSection.isBlank()) {
             messages.add(SystemMessage.from(skillSection));

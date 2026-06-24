@@ -198,6 +198,49 @@ class MarkdownAnsiRendererTest {
     }
 
     @Test
+    void wide_table_shrinks_widest_column_to_fit_terminal() {
+        String md = "| Klasse | Tests | Was getestet wird |\n"
+                + "|---|---|---|\n"
+                + "| TexComposeManifestTest | 8 | "
+                + "Default-Engine (pdflatex), Default-Output (main.pdf), Trim, "
+                + ".tex-Stripping, Nested-Path |";
+        List<String> out = renderer.render(md, 80).stream()
+                .map(AttributedString::toString)
+                .collect(Collectors.toList());
+        for (String line : out) {
+            assertThat(line.length()).isLessThanOrEqualTo(80);
+        }
+        // The data row content must still appear, possibly split across
+        // multiple physical rows.
+        String joined = String.join("", out);
+        assertThat(joined).contains("TexComposeManifestTest")
+                .contains("Default-Engine")
+                .contains("Nested-Path");
+    }
+
+    @Test
+    void wrapped_table_body_keeps_borders_aligned() {
+        String md = "| A | B |\n|---|---|\n| short | "
+                + "this cell is significantly longer than the column will allow |";
+        List<AttributedString> out = renderer.render(md, 40);
+        // Every physical line must have identical length (borders align).
+        int len = out.get(0).length();
+        for (AttributedString line : out) {
+            assertThat(line.length()).isEqualTo(len);
+        }
+        assertThat(len).isLessThanOrEqualTo(40);
+    }
+
+    @Test
+    void unbounded_terminal_width_preserves_legacy_layout() {
+        // Calling render(String) (no width) must not start wrapping a
+        // table that previously rendered untouched.
+        String md = "| A | B |\n|---|---|\n| one | two |";
+        assertThat(renderer.render(md))
+                .containsExactlyElementsOf(renderer.render(md, Integer.MAX_VALUE));
+    }
+
+    @Test
     void overlong_unbroken_token_is_kept_intact() {
         FootConfig config = new FootConfig();
         config.getUi().getMarkdown().setWrapWidth(10);

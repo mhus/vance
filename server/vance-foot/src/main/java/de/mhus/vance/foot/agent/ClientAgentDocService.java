@@ -58,18 +58,22 @@ public class ClientAgentDocService {
     /** Default file names tried in order when no override is set. */
     public static final List<String> DEFAULT_DOC_FILENAMES = List.of("agent.md", "CLAUDE.md");
 
-    /** Soft size cap. Anything larger is dropped with a warning. */
-    public static final int MAX_DOC_BYTES = 64 * 1024;
+    /** Marker appended to truncated uploads — both visible in the LLM
+     *  prompt and recognisable in logs / network captures. */
+    static final String TRUNCATION_MARKER = "\n\n… [truncated]\n";
 
     private final ObjectProvider<ConnectionService> connectionProvider;
     private final ObjectProvider<ChatTerminal> terminalProvider;
+    private final ClientAgentDocProperties properties;
     private final AtomicReference<@Nullable Path> overridePath = new AtomicReference<>();
     private volatile boolean suppressed = false;
 
     public ClientAgentDocService(ObjectProvider<ConnectionService> connectionProvider,
-                                 ObjectProvider<ChatTerminal> terminalProvider) {
+                                 ObjectProvider<ChatTerminal> terminalProvider,
+                                 ClientAgentDocProperties properties) {
         this.connectionProvider = connectionProvider;
         this.terminalProvider = terminalProvider;
+        this.properties = properties;
     }
 
     /**
@@ -117,18 +121,20 @@ public class ClientAgentDocService {
             }
             return false;
         }
-        String content;
+        String raw;
         try {
-            content = Files.readString(path);
+            raw = Files.readString(path);
         } catch (IOException e) {
             log.warn("Failed to read {}: {}", path, e.toString());
             return false;
         }
-        if (content.length() > MAX_DOC_BYTES) {
-            log.warn("{} exceeds size cap ({} > {}) — not uploaded",
-                    path, content.length(), MAX_DOC_BYTES);
-            return false;
-        }
+        int rawSize = raw.length();
+        int warnBytes = properties.getWarnBytes();
+        int truncateBytes = properties.getTruncateBytes();
+        boolean truncated = truncateBytes > 0 && rawSize > truncateBytes;
+        String content = truncated
+                ? raw.substring(0, truncateBytes) + TRUNCATION_MARKER
+                : raw;
         ClientAgentUploadRequest request = ClientAgentUploadRequest.builder()
                 .path("./" + path.getFileName())
                 .content(content)
@@ -139,10 +145,22 @@ public class ClientAgentDocService {
                     request,
                     Object.class,
                     Duration.ofSeconds(10));
-            log.info("client-agent-upload: pushed {} ({} chars) to brain",
-                    path, content.length());
-            terminalInfo("agent doc: uploaded " + path.getFileName()
-                    + " (" + content.length() + " chars)");
+            log.info("client-agent-upload: pushed {} ({} chars{}{}) to brain",
+                    path, content.length(),
+                    truncated ? ", truncated from " + rawSize : "",
+                    (!truncated && warnBytes > 0 && rawSize > warnBytes)
+                            ? ", over warn threshold" : "");
+            String infoLine = "agent doc: uploaded " + path.getFileName()
+                    + " (" + content.length() + " chars)";
+            if (truncated) {
+                terminalWarn(infoLine + " — TRUNCATED from " + rawSize
+                        + " (limit " + truncateBytes + ")");
+            } else if (warnBytes > 0 && rawSize > warnBytes) {
+                terminalWarn(infoLine + " — large file, over warn threshold "
+                        + warnBytes);
+            } else {
+                terminalInfo(infoLine);
+            }
             return true;
         } catch (Exception e) {
             log.warn("client-agent-upload failed: {}", e.toString());
@@ -155,6 +173,13 @@ public class ClientAgentDocService {
         ChatTerminal terminal = terminalProvider.getIfAvailable();
         if (terminal != null) {
             terminal.info(message);
+        }
+    }
+
+    private void terminalWarn(String message) {
+        ChatTerminal terminal = terminalProvider.getIfAvailable();
+        if (terminal != null) {
+            terminal.warn(message);
         }
     }
 

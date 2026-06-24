@@ -35,7 +35,7 @@ import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
  * </ul>
  */
 @SpringBootApplication
-@ConfigurationPropertiesScan({"de.mhus.vance.foot.config", "de.mhus.vance.foot.transfer"})
+@ConfigurationPropertiesScan({"de.mhus.vance.foot.config", "de.mhus.vance.foot.transfer", "de.mhus.vance.foot.agent"})
 public class VanceFootApplication {
 
     static void main(String[] args) {

@@ -43,7 +43,8 @@ class LunkwillTodoBlockTest {
                 mock(SystemPromptComposer.class),
                 mock(SkillResolver.class),
                 mock(SkillPromptComposer.class),
-                mock(SessionService.class));
+                mock(SessionService.class),
+                mock(de.mhus.vance.brain.memory.MemoryContextLoader.class));
     }
 
     @Test

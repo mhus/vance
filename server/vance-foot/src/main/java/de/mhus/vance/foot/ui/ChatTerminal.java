@@ -182,7 +182,7 @@ public class ChatTerminal {
             return;
         }
         emitWithStyle(Verbosity.INFO, header, styleChat, false);
-        for (AttributedString line : renderer.render(content)) {
+        for (AttributedString line : renderer.render(content, width())) {
             String plain = line.toString();
             record(Verbosity.INFO, plain);
             if (line.length() == 0) {

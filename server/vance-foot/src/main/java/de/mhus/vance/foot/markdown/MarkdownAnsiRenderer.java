@@ -71,10 +71,24 @@ public class MarkdownAnsiRenderer {
     }
 
     /**
-     * Render {@code markdown} to a list of styled lines. Empty input
-     * yields an empty list.
+     * Render {@code markdown} to a list of styled lines using an
+     * effectively unbounded terminal width — tables keep their natural
+     * width without per-cell wrapping. Equivalent to
+     * {@link #render(String, int)} with {@link Integer#MAX_VALUE}.
      */
     public List<AttributedString> render(String markdown) {
+        return render(markdown, Integer.MAX_VALUE);
+    }
+
+    /**
+     * Render {@code markdown} to a list of styled lines, fitting tables
+     * into {@code terminalWidth} columns by shrinking the widest column
+     * until the total fits and wrapping cell content into the shrunk
+     * width. Code fences, headings and prose are unaffected by
+     * {@code terminalWidth} — prose wrap is governed by the separate
+     * {@code vance.ui.markdown.wrap-width} budget.
+     */
+    public List<AttributedString> render(String markdown, int terminalWidth) {
         List<AttributedString> out = new ArrayList<>();
         if (markdown == null || markdown.isEmpty()) return out;
         String[] raw = markdown.split("\n", -1);
@@ -111,7 +125,7 @@ public class MarkdownAnsiRenderer {
             }
             if (isTableStart(raw, i)) {
                 int j = collectTableEnd(raw, i);
-                out.addAll(renderTable(raw, i, j));
+                out.addAll(renderTable(raw, i, j, terminalWidth));
                 i = j;
                 continue;
             }
@@ -303,7 +317,10 @@ public class MarkdownAnsiRenderer {
         return i;
     }
 
-    private List<AttributedString> renderTable(String[] raw, int start, int end) {
+    /** Minimum content width per column we'll never shrink below. */
+    private static final int MIN_COL_WIDTH = 6;
+
+    private List<AttributedString> renderTable(String[] raw, int start, int end, int terminalWidth) {
         List<String[]> rows = new ArrayList<>();
         rows.add(splitCells(raw[start]));
         // Skip raw[start+1] (separator)
@@ -318,15 +335,51 @@ public class MarkdownAnsiRenderer {
                 widths[c] = Math.max(widths[c], displayWidth(row[c]));
             }
         }
+        shrinkToFit(widths, terminalWidth);
         List<AttributedString> out = new ArrayList<>();
         out.add(borderLine(widths, '┌', '┬', '┐'));
-        out.add(dataLine(rows.get(0), widths, /*header=*/true));
+        out.addAll(dataRow(rows.get(0), widths, /*header=*/true));
         out.add(borderLine(widths, '├', '┼', '┤'));
         for (int r = 1; r < rows.size(); r++) {
-            out.add(dataLine(rows.get(r), widths, false));
+            out.addAll(dataRow(rows.get(r), widths, false));
         }
         out.add(borderLine(widths, '└', '┴', '┘'));
         return out;
+    }
+
+    /**
+     * Iteratively shrink the widest column by one column until the
+     * total rendered table width fits {@code terminalWidth}. A column
+     * is never pushed below {@link #MIN_COL_WIDTH} — once every column
+     * has hit the floor we give up and let the table overflow (better
+     * to wrap to the next terminal row than to render a single char
+     * per column).
+     */
+    private static void shrinkToFit(int[] widths, int terminalWidth) {
+        if (terminalWidth <= 0 || terminalWidth == Integer.MAX_VALUE) return;
+        int cols = widths.length;
+        // Overhead per row: 1 (left border) + 2*cols (left/right padding
+        // per cell) + (cols-1) (column dividers) + 1 (right border)
+        // = 3*cols + 1, but the leading column also has 1 padding-left
+        // which we already counted (the `c == 0 ? "│ " : " │ "` choice
+        // changes which side the padding lands on, but the total stays
+        // 3*cols + 1).
+        int overhead = 3 * cols + 1;
+        int maxContent = terminalWidth - overhead;
+        if (maxContent < cols * MIN_COL_WIDTH) {
+            maxContent = cols * MIN_COL_WIDTH;
+        }
+        int sum = 0;
+        for (int w : widths) sum += w;
+        while (sum > maxContent) {
+            int widest = 0;
+            for (int c = 1; c < cols; c++) {
+                if (widths[c] > widths[widest]) widest = c;
+            }
+            if (widths[widest] <= MIN_COL_WIDTH) break;
+            widths[widest]--;
+            sum--;
+        }
     }
 
     private static String[] splitCells(String row) {
@@ -350,27 +403,51 @@ public class MarkdownAnsiRenderer {
         return sb.toAttributedString();
     }
 
-    private AttributedString dataLine(String[] row, int[] widths, boolean header) {
-        AttributedStringBuilder sb = new AttributedStringBuilder();
-        AttributedStyle border = tableBorderStyle == null ? AttributedStyle.DEFAULT : tableBorderStyle;
-        for (int c = 0; c < widths.length; c++) {
-            sb.style(border);
-            sb.append(c == 0 ? "│ " : " │ ");
-            sb.style(AttributedStyle.DEFAULT);
+    /**
+     * Render one logical table row to one-or-more physical rows. When a
+     * cell's content exceeds its assigned column width, the content
+     * wraps via {@link #wrap} into several display lines; the row's
+     * physical height becomes the max wrapped-line count across all
+     * cells. Cells with fewer lines are padded with blanks so the
+     * borders stay aligned.
+     */
+    private List<AttributedString> dataRow(String[] row, int[] widths, boolean header) {
+        int cols = widths.length;
+        AttributedStyle cellStyle = header
+                ? (headingStyle == null ? AttributedStyle.DEFAULT.bold() : headingStyle)
+                : AttributedStyle.DEFAULT;
+        List<List<AttributedString>> perCell = new ArrayList<>(cols);
+        int height = 1;
+        for (int c = 0; c < cols; c++) {
             String cell = c < row.length ? row[c] : "";
-            AttributedStyle cellStyle = header
-                    ? (headingStyle == null ? AttributedStyle.DEFAULT.bold() : headingStyle)
-                    : AttributedStyle.DEFAULT;
             AttributedStringBuilder inner = new AttributedStringBuilder();
             inner.style(cellStyle);
             appendInline(inner, cell, cellStyle);
-            sb.append(inner.toAttributedString());
-            int pad = widths[c] - displayWidth(cell);
-            if (pad > 0) sb.append(" ".repeat(pad));
+            List<AttributedString> wrapped = wrap(inner.toAttributedString(), widths[c]);
+            perCell.add(wrapped);
+            if (wrapped.size() > height) height = wrapped.size();
         }
-        sb.style(border);
-        sb.append(" │");
-        return sb.toAttributedString();
+        AttributedStyle border = tableBorderStyle == null ? AttributedStyle.DEFAULT : tableBorderStyle;
+        List<AttributedString> out = new ArrayList<>(height);
+        for (int line = 0; line < height; line++) {
+            AttributedStringBuilder sb = new AttributedStringBuilder();
+            for (int c = 0; c < cols; c++) {
+                sb.style(border);
+                sb.append(c == 0 ? "│ " : " │ ");
+                sb.style(AttributedStyle.DEFAULT);
+                List<AttributedString> wrapped = perCell.get(c);
+                AttributedString piece = line < wrapped.size()
+                        ? wrapped.get(line)
+                        : AttributedString.EMPTY;
+                sb.append(piece);
+                int pad = widths[c] - piece.length();
+                if (pad > 0) sb.append(" ".repeat(pad));
+            }
+            sb.style(border);
+            sb.append(" │");
+            out.add(sb.toAttributedString());
+        }
+        return out;
     }
 
     /**

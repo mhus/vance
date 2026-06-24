@@ -12,6 +12,7 @@ import de.mhus.vance.brain.ai.AiChatException;
 import de.mhus.vance.brain.ai.EngineChatFactory;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ModelInfo;
+import de.mhus.vance.brain.ai.VanceSystemMessage;
 import de.mhus.vance.brain.events.ChunkBatcher;
 import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.brain.events.StreamingProperties;
@@ -20,6 +21,7 @@ import de.mhus.vance.brain.memory.MemoryCompactionService;
 import de.mhus.vance.brain.memory.MemoryContextLoader;
 import de.mhus.vance.brain.progress.LlmCallTracker;
 import de.mhus.vance.brain.prompt.PromptContextBuilder;
+import de.mhus.vance.brain.prompt.PromptDateBlock;
 import de.mhus.vance.brain.skill.ResolvedSkill;
 import de.mhus.vance.brain.skill.SkillPromptComposer;
 import de.mhus.vance.brain.skill.SkillResolver;
@@ -329,14 +331,17 @@ public class LunkwillEngine implements ThinkEngine {
             ContextToolsApi tools = ctx.tools()
                     .withAdditional(skillPromptComposer.mergedTools(activeSkills));
             List<ToolSpecification> toolSpecs = tools.primaryAsLc4j();
-            List<ChatMessage> messages = buildPromptMessages(process, chatLog, extras, activeSkills);
 
-            // Resolve model context window for compaction triggers.
+            // Resolve model info before assembling the prompt — needed
+            // for compaction triggers AND for tier-aware Pebble vars +
+            // the current-date block in buildPromptMessages.
             ModelInfo modelInfo = modelCatalog.lookupOrDefault(
                     process.getTenantId(), process.getProjectId(),
                     bundle.primaryConfig().providerInstance(),
                     bundle.primaryConfig().provider(),
                     bundle.primaryConfig().modelName());
+            List<ChatMessage> messages = buildPromptMessages(
+                    process, chatLog, extras, activeSkills, modelInfo);
 
             // Turn-start compaction: identical to Arthur/Eddie/Ford.
             // Trigger ratio uses outgoing prompt vs model context window;
@@ -349,7 +354,8 @@ public class LunkwillEngine implements ThinkEngine {
                 log.info("Lunkwill.turn id='{}' compaction (turn-start) ok: {} msgs → {} chars (memory='{}')",
                         process.getId(), cr0.messagesCompacted(),
                         cr0.summaryChars(), cr0.memoryId());
-                messages = buildPromptMessages(process, chatLog, extras, activeSkills);
+                messages = buildPromptMessages(
+                        process, chatLog, extras, activeSkills, modelInfo);
             }
             // Anchor = index where the persisted-history prefix ends. The
             // Pi-style loop appends AiMessage replies + tool results past
@@ -422,7 +428,8 @@ public class LunkwillEngine implements ThinkEngine {
                             cr.summaryChars(), cr.memoryId());
                     List<ChatMessage> inflightTail =
                             new ArrayList<>(messages.subList(anchorSize, messages.size()));
-                    messages = buildPromptMessages(process, chatLog, extras, activeSkills);
+                    messages = buildPromptMessages(
+                            process, chatLog, extras, activeSkills, modelInfo);
                     anchorSize = messages.size();
                     messages.addAll(inflightTail);
                 }
@@ -626,10 +633,11 @@ public class LunkwillEngine implements ThinkEngine {
             ThinkProcessDocument process,
             ChatMessageService chatLog,
             List<SteerMessage> inboxExtras,
-            List<ResolvedSkill> activeSkills) {
+            List<ResolvedSkill> activeSkills,
+            @Nullable ModelInfo modelInfo) {
         List<ChatMessage> messages = new ArrayList<>();
         PromptContextBuilder ctxBuilder = PromptContextBuilder
-                .forProcess(process, /*modelInfo*/ null)
+                .forProcess(process, modelInfo)
                 .engine(NAME);
         String basePath = paramString(process, "promptDocument", DEFAULT_PROMPT_PATH);
         String engineDefault = enginePromptResolver.resolve(
@@ -649,13 +657,21 @@ public class LunkwillEngine implements ThinkEngine {
         if (skillSection != null && !skillSection.isBlank()) {
             messages.add(SystemMessage.from(skillSection));
         }
-        // Reduced Plan-Mode variant — when the process has todos, drop
-        // a per-turn TodoList block so the LLM sees the current plan,
-        // the current step, and how to update both. See
-        // specification/lunkwill-engine.md §9.2.
+        // Current-date block (recipe-param promptDateGranularity:
+        // auto/day/hour). DYNAMIC so date rollover doesn't bust the
+        // cached static prefix. See PromptDateBlock.
+        PromptDateBlock.appendDynamicMessage(
+                messages, process, modelInfo == null ? null : modelInfo.size());
+        // Reduced Plan-Mode TodoList (see §9.2). Marked DYNAMIC so the
+        // Anthropic mapper places cache_control before this block —
+        // plan-state churn (PENDING → IN_PROGRESS → COMPLETED) doesn't
+        // invalidate the cached system+skills prefix. The mapper lifts
+        // it into the top-level system array; other providers see it
+        // as a plain SystemMessage. See
+        // specification/public/prompt-caching.md §5a.
         String todoBlock = buildTodoListBlock(process);
         if (!todoBlock.isBlank()) {
-            messages.add(SystemMessage.from(todoBlock));
+            messages.add(VanceSystemMessage.dynamic(todoBlock));
         }
         for (ChatMessageDocument msg : chatLog.activeHistory(
                 process.getTenantId(), process.getSessionId(), process.getId())) {

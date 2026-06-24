@@ -8,6 +8,8 @@ import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.brain.ai.AiChat;
 import de.mhus.vance.brain.ai.AiChatException;
 import de.mhus.vance.brain.ai.EngineChatFactory;
+import de.mhus.vance.brain.ai.ModelCatalog;
+import de.mhus.vance.brain.ai.ModelInfo;
 import de.mhus.vance.brain.events.ChunkBatcher;
 import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.brain.events.StreamingProperties;
@@ -156,6 +158,7 @@ public class TrillianUserEngine implements ThinkEngine {
     private final EnginePromptResolver enginePromptResolver;
     private final SystemPromptComposer systemPromptComposer;
     private final TrillianNatureRegistry natureRegistry;
+    private final ModelCatalog modelCatalog;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -286,7 +289,13 @@ public class TrillianUserEngine implements ThinkEngine {
 
             ContextToolsApi tools = ctx.tools();
             List<ToolSpecification> toolSpecs = tools.primaryAsLc4j();
-            List<ChatMessage> messages = buildPromptMessages(process, chatLog, extras, nature);
+            ModelInfo modelInfo = modelCatalog.lookupOrDefault(
+                    process.getTenantId(), process.getProjectId(),
+                    bundle.primaryConfig().providerInstance(),
+                    bundle.primaryConfig().provider(),
+                    bundle.primaryConfig().modelName());
+            List<ChatMessage> messages = buildPromptMessages(
+                    process, chatLog, extras, nature, modelInfo);
 
             log.debug("TrillianUser id='{}' model='{}' tools={} historyMsgs={}",
                     process.getId(), modelAlias, toolSpecs.size(), messages.size());
@@ -441,9 +450,15 @@ public class TrillianUserEngine implements ThinkEngine {
             ThinkProcessDocument process,
             ChatMessageService chatLog,
             List<SteerMessage> inboxExtras,
-            TrillianNature nature) {
+            TrillianNature nature,
+            @Nullable ModelInfo modelInfo) {
         List<ChatMessage> messages = new ArrayList<>();
-        messages.add(SystemMessage.from(composeSystemPrompt(process, nature)));
+        messages.add(SystemMessage.from(composeSystemPrompt(process, nature, modelInfo)));
+        // Current-date block (recipe-param promptDateGranularity:
+        // auto/day/hour). DYNAMIC — date rollover stays behind the
+        // cache marker. See PromptDateBlock.
+        de.mhus.vance.brain.prompt.PromptDateBlock.appendDynamicMessage(
+                messages, process, modelInfo == null ? null : modelInfo.size());
         for (ChatMessageDocument msg : chatLog.activeHistory(
                 process.getTenantId(), process.getSessionId(), process.getId())) {
             messages.add(toLangchain(msg));
@@ -457,7 +472,10 @@ public class TrillianUserEngine implements ThinkEngine {
         return messages;
     }
 
-    private String composeSystemPrompt(ThinkProcessDocument process, TrillianNature nature) {
+    private String composeSystemPrompt(
+            ThinkProcessDocument process,
+            TrillianNature nature,
+            @Nullable ModelInfo modelInfo) {
         String basePath = paramString(process, "promptDocument", DEFAULT_PROMPT_PATH);
         String engineDefault = enginePromptResolver.resolve(
                 process, basePath, ENGINE_FALLBACK_PROMPT);
@@ -466,7 +484,7 @@ public class TrillianUserEngine implements ThinkEngine {
             engineDefault = engineDefault + "\n\n" + addendum;
         }
         PromptContextBuilder ctxBuilder = PromptContextBuilder
-                .forProcess(process, /*modelInfo*/ null)
+                .forProcess(process, modelInfo)
                 .engine(NAME);
         return systemPromptComposer.compose(process, engineDefault, ctxBuilder);
     }

@@ -2461,6 +2461,12 @@ public class EddieEngine extends StructuredActionEngine {
             messages.add(SystemMessage.from(userBlock));
         }
 
+        // Current-date block (recipe-param promptDateGranularity:
+        // auto/day/hour, default none). DYNAMIC — date rollover stays
+        // behind the cache marker. See PromptDateBlock.
+        de.mhus.vance.brain.prompt.PromptDateBlock.appendDynamicMessage(
+                messages, process, modelInfo == null ? null : modelInfo.size());
+
         // ── DYNAMIC blocks — mutated by LEARN, ride outside cache ──
         // Persona / facts: rewritten by `LEARN` action. Memory block:
         // mutates on settings cascade changes. Each gets its own

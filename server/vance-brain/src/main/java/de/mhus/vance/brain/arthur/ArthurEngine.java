@@ -2386,6 +2386,12 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         }
         messages.add(SystemMessage.from(base));
 
+        // Current-date block (recipe-param promptDateGranularity:
+        // auto/day/hour, default none). DYNAMIC — date rollover stays
+        // behind the cache marker. See PromptDateBlock.
+        de.mhus.vance.brain.prompt.PromptDateBlock.appendDynamicMessage(
+                messages, process, modelInfo == null ? null : modelInfo.size());
+
         // ── DYNAMIC blocks — change tenant/project/turn-to-turn ──
         // Recipe catalog: depends on tenant + bundled recipes; mutates
         // when a recipe is added / removed in _vance.

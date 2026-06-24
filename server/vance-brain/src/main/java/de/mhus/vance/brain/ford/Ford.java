@@ -1161,6 +1161,11 @@ public class Ford implements ThinkEngine {
         if (skillSection != null && !skillSection.isBlank()) {
             messages.add(SystemMessage.from(skillSection));
         }
+        // Current-date block (recipe-param promptDateGranularity:
+        // auto/day/hour, default none). DYNAMIC — date rollover stays
+        // behind the cache marker. See PromptDateBlock.
+        de.mhus.vance.brain.prompt.PromptDateBlock.appendDynamicMessage(
+                messages, process, modelInfo == null ? null : modelInfo.size());
         for (MemoryDocument m : memoryService.activeByProcessAndKind(
                 process.getTenantId(), process.getId(), MemoryKind.ARCHIVED_CHAT)) {
             messages.add(SystemMessage.from(

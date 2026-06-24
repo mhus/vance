@@ -3,6 +3,7 @@ package de.mhus.vance.anus;
 import de.mhus.vance.anus.access.AccessProperties;
 import de.mhus.vance.anus.brain.AnusBrainProperties;
 import de.mhus.vance.anus.devmode.DevModeProperties;
+import de.mhus.vance.anus.setup.SetupBootstrap;
 import de.mhus.vance.anus.sudo.SudoBootstrap;
 import de.mhus.vance.shared.workspace.WorkspaceProperties;
 import org.springframework.boot.Banner;
@@ -38,13 +39,16 @@ import org.springframework.data.mongodb.repository.config.EnableMongoRepositorie
 public class VanceAnusApplication {
 
     public static void main(String[] args) {
-        // Strip --sudo flags before Spring Boot sees them — otherwise Spring
-        // Shell's NonInteractiveShellRunner would try to run "--sudo" as a
-        // shell command. SudoBootstrap stashes the parsed commands in a
-        // static holder that SudoShellRunner reads back inside the context.
+        // Strip --sudo and --setup flags before Spring Boot sees them —
+        // otherwise Spring Shell's NonInteractiveShellRunner would try to
+        // run them as shell commands. Each bootstrap stashes its result in
+        // a static holder that its dedicated ShellRunner reads back inside
+        // the context. SudoBootstrap parses first so --sudo arguments are
+        // consumed before SetupBootstrap scans the leftover argv.
         String[] remaining;
         try {
             remaining = SudoBootstrap.parse(args);
+            remaining = SetupBootstrap.parse(remaining);
         } catch (IllegalArgumentException e) {
             System.err.println("anus: " + e.getMessage());
             System.exit(2);
@@ -53,9 +57,10 @@ public class VanceAnusApplication {
         SpringApplication app = new SpringApplication(VanceAnusApplication.class);
         app.setWebApplicationType(WebApplicationType.NONE);
         app.setLogStartupInfo(false);
-        if (SudoBootstrap.isSudoMode()) {
-            // One-shot mode: stdout belongs to the calling script. The
-            // ASCII banner would clutter pipes and logs for no benefit.
+        if (SudoBootstrap.isSudoMode() || SetupBootstrap.isSetupMode()) {
+            // One-shot modes: stdout belongs to the calling script / the
+            // wizard prompts. The ASCII banner would clutter pipes, logs
+            // and the wizard UI.
             app.setBannerMode(Banner.Mode.OFF);
         }
         try {

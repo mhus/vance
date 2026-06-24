@@ -1,9 +1,13 @@
 package de.mhus.vance.foot.tools;
 
 import de.mhus.vance.foot.config.FootConfig;
+import de.mhus.vance.foot.tools.file.ClientFilePaths;
 import de.mhus.vance.foot.ui.ChatTerminal;
 import de.mhus.vance.foot.ui.StyleParser;
 import de.mhus.vance.foot.ui.Verbosity;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import org.jline.utils.AttributedStringBuilder;
@@ -40,6 +44,7 @@ public class ClientToolPrettyRenderer {
     private final FootConfig config;
     private final @Nullable AttributedStyle headerStyle;
     private final @Nullable AttributedStyle resultStyle;
+    private final FileDiffRenderer diffRenderer;
 
     public ClientToolPrettyRenderer(ChatTerminal terminal, FootConfig config) {
         this.terminal = terminal;
@@ -47,15 +52,33 @@ public class ClientToolPrettyRenderer {
         FootConfig.ToolOutput cfg = config.getUi().getToolOutput();
         this.headerStyle = StyleParser.parse(cfg.getHeader());
         this.resultStyle = StyleParser.parse(cfg.getResult());
+        this.diffRenderer = new FileDiffRenderer(terminal, cfg);
     }
 
     public boolean isEnabled() {
         return config.getUi().getToolOutput().isEnabled();
     }
 
+    /**
+     * Per-invocation render context produced by {@link #renderInvocation}
+     * and consumed by {@link #renderResult} / {@link #renderError}.
+     * Carries the file's pre-write content so the post-write diff can
+     * be computed without forcing the tool to round-trip it back.
+     */
+    public static final class State {
+        final String toolName;
+        final Map<String, Object> params;
+        final @Nullable String preContent;
+        State(String toolName, Map<String, Object> params, @Nullable String preContent) {
+            this.toolName = toolName;
+            this.params = params;
+            this.preContent = preContent;
+        }
+    }
+
     /** First line: {@code ⏺ Display(arg-summary)}. */
-    public void renderInvocation(String toolName, Map<String, Object> params) {
-        if (!isEnabled()) return;
+    public State renderInvocation(String toolName, Map<String, Object> params) {
+        if (!isEnabled()) return new State(toolName, params, null);
         String display = displayName(toolName);
         // Chrome around the summary: "⏺ " + display + "(" … ")"
         int chromeLen = 2 + display.length() + 2;
@@ -68,20 +91,25 @@ public class ClientToolPrettyRenderer {
             line.append("(").append(summary).append(")");
         }
         terminal.printlnStyled(Verbosity.INFO, line.toAttributedString());
+        String pre = capturePreContent(toolName, params);
+        return new State(toolName, params, pre);
     }
 
     /** Tail line: {@code   ⎿  <one-line outcome>}. */
-    public void renderResult(String toolName, Map<String, Object> result) {
+    public void renderResult(State state, Map<String, Object> result) {
         if (!isEnabled()) return;
-        String tail = summariseResult(toolName, result);
+        String tail = summariseResult(state.toolName, result);
         AttributedStringBuilder line = new AttributedStringBuilder();
         if (resultStyle != null) line.style(resultStyle);
         line.append("  ⎿  ").append(tail);
         terminal.printlnStyled(Verbosity.INFO, line.toAttributedString());
+        if (config.getUi().getToolOutput().isDiffEnabled()) {
+            renderDiff(state, result);
+        }
     }
 
     /** Tail line for failures: {@code   ⎿  Failed: <message>}. */
-    public void renderError(String toolName, String message) {
+    public void renderError(State state, String message) {
         if (!isEnabled()) return;
         AttributedStringBuilder line = new AttributedStringBuilder();
         if (resultStyle != null) line.style(resultStyle);
@@ -91,6 +119,62 @@ public class ClientToolPrettyRenderer {
         String text = message == null ? "(no detail)" : message;
         line.append("  ⎿  Failed: ").append(truncate(text, maxTail));
         terminal.printlnStyled(Verbosity.INFO, line.toAttributedString());
+    }
+
+    /**
+     * Read the file's current content for write/edit tools so the diff
+     * renderer has a "before" snapshot. Returns {@code null} for tools
+     * we don't diff, for files that don't exist yet (new-file case),
+     * or when the read fails — the diff renderer treats {@code null}
+     * as the empty string, so the result still renders sanely.
+     */
+    private static @Nullable String capturePreContent(String toolName, Map<String, Object> params) {
+        if (!"client_file_write".equals(toolName) && !"client_file_edit".equals(toolName)) {
+            return null;
+        }
+        String rawPath = string(params, "path");
+        if (rawPath.isEmpty()) return null;
+        try {
+            Path p = ClientFilePaths.resolve(rawPath);
+            if (!Files.isRegularFile(p)) return "";
+            return Files.readString(p, StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            // Don't propagate — diff rendering is cosmetic. The actual
+            // tool reads the file again and will report a real error
+            // if anything is wrong with the path.
+            return null;
+        }
+    }
+
+    private void renderDiff(State state, Map<String, Object> result) {
+        String postContent = computePostContent(state, result);
+        if (postContent == null) return;
+        String pre = state.preContent == null ? "" : state.preContent;
+        diffRenderer.render(pre, postContent);
+    }
+
+    /**
+     * Compute the post-write content for diffing without re-reading the
+     * file (cheap, deterministic). For {@code client_file_write} the
+     * full content is in the params; for {@code client_file_edit} we
+     * reconstruct it by applying the unique replace to {@link State#preContent}.
+     */
+    private static @Nullable String computePostContent(State state, Map<String, Object> result) {
+        return switch (state.toolName) {
+            case "client_file_write" -> string(state.params, "content");
+            case "client_file_edit" -> {
+                if (state.preContent == null) yield null;
+                String oldText = string(state.params, "oldText");
+                String newText = string(state.params, "newText");
+                if (oldText.isEmpty()) yield null;
+                int at = state.preContent.indexOf(oldText);
+                if (at < 0) yield null;
+                yield state.preContent.substring(0, at)
+                        + newText
+                        + state.preContent.substring(at + oldText.length());
+            }
+            default -> null;
+        };
     }
 
     // ---------------------------------------------------------------------

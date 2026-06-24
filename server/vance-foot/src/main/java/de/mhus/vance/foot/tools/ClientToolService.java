@@ -248,9 +248,9 @@ public class ClientToolService {
             return error(correlationId, security.denyReason(toolName, safeParams));
         }
         ClientToolPrettyRenderer renderer = rendererProvider.getIfAvailable();
-        if (renderer != null) {
-            renderer.renderInvocation(toolName, safeParams);
-        }
+        ClientToolPrettyRenderer.State renderState = renderer == null
+                ? null
+                : renderer.renderInvocation(toolName, safeParams);
         try {
             // Foot has no tenant/session/process state per dispatch — we
             // synthesise a thin context so the unified Tool interface
@@ -260,7 +260,7 @@ public class ClientToolService {
             Map<String, Object> result = tool.invoke(safeParams, ctx);
             Map<String, Object> safeResult = result == null ? new LinkedHashMap<>() : result;
             if (renderer != null) {
-                renderer.renderResult(toolName, safeResult);
+                renderer.renderResult(renderState, safeResult);
             }
             return ClientToolInvokeResponse.builder()
                     .correlationId(correlationId)
@@ -269,7 +269,7 @@ public class ClientToolService {
         } catch (RuntimeException e) {
             log.warn("ClientTool '{}' threw: {}", toolName, e.toString());
             if (renderer != null) {
-                renderer.renderError(toolName, e.getMessage());
+                renderer.renderError(renderState, e.getMessage());
             }
             return error(correlationId, "Tool failed: " + e.getMessage());
         }

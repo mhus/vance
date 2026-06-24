@@ -191,6 +191,30 @@ public class FootConfig {
         private boolean enabled = true;
         private String header = "fg:cyan,bold";
         private String result = "fg:bright-black";
+        /**
+         * Print a coloured line-diff after {@code client_file_write} /
+         * {@code client_file_edit} succeed: added lines green with a
+         * {@code +} prefix, removed lines red with {@code -}, plus a
+         * configurable number of context lines around each hunk, and a
+         * {@code ...} marker between hunks (and at the edges of the
+         * file). Off-by-one with {@link #enabled}: if the tool-output
+         * itself is suppressed, the diff is too.
+         */
+        private boolean diffEnabled = true;
+        /** Lines of unchanged context above/below each hunk. */
+        private int diffContextLines = 3;
+        /** Hard cap on total diff lines emitted; the renderer prints a
+         *  truncation marker if exceeded. Prevents flooding the terminal
+         *  on huge full-file rewrites. */
+        private int diffMaxLines = 200;
+        /** Style for "+" added lines. Defaults to green background. */
+        private String diffAdd = "fg:white,bg:green";
+        /** Style for "-" removed lines. Defaults to red background. */
+        private String diffRemove = "fg:white,bg:red";
+        /** Style for unchanged context lines (leading space prefix). */
+        private String diffContext = "fg:bright-black";
+        /** Style for the {@code ...} hunk separator / file-edge markers. */
+        private String diffMarker = "fg:white,bg:black,bold";
     }
 
     /**

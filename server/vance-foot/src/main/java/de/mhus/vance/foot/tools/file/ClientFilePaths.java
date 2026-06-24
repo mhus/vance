@@ -9,11 +9,11 @@ import java.nio.file.Path;
  * treats {@code "~"} as a literal segment, so the LLM's intent gets
  * lost without a deliberate expansion here.
  */
-final class ClientFilePaths {
+public final class ClientFilePaths {
 
     private ClientFilePaths() {}
 
-    static Path resolve(String raw) {
+    public static Path resolve(String raw) {
         if (raw == null || raw.isEmpty()) return Path.of("");
         String expanded = expandHome(raw);
         return Path.of(expanded);

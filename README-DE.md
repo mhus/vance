@@ -4,6 +4,11 @@
 
 Vance ist mehr als ein Chatbot oder Code-Assistent. Es ist ein Server, auf dem Aufträge über Stunden und Tage laufen, jeder Schritt sichtbar bleibt und jedes Ergebnis bis zu seiner Quelle rückverfolgbar ist.
 
+> [!WARNING]
+> **Beta.** Vance ist in aktiver Entwicklung. APIs, Datenmodell, Konfigurations-Keys und Engine-Verhalten können sich zwischen Releases ändern. Geeignet für Hands-on-Experimente und Early Adopters; noch nicht gehärtet für unbeaufsichtigten Produktiv-Einsatz.
+
+> 🇬🇧 English version: [`README.md`](README.md)
+
 ## Was Vance konkret macht
 
 - **Auftrag rein, Ergebnis raus.** Ein Auftrag ist mehr als eine Frage: er hat Kontext, Werkzeuge, ein Ziel. Vance entscheidet kontextabhängig, welche Engine, welches Recipe und welche Tools den Job erledigen — und arbeitet ihn ab, nicht im RAM einer Session, sondern als persistenten Think-Process in MongoDB.

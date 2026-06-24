@@ -253,7 +253,14 @@ onMounted(() => {
     EditorView.lineWrapping,
     EditorView.updateListener.of((u) => {
       if (u.docChanged) {
-        emit('update:modelValue', u.state.doc.toString());
+        // Skip the echo from our own modelValue-watcher dispatch
+        // (tab switch / external reload). A real user edit takes the
+        // doc to a value the parent hasn't seen yet, so it differs
+        // from props.modelValue and is emitted normally.
+        const next = u.state.doc.toString();
+        if (next !== props.modelValue) {
+          emit('update:modelValue', next);
+        }
       }
       // selectionSet covers both pointer + keyboard moves; docChanged
       // also implies a selection update (typing moves the caret), so

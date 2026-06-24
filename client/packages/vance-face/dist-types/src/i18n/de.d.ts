@@ -642,8 +642,6 @@ declare const _default: {
             empty: string;
         };
         preview: {
-            pdfRendering: string;
-            pdfError: string;
             binary: string;
         };
         mime: {

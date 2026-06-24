@@ -1,5 +1,6 @@
 import { computed, onBeforeUnmount, ref, shallowRef, toRef, watch } from 'vue';
 import { CodeEditor, MarkdownView, accentColorDotClass } from '@/components';
+import { brainFetchBlob } from '@vance/shared';
 import ImageView from '@/document/ImageView.vue';
 import DocumentPreview from '@/document/DocumentPreview.vue';
 import { useCortexStore } from '../stores/cortexStore';
@@ -15,6 +16,34 @@ const emit = defineEmits();
 const store = useCortexStore();
 const binding = computed(() => resolveBinding(props.document));
 const reloading = ref(false);
+const downloading = ref(false);
+async function onDownload() {
+    if (downloading.value)
+        return;
+    downloading.value = true;
+    try {
+        const { blob, filename } = await brainFetchBlob(`documents/${encodeURIComponent(props.document.id)}/content?download=true`);
+        const url = URL.createObjectURL(blob);
+        try {
+            const a = window.document.createElement('a');
+            a.href = url;
+            a.download = filename ?? props.document.name;
+            a.style.display = 'none';
+            window.document.body.appendChild(a);
+            a.click();
+            a.remove();
+        }
+        finally {
+            setTimeout(() => URL.revokeObjectURL(url), 0);
+        }
+    }
+    catch (e) {
+        console.warn('Failed to download document', e);
+    }
+    finally {
+        downloading.value = false;
+    }
+}
 async function onReload() {
     if (reloading.value)
         return;
@@ -588,6 +617,17 @@ if (__VLS_ctx.isJsLanguage) {
     }
 }
 __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+    ...{ onClick: (__VLS_ctx.onDownload) },
+    type: "button",
+    ...{ class: "\u006f\u0070\u0061\u0063\u0069\u0074\u0079\u002d\u0036\u0030\u0020\u0065\u006e\u0061\u0062\u006c\u0065\u0064\u003a\u0068\u006f\u0076\u0065\u0072\u003a\u006f\u0070\u0061\u0063\u0069\u0074\u0079\u002d\u0031\u0030\u0030\u0020\u0065\u006e\u0061\u0062\u006c\u0065\u0064\u003a\u0068\u006f\u0076\u0065\u0072\u003a\u0062\u0067\u002d\u0062\u0061\u0073\u0065\u002d\u0032\u0030\u0030\u0020\u0064\u0069\u0073\u0061\u0062\u006c\u0065\u0064\u003a\u0063\u0075\u0072\u0073\u006f\u0072\u002d\u0064\u0065\u0066\u0061\u0075\u006c\u0074\u000a\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0072\u006f\u0075\u006e\u0064\u0065\u0064\u0020\u0070\u0078\u002d\u0031\u002e\u0035\u0020\u0070\u0079\u002d\u0030\u002e\u0035\u0020\u0074\u0065\u0078\u0074\u002d\u0078\u0073" },
+    disabled: (__VLS_ctx.downloading),
+    title: (`Download ${__VLS_ctx.document.name}`),
+    'aria-label': (`Download ${__VLS_ctx.document.name}`),
+});
+__VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+    ...{ class: (__VLS_ctx.downloading ? 'animate-pulse' : '') },
+});
+__VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
     ...{ onClick: (...[$event]) => {
             __VLS_ctx.propertiesOpen = !__VLS_ctx.propertiesOpen;
         } },
@@ -1108,6 +1148,14 @@ if (__VLS_ctx.showSlart && __VLS_ctx.store.projectId) {
 /** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;
 /** @type {__VLS_StyleScopedClasses['hover:bg-base-200']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['enabled:hover:opacity-100']} */ ;
+/** @type {__VLS_StyleScopedClasses['enabled:hover:bg-base-200']} */ ;
+/** @type {__VLS_StyleScopedClasses['disabled:cursor-default']} */ ;
+/** @type {__VLS_StyleScopedClasses['rounded']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-1.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-0.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
 /** @type {__VLS_StyleScopedClasses['hover:opacity-100']} */ ;
 /** @type {__VLS_StyleScopedClasses['hover:bg-base-200']} */ ;
 /** @type {__VLS_StyleScopedClasses['rounded']} */ ;
@@ -1285,6 +1333,8 @@ const __VLS_self = (await import('vue')).defineComponent({
             store: store,
             binding: binding,
             reloading: reloading,
+            downloading: downloading,
+            onDownload: onDownload,
             onReload: onReload,
             propertiesOpen: propertiesOpen,
             notesOpen: notesOpen,

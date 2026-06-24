@@ -648,8 +648,6 @@ export default {
             empty: 'Keine Hilfe-Inhalte für diese Ressource.',
         },
         preview: {
-            pdfRendering: 'PDF wird gerendert…',
-            pdfError: 'PDF-Fehler: {error}',
             binary: 'Keine Vorschau für diesen Dateityp — bitte den Download-Button nutzen.',
         },
         mime: {

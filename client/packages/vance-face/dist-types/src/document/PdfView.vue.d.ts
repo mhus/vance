@@ -1,4 +1,3 @@
-import '../polyfills/mapGetOrInsert';
 import type { DocumentDto } from '@vance/generated';
 import type { EmbedRef } from '@/kindRenderers/parseVanceUri';
 interface Props {

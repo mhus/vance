@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   EditorShell,
@@ -98,6 +98,160 @@ const filterStatus = ref<string | null>(null);
 // as the sidebar.
 type TopTab = 'sessions' | 'recipes' | 'tools' | 'workspace' | 'executions' | 'workflows' | 'events' | 'scheduler' | 'ursahooks' | 'rag' | 'research' | 'cluster' | 'addons' | 'usage';
 const topTab = ref<TopTab>('sessions');
+
+// Top-tab inventory. Order is significant: tabs to the left stay
+// visible in the bar, tabs to the right are the first to spill into
+// the "More ▾" dropdown when the row would overflow. Most-used tabs
+// (Sessions, Recipes, Tools) live left so they're always reachable
+// without an extra click.
+const ALL_TABS: ReadonlyArray<{ key: TopTab; label: string }> = [
+  { key: 'sessions', label: 'Sessions' },
+  { key: 'recipes', label: 'Recipes' },
+  { key: 'tools', label: 'Tools' },
+  { key: 'workspace', label: 'Workspace' },
+  { key: 'executions', label: 'Executions' },
+  { key: 'workflows', label: 'Workflows' },
+  { key: 'events', label: 'Events' },
+  { key: 'scheduler', label: 'Scheduler' },
+  { key: 'ursahooks', label: 'Hooks' },
+  { key: 'rag', label: 'RAG' },
+  { key: 'research', label: 'Research' },
+  { key: 'cluster', label: 'Cluster' },
+  { key: 'addons', label: 'Addons' },
+  { key: 'usage', label: 'Usage & Cost' },
+];
+
+const tabBarRef = ref<HTMLDivElement | null>(null);
+const tabPhantomRef = ref<HTMLDivElement | null>(null);
+const moreBtnRef = ref<HTMLButtonElement | null>(null);
+const moreDropdownRef = ref<HTMLDivElement | null>(null);
+const moreOpen = ref(false);
+// Teleported dropdown lives in <body>, so it needs its own viewport
+// coordinates. Recomputed every time the menu opens + on scroll/resize
+// while open so it tracks the More button.
+const moreMenuPos = ref<{ top: number; right: number }>({ top: 0, right: 0 });
+// How many tabs fit inline. Initial value optimistic (everything fits);
+// recalcVisibleTabs() narrows it on first paint + on every resize.
+const visibleCount = ref(ALL_TABS.length);
+
+const visibleTopTabs = computed(() => {
+  const visible = ALL_TABS.slice(0, visibleCount.value);
+  const overflow = ALL_TABS.slice(visibleCount.value);
+  // If the active tab landed in the overflow, swap it into the last
+  // visible slot so the user always sees their current selection in
+  // the bar (the "More" button still glows because an overflow item
+  // *was* active before the swap).
+  if (overflow.some((t) => t.key === topTab.value) && visible.length > 0) {
+    const active = ALL_TABS.find((t) => t.key === topTab.value)!;
+    return [...visible.slice(0, -1), active];
+  }
+  return visible;
+});
+
+const overflowTopTabs = computed(() => {
+  const visibleKeys = new Set(visibleTopTabs.value.map((t) => t.key));
+  return ALL_TABS.filter((t) => !visibleKeys.has(t.key));
+});
+
+function recalcVisibleTabs(): void {
+  const container = tabBarRef.value;
+  const phantom = tabPhantomRef.value;
+  if (!container || !phantom) return;
+
+  const containerWidth = container.clientWidth;
+  if (containerWidth <= 0) return;
+
+  // Reserve room for the "More ▾" button — measure from phantom,
+  // fall back to a conservative width if it hasn't rendered yet.
+  const moreEl = phantom.querySelector<HTMLElement>('[data-more-phantom]');
+  const moreWidth = moreEl?.offsetWidth ?? 80;
+  const gap = 4;
+
+  const tabEls = phantom.querySelectorAll<HTMLElement>('[data-tab-phantom]');
+  // Single pass: try fitting all tabs first (no More button needed).
+  let totalAll = 0;
+  for (let i = 0; i < tabEls.length; i++) {
+    totalAll += tabEls[i].offsetWidth + (i === 0 ? 0 : gap);
+  }
+  if (totalAll <= containerWidth) {
+    visibleCount.value = ALL_TABS.length;
+    return;
+  }
+
+  // Doesn't all fit — reserve space for More and greedy-fit from left.
+  const budget = containerWidth - moreWidth - gap;
+  let used = 0;
+  let count = 0;
+  for (let i = 0; i < tabEls.length; i++) {
+    const w = tabEls[i].offsetWidth + (i === 0 ? 0 : gap);
+    if (used + w > budget) break;
+    used += w;
+    count++;
+  }
+  visibleCount.value = Math.max(1, count);
+}
+
+function selectTopTab(key: TopTab): void {
+  topTab.value = key;
+  moreOpen.value = false;
+}
+
+function toggleMoreMenu(): void {
+  if (moreOpen.value) {
+    moreOpen.value = false;
+    return;
+  }
+  updateMoreMenuPosition();
+  moreOpen.value = true;
+}
+
+/** Snap the teleported menu under the More button (right-aligned). */
+function updateMoreMenuPosition(): void {
+  const btn = moreBtnRef.value;
+  if (!btn) return;
+  const r = btn.getBoundingClientRect();
+  moreMenuPos.value = {
+    top: r.bottom + 4,
+    right: Math.max(8, window.innerWidth - r.right),
+  };
+}
+
+function handleMoreOutsideClick(e: MouseEvent): void {
+  if (!moreOpen.value) return;
+  const target = e.target as Node | null;
+  if (target && moreBtnRef.value?.contains(target)) return;
+  if (target && moreDropdownRef.value?.contains(target)) return;
+  moreOpen.value = false;
+}
+
+function handleMoreReposition(): void {
+  if (moreOpen.value) updateMoreMenuPosition();
+}
+
+let tabBarObserver: ResizeObserver | null = null;
+onMounted(() => {
+  nextTick(() => recalcVisibleTabs());
+  if (typeof ResizeObserver !== 'undefined' && tabBarRef.value) {
+    tabBarObserver = new ResizeObserver(() => {
+      recalcVisibleTabs();
+      handleMoreReposition();
+    });
+    tabBarObserver.observe(tabBarRef.value);
+  }
+  document.addEventListener('click', handleMoreOutsideClick);
+  // Keep the teleported menu pinned to the More button under scroll
+  // or viewport resize — without these, scrolling the page would
+  // leave the menu floating where it was first opened.
+  window.addEventListener('scroll', handleMoreReposition, true);
+  window.addEventListener('resize', handleMoreReposition);
+});
+onBeforeUnmount(() => {
+  tabBarObserver?.disconnect();
+  tabBarObserver = null;
+  document.removeEventListener('click', handleMoreOutsideClick);
+  window.removeEventListener('scroll', handleMoreReposition, true);
+  window.removeEventListener('resize', handleMoreReposition);
+});
 
 const projectFilterOptions = computed(() => [
   { value: '', label: t('insights.filters.allProjects') },
@@ -534,78 +688,78 @@ function clickProcessByMongoId(id: string | undefined | null): void {
 
       <!-- Project-level top tab bar — Sessions stays the default
            selection-driven view; Recipes / Tools take the active
-           filter project and render the cascade-resolved list. -->
-      <div class="tab-bar mb-1">
+           filter project and render the cascade-resolved list.
+           Overflow handling: tabs that don't fit horizontally
+           collapse into a "More ▾" dropdown driven by ResizeObserver
+           (see recalcVisibleTabs). -->
+      <div
+        ref="tabBarRef"
+        class="tab-bar tab-bar--overflow mb-1"
+      >
         <button
+          v-for="tab in visibleTopTabs"
+          :key="tab.key"
           class="tab"
-          :class="{ 'tab--active': topTab === 'sessions' }"
-          @click="topTab = 'sessions'"
-        >Sessions</button>
+          :class="{ 'tab--active': topTab === tab.key }"
+          @click="selectTopTab(tab.key)"
+        >{{ tab.label }}</button>
+        <div
+          v-if="overflowTopTabs.length > 0"
+          class="tab-more"
+        >
+          <button
+            ref="moreBtnRef"
+            class="tab tab-more__btn"
+            :class="{ 'tab--active': overflowTopTabs.some((t) => t.key === topTab) }"
+            @click.stop="toggleMoreMenu"
+          >More ▾</button>
+        </div>
+      </div>
+
+      <!-- Dropdown teleported to body so the parent .tab-bar's
+           overflow: hidden (needed to keep the row clean during
+           recalc) doesn't clip the menu. Positioned via fixed coords
+           recomputed from moreBtnRef's bounding rect on open + on
+           scroll/resize. -->
+      <Teleport to="body">
+        <div
+          v-if="moreOpen && overflowTopTabs.length > 0"
+          ref="moreDropdownRef"
+          class="tab-more__menu"
+          :style="{ top: `${moreMenuPos.top}px`, right: `${moreMenuPos.right}px` }"
+        >
+          <button
+            v-for="tab in overflowTopTabs"
+            :key="tab.key"
+            class="tab-more__item"
+            :class="{ 'tab-more__item--active': topTab === tab.key }"
+            @click="selectTopTab(tab.key)"
+          >{{ tab.label }}</button>
+        </div>
+      </Teleport>
+
+      <!-- Hidden measurement strip — carries every tab + the More
+           button at their natural width so recalcVisibleTabs() can
+           decide how many fit in the real bar. Position absolute
+           keeps it out of layout; aria-hidden + tabindex stop screen
+           readers and keyboard focus from reaching it. -->
+      <div
+        ref="tabPhantomRef"
+        class="tab-bar tab-bar--phantom"
+        aria-hidden="true"
+      >
         <button
+          v-for="tab in ALL_TABS"
+          :key="`phantom-${tab.key}`"
           class="tab"
-          :class="{ 'tab--active': topTab === 'recipes' }"
-          @click="topTab = 'recipes'"
-        >Recipes</button>
+          tabindex="-1"
+          data-tab-phantom
+        >{{ tab.label }}</button>
         <button
-          class="tab"
-          :class="{ 'tab--active': topTab === 'tools' }"
-          @click="topTab = 'tools'"
-        >Tools</button>
-        <button
-          class="tab"
-          :class="{ 'tab--active': topTab === 'workspace' }"
-          @click="topTab = 'workspace'"
-        >Workspace</button>
-        <button
-          class="tab"
-          :class="{ 'tab--active': topTab === 'executions' }"
-          @click="topTab = 'executions'"
-        >Executions</button>
-        <button
-          class="tab"
-          :class="{ 'tab--active': topTab === 'workflows' }"
-          @click="topTab = 'workflows'"
-        >Workflows</button>
-        <button
-          class="tab"
-          :class="{ 'tab--active': topTab === 'events' }"
-          @click="topTab = 'events'"
-        >Events</button>
-        <button
-          class="tab"
-          :class="{ 'tab--active': topTab === 'scheduler' }"
-          @click="topTab = 'scheduler'"
-        >Scheduler</button>
-        <button
-          class="tab"
-          :class="{ 'tab--active': topTab === 'ursahooks' }"
-          @click="topTab = 'ursahooks'"
-        >Hooks</button>
-        <button
-          class="tab"
-          :class="{ 'tab--active': topTab === 'rag' }"
-          @click="topTab = 'rag'"
-        >RAG</button>
-        <button
-          class="tab"
-          :class="{ 'tab--active': topTab === 'research' }"
-          @click="topTab = 'research'"
-        >Research</button>
-        <button
-          class="tab"
-          :class="{ 'tab--active': topTab === 'cluster' }"
-          @click="topTab = 'cluster'"
-        >Cluster</button>
-        <button
-          class="tab"
-          :class="{ 'tab--active': topTab === 'addons' }"
-          @click="topTab = 'addons'"
-        >Addons</button>
-        <button
-          class="tab"
-          :class="{ 'tab--active': topTab === 'usage' }"
-          @click="topTab = 'usage'"
-        >Usage &amp; Cost</button>
+          class="tab tab-more__btn"
+          tabindex="-1"
+          data-more-phantom
+        >More ▾</button>
       </div>
 
       <div
@@ -1261,6 +1415,25 @@ function clickProcessByMongoId(id: string | undefined | null): void {
   border-bottom: 1px solid hsl(var(--bc) / 0.15);
   padding-bottom: 0.25rem;
 }
+/* Overflow variant: kept on a single row; ResizeObserver in
+   InsightsApp decides which tabs collapse into "More ▾". The
+   container clips so a momentary layout glitch (1-frame mismatch
+   between recalc and paint) never spills below the border. */
+.tab-bar--overflow {
+  flex-wrap: nowrap;
+  overflow: hidden;
+  align-items: center;
+}
+/* Hidden measurement strip — must stay rendered (so offsetWidth is
+   accurate) but out of the visual flow. */
+.tab-bar--phantom {
+  position: absolute;
+  top: -9999px;
+  left: -9999px;
+  visibility: hidden;
+  pointer-events: none;
+  border-bottom: none;
+}
 .tab {
   padding: 0.35rem 0.85rem;
   border-radius: 0.375rem;
@@ -1268,7 +1441,19 @@ function clickProcessByMongoId(id: string | undefined | null): void {
   border: 1px solid transparent;
   font-size: 0.875rem;
   cursor: pointer;
+  white-space: nowrap;
 }
+.tab-more {
+  position: relative;
+}
+.tab-more__btn {
+  /* Slight visual hint that this opens something different from a
+     plain tab — softer outline, same hit area. */
+  font-variant: tabular-nums;
+}
+/* Tab-more__menu styles are in the un-scoped <style> block below —
+   the menu is teleported to <body>, so Vue's scoped-attribute
+   selectors would not match it. */
 .tab:hover { background: hsl(var(--bc) / 0.06); }
 .tab--active {
   background: hsl(var(--p) / 0.12);
@@ -1333,4 +1518,46 @@ function clickProcessByMongoId(id: string | undefined | null): void {
 .marvin-status { font-size: 0.75rem; opacity: 0.6; }
 .marvin-goal { font-size: 0.875rem; }
 .marvin-failure { font-size: 0.75rem; color: hsl(var(--er)); padding-left: 1rem; }
+</style>
+
+<!-- Un-scoped styles: the More-button dropdown is teleported to
+     <body>, which puts it outside this component's scoped-CSS attribute
+     reach. Anything that needs to style a teleported element must live
+     here. Keep class names component-prefixed (tab-more__*) so they
+     stay specific. -->
+<style>
+/* DaisyUI v4 publishes theme variables as oklch triplets
+   (e.g. --b1: 100% 0 0) — they must be wrapped in oklch(), not
+   hsl(). The --fallback-* sibling is a hex pre-computed by daisyui
+   for browsers that can't resolve oklch (matches daisyui's own
+   convention seen on :root in compiled CSS). */
+.tab-more__menu {
+  position: fixed;
+  min-width: 180px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  padding: 0.25rem;
+  background: var(--fallback-b1, oklch(var(--b1) / 1));
+  border: 1px solid oklch(var(--bc) / 0.15);
+  border-radius: 0.5rem;
+  box-shadow: 0 8px 24px oklch(var(--bc) / 0.12);
+  color: var(--fallback-bc, oklch(var(--bc) / 1));
+}
+.tab-more__item {
+  padding: 0.4rem 0.75rem;
+  border-radius: 0.25rem;
+  background: transparent;
+  border: none;
+  font-size: 0.875rem;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+  color: inherit;
+}
+.tab-more__item:hover { background: oklch(var(--bc) / 0.08); }
+.tab-more__item--active {
+  background: oklch(var(--p) / 0.12);
+  font-weight: 600;
+}
 </style>

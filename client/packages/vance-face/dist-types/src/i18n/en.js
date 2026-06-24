@@ -654,8 +654,6 @@ export default {
             empty: 'No help content for this resource.',
         },
         preview: {
-            pdfRendering: 'Rendering PDF…',
-            pdfError: 'PDF error: {error}',
             binary: 'No inline preview for this file type — use the download button.',
         },
         mime: {

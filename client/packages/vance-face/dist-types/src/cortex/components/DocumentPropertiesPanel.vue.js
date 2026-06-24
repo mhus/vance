@@ -173,14 +173,19 @@ debugger; /* PartiallyEnd: #3632/scriptSetup.vue */
 const __VLS_ctx = {};
 let __VLS_components;
 let __VLS_directives;
+/** @type {__VLS_StyleScopedClasses['properties-panel']} */ ;
+/** @type {__VLS_StyleScopedClasses['properties-panel']} */ ;
+/** @type {__VLS_StyleScopedClasses['properties-panel']} */ ;
+// CSS variable injection 
+// CSS variable injection end 
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "border-b border-base-300 bg-base-100 px-4 py-3 text-sm" },
+    ...{ class: "properties-panel border-b border-base-300 bg-base-100 px-3 py-2 text-xs" },
 });
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "grid grid-cols-1 md:grid-cols-2 gap-3" },
+    ...{ class: "grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1" },
 });
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "flex flex-col gap-2" },
+    ...{ class: "grid grid-cols-2 gap-x-2 gap-y-1" },
 });
 const __VLS_0 = {}.VInput;
 /** @type {[typeof __VLS_components.VInput, ]} */ ;
@@ -189,14 +194,12 @@ const __VLS_1 = __VLS_asFunctionalComponent(__VLS_0, new __VLS_0({
     modelValue: (__VLS_ctx.editName),
     label: "Name",
     placeholder: "filename",
-    help: "Filename only — folder stays. No slashes.",
     disabled: (__VLS_ctx.saving),
 }));
 const __VLS_2 = __VLS_1({
     modelValue: (__VLS_ctx.editName),
     label: "Name",
     placeholder: "filename",
-    help: "Filename only — folder stays. No slashes.",
     disabled: (__VLS_ctx.saving),
 }, ...__VLS_functionalComponentArgsRest(__VLS_1));
 const __VLS_4 = {}.VInput;
@@ -221,48 +224,49 @@ const __VLS_9 = __VLS_asFunctionalComponent(__VLS_8, new __VLS_8({
     modelValue: (__VLS_ctx.editTags),
     label: "Tags",
     placeholder: "comma, separated",
-    help: "Comma-separated",
     disabled: (__VLS_ctx.saving),
 }));
 const __VLS_10 = __VLS_9({
     modelValue: (__VLS_ctx.editTags),
     label: "Tags",
     placeholder: "comma, separated",
-    help: "Comma-separated",
     disabled: (__VLS_ctx.saving),
 }, ...__VLS_functionalComponentArgsRest(__VLS_9));
-const __VLS_12 = {}.VColorPicker;
-/** @type {[typeof __VLS_components.VColorPicker, ]} */ ;
+const __VLS_12 = {}.VSelect;
+/** @type {[typeof __VLS_components.VSelect, ]} */ ;
 // @ts-ignore
 const __VLS_13 = __VLS_asFunctionalComponent(__VLS_12, new __VLS_12({
-    modelValue: (__VLS_ctx.editColor),
-    label: "Color",
-    allowClear: true,
+    modelValue: (__VLS_ctx.editMime),
+    options: (__VLS_ctx.mimeOptions),
+    label: "MIME",
     disabled: (__VLS_ctx.saving),
 }));
 const __VLS_14 = __VLS_13({
+    modelValue: (__VLS_ctx.editMime),
+    options: (__VLS_ctx.mimeOptions),
+    label: "MIME",
+    disabled: (__VLS_ctx.saving),
+}, ...__VLS_functionalComponentArgsRest(__VLS_13));
+__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+    ...{ class: "col-span-2" },
+});
+const __VLS_16 = {}.VColorPicker;
+/** @type {[typeof __VLS_components.VColorPicker, ]} */ ;
+// @ts-ignore
+const __VLS_17 = __VLS_asFunctionalComponent(__VLS_16, new __VLS_16({
     modelValue: (__VLS_ctx.editColor),
     label: "Color",
     allowClear: true,
     disabled: (__VLS_ctx.saving),
-}, ...__VLS_functionalComponentArgsRest(__VLS_13));
-const __VLS_16 = {}.VSelect;
-/** @type {[typeof __VLS_components.VSelect, ]} */ ;
-// @ts-ignore
-const __VLS_17 = __VLS_asFunctionalComponent(__VLS_16, new __VLS_16({
-    modelValue: (__VLS_ctx.editMime),
-    options: (__VLS_ctx.mimeOptions),
-    label: "MIME",
-    disabled: (__VLS_ctx.saving),
 }));
 const __VLS_18 = __VLS_17({
-    modelValue: (__VLS_ctx.editMime),
-    options: (__VLS_ctx.mimeOptions),
-    label: "MIME",
+    modelValue: (__VLS_ctx.editColor),
+    label: "Color",
+    allowClear: true,
     disabled: (__VLS_ctx.saving),
 }, ...__VLS_functionalComponentArgsRest(__VLS_17));
 __VLS_asFunctionalElement(__VLS_intrinsicElements.dl, __VLS_intrinsicElements.dl)({
-    ...{ class: "grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 text-xs" },
+    ...{ class: "grid grid-cols-[max-content_1fr] gap-x-3 gap-y-0.5 self-start" },
 });
 __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
     ...{ class: "opacity-60" },
@@ -295,13 +299,13 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd
 (__VLS_ctx.document.createdBy ?? '—');
 if (__VLS_ctx.headerEntries.length > 0) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "mt-3 text-xs" },
+        ...{ class: "mt-2" },
     });
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "opacity-60 mb-1" },
+        ...{ class: "opacity-60 mb-0.5" },
     });
     __VLS_asFunctionalElement(__VLS_intrinsicElements.dl, __VLS_intrinsicElements.dl)({
-        ...{ class: "grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 bg-base-200 rounded px-2 py-1" },
+        ...{ class: "grid grid-cols-[max-content_1fr] gap-x-3 gap-y-0.5 bg-base-200 rounded px-2 py-1" },
     });
     for (const [[k, v]] of __VLS_getVForSourceType((__VLS_ctx.headerEntries))) {
         (k);
@@ -317,10 +321,10 @@ if (__VLS_ctx.headerEntries.length > 0) {
 }
 if (__VLS_ctx.document.summary) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "mt-3 text-xs" },
+        ...{ class: "mt-2" },
     });
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "opacity-60 mb-1" },
+        ...{ class: "opacity-60 mb-0.5" },
     });
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "bg-base-200 rounded px-2 py-1 whitespace-pre-wrap" },
@@ -333,18 +337,18 @@ if (__VLS_ctx.error) {
     // @ts-ignore
     const __VLS_21 = __VLS_asFunctionalComponent(__VLS_20, new __VLS_20({
         variant: "error",
-        ...{ class: "mt-3" },
+        ...{ class: "mt-2" },
     }));
     const __VLS_22 = __VLS_21({
         variant: "error",
-        ...{ class: "mt-3" },
+        ...{ class: "mt-2" },
     }, ...__VLS_functionalComponentArgsRest(__VLS_21));
     __VLS_23.slots.default;
     (__VLS_ctx.error);
     var __VLS_23;
 }
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "mt-3 flex justify-end" },
+    ...{ class: "mt-2 flex justify-end" },
 });
 const __VLS_24 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
@@ -388,24 +392,28 @@ const __VLS_38 = {
     onRestored: (__VLS_ctx.onRestored)
 };
 var __VLS_34;
+/** @type {__VLS_StyleScopedClasses['properties-panel']} */ ;
 /** @type {__VLS_StyleScopedClasses['border-b']} */ ;
 /** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;
 /** @type {__VLS_StyleScopedClasses['bg-base-100']} */ ;
-/** @type {__VLS_StyleScopedClasses['px-4']} */ ;
-/** @type {__VLS_StyleScopedClasses['py-3']} */ ;
-/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
 /** @type {__VLS_StyleScopedClasses['grid']} */ ;
 /** @type {__VLS_StyleScopedClasses['grid-cols-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['md:grid-cols-2']} */ ;
-/** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
-/** @type {__VLS_StyleScopedClasses['flex']} */ ;
-/** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
-/** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-x-4']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-y-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['grid']} */ ;
+/** @type {__VLS_StyleScopedClasses['grid-cols-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-x-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-y-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['col-span-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['grid']} */ ;
 /** @type {__VLS_StyleScopedClasses['grid-cols-[max-content_1fr]']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-x-3']} */ ;
-/** @type {__VLS_StyleScopedClasses['gap-y-1']} */ ;
-/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-y-0.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['self-start']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
 /** @type {__VLS_StyleScopedClasses['break-all']} */ ;
@@ -414,14 +422,13 @@ var __VLS_34;
 /** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
-/** @type {__VLS_StyleScopedClasses['mt-3']} */ ;
-/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['mt-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
-/** @type {__VLS_StyleScopedClasses['mb-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-0.5']} */ ;
 /** @type {__VLS_StyleScopedClasses['grid']} */ ;
 /** @type {__VLS_StyleScopedClasses['grid-cols-[max-content_1fr]']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-x-3']} */ ;
-/** @type {__VLS_StyleScopedClasses['gap-y-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-y-0.5']} */ ;
 /** @type {__VLS_StyleScopedClasses['bg-base-200']} */ ;
 /** @type {__VLS_StyleScopedClasses['rounded']} */ ;
 /** @type {__VLS_StyleScopedClasses['px-2']} */ ;
@@ -431,17 +438,16 @@ var __VLS_34;
 /** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
 /** @type {__VLS_StyleScopedClasses['break-all']} */ ;
 /** @type {__VLS_StyleScopedClasses['whitespace-pre-wrap']} */ ;
-/** @type {__VLS_StyleScopedClasses['mt-3']} */ ;
-/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['mt-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
-/** @type {__VLS_StyleScopedClasses['mb-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-0.5']} */ ;
 /** @type {__VLS_StyleScopedClasses['bg-base-200']} */ ;
 /** @type {__VLS_StyleScopedClasses['rounded']} */ ;
 /** @type {__VLS_StyleScopedClasses['px-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['py-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['whitespace-pre-wrap']} */ ;
-/** @type {__VLS_StyleScopedClasses['mt-3']} */ ;
-/** @type {__VLS_StyleScopedClasses['mt-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['mt-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['mt-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['justify-end']} */ ;
 var __VLS_dollars;

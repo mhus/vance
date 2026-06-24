@@ -1,4 +1,4 @@
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { EditorShell, MarkdownView, VAlert, VButton, VCard, VEmptyState, VInput, VSelect, } from '@/components';
 import { useTenantProjects } from '@/composables/useTenantProjects';
@@ -63,6 +63,153 @@ const filterProjectId = ref(null);
 const filterUserId = ref('');
 const filterStatus = ref(null);
 const topTab = ref('sessions');
+// Top-tab inventory. Order is significant: tabs to the left stay
+// visible in the bar, tabs to the right are the first to spill into
+// the "More ▾" dropdown when the row would overflow. Most-used tabs
+// (Sessions, Recipes, Tools) live left so they're always reachable
+// without an extra click.
+const ALL_TABS = [
+    { key: 'sessions', label: 'Sessions' },
+    { key: 'recipes', label: 'Recipes' },
+    { key: 'tools', label: 'Tools' },
+    { key: 'workspace', label: 'Workspace' },
+    { key: 'executions', label: 'Executions' },
+    { key: 'workflows', label: 'Workflows' },
+    { key: 'events', label: 'Events' },
+    { key: 'scheduler', label: 'Scheduler' },
+    { key: 'ursahooks', label: 'Hooks' },
+    { key: 'rag', label: 'RAG' },
+    { key: 'research', label: 'Research' },
+    { key: 'cluster', label: 'Cluster' },
+    { key: 'addons', label: 'Addons' },
+    { key: 'usage', label: 'Usage & Cost' },
+];
+const tabBarRef = ref(null);
+const tabPhantomRef = ref(null);
+const moreBtnRef = ref(null);
+const moreDropdownRef = ref(null);
+const moreOpen = ref(false);
+// Teleported dropdown lives in <body>, so it needs its own viewport
+// coordinates. Recomputed every time the menu opens + on scroll/resize
+// while open so it tracks the More button.
+const moreMenuPos = ref({ top: 0, right: 0 });
+// How many tabs fit inline. Initial value optimistic (everything fits);
+// recalcVisibleTabs() narrows it on first paint + on every resize.
+const visibleCount = ref(ALL_TABS.length);
+const visibleTopTabs = computed(() => {
+    const visible = ALL_TABS.slice(0, visibleCount.value);
+    const overflow = ALL_TABS.slice(visibleCount.value);
+    // If the active tab landed in the overflow, swap it into the last
+    // visible slot so the user always sees their current selection in
+    // the bar (the "More" button still glows because an overflow item
+    // *was* active before the swap).
+    if (overflow.some((t) => t.key === topTab.value) && visible.length > 0) {
+        const active = ALL_TABS.find((t) => t.key === topTab.value);
+        return [...visible.slice(0, -1), active];
+    }
+    return visible;
+});
+const overflowTopTabs = computed(() => {
+    const visibleKeys = new Set(visibleTopTabs.value.map((t) => t.key));
+    return ALL_TABS.filter((t) => !visibleKeys.has(t.key));
+});
+function recalcVisibleTabs() {
+    const container = tabBarRef.value;
+    const phantom = tabPhantomRef.value;
+    if (!container || !phantom)
+        return;
+    const containerWidth = container.clientWidth;
+    if (containerWidth <= 0)
+        return;
+    // Reserve room for the "More ▾" button — measure from phantom,
+    // fall back to a conservative width if it hasn't rendered yet.
+    const moreEl = phantom.querySelector('[data-more-phantom]');
+    const moreWidth = moreEl?.offsetWidth ?? 80;
+    const gap = 4;
+    const tabEls = phantom.querySelectorAll('[data-tab-phantom]');
+    // Single pass: try fitting all tabs first (no More button needed).
+    let totalAll = 0;
+    for (let i = 0; i < tabEls.length; i++) {
+        totalAll += tabEls[i].offsetWidth + (i === 0 ? 0 : gap);
+    }
+    if (totalAll <= containerWidth) {
+        visibleCount.value = ALL_TABS.length;
+        return;
+    }
+    // Doesn't all fit — reserve space for More and greedy-fit from left.
+    const budget = containerWidth - moreWidth - gap;
+    let used = 0;
+    let count = 0;
+    for (let i = 0; i < tabEls.length; i++) {
+        const w = tabEls[i].offsetWidth + (i === 0 ? 0 : gap);
+        if (used + w > budget)
+            break;
+        used += w;
+        count++;
+    }
+    visibleCount.value = Math.max(1, count);
+}
+function selectTopTab(key) {
+    topTab.value = key;
+    moreOpen.value = false;
+}
+function toggleMoreMenu() {
+    if (moreOpen.value) {
+        moreOpen.value = false;
+        return;
+    }
+    updateMoreMenuPosition();
+    moreOpen.value = true;
+}
+/** Snap the teleported menu under the More button (right-aligned). */
+function updateMoreMenuPosition() {
+    const btn = moreBtnRef.value;
+    if (!btn)
+        return;
+    const r = btn.getBoundingClientRect();
+    moreMenuPos.value = {
+        top: r.bottom + 4,
+        right: Math.max(8, window.innerWidth - r.right),
+    };
+}
+function handleMoreOutsideClick(e) {
+    if (!moreOpen.value)
+        return;
+    const target = e.target;
+    if (target && moreBtnRef.value?.contains(target))
+        return;
+    if (target && moreDropdownRef.value?.contains(target))
+        return;
+    moreOpen.value = false;
+}
+function handleMoreReposition() {
+    if (moreOpen.value)
+        updateMoreMenuPosition();
+}
+let tabBarObserver = null;
+onMounted(() => {
+    nextTick(() => recalcVisibleTabs());
+    if (typeof ResizeObserver !== 'undefined' && tabBarRef.value) {
+        tabBarObserver = new ResizeObserver(() => {
+            recalcVisibleTabs();
+            handleMoreReposition();
+        });
+        tabBarObserver.observe(tabBarRef.value);
+    }
+    document.addEventListener('click', handleMoreOutsideClick);
+    // Keep the teleported menu pinned to the More button under scroll
+    // or viewport resize — without these, scrolling the page would
+    // leave the menu floating where it was first opened.
+    window.addEventListener('scroll', handleMoreReposition, true);
+    window.addEventListener('resize', handleMoreReposition);
+});
+onBeforeUnmount(() => {
+    tabBarObserver?.disconnect();
+    tabBarObserver = null;
+    document.removeEventListener('click', handleMoreOutsideClick);
+    window.removeEventListener('scroll', handleMoreReposition, true);
+    window.removeEventListener('resize', handleMoreReposition);
+});
 const projectFilterOptions = computed(() => [
     { value: '', label: t('insights.filters.allProjects') },
     ...tenantProjects.projects.value.map(p => ({
@@ -594,105 +741,84 @@ if (__VLS_ctx.combinedError) {
     var __VLS_36;
 }
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "tab-bar mb-1" },
+    ref: "tabBarRef",
+    ...{ class: "tab-bar tab-bar--overflow mb-1" },
 });
-__VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-    ...{ onClick: (...[$event]) => {
-            __VLS_ctx.topTab = 'sessions';
-        } },
-    ...{ class: "tab" },
-    ...{ class: ({ 'tab--active': __VLS_ctx.topTab === 'sessions' }) },
+/** @type {typeof __VLS_ctx.tabBarRef} */ ;
+for (const [tab] of __VLS_getVForSourceType((__VLS_ctx.visibleTopTabs))) {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+        ...{ onClick: (...[$event]) => {
+                __VLS_ctx.selectTopTab(tab.key);
+            } },
+        key: (tab.key),
+        ...{ class: "tab" },
+        ...{ class: ({ 'tab--active': __VLS_ctx.topTab === tab.key }) },
+    });
+    (tab.label);
+}
+if (__VLS_ctx.overflowTopTabs.length > 0) {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "tab-more" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+        ...{ onClick: (__VLS_ctx.toggleMoreMenu) },
+        ref: "moreBtnRef",
+        ...{ class: "tab tab-more__btn" },
+        ...{ class: ({ 'tab--active': __VLS_ctx.overflowTopTabs.some((t) => t.key === __VLS_ctx.topTab) }) },
+    });
+    /** @type {typeof __VLS_ctx.moreBtnRef} */ ;
+}
+const __VLS_37 = {}.Teleport;
+/** @type {[typeof __VLS_components.Teleport, typeof __VLS_components.Teleport, ]} */ ;
+// @ts-ignore
+const __VLS_38 = __VLS_asFunctionalComponent(__VLS_37, new __VLS_37({
+    to: "body",
+}));
+const __VLS_39 = __VLS_38({
+    to: "body",
+}, ...__VLS_functionalComponentArgsRest(__VLS_38));
+__VLS_40.slots.default;
+if (__VLS_ctx.moreOpen && __VLS_ctx.overflowTopTabs.length > 0) {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ref: "moreDropdownRef",
+        ...{ class: "tab-more__menu" },
+        ...{ style: ({ top: `${__VLS_ctx.moreMenuPos.top}px`, right: `${__VLS_ctx.moreMenuPos.right}px` }) },
+    });
+    /** @type {typeof __VLS_ctx.moreDropdownRef} */ ;
+    for (const [tab] of __VLS_getVForSourceType((__VLS_ctx.overflowTopTabs))) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+            ...{ onClick: (...[$event]) => {
+                    if (!(__VLS_ctx.moreOpen && __VLS_ctx.overflowTopTabs.length > 0))
+                        return;
+                    __VLS_ctx.selectTopTab(tab.key);
+                } },
+            key: (tab.key),
+            ...{ class: "tab-more__item" },
+            ...{ class: ({ 'tab-more__item--active': __VLS_ctx.topTab === tab.key }) },
+        });
+        (tab.label);
+    }
+}
+var __VLS_40;
+__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+    ref: "tabPhantomRef",
+    ...{ class: "tab-bar tab-bar--phantom" },
+    'aria-hidden': "true",
 });
+/** @type {typeof __VLS_ctx.tabPhantomRef} */ ;
+for (const [tab] of __VLS_getVForSourceType((__VLS_ctx.ALL_TABS))) {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+        key: (`phantom-${tab.key}`),
+        ...{ class: "tab" },
+        tabindex: "-1",
+        'data-tab-phantom': true,
+    });
+    (tab.label);
+}
 __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-    ...{ onClick: (...[$event]) => {
-            __VLS_ctx.topTab = 'recipes';
-        } },
-    ...{ class: "tab" },
-    ...{ class: ({ 'tab--active': __VLS_ctx.topTab === 'recipes' }) },
-});
-__VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-    ...{ onClick: (...[$event]) => {
-            __VLS_ctx.topTab = 'tools';
-        } },
-    ...{ class: "tab" },
-    ...{ class: ({ 'tab--active': __VLS_ctx.topTab === 'tools' }) },
-});
-__VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-    ...{ onClick: (...[$event]) => {
-            __VLS_ctx.topTab = 'workspace';
-        } },
-    ...{ class: "tab" },
-    ...{ class: ({ 'tab--active': __VLS_ctx.topTab === 'workspace' }) },
-});
-__VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-    ...{ onClick: (...[$event]) => {
-            __VLS_ctx.topTab = 'executions';
-        } },
-    ...{ class: "tab" },
-    ...{ class: ({ 'tab--active': __VLS_ctx.topTab === 'executions' }) },
-});
-__VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-    ...{ onClick: (...[$event]) => {
-            __VLS_ctx.topTab = 'workflows';
-        } },
-    ...{ class: "tab" },
-    ...{ class: ({ 'tab--active': __VLS_ctx.topTab === 'workflows' }) },
-});
-__VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-    ...{ onClick: (...[$event]) => {
-            __VLS_ctx.topTab = 'events';
-        } },
-    ...{ class: "tab" },
-    ...{ class: ({ 'tab--active': __VLS_ctx.topTab === 'events' }) },
-});
-__VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-    ...{ onClick: (...[$event]) => {
-            __VLS_ctx.topTab = 'scheduler';
-        } },
-    ...{ class: "tab" },
-    ...{ class: ({ 'tab--active': __VLS_ctx.topTab === 'scheduler' }) },
-});
-__VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-    ...{ onClick: (...[$event]) => {
-            __VLS_ctx.topTab = 'ursahooks';
-        } },
-    ...{ class: "tab" },
-    ...{ class: ({ 'tab--active': __VLS_ctx.topTab === 'ursahooks' }) },
-});
-__VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-    ...{ onClick: (...[$event]) => {
-            __VLS_ctx.topTab = 'rag';
-        } },
-    ...{ class: "tab" },
-    ...{ class: ({ 'tab--active': __VLS_ctx.topTab === 'rag' }) },
-});
-__VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-    ...{ onClick: (...[$event]) => {
-            __VLS_ctx.topTab = 'research';
-        } },
-    ...{ class: "tab" },
-    ...{ class: ({ 'tab--active': __VLS_ctx.topTab === 'research' }) },
-});
-__VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-    ...{ onClick: (...[$event]) => {
-            __VLS_ctx.topTab = 'cluster';
-        } },
-    ...{ class: "tab" },
-    ...{ class: ({ 'tab--active': __VLS_ctx.topTab === 'cluster' }) },
-});
-__VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-    ...{ onClick: (...[$event]) => {
-            __VLS_ctx.topTab = 'addons';
-        } },
-    ...{ class: "tab" },
-    ...{ class: ({ 'tab--active': __VLS_ctx.topTab === 'addons' }) },
-});
-__VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-    ...{ onClick: (...[$event]) => {
-            __VLS_ctx.topTab = 'usage';
-        } },
-    ...{ class: "tab" },
-    ...{ class: ({ 'tab--active': __VLS_ctx.topTab === 'usage' }) },
+    ...{ class: "tab tab-more__btn" },
+    tabindex: "-1",
+    'data-more-phantom': true,
 });
 if (__VLS_ctx.topTab !== 'sessions' && __VLS_ctx.topTab !== 'cluster' && __VLS_ctx.topTab !== 'addons' && __VLS_ctx.topTab !== 'usage' && __VLS_ctx.projectContextSource) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -714,134 +840,134 @@ if (__VLS_ctx.topTab !== 'sessions' && __VLS_ctx.topTab !== 'cluster' && __VLS_c
 if (__VLS_ctx.topTab === 'recipes') {
     /** @type {[typeof RecipesTab, ]} */ ;
     // @ts-ignore
-    const __VLS_37 = __VLS_asFunctionalComponent(RecipesTab, new RecipesTab({
+    const __VLS_41 = __VLS_asFunctionalComponent(RecipesTab, new RecipesTab({
         projectId: (__VLS_ctx.effectiveProjectId),
     }));
-    const __VLS_38 = __VLS_37({
+    const __VLS_42 = __VLS_41({
         projectId: (__VLS_ctx.effectiveProjectId),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_37));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_41));
 }
 else if (__VLS_ctx.topTab === 'tools') {
     /** @type {[typeof ProjectToolsTab, ]} */ ;
     // @ts-ignore
-    const __VLS_40 = __VLS_asFunctionalComponent(ProjectToolsTab, new ProjectToolsTab({
+    const __VLS_44 = __VLS_asFunctionalComponent(ProjectToolsTab, new ProjectToolsTab({
         projectId: (__VLS_ctx.effectiveProjectId),
     }));
-    const __VLS_41 = __VLS_40({
+    const __VLS_45 = __VLS_44({
         projectId: (__VLS_ctx.effectiveProjectId),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_40));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_44));
 }
 else if (__VLS_ctx.topTab === 'workspace') {
     /** @type {[typeof WorkspaceTab, ]} */ ;
     // @ts-ignore
-    const __VLS_43 = __VLS_asFunctionalComponent(WorkspaceTab, new WorkspaceTab({
+    const __VLS_47 = __VLS_asFunctionalComponent(WorkspaceTab, new WorkspaceTab({
         projectId: (__VLS_ctx.effectiveProjectId),
     }));
-    const __VLS_44 = __VLS_43({
+    const __VLS_48 = __VLS_47({
         projectId: (__VLS_ctx.effectiveProjectId),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_43));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_47));
 }
 else if (__VLS_ctx.topTab === 'executions') {
     /** @type {[typeof ExecutionsTab, ]} */ ;
     // @ts-ignore
-    const __VLS_46 = __VLS_asFunctionalComponent(ExecutionsTab, new ExecutionsTab({
+    const __VLS_50 = __VLS_asFunctionalComponent(ExecutionsTab, new ExecutionsTab({
         projectId: (__VLS_ctx.effectiveProjectId),
     }));
-    const __VLS_47 = __VLS_46({
+    const __VLS_51 = __VLS_50({
         projectId: (__VLS_ctx.effectiveProjectId),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_46));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_50));
 }
 else if (__VLS_ctx.topTab === 'workflows') {
     /** @type {[typeof WorkflowsTab, ]} */ ;
     // @ts-ignore
-    const __VLS_49 = __VLS_asFunctionalComponent(WorkflowsTab, new WorkflowsTab({
+    const __VLS_53 = __VLS_asFunctionalComponent(WorkflowsTab, new WorkflowsTab({
         projectId: (__VLS_ctx.effectiveProjectId),
     }));
-    const __VLS_50 = __VLS_49({
+    const __VLS_54 = __VLS_53({
         projectId: (__VLS_ctx.effectiveProjectId),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_49));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_53));
 }
 else if (__VLS_ctx.topTab === 'events') {
     /** @type {[typeof EventsTab, ]} */ ;
     // @ts-ignore
-    const __VLS_52 = __VLS_asFunctionalComponent(EventsTab, new EventsTab({
+    const __VLS_56 = __VLS_asFunctionalComponent(EventsTab, new EventsTab({
         projectId: (__VLS_ctx.effectiveProjectId),
     }));
-    const __VLS_53 = __VLS_52({
+    const __VLS_57 = __VLS_56({
         projectId: (__VLS_ctx.effectiveProjectId),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_52));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_56));
 }
 else if (__VLS_ctx.topTab === 'scheduler') {
     /** @type {[typeof SchedulerTab, ]} */ ;
     // @ts-ignore
-    const __VLS_55 = __VLS_asFunctionalComponent(SchedulerTab, new SchedulerTab({
+    const __VLS_59 = __VLS_asFunctionalComponent(SchedulerTab, new SchedulerTab({
         projectId: (__VLS_ctx.effectiveProjectId),
     }));
-    const __VLS_56 = __VLS_55({
+    const __VLS_60 = __VLS_59({
         projectId: (__VLS_ctx.effectiveProjectId),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_55));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_59));
 }
 else if (__VLS_ctx.topTab === 'ursahooks') {
     /** @type {[typeof UrsahooksTab, ]} */ ;
     // @ts-ignore
-    const __VLS_58 = __VLS_asFunctionalComponent(UrsahooksTab, new UrsahooksTab({
+    const __VLS_62 = __VLS_asFunctionalComponent(UrsahooksTab, new UrsahooksTab({
         projectId: (__VLS_ctx.effectiveProjectId),
     }));
-    const __VLS_59 = __VLS_58({
+    const __VLS_63 = __VLS_62({
         projectId: (__VLS_ctx.effectiveProjectId),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_58));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_62));
 }
 else if (__VLS_ctx.topTab === 'rag') {
     /** @type {[typeof RagTab, ]} */ ;
     // @ts-ignore
-    const __VLS_61 = __VLS_asFunctionalComponent(RagTab, new RagTab({
+    const __VLS_65 = __VLS_asFunctionalComponent(RagTab, new RagTab({
         projectId: (__VLS_ctx.effectiveProjectId),
     }));
-    const __VLS_62 = __VLS_61({
+    const __VLS_66 = __VLS_65({
         projectId: (__VLS_ctx.effectiveProjectId),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_61));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_65));
 }
 else if (__VLS_ctx.topTab === 'research') {
     /** @type {[typeof ZarniwoopTab, ]} */ ;
     // @ts-ignore
-    const __VLS_64 = __VLS_asFunctionalComponent(ZarniwoopTab, new ZarniwoopTab({
+    const __VLS_68 = __VLS_asFunctionalComponent(ZarniwoopTab, new ZarniwoopTab({
         projectId: (__VLS_ctx.effectiveProjectId),
     }));
-    const __VLS_65 = __VLS_64({
+    const __VLS_69 = __VLS_68({
         projectId: (__VLS_ctx.effectiveProjectId),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_64));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_68));
 }
 else if (__VLS_ctx.topTab === 'cluster') {
     /** @type {[typeof ClusterTab, ]} */ ;
     // @ts-ignore
-    const __VLS_67 = __VLS_asFunctionalComponent(ClusterTab, new ClusterTab({}));
-    const __VLS_68 = __VLS_67({}, ...__VLS_functionalComponentArgsRest(__VLS_67));
+    const __VLS_71 = __VLS_asFunctionalComponent(ClusterTab, new ClusterTab({}));
+    const __VLS_72 = __VLS_71({}, ...__VLS_functionalComponentArgsRest(__VLS_71));
 }
 else if (__VLS_ctx.topTab === 'addons') {
     /** @type {[typeof AddonsTab, ]} */ ;
     // @ts-ignore
-    const __VLS_70 = __VLS_asFunctionalComponent(AddonsTab, new AddonsTab({}));
-    const __VLS_71 = __VLS_70({}, ...__VLS_functionalComponentArgsRest(__VLS_70));
+    const __VLS_74 = __VLS_asFunctionalComponent(AddonsTab, new AddonsTab({}));
+    const __VLS_75 = __VLS_74({}, ...__VLS_functionalComponentArgsRest(__VLS_74));
 }
 else if (__VLS_ctx.topTab === 'usage') {
     /** @type {[typeof UsageCostTab, ]} */ ;
     // @ts-ignore
-    const __VLS_73 = __VLS_asFunctionalComponent(UsageCostTab, new UsageCostTab({}));
-    const __VLS_74 = __VLS_73({}, ...__VLS_functionalComponentArgsRest(__VLS_73));
+    const __VLS_77 = __VLS_asFunctionalComponent(UsageCostTab, new UsageCostTab({}));
+    const __VLS_78 = __VLS_77({}, ...__VLS_functionalComponentArgsRest(__VLS_77));
 }
 else if (__VLS_ctx.topTab === 'sessions') {
     if (!__VLS_ctx.selection) {
-        const __VLS_76 = {}.VEmptyState;
+        const __VLS_80 = {}.VEmptyState;
         /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
         // @ts-ignore
-        const __VLS_77 = __VLS_asFunctionalComponent(__VLS_76, new __VLS_76({
+        const __VLS_81 = __VLS_asFunctionalComponent(__VLS_80, new __VLS_80({
             headline: (__VLS_ctx.$t('insights.emptyMain.headline')),
             body: (__VLS_ctx.$t('insights.emptyMain.body')),
         }));
-        const __VLS_78 = __VLS_77({
+        const __VLS_82 = __VLS_81({
             headline: (__VLS_ctx.$t('insights.emptyMain.headline')),
             body: (__VLS_ctx.$t('insights.emptyMain.body')),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_77));
+        }, ...__VLS_functionalComponentArgsRest(__VLS_81));
     }
     else if (__VLS_ctx.selection.kind === 'session') {
         if (!__VLS_ctx.selectedSession) {
@@ -874,10 +1000,10 @@ else if (__VLS_ctx.topTab === 'sessions') {
             });
             (__VLS_ctx.selectedSession.userId);
             (__VLS_ctx.selectedSession.projectId);
-            const __VLS_80 = {}.VButton;
+            const __VLS_84 = {}.VButton;
             /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
             // @ts-ignore
-            const __VLS_81 = __VLS_asFunctionalComponent(__VLS_80, new __VLS_80({
+            const __VLS_85 = __VLS_asFunctionalComponent(__VLS_84, new __VLS_84({
                 ...{ 'onClick': {} },
                 variant: "ghost",
                 size: "sm",
@@ -885,18 +1011,18 @@ else if (__VLS_ctx.topTab === 'sessions') {
                 disabled: (__VLS_ctx.exportLoading),
                 title: (__VLS_ctx.$t('insights.session.exportTooltip')),
             }));
-            const __VLS_82 = __VLS_81({
+            const __VLS_86 = __VLS_85({
                 ...{ 'onClick': {} },
                 variant: "ghost",
                 size: "sm",
                 loading: (__VLS_ctx.exportLoading),
                 disabled: (__VLS_ctx.exportLoading),
                 title: (__VLS_ctx.$t('insights.session.exportTooltip')),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_81));
-            let __VLS_84;
-            let __VLS_85;
-            let __VLS_86;
-            const __VLS_87 = {
+            }, ...__VLS_functionalComponentArgsRest(__VLS_85));
+            let __VLS_88;
+            let __VLS_89;
+            let __VLS_90;
+            const __VLS_91 = {
                 onClick: (...[$event]) => {
                     if (!!(__VLS_ctx.topTab === 'recipes'))
                         return;
@@ -935,25 +1061,25 @@ else if (__VLS_ctx.topTab === 'sessions') {
                     __VLS_ctx.onExportSession(__VLS_ctx.selectedSession.sessionId);
                 }
             };
-            __VLS_83.slots.default;
+            __VLS_87.slots.default;
             (__VLS_ctx.$t('insights.session.exportButton'));
-            var __VLS_83;
+            var __VLS_87;
             if (__VLS_ctx.exportError) {
-                const __VLS_88 = {}.VAlert;
+                const __VLS_92 = {}.VAlert;
                 /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
                 // @ts-ignore
-                const __VLS_89 = __VLS_asFunctionalComponent(__VLS_88, new __VLS_88({
+                const __VLS_93 = __VLS_asFunctionalComponent(__VLS_92, new __VLS_92({
                     variant: "error",
                     ...{ class: "mt-2" },
                 }));
-                const __VLS_90 = __VLS_89({
+                const __VLS_94 = __VLS_93({
                     variant: "error",
                     ...{ class: "mt-2" },
-                }, ...__VLS_functionalComponentArgsRest(__VLS_89));
-                __VLS_91.slots.default;
+                }, ...__VLS_functionalComponentArgsRest(__VLS_93));
+                __VLS_95.slots.default;
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
                 (__VLS_ctx.exportError);
-                var __VLS_91;
+                var __VLS_95;
             }
             if (__VLS_ctx.selectedSession.firstUserMessage) {
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.h2, __VLS_intrinsicElements.h2)({
@@ -1154,16 +1280,16 @@ else if (__VLS_ctx.topTab === 'sessions') {
                 ...{ class: ({ 'tab--active': __VLS_ctx.activeTab === 'live-tools' }) },
             });
             if (__VLS_ctx.activeTab === 'overview') {
-                const __VLS_92 = {}.VCard;
+                const __VLS_96 = {}.VCard;
                 /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
                 // @ts-ignore
-                const __VLS_93 = __VLS_asFunctionalComponent(__VLS_92, new __VLS_92({
+                const __VLS_97 = __VLS_asFunctionalComponent(__VLS_96, new __VLS_96({
                     title: (__VLS_ctx.$t('insights.session.detailsTitle')),
                 }));
-                const __VLS_94 = __VLS_93({
+                const __VLS_98 = __VLS_97({
                     title: (__VLS_ctx.$t('insights.session.detailsTitle')),
-                }, ...__VLS_functionalComponentArgsRest(__VLS_93));
-                __VLS_95.slots.default;
+                }, ...__VLS_functionalComponentArgsRest(__VLS_97));
+                __VLS_99.slots.default;
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.dl, __VLS_intrinsicElements.dl)({
                     ...{ class: "grid grid-cols-2 gap-x-4 gap-y-1 text-sm" },
                 });
@@ -1275,19 +1401,19 @@ else if (__VLS_ctx.topTab === 'sessions') {
                 (__VLS_ctx.$t('insights.session.lastActivity'));
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
                 (__VLS_ctx.fmt(__VLS_ctx.selectedSession.lastActivityAt));
-                var __VLS_95;
+                var __VLS_99;
             }
             if (__VLS_ctx.activeTab === 'processes') {
-                const __VLS_96 = {}.VCard;
+                const __VLS_100 = {}.VCard;
                 /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
                 // @ts-ignore
-                const __VLS_97 = __VLS_asFunctionalComponent(__VLS_96, new __VLS_96({
+                const __VLS_101 = __VLS_asFunctionalComponent(__VLS_100, new __VLS_100({
                     title: (__VLS_ctx.$t('insights.session.processesTitle')),
                 }));
-                const __VLS_98 = __VLS_97({
+                const __VLS_102 = __VLS_101({
                     title: (__VLS_ctx.$t('insights.session.processesTitle')),
-                }, ...__VLS_functionalComponentArgsRest(__VLS_97));
-                __VLS_99.slots.default;
+                }, ...__VLS_functionalComponentArgsRest(__VLS_101));
+                __VLS_103.slots.default;
                 if (__VLS_ctx.sessionProcessesForTab.length === 0) {
                     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                         ...{ class: "opacity-70" },
@@ -1369,36 +1495,36 @@ else if (__VLS_ctx.topTab === 'sessions') {
                         (p.status);
                     }
                 }
-                var __VLS_99;
+                var __VLS_103;
             }
             if (__VLS_ctx.activeTab === 'timeline') {
                 /** @type {[typeof SessionTimelineTab, ]} */ ;
                 // @ts-ignore
-                const __VLS_100 = __VLS_asFunctionalComponent(SessionTimelineTab, new SessionTimelineTab({
+                const __VLS_104 = __VLS_asFunctionalComponent(SessionTimelineTab, new SessionTimelineTab({
                     ...{ 'onSelectProcess': {} },
                     processes: (__VLS_ctx.sessionProcessesForTab),
                 }));
-                const __VLS_101 = __VLS_100({
+                const __VLS_105 = __VLS_104({
                     ...{ 'onSelectProcess': {} },
                     processes: (__VLS_ctx.sessionProcessesForTab),
-                }, ...__VLS_functionalComponentArgsRest(__VLS_100));
-                let __VLS_103;
-                let __VLS_104;
-                let __VLS_105;
-                const __VLS_106 = {
+                }, ...__VLS_functionalComponentArgsRest(__VLS_104));
+                let __VLS_107;
+                let __VLS_108;
+                let __VLS_109;
+                const __VLS_110 = {
                     onSelectProcess: (__VLS_ctx.clickProcessByMongoId)
                 };
-                var __VLS_102;
+                var __VLS_106;
             }
             if (__VLS_ctx.activeTab === 'live-tools') {
                 /** @type {[typeof LiveToolsTab, ]} */ ;
                 // @ts-ignore
-                const __VLS_107 = __VLS_asFunctionalComponent(LiveToolsTab, new LiveToolsTab({
+                const __VLS_111 = __VLS_asFunctionalComponent(LiveToolsTab, new LiveToolsTab({
                     sessionId: (__VLS_ctx.selectedSession.sessionId),
                 }));
-                const __VLS_108 = __VLS_107({
+                const __VLS_112 = __VLS_111({
                     sessionId: (__VLS_ctx.selectedSession.sessionId),
-                }, ...__VLS_functionalComponentArgsRest(__VLS_107));
+                }, ...__VLS_functionalComponentArgsRest(__VLS_111));
             }
         }
     }
@@ -1726,16 +1852,16 @@ else if (__VLS_ctx.topTab === 'sessions') {
             });
             (__VLS_ctx.$t('insights.tabs.prakRuns'));
             if (__VLS_ctx.activeTab === 'overview') {
-                const __VLS_110 = {}.VCard;
+                const __VLS_114 = {}.VCard;
                 /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
                 // @ts-ignore
-                const __VLS_111 = __VLS_asFunctionalComponent(__VLS_110, new __VLS_110({
+                const __VLS_115 = __VLS_asFunctionalComponent(__VLS_114, new __VLS_114({
                     title: (__VLS_ctx.$t('insights.process.titlePrefix', { name: __VLS_ctx.selectedProcess.name })),
                 }));
-                const __VLS_112 = __VLS_111({
+                const __VLS_116 = __VLS_115({
                     title: (__VLS_ctx.$t('insights.process.titlePrefix', { name: __VLS_ctx.selectedProcess.name })),
-                }, ...__VLS_functionalComponentArgsRest(__VLS_111));
-                __VLS_113.slots.default;
+                }, ...__VLS_functionalComponentArgsRest(__VLS_115));
+                __VLS_117.slots.default;
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.dl, __VLS_intrinsicElements.dl)({
                     ...{ class: "grid grid-cols-2 gap-x-4 gap-y-1 text-sm" },
                 });
@@ -1850,32 +1976,32 @@ else if (__VLS_ctx.topTab === 'sessions') {
                 (__VLS_ctx.$t('insights.process.updated'));
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
                 (__VLS_ctx.fmt(__VLS_ctx.selectedProcess.updatedAt));
-                var __VLS_113;
-                const __VLS_114 = {}.VCard;
-                /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
-                // @ts-ignore
-                const __VLS_115 = __VLS_asFunctionalComponent(__VLS_114, new __VLS_114({
-                    title: (__VLS_ctx.$t('insights.process.engineParams')),
-                }));
-                const __VLS_116 = __VLS_115({
-                    title: (__VLS_ctx.$t('insights.process.engineParams')),
-                }, ...__VLS_functionalComponentArgsRest(__VLS_115));
-                __VLS_117.slots.default;
-                __VLS_asFunctionalElement(__VLS_intrinsicElements.pre, __VLS_intrinsicElements.pre)({
-                    ...{ class: "json-block" },
-                });
-                (__VLS_ctx.asJson(__VLS_ctx.selectedProcess.engineParams));
                 var __VLS_117;
                 const __VLS_118 = {}.VCard;
                 /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
                 // @ts-ignore
                 const __VLS_119 = __VLS_asFunctionalComponent(__VLS_118, new __VLS_118({
-                    title: (__VLS_ctx.$t('insights.process.activeSkills')),
+                    title: (__VLS_ctx.$t('insights.process.engineParams')),
                 }));
                 const __VLS_120 = __VLS_119({
-                    title: (__VLS_ctx.$t('insights.process.activeSkills')),
+                    title: (__VLS_ctx.$t('insights.process.engineParams')),
                 }, ...__VLS_functionalComponentArgsRest(__VLS_119));
                 __VLS_121.slots.default;
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.pre, __VLS_intrinsicElements.pre)({
+                    ...{ class: "json-block" },
+                });
+                (__VLS_ctx.asJson(__VLS_ctx.selectedProcess.engineParams));
+                var __VLS_121;
+                const __VLS_122 = {}.VCard;
+                /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
+                // @ts-ignore
+                const __VLS_123 = __VLS_asFunctionalComponent(__VLS_122, new __VLS_122({
+                    title: (__VLS_ctx.$t('insights.process.activeSkills')),
+                }));
+                const __VLS_124 = __VLS_123({
+                    title: (__VLS_ctx.$t('insights.process.activeSkills')),
+                }, ...__VLS_functionalComponentArgsRest(__VLS_123));
+                __VLS_125.slots.default;
                 if (__VLS_ctx.selectedProcess.activeSkills.length === 0) {
                     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                         ...{ class: "opacity-70" },
@@ -1909,17 +2035,17 @@ else if (__VLS_ctx.topTab === 'sessions') {
                         }
                     }
                 }
-                var __VLS_121;
-                const __VLS_122 = {}.VCard;
+                var __VLS_125;
+                const __VLS_126 = {}.VCard;
                 /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
                 // @ts-ignore
-                const __VLS_123 = __VLS_asFunctionalComponent(__VLS_122, new __VLS_122({
+                const __VLS_127 = __VLS_asFunctionalComponent(__VLS_126, new __VLS_126({
                     title: (__VLS_ctx.$t('insights.process.pendingQueue')),
                 }));
-                const __VLS_124 = __VLS_123({
+                const __VLS_128 = __VLS_127({
                     title: (__VLS_ctx.$t('insights.process.pendingQueue')),
-                }, ...__VLS_functionalComponentArgsRest(__VLS_123));
-                __VLS_125.slots.default;
+                }, ...__VLS_functionalComponentArgsRest(__VLS_127));
+                __VLS_129.slots.default;
                 if (__VLS_ctx.selectedProcess.pendingMessages.length === 0) {
                     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                         ...{ class: "opacity-70" },
@@ -1952,7 +2078,7 @@ else if (__VLS_ctx.topTab === 'sessions') {
                         (__VLS_ctx.asJson(m.payload));
                     }
                 }
-                var __VLS_125;
+                var __VLS_129;
             }
             else if (__VLS_ctx.activeTab === 'chat') {
                 if (__VLS_ctx.chatState.loading.value) {
@@ -1962,17 +2088,17 @@ else if (__VLS_ctx.topTab === 'sessions') {
                     (__VLS_ctx.$t('insights.process.chatLoading'));
                 }
                 else if (__VLS_ctx.chatState.messages.value.length === 0) {
-                    const __VLS_126 = {}.VEmptyState;
+                    const __VLS_130 = {}.VEmptyState;
                     /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
                     // @ts-ignore
-                    const __VLS_127 = __VLS_asFunctionalComponent(__VLS_126, new __VLS_126({
+                    const __VLS_131 = __VLS_asFunctionalComponent(__VLS_130, new __VLS_130({
                         headline: (__VLS_ctx.$t('insights.process.chatEmptyHeadline')),
                         body: (__VLS_ctx.$t('insights.process.chatEmptyBody')),
                     }));
-                    const __VLS_128 = __VLS_127({
+                    const __VLS_132 = __VLS_131({
                         headline: (__VLS_ctx.$t('insights.process.chatEmptyHeadline')),
                         body: (__VLS_ctx.$t('insights.process.chatEmptyBody')),
-                    }, ...__VLS_functionalComponentArgsRest(__VLS_127));
+                    }, ...__VLS_functionalComponentArgsRest(__VLS_131));
                 }
                 else {
                     __VLS_asFunctionalElement(__VLS_intrinsicElements.ul, __VLS_intrinsicElements.ul)({
@@ -2015,15 +2141,15 @@ else if (__VLS_ctx.topTab === 'sessions') {
                             });
                             (__VLS_ctx.$t('insights.process.archivedToMemory', { id: m.archivedInMemoryId }));
                         }
-                        const __VLS_130 = {}.MarkdownView;
+                        const __VLS_134 = {}.MarkdownView;
                         /** @type {[typeof __VLS_components.MarkdownView, ]} */ ;
                         // @ts-ignore
-                        const __VLS_131 = __VLS_asFunctionalComponent(__VLS_130, new __VLS_130({
+                        const __VLS_135 = __VLS_asFunctionalComponent(__VLS_134, new __VLS_134({
                             source: (m.content),
                         }));
-                        const __VLS_132 = __VLS_131({
+                        const __VLS_136 = __VLS_135({
                             source: (m.content),
-                        }, ...__VLS_functionalComponentArgsRest(__VLS_131));
+                        }, ...__VLS_functionalComponentArgsRest(__VLS_135));
                         if (__VLS_ctx.otherTags(m.tags).length > 0) {
                             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                                 ...{ class: "mt-2 flex flex-wrap gap-1 text-xs opacity-70" },
@@ -2047,17 +2173,17 @@ else if (__VLS_ctx.topTab === 'sessions') {
                     (__VLS_ctx.$t('insights.process.memoryLoading'));
                 }
                 else if (__VLS_ctx.memoryState.entries.value.length === 0) {
-                    const __VLS_134 = {}.VEmptyState;
+                    const __VLS_138 = {}.VEmptyState;
                     /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
                     // @ts-ignore
-                    const __VLS_135 = __VLS_asFunctionalComponent(__VLS_134, new __VLS_134({
+                    const __VLS_139 = __VLS_asFunctionalComponent(__VLS_138, new __VLS_138({
                         headline: (__VLS_ctx.$t('insights.process.memoryEmptyHeadline')),
                         body: (__VLS_ctx.$t('insights.process.memoryEmptyBody')),
                     }));
-                    const __VLS_136 = __VLS_135({
+                    const __VLS_140 = __VLS_139({
                         headline: (__VLS_ctx.$t('insights.process.memoryEmptyHeadline')),
                         body: (__VLS_ctx.$t('insights.process.memoryEmptyBody')),
-                    }, ...__VLS_functionalComponentArgsRest(__VLS_135));
+                    }, ...__VLS_functionalComponentArgsRest(__VLS_139));
                 }
                 else {
                     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -2072,18 +2198,18 @@ else if (__VLS_ctx.topTab === 'sessions') {
                     (__VLS_ctx.memoryPrakOnly);
                     (__VLS_ctx.$t('insights.process.prakOnlyToggle'));
                     for (const [m] of __VLS_getVForSourceType((__VLS_ctx.filteredMemoryEntries))) {
-                        const __VLS_138 = {}.VCard;
+                        const __VLS_142 = {}.VCard;
                         /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
                         // @ts-ignore
-                        const __VLS_139 = __VLS_asFunctionalComponent(__VLS_138, new __VLS_138({
+                        const __VLS_143 = __VLS_asFunctionalComponent(__VLS_142, new __VLS_142({
                             key: (m.id),
                             title: (m.title || m.kind),
                         }));
-                        const __VLS_140 = __VLS_139({
+                        const __VLS_144 = __VLS_143({
                             key: (m.id),
                             title: (m.title || m.kind),
-                        }, ...__VLS_functionalComponentArgsRest(__VLS_139));
-                        __VLS_141.slots.default;
+                        }, ...__VLS_functionalComponentArgsRest(__VLS_143));
+                        __VLS_145.slots.default;
                         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                             ...{ class: "text-xs opacity-60 mb-2 flex flex-wrap gap-x-3 gap-y-1 items-center" },
                         });
@@ -2149,15 +2275,15 @@ else if (__VLS_ctx.topTab === 'sessions') {
                             });
                             (__VLS_ctx.extractPrakMeta(m.metadata).why);
                         }
-                        const __VLS_142 = {}.MarkdownView;
+                        const __VLS_146 = {}.MarkdownView;
                         /** @type {[typeof __VLS_components.MarkdownView, ]} */ ;
                         // @ts-ignore
-                        const __VLS_143 = __VLS_asFunctionalComponent(__VLS_142, new __VLS_142({
+                        const __VLS_147 = __VLS_asFunctionalComponent(__VLS_146, new __VLS_146({
                             source: (m.content),
                         }));
-                        const __VLS_144 = __VLS_143({
+                        const __VLS_148 = __VLS_147({
                             source: (m.content),
-                        }, ...__VLS_functionalComponentArgsRest(__VLS_143));
+                        }, ...__VLS_functionalComponentArgsRest(__VLS_147));
                         if (Object.keys(m.metadata).length > 0) {
                             __VLS_asFunctionalElement(__VLS_intrinsicElements.details, __VLS_intrinsicElements.details)({
                                 ...{ class: "mt-3" },
@@ -2171,7 +2297,7 @@ else if (__VLS_ctx.topTab === 'sessions') {
                             });
                             (__VLS_ctx.asJson(m.metadata));
                         }
-                        var __VLS_141;
+                        var __VLS_145;
                     }
                 }
             }
@@ -2183,29 +2309,29 @@ else if (__VLS_ctx.topTab === 'sessions') {
                     (__VLS_ctx.$t('insights.process.treeLoading'));
                 }
                 else if (__VLS_ctx.treeState.nodes.value.length === 0) {
-                    const __VLS_146 = {}.VEmptyState;
+                    const __VLS_150 = {}.VEmptyState;
                     /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
                     // @ts-ignore
-                    const __VLS_147 = __VLS_asFunctionalComponent(__VLS_146, new __VLS_146({
-                        headline: (__VLS_ctx.$t('insights.process.treeEmptyHeadline')),
-                        body: (__VLS_ctx.$t('insights.process.treeEmptyBody')),
-                    }));
-                    const __VLS_148 = __VLS_147({
-                        headline: (__VLS_ctx.$t('insights.process.treeEmptyHeadline')),
-                        body: (__VLS_ctx.$t('insights.process.treeEmptyBody')),
-                    }, ...__VLS_functionalComponentArgsRest(__VLS_147));
-                }
-                else {
-                    const __VLS_150 = {}.VCard;
-                    /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
-                    // @ts-ignore
                     const __VLS_151 = __VLS_asFunctionalComponent(__VLS_150, new __VLS_150({
-                        title: (__VLS_ctx.$t('insights.process.marvinTreeTitle')),
+                        headline: (__VLS_ctx.$t('insights.process.treeEmptyHeadline')),
+                        body: (__VLS_ctx.$t('insights.process.treeEmptyBody')),
                     }));
                     const __VLS_152 = __VLS_151({
-                        title: (__VLS_ctx.$t('insights.process.marvinTreeTitle')),
+                        headline: (__VLS_ctx.$t('insights.process.treeEmptyHeadline')),
+                        body: (__VLS_ctx.$t('insights.process.treeEmptyBody')),
                     }, ...__VLS_functionalComponentArgsRest(__VLS_151));
-                    __VLS_153.slots.default;
+                }
+                else {
+                    const __VLS_154 = {}.VCard;
+                    /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
+                    // @ts-ignore
+                    const __VLS_155 = __VLS_asFunctionalComponent(__VLS_154, new __VLS_154({
+                        title: (__VLS_ctx.$t('insights.process.marvinTreeTitle')),
+                    }));
+                    const __VLS_156 = __VLS_155({
+                        title: (__VLS_ctx.$t('insights.process.marvinTreeTitle')),
+                    }, ...__VLS_functionalComponentArgsRest(__VLS_155));
+                    __VLS_157.slots.default;
                     __VLS_asFunctionalElement(__VLS_intrinsicElements.ul, __VLS_intrinsicElements.ul)({
                         ...{ class: "marvin-tree" },
                     });
@@ -2215,44 +2341,44 @@ else if (__VLS_ctx.topTab === 'sessions') {
                         });
                         /** @type {[typeof MarvinTreeItem, ]} */ ;
                         // @ts-ignore
-                        const __VLS_154 = __VLS_asFunctionalComponent(MarvinTreeItem, new MarvinTreeItem({
+                        const __VLS_158 = __VLS_asFunctionalComponent(MarvinTreeItem, new MarvinTreeItem({
                             ...{ 'onSelectProcess': {} },
                             node: (root),
                         }));
-                        const __VLS_155 = __VLS_154({
+                        const __VLS_159 = __VLS_158({
                             ...{ 'onSelectProcess': {} },
                             node: (root),
-                        }, ...__VLS_functionalComponentArgsRest(__VLS_154));
-                        let __VLS_157;
-                        let __VLS_158;
-                        let __VLS_159;
-                        const __VLS_160 = {
+                        }, ...__VLS_functionalComponentArgsRest(__VLS_158));
+                        let __VLS_161;
+                        let __VLS_162;
+                        let __VLS_163;
+                        const __VLS_164 = {
                             onSelectProcess: (__VLS_ctx.clickProcessByMongoId)
                         };
-                        var __VLS_156;
+                        var __VLS_160;
                     }
-                    var __VLS_153;
+                    var __VLS_157;
                 }
             }
             else if (__VLS_ctx.activeTab === 'llm-traces') {
                 /** @type {[typeof LlmTraceTab, ]} */ ;
                 // @ts-ignore
-                const __VLS_161 = __VLS_asFunctionalComponent(LlmTraceTab, new LlmTraceTab({
+                const __VLS_165 = __VLS_asFunctionalComponent(LlmTraceTab, new LlmTraceTab({
                     processId: (__VLS_ctx.selectedProcess.id),
                 }));
-                const __VLS_162 = __VLS_161({
+                const __VLS_166 = __VLS_165({
                     processId: (__VLS_ctx.selectedProcess.id),
-                }, ...__VLS_functionalComponentArgsRest(__VLS_161));
+                }, ...__VLS_functionalComponentArgsRest(__VLS_165));
             }
             else if (__VLS_ctx.activeTab === 'cache-stats') {
                 /** @type {[typeof CacheStatsTab, ]} */ ;
                 // @ts-ignore
-                const __VLS_164 = __VLS_asFunctionalComponent(CacheStatsTab, new CacheStatsTab({
+                const __VLS_168 = __VLS_asFunctionalComponent(CacheStatsTab, new CacheStatsTab({
                     processId: (__VLS_ctx.selectedProcess.id),
                 }));
-                const __VLS_165 = __VLS_164({
+                const __VLS_169 = __VLS_168({
                     processId: (__VLS_ctx.selectedProcess.id),
-                }, ...__VLS_functionalComponentArgsRest(__VLS_164));
+                }, ...__VLS_functionalComponentArgsRest(__VLS_168));
             }
             else if (__VLS_ctx.activeTab === 'prak-runs') {
                 if (__VLS_ctx.prakRunsState.loading.value) {
@@ -2262,35 +2388,35 @@ else if (__VLS_ctx.topTab === 'sessions') {
                     (__VLS_ctx.$t('insights.process.prakRunsLoading'));
                 }
                 else if (__VLS_ctx.prakRunsState.runs.value.length === 0) {
-                    const __VLS_167 = {}.VEmptyState;
+                    const __VLS_171 = {}.VEmptyState;
                     /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
                     // @ts-ignore
-                    const __VLS_168 = __VLS_asFunctionalComponent(__VLS_167, new __VLS_167({
+                    const __VLS_172 = __VLS_asFunctionalComponent(__VLS_171, new __VLS_171({
                         headline: (__VLS_ctx.$t('insights.process.prakRunsEmptyHeadline')),
                         body: (__VLS_ctx.$t('insights.process.prakRunsEmptyBody')),
                     }));
-                    const __VLS_169 = __VLS_168({
+                    const __VLS_173 = __VLS_172({
                         headline: (__VLS_ctx.$t('insights.process.prakRunsEmptyHeadline')),
                         body: (__VLS_ctx.$t('insights.process.prakRunsEmptyBody')),
-                    }, ...__VLS_functionalComponentArgsRest(__VLS_168));
+                    }, ...__VLS_functionalComponentArgsRest(__VLS_172));
                 }
                 else {
                     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                         ...{ class: "flex flex-col gap-3" },
                     });
                     for (const [r] of __VLS_getVForSourceType((__VLS_ctx.prakRunsState.runs.value))) {
-                        const __VLS_171 = {}.VCard;
+                        const __VLS_175 = {}.VCard;
                         /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
                         // @ts-ignore
-                        const __VLS_172 = __VLS_asFunctionalComponent(__VLS_171, new __VLS_171({
+                        const __VLS_176 = __VLS_asFunctionalComponent(__VLS_175, new __VLS_175({
                             key: (r.id),
                             title: (r.trigger),
                         }));
-                        const __VLS_173 = __VLS_172({
+                        const __VLS_177 = __VLS_176({
                             key: (r.id),
                             title: (r.trigger),
-                        }, ...__VLS_functionalComponentArgsRest(__VLS_172));
-                        __VLS_174.slots.default;
+                        }, ...__VLS_functionalComponentArgsRest(__VLS_176));
+                        __VLS_178.slots.default;
                         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                             ...{ class: "text-xs opacity-60 mb-3 flex flex-wrap gap-x-3 gap-y-1" },
                         });
@@ -2440,7 +2566,7 @@ else if (__VLS_ctx.topTab === 'sessions') {
                                 (mid);
                             }
                         }
-                        var __VLS_174;
+                        var __VLS_178;
                     }
                 }
             }
@@ -2475,15 +2601,15 @@ else if (__VLS_ctx.topTab === 'sessions') {
         (__VLS_ctx.$t('insights.help.empty'));
     }
     else {
-        const __VLS_175 = {}.MarkdownView;
+        const __VLS_179 = {}.MarkdownView;
         /** @type {[typeof __VLS_components.MarkdownView, ]} */ ;
         // @ts-ignore
-        const __VLS_176 = __VLS_asFunctionalComponent(__VLS_175, new __VLS_175({
+        const __VLS_180 = __VLS_asFunctionalComponent(__VLS_179, new __VLS_179({
             source: (__VLS_ctx.help.content.value),
         }));
-        const __VLS_177 = __VLS_176({
+        const __VLS_181 = __VLS_180({
             source: (__VLS_ctx.help.content.value),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_176));
+        }, ...__VLS_functionalComponentArgsRest(__VLS_180));
     }
 }
 var __VLS_3;
@@ -2547,35 +2673,22 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
 /** @type {__VLS_StyleScopedClasses['max-w-5xl']} */ ;
 /** @type {__VLS_StyleScopedClasses['tab-bar']} */ ;
+/** @type {__VLS_StyleScopedClasses['tab-bar--overflow']} */ ;
 /** @type {__VLS_StyleScopedClasses['mb-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['tab']} */ ;
 /** @type {__VLS_StyleScopedClasses['tab--active']} */ ;
+/** @type {__VLS_StyleScopedClasses['tab-more']} */ ;
 /** @type {__VLS_StyleScopedClasses['tab']} */ ;
+/** @type {__VLS_StyleScopedClasses['tab-more__btn']} */ ;
 /** @type {__VLS_StyleScopedClasses['tab--active']} */ ;
+/** @type {__VLS_StyleScopedClasses['tab-more__menu']} */ ;
+/** @type {__VLS_StyleScopedClasses['tab-more__item']} */ ;
+/** @type {__VLS_StyleScopedClasses['tab-more__item--active']} */ ;
+/** @type {__VLS_StyleScopedClasses['tab-bar']} */ ;
+/** @type {__VLS_StyleScopedClasses['tab-bar--phantom']} */ ;
 /** @type {__VLS_StyleScopedClasses['tab']} */ ;
-/** @type {__VLS_StyleScopedClasses['tab--active']} */ ;
 /** @type {__VLS_StyleScopedClasses['tab']} */ ;
-/** @type {__VLS_StyleScopedClasses['tab--active']} */ ;
-/** @type {__VLS_StyleScopedClasses['tab']} */ ;
-/** @type {__VLS_StyleScopedClasses['tab--active']} */ ;
-/** @type {__VLS_StyleScopedClasses['tab']} */ ;
-/** @type {__VLS_StyleScopedClasses['tab--active']} */ ;
-/** @type {__VLS_StyleScopedClasses['tab']} */ ;
-/** @type {__VLS_StyleScopedClasses['tab--active']} */ ;
-/** @type {__VLS_StyleScopedClasses['tab']} */ ;
-/** @type {__VLS_StyleScopedClasses['tab--active']} */ ;
-/** @type {__VLS_StyleScopedClasses['tab']} */ ;
-/** @type {__VLS_StyleScopedClasses['tab--active']} */ ;
-/** @type {__VLS_StyleScopedClasses['tab']} */ ;
-/** @type {__VLS_StyleScopedClasses['tab--active']} */ ;
-/** @type {__VLS_StyleScopedClasses['tab']} */ ;
-/** @type {__VLS_StyleScopedClasses['tab--active']} */ ;
-/** @type {__VLS_StyleScopedClasses['tab']} */ ;
-/** @type {__VLS_StyleScopedClasses['tab--active']} */ ;
-/** @type {__VLS_StyleScopedClasses['tab']} */ ;
-/** @type {__VLS_StyleScopedClasses['tab--active']} */ ;
-/** @type {__VLS_StyleScopedClasses['tab']} */ ;
-/** @type {__VLS_StyleScopedClasses['tab--active']} */ ;
+/** @type {__VLS_StyleScopedClasses['tab-more__btn']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
 /** @type {__VLS_StyleScopedClasses['-mt-1']} */ ;
@@ -2927,6 +3040,17 @@ const __VLS_self = (await import('vue')).defineComponent({
             filterUserId: filterUserId,
             filterStatus: filterStatus,
             topTab: topTab,
+            ALL_TABS: ALL_TABS,
+            tabBarRef: tabBarRef,
+            tabPhantomRef: tabPhantomRef,
+            moreBtnRef: moreBtnRef,
+            moreDropdownRef: moreDropdownRef,
+            moreOpen: moreOpen,
+            moreMenuPos: moreMenuPos,
+            visibleTopTabs: visibleTopTabs,
+            overflowTopTabs: overflowTopTabs,
+            selectTopTab: selectTopTab,
+            toggleMoreMenu: toggleMoreMenu,
             projectFilterOptions: projectFilterOptions,
             statusOptions: statusOptions,
             selection: selection,

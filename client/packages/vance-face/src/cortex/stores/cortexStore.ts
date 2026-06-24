@@ -95,6 +95,13 @@ export interface MetaUpdateBody {
   /** Send {@code true} to clear an already-set color. */
   clearColor?: boolean;
   tags?: string[];
+  mimeType?: string | null;
+  /**
+   * Move/rename via full path. Server re-derives {@code name} from the
+   * trailing segment; for a pure rename the caller swaps the last
+   * segment of the current path and leaves the rest untouched.
+   */
+  newPath?: string | null;
   autoSummary?: boolean;
   summaryDirty?: boolean;
   ragEnabled?: 'auto' | 'on' | 'off';
@@ -226,6 +233,8 @@ export const useCortexStore = defineStore('cortex', () => {
         ...files.value.slice(0, fIdx),
         {
           ...files.value[fIdx],
+          path: dto.path,
+          name: dto.name,
           title: dto.title ?? null,
           color: dto.color ?? null,
           mimeType: dto.mimeType ?? null,

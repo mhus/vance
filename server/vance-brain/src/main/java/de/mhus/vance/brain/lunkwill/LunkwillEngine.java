@@ -10,9 +10,13 @@ import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.brain.ai.AiChat;
 import de.mhus.vance.brain.ai.AiChatException;
 import de.mhus.vance.brain.ai.EngineChatFactory;
+import de.mhus.vance.brain.ai.ModelCatalog;
+import de.mhus.vance.brain.ai.ModelInfo;
 import de.mhus.vance.brain.events.ChunkBatcher;
 import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.brain.events.StreamingProperties;
+import de.mhus.vance.brain.memory.CompactionResult;
+import de.mhus.vance.brain.memory.MemoryCompactionService;
 import de.mhus.vance.brain.memory.MemoryContextLoader;
 import de.mhus.vance.brain.progress.LlmCallTracker;
 import de.mhus.vance.brain.prompt.PromptContextBuilder;
@@ -198,6 +202,8 @@ public class LunkwillEngine implements ThinkEngine {
     private final SkillPromptComposer skillPromptComposer;
     private final SessionService sessionService;
     private final MemoryContextLoader memoryContextLoader;
+    private final ModelCatalog modelCatalog;
+    private final MemoryCompactionService memoryCompactionService;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -325,6 +331,35 @@ public class LunkwillEngine implements ThinkEngine {
             List<ToolSpecification> toolSpecs = tools.primaryAsLc4j();
             List<ChatMessage> messages = buildPromptMessages(process, chatLog, extras, activeSkills);
 
+            // Resolve model context window for compaction triggers.
+            ModelInfo modelInfo = modelCatalog.lookupOrDefault(
+                    process.getTenantId(), process.getProjectId(),
+                    bundle.primaryConfig().providerInstance(),
+                    bundle.primaryConfig().provider(),
+                    bundle.primaryConfig().modelName());
+
+            // Turn-start compaction: identical to Arthur/Eddie/Ford.
+            // Trigger ratio uses outgoing prompt vs model context window;
+            // SOFT/HARD/EMERGENCY thresholds from PrakProperties. Compacts
+            // older chat history into an ARCHIVED_CHAT memory and rebuilds
+            // the prompt when something was archived.
+            CompactionResult cr0 = memoryCompactionService.compactIfNeeded(
+                    process, bundle.primaryConfig(), messages, modelInfo);
+            if (cr0.compacted()) {
+                log.info("Lunkwill.turn id='{}' compaction (turn-start) ok: {} msgs → {} chars (memory='{}')",
+                        process.getId(), cr0.messagesCompacted(),
+                        cr0.summaryChars(), cr0.memoryId());
+                messages = buildPromptMessages(process, chatLog, extras, activeSkills);
+            }
+            // Anchor = index where the persisted-history prefix ends. The
+            // Pi-style loop appends AiMessage replies + tool results past
+            // this boundary in-memory only (Lunkwill persists only the
+            // final assistant text on natural stop). Mid-loop compaction
+            // rebuilds the anchored prefix from chatLog and re-attaches
+            // the in-flight tail untouched, so open tool-call/result pairs
+            // stay intact.
+            int anchorSize = messages.size();
+
             // 3) Pi-style loop — no max-iters, only natural / terminate / external / safety stops.
             Deque<String> recentToolHashes = new ArrayDeque<>(properties.getIdleStuckThreshold());
 
@@ -368,6 +403,28 @@ public class LunkwillEngine implements ThinkEngine {
                             process.getId(), properties.getMaxWallclockMinutes());
                     exitStatus = ThinkProcessStatus.BLOCKED;
                     return;
+                }
+
+                // Mid-loop compaction. As the LLM appends tool calls +
+                // results past `anchorSize`, the prompt grows turn-local
+                // without touching chatLog. The trigger runs on the full
+                // outgoing list, so in-flight bloat counts towards the
+                // ratio; the compactor itself archives only persisted
+                // chat history. Detach the in-flight tail before the
+                // rebuild and re-attach it afterwards so open tool-call
+                // / tool-result pairs survive intact.
+                CompactionResult cr =
+                        memoryCompactionService.compactIfNeeded(
+                                process, bundle.primaryConfig(), messages, modelInfo);
+                if (cr.compacted()) {
+                    log.info("Lunkwill.turn id='{}' compaction (mid-loop) ok: {} msgs → {} chars (memory='{}')",
+                            process.getId(), cr.messagesCompacted(),
+                            cr.summaryChars(), cr.memoryId());
+                    List<ChatMessage> inflightTail =
+                            new ArrayList<>(messages.subList(anchorSize, messages.size()));
+                    messages = buildPromptMessages(process, chatLog, extras, activeSkills);
+                    anchorSize = messages.size();
+                    messages.addAll(inflightTail);
                 }
 
                 ChatRequest.Builder req = ChatRequest.builder().messages(messages);

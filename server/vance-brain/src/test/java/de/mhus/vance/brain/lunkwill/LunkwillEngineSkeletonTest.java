@@ -122,12 +122,20 @@ class LunkwillEngineSkeletonTest {
                 mock(de.mhus.vance.brain.memory.MemoryContextLoader.class);
         lenient().when(memoryContextLoader.composeBlock(any())).thenReturn(null);
 
+        de.mhus.vance.brain.ai.ModelCatalog modelCatalog =
+                mock(de.mhus.vance.brain.ai.ModelCatalog.class);
+        de.mhus.vance.brain.memory.MemoryCompactionService memoryCompactionService =
+                mock(de.mhus.vance.brain.memory.MemoryCompactionService.class);
+        lenient().when(memoryCompactionService.compactIfNeeded(any(), any(), any(), any()))
+                .thenReturn(de.mhus.vance.brain.memory.CompactionResult.noop("test"));
+
         engine = new LunkwillEngine(
                 thinkProcessService, properties, engineChatFactory,
                 llmCallTracker, streaming, objectMapper,
                 enginePromptResolver, systemPromptComposer,
                 skillResolver, skillPromptComposer, sessionService,
-                memoryContextLoader);
+                memoryContextLoader,
+                modelCatalog, memoryCompactionService);
 
         process = new ThinkProcessDocument();
         process.setId(PROC_ID);

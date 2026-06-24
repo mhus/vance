@@ -4,15 +4,16 @@
  * (path + Run/Validate/Slart buttons) and the body in DocumentTabShell.
  *
  * v1 surfaces:
- *  - Editable: title, tags (comma-separated)
- *  - Read-only: path, name, mime, kind, size, createdAt, createdBy,
- *    summary
+ *  - Editable: name (rename — folder stays), title, tags
+ *    (comma-separated), color, mime type
+ *  - Read-only: path, kind, size, createdAt, createdBy, summary
  *  - Nested: {@link DocumentArchives} for the versions list (uses the
  *    existing component as-is; restores re-fetch the doc into the tab).
  */
 import { computed, ref, watch } from 'vue';
-import { VAlert, VButton, VColorPicker, VInput } from '@/components';
+import { VAlert, VButton, VColorPicker, VInput, VSelect } from '@/components';
 import type { AccentColor, DocumentDto } from '@vance/generated';
+import { useI18n } from 'vue-i18n';
 import DocumentArchives from '@/document/DocumentArchives.vue';
 import type { CortexDocument } from '../types';
 import { useCortexStore } from '../stores/cortexStore';
@@ -22,12 +23,44 @@ const props = defineProps<{
 }>();
 
 const store = useCortexStore();
+const { t } = useI18n();
 
+const editName = ref('');
 const editTitle = ref('');
 const editTags = ref('');
 const editColor = ref<AccentColor | null>(null);
+const editMime = ref<string>('');
 const saving = ref(false);
 const error = ref<string | null>(null);
+
+const mimeOptions = computed(() => {
+  const docGroup = t('documents.mime.groupDoc');
+  const codeGroup = t('documents.mime.groupCode');
+  const webGroup = t('documents.mime.groupWeb');
+  const base = [
+    { value: 'text/markdown', label: 'Markdown (.md)', group: docGroup },
+    { value: 'text/plain', label: 'Plain text (.txt)', group: docGroup },
+    { value: 'application/json', label: 'JSON', group: docGroup },
+    { value: 'application/yaml', label: 'YAML', group: docGroup },
+    { value: 'application/xml', label: 'XML', group: docGroup },
+    { value: 'application/javascript', label: 'JavaScript (.js)', group: codeGroup },
+    { value: 'application/typescript', label: 'TypeScript (.ts)', group: codeGroup },
+    { value: 'text/x-python', label: 'Python (.py)', group: codeGroup },
+    { value: 'application/x-sh', label: 'Bash / Shell (.sh)', group: codeGroup },
+    { value: 'text/x-r', label: 'R (.r)', group: codeGroup },
+    { value: 'text/x-java-source', label: 'Java (.java)', group: codeGroup },
+    { value: 'application/sql', label: 'SQL', group: codeGroup },
+    { value: 'text/html', label: 'HTML', group: webGroup },
+    { value: 'text/css', label: 'CSS', group: webGroup },
+  ];
+  // Preserve the current mimeType if it's not in the curated list — the
+  // user otherwise loses information just by opening the panel.
+  const current = editMime.value;
+  if (current && !base.some((o) => o.value === current)) {
+    base.unshift({ value: current, label: current, group: docGroup });
+  }
+  return base;
+});
 
 // Seed editable fields whenever the document changes (tab switch or
 // after a refresh). User edits in progress get overwritten — caller
@@ -35,24 +68,46 @@ const error = ref<string | null>(null);
 watch(
   () => props.document.id,
   () => {
+    editName.value = props.document.name ?? '';
     editTitle.value = props.document.title ?? '';
     editTags.value = (props.document.tags ?? []).join(', ');
     editColor.value = props.document.color ?? null;
+    editMime.value = props.document.mimeType ?? '';
     error.value = null;
   },
   { immediate: true },
 );
 
 const isDirty = computed<boolean>(() => {
+  const nameNow = props.document.name ?? '';
   const titleNow = props.document.title ?? '';
   const tagsNow = (props.document.tags ?? []).join(', ');
   const colorNow = props.document.color ?? null;
+  const mimeNow = props.document.mimeType ?? '';
   return (
-    editTitle.value !== titleNow
+    editName.value.trim() !== nameNow
+    || editTitle.value !== titleNow
     || editTags.value !== tagsNow
     || editColor.value !== colorNow
+    || editMime.value !== mimeNow
   );
 });
+
+// Replace the trailing segment of the current document path with the
+// edited name, keeping the folder unchanged. Returns null when the
+// name didn't change, is empty, or contains a slash (the rename input
+// is filename-only — moves go through a separate path edit, not this
+// panel).
+function buildRenamedPath(): string | null {
+  const trimmed = editName.value.trim();
+  if (!trimmed || trimmed === props.document.name) return null;
+  if (trimmed.includes('/')) {
+    throw new Error('Name must not contain "/" — use the path field to move the document.');
+  }
+  const path = props.document.path;
+  const slash = path.lastIndexOf('/');
+  return slash < 0 ? trimmed : `${path.substring(0, slash + 1)}${trimmed}`;
+}
 
 function formatSize(bytes: number | null | undefined): string {
   if (bytes == null) return '—';
@@ -75,6 +130,7 @@ async function onSave(): Promise<void> {
       .map((s) => s.trim())
       .filter((s) => s.length > 0);
     const wasColor = props.document.color ?? null;
+    const wasMime = props.document.mimeType ?? '';
     const body: import('../stores/cortexStore').MetaUpdateBody = {
       title: editTitle.value.trim() || null,
       tags,
@@ -85,6 +141,13 @@ async function onSave(): Promise<void> {
       } else {
         body.color = editColor.value;
       }
+    }
+    if (editMime.value !== wasMime && editMime.value) {
+      body.mimeType = editMime.value;
+    }
+    const renamedPath = buildRenamedPath();
+    if (renamedPath !== null) {
+      body.newPath = renamedPath;
     }
     await store.updateMeta(props.document.id, body);
   } catch (e) {
@@ -131,6 +194,13 @@ async function onRestored(): Promise<void> {
     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
       <div class="flex flex-col gap-2">
         <VInput
+          v-model="editName"
+          label="Name"
+          placeholder="filename"
+          help="Filename only — folder stays. No slashes."
+          :disabled="saving"
+        />
+        <VInput
           v-model="editTitle"
           label="Title"
           placeholder="(no title)"
@@ -149,14 +219,16 @@ async function onRestored(): Promise<void> {
           allow-clear
           :disabled="saving"
         />
+        <VSelect
+          v-model="editMime"
+          :options="mimeOptions"
+          label="MIME"
+          :disabled="saving"
+        />
       </div>
       <dl class="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 text-xs">
         <dt class="opacity-60">Path</dt>
         <dd class="font-mono break-all">{{ document.path }}</dd>
-        <dt class="opacity-60">Name</dt>
-        <dd class="font-mono break-all">{{ document.name }}</dd>
-        <dt class="opacity-60">MIME</dt>
-        <dd class="font-mono">{{ document.mimeType ?? '—' }}</dd>
         <dt class="opacity-60">Kind</dt>
         <dd class="font-mono">{{ document.kind ?? '—' }}</dd>
         <dt class="opacity-60">Size</dt>

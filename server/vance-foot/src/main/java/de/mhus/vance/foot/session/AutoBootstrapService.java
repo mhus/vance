@@ -1,5 +1,6 @@
 package de.mhus.vance.foot.session;
 
+import de.mhus.vance.api.chat.ChatMessageDto;
 import de.mhus.vance.api.thinkprocess.BootstrappedProcess;
 import de.mhus.vance.api.thinkprocess.ProcessSpec;
 import de.mhus.vance.api.thinkprocess.SessionBootstrapRequest;
@@ -7,6 +8,7 @@ import de.mhus.vance.api.thinkprocess.SessionBootstrapResponse;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.foot.config.FootConfig;
 import de.mhus.vance.foot.connection.BrainException;
+import de.mhus.vance.foot.connection.BrainRestClientService;
 import de.mhus.vance.foot.connection.ConnectionService;
 import de.mhus.vance.foot.ui.ChatTerminal;
 import jakarta.annotation.PreDestroy;
@@ -47,8 +49,18 @@ public class AutoBootstrapService {
 
     public static final String SKIP_PROPERTY = "vance.bootstrap.skip";
 
+    /**
+     * Tail length rendered after a session resume so the user sees what
+     * happened last. Mirrors the web-UI's "load history on chat-editor
+     * mount" UX but caps tighter — the terminal scrollback is precious
+     * and a fresh foot session usually only needs the last few turns
+     * for context. Backend default cap is 500 (used by the web UI).
+     */
+    private static final int HISTORY_TAIL_LIMIT = 20;
+
     private final FootConfig config;
     private final ConnectionService connection;
+    private final BrainRestClientService rest;
     private final SessionService sessions;
     private final ChatTerminal terminal;
 
@@ -64,13 +76,17 @@ public class AutoBootstrapService {
      * @param connection {@code @Lazy} to break the cycle:
      *   ConnectionService → MessageDispatcher → WelcomeHandler →
      *   AutoBootstrapService → ConnectionService.
+     * @param rest {@code @Lazy} for the same reason — REST client also
+     *   depends on ConnectionService for the JWT.
      */
     public AutoBootstrapService(FootConfig config,
                                 @Lazy ConnectionService connection,
+                                @Lazy BrainRestClientService rest,
                                 SessionService sessions,
                                 ChatTerminal terminal) {
         this.config = config;
         this.connection = connection;
+        this.rest = rest;
         this.sessions = sessions;
         this.terminal = terminal;
     }
@@ -189,6 +205,44 @@ public class AutoBootstrapService {
         if (response.getSteeredProcessName() != null) {
             terminal.info("→ initial message steered to " + response.getSteeredProcessName());
         }
+
+        // After a resume, show the tail of the persisted chat history so
+        // the user knows where the conversation left off. Skipped for
+        // freshly-created sessions (nothing to replay) and when an
+        // initial-message was steered (the upcoming reply will provide
+        // its own context). Matches the web-UI behaviour of loading
+        // history on chat-editor mount, just with a tighter cap.
+        if (!response.isSessionCreated() && response.getSteeredProcessName() == null) {
+            renderRecentHistory(response.getSessionId(), response.getChatProcessName());
+        }
+    }
+
+    /**
+     * Pulls the last {@value #HISTORY_TAIL_LIMIT} messages of {@code sessionId}'s
+     * chat-process via REST and renders them through the same markdown path
+     * as live {@code chat-message-appended} notifications. Failure is logged
+     * verbose and swallowed — the bootstrap already succeeded, missing history
+     * shouldn't break the chat session.
+     */
+    private void renderRecentHistory(String sessionId, @Nullable String chatProcessName) {
+        List<ChatMessageDto> messages;
+        try {
+            messages = rest.chatHistory(sessionId, HISTORY_TAIL_LIMIT);
+        } catch (Exception e) {
+            terminal.verbose("History fetch failed for " + sessionId + ": " + e.getMessage());
+            return;
+        }
+        if (messages.isEmpty()) return;
+        terminal.info("─── Recent history (" + messages.size() + " message"
+                + (messages.size() == 1 ? "" : "s") + ") ───");
+        String fallbackName = chatProcessName != null ? chatProcessName : "session";
+        for (ChatMessageDto m : messages) {
+            String role = m.getRole() == null ? "?" : m.getRole().name().toLowerCase();
+            String header = "[" + fallbackName + " · " + role + "] ";
+            String content = m.getContent() == null ? "" : m.getContent();
+            terminal.chatMarkdown(header, content);
+        }
+        terminal.info("─── End of history ───");
     }
 
     /**

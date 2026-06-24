@@ -87,6 +87,16 @@ public class ResearchInvestigateTool implements Tool {
     }
 
     @Override
+    public @org.jspecify.annotations.Nullable String troubleshootingHint() {
+        return "Long-running — failures often surface mid-stream. Re-run with narrower scope if dropped.";
+    }
+
+    @Override
+    public Set<String> prakLabels() {
+        return Set.of("research", "integration");
+    }
+
+    @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         if (ctx == null) {
             throw new ToolException("research_investigate requires a tool invocation context");

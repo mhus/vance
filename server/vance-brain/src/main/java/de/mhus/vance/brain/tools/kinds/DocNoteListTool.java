@@ -37,6 +37,10 @@ public class DocNoteListTool implements Tool {
                 + "doc_note_update / doc_note_delete.";
     }
     @Override public boolean primary() { return true; }
+    @Override public boolean contributesPrak() {
+        // Listing — note titles only, no synthesised insight.
+        return false;
+    }
     @Override public Set<String> labels() { return Set.of("text-edit", "read", "document", "note"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }

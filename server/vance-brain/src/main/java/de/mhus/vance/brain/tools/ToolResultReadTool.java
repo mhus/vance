@@ -74,6 +74,12 @@ public class ToolResultReadTool implements Tool {
     }
 
     @Override
+    public boolean contributesPrak() {
+        // Re-reads a prior tool result — adds nothing new.
+        return false;
+    }
+
+    @Override
     public Map<String, Object> paramsSchema() {
         return SCHEMA;
     }

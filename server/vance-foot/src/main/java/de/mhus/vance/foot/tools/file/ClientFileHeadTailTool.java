@@ -45,6 +45,17 @@ public class ClientFileHeadTailTool implements ClientTool {
     }
     @Override public boolean primary() { return true; }
     @Override public java.util.Set<String> labels() { return java.util.Set.of("read-only"); }
+
+    @Override
+    public @org.jspecify.annotations.Nullable String troubleshootingHint() {
+        return "Requires CLIENT target — Foot must be connected. File missing = check path.";
+    }
+
+    @Override
+    public java.util.Set<String> prakLabels() {
+        return java.util.Set.of("filesystem", "client");
+    }
+
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 
     @Override

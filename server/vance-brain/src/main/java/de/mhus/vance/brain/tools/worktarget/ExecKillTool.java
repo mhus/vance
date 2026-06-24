@@ -24,6 +24,12 @@ public class ExecKillTool extends AbstractWorkTargetTool {
     }
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
     @Override public java.util.Set<String> labels() { return java.util.Set.of("write", "side-effect"); }
+
+    @Override
+    public java.util.Set<String> prakLabels() {
+        return java.util.Set.of("execution", "shell");
+    }
+
     @Override protected String clientBackend() { return "client_exec_kill"; }
     @Override protected String workBackend()   { return "work_exec_kill"; }
 }

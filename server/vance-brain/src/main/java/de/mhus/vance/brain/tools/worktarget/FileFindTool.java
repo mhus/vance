@@ -28,6 +28,17 @@ public class FileFindTool extends AbstractWorkTargetTool {
     }
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
     @Override public java.util.Set<String> labels() { return java.util.Set.of("read-only"); }
+
+    @Override
+    public @org.jspecify.annotations.Nullable String troubleshootingHint() {
+        return "No results = check path/pathGlob; timeout = scope too broad.";
+    }
+
+    @Override
+    public java.util.Set<String> prakLabels() {
+        return java.util.Set.of("filesystem", "search");
+    }
+
     @Override protected String clientBackend() { return "client_file_find"; }
     @Override protected String workBackend()   { return "work_file_find"; }
 }

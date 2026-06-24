@@ -50,6 +50,12 @@ public class ProcessStatusTool implements Tool {
     }
 
     @Override
+    public boolean contributesPrak() {
+        // Status probe — state snapshot, no insight.
+        return false;
+    }
+
+    @Override
     public Map<String, Object> paramsSchema() {
         return SCHEMA;
     }

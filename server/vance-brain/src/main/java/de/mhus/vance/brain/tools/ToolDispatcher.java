@@ -114,7 +114,7 @@ public class ToolDispatcher {
                     ctx == null ? null : ctx.processId(),
                     e.getMessage(), e);
             triage(name, e, ctx);
-            throw e;
+            throw withHint(r.tool(), e);
         } catch (RuntimeException e) {
             log.warn("Tool '{}' raised RuntimeException tenant='{}' project='{}' session='{}' process='{}': {}",
                     name, ctx == null ? null : ctx.tenantId(),
@@ -123,9 +123,27 @@ public class ToolDispatcher {
                     ctx == null ? null : ctx.processId(),
                     e.toString(), e);
             triage(name, e, ctx);
-            throw new ToolException(
-                    "Tool '" + name + "' failed: " + e.getMessage(), e);
+            throw withHint(r.tool(),
+                    new ToolException(
+                            "Tool '" + name + "' failed: " + e.getMessage(), e));
         }
+    }
+
+    /**
+     * Prepends the tool's {@link de.mhus.vance.toolpack.Tool#troubleshootingHint()}
+     * to the exception message, if any. Wrapped in a fresh
+     * {@link ToolException} so the original cause-chain is preserved and
+     * the LLM (or any other caller reading {@code getMessage()}) sees the
+     * recovery hint right at the top: "hint: <hint> -- <original>". A
+     * {@code null}/blank hint is a no-op — the original exception passes
+     * through verbatim.
+     */
+    private static ToolException withHint(
+            de.mhus.vance.toolpack.Tool tool, ToolException original) {
+        String hint = tool.troubleshootingHint();
+        if (hint == null || hint.isBlank()) return original;
+        String orig = original.getMessage() == null ? "" : original.getMessage();
+        return new ToolException("hint: " + hint + " -- " + orig, original);
     }
 
     /**

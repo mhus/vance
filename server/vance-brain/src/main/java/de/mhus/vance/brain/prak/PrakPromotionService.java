@@ -90,8 +90,27 @@ public class PrakPromotionService {
      * Apply the items in {@code evaluation} according to their
      * effective {@link LongTermMemoryAction} (analyzer choice +
      * default-action overrides). Idempotent on an empty output.
+     *
+     * <p>Convenience overload — calls
+     * {@link #promote(EvaluationOutput, PromotionContext, java.util.Set)}
+     * with no auxiliary labels.
      */
     public PromotionResult promote(EvaluationOutput evaluation, PromotionContext ctx) {
+        return promote(evaluation, ctx, java.util.Set.of());
+    }
+
+    /**
+     * Variant that unions {@code auxLabels} into every persisted item's
+     * {@link #META_LABELS}. Used by {@code PrakSideChannelRunner} to
+     * thread tool-emitted labels (from
+     * {@link de.mhus.vance.shared.chat.ChatMessageDocument#META_PRAK_TOOL_LABELS})
+     * down to the memory store — analyser-emitted labels plus tool
+     * labels become the final tag set.
+     */
+    public PromotionResult promote(
+            EvaluationOutput evaluation,
+            PromotionContext ctx,
+            java.util.Set<String> auxLabels) {
         if (evaluation == null || evaluation.items().isEmpty()) {
             return PromotionResult.empty();
         }
@@ -107,7 +126,7 @@ public class PrakPromotionService {
             LongTermMemoryAction action = resolveAction(item);
             switch (action) {
                 case PROMOTE -> {
-                    MemoryDocument saved = persistInsight(item, ctx);
+                    MemoryDocument saved = persistInsight(item, ctx, auxLabels);
                     if (saved != null && saved.getId() != null) {
                         persistedIds.add(saved.getId());
                         promoted++;
@@ -174,7 +193,8 @@ public class PrakPromotionService {
         return proposed;
     }
 
-    private @Nullable MemoryDocument persistInsight(ExtractedItem item, PromotionContext ctx) {
+    private @Nullable MemoryDocument persistInsight(
+            ExtractedItem item, PromotionContext ctx, java.util.Set<String> auxLabels) {
         try {
             MemoryDocument fresh = MemoryDocument.builder()
                     .tenantId(ctx.tenantId())
@@ -185,7 +205,7 @@ public class PrakPromotionService {
                     .title(makeTitle(item))
                     .content(item.content())
                     .sourceRefs(extractSourceRefs(item))
-                    .metadata(buildMetadata(item, ctx))
+                    .metadata(buildMetadata(item, ctx, auxLabels))
                     .build();
             return memoryService.save(fresh);
         } catch (RuntimeException e) {
@@ -251,7 +271,8 @@ public class PrakPromotionService {
         return refs;
     }
 
-    private static Map<String, Object> buildMetadata(ExtractedItem item, PromotionContext ctx) {
+    private static Map<String, Object> buildMetadata(
+            ExtractedItem item, PromotionContext ctx, java.util.Set<String> auxLabels) {
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put(META_GENERATED_BY, GENERATED_BY_PRAK);
         meta.put(META_PRAK_ITEM_ID, item.id());
@@ -259,8 +280,13 @@ public class PrakPromotionService {
         meta.put(META_ITEM_TYPE, item.type().name().toLowerCase(Locale.ROOT));
         meta.put(META_IMPORTANCE, item.importance());
         meta.put(META_CONFIDENCE, item.confidence());
-        if (!item.labels().isEmpty()) {
-            meta.put(META_LABELS, List.copyOf(item.labels()));
+        // Union analyser-emitted labels with tool-emitted labels (from
+        // Tool.prakLabels(), threaded through META_PRAK_TOOL_LABELS on
+        // the assistant message and aggregated in PrakSideChannelRunner).
+        java.util.LinkedHashSet<String> mergedLabels = new java.util.LinkedHashSet<>(item.labels());
+        mergedLabels.addAll(auxLabels);
+        if (!mergedLabels.isEmpty()) {
+            meta.put(META_LABELS, List.copyOf(mergedLabels));
         }
         meta.put(META_DECAY, item.decay().name().toLowerCase(Locale.ROOT));
         if (!StringUtils.isBlank(item.why())) {

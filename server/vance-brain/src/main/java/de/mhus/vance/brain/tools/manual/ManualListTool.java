@@ -69,6 +69,12 @@ public class ManualListTool implements Tool {
     }
 
     @Override
+    public boolean contributesPrak() {
+        // Index lookup — names only, no insight.
+        return false;
+    }
+
+    @Override
     public Map<String, Object> paramsSchema() {
         return SCHEMA;
     }

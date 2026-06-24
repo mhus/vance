@@ -54,6 +54,17 @@ public final class RestEndpointTool implements Tool {
     @Override public boolean deferred() { return deferred; }
     @Override public String searchHint() { return searchHint; }
     @Override public Set<String> labels() { return labels; }
+
+    @Override
+    public @org.jspecify.annotations.Nullable String troubleshootingHint() {
+        return "401/403 = credential expired or scope missing; 404 = resource path; 429 = rate-limited, back off; 5xx = retry; timeout = remote slow.";
+    }
+
+    @Override
+    public Set<String> prakLabels() {
+        return Set.of("integration", "rest");
+    }
+
     @Override public Map<String, Object> paramsSchema() { return operation.paramsSchema(); }
 
     @Override

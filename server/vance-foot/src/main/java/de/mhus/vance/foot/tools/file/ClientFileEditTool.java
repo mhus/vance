@@ -68,6 +68,16 @@ public class ClientFileEditTool implements ClientTool {
     }
 
     @Override
+    public @org.jspecify.annotations.Nullable String troubleshootingHint() {
+        return "Requires CLIENT target — Foot must be connected. Match not unique = expand surrounding context; file missing = file_read first.";
+    }
+
+    @Override
+    public java.util.Set<String> prakLabels() {
+        return java.util.Set.of("filesystem", "client");
+    }
+
+    @Override
     public Map<String, Object> invoke(Map<String, Object> params) {
         Object rawPath = params == null ? null : params.get("path");
         Object rawOld = params == null ? null : params.get("oldText");

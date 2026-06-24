@@ -120,6 +120,11 @@ public class DocCreateTool implements Tool {
         return Set.of("doc-management", "eddie", "write", "document");
     }
 
+    @Override
+    public Set<String> prakLabels() {
+        return Set.of("knowledge", "documents");
+    }
+
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 
     @Override

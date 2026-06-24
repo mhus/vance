@@ -142,8 +142,15 @@ public class PrakSideChannelRunner {
                     process.getSessionId(),
                     process.getId(),
                     runId);
+            // Union tool-emitted labels across every assistant message
+            // in the span (Lunkwill stamps META_PRAK_TOOL_LABELS with
+            // the union of Tool.prakLabels() for the producing turn).
+            // Pass them to promote() so the persisted insights get the
+            // domain tags even when the analyser didn't think to add
+            // them itself.
+            Set<String> spanToolLabels = collectToolLabels(spanDocs);
             PromotionResult promotionResult =
-                    prakPromotionService.promote(sanitized.output(), promoteCtx);
+                    prakPromotionService.promote(sanitized.output(), promoteCtx, spanToolLabels);
             metricService.summary("vance.prak.promotion.persisted")
                     .record(promotionResult.persistedMemoryIds().size());
             if (promotionResult.promoted() > 0 || promotionResult.inboxOffered() > 0) {
@@ -190,6 +197,24 @@ public class PrakSideChannelRunner {
             if (doc.getRole() == null) continue;
             String content = doc.getContent() == null ? "" : doc.getContent();
             out.add(new SpanMessage(doc.getId(), doc.getRole(), content));
+        }
+        return out;
+    }
+
+    /**
+     * Walks the span's assistant messages and unions every
+     * {@link ChatMessageDocument#META_PRAK_TOOL_LABELS} entry stamped
+     * by the engine. Tolerates legacy messages without the meta key
+     * (returns {@link java.util.Set#of()}) and non-string entries (skipped).
+     */
+    private static Set<String> collectToolLabels(List<ChatMessageDocument> docs) {
+        java.util.LinkedHashSet<String> out = new java.util.LinkedHashSet<>();
+        for (ChatMessageDocument doc : docs) {
+            Object raw = doc.getMeta().get(ChatMessageDocument.META_PRAK_TOOL_LABELS);
+            if (!(raw instanceof List<?> list)) continue;
+            for (Object entry : list) {
+                if (entry instanceof String s && !s.isBlank()) out.add(s);
+            }
         }
         return out;
     }

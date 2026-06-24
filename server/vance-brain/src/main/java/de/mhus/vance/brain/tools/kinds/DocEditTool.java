@@ -56,6 +56,7 @@ public class DocEditTool implements Tool {
     }
     @Override public boolean primary() { return true; }
     @Override public Set<String> labels() { return Set.of("text-edit", "eddie", "write", "document"); }
+    @Override public Set<String> prakLabels() { return Set.of("knowledge", "documents"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

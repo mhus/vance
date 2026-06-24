@@ -72,6 +72,16 @@ public class ClientFileWriteTool implements ClientTool {
     }
 
     @Override
+    public @org.jspecify.annotations.Nullable String troubleshootingHint() {
+        return "Requires CLIENT target — Foot must be connected. Permission denied = check path/owner; disk full = clean workspace.";
+    }
+
+    @Override
+    public java.util.Set<String> prakLabels() {
+        return java.util.Set.of("filesystem", "client");
+    }
+
+    @Override
     public Map<String, Object> invoke(Map<String, Object> params) {
         Object rawPath = params == null ? null : params.get("path");
         Object rawContent = params == null ? null : params.get("content");

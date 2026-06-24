@@ -91,6 +91,13 @@ public class TodoWriteTool implements Tool {
     }
 
     @Override
+    public boolean contributesPrak() {
+        // Plan-tracking is pure state — no durable insight ever sits in
+        // "I wrote a 5-item todo list".
+        return false;
+    }
+
+    @Override
     public Map<String, Object> paramsSchema() {
         return SCHEMA;
     }

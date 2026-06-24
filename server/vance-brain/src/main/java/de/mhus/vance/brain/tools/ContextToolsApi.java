@@ -624,6 +624,53 @@ public final class ContextToolsApi implements ToolBus {
     }
 
     /**
+     * Returns {@code true} if {@code toolNames} is non-empty and every
+     * resolvable tool inside it reports
+     * {@link de.mhus.vance.toolpack.Tool#contributesPrak()} {@code ==
+     * false} — i.e. the turn was purely mechanical (plan-tracking,
+     * discovery, lookups) and stamping {@code META_PRAK_SKIP} on the
+     * assistant message is safe.
+     *
+     * <p>Returns {@code false} when:
+     * <ul>
+     *   <li>{@code toolNames} is null/empty (no tools ran — let
+     *       CheapPathFilter decide on content),</li>
+     *   <li>any named tool resolves to a {@code contributesPrak()=true}
+     *       tool (the turn touched real content), or</li>
+     *   <li>any name fails to resolve (be conservative — let Prak run
+     *       rather than miss the signal).</li>
+     * </ul>
+     */
+    public boolean allNonPrak(@org.jspecify.annotations.Nullable Set<String> toolNames) {
+        if (toolNames == null || toolNames.isEmpty()) return false;
+        for (String name : toolNames) {
+            boolean contributes = dispatcher.resolve(name, ctx)
+                    .map(r -> r.tool().contributesPrak())
+                    .orElse(true);
+            if (contributes) return false;
+        }
+        return true;
+    }
+
+    /**
+     * Unions {@link de.mhus.vance.toolpack.Tool#prakLabels()} across
+     * every resolvable tool in {@code toolNames}. Empty input or fully
+     * unresolved names → empty set. Used by the engine when stamping
+     * {@code META_PRAK_TOOL_LABELS} on the assistant message so Prak's
+     * promotion step can attach the domain tags to every insight
+     * extracted from this turn.
+     */
+    public Set<String> unionPrakLabels(@org.jspecify.annotations.Nullable Set<String> toolNames) {
+        if (toolNames == null || toolNames.isEmpty()) return Set.of();
+        LinkedHashSet<String> out = new LinkedHashSet<>();
+        for (String name : toolNames) {
+            dispatcher.resolve(name, ctx)
+                    .ifPresent(r -> out.addAll(r.tool().prakLabels()));
+        }
+        return out;
+    }
+
+    /**
      * Returns a new {@link ContextToolsApi} whose allow-set is the
      * union of this one's plus {@code extra}. New entries land in the
      * primary bucket (skill-required tools should always be visible to

@@ -49,6 +49,17 @@ public class FileReadTool extends AbstractWorkTargetTool {
     }
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
     @Override public java.util.Set<String> labels() { return java.util.Set.of("read-only"); }
+
+    @Override
+    public @org.jspecify.annotations.Nullable String troubleshootingHint() {
+        return "File missing = check path; CLIENT target needs Foot connected; large file = use file_head_tail.";
+    }
+
+    @Override
+    public java.util.Set<String> prakLabels() {
+        return java.util.Set.of("filesystem");
+    }
+
     @Override protected String clientBackend() { return "client_file_read"; }
     @Override protected String workBackend()   { return "work_file_read"; }
 }

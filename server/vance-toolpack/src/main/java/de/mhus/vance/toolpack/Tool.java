@@ -139,6 +139,91 @@ public interface Tool {
     }
 
     /**
+     * Whether tool calls of this kind tend to produce assistant text
+     * that's worth re-analysing for durable insights (Prak's job).
+     *
+     * <p>Default {@code true} — most tools do real work whose result the
+     * assistant synthesises into something Prak should capture: REST/
+     * IMAP/MCP packs that touch external resources (failures and
+     * recoveries are insights), {@code doc_*} mutations (architectural
+     * decisions), {@code exec_run} / {@code research_*} / {@code web_*}
+     * (substantive findings), even read-style searches
+     * ({@code doc_grep}, {@code file_grep}) where the assistant tends to
+     * synthesise patterns.
+     *
+     * <p>Set to {@code false} only for purely mechanical tools whose
+     * post-call text is structurally an acknowledgement: plan tracking
+     * ({@code todo_*}), discovery / introspection ({@code find_tools},
+     * {@code describe_tool}, {@code manual_*}, {@code how_do_i},
+     * {@code recipe_describe}, {@code tool_result_read}), trivial
+     * lookups ({@code current_time}, {@code whoami}), work-target meta
+     * ({@code work_target_*}), and read-only listings whose output is
+     * paths/names rather than content ({@code doc_list},
+     * {@code doc_info}, {@code doc_note_list}, {@code file_list},
+     * {@code file_count}, {@code process_list}, {@code process_status}).
+     *
+     * <p>Engines persisting an assistant message look this up across
+     * every tool invoked in the turn; when <em>every</em> tool returns
+     * {@code false} they stamp {@code meta["prakSkip"]=true} on the
+     * message and Prak's listener skips the analyser entirely.
+     */
+    default boolean contributesPrak() {
+        return true;
+    }
+
+    /**
+     * Optional one-line recovery hint that {@code ToolDispatcher}
+     * prepends to the error text when this tool throws
+     * {@link ToolException}. Evergreen prose — not workflow-deep like a
+     * manual, just the typical fix path so the LLM (and the user
+     * reading the error) doesn't burn a turn re-discovering the obvious.
+     *
+     * <p>Good examples:
+     * <ul>
+     *   <li>{@code imap_*}: "Check imap.host/user/password in project
+     *       settings; auth expired? Re-link credential."</li>
+     *   <li>{@code client_file_*}: "Requires CLIENT target — Foot must
+     *       be connected. Use work_target_set(kind=WORK) for server."</li>
+     *   <li>{@code exec_run}: "Non-zero exit = inspect stderr; timeout =
+     *       retry with deadlineSeconds; missing binary = adjust PATH."</li>
+     *   <li>{@code web_fetch}: "4xx = bad URL; 5xx = retry with backoff;
+     *       timeout = remote slow, try smaller scope."</li>
+     * </ul>
+     *
+     * <p>Default {@code null} — no hint, the bare error text reaches
+     * the LLM. For deeper workflow-level guidance use a manual
+     * ({@code manual_read('...')}) — this field is specifically the
+     * one-liner that the assistant should see <em>without</em> having
+     * to ask.
+     */
+    default @org.jspecify.annotations.Nullable String troubleshootingHint() {
+        return null;
+    }
+
+    /**
+     * Auto-labels that Prak attaches to insights extracted from spans
+     * involving this tool. Default empty. Adding domain labels at the
+     * tool level makes downstream memory-search ("show me what we know
+     * about IMAP failures") meaningfully faster without pushing
+     * label-engineering onto every prompt.
+     *
+     * <p>Examples:
+     * <ul>
+     *   <li>{@code imap_*}: {@code {"email", "imap", "integration"}}</li>
+     *   <li>{@code doc_create}/{@code doc_write}: {@code {"knowledge",
+     *       "documents"}}</li>
+     *   <li>{@code exec_run}: {@code {"execution", "shell"}}</li>
+     * </ul>
+     *
+     * <p>Keep labels lower-case, kebab- or single-word. Prak unions
+     * these across every tool used in the analysed span and merges with
+     * any labels the analyser itself emits.
+     */
+    default java.util.Set<String> prakLabels() {
+        return java.util.Set.of();
+    }
+
+    /**
      * 5–15-word relevance hint surfaced in the discovery block when
      * {@link #deferred()} is {@code true}. Should give the LLM enough
      * signal to know when calling {@code describe_tool} is worthwhile.

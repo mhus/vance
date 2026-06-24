@@ -51,6 +51,12 @@ public class RecipeDescribeTool implements Tool {
     }
 
     @Override
+    public boolean contributesPrak() {
+        // Recipe metadata — config snapshot, not durable insight.
+        return false;
+    }
+
+    @Override
     public Map<String, Object> paramsSchema() {
         return SCHEMA;
     }

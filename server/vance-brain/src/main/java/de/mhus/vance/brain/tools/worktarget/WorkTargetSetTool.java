@@ -78,6 +78,12 @@ public class WorkTargetSetTool implements Tool {
     }
 
     @Override
+    public boolean contributesPrak() {
+        // Internal routing state — not user-facing knowledge.
+        return false;
+    }
+
+    @Override
     public boolean deferred() {
         // Same rationale as WorkTargetGetTool#deferred: stay out of the
         // classified-engine primary manifest. The recipe owns the

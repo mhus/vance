@@ -81,6 +81,16 @@ public class ClientExecRunTool implements ClientTool {
     }
 
     @Override
+    public @org.jspecify.annotations.Nullable String troubleshootingHint() {
+        return "Requires CLIENT target. Non-zero exit = inspect stderr (exec_tail); timeout = retry with deadlineSeconds; missing binary = adjust PATH or use full path.";
+    }
+
+    @Override
+    public java.util.Set<String> prakLabels() {
+        return java.util.Set.of("execution", "shell", "client");
+    }
+
+    @Override
     public Map<String, Object> invoke(Map<String, Object> params) {
         Object rawCmd = params == null ? null : params.get("command");
         if (!(rawCmd instanceof String command) || command.isBlank()) {

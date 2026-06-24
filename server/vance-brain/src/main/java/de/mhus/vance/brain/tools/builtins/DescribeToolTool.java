@@ -67,6 +67,12 @@ public class DescribeToolTool implements Tool {
     }
 
     @Override
+    public boolean contributesPrak() {
+        // Tool-schema lookup — no durable insight in the result.
+        return false;
+    }
+
+    @Override
     public Map<String, Object> paramsSchema() {
         return SCHEMA;
     }

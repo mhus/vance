@@ -35,6 +35,10 @@ public class DocListFoldersTool implements Tool {
                 + "to that subtree.";
     }
     @Override public boolean primary() { return false; }
+    @Override public boolean contributesPrak() {
+        // Listing — folder names only, no insight.
+        return false;
+    }
     @Override public Set<String> labels() { return Set.of("folders", "eddie", "read-only"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }

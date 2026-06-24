@@ -61,6 +61,12 @@ public class FindToolsTool implements Tool {
     }
 
     @Override
+    public boolean contributesPrak() {
+        // Discovery only — no content the assistant synthesises into insight.
+        return false;
+    }
+
+    @Override
     public Map<String, Object> paramsSchema() {
         return SCHEMA;
     }

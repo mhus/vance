@@ -57,6 +57,7 @@ public class DocGrepTool implements Tool {
     }
     @Override public boolean primary() { return true; }
     @Override public Set<String> labels() { return Set.of("text-search", "eddie", "read-only"); }
+    @Override public Set<String> prakLabels() { return Set.of("knowledge", "documents", "search"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

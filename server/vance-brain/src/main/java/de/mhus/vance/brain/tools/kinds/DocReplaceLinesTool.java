@@ -54,6 +54,7 @@ public class DocReplaceLinesTool implements Tool {
     }
     @Override public boolean primary() { return false; }
     @Override public Set<String> labels() { return Set.of("text-edit", "eddie", "write", "document"); }
+    @Override public Set<String> prakLabels() { return Set.of("knowledge", "documents"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

@@ -78,6 +78,11 @@ public class DocReadTool implements Tool {
     }
 
     @Override
+    public Set<String> prakLabels() {
+        return Set.of("knowledge", "documents");
+    }
+
+    @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         String id = paramString(params, "id");
         String path = paramString(params, "path");

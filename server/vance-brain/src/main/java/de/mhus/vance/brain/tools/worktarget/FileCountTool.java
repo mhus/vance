@@ -26,6 +26,10 @@ public class FileCountTool extends AbstractWorkTargetTool {
                 + "at the active work target. Dispatches to "
                 + "client_file_count (CLIENT) or work_file_count (WORK).";
     }
+    @Override public boolean contributesPrak() {
+        // Numeric count — no durable insight.
+        return false;
+    }
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
     @Override public java.util.Set<String> labels() { return java.util.Set.of("read-only"); }
     @Override protected String clientBackend() { return "client_file_count"; }

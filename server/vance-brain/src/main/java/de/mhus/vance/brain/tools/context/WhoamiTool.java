@@ -43,6 +43,12 @@ public class WhoamiTool implements Tool {
     }
 
     @Override
+    public boolean contributesPrak() {
+        // Identity probe — never an insight.
+        return false;
+    }
+
+    @Override
     public Map<String, Object> paramsSchema() {
         return SCHEMA;
     }

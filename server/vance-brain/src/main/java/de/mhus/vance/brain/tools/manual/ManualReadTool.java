@@ -66,6 +66,12 @@ public class ManualReadTool implements Tool {
     }
 
     @Override
+    public boolean contributesPrak() {
+        // Manual content is reference material, not turn-specific insight.
+        return false;
+    }
+
+    @Override
     public Map<String, Object> paramsSchema() {
         return SCHEMA;
     }

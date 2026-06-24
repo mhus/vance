@@ -65,6 +65,12 @@ public class DocListTool implements Tool {
     }
 
     @Override
+    public boolean contributesPrak() {
+        // Listing — file names only, no synthesised insight.
+        return false;
+    }
+
+    @Override
     public Map<String, Object> paramsSchema() {
         return SCHEMA;
     }

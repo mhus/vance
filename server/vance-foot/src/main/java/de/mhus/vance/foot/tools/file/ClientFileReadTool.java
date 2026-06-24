@@ -59,6 +59,16 @@ public class ClientFileReadTool implements ClientTool {
     }
 
     @Override
+    public @org.jspecify.annotations.Nullable String troubleshootingHint() {
+        return "Requires CLIENT target — Foot must be connected. File missing/permission denied = check path; large file = use file_head_tail.";
+    }
+
+    @Override
+    public java.util.Set<String> prakLabels() {
+        return java.util.Set.of("filesystem", "client");
+    }
+
+    @Override
     public Map<String, Object> paramsSchema() {
         return SCHEMA;
     }

@@ -55,6 +55,12 @@ public class CurrentTimeTool implements Tool {
     }
 
     @Override
+    public boolean contributesPrak() {
+        // Wall-clock probe — never an insight.
+        return false;
+    }
+
+    @Override
     public Map<String, Object> paramsSchema() {
         return SCHEMA;
     }

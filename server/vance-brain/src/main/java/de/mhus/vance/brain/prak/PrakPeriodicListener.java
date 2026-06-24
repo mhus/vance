@@ -62,6 +62,14 @@ public class PrakPeriodicListener {
         if (m == null) return;
         if (m.getRole() != ChatRole.ASSISTANT) return;
         if (m.getThinkProcessId() == null || m.getThinkProcessId().isBlank()) return;
+        // Tool-level prak-skip: the producing engine stamped this when
+        // every tool used in the turn was mechanical (todo_*, find_tools,
+        // manual_*, …). Honour it before the trigger even loads
+        // ThinkProcessDocument — the whole point is to avoid the LLM
+        // call that the trigger would otherwise queue.
+        if (Boolean.TRUE.equals(m.getMeta().get(ChatMessageDocument.META_PRAK_SKIP))) {
+            return;
+        }
 
         try {
             Optional<ThinkProcessDocument> proc =

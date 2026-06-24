@@ -96,6 +96,12 @@ public class DocInfoTool implements Tool {
     }
 
     @Override
+    public boolean contributesPrak() {
+        // Metadata snapshot — no durable insight.
+        return false;
+    }
+
+    @Override
     public Map<String, Object> paramsSchema() {
         return SCHEMA;
     }

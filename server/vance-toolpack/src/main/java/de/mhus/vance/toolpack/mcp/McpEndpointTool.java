@@ -65,6 +65,17 @@ public final class McpEndpointTool implements Tool {
     @Override public String searchHint() { return searchHint; }
     @Override public String promptHint() { return promptHint; }
     @Override public Set<String> labels() { return labels; }
+
+    @Override
+    public @org.jspecify.annotations.Nullable String troubleshootingHint() {
+        return "MCP server unreachable = check the URL and that the server is running; protocol mismatch = update client.";
+    }
+
+    @Override
+    public Set<String> prakLabels() {
+        return Set.of("integration", "mcp");
+    }
+
     @Override public Map<String, Object> paramsSchema() { return meta.inputSchema(); }
 
     @Override

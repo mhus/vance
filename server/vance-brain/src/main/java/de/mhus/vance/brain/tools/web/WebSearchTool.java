@@ -94,6 +94,16 @@ public class WebSearchTool implements Tool {
     }
 
     @Override
+    public @org.jspecify.annotations.Nullable String troubleshootingHint() {
+        return "Provider down = retry once then surface; no results = legitimate, broaden query; rate-limit = wait and retry.";
+    }
+
+    @Override
+    public Set<String> prakLabels() {
+        return Set.of("web", "search", "integration");
+    }
+
+    @Override
     public Map<String, Object> paramsSchema() {
         return SCHEMA;
     }

@@ -31,6 +31,17 @@ public class FileWriteTool extends AbstractWorkTargetTool {
     }
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
     @Override public java.util.Set<String> labels() { return java.util.Set.of("write", "side-effect"); }
+
+    @Override
+    public @org.jspecify.annotations.Nullable String troubleshootingHint() {
+        return "Permission denied = check target/path; CLIENT needs Foot connected.";
+    }
+
+    @Override
+    public java.util.Set<String> prakLabels() {
+        return java.util.Set.of("filesystem");
+    }
+
     @Override protected String clientBackend() { return "client_file_write"; }
     @Override protected String workBackend()   { return "work_file_write"; }
 }

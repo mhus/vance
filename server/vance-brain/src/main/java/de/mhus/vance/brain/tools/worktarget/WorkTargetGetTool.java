@@ -60,6 +60,12 @@ public class WorkTargetGetTool implements Tool {
     }
 
     @Override
+    public boolean contributesPrak() {
+        // Internal routing state — not user-facing knowledge.
+        return false;
+    }
+
+    @Override
     public boolean deferred() {
         // Hide from the classified-engine primary manifest (Lunkwill /
         // Eddie / Marvin etc.). The recipe's promptPrefix already tells

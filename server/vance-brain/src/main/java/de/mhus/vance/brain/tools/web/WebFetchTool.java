@@ -162,6 +162,16 @@ public class WebFetchTool implements Tool {
     }
 
     @Override
+    public @org.jspecify.annotations.Nullable String troubleshootingHint() {
+        return "4xx = bad URL; 5xx = retry with backoff; timeout = remote slow, try smaller scope. Auth-walled (Cloudflare/Google) = expected, give up.";
+    }
+
+    @Override
+    public Set<String> prakLabels() {
+        return Set.of("web", "fetch", "integration");
+    }
+
+    @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         String rawUrl = params == null ? null : (String) params.get("url");
         if (rawUrl == null || rawUrl.isBlank()) {

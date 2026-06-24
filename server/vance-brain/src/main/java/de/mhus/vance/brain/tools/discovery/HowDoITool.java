@@ -90,6 +90,12 @@ public class HowDoITool implements Tool {
     }
 
     @Override
+    public boolean contributesPrak() {
+        // Routing helper — points at manuals, doesn't itself produce insight.
+        return false;
+    }
+
+    @Override
     public Map<String, Object> paramsSchema() {
         return SCHEMA;
     }

@@ -52,6 +52,12 @@ public class ProcessListTool implements Tool {
     }
 
     @Override
+    public boolean contributesPrak() {
+        // Process inventory — state snapshot, no insight.
+        return false;
+    }
+
+    @Override
     public Map<String, Object> paramsSchema() {
         return SCHEMA;
     }

@@ -326,6 +326,15 @@ public class LunkwillEngine implements ThinkEngine {
             // 3) Pi-style loop — no max-iters, only natural / terminate / external / safety stops.
             Deque<String> recentToolHashes = new ArrayDeque<>(properties.getIdleStuckThreshold());
 
+            // Track every tool the LLM actually invoked this turn. At
+            // persist-time we check whether the whole set is mechanical
+            // (todo_*, find_tools, manual_*, …) and stamp META_PRAK_SKIP
+            // on the assistant message so the side-channel analyser
+            // doesn't burn an LLM call on a no-content turn. The
+            // collector lives outside the loop so it accumulates across
+            // tool-call iterations, not just the last batch.
+            java.util.Set<String> toolsThisTurn = new java.util.LinkedHashSet<>();
+
             while (true) {
                 // External interrupt — graceful exit between turns.
                 // PAUSED is treated the same as SUSPENDED here: the
@@ -390,11 +399,11 @@ public class LunkwillEngine implements ThinkEngine {
                                 "Lunkwill id='{}' empty LLM response (no text, no tool calls) — BLOCKED",
                                 process.getId());
                         persistAssistantReply(process, chatLog, ctx,
-                                MODEL_COLLAPSE_MESSAGE, drained);
+                                MODEL_COLLAPSE_MESSAGE, drained, tools, toolsThisTurn);
                         exitStatus = ThinkProcessStatus.BLOCKED;
                         return;
                     }
-                    persistAssistantReply(process, chatLog, ctx, finalText, drained);
+                    persistAssistantReply(process, chatLog, ctx, finalText, drained, tools, toolsThisTurn);
                     log.info("Lunkwill id='{}' natural stop — awaiting follow-up ({} chars)",
                             process.getId(), finalText.length());
                     exitStatus = ThinkProcessStatus.IDLE;
@@ -408,6 +417,14 @@ public class LunkwillEngine implements ThinkEngine {
                             process.getId(), batchHash);
                     exitStatus = ThinkProcessStatus.BLOCKED;
                     return;
+                }
+
+                // Track every tool name the LLM asked for in this batch
+                // so the prak-skip stamper (see persistAssistantReply)
+                // can judge whether the full turn touched only mechanical
+                // tools.
+                for (ToolExecutionRequest ter : reply.toolExecutionRequests()) {
+                    if (ter.name() != null) toolsThisTurn.add(ter.name());
                 }
 
                 // Execute tools, append results, watch for _terminate.
@@ -492,8 +509,29 @@ public class LunkwillEngine implements ThinkEngine {
             ChatMessageService chatLog,
             ThinkEngineContext ctx,
             String finalText,
-            List<SteerMessage> originalInbox) {
+            List<SteerMessage> originalInbox,
+            ContextToolsApi tools,
+            java.util.Set<String> toolsThisTurn) {
         if (finalText.isBlank()) return;
+        // Stamp META_PRAK_SKIP when every tool invoked in this turn is
+        // mechanical (todo_*, find_tools, manual_*, work_target_*, …).
+        // PrakPeriodicListener sees the flag and drops the LLM-driven
+        // side-channel analyser for this message — no point burning a
+        // round-trip on "I called todo_write, plan ready". 0-tool turns
+        // bypass the stamp entirely (CheapPathFilter decides on content).
+        // Independently: union the per-tool prakLabels() so Prak's
+        // promotion step can tag insights from this span with the
+        // touched domains (e.g. "imap", "shell", "documents") without
+        // the analyser having to invent them.
+        java.util.Map<String, Object> meta = new java.util.LinkedHashMap<>();
+        if (tools.allNonPrak(toolsThisTurn)) {
+            meta.put(ChatMessageDocument.META_PRAK_SKIP, Boolean.TRUE);
+        }
+        java.util.Set<String> toolLabels = tools.unionPrakLabels(toolsThisTurn);
+        if (!toolLabels.isEmpty()) {
+            meta.put(ChatMessageDocument.META_PRAK_TOOL_LABELS,
+                    java.util.List.copyOf(toolLabels));
+        }
         // Always persist to Mongo so peer_read_chat_memory can read
         // the worker's transcript later — only the live UI-emit is
         // suppressed for hidden processes.
@@ -503,6 +541,7 @@ public class LunkwillEngine implements ThinkEngine {
                 .thinkProcessId(process.getId())
                 .role(ChatRole.ASSISTANT)
                 .content(finalText)
+                .meta(meta)
                 .build());
         if (saved != null && saved.getId() != null) {
             ctx.historyTagSink().flushTo(saved.getId(), chatLog);

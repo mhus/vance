@@ -34,6 +34,17 @@ public class FileGrepTool extends AbstractWorkTargetTool {
     }
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
     @Override public java.util.Set<String> labels() { return java.util.Set.of("read-only"); }
+
+    @Override
+    public @org.jspecify.annotations.Nullable String troubleshootingHint() {
+        return "No matches = pattern/path; timeout = scope too broad, narrow with pathGlob/path.";
+    }
+
+    @Override
+    public java.util.Set<String> prakLabels() {
+        return java.util.Set.of("filesystem", "search");
+    }
+
     @Override protected String clientBackend() { return "client_file_grep"; }
     @Override protected String workBackend()   { return "work_file_grep"; }
 }

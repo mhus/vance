@@ -81,6 +81,27 @@ public class ChatMessageDocument {
     /** Action-type value: relayed worker reply. */
     public static final String ACTION_TYPE_RELAY = "RELAY";
 
+    /**
+     * {@link #meta} key, Boolean. When {@code true}, the
+     * {@code PrakPeriodicListener} skips the side-channel analyser for
+     * this message — set by engines when every tool invoked in the
+     * producing turn has {@code Tool.contributesPrak() == false} (todo
+     * tracking, find_tools, manual_read, etc.). Absent / {@code false}
+     * leaves the listener's normal cheap-path filter in charge.
+     */
+    public static final String META_PRAK_SKIP = "prakSkip";
+
+    /**
+     * {@link #meta} key, {@code List<String>}. Union of
+     * {@code Tool.prakLabels()} across every tool invoked in the turn
+     * that produced this message. {@code PrakSideChannelRunner} picks
+     * these up and merges them into the labels of every insight
+     * extracted from the span — so memory searches like "what do we
+     * know about IMAP" find both analyser-emitted and tool-emitted
+     * domain labels without prompt-engineering per tool family.
+     */
+    public static final String META_PRAK_TOOL_LABELS = "prakToolLabels";
+
     @Id
     private @Nullable String id;
 

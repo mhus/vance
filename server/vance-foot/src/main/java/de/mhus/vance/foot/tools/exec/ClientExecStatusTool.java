@@ -47,6 +47,11 @@ public class ClientExecStatusTool implements ClientTool {
     }
 
     @Override
+    public java.util.Set<String> prakLabels() {
+        return java.util.Set.of("execution", "shell", "client");
+    }
+
+    @Override
     public Map<String, Object> paramsSchema() {
         return SCHEMA;
     }

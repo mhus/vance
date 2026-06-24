@@ -38,6 +38,17 @@ public class ExecRunTool extends AbstractWorkTargetTool {
     }
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
     @Override public java.util.Set<String> labels() { return java.util.Set.of("executive", "side-effect"); }
+
+    @Override
+    public @org.jspecify.annotations.Nullable String troubleshootingHint() {
+        return "Non-zero exit = inspect stderr (exec_tail); timeout = retry with deadlineSeconds; missing binary = adjust PATH or use full path.";
+    }
+
+    @Override
+    public java.util.Set<String> prakLabels() {
+        return java.util.Set.of("execution", "shell");
+    }
+
     @Override protected String clientBackend() { return "client_exec_run"; }
     @Override protected String workBackend()   { return "work_exec_run"; }
 }

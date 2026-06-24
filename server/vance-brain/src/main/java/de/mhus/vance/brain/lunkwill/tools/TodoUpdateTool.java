@@ -81,6 +81,12 @@ public class TodoUpdateTool implements Tool {
     }
 
     @Override
+    public boolean contributesPrak() {
+        // Plan-tracking is pure state — no durable insight ever sits in 'I marked item 3 done'.
+        return false;
+    }
+
+    @Override
     public Map<String, Object> paramsSchema() {
         return SCHEMA;
     }

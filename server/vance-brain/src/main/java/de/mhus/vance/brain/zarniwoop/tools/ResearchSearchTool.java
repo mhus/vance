@@ -94,6 +94,16 @@ public class ResearchSearchTool implements Tool {
     }
 
     @Override
+    public @org.jspecify.annotations.Nullable String troubleshootingHint() {
+        return "Provider down = retry once; no results = broaden query, switch modality; rate-limit = wait.";
+    }
+
+    @Override
+    public Set<String> prakLabels() {
+        return Set.of("research", "search", "integration");
+    }
+
+    @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         if (ctx == null) {
             throw new ToolException("research_search requires a tool invocation context");

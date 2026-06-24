@@ -161,6 +161,16 @@ public class ImapMailboxToolFactory implements ToolFactory {
         @Override public Set<String> labels() { return labels; }
         @Override public String promptHint() { return promptHint; }
 
+        @Override
+        public @org.jspecify.annotations.Nullable String troubleshootingHint() {
+            return "Auth failure = re-link credential; mailbox missing = check folder name; timeout = server slow or wrong host.";
+        }
+
+        @Override
+        public Set<String> prakLabels() {
+            return Set.of("email", "imap", "integration");
+        }
+
         /** Build a per-invocation config: resolve secret templates with the calling ctx. */
         ImapClient resolveClient(ToolInvocationContext ctx) {
             Map<String, Object> resolved = new LinkedHashMap<>(rawParams.size());

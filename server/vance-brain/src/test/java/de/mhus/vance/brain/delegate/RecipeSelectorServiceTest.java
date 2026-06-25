@@ -349,6 +349,7 @@ class RecipeSelectorServiceTest {
                 false, // listed
                 null, // title
                 java.util.List.of(),
+                null, // postCompletionHook
                 RecipeSource.PROJECT);
     }
 }

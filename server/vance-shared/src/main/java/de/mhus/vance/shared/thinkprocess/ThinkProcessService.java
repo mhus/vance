@@ -439,6 +439,27 @@ public class ThinkProcessService {
     }
 
     /**
+     * Atomically increments the post-completion hook round counter on
+     * the given process and returns the new value. Used by
+     * {@code LunkwillEngine} before spawning a hook-process so the
+     * Round-Cap check (against the recipe's
+     * {@code postCompletionHook.maxRounds}) is race-free even when the
+     * worker is concurrently resumed on a different pod.
+     *
+     * <p>Returns the post-increment value so callers can log + compare
+     * in one step. Returns {@code -1} when the row does not exist.
+     */
+    public int incrementPostCompletionHookRounds(String id) {
+        Query query = new Query(Criteria.where("_id").is(id));
+        Update update = new Update().inc("postCompletionHookRounds", 1);
+        ThinkProcessDocument updated = mongoTemplate.findAndModify(
+                query, update,
+                new org.springframework.data.mongodb.core.FindAndModifyOptions().returnNew(true),
+                ThinkProcessDocument.class);
+        return updated == null ? -1 : updated.getPostCompletionHookRounds();
+    }
+
+    /**
      * Atomically advances {@code lastPrakAt} to the given timestamp.
      * Used by {@code PrakPeriodicTrigger} after a successful periodic
      * pass; the next pass then reads from this cursor to find unrated

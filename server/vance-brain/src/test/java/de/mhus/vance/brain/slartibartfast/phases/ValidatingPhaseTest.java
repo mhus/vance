@@ -612,6 +612,7 @@ class ValidatingPhaseTest {
                 /*listed*/ false,
                 /*title*/ null,
                 java.util.List.of(),
+                /*postCompletionHook*/ null,
                 de.mhus.vance.brain.recipe.RecipeSource.PROJECT);
     }
 }

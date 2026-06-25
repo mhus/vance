@@ -338,6 +338,7 @@ class LightLlmServiceImplTest {
                 false,        // listed
                 null,         // title
                 List.of(),
+                null,         // postCompletionHook
                 RecipeSource.PROJECT);
     }
 
@@ -360,6 +361,7 @@ class LightLlmServiceImplTest {
                 false,        // listed
                 null,         // title
                 List.of(),
+                null,         // postCompletionHook
                 RecipeSource.PROJECT);
     }
 

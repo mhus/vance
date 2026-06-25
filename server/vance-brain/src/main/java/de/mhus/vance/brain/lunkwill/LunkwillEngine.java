@@ -209,6 +209,7 @@ public class LunkwillEngine implements ThinkEngine {
     private final MemoryContextLoader memoryContextLoader;
     private final ModelCatalog modelCatalog;
     private final MemoryCompactionService memoryCompactionService;
+    private final LunkwillPostCompletionHookHandler postCompletionHookHandler;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -475,6 +476,14 @@ public class LunkwillEngine implements ThinkEngine {
                     persistAssistantReply(process, chatLog, ctx, finalText, drained, tools, toolsThisTurn);
                     log.info("Lunkwill id='{}' natural stop — awaiting follow-up ({} chars)",
                             process.getId(), finalText.length());
+                    // Post-completion hook: optionally spawn a follow-up
+                    // process (review / summary / verify / …) before
+                    // releasing the worker to IDLE. Gates: recipe-config
+                    // present, trigger matches naturalStop, round-cap
+                    // not yet reached, inbox not already carrying a
+                    // hook outcome. See planning/lunkwill-post-completion-hook.md.
+                    postCompletionHookHandler.maybeSpawn(
+                            process, finalText, drained, /*naturalStop*/ true);
                     exitStatus = ThinkProcessStatus.IDLE;
                     return;
                 }
@@ -516,6 +525,22 @@ public class LunkwillEngine implements ThinkEngine {
                         reply.toolExecutionRequests(), tools, messages, process.getId());
 
                 if (terminate) {
+                    // Post-completion hook on terminate: only fires
+                    // when the recipe explicitly opts in (trigger:
+                    // terminate or both). For workers, suppress when
+                    // a hook fires — the parent expects DONE on the
+                    // child's close, but the hook turns this into a
+                    // multi-step flow where the worker stays IDLE
+                    // awaiting the hook's outcome. Same gates as the
+                    // natural-stop path.
+                    boolean hookSpawned = postCompletionHookHandler.maybeSpawn(
+                            process, /*finalText*/ "", drained, /*naturalStop*/ false);
+                    if (hookSpawned) {
+                        log.info("Lunkwill id='{}' tool-terminate — post-hook spawned, staying IDLE",
+                                process.getId());
+                        exitStatus = ThinkProcessStatus.IDLE;
+                        return;
+                    }
                     if (isWorker) {
                         // Worker: explicit "done forever" — close so
                         // the parent's delegation pointer releases.

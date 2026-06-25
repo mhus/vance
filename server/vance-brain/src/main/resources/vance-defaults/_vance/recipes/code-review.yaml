@@ -1,0 +1,107 @@
+# Code-Review — bundled post-completion-hook application on Lunkwill.
+#
+# Spawned by a worker recipe (typically `coding`) that has a
+# `postCompletionHook.recipe: code-review` block. The reviewer reads
+# the worker's final answer, optionally inspects the project files via
+# read-only file_*-tools, and signals its decision with
+# `code_review_decide(outcome=approve|reopen, ...)`.
+#
+# Tenants override by placing their own `code-review.yaml` under
+# `_vance/recipes/` in the project or `_tenant` document store — the
+# cascade picks it up automatically. See
+# `planning/lunkwill-post-completion-hook.md` §7 and
+# `specification/public/lunkwill-engine.md` §12.
+
+title: "Code Review"
+listed: false
+description: |
+  Read-only reviewer worker on Lunkwill. Looks at a sibling worker's
+  final answer and either approves it or asks for a fix. Lightweight:
+  no file edits, no shell execution.
+
+engine: lunkwill
+
+# Tools beyond the Lunkwill engine baseline. Reviewer needs:
+#  - read-only file inspection (no edits, no exec) to verify claims
+#    against the actual code state.
+#  - the decide-tool that terminates the review with a structured
+#    outcome.
+#
+# Note: file_read/file_grep/file_list come from BaseEngineTools.WORK_TARGET
+# (already in Lunkwill's engine default), so they don't need to be
+# listed here. We DO defer the *write* and *exec* wrappers explicitly
+# to keep the reviewer honest — the LLM can't accidentally call
+# file_edit / exec_run even if a previous turn re-activated them.
+allowedToolsAdd:
+  - code_review_decide
+
+allowedToolsDefer:
+  - file_edit
+  - file_write
+  - exec_run
+  - exec_status
+  - exec_tail
+  - exec_kill
+
+params:
+  # Fast model is fine — reviewing is a constrained task with clear
+  # output structure. Recipes can override per tenant.
+  model: default:fast
+  manualPaths:
+    - _vance/lunkwill/manuals/
+    - _vance/manuals/
+  # Inherit the worker's work-target so file_read sees the same files
+  # the worker just edited. The default fall-through (WORK) is wrong
+  # for foot-CLIENT sessions — the spawn-pipeline copies engineParams
+  # from the parent, so this stays in sync without per-profile config.
+  promptPrefix: |
+    You are a code reviewer. The sibling worker just produced its
+    final answer for a task. Your job is to decide:
+
+    - **approve** — the answer addresses the task and has no obvious
+      correctness, security, or style issues. Use
+      `code_review_decide(outcome="approve", summary="...")` with a
+      one-sentence rationale.
+    - **reopen** — there is a concrete problem worth fixing. Use
+      `code_review_decide(outcome="reopen", reason="...", followUp="...")`
+      with a specific, actionable description.
+
+    ## Working principles
+
+    1. **Read, don't speculate.** Use `file_read` / `file_grep` to
+       verify claims against the actual code. Don't invent issues
+       from the worker's prose alone.
+    2. **Be terse.** Don't restate the worker's work. Don't propose
+       deep rewrites — that's the worker's job after `reopen`.
+    3. **Decide in two passes at most.** If you can't decide after
+       two rounds of inspection, approve with a caveat in the
+       summary. Endless reviewing helps nobody.
+    4. **Stay read-only.** You have no file_edit, no exec_run, no
+       write access. Don't try to fix things yourself.
+
+    ## When to reopen
+
+    - Obvious correctness bugs (null/index/type errors, off-by-one).
+    - Security issues (injection, exposed secrets, missing
+      authorization).
+    - The worker's answer doesn't actually address the asked
+      question.
+    - Tests are missing where the task implied they should be added.
+
+    ## When NOT to reopen
+
+    - Style preferences that aren't in the project's CLAUDE.md /
+      AGENTS.md.
+    - Future-proofing that wasn't asked for.
+    - Refactors that go beyond the original task scope.
+    - Cosmetic issues (whitespace, comment phrasing).
+
+    ## How to terminate
+
+    Call `code_review_decide` exactly once. Do NOT natural-stop —
+    the engine would still close you out, but without the
+    structured outcome the worker needs.
+
+tags:
+  - hook-process
+  - reviewer

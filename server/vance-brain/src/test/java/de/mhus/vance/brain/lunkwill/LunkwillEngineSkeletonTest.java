@@ -2,6 +2,7 @@ package de.mhus.vance.brain.lunkwill;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
@@ -142,13 +143,18 @@ class LunkwillEngineSkeletonTest {
         lenient().when(memoryCompactionService.compactIfNeeded(any(), any(), any(), any()))
                 .thenReturn(de.mhus.vance.brain.memory.CompactionResult.noop("test"));
 
+        LunkwillPostCompletionHookHandler hookHandler =
+                mock(LunkwillPostCompletionHookHandler.class);
+        lenient().when(hookHandler.maybeSpawn(any(), any(), any(), anyBoolean()))
+                .thenReturn(false);
         engine = new LunkwillEngine(
                 thinkProcessService, properties, engineChatFactory,
                 llmCallTracker, streaming, objectMapper,
                 enginePromptResolver, systemPromptComposer,
                 skillResolver, skillPromptComposer, sessionService,
                 memoryContextLoader,
-                modelCatalog, memoryCompactionService);
+                modelCatalog, memoryCompactionService,
+                hookHandler);
 
         process = new ThinkProcessDocument();
         process.setId(PROC_ID);

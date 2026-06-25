@@ -395,6 +395,22 @@ public class ThinkProcessDocument {
      */
     private @Nullable Instant lastPrakAt;
 
+    /**
+     * Number of post-completion hook rounds the Lunkwill engine has
+     * already spawned for this process. Incremented atomically by
+     * {@code ThinkProcessService.incrementPostCompletionHookRounds}
+     * each time the engine spawns a hook-process after a natural
+     * stop / tool-terminate. The engine compares this counter against
+     * the recipe's {@code postCompletionHook.maxRounds} cap before
+     * deciding to spawn — see
+     * {@code planning/lunkwill-post-completion-hook.md} §4 / §9.
+     *
+     * <p>Engine-internal state, not recipe config. Survives process
+     * restarts so the cap is respected even when the worker is
+     * resumed across pods.
+     */
+    private int postCompletionHookRounds = 0;
+
     @Version
     private @Nullable Long version;
 

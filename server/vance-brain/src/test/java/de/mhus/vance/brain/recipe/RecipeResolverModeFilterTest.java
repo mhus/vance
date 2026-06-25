@@ -234,7 +234,7 @@ class RecipeResolverModeFilterTest {
                 Map.of(),
                 null, PromptMode.APPEND, null,
                 baseAdd, baseRemove, baseDefer, baseModes, profiles,
-                List.of(), null, List.of(), false, false, false, null, List.of(), RecipeSource.RESOURCE);
+                List.of(), null, List.of(), false, false, false, null, List.of(), null, RecipeSource.RESOURCE);
     }
 
     private static Tool stubTool(String name) {

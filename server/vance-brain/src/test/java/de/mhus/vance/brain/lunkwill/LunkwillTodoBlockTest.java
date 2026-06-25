@@ -46,7 +46,8 @@ class LunkwillTodoBlockTest {
                 mock(SessionService.class),
                 mock(de.mhus.vance.brain.memory.MemoryContextLoader.class),
                 mock(de.mhus.vance.brain.ai.ModelCatalog.class),
-                mock(de.mhus.vance.brain.memory.MemoryCompactionService.class));
+                mock(de.mhus.vance.brain.memory.MemoryCompactionService.class),
+                mock(LunkwillPostCompletionHookHandler.class));
     }
 
     @Test

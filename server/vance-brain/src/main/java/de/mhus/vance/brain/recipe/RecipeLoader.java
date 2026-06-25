@@ -195,6 +195,8 @@ public class RecipeLoader {
         boolean listed = spec.get("listed") instanceof Boolean lb && lb;
         String title = stringOrNull(spec.get("title"));
         List<String> tags = stringList(spec.get("tags"), "tags");
+        PostCompletionHookConfig postCompletionHook =
+                parsePostCompletionHook(spec.get("postCompletionHook"), renderer);
 
         return new ResolvedRecipe(
                 name, description, engine, params,
@@ -204,7 +206,78 @@ public class RecipeLoader {
                 defaultActiveSkills, allowedSkills,
                 triggerKeywords,
                 locked, internal, listed, title, tags,
+                postCompletionHook,
                 mapSource(hit.source()));
+    }
+
+    /**
+     * Parses the optional {@code postCompletionHook} block. {@code null}
+     * raw → returns {@code null} (no hook). Validates structural
+     * correctness and compile-checks the {@code goalTemplate} so a
+     * malformed Pebble template fails the recipe load, not the first
+     * worker turn that would have spawned the hook.
+     *
+     * <p>Cross-recipe checks (hook recipe exists, hook recipe uses
+     * Lunkwill engine, hook recipe has no transitive
+     * {@code postCompletionHook}) are deferred to engine spawn-time
+     * because they need cascade resolution against a concrete tenant —
+     * and the loader operates per-recipe without that scope.
+     */
+    @SuppressWarnings("unchecked")
+    private static @Nullable PostCompletionHookConfig parsePostCompletionHook(
+            @Nullable Object raw, PromptTemplateRenderer renderer) {
+        if (raw == null) return null;
+        if (!(raw instanceof Map<?, ?> rawMap)) {
+            throw new IllegalStateException("'postCompletionHook' must be a map");
+        }
+        Map<String, Object> m = (Map<String, Object>) rawMap;
+        String hookRecipe = stringOrNull(m.get("recipe"));
+        if (hookRecipe == null) {
+            throw new IllegalStateException(
+                    "'postCompletionHook.recipe' is required and must be non-blank");
+        }
+        PostCompletionHookTrigger trigger =
+                parseHookTrigger(m.get("trigger"));
+        int maxRounds = parseMaxRounds(m.get("maxRounds"));
+        String goalTemplate = stringOrNull(m.get("goalTemplate"));
+        compileTemplate(renderer, goalTemplate, "postCompletionHook.goalTemplate");
+        return new PostCompletionHookConfig(
+                hookRecipe, trigger, maxRounds, goalTemplate);
+    }
+
+    private static PostCompletionHookTrigger parseHookTrigger(@Nullable Object raw) {
+        if (raw == null) return PostCompletionHookTrigger.NATURAL_STOP;
+        if (!(raw instanceof String s)) {
+            throw new IllegalStateException(
+                    "'postCompletionHook.trigger' must be a string");
+        }
+        String norm = s.trim();
+        // Accept the YAML-friendly camelCase aliases used in the design
+        // doc ('naturalStop', 'terminate', 'both') in addition to the
+        // canonical enum names. Keeps recipes readable without forcing
+        // SHOUTING_SNAKE in the YAML.
+        return switch (norm.toLowerCase()) {
+            case "naturalstop", "natural_stop" -> PostCompletionHookTrigger.NATURAL_STOP;
+            case "terminate" -> PostCompletionHookTrigger.TERMINATE;
+            case "both" -> PostCompletionHookTrigger.BOTH;
+            default -> throw new IllegalStateException(
+                    "unknown postCompletionHook.trigger '" + s
+                            + "' — expected naturalStop, terminate, or both");
+        };
+    }
+
+    private static int parseMaxRounds(@Nullable Object raw) {
+        if (raw == null) return 1;
+        if (raw instanceof Number n) {
+            int v = n.intValue();
+            if (v < 0) {
+                throw new IllegalStateException(
+                        "'postCompletionHook.maxRounds' must be >= 0");
+            }
+            return v;
+        }
+        throw new IllegalStateException(
+                "'postCompletionHook.maxRounds' must be a non-negative integer");
     }
 
     /**

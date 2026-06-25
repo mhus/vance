@@ -569,6 +569,42 @@ function fmtDuration(ms: number | null): string {
   if (ms < 1000) return `${ms} ms`;
   return `${(ms / 1000).toFixed(2)} s`;
 }
+
+// ─── TeX runner: open generated PDF ──────────────────────────────
+//
+// When the tex runner finishes, the result carries { pdfPath } — the
+// document path of the freshly imported PDF. We find it in the file
+// list (refreshing first so the new document appears) and open it as
+// a new tab via the cortex store.
+const isTexRunner = computed<boolean>(() => runAdapter.value?.id === 'tex');
+const texPdfPath = computed<string | null>(() => {
+  if (!isTexRunner.value) return null;
+  if (runState.value !== 'finished') return null;
+  const r = runHandle.value?.result.value;
+  if (r && typeof r === 'object' && 'pdfPath' in r) {
+    const p = (r as { pdfPath?: string }).pdfPath;
+    return p ?? null;
+  }
+  return null;
+});
+
+async function onOpenPdf(): Promise<void> {
+  const pdfPath = texPdfPath.value;
+  if (!pdfPath) return;
+  // Refresh the file list so the newly imported PDF shows up, then
+  // find it by path and open it as a new tab.
+  if (store.projectId) {
+    await store.loadList(store.projectId);
+  }
+  const pdfDoc = store.files.find(
+    (f) => f.path === pdfPath,
+  );
+  if (pdfDoc) {
+    await store.openFile(pdfDoc.id);
+  } else {
+    console.warn('[cortex/tex] PDF not found in file list:', pdfPath);
+  }
+}
 </script>
 
 <template>
@@ -877,6 +913,18 @@ function fmtDuration(ms: number | null): string {
       >
         <div class="opacity-60 mb-1">result:</div>
         {{ fmtResult(runHandle.result.value) }}
+      </div>
+      <div
+        v-if="texPdfPath"
+        class="border-t border-base-300 px-3 py-1.5 bg-success/5 flex items-center gap-2"
+      >
+        <button
+          type="button"
+          class="text-xs px-2 py-0.5 rounded border border-success/40 bg-success/10 text-success hover:bg-success/20"
+          title="Open the generated PDF in a new tab"
+          @click="onOpenPdf"
+        >📄 Open PDF</button>
+        <span class="text-xs font-mono opacity-60">{{ texPdfPath }}</span>
       </div>
     </div>
 

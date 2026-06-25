@@ -142,6 +142,7 @@ public class SessionCreateHandler implements WsHandler {
                 created.getSessionId(),
                 ctx.getUserId(),
                 ctx.getEditorId(),
+                ctx.getDisplayName(),
                 wsSession,
                 created.isAllowMultipleClients());
         SessionConnectionRegistry.closeKicked(registerResult);

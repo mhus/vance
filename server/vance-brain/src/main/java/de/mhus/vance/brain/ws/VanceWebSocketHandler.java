@@ -228,15 +228,31 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
             clientToolRegistry.unregister(sessionId);
             markClientToolsUnavailable(ctx.getTenantId(), sessionId, clientTools);
             connectionRegistry.unregister(sessionId, ctx.getEditorId());
-            sessionService.unbind(sessionId, ctx.getEditorId());
-            // Drive the per-session onDisconnect policy AFTER the connection
-            // bookkeeping has been cleared. The lifecycle service may
-            // suspend / close the session; engines on the lane finish at
-            // the next safe boundary.
-            try {
-                sessionLifecycle.onDisconnect(sessionId);
-            } catch (RuntimeException e) {
-                log.warn("onDisconnect dispatch failed for session='{}'", sessionId, e);
+            // Bind-holder escalation (multi-user — see
+            // planning/multi-user-sessions.md §3b): if the leaving
+            // connection held the Mongo bind but other connections
+            // remain in the session, hand the bind over to a survivor
+            // and skip the onDisconnect lifecycle. The session stays
+            // live for the participants who are still attached.
+            java.util.Optional<de.mhus.vance.brain.events.ConnectionEntry> survivor =
+                    connectionRegistry.firstEntry(sessionId);
+            if (survivor.isPresent()
+                    && sessionService.tryEscalateBind(
+                            sessionId,
+                            ctx.getEditorId(),
+                            survivor.get().editorId())) {
+                log.debug("Connection close: bind escalated for session='{}'", sessionId);
+            } else {
+                sessionService.unbind(sessionId, ctx.getEditorId());
+                // Drive the per-session onDisconnect policy AFTER the
+                // connection bookkeeping has been cleared. The lifecycle
+                // service may suspend / close the session; engines on
+                // the lane finish at the next safe boundary.
+                try {
+                    sessionLifecycle.onDisconnect(sessionId);
+                } catch (RuntimeException e) {
+                    log.warn("onDisconnect dispatch failed for session='{}'", sessionId, e);
+                }
             }
         }
     }

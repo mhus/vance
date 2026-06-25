@@ -613,6 +613,7 @@ async function send(): Promise<void> {
     role: 'USER' as unknown as ChatRole,
     content: echoText,
     createdAt: new Date(),
+    addressedToAgent: true,
   });
   composerText.value = '';
   selectedFiles.value = [];

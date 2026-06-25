@@ -163,6 +163,47 @@ public final class PromptContextBuilder {
     }
 
     /**
+     * Multi-user collaboration mode for the current turn — {@code true}
+     * when the session has {@code allowMultipleClients} <em>and</em>
+     * more than one client is currently bound (so the agent must
+     * disambiguate participants and only respond when addressed). See
+     * {@code planning/multi-user-sessions.md} §5.
+     *
+     * <p>Per-turn — never persisted on the process. Default {@code false}.
+     */
+    public PromptContextBuilder collabActive(boolean collabActive) {
+        map.put("collabActive", collabActive);
+        return this;
+    }
+
+    /**
+     * Display names of every participant currently bound to the
+     * session — rendered into the prompt as the {@code participants}
+     * variable when {@code collabActive} is true. Falls back to user
+     * ids if the display name was not captured at register time.
+     */
+    public PromptContextBuilder participants(java.util.@Nullable List<String> participants) {
+        if (participants != null && !participants.isEmpty()) {
+            map.put("participants", java.util.List.copyOf(participants));
+        }
+        return this;
+    }
+
+    /**
+     * Display name of the participant whose USER turn drove this
+     * drain-batch — rendered into the prompt as
+     * {@code mentionedBy}. Lets the agent address the right person
+     * by name in its reply. {@code null} for autonomous wake paths
+     * (Auto-Wakeup, tool results) and for legacy turns.
+     */
+    public PromptContextBuilder mentionedBy(@Nullable String displayName) {
+        if (displayName != null && !displayName.isBlank()) {
+            map.put("mentionedBy", displayName);
+        }
+        return this;
+    }
+
+    /**
      * Cortex-mode flag for the current turn — {@code true} when a
      * Cortex-view client is currently bound to this session (the
      * client-tool registry contains tools labelled {@code "cortex"}).

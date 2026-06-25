@@ -258,6 +258,8 @@ export * from './session/IdlePolicy';
 export * from './session/SessionLifecycleConfig';
 export * from './session/SessionMetadataDto';
 export * from './session/SessionMetadataPatchRequest';
+export * from './session/SessionParticipantDto';
+export * from './session/SessionRosterData';
 export * from './session/SessionSearchHitDto';
 export * from './session/SessionSearchScope';
 export * from './session/SessionStatus';

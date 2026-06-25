@@ -310,6 +310,9 @@ function appendMessageBubble(data: ChatMessageAppendedData): void {
     content: data.content,
     createdAt: data.createdAt,
     meta: data.meta,
+    senderUserId: data.senderUserId,
+    senderDisplayName: data.senderDisplayName,
+    addressedToAgent: data.addressedToAgent,
   });
   if (isWorkerProcess(data.processName)) {
     workerMessageIds.value = new Set(workerMessageIds.value).add(data.chatMessageId);

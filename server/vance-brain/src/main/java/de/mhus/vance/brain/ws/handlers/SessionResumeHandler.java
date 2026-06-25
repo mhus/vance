@@ -117,6 +117,7 @@ public class SessionResumeHandler implements WsHandler {
                 doc.getSessionId(),
                 ctx.getUserId(),
                 ctx.getEditorId(),
+                ctx.getDisplayName(),
                 wsSession,
                 doc.isAllowMultipleClients());
         if (registerResult.outcome() == SessionConnectionRegistry.RegisterOutcome.REJECTED) {

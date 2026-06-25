@@ -10,6 +10,8 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.WebSocketSession;
@@ -43,6 +45,27 @@ public class SessionConnectionRegistry {
      * irrelevant.
      */
     private final Map<String, List<ConnectionEntry>> bySession = new ConcurrentHashMap<>();
+
+    /**
+     * Optional Spring event publisher — set by {@link #setEventPublisher}
+     * (Spring-injected via {@code @Autowired(required=false)}). When
+     * present, the registry fires {@link SessionRosterChangedEvent}
+     * after every roster mutation so listeners (the roster
+     * broadcaster) can push frames to clients. Decoupled via Spring
+     * events to avoid a cycle through the WebSocket sender.
+     */
+    private @Nullable ApplicationEventPublisher eventPublisher;
+
+    @Autowired(required = false)
+    public void setEventPublisher(ApplicationEventPublisher publisher) {
+        this.eventPublisher = publisher;
+    }
+
+    private void fireRosterChanged(String sessionId) {
+        ApplicationEventPublisher pub = eventPublisher;
+        if (pub == null) return;
+        pub.publishEvent(new SessionRosterChangedEvent(sessionId));
+    }
 
     /**
      * Outcome of a {@link #register} call.
@@ -105,7 +128,24 @@ public class SessionConnectionRegistry {
             String editorId,
             WebSocketSession wsSession,
             boolean allowMultipleClients) {
-        ConnectionEntry incoming = new ConnectionEntry(userId, editorId, wsSession);
+        return register(sessionId, userId, editorId, null, wsSession, allowMultipleClients);
+    }
+
+    /**
+     * Variant carrying the user's display name so participant-list
+     * lookups don't need to round-trip through {@code UserService} per
+     * call. Prefer this one in handlers that already have a
+     * {@code ConnectionContext} on hand. The {@code displayName} may
+     * be {@code null}; consumers fall back to {@code userId}.
+     */
+    public RegisterResult register(
+            String sessionId,
+            String userId,
+            String editorId,
+            @Nullable String displayName,
+            WebSocketSession wsSession,
+            boolean allowMultipleClients) {
+        ConnectionEntry incoming = new ConnectionEntry(userId, editorId, displayName, wsSession);
         final WebSocketSession[] kickedHolder = new WebSocketSession[1];
         final RegisterOutcome[] outcomeHolder = {RegisterOutcome.ACCEPTED};
 
@@ -148,6 +188,9 @@ public class SessionConnectionRegistry {
                                     + "(private session, another user connected)",
                             sessionId, userId, editorId);
         }
+        if (outcomeHolder[0] != RegisterOutcome.REJECTED) {
+            fireRosterChanged(sessionId);
+        }
         return new RegisterResult(outcomeHolder[0], kickedHolder[0]);
     }
 
@@ -162,6 +205,7 @@ public class SessionConnectionRegistry {
             return list.isEmpty() ? null : list;
         });
         log.debug("registry unregistered session='{}' editor='{}'", sessionId, editorId);
+        fireRosterChanged(sessionId);
     }
 
     /**
@@ -172,6 +216,7 @@ public class SessionConnectionRegistry {
         List<ConnectionEntry> removed = bySession.remove(sessionId);
         if (removed != null && !removed.isEmpty()) {
             log.debug("registry unregisteredAll session='{}' n={}", sessionId, removed.size());
+            fireRosterChanged(sessionId);
         }
     }
 
@@ -204,6 +249,32 @@ public class SessionConnectionRegistry {
     }
 
     /**
+     * Returns the first remaining {@link ConnectionEntry} for the
+     * session, or {@code empty} when the session has no live
+     * connections. Used by the bind-holder escalation path on
+     * disconnect — see {@code planning/multi-user-sessions.md} §3b.
+     */
+    public Optional<ConnectionEntry> firstEntry(@Nullable String sessionId) {
+        if (sessionId == null) return Optional.empty();
+        List<ConnectionEntry> list = bySession.get(sessionId);
+        if (list == null || list.isEmpty()) return Optional.empty();
+        return Optional.of(list.get(0));
+    }
+
+    /**
+     * Snapshot copy of every {@link ConnectionEntry} bound to the
+     * session — used by the roster broadcaster to build the
+     * participants payload (which needs editorId + userId +
+     * displayName, not just the WebSocketSession).
+     */
+    public List<ConnectionEntry> snapshotEntries(@Nullable String sessionId) {
+        if (sessionId == null) return Collections.emptyList();
+        List<ConnectionEntry> list = bySession.get(sessionId);
+        if (list == null || list.isEmpty()) return Collections.emptyList();
+        return new ArrayList<>(list);
+    }
+
+    /**
      * Returns the connection of a specific user in the given session,
      * if any. Use for user-scoped pushes (inbox notifications,
      * per-user dialogs) where a multi-user session must <em>not</em>
@@ -233,6 +304,25 @@ public class SessionConnectionRegistry {
         if (sessionId == null) return 0;
         List<ConnectionEntry> list = bySession.get(sessionId);
         return list == null ? 0 : list.size();
+    }
+
+    /**
+     * Returns the display names of every currently bound participant
+     * — used by the prompt-render {@code participants} variable.
+     * {@code displayName} falls back to {@code userId} when the
+     * registration didn't carry one. Stable iteration order: the
+     * order in which connections were registered.
+     */
+    public List<String> participantDisplayNames(@Nullable String sessionId) {
+        if (sessionId == null) return Collections.emptyList();
+        List<ConnectionEntry> list = bySession.get(sessionId);
+        if (list == null || list.isEmpty()) return Collections.emptyList();
+        List<String> out = new ArrayList<>(list.size());
+        for (ConnectionEntry entry : list) {
+            String name = entry.displayName();
+            out.add(name == null || name.isBlank() ? entry.userId() : name);
+        }
+        return out;
     }
 
     /**

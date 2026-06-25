@@ -230,6 +230,7 @@ public class EddieEngine extends StructuredActionEngine {
     private final de.mhus.vance.brain.memory.MemoryCompactionService memoryCompactionService;
     private final de.mhus.vance.brain.discovery.DiscoveryService discoveryService;
     private final de.mhus.vance.brain.tools.client.CortexPromptResolver cortexPromptResolver;
+    private final de.mhus.vance.brain.chat.CollabContextResolver collabContextResolver;
     private final ObjectMapper objectMapper;
     private final de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeService
             actionLoopJudgeService;
@@ -281,6 +282,7 @@ public class EddieEngine extends StructuredActionEngine {
             @org.springframework.context.annotation.Lazy
                     de.mhus.vance.brain.discovery.DiscoveryService discoveryService,
             de.mhus.vance.brain.tools.client.CortexPromptResolver cortexPromptResolver,
+            de.mhus.vance.brain.chat.CollabContextResolver collabContextResolver,
             de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeService actionLoopJudgeService) {
         super(streamingProperties, llmCallTracker, objectMapper, composer);
         this.thinkProcessService = thinkProcessService;
@@ -302,6 +304,7 @@ public class EddieEngine extends StructuredActionEngine {
         this.memoryCompactionService = memoryCompactionService;
         this.discoveryService = discoveryService;
         this.cortexPromptResolver = cortexPromptResolver;
+        this.collabContextResolver = collabContextResolver;
         this.objectMapper = objectMapper;
         this.actionLoopJudgeService = actionLoopJudgeService;
     }
@@ -2422,9 +2425,11 @@ public class EddieEngine extends StructuredActionEngine {
         // wins. Per-turn signal — never persisted on the process. See
         // specification/voice-mode.md §6.
         boolean voiceMode = false;
+        String mentionedByDisplayName = null;
         for (SteerMessage m : inbox) {
             if (m instanceof SteerMessage.UserChatInput uci) {
                 voiceMode = uci.voiceMode();
+                mentionedByDisplayName = uci.fromUserDisplayName();
             }
         }
 
@@ -2435,6 +2440,10 @@ public class EddieEngine extends StructuredActionEngine {
         de.mhus.vance.brain.tools.client.CortexPromptResolver.CortexContext cortex =
                 cortexPromptResolver.resolve(process.getSessionId());
 
+        // Multi-user collab context — see planning/multi-user-sessions.md §5/§6.
+        de.mhus.vance.brain.chat.CollabContextResolver.CollabContext collab =
+                collabContextResolver.resolve(process.getSessionId(), mentionedByDisplayName);
+
         de.mhus.vance.brain.prompt.PromptContextBuilder ctxBuilder =
                 de.mhus.vance.brain.prompt.PromptContextBuilder
                         .forProcess(process, modelInfo)
@@ -2444,6 +2453,9 @@ public class EddieEngine extends StructuredActionEngine {
                         .cortexMode(cortex.active())
                         .cortexBoundDocPath(cortex.boundDocPath())
                         .cortexBoundDocMime(cortex.boundDocMime())
+                        .collabActive(collab.active())
+                        .participants(collab.participants())
+                        .mentionedBy(collab.mentionedBy())
                         .withRootDirTypes(workspaceService.getRootDirTypes(
                                 process.getTenantId(), process.getProjectId()));
         // Fall back to the engine's cascade-resolved default prompt

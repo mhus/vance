@@ -420,6 +420,34 @@ public class SessionService {
     }
 
     /**
+     * Hands the Mongo bind-lock atomically from {@code fromEditorId}
+     * to {@code toEditorId}. Used by the multi-user disconnect path:
+     * when the binding connection closes while other connections are
+     * still attached, a survivor takes over so the session-lifecycle
+     * (onDisconnect, idle-sweep) does not fire prematurely. See
+     * {@code planning/multi-user-sessions.md} §3b.
+     *
+     * <p>Returns {@code true} when the bind was escalated;
+     * {@code false} when the leaving editor no longer held the bind
+     * (race with another disconnect, or the session was already
+     * unbound).
+     */
+    public boolean tryEscalateBind(String sessionId, String fromEditorId, String toEditorId) {
+        Query query = new Query(Criteria.where(F_SESSION_ID).is(sessionId)
+                .and(F_BOUND_CONNECTION).is(fromEditorId));
+        Update update = new Update()
+                .set(F_BOUND_CONNECTION, toEditorId)
+                .set(F_LAST_ACTIVITY, Instant.now());
+        UpdateResult result = mongoTemplate.updateFirst(query, update, SessionDocument.class);
+        boolean escalated = result.getModifiedCount() == 1;
+        if (escalated) {
+            log.info("Escalated session '{}' bind from editor '{}' to '{}'",
+                    sessionId, fromEditorId, toEditorId);
+        }
+        return escalated;
+    }
+
+    /**
      * Mass-release the {@code boundConnectionId} for every session whose
      * {@code projectId} is in {@code projectIds}. Used by
      * {@code ProjectLifecycleService.bring} when the project transitions

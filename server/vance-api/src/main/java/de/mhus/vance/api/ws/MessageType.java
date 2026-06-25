@@ -28,6 +28,15 @@ public final class MessageType {
      * See {@code specification/session-lifecycle.md} §14.2.
      */
     public static final String SESSION_METADATA_PATCH = "session-metadata-patch";
+
+    /**
+     * Server-initiated notification: the multi-user participant roster
+     * for the bound session has changed. Payload is
+     * {@code SessionRosterData}. Pushed to every connection in the
+     * session whenever a register / unregister / bind-escalation
+     * happens. See {@code planning/multi-user-sessions.md} §7.
+     */
+    public static final String SESSION_ROSTER = "session-roster";
     public static final String PROJECT_LIST = "project-list";
     public static final String PROJECTGROUP_LIST = "projectgroup-list";
 

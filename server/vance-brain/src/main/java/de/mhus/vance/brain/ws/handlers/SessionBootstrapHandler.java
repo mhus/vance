@@ -155,6 +155,7 @@ public class SessionBootstrapHandler implements WsHandler {
                 session.getSessionId(),
                 ctx.getUserId(),
                 ctx.getEditorId(),
+                ctx.getDisplayName(),
                 wsSession,
                 session.isAllowMultipleClients());
         if (registerResult.outcome() == SessionConnectionRegistry.RegisterOutcome.REJECTED) {

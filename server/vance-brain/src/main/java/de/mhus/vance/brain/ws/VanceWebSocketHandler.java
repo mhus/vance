@@ -227,7 +227,7 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
             List<ToolSpec> clientTools = clientToolRegistry.toolsFor(sessionId);
             clientToolRegistry.unregister(sessionId);
             markClientToolsUnavailable(ctx.getTenantId(), sessionId, clientTools);
-            connectionRegistry.unregister(sessionId);
+            connectionRegistry.unregister(sessionId, ctx.getEditorId());
             sessionService.unbind(sessionId, ctx.getEditorId());
             // Drive the per-session onDisconnect policy AFTER the connection
             // bookkeeping has been cleared. The lifecycle service may

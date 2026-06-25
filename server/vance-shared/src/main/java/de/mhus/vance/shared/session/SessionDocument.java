@@ -290,6 +290,29 @@ public class SessionDocument {
      */
     private boolean system;
 
+    /**
+     * {@code true} when the session permits more than one connected
+     * client at the same time — see
+     * {@code planning/multi-user-sessions.md} §2.1.
+     *
+     * <p>This flag is the <em>permission</em>, not the runtime mode:
+     * whether the agent requires an {@code @ai}-mention to wake
+     * depends on flag &amp;&amp; live connection count &gt; 1.
+     *
+     * <p>Default for Project-sessions is {@code true} (shared by
+     * default — project membership gates access). Default for Hub-
+     * sessions ({@code _user_<login>}, {@code ProjectKind.SYSTEM}) is
+     * hardcoded {@code false} (always private). Owner may toggle on
+     * Project-sessions via the Session-Settings UI; Hub-sessions
+     * cannot be flipped.
+     *
+     * <p>When {@code false}, the second simultaneous connection from
+     * any user is rejected at WebSocket-handshake time. Existing
+     * sessions created before this field existed default to
+     * {@code false} — safe for legacy 1:1 behaviour.
+     */
+    private boolean allowMultipleClients;
+
     // ─── Cortex view state — see planning/cortex.md §4.1 ───
 
     /**

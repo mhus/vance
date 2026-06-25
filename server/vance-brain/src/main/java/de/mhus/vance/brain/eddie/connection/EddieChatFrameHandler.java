@@ -221,6 +221,9 @@ public class EddieChatFrameHandler implements EddieFrameRouter.ChatFrameHandler 
                 .content(workerData.getContent())
                 .createdAt(workerData.getCreatedAt())
                 .meta(workerData.getMeta())
+                .senderUserId(workerData.getSenderUserId())
+                .senderDisplayName(workerData.getSenderDisplayName())
+                .addressedToAgent(workerData.isAddressedToAgent())
                 .build();
 
         try {

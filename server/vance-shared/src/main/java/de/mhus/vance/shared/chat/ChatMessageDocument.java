@@ -191,6 +191,46 @@ public class ChatMessageDocument {
     @Builder.Default
     private Map<String, Object> meta = new LinkedHashMap<>();
 
+    /**
+     * User-id of the sender for USER-role messages — see
+     * {@code planning/multi-user-sessions.md} §3.5.
+     *
+     * <p>In single-user sessions this is implicit (the session's
+     * {@code userId}); in multi-user sessions multiple distinct users
+     * write into the same conversation, so we persist the sender per
+     * turn. {@code null} for non-USER roles (ASSISTANT, SYSTEM) and
+     * for legacy rows created before this field existed — callers
+     * fall back to the session's {@code userId} when null.
+     */
+    private @Nullable String senderUserId;
+
+    /**
+     * Display-name of the sender at the time the message was written
+     * — see {@code planning/multi-user-sessions.md} §3.5. Captured for
+     * the LLM prompt render (turns are prefixed with {@code "Alice: "}
+     * etc. so the agent can tell speakers apart) and for the chat-UI
+     * to avoid an extra lookup per turn.
+     *
+     * <p>{@code null} for non-USER roles and for legacy rows.
+     */
+    private @Nullable String senderDisplayName;
+
+    /**
+     * {@code true} when this USER turn explicitly addressed the agent
+     * (contained an {@code @ai} / {@code @vance} / {@code @<engine>}
+     * mention) or the session was not in collaboration-mode at receive
+     * time — see {@code planning/multi-user-sessions.md} §3.2 / §4.
+     *
+     * <p>When {@code false} the turn is a background message: persisted
+     * for context but did not wake the agent. Beim Drain sieht der
+     * Agent solche Turns als reinen Kontext.
+     *
+     * <p>Default {@code true} keeps backward compatibility — legacy
+     * 1:1 turns and all ASSISTANT/SYSTEM turns are always "addressed".
+     */
+    @Builder.Default
+    private boolean addressedToAgent = true;
+
     @CreatedDate
     private @Nullable Instant createdAt;
 }

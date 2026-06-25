@@ -65,7 +65,10 @@ public class SessionUnbindHandler implements WsHandler {
                 Action.EXECUTE);
         sessionService.unbind(sessionId, editorId);
         clientToolRegistry.unregister(sessionId);
-        connectionRegistry.unregister(sessionId);
+        // Explicit unbind = the user severs *this* connection from the
+        // session, regardless of whether other connections are still
+        // attached (multi-user case). Drop only the calling editor.
+        connectionRegistry.unregister(sessionId, editorId);
         ctx.unbindSession();
         log.info("Session '{}' unbound from editor '{}'", sessionId, editorId);
         sender.sendReply(wsSession, envelope, MessageType.SESSION_UNBIND, null);

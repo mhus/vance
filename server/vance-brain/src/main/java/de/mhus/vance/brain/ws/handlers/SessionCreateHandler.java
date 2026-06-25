@@ -138,7 +138,13 @@ public class SessionCreateHandler implements WsHandler {
         }
 
         ctx.bindSession(created);
-        connectionRegistry.register(created.getSessionId(), wsSession);
+        SessionConnectionRegistry.RegisterResult registerResult = connectionRegistry.register(
+                created.getSessionId(),
+                ctx.getUserId(),
+                ctx.getEditorId(),
+                wsSession,
+                created.isAllowMultipleClients());
+        SessionConnectionRegistry.closeKicked(registerResult);
 
         // Heads-up: any pending inbox items? Pushed before other frames
         // so the client UI can render the counter early.
@@ -194,6 +200,9 @@ public class SessionCreateHandler implements WsHandler {
                             .role(appended.getRole())
                             .content(appended.getContent())
                             .createdAt(appended.getCreatedAt())
+                            .senderUserId(appended.getSenderUserId())
+                            .senderDisplayName(appended.getSenderDisplayName())
+                            .addressedToAgent(appended.isAddressedToAgent())
                             .build());
         }
     }

@@ -46,4 +46,34 @@ public class ChatMessageDto {
      * see the Markdown rendering in {@link #content}.
      */
     private @Nullable Map<String, Object> meta;
+
+    /**
+     * User-id of the sender for USER-role messages — see
+     * {@code planning/multi-user-sessions.md} §3.5.
+     *
+     * <p>{@code null} for non-USER roles (ASSISTANT, SYSTEM) and for
+     * legacy rows persisted before the multi-user fields existed.
+     * Clients fall back to {@code session.userId} when {@code null}.
+     */
+    private @Nullable String senderUserId;
+
+    /**
+     * Display-name of the sender captured at write time — used by the
+     * chat-UI to render speaker labels and color-coding without an
+     * extra user lookup per turn. {@code null} for non-USER roles and
+     * for legacy rows.
+     */
+    private @Nullable String senderDisplayName;
+
+    /**
+     * {@code true} when this USER turn explicitly addressed the agent
+     * (mention) or the session was not in collaboration-mode at receive
+     * time. {@code false} marks a background turn — persisted for
+     * context but did not wake the agent.
+     *
+     * <p>Default {@code true} keeps backward compatibility: legacy 1:1
+     * turns and every ASSISTANT/SYSTEM turn are always "addressed".
+     */
+    @Builder.Default
+    private boolean addressedToAgent = true;
 }

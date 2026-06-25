@@ -114,6 +114,9 @@ public class ChatHistoryController {
                 .createdAt(doc.getCreatedAt())
                 .meta(doc.getMeta() == null || doc.getMeta().isEmpty()
                         ? null : doc.getMeta())
+                .senderUserId(doc.getSenderUserId())
+                .senderDisplayName(doc.getSenderDisplayName())
+                .addressedToAgent(doc.isAddressedToAgent())
                 .build();
     }
 

@@ -151,7 +151,24 @@ public class SessionBootstrapHandler implements WsHandler {
             return;
         }
         ctx.bindSession(session);
-        connectionRegistry.register(session.getSessionId(), wsSession);
+        SessionConnectionRegistry.RegisterResult registerResult = connectionRegistry.register(
+                session.getSessionId(),
+                ctx.getUserId(),
+                ctx.getEditorId(),
+                wsSession,
+                session.isAllowMultipleClients());
+        if (registerResult.outcome() == SessionConnectionRegistry.RegisterOutcome.REJECTED) {
+            // Defensive: bind paths above gate same-user-only access, so
+            // this should be unreachable for a private session. If we
+            // land here anyway, surface a 409 instead of running the
+            // bootstrap chain on a half-bound state.
+            sender.sendError(wsSession, envelope, 409,
+                    "Session '" + session.getSessionId()
+                            + "' is private and already held by another user");
+            ctx.unbindSession();
+            return;
+        }
+        SessionConnectionRegistry.closeKicked(registerResult);
         inboxSummaryPusher.pushIfAny(wsSession, ctx.getTenantId(), ctx.getUserId());
 
         // ── Auto-spawn the session-chat process ──────────────────────────

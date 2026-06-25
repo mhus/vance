@@ -46,4 +46,25 @@ public class ChatMessageAppendedData {
      * Markdown / voice clients.
      */
     private @Nullable Map<String, Object> meta;
+
+    /**
+     * User-id of the sender for USER-role messages — mirrors
+     * {@link ChatMessageDto#getSenderUserId()}. See
+     * {@code planning/multi-user-sessions.md} §3.5.
+     */
+    private @Nullable String senderUserId;
+
+    /**
+     * Display-name of the sender at write time — mirrors
+     * {@link ChatMessageDto#getSenderDisplayName()}.
+     */
+    private @Nullable String senderDisplayName;
+
+    /**
+     * {@code true} when this USER turn explicitly addressed the agent
+     * or the session was not in collaboration-mode. Default keeps the
+     * existing wake-on-every-message behaviour intact.
+     */
+    @Builder.Default
+    private boolean addressedToAgent = true;
 }

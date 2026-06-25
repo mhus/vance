@@ -342,6 +342,9 @@ public class ProcessSteerHandler implements WsHandler {
                 .role(doc.getRole())
                 .content(doc.getContent())
                 .createdAt(doc.getCreatedAt())
+                .senderUserId(doc.getSenderUserId())
+                .senderDisplayName(doc.getSenderDisplayName())
+                .addressedToAgent(doc.isAddressedToAgent())
                 .build();
     }
 

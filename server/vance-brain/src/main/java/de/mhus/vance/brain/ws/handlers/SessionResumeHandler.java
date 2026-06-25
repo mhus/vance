@@ -113,7 +113,24 @@ public class SessionResumeHandler implements WsHandler {
         }
 
         ctx.bindSession(doc);
-        connectionRegistry.register(doc.getSessionId(), wsSession);
+        SessionConnectionRegistry.RegisterResult registerResult = connectionRegistry.register(
+                doc.getSessionId(),
+                ctx.getUserId(),
+                ctx.getEditorId(),
+                wsSession,
+                doc.isAllowMultipleClients());
+        if (registerResult.outcome() == SessionConnectionRegistry.RegisterOutcome.REJECTED) {
+            // Defensive: tryBindWithUserTakeover above gates same-user-only
+            // resumes, so this should be unreachable for a private session.
+            // If we do land here, fall back to a 409 so the client knows
+            // not to retry blindly.
+            sender.sendError(wsSession, envelope, 409,
+                    "Session '" + doc.getSessionId()
+                            + "' is private and already held by another user");
+            ctx.unbindSession();
+            return;
+        }
+        SessionConnectionRegistry.closeKicked(registerResult);
         // Propagate the connection profile to every think-process on the
         // session so the per-turn tool filter (Tool.allowedForProfile)
         // sees the current bound profile. See engine-message-routing.md

@@ -1,19 +1,25 @@
 import { ref, type Ref } from 'vue';
 import { brainFetch } from '@vance/shared';
-import type { CortexDocument } from '../types';
+import type {
+  RunAdapter,
+  RunHandle,
+  RunInput,
+  RunState,
+  RunAction,
+  RunnerDocument,
+} from '@vance/runner-registry';
 import { useCortexStore } from '../stores/cortexStore';
-import type { RunAdapter, RunHandle, RunInput, RunState } from './types';
 
 const TEX_EXTS = ['.tex', '.ltx', '.latex'];
 const COMPOSE_NAMES = ['tex-compose.yaml', 'tex-compose.yml'];
 
-function isTexDocument(doc: CortexDocument): boolean {
+function isTexDocument(doc: RunnerDocument): boolean {
   const p = doc.path.toLowerCase();
   if (TEX_EXTS.some((ext) => p.endsWith(ext))) return true;
   return COMPOSE_NAMES.some((name) => p.endsWith(name));
 }
 
-function isComposeFile(doc: CortexDocument): boolean {
+function isComposeFile(doc: RunnerDocument): boolean {
   const p = doc.path.toLowerCase();
   return COMPOSE_NAMES.some((name) => p.endsWith(name));
 }
@@ -24,8 +30,8 @@ function isComposeFile(doc: CortexDocument): boolean {
  * path or {@code null} when none is found.
  */
 function findSiblingCompose(
-  doc: CortexDocument,
-  files: CortexDocument[],
+  doc: RunnerDocument,
+  files: { path: string }[],
 ): string | null {
   const dir = doc.path.includes('/')
     ? doc.path.substring(0, doc.path.lastIndexOf('/'))
@@ -62,9 +68,10 @@ interface TexCompileResponse {
  * {@code tex-compose.yaml} in the same directory via the cortex store;
  * when none is found, the run fails with a hint to create one.
  *
- * <p>The result carries {@code { pdfPath }} on success so the shell
- * can render an "Open PDF" button that opens the freshly imported PDF
- * as a new tab.
+ * <p>On success, the handle carries a {@code RunAction} "Open PDF"
+ * that refreshes the file list and opens the freshly imported PDF as
+ * a new tab — the shell renders it as a button in the log panel
+ * without needing any TeX-specific knowledge.
  */
 export const texRunner: RunAdapter = {
   id: 'tex',
@@ -76,6 +83,7 @@ export const texRunner: RunAdapter = {
     const result: Ref<unknown> = ref(null);
     const error: Ref<string | null> = ref(null);
     const durationMs: Ref<number | null> = ref(null);
+    const actions: Ref<RunAction[]> = ref([]);
 
     let detached = false;
 
@@ -124,6 +132,34 @@ export const texRunner: RunAdapter = {
           `[tex] PDF generated: ${resp.pdfPath ?? '(unknown path)'}`,
           `[tex] Elapsed: ${resp.elapsedMs ?? '?'} ms`,
         );
+
+        // Register the "Open PDF" action so the shell can render
+        // a generic button without knowing about TeX.
+        const pdfPath = resp.pdfPath ?? null;
+        if (pdfPath) {
+          actions.value = [{
+            id: 'open-pdf',
+            label: 'Open PDF',
+            icon: '📄',
+            async execute(): Promise<void> {
+              const store = useCortexStore();
+              if (store.projectId) {
+                await store.loadList(store.projectId);
+              }
+              const pdfDoc = store.files.find(
+                (f) => f.path === pdfPath,
+              );
+              if (pdfDoc) {
+                await store.openFile(pdfDoc.id);
+              } else {
+                console.warn(
+                  '[cortex/tex] PDF not found in file list:',
+                  pdfPath,
+                );
+              }
+            },
+          }];
+        }
       } else {
         state.value = 'failed';
         error.value = resp.error ?? 'Compilation failed';
@@ -147,6 +183,7 @@ export const texRunner: RunAdapter = {
         result,
         error,
         durationMs,
+        actions,
         async cancel(): Promise<void> {
           // Backend compile is synchronous — no cancellation endpoint.
           // Just transition to cancelled locally.

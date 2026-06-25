@@ -5,6 +5,8 @@
     { "path": "./packages/shared" },
     { "path": "./packages/vance-face" },
     { "path": "./packages/facelift-account-webview" },
-    { "path": "./packages/facelift-bridge" }
+    { "path": "./packages/facelift-bridge" },
+    { "path": "./packages/kind-registry" },
+    { "path": "./packages/runner-registry" }
   ]
 }

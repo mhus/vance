@@ -33,14 +33,37 @@ export interface KindEntry<TDoc = unknown> {
    * a prop (typed as {@code TDoc}). The component is rendered via
    * Vue's {@code <component :is>}, so {@code defineAsyncComponent}
    * works for code-splitting.
+   *
+   * Optional for entries that only contribute a {@link codePreview}
+   * (read-only preview for code-mode documents like Markdown / TeX).
+   * When absent, {@code resolveBinding} skips the entry for the
+   * kind-registry dispatch path — the document stays in the
+   * catch-all 'code' binding and the shell checks
+   * {@link codePreview} separately.
    */
-  view: Component;
+  view?: Component;
 
   /**
    * Optional edit-mode component. Falls back to {@link view} when not
    * supplied (kinds where view IS the editor — Markdown for example).
    */
   editor?: Component;
+
+  /**
+   * Optional live-preview component for code-kind documents (e.g.
+   * {@code .tex} files that want a KaTeX-rendered preview alongside the
+   * raw CodeEditor). When set, the DocumentTabShell shows a View/Edit
+   * toggle for documents in the catch-all {@code code} binding whose
+   * MIME-type this Kind matches — just like Markdown does with
+   * {@link MarkdownView}. The component receives {@code source: string}
+   * as a prop.
+   *
+   * <p>Unlike {@link view}, this does NOT replace the CodeEditor as the
+   * primary editor — it adds a toggle-able preview pane on top of it.
+   * The CodeEditor remains the edit target; {@code codePreview} is the
+   * read-only rendered view.
+   */
+  codePreview?: Component;
 
   /**
    * Codec: parse the on-disk inline body into the typed model. Called

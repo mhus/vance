@@ -5,8 +5,13 @@ import type {
   ScriptExecutionEventData,
   ScriptExecutionStatus,
 } from '@vance/generated';
-import type { CortexDocument } from '../types';
-import type { RunAdapter, RunHandle, RunInput, RunState } from './types';
+import type {
+  RunAdapter,
+  RunHandle,
+  RunInput,
+  RunState,
+  RunnerDocument,
+} from '@vance/runner-registry';
 
 const JS_MIMES = new Set([
   'text/javascript',
@@ -18,7 +23,7 @@ const JS_MIMES = new Set([
 
 const JS_EXTS = ['.js', '.mjs', '.mjsh'];
 
-function isJsDocument(doc: CortexDocument): boolean {
+function isJsDocument(doc: RunnerDocument): boolean {
   const m = (doc.mimeType ?? '').toLowerCase().trim();
   if (m && JS_MIMES.has(m)) return true;
   const p = doc.path.toLowerCase();

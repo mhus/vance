@@ -23,12 +23,12 @@
  *    just sourced the entry differently.
  */
 import { computed, onBeforeUnmount, ref, shallowRef, toRef, watch } from 'vue';
-import { CodeEditor, MarkdownView, accentColorDotClass } from '@/components';
+import { CodeEditor, accentColorDotClass } from '@/components';
 import { brainFetchBlob } from '@vance/shared';
 import type { DocumentDto } from '@vance/generated';
+import { resolveKindFor } from '@vance/kind-registry';
 import ImageView from '@/document/ImageView.vue';
 import DocumentPreview from '@/document/DocumentPreview.vue';
-import TexPreview from './TexPreview.vue';
 import type { CortexDocument } from '../types';
 import { useCortexStore } from '../stores/cortexStore';
 import { resolveBinding } from '../docTypeRegistry';
@@ -365,33 +365,32 @@ const isViewMode = computed<boolean>(
   () => binding.value.mode === 'typed-model' || binding.value.mode === 'kind-registry',
 );
 
-// Markdown gets the same view/edit toggle as the kind-registry modes:
-// rendered MarkdownView in 'view', raw CodeEditor in 'edit'. The
-// catch-all 'code' binding resolves these documents (no dedicated
-// Markdown binding in the registry) so the toggle gates inside the
-// 'code' branch below rather than the typed-model / kind-registry
-// template.
-const isMarkdownDocument = computed<boolean>(() => {
-  if (binding.value.mode !== 'code') return false;
+// Documents in the catch-all 'code' binding can still have a
+// live-preview component — Markdown (rendered HTML) and TeX (KaTeX
+// formulas) are the built-in examples. The Kind Registry's
+// codePreview field supplies the component; when set, the shell
+// shows a View/Edit toggle exactly like typed-model modes.
+const codePreviewKind = computed(() => {
+  // Check by MIME type first.
+  const mime = effectiveMimeType.value;
+  const kind = resolveKindFor(null, mime);
+  if (kind?.codePreview) return kind;
+  // Also check by file extension for files without a server-supplied
+  // MIME type — .tex files often arrive as text/plain.
   const lower = props.document.path.toLowerCase();
-  if (lower.endsWith('.md') || lower.endsWith('.markdown')) return true;
-  return (props.document.mimeType ?? '').toLowerCase().startsWith('text/markdown');
-});
-
-// TeX files get the same View/Edit toggle as Markdown: KaTeX-rendered
-// formula preview in 'view', raw CodeEditor with stex highlighting in
-// 'edit'. KaTeX renders only $...$ / $$...$$ math — no full LaTeX
-// layout. The "Generate PDF" button (run adapter) handles full compile.
-const isTexDocument = computed<boolean>(() => {
-  if (binding.value.mode !== 'code') return false;
-  const lower = props.document.path.toLowerCase();
-  return lower.endsWith('.tex')
-    || lower.endsWith('.ltx')
-    || lower.endsWith('.latex');
+  if (lower.endsWith('.tex') || lower.endsWith('.ltx') || lower.endsWith('.latex')) {
+    const texKind = resolveKindFor(null, 'text/x-tex');
+    if (texKind?.codePreview) return texKind;
+  }
+  if (lower.endsWith('.md') || lower.endsWith('.markdown')) {
+    const mdKind = resolveKindFor(null, 'text/markdown');
+    if (mdKind?.codePreview) return mdKind;
+  }
+  return undefined;
 });
 
 const showToggle = computed<boolean>(
-  () => isViewMode.value || isMarkdownDocument.value || isTexDocument.value,
+  () => isViewMode.value || codePreviewKind.value !== undefined,
 );
 
 // ─── View / Edit toggle ──────────────────────────────────────────
@@ -583,41 +582,11 @@ function fmtDuration(ms: number | null): string {
   return `${(ms / 1000).toFixed(2)} s`;
 }
 
-// ─── TeX runner: open generated PDF ──────────────────────────────
+// ─── Generic run actions ─────────────────────────────────────────
 //
-// When the tex runner finishes, the result carries { pdfPath } — the
-// document path of the freshly imported PDF. We find it in the file
-// list (refreshing first so the new document appears) and open it as
-// a new tab via the cortex store.
-const isTexRunner = computed<boolean>(() => runAdapter.value?.id === 'tex');
-const texPdfPath = computed<string | null>(() => {
-  if (!isTexRunner.value) return null;
-  if (runState.value !== 'finished') return null;
-  const r = runHandle.value?.result.value;
-  if (r && typeof r === 'object' && 'pdfPath' in r) {
-    const p = (r as { pdfPath?: string }).pdfPath;
-    return p ?? null;
-  }
-  return null;
-});
-
-async function onOpenPdf(): Promise<void> {
-  const pdfPath = texPdfPath.value;
-  if (!pdfPath) return;
-  // Refresh the file list so the newly imported PDF shows up, then
-  // find it by path and open it as a new tab.
-  if (store.projectId) {
-    await store.loadList(store.projectId);
-  }
-  const pdfDoc = store.files.find(
-    (f) => f.path === pdfPath,
-  );
-  if (pdfDoc) {
-    await store.openFile(pdfDoc.id);
-  } else {
-    console.warn('[cortex/tex] PDF not found in file list:', pdfPath);
-  }
-}
+// Runners can declare post-run actions (e.g. "Open PDF" for TeX)
+// via RunHandle.actions. The shell renders them as buttons in the
+// log panel without knowing about any specific runner.
 </script>
 
 <template>
@@ -770,19 +739,18 @@ async function onOpenPdf(): Promise<void> {
     <div class="flex-1 flex flex-row min-h-0">
       <div class="flex-1 flex flex-col min-h-0">
 
-    <!-- Code mode: CodeEditor on the raw text. Markdown takes the same
-         branch but adds a rendered Preview/Edit toggle on top. -->
+    <!-- Code mode: CodeEditor on the raw text. Documents with a
+         codePreview Kind (Markdown, TeX) get a rendered Preview/Edit
+         toggle on top — the component comes from the Kind Registry,
+         not hardcoded here. -->
     <div
-      v-if="binding.mode === 'code' && isMarkdownDocument && viewEditMode === 'view'"
-      class="flex-1 min-h-0 overflow-auto px-4 py-2"
-    >
-      <MarkdownView :source="document.inlineText" />
-    </div>
-    <div
-      v-else-if="binding.mode === 'code' && isTexDocument && viewEditMode === 'view'"
+      v-if="binding.mode === 'code' && codePreviewKind && viewEditMode === 'view'"
       class="flex-1 min-h-0 overflow-hidden"
     >
-      <TexPreview :source="document.inlineText" />
+      <component
+        :is="codePreviewKind.codePreview"
+        :source="document.inlineText"
+      />
     </div>
     <div
       v-else-if="binding.mode === 'code'"
@@ -933,17 +901,20 @@ async function onOpenPdf(): Promise<void> {
         <div class="opacity-60 mb-1">result:</div>
         {{ fmtResult(runHandle.result.value) }}
       </div>
+      <!-- Generic run actions (e.g. "Open PDF" for TeX) -->
       <div
-        v-if="texPdfPath"
-        class="border-t border-base-300 px-3 py-1.5 bg-success/5 flex items-center gap-2"
+        v-if="runHandle?.actions?.value.length"
+        class="border-t border-base-300 px-3 py-1.5 bg-success/5 flex items-center gap-2 flex-wrap"
       >
         <button
+          v-for="action in runHandle.actions.value"
+          :key="action.id"
           type="button"
           class="text-xs px-2 py-0.5 rounded border border-success/40 bg-success/10 text-success hover:bg-success/20"
-          title="Open the generated PDF in a new tab"
-          @click="onOpenPdf"
-        >📄 Open PDF</button>
-        <span class="text-xs font-mono opacity-60">{{ texPdfPath }}</span>
+          @click="action.execute()"
+        >
+          {{ action.icon ? action.icon + ' ' : '' }}{{ action.label }}
+        </button>
       </div>
     </div>
 

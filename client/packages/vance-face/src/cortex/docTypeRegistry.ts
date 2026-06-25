@@ -375,7 +375,11 @@ const handRolled: HandRolledBinding[] = [
  */
 export function resolveBinding(doc: CortexDocument): DocTypeBinding {
   const kindEntry = resolveKindFor(doc.kind, doc.mimeType);
-  if (kindEntry) {
+  // Only dispatch to kind-registry mode when the entry has a full
+  // view + codec. Entries with only codePreview (Markdown, TeX) stay
+  // in the catch-all 'code' binding — the shell checks codePreview
+  // separately for the View/Edit toggle.
+  if (kindEntry?.view) {
     return {
       id: `kind-registry:${kindEntry.id}`,
       mode: 'kind-registry',

@@ -17,6 +17,7 @@
     { "path": "../components" },
     { "path": "../generated" },
     { "path": "../kind-registry" },
+    { "path": "../runner-registry" },
     { "path": "../shared" },
     { "path": "../../../server/vance-addon-brain-slideshow/client" }
   ]

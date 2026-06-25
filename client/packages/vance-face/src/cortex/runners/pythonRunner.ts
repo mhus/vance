@@ -4,8 +4,13 @@ import type {
   PythonExecuteResponse,
   PythonExecutionStatus,
 } from '@vance/generated';
-import type { CortexDocument } from '../types';
-import type { RunAdapter, RunHandle, RunInput, RunState } from './types';
+import type {
+  RunAdapter,
+  RunHandle,
+  RunInput,
+  RunState,
+  RunnerDocument,
+} from '@vance/runner-registry';
 
 const PY_MIMES = new Set([
   'text/x-python',
@@ -14,7 +19,7 @@ const PY_MIMES = new Set([
 ]);
 const PY_EXTS = ['.py'];
 
-function isPythonDocument(doc: CortexDocument): boolean {
+function isPythonDocument(doc: RunnerDocument): boolean {
   const m = (doc.mimeType ?? '').toLowerCase().trim();
   if (m && PY_MIMES.has(m)) return true;
   const p = doc.path.toLowerCase();

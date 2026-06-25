@@ -1,10 +1,13 @@
 package de.mhus.vance.shared.chat;
 
 import com.mongodb.client.result.UpdateResult;
+import de.mhus.vance.api.chat.ChatRole;
+import de.mhus.vance.shared.prak.SpanStrength;
 import de.mhus.vance.shared.session.SessionService;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -75,6 +78,7 @@ public class ChatMessageService {
      * {@link SessionService#touchChatPreview(String, String, String, java.time.Instant)}.
      */
     public ChatMessageDocument append(ChatMessageDocument message) {
+        maybeAutoPinOriginalTask(message);
         ChatMessageDocument saved = repository.save(message);
         log.debug("Chat message appended tenant='{}' session='{}' process='{}' role={} id='{}'",
                 saved.getTenantId(), saved.getSessionId(), saved.getThinkProcessId(),
@@ -484,5 +488,70 @@ public class ChatMessageService {
                 .with(Sort.by(Sort.Direction.ASC, "createdAt"))
                 .limit(limit);
         return mongoTemplate.find(q, ChatMessageDocument.class);
+    }
+
+    /**
+     * Auto-pin the first USER message of a think-process so it survives
+     * every compaction mode (including EMERGENCY). The user's opening
+     * task is by definition the mission — losing it to a HARD-trigger
+     * compaction is the kind of "context-erased" failure that makes the
+     * LLM forget what it's supposed to be doing.
+     *
+     * <p>Mutates {@code message.tags} in place by adding
+     * {@link SpanStrength#PINNED}'s tag form ({@code STRENGTH:pinned})
+     * iff:
+     *
+     * <ul>
+     *   <li>The role is {@link ChatRole#USER}.</li>
+     *   <li>No {@code STRENGTH:*} tag is already set (an explicit caller-
+     *       set strength wins — we never override a deliberate downgrade).</li>
+     *   <li>No prior message of any role exists for this think-process
+     *       — i.e. this append is creating the first row. Conservative
+     *       choice: an *empty* prior history is the only safe "I am the
+     *       opening user input" signal, since a USER message that comes
+     *       after assistant turns isn't a process-opener anymore.</li>
+     * </ul>
+     *
+     * <p>The "no prior row" check is one cheap Mongo round-trip
+     * ({@code exists}) per USER append. Race-tolerant: two concurrent
+     * appends that both observe an empty history both pin themselves,
+     * which is harmless — both messages survive compaction.
+     *
+     * <p>See {@code planning/memory-compaction.md} §7 and
+     * {@code specification/public/memory-knowledge-management.md} §10.
+     */
+    void maybeAutoPinOriginalTask(ChatMessageDocument message) {
+        if (message == null) return;
+        if (message.getRole() != ChatRole.USER) return;
+        String tenantId = message.getTenantId();
+        String processId = message.getThinkProcessId();
+        if (tenantId == null || tenantId.isBlank()) return;
+        if (processId == null || processId.isBlank()) return;
+        if (hasStrengthTag(message)) return;
+        if (hasAnyMessage(tenantId, processId)) return;
+
+        Set<String> tags = message.getTags();
+        if (tags == null) {
+            tags = new LinkedHashSet<>();
+            message.setTags(tags);
+        }
+        tags.add(SpanStrength.PINNED.tag());
+        log.debug("Auto-pinned original-task USER message tenant='{}' process='{}'",
+                tenantId, processId);
+    }
+
+    private static boolean hasStrengthTag(ChatMessageDocument message) {
+        Set<String> tags = message.getTags();
+        if (tags == null || tags.isEmpty()) return false;
+        for (String t : tags) {
+            if (t != null && t.startsWith(SpanStrength.TAG_PREFIX)) return true;
+        }
+        return false;
+    }
+
+    private boolean hasAnyMessage(String tenantId, String thinkProcessId) {
+        Query q = new Query(Criteria.where("tenantId").is(tenantId)
+                .and("thinkProcessId").is(thinkProcessId));
+        return mongoTemplate.exists(q, ChatMessageDocument.class);
     }
 }

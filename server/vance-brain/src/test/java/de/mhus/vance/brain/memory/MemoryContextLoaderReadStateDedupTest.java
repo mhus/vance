@@ -14,12 +14,16 @@ import static org.mockito.Mockito.when;
 import de.mhus.vance.brain.context.ReadStateService;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
+import de.mhus.vance.shared.memory.MemoryKind;
+import de.mhus.vance.shared.memory.MemoryService;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.settings.LanguageResolver;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,6 +43,8 @@ class MemoryContextLoaderReadStateDedupTest {
     private DocumentService documentService;
     private LanguageResolver languageResolver;
     private ReadStateService readStateService;
+    private MemoryService memoryService;
+    private ThinkProcessService thinkProcessService;
     private MemoryContextLoader loader;
 
     @BeforeEach
@@ -48,6 +54,11 @@ class MemoryContextLoaderReadStateDedupTest {
         documentService = mock(DocumentService.class);
         languageResolver = mock(LanguageResolver.class);
         readStateService = mock(ReadStateService.class);
+        memoryService = mock(MemoryService.class);
+        when(memoryService.activeByProcessAndKind(
+                anyString(), anyString(), eq(MemoryKind.ARCHIVED_CHAT)))
+                .thenReturn(List.of());
+        thinkProcessService = mock(ThinkProcessService.class);
         // RAG auto-inject isn't relevant for these read-state dedup
         // tests — pass an empty ObjectProvider so the getIfAvailable()
         // call inside composeBlock returns null.
@@ -73,7 +84,8 @@ class MemoryContextLoaderReadStateDedupTest {
                 };
         loader = new MemoryContextLoader(
                 settingService, sessionService, documentService,
-                languageResolver, readStateService, noRag);
+                languageResolver, readStateService, noRag, memoryService,
+                thinkProcessService);
 
         // Empty defaults — only the bits each test sets are populated.
         when(settingService.findByPrefixCascade(any(), any(), any(), any()))

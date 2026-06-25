@@ -13,6 +13,9 @@ import de.mhus.vance.brain.ai.ModelInfo;
 import de.mhus.vance.brain.events.ChunkBatcher;
 import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.brain.events.StreamingProperties;
+import de.mhus.vance.brain.memory.CompactionResult;
+import de.mhus.vance.brain.memory.MemoryContextLoader;
+import de.mhus.vance.brain.memory.MemoryCompactionService;
 import de.mhus.vance.brain.progress.LlmCallTracker;
 import de.mhus.vance.brain.prompt.PromptContextBuilder;
 import de.mhus.vance.brain.thinkengine.EnginePromptResolver;
@@ -166,6 +169,8 @@ public class TrillianControlEngine implements ThinkEngine {
     private final SystemPromptComposer systemPromptComposer;
     private final TrillianNatureRegistry natureRegistry;
     private final ModelCatalog modelCatalog;
+    private final MemoryContextLoader memoryContextLoader;
+    private final MemoryCompactionService memoryCompactionService;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -284,6 +289,21 @@ public class TrillianControlEngine implements ThinkEngine {
                     bundle.primaryConfig().modelName());
             List<ChatMessage> messages = buildPromptMessages(
                     process, chatLog, extras, nature, modelInfo);
+
+            // Turn-start compaction: identical hook to Arthur/Eddie/Ford/Lunkwill.
+            // The Trillian-Control loop pairs with a Trillian-User and can
+            // run for many turns; without compaction the Control session
+            // would also hit the context-window limit. See
+            // planning/memory-compaction.md §7.
+            CompactionResult cr = memoryCompactionService.compactIfNeeded(
+                    process, bundle.primaryConfig(), messages, modelInfo);
+            if (cr.compacted()) {
+                log.info("TrillianControl.runTurn id='{}' compaction (turn-start) ok: {} msgs → {} chars (memory='{}')",
+                        process.getId(), cr.messagesCompacted(),
+                        cr.summaryChars(), cr.memoryId());
+                messages = buildPromptMessages(
+                        process, chatLog, extras, nature, modelInfo);
+            }
 
             log.debug("TrillianControl id='{}' model='{}' tools={} historyMsgs={}",
                     process.getId(), modelAlias, toolSpecs.size(), messages.size());
@@ -464,7 +484,15 @@ public class TrillianControlEngine implements ThinkEngine {
             TrillianNature nature,
             @Nullable ModelInfo modelInfo) {
         List<ChatMessage> messages = new ArrayList<>();
-        messages.add(SystemMessage.from(composeSystemPrompt(process, nature, modelInfo)));
+        // System prompt = engine-default + nature overlay + memory-context
+        // (languages, agent-doc, ARCHIVED_CHAT summary, RAG auto-inject).
+        // Same shape Arthur/Eddie/Ford/Lunkwill build via MemoryContextLoader.
+        String systemPrompt = composeSystemPrompt(process, nature, modelInfo);
+        String memoryBlock = memoryContextLoader.composeBlock(process);
+        if (memoryBlock != null && !memoryBlock.isBlank()) {
+            systemPrompt = systemPrompt + "\n\n" + memoryBlock;
+        }
+        messages.add(SystemMessage.from(systemPrompt));
         // Current-date block (recipe-param promptDateGranularity:
         // auto/day/hour). DYNAMIC — date rollover stays behind the
         // cache marker. See PromptDateBlock.

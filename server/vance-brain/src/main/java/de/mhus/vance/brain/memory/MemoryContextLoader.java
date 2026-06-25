@@ -4,11 +4,16 @@ import de.mhus.vance.brain.context.ReadStateService;
 import de.mhus.vance.brain.rag.RagAutoInjectService;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
+import de.mhus.vance.shared.memory.MemoryDocument;
+import de.mhus.vance.shared.memory.MemoryKind;
+import de.mhus.vance.shared.memory.MemoryService;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.settings.LanguageResolver;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import java.util.List;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -79,6 +84,8 @@ public class MemoryContextLoader {
     private final LanguageResolver languageResolver;
     private final ReadStateService readStateService;
     private final ObjectProvider<RagAutoInjectService> ragAutoInjectProvider;
+    private final MemoryService memoryService;
+    private final ThinkProcessService thinkProcessService;
 
     public MemoryContextLoader(
             SettingService settingService,
@@ -86,13 +93,17 @@ public class MemoryContextLoader {
             DocumentService documentService,
             LanguageResolver languageResolver,
             ReadStateService readStateService,
-            ObjectProvider<RagAutoInjectService> ragAutoInjectProvider) {
+            ObjectProvider<RagAutoInjectService> ragAutoInjectProvider,
+            MemoryService memoryService,
+            ThinkProcessService thinkProcessService) {
         this.settingService = settingService;
         this.sessionService = sessionService;
         this.documentService = documentService;
         this.languageResolver = languageResolver;
         this.readStateService = readStateService;
         this.ragAutoInjectProvider = ragAutoInjectProvider;
+        this.memoryService = memoryService;
+        this.thinkProcessService = thinkProcessService;
     }
 
     /**
@@ -130,9 +141,121 @@ public class MemoryContextLoader {
         appendMemorySettings(sb, process, projectId);
         appendAgentDocument(sb, process, projectId);
         appendClientAgentDoc(sb, process);
+        appendArchivedChatSummary(sb, process);
+        appendParentContext(sb, process);
         appendRagAutoInject(sb, process, userQuery);
 
         return sb.length() == 0 ? null : sb.toString();
+    }
+
+    /**
+     * When this process is a worker spawned from another process
+     * ({@code parentProcessId != null}), surfaces a short Parent-Context
+     * block so the worker isn't completely blind to the upstream mission.
+     * See {@code planning/memory-compaction.md} §6.
+     *
+     * <p>Two confidentiality tiers:
+     *
+     * <ul>
+     *   <li><b>Same project</b> — Parent identity (name / recipe / engine /
+     *       title) PLUS Parent's active {@code ARCHIVED_CHAT}-summary if
+     *       one exists. The summary is the parent's compacted
+     *       conversation so far, which gives the worker enough context
+     *       to act without re-asking for goals.</li>
+     *   <li><b>Cross-project</b> ({@code allowsCrossProjectSpawn=true}
+     *       engines like Trillian) — only the identity block; the
+     *       parent-summary stays in the parent's project to avoid
+     *       leaking content across project boundaries. Workers needing
+     *       more context should be passed an explicit {@code goal}
+     *       parameter at spawn time.</li>
+     * </ul>
+     *
+     * <p>Missing parent (orphaned {@code parentProcessId}) → graceful
+     * skip; never breaks the prompt build.
+     */
+    private void appendParentContext(
+            StringBuilder sb, ThinkProcessDocument process) {
+        String parentId = process.getParentProcessId();
+        if (parentId == null || parentId.isBlank()) return;
+        ThinkProcessDocument parent;
+        try {
+            parent = thinkProcessService.findById(parentId).orElse(null);
+        } catch (RuntimeException e) {
+            log.debug("appendParentContext: lookup failed for parent='{}': {}",
+                    parentId, e.toString());
+            return;
+        }
+        if (parent == null) return;
+
+        StringBuilder block = new StringBuilder();
+        block.append("## Parent Context\n\n");
+        block.append("Parent process: `").append(safe(parent.getName()))
+                .append("` (recipe: ").append(safe(parent.getRecipeName()))
+                .append(", engine: ").append(safe(parent.getThinkEngine()))
+                .append(")\n");
+        if (parent.getTitle() != null && !parent.getTitle().isBlank()) {
+            block.append("Parent mission: ").append(parent.getTitle()).append("\n");
+        }
+
+        boolean sameProject = process.getProjectId() != null
+                && process.getProjectId().equals(parent.getProjectId());
+        if (sameProject && parent.getId() != null) {
+            List<MemoryDocument> parentSummaries =
+                    memoryService.activeByProcessAndKind(
+                            parent.getTenantId(), parent.getId(),
+                            MemoryKind.ARCHIVED_CHAT);
+            if (!parentSummaries.isEmpty()) {
+                MemoryDocument latest = parentSummaries.getLast();
+                String body = latest.getContent();
+                if (body != null && !body.isBlank()) {
+                    block.append("\n### Parent Conversation Summary\n\n");
+                    block.append(body);
+                    if (!body.endsWith("\n")) block.append('\n');
+                }
+            }
+        }
+        // cross-project: identity only, no summary content (confidentiality)
+
+        if (sb.length() > 0) sb.append('\n');
+        sb.append(block);
+    }
+
+    private static String safe(@Nullable String s) {
+        return s == null || s.isBlank() ? "?" : s;
+    }
+
+    /**
+     * Replays the most-recent active {@link MemoryKind#ARCHIVED_CHAT}
+     * summary into the memory block so the LLM sees the gist of the
+     * conversation that was rolled out of {@code activeHistory()} by
+     * {@link MemoryCompactionService#compact}. Without this, every
+     * HARD-trigger compaction would *de facto* erase the prior
+     * conversation from the LLM's view — the summary would sit unused
+     * in Mongo. See {@code planning/memory-compaction.md} §4.
+     *
+     * <p>Picks the latest active row from
+     * {@link MemoryService#activeByProcessAndKind} (sorted ASC by
+     * {@code createdAt}, so {@code getLast()} is the newest). Hierarchical
+     * compaction uses {@code supersede()} to retire older summaries, so
+     * in steady state there is at most one active row — the defensive
+     * "pick last" handles a write-write race transparently.
+     */
+    private void appendArchivedChatSummary(
+            StringBuilder sb, ThinkProcessDocument process) {
+        String tenantId = process.getTenantId();
+        String processId = process.getId();
+        if (tenantId == null || tenantId.isBlank()) return;
+        if (processId == null || processId.isBlank()) return;
+        List<MemoryDocument> active = memoryService.activeByProcessAndKind(
+                tenantId, processId, MemoryKind.ARCHIVED_CHAT);
+        if (active.isEmpty()) return;
+        MemoryDocument summary = active.getLast();
+        String body = summary.getContent();
+        if (body == null || body.isBlank()) return;
+        if (sb.length() > 0) sb.append('\n');
+        sb.append("## Earlier Conversation (compacted)\n\n");
+        sb.append(body);
+        if (!body.endsWith("\n")) sb.append('\n');
     }
 
     /**

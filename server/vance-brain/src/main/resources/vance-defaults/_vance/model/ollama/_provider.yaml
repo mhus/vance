@@ -1,0 +1,4 @@
+displayName: Local Ollama daemon
+wireType: ollama
+baseUrl: http://localhost:11434
+authType: none

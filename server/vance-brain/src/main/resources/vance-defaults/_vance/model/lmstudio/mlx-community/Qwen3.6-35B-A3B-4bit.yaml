@@ -1,0 +1,7 @@
+contextWindowTokens: 131072
+defaultMaxOutputTokens: 4096
+size: LARGE
+capabilities:
+- thinking
+timeoutSeconds: 600
+stripThinkTags: true

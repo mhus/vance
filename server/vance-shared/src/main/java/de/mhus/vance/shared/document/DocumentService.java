@@ -460,6 +460,25 @@ public class DocumentService {
     }
 
     /**
+     * Cross-tenant lookup of every {@link DocumentStatus#ACTIVE} document
+     * whose {@code path} starts with {@code pathPrefix}. Result spans
+     * every tenant and project — callers group by
+     * {@code (tenantId, projectId)} themselves.
+     *
+     * <p>Used by subsystem-wide caches that need to refresh from one
+     * Mongo query rather than fanning out per tenant (e.g. the model
+     * catalog, which holds {@code _vance/model/**} docs across all
+     * tenants). Backed by a {@code MongoTemplate} query that uses the
+     * {@code path} index — typical result counts are small (Vance
+     * installs hold tens to low-hundreds of model overrides total).
+     */
+    public List<DocumentDocument> findAllByPathPrefix(String pathPrefix) {
+        Query query = new Query(Criteria.where("status").is(DocumentStatus.ACTIVE)
+                .and("path").regex("^" + java.util.regex.Pattern.quote(pathPrefix)));
+        return mongoTemplate.find(query, DocumentDocument.class);
+    }
+
+    /**
      * Streams {@code content} into {@link StorageService}, applying the same
      * compression strategy Nimbus runs in production:
      *

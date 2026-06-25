@@ -1,0 +1,11 @@
+contextWindowTokens: 1048576
+defaultMaxOutputTokens: 8192
+size: SMALL
+capabilities:
+- vision
+- pdf
+timeoutSeconds: 45
+pricing:
+  currency: USD
+  inputPerMTok: 0.3
+  outputPerMTok: 2.5

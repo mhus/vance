@@ -1,0 +1,5 @@
+wireName: gemma4:26b-mlx
+contextWindowTokens: 131072
+defaultMaxOutputTokens: 8192
+size: LARGE
+timeoutSeconds: 600

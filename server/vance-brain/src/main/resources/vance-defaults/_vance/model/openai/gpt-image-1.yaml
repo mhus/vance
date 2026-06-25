@@ -1,0 +1,12 @@
+kind: image
+timeoutSeconds: 360
+supportedAspectRatios:
+- '1:1'
+- '16:9'
+- '9:16'
+- '4:3'
+- '3:4'
+costPerImage:
+  standard: 0.04
+  hd: 0.08
+maxPromptChars: 4000

@@ -1,0 +1,7 @@
+contextWindowTokens: 131000
+defaultMaxOutputTokens: 8192
+size: LARGE
+pricing:
+  currency: EUR
+  inputPerMTok: 0.355
+  outputPerMTok: 1.775

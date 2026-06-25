@@ -1,0 +1,7 @@
+wireName: mistral-small3.2:24b
+contextWindowTokens: 131072
+defaultMaxOutputTokens: 4096
+size: SMALL
+capabilities:
+- vision
+timeoutSeconds: 600

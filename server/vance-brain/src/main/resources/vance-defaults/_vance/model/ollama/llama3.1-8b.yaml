@@ -1,0 +1,5 @@
+wireName: llama3.1:8b
+contextWindowTokens: 131072
+defaultMaxOutputTokens: 4096
+size: SMALL
+timeoutSeconds: 600

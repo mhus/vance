@@ -1,0 +1,4 @@
+displayName: LM Studio (local MLX server)
+wireType: lmstudio
+baseUrl: http://localhost:1234
+authType: none

@@ -1,0 +1,5 @@
+contextWindowTokens: 131072
+defaultMaxOutputTokens: 8192
+size: SMALL
+capabilities:
+- vision

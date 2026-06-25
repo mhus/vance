@@ -1,0 +1,7 @@
+contextWindowTokens: 200000
+defaultMaxOutputTokens: 8192
+size: LARGE
+capabilities:
+- vision
+- pdf
+- thinking

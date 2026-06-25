@@ -1,0 +1,6 @@
+wireName: qwen3:30b
+contextWindowTokens: 131072
+defaultMaxOutputTokens: 4096
+size: LARGE
+timeoutSeconds: 600
+stripThinkTags: true

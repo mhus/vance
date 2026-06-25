@@ -1,0 +1,3 @@
+displayName: OpenAI (and OpenAI-wire gateways)
+wireType: openai
+authType: api-key

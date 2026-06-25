@@ -1,7 +1,9 @@
 package de.mhus.vance.brain.ai;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -9,38 +11,40 @@ import de.mhus.vance.brain.ai.image.ImageModelInfo;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.home.HomeBootstrapService;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * Tests for the three-layer cascade — bundled {@code vance-defaults/ai-models.yaml}
- * (real classpath read) → tenant {@code _vance/ai-models.yaml} →
- * project {@code <project>/ai-models.yaml}.
+ * Tests for the per-file model catalog with atomic-swap refresh.
  *
- * <p>The bundled layer is exercised through the real classpath
- * resource so the assertions also pin the shipped defaults. Tenant and
- * project layers are stubbed via Mockito on {@link DocumentService},
- * which keeps the test fast and free of Mongo setup.
- *
- * <p>Merge invariant: {@code <provider>:<modelName>} keys are unioned,
- * fields within a key are overridden per-field (so a project that sets
- * only {@code defaultMaxOutputTokens} inherits the rest), and lists
- * (notably {@code capabilities}) are replaced as a whole.
+ * <p>Bundled layer is read from the real classpath under
+ * {@code vance-defaults/_vance/model/**}; tenant/project layers are
+ * faked by stubbing {@link DocumentService#findAllByPathPrefix} to
+ * return mock {@link DocumentDocument}s with the path and YAML
+ * content the test wants visible at that scope. Tests call
+ * {@link ModelCatalog#refresh()} after stubbing so the snapshot
+ * picks up the fixtures.
  */
 class ModelCatalogTest {
 
     private static final String TENANT = "acme";
     private static final String PROJECT = "demo";
-    private static final String VANCE = HomeBootstrapService.TENANT_PROJECT_NAME;
+    private static final String VANCE_TENANT_PROJECT = HomeBootstrapService.TENANT_PROJECT_NAME;
 
     private DocumentService documentService;
     private ModelCatalog catalog;
+    private List<DocumentDocument> overrideDocs;
 
     @BeforeEach
     void setUp() {
         documentService = mock(DocumentService.class);
+        overrideDocs = new ArrayList<>();
+        // Default: no override docs anywhere — the catalog falls back
+        // to bundled-only.
+        when(documentService.findAllByPathPrefix(ModelCatalog.MODEL_PATH_PREFIX))
+                .thenReturn(overrideDocs);
         catalog = new ModelCatalog(documentService);
     }
 
@@ -83,19 +87,37 @@ class ModelCatalogTest {
         assertThat(catalog.lookup(null, null, "anthropic", null)).isEmpty();
     }
 
+    // ──── Wire-name encoded as nested directory (HF-style) ─────────────
+
+    @Test
+    void bundled_hf_style_wire_name_loaded_from_nested_directory() {
+        // _vance/model/openai/google/gemma-4-31B-it.yaml — wire name
+        // recovered from the nested directory path.
+        ModelInfo info = catalog.lookupOrDefault("openai", "google/gemma-4-31B-it");
+        assertThat(info.contextWindowTokens()).isEqualTo(131_072);
+        assertThat(info.size()).isEqualTo(ModelSize.SMALL);
+    }
+
+    @Test
+    void bundled_explicit_wireName_field_carries_colon_tagged_name() {
+        // _vance/model/ollama/qwen3-30b.yaml ships `wireName: "qwen3:30b"`
+        // to encode the Ollama tag style without breaking filename safety.
+        ModelInfo info = catalog.lookupOrDefault("ollama", "qwen3:30b");
+        assertThat(info.contextWindowTokens()).isEqualTo(131_072);
+        assertThat(info.stripThinkTags()).isTrue();
+    }
+
     // ──── Project layer additive ───────────────────────────────────────
 
     @Test
     void project_adds_unknown_provider_model_combination() {
-        stubDocument(TENANT, PROJECT, """
-                openai:
-                  gpt-4o-acme:
-                    contextWindowTokens: 128000
-                    defaultMaxOutputTokens: 4096
-                    size: LARGE
-                    capabilities: [vision]
+        stubModelDoc(TENANT, PROJECT, "openai/gpt-4o-acme.yaml", """
+                contextWindowTokens: 128000
+                defaultMaxOutputTokens: 4096
+                size: LARGE
+                capabilities: [vision]
                 """);
-        stubMissing(TENANT, VANCE);
+        catalog.refresh();
 
         ModelInfo info = catalog.lookupOrDefault(
                 TENANT, PROJECT, "openai", "gpt-4o-acme");
@@ -110,21 +132,17 @@ class ModelCatalogTest {
 
     @Test
     void project_overrides_single_field_inherits_rest_from_bundled() {
-        // Project caps the output at 4K but doesn't say anything about
-        // the rest. Bundled keeps contextWindow=200000, size=LARGE,
-        // capabilities=[vision, pdf]. Override picks up only what changed.
-        stubDocument(TENANT, PROJECT, """
-                anthropic:
-                  claude-sonnet-4-5:
-                    defaultMaxOutputTokens: 4096
+        // Project caps output at 4K but says nothing else. Bundled
+        // keeps contextWindow=200000, size=LARGE, capabilities=[vision,pdf,thinking].
+        stubModelDoc(TENANT, PROJECT, "anthropic/claude-sonnet-4-5.yaml", """
+                defaultMaxOutputTokens: 4096
                 """);
-        stubMissing(TENANT, VANCE);
+        catalog.refresh();
 
         ModelInfo info = catalog.lookupOrDefault(
                 TENANT, PROJECT, "anthropic", "claude-sonnet-4-5");
 
         assertThat(info.defaultMaxOutputTokens()).isEqualTo(4096);
-        // Untouched fields inherit from bundled.
         assertThat(info.contextWindowTokens()).isEqualTo(200_000);
         assertThat(info.size()).isEqualTo(ModelSize.LARGE);
         assertThat(info.capabilities())
@@ -134,25 +152,17 @@ class ModelCatalogTest {
                         ModelCapability.THINKING);
     }
 
-    // ──── Three-layer merge (project wins, tenant wins over bundled) ───
+    // ──── Three-layer merge (project beats tenant beats bundled) ───────
 
     @Test
     void three_layer_merge_project_beats_tenant_beats_bundled() {
-        // Bundled: claude-sonnet-4-5 has contextWindowTokens=200000, defaultMaxOutputTokens=8192.
-        // Tenant: caps output at 4096.
-        // Project: also drops context to 100000.
-        // Expected: project wins per field; tenant's cap inherited where
-        // project didn't override.
-        stubDocument(TENANT, VANCE, """
-                anthropic:
-                  claude-sonnet-4-5:
-                    defaultMaxOutputTokens: 4096
+        stubModelDoc(TENANT, VANCE_TENANT_PROJECT, "anthropic/claude-sonnet-4-5.yaml", """
+                defaultMaxOutputTokens: 4096
                 """);
-        stubDocument(TENANT, PROJECT, """
-                anthropic:
-                  claude-sonnet-4-5:
-                    contextWindowTokens: 100000
+        stubModelDoc(TENANT, PROJECT, "anthropic/claude-sonnet-4-5.yaml", """
+                contextWindowTokens: 100000
                 """);
+        catalog.refresh();
 
         ModelInfo info = catalog.lookupOrDefault(
                 TENANT, PROJECT, "anthropic", "claude-sonnet-4-5");
@@ -166,16 +176,12 @@ class ModelCatalogTest {
 
     @Test
     void capabilities_are_replaced_not_concatenated() {
-        // Bundled gives claude-sonnet-4-5 capabilities=[vision, pdf].
-        // Project explicitly lists only [vision]. Final result: [vision]
-        // — replacement is required so an owner can REMOVE a capability,
-        // not just add to it.
-        stubDocument(TENANT, PROJECT, """
-                anthropic:
-                  claude-sonnet-4-5:
-                    capabilities: [vision]
+        // Bundled gives claude-sonnet-4-5 capabilities=[vision, pdf, thinking].
+        // Project explicitly lists only [vision]. Final result: [vision].
+        stubModelDoc(TENANT, PROJECT, "anthropic/claude-sonnet-4-5.yaml", """
+                capabilities: [vision]
                 """);
-        stubMissing(TENANT, VANCE);
+        catalog.refresh();
 
         ModelInfo info = catalog.lookupOrDefault(
                 TENANT, PROJECT, "anthropic", "claude-sonnet-4-5");
@@ -183,33 +189,27 @@ class ModelCatalogTest {
         assertThat(info.capabilities()).containsExactly(ModelCapability.VISION);
     }
 
-    // ──── Project at _vance short-circuits the duplicate read ─────────
+    // ──── System tenant layer (global before per-tenant) ───────────────
 
     @Test
-    void scope_set_to_vance_project_treats_it_as_tenant_only() {
-        // When projectId == _vance, the resolveMerged path should NOT
-        // call findByPath(tenant, _vance, ...) twice. Stub it once;
-        // verify the second call (project-layer with project == _vance)
-        // is not made by leaving its mock unmaterialised — Mockito
-        // returns Optional.empty() by default for unstubbed Optional
-        // returns, so we can't distinguish "skipped" from "missed" on
-        // calls alone. Instead, assert the merge result against the
-        // tenant doc: if the project-layer ran by mistake we'd see two
-        // identical overlays, but the outcome would not change.
-        // The real assertion here is just that no exception fires.
-        stubDocument(TENANT, VANCE, """
-                anthropic:
-                  claude-sonnet-4-5:
-                    defaultMaxOutputTokens: 1234
+    void systemTenant_overrides_bundled_for_all_tenants() {
+        // _vance / _tenant — global maintainer-layer.
+        stubModelDoc(ModelCatalog.MODEL_PATH_PREFIX.contains("_vance") ? "_vance" : "_vance",
+                VANCE_TENANT_PROJECT,
+                "anthropic/claude-sonnet-4-5.yaml", """
+                defaultMaxOutputTokens: 999
                 """);
+        catalog.refresh();
 
+        // Tenant A sees the global override.
         ModelInfo info = catalog.lookupOrDefault(
-                TENANT, VANCE, "anthropic", "claude-sonnet-4-5");
+                "tenant-a", null, "anthropic", "claude-sonnet-4-5");
+        assertThat(info.defaultMaxOutputTokens()).isEqualTo(999);
 
-        assertThat(info.defaultMaxOutputTokens()).isEqualTo(1234);
-        // Context window stays at bundled since neither tenant nor project
-        // overrode it.
-        assertThat(info.contextWindowTokens()).isEqualTo(200_000);
+        // Tenant B sees the same global override.
+        ModelInfo infoB = catalog.lookupOrDefault(
+                "tenant-b", null, "anthropic", "claude-sonnet-4-5");
+        assertThat(infoB.defaultMaxOutputTokens()).isEqualTo(999);
     }
 
     // ──── Named provider instance fallback ─────────────────────────────
@@ -217,13 +217,13 @@ class ModelCatalogTest {
     @Test
     void namedInstance_withOwnSection_winsOverProtocolFallback() {
         // Tenant declares an instance "deepseek-direct" with its own metadata.
-        stubDocument(TENANT, VANCE, """
-                deepseek-direct:
-                  deepseek-v4-flash:
-                    contextWindowTokens: 1048576
-                    defaultMaxOutputTokens: 8192
-                    size: SMALL
+        stubModelDoc(TENANT, VANCE_TENANT_PROJECT,
+                "deepseek-direct/deepseek-v4-flash.yaml", """
+                contextWindowTokens: 1048576
+                defaultMaxOutputTokens: 8192
+                size: SMALL
                 """);
+        catalog.refresh();
 
         ModelInfo info = catalog.lookupOrDefault(
                 TENANT, null, "deepseek-direct", "openai", "deepseek-v4-flash");
@@ -234,28 +234,20 @@ class ModelCatalogTest {
 
     @Test
     void namedInstance_missingSection_fallsBackToProtocolType() {
-        // Tenant declares the instance binding but no per-instance YAML.
-        // The fallback lookup uses the protocol type (openai) and finds
-        // the bundled entry for gpt-4o-mini.
-        stubMissing(TENANT, VANCE);
-
+        // No per-instance YAML — the lookup falls back to the protocol
+        // type (openai) and finds the bundled entry for gpt-4o-mini.
         ModelInfo info = catalog.lookupOrDefault(
                 TENANT, null, "my-openai-route", "openai", "gpt-4o-mini");
 
-        // Came from the bundled openai:gpt-4o-mini entry.
         assertThat(info.contextWindowTokens()).isEqualTo(128_000);
         assertThat(info.size()).isEqualTo(ModelSize.SMALL);
     }
 
     @Test
     void namedInstance_unknownEverywhere_returnsConservativeFallback() {
-        // No instance section, model name also unknown under protocol type.
-        stubMissing(TENANT, VANCE);
-
         ModelInfo info = catalog.lookupOrDefault(
                 TENANT, null, "exotic-instance", "openai", "fictional-model");
 
-        // Conservative fallback (8K context, the FALLBACK_TEMPLATE values).
         assertThat(info.contextWindowTokens()).isEqualTo(8192);
         assertThat(info.provider()).isEqualTo("exotic-instance");
     }
@@ -265,26 +257,21 @@ class ModelCatalogTest {
     @Test
     void chat_lookup_filters_image_kind_entries() {
         // Tenant adds an image-kind entry with the same wire name as a
-        // chat entry. The chat lookup must skip it — chat and image
-        // surfaces stay disjoint.
-        stubDocument(TENANT, VANCE, """
-                openai:
-                  gpt-image-1:
-                    kind: image
-                    supportedAspectRatios: ["1:1"]
-                    costPerImage:
-                      standard: 0.04
-                    maxPromptChars: 4000
+        // chat entry. The chat lookup must skip it.
+        stubModelDoc(TENANT, VANCE_TENANT_PROJECT, "openai/gpt-image-1.yaml", """
+                kind: image
+                supportedAspectRatios: ["1:1"]
+                costPerImage:
+                  standard: 0.04
+                maxPromptChars: 4000
                 """);
+        catalog.refresh();
 
-        assertThat(catalog.lookup(TENANT, null, "openai", "gpt-image-1"))
-                .isEmpty();
+        assertThat(catalog.lookup(TENANT, null, "openai", "gpt-image-1")).isEmpty();
     }
 
     @Test
     void image_lookup_returns_bundled_gpt_image_1() {
-        // The bundled ai-models.yaml ships gpt-image-1 as the high-quality
-        // image model. Pins the metadata to detect accidental drift.
         ImageModelInfo info = catalog
                 .lookupImage(null, null, "openai", "gpt-image-1")
                 .orElseThrow();
@@ -313,8 +300,6 @@ class ModelCatalogTest {
 
     @Test
     void image_lookup_filters_chat_kind_entries() {
-        // Existing chat model — looked up via lookupImage returns empty,
-        // even though the name resolves in the chat catalog.
         assertThat(catalog.lookupImage(null, null, "anthropic", "claude-sonnet-4-5"))
                 .isEmpty();
     }
@@ -327,8 +312,6 @@ class ModelCatalogTest {
 
     @Test
     void listAll_excludes_image_kind_entries() {
-        // Bundled list shouldn't include gpt-image-1 in the chat surface
-        // — that would pollute model-picker dropdowns.
         List<ModelInfo> chats = catalog.listAll(null, null);
 
         assertThat(chats).noneMatch(m -> "gpt-image-1".equals(m.modelName()));
@@ -341,21 +324,12 @@ class ModelCatalogTest {
     void listAllImages_returns_only_image_kind_entries() {
         List<ImageModelInfo> images = catalog.listAllImages(null, null);
 
-        // Every entry must be one of the bundled image models.
         assertThat(images).isNotEmpty();
-        assertThat(images).allMatch(m -> "image".equals(kindOf(m)));
         assertThat(images).anyMatch(m -> "gpt-image-1".equals(m.modelName()));
         assertThat(images).anyMatch(m ->
                 "gemini-2.5-flash-image".equals(m.modelName()));
         assertThat(images).anyMatch(m ->
                 "imagen-3.0-generate-002".equals(m.modelName()));
-    }
-
-    /** Marker for the listAllImages assertion — every returned info is
-     *  an image entry by construction (lookupImage / listAllImages
-     *  filter on kind=image), so the lambda just returns "image". */
-    private static String kindOf(ImageModelInfo m) {
-        return m == null ? null : "image";
     }
 
     // ──── Pricing block parsing ────────────────────────────────────────
@@ -384,23 +358,20 @@ class ModelCatalogTest {
 
     @Test
     void model_without_pricing_block_returns_null() {
-        // claude-opus-4 has no pricing in bundled YAML — unpriced model.
+        // claude-opus-4 ships without pricing block — unpriced model.
         ModelInfo info = catalog.lookupOrDefault("anthropic", "claude-opus-4");
         assertThat(info.pricing()).isNull();
     }
 
     @Test
     void project_pricing_overrides_bundled() {
-        String projectYaml = """
-                openai:
-                  glm-5.2:
-                    pricing:
-                      currency: USD
-                      inputPerMTok: 0.50
-                      outputPerMTok: 2.00
-                """;
-        stubMissing(TENANT, VANCE);
-        stubDocument(TENANT, PROJECT, projectYaml);
+        stubModelDoc(TENANT, PROJECT, "openai/glm-5.2.yaml", """
+                pricing:
+                  currency: USD
+                  inputPerMTok: 0.50
+                  outputPerMTok: 2.00
+                """);
+        catalog.refresh();
 
         ModelInfo info = catalog.lookupOrDefault(TENANT, PROJECT, "openai", "glm-5.2");
         assertThat(info.pricing()).isNotNull();
@@ -409,17 +380,76 @@ class ModelCatalogTest {
         assertThat(info.pricing().outputPerMTok()).isEqualTo(2.00);
     }
 
-    // ──── Helpers ──────────────────────────────────────────────────────
+    // ──── Atomic-swap refresh semantics ────────────────────────────────
 
-    private void stubDocument(String tenantId, String projectId, String yaml) {
-        DocumentDocument doc = mock(DocumentDocument.class);
-        when(documentService.findByPath(eq(tenantId), eq(projectId), eq(ModelCatalog.CATALOG_PATH)))
-                .thenReturn(Optional.of(doc));
-        when(documentService.readContent(doc)).thenReturn(yaml);
+    @Test
+    void refresh_returns_counters_with_bundled_load() {
+        ModelCatalog.RefreshResult result = catalog.refresh();
+        assertThat(result.bundledModelsLoaded()).isGreaterThan(50);
+        assertThat(result.bundledProvidersLoaded()).isGreaterThanOrEqualTo(5);
+        assertThat(result.durationMs()).isGreaterThanOrEqualTo(0);
     }
 
-    private void stubMissing(String tenantId, String projectId) {
-        when(documentService.findByPath(eq(tenantId), eq(projectId), eq(ModelCatalog.CATALOG_PATH)))
-                .thenReturn(Optional.empty());
+    @Test
+    void refresh_picks_up_newly_added_override_doc() {
+        // Round 1: no overrides → bundled value.
+        ModelInfo before = catalog.lookupOrDefault(
+                TENANT, PROJECT, "anthropic", "claude-sonnet-4-5");
+        assertThat(before.contextWindowTokens()).isEqualTo(200_000);
+
+        // Round 2: add an override and re-refresh.
+        stubModelDoc(TENANT, PROJECT, "anthropic/claude-sonnet-4-5.yaml", """
+                contextWindowTokens: 50000
+                """);
+        catalog.refresh();
+
+        ModelInfo after = catalog.lookupOrDefault(
+                TENANT, PROJECT, "anthropic", "claude-sonnet-4-5");
+        assertThat(after.contextWindowTokens()).isEqualTo(50_000);
+    }
+
+    // ──── Provider metadata (_provider.yaml) ───────────────────────────
+
+    @Test
+    void provider_metadata_loaded_from_bundled_provider_yaml() {
+        // Bundled anthropic/_provider.yaml carries wireType=anthropic.
+        var provider = catalog.lookupProvider(null, null, "anthropic").orElseThrow();
+        assertThat(provider.get("wireType")).isEqualTo("anthropic");
+        assertThat(provider.get("displayName")).isEqualTo("Anthropic");
+    }
+
+    @Test
+    void provider_metadata_override_merges_per_field() {
+        // Tenant overrides only the baseUrl of the openai provider for
+        // their private vLLM endpoint.
+        stubModelDoc(TENANT, VANCE_TENANT_PROJECT, "openai/_provider.yaml", """
+                baseUrl: https://vllm.internal/v1
+                """);
+        catalog.refresh();
+
+        var provider = catalog.lookupProvider(TENANT, null, "openai").orElseThrow();
+        assertThat(provider.get("baseUrl")).isEqualTo("https://vllm.internal/v1");
+        assertThat(provider.get("wireType")).isEqualTo("openai");   // inherited
+    }
+
+    // ──── Helpers ──────────────────────────────────────────────────────
+
+    /**
+     * Add a stub model document to the in-memory override set. Pass
+     * {@code relPath} as the path under {@code _vance/model/} — e.g.
+     * {@code "anthropic/claude-sonnet-4-5.yaml"}. Call
+     * {@link ModelCatalog#refresh()} afterwards for the change to take
+     * effect.
+     */
+    private void stubModelDoc(String tenantId, String projectId, String relPath, String yamlBody) {
+        DocumentDocument doc = mock(DocumentDocument.class);
+        lenient().when(doc.getTenantId()).thenReturn(tenantId);
+        lenient().when(doc.getProjectId()).thenReturn(projectId);
+        lenient().when(doc.getPath()).thenReturn(ModelCatalog.MODEL_PATH_PREFIX + relPath);
+        lenient().when(documentService.readContent(eq(doc))).thenReturn(yamlBody);
+        overrideDocs.add(doc);
+        // findAllByPathPrefix is already wired to overrideDocs; the
+        // ArrayList mutation reflects automatically on next refresh.
+        when(documentService.findAllByPathPrefix(any())).thenReturn(overrideDocs);
     }
 }

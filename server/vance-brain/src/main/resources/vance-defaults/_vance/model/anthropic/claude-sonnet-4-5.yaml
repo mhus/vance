@@ -1,0 +1,13 @@
+contextWindowTokens: 200000
+defaultMaxOutputTokens: 8192
+size: LARGE
+capabilities:
+- vision
+- pdf
+- thinking
+pricing:
+  currency: USD
+  inputPerMTok: 3.0
+  outputPerMTok: 15.0
+  cacheReadPerMTok: 0.3
+  cacheWritePerMTok: 3.75

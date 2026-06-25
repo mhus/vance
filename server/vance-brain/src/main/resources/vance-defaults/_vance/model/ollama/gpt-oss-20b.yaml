@@ -1,0 +1,6 @@
+wireName: gpt-oss:20b
+contextWindowTokens: 131072
+defaultMaxOutputTokens: 4096
+size: SMALL
+timeoutSeconds: 600
+stripThinkTags: true

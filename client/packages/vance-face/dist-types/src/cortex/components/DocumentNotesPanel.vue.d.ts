@@ -5,8 +5,8 @@ interface Props {
     highlightedNoteId?: string | null;
 }
 declare const _default: import("vue").DefineComponent<Props, {}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {} & {
-    add: () => any;
     delete: (noteId: string) => any;
+    add: () => any;
     update: (noteId: string, patch: {
         text?: string;
         done?: boolean;
@@ -14,8 +14,8 @@ declare const _default: import("vue").DefineComponent<Props, {}, {}, {}, {}, imp
     "jump-to-line": (line: number) => any;
     reorder: (noteId: string, toIndex: number) => any;
 }, string, import("vue").PublicProps, Readonly<Props> & Readonly<{
-    onAdd?: (() => any) | undefined;
     onDelete?: ((noteId: string) => any) | undefined;
+    onAdd?: (() => any) | undefined;
     onUpdate?: ((noteId: string, patch: {
         text?: string;
         done?: boolean;

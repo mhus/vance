@@ -3,6 +3,7 @@ import { CodeEditor, MarkdownView, accentColorDotClass } from '@/components';
 import { brainFetchBlob } from '@vance/shared';
 import ImageView from '@/document/ImageView.vue';
 import DocumentPreview from '@/document/DocumentPreview.vue';
+import TexPreview from './TexPreview.vue';
 import { useCortexStore } from '../stores/cortexStore';
 import { resolveBinding } from '../docTypeRegistry';
 import { resolveRunAdapter } from '../runners/runnerRegistry';
@@ -318,7 +319,19 @@ const isMarkdownDocument = computed(() => {
         return true;
     return (props.document.mimeType ?? '').toLowerCase().startsWith('text/markdown');
 });
-const showToggle = computed(() => isViewMode.value || isMarkdownDocument.value);
+// TeX files get the same View/Edit toggle as Markdown: KaTeX-rendered
+// formula preview in 'view', raw CodeEditor with stex highlighting in
+// 'edit'. KaTeX renders only $...$ / $$...$$ math — no full LaTeX
+// layout. The "Generate PDF" button (run adapter) handles full compile.
+const isTexDocument = computed(() => {
+    if (binding.value.mode !== 'code')
+        return false;
+    const lower = props.document.path.toLowerCase();
+    return lower.endsWith('.tex')
+        || lower.endsWith('.ltx')
+        || lower.endsWith('.latex');
+});
+const showToggle = computed(() => isViewMode.value || isMarkdownDocument.value || isTexDocument.value);
 const VIEW_EDIT_KEY = 'editor:viewEditMode';
 function loadViewEditMode() {
     try {
@@ -483,6 +496,42 @@ function fmtDuration(ms) {
     if (ms < 1000)
         return `${ms} ms`;
     return `${(ms / 1000).toFixed(2)} s`;
+}
+// ─── TeX runner: open generated PDF ──────────────────────────────
+//
+// When the tex runner finishes, the result carries { pdfPath } — the
+// document path of the freshly imported PDF. We find it in the file
+// list (refreshing first so the new document appears) and open it as
+// a new tab via the cortex store.
+const isTexRunner = computed(() => runAdapter.value?.id === 'tex');
+const texPdfPath = computed(() => {
+    if (!isTexRunner.value)
+        return null;
+    if (runState.value !== 'finished')
+        return null;
+    const r = runHandle.value?.result.value;
+    if (r && typeof r === 'object' && 'pdfPath' in r) {
+        const p = r.pdfPath;
+        return p ?? null;
+    }
+    return null;
+});
+async function onOpenPdf() {
+    const pdfPath = texPdfPath.value;
+    if (!pdfPath)
+        return;
+    // Refresh the file list so the newly imported PDF shows up, then
+    // find it by path and open it as a new tab.
+    if (store.projectId) {
+        await store.loadList(store.projectId);
+    }
+    const pdfDoc = store.files.find((f) => f.path === pdfPath);
+    if (pdfDoc) {
+        await store.openFile(pdfDoc.id);
+    }
+    else {
+        console.warn('[cortex/tex] PDF not found in file list:', pdfPath);
+    }
 }
 debugger; /* PartiallyEnd: #3632/scriptSetup.vue */
 const __VLS_ctx = {};
@@ -693,14 +742,27 @@ if (__VLS_ctx.binding.mode === 'code' && __VLS_ctx.isMarkdownDocument && __VLS_c
         source: (__VLS_ctx.document.inlineText),
     }, ...__VLS_functionalComponentArgsRest(__VLS_4));
 }
+else if (__VLS_ctx.binding.mode === 'code' && __VLS_ctx.isTexDocument && __VLS_ctx.viewEditMode === 'view') {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "flex-1 min-h-0 overflow-hidden" },
+    });
+    /** @type {[typeof TexPreview, ]} */ ;
+    // @ts-ignore
+    const __VLS_7 = __VLS_asFunctionalComponent(TexPreview, new TexPreview({
+        source: (__VLS_ctx.document.inlineText),
+    }));
+    const __VLS_8 = __VLS_7({
+        source: (__VLS_ctx.document.inlineText),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_7));
+}
 else if (__VLS_ctx.binding.mode === 'code') {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "flex-1 min-h-0 overflow-hidden cortex-code-host" },
     });
-    const __VLS_7 = {}.CodeEditor;
+    const __VLS_10 = {}.CodeEditor;
     /** @type {[typeof __VLS_components.CodeEditor, ]} */ ;
     // @ts-ignore
-    const __VLS_8 = __VLS_asFunctionalComponent(__VLS_7, new __VLS_7({
+    const __VLS_11 = __VLS_asFunctionalComponent(__VLS_10, new __VLS_10({
         ...{ 'onUpdate:modelValue': {} },
         ...{ 'onSelectionChanged': {} },
         ...{ 'onNoteAnchorClick': {} },
@@ -709,7 +771,7 @@ else if (__VLS_ctx.binding.mode === 'code') {
         mimeType: (__VLS_ctx.effectiveMimeType),
         noteLines: (__VLS_ctx.docNotes.linesWithNotes.value),
     }));
-    const __VLS_9 = __VLS_8({
+    const __VLS_12 = __VLS_11({
         ...{ 'onUpdate:modelValue': {} },
         ...{ 'onSelectionChanged': {} },
         ...{ 'onNoteAnchorClick': {} },
@@ -717,23 +779,23 @@ else if (__VLS_ctx.binding.mode === 'code') {
         modelValue: (__VLS_ctx.document.inlineText),
         mimeType: (__VLS_ctx.effectiveMimeType),
         noteLines: (__VLS_ctx.docNotes.linesWithNotes.value),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_8));
-    let __VLS_11;
-    let __VLS_12;
-    let __VLS_13;
-    const __VLS_14 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_11));
+    let __VLS_14;
+    let __VLS_15;
+    let __VLS_16;
+    const __VLS_17 = {
         'onUpdate:modelValue': ((v) => __VLS_ctx.emit('update', v))
     };
-    const __VLS_15 = {
+    const __VLS_18 = {
         onSelectionChanged: (__VLS_ctx.onSelectionChanged)
     };
-    const __VLS_16 = {
+    const __VLS_19 = {
         onNoteAnchorClick: (__VLS_ctx.onNoteAnchorClick)
     };
-    const __VLS_17 = {
+    const __VLS_20 = {
         onNoteGutterClick: (__VLS_ctx.onNoteGutterClick)
     };
-    var __VLS_10;
+    var __VLS_13;
 }
 else if (__VLS_ctx.binding.mode === 'image') {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -741,14 +803,14 @@ else if (__VLS_ctx.binding.mode === 'image') {
     });
     /** @type {[typeof ImageView, ]} */ ;
     // @ts-ignore
-    const __VLS_18 = __VLS_asFunctionalComponent(ImageView, new ImageView({
+    const __VLS_21 = __VLS_asFunctionalComponent(ImageView, new ImageView({
         mode: "editor",
         document: (__VLS_ctx.docDtoForView),
     }));
-    const __VLS_19 = __VLS_18({
+    const __VLS_22 = __VLS_21({
         mode: "editor",
         document: (__VLS_ctx.docDtoForView),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_18));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_21));
 }
 else if (__VLS_ctx.binding.mode === 'preview') {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -776,24 +838,24 @@ else if (__VLS_ctx.binding.mode === 'preview') {
     });
     /** @type {[typeof DocumentPreview, ]} */ ;
     // @ts-ignore
-    const __VLS_21 = __VLS_asFunctionalComponent(DocumentPreview, new DocumentPreview({
+    const __VLS_24 = __VLS_asFunctionalComponent(DocumentPreview, new DocumentPreview({
         documentId: (__VLS_ctx.document.id),
         mimeType: (__VLS_ctx.document.mimeType ?? null),
     }));
-    const __VLS_22 = __VLS_21({
+    const __VLS_25 = __VLS_24({
         documentId: (__VLS_ctx.document.id),
         mimeType: (__VLS_ctx.document.mimeType ?? null),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_21));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_24));
 }
 else if (__VLS_ctx.isViewMode) {
     if (__VLS_ctx.showRawEditor) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "flex-1 min-h-0 overflow-hidden cortex-code-host" },
         });
-        const __VLS_24 = {}.CodeEditor;
+        const __VLS_27 = {}.CodeEditor;
         /** @type {[typeof __VLS_components.CodeEditor, ]} */ ;
         // @ts-ignore
-        const __VLS_25 = __VLS_asFunctionalComponent(__VLS_24, new __VLS_24({
+        const __VLS_28 = __VLS_asFunctionalComponent(__VLS_27, new __VLS_27({
             ...{ 'onUpdate:modelValue': {} },
             ...{ 'onSelectionChanged': {} },
             ...{ 'onNoteAnchorClick': {} },
@@ -802,7 +864,7 @@ else if (__VLS_ctx.isViewMode) {
             mimeType: (__VLS_ctx.effectiveMimeType),
             noteLines: (__VLS_ctx.docNotes.linesWithNotes.value),
         }));
-        const __VLS_26 = __VLS_25({
+        const __VLS_29 = __VLS_28({
             ...{ 'onUpdate:modelValue': {} },
             ...{ 'onSelectionChanged': {} },
             ...{ 'onNoteAnchorClick': {} },
@@ -810,23 +872,23 @@ else if (__VLS_ctx.isViewMode) {
             modelValue: (__VLS_ctx.document.inlineText),
             mimeType: (__VLS_ctx.effectiveMimeType),
             noteLines: (__VLS_ctx.docNotes.linesWithNotes.value),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_25));
-        let __VLS_28;
-        let __VLS_29;
-        let __VLS_30;
-        const __VLS_31 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_28));
+        let __VLS_31;
+        let __VLS_32;
+        let __VLS_33;
+        const __VLS_34 = {
             'onUpdate:modelValue': ((v) => __VLS_ctx.emit('update', v))
         };
-        const __VLS_32 = {
+        const __VLS_35 = {
             onSelectionChanged: (__VLS_ctx.onSelectionChanged)
         };
-        const __VLS_33 = {
+        const __VLS_36 = {
             onNoteAnchorClick: (__VLS_ctx.onNoteAnchorClick)
         };
-        const __VLS_34 = {
+        const __VLS_37 = {
             onNoteGutterClick: (__VLS_ctx.onNoteGutterClick)
         };
-        var __VLS_27;
+        var __VLS_30;
     }
     else if (__VLS_ctx.parseResult.error) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -840,10 +902,10 @@ else if (__VLS_ctx.isViewMode) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "flex-1 min-h-0 overflow-hidden cortex-code-host" },
         });
-        const __VLS_35 = {}.CodeEditor;
+        const __VLS_38 = {}.CodeEditor;
         /** @type {[typeof __VLS_components.CodeEditor, ]} */ ;
         // @ts-ignore
-        const __VLS_36 = __VLS_asFunctionalComponent(__VLS_35, new __VLS_35({
+        const __VLS_39 = __VLS_asFunctionalComponent(__VLS_38, new __VLS_38({
             ...{ 'onUpdate:modelValue': {} },
             ...{ 'onSelectionChanged': {} },
             ...{ 'onNoteAnchorClick': {} },
@@ -852,7 +914,7 @@ else if (__VLS_ctx.isViewMode) {
             mimeType: (__VLS_ctx.effectiveMimeType),
             noteLines: (__VLS_ctx.docNotes.linesWithNotes.value),
         }));
-        const __VLS_37 = __VLS_36({
+        const __VLS_40 = __VLS_39({
             ...{ 'onUpdate:modelValue': {} },
             ...{ 'onSelectionChanged': {} },
             ...{ 'onNoteAnchorClick': {} },
@@ -860,47 +922,47 @@ else if (__VLS_ctx.isViewMode) {
             modelValue: (__VLS_ctx.document.inlineText),
             mimeType: (__VLS_ctx.effectiveMimeType),
             noteLines: (__VLS_ctx.docNotes.linesWithNotes.value),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_36));
-        let __VLS_39;
-        let __VLS_40;
-        let __VLS_41;
-        const __VLS_42 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_39));
+        let __VLS_42;
+        let __VLS_43;
+        let __VLS_44;
+        const __VLS_45 = {
             'onUpdate:modelValue': ((v) => __VLS_ctx.emit('update', v))
         };
-        const __VLS_43 = {
+        const __VLS_46 = {
             onSelectionChanged: (__VLS_ctx.onSelectionChanged)
         };
-        const __VLS_44 = {
+        const __VLS_47 = {
             onNoteAnchorClick: (__VLS_ctx.onNoteAnchorClick)
         };
-        const __VLS_45 = {
+        const __VLS_48 = {
             onNoteGutterClick: (__VLS_ctx.onNoteGutterClick)
         };
-        var __VLS_38;
+        var __VLS_41;
     }
     else {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "flex-1 min-h-0 overflow-auto" },
         });
-        const __VLS_46 = ((__VLS_ctx.activeView));
+        const __VLS_49 = ((__VLS_ctx.activeView));
         // @ts-ignore
-        const __VLS_47 = __VLS_asFunctionalComponent(__VLS_46, new __VLS_46({
+        const __VLS_50 = __VLS_asFunctionalComponent(__VLS_49, new __VLS_49({
             ...{ 'onUpdate:doc': {} },
             mode: "editor",
             ...(__VLS_ctx.viewBindings),
         }));
-        const __VLS_48 = __VLS_47({
+        const __VLS_51 = __VLS_50({
             ...{ 'onUpdate:doc': {} },
             mode: "editor",
             ...(__VLS_ctx.viewBindings),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_47));
-        let __VLS_50;
-        let __VLS_51;
-        let __VLS_52;
-        const __VLS_53 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_50));
+        let __VLS_53;
+        let __VLS_54;
+        let __VLS_55;
+        const __VLS_56 = {
             'onUpdate:doc': (__VLS_ctx.onModelUpdate)
         };
-        var __VLS_49;
+        var __VLS_52;
     }
 }
 if (__VLS_ctx.runHandle) {
@@ -966,11 +1028,26 @@ if (__VLS_ctx.runHandle) {
         });
         (__VLS_ctx.fmtResult(__VLS_ctx.runHandle.result.value));
     }
+    if (__VLS_ctx.texPdfPath) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "border-t border-base-300 px-3 py-1.5 bg-success/5 flex items-center gap-2" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+            ...{ onClick: (__VLS_ctx.onOpenPdf) },
+            type: "button",
+            ...{ class: "text-xs px-2 py-0.5 rounded border border-success/40 bg-success/10 text-success hover:bg-success/20" },
+            title: "Open the generated PDF in a new tab",
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "text-xs font-mono opacity-60" },
+        });
+        (__VLS_ctx.texPdfPath);
+    }
 }
 if (__VLS_ctx.notesOpen) {
     /** @type {[typeof DocumentNotesPanel, ]} */ ;
     // @ts-ignore
-    const __VLS_54 = __VLS_asFunctionalComponent(DocumentNotesPanel, new DocumentNotesPanel({
+    const __VLS_57 = __VLS_asFunctionalComponent(DocumentNotesPanel, new DocumentNotesPanel({
         ...{ 'onAdd': {} },
         ...{ 'onUpdate': {} },
         ...{ 'onDelete': {} },
@@ -979,7 +1056,7 @@ if (__VLS_ctx.notesOpen) {
         notes: (__VLS_ctx.docNotes.notes.value),
         highlightedNoteId: (__VLS_ctx.highlightedNoteId),
     }));
-    const __VLS_55 = __VLS_54({
+    const __VLS_58 = __VLS_57({
         ...{ 'onAdd': {} },
         ...{ 'onUpdate': {} },
         ...{ 'onDelete': {} },
@@ -987,54 +1064,54 @@ if (__VLS_ctx.notesOpen) {
         ...{ 'onReorder': {} },
         notes: (__VLS_ctx.docNotes.notes.value),
         highlightedNoteId: (__VLS_ctx.highlightedNoteId),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_54));
-    let __VLS_57;
-    let __VLS_58;
-    let __VLS_59;
-    const __VLS_60 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_57));
+    let __VLS_60;
+    let __VLS_61;
+    let __VLS_62;
+    const __VLS_63 = {
         onAdd: (__VLS_ctx.onAddUnanchoredNote)
     };
-    const __VLS_61 = {
+    const __VLS_64 = {
         onUpdate: (__VLS_ctx.onUpdateNote)
     };
-    const __VLS_62 = {
+    const __VLS_65 = {
         onDelete: (__VLS_ctx.onDeleteNote)
     };
-    const __VLS_63 = {
+    const __VLS_66 = {
         onJumpToLine: (__VLS_ctx.onJumpToLine)
     };
-    const __VLS_64 = {
+    const __VLS_67 = {
         onReorder: (__VLS_ctx.onReorderNote)
     };
-    var __VLS_56;
+    var __VLS_59;
 }
 if (__VLS_ctx.showValidate) {
     /** @type {[typeof CortexValidateDialog, ]} */ ;
     // @ts-ignore
-    const __VLS_65 = __VLS_asFunctionalComponent(CortexValidateDialog, new CortexValidateDialog({
+    const __VLS_68 = __VLS_asFunctionalComponent(CortexValidateDialog, new CortexValidateDialog({
         ...{ 'onClose': {} },
         document: (__VLS_ctx.document),
     }));
-    const __VLS_66 = __VLS_65({
+    const __VLS_69 = __VLS_68({
         ...{ 'onClose': {} },
         document: (__VLS_ctx.document),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_65));
-    let __VLS_68;
-    let __VLS_69;
-    let __VLS_70;
-    const __VLS_71 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_68));
+    let __VLS_71;
+    let __VLS_72;
+    let __VLS_73;
+    const __VLS_74 = {
         onClose: (...[$event]) => {
             if (!(__VLS_ctx.showValidate))
                 return;
             __VLS_ctx.showValidate = false;
         }
     };
-    var __VLS_67;
+    var __VLS_70;
 }
 if (__VLS_ctx.showSlart && __VLS_ctx.store.projectId) {
     /** @type {[typeof CortexHactarDialog, ]} */ ;
     // @ts-ignore
-    const __VLS_72 = __VLS_asFunctionalComponent(CortexHactarDialog, new CortexHactarDialog({
+    const __VLS_75 = __VLS_asFunctionalComponent(CortexHactarDialog, new CortexHactarDialog({
         ...{ 'onClose': {} },
         ...{ 'onApply': {} },
         document: (__VLS_ctx.document),
@@ -1042,28 +1119,28 @@ if (__VLS_ctx.showSlart && __VLS_ctx.store.projectId) {
         sessionId: (__VLS_ctx.sessionId ?? null),
         mode: (__VLS_ctx.slartMode),
     }));
-    const __VLS_73 = __VLS_72({
+    const __VLS_76 = __VLS_75({
         ...{ 'onClose': {} },
         ...{ 'onApply': {} },
         document: (__VLS_ctx.document),
         projectId: (__VLS_ctx.store.projectId),
         sessionId: (__VLS_ctx.sessionId ?? null),
         mode: (__VLS_ctx.slartMode),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_72));
-    let __VLS_75;
-    let __VLS_76;
-    let __VLS_77;
-    const __VLS_78 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_75));
+    let __VLS_78;
+    let __VLS_79;
+    let __VLS_80;
+    const __VLS_81 = {
         onClose: (...[$event]) => {
             if (!(__VLS_ctx.showSlart && __VLS_ctx.store.projectId))
                 return;
             __VLS_ctx.showSlart = false;
         }
     };
-    const __VLS_79 = {
+    const __VLS_82 = {
         onApply: (__VLS_ctx.onSlartApply)
     };
-    var __VLS_74;
+    var __VLS_77;
 }
 /** @type {__VLS_StyleScopedClasses['h-full']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
@@ -1197,6 +1274,9 @@ if (__VLS_ctx.showSlart && __VLS_ctx.store.projectId) {
 /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
 /** @type {__VLS_StyleScopedClasses['overflow-hidden']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
+/** @type {__VLS_StyleScopedClasses['overflow-hidden']} */ ;
 /** @type {__VLS_StyleScopedClasses['cortex-code-host']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
@@ -1316,6 +1396,26 @@ if (__VLS_ctx.showSlart && __VLS_ctx.store.projectId) {
 /** @type {__VLS_StyleScopedClasses['overflow-y-auto']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
 /** @type {__VLS_StyleScopedClasses['mb-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-t']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-1.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['bg-success/5']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-0.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['rounded']} */ ;
+/** @type {__VLS_StyleScopedClasses['border']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-success/40']} */ ;
+/** @type {__VLS_StyleScopedClasses['bg-success/10']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-success']} */ ;
+/** @type {__VLS_StyleScopedClasses['hover:bg-success/20']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
 var __VLS_dollars;
 const __VLS_self = (await import('vue')).defineComponent({
     setup() {
@@ -1325,6 +1425,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             accentColorDotClass: accentColorDotClass,
             ImageView: ImageView,
             DocumentPreview: DocumentPreview,
+            TexPreview: TexPreview,
             CortexValidateDialog: CortexValidateDialog,
             CortexHactarDialog: CortexHactarDialog,
             DocumentPropertiesPanel: DocumentPropertiesPanel,
@@ -1356,6 +1457,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             viewBindings: viewBindings,
             isViewMode: isViewMode,
             isMarkdownDocument: isMarkdownDocument,
+            isTexDocument: isTexDocument,
             showToggle: showToggle,
             viewEditMode: viewEditMode,
             showRawEditor: showRawEditor,
@@ -1377,6 +1479,8 @@ const __VLS_self = (await import('vue')).defineComponent({
             openSlart: openSlart,
             fmtResult: fmtResult,
             fmtDuration: fmtDuration,
+            texPdfPath: texPdfPath,
+            onOpenPdf: onOpenPdf,
         };
     },
     __typeEmits: {},

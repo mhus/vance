@@ -61,6 +61,7 @@ public sealed interface SteerMessage
             Instant at,
             @Nullable String idempotencyKey,
             String fromUser,
+            @Nullable String fromUserDisplayName,
             String content,
             List<AttachmentRef> attachments,
             boolean voiceMode) implements SteerMessage {
@@ -79,21 +80,22 @@ public sealed interface SteerMessage
         /**
          * Backward-compatible constructor for the many call sites that
          * predate multimodal attachments. Equivalent to passing
-         * {@link List#of()} for {@code attachments} and {@code false}
-         * for {@code voiceMode}.
+         * {@link List#of()} for {@code attachments}, {@code false}
+         * for {@code voiceMode}, and {@code null} for the display name.
          */
         public UserChatInput(
                 Instant at,
                 @Nullable String idempotencyKey,
                 String fromUser,
                 String content) {
-            this(at, idempotencyKey, fromUser, content, List.of(), false);
+            this(at, idempotencyKey, fromUser, null, content, List.of(), false);
         }
 
         /**
          * Backward-compatible constructor for callers that already
          * carry attachments but predate voice mode. Equivalent to
-         * passing {@code false} for {@code voiceMode}.
+         * passing {@code false} for {@code voiceMode} and {@code null}
+         * for the display name.
          */
         public UserChatInput(
                 Instant at,
@@ -101,7 +103,21 @@ public sealed interface SteerMessage
                 String fromUser,
                 String content,
                 List<AttachmentRef> attachments) {
-            this(at, idempotencyKey, fromUser, content, attachments, false);
+            this(at, idempotencyKey, fromUser, null, content, attachments, false);
+        }
+
+        /**
+         * Backward-compatible constructor for callers that predate
+         * the multi-user-session display-name field.
+         */
+        public UserChatInput(
+                Instant at,
+                @Nullable String idempotencyKey,
+                String fromUser,
+                String content,
+                List<AttachmentRef> attachments,
+                boolean voiceMode) {
+            this(at, idempotencyKey, fromUser, null, content, attachments, voiceMode);
         }
     }
 

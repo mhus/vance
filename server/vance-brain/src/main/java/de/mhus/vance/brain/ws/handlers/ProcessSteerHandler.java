@@ -9,6 +9,8 @@ import de.mhus.vance.api.thinkprocess.ProcessSteerResponse;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
+import de.mhus.vance.brain.chat.ChatMentionParser;
+import de.mhus.vance.brain.events.SessionConnectionRegistry;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
@@ -17,10 +19,13 @@ import de.mhus.vance.brain.thinkengine.SteerMessageCodec;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.brain.ws.WsHandler;
+import de.mhus.vance.api.chat.ChatRole;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
+import de.mhus.vance.shared.session.SessionDocument;
+import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
@@ -79,6 +84,8 @@ public class ProcessSteerHandler implements WsHandler {
     private final WebSocketSender sender;
     private final ThinkProcessService thinkProcessService;
     private final ChatMessageService chatMessageService;
+    private final SessionService sessionService;
+    private final SessionConnectionRegistry connectionRegistry;
     private final LaneScheduler laneScheduler;
     private final ProcessEventEmitter eventEmitter;
     private final RequestAuthority authority;
@@ -88,6 +95,8 @@ public class ProcessSteerHandler implements WsHandler {
             WebSocketSender sender,
             ThinkProcessService thinkProcessService,
             ChatMessageService chatMessageService,
+            SessionService sessionService,
+            SessionConnectionRegistry connectionRegistry,
             LaneScheduler laneScheduler,
             ProcessEventEmitter eventEmitter,
             RequestAuthority authority) {
@@ -95,6 +104,8 @@ public class ProcessSteerHandler implements WsHandler {
         this.sender = sender;
         this.thinkProcessService = thinkProcessService;
         this.chatMessageService = chatMessageService;
+        this.sessionService = sessionService;
+        this.connectionRegistry = connectionRegistry;
         this.laneScheduler = laneScheduler;
         this.eventEmitter = eventEmitter;
         this.authority = authority;
@@ -142,6 +153,42 @@ public class ProcessSteerHandler implements WsHandler {
                         process.getSessionId(), processId == null ? "" : processId),
                 Action.EXECUTE);
 
+        // Multi-user routing — see planning/multi-user-sessions.md §3.3.
+        // Collab is active when the session permits multiple clients
+        // AND more than one is currently bound. Mention status follows
+        // the simple parser (no code-block awareness in v1).
+        boolean collabActive = isCollabActive(sessionId);
+        boolean addressedToAgent =
+                !collabActive || ChatMentionParser.isAddressedToAgent(request.getContent());
+
+        if (!addressedToAgent) {
+            // Background turn — persist into chat history for context
+            // but do not wake the engine. Broadcast happens via the
+            // existing ChatMessageNotificationDispatcher listener on
+            // ChatMessageAppendedEvent.
+            chatMessageService.append(ChatMessageDocument.builder()
+                    .tenantId(tenantId)
+                    .sessionId(sessionId)
+                    .thinkProcessId(processId)
+                    .role(ChatRole.USER)
+                    .content(request.getContent())
+                    .senderUserId(ctx.getUserId())
+                    .senderDisplayName(ctx.getDisplayName())
+                    .addressedToAgent(false)
+                    .build());
+            // Ack the steer immediately — the agent did not run, so
+            // there's no status change to report. Status returned is
+            // the current (unchanged) one for symmetry with the
+            // addressed reply.
+            ProcessSteerResponse response = ProcessSteerResponse.builder()
+                    .thinkProcessId(processId)
+                    .processName(request.getProcessName())
+                    .status(process.getStatus())
+                    .build();
+            sender.sendReply(wsSession, envelope, MessageType.PROCESS_STEER, response);
+            return;
+        }
+
         // Auto-resume on incoming user input. The user paused, the
         // chat went PAUSED, and now they're sending the correction.
         // Without this flip, the message would land in the queue but
@@ -177,6 +224,7 @@ public class ProcessSteerHandler implements WsHandler {
                 Instant.now(),
                 request.getIdempotencyKey(),
                 ctx.getUserId(),
+                ctx.getDisplayName(),
                 content,
                 request.getAttachments() == null ? java.util.List.of() : request.getAttachments(),
                 Boolean.TRUE.equals(request.getVoiceMode()));
@@ -350,5 +398,22 @@ public class ProcessSteerHandler implements WsHandler {
 
     private static boolean isBlank(@Nullable String s) {
         return s == null || s.isBlank();
+    }
+
+    /**
+     * {@code true} when the session has {@code allowMultipleClients}
+     * set <em>and</em> more than one client is currently bound — the
+     * runtime condition for mention-based agent routing
+     * (see {@code planning/multi-user-sessions.md} §3.3). When the
+     * session is private or only one client is bound, all USER turns
+     * remain implicitly addressed to the agent — backwards compatible
+     * with the 1:1 flow.
+     */
+    private boolean isCollabActive(String sessionId) {
+        SessionDocument session = sessionService.findBySessionId(sessionId).orElse(null);
+        if (session == null || !session.isAllowMultipleClients()) {
+            return false;
+        }
+        return connectionRegistry.connectionCount(sessionId) > 1;
     }
 }

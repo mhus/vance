@@ -204,6 +204,28 @@ public class SessionConnectionRegistry {
     }
 
     /**
+     * Returns the connection of a specific user in the given session,
+     * if any. Use for user-scoped pushes (inbox notifications,
+     * per-user dialogs) where a multi-user session must <em>not</em>
+     * leak the frame to other users sharing the channel.
+     *
+     * <p>At most one entry per (sessionId, userId) — the kick-old
+     * rule on {@link #register} guarantees that.
+     */
+    public Optional<WebSocketSession> findForUser(
+            @Nullable String sessionId, @Nullable String userId) {
+        if (sessionId == null || userId == null) return Optional.empty();
+        List<ConnectionEntry> list = bySession.get(sessionId);
+        if (list == null) return Optional.empty();
+        for (ConnectionEntry entry : list) {
+            if (userId.equals(entry.userId())) {
+                return Optional.of(entry.wsSession());
+            }
+        }
+        return Optional.empty();
+    }
+
+    /**
      * Returns the number of active connections for the session.
      * Reflects the live mode (1 = solo, &gt;1 = collab).
      */

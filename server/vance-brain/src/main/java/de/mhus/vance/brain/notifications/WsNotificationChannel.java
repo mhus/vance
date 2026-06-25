@@ -84,7 +84,12 @@ public class WsNotificationChannel implements NotificationChannel {
         List<WebSocketSession> out = new ArrayList<>();
         for (SessionDocument s : sessions) {
             if (s.getStatus() == SessionStatus.CLOSED) continue;
-            connectionRegistry.find(s.getSessionId()).ifPresent(out::add);
+            // findForUser instead of find: in a multi-user session the
+            // recipient may not be the first registered connection.
+            // We must only push to the actual recipient's socket,
+            // never leak the notification onto another user's tab.
+            connectionRegistry.findForUser(s.getSessionId(), event.userId())
+                    .ifPresent(out::add);
         }
         return out;
     }

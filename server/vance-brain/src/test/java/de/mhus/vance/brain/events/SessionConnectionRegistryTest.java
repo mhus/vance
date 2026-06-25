@@ -139,6 +139,24 @@ class SessionConnectionRegistryTest {
     }
 
     @Test
+    void findForUser_returnsThatUsersConnection() {
+        WebSocketSession aliceWs = mock(WebSocketSession.class);
+        WebSocketSession bobWs = mock(WebSocketSession.class);
+        registry.register("s1", "alice", "ed-1", aliceWs, true);
+        registry.register("s1", "bob", "ed-2", bobWs, true);
+
+        assertThat(registry.findForUser("s1", "alice")).contains(aliceWs);
+        assertThat(registry.findForUser("s1", "bob")).contains(bobWs);
+        assertThat(registry.findForUser("s1", "carol")).isEmpty();
+    }
+
+    @Test
+    void findForUser_nullArgs_returnsEmpty() {
+        assertThat(registry.findForUser(null, "alice")).isEmpty();
+        assertThat(registry.findForUser("s1", null)).isEmpty();
+    }
+
+    @Test
     void connectionCount_isolatedPerSession() {
         WebSocketSession ws1 = mock(WebSocketSession.class);
         WebSocketSession ws2 = mock(WebSocketSession.class);

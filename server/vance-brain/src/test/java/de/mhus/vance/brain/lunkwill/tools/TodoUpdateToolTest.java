@@ -14,8 +14,10 @@ import de.mhus.vance.api.thinkprocess.TodoStatus;
 import de.mhus.vance.brain.arthur.PlanModeEventEmitter;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import de.mhus.vance.shared.thinkprocess.TodoPatch;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -36,105 +38,141 @@ class TodoUpdateToolTest {
         thinkProcessService = mock(ThinkProcessService.class);
         emitter = mock(PlanModeEventEmitter.class);
         tool = new TodoUpdateTool(thinkProcessService, emitter);
-
-        ThinkProcessDocument refreshed = new ThinkProcessDocument();
-        refreshed.setId(PROC_ID);
-        refreshed.setTodos(List.of(
-                TodoItem.builder().id("1").status(TodoStatus.COMPLETED).content("a").build(),
-                TodoItem.builder().id("2").status(TodoStatus.IN_PROGRESS).content("b").build()));
-        when(thinkProcessService.findById(PROC_ID)).thenReturn(Optional.of(refreshed));
     }
 
     @Test
-    void parsesUpdates_callsService_emitsNotification() {
-        when(thinkProcessService.updateTodoStatuses(eq(PROC_ID), any())).thenReturn(true);
+    void parsesPartialPatch_passesAllFieldsToService() {
+        when(thinkProcessService.updateTodos(eq(PROC_ID), any())).thenReturn(true);
+        when(thinkProcessService.findById(PROC_ID)).thenReturn(Optional.of(withTodos(
+                TodoItem.builder().id("1").status(TodoStatus.IN_PROGRESS).content("a").build())));
 
-        Map<String, Object> params = Map.of(
-                "updates", List.of(
-                        Map.of("id", "1", "status", "IN_PROGRESS"),
-                        Map.of("id", "2", "status", "COMPLETED")));
+        Map<String, Object> out = tool.invoke(Map.of(
+                "items", List.of(
+                        Map.of("id", "1", "status", "COMPLETED",
+                                "content", "rewritten", "activeForm", "Rewriting"),
+                        Map.of("id", "2", "status", "IN_PROGRESS"))),
+                ctxFor(PROC_ID));
 
-        Map<String, Object> out = tool.invoke(params, ctxFor(PROC_ID));
-
-        assertThat(out).containsEntry("ok", true);
-        assertThat(out).containsEntry("applied", 2);
         assertThat(out).containsEntry("changed", true);
+        assertThat(out).containsEntry("applied", 2);
 
-        ArgumentCaptor<Map<String, TodoStatus>> captor = ArgumentCaptor.forClass(Map.class);
-        verify(thinkProcessService).updateTodoStatuses(eq(PROC_ID), captor.capture());
-        assertThat(captor.getValue())
-                .containsEntry("1", TodoStatus.IN_PROGRESS)
-                .containsEntry("2", TodoStatus.COMPLETED);
+        ArgumentCaptor<List<TodoPatch>> captor = ArgumentCaptor.forClass(List.class);
+        verify(thinkProcessService).updateTodos(eq(PROC_ID), captor.capture());
+        List<TodoPatch> patches = captor.getValue();
+        assertThat(patches).hasSize(2);
+        assertThat(patches.get(0).id()).isEqualTo("1");
+        assertThat(patches.get(0).status()).isEqualTo(TodoStatus.COMPLETED);
+        assertThat(patches.get(0).content()).isEqualTo("rewritten");
+        assertThat(patches.get(0).activeForm()).isEqualTo("Rewriting");
+        assertThat(patches.get(1).id()).isEqualTo("2");
+        assertThat(patches.get(1).status()).isEqualTo(TodoStatus.IN_PROGRESS);
+        assertThat(patches.get(1).content()).isNull();
+        assertThat(patches.get(1).activeForm()).isNull();
+    }
 
+    @Test
+    void autoClears_whenAllItemsCompleted() {
+        when(thinkProcessService.updateTodos(eq(PROC_ID), any())).thenReturn(true);
+        // After update: everything COMPLETED → should trigger auto-clear.
+        when(thinkProcessService.findById(PROC_ID)).thenReturn(Optional.of(withTodos(
+                TodoItem.builder().id("1").status(TodoStatus.COMPLETED).content("a").build(),
+                TodoItem.builder().id("2").status(TodoStatus.COMPLETED).content("b").build())));
+
+        Map<String, Object> out = tool.invoke(Map.of(
+                "items", List.of(
+                        Map.of("id", "2", "status", "COMPLETED"))),
+                ctxFor(PROC_ID));
+
+        assertThat(out).containsEntry("cleared", true);
+        verify(thinkProcessService).setTodos(eq(PROC_ID), eq(List.of()));
+        // Exactly one todos-updated — the auto-clear final emit, with empty list.
+        ArgumentCaptor<List<TodoItem>> captor = ArgumentCaptor.forClass(List.class);
+        verify(emitter).emitTodosUpdated(any(), captor.capture());
+        assertThat(captor.getValue()).isEmpty();
+    }
+
+    @Test
+    void noAutoClear_whenSomeStillPending() {
+        when(thinkProcessService.updateTodos(eq(PROC_ID), any())).thenReturn(true);
+        when(thinkProcessService.findById(PROC_ID)).thenReturn(Optional.of(withTodos(
+                TodoItem.builder().id("1").status(TodoStatus.COMPLETED).content("a").build(),
+                TodoItem.builder().id("2").status(TodoStatus.PENDING).content("b").build())));
+
+        Map<String, Object> out = tool.invoke(Map.of(
+                "items", List.of(Map.of("id", "1", "status", "COMPLETED"))),
+                ctxFor(PROC_ID));
+
+        assertThat(out).containsEntry("cleared", false);
+        verify(thinkProcessService, never()).setTodos(any(), any());
         verify(emitter).emitTodosUpdated(any(), any());
     }
 
     @Test
-    void skipsMalformedEntries_butStillCallsService_whenAtLeastOneValid() {
-        when(thinkProcessService.updateTodoStatuses(eq(PROC_ID), any())).thenReturn(true);
+    void skipsMalformedPatches() {
+        when(thinkProcessService.updateTodos(eq(PROC_ID), any())).thenReturn(true);
+        when(thinkProcessService.findById(PROC_ID)).thenReturn(Optional.of(withTodos(
+                TodoItem.builder().id("1").status(TodoStatus.PENDING).content("a").build())));
 
-        Map<String, Object> params = Map.of(
-                "updates", List.of(
+        tool.invoke(Map.of("items", List.of(
                         Map.of("id", "1", "status", "COMPLETED"),
-                        Map.of("id", "", "status", "PENDING"),    // missing id
-                        Map.of("id", "x", "status", "BOGUS"),      // unknown status
+                        Map.of("id", "", "status", "PENDING"),  // blank id
                         "not a map",
-                        Map.of("id", "y")));                        // missing status
-
-        Map<String, Object> out = tool.invoke(params, ctxFor(PROC_ID));
-
-        assertThat(out).containsEntry("applied", 1);
-        ArgumentCaptor<Map<String, TodoStatus>> captor = ArgumentCaptor.forClass(Map.class);
-        verify(thinkProcessService).updateTodoStatuses(eq(PROC_ID), captor.capture());
-        assertThat(captor.getValue()).hasSize(1).containsKey("1");
-    }
-
-    @Test
-    void emptyParsedUpdates_skipsServiceCall_andReportsNote() {
-        Map<String, Object> params = Map.of(
-                "updates", List.of(Map.of("id", "", "status", "")));
-
-        Map<String, Object> out = tool.invoke(params, ctxFor(PROC_ID));
-
-        assertThat(out).containsEntry("applied", 0);
-        assertThat(out).containsEntry("ok", true);
-        assertThat(out).containsKey("note");
-        verify(thinkProcessService, never()).updateTodoStatuses(any(), any());
-        verify(emitter, never()).emitTodosUpdated(any(), any());
-    }
-
-    @Test
-    void serviceReturnsFalse_noEmit() {
-        // Optimistic-lock exhaustion or no matching items in document
-        when(thinkProcessService.updateTodoStatuses(eq(PROC_ID), any())).thenReturn(false);
-
-        Map<String, Object> out = tool.invoke(Map.of(
-                "updates", List.of(Map.of("id", "1", "status", "COMPLETED"))),
+                        Map.of("status", "PENDING"))),           // missing id
                 ctxFor(PROC_ID));
 
-        assertThat(out).containsEntry("changed", false);
-        verify(emitter, never()).emitTodosUpdated(any(), any());
+        ArgumentCaptor<List<TodoPatch>> captor = ArgumentCaptor.forClass(List.class);
+        verify(thinkProcessService).updateTodos(eq(PROC_ID), captor.capture());
+        assertThat(captor.getValue()).hasSize(1);
+    }
+
+    @Test
+    void unknownStatusKeepsPatchButLeavesStatusUnchanged() {
+        when(thinkProcessService.updateTodos(eq(PROC_ID), any())).thenReturn(true);
+        when(thinkProcessService.findById(PROC_ID)).thenReturn(Optional.of(withTodos(
+                TodoItem.builder().id("1").status(TodoStatus.PENDING).content("a").build())));
+
+        tool.invoke(Map.of("items", List.of(
+                        Map.of("id", "1", "status", "BOGUS", "content", "new content"))),
+                ctxFor(PROC_ID));
+
+        ArgumentCaptor<List<TodoPatch>> captor = ArgumentCaptor.forClass(List.class);
+        verify(thinkProcessService).updateTodos(eq(PROC_ID), captor.capture());
+        TodoPatch p = captor.getValue().get(0);
+        assertThat(p.status()).isNull();
+        assertThat(p.content()).isEqualTo("new content");
+    }
+
+    @Test
+    void emptyParsedPatches_skipsServiceCall() {
+        Map<String, Object> out = tool.invoke(Map.of(
+                "items", List.of(Map.of("id", ""))),
+                ctxFor(PROC_ID));
+
+        assertThat(out).containsEntry("applied", 0);
+        assertThat(out).containsKey("note");
+        verify(thinkProcessService, never()).updateTodos(any(), any());
     }
 
     @Test
     void requiresProcessScope() {
-        ToolInvocationContext noProcess = new ToolInvocationContext(
-                "tenant", "proj", "sess", null, "user");
+        ToolInvocationContext noProc = new ToolInvocationContext(
+                "t", "p", "s", null, "u");
 
-        assertThatThrownBy(() -> tool.invoke(Map.of("updates", List.of()), noProcess))
+        assertThatThrownBy(() -> tool.invoke(Map.of("items", List.of()), noProc))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("process scope");
     }
 
-    @Test
-    void rejectsMissingUpdates() {
-        assertThatThrownBy(() -> tool.invoke(Map.of(), ctxFor(PROC_ID)))
-                .isInstanceOf(ToolException.class)
-                .hasMessageContaining("updates");
+    private static ThinkProcessDocument withTodos(TodoItem... items) {
+        ThinkProcessDocument doc = new ThinkProcessDocument();
+        doc.setId(PROC_ID);
+        List<TodoItem> list = new ArrayList<>();
+        for (TodoItem t : items) list.add(t);
+        doc.setTodos(list);
+        return doc;
     }
 
     private static ToolInvocationContext ctxFor(String processId) {
-        return new ToolInvocationContext(
-                "tenant-x", "proj-1", "sess-y", processId, "user-1");
+        return new ToolInvocationContext("t", "p", "s", processId, "u");
     }
 }

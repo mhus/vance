@@ -46,15 +46,14 @@ allowedToolsAdd:
   - doc_note_add
   - doc_note_update
   - doc_note_delete
-  # Plan-tracking. Both tools live in Lunkwill's ENGINE_DEFAULT_TOOLS
-  # baseline, but live runs show them missing from the per-turn primary
-  # manifest under this recipe — the LLM gets "Tool 'todo_write' is not
-  # available to this engine" when it tries to seed a plan. Explicitly
-  # promoting them via allowedToolsAdd guarantees they ship in every
-  # turn regardless of why the baseline-classification path is dropping
-  # them. Root cause is a separate investigation.
-  - todo_write
+  # Plan-tracking (CRUD shape — see specification/public/lunkwill-engine.md §9).
+  # The three tools live in Lunkwill's ENGINE_DEFAULT_TOOLS baseline,
+  # but the per-process allowedToolsOverride is frozen at spawn time —
+  # explicitly listing them here guarantees they ship in every turn
+  # regardless of when the process was spawned.
+  - todo_create
   - todo_update
+  - todo_remove
 
 # Backends are reachable (engine allow-set includes them) but should
 # stay OUT of the LLM manifest — the generic file_* / exec_* wrappers

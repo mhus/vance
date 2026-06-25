@@ -384,8 +384,8 @@ class LunkwillEngineSkeletonTest {
                 "file_list", "file_find", "file_grep", "file_head_tail",
                 "file_count", "exec_run", "exec_status", "exec_tail",
                 "exec_kill", "work_target_get", "work_target_set");
-        // Plan-tracking pair (reduced Plan-Mode variant, §9)
-        assertThat(set).contains("todo_write", "todo_update");
+        // Plan-tracking CRUD trio (reduced Plan-Mode variant, §9)
+        assertThat(set).contains("todo_create", "todo_update", "todo_remove");
     }
 
     // ──────────────────── ScriptedStreamingChatModel ─────────────────────

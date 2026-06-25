@@ -936,6 +936,207 @@ public class ThinkProcessService {
     }
 
     /**
+     * Appends new TodoItems to the list. Server-assigns IDs sequentially
+     * (max-of-existing-numeric-IDs + 1, start at 1, never reused —
+     * removed IDs leave gaps to avoid LLM confusion about stale
+     * references). Each input item must carry {@code content}; {@code
+     * status} is forced to {@code PENDING}; {@code id} is ignored.
+     *
+     * <p>Used by Lunkwill's {@code todo_create} tool (CRUD shape — see
+     * {@code specification/public/lunkwill-engine.md §9}).
+     *
+     * <p>Optimistic-lock retry pattern mirrors {@link #updateTodoStatuses}.
+     *
+     * @return the items with their assigned IDs in insertion order, or
+     *         {@code null} if the process row does not exist or the
+     *         retry budget is exhausted
+     */
+    public @Nullable List<TodoItem> addTodos(String id, List<TodoItem> newItems) {
+        if (newItems.isEmpty()) {
+            return List.of();
+        }
+        for (int attempt = 0; attempt < 3; attempt++) {
+            Optional<ThinkProcessDocument> opt = repository.findById(id);
+            if (opt.isEmpty()) {
+                return null;
+            }
+            ThinkProcessDocument doc = opt.get();
+            List<TodoItem> current = doc.getTodos() == null
+                    ? new ArrayList<>() : new ArrayList<>(doc.getTodos());
+            int next = nextTodoIdSeed(current);
+            List<TodoItem> assigned = new ArrayList<>(newItems.size());
+            for (TodoItem in : newItems) {
+                TodoItem withId = TodoItem.builder()
+                        .id(String.valueOf(next++))
+                        .status(TodoStatus.PENDING)
+                        .content(in.getContent())
+                        .activeForm(in.getActiveForm())
+                        .build();
+                assigned.add(withId);
+                current.add(withId);
+            }
+            Query query = new Query(Criteria.where("_id").is(id)
+                    .and("version").is(doc.getVersion()));
+            Update update = new Update()
+                    .set("todos", current)
+                    .inc("version", 1);
+            UpdateResult result = mongoTemplate.updateFirst(
+                    query, update, ThinkProcessDocument.class);
+            if (result.getModifiedCount() > 0) {
+                return assigned;
+            }
+            // optimistic-lock conflict — retry
+        }
+        log.warn("addTodos: optimistic-lock retries exhausted id='{}'", id);
+        return null;
+    }
+
+    /**
+     * Per-item full-field merge by id. {@link TodoPatch} fields that
+     * are non-null overwrite the persisted item; null fields leave the
+     * existing value alone. Patches whose {@code id} doesn't match any
+     * existing item are silently ignored.
+     *
+     * <p>Used by Lunkwill's {@code todo_update} tool. Distinct from
+     * {@link #updateTodoStatuses}, which only touches status — kept
+     * separate so Plan-Mode's narrower contract stays minimal.
+     *
+     * @return {@code true} if the row exists and at least one item
+     *         was modified
+     */
+    public boolean updateTodos(String id, List<TodoPatch> patches) {
+        if (patches.isEmpty()) {
+            return false;
+        }
+        java.util.Map<String, TodoPatch> byId = new java.util.LinkedHashMap<>();
+        for (TodoPatch p : patches) {
+            if (p.id() != null && !p.id().isBlank()) {
+                byId.put(p.id(), p);
+            }
+        }
+        if (byId.isEmpty()) {
+            return false;
+        }
+        for (int attempt = 0; attempt < 3; attempt++) {
+            Optional<ThinkProcessDocument> opt = repository.findById(id);
+            if (opt.isEmpty()) {
+                return false;
+            }
+            ThinkProcessDocument doc = opt.get();
+            List<TodoItem> current = doc.getTodos();
+            if (current == null || current.isEmpty()) {
+                return false;
+            }
+            List<TodoItem> updated = new ArrayList<>(current.size());
+            boolean changed = false;
+            for (TodoItem item : current) {
+                TodoPatch p = byId.get(item.getId());
+                if (p == null) {
+                    updated.add(item);
+                    continue;
+                }
+                TodoStatus newStatus = p.status() != null ? p.status() : item.getStatus();
+                String newContent = p.content() != null && !p.content().isBlank()
+                        ? p.content() : item.getContent();
+                String newActiveForm = p.activeForm() != null
+                        ? p.activeForm() : item.getActiveForm();
+                if (newStatus == item.getStatus()
+                        && java.util.Objects.equals(newContent, item.getContent())
+                        && java.util.Objects.equals(newActiveForm, item.getActiveForm())) {
+                    updated.add(item);
+                    continue;
+                }
+                updated.add(TodoItem.builder()
+                        .id(item.getId())
+                        .status(newStatus)
+                        .content(newContent)
+                        .activeForm(newActiveForm)
+                        .build());
+                changed = true;
+            }
+            if (!changed) {
+                return false;
+            }
+            Query query = new Query(Criteria.where("_id").is(id)
+                    .and("version").is(doc.getVersion()));
+            Update update = new Update()
+                    .set("todos", updated)
+                    .inc("version", 1);
+            UpdateResult result = mongoTemplate.updateFirst(
+                    query, update, ThinkProcessDocument.class);
+            if (result.getModifiedCount() > 0) {
+                return true;
+            }
+        }
+        log.warn("updateTodos: optimistic-lock retries exhausted id='{}'", id);
+        return false;
+    }
+
+    /**
+     * Removes TodoItems by id. Unknown IDs are silently skipped (no
+     * error). Returns the number of items actually removed.
+     *
+     * <p>Used by Lunkwill's {@code todo_remove} tool.
+     */
+    public int removeTodos(String id, List<String> idsToRemove) {
+        if (idsToRemove.isEmpty()) {
+            return 0;
+        }
+        java.util.Set<String> dropSet = new java.util.HashSet<>(idsToRemove);
+        for (int attempt = 0; attempt < 3; attempt++) {
+            Optional<ThinkProcessDocument> opt = repository.findById(id);
+            if (opt.isEmpty()) {
+                return 0;
+            }
+            ThinkProcessDocument doc = opt.get();
+            List<TodoItem> current = doc.getTodos();
+            if (current == null || current.isEmpty()) {
+                return 0;
+            }
+            List<TodoItem> kept = new ArrayList<>(current.size());
+            int removed = 0;
+            for (TodoItem item : current) {
+                if (dropSet.contains(item.getId())) {
+                    removed++;
+                } else {
+                    kept.add(item);
+                }
+            }
+            if (removed == 0) {
+                return 0;
+            }
+            Query query = new Query(Criteria.where("_id").is(id)
+                    .and("version").is(doc.getVersion()));
+            Update update = new Update()
+                    .set("todos", kept)
+                    .inc("version", 1);
+            UpdateResult result = mongoTemplate.updateFirst(
+                    query, update, ThinkProcessDocument.class);
+            if (result.getModifiedCount() > 0) {
+                return removed;
+            }
+        }
+        log.warn("removeTodos: optimistic-lock retries exhausted id='{}'", id);
+        return 0;
+    }
+
+    private static int nextTodoIdSeed(List<TodoItem> current) {
+        int max = 0;
+        for (TodoItem t : current) {
+            String tid = t.getId();
+            if (tid == null) continue;
+            try {
+                int n = Integer.parseInt(tid);
+                if (n > max) max = n;
+            } catch (NumberFormatException ignored) {
+                // non-numeric IDs from legacy callers — ignore, seed
+                // still climbs above any future numeric IDs we assign.
+            }
+        }
+        return max + 1;
+    }
+
+    /**
      * Atomically updates the status of selected TodoItems by id. Items
      * not in {@code updates} are left untouched. Items in {@code updates}
      * but not present in the document are silently ignored (no error,

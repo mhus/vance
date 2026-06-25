@@ -50,17 +50,20 @@ class LunkwillTodoBlockTest {
     }
 
     @Test
-    void emptyTodos_returnsEmpty_blockIsSkipped() {
+    void emptyTodos_returnsEmptyStateHint() {
         ThinkProcessDocument process = new ThinkProcessDocument();
         // Default: no todos set.
-        assertThat(engine.buildTodoListBlock(process)).isEmpty();
+        String block = engine.buildTodoListBlock(process);
+        assertThat(block).contains("No active plan");
+        assertThat(block).contains("todo_create");
 
         process.setTodos(List.of());
-        assertThat(engine.buildTodoListBlock(process)).isEmpty();
+        assertThat(engine.buildTodoListBlock(process))
+                .isEqualTo(block);  // same shape whether null or empty
     }
 
     @Test
-    void populatedTodos_includesMarkersAndCurrentStep() {
+    void populatedTodos_hidesCompleted_showsRest() {
         ThinkProcessDocument process = new ThinkProcessDocument();
         process.setTodos(List.of(
                 TodoItem.builder().id("1").status(TodoStatus.COMPLETED)
@@ -73,22 +76,24 @@ class LunkwillTodoBlockTest {
 
         String block = engine.buildTodoListBlock(process);
 
-        assertThat(block).contains("## Active Plan");
-        assertThat(block).contains("[✓] (id=1) Read parser");
-        // IN_PROGRESS item shows activeForm, not content
+        assertThat(block).contains("## Plan");
+        // COMPLETED is hidden.
+        assertThat(block).doesNotContain("Read parser");
+        assertThat(block).doesNotContain("[✓]");
+        // IN_PROGRESS item shows activeForm, not content.
         assertThat(block).contains("[~] (id=2) Adding streaming variant");
         assertThat(block).contains("[ ] (id=3) Migrate callers");
-        // Current step is the first non-COMPLETED — id=2
-        assertThat(block).contains("Current step: **(id=2)**");
-        // Tool hints
+        // Footer hint mentions all three tools.
         assertThat(block).contains("todo_update");
-        assertThat(block).contains("todo_write");
-        // Hard rules
-        assertThat(block).contains("Never downgrade");
+        assertThat(block).contains("todo_create");
+        assertThat(block).contains("todo_remove");
     }
 
     @Test
-    void allCompleted_promptsForTaskComplete() {
+    void allCompleted_fallsBackToEmptyStateHint() {
+        // Defensive: auto-clear in TodoUpdateTool should normally
+        // wipe the list when everything's done. If for any reason
+        // we still get here with all-COMPLETED, render the empty hint.
         ThinkProcessDocument process = new ThinkProcessDocument();
         process.setTodos(List.of(
                 TodoItem.builder().id("1").status(TodoStatus.COMPLETED).content("a").build(),
@@ -96,13 +101,12 @@ class LunkwillTodoBlockTest {
 
         String block = engine.buildTodoListBlock(process);
 
-        assertThat(block).contains("All steps COMPLETED");
-        assertThat(block).contains("task-complete");
-        assertThat(block).doesNotContain("Current step:");
+        assertThat(block).contains("No active plan");
+        assertThat(block).doesNotContain("## Plan");
     }
 
     @Test
-    void currentStepIsFirstPending_whenNoneInProgress() {
+    void mixedStatus_currentInProgressShownWithActiveForm() {
         ThinkProcessDocument process = new ThinkProcessDocument();
         process.setTodos(List.of(
                 TodoItem.builder().id("1").status(TodoStatus.COMPLETED).content("a").build(),
@@ -111,7 +115,9 @@ class LunkwillTodoBlockTest {
 
         String block = engine.buildTodoListBlock(process);
 
-        // First PENDING wins because there's no IN_PROGRESS
-        assertThat(block).contains("Current step: **(id=2)** b");
+        // Both PENDING items visible, COMPLETED hidden.
+        assertThat(block).contains("[ ] (id=2) b");
+        assertThat(block).contains("[ ] (id=3) c");
+        assertThat(block).doesNotContain("(id=1)");
     }
 }

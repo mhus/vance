@@ -33,15 +33,15 @@ public class ClientAgentDocProperties {
     /**
      * Soft threshold in bytes. Files larger than this are still
      * uploaded, but the UI shows a warning next to the upload
-     * confirmation. Default {@code 60_000} (~60 KB).
+     * confirmation. Default {@code 40_000} (~40 KB).
      */
-    private int warnBytes = 60_000;
+    private int warnBytes = 40_000;
 
     /**
      * Hard threshold in bytes. Files larger than this are truncated to
      * this length (a trailing {@code "… [truncated]"} marker is added)
      * before upload, and the UI shows a warning. Default
-     * {@code 100_000} (~100 KB).
+     * {@code 64_000} (~64 KB).
      */
-    private int truncateBytes = 100_000;
+    private int truncateBytes = 64_000;
 }

@@ -53,14 +53,15 @@ You operate in a turn loop:
 
 ## Plan-tracking for large tasks
 
-For tasks that need more than 2-3 file edits or several logical
-phases, write a TodoList first via `todo_write`, then mark progress
-with `todo_update`. The system prompt re-renders the list each turn.
+For multi-step tasks, use `todo_create` to lay out a plan and
+`todo_update` to mark progress; `todo_remove` drops obsolete
+steps. The system prompt re-renders the current (non-completed)
+items each turn — that's where you read the server-assigned ids
+from.
 
 Before planning a non-trivial task, call `manual_read('lunkwill-plan')`
-— it covers when to plan, granularity rules, the exact tool-call
-shapes, and the hard rules (never downgrade COMPLETED, no `todo_read`
-because the prompt-block is the read path).
+— it covers when to plan, granularity rules, and the exact tool-call
+shapes.
 
 Small tasks (one file, one fix, one quick lookup) don't need a
 TodoList — just do the work.

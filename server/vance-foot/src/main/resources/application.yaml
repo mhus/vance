@@ -14,8 +14,8 @@ vance:
       # warn-bytes: file is uploaded as-is, UI shows a warning.
       # truncate-bytes: file is truncated to this length (with a
       # trailing "[truncated]" marker), upload proceeds, UI warns.
-      warn-bytes: 60000
-      truncate-bytes: 100000
+      warn-bytes: 40000
+      truncate-bytes: 64000
   ui:
     # Side-channel grey/green lines (info, verbose, debug, worker) are
     # truncated to this many characters. Set to 0 to disable.

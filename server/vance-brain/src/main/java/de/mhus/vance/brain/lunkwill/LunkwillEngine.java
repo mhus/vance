@@ -143,13 +143,16 @@ public class LunkwillEngine implements ThinkEngine {
         base.add("current_time");
         base.add("whoami");
         // Plan-tracking (reduced Plan-Mode variant — see
-        // specification/lunkwill-engine.md §9). Two mutating tools that
-        // operate on ThinkProcessDocument.todos via ThinkProcessService;
-        // both emit todos-updated WebSocket notifications through the
+        // specification/public/lunkwill-engine.md §9). CRUD over
+        // ThinkProcessDocument.todos: server-assigned IDs on create,
+        // per-item partial mutate on update (auto-clears when every
+        // item is COMPLETED), id-list on remove. All three emit
+        // todos-updated WebSocket notifications through the
         // PlanModeEventEmitter so Foot / Web-UI render the TodoList
         // engine-agnostically.
-        base.add("todo_write");
+        base.add("todo_create");
         base.add("todo_update");
+        base.add("todo_remove");
         // Generic work-target file/exec wrappers + work_target_get/set.
         // The 12 file_*/exec_* tools dispatch to client_* or work_*
         // backends per the per-process WorkTarget; see
@@ -689,73 +692,64 @@ public class LunkwillEngine implements ThinkEngine {
     // ──────────────────── TodoList prompt block (§9.2) ────────────────────
 
     /**
-     * Renders the per-turn TodoList prompt block when the process has a
-     * non-empty TodoList. Lunkwill's reduced Plan-Mode variant —
-     * mode-less, no approval gate. Returns the empty string when there
-     * is nothing to track, in which case the engine skips the block
-     * entirely so short tasks don't pay the prompt-overhead of a
-     * structure they don't need.
+     * Per-turn TodoList prompt block. Two shapes:
      *
-     * <p>Marker convention matches the full Plan-Mode block in
-     * {@code EddieEngine.buildTodoListBlock} so Foot / Web-UI can use the
-     * same renderer engine-agnostically: {@code [ ]} PENDING,
-     * {@code [~]} IN_PROGRESS, {@code [✓]} COMPLETED. {@code activeForm}
-     * surfaces for IN_PROGRESS items when present.
+     * <ul>
+     *   <li><b>Empty list</b> — one-line hint that introduces
+     *       {@code todo_create}. The LLM doesn't need anything else;
+     *       full semantics live in {@code manual_read('lunkwill-plan')}.</li>
+     *   <li><b>Non-empty list</b> — only non-{@code COMPLETED} items
+     *       are rendered, each with its server-assigned id and
+     *       status marker. One short trailing line points at
+     *       {@code todo_update} / {@code todo_create} /
+     *       {@code todo_remove}. Auto-clear in
+     *       {@link de.mhus.vance.brain.lunkwill.tools.TodoUpdateTool}
+     *       drops the list entirely once every item is COMPLETED,
+     *       so the all-done case folds back into the empty-list
+     *       shape rather than carrying a dead plan around.</li>
+     * </ul>
      *
-     * <p>The current-step pointer picks the first non-COMPLETED item.
-     * That matches the convention the LLM is asked to follow — work
-     * top-to-bottom, mark IN_PROGRESS when picking up, COMPLETED when
-     * done. When everything is COMPLETED, the pointer is absent and the
-     * guidance tells the LLM to call the recipe's task-complete tool.
+     * <p>Status markers: {@code [ ]} PENDING, {@code [~]} IN_PROGRESS.
+     * {@code COMPLETED} items are hidden — the plan shrinks visibly as
+     * the worker progresses, which is the whole point of the reduced
+     * variant. See {@code specification/public/lunkwill-engine.md §9}.
      */
     String buildTodoListBlock(ThinkProcessDocument process) {
         List<TodoItem> todos = process.getTodos();
         if (todos == null || todos.isEmpty()) {
-            return "";
+            return "No active plan. Use `todo_create({\"items\":[{\"content\":\"...\"}, ...]})` "
+                    + "to start one when the task needs structure.\n";
         }
         StringBuilder sb = new StringBuilder();
-        sb.append("## Active Plan\n\n");
-        TodoItem current = null;
+        sb.append("## Plan\n\n");
+        int visible = 0;
         for (TodoItem t : todos) {
             TodoStatus s = t.getStatus() == null ? TodoStatus.PENDING : t.getStatus();
-            String marker = switch (s) {
-                case PENDING -> "[ ]";
-                case IN_PROGRESS -> "[~]";
-                case COMPLETED -> "[✓]";
-            };
-            String content = t.getContent() == null ? "" : t.getContent();
+            if (s == TodoStatus.COMPLETED) {
+                continue;
+            }
+            String marker = s == TodoStatus.IN_PROGRESS ? "[~]" : "[ ]";
+            String label = t.getContent() == null ? "" : t.getContent();
             if (s == TodoStatus.IN_PROGRESS
                     && t.getActiveForm() != null && !t.getActiveForm().isBlank()) {
-                content = t.getActiveForm();
+                label = t.getActiveForm();
             }
             sb.append(marker).append(' ')
                     .append("(id=").append(t.getId() == null ? "" : t.getId()).append(") ")
-                    .append(content).append('\n');
-            if (current == null && s != TodoStatus.COMPLETED) {
-                current = t;
-            }
+                    .append(label).append('\n');
+            visible++;
+        }
+        // Defensive: if every item is COMPLETED the auto-clear in
+        // TodoUpdateTool should already have wiped the list. If for
+        // any reason we got here with a fully-done list (e.g. a
+        // direct service write), behave like empty.
+        if (visible == 0) {
+            return "No active plan. Use `todo_create({\"items\":[{\"content\":\"...\"}, ...]})` "
+                    + "to start one when the task needs structure.\n";
         }
         sb.append('\n');
-        if (current != null) {
-            String label = current.getStatus() == TodoStatus.IN_PROGRESS
-                    && current.getActiveForm() != null && !current.getActiveForm().isBlank()
-                    ? current.getActiveForm()
-                    : (current.getContent() == null ? "" : current.getContent());
-            sb.append("Current step: **(id=")
-                    .append(current.getId() == null ? "" : current.getId())
-                    .append(")** ").append(label).append("\n\n");
-        } else {
-            sb.append("All steps COMPLETED. Call the recipe's task-complete tool "
-                    + "(e.g. `task_complete(summary=...)`) to end the worker.\n\n");
-        }
-        sb.append("To mark progress: ")
-                .append("`todo_update({\"updates\":[{\"id\":\"<id>\",\"status\":\"IN_PROGRESS|COMPLETED\"}]})`.\n")
-                .append("To revise the plan structurally: ")
-                .append("`todo_write({\"items\":[{\"id\":\"1\",\"content\":\"...\"}, ...]})`.\n\n")
-                .append("Hard rules:\n")
-                .append("- Never downgrade a [✓] COMPLETED item.\n")
-                .append("- Never edit todos through any tool other than `todo_write` / `todo_update`.\n")
-                .append("- Work top-to-bottom: take the first non-[✓] item, mark it IN_PROGRESS, do the work, mark COMPLETED.\n");
+        sb.append("Use `todo_update` to mark progress, `todo_create` to add steps, "
+                + "`todo_remove` to drop them.\n");
         return sb.toString();
     }
 

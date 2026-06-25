@@ -16,7 +16,7 @@ import org.jspecify.annotations.Nullable;
  *   - images/figure1.png
  * }</pre>
  *
- * <p>Full:
+ * <p>Full with cross-project references:
  * <pre>{@code
  * main: thesis.tex
  * engine: pdflatex      # pdflatex | xelatex | lualatex (default: pdflatex)
@@ -24,7 +24,17 @@ import org.jspecify.annotations.Nullable;
  * output: thesis.pdf      # default: <main-basename>.pdf
  * outputPath: /reports/thesis.pdf  # where to import the PDF in the document tree
  * #   / = absolute path, no / = relative to compose dir (default: <compose-dir>/<output>)
- * files: [...]
+ * files:
+ *   # Same-project files (simple strings, relative to compose dir)
+ *   - thesis.tex
+ *   - references.bib
+ *   # Cross-project references (maps with project/path/target)
+ *   - project: tud-template
+ *     path: tud-report.cls
+ *     target: lib/tud-report.cls
+ *   - project: tud-template
+ *     path: images/tud-logo.png
+ *     target: images/tud-logo.png
  * }</pre>
  *
  * <p>The {@code packages} field from the spec is intentionally absent —
@@ -37,7 +47,7 @@ public record TexComposeManifest(
         @Nullable String passes,
         @Nullable String output,
         @Nullable String outputPath,
-        List<String> files) {
+        List<FileEntry> files) {
 
     private static final String DEFAULT_ENGINE = "pdflatex";
 
@@ -76,5 +86,47 @@ public record TexComposeManifest(
         }
         String out = effectiveOutput();
         return composeDir.isEmpty() ? out : composeDir + "/" + out;
+    }
+
+    /**
+     * A file entry in the {@code files} list of the manifest. Can be
+     * either a same-project file (simple path string) or a cross-project
+     * reference (file from another project, with an explicit target path).
+     */
+    public sealed interface FileEntry {
+
+        /**
+         * The path where this file should be placed in the compilation
+         * workspace (relative to the workspace root).
+         */
+        String targetPath();
+
+        /**
+         * A file from the same project. The {@code path} is relative
+         * to the compose document's directory.
+         */
+        record LocalFile(String path) implements FileEntry {
+            @Override
+            public String targetPath() {
+                return path;
+            }
+        }
+
+        /**
+         * A file from a different project. The {@code project} field
+         * identifies the source project, {@code path} is the document
+         * path within that project, and {@code target} is where the
+         * file should be placed in the compilation workspace.
+         *
+         * <p>Access control is enforced by {@code DocumentService.findByPath}
+         * — if the caller lacks read access to the source project, the
+         * transport will throw an exception.
+         */
+        record CrossProjectFile(String project, String path, String target) implements FileEntry {
+            @Override
+            public String targetPath() {
+                return target;
+            }
+        }
     }
 }

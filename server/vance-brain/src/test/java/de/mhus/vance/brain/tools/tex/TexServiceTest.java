@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.workspace.RootDirHandle;
 import de.mhus.vance.shared.workspace.RootDirSpec;
 import de.mhus.vance.shared.workspace.WorkspaceDescriptor;
@@ -30,14 +31,13 @@ import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
 
 /**
- * Unit tests for {@link TexService}. Mocks {@link DocumentService} and
- * {@link WorkspaceService}; uses a real temp directory for the RootDir
- * so file transport + latexmk execution can be tested with a stub
- * script instead of real LaTeX.
+ * Unit tests for {@link TexService}. Mocks {@link DocumentService},
+ * {@link WorkspaceService}, and {@link Tex2PdfExecutor}; uses a real
+ * temp directory for the RootDir so file transport can be verified.
  *
- * <p> latexmk is not available in CI — the tests that exercise the
- * compile path use a fake "latexmk" shell script written into the
- * temp RootDir's PATH, or check error paths that never reach latexmk.
+ * <p>The executor is mocked — tests that exercise the compile path
+ * stub {@code executor.compile()} to return success or failure, so
+ * no real LaTeX installation is needed.
  */
 class TexServiceTest {
 
@@ -46,6 +46,8 @@ class TexServiceTest {
 
     private DocumentService documentService;
     private WorkspaceService workspaceService;
+    private SettingService settings;
+    private Tex2PdfExecutor executor;
     private TexService texService;
 
     @TempDir
@@ -55,7 +57,13 @@ class TexServiceTest {
     void setUp() {
         documentService = mock(DocumentService.class);
         workspaceService = mock(WorkspaceService.class);
-        texService = new TexService(documentService, workspaceService);
+        settings = mock(SettingService.class);
+        executor = mock(Tex2PdfExecutor.class);
+        when(executor.type()).thenReturn("local");
+        // Default: settings cascade returns null → falls back to "local"
+        when(settings.getStringValueCascade(any(), any(), any(), eq(TexService.SETTING_EXECUTOR)))
+                .thenReturn(null);
+        texService = new TexService(documentService, workspaceService, settings, List.of(executor));
     }
 
     // ── manifest parsing ───────────────────────────────────────────
@@ -124,7 +132,7 @@ class TexServiceTest {
 
         assertThatThrownBy(() -> texService.compile(TENANT, PROJECT, "compose.yaml", "proc-1"))
                 .isInstanceOf(ToolException.class)
-                .hasMessageContaining("must be non-empty strings");
+                .hasMessageContaining("must be strings or maps");
     }
 
     @Test
@@ -148,14 +156,9 @@ class TexServiceTest {
         mockSourceFile("thesis.tex", "Hello World");
         RootDirHandle handle = mockRootDir();
         when(workspaceService.createRootDir(any(RootDirSpec.class))).thenReturn(handle);
-        // latexmk not installed → compile will fail, but workspace lifecycle still runs
-        // We just want to verify createRootDir + disposeRootDir are called
+        when(executor.compile(any())).thenReturn(Tex2PdfExecutor.Result.failure("mocked failure", null, 10));
 
-        try {
-            texService.compile(TENANT, PROJECT, "compose.yaml", "proc-1");
-        } catch (Exception ignored) {
-            // latexmk not available in CI — expected
-        }
+        texService.compile(TENANT, PROJECT, "compose.yaml", "proc-1");
 
         verify(workspaceService).createRootDir(any(RootDirSpec.class));
         verify(workspaceService).disposeRootDir(eq(TENANT), eq(PROJECT), eq(handle.getDirName()));
@@ -170,12 +173,9 @@ class TexServiceTest {
                 """);
         mockSourceFile("thesis.tex", "content");
         when(workspaceService.createRootDir(any(RootDirSpec.class))).thenReturn(mockRootDir());
+        when(executor.compile(any())).thenReturn(Tex2PdfExecutor.Result.failure("mocked", null, 1));
 
-        try {
-            texService.compile(TENANT, PROJECT, "compose.yaml", "proc-1");
-        } catch (Exception ignored) {
-            // latexmk not available
-        }
+        texService.compile(TENANT, PROJECT, "compose.yaml", "proc-1");
 
         ArgumentCaptor<RootDirSpec> captor = ArgumentCaptor.forClass(RootDirSpec.class);
         verify(workspaceService).createRootDir(captor.capture());
@@ -226,12 +226,9 @@ class TexServiceTest {
 
         RootDirHandle handle = mockRootDir();
         when(workspaceService.createRootDir(any(RootDirSpec.class))).thenReturn(handle);
+        when(executor.compile(any())).thenReturn(Tex2PdfExecutor.Result.failure("mocked", null, 1));
 
-        try {
-            texService.compile(TENANT, PROJECT, "compose.yaml", "proc-1");
-        } catch (Exception ignored) {
-            // latexmk not available
-        }
+        texService.compile(TENANT, PROJECT, "compose.yaml", "proc-1");
 
         // All three files should be transported to the RootDir
         Path root = handle.getPath();
@@ -274,12 +271,9 @@ class TexServiceTest {
 
         RootDirHandle handle = mockRootDir();
         when(workspaceService.createRootDir(any(RootDirSpec.class))).thenReturn(handle);
+        when(executor.compile(any())).thenReturn(Tex2PdfExecutor.Result.failure("mocked", null, 1));
 
-        try {
-            texService.compile(TENANT, PROJECT, "compose.yaml", "proc-1");
-        } catch (Exception ignored) {
-            // latexmk not available
-        }
+        texService.compile(TENANT, PROJECT, "compose.yaml", "proc-1");
 
         Path root = handle.getPath();
         assertThat(Files.isDirectory(root.resolve("chapters"))).isTrue();
@@ -288,13 +282,217 @@ class TexServiceTest {
         assertThat(Files.exists(root.resolve("images/diagram.png"))).isTrue();
     }
 
+    // ── cross-project references ───────────────────────────────────
+
+    @Test
+    void compile_transportsCrossProjectFiles() throws Exception {
+        mockComposeDoc("""
+                main: thesis.tex
+                files:
+                  - thesis.tex
+                  - project: tud-template
+                    path: tud-report.cls
+                    target: lib/tud-report.cls
+                """);
+        mockSourceFile("thesis.tex", "\\documentclass{tud-report}");
+
+        // Mock cross-project file
+        DocumentDocument crossDoc = mock(DocumentDocument.class);
+        when(crossDoc.getId()).thenReturn("cross-doc-id");
+        when(documentService.findByPath(TENANT, "tud-template", "tud-report.cls"))
+                .thenReturn(Optional.of(crossDoc));
+        when(documentService.loadContent(crossDoc))
+                .thenReturn(new ByteArrayInputStream("class content".getBytes()));
+
+        RootDirHandle handle = mockRootDir();
+        when(workspaceService.createRootDir(any(RootDirSpec.class))).thenReturn(handle);
+        when(executor.compile(any())).thenReturn(Tex2PdfExecutor.Result.failure("mocked", null, 1));
+
+        texService.compile(TENANT, PROJECT, "compose.yaml", "proc-1");
+
+        Path root = handle.getPath();
+        assertThat(Files.exists(root.resolve("thesis.tex"))).isTrue();
+        assertThat(Files.exists(root.resolve("lib/tud-report.cls"))).isTrue();
+        assertThat(Files.readString(root.resolve("lib/tud-report.cls"))).isEqualTo("class content");
+    }
+
+    @Test
+    void compile_throws_whenCrossProjectFileNotFound() {
+        mockComposeDoc("""
+                main: thesis.tex
+                files:
+                  - thesis.tex
+                  - project: other-proj
+                    path: missing.cls
+                    target: lib/missing.cls
+                """);
+        mockSourceFile("thesis.tex", "content");
+        when(documentService.findByPath(TENANT, "other-proj", "missing.cls"))
+                .thenReturn(Optional.empty());
+        when(workspaceService.createRootDir(any(RootDirSpec.class))).thenReturn(mockRootDir());
+
+        assertThatThrownBy(() -> texService.compile(TENANT, PROJECT, "compose.yaml", "proc-1"))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("cross-project source file not found: other-proj/missing.cls");
+    }
+
+    @Test
+    void compile_throws_whenCrossProjectEntryMissingProject() {
+        mockComposeDoc("""
+                main: thesis.tex
+                files:
+                  - path: some-file.cls
+                    target: lib/some-file.cls
+                """);
+
+        assertThatThrownBy(() -> texService.compile(TENANT, PROJECT, "compose.yaml", "proc-1"))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("requires 'project'");
+    }
+
+    @Test
+    void compile_throws_whenCrossProjectEntryMissingPath() {
+        mockComposeDoc("""
+                main: thesis.tex
+                files:
+                  - project: tud-template
+                    target: lib/some-file.cls
+                """);
+
+        assertThatThrownBy(() -> texService.compile(TENANT, PROJECT, "compose.yaml", "proc-1"))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("requires 'path'");
+    }
+
+    @Test
+    void parseManifest_crossProjectFile_defaultsTargetToPath() {
+        TexComposeManifest m = texService.parseManifest("""
+                main: thesis.tex
+                files:
+                  - project: tud-template
+                    path: images/logo.png
+                """);
+        var entry = (TexComposeManifest.FileEntry.CrossProjectFile) m.files().get(0);
+        assertThat(entry.target()).isEqualTo("images/logo.png");
+    }
+
+    // ── executor delegation ────────────────────────────────────────
+
+    @Test
+    void compile_delegatesToExecutorWithCorrectRequest() {
+        mockComposeDoc("""
+                main: thesis.tex
+                engine: xelatex
+                files:
+                  - thesis.tex
+                """);
+        mockSourceFile("thesis.tex", "content");
+        when(workspaceService.createRootDir(any(RootDirSpec.class))).thenReturn(mockRootDir());
+        when(executor.compile(any())).thenReturn(Tex2PdfExecutor.Result.failure("mocked", null, 1));
+
+        texService.compile(TENANT, PROJECT, "compose.yaml", "proc-1");
+
+        ArgumentCaptor<Tex2PdfExecutor.Request> captor =
+                ArgumentCaptor.forClass(Tex2PdfExecutor.Request.class);
+        verify(executor).compile(captor.capture());
+        Tex2PdfExecutor.Request req = captor.getValue();
+        assertThat(req.mainDocument()).isEqualTo("thesis.tex");
+        assertThat(req.effectiveEngine()).isEqualTo("xelatex");
+        assertThat(req.tenantId()).isEqualTo(TENANT);
+        assertThat(req.projectId()).isEqualTo(PROJECT);
+        assertThat(req.processId()).isEqualTo("proc-1");
+    }
+
+    @Test
+    void resolveExecutor_defaultsToLocal_whenSettingAbsent() {
+        assertThat(texService.resolveExecutor(TENANT, PROJECT, "proc-1"))
+                .isSameAs(executor);
+    }
+
+    @Test
+    void resolveExecutor_usesSettingFromCascade() {
+        when(settings.getStringValueCascade(TENANT, PROJECT, "proc-1",
+                TexService.SETTING_EXECUTOR))
+                .thenReturn("local");
+        assertThat(texService.resolveExecutor(TENANT, PROJECT, "proc-1"))
+                .isSameAs(executor);
+    }
+
+    @Test
+    void resolveExecutor_selectsRbehzadan_whenSettingSaysSo() {
+        Tex2PdfExecutor rbehzadan = mock(Tex2PdfExecutor.class);
+        when(rbehzadan.type()).thenReturn("rbehzadan");
+        TexService service = new TexService(
+                documentService, workspaceService, settings, List.of(executor, rbehzadan));
+        when(settings.getStringValueCascade(TENANT, PROJECT, null,
+                TexService.SETTING_EXECUTOR))
+                .thenReturn("rbehzadan");
+
+        assertThat(service.resolveExecutor(TENANT, PROJECT, null))
+                .isSameAs(rbehzadan);
+    }
+
+    @Test
+    void resolveExecutor_throws_whenTypeUnknown() {
+        when(settings.getStringValueCascade(TENANT, PROJECT, null,
+                TexService.SETTING_EXECUTOR))
+                .thenReturn("nonexistent");
+        assertThatThrownBy(() -> texService.resolveExecutor(TENANT, PROJECT, null))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("nonexistent");
+    }
+
+    @Test
+    void compile_success_importsPdfAndReturnsPath() {
+        mockComposeDoc("""
+                main: thesis.tex
+                files:
+                  - thesis.tex
+                """);
+        mockSourceFile("thesis.tex", "content");
+        when(workspaceService.createRootDir(any(RootDirSpec.class))).thenReturn(mockRootDir());
+        byte[] pdfBytes = "%PDF-1.4 fake".getBytes();
+        when(executor.compile(any()))
+                .thenReturn(Tex2PdfExecutor.Result.success(pdfBytes, "log lines", 42));
+
+        TexService.TexCompileResult result =
+                texService.compile(TENANT, PROJECT, "compose.yaml", "proc-1");
+
+        assertThat(result.success()).isTrue();
+        assertThat(result.pdfPath()).isEqualTo("thesis.pdf");
+        verify(documentService).createOrReplaceBinary(
+                eq(TENANT), eq(PROJECT), eq("thesis.pdf"),
+                eq(pdfBytes), eq("application/pdf"),
+                eq("thesis.pdf"), any(), eq(null), eq("tex2pdf"));
+    }
+
+    @Test
+    void compile_failure_returnsErrorAndLogExcerpt() {
+        mockComposeDoc("""
+                main: thesis.tex
+                files:
+                  - thesis.tex
+                """);
+        mockSourceFile("thesis.tex", "content");
+        when(workspaceService.createRootDir(any(RootDirSpec.class))).thenReturn(mockRootDir());
+        when(executor.compile(any()))
+                .thenReturn(Tex2PdfExecutor.Result.failure("Compilation error", "log excerpt", 100));
+
+        TexService.TexCompileResult result =
+                texService.compile(TENANT, PROJECT, "compose.yaml", "proc-1");
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.error()).isEqualTo("Compilation error");
+        assertThat(result.logExcerpt()).isEqualTo("log excerpt");
+        // PDF should NOT be imported on failure
+        verify(documentService, never()).createOrReplaceBinary(
+                any(), any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
     // ── derivePdfPath ──────────────────────────────────────────────
 
     @Test
     void compile_derivesPdfPath_fromComposePath() {
-        // composePath = "docs/thesis/tex-compose.yaml"
-        // output = "thesis.pdf" (default from main: thesis.tex)
-        // → pdfPath = "docs/thesis/thesis.pdf"
         mockComposeDoc("""
                 main: thesis.tex
                 files:
@@ -302,15 +500,10 @@ class TexServiceTest {
                 """);
         mockSourceFile("docs/thesis/thesis.tex", "content");
         when(workspaceService.createRootDir(any(RootDirSpec.class))).thenReturn(mockRootDir());
+        when(executor.compile(any())).thenReturn(Tex2PdfExecutor.Result.success(
+                "fake".getBytes(), null, 1));
 
-        // We can't verify createOrReplaceBinary because latexmk isn't available,
-        // but we can verify the path derivation indirectly by checking
-        // that the compile attempt used the right compose path.
-        try {
-            texService.compile(TENANT, PROJECT, "docs/thesis/tex-compose.yaml", "proc-1");
-        } catch (Exception ignored) {
-            // latexmk not available
-        }
+        texService.compile(TENANT, PROJECT, "docs/thesis/tex-compose.yaml", "proc-1");
 
         // Verify compose doc was looked up at the right path
         verify(documentService).findByPath(TENANT, PROJECT, "docs/thesis/tex-compose.yaml");
@@ -318,9 +511,6 @@ class TexServiceTest {
 
     @Test
     void compile_resolvesFilesRelativeToComposeDir() {
-        // Files in the manifest are relative to the compose document's directory.
-        // composePath = "docs/thesis/tex-compose.yaml"
-        // file "thesis.tex" → looked up as "docs/thesis/thesis.tex"
         mockComposeDoc("""
                 main: thesis.tex
                 files:
@@ -329,12 +519,9 @@ class TexServiceTest {
         // mock at the resolved path, not the bare path
         mockSourceFile("docs/thesis/thesis.tex", "content");
         when(workspaceService.createRootDir(any(RootDirSpec.class))).thenReturn(mockRootDir());
+        when(executor.compile(any())).thenReturn(Tex2PdfExecutor.Result.failure("mocked", null, 1));
 
-        try {
-            texService.compile(TENANT, PROJECT, "docs/thesis/tex-compose.yaml", "proc-1");
-        } catch (Exception ignored) {
-            // latexmk not available
-        }
+        texService.compile(TENANT, PROJECT, "docs/thesis/tex-compose.yaml", "proc-1");
 
         // Verify source file was looked up at the resolved path
         verify(documentService).findByPath(TENANT, PROJECT, "docs/thesis/thesis.tex");
@@ -360,22 +547,6 @@ class TexServiceTest {
         assertThat(result.logExcerpt()).isEqualTo("log lines");
         assertThat(result.elapsedMs()).isEqualTo(300);
         assertThat(result.pdfPath()).isNull();
-    }
-
-    @Test
-    void latexmkResult_success_hasNoError() {
-        var result = new TexService.LatexmkResult(true, null, null);
-        assertThat(result.success()).isTrue();
-        assertThat(result.error()).isNull();
-        assertThat(result.logExcerpt()).isNull();
-    }
-
-    @Test
-    void latexmkResult_failure_hasErrorAndLog() {
-        var result = new TexService.LatexmkResult(false, "error msg", "log excerpt");
-        assertThat(result.success()).isFalse();
-        assertThat(result.error()).isEqualTo("error msg");
-        assertThat(result.logExcerpt()).isEqualTo("log excerpt");
     }
 
     // ── helpers ───────────────────────────────────────────────────

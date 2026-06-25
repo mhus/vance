@@ -12,4 +12,7 @@ export interface ChatMessageDto {
   content: string;
   createdAt?: Date;
   meta?: Record<string, any>;
+  senderUserId?: string;
+  senderDisplayName?: string;
+  addressedToAgent: boolean;
 }

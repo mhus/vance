@@ -13,4 +13,7 @@ export interface ChatMessageAppendedData {
   content: string;
   createdAt?: Date;
   meta?: Record<string, any>;
+  senderUserId?: string;
+  senderDisplayName?: string;
+  addressedToAgent: boolean;
 }

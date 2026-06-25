@@ -158,6 +158,12 @@ importers:
         specifier: ^3.5.0
         version: 3.5.38(typescript@5.9.3)
 
+  client/packages/runner-registry:
+    dependencies:
+      vue:
+        specifier: ^3.5.0
+        version: 3.5.38(typescript@5.9.3)
+
   client/packages/shared:
     dependencies:
       '@vance/generated':
@@ -226,6 +232,9 @@ importers:
       '@vance/kind-registry':
         specifier: workspace:*
         version: link:../kind-registry
+      '@vance/runner-registry':
+        specifier: workspace:*
+        version: link:../runner-registry
       '@vance/shared':
         specifier: workspace:*
         version: link:../shared

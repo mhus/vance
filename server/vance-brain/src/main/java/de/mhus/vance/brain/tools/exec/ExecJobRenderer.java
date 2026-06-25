@@ -42,9 +42,19 @@ final class ExecJobRenderer {
         return out;
     }
 
+    /**
+     * Head/tail split for shell-style output: 20 % head + 80 % tail with
+     * a sentinel between. Shell errors/exit info sit at the end, so a
+     * pure HEAD cut would hide the relevant lines from the LLM.
+     */
     private static String truncate(String s, int max) {
-        if (s == null || s.length() <= max) return s == null ? "" : s;
-        return s.substring(0, max) + "\n…[truncated, "
-                + (s.length() - max) + " more chars]";
+        if (s == null) return "";
+        if (s.length() <= max) return s;
+        int headBudget = max / 5;
+        int tailBudget = max - headBudget;
+        int omitted = s.length() - headBudget - tailBudget;
+        return s.substring(0, headBudget)
+                + "\n…[truncated, " + omitted + " chars omitted]\n"
+                + s.substring(s.length() - tailBudget);
     }
 }

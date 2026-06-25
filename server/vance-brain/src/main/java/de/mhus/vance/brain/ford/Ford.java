@@ -1093,11 +1093,7 @@ public class Ford implements ThinkEngine {
     private record StreamResult(AiMessage message, String text) {}
 
     private static ChatMessage toLangchain(ChatMessageDocument msg) {
-        return switch (msg.getRole()) {
-            case USER -> UserMessage.from(msg.getContent());
-            case ASSISTANT -> AiMessage.from(msg.getContent());
-            case SYSTEM -> SystemMessage.from(msg.getContent());
-        };
+        return de.mhus.vance.brain.chat.ChatHistoryRenderer.toLangchain(msg);
     }
 
     /**

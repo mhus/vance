@@ -854,6 +854,8 @@ public class EddieEngine extends StructuredActionEngine {
                             .thinkProcessId(process.getId())
                             .role(ChatRole.USER)
                             .content(uci.content())
+                            .senderUserId(uci.fromUser())
+                            .senderDisplayName(uci.fromUserDisplayName())
                             .build());
                 }
             }
@@ -2948,11 +2950,7 @@ public class EddieEngine extends StructuredActionEngine {
     // ──────────────────── Helpers ────────────────────
 
     private static ChatMessage toLangchain(ChatMessageDocument msg) {
-        return switch (msg.getRole()) {
-            case USER -> UserMessage.from(msg.getContent());
-            case ASSISTANT -> AiMessage.from(msg.getContent());
-            case SYSTEM -> SystemMessage.from(msg.getContent());
-        };
+        return de.mhus.vance.brain.chat.ChatHistoryRenderer.toLangchain(msg);
     }
 
     /**

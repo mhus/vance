@@ -895,11 +895,7 @@ public class LunkwillEngine implements ThinkEngine {
     }
 
     private static ChatMessage toLangchain(ChatMessageDocument msg) {
-        return switch (msg.getRole()) {
-            case USER -> UserMessage.from(msg.getContent());
-            case ASSISTANT -> AiMessage.from(msg.getContent());
-            case SYSTEM -> SystemMessage.from(msg.getContent());
-        };
+        return de.mhus.vance.brain.chat.ChatHistoryRenderer.toLangchain(msg);
     }
 
     private @Nullable String renderForLlm(SteerMessage m) {

@@ -735,6 +735,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                             .thinkProcessId(process.getId())
                             .role(ChatRole.USER)
                             .content(uci.content())
+                            .senderUserId(uci.fromUser())
+                            .senderDisplayName(uci.fromUserDisplayName())
                             .build());
                     if (uci.content() != null && !uci.content().isBlank()) {
                         if (userTextForTriggers.length() > 0) userTextForTriggers.append('\n');
@@ -2969,11 +2971,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     }
 
     private static ChatMessage toLangchain(ChatMessageDocument msg) {
-        return switch (msg.getRole()) {
-            case USER -> UserMessage.from(msg.getContent());
-            case ASSISTANT -> AiMessage.from(msg.getContent());
-            case SYSTEM -> SystemMessage.from(msg.getContent());
-        };
+        return de.mhus.vance.brain.chat.ChatHistoryRenderer.toLangchain(msg);
     }
 
     /**

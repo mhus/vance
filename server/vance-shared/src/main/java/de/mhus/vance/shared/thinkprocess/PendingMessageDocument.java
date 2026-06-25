@@ -48,6 +48,15 @@ public class PendingMessageDocument {
     /** {@code UserDocument.name} or system-pseudonym (e.g. {@code "process:<id>"}). */
     private @Nullable String fromUser;
 
+    /**
+     * Display name of the sending user captured at the receive
+     * handler — see {@code planning/multi-user-sessions.md} §3.5 /
+     * §5. Round-tripped through the persistent queue so a pod-restart
+     * replay preserves the multi-user attribution. {@code null} for
+     * non-USER_CHAT_INPUT entries and for legacy rows.
+     */
+    private @Nullable String fromUserDisplayName;
+
     /** Free-form text payload — used by {@code USER_CHAT_INPUT} and as
      *  the human-readable summary of {@code PROCESS_EVENT}. */
     private @Nullable String content;

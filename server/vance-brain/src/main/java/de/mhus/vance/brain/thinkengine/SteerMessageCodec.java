@@ -50,6 +50,7 @@ public final class SteerMessageCodec {
             case SteerMessage.UserChatInput u -> b
                     .type(PendingMessageType.USER_CHAT_INPUT)
                     .fromUser(u.fromUser())
+                    .fromUserDisplayName(u.fromUserDisplayName())
                     .content(u.content())
                     .attachmentDocumentIds(toDocumentIds(u.attachments()))
                     .voiceMode(u.voiceMode())
@@ -120,6 +121,7 @@ public final class SteerMessageCodec {
             case USER_CHAT_INPUT -> new SteerMessage.UserChatInput(
                     at, idem,
                     nullToEmpty(d.getFromUser()),
+                    d.getFromUserDisplayName(),
                     nullToEmpty(d.getContent()),
                     fromDocumentIds(d.getAttachmentDocumentIds()),
                     Boolean.TRUE.equals(d.getVoiceMode()));

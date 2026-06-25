@@ -22,3 +22,9 @@ Thumbs.db
 # Per-developer Spring profile overrides — never committed.
 **/application-default.yml
 **/application-local.yml
+
+# Node / pnpm
+node_modules/
+dist/
+*.tsbuildinfo
+.vite/

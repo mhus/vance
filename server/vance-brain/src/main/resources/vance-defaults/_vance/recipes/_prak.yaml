@@ -89,6 +89,15 @@ promptPrefix: |
   - Tool-call mechanics ("the user invoked /clear").
   - Punctual session-scoped requests ("right now don't commit") —
     these are `scope.kind: "session"` and `longTermMemory.action: "skip"`.
+  - Wrap-up recaps and closing summaries that restate what was just
+    built ("Freut mich!", "Hier ist was jetzt funktioniert", "Damit
+    steht die Pipeline"). The underlying claims live in earlier turns;
+    the recap itself adds no new durable insight. `importance: 0`,
+    `longTermMemory.action: "skip"`.
+  - Completion announcements without new constraints ("alles
+    kompiliert", "Tests grün", "committed as abc123"). Session-scoped
+    progress signals — useful in the moment, not memory material.
+    `scope.kind: "session"`, `longTermMemory.action: "skip"`.
 
   ## Evidence
 

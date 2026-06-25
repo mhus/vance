@@ -28,6 +28,7 @@ import { brainFetchBlob } from '@vance/shared';
 import type { DocumentDto } from '@vance/generated';
 import ImageView from '@/document/ImageView.vue';
 import DocumentPreview from '@/document/DocumentPreview.vue';
+import TexPreview from './TexPreview.vue';
 import type { CortexDocument } from '../types';
 import { useCortexStore } from '../stores/cortexStore';
 import { resolveBinding } from '../docTypeRegistry';
@@ -377,8 +378,20 @@ const isMarkdownDocument = computed<boolean>(() => {
   return (props.document.mimeType ?? '').toLowerCase().startsWith('text/markdown');
 });
 
+// TeX files get the same View/Edit toggle as Markdown: KaTeX-rendered
+// formula preview in 'view', raw CodeEditor with stex highlighting in
+// 'edit'. KaTeX renders only $...$ / $$...$$ math — no full LaTeX
+// layout. The "Generate PDF" button (run adapter) handles full compile.
+const isTexDocument = computed<boolean>(() => {
+  if (binding.value.mode !== 'code') return false;
+  const lower = props.document.path.toLowerCase();
+  return lower.endsWith('.tex')
+    || lower.endsWith('.ltx')
+    || lower.endsWith('.latex');
+});
+
 const showToggle = computed<boolean>(
-  () => isViewMode.value || isMarkdownDocument.value,
+  () => isViewMode.value || isMarkdownDocument.value || isTexDocument.value,
 );
 
 // ─── View / Edit toggle ──────────────────────────────────────────
@@ -764,6 +777,12 @@ async function onOpenPdf(): Promise<void> {
       class="flex-1 min-h-0 overflow-auto px-4 py-2"
     >
       <MarkdownView :source="document.inlineText" />
+    </div>
+    <div
+      v-else-if="binding.mode === 'code' && isTexDocument && viewEditMode === 'view'"
+      class="flex-1 min-h-0 overflow-hidden"
+    >
+      <TexPreview :source="document.inlineText" />
     </div>
     <div
       v-else-if="binding.mode === 'code'"

@@ -170,4 +170,9 @@ record DefaultThinkEngineContext(
             @Nullable Map<String, Object> payload) {
         progressEmitter.emitReply(process, content, inResponseToAt, payload);
     }
+
+    @Override
+    public void emitInterimReply(String content, @Nullable Instant inResponseToAt) {
+        progressEmitter.emitInterimReply(process, content, inResponseToAt);
+    }
 }

@@ -157,6 +157,18 @@ public interface ThinkEngineContext {
     }
 
     /**
+     * Engine emits an <em>interim</em> reply — a live working-log entry
+     * that lets the user follow a long-running engine loop in real time
+     * (Lunkwill narrates between tool batches). Differs from
+     * {@link #emitReply} in two ways: the message is flagged
+     * {@code interim} so clients can render it visually dimmed, and
+     * parent-inbox routing is skipped (interims are pure UI signal,
+     * only the canonical reply at turn-end crosses the worker→parent
+     * boundary). Blank content is silently dropped.
+     */
+    void emitInterimReply(String content, @Nullable Instant inResponseToAt);
+
+    /**
      * Whether LLM-roundtrip persistence is enabled for this turn.
      * Resolved once at context build via the {@code tracing.llm} setting
      * (cascade tenant → project → think-process), so engines don't pay

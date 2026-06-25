@@ -102,6 +102,37 @@ public class ChatMessageDocument {
      */
     public static final String META_PRAK_TOOL_LABELS = "prakToolLabels";
 
+    /**
+     * {@link #meta} key, String. Classifies the role this message plays
+     * within a turn. Absent on canonical messages (the default — final
+     * USER/ASSISTANT/SYSTEM payloads, the canonical reply at natural-stop).
+     *
+     * <p>Known values:
+     * <ul>
+     *   <li>{@link #KIND_INTERIM} — an intermediate working-log emitted
+     *       during a multi-iteration engine loop (e.g. Lunkwill narrates
+     *       between tool batches). Live-streamed to clients for progress
+     *       visibility, but filtered out of every LLM-replay /
+     *       compaction / Prak / RAG path. Only the canonical message at
+     *       turn-end is considered authoritative content.</li>
+     * </ul>
+     *
+     * <p>Engines that don't emit interims simply never set this key.
+     */
+    public static final String META_KIND = "kind";
+
+    /** {@link #META_KIND} value for intermediate working-log messages — see {@link #META_KIND}. */
+    public static final String KIND_INTERIM = "interim";
+
+    /**
+     * Convenience: returns {@code true} when {@link #meta} marks this
+     * message as an intermediate working-log (see {@link #KIND_INTERIM}).
+     * Centralised so callers don't repeat the key/value check.
+     */
+    public boolean isInterim() {
+        return KIND_INTERIM.equals(meta.get(META_KIND));
+    }
+
     @Id
     private @Nullable String id;
 

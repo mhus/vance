@@ -88,7 +88,11 @@ public class ChatHistoryController {
             return List.of();
         }
 
-        List<ChatMessageDocument> messages = chatMessageService.activeHistory(
+        // Scrollback path — keep interim working-log messages so the
+        // web/foot chat panel can render them (visually dimmed) between
+        // the worker's tool batches. Every other consumer goes through
+        // activeHistory(...) and never sees interims.
+        List<ChatMessageDocument> messages = chatMessageService.activeHistoryWithInterim(
                 tenant, sessionId, chatProcessId);
 
         int cap = (limit != null && limit > 0) ? limit : DEFAULT_LIMIT;

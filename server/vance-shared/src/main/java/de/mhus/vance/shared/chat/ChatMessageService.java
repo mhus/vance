@@ -29,9 +29,19 @@ import org.springframework.stereotype.Service;
  * <p>{@link #history} returns every message in chronological order, archive
  * markers and all — meant for audit/debug. The replay path used by
  * think-engines goes through {@link #activeHistory}, which filters out
- * messages already rolled into a memory compaction so the LLM sees the
- * summary instead of the originals. The originals stay in Mongo, readable
- * via {@link #history}.
+ * messages already rolled into a memory compaction <em>and</em> messages
+ * tagged {@link ChatMessageDocument#KIND_INTERIM} (live-only working
+ * notes from engines that narrate between tool batches), so the LLM
+ * sees the compacted summary instead of the originals and never replays
+ * its own intermediate working-log. The originals stay in Mongo,
+ * readable via {@link #history} and {@link #activeHistoryWithInterim}.
+ *
+ * <p>{@link #activeHistoryWithInterim} is the UI-scrollback variant that
+ * keeps interim messages — the live chat panel renders them visually
+ * dimmed so the user can follow the worker's reasoning between tool
+ * calls. Every other consumer (engines, Prak, RAG, compaction,
+ * peer_read_chat_memory, parent-notification) uses {@link #activeHistory}
+ * and never sees interims.
  */
 @Service
 @RequiredArgsConstructor
@@ -91,10 +101,35 @@ public class ChatMessageService {
 
     /**
      * Active chat history — the messages that have <em>not</em> been
-     * archived into a compaction memory. This is what an engine should
-     * replay into the LLM context.
+     * archived into a compaction memory <em>and</em> are not flagged as
+     * {@link ChatMessageDocument#KIND_INTERIM live-only interim notes}.
+     * This is what an engine should replay into the LLM context: the
+     * canonical USER/ASSISTANT/SYSTEM payload only, never the worker's
+     * own intermediate working-log.
+     *
+     * <p>Use {@link #activeHistoryWithInterim} for the UI-scrollback
+     * variant that includes interim messages.
      */
     public List<ChatMessageDocument> activeHistory(
+            String tenantId, String sessionId, String thinkProcessId) {
+        List<ChatMessageDocument> raw =
+                repository.findByTenantIdAndSessionIdAndThinkProcessIdAndArchivedInMemoryIdIsNull(
+                        tenantId, sessionId, thinkProcessId, BY_CREATED);
+        List<ChatMessageDocument> filtered = new ArrayList<>(raw.size());
+        for (ChatMessageDocument m : raw) {
+            if (!m.isInterim()) filtered.add(m);
+        }
+        return filtered;
+    }
+
+    /**
+     * Active chat history including {@link ChatMessageDocument#KIND_INTERIM
+     * interim} messages — the UI-scrollback variant. The web/foot chat
+     * panel calls this so the user can see the worker's intermediate
+     * narration between tool batches; everyone else uses
+     * {@link #activeHistory}.
+     */
+    public List<ChatMessageDocument> activeHistoryWithInterim(
             String tenantId, String sessionId, String thinkProcessId) {
         return repository.findByTenantIdAndSessionIdAndThinkProcessIdAndArchivedInMemoryIdIsNull(
                 tenantId, sessionId, thinkProcessId, BY_CREATED);

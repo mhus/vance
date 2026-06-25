@@ -7,4 +7,5 @@ export interface ReplyPayload {
   content: string;
   inResponseToAt?: Date;
   payload?: Record<string, any>;
+  interim: boolean;
 }

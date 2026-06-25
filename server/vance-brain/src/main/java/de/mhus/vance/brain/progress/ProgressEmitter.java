@@ -123,6 +123,7 @@ public class ProgressEmitter {
                 .content(content)
                 .inResponseToAt(inResponseToAt)
                 .payload(payload)
+                .interim(false)
                 .build();
         // a) Client-facing PROCESS_PROGRESS — applies the same level filter
         //    as the other progress kinds so a `progress=quiet` recipe still
@@ -159,6 +160,48 @@ public class ProgressEmitter {
             log.debug("Reply queued parent='{}' child='{}' content-length={}",
                     parentId, process.getId(), content.length());
         }
+    }
+
+    /**
+     * Emits an <em>interim</em> reply — a live working-log entry that
+     * lets the user follow a long-running engine loop (Lunkwill narrates
+     * between tool batches) in real time. Differs from
+     * {@link #emitReply} in two ways:
+     *
+     * <ol>
+     *   <li>The {@link ReplyPayload#isInterim() interim} flag is set, so
+     *       clients can render the message visually dimmed and
+     *       in-line — it's not the canonical turn answer.</li>
+     *   <li>Parent-inbox routing is skipped. Interim replies are pure
+     *       UI signal; only the canonical reply at turn-end crosses
+     *       the worker→parent boundary.</li>
+     * </ol>
+     *
+     * <p>The {@link ProgressLevel} filter for {@link ProgressKind#REPLY}
+     * applies the same way as for canonical replies — a {@code
+     * progress=quiet} recipe suppresses both.
+     *
+     * <p>Blank content is silently dropped (mirrors {@link #emitReply}).
+     */
+    public void emitInterimReply(
+            ThinkProcessDocument process,
+            String content,
+            @Nullable Instant inResponseToAt) {
+        if (content == null || content.isBlank()) {
+            return;
+        }
+        if (!shouldEmit(process, ProgressKind.REPLY, null)) {
+            return;
+        }
+        ReplyPayload replyPayload = ReplyPayload.builder()
+                .content(content)
+                .inResponseToAt(inResponseToAt)
+                .interim(true)
+                .build();
+        ProcessProgressNotification msg = envelope(process, ProgressKind.REPLY)
+                .reply(replyPayload)
+                .build();
+        publish(process, msg);
     }
 
     /**

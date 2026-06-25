@@ -496,6 +496,20 @@ public class LunkwillEngine implements ThinkEngine {
                     if (ter.name() != null) toolsThisTurn.add(ter.name());
                 }
 
+                // Live working-log: when the LLM emits narrative text
+                // alongside its tool batch, persist it as an interim
+                // ChatMessage so the user sees the worker's reasoning
+                // appear at the right point in time (between tool
+                // batches) instead of one big concatenated block at
+                // turn-end. Interim messages carry meta.kind=interim;
+                // every LLM-replay / compaction / Prak / RAG path
+                // filters them out via ChatMessageService.activeHistory.
+                // Only the UI-scrollback path (activeHistoryWithInterim)
+                // keeps them visible. Blank narrative (LLM only emitted
+                // tool calls) is silently skipped — there's nothing to
+                // narrate.
+                persistInterimAssistantReply(process, chatLog, ctx, reply.text());
+
                 // Execute tools, append results, watch for _terminate.
                 messages.add(reply);
                 boolean terminate = executeToolBatch(
@@ -571,6 +585,44 @@ public class LunkwillEngine implements ThinkEngine {
             }
         }
         return extras;
+    }
+
+    /**
+     * Persists an intermediate working-log assistant message and
+     * live-emits it to the session's clients. Used between tool batches
+     * inside the loop so the user sees the worker's narration appear at
+     * the right point in time rather than as one concatenated block at
+     * turn-end. The message carries
+     * {@link ChatMessageDocument#META_KIND}{@code =}{@link
+     * ChatMessageDocument#KIND_INTERIM}, which filters it out of every
+     * LLM-replay / compaction / Prak / RAG path (only the
+     * UI-scrollback variant keeps interims). No parent-inbox routing —
+     * interim replies are pure UI signal.
+     *
+     * <p>Blank text is silently skipped (no narration → no point).
+     */
+    private void persistInterimAssistantReply(
+            ThinkProcessDocument process,
+            ChatMessageService chatLog,
+            ThinkEngineContext ctx,
+            @Nullable String text) {
+        if (text == null || text.isBlank()) return;
+        java.util.Map<String, Object> meta = new java.util.LinkedHashMap<>();
+        meta.put(ChatMessageDocument.META_KIND, ChatMessageDocument.KIND_INTERIM);
+        // Always persist (audit/scrollback). Only the live UI-emit is
+        // suppressed for hidden processes.
+        chatLog.append(ChatMessageDocument.builder()
+                .tenantId(process.getTenantId())
+                .sessionId(process.getSessionId())
+                .thinkProcessId(process.getId())
+                .role(ChatRole.ASSISTANT)
+                .content(text)
+                .meta(meta)
+                .build());
+        if (process.isHiddenFromUi()) {
+            return;
+        }
+        ctx.emitInterimReply(text, null);
     }
 
     private void persistAssistantReply(

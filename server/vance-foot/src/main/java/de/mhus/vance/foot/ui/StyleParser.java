@@ -12,9 +12,10 @@ import org.jspecify.annotations.Nullable;
  *   token := "fg:" color
  *          | "bg:" color
  *          | modifier
- *   color := "default" | base | "bright-" base
+ *   color := "default" | base | "bright-" base | hex
  *   base := "black" | "red" | "green" | "yellow"
  *         | "blue" | "magenta" | "cyan" | "white"
+ *   hex  := "#rrggbb" | "#rgb"  (24-bit truecolor)
  *   modifier := "bold" | "faint" | "italic" | "underline"
  *             | "blink" | "inverse" | "conceal" | "crossed-out"
  * </pre>
@@ -56,12 +57,18 @@ public final class StyleParser {
 
     private static @Nullable AttributedStyle applyToken(AttributedStyle style, String token) {
         if (token.startsWith("fg:")) {
-            Integer color = parseColor(token.substring(3));
+            String spec = token.substring(3);
+            Integer rgb = parseHexRgb(spec);
+            if (rgb != null) return style.foregroundRgb(rgb);
+            Integer color = parseColor(spec);
             if (color == null) return null;
             return color < 0 ? style.foregroundDefault() : style.foreground(color);
         }
         if (token.startsWith("bg:")) {
-            Integer color = parseColor(token.substring(3));
+            String spec = token.substring(3);
+            Integer rgb = parseHexRgb(spec);
+            if (rgb != null) return style.backgroundRgb(rgb);
+            Integer color = parseColor(spec);
             if (color == null) return null;
             return color < 0 ? style.backgroundDefault() : style.background(color);
         }
@@ -109,5 +116,29 @@ public final class StyleParser {
             return AttributedStyle.BRIGHT + AttributedStyle.BLACK;
         }
         return bright ? AttributedStyle.BRIGHT + idx : idx;
+    }
+
+    /**
+     * Parse a 24-bit hex colour like {@code #ffcccc} or {@code #fcc}
+     * (3-digit shorthand, each nibble doubled). Returns {@code null}
+     * when {@code spec} is not a hex colour — caller falls back to the
+     * named-colour path.
+     */
+    private static @Nullable Integer parseHexRgb(String spec) {
+        if (spec.isEmpty() || spec.charAt(0) != '#') return null;
+        String hex = spec.substring(1);
+        try {
+            if (hex.length() == 6) {
+                return Integer.parseInt(hex, 16);
+            }
+            if (hex.length() == 3) {
+                int r = Integer.parseInt(hex.substring(0, 1), 16);
+                int g = Integer.parseInt(hex.substring(1, 2), 16);
+                int b = Integer.parseInt(hex.substring(2, 3), 16);
+                return ((r * 17) << 16) | ((g * 17) << 8) | (b * 17);
+            }
+        } catch (NumberFormatException ignored) {
+        }
+        return null;
     }
 }

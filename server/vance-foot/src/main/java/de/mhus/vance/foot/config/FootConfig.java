@@ -207,10 +207,10 @@ public class FootConfig {
          *  truncation marker if exceeded. Prevents flooding the terminal
          *  on huge full-file rewrites. */
         private int diffMaxLines = 200;
-        /** Style for "+" added lines. Defaults to green background. */
-        private String diffAdd = "fg:white,bg:green";
-        /** Style for "-" removed lines. Defaults to red background. */
-        private String diffRemove = "fg:white,bg:red";
+        /** Style for "+" added lines. Defaults to light-green background. */
+        private String diffAdd = "fg:black,bg:#c8f7c5";
+        /** Style for "-" removed lines. Defaults to light-red background. */
+        private String diffRemove = "fg:black,bg:#ffcccc";
         /** Style for unchanged context lines (leading space prefix). */
         private String diffContext = "fg:bright-black";
         /** Style for the {@code ...} hunk separator / file-edge markers. */

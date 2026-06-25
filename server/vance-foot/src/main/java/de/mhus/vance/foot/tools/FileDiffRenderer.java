@@ -18,9 +18,9 @@ import org.jspecify.annotations.Nullable;
  * {@link org.jline.utils.AttributedString} per visible line:
  *
  * <ul>
- *   <li>added lines: {@code +} prefix, "add" style (default green bg)</li>
- *   <li>removed lines: {@code -} prefix, "remove" style (default red bg)</li>
- *   <li>context lines: leading space, "context" style</li>
+ *   <li>added lines: {@code "+ "} prefix, "add" style (default green bg)</li>
+ *   <li>removed lines: {@code "- "} prefix, "remove" style (default red bg)</li>
+ *   <li>context lines: two leading spaces, "context" style</li>
  *   <li>hunk separator / file-edge markers: {@code ...}, "marker" style
  *       (default black bg)</li>
  * </ul>
@@ -159,6 +159,7 @@ public final class FileDiffRenderer {
 
     private void emit(List<DiffOp> ops, List<Hunk> hunks) {
         int emitted = 0;
+        int[] lineNums = computeLineNumbers(ops);
         for (int h = 0; h < hunks.size(); h++) {
             Hunk hunk = hunks.get(h);
             // Marker before the hunk when there's hidden content above:
@@ -169,8 +170,7 @@ public final class FileDiffRenderer {
                 if (emitted >= maxLines) { emitTruncationMarker(); return; }
             }
             for (int i = hunk.startOp; i < hunk.endOp; i++) {
-                DiffOp op = ops.get(i);
-                emitOp(op);
+                emitOp(ops.get(i), lineNums[i]);
                 emitted++;
                 if (emitted >= maxLines && i < hunk.endOp - 1) {
                     emitTruncationMarker();
@@ -185,23 +185,50 @@ public final class FileDiffRenderer {
         }
     }
 
-    private void emitOp(DiffOp op) {
+    /**
+     * Per-op displayed line number: ADD/CONTEXT use the new-file index,
+     * REMOVE uses the old-file index. Both counters advance as we walk
+     * ops in order so gaps between hunks stay accounted for.
+     */
+    static int[] computeLineNumbers(List<DiffOp> ops) {
+        int[] out = new int[ops.size()];
+        int oldLine = 1;
+        int newLine = 1;
+        for (int i = 0; i < ops.size(); i++) {
+            DiffOp op = ops.get(i);
+            switch (op.type) {
+                case ADD -> { out[i] = newLine; newLine++; }
+                case REMOVE -> { out[i] = oldLine; oldLine++; }
+                case CONTEXT -> { out[i] = newLine; oldLine++; newLine++; }
+            }
+        }
+        return out;
+    }
+
+    private void emitOp(DiffOp op, int lineNum) {
         AttributedStringBuilder sb = new AttributedStringBuilder();
+        String num = formatLineNum(lineNum);
         switch (op.type) {
             case ADD -> {
                 if (addStyle != null) sb.style(addStyle);
-                sb.append("+").append(op.line);
+                sb.append(num).append(" + ").append(op.line);
             }
             case REMOVE -> {
                 if (removeStyle != null) sb.style(removeStyle);
-                sb.append("-").append(op.line);
+                sb.append(num).append(" - ").append(op.line);
             }
             case CONTEXT -> {
                 if (contextStyle != null) sb.style(contextStyle);
-                sb.append(" ").append(op.line);
+                sb.append(num).append("   ").append(op.line);
             }
         }
         terminal.printlnStyled(Verbosity.INFO, sb.toAttributedString());
+    }
+
+    private static String formatLineNum(int n) {
+        String s = Integer.toString(n);
+        if (s.length() >= 4) return s;
+        return " ".repeat(4 - s.length()) + s;
     }
 
     private boolean emitMarker() {

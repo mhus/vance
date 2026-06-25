@@ -53,7 +53,8 @@ public class ClientFileGrepTool implements ClientTool {
                 "description", "Java regular expression. Plain substrings are fine."));
         p.put("path", Map.of("type", "string",
                 "description",
-                        "Directory to search (recursive). Default: current working directory."
+                        "Directory to search (recursive) OR a single regular file. "
+                                + "Default: current working directory."
                                 + " Supports a leading '~/' for the user's home."));
         p.put("pathGlob", Map.of("type", "string",
                 "description",
@@ -115,20 +116,21 @@ public class ClientFileGrepTool implements ClientTool {
         }
 
         Path root = pathRaw == null ? Path.of(".") : ClientFilePaths.resolve(pathRaw);
-        if (!Files.isDirectory(root)) {
-            throw new IllegalArgumentException("Not a directory: " + root.toAbsolutePath());
+        boolean singleFile = Files.isRegularFile(root);
+        if (!singleFile && !Files.isDirectory(root)) {
+            throw new IllegalArgumentException("Not a directory or file: " + root.toAbsolutePath());
         }
-        PathMatcher matcher = GlobMatchers.buildGlobMatcher(pathGlob);
+        PathMatcher matcher = singleFile ? null : GlobMatchers.buildGlobMatcher(pathGlob);
 
         List<Map<String, Object>> matches = new ArrayList<>();
         int filesScanned = 0;
         int filesSkipped = 0;
         boolean truncated = false;
-        try (Stream<Path> stream = Files.walk(root, maxDepth)) {
+        try (Stream<Path> stream = singleFile ? Stream.of(root) : Files.walk(root, maxDepth)) {
             for (Path file : (Iterable<Path>) stream::iterator) {
                 if (matches.size() >= limit) { truncated = true; break; }
                 if (!Files.isRegularFile(file)) continue;
-                Path rel = root.relativize(file);
+                Path rel = singleFile ? file.getFileName() : root.relativize(file);
                 if (matcher != null && !matcher.matches(rel)) continue;
                 long size;
                 try { size = Files.size(file); } catch (IOException ignored) {

@@ -1,0 +1,107 @@
+title:
+  de: "TeX / LaTeX — Kompilierung"
+  en: "TeX / LaTeX — Compilation"
+description:
+  de: "Konfiguriert den PDF-Kompilierungs-Backend für .tex-Dateien.
+       Local nutzt latexmk auf dem Server-Host (braucht installiertes
+       TeX Live / MacTeX). Rbehzadan nutzt einen externen
+       tex2pdf-Docker-Service (REST + ZIP-Upload)."
+  en: "Configures the PDF compilation backend for .tex files.
+       Local uses latexmk on the server host (requires installed
+       TeX Live / MacTeX). Rbehzadan uses an external tex2pdf Docker
+       service (REST + ZIP upload)."
+icon: document-text
+category: integrations
+defaultScope: project
+availableIn: [ "project", "_vance" ]
+
+fields:
+
+  # ─── Executor selection ──────────────────────────────────────────
+
+  - name: executor
+    type: select
+    defaultValue: "local"
+    label:
+      de: "Kompilierungs-Backend"
+      en: "Compilation backend"
+    help:
+      de: "Local: latexmk auf dem Server-Host (ProcessBuilder, --no-shell-escape).
+           Rbehzadan: externer tex2pdf-Docker-Service (REST, ZIP-Upload,
+           asynchrones Polling)."
+      en: "Local: latexmk on the server host (ProcessBuilder, --no-shell-escape).
+           Rbehzadan: external tex2pdf Docker service (REST, ZIP upload,
+           async polling)."
+    bindsTo:
+      key: "tex.executor"
+    choices:
+      - value: "local"
+        label: { de: "Local (latexmk)", en: "Local (latexmk)" }
+      - value: "rbehzadan"
+        label: { de: "Remote (rbehzadan/tex2pdf)", en: "Remote (rbehzadan/tex2pdf)" }
+
+  # ─── Rbehzadan remote service ────────────────────────────────────
+
+  - name: rbehzadanUrl
+    type: string
+    label:
+      de: "tex2pdf Service-URL"
+      en: "tex2pdf service URL"
+    help:
+      de: "Base-URL des rbehzadan/tex2pdf Docker-Services, z.B.
+           http://tex2pdf:8000 oder http://localhost:8500."
+      en: "Base URL of the rbehzadan/tex2pdf Docker service, e.g.
+           http://tex2pdf:8000 or http://localhost:8500."
+    showIf: "executor == 'rbehzadan'"
+    writeIf: "executor == 'rbehzadan'"
+    bindsTo:
+      key: "tex.rbehzadan.url"
+
+  - name: rbehzadanApiKey
+    type: password
+    label:
+      de: "API-Key (optional)"
+      en: "API key (optional)"
+    help:
+      de: "Leer lassen um einen bereits gesetzten Key unverändert zu lassen.
+           Nur nötig wenn der tex2pdf-Service mit API-Key-Auth konfiguriert ist."
+      en: "Leave empty to keep an already-set key unchanged.
+           Only required if the tex2pdf service is configured with API-key auth."
+    showIf: "executor == 'rbehzadan'"
+    writeIf: "executor == 'rbehzadan'"
+    bindsTo:
+      key: "tex.rbehzadan.apiKey"
+
+  - name: rbehzadanTimeoutSeconds
+    type: number
+    defaultValue: "300"
+    label:
+      de: "Timeout (Sekunden)"
+      en: "Timeout (seconds)"
+    help:
+      de: "Maximale Wartezeit auf Kompilierungsergebnis. Default 300 (5 Min).
+           Bei großen Dokumenten mit vielen Abbildungen kann eine Erhöhung
+           nötig sein."
+      en: "Maximum wait time for compilation result. Default 300 (5 min).
+           May need increasing for large documents with many figures."
+    showIf: "executor == 'rbehzadan'"
+    writeIf: "executor == 'rbehzadan'"
+    bindsTo:
+      key: "tex.rbehzadan.timeoutSeconds"
+
+  - name: rbehzadanPollIntervalSeconds
+    type: number
+    defaultValue: "3"
+    label:
+      de: "Poll-Intervall (Sekunden)"
+      en: "Poll interval (seconds)"
+    help:
+      de: "Wie oft der Backend-Service nach dem Kompilierungsstatus pollt.
+           Default 3 Sekunden. Kleinere Werte = schneller, aber mehr
+           REST-Calls."
+      en: "How often the backend service polls for compilation status.
+           Default 3 seconds. Lower values = faster, but more REST calls."
+    showIf: "executor == 'rbehzadan'"
+    writeIf: "executor == 'rbehzadan'"
+    bindsTo:
+      key: "tex.rbehzadan.pollIntervalSeconds"

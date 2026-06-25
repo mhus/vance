@@ -65,7 +65,7 @@ function parseSegments(source: string): MathSegment[] {
     // Text before this math segment
     if (match.index > lastIndex) {
       const text = source.slice(lastIndex, match.index);
-      segments.push({ html: escapeHtml(text), isDisplay: false, isError: false });
+      segments.push({ html: renderText(text), isDisplay: false, isError: false });
     }
 
     // Extract the math content and mode
@@ -113,7 +113,7 @@ function parseSegments(source: string): MathSegment[] {
   // Trailing text after the last math segment
   if (lastIndex < source.length) {
     const text = source.slice(lastIndex);
-    segments.push({ html: escapeHtml(text), isDisplay: false, isError: false });
+    segments.push({ html: renderText(text), isDisplay: false, isError: false });
   }
 
   return segments;
@@ -124,6 +124,19 @@ function escapeHtml(text: string): string {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
+}
+
+/**
+ * Escape HTML, then wrap TeX commands ({@code \\word}) in a gray span
+ * so they are visually distinct from plain prose in the preview.
+ */
+function renderText(text: string): string {
+  const escaped = escapeHtml(text);
+  // \ followed by letters (and optional trailing *), e.g. \section, \LaTeX, \textbf
+  return escaped.replace(
+    /\\([a-zA-Z@]+)\*?/g,
+    '<span class="tex-cmd">\\$1*</span>',
+  );
 }
 
 const segments = computed(() => parseSegments(props.source));
@@ -182,6 +195,11 @@ const errorCount = computed(
   overflow-x: auto;
   overflow-y: hidden;
   padding: 0.25rem 0;
+}
+
+:deep(.tex-cmd) {
+  color: var(--cat, #888);
+  opacity: 0.6;
 }
 
 :deep(.tex-preview-error) {

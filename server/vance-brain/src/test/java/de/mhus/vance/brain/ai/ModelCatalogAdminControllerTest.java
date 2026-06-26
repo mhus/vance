@@ -37,7 +37,7 @@ class ModelCatalogAdminControllerTest {
     void setUp() {
         DocumentService documentService = mock(DocumentService.class);
         when(documentService.findAllByPathPrefix(any())).thenReturn(List.of());
-        catalog = new ModelCatalog(documentService);
+        catalog = new ModelCatalog(documentService, new ModelQuirks());
         discoveryService = mock(ModelDiscoveryService.class);
         authority = mock(RequestAuthority.class);
         controller = new ModelCatalogAdminController(catalog, discoveryService, authority);

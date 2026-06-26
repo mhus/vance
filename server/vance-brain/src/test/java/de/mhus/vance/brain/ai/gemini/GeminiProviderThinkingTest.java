@@ -21,6 +21,7 @@ class GeminiProviderThinkingTest {
                 ModelInfo.DEFAULT_TIMEOUT_SECONDS,
                 ModelInfo.DEFAULT_ACTION_LOOP_CORRECTIONS,
                 false,
+                /*messageParser*/ null,
                 /*pricing*/ null);
     }
 

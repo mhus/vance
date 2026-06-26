@@ -120,6 +120,7 @@ class LlmCallTrackerUsageTest {
                 128_000, 4096,
                 ModelSize.LARGE, Set.<ModelCapability>of(),
                 60, 2, false,
+                /*messageParser*/ null,
                 /*pricing*/ null);
         ChatResponse response = responseWith(10_000, 2_500);
 
@@ -157,6 +158,7 @@ class LlmCallTrackerUsageTest {
                 131_000, 8192,
                 ModelSize.LARGE, Set.<ModelCapability>of(),
                 60, 2, false,
+                /*messageParser*/ null,
                 new ModelInfo.Pricing("EUR", 0.355, 1.775, /*cacheR*/ null, /*cacheW*/ null));
     }
 

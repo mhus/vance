@@ -134,6 +134,7 @@ class LunkwillEngineSkeletonTest {
                 /*timeoutSeconds*/ 60,
                 /*actionLoopCorrections*/ 2,
                 /*stripThinkTags*/ false,
+                /*messageParser*/ null,
                 /*pricing*/ null);
         lenient().when(modelCatalog.lookupOrDefault(
                         any(), any(), any(), any(), any()))

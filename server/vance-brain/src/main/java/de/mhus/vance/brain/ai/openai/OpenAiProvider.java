@@ -10,6 +10,7 @@ import de.mhus.vance.brain.ai.LlmResponseSanitizer;
 import de.mhus.vance.brain.ai.ModelCapability;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ModelInfo;
+import de.mhus.vance.brain.ai.parser.MessageParserRegistry;
 import de.mhus.vance.brain.ai.ProviderListingHttp;
 import de.mhus.vance.brain.ai.ProviderListingRequest;
 import de.mhus.vance.brain.ai.ProviderType;
@@ -76,9 +77,10 @@ public class OpenAiProvider extends AbstractChatProvider {
     public OpenAiProvider(
             ModelCatalog modelCatalog,
             LlmResponseSanitizer responseSanitizer,
+            MessageParserRegistry messageParserRegistry,
             @Value("${vance.ai.openai.base-url:https://api.openai.com/v1}") String baseUrl,
             @Value("${vance.ai.cache.enabled:true}") boolean cacheEnabled) {
-        super(modelCatalog, responseSanitizer);
+        super(modelCatalog, responseSanitizer, messageParserRegistry);
         this.defaultBaseUrl = baseUrl;
         this.cacheEnabled = cacheEnabled;
         if (!cacheEnabled) {

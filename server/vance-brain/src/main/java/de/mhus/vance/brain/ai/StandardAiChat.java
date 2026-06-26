@@ -3,6 +3,7 @@ package de.mhus.vance.brain.ai;
 import de.mhus.vance.brain.ai.attachment.AttachmentException;
 import de.mhus.vance.brain.ai.attachment.PdfTextExtractor;
 import de.mhus.vance.brain.ai.attachment.ResolvedAttachment;
+import de.mhus.vance.brain.ai.parser.MessageParser;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.Content;
 import dev.langchain4j.data.message.ImageContent;
@@ -62,7 +63,7 @@ public class StandardAiChat implements AiChat {
             ChatModel sync,
             StreamingChatModel streaming,
             AiChatOptions options) {
-        this(name, providerType, Set.of(), sync, streaming, options, false, null);
+        this(name, providerType, Set.of(), sync, streaming, options, false, null, null);
     }
 
     public StandardAiChat(
@@ -72,15 +73,16 @@ public class StandardAiChat implements AiChat {
             ChatModel sync,
             StreamingChatModel streaming,
             AiChatOptions options) {
-        this(name, providerType, modelCapabilities, sync, streaming, options, false, null);
+        this(name, providerType, modelCapabilities, sync, streaming, options, false, null, null);
     }
 
     /**
      * Full constructor — providers pass the resolved
-     * {@link ModelInfo#stripThinkTags()} flag and the
-     * {@link LlmResponseSanitizer} bean. Both are inert when
-     * {@code stripThinkTags=false} so the existing zero-config
-     * call sites keep behaving exactly as before.
+     * {@link ModelInfo#stripThinkTags()} flag, the
+     * {@link LlmResponseSanitizer} bean, and the model-specific
+     * {@link MessageParser} (or {@code null} for "no parser needed").
+     * All three are inert when the model is well-behaved, so the
+     * existing zero-config call sites keep behaving exactly as before.
      */
     public StandardAiChat(
             String name,
@@ -90,7 +92,8 @@ public class StandardAiChat implements AiChat {
             StreamingChatModel streaming,
             AiChatOptions options,
             boolean stripThinkTags,
-            @Nullable LlmResponseSanitizer sanitizer) {
+            @Nullable LlmResponseSanitizer sanitizer,
+            @Nullable MessageParser messageParser) {
         this.name = name;
         this.providerType = providerType;
         this.modelCapabilities = modelCapabilities == null
@@ -101,44 +104,37 @@ public class StandardAiChat implements AiChat {
         //     ↑
         //   LoggingChatModel    (trace + stats see raw)
         //     ↑
-        //   SanitizingChatModel (engines see cleaned; ONLY when the
-        //                       model carries stripThinkTags=true)
-        //     ↑
-        //   ToolArgumentNormalizingChatModel (hack-fix for the
-        //                       DeepSeek-V4-Pro tool-call quirk;
-        //                       wrapped unconditionally so the same
-        //                       defence covers future strict OpenAI-
-        //                       compatible proxies)
-        //
-        // The sanitizer wrap is skipped when the flag is false so
-        // straightforward (non-reasoning) models keep the old
-        // call-graph exactly.
+        //   SanitizingChatModel (think-tag strip + MessageParser;
+        //                       only wrapped when at least one of
+        //                       stripThinkTags / messageParser is active
+        //                       so well-behaved models keep the old
+        //                       call-graph exactly)
         this.sync = sync == null
                 ? null
-                : new ToolArgumentNormalizingChatModel(
-                        maybeSanitize(
-                                new LoggingChatModel(
-                                        name, sync,
-                                        options.getLlmTraceWriter(),
-                                        options.getMetricService()),
-                                sanitizer, stripThinkTags),
-                        name, options.getMetricService());
-        this.streaming = wrapStreaming(name, streaming, options);
+                : maybeSanitize(
+                        new LoggingChatModel(
+                                name, sync,
+                                options.getLlmTraceWriter(),
+                                options.getMetricService()),
+                        sanitizer, stripThinkTags, messageParser);
+        this.streaming = wrapStreaming(name, streaming, options, messageParser);
         this.options = options;
     }
 
     /**
-     * Wraps {@code chat} with {@link SanitizingChatModel} when the
-     * active model is marked {@code stripThinkTags} AND a sanitizer
-     * bean is available. Otherwise returns the input unchanged —
-     * the decorator vanishes from the call-graph.
+     * Wraps {@code chat} with {@link SanitizingChatModel} when either
+     * {@code stripThinkTags} is active OR a {@link MessageParser} is
+     * configured. Otherwise returns the input unchanged so the
+     * decorator vanishes from the call-graph.
      */
     private static ChatModel maybeSanitize(
             ChatModel chat,
             @Nullable LlmResponseSanitizer sanitizer,
-            boolean enabled) {
-        if (!enabled || sanitizer == null) return chat;
-        return new SanitizingChatModel(chat, sanitizer, true);
+            boolean stripEnabled,
+            @Nullable MessageParser messageParser) {
+        boolean stripActive = stripEnabled && sanitizer != null;
+        if (!stripActive && messageParser == null) return chat;
+        return new SanitizingChatModel(chat, sanitizer, stripActive, messageParser);
     }
 
     /**
@@ -151,9 +147,16 @@ public class StandardAiChat implements AiChat {
      * <p>When {@code options.userNotifier} is set, the resilient layer also
      * pushes human-readable retry / chain-advance messages so the engine
      * call-site can surface them in the user-progress side-channel.
+     *
+     * <p>Outermost layer is the optional {@link SanitizingStreamingChatModel}
+     * — only wrapped when a {@link MessageParser} is bound; otherwise the
+     * call-graph stays flat.
      */
     private static @Nullable StreamingChatModel wrapStreaming(
-            String name, @Nullable StreamingChatModel raw, AiChatOptions options) {
+            String name,
+            @Nullable StreamingChatModel raw,
+            AiChatOptions options,
+            @Nullable MessageParser messageParser) {
         if (raw == null) {
             return null;
         }
@@ -162,11 +165,7 @@ public class StandardAiChat implements AiChat {
         StreamingChatModel resilient = new ResilientStreamingChatModel(
                 List.of(new ChainEntry(logged, name, RetryPolicy.DEFAULT)),
                 options.getUserNotifier());
-        // Outermost: hack-fix for DeepSeek-V4-Pro tool-call quirk
-        // (function.arguments with trailing garbage). Wrapped
-        // unconditionally — see ToolArgumentNormalizer.
-        return new ToolArgumentNormalizingStreamingChatModel(
-                resilient, name, options.getMetricService());
+        return SanitizingStreamingChatModel.wrapIfNeeded(resilient, messageParser);
     }
 
     @Override

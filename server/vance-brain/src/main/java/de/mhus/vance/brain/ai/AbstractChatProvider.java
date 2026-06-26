@@ -1,5 +1,7 @@
 package de.mhus.vance.brain.ai;
 
+import de.mhus.vance.brain.ai.parser.MessageParser;
+import de.mhus.vance.brain.ai.parser.MessageParserRegistry;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import org.jspecify.annotations.Nullable;
@@ -43,12 +45,15 @@ public abstract class AbstractChatProvider implements AiModelProvider {
 
     protected final ModelCatalog modelCatalog;
     protected final LlmResponseSanitizer responseSanitizer;
+    protected final MessageParserRegistry messageParserRegistry;
 
     protected AbstractChatProvider(
             ModelCatalog modelCatalog,
-            LlmResponseSanitizer responseSanitizer) {
+            LlmResponseSanitizer responseSanitizer,
+            MessageParserRegistry messageParserRegistry) {
         this.modelCatalog = modelCatalog;
         this.responseSanitizer = responseSanitizer;
+        this.messageParserRegistry = messageParserRegistry;
     }
 
     /**
@@ -70,6 +75,14 @@ public abstract class AbstractChatProvider implements AiModelProvider {
                 options.getTenantId(), options.getProjectId(),
                 config.providerInstance(), wireName, config.modelName());
         AiChatOptions effective = applyOptionGates(options, modelInfo);
+        MessageParser parser = messageParserRegistry
+                .get(modelInfo.messageParser())
+                .orElse(null);
+        if (parser == null && modelInfo.messageParser() != null) {
+            TEMPLATE_LOG.warn("Model '{}': messageParser='{}' has no registered bean — "
+                            + "passing responses through unchanged",
+                    modelInfo.modelName(), modelInfo.messageParser());
+        }
         try {
             BuiltChat built = buildModels(config, effective, modelInfo);
             return new StandardAiChat(
@@ -80,7 +93,8 @@ public abstract class AbstractChatProvider implements AiModelProvider {
                     built.streaming(),
                     effective,
                     modelInfo.stripThinkTags(),
-                    responseSanitizer);
+                    responseSanitizer,
+                    parser);
         } catch (AiChatException e) {
             // Subclass already produced a typed message — pass through
             // verbatim so call sites see the precise failure cause.

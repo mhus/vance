@@ -8,6 +8,7 @@ import de.mhus.vance.brain.ai.LlmResponseSanitizer;
 import de.mhus.vance.brain.ai.ModelCapability;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ModelInfo;
+import de.mhus.vance.brain.ai.parser.MessageParserRegistry;
 import de.mhus.vance.brain.ai.ProviderListingHttp;
 import de.mhus.vance.brain.ai.ProviderListingRequest;
 import de.mhus.vance.brain.ai.ProviderType;
@@ -54,8 +55,11 @@ import tools.jackson.databind.JsonNode;
 @Slf4j
 public class GeminiProvider extends AbstractChatProvider {
 
-    public GeminiProvider(ModelCatalog modelCatalog, LlmResponseSanitizer responseSanitizer) {
-        super(modelCatalog, responseSanitizer);
+    public GeminiProvider(
+            ModelCatalog modelCatalog,
+            LlmResponseSanitizer responseSanitizer,
+            MessageParserRegistry messageParserRegistry) {
+        super(modelCatalog, responseSanitizer, messageParserRegistry);
     }
 
     @Override

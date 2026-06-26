@@ -1,0 +1,38 @@
+# Pattern-based defaults for ModelInfo.messageParser. Applies whenever
+# a per-model YAML under _vance/model/<provider>/<model>.yaml does not
+# explicitly set the field — the bundled file is the global fallback,
+# so we maintain one entry per known quirk family instead of touching
+# every provider directory.
+#
+# Resolution cascade (outermost → innermost; innermost wins):
+#   1. Project / tenant / _vance YAML overrides (per-model)
+#   2. Bundled per-model YAML (per-model)
+#   3. THIS FILE (cross-provider pattern)
+#   4. null  (no parser — pass through)
+#
+# Matching: case-insensitive glob over the model wire name.
+#   *  zero-or-more characters
+#   ?  exactly one character
+# First match wins; subsequent rules for the same model are ignored.
+#
+# Adding a new rule = add an entry here. The corresponding parser bean
+# must already be registered (de.mhus.vance.brain.ai.parser package).
+# A name without a registered bean produces a WARN log line at boot
+# but is otherwise harmless — the response simply passes through.
+
+rules:
+  # DeepSeek-V4 family: strict OpenAI-compatible endpoints reject
+  # their own previous output when function.arguments carries
+  # trailing garbage. The parser round-trips through Jackson with
+  # FAIL_ON_TRAILING_TOKENS=false so the garbage drops out.
+  - match: "deepseek-v4*"
+    messageParser: "deepseek-v4"
+
+  # Gemma-4 family hosted via LM Studio / llama.cpp HTTP: emits tool
+  # calls as plain assistant text in a Gemma-internal pseudo-JSON
+  # shape with <|"|> as the string delimiter, instead of populating
+  # the structured tool_calls field. The parser synthesizes a real
+  # ToolExecutionRequest so engines (Arthur, Eddie, Ford, Vogon) see
+  # the same shape as for structured-output-capable models.
+  - match: "gemma-4*"
+    messageParser: "gemma4"

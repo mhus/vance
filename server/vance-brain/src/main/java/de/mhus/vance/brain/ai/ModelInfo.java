@@ -29,6 +29,7 @@ public record ModelInfo(
         int timeoutSeconds,
         int actionLoopCorrections,
         boolean stripThinkTags,
+        @Nullable String messageParser,
         @Nullable Pricing pricing) {
 
     /**

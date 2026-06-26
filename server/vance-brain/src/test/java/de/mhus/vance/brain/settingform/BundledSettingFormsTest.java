@@ -133,10 +133,11 @@ class BundledSettingFormsTest {
                 .containsExactly(
                         "serperEnabled", "serperApiKey", "serperBaseUrl",
                         "wikiEnabled", "wikiBaseUrl",
-                        "openalexEnabled", "openalexContactEmail",
-                        "arxivEnabled",
-                        "openlibEnabled",
-                        "hnEnabled");
+                        "openalexEnabled", "openalexContactEmail", "openalexBaseUrl",
+                        "arxivEnabled", "arxivBaseUrl",
+                        "pubmedEnabled", "pubmedContactEmail", "pubmedApiKey", "pubmedBaseUrl",
+                        "openlibEnabled", "openlibBaseUrl",
+                        "hnEnabled", "hnBaseUrl");
 
         // Each enabled-gated endpoint pins its protocol via writeIf.
         // Without the protocol setting SearchProviderFactory skips the
@@ -148,6 +149,7 @@ class BundledSettingFormsTest {
                         "research.endpoint.wiki-de.protocol",
                         "research.endpoint.openalex.protocol",
                         "research.endpoint.arxiv.protocol",
+                        "research.endpoint.pubmed.protocol",
                         "research.endpoint.openlib.protocol",
                         "research.endpoint.hn-algolia.protocol");
 

@@ -7,6 +7,7 @@ import de.mhus.vance.brain.ai.DiscoveredModelInfo;
 import de.mhus.vance.brain.ai.LlmResponseSanitizer;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ModelInfo;
+import de.mhus.vance.brain.ai.parser.MessageParserRegistry;
 import de.mhus.vance.brain.ai.ProviderListingHttp;
 import de.mhus.vance.brain.ai.ProviderListingRequest;
 import de.mhus.vance.brain.ai.ProviderType;
@@ -45,8 +46,9 @@ public class OllamaCloudProvider extends AbstractChatProvider {
     public OllamaCloudProvider(
             ModelCatalog modelCatalog,
             LlmResponseSanitizer responseSanitizer,
+            MessageParserRegistry messageParserRegistry,
             @Value("${vance.ai.ollama-cloud.base-url:https://ollama.com}") String baseUrl) {
-        super(modelCatalog, responseSanitizer);
+        super(modelCatalog, responseSanitizer, messageParserRegistry);
         this.baseUrl = baseUrl;
     }
 

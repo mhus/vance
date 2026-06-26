@@ -70,6 +70,23 @@ export function useSessionRoster(sessionId: Ref<string | null>) {
         }
       }
     });
+    // The server pushes a session-roster frame on join, but the
+    // listener above only attaches once ChatView is mounted — by
+    // then the server's initial push has already gone out and we
+    // missed the baseline. Fetch it actively here so the composable
+    // always knows the current roster, race-free.
+    const sid = sessionId.value;
+    if (!sid) return;
+    socket.send<unknown, SessionRosterData>('session-who', {})
+      .then((reply) => {
+        if (!reply || reply.sessionId !== sessionId.value) return;
+        if (baselineEstablished) return; // a push already landed first — leave it
+        participants.value = reply.participants ?? [];
+        baselineEstablished = true;
+      })
+      .catch((err) => {
+        console.debug('[useSessionRoster] initial session-who failed:', err);
+      });
   }
 
   function detach() {

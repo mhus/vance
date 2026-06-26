@@ -1,5 +1,7 @@
 package de.mhus.vance.brain.ai;
 
+import java.util.List;
+
 /**
  * A provider plug-in for {@link AiModelService}. One Spring bean per backend
  * (Anthropic, Gemini, OpenAI, ...). {@link AiModelService} auto-discovers
@@ -35,4 +37,26 @@ public interface AiModelProvider {
      * @throws AiChatException if instantiation fails
      */
     AiChat createChat(AiChatConfig config, AiChatOptions options);
+
+    /**
+     * Enumerate every model the upstream backend currently exposes for
+     * the given credentials — drives the model-catalog discovery job
+     * (see {@code ModelDiscoveryService}). Default implementation
+     * throws {@link UnsupportedOperationException}; providers that
+     * have a usable listing endpoint override and call it from here.
+     *
+     * <p>Implementations should fail fast (typed exception) rather
+     * than swallowing errors — the discovery service catches them and
+     * logs the skipped instance, but a partial silent success would be
+     * worse than a loud failure.
+     *
+     * @throws UnsupportedOperationException when the backend has no
+     *         listing capability (or the implementation hasn't wired it)
+     * @throws RuntimeException on HTTP / parse failure
+     */
+    default List<DiscoveredModelInfo> listAvailableModels(ProviderListingRequest request) {
+        throw new UnsupportedOperationException(
+                "Model discovery not implemented for provider "
+                        + getType().wireName());
+    }
 }

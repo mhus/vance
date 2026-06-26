@@ -5,25 +5,33 @@ import de.mhus.vance.brain.ai.AiChatConfig;
 import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.CacheBoundary;
 import de.mhus.vance.brain.ai.CacheTtl;
+import de.mhus.vance.brain.ai.DiscoveredModelInfo;
 import de.mhus.vance.brain.ai.LlmResponseSanitizer;
 import de.mhus.vance.brain.ai.ModelCapability;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ModelInfo;
+import de.mhus.vance.brain.ai.ProviderListingHttp;
+import de.mhus.vance.brain.ai.ProviderListingRequest;
 import de.mhus.vance.brain.ai.ProviderType;
 import de.mhus.vance.brain.ai.ThinkingLevel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
 import dev.langchain4j.model.openai.OpenAiChatRequestParameters;
 import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
+import java.net.URI;
+import java.net.http.HttpRequest;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.JsonNode;
 
 /**
  * OpenAI backend.
@@ -142,6 +150,42 @@ public class OpenAiProvider extends AbstractChatProvider {
                 config.modelName(), baseUrl, options.getMaxTokens(),
                 options.getTemperature(), cacheParams.keySet(), reasoningEffort);
         return new BuiltChat(syncBuilder.build(), streamBuilder.build());
+    }
+
+    /**
+     * OpenAI's {@code GET /v1/models} returns
+     * {@code {"data":[{"id":"gpt-4o","object":"model","owned_by":"openai"},...]}}.
+     * The endpoint is shared by OpenAI proper and any OpenAI-wire
+     * gateway (cortecs, OpenRouter, vLLM, …) reachable through this
+     * provider — they all return the same shape with their own model
+     * names. {@code contextWindowTokens} is not in the response;
+     * {@code kind} stays unknown because the OpenAI listing lumps
+     * chat + image + embedding models together without a structural
+     * discriminator.
+     */
+    @Override
+    public List<DiscoveredModelInfo> listAvailableModels(ProviderListingRequest req) {
+        String baseUrl = req.baseUrl() != null ? req.baseUrl() : defaultBaseUrl;
+        String modelsUrl = baseUrl.endsWith("/v1") ? baseUrl + "/models" : baseUrl + "/v1/models";
+        HttpRequest http = HttpRequest.newBuilder()
+                .uri(URI.create(modelsUrl))
+                .header("Authorization", "Bearer " + req.apiKey())
+                .header("Accept", "application/json")
+                .timeout(Duration.ofSeconds(30))
+                .GET()
+                .build();
+        JsonNode root = ProviderListingHttp.fetchJson(http);
+        JsonNode data = root.path("data");
+        if (!data.isArray()) {
+            throw new RuntimeException("OpenAI listing response missing 'data' array: " + root);
+        }
+        List<DiscoveredModelInfo> out = new ArrayList<>(data.size());
+        for (JsonNode entry : data) {
+            String id = entry.path("id").asText();
+            if (id.isBlank()) continue;
+            out.add(DiscoveredModelInfo.of(id));
+        }
+        return out;
     }
 
     /**

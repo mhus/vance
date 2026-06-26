@@ -6,18 +6,26 @@ import de.mhus.vance.brain.ai.AbstractChatProvider;
 import de.mhus.vance.brain.ai.AiChatConfig;
 import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.CacheBoundary;
+import de.mhus.vance.brain.ai.DiscoveredModelInfo;
 import de.mhus.vance.brain.ai.LlmResponseSanitizer;
 import de.mhus.vance.brain.ai.ModelCapability;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ModelInfo;
+import de.mhus.vance.brain.ai.ProviderListingHttp;
+import de.mhus.vance.brain.ai.ProviderListingRequest;
 import de.mhus.vance.brain.ai.ProviderType;
 import de.mhus.vance.brain.ai.ThinkingLevel;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.StreamingChatModel;
+import java.net.URI;
+import java.net.http.HttpRequest;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.JsonNode;
 
 /**
  * Anthropic backend, built on top of {@link AnthropicDirectChatModel}
@@ -44,6 +52,15 @@ public class AnthropicProvider extends AbstractChatProvider {
 
     /** Anthropic's API requires maxTokens; pick a safe upper bound when callers omit it. */
     private static final int DEFAULT_MAX_TOKENS = 4096;
+
+    /** Default Anthropic API host — overridden per call by {@link ProviderListingRequest#baseUrl()}. */
+    private static final String DEFAULT_LISTING_BASE_URL = "https://api.anthropic.com";
+
+    /** Anthropic API version header. Matches what the SDK uses internally. */
+    private static final String ANTHROPIC_VERSION = "2023-06-01";
+
+    /** Listing API returns up to 1000 models per page — Anthropic only has ~10 today. */
+    private static final int LISTING_PAGE_SIZE = 1000;
 
     private final boolean cacheEnabled;
 
@@ -95,6 +112,39 @@ public class AnthropicProvider extends AbstractChatProvider {
                 effective.getCacheBoundary(), effective.getCacheTtl(),
                 effective.getThinkingLevel());
         return new BuiltChat(sync, streaming);
+    }
+
+    /**
+     * Anthropic's {@code GET /v1/models} returns
+     * {@code {"data":[{"id":"claude-sonnet-4-5","type":"model","display_name":"...","created_at":"..."}]}}.
+     * Context-window isn't returned — Anthropic has no machine-readable
+     * source for that today, so the {@link DiscoveredModelInfo#contextWindowTokens}
+     * field stays {@code null} and the catalog inherits it from the
+     * bundled / manual layer at lookup time.
+     */
+    @Override
+    public List<DiscoveredModelInfo> listAvailableModels(ProviderListingRequest req) {
+        String baseUrl = req.baseUrl() != null ? req.baseUrl() : DEFAULT_LISTING_BASE_URL;
+        HttpRequest http = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/models?limit=" + LISTING_PAGE_SIZE))
+                .header("x-api-key", req.apiKey())
+                .header("anthropic-version", ANTHROPIC_VERSION)
+                .header("Accept", "application/json")
+                .timeout(Duration.ofSeconds(30))
+                .GET()
+                .build();
+        JsonNode root = ProviderListingHttp.fetchJson(http);
+        JsonNode data = root.path("data");
+        if (!data.isArray()) {
+            throw new RuntimeException("Anthropic listing response missing 'data' array: " + root);
+        }
+        List<DiscoveredModelInfo> out = new ArrayList<>(data.size());
+        for (JsonNode entry : data) {
+            String id = entry.path("id").asText();
+            if (id.isBlank()) continue;
+            out.add(new DiscoveredModelInfo(id, null, "chat"));
+        }
+        return out;
     }
 
     /**

@@ -432,24 +432,129 @@ class ModelCatalogTest {
         assertThat(provider.get("wireType")).isEqualTo("openai");   // inherited
     }
 
+    // ──── Auto layer (_vance/model-auto/**) ────────────────────────────
+
+    @Test
+    void auto_doc_is_visible_in_lookup_without_manual() {
+        // Discovery wrote a doc with just existence + context-window;
+        // no manual override at this scope.
+        stubAutoModelDoc(TENANT, VANCE_TENANT_PROJECT,
+                "openai/gpt-5-turbo.yaml", """
+                contextWindowTokens: 400000
+                kind: chat
+                discoveredBy: discovery-job
+                """);
+        catalog.refresh();
+
+        ModelInfo info = catalog.lookupOrDefault(
+                TENANT, null, "openai", "gpt-5-turbo");
+        assertThat(info.contextWindowTokens()).isEqualTo(400_000);
+    }
+
+    @Test
+    void manual_beats_auto_at_same_scope() {
+        // Discovery says context-window=200000; operator manually pinned
+        // it to 500000 in the manual layer. Manual wins.
+        stubAutoModelDoc(TENANT, VANCE_TENANT_PROJECT,
+                "openai/gpt-5.yaml", """
+                contextWindowTokens: 200000
+                """);
+        stubModelDoc(TENANT, VANCE_TENANT_PROJECT,
+                "openai/gpt-5.yaml", """
+                contextWindowTokens: 500000
+                """);
+        catalog.refresh();
+
+        ModelInfo info = catalog.lookupOrDefault(
+                TENANT, null, "openai", "gpt-5");
+        assertThat(info.contextWindowTokens()).isEqualTo(500_000);
+    }
+
+    @Test
+    void auto_and_manual_merge_per_field_within_one_scope() {
+        // Discovery writes only contextWindowTokens; pricing is in the
+        // manual layer at the same scope. Final view has both.
+        stubAutoModelDoc(TENANT, VANCE_TENANT_PROJECT,
+                "openai/new-model.yaml", """
+                contextWindowTokens: 128000
+                kind: chat
+                """);
+        stubModelDoc(TENANT, VANCE_TENANT_PROJECT,
+                "openai/new-model.yaml", """
+                size: SMALL
+                pricing:
+                  currency: USD
+                  inputPerMTok: 1.0
+                  outputPerMTok: 4.0
+                """);
+        catalog.refresh();
+
+        ModelInfo info = catalog.lookupOrDefault(
+                TENANT, null, "openai", "new-model");
+        assertThat(info.contextWindowTokens()).isEqualTo(128_000);     // auto
+        assertThat(info.size()).isEqualTo(ModelSize.SMALL);            // manual
+        assertThat(info.pricing()).isNotNull();
+        assertThat(info.pricing().inputPerMTok()).isEqualTo(1.0);      // manual
+    }
+
+    @Test
+    void project_auto_beats_tenant_manual_for_innermost_wins() {
+        // Cascade ordering: project-* beats tenant-* regardless of layer
+        // kind. Bundled claude-sonnet-4-5 has contextWindow=200000;
+        // tenant-manual sets it to 100000; project-auto sets to 50000.
+        // Lookup at (tenant, project): project-auto wins.
+        stubModelDoc(TENANT, VANCE_TENANT_PROJECT,
+                "anthropic/claude-sonnet-4-5.yaml", """
+                contextWindowTokens: 100000
+                """);
+        stubAutoModelDoc(TENANT, PROJECT,
+                "anthropic/claude-sonnet-4-5.yaml", """
+                contextWindowTokens: 50000
+                """);
+        catalog.refresh();
+
+        ModelInfo info = catalog.lookupOrDefault(
+                TENANT, PROJECT, "anthropic", "claude-sonnet-4-5");
+        assertThat(info.contextWindowTokens()).isEqualTo(50_000);
+    }
+
     // ──── Helpers ──────────────────────────────────────────────────────
 
     /**
-     * Add a stub model document to the in-memory override set. Pass
-     * {@code relPath} as the path under {@code _vance/model/} — e.g.
-     * {@code "anthropic/claude-sonnet-4-5.yaml"}. Call
-     * {@link ModelCatalog#refresh()} afterwards for the change to take
-     * effect.
+     * Add a stub <b>manual</b> model document to the in-memory override
+     * set. Pass {@code relPath} as the path under
+     * {@code _vance/model/} — e.g. {@code "anthropic/claude-sonnet-4-5.yaml"}.
+     * Call {@link ModelCatalog#refresh()} afterwards for the change to
+     * take effect.
      */
     private void stubModelDoc(String tenantId, String projectId, String relPath, String yamlBody) {
+        stubDocAtPrefix(ModelCatalog.MODEL_PATH_PREFIX,
+                tenantId, projectId, relPath, yamlBody);
+    }
+
+    /**
+     * Add a stub <b>auto</b> (discovery-written) model document. Same
+     * shape as {@link #stubModelDoc} but the document path lives under
+     * {@code _vance/model-auto/}.
+     */
+    private void stubAutoModelDoc(
+            String tenantId, String projectId, String relPath, String yamlBody) {
+        stubDocAtPrefix(ModelCatalog.AUTO_MODEL_PATH_PREFIX,
+                tenantId, projectId, relPath, yamlBody);
+    }
+
+    private void stubDocAtPrefix(
+            String pathPrefix, String tenantId, String projectId,
+            String relPath, String yamlBody) {
         DocumentDocument doc = mock(DocumentDocument.class);
         lenient().when(doc.getTenantId()).thenReturn(tenantId);
         lenient().when(doc.getProjectId()).thenReturn(projectId);
-        lenient().when(doc.getPath()).thenReturn(ModelCatalog.MODEL_PATH_PREFIX + relPath);
+        lenient().when(doc.getPath()).thenReturn(pathPrefix + relPath);
         lenient().when(documentService.readContent(eq(doc))).thenReturn(yamlBody);
         overrideDocs.add(doc);
-        // findAllByPathPrefix is already wired to overrideDocs; the
-        // ArrayList mutation reflects automatically on next refresh.
+        // findAllByPathPrefix gets called once per prefix in refresh();
+        // returning the full mixed list is fine — the catalog itself
+        // filters by path-prefix to assign each doc to the right layer.
         when(documentService.findAllByPathPrefix(any())).thenReturn(overrideDocs);
     }
 }

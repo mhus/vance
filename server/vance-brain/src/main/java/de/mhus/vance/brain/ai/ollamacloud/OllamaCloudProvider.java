@@ -3,18 +3,26 @@ package de.mhus.vance.brain.ai.ollamacloud;
 import de.mhus.vance.brain.ai.AbstractChatProvider;
 import de.mhus.vance.brain.ai.AiChatConfig;
 import de.mhus.vance.brain.ai.AiChatOptions;
+import de.mhus.vance.brain.ai.DiscoveredModelInfo;
 import de.mhus.vance.brain.ai.LlmResponseSanitizer;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ModelInfo;
+import de.mhus.vance.brain.ai.ProviderListingHttp;
+import de.mhus.vance.brain.ai.ProviderListingRequest;
 import de.mhus.vance.brain.ai.ProviderType;
 import de.mhus.vance.brain.ai.ThinkingLevel;
 import dev.langchain4j.model.ollama.OllamaChatModel;
 import dev.langchain4j.model.ollama.OllamaStreamingChatModel;
+import java.net.URI;
+import java.net.http.HttpRequest;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.JsonNode;
 
 /**
  * Ollama Cloud backend — talks to {@code https://ollama.com} using the
@@ -45,6 +53,36 @@ public class OllamaCloudProvider extends AbstractChatProvider {
     @Override
     public ProviderType getType() {
         return ProviderType.OLLAMA_CLOUD;
+    }
+
+    /**
+     * Ollama Cloud exposes the same {@code /api/tags} shape as
+     * self-hosted Ollama; the only difference is the bearer token in
+     * the {@code Authorization} header.
+     */
+    @Override
+    public List<DiscoveredModelInfo> listAvailableModels(ProviderListingRequest req) {
+        String base = req.baseUrl() != null ? req.baseUrl() : baseUrl;
+        HttpRequest http = HttpRequest.newBuilder()
+                .uri(URI.create(base + "/api/tags"))
+                .header("Authorization", "Bearer " + req.apiKey())
+                .header("Accept", "application/json")
+                .timeout(Duration.ofSeconds(30))
+                .GET()
+                .build();
+        JsonNode root = ProviderListingHttp.fetchJson(http);
+        JsonNode models = root.path("models");
+        if (!models.isArray()) {
+            throw new RuntimeException(
+                    "Ollama Cloud listing response missing 'models' array: " + root);
+        }
+        List<DiscoveredModelInfo> out = new ArrayList<>(models.size());
+        for (JsonNode entry : models) {
+            String name = entry.path("name").asText();
+            if (name.isBlank()) continue;
+            out.add(new DiscoveredModelInfo(name, null, "chat"));
+        }
+        return out;
     }
 
     @Override

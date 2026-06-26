@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.ai;
 
+import de.mhus.vance.brain.ai.discovery.ModelDiscoveryService;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
@@ -34,6 +35,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class ModelCatalogAdminController {
 
     private final ModelCatalog modelCatalog;
+    private final ModelDiscoveryService discoveryService;
     private final RequestAuthority authority;
 
     @PostMapping("/refresh")
@@ -43,5 +45,23 @@ public class ModelCatalogAdminController {
         authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
         log.info("ModelCatalog: manual refresh requested by tenant '{}'", tenant);
         return modelCatalog.refresh();
+    }
+
+    /**
+     * Triggers an auto-discovery pass for this tenant — walks every
+     * project's {@code ai.provider.<instance>.*} settings, calls each
+     * backend's listing endpoint, and writes per-model YAML docs
+     * under {@code _vance/model-auto/<instance>/<slug>.yaml} in the
+     * project where the credentials live. After the writes finish,
+     * the in-memory catalog is refreshed automatically; the caller
+     * doesn't need to chain a second {@code /refresh}.
+     */
+    @PostMapping("/discover")
+    public ModelDiscoveryService.DiscoveryResult discover(
+            @PathVariable("tenant") String tenant,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
+        log.info("ModelDiscovery: manual discovery requested by tenant '{}'", tenant);
+        return discoveryService.discoverForTenant(tenant);
     }
 }

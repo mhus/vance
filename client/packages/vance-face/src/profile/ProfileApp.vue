@@ -343,6 +343,47 @@ async function onRefreshModelCatalog(): Promise<void> {
   }
 }
 
+interface ModelDiscoveryResponse {
+  tenantId: string;
+  scopesScanned: number;
+  instancesScanned: number;
+  modelsWritten: number;
+  modelsFailed: number;
+  skippedInstances: Record<string, string>;
+  durationMs: number;
+  finishedAt: string;
+}
+
+const discoverBusy = ref(false);
+const discoverResult = ref<string | null>(null);
+const discoverSkipped = ref<Array<{ key: string; reason: string }>>([]);
+const discoverError = ref<string | null>(null);
+
+async function onDiscoverModels(): Promise<void> {
+  discoverBusy.value = true;
+  discoverResult.value = null;
+  discoverSkipped.value = [];
+  discoverError.value = null;
+  try {
+    const result = await brainFetch<ModelDiscoveryResponse>(
+      'POST',
+      'admin/ai-models/discover',
+    );
+    discoverResult.value = t('profile.actions.discoverModelsResult', {
+      written: result.modelsWritten,
+      instances: result.instancesScanned,
+      scopes: result.scopesScanned,
+      ms: result.durationMs,
+    });
+    discoverSkipped.value = Object.entries(result.skippedInstances ?? {})
+      .map(([key, reason]) => ({ key, reason }));
+  } catch (e: unknown) {
+    discoverError.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    discoverBusy.value = false;
+  }
+}
+
 async function onSpeechVolumeInput(event: Event): Promise<void> {
   speechVolumeSaved.value = null;
   const value = parseFloat((event.target as HTMLInputElement).value);
@@ -542,7 +583,7 @@ async function onSpeechVolumeInput(event: Event): Promise<void> {
           <p class="text-sm opacity-70 mb-3">
             {{ $t('profile.actions.description') }}
           </p>
-          <div class="flex flex-col gap-3">
+          <div class="flex flex-col gap-4">
             <div>
               <div class="flex items-center gap-3">
                 <VButton
@@ -563,6 +604,47 @@ async function onSpeechVolumeInput(event: Event): Promise<void> {
               </p>
               <VAlert v-if="refreshError" variant="error" class="mt-2">
                 {{ refreshError }}
+              </VAlert>
+            </div>
+
+            <div>
+              <div class="flex items-center gap-3">
+                <VButton
+                  variant="secondary"
+                  :loading="discoverBusy"
+                  @click="onDiscoverModels"
+                >
+                  {{ discoverBusy
+                    ? $t('profile.actions.discoverModelsBusy')
+                    : $t('profile.actions.discoverModels') }}
+                </VButton>
+                <span v-if="discoverResult" class="text-success text-sm">
+                  {{ discoverResult }}
+                </span>
+              </div>
+              <p class="text-xs opacity-60 mt-1">
+                {{ $t('profile.actions.discoverModelsDescription') }}
+              </p>
+              <VAlert
+                v-if="discoverSkipped.length > 0"
+                variant="warning"
+                class="mt-2"
+              >
+                <div class="font-medium">
+                  {{ $t('profile.actions.discoverModelsSkipped', { count: discoverSkipped.length }) }}
+                </div>
+                <ul class="text-xs mt-1 list-disc pl-4">
+                  <li
+                    v-for="item in discoverSkipped"
+                    :key="item.key"
+                    class="font-mono"
+                  >
+                    {{ item.key }} — {{ item.reason }}
+                  </li>
+                </ul>
+              </VAlert>
+              <VAlert v-if="discoverError" variant="error" class="mt-2">
+                {{ discoverError }}
               </VAlert>
             </div>
           </div>

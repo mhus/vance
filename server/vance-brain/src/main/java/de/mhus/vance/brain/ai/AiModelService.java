@@ -98,4 +98,14 @@ public class AiModelService {
         Optional<ProviderType> type = ProviderType.fromWireName(name);
         return type.isPresent() && providers.containsKey(type.get());
     }
+
+    /**
+     * Typed lookup of a registered provider — used by the model-discovery
+     * job to invoke {@link AiModelProvider#listAvailableModels} on the
+     * adapter matching a tenant's {@code ai.provider.<instance>.type}
+     * setting. Returns empty when nothing is registered for the type.
+     */
+    public Optional<AiModelProvider> findProvider(ProviderType type) {
+        return Optional.ofNullable(providers.get(type));
+    }
 }

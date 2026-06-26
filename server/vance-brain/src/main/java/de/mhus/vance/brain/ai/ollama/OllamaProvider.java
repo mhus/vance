@@ -3,17 +3,25 @@ package de.mhus.vance.brain.ai.ollama;
 import de.mhus.vance.brain.ai.AbstractChatProvider;
 import de.mhus.vance.brain.ai.AiChatConfig;
 import de.mhus.vance.brain.ai.AiChatOptions;
+import de.mhus.vance.brain.ai.DiscoveredModelInfo;
 import de.mhus.vance.brain.ai.LlmResponseSanitizer;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ModelInfo;
+import de.mhus.vance.brain.ai.ProviderListingHttp;
+import de.mhus.vance.brain.ai.ProviderListingRequest;
 import de.mhus.vance.brain.ai.ProviderType;
 import de.mhus.vance.brain.ai.ThinkingLevel;
 import dev.langchain4j.model.ollama.OllamaChatModel;
 import dev.langchain4j.model.ollama.OllamaStreamingChatModel;
+import java.net.URI;
+import java.net.http.HttpRequest;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.JsonNode;
 
 /**
  * Ollama backend — self-hosted Ollama servers (default
@@ -51,6 +59,40 @@ public class OllamaProvider extends AbstractChatProvider {
     @Override
     public ProviderType getType() {
         return ProviderType.OLLAMA;
+    }
+
+    /**
+     * Ollama's {@code GET /api/tags} returns
+     * {@code {"models":[{"name":"qwen3:30b","model":"qwen3:30b","size":...,
+     * "modified_at":"...","details":{"parameter_size":"30B",...}}]}}.
+     * Wire-name is the {@code name} field verbatim (carries the
+     * {@code <family>:<tag>} convention with the colon literal —
+     * downstream slugification handles that). Ollama doesn't surface
+     * context-window in this endpoint; that's only visible via
+     * {@code /api/show} per model, which we leave to the catalog's
+     * bundled / manual layer to provide.
+     */
+    @Override
+    public List<DiscoveredModelInfo> listAvailableModels(ProviderListingRequest req) {
+        String baseUrl = req.baseUrl() != null ? req.baseUrl() : defaultBaseUrl;
+        HttpRequest http = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/api/tags"))
+                .header("Accept", "application/json")
+                .timeout(Duration.ofSeconds(30))
+                .GET()
+                .build();
+        JsonNode root = ProviderListingHttp.fetchJson(http);
+        JsonNode models = root.path("models");
+        if (!models.isArray()) {
+            throw new RuntimeException("Ollama listing response missing 'models' array: " + root);
+        }
+        List<DiscoveredModelInfo> out = new ArrayList<>(models.size());
+        for (JsonNode entry : models) {
+            String name = entry.path("name").asText();
+            if (name.isBlank()) continue;
+            out.add(new DiscoveredModelInfo(name, null, "chat"));
+        }
+        return out;
     }
 
     @Override

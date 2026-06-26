@@ -3,19 +3,27 @@ package de.mhus.vance.brain.ai.lmstudio;
 import de.mhus.vance.brain.ai.AbstractChatProvider;
 import de.mhus.vance.brain.ai.AiChatConfig;
 import de.mhus.vance.brain.ai.AiChatOptions;
+import de.mhus.vance.brain.ai.DiscoveredModelInfo;
 import de.mhus.vance.brain.ai.LlmResponseSanitizer;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ModelInfo;
+import de.mhus.vance.brain.ai.ProviderListingHttp;
+import de.mhus.vance.brain.ai.ProviderListingRequest;
 import de.mhus.vance.brain.ai.ProviderType;
 import de.mhus.vance.brain.ai.ThinkingLevel;
 import de.mhus.vance.brain.ai.openai.OpenAiProvider;
 import dev.langchain4j.model.openai.OpenAiChatModel;
 import dev.langchain4j.model.openai.OpenAiChatRequestParameters;
 import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
+import java.net.URI;
+import java.net.http.HttpRequest;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.JsonNode;
 
 /**
  * LM Studio backend — local LM Studio server (default
@@ -46,6 +54,39 @@ public class LmStudioProvider extends AbstractChatProvider {
     @Override
     public ProviderType getType() {
         return ProviderType.LM_STUDIO;
+    }
+
+    /**
+     * LM Studio exposes the OpenAI-compatible {@code GET /v1/models}
+     * endpoint. Response shape matches {@link OpenAiProvider}: a
+     * {@code data} array of {@code {id, ...}} objects. Local API
+     * usually has no auth — the bearer header is sent for protocol
+     * conformance but ignored.
+     */
+    @Override
+    public List<DiscoveredModelInfo> listAvailableModels(ProviderListingRequest req) {
+        String base = req.baseUrl() != null ? req.baseUrl() : defaultBaseUrl;
+        String modelsUrl = base.endsWith("/v1") ? base + "/models" : base + "/v1/models";
+        HttpRequest http = HttpRequest.newBuilder()
+                .uri(URI.create(modelsUrl))
+                .header("Authorization", "Bearer " + req.apiKey())
+                .header("Accept", "application/json")
+                .timeout(Duration.ofSeconds(30))
+                .GET()
+                .build();
+        JsonNode root = ProviderListingHttp.fetchJson(http);
+        JsonNode data = root.path("data");
+        if (!data.isArray()) {
+            throw new RuntimeException(
+                    "LM Studio listing response missing 'data' array: " + root);
+        }
+        List<DiscoveredModelInfo> out = new ArrayList<>(data.size());
+        for (JsonNode entry : data) {
+            String id = entry.path("id").asText();
+            if (id.isBlank()) continue;
+            out.add(DiscoveredModelInfo.of(id));
+        }
+        return out;
     }
 
     @Override

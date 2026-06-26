@@ -7,6 +7,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.brain.ai.discovery.ModelDiscoveryService;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.permission.Action;
@@ -27,6 +28,7 @@ class ModelCatalogAdminControllerTest {
     private static final String TENANT = "acme";
 
     private ModelCatalog catalog;
+    private ModelDiscoveryService discoveryService;
     private RequestAuthority authority;
     private ModelCatalogAdminController controller;
     private HttpServletRequest request;
@@ -36,8 +38,9 @@ class ModelCatalogAdminControllerTest {
         DocumentService documentService = mock(DocumentService.class);
         when(documentService.findAllByPathPrefix(any())).thenReturn(List.of());
         catalog = new ModelCatalog(documentService);
+        discoveryService = mock(ModelDiscoveryService.class);
         authority = mock(RequestAuthority.class);
-        controller = new ModelCatalogAdminController(catalog, authority);
+        controller = new ModelCatalogAdminController(catalog, discoveryService, authority);
         request = mock(HttpServletRequest.class);
     }
 

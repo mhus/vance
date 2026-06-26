@@ -81,15 +81,24 @@ import org.yaml.snakeyaml.Yaml;
 @Slf4j
 public class ModelCatalog {
 
-    /** Document path prefix every model + provider YAML must sit under. */
+    /** Document path prefix every <b>manual</b> (operator-managed) model + provider YAML sits under. */
     public static final String MODEL_PATH_PREFIX = "_vance/model/";
+
+    /**
+     * Document path prefix every <b>auto</b>-discovered model YAML
+     * sits under. Written by {@code ModelDiscoveryService}; never
+     * touched by hand. Within one scope, manual fields always beat
+     * auto fields at lookup time — operators own the prices,
+     * discovery owns the inventory.
+     */
+    public static final String AUTO_MODEL_PATH_PREFIX = "_vance/model-auto/";
 
     /** Classpath prefix mirroring {@link DocumentService#RESOURCE_PREFIX}. */
     private static final String BUNDLED_CLASSPATH_PREFIX =
             DocumentService.RESOURCE_PREFIX + MODEL_PATH_PREFIX;
 
     /** Reserved tenant id whose {@code _tenant} project is the global override layer. */
-    private static final String SYSTEM_TENANT = "_vance";
+    static final String SYSTEM_TENANT = "_vance";
 
     /**
      * Filename of the provider-metadata sidecar (one per provider
@@ -152,16 +161,20 @@ public class ModelCatalog {
         Snapshot built = buildSnapshot();
         snapshot = built;
         Duration elapsed = Duration.between(start, Instant.now());
-        log.info("ModelCatalog: refreshed in {} ms — {} bundled, {} override scopes, {} providers",
+        int overrideScopes = built.uniqueScopeCount();
+        log.info("ModelCatalog: refreshed in {} ms — {} bundled, {} override scopes "
+                        + "({} manual + {} auto), {} providers",
                 elapsed.toMillis(),
                 countModels(built.bundled),
-                built.perScope.size(),
+                overrideScopes,
+                built.perScopeManual.size(),
+                built.perScopeAuto.size(),
                 countProviders(built.bundled));
         return new RefreshResult(
                 Instant.now(),
                 countModels(built.bundled),
                 countProviders(built.bundled),
-                built.perScope.size(),
+                overrideScopes,
                 elapsed.toMillis());
     }
 
@@ -270,16 +283,9 @@ public class ModelCatalog {
 
     private Snapshot buildSnapshot() {
         Layer bundled = readClasspathLayer();
-        Map<TenantProject, Layer> overrides = readOverrideLayers();
-
-        // Pull the system-tenant layer out separately — it's shared by
-        // every other tenant as the "global" layer between bundled and
-        // their per-tenant overrides.
-        Layer systemTenant = overrides.getOrDefault(
-                new TenantProject(SYSTEM_TENANT, HomeBootstrapService.TENANT_PROJECT_NAME),
-                Layer.empty());
-
-        return new Snapshot(bundled, systemTenant, overrides);
+        Map<TenantProject, Layer> manual = readOverrideLayers(MODEL_PATH_PREFIX);
+        Map<TenantProject, Layer> auto = readOverrideLayers(AUTO_MODEL_PATH_PREFIX);
+        return new Snapshot(bundled, manual, auto);
     }
 
     private Layer readClasspathLayer() {
@@ -311,16 +317,23 @@ public class ModelCatalog {
         return new Layer(deepImmutable(models), deepImmutableProviders(providers));
     }
 
-    private Map<TenantProject, Layer> readOverrideLayers() {
-        List<DocumentDocument> docs = documentService.findAllByPathPrefix(MODEL_PATH_PREFIX);
+    /**
+     * Read every active document under {@code pathPrefix} into per-scope
+     * {@link Layer}s. Used twice per refresh — once with
+     * {@link #MODEL_PATH_PREFIX} for manual docs, once with
+     * {@link #AUTO_MODEL_PATH_PREFIX} for auto-discovered ones.
+     */
+    private Map<TenantProject, Layer> readOverrideLayers(String pathPrefix) {
+        List<DocumentDocument> docs = documentService.findAllByPathPrefix(pathPrefix);
         // Group by (tenantId, projectId) first, then ingest each file into
         // that scope's accumulating layer. Two passes keep the layer-build
         // logic linear and order-independent.
         Map<TenantProject, ScopeAcc> grouped = new LinkedHashMap<>();
+        String layerKind = pathPrefix.equals(AUTO_MODEL_PATH_PREFIX) ? "auto" : "manual";
         for (DocumentDocument doc : docs) {
             String path = doc.getPath();
-            if (path == null || !path.startsWith(MODEL_PATH_PREFIX)) continue;
-            String relPath = path.substring(MODEL_PATH_PREFIX.length());
+            if (path == null || !path.startsWith(pathPrefix)) continue;
+            String relPath = path.substring(pathPrefix.length());
             String tenant = doc.getTenantId();
             String project = doc.getProjectId();
             if (tenant == null || project == null) continue;
@@ -329,7 +342,7 @@ public class ModelCatalog {
             TenantProject key = new TenantProject(tenant, project);
             ScopeAcc acc = grouped.computeIfAbsent(key, k -> new ScopeAcc());
             ingestFile(relPath, content, acc.models, acc.providers,
-                    "scope[" + tenant + "/" + project + "]");
+                    layerKind + "-scope[" + tenant + "/" + project + "]");
         }
         Map<TenantProject, Layer> out = new LinkedHashMap<>();
         for (Map.Entry<TenantProject, ScopeAcc> e : grouped.entrySet()) {
@@ -453,13 +466,21 @@ public class ModelCatalog {
     // ──────────────────── Snapshot type ────────────────────
 
     /**
-     * Immutable snapshot of all four layers plus per-scope merged-view
-     * memoization. Lookups go through {@link #viewFor(String, String)}.
+     * Immutable snapshot of the bundled layer + per-scope manual and
+     * auto layers, plus per-scope merged-view memoization. Lookups go
+     * through {@link #viewFor(String, String)}.
+     *
+     * <p>The two override maps ({@link #perScopeManual} and
+     * {@link #perScopeAuto}) are physically separated by document
+     * path: {@code _vance/model/**} flows into manual,
+     * {@code _vance/model-auto/**} flows into auto. At lookup time,
+     * within one scope, the manual layer is applied <i>after</i> the
+     * auto layer — manual fields therefore beat auto fields.
      */
     static final class Snapshot {
         final Layer bundled;
-        final Layer systemTenant;
-        final Map<TenantProject, Layer> perScope;
+        final Map<TenantProject, Layer> perScopeManual;
+        final Map<TenantProject, Layer> perScopeAuto;
 
         /**
          * Memoized merged views per lookup-scope. Built lazily on first
@@ -471,14 +492,30 @@ public class ModelCatalog {
         private final Map<TenantProject, Map<String, Map<String, Object>>> providerCache =
                 new ConcurrentHashMap<>();
 
-        Snapshot(Layer bundled, Layer systemTenant, Map<TenantProject, Layer> perScope) {
+        Snapshot(Layer bundled,
+                 Map<TenantProject, Layer> perScopeManual,
+                 Map<TenantProject, Layer> perScopeAuto) {
             this.bundled = bundled;
-            this.systemTenant = systemTenant;
-            this.perScope = perScope;
+            this.perScopeManual = perScopeManual;
+            this.perScopeAuto = perScopeAuto;
         }
 
         static Snapshot empty() {
-            return new Snapshot(Layer.empty(), Layer.empty(), Map.of());
+            return new Snapshot(Layer.empty(), Map.of(), Map.of());
+        }
+
+        /**
+         * Count of {@code (tenantId, projectId)} pairs that have any
+         * override docs (manual + auto union) — for the
+         * {@link RefreshResult} counter.
+         */
+        int uniqueScopeCount() {
+            if (perScopeManual.isEmpty()) return perScopeAuto.size();
+            if (perScopeAuto.isEmpty()) return perScopeManual.size();
+            java.util.Set<TenantProject> union =
+                    new java.util.HashSet<>(perScopeManual.keySet());
+            union.addAll(perScopeAuto.keySet());
+            return union.size();
         }
 
         Map<String, Map<String, Object>> viewFor(
@@ -495,20 +532,19 @@ public class ModelCatalog {
 
         private Map<String, Map<String, Object>> buildModelView(TenantProject scope) {
             // Outer → inner application. Each layer overrides fields on
-            // any (provider, model) key it carries; fields it omits
-            // inherit from the previous layer.
+            // any (provider, model) key it carries; within one scope,
+            // auto runs first then manual so manual fields win.
             Map<String, Map<String, Object>> acc = new LinkedHashMap<>();
             applyModelLayer(acc, bundled);
-            applyModelLayer(acc, systemTenant);
+            applyScopeModel(acc, new TenantProject(
+                    SYSTEM_TENANT, HomeBootstrapService.TENANT_PROJECT_NAME));
             if (scope.tenantId != null) {
-                Layer tenantDefault = perScope.get(new TenantProject(
+                applyScopeModel(acc, new TenantProject(
                         scope.tenantId, HomeBootstrapService.TENANT_PROJECT_NAME));
-                if (tenantDefault != null) applyModelLayer(acc, tenantDefault);
                 if (scope.projectId != null
                         && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(scope.projectId)) {
-                    Layer project = perScope.get(new TenantProject(
+                    applyScopeModel(acc, new TenantProject(
                             scope.tenantId, scope.projectId));
-                    if (project != null) applyModelLayer(acc, project);
                 }
             }
             return Collections.unmodifiableMap(acc);
@@ -517,19 +553,33 @@ public class ModelCatalog {
         private Map<String, Map<String, Object>> buildProviderView(TenantProject scope) {
             Map<String, Map<String, Object>> acc = new LinkedHashMap<>();
             applyProviderLayer(acc, bundled);
-            applyProviderLayer(acc, systemTenant);
+            applyScopeProvider(acc, new TenantProject(
+                    SYSTEM_TENANT, HomeBootstrapService.TENANT_PROJECT_NAME));
             if (scope.tenantId != null) {
-                Layer tenantDefault = perScope.get(new TenantProject(
+                applyScopeProvider(acc, new TenantProject(
                         scope.tenantId, HomeBootstrapService.TENANT_PROJECT_NAME));
-                if (tenantDefault != null) applyProviderLayer(acc, tenantDefault);
                 if (scope.projectId != null
                         && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(scope.projectId)) {
-                    Layer project = perScope.get(new TenantProject(
+                    applyScopeProvider(acc, new TenantProject(
                             scope.tenantId, scope.projectId));
-                    if (project != null) applyProviderLayer(acc, project);
                 }
             }
             return Collections.unmodifiableMap(acc);
+        }
+
+        /** Apply auto then manual for one scope — manual wins per field. */
+        private void applyScopeModel(Map<String, Map<String, Object>> acc, TenantProject key) {
+            Layer auto = perScopeAuto.get(key);
+            if (auto != null) applyModelLayer(acc, auto);
+            Layer manual = perScopeManual.get(key);
+            if (manual != null) applyModelLayer(acc, manual);
+        }
+
+        private void applyScopeProvider(Map<String, Map<String, Object>> acc, TenantProject key) {
+            Layer auto = perScopeAuto.get(key);
+            if (auto != null) applyProviderLayer(acc, auto);
+            Layer manual = perScopeManual.get(key);
+            if (manual != null) applyProviderLayer(acc, manual);
         }
 
         private static void applyModelLayer(

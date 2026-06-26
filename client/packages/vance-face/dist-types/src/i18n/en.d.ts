@@ -1617,6 +1617,11 @@ declare const _default: {
             refreshModelCatalogDescription: string;
             refreshModelCatalogBusy: string;
             refreshModelCatalogResult: string;
+            discoverModels: string;
+            discoverModelsDescription: string;
+            discoverModelsBusy: string;
+            discoverModelsResult: string;
+            discoverModelsSkipped: string;
         };
     };
 };

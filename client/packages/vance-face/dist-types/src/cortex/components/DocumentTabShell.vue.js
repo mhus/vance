@@ -332,6 +332,25 @@ const codePreviewKind = computed(() => {
     return undefined;
 });
 const showToggle = computed(() => isViewMode.value || codePreviewKind.value !== undefined);
+// ─── Application manifest jump-link ─────────────────────────────
+//
+// A {@code kind: application} document at {@code …/_app.yaml} is the
+// manifest of an app folder (Kanban, Calendar, Slideshow). The
+// generic CodeEditor view is fine for inspecting the YAML, but most
+// of the time the user wants the dedicated app editor under
+// {@code /app.html}. Surface a small ↗ jump-link in the toolbar so
+// the user is never stuck without a way to the rich editor.
+const appEditorUrl = computed(() => {
+    const doc = props.document;
+    // Path is the load-order-independent signal: `kind` arrives only
+    // after the full DTO fetch and stays null on tabs that started life
+    // as a summary (file-tree-driven openFile races, browser back from
+    // the app editor, …). The basename `_app.yaml` is unambiguous and
+    // doesn't drift with metadata-load timing.
+    if (!doc.path?.endsWith('/_app.yaml'))
+        return null;
+    return `/app.html?documentId=${encodeURIComponent(doc.id)}`;
+});
 const VIEW_EDIT_KEY = 'editor:viewEditMode';
 function loadViewEditMode() {
     try {
@@ -537,6 +556,13 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.
     ...{ class: "font-mono opacity-80 truncate" },
 });
 (__VLS_ctx.document.path);
+if (__VLS_ctx.appEditorUrl) {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
+        href: (__VLS_ctx.appEditorUrl),
+        ...{ class: "text-xs px-1.5 py-0.5 rounded border border-primary/40 text-primary hover:bg-primary/10 leading-none" },
+        title: "Open in Application editor",
+    });
+}
 if (__VLS_ctx.showToggle) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "flex border border-base-300 rounded overflow-hidden text-xs" },
@@ -699,7 +725,7 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.d
 });
 if (__VLS_ctx.binding.mode === 'code' && __VLS_ctx.codePreviewKind && __VLS_ctx.viewEditMode === 'view') {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "flex-1 min-h-0 overflow-hidden" },
+        ...{ class: "flex-1 min-h-0 overflow-auto p-4" },
     });
     const __VLS_3 = ((__VLS_ctx.codePreviewKind.codePreview));
     // @ts-ignore
@@ -1129,6 +1155,15 @@ if (__VLS_ctx.showSlart && __VLS_ctx.store.projectId) {
 /** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-80']} */ ;
 /** @type {__VLS_StyleScopedClasses['truncate']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-1.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-0.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['rounded']} */ ;
+/** @type {__VLS_StyleScopedClasses['border']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-primary/40']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-primary']} */ ;
+/** @type {__VLS_StyleScopedClasses['hover:bg-primary/10']} */ ;
+/** @type {__VLS_StyleScopedClasses['leading-none']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['border']} */ ;
 /** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;
@@ -1229,7 +1264,8 @@ if (__VLS_ctx.showSlart && __VLS_ctx.store.projectId) {
 /** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
-/** @type {__VLS_StyleScopedClasses['overflow-hidden']} */ ;
+/** @type {__VLS_StyleScopedClasses['overflow-auto']} */ ;
+/** @type {__VLS_StyleScopedClasses['p-4']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
 /** @type {__VLS_StyleScopedClasses['overflow-hidden']} */ ;
@@ -1410,6 +1446,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             isViewMode: isViewMode,
             codePreviewKind: codePreviewKind,
             showToggle: showToggle,
+            appEditorUrl: appEditorUrl,
             viewEditMode: viewEditMode,
             showRawEditor: showRawEditor,
             runAdapter: runAdapter,

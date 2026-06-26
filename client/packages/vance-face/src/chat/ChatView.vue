@@ -120,9 +120,25 @@ interface ActivityEvent {
    *  comma-separated string) for 'who'. */
   displayName: string;
   at: Date;
+  /** Message after which this event should render — snapshotted to the
+   *  last message in {@link allMessages} at push time. {@code null}
+   *  means "render above all messages" (event arrived before any
+   *  message did). Pinning to a messageId keeps the event inline in
+   *  the chat flow instead of sliding down each time a new bubble
+   *  appears at the bottom. */
+  afterMessageId: string | null;
 }
 const activityEvents = ref<ActivityEvent[]>([]);
 let activitySeq = 0;
+
+function lastMessageIdSnapshot(): string | null {
+  const msgs = allMessages.value;
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const id = msgs[i].messageId;
+    if (id) return id;
+  }
+  return null;
+}
 const sessionIdRef = computed(() => props.sessionId);
 const { onChange: onRosterChange, onInitial: onRosterInitial } =
   useSessionRoster(sessionIdRef);
@@ -140,15 +156,18 @@ onRosterInitial((list) => {
     kind: 'who',
     displayName: names.join(', '),
     at: new Date(),
+    afterMessageId: lastMessageIdSnapshot(),
   });
 });
 onRosterChange((change: RosterChange) => {
+  const anchor = lastMessageIdSnapshot();
   for (const p of change.joined) {
     activityEvents.value.push({
       id: `act-${++activitySeq}`,
       kind: 'joined',
       displayName: p.displayName ?? p.userId,
       at: change.at,
+      afterMessageId: anchor,
     });
   }
   for (const p of change.left) {
@@ -157,6 +176,7 @@ onRosterChange((change: RosterChange) => {
       kind: 'left',
       displayName: p.displayName ?? p.userId,
       at: change.at,
+      afterMessageId: anchor,
     });
   }
 });
@@ -175,12 +195,42 @@ watch(
  * parent (ChatApp) after a successful {@code session-who} WS reply.
  * Exposed via {@link defineExpose} below.
  */
+/**
+ * Activity events grouped by their anchor messageId. Used by the
+ * template to interleave roster join/leave/who lines into the message
+ * stream right where they arrived, instead of dumping them all at the
+ * bottom (which made the feed slide down whenever a new bubble landed).
+ * Key {@code ''} holds the leading bucket — events that arrived before
+ * any message did.
+ */
+const activityEventsByAnchor = computed<Map<string, ActivityEvent[]>>(() => {
+  const map = new Map<string, ActivityEvent[]>();
+  for (const evt of activityEvents.value) {
+    const key = evt.afterMessageId ?? '';
+    let bucket = map.get(key);
+    if (!bucket) {
+      bucket = [];
+      map.set(key, bucket);
+    }
+    bucket.push(evt);
+  }
+  return map;
+});
+const leadingActivityEvents = computed<ActivityEvent[]>(
+  () => activityEventsByAnchor.value.get('') ?? [],
+);
+function activityEventsAfter(messageId: string | undefined): ActivityEvent[] {
+  if (!messageId) return [];
+  return activityEventsByAnchor.value.get(messageId) ?? [];
+}
+
 function pushWhoActivity(names: string[]): void {
   activityEvents.value.push({
     id: `act-${++activitySeq}`,
     kind: 'who',
     displayName: names.join(', '),
     at: new Date(),
+    afterMessageId: lastMessageIdSnapshot(),
   });
 }
 
@@ -678,48 +728,13 @@ onBeforeUnmount(() => {
         </div>
         <VAlert v-else-if="historyError" variant="error">{{ historyError }}</VAlert>
 
-        <template v-for="(msg, idx) in allMessages" :key="msg.messageId">
-          <MessageBubble
-            :role="String(msg.role)"
-            :content="msg.content"
-            :created-at="msg.createdAt"
-            :worker="workerMessageIds.has(msg.messageId)"
-            :meta="msg.meta"
-            :options-actionable="msg.messageId === activeAskUserMessageId"
-            :sender-user-id="msg.senderUserId"
-            :sender-display-name="msg.senderDisplayName"
-            :current-user-id="currentUserId"
-            @pick-option="onPickAskUserOption"
-          />
-          <FollowUpGhost
-            v-if="idx === followUpAnchorIndex && !visibleDraft"
-            :suggestion="followUpSuggestion ?? null"
-            @accept="onAcceptFollowUp"
-          />
-        </template>
-
-        <MessageBubble
-          v-if="visibleDraft"
-          :role="String(visibleDraft.role)"
-          :content="visibleDraft.content"
-          :streaming="true"
-        />
-
-        <MessageBubble
-          v-for="draft in visibleWorkerDrafts"
-          :key="`worker-draft-${draft.processName}`"
-          :role="String(draft.role)"
-          :content="draft.content"
-          :worker="true"
-          :process-name="draft.processName"
-          :streaming="true"
-        />
-
-        <!-- Ephemeral roster activity — non-persistent, see
-             planning/multi-user-sessions.md §7. Each join/leave gets
-             a thin centered separator; page reload wipes the feed. -->
+        <!-- Ephemeral roster activity that arrived before any message
+             — non-persistent, see planning/multi-user-sessions.md §7.
+             Subsequent join/leave/who events render inline after the
+             message they followed, so the feed stays anchored to the
+             chat flow instead of sliding down on every new bubble. -->
         <div
-          v-for="evt in activityEvents"
+          v-for="evt in leadingActivityEvents"
           :key="evt.id"
           class="flex items-center gap-2 text-xs opacity-60 my-2"
         >
@@ -740,6 +755,65 @@ onBeforeUnmount(() => {
           </span>
           <div class="flex-1 border-t border-base-300" />
         </div>
+
+        <template v-for="(msg, idx) in allMessages" :key="msg.messageId">
+          <MessageBubble
+            :role="String(msg.role)"
+            :content="msg.content"
+            :created-at="msg.createdAt"
+            :worker="workerMessageIds.has(msg.messageId)"
+            :meta="msg.meta"
+            :options-actionable="msg.messageId === activeAskUserMessageId"
+            :sender-user-id="msg.senderUserId"
+            :sender-display-name="msg.senderDisplayName"
+            :current-user-id="currentUserId"
+            @pick-option="onPickAskUserOption"
+          />
+          <FollowUpGhost
+            v-if="idx === followUpAnchorIndex && !visibleDraft"
+            :suggestion="followUpSuggestion ?? null"
+            @accept="onAcceptFollowUp"
+          />
+          <div
+            v-for="evt in activityEventsAfter(msg.messageId)"
+            :key="evt.id"
+            class="flex items-center gap-2 text-xs opacity-60 my-2"
+          >
+            <div class="flex-1 border-t border-base-300" />
+            <span v-if="evt.kind === 'who'">
+              <span aria-hidden="true">👥</span>
+              <span class="ml-1">{{ _('chat.activity.whoHeader') }}</span>
+              <span class="font-medium ml-1">{{ evt.displayName }}</span>
+            </span>
+            <span v-else>
+              <span aria-hidden="true">👥</span>
+              <span class="font-medium ml-1">{{ evt.displayName }}</span>
+              <span class="ml-1">{{
+                evt.kind === 'joined'
+                  ? _('chat.activity.joined')
+                  : _('chat.activity.left')
+              }}</span>
+            </span>
+            <div class="flex-1 border-t border-base-300" />
+          </div>
+        </template>
+
+        <MessageBubble
+          v-if="visibleDraft"
+          :role="String(visibleDraft.role)"
+          :content="visibleDraft.content"
+          :streaming="true"
+        />
+
+        <MessageBubble
+          v-for="draft in visibleWorkerDrafts"
+          :key="`worker-draft-${draft.processName}`"
+          :role="String(draft.role)"
+          :content="draft.content"
+          :worker="true"
+          :process-name="draft.processName"
+          :streaming="true"
+        />
       </div>
     </div>
 

@@ -1634,6 +1634,11 @@ export default {
             refreshModelCatalogDescription: 'Re-read all model documents under _vance/model/** and rebuild the in-memory catalog. The brain also refreshes automatically every 30 minutes.',
             refreshModelCatalogBusy: 'Refreshing…',
             refreshModelCatalogResult: 'Reloaded {bundled} bundled models, {providers} providers, {scopes} override scopes in {ms} ms.',
+            discoverModels: 'Discover AI Models',
+            discoverModelsDescription: 'Walk every project in this tenant, call each configured provider\'s listing endpoint, and write per-model docs under _vance/model-auto/**. Manual edits at _vance/model/** are not touched.',
+            discoverModelsBusy: 'Discovering…',
+            discoverModelsResult: 'Discovered {written} model(s) across {instances} provider instance(s) in {scopes} project(s) ({ms} ms).',
+            discoverModelsSkipped: '{count} instance(s) skipped:',
         },
     },
 };

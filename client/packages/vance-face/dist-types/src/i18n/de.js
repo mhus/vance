@@ -1628,6 +1628,11 @@ export default {
             refreshModelCatalogDescription: 'Liest alle Modell-Dokumente unter _vance/model/** neu ein und baut den In-Memory-Katalog neu auf. Der Brain refresht zusätzlich automatisch alle 30 Minuten.',
             refreshModelCatalogBusy: 'Wird neu geladen…',
             refreshModelCatalogResult: '{bundled} Bundled-Modelle, {providers} Provider, {scopes} Override-Scopes in {ms} ms neu geladen.',
+            discoverModels: 'KI-Modelle entdecken',
+            discoverModelsDescription: 'Geht alle Projekte des Mandanten durch, ruft das Listing-Endpoint jedes konfigurierten Providers und schreibt Pro-Modell-Dokumente unter _vance/model-auto/**. Manuelle Edits unter _vance/model/** werden nicht angefasst.',
+            discoverModelsBusy: 'Entdecke…',
+            discoverModelsResult: '{written} Modell(e) gefunden über {instances} Provider-Instance(s) in {scopes} Projekt(en) ({ms} ms).',
+            discoverModelsSkipped: '{count} Instance(s) übersprungen:',
         },
     },
     workspace: {

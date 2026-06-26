@@ -290,6 +290,33 @@ async function onRefreshModelCatalog() {
         refreshBusy.value = false;
     }
 }
+const discoverBusy = ref(false);
+const discoverResult = ref(null);
+const discoverSkipped = ref([]);
+const discoverError = ref(null);
+async function onDiscoverModels() {
+    discoverBusy.value = true;
+    discoverResult.value = null;
+    discoverSkipped.value = [];
+    discoverError.value = null;
+    try {
+        const result = await brainFetch('POST', 'admin/ai-models/discover');
+        discoverResult.value = t('profile.actions.discoverModelsResult', {
+            written: result.modelsWritten,
+            instances: result.instancesScanned,
+            scopes: result.scopesScanned,
+            ms: result.durationMs,
+        });
+        discoverSkipped.value = Object.entries(result.skippedInstances ?? {})
+            .map(([key, reason]) => ({ key, reason }));
+    }
+    catch (e) {
+        discoverError.value = e instanceof Error ? e.message : String(e);
+    }
+    finally {
+        discoverBusy.value = false;
+    }
+}
 async function onSpeechVolumeInput(event) {
     speechVolumeSaved.value = null;
     const value = parseFloat(event.target.value);
@@ -736,7 +763,7 @@ else if (__VLS_ctx.profile) {
     });
     (__VLS_ctx.$t('profile.actions.description'));
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "flex flex-col gap-3" },
+        ...{ class: "flex flex-col gap-4" },
     });
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -792,13 +819,97 @@ else if (__VLS_ctx.profile) {
         (__VLS_ctx.refreshError);
         var __VLS_100;
     }
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "flex items-center gap-3" },
+    });
+    const __VLS_101 = {}.VButton;
+    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+    // @ts-ignore
+    const __VLS_102 = __VLS_asFunctionalComponent(__VLS_101, new __VLS_101({
+        ...{ 'onClick': {} },
+        variant: "secondary",
+        loading: (__VLS_ctx.discoverBusy),
+    }));
+    const __VLS_103 = __VLS_102({
+        ...{ 'onClick': {} },
+        variant: "secondary",
+        loading: (__VLS_ctx.discoverBusy),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_102));
+    let __VLS_105;
+    let __VLS_106;
+    let __VLS_107;
+    const __VLS_108 = {
+        onClick: (__VLS_ctx.onDiscoverModels)
+    };
+    __VLS_104.slots.default;
+    (__VLS_ctx.discoverBusy
+        ? __VLS_ctx.$t('profile.actions.discoverModelsBusy')
+        : __VLS_ctx.$t('profile.actions.discoverModels'));
+    var __VLS_104;
+    if (__VLS_ctx.discoverResult) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "text-success text-sm" },
+        });
+        (__VLS_ctx.discoverResult);
+    }
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
+        ...{ class: "text-xs opacity-60 mt-1" },
+    });
+    (__VLS_ctx.$t('profile.actions.discoverModelsDescription'));
+    if (__VLS_ctx.discoverSkipped.length > 0) {
+        const __VLS_109 = {}.VAlert;
+        /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
+        // @ts-ignore
+        const __VLS_110 = __VLS_asFunctionalComponent(__VLS_109, new __VLS_109({
+            variant: "warning",
+            ...{ class: "mt-2" },
+        }));
+        const __VLS_111 = __VLS_110({
+            variant: "warning",
+            ...{ class: "mt-2" },
+        }, ...__VLS_functionalComponentArgsRest(__VLS_110));
+        __VLS_112.slots.default;
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "font-medium" },
+        });
+        (__VLS_ctx.$t('profile.actions.discoverModelsSkipped', { count: __VLS_ctx.discoverSkipped.length }));
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.ul, __VLS_intrinsicElements.ul)({
+            ...{ class: "text-xs mt-1 list-disc pl-4" },
+        });
+        for (const [item] of __VLS_getVForSourceType((__VLS_ctx.discoverSkipped))) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
+                key: (item.key),
+                ...{ class: "font-mono" },
+            });
+            (item.key);
+            (item.reason);
+        }
+        var __VLS_112;
+    }
+    if (__VLS_ctx.discoverError) {
+        const __VLS_113 = {}.VAlert;
+        /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
+        // @ts-ignore
+        const __VLS_114 = __VLS_asFunctionalComponent(__VLS_113, new __VLS_113({
+            variant: "error",
+            ...{ class: "mt-2" },
+        }));
+        const __VLS_115 = __VLS_114({
+            variant: "error",
+            ...{ class: "mt-2" },
+        }, ...__VLS_functionalComponentArgsRest(__VLS_114));
+        __VLS_116.slots.default;
+        (__VLS_ctx.discoverError);
+        var __VLS_116;
+    }
     var __VLS_88;
-    const __VLS_101 = {}.VCard;
+    const __VLS_117 = {}.VCard;
     /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
     // @ts-ignore
-    const __VLS_102 = __VLS_asFunctionalComponent(__VLS_101, new __VLS_101({}));
-    const __VLS_103 = __VLS_102({}, ...__VLS_functionalComponentArgsRest(__VLS_102));
-    __VLS_104.slots.default;
+    const __VLS_118 = __VLS_asFunctionalComponent(__VLS_117, new __VLS_117({}));
+    const __VLS_119 = __VLS_118({}, ...__VLS_functionalComponentArgsRest(__VLS_118));
+    __VLS_120.slots.default;
     __VLS_asFunctionalElement(__VLS_intrinsicElements.h2, __VLS_intrinsicElements.h2)({
         ...{ class: "text-lg font-semibold mb-3" },
     });
@@ -845,7 +956,7 @@ else if (__VLS_ctx.profile) {
             }
         }
     }
-    var __VLS_104;
+    var __VLS_120;
 }
 var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['container']} */ ;
@@ -942,7 +1053,7 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['mb-3']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
-/** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-4']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['items-center']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
@@ -951,6 +1062,22 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
 /** @type {__VLS_StyleScopedClasses['mt-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['mt-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-success']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['mt-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['mt-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-medium']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['mt-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['list-disc']} */ ;
+/** @type {__VLS_StyleScopedClasses['pl-4']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
 /** @type {__VLS_StyleScopedClasses['mt-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-lg']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-semibold']} */ ;
@@ -1030,6 +1157,11 @@ const __VLS_self = (await import('vue')).defineComponent({
             refreshResult: refreshResult,
             refreshError: refreshError,
             onRefreshModelCatalog: onRefreshModelCatalog,
+            discoverBusy: discoverBusy,
+            discoverResult: discoverResult,
+            discoverSkipped: discoverSkipped,
+            discoverError: discoverError,
+            onDiscoverModels: onDiscoverModels,
             onSpeechVolumeInput: onSpeechVolumeInput,
         };
     },

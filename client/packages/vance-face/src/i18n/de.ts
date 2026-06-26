@@ -225,6 +225,7 @@ export default {
     export: {
       saveAsDocumentTooltip:
         'Diese Konversation als Markdown-Dokument im Projekt des Chats speichern (Summary und RAG-Indexierung standardmäßig aus).',
+      saveAsDocumentLabel: 'Als Dokument speichern',
       saveSucceeded: 'Gespeichert unter {path}',
       saveFailed: 'Konversation konnte nicht als Dokument gespeichert werden.',
     },

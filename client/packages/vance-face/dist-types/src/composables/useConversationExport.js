@@ -41,6 +41,24 @@ function titleCaseRole(role) {
     return lower.charAt(0).toUpperCase() + lower.slice(1);
 }
 /**
+ * Heading label for a turn. ASSISTANT turns are anonymous ("Assistant").
+ * USER turns prefer the author's display name → login id → generic "User",
+ * mirroring {@link MessageBubble}'s {@code otherDisplayName} so the export
+ * matches what the chat shows on screen. Multi-user chats need this so the
+ * exported markdown identifies who said what.
+ */
+function turnHeadingLabel(turn) {
+    if (turn.role !== 'USER')
+        return titleCaseRole(turn.role);
+    const name = turn.senderDisplayName?.trim();
+    if (name && name.length > 0)
+        return name;
+    const userId = turn.senderUserId?.trim();
+    if (userId && userId.length > 0)
+        return userId;
+    return 'User';
+}
+/**
  * Tokens that force a YAML scalar to be quoted to stay parseable. Most
  * session-ids (UUIDs) and project names (lowercase + underscores) are
  * safe unquoted, but defensive quoting protects against the few legal
@@ -102,9 +120,8 @@ export function formatConversationMarkdown(turns, frontmatter = {}) {
         if (content.length === 0)
             continue;
         const ts = formatTurnTimestamp(turn.createdAt);
-        const heading = ts
-            ? `## ${titleCaseRole(turn.role)} · ${ts}`
-            : `## ${titleCaseRole(turn.role)}`;
+        const label = turnHeadingLabel(turn);
+        const heading = ts ? `## ${label} · ${ts}` : `## ${label}`;
         blocks.push(`${heading}\n\n${content}`);
     }
     if (blocks.length === 0)

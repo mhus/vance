@@ -15,6 +15,12 @@ interface ExportTurn {
   role: string;
   content: string;
   createdAt?: Date | string | number;
+  /** Login id of the message author — multi-user chats attribute each
+   *  USER turn to its sender so the export carries provenance. */
+  senderUserId?: string | null;
+  /** Display name of the author; preferred over {@code senderUserId}
+   *  in the rendered heading. */
+  senderDisplayName?: string | null;
 }
 
 function pad2(n: number): string {
@@ -50,6 +56,22 @@ export function exportTimestampSlug(now: Date = new Date()): string {
 function titleCaseRole(role: string): string {
   const lower = role.toLowerCase();
   return lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+
+/**
+ * Heading label for a turn. ASSISTANT turns are anonymous ("Assistant").
+ * USER turns prefer the author's display name → login id → generic "User",
+ * mirroring {@link MessageBubble}'s {@code otherDisplayName} so the export
+ * matches what the chat shows on screen. Multi-user chats need this so the
+ * exported markdown identifies who said what.
+ */
+function turnHeadingLabel(turn: ExportTurn): string {
+  if (turn.role !== 'USER') return titleCaseRole(turn.role);
+  const name = turn.senderDisplayName?.trim();
+  if (name && name.length > 0) return name;
+  const userId = turn.senderUserId?.trim();
+  if (userId && userId.length > 0) return userId;
+  return 'User';
 }
 
 /**
@@ -125,9 +147,8 @@ export function formatConversationMarkdown(
     const content = (turn.content ?? '').trim();
     if (content.length === 0) continue;
     const ts = formatTurnTimestamp(turn.createdAt);
-    const heading = ts
-      ? `## ${titleCaseRole(turn.role)} · ${ts}`
-      : `## ${titleCaseRole(turn.role)}`;
+    const label = turnHeadingLabel(turn);
+    const heading = ts ? `## ${label} · ${ts}` : `## ${label}`;
     blocks.push(`${heading}\n\n${content}`);
   }
   if (blocks.length === 0) return '';

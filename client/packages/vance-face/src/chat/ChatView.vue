@@ -670,8 +670,11 @@ onBeforeUnmount(() => {
       </div>
       <SessionHeader
         :session-id="sessionId"
+        :can-save="canExportConversation"
+        :exporting="exporting"
         @archived="emit('leave')"
         @deleted="emit('leave')"
+        @save="onSaveConversation"
       />
       <span
         v-if="modeBadge"
@@ -680,14 +683,6 @@ onBeforeUnmount(() => {
       >
         {{ modeBadge }}
       </span>
-      <VButton
-        variant="ghost"
-        size="sm"
-        :disabled="exporting || !canExportConversation"
-        :title="$t('chat.export.saveAsDocumentTooltip')"
-        :aria-label="$t('chat.export.saveAsDocumentTooltip')"
-        @click="onSaveConversation"
-      >{{ exporting ? '⌛' : '💾' }}</VButton>
     </header>
 
     <!-- Mediation banner — Eddie handed us over to a worker; the

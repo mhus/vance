@@ -211,6 +211,7 @@ export default {
         },
         export: {
             saveAsDocumentTooltip: 'Save this conversation as a Markdown document in the chat\'s project (auto-summary and RAG indexing off by default).',
+            saveAsDocumentLabel: 'Save as document',
             saveSucceeded: 'Saved to {path}',
             saveFailed: 'Failed to save the conversation as a document.',
         },

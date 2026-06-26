@@ -199,6 +199,7 @@ declare const _default: {
         };
         export: {
             saveAsDocumentTooltip: string;
+            saveAsDocumentLabel: string;
             saveSucceeded: string;
             saveFailed: string;
         };

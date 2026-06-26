@@ -19,14 +19,24 @@ import { useI18n } from 'vue-i18n';
 
 interface Props {
   sessionId: string;
+  /** Show a "Save as document" affordance in the action group. Wired by
+   *  the chat host (ChatView) — the export logic lives there. */
+  canSave?: boolean;
+  /** True while an export is in flight; renders a spinner glyph and
+   *  disables the button. */
+  exporting?: boolean;
 }
 
-const props = defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), {
+  canSave: false,
+  exporting: false,
+});
 
 const emit = defineEmits<{
   (e: 'archived'): void;
   (e: 'reactivated'): void;
   (e: 'deleted'): void;
+  (e: 'save'): void;
 }>();
 
 const { t } = useI18n();
@@ -54,9 +64,9 @@ const showTags = ref(false);
 const saving = ref(false);
 
 // Responsive collapse: when the header has less than this many pixels of
-// horizontal room, the five action buttons (pin/color/labels/archive/delete)
-// fold into a single "⋯" overflow menu.
-const COMPACT_THRESHOLD_PX = 520;
+// horizontal room, the action buttons (save/pin/multi-user/color/labels/
+// archive/delete) fold into a single "⋯" overflow menu.
+const COMPACT_THRESHOLD_PX = 580;
 const rootEl = ref<HTMLElement | null>(null);
 const menuEl = ref<HTMLElement | null>(null);
 const containerWidth = ref<number>(Number.POSITIVE_INFINITY);
@@ -323,9 +333,24 @@ async function onDelete(): Promise<void> {
     </div>
 
     <!-- ─── Wide layout: inline action buttons ─── -->
-    <!-- Owner-only: all action buttons (pin/color/tags/archive/delete)
-         hit owner-gated REST endpoints. Hide them for non-owners on
-         shared sessions. -->
+    <template v-if="!compact">
+      <!-- Save as document — visible to any participant (including
+           non-owners on shared sessions) since the export targets the
+           chat project, not session metadata. -->
+      <VButton
+        v-if="canSave"
+        variant="ghost"
+        size="sm"
+        :disabled="exporting"
+        :title="t('chat.export.saveAsDocumentTooltip')"
+        :aria-label="t('chat.export.saveAsDocumentTooltip')"
+        @click="emit('save')"
+      >{{ exporting ? '⌛' : '💾' }}</VButton>
+    </template>
+
+    <!-- Owner-only: all metadata action buttons (pin/color/tags/archive/
+         delete) hit owner-gated REST endpoints. Hide them for non-owners
+         on shared sessions. -->
     <template v-if="!compact && isOwner">
       <!-- Pin toggle -->
       <button
@@ -437,11 +462,11 @@ async function onDelete(): Promise<void> {
     </template>
 
     <!-- ─── Compact layout: overflow menu ─── -->
-    <!-- Owner-only: every menu item (pin, color, tags, archive,
-         delete, multi-user toggle) hits owner-gated REST endpoints,
-         so we hide the trigger entirely for non-owners on a shared
-         session — see planning/multi-user-sessions.md §2.4. -->
-    <div v-else-if="isOwner" ref="menuEl" class="relative">
+    <!-- The trigger renders for owners (metadata actions are owner-gated)
+         OR for any participant who has something exportable (save item).
+         Owner-only items inside the menu stay gated on isOwner — see
+         planning/multi-user-sessions.md §2.4. -->
+    <div v-if="compact && (canSave || isOwner)" ref="menuEl" class="relative">
       <button
         type="button"
         class="btn btn-ghost btn-sm"
@@ -465,6 +490,24 @@ async function onDelete(): Promise<void> {
         class="absolute right-0 top-full mt-1 z-30 w-64 rounded-md border border-base-300 bg-base-100 shadow-lg overflow-hidden"
         role="menu"
       >
+        <!-- Save as document — top of menu, visible to any participant -->
+        <button
+          v-if="canSave"
+          type="button"
+          class="flex items-center gap-3 w-full px-3 py-2 text-sm hover:bg-base-200 disabled:opacity-50"
+          :disabled="exporting"
+          :title="t('chat.export.saveAsDocumentTooltip')"
+          role="menuitem"
+          @click="closeMenu(); emit('save')"
+        >
+          <span class="w-5 text-center">{{ exporting ? '⌛' : '💾' }}</span>
+          <span class="flex-1 text-left">{{ t('chat.export.saveAsDocumentLabel') }}</span>
+        </button>
+        <div v-if="canSave && isOwner" class="border-t border-base-300"></div>
+
+        <!-- Owner-gated section: every item below hits owner-only REST
+             endpoints, so wrap the whole block in a single isOwner gate. -->
+        <template v-if="isOwner">
         <!-- Pin toggle -->
         <button
           v-if="!isArchived"
@@ -591,6 +634,7 @@ async function onDelete(): Promise<void> {
           <span class="w-5 text-center">🗑️</span>
           <span class="flex-1 text-left">{{ t('chat.sessionHeader.delete') }}</span>
         </button>
+        </template>
       </div>
     </div>
   </div>

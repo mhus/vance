@@ -3,7 +3,10 @@ import { AccentColor, SessionStatus, } from '@vance/generated';
 import { archiveSession, deleteSession, getUsername, listSessions, patchSessionMetadata, reactivateSession, } from '@vance/shared';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-const props = defineProps();
+const props = withDefaults(defineProps(), {
+    canSave: false,
+    exporting: false,
+});
 const emit = defineEmits();
 const { t } = useI18n();
 const session = ref(null);
@@ -27,9 +30,9 @@ const showColor = ref(false);
 const showTags = ref(false);
 const saving = ref(false);
 // Responsive collapse: when the header has less than this many pixels of
-// horizontal room, the five action buttons (pin/color/labels/archive/delete)
-// fold into a single "⋯" overflow menu.
-const COMPACT_THRESHOLD_PX = 520;
+// horizontal room, the action buttons (save/pin/multi-user/color/labels/
+// archive/delete) fold into a single "⋯" overflow menu.
+const COMPACT_THRESHOLD_PX = 580;
 const rootEl = ref(null);
 const menuEl = ref(null);
 const containerWidth = ref(Number.POSITIVE_INFINITY);
@@ -252,6 +255,10 @@ async function onDelete() {
     }
 }
 debugger; /* PartiallyEnd: #3632/scriptSetup.vue */
+const __VLS_withDefaultsArg = (function (t) { return t; })({
+    canSave: false,
+    exporting: false,
+});
 const __VLS_ctx = {};
 let __VLS_components;
 let __VLS_directives;
@@ -318,6 +325,44 @@ if (__VLS_ctx.isArchived) {
     });
     (__VLS_ctx.t('chat.sessionHeader.archived'));
 }
+if (!__VLS_ctx.compact) {
+    if (__VLS_ctx.canSave) {
+        const __VLS_8 = {}.VButton;
+        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+        // @ts-ignore
+        const __VLS_9 = __VLS_asFunctionalComponent(__VLS_8, new __VLS_8({
+            ...{ 'onClick': {} },
+            variant: "ghost",
+            size: "sm",
+            disabled: (__VLS_ctx.exporting),
+            title: (__VLS_ctx.t('chat.export.saveAsDocumentTooltip')),
+            'aria-label': (__VLS_ctx.t('chat.export.saveAsDocumentTooltip')),
+        }));
+        const __VLS_10 = __VLS_9({
+            ...{ 'onClick': {} },
+            variant: "ghost",
+            size: "sm",
+            disabled: (__VLS_ctx.exporting),
+            title: (__VLS_ctx.t('chat.export.saveAsDocumentTooltip')),
+            'aria-label': (__VLS_ctx.t('chat.export.saveAsDocumentTooltip')),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_9));
+        let __VLS_12;
+        let __VLS_13;
+        let __VLS_14;
+        const __VLS_15 = {
+            onClick: (...[$event]) => {
+                if (!(!__VLS_ctx.compact))
+                    return;
+                if (!(__VLS_ctx.canSave))
+                    return;
+                __VLS_ctx.emit('save');
+            }
+        };
+        __VLS_11.slots.default;
+        (__VLS_ctx.exporting ? '⌛' : '💾');
+        var __VLS_11;
+    }
+}
 if (!__VLS_ctx.compact && __VLS_ctx.isOwner) {
     if (!__VLS_ctx.isArchived) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
@@ -375,24 +420,24 @@ if (!__VLS_ctx.compact && __VLS_ctx.isOwner) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                 ...{ class: "absolute right-0 top-full mt-1 z-30 p-3 rounded-md border border-base-300 bg-base-100 shadow-lg" },
             });
-            const __VLS_8 = {}.VColorPicker;
+            const __VLS_16 = {}.VColorPicker;
             /** @type {[typeof __VLS_components.VColorPicker, ]} */ ;
             // @ts-ignore
-            const __VLS_9 = __VLS_asFunctionalComponent(__VLS_8, new __VLS_8({
+            const __VLS_17 = __VLS_asFunctionalComponent(__VLS_16, new __VLS_16({
                 ...{ 'onUpdate:modelValue': {} },
                 modelValue: (__VLS_ctx.session?.color),
             }));
-            const __VLS_10 = __VLS_9({
+            const __VLS_18 = __VLS_17({
                 ...{ 'onUpdate:modelValue': {} },
                 modelValue: (__VLS_ctx.session?.color),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_9));
-            let __VLS_12;
-            let __VLS_13;
-            let __VLS_14;
-            const __VLS_15 = {
+            }, ...__VLS_functionalComponentArgsRest(__VLS_17));
+            let __VLS_20;
+            let __VLS_21;
+            let __VLS_22;
+            const __VLS_23 = {
                 'onUpdate:modelValue': ((v) => { __VLS_ctx.onColor(v); __VLS_ctx.showColor = false; })
             };
-            var __VLS_11;
+            var __VLS_19;
         }
     }
     if (!__VLS_ctx.isArchived) {
@@ -422,110 +467,110 @@ if (!__VLS_ctx.compact && __VLS_ctx.isOwner) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                 ...{ class: "absolute right-0 top-full mt-1 z-30 w-72 p-3 rounded-md border border-base-300 bg-base-100 shadow-lg" },
             });
-            const __VLS_16 = {}.VTagEditor;
+            const __VLS_24 = {}.VTagEditor;
             /** @type {[typeof __VLS_components.VTagEditor, ]} */ ;
             // @ts-ignore
-            const __VLS_17 = __VLS_asFunctionalComponent(__VLS_16, new __VLS_16({
+            const __VLS_25 = __VLS_asFunctionalComponent(__VLS_24, new __VLS_24({
                 ...{ 'onUpdate:modelValue': {} },
                 modelValue: (__VLS_ctx.session?.tags ?? []),
                 label: (__VLS_ctx.t('chat.sessionHeader.tagsLabel')),
                 placeholder: (__VLS_ctx.t('chat.sessionHeader.tagsPlaceholder')),
             }));
-            const __VLS_18 = __VLS_17({
+            const __VLS_26 = __VLS_25({
                 ...{ 'onUpdate:modelValue': {} },
                 modelValue: (__VLS_ctx.session?.tags ?? []),
                 label: (__VLS_ctx.t('chat.sessionHeader.tagsLabel')),
                 placeholder: (__VLS_ctx.t('chat.sessionHeader.tagsPlaceholder')),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_17));
-            let __VLS_20;
-            let __VLS_21;
-            let __VLS_22;
-            const __VLS_23 = {
+            }, ...__VLS_functionalComponentArgsRest(__VLS_25));
+            let __VLS_28;
+            let __VLS_29;
+            let __VLS_30;
+            const __VLS_31 = {
                 'onUpdate:modelValue': (__VLS_ctx.onTags)
             };
-            var __VLS_19;
+            var __VLS_27;
         }
     }
     if (!__VLS_ctx.isArchived) {
-        const __VLS_24 = {}.VButton;
-        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-        // @ts-ignore
-        const __VLS_25 = __VLS_asFunctionalComponent(__VLS_24, new __VLS_24({
-            ...{ 'onClick': {} },
-            variant: "ghost",
-            size: "sm",
-            disabled: (__VLS_ctx.saving),
-            title: (__VLS_ctx.t('chat.sessionHeader.archiveTooltip')),
-        }));
-        const __VLS_26 = __VLS_25({
-            ...{ 'onClick': {} },
-            variant: "ghost",
-            size: "sm",
-            disabled: (__VLS_ctx.saving),
-            title: (__VLS_ctx.t('chat.sessionHeader.archiveTooltip')),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_25));
-        let __VLS_28;
-        let __VLS_29;
-        let __VLS_30;
-        const __VLS_31 = {
-            onClick: (__VLS_ctx.onArchive)
-        };
-        __VLS_27.slots.default;
-        var __VLS_27;
-    }
-    else {
         const __VLS_32 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
         // @ts-ignore
         const __VLS_33 = __VLS_asFunctionalComponent(__VLS_32, new __VLS_32({
             ...{ 'onClick': {} },
-            variant: "primary",
+            variant: "ghost",
             size: "sm",
             disabled: (__VLS_ctx.saving),
+            title: (__VLS_ctx.t('chat.sessionHeader.archiveTooltip')),
         }));
         const __VLS_34 = __VLS_33({
             ...{ 'onClick': {} },
-            variant: "primary",
+            variant: "ghost",
             size: "sm",
             disabled: (__VLS_ctx.saving),
+            title: (__VLS_ctx.t('chat.sessionHeader.archiveTooltip')),
         }, ...__VLS_functionalComponentArgsRest(__VLS_33));
         let __VLS_36;
         let __VLS_37;
         let __VLS_38;
         const __VLS_39 = {
-            onClick: (__VLS_ctx.onReactivate)
+            onClick: (__VLS_ctx.onArchive)
         };
         __VLS_35.slots.default;
-        (__VLS_ctx.t('chat.sessionHeader.reactivate'));
         var __VLS_35;
     }
-    const __VLS_40 = {}.VButton;
+    else {
+        const __VLS_40 = {}.VButton;
+        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+        // @ts-ignore
+        const __VLS_41 = __VLS_asFunctionalComponent(__VLS_40, new __VLS_40({
+            ...{ 'onClick': {} },
+            variant: "primary",
+            size: "sm",
+            disabled: (__VLS_ctx.saving),
+        }));
+        const __VLS_42 = __VLS_41({
+            ...{ 'onClick': {} },
+            variant: "primary",
+            size: "sm",
+            disabled: (__VLS_ctx.saving),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_41));
+        let __VLS_44;
+        let __VLS_45;
+        let __VLS_46;
+        const __VLS_47 = {
+            onClick: (__VLS_ctx.onReactivate)
+        };
+        __VLS_43.slots.default;
+        (__VLS_ctx.t('chat.sessionHeader.reactivate'));
+        var __VLS_43;
+    }
+    const __VLS_48 = {}.VButton;
     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
-    const __VLS_41 = __VLS_asFunctionalComponent(__VLS_40, new __VLS_40({
+    const __VLS_49 = __VLS_asFunctionalComponent(__VLS_48, new __VLS_48({
         ...{ 'onClick': {} },
         variant: "ghost",
         size: "sm",
         disabled: (__VLS_ctx.saving),
         title: (__VLS_ctx.t('chat.sessionHeader.delete')),
     }));
-    const __VLS_42 = __VLS_41({
+    const __VLS_50 = __VLS_49({
         ...{ 'onClick': {} },
         variant: "ghost",
         size: "sm",
         disabled: (__VLS_ctx.saving),
         title: (__VLS_ctx.t('chat.sessionHeader.delete')),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_41));
-    let __VLS_44;
-    let __VLS_45;
-    let __VLS_46;
-    const __VLS_47 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_49));
+    let __VLS_52;
+    let __VLS_53;
+    let __VLS_54;
+    const __VLS_55 = {
         onClick: (__VLS_ctx.onDelete)
     };
-    __VLS_43.slots.default;
-    var __VLS_43;
+    __VLS_51.slots.default;
+    var __VLS_51;
 }
-else if (__VLS_ctx.isOwner) {
+if (__VLS_ctx.compact && (__VLS_ctx.canSave || __VLS_ctx.isOwner)) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ref: "menuEl",
         ...{ class: "relative" },
@@ -533,9 +578,7 @@ else if (__VLS_ctx.isOwner) {
     /** @type {typeof __VLS_ctx.menuEl} */ ;
     __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
         ...{ onClick: (...[$event]) => {
-                if (!!(!__VLS_ctx.compact && __VLS_ctx.isOwner))
-                    return;
-                if (!(__VLS_ctx.isOwner))
+                if (!(__VLS_ctx.compact && (__VLS_ctx.canSave || __VLS_ctx.isOwner)))
                     return;
                 __VLS_ctx.menuOpen = !__VLS_ctx.menuOpen;
             } },
@@ -565,197 +608,281 @@ else if (__VLS_ctx.isOwner) {
             ...{ class: "absolute right-0 top-full mt-1 z-30 w-64 rounded-md border border-base-300 bg-base-100 shadow-lg overflow-hidden" },
             role: "menu",
         });
-        if (!__VLS_ctx.isArchived) {
+        if (__VLS_ctx.canSave) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
                 ...{ onClick: (...[$event]) => {
-                        if (!!(!__VLS_ctx.compact && __VLS_ctx.isOwner))
-                            return;
-                        if (!(__VLS_ctx.isOwner))
+                        if (!(__VLS_ctx.compact && (__VLS_ctx.canSave || __VLS_ctx.isOwner)))
                             return;
                         if (!(__VLS_ctx.menuOpen))
                             return;
-                        if (!(!__VLS_ctx.isArchived))
+                        if (!(__VLS_ctx.canSave))
                             return;
-                        __VLS_ctx.togglePin();
                         __VLS_ctx.closeMenu();
+                        __VLS_ctx.emit('save');
                     } },
                 type: "button",
                 ...{ class: "flex items-center gap-3 w-full px-3 py-2 text-sm hover:bg-base-200 disabled:opacity-50" },
-                disabled: (__VLS_ctx.saving),
+                disabled: (__VLS_ctx.exporting),
+                title: (__VLS_ctx.t('chat.export.saveAsDocumentTooltip')),
                 role: "menuitem",
             });
             __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
                 ...{ class: "w-5 text-center" },
-                ...{ class: (__VLS_ctx.session?.pinned ? '' : 'opacity-40') },
             });
+            (__VLS_ctx.exporting ? '⌛' : '💾');
             __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
                 ...{ class: "flex-1 text-left" },
             });
-            (__VLS_ctx.session?.pinned ? __VLS_ctx.t('chat.sessionHeader.unpinTooltip') : __VLS_ctx.t('chat.sessionHeader.pinTooltip'));
+            (__VLS_ctx.t('chat.export.saveAsDocumentLabel'));
         }
-        if (!__VLS_ctx.isArchived && __VLS_ctx.isOwner) {
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-                ...{ onClick: (...[$event]) => {
-                        if (!!(!__VLS_ctx.compact && __VLS_ctx.isOwner))
-                            return;
-                        if (!(__VLS_ctx.isOwner))
-                            return;
-                        if (!(__VLS_ctx.menuOpen))
-                            return;
-                        if (!(!__VLS_ctx.isArchived && __VLS_ctx.isOwner))
-                            return;
-                        __VLS_ctx.toggleAllowMultipleClients();
-                        __VLS_ctx.closeMenu();
-                    } },
-                type: "button",
-                ...{ class: "flex items-center gap-3 w-full px-3 py-2 text-sm hover:bg-base-200 disabled:opacity-50" },
-                disabled: (__VLS_ctx.saving),
-                role: "menuitem",
+        if (__VLS_ctx.canSave && __VLS_ctx.isOwner) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "border-t border-base-300" },
             });
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                ...{ class: "w-5 text-center" },
-                ...{ class: (__VLS_ctx.session?.allowMultipleClients ? '' : 'opacity-40') },
-            });
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                ...{ class: "flex-1 text-left" },
-            });
-            (__VLS_ctx.session?.allowMultipleClients
-                ? __VLS_ctx.t('chat.sessionHeader.collabDisableLabel')
-                : __VLS_ctx.t('chat.sessionHeader.collabEnableLabel'));
         }
-        if (!__VLS_ctx.isArchived) {
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-                ...{ onClick: (...[$event]) => {
-                        if (!!(!__VLS_ctx.compact && __VLS_ctx.isOwner))
-                            return;
-                        if (!(__VLS_ctx.isOwner))
-                            return;
-                        if (!(__VLS_ctx.menuOpen))
-                            return;
-                        if (!(!__VLS_ctx.isArchived))
-                            return;
-                        __VLS_ctx.menuExpand = __VLS_ctx.menuExpand === 'color' ? null : 'color';
-                    } },
-                type: "button",
-                ...{ class: "flex items-center gap-3 w-full px-3 py-2 text-sm hover:bg-base-200" },
-                role: "menuitem",
-                'aria-expanded': (__VLS_ctx.menuExpand === 'color'),
-            });
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                ...{ class: "w-5 text-center" },
-            });
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                ...{ class: "flex-1 text-left" },
-            });
-            (__VLS_ctx.t('chat.sessionHeader.colorLabel'));
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                ...{ class: "opacity-60 text-xs" },
-            });
-            (__VLS_ctx.menuExpand === 'color' ? '▾' : '▸');
-            if (__VLS_ctx.menuExpand === 'color') {
-                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-                    ...{ class: "px-3 py-2 border-t border-b border-base-300 bg-base-200/30" },
+        if (__VLS_ctx.isOwner) {
+            if (!__VLS_ctx.isArchived) {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                    ...{ onClick: (...[$event]) => {
+                            if (!(__VLS_ctx.compact && (__VLS_ctx.canSave || __VLS_ctx.isOwner)))
+                                return;
+                            if (!(__VLS_ctx.menuOpen))
+                                return;
+                            if (!(__VLS_ctx.isOwner))
+                                return;
+                            if (!(!__VLS_ctx.isArchived))
+                                return;
+                            __VLS_ctx.togglePin();
+                            __VLS_ctx.closeMenu();
+                        } },
+                    type: "button",
+                    ...{ class: "flex items-center gap-3 w-full px-3 py-2 text-sm hover:bg-base-200 disabled:opacity-50" },
+                    disabled: (__VLS_ctx.saving),
+                    role: "menuitem",
                 });
-                const __VLS_48 = {}.VColorPicker;
-                /** @type {[typeof __VLS_components.VColorPicker, ]} */ ;
-                // @ts-ignore
-                const __VLS_49 = __VLS_asFunctionalComponent(__VLS_48, new __VLS_48({
-                    ...{ 'onUpdate:modelValue': {} },
-                    modelValue: (__VLS_ctx.session?.color),
-                }));
-                const __VLS_50 = __VLS_49({
-                    ...{ 'onUpdate:modelValue': {} },
-                    modelValue: (__VLS_ctx.session?.color),
-                }, ...__VLS_functionalComponentArgsRest(__VLS_49));
-                let __VLS_52;
-                let __VLS_53;
-                let __VLS_54;
-                const __VLS_55 = {
-                    'onUpdate:modelValue': ((v) => { __VLS_ctx.onColor(v); __VLS_ctx.closeMenu(); })
-                };
-                var __VLS_51;
-            }
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-                ...{ onClick: (...[$event]) => {
-                        if (!!(!__VLS_ctx.compact && __VLS_ctx.isOwner))
-                            return;
-                        if (!(__VLS_ctx.isOwner))
-                            return;
-                        if (!(__VLS_ctx.menuOpen))
-                            return;
-                        if (!(!__VLS_ctx.isArchived))
-                            return;
-                        __VLS_ctx.menuExpand = __VLS_ctx.menuExpand === 'tags' ? null : 'tags';
-                    } },
-                type: "button",
-                ...{ class: "flex items-center gap-3 w-full px-3 py-2 text-sm hover:bg-base-200" },
-                role: "menuitem",
-                'aria-expanded': (__VLS_ctx.menuExpand === 'tags'),
-            });
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                ...{ class: "w-5 text-center" },
-            });
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                ...{ class: "flex-1 text-left" },
-            });
-            (__VLS_ctx.t('chat.sessionHeader.tagsLabel'));
-            if ((__VLS_ctx.session?.tags?.length ?? 0) > 0) {
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                    ...{ class: "text-[10px] opacity-70" },
+                    ...{ class: "w-5 text-center" },
+                    ...{ class: (__VLS_ctx.session?.pinned ? '' : 'opacity-40') },
                 });
-                (__VLS_ctx.session?.tags?.length);
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                    ...{ class: "flex-1 text-left" },
+                });
+                (__VLS_ctx.session?.pinned ? __VLS_ctx.t('chat.sessionHeader.unpinTooltip') : __VLS_ctx.t('chat.sessionHeader.pinTooltip'));
             }
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                ...{ class: "opacity-60 text-xs" },
+            if (!__VLS_ctx.isArchived && __VLS_ctx.isOwner) {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                    ...{ onClick: (...[$event]) => {
+                            if (!(__VLS_ctx.compact && (__VLS_ctx.canSave || __VLS_ctx.isOwner)))
+                                return;
+                            if (!(__VLS_ctx.menuOpen))
+                                return;
+                            if (!(__VLS_ctx.isOwner))
+                                return;
+                            if (!(!__VLS_ctx.isArchived && __VLS_ctx.isOwner))
+                                return;
+                            __VLS_ctx.toggleAllowMultipleClients();
+                            __VLS_ctx.closeMenu();
+                        } },
+                    type: "button",
+                    ...{ class: "flex items-center gap-3 w-full px-3 py-2 text-sm hover:bg-base-200 disabled:opacity-50" },
+                    disabled: (__VLS_ctx.saving),
+                    role: "menuitem",
+                });
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                    ...{ class: "w-5 text-center" },
+                    ...{ class: (__VLS_ctx.session?.allowMultipleClients ? '' : 'opacity-40') },
+                });
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                    ...{ class: "flex-1 text-left" },
+                });
+                (__VLS_ctx.session?.allowMultipleClients
+                    ? __VLS_ctx.t('chat.sessionHeader.collabDisableLabel')
+                    : __VLS_ctx.t('chat.sessionHeader.collabEnableLabel'));
+            }
+            if (!__VLS_ctx.isArchived) {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                    ...{ onClick: (...[$event]) => {
+                            if (!(__VLS_ctx.compact && (__VLS_ctx.canSave || __VLS_ctx.isOwner)))
+                                return;
+                            if (!(__VLS_ctx.menuOpen))
+                                return;
+                            if (!(__VLS_ctx.isOwner))
+                                return;
+                            if (!(!__VLS_ctx.isArchived))
+                                return;
+                            __VLS_ctx.menuExpand = __VLS_ctx.menuExpand === 'color' ? null : 'color';
+                        } },
+                    type: "button",
+                    ...{ class: "flex items-center gap-3 w-full px-3 py-2 text-sm hover:bg-base-200" },
+                    role: "menuitem",
+                    'aria-expanded': (__VLS_ctx.menuExpand === 'color'),
+                });
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                    ...{ class: "w-5 text-center" },
+                });
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                    ...{ class: "flex-1 text-left" },
+                });
+                (__VLS_ctx.t('chat.sessionHeader.colorLabel'));
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                    ...{ class: "opacity-60 text-xs" },
+                });
+                (__VLS_ctx.menuExpand === 'color' ? '▾' : '▸');
+                if (__VLS_ctx.menuExpand === 'color') {
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                        ...{ class: "px-3 py-2 border-t border-b border-base-300 bg-base-200/30" },
+                    });
+                    const __VLS_56 = {}.VColorPicker;
+                    /** @type {[typeof __VLS_components.VColorPicker, ]} */ ;
+                    // @ts-ignore
+                    const __VLS_57 = __VLS_asFunctionalComponent(__VLS_56, new __VLS_56({
+                        ...{ 'onUpdate:modelValue': {} },
+                        modelValue: (__VLS_ctx.session?.color),
+                    }));
+                    const __VLS_58 = __VLS_57({
+                        ...{ 'onUpdate:modelValue': {} },
+                        modelValue: (__VLS_ctx.session?.color),
+                    }, ...__VLS_functionalComponentArgsRest(__VLS_57));
+                    let __VLS_60;
+                    let __VLS_61;
+                    let __VLS_62;
+                    const __VLS_63 = {
+                        'onUpdate:modelValue': ((v) => { __VLS_ctx.onColor(v); __VLS_ctx.closeMenu(); })
+                    };
+                    var __VLS_59;
+                }
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                    ...{ onClick: (...[$event]) => {
+                            if (!(__VLS_ctx.compact && (__VLS_ctx.canSave || __VLS_ctx.isOwner)))
+                                return;
+                            if (!(__VLS_ctx.menuOpen))
+                                return;
+                            if (!(__VLS_ctx.isOwner))
+                                return;
+                            if (!(!__VLS_ctx.isArchived))
+                                return;
+                            __VLS_ctx.menuExpand = __VLS_ctx.menuExpand === 'tags' ? null : 'tags';
+                        } },
+                    type: "button",
+                    ...{ class: "flex items-center gap-3 w-full px-3 py-2 text-sm hover:bg-base-200" },
+                    role: "menuitem",
+                    'aria-expanded': (__VLS_ctx.menuExpand === 'tags'),
+                });
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                    ...{ class: "w-5 text-center" },
+                });
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                    ...{ class: "flex-1 text-left" },
+                });
+                (__VLS_ctx.t('chat.sessionHeader.tagsLabel'));
+                if ((__VLS_ctx.session?.tags?.length ?? 0) > 0) {
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                        ...{ class: "text-[10px] opacity-70" },
+                    });
+                    (__VLS_ctx.session?.tags?.length);
+                }
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                    ...{ class: "opacity-60 text-xs" },
+                });
+                (__VLS_ctx.menuExpand === 'tags' ? '▾' : '▸');
+                if (__VLS_ctx.menuExpand === 'tags') {
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                        ...{ class: "px-3 py-2 border-t border-b border-base-300 bg-base-200/30" },
+                    });
+                    const __VLS_64 = {}.VTagEditor;
+                    /** @type {[typeof __VLS_components.VTagEditor, ]} */ ;
+                    // @ts-ignore
+                    const __VLS_65 = __VLS_asFunctionalComponent(__VLS_64, new __VLS_64({
+                        ...{ 'onUpdate:modelValue': {} },
+                        modelValue: (__VLS_ctx.session?.tags ?? []),
+                        label: (__VLS_ctx.t('chat.sessionHeader.tagsLabel')),
+                        placeholder: (__VLS_ctx.t('chat.sessionHeader.tagsPlaceholder')),
+                    }));
+                    const __VLS_66 = __VLS_65({
+                        ...{ 'onUpdate:modelValue': {} },
+                        modelValue: (__VLS_ctx.session?.tags ?? []),
+                        label: (__VLS_ctx.t('chat.sessionHeader.tagsLabel')),
+                        placeholder: (__VLS_ctx.t('chat.sessionHeader.tagsPlaceholder')),
+                    }, ...__VLS_functionalComponentArgsRest(__VLS_65));
+                    let __VLS_68;
+                    let __VLS_69;
+                    let __VLS_70;
+                    const __VLS_71 = {
+                        'onUpdate:modelValue': (__VLS_ctx.onTags)
+                    };
+                    var __VLS_67;
+                }
+            }
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "border-t border-base-300" },
             });
-            (__VLS_ctx.menuExpand === 'tags' ? '▾' : '▸');
-            if (__VLS_ctx.menuExpand === 'tags') {
-                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-                    ...{ class: "px-3 py-2 border-t border-b border-base-300 bg-base-200/30" },
+            if (!__VLS_ctx.isArchived) {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                    ...{ onClick: (...[$event]) => {
+                            if (!(__VLS_ctx.compact && (__VLS_ctx.canSave || __VLS_ctx.isOwner)))
+                                return;
+                            if (!(__VLS_ctx.menuOpen))
+                                return;
+                            if (!(__VLS_ctx.isOwner))
+                                return;
+                            if (!(!__VLS_ctx.isArchived))
+                                return;
+                            __VLS_ctx.closeMenu();
+                            __VLS_ctx.onArchive();
+                        } },
+                    type: "button",
+                    ...{ class: "flex items-center gap-3 w-full px-3 py-2 text-sm hover:bg-base-200 disabled:opacity-50" },
+                    disabled: (__VLS_ctx.saving),
+                    role: "menuitem",
                 });
-                const __VLS_56 = {}.VTagEditor;
-                /** @type {[typeof __VLS_components.VTagEditor, ]} */ ;
-                // @ts-ignore
-                const __VLS_57 = __VLS_asFunctionalComponent(__VLS_56, new __VLS_56({
-                    ...{ 'onUpdate:modelValue': {} },
-                    modelValue: (__VLS_ctx.session?.tags ?? []),
-                    label: (__VLS_ctx.t('chat.sessionHeader.tagsLabel')),
-                    placeholder: (__VLS_ctx.t('chat.sessionHeader.tagsPlaceholder')),
-                }));
-                const __VLS_58 = __VLS_57({
-                    ...{ 'onUpdate:modelValue': {} },
-                    modelValue: (__VLS_ctx.session?.tags ?? []),
-                    label: (__VLS_ctx.t('chat.sessionHeader.tagsLabel')),
-                    placeholder: (__VLS_ctx.t('chat.sessionHeader.tagsPlaceholder')),
-                }, ...__VLS_functionalComponentArgsRest(__VLS_57));
-                let __VLS_60;
-                let __VLS_61;
-                let __VLS_62;
-                const __VLS_63 = {
-                    'onUpdate:modelValue': (__VLS_ctx.onTags)
-                };
-                var __VLS_59;
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                    ...{ class: "w-5 text-center" },
+                });
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                    ...{ class: "flex-1 text-left" },
+                });
+                (__VLS_ctx.t('chat.sessionHeader.archive'));
             }
-        }
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-            ...{ class: "border-t border-base-300" },
-        });
-        if (!__VLS_ctx.isArchived) {
+            else {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                    ...{ onClick: (...[$event]) => {
+                            if (!(__VLS_ctx.compact && (__VLS_ctx.canSave || __VLS_ctx.isOwner)))
+                                return;
+                            if (!(__VLS_ctx.menuOpen))
+                                return;
+                            if (!(__VLS_ctx.isOwner))
+                                return;
+                            if (!!(!__VLS_ctx.isArchived))
+                                return;
+                            __VLS_ctx.closeMenu();
+                            __VLS_ctx.onReactivate();
+                        } },
+                    type: "button",
+                    ...{ class: "flex items-center gap-3 w-full px-3 py-2 text-sm hover:bg-base-200 disabled:opacity-50" },
+                    disabled: (__VLS_ctx.saving),
+                    role: "menuitem",
+                });
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                    ...{ class: "w-5 text-center" },
+                });
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                    ...{ class: "flex-1 text-left" },
+                });
+                (__VLS_ctx.t('chat.sessionHeader.reactivate'));
+            }
             __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
                 ...{ onClick: (...[$event]) => {
-                        if (!!(!__VLS_ctx.compact && __VLS_ctx.isOwner))
-                            return;
-                        if (!(__VLS_ctx.isOwner))
+                        if (!(__VLS_ctx.compact && (__VLS_ctx.canSave || __VLS_ctx.isOwner)))
                             return;
                         if (!(__VLS_ctx.menuOpen))
                             return;
-                        if (!(!__VLS_ctx.isArchived))
+                        if (!(__VLS_ctx.isOwner))
                             return;
                         __VLS_ctx.closeMenu();
-                        __VLS_ctx.onArchive();
+                        __VLS_ctx.onDelete();
                     } },
                 type: "button",
-                ...{ class: "flex items-center gap-3 w-full px-3 py-2 text-sm hover:bg-base-200 disabled:opacity-50" },
+                ...{ class: "flex items-center gap-3 w-full px-3 py-2 text-sm hover:bg-base-200 disabled:opacity-50 text-error" },
                 disabled: (__VLS_ctx.saving),
                 role: "menuitem",
             });
@@ -765,58 +892,8 @@ else if (__VLS_ctx.isOwner) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
                 ...{ class: "flex-1 text-left" },
             });
-            (__VLS_ctx.t('chat.sessionHeader.archive'));
+            (__VLS_ctx.t('chat.sessionHeader.delete'));
         }
-        else {
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-                ...{ onClick: (...[$event]) => {
-                        if (!!(!__VLS_ctx.compact && __VLS_ctx.isOwner))
-                            return;
-                        if (!(__VLS_ctx.isOwner))
-                            return;
-                        if (!(__VLS_ctx.menuOpen))
-                            return;
-                        if (!!(!__VLS_ctx.isArchived))
-                            return;
-                        __VLS_ctx.closeMenu();
-                        __VLS_ctx.onReactivate();
-                    } },
-                type: "button",
-                ...{ class: "flex items-center gap-3 w-full px-3 py-2 text-sm hover:bg-base-200 disabled:opacity-50" },
-                disabled: (__VLS_ctx.saving),
-                role: "menuitem",
-            });
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                ...{ class: "w-5 text-center" },
-            });
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                ...{ class: "flex-1 text-left" },
-            });
-            (__VLS_ctx.t('chat.sessionHeader.reactivate'));
-        }
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-            ...{ onClick: (...[$event]) => {
-                    if (!!(!__VLS_ctx.compact && __VLS_ctx.isOwner))
-                        return;
-                    if (!(__VLS_ctx.isOwner))
-                        return;
-                    if (!(__VLS_ctx.menuOpen))
-                        return;
-                    __VLS_ctx.closeMenu();
-                    __VLS_ctx.onDelete();
-                } },
-            type: "button",
-            ...{ class: "flex items-center gap-3 w-full px-3 py-2 text-sm hover:bg-base-200 disabled:opacity-50 text-error" },
-            disabled: (__VLS_ctx.saving),
-            role: "menuitem",
-        });
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-            ...{ class: "w-5 text-center" },
-        });
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-            ...{ class: "flex-1 text-left" },
-        });
-        (__VLS_ctx.t('chat.sessionHeader.delete'));
     }
 }
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
@@ -935,6 +1012,21 @@ else if (__VLS_ctx.isOwner) {
 /** @type {__VLS_StyleScopedClasses['text-center']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-left']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-t']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['w-full']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['hover:bg-base-200']} */ ;
+/** @type {__VLS_StyleScopedClasses['disabled:opacity-50']} */ ;
+/** @type {__VLS_StyleScopedClasses['w-5']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-left']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['items-center']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
@@ -1040,6 +1132,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             VColorPicker: VColorPicker,
             VEmojiPicker: VEmojiPicker,
             VTagEditor: VTagEditor,
+            emit: emit,
             t: t,
             session: session,
             isOwner: isOwner,
@@ -1072,6 +1165,7 @@ const __VLS_self = (await import('vue')).defineComponent({
     },
     __typeEmits: {},
     __typeProps: {},
+    props: {},
 });
 export default (await import('vue')).defineComponent({
     setup() {
@@ -1079,6 +1173,7 @@ export default (await import('vue')).defineComponent({
     },
     __typeEmits: {},
     __typeProps: {},
+    props: {},
 });
 ; /* PartiallyEnd: #4569/main.vue */
 //# sourceMappingURL=SessionHeader.vue.js.map

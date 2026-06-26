@@ -9,6 +9,12 @@ interface ExportTurn {
     role: string;
     content: string;
     createdAt?: Date | string | number;
+    /** Login id of the message author — multi-user chats attribute each
+     *  USER turn to its sender so the export carries provenance. */
+    senderUserId?: string | null;
+    /** Display name of the author; preferred over {@code senderUserId}
+     *  in the rendered heading. */
+    senderDisplayName?: string | null;
 }
 /**
  * Filesystem-safe timestamp slug for the export filename — local time,

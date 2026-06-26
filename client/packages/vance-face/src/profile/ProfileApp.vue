@@ -15,6 +15,7 @@ import {
   resolveSpeechLanguage,
 } from '@/platform/speechSettings';
 import {
+  brainFetch,
   DEFAULT_RATE,
   DEFAULT_VOLUME,
   MAX_RATE,
@@ -303,6 +304,45 @@ async function onSpeechRateInput(event: Event): Promise<void> {
   }
 }
 
+// ─── Actions section ──────────────────────────────────────────────
+// Admin-only triggers for brain-wide caches. The server enforces
+// Action.ADMIN on the underlying endpoint; client gating is intentionally
+// permissive — a non-admin call surfaces the 403 as `refreshError`.
+
+interface ModelCatalogRefreshResponse {
+  refreshedAt: string;
+  bundledModelsLoaded: number;
+  bundledProvidersLoaded: number;
+  overrideScopes: number;
+  durationMs: number;
+}
+
+const refreshBusy = ref(false);
+const refreshResult = ref<string | null>(null);
+const refreshError = ref<string | null>(null);
+
+async function onRefreshModelCatalog(): Promise<void> {
+  refreshBusy.value = true;
+  refreshResult.value = null;
+  refreshError.value = null;
+  try {
+    const result = await brainFetch<ModelCatalogRefreshResponse>(
+      'POST',
+      'admin/ai-models/refresh',
+    );
+    refreshResult.value = t('profile.actions.refreshModelCatalogResult', {
+      bundled: result.bundledModelsLoaded,
+      providers: result.bundledProvidersLoaded,
+      scopes: result.overrideScopes,
+      ms: result.durationMs,
+    });
+  } catch (e: unknown) {
+    refreshError.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    refreshBusy.value = false;
+  }
+}
+
 async function onSpeechVolumeInput(event: Event): Promise<void> {
   speechVolumeSaved.value = null;
   const value = parseFloat((event.target as HTMLInputElement).value);
@@ -493,6 +533,38 @@ async function onSpeechVolumeInput(event: Event): Promise<void> {
             <p v-else class="text-sm opacity-60">
               {{ $t('profile.speech.voiceUnsupported') }}
             </p>
+          </div>
+        </VCard>
+
+        <!-- Actions ─────────────────────────────────────────────────────── -->
+        <VCard>
+          <h2 class="text-lg font-semibold mb-3">{{ $t('profile.actions.title') }}</h2>
+          <p class="text-sm opacity-70 mb-3">
+            {{ $t('profile.actions.description') }}
+          </p>
+          <div class="flex flex-col gap-3">
+            <div>
+              <div class="flex items-center gap-3">
+                <VButton
+                  variant="secondary"
+                  :loading="refreshBusy"
+                  @click="onRefreshModelCatalog"
+                >
+                  {{ refreshBusy
+                    ? $t('profile.actions.refreshModelCatalogBusy')
+                    : $t('profile.actions.refreshModelCatalog') }}
+                </VButton>
+                <span v-if="refreshResult" class="text-success text-sm">
+                  {{ refreshResult }}
+                </span>
+              </div>
+              <p class="text-xs opacity-60 mt-1">
+                {{ $t('profile.actions.refreshModelCatalogDescription') }}
+              </p>
+              <VAlert v-if="refreshError" variant="error" class="mt-2">
+                {{ refreshError }}
+              </VAlert>
+            </div>
           </div>
         </VCard>
 

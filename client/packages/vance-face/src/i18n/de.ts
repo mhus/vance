@@ -1741,6 +1741,16 @@ export default {
       disabled: 'deaktiviert',
       disabledTooltip: 'Team von einem Administrator deaktiviert',
     },
+    actions: {
+      title: 'Aktionen',
+      description: 'Manuelle Trigger für Brain-weite Caches und Refresh-Jobs. Erfordert Admin-Recht.',
+      refreshModelCatalog: 'KI-Modell-Katalog neu laden',
+      refreshModelCatalogDescription:
+        'Liest alle Modell-Dokumente unter _vance/model/** neu ein und baut den In-Memory-Katalog neu auf. Der Brain refresht zusätzlich automatisch alle 30 Minuten.',
+      refreshModelCatalogBusy: 'Wird neu geladen…',
+      refreshModelCatalogResult:
+        '{bundled} Bundled-Modelle, {providers} Provider, {scopes} Override-Scopes in {ms} ms neu geladen.',
+    },
   },
   workspace: {
     loadingFile: 'Datei wird geladen…',

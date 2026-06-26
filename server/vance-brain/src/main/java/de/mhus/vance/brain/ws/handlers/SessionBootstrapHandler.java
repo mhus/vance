@@ -79,6 +79,7 @@ public class SessionBootstrapHandler implements WsHandler {
     private final ThinkProcessService thinkProcessService;
     private final ThinkEngineService thinkEngineService;
     private final SessionConnectionRegistry connectionRegistry;
+    private final de.mhus.vance.brain.events.SessionRosterBroadcaster rosterBroadcaster;
     private final SessionChatBootstrapper chatBootstrapper;
     private final InboxPendingSummaryPusher inboxSummaryPusher;
     private final HomeBootstrapService homeBootstrapService;
@@ -170,6 +171,10 @@ public class SessionBootstrapHandler implements WsHandler {
             return;
         }
         SessionConnectionRegistry.closeKicked(registerResult);
+        // Initial roster push — see SessionCreateHandler for details.
+        if (session.isAllowMultipleClients()) {
+            rosterBroadcaster.sendInitialRoster(session.getSessionId(), wsSession);
+        }
         inboxSummaryPusher.pushIfAny(wsSession, ctx.getTenantId(), ctx.getUserId());
 
         // ── Auto-spawn the session-chat process ──────────────────────────

@@ -57,6 +57,29 @@ public class SessionRosterBroadcaster {
         }
     }
 
+    /**
+     * Synchronous one-shot roster push to a single just-attached
+     * connection — closes the timing gap between the async broadcast
+     * (which fires from the @EventListener queue) and the client
+     * setting up its session-roster subscription after the
+     * session-create / -resume / -bootstrap reply lands. Called from
+     * the connect handlers right after register(), only when the
+     * session permits multiple clients (private sessions don't need
+     * the live roster).
+     */
+    public void sendInitialRoster(String sessionId, WebSocketSession ws) {
+        SessionRosterData payload = SessionRosterData.builder()
+                .sessionId(sessionId)
+                .participants(snapshotParticipants(sessionId))
+                .build();
+        try {
+            sender.sendNotification(ws, MessageType.SESSION_ROSTER, payload);
+        } catch (IOException e) {
+            log.debug("Initial roster push to session='{}' ws='{}' failed: {}",
+                    sessionId, ws.getId(), e.toString());
+        }
+    }
+
     private List<SessionParticipantDto> snapshotParticipants(String sessionId) {
         List<ConnectionEntry> entries = connectionRegistry.snapshotEntries(sessionId);
         List<SessionParticipantDto> out = new ArrayList<>(entries.size());

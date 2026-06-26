@@ -51,6 +51,7 @@ public class SessionCreateHandler implements WsHandler {
     private final ProjectManagerService projectManager;
     private final ProjectLifecycleService lifecycleService;
     private final SessionConnectionRegistry connectionRegistry;
+    private final de.mhus.vance.brain.events.SessionRosterBroadcaster rosterBroadcaster;
     private final SessionChatBootstrapper chatBootstrapper;
     private final ChatMessageService chatMessageService;
     private final InboxPendingSummaryPusher inboxSummaryPusher;
@@ -146,6 +147,14 @@ public class SessionCreateHandler implements WsHandler {
                 wsSession,
                 created.isAllowMultipleClients());
         SessionConnectionRegistry.closeKicked(registerResult);
+        // Initial roster push — closes the timing gap with the async
+        // broadcast that fires from the SessionRosterChangedEvent
+        // listener queue. Only useful on shared sessions; private
+        // sessions have a roster of size 1 (the owner) and nothing
+        // changes on this side.
+        if (created.isAllowMultipleClients()) {
+            rosterBroadcaster.sendInitialRoster(created.getSessionId(), wsSession);
+        }
 
         // Heads-up: any pending inbox items? Pushed before other frames
         // so the client UI can render the counter early.

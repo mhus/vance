@@ -43,6 +43,7 @@ public class SessionResumeHandler implements WsHandler {
     private final SessionService sessionService;
     private final ProjectManagerService projectManager;
     private final SessionConnectionRegistry connectionRegistry;
+    private final de.mhus.vance.brain.events.SessionRosterBroadcaster rosterBroadcaster;
     private final InboxPendingSummaryPusher inboxSummaryPusher;
     private final RequestAuthority authority;
     private final ThinkProcessService thinkProcessService;
@@ -151,6 +152,10 @@ public class SessionResumeHandler implements WsHandler {
             return;
         }
         SessionConnectionRegistry.closeKicked(registerResult);
+        // Initial roster push — see SessionCreateHandler for details.
+        if (doc.isAllowMultipleClients()) {
+            rosterBroadcaster.sendInitialRoster(doc.getSessionId(), wsSession);
+        }
         // Owner-driven session-state changes: profile update +
         // resume cascade. A secondary participant joining a shared
         // session is just a viewer/contributor — they must not flip

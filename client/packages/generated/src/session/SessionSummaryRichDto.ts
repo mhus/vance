@@ -22,6 +22,7 @@ export interface SessionSummaryRichDto {
   color?: AccentColor;
   tags: string[];
   pinned: boolean;
+  allowMultipleClients: boolean;
   chatRecipe?: string;
   firstUserMessage?: string;
   lastMessagePreview?: string;

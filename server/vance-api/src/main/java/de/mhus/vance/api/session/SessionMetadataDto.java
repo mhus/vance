@@ -63,4 +63,12 @@ public class SessionMetadataDto {
      * top of the default session list.
      */
     private boolean pinned;
+
+    /**
+     * {@code true} when the session permits multiple concurrent
+     * clients — multi-user collaboration. Default {@code false}.
+     * Owner-only toggle through the metadata-patch endpoint. See
+     * {@code planning/multi-user-sessions.md} §2.1.
+     */
+    private boolean allowMultipleClients;
 }

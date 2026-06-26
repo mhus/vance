@@ -158,6 +158,7 @@ async function patch(patch: SessionMetadataPatchRequest): Promise<void> {
       session.value.color = updated.color ?? undefined;
       session.value.tags = updated.tags ?? [];
       session.value.pinned = updated.pinned;
+      session.value.allowMultipleClients = updated.allowMultipleClients;
     }
   } catch (e) {
     error.value = t('chat.sessionHeader.saveError') + ' ' + (e as Error).message;
@@ -199,6 +200,11 @@ async function onColor(value: AccentColor | null): Promise<void> {
 async function togglePin(): Promise<void> {
   if (isArchived.value || !session.value) return;
   await patch({ pinned: !session.value.pinned });
+}
+
+async function toggleAllowMultipleClients(): Promise<void> {
+  if (isArchived.value || !session.value) return;
+  await patch({ allowMultipleClients: !session.value.allowMultipleClients });
 }
 
 async function onTags(value: string[]): Promise<void> {
@@ -434,6 +440,26 @@ async function onDelete(): Promise<void> {
           <span class="w-5 text-center" :class="session?.pinned ? '' : 'opacity-40'">📌</span>
           <span class="flex-1 text-left">
             {{ session?.pinned ? t('chat.sessionHeader.unpinTooltip') : t('chat.sessionHeader.pinTooltip') }}
+          </span>
+        </button>
+
+        <!-- Multi-user toggle — see planning/multi-user-sessions.md §2.1 -->
+        <button
+          v-if="!isArchived"
+          type="button"
+          class="flex items-center gap-3 w-full px-3 py-2 text-sm hover:bg-base-200 disabled:opacity-50"
+          :disabled="saving"
+          role="menuitem"
+          @click="toggleAllowMultipleClients(); closeMenu()"
+        >
+          <span
+            class="w-5 text-center"
+            :class="session?.allowMultipleClients ? '' : 'opacity-40'"
+          >👥</span>
+          <span class="flex-1 text-left">
+            {{ session?.allowMultipleClients
+              ? t('chat.sessionHeader.collabDisableLabel')
+              : t('chat.sessionHeader.collabEnableLabel') }}
           </span>
         </button>
 

@@ -67,6 +67,14 @@ public class SessionSummaryRichDto {
     private boolean pinned;
 
     /**
+     * Multi-user permission for this session — see
+     * {@code planning/multi-user-sessions.md} §2.1. Default
+     * {@code false}; owner-only toggle via the session-metadata-patch
+     * endpoint.
+     */
+    private boolean allowMultipleClients;
+
+    /**
      * Recipe name the session-chat process was spawned from, or
      * {@code null} when the chat process was spawned without an
      * explicit recipe (engine-default). Surfaced for UI attribution —

@@ -220,6 +220,7 @@ public class SessionLifecycleController {
                 .color(color)
                 .tags(tags)
                 .pinned(session.isPinned())
+                .allowMultipleClients(session.isAllowMultipleClients())
                 .build();
     }
 

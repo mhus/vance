@@ -11,4 +11,5 @@ export interface SessionMetadataPatchRequest {
   color?: AccentColor;
   tags?: string[];
   pinned?: boolean;
+  allowMultipleClients?: boolean;
 }

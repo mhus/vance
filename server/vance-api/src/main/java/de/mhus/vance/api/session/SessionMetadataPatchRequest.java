@@ -44,4 +44,13 @@ public class SessionMetadataPatchRequest {
     private @Nullable List<String> tags;
 
     private @Nullable Boolean pinned;
+
+    /**
+     * Toggle the multi-user permission on the session — see
+     * {@code planning/multi-user-sessions.md} §2.1. Owner-only; the
+     * patch handler enforces that the caller is the session's owner.
+     * Hub-sessions (system / {@code _user_<login>}) refuse the flip.
+     * {@code null} (omitted) leaves the flag unchanged.
+     */
+    private @Nullable Boolean allowMultipleClients;
 }

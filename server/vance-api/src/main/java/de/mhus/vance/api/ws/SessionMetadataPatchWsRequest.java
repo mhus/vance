@@ -39,4 +39,10 @@ public class SessionMetadataPatchWsRequest {
     private @Nullable List<String> tags;
 
     private @Nullable Boolean pinned;
+
+    /**
+     * Toggle multi-user permission on the session — owner-only.
+     * See {@code planning/multi-user-sessions.md} §2.1.
+     */
+    private @Nullable Boolean allowMultipleClients;
 }

@@ -74,6 +74,7 @@ public class SessionService {
     private static final String F_TAGS = "tags";
     private static final String F_PINNED = "pinned";
     private static final String F_USER_TOUCHED_AT = "userTouchedAt";
+    private static final String F_ALLOW_MULTIPLE_CLIENTS = "allowMultipleClients";
     private static final String F_OPEN_DOCUMENT_IDS = "openDocumentIds";
     private static final String F_CHAT_BOUND_DOCUMENT_ID = "chatBoundDocumentId";
 
@@ -897,6 +898,20 @@ public class SessionService {
         if (patch.getPinned() != null) {
             update.set(F_PINNED, patch.getPinned());
             changed = true;
+        }
+        if (patch.getAllowMultipleClients() != null) {
+            // Hub-sessions (system / _user_<login>) must stay private
+            // regardless of caller — the routing semantics rely on
+            // single-occupant hubs. Reject the flip silently rather
+            // than mutating it.
+            SessionDocument current = findBySessionId(sessionId).orElse(null);
+            if (current == null || current.isSystem()) {
+                // System session — ignore the toggle. Keep the rest
+                // of the patch intact if there is one.
+            } else {
+                update.set(F_ALLOW_MULTIPLE_CLIENTS, patch.getAllowMultipleClients());
+                changed = true;
+            }
         }
 
         if (!changed) return false;

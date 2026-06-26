@@ -169,6 +169,7 @@ public class SessionListController {
                 .color(s.getColor())
                 .tags(tags)
                 .pinned(s.isPinned())
+                .allowMultipleClients(s.isAllowMultipleClients())
                 .chatRecipe(chatRecipe)
                 .firstUserMessage(s.getFirstUserMessage())
                 .lastMessagePreview(s.getLastMessagePreview())

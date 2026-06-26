@@ -240,6 +240,8 @@ export default {
       colorLabel: 'Accent color',
       pinTooltip: 'Pin session',
       unpinTooltip: 'Unpin session',
+      collabEnableLabel: 'Allow multiple participants',
+      collabDisableLabel: 'Make private (1:1 again)',
       archiveTooltip: 'Archive session',
       archive: 'Archive',
       archiveConfirm:

@@ -235,6 +235,8 @@ export default {
       colorLabel: 'Akzentfarbe',
       pinTooltip: 'Session anpinnen',
       unpinTooltip: 'Anpinnen aufheben',
+      collabEnableLabel: 'Mehrere Teilnehmer erlauben',
+      collabDisableLabel: 'Auf privat (1:1) zurücksetzen',
       archiveTooltip: 'Session archivieren',
       archive: 'Archivieren',
       archiveConfirm:

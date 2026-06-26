@@ -90,6 +90,7 @@ public class SessionMetadataPatchHandler implements WsHandler {
                 .color(req.getColor())
                 .tags(req.getTags())
                 .pinned(req.getPinned())
+                .allowMultipleClients(req.getAllowMultipleClients())
                 .build();
         sessionService.patchMetadata(session.getSessionId(), restPatch);
 
@@ -104,6 +105,7 @@ public class SessionMetadataPatchHandler implements WsHandler {
                         ? java.util.List.of()
                         : new ArrayList<>(refreshed.getTags()))
                 .pinned(refreshed.isPinned())
+                .allowMultipleClients(refreshed.isAllowMultipleClients())
                 .build();
         sender.sendReply(wsSession, envelope, MessageType.SESSION_METADATA_PATCH, reply);
     }

@@ -3,7 +3,7 @@ import { useI18n } from 'vue-i18n';
 import { applyTheme, } from '@/platform';
 import { isSpeechSynthesisSupported, listVoices, onVoicesChanged, } from '@/platform/speechWeb';
 import { resolveSpeechLanguage, } from '@/platform/speechSettings';
-import { DEFAULT_RATE, DEFAULT_VOLUME, MAX_RATE, MAX_VOLUME, MIN_RATE, MIN_VOLUME, } from '@vance/shared';
+import { brainFetch, DEFAULT_RATE, DEFAULT_VOLUME, MAX_RATE, MAX_VOLUME, MIN_RATE, MIN_VOLUME, } from '@vance/shared';
 import { setUiLocale } from '@/i18n';
 import { EditorShell, VAlert, VButton, VCard, VCheckbox, VInput, VSelect } from '@components/index';
 import { useProfile } from '@composables/useProfile';
@@ -265,6 +265,29 @@ async function onSpeechRateInput(event) {
     }
     if (!error.value) {
         speechRateSaved.value = t('profile.speech.rateSaved');
+    }
+}
+const refreshBusy = ref(false);
+const refreshResult = ref(null);
+const refreshError = ref(null);
+async function onRefreshModelCatalog() {
+    refreshBusy.value = true;
+    refreshResult.value = null;
+    refreshError.value = null;
+    try {
+        const result = await brainFetch('POST', 'admin/ai-models/refresh');
+        refreshResult.value = t('profile.actions.refreshModelCatalogResult', {
+            bundled: result.bundledModelsLoaded,
+            providers: result.bundledProvidersLoaded,
+            scopes: result.overrideScopes,
+            ms: result.durationMs,
+        });
+    }
+    catch (e) {
+        refreshError.value = e instanceof Error ? e.message : String(e);
+    }
+    finally {
+        refreshBusy.value = false;
     }
 }
 async function onSpeechVolumeInput(event) {
@@ -707,6 +730,78 @@ else if (__VLS_ctx.profile) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.h2, __VLS_intrinsicElements.h2)({
         ...{ class: "text-lg font-semibold mb-3" },
     });
+    (__VLS_ctx.$t('profile.actions.title'));
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
+        ...{ class: "text-sm opacity-70 mb-3" },
+    });
+    (__VLS_ctx.$t('profile.actions.description'));
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "flex flex-col gap-3" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "flex items-center gap-3" },
+    });
+    const __VLS_89 = {}.VButton;
+    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+    // @ts-ignore
+    const __VLS_90 = __VLS_asFunctionalComponent(__VLS_89, new __VLS_89({
+        ...{ 'onClick': {} },
+        variant: "secondary",
+        loading: (__VLS_ctx.refreshBusy),
+    }));
+    const __VLS_91 = __VLS_90({
+        ...{ 'onClick': {} },
+        variant: "secondary",
+        loading: (__VLS_ctx.refreshBusy),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_90));
+    let __VLS_93;
+    let __VLS_94;
+    let __VLS_95;
+    const __VLS_96 = {
+        onClick: (__VLS_ctx.onRefreshModelCatalog)
+    };
+    __VLS_92.slots.default;
+    (__VLS_ctx.refreshBusy
+        ? __VLS_ctx.$t('profile.actions.refreshModelCatalogBusy')
+        : __VLS_ctx.$t('profile.actions.refreshModelCatalog'));
+    var __VLS_92;
+    if (__VLS_ctx.refreshResult) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "text-success text-sm" },
+        });
+        (__VLS_ctx.refreshResult);
+    }
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
+        ...{ class: "text-xs opacity-60 mt-1" },
+    });
+    (__VLS_ctx.$t('profile.actions.refreshModelCatalogDescription'));
+    if (__VLS_ctx.refreshError) {
+        const __VLS_97 = {}.VAlert;
+        /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
+        // @ts-ignore
+        const __VLS_98 = __VLS_asFunctionalComponent(__VLS_97, new __VLS_97({
+            variant: "error",
+            ...{ class: "mt-2" },
+        }));
+        const __VLS_99 = __VLS_98({
+            variant: "error",
+            ...{ class: "mt-2" },
+        }, ...__VLS_functionalComponentArgsRest(__VLS_98));
+        __VLS_100.slots.default;
+        (__VLS_ctx.refreshError);
+        var __VLS_100;
+    }
+    var __VLS_88;
+    const __VLS_101 = {}.VCard;
+    /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
+    // @ts-ignore
+    const __VLS_102 = __VLS_asFunctionalComponent(__VLS_101, new __VLS_101({}));
+    const __VLS_103 = __VLS_102({}, ...__VLS_functionalComponentArgsRest(__VLS_102));
+    __VLS_104.slots.default;
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.h2, __VLS_intrinsicElements.h2)({
+        ...{ class: "text-lg font-semibold mb-3" },
+    });
     (__VLS_ctx.$t('profile.teams.title'));
     if (__VLS_ctx.profile.teams.length === 0) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
@@ -750,7 +845,7 @@ else if (__VLS_ctx.profile) {
             }
         }
     }
-    var __VLS_88;
+    var __VLS_104;
 }
 var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['container']} */ ;
@@ -844,6 +939,24 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['mb-3']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-success']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['mt-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['mt-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-lg']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-semibold']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
@@ -913,6 +1026,10 @@ const __VLS_self = (await import('vue')).defineComponent({
             onOpenDocsNewTabChanged: onOpenDocsNewTabChanged,
             onSpeechVoiceChanged: onSpeechVoiceChanged,
             onSpeechRateInput: onSpeechRateInput,
+            refreshBusy: refreshBusy,
+            refreshResult: refreshResult,
+            refreshError: refreshError,
+            onRefreshModelCatalog: onRefreshModelCatalog,
             onSpeechVolumeInput: onSpeechVolumeInput,
         };
     },

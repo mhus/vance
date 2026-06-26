@@ -3,11 +3,11 @@ interface Props {
     initialPath?: string;
 }
 declare const _default: import("vue").DefineComponent<Props, {}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {} & {
-    "update:open": any;
-    confirm: any;
+    "update:open": (open: boolean) => any;
+    confirm: (path: string) => any;
 }, string, import("vue").PublicProps, Readonly<Props> & Readonly<{
-    "onUpdate:open"?: ((...args: any) => any) | undefined;
-    onConfirm?: ((...args: any) => any) | undefined;
+    "onUpdate:open"?: ((open: boolean) => any) | undefined;
+    onConfirm?: ((path: string) => any) | undefined;
 }>, {
     initialPath: string;
 }, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;

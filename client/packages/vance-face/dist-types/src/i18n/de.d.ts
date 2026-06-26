@@ -1610,6 +1610,14 @@ declare const _default: {
             disabled: string;
             disabledTooltip: string;
         };
+        actions: {
+            title: string;
+            description: string;
+            refreshModelCatalog: string;
+            refreshModelCatalogDescription: string;
+            refreshModelCatalogBusy: string;
+            refreshModelCatalogResult: string;
+        };
     };
     workspace: {
         loadingFile: string;

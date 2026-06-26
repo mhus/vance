@@ -2506,7 +2506,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         // content blocks for any attachments the user sent.
         int oldHistorySize = Math.max(0, history.size() - userInputCount);
         for (int i = 0; i < oldHistorySize; i++) {
-            messages.add(toLangchain(history.get(i)));
+            messages.add(toLangchain(history.get(i), collab.active()));
         }
 
         // Current-turn user messages: rebuilt from the inbox so
@@ -2518,7 +2518,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             if (m instanceof SteerMessage.UserChatInput uci) {
                 messages.add(buildUserMessageWithAttachments(
                         uci, process, chatConfig.fullName(),
-                        providerType, modelInfo.capabilities()));
+                        providerType, modelInfo.capabilities(), collab.active()));
             }
         }
 
@@ -2605,9 +2605,12 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             ThinkProcessDocument process,
             String chatName,
             de.mhus.vance.brain.ai.ProviderType providerType,
-            java.util.Set<de.mhus.vance.brain.ai.ModelCapability> capabilities) {
+            java.util.Set<de.mhus.vance.brain.ai.ModelCapability> capabilities,
+            boolean collabActive) {
+        String prefixedContent = de.mhus.vance.brain.chat.ChatHistoryRenderer
+                .applySenderPrefix(uci.fromUserDisplayName(), uci.content(), collabActive);
         if (uci.attachments().isEmpty()) {
-            return UserMessage.from(uci.content());
+            return UserMessage.from(prefixedContent);
         }
         List<de.mhus.vance.brain.ai.attachment.ResolvedAttachment> resolved;
         try {
@@ -2617,7 +2620,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             log.warn("Arthur: attachment resolution failed for process '{}': {} — "
                             + "falling back to text-only turn",
                     process.getId(), e.getMessage());
-            return UserMessage.from(uci.content()
+            return UserMessage.from(prefixedContent
                     + "\n\n[Attachment resolution failed: " + e.getMessage() + "]");
         }
         List<dev.langchain4j.data.message.Content> blocks = new ArrayList<>();
@@ -2630,7 +2633,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                         att.originalFilename(), chatName, e.getMessage());
             }
         }
-        blocks.add(dev.langchain4j.data.message.TextContent.from(uci.content()));
+        blocks.add(dev.langchain4j.data.message.TextContent.from(prefixedContent));
         return UserMessage.from(blocks);
     }
 
@@ -2984,8 +2987,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 
-    private static ChatMessage toLangchain(ChatMessageDocument msg) {
-        return de.mhus.vance.brain.chat.ChatHistoryRenderer.toLangchain(msg);
+    private static ChatMessage toLangchain(ChatMessageDocument msg, boolean collabActive) {
+        return de.mhus.vance.brain.chat.ChatHistoryRenderer.toLangchain(msg, collabActive);
     }
 
     /**

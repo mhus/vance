@@ -70,7 +70,12 @@ public class ChatHistoryController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Session '" + sessionId + "' not found"));
 
-        if (!currentUser.equals(session.getUserId())) {
+        // Multi-user routing (planning/multi-user-sessions.md §2.5):
+        // shared sessions expose their chat history to any
+        // authenticated user in the same tenant — the owner opted in
+        // via allowMultipleClients. Private sessions stay owner-only.
+        boolean isOwner = currentUser.equals(session.getUserId());
+        if (!isOwner && !session.isAllowMultipleClients()) {
             log.debug("Chat history access denied: session='{}' owner='{}' caller='{}'",
                     sessionId, session.getUserId(), currentUser);
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,

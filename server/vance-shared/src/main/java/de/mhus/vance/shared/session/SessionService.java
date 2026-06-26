@@ -516,17 +516,58 @@ public class SessionService {
     }
 
     /**
-     * Bumps {@link SessionDocument#getLastActivityAt()} — but only if this
-     * connection still owns the lock. Returns {@code false} if the lock has
-     * been lost (session closed, taken over, unbound) — the caller should
-     * then drop the connection.
+     * Bumps {@link SessionDocument#getLastActivityAt()}. Returns
+     * {@code false} when the connection should be dropped (session
+     * lost / taken over / unbound).
+     *
+     * <p>Multi-user aware (see {@code planning/multi-user-sessions.md}
+     * §2.5): a heartbeat is honoured when either
+     * <ul>
+     *   <li>{@code boundConnectionId == editorId} (the standard
+     *       single-binding case), <em>or</em></li>
+     *   <li>{@code allowMultipleClients == true} (shared session —
+     *       any connected participant may keep the session alive;
+     *       the {@link SessionConnectionRegistry} tracks who's still
+     *       on the wire).</li>
+     * </ul>
+     * Without the second branch, secondary participants in a shared
+     * session would lose their WS on every heartbeat after the
+     * resume — they have no Mongo bind, the owner does.
      */
     public boolean heartbeat(String sessionId, String editorId) {
-        Query query = new Query(Criteria.where(F_SESSION_ID).is(sessionId)
-                .and(F_BOUND_CONNECTION).is(editorId));
+        Criteria sessionMatch = Criteria.where(F_SESSION_ID).is(sessionId);
+        Criteria sharedOrMine = new Criteria().orOperator(
+                Criteria.where(F_BOUND_CONNECTION).is(editorId),
+                Criteria.where(F_ALLOW_MULTIPLE_CLIENTS).is(true));
+        Query query = new Query(new Criteria().andOperator(sessionMatch, sharedOrMine));
         Update update = new Update().set(F_LAST_ACTIVITY, Instant.now());
         UpdateResult result = mongoTemplate.updateFirst(query, update, SessionDocument.class);
-        return result.getModifiedCount() == 1;
+        // matchedCount, not modifiedCount: a matched row whose
+        // lastActivityAt happens to land in the same millisecond will
+        // count as not-modified, but the session is alive — don't drop
+        // the connection.
+        boolean alive = result.getMatchedCount() == 1;
+        log.trace("heartbeat session='{}' editor='{}' matched={} modified={} alive={}",
+                sessionId, editorId,
+                result.getMatchedCount(), result.getModifiedCount(), alive);
+        if (!alive) {
+            // Pull the row separately so we can log why the filter
+            // missed — owner-bound-elsewhere, shared flag off, session
+            // CLOSED, doesn't exist, ...
+            SessionDocument current = findBySessionId(sessionId).orElse(null);
+            if (current == null) {
+                log.trace("heartbeat-miss session='{}' editor='{}' — no such session",
+                        sessionId, editorId);
+            } else {
+                log.trace("heartbeat-miss session='{}' editor='{}' "
+                                + "boundConnectionId='{}' allowMultipleClients={} status={}",
+                        sessionId, editorId,
+                        current.getBoundConnectionId(),
+                        current.isAllowMultipleClients(),
+                        current.getStatus());
+            }
+        }
+        return alive;
     }
 
     /**

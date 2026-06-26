@@ -154,7 +154,24 @@ public class SessionLifecycleController {
             @PathVariable("sessionId") String sessionId,
             @RequestBody SessionCortexStateRequest body,
             HttpServletRequest request) {
-        SessionDocument session = requireOwnedSession(tenant, sessionId, request);
+        String currentUser = currentUser(request);
+        SessionDocument session = sessionService.findBySessionId(sessionId)
+                .filter(s -> tenant.equals(s.getTenantId()))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Session '" + sessionId + "' not found"));
+        boolean isOwner = currentUser.equals(session.getUserId());
+        if (!isOwner) {
+            // Multi-user routing: non-owners may read a shared session
+            // but Cortex tab state is owner-scoped (one canonical view
+            // per session). Silently no-op the write so the UI doesn't
+            // need to special-case the request, and reject when the
+            // session isn't shared at all.
+            if (!session.isAllowMultipleClients()) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "Session '" + sessionId + "' belongs to another user");
+            }
+            return ResponseEntity.noContent().build();
+        }
         authority.enforce(request,
                 new Resource.Session(tenant, session.getProjectId(), session.getSessionId()),
                 Action.WRITE);

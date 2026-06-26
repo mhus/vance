@@ -32,27 +32,60 @@ public final class ChatHistoryRenderer {
     private ChatHistoryRenderer() {}
 
     /**
-     * Converts {@code msg} to a langchain4j {@link ChatMessage}.
-     * USER turns prepend the display name when present.
+     * Converts {@code msg} to a langchain4j {@link ChatMessage} with
+     * the current-turn collab flag taken into account.
+     *
+     * <p>USER turns prepend the display name only when
+     * {@code collabActive} is true — solo (1:1) sessions keep the
+     * prompt shape they always had, so existing recipes don't see
+     * a regression. Pass {@code false} from engines that don't know
+     * (or don't care about) the multi-user mode; the {@link
+     * #toLangchain(ChatMessageDocument)} overload does exactly that.
      */
-    public static ChatMessage toLangchain(ChatMessageDocument msg) {
+    public static ChatMessage toLangchain(ChatMessageDocument msg, boolean collabActive) {
         return switch (msg.getRole()) {
-            case USER -> UserMessage.from(applySenderPrefix(msg, msg.getContent()));
+            case USER -> UserMessage.from(applySenderPrefix(msg, msg.getContent(), collabActive));
             case ASSISTANT -> AiMessage.from(msg.getContent());
             case SYSTEM -> SystemMessage.from(msg.getContent());
         };
     }
 
     /**
-     * Returns {@code content} prefixed with {@code "<DisplayName>: "}
-     * when the document carries a display name; otherwise returns
-     * {@code content} unchanged. Exposed for engine paths that build
-     * a USER message from raw text + the same document for context.
+     * Backward-compatible overload — keeps the call sites that haven't
+     * been wired to {@code collabActive} yet working with the
+     * pre-multi-user shape (no prefix).
      */
-    public static String applySenderPrefix(ChatMessageDocument msg, @Nullable String content) {
-        String name = msg.getSenderDisplayName();
+    public static ChatMessage toLangchain(ChatMessageDocument msg) {
+        return toLangchain(msg, false);
+    }
+
+    /**
+     * Returns {@code content} prefixed with {@code "<DisplayName>: "}
+     * when {@code collabActive} is true and the document carries a
+     * display name; otherwise returns {@code content} unchanged.
+     * Exposed for engine paths that build a USER message from raw text
+     * + the same document for context (e.g. attachments path).
+     */
+    public static String applySenderPrefix(
+            ChatMessageDocument msg, @Nullable String content, boolean collabActive) {
         String body = content == null ? "" : content;
+        if (!collabActive) return body;
+        String name = msg.getSenderDisplayName();
         if (name == null || name.isBlank()) return body;
         return name + ": " + body;
+    }
+
+    /**
+     * Prefix variant for the in-flight USER turn (drained from
+     * {@code SteerMessage.UserChatInput}) — the source isn't a
+     * {@code ChatMessageDocument} yet, so the engine passes the
+     * captured display name directly.
+     */
+    public static String applySenderPrefix(
+            @Nullable String senderDisplayName, @Nullable String content, boolean collabActive) {
+        String body = content == null ? "" : content;
+        if (!collabActive) return body;
+        if (senderDisplayName == null || senderDisplayName.isBlank()) return body;
+        return senderDisplayName + ": " + body;
     }
 }

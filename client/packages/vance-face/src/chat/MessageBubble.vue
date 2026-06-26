@@ -59,6 +59,21 @@ const props = withDefaults(defineProps<{
    * instead of double-firing the same answer.
    */
   optionsActionable?: boolean;
+  /**
+   * UserId of the message author for USER turns (from
+   * {@code ChatMessageDto.senderUserId}). {@code null} for legacy rows
+   * and for non-USER roles — those render the way they always have.
+   * See planning/multi-user-sessions.md §6.
+   */
+  senderUserId?: string | null;
+  /** Display-name of the message author (from senderDisplayName). */
+  senderDisplayName?: string | null;
+  /**
+   * Authenticated user of the current tab — used to decide whether a
+   * USER bubble is "mine" (right-side / primary colour) or "someone
+   * else's" (left-side / accent colour, with display-name header).
+   */
+  currentUserId?: string | null;
 }>(), {
   worker: false,
   lineMaxChars: () => uiTheme.lineMaxChars,
@@ -113,6 +128,52 @@ function onPick(label: string): void {
 const isUser = computed(() => props.role === 'USER');
 const isAssistant = computed(() => props.role === 'ASSISTANT');
 const isSystem = computed(() => props.role === 'SYSTEM');
+
+/**
+ * Multi-user awareness — see planning/multi-user-sessions.md §6.
+ *
+ * - {@code isOtherUser} is true for USER bubbles that another
+ *   participant wrote (their {@code senderUserId} differs from the
+ *   current tab's authenticated user). Legacy rows without
+ *   {@code senderUserId} stay treated as "mine" for backward
+ *   compatibility — they predate the multi-user wiring.
+ * - {@code otherDisplayName} is the label rendered above the
+ *   foreign-user bubble.
+ */
+const isOtherUser = computed(() => {
+  if (!isUser.value) return false;
+  const sender = props.senderUserId;
+  if (!sender) return false;
+  const me = props.currentUserId;
+  if (!me) return false;
+  return sender !== me;
+});
+
+const otherDisplayName = computed<string>(() => {
+  const name = props.senderDisplayName;
+  if (name && name.trim()) return name;
+  return props.senderUserId ?? '';
+});
+
+/**
+ * Deterministic accent colour per author so the same participant
+ * keeps the same chip across the session. Mirrors the palette used
+ * by {@code SessionParticipants.vue}.
+ */
+const PALETTE = [
+  '#ef4444', '#f97316', '#f59e0b', '#84cc16',
+  '#22c55e', '#14b8a6', '#06b6d4', '#3b82f6',
+  '#6366f1', '#8b5cf6', '#a855f7', '#ec4899',
+];
+
+const otherUserColour = computed<string>(() => {
+  const userId = props.senderUserId ?? '';
+  let hash = 0;
+  for (let i = 0; i < userId.length; i++) {
+    hash = ((hash << 5) - hash + userId.charCodeAt(i)) | 0;
+  }
+  return PALETTE[Math.abs(hash) % PALETTE.length];
+});
 
 /**
  * True when the message contains rich-content artifacts (fenced code
@@ -242,17 +303,20 @@ async function onCopyMarkdown(): Promise<void> {
   <div
     v-else
     class="flex"
-    :class="isUser ? 'justify-end' : 'justify-start'"
+    :class="(isUser && !isOtherUser) ? 'justify-end' : 'justify-start'"
   >
     <div
       class="rounded-2xl px-4 py-2.5 shadow-sm relative group"
       :class="[
         hasRichContent ? 'w-full' : 'max-w-[85%]',
-        bubbleStyle ? '' : (isUser ? 'bg-primary text-primary-content' : ''),
+        bubbleStyle ? '' : (isOtherUser ? 'text-white' : ''),
+        bubbleStyle ? '' : (isUser && !isOtherUser ? 'bg-primary text-primary-content' : ''),
         bubbleStyle ? '' : (isAssistant ? 'bg-base-100 border border-base-300' : ''),
         bubbleStyle ? '' : (isSystem ? 'bg-base-200 text-sm italic opacity-80' : ''),
       ]"
-      :style="bubbleStyle ?? undefined"
+      :style="isOtherUser && !bubbleStyle
+        ? { backgroundColor: otherUserColour }
+        : (bubbleStyle ?? undefined)"
     >
       <button
         v-if="canCopyContent"
@@ -265,7 +329,14 @@ async function onCopyMarkdown(): Promise<void> {
         @click="onCopyMarkdown"
       >{{ copyJustHappened ? '✓' : '⧉' }}</button>
       <div
-        v-if="!isUser"
+        v-if="isOtherUser"
+        class="text-xs font-semibold mb-1 flex items-center gap-2 opacity-95"
+      >
+        <span>{{ otherDisplayName }}</span>
+        <span v-if="formatted" class="opacity-70 font-normal">· {{ formatted }}</span>
+      </div>
+      <div
+        v-else-if="!isUser"
         class="text-xs opacity-60 mb-1 flex items-center gap-2"
       >
         <span>{{ String(role).toLowerCase() }}</span>

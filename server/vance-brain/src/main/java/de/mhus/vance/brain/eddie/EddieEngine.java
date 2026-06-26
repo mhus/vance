@@ -2539,7 +2539,7 @@ public class EddieEngine extends StructuredActionEngine {
                 chatLog.activeHistory(
                         process.getTenantId(), process.getSessionId(), process.getId()));
         for (ChatMessageDocument msg : history) {
-            messages.add(toLangchain(msg));
+            messages.add(toLangchain(msg, collab.active()));
         }
 
         // Short-token map for the renderer — only events present in
@@ -2961,8 +2961,8 @@ public class EddieEngine extends StructuredActionEngine {
 
     // ──────────────────── Helpers ────────────────────
 
-    private static ChatMessage toLangchain(ChatMessageDocument msg) {
-        return de.mhus.vance.brain.chat.ChatHistoryRenderer.toLangchain(msg);
+    private static ChatMessage toLangchain(ChatMessageDocument msg, boolean collabActive) {
+        return de.mhus.vance.brain.chat.ChatHistoryRenderer.toLangchain(msg, collabActive);
     }
 
     /**

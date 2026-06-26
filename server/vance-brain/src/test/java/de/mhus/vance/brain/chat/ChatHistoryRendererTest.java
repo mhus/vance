@@ -23,17 +23,26 @@ import org.junit.jupiter.api.Test;
 class ChatHistoryRendererTest {
 
     @Test
-    void userTurnWithDisplayName_isPrefixed() {
+    void userTurn_collabActive_isPrefixed() {
         ChatMessageDocument doc = userDoc("hello", "alice", "Alice Smith");
 
-        UserMessage msg = (UserMessage) ChatHistoryRenderer.toLangchain(doc);
+        UserMessage msg = (UserMessage) ChatHistoryRenderer.toLangchain(doc, true);
 
         assertThat(msg.singleText()).isEqualTo("Alice Smith: hello");
     }
 
     @Test
-    void userTurnWithoutDisplayName_passesContentVerbatim() {
-        ChatMessageDocument doc = userDoc("hello", "alice", null);
+    void userTurn_collabInactive_passesVerbatim_evenWithDisplayName() {
+        ChatMessageDocument doc = userDoc("hello", "alice", "Alice Smith");
+
+        UserMessage msg = (UserMessage) ChatHistoryRenderer.toLangchain(doc, false);
+
+        assertThat(msg.singleText()).isEqualTo("hello");
+    }
+
+    @Test
+    void userTurn_legacyOverload_defaultsToNoPrefix() {
+        ChatMessageDocument doc = userDoc("hello", "alice", "Alice Smith");
 
         UserMessage msg = (UserMessage) ChatHistoryRenderer.toLangchain(doc);
 
@@ -41,10 +50,19 @@ class ChatHistoryRendererTest {
     }
 
     @Test
-    void userTurnWithBlankDisplayName_passesContentVerbatim() {
+    void userTurn_collabActive_butNoDisplayName_passesVerbatim() {
+        ChatMessageDocument doc = userDoc("hello", "alice", null);
+
+        UserMessage msg = (UserMessage) ChatHistoryRenderer.toLangchain(doc, true);
+
+        assertThat(msg.singleText()).isEqualTo("hello");
+    }
+
+    @Test
+    void userTurn_collabActive_blankDisplayName_passesVerbatim() {
         ChatMessageDocument doc = userDoc("hello", "alice", "   ");
 
-        UserMessage msg = (UserMessage) ChatHistoryRenderer.toLangchain(doc);
+        UserMessage msg = (UserMessage) ChatHistoryRenderer.toLangchain(doc, true);
 
         assertThat(msg.singleText()).isEqualTo("hello");
     }
@@ -56,7 +74,7 @@ class ChatHistoryRendererTest {
         doc.setContent("here you go");
         doc.setSenderDisplayName("ignored");
 
-        AiMessage msg = (AiMessage) ChatHistoryRenderer.toLangchain(doc);
+        AiMessage msg = (AiMessage) ChatHistoryRenderer.toLangchain(doc, true);
 
         assertThat(msg.text()).isEqualTo("here you go");
     }
@@ -67,22 +85,40 @@ class ChatHistoryRendererTest {
         doc.setRole(ChatRole.SYSTEM);
         doc.setContent("session resumed");
 
-        SystemMessage msg = (SystemMessage) ChatHistoryRenderer.toLangchain(doc);
+        SystemMessage msg = (SystemMessage) ChatHistoryRenderer.toLangchain(doc, true);
 
         assertThat(msg.text()).isEqualTo("session resumed");
     }
 
     @Test
-    void applySenderPrefix_isUsableStandalone() {
+    void applySenderPrefix_collabActive_addsPrefix() {
         ChatMessageDocument withName = userDoc("ignored", "bob", "Bob");
         ChatMessageDocument noName = userDoc("ignored", "bob", null);
 
-        assertThat(ChatHistoryRenderer.applySenderPrefix(withName, "raw"))
+        assertThat(ChatHistoryRenderer.applySenderPrefix(withName, "raw", true))
                 .isEqualTo("Bob: raw");
-        assertThat(ChatHistoryRenderer.applySenderPrefix(noName, "raw"))
+        assertThat(ChatHistoryRenderer.applySenderPrefix(noName, "raw", true))
                 .isEqualTo("raw");
-        assertThat(ChatHistoryRenderer.applySenderPrefix(withName, null))
+        assertThat(ChatHistoryRenderer.applySenderPrefix(withName, null, true))
                 .isEqualTo("Bob: ");
+    }
+
+    @Test
+    void applySenderPrefix_collabInactive_noPrefix() {
+        ChatMessageDocument withName = userDoc("ignored", "bob", "Bob");
+
+        assertThat(ChatHistoryRenderer.applySenderPrefix(withName, "raw", false))
+                .isEqualTo("raw");
+    }
+
+    @Test
+    void applySenderPrefix_stringOverload_followsCollabFlag() {
+        assertThat(ChatHistoryRenderer.applySenderPrefix("Bob", "hi", true))
+                .isEqualTo("Bob: hi");
+        assertThat(ChatHistoryRenderer.applySenderPrefix("Bob", "hi", false))
+                .isEqualTo("hi");
+        assertThat(ChatHistoryRenderer.applySenderPrefix((String) null, "hi", true))
+                .isEqualTo("hi");
     }
 
     private static ChatMessageDocument userDoc(String content, String userId, String displayName) {

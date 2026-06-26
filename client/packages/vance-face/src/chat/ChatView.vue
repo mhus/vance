@@ -18,6 +18,7 @@ import { useConversationExport } from '@composables/useConversationExport';
 import { useTenantProjects } from '@composables/useTenantProjects';
 import { useDocumentRefStore } from '@/document/documentRefStore';
 import { SessionHeader, VAlert, VButton } from '@components/index';
+import { getUsername } from '@vance/shared';
 import MessageBubble from './MessageBubble.vue';
 import FollowUpGhost from './FollowUpGhost.vue';
 import PlanModeIndicator from './PlanModeIndicator.vue';
@@ -89,6 +90,15 @@ const emit = defineEmits<{
 }>();
 
 const { t: _ } = useI18n();
+
+/**
+ * Authenticated user of this tab — used by {@link MessageBubble} to
+ * decide whether a USER bubble is mine (right-side / primary
+ * colour) or someone else's (left-side / accent colour with name
+ * header) in a multi-user session. See
+ * planning/multi-user-sessions.md §6.
+ */
+const currentUserId = computed<string | null>(() => getUsername());
 
 const { messages: history, loading: historyLoading, error: historyError, load, reset } =
   useChatHistory();
@@ -629,6 +639,9 @@ onBeforeUnmount(() => {
             :worker="workerMessageIds.has(msg.messageId)"
             :meta="msg.meta"
             :options-actionable="msg.messageId === activeAskUserMessageId"
+            :sender-user-id="msg.senderUserId"
+            :sender-display-name="msg.senderDisplayName"
+            :current-user-id="currentUserId"
             @pick-option="onPickAskUserOption"
           />
           <FollowUpGhost

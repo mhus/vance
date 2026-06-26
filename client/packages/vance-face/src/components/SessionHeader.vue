@@ -9,6 +9,7 @@ import {
 import {
   archiveSession,
   deleteSession,
+  getUsername,
   listSessions,
   patchSessionMetadata,
   reactivateSession,
@@ -32,6 +33,19 @@ const { t } = useI18n();
 
 const session = ref<SessionSummaryRichDto | null>(null);
 const loading = ref(false);
+
+/**
+ * Whether the current authenticated user is the session's owner.
+ * Multi-user gate: shared sessions surface to non-owners as
+ * read-only participants — they can view and join the chat, but
+ * lifecycle / metadata actions (archive, delete, settings toggles,
+ * shared flag) remain owner-only. See planning/multi-user-sessions.md
+ * §2.1 / §2.4.
+ */
+const isOwner = computed(() => {
+  const me = getUsername();
+  return me !== null && session.value !== null && session.value.userId === me;
+});
 const error = ref<string | null>(null);
 const editingTitle = ref(false);
 const titleDraft = ref('');
@@ -169,6 +183,7 @@ async function patch(patch: SessionMetadataPatchRequest): Promise<void> {
 
 function startTitleEdit(): void {
   if (isArchived.value) return;
+  if (!isOwner.value) return; // owner-only edit — see top-level isOwner doc
   titleDraft.value = session.value?.title ?? '';
   editingTitle.value = true;
 }
@@ -308,7 +323,10 @@ async function onDelete(): Promise<void> {
     </div>
 
     <!-- ─── Wide layout: inline action buttons ─── -->
-    <template v-if="!compact">
+    <!-- Owner-only: all action buttons (pin/color/tags/archive/delete)
+         hit owner-gated REST endpoints. Hide them for non-owners on
+         shared sessions. -->
+    <template v-if="!compact && isOwner">
       <!-- Pin toggle -->
       <button
         v-if="!isArchived"
@@ -320,6 +338,21 @@ async function onDelete(): Promise<void> {
       >
         <span v-if="session?.pinned">📌</span>
         <span v-else class="opacity-40">📌</span>
+      </button>
+
+      <!-- Multi-user toggle — see planning/multi-user-sessions.md §2.1 -->
+      <button
+        v-if="!isArchived"
+        type="button"
+        class="btn btn-ghost btn-sm"
+        :title="session?.allowMultipleClients
+          ? t('chat.sessionHeader.collabDisableLabel')
+          : t('chat.sessionHeader.collabEnableLabel')"
+        :disabled="saving"
+        @click="toggleAllowMultipleClients"
+      >
+        <span v-if="session?.allowMultipleClients">👥</span>
+        <span v-else class="opacity-40">👥</span>
       </button>
 
       <!-- Color picker (compact, opens on click) -->
@@ -404,7 +437,11 @@ async function onDelete(): Promise<void> {
     </template>
 
     <!-- ─── Compact layout: overflow menu ─── -->
-    <div v-else ref="menuEl" class="relative">
+    <!-- Owner-only: every menu item (pin, color, tags, archive,
+         delete, multi-user toggle) hits owner-gated REST endpoints,
+         so we hide the trigger entirely for non-owners on a shared
+         session — see planning/multi-user-sessions.md §2.4. -->
+    <div v-else-if="isOwner" ref="menuEl" class="relative">
       <button
         type="button"
         class="btn btn-ghost btn-sm"
@@ -443,9 +480,11 @@ async function onDelete(): Promise<void> {
           </span>
         </button>
 
-        <!-- Multi-user toggle — see planning/multi-user-sessions.md §2.1 -->
+        <!-- Multi-user toggle — see planning/multi-user-sessions.md §2.1.
+             Owner-only: backend SessionMetadataPatchHandler rejects
+             non-owners with 403, so we hide the entry too. -->
         <button
-          v-if="!isArchived"
+          v-if="!isArchived && isOwner"
           type="button"
           class="flex items-center gap-3 w-full px-3 py-2 text-sm hover:bg-base-200 disabled:opacity-50"
           :disabled="saving"

@@ -19,6 +19,10 @@ import { useTenantProjects } from '@composables/useTenantProjects';
 import { useDocumentRefStore } from '@/document/documentRefStore';
 import { SessionHeader, VAlert, VButton } from '@components/index';
 import { getUsername } from '@vance/shared';
+import {
+  useSessionRoster,
+  type RosterChange,
+} from '@/cortex/composables/useSessionRoster';
 import MessageBubble from './MessageBubble.vue';
 import FollowUpGhost from './FollowUpGhost.vue';
 import PlanModeIndicator from './PlanModeIndicator.vue';
@@ -99,6 +103,53 @@ const { t: _ } = useI18n();
  * planning/multi-user-sessions.md §6.
  */
 const currentUserId = computed<string | null>(() => getUsername());
+
+/**
+ * Ephemeral participant activity feed — see
+ * planning/multi-user-sessions.md §7. Roster join/leave deltas are
+ * rendered as a thin separator below the chat messages, NOT
+ * persisted as ChatMessageDocuments (would flap on reconnects and
+ * waste prompt tokens). The session-roster baseline at attach time
+ * is silently swallowed so a fresh page load doesn't spam "X joined"
+ * for everyone already present.
+ */
+interface ActivityEvent {
+  id: string;
+  kind: 'joined' | 'left';
+  displayName: string;
+  at: Date;
+}
+const activityEvents = ref<ActivityEvent[]>([]);
+let activitySeq = 0;
+const sessionIdRef = computed(() => props.sessionId);
+const { onChange: onRosterChange } = useSessionRoster(sessionIdRef);
+onRosterChange((change: RosterChange) => {
+  for (const p of change.joined) {
+    activityEvents.value.push({
+      id: `act-${++activitySeq}`,
+      kind: 'joined',
+      displayName: p.displayName ?? p.userId,
+      at: change.at,
+    });
+  }
+  for (const p of change.left) {
+    activityEvents.value.push({
+      id: `act-${++activitySeq}`,
+      kind: 'left',
+      displayName: p.displayName ?? p.userId,
+      at: change.at,
+    });
+  }
+});
+// Reset the ephemeral feed when the chat-view is rebound to a fresh
+// session — otherwise the previous session's activity would bleed
+// into the next one.
+watch(
+  () => props.sessionId,
+  () => {
+    activityEvents.value = [];
+  },
+);
 
 const { messages: history, loading: historyLoading, error: historyError, load, reset } =
   useChatHistory();
@@ -667,6 +718,27 @@ onBeforeUnmount(() => {
           :process-name="draft.processName"
           :streaming="true"
         />
+
+        <!-- Ephemeral roster activity — non-persistent, see
+             planning/multi-user-sessions.md §7. Each join/leave gets
+             a thin centered separator; page reload wipes the feed. -->
+        <div
+          v-for="evt in activityEvents"
+          :key="evt.id"
+          class="flex items-center gap-2 text-xs opacity-60 my-2"
+        >
+          <div class="flex-1 border-t border-base-300" />
+          <span>
+            <span aria-hidden="true">👥</span>
+            <span class="font-medium ml-1">{{ evt.displayName }}</span>
+            <span class="ml-1">{{
+              evt.kind === 'joined'
+                ? _('chat.activity.joined')
+                : _('chat.activity.left')
+            }}</span>
+          </span>
+          <div class="flex-1 border-t border-base-300" />
+        </div>
       </div>
     </div>
 

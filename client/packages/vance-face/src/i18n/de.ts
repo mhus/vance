@@ -228,6 +228,10 @@ export default {
       saveSucceeded: 'Gespeichert unter {path}',
       saveFailed: 'Konversation konnte nicht als Dokument gespeichert werden.',
     },
+    activity: {
+      joined: 'ist beigetreten',
+      left: 'hat verlassen',
+    },
     sessionHeader: {
       untitled: 'Ohne Titel',
       editTitlePlaceholder: 'Session-Titel…',

@@ -17,12 +17,37 @@ import { useWsConnection } from '@/ws/wsConnectionStore';
  *
  * <p>{@code sessionId} can be a {@link Ref} so the same composable
  * follows session switches in the Cortex chat-bound view.
+ *
+ * <p>Returns reactive {@code participants} plus an
+ * {@code onChange(handler)} hook that fires per join / leave delta
+ * — non-persistent ephemeral activity feed.
  */
+
+export interface RosterChange {
+  joined: SessionParticipantDto[];
+  left: SessionParticipantDto[];
+  at: Date;
+}
+
 export function useSessionRoster(sessionId: Ref<string | null>) {
   const participants = ref<SessionParticipantDto[]>([]);
   const conn = useWsConnection();
 
   let unsubscribeRoster: (() => void) | null = null;
+  let baselineEstablished = false;
+  const changeListeners = new Set<(change: RosterChange) => void>();
+
+  function diff(
+    prev: SessionParticipantDto[],
+    next: SessionParticipantDto[],
+  ): RosterChange | null {
+    const prevIds = new Set(prev.map((p) => p.editorId));
+    const nextIds = new Set(next.map((p) => p.editorId));
+    const joined = next.filter((p) => !prevIds.has(p.editorId));
+    const left = prev.filter((p) => !nextIds.has(p.editorId));
+    if (joined.length === 0 && left.length === 0) return null;
+    return { joined, left, at: new Date() };
+  }
 
   function attach() {
     detach();
@@ -30,7 +55,20 @@ export function useSessionRoster(sessionId: Ref<string | null>) {
     if (!socket) return;
     unsubscribeRoster = socket.on<SessionRosterData>('session-roster', (data) => {
       if (!data || data.sessionId !== sessionId.value) return;
-      participants.value = data.participants ?? [];
+      const next = data.participants ?? [];
+      const isBaseline = !baselineEstablished;
+      const change = isBaseline ? null : diff(participants.value, next);
+      participants.value = next;
+      baselineEstablished = true;
+      if (change) {
+        for (const listener of changeListeners) {
+          try {
+            listener(change);
+          } catch (err) {
+            console.warn('[useSessionRoster] change listener threw', err);
+          }
+        }
+      }
     });
   }
 
@@ -41,16 +79,33 @@ export function useSessionRoster(sessionId: Ref<string | null>) {
     }
   }
 
+  /**
+   * Subscribe to per-delta roster changes. Returns an unsubscribe
+   * function. The first frame after attach is treated as a fresh
+   * baseline (initialise participants without emitting "joined" for
+   * everyone already present) because {@code participants} starts as
+   * an empty array — every diff between {@code []} and the server's
+   * snapshot would otherwise spam "X joined" on session-load.
+   */
+  function onChange(handler: (change: RosterChange) => void): () => void {
+    changeListeners.add(handler);
+    return () => changeListeners.delete(handler);
+  }
+
   watch(
     () => [conn.socket.value, sessionId.value],
     () => {
       participants.value = [];
+      baselineEstablished = false;
       attach();
     },
     { immediate: true },
   );
 
-  onBeforeUnmount(detach);
+  onBeforeUnmount(() => {
+    detach();
+    changeListeners.clear();
+  });
 
-  return { participants };
+  return { participants, onChange };
 }

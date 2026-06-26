@@ -233,6 +233,10 @@ export default {
       saveSucceeded: 'Saved to {path}',
       saveFailed: 'Failed to save the conversation as a document.',
     },
+    activity: {
+      joined: 'joined',
+      left: 'left',
+    },
     sessionHeader: {
       untitled: 'Untitled',
       editTitlePlaceholder: 'Session title…',

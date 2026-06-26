@@ -393,6 +393,26 @@ const showToggle = computed<boolean>(
   () => isViewMode.value || codePreviewKind.value !== undefined,
 );
 
+// ─── Application manifest jump-link ─────────────────────────────
+//
+// A {@code kind: application} document at {@code …/_app.yaml} is the
+// manifest of an app folder (Kanban, Calendar, Slideshow). The
+// generic CodeEditor view is fine for inspecting the YAML, but most
+// of the time the user wants the dedicated app editor under
+// {@code /app.html}. Surface a small ↗ jump-link in the toolbar so
+// the user is never stuck without a way to the rich editor.
+
+const appEditorUrl = computed<string | null>(() => {
+  const doc = props.document;
+  // Path is the load-order-independent signal: `kind` arrives only
+  // after the full DTO fetch and stays null on tabs that started life
+  // as a summary (file-tree-driven openFile races, browser back from
+  // the app editor, …). The basename `_app.yaml` is unambiguous and
+  // doesn't drift with metadata-load timing.
+  if (!doc.path?.endsWith('/_app.yaml')) return null;
+  return `/app.html?documentId=${encodeURIComponent(doc.id)}`;
+});
+
 // ─── View / Edit toggle ──────────────────────────────────────────
 //
 // For typed-model and kind-registry modes the user can flip between
@@ -609,6 +629,12 @@ function fmtDuration(ms: number | null): string {
         :aria-label="`color ${document.color}`"
       />
       <span class="font-mono opacity-80 truncate">{{ document.path }}</span>
+      <a
+        v-if="appEditorUrl"
+        :href="appEditorUrl"
+        class="text-xs px-1.5 py-0.5 rounded border border-primary/40 text-primary hover:bg-primary/10 leading-none"
+        title="Open in Application editor"
+      >↗</a>
       <div
         v-if="showToggle"
         class="flex border border-base-300 rounded overflow-hidden text-xs"
@@ -745,7 +771,7 @@ function fmtDuration(ms: number | null): string {
          not hardcoded here. -->
     <div
       v-if="binding.mode === 'code' && codePreviewKind && viewEditMode === 'view'"
-      class="flex-1 min-h-0 overflow-hidden"
+      class="flex-1 min-h-0 overflow-auto p-4"
     >
       <component
         :is="codePreviewKind.codePreview"

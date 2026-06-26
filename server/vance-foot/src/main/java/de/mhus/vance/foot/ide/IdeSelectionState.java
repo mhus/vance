@@ -26,9 +26,21 @@ public class IdeSelectionState implements IdeBridgeListener {
     private final IdeNotificationDispatcher dispatcher;
     private final AtomicReference<@Nullable Display> current = new AtomicReference<>();
     private final AtomicReference<@Nullable SelectionChanged> raw = new AtomicReference<>();
+    private volatile Runnable repaintCallback = () -> {};
 
     public IdeSelectionState(IdeNotificationDispatcher dispatcher) {
         this.dispatcher = dispatcher;
+    }
+
+    /**
+     * Wires a callback invoked whenever the display string actually
+     * changes (new file, new range, cleared on disconnect). Used by the
+     * REPL to request a live-region repaint — without this hook the
+     * status bar only refreshes on the 10 s idle heartbeat, so IDE
+     * selections appear stale.
+     */
+    public void setRepaintCallback(@Nullable Runnable callback) {
+        this.repaintCallback = callback != null ? callback : () -> {};
     }
 
     @PostConstruct
@@ -48,23 +60,42 @@ public class IdeSelectionState implements IdeBridgeListener {
 
     @Override
     public void onSelectionChanged(SelectionChanged sel) {
+        Display before = current.get();
         if (sel.filePath() == null || sel.filePath().isBlank()) {
             current.set(null);
             raw.set(null);
-            return;
+        } else {
+            String name = Path.of(sel.filePath()).getFileName().toString();
+            String suffix = formatRange(sel.selection());
+            current.set(new Display("⧉ " + name + suffix));
+            raw.set(sel);
         }
-        String name = Path.of(sel.filePath()).getFileName().toString();
-        String suffix = formatRange(sel.selection());
-        current.set(new Display("⧉ " + name + suffix));
-        raw.set(sel);
+        if (!sameText(before, current.get())) {
+            fireRepaint();
+        }
     }
 
     @Override
     public void onConnectionStateChanged(boolean connected) {
         if (!connected) {
+            boolean hadState = current.get() != null;
             current.set(null);
             raw.set(null);
+            if (hadState) fireRepaint();
         }
+    }
+
+    private void fireRepaint() {
+        try {
+            repaintCallback.run();
+        } catch (RuntimeException ignored) {
+            // never let a repaint failure poison the WS reader thread
+        }
+    }
+
+    private static boolean sameText(@Nullable Display a, @Nullable Display b) {
+        if (a == null) return b == null;
+        return b != null && a.text.equals(b.text);
     }
 
     /**

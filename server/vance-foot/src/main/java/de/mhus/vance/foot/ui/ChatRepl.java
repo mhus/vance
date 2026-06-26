@@ -5,6 +5,7 @@ import de.mhus.vance.foot.command.ChatInputService;
 import de.mhus.vance.foot.command.CommandService;
 import de.mhus.vance.foot.command.SlashCommand;
 import de.mhus.vance.foot.config.FootConfig;
+import de.mhus.vance.foot.ide.IdeSelectionState;
 import jakarta.annotation.PreDestroy;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -46,6 +47,7 @@ public class ChatRepl {
     private final FootConfig config;
     private final CommandService commandService;
     private final AutoAiService autoAi;
+    private final IdeSelectionState ideSelection;
 
     private final AtomicBoolean stopRequested = new AtomicBoolean(false);
     private @Nullable Terminal terminal;
@@ -57,7 +59,8 @@ public class ChatRepl {
                     LiveRegion liveRegion,
                     FootConfig config,
                     @Lazy CommandService commandService,
-                    AutoAiService autoAi) {
+                    AutoAiService autoAi,
+                    IdeSelectionState ideSelection) {
         this.input = input;
         this.chatTerminal = chatTerminal;
         this.interfaceService = interfaceService;
@@ -65,6 +68,7 @@ public class ChatRepl {
         this.config = config;
         this.commandService = commandService;
         this.autoAi = autoAi;
+        this.ideSelection = ideSelection;
     }
 
     public void requestStop() {
@@ -106,6 +110,10 @@ public class ChatRepl {
                     ? "Auto-AI: ON — every message goes to the AI (escape with @no)."
                     : "Auto-AI: OFF — type @ai to address the agent.");
         });
+        // IDE selection events fire on the bridge WS thread; without a
+        // repaint hook the status bar only refreshes on the 10 s idle
+        // heartbeat, so the visible file name lags reality.
+        ideSelection.setRepaintCallback(liveRegion::refresh);
         liveRegion.attach(t);
 
         if (liveRegion.isAttached()) {

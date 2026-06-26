@@ -111,4 +111,47 @@ class IdeSelectionStateTest {
 
         assertThat(state.displayString()).isPresent();
     }
+
+    @Test
+    void repaintCallback_firesOnNewSelection() {
+        java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+        state.setRepaintCallback(calls::incrementAndGet);
+
+        state.onSelectionChanged(new SelectionChanged("/x/y.md", null, null));
+
+        assertThat(calls.get()).isEqualTo(1);
+    }
+
+    @Test
+    void repaintCallback_doesNotFireWhenDisplayUnchanged() {
+        state.onSelectionChanged(new SelectionChanged("/x/y.md", null, null));
+        java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+        state.setRepaintCallback(calls::incrementAndGet);
+
+        // Same file, same (no) range → identical display string → no repaint.
+        state.onSelectionChanged(new SelectionChanged("/x/y.md", null, null));
+
+        assertThat(calls.get()).isZero();
+    }
+
+    @Test
+    void repaintCallback_firesOnDisconnectWhenStateWasSet() {
+        state.onSelectionChanged(new SelectionChanged("/x/y.md", null, null));
+        java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+        state.setRepaintCallback(calls::incrementAndGet);
+
+        state.onConnectionStateChanged(false);
+
+        assertThat(calls.get()).isEqualTo(1);
+    }
+
+    @Test
+    void repaintCallback_swallowsListenerException() {
+        state.setRepaintCallback(() -> { throw new RuntimeException("boom"); });
+
+        // Must not propagate — selection events fire on the WS reader thread.
+        state.onSelectionChanged(new SelectionChanged("/x/y.md", null, null));
+
+        assertThat(state.displayString()).isPresent();
+    }
 }

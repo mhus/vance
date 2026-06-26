@@ -15,11 +15,13 @@ import org.springframework.stereotype.Component;
  * <ul>
  *   <li>{@link #buildStatusLine(int, int)} — the spinner / "thinking"
  *       row above the input. When the active chat process is busy,
- *       shows a phrase, animated spinner, and elapsed time; when idle,
- *       falls back to the current IDE selection if available.</li>
+ *       shows a phrase, animated spinner, and elapsed time; blank
+ *       when idle.</li>
  *   <li>{@link #buildHintsRow(int)} — the bottom-most row of the live
  *       region. Left side carries keyboard hints, right side carries
- *       the {@code session=… · project=… · process=…} context.</li>
+ *       the {@code session=… · project=… · process=…} context, with the
+ *       current IDE selection ({@code ⧉ file[L:R]}) prepended when the
+ *       bridge reports one.</li>
  * </ul>
  *
  * <p>This class is intentionally render-free now: it returns
@@ -120,11 +122,7 @@ public class StatusBar {
                     + usage + ")" + ESC + "[0m";
             return clamp(line, width, true);
         }
-        String selection = ideSelectionText();
-        if (selection.isEmpty()) {
-            return "";
-        }
-        return clamp(ESC + "[36m" + selection + ESC + "[0m", width, true);
+        return "";
     }
 
     /**
@@ -154,11 +152,16 @@ public class StatusBar {
     }
 
     private String buildRightContext() {
+        StringBuilder b = new StringBuilder();
+        String selection = ideSelectionText();
+        if (!selection.isEmpty()) {
+            b.append(selection).append(" · ");
+        }
         SessionService.BoundSession bound = sessions.current();
         if (bound == null) {
-            return " — no session — ";
+            b.append(" — no session — ");
+            return b.toString();
         }
-        StringBuilder b = new StringBuilder();
         if (bound.icon() != null && !bound.icon().isBlank()) {
             b.append(bound.icon()).append(' ');
         }

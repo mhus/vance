@@ -50,6 +50,14 @@ public class SessionSummaryRichDto {
     /** {@code true} while another connection currently holds the session lock. */
     private boolean bound;
 
+    /**
+     * {@code UserDocument.name} of the session owner. Exposed so the
+     * Web-UI can tell apart "my own session" from "a shared session
+     * owned by someone else" when both surface in the picker (see
+     * {@code planning/multi-user-sessions.md} §2.5).
+     */
+    private String userId = "";
+
     // ─── User-facing metadata ───
 
     /** User-set or LLM-auto-suggested title. UI fallback: title → firstUserMessage → "Untitled". */

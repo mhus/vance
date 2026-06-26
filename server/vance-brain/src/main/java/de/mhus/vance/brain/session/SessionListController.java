@@ -156,6 +156,7 @@ public class SessionListController {
         return SessionSummaryRichDto.builder()
                 .sessionId(s.getSessionId())
                 .projectId(s.getProjectId())
+                .userId(s.getUserId())
                 .status(s.getStatus())
                 .profile(s.getProfile())
                 .createdAt(s.getCreatedAt())

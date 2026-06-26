@@ -269,6 +269,11 @@ export default {
       noSessionsBody: 'Auf „Neue Session" klicken, um eine zu starten.',
       occupied: 'belegt',
       occupiedTooltip: 'Von einer anderen Verbindung belegt',
+      sharedTooltip: 'Geteilte Session — du kannst beitreten',
+      joinLive: 'live · beitreten',
+      hijackConfirm:
+        'Diese Session ist bereits von einer deiner anderen Sitzungen belegt. '
+        + 'Übernehmen und die andere Sitzung verdrängen?',
       available: 'Verfügbar',
       failedToLoadSessions: 'Sessions konnten nicht geladen werden.',
       failedToStartSession: 'Eine neue Session konnte nicht gestartet werden.',

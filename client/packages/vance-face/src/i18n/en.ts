@@ -274,6 +274,11 @@ export default {
       noSessionsBody: "Click 'New session' to start one.",
       occupied: 'occupied',
       occupiedTooltip: 'Occupied by another connection',
+      sharedTooltip: 'Shared session — you can join',
+      joinLive: 'live · join',
+      hijackConfirm:
+        'This session is already held by another of your tabs. '
+        + 'Take it over and disconnect the other one?',
       available: 'Available',
       failedToLoadSessions: 'Failed to load sessions.',
       failedToStartSession: 'Failed to start a new session.',

@@ -131,9 +131,34 @@ async function loadSessions(projectName: string): Promise<void> {
   }
 }
 
+/**
+ * "Hard-blocked" = the user can't open this session at all in the
+ * picker. Multi-user-aware: shared sessions are never hard-blocked
+ * (they can always be joined), even when another participant currently
+ * holds the bind.
+ */
+function isHardBlocked(session: SessionSummaryRichDto): boolean {
+  if (!session.bound) return false;
+  if (session.allowMultipleClients) return false;
+  // Private + bound + not mine = can't take over.
+  return props.username === null || session.userId !== props.username;
+}
+
 function pickSession(session: SessionSummaryRichDto): void {
-  if (session.bound) return;
   if (session.status === SessionStatus.ARCHIVED) return;
+  // Multi-user routing — see planning/multi-user-sessions.md §2.5.
+  //  - Bound + shared (allowMultipleClients): always joinable, no
+  //    prompt. The owner already declared "anyone may join", we
+  //    just attach as a secondary participant.
+  //  - Bound + private + owner==me: another tab/device of mine has
+  //    the session. Confirm the hijack so the user knows what they're
+  //    about to do.
+  //  - Bound + private + owner!=me: blocked (legacy "occupied" UX).
+  if (session.bound && !session.allowMultipleClients) {
+    const mine = props.username !== null && session.userId === props.username;
+    if (!mine) return;
+    if (!window.confirm(t('chat.picker.hijackConfirm'))) return;
+  }
   emit('session-picked', session.sessionId);
 }
 
@@ -453,10 +478,8 @@ watch(showArchived, async () => {
             class="card bg-base-100 shadow-sm border border-base-300 border-l-4"
             :class="[
               colorBorderClass(session),
-              session.bound
-                ? 'opacity-60'
-                : '',
-              session.status !== SessionStatus.ARCHIVED && !session.bound
+              isHardBlocked(session) ? 'opacity-60' : '',
+              session.status !== SessionStatus.ARCHIVED && !isHardBlocked(session)
                 ? 'hover:border-primary cursor-pointer'
                 : '',
               session.status === SessionStatus.ARCHIVED ? 'bg-base-200/40' : '',
@@ -475,6 +498,11 @@ watch(showArchived, async () => {
                     class="shrink-0 text-xs"
                     :title="$t('chat.sessionHeader.pinTooltip')"
                   >📌</span>
+                  <span
+                    v-if="session.allowMultipleClients"
+                    class="shrink-0 text-xs"
+                    :title="$t('chat.picker.sharedTooltip')"
+                  >👥</span>
                   <span
                     class="font-medium truncate"
                     :title="sessionTitle(session)"
@@ -524,8 +552,15 @@ watch(showArchived, async () => {
                 </div>
               </div>
               <div class="shrink-0 flex flex-col items-end gap-1">
-                <span v-if="session.bound" class="text-xs text-error">
+                <span v-if="isHardBlocked(session)" class="text-xs text-error">
                   {{ $t('chat.picker.occupied') }}
+                </span>
+                <span
+                  v-else-if="session.bound && session.allowMultipleClients"
+                  class="text-xs text-success"
+                  :title="$t('chat.picker.sharedTooltip')"
+                >
+                  {{ $t('chat.picker.joinLive') }}
                 </span>
                 <VButton
                   v-if="session.status === SessionStatus.ARCHIVED"

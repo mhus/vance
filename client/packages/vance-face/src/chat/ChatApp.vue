@@ -12,6 +12,7 @@ import type {
   ProcessProgressNotification,
   SessionListRequest,
   SessionListResponse,
+  SessionRosterData,
   SwitchToNotification,
 } from '@vance/generated';
 import {
@@ -265,6 +266,29 @@ function onHistoryLoadedFromView(): void {
 }
 function onAskUserPickFromView(label: string): void {
   void composerRef.value?.setTextAndSend(label);
+}
+
+/**
+ * Handles the {@code /who} slash-command from the composer.
+ * Round-trips a {@code session-who} WS request and renders the
+ * current participant list as an ephemeral activity line. See
+ * planning/multi-user-sessions.md §7.
+ */
+async function onWhoFromComposer(): Promise<void> {
+  const sock = socket.value;
+  if (!sock) return;
+  try {
+    const reply = await sock.send<unknown, SessionRosterData>('session-who', {});
+    const names = (reply.participants ?? [])
+      .map((p) => p.displayName?.trim() || p.userId)
+      .filter((n): n is string => Boolean(n));
+    chatViewRef.value?.pushWhoActivity(
+      names.length > 0 ? names : [t('chat.activity.whoEmpty')],
+    );
+  } catch (e) {
+    console.warn('[chat] /who lookup failed', e);
+    chatViewRef.value?.pushWhoActivity([t('chat.activity.whoFailed')]);
+  }
 }
 function onWizardDeepLinkFromView(detail: { name: string; prefill: Record<string, string> }): void {
   rightPanelRef.value?.openWizard(detail.name, detail.prefill);
@@ -802,6 +826,7 @@ function openInCortex(): void {
         :ensure-connected="ensureConnected"
         :draft-key="activeSessionId ?? undefined"
         @hub="backToHub"
+        @who="onWhoFromComposer"
         @local-echo="onLocalEchoFromComposer"
         @rollback-echo="onRollbackEchoFromComposer"
         @text-changed="onComposerTextChanged"

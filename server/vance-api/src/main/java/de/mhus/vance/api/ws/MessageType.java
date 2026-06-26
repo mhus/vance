@@ -37,6 +37,15 @@ public final class MessageType {
      * happens. See {@code planning/multi-user-sessions.md} §7.
      */
     public static final String SESSION_ROSTER = "session-roster";
+
+    /**
+     * Client → brain: who is currently bound to my session? Returns
+     * {@code SessionRosterData} as the reply payload — same shape as
+     * the server-push frame, but on-demand instead of triggered by a
+     * roster mutation. Used by the {@code /who} slash command and by
+     * the foot CLI's participant lookup.
+     */
+    public static final String SESSION_WHO = "session-who";
     public static final String PROJECT_LIST = "project-list";
     public static final String PROJECTGROUP_LIST = "projectgroup-list";
 

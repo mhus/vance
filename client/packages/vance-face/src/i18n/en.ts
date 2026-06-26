@@ -236,6 +236,9 @@ export default {
     activity: {
       joined: 'joined',
       left: 'left',
+      whoHeader: 'In the room:',
+      whoEmpty: 'no one',
+      whoFailed: '/who failed',
     },
     sessionHeader: {
       untitled: 'Untitled',

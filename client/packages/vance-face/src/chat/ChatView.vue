@@ -115,7 +115,9 @@ const currentUserId = computed<string | null>(() => getUsername());
  */
 interface ActivityEvent {
   id: string;
-  kind: 'joined' | 'left';
+  kind: 'joined' | 'left' | 'who';
+  /** Single display name for joined/left, full participant list (joined as
+   *  comma-separated string) for 'who'. */
   displayName: string;
   at: Date;
 }
@@ -150,6 +152,21 @@ watch(
     activityEvents.value = [];
   },
 );
+
+/**
+ * Pushes a "who is here right now" activity line — called by the
+ * parent (ChatApp) after a successful {@code session-who} WS reply.
+ * Exposed via {@link defineExpose} below.
+ */
+function pushWhoActivity(names: string[]): void {
+  activityEvents.value.push({
+    id: `act-${++activitySeq}`,
+    kind: 'who',
+    displayName: names.join(', '),
+    at: new Date(),
+  });
+}
+
 
 const { messages: history, loading: historyLoading, error: historyError, load, reset } =
   useChatHistory();
@@ -457,7 +474,7 @@ function rollbackLocalEcho(messageId: string): void {
   if (idx >= 0) liveMessages.value.splice(idx, 1);
 }
 
-defineExpose({ appendLocalEcho, rollbackLocalEcho });
+defineExpose({ appendLocalEcho, rollbackLocalEcho, pushWhoActivity });
 
 // ──────────────── Wizard deep-link plumbing ────────────────
 //
@@ -728,7 +745,12 @@ onBeforeUnmount(() => {
           class="flex items-center gap-2 text-xs opacity-60 my-2"
         >
           <div class="flex-1 border-t border-base-300" />
-          <span>
+          <span v-if="evt.kind === 'who'">
+            <span aria-hidden="true">👥</span>
+            <span class="ml-1">{{ _('chat.activity.whoHeader') }}</span>
+            <span class="font-medium ml-1">{{ evt.displayName }}</span>
+          </span>
+          <span v-else>
             <span aria-hidden="true">👥</span>
             <span class="font-medium ml-1">{{ evt.displayName }}</span>
             <span class="ml-1">{{

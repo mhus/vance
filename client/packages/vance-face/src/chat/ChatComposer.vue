@@ -111,6 +111,8 @@ const emit = defineEmits<{
   /** Slash-command interception: user typed `/hub`. Parent closes the
    *  worker socket and reopens against the hub. */
   (e: 'hub'): void;
+  /** User typed {@code /who} — parent triggers the session-who lookup. */
+  (e: 'who'): void;
   /** Optimistic local echo — composer pushed a temp user bubble. Parent
    *  appends to its live messages and will dedup later when the
    *  canonical server frame arrives (matched by id-prefix + role + content). */
@@ -557,6 +559,21 @@ async function send(): Promise<void> {
   ) {
     composerText.value = '';
     emit('hub');
+    return;
+  }
+
+  // `/who` — multi-user participant lookup (see
+  // planning/multi-user-sessions.md §7). Frontend-only command: never
+  // sent to the engine as chat input; bounced up to the parent which
+  // round-trips a {@code session-who} WS request and renders the
+  // reply as an ephemeral activity line.
+  if (
+    text === '/who'
+    && filesSnapshot.length === 0
+    && docsSnapshot.length === 0
+  ) {
+    composerText.value = '';
+    emit('who');
     return;
   }
 

@@ -231,6 +231,9 @@ export default {
     activity: {
       joined: 'ist beigetreten',
       left: 'hat verlassen',
+      whoHeader: 'Aktuell hier:',
+      whoEmpty: 'niemand',
+      whoFailed: '/who fehlgeschlagen',
     },
     sessionHeader: {
       untitled: 'Ohne Titel',

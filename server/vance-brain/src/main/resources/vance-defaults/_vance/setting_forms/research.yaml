@@ -139,6 +139,21 @@ fields:
     bindsTo:
       key: "research.endpoint.openalex.contactEmail"
 
+  - name: openalexBaseUrl
+    type: string
+    label:
+      de: "OpenAlex Base-URL (optional)"
+      en: "OpenAlex Base-URL (optional)"
+    help:
+      de: "Leer = https://api.openalex.org (Standard). Nur überschreiben für
+           private Mirrors oder On-Premise-Snapshots."
+      en: "Empty = https://api.openalex.org (default). Override only for
+           private mirrors or on-prem snapshots."
+    showIf:  "openalexEnabled"
+    writeIf: "openalexEnabled"
+    bindsTo:
+      key: "research.endpoint.openalex.baseUrl"
+
   # ─── arXiv — STEM-Academic (keyless) ─────────────────────────────
 
   - name: arxivEnabled
@@ -155,6 +170,90 @@ fields:
     bindsTo:
       key: "research.endpoint.arxiv.enabled"
 
+  - name: arxivBaseUrl
+    type: string
+    label:
+      de: "arXiv Base-URL (optional)"
+      en: "arXiv Base-URL (optional)"
+    help:
+      de: "Leer = https://export.arxiv.org/api (Standard). Nur überschreiben
+           für Mirror-Endpoints."
+      en: "Empty = https://export.arxiv.org/api (default). Override only for
+           mirror endpoints."
+    showIf:  "arxivEnabled"
+    writeIf: "arxivEnabled"
+    bindsTo:
+      key: "research.endpoint.arxiv.baseUrl"
+
+  # ─── PubMed / NCBI E-utilities — Biomedical-Academic (keyless) ──
+
+  - name: pubmedEnabled
+    type: boolean
+    defaultValue: "true"
+    label:
+      de: "PubMed aktivieren"
+      en: "Enable PubMed"
+    help:
+      de: "Key-loser biomedizinischer Provider (NCBI E-utilities, ~37 Mio
+           MEDLINE-Zitate). Ergänzt OpenAlex/arXiv für Life-Sciences /
+           Klinik / Pharma. Rate-Limit 3 req/s ohne, 10 req/s mit API-Key."
+      en: "Key-less biomedical provider (NCBI E-utilities, ~37M MEDLINE
+           citations). Complements OpenAlex/arXiv for life sciences /
+           clinical / pharma. Rate-limit 3 req/s without, 10 req/s with
+           API key."
+    bindsTo:
+      key: "research.endpoint.pubmed.enabled"
+
+  - name: pubmedContactEmail
+    type: string
+    label:
+      de: "PubMed Kontakt-E-Mail"
+      en: "PubMed contact email"
+    help:
+      de: "NCBI bittet ausdrücklich um eine Kontakt-E-Mail bei jedem
+           Aufruf (Etikette). Bei Rate-Limit-Verletzung benachrichtigt
+           NCBI diese Adresse vor dem Block. Leer = keine Adresse
+           mitgesendet."
+      en: "NCBI explicitly asks for a contact email on every call
+           (etiquette). On rate-limit violation NCBI notifies this
+           address before blocking. Empty = no address sent."
+    showIf:  "pubmedEnabled"
+    writeIf: "pubmedEnabled"
+    bindsTo:
+      key: "research.endpoint.pubmed.contactEmail"
+
+  - name: pubmedApiKey
+    type: password
+    label:
+      de: "PubMed API-Key (optional)"
+      en: "PubMed API key (optional)"
+    help:
+      de: "Optional. Mit API-Key 10 req/sec statt 3 req/sec. Kostenlos
+           über ein NCBI-Konto erhältlich
+           (https://www.ncbi.nlm.nih.gov/account/settings/)."
+      en: "Optional. With API key, rate is 10 req/sec instead of 3.
+           Free via an NCBI account
+           (https://www.ncbi.nlm.nih.gov/account/settings/)."
+    showIf:  "pubmedEnabled"
+    writeIf: "pubmedEnabled"
+    bindsTo:
+      key: "research.endpoint.pubmed.apiKey"
+
+  - name: pubmedBaseUrl
+    type: string
+    label:
+      de: "PubMed Base-URL (optional)"
+      en: "PubMed Base-URL (optional)"
+    help:
+      de: "Leer = https://eutils.ncbi.nlm.nih.gov/entrez/eutils (Standard).
+           Nur überschreiben für lokale E-utilities-Spiegel."
+      en: "Empty = https://eutils.ncbi.nlm.nih.gov/entrez/eutils (default).
+           Override only for local E-utilities mirrors."
+    showIf:  "pubmedEnabled"
+    writeIf: "pubmedEnabled"
+    bindsTo:
+      key: "research.endpoint.pubmed.baseUrl"
+
   # ─── OpenLibrary — Books (keyless) ───────────────────────────────
 
   - name: openlibEnabled
@@ -168,6 +267,21 @@ fields:
       en: "Key-less book provider (Internet Archive). Serves BOOK."
     bindsTo:
       key: "research.endpoint.openlib.enabled"
+
+  - name: openlibBaseUrl
+    type: string
+    label:
+      de: "OpenLibrary Base-URL (optional)"
+      en: "OpenLibrary Base-URL (optional)"
+    help:
+      de: "Leer = https://openlibrary.org (Standard). Nur überschreiben für
+           Mirror- oder Archive-Snapshots."
+      en: "Empty = https://openlibrary.org (default). Override only for
+           mirror or archive snapshots."
+    showIf:  "openlibEnabled"
+    writeIf: "openlibEnabled"
+    bindsTo:
+      key: "research.endpoint.openlib.baseUrl"
 
   # ─── HackerNews via Algolia — Tech-News (keyless) ────────────────
 
@@ -184,6 +298,21 @@ fields:
            contributes secondary WEB hits (tech-focused)."
     bindsTo:
       key: "research.endpoint.hn-algolia.enabled"
+
+  - name: hnBaseUrl
+    type: string
+    label:
+      de: "HackerNews Base-URL (optional)"
+      en: "HackerNews Base-URL (optional)"
+    help:
+      de: "Leer = https://hn.algolia.com/api/v1 (Standard). Nur überschreiben
+           für Algolia-Mirror-Endpoints."
+      en: "Empty = https://hn.algolia.com/api/v1 (default). Override only for
+           Algolia mirror endpoints."
+    showIf:  "hnEnabled"
+    writeIf: "hnEnabled"
+    bindsTo:
+      key: "research.endpoint.hn-algolia.baseUrl"
 
 settings:
 
@@ -213,6 +342,11 @@ settings:
     settingType: STRING
     writeIf: "arxivEnabled"
     value: "arxiv"
+
+  - key: "research.endpoint.pubmed.protocol"
+    settingType: STRING
+    writeIf: "pubmedEnabled"
+    value: "pubmed"
 
   - key: "research.endpoint.openlib.protocol"
     settingType: STRING

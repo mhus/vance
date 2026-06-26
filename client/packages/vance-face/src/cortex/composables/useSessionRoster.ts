@@ -36,6 +36,7 @@ export function useSessionRoster(sessionId: Ref<string | null>) {
   let unsubscribeRoster: (() => void) | null = null;
   let baselineEstablished = false;
   const changeListeners = new Set<(change: RosterChange) => void>();
+  const initialListeners = new Set<(participants: SessionParticipantDto[]) => void>();
 
   function diff(
     prev: SessionParticipantDto[],
@@ -52,6 +53,7 @@ export function useSessionRoster(sessionId: Ref<string | null>) {
   function attach() {
     detach();
     const socket = conn.socket.value;
+    const sid = sessionId.value;
     if (!socket) return;
     unsubscribeRoster = socket.on<SessionRosterData>('session-roster', (data) => {
       if (!data || data.sessionId !== sessionId.value) return;
@@ -60,6 +62,15 @@ export function useSessionRoster(sessionId: Ref<string | null>) {
       const change = isBaseline ? null : diff(participants.value, next);
       participants.value = next;
       baselineEstablished = true;
+      if (isBaseline) {
+        for (const listener of initialListeners) {
+          try {
+            listener(next);
+          } catch (err) {
+            console.warn('[useSessionRoster] initial listener threw', err);
+          }
+        }
+      }
       if (change) {
         for (const listener of changeListeners) {
           try {
@@ -75,17 +86,27 @@ export function useSessionRoster(sessionId: Ref<string | null>) {
     // then the server's initial push has already gone out and we
     // missed the baseline. Fetch it actively here so the composable
     // always knows the current roster, race-free.
-    const sid = sessionId.value;
     if (!sid) return;
     socket.send<unknown, SessionRosterData>('session-who', {})
       .then((reply) => {
-        if (!reply || reply.sessionId !== sessionId.value) return;
-        if (baselineEstablished) return; // a push already landed first — leave it
-        participants.value = reply.participants ?? [];
+        if (!reply) return;
+        if (reply.sessionId !== sid && reply.sessionId !== sessionId.value) {
+          return;
+        }
+        if (baselineEstablished) return; // a push already landed first
+        const next = reply.participants ?? [];
+        participants.value = next;
         baselineEstablished = true;
+        for (const listener of initialListeners) {
+          try {
+            listener(next);
+          } catch (err) {
+            console.warn('[useSessionRoster] initial listener threw', err);
+          }
+        }
       })
       .catch((err) => {
-        console.debug('[useSessionRoster] initial session-who failed:', err);
+        console.warn('[useSessionRoster] session-who failed', err);
       });
   }
 
@@ -109,6 +130,18 @@ export function useSessionRoster(sessionId: Ref<string | null>) {
     return () => changeListeners.delete(handler);
   }
 
+  /**
+   * Subscribe to the initial roster baseline — fired exactly once
+   * per attach, when the active session-who lookup resolves (or the
+   * first server push lands, whichever arrives first). Lets a chat
+   * view render a "currently here:" line right after the user enters
+   * a shared session, without needing to type {@code /who} manually.
+   */
+  function onInitial(handler: (participants: SessionParticipantDto[]) => void): () => void {
+    initialListeners.add(handler);
+    return () => initialListeners.delete(handler);
+  }
+
   watch(
     () => [conn.socket.value, sessionId.value],
     () => {
@@ -122,7 +155,8 @@ export function useSessionRoster(sessionId: Ref<string | null>) {
   onBeforeUnmount(() => {
     detach();
     changeListeners.clear();
+    initialListeners.clear();
   });
 
-  return { participants, onChange };
+  return { participants, onChange, onInitial };
 }

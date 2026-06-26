@@ -124,7 +124,24 @@ interface ActivityEvent {
 const activityEvents = ref<ActivityEvent[]>([]);
 let activitySeq = 0;
 const sessionIdRef = computed(() => props.sessionId);
-const { onChange: onRosterChange } = useSessionRoster(sessionIdRef);
+const { onChange: onRosterChange, onInitial: onRosterInitial } =
+  useSessionRoster(sessionIdRef);
+// On (re-)attach to a shared session, surface the current roster as
+// a "currently here" activity line — same render as the /who slash
+// command output, but triggered automatically.
+onRosterInitial((list) => {
+  if (list.length === 0) return;
+  const names = list
+    .map((p) => p.displayName?.trim() || p.userId)
+    .filter((n): n is string => Boolean(n));
+  if (names.length === 0) return;
+  activityEvents.value.push({
+    id: `act-${++activitySeq}`,
+    kind: 'who',
+    displayName: names.join(', '),
+    at: new Date(),
+  });
+});
 onRosterChange((change: RosterChange) => {
   for (const p of change.joined) {
     activityEvents.value.push({

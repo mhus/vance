@@ -137,7 +137,6 @@ declare const _default: {
             unnamedSession: string;
         };
         backToSessions: string;
-        projectTooltip: string;
         connecting: string;
         confirmLeave: string;
         pickAnotherSession: string;

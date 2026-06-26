@@ -160,7 +160,6 @@ export default {
       unnamedSession: 'Session',
     },
     backToSessions: '← Sessions',
-    projectTooltip: 'Projekt: {name}',
     connecting: 'Verbindung zum Brain wird aufgebaut…',
     confirmLeave:
       'Diese Chat-Session verlassen? Die Verbindung wird freigegeben und ein nicht gesendeter Entwurf geht verloren.',

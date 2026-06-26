@@ -6,29 +6,17 @@ interface Props {
     expanded: Set<string>;
 }
 declare const _default: import("vue").DefineComponent<Props, {}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {} & {
-    toggle: (path: string) => any;
-    "open-file": (id: string) => any;
-    "delete-file": (id: string) => any;
-    "move-file": (payload: {
-        id: string;
-        targetFolder: string;
-    }) => any;
-    "upload-files": (payload: {
-        files: File[];
-        targetFolder: string;
-    }) => any;
+    toggle: any;
+    "open-file": any;
+    "delete-file": any;
+    "move-file": any;
+    "upload-files": any;
 }, string, import("vue").PublicProps, Readonly<Props> & Readonly<{
-    onToggle?: ((path: string) => any) | undefined;
-    "onOpen-file"?: ((id: string) => any) | undefined;
-    "onDelete-file"?: ((id: string) => any) | undefined;
-    "onMove-file"?: ((payload: {
-        id: string;
-        targetFolder: string;
-    }) => any) | undefined;
-    "onUpload-files"?: ((payload: {
-        files: File[];
-        targetFolder: string;
-    }) => any) | undefined;
+    onToggle?: ((...args: any) => any) | undefined;
+    "onOpen-file"?: ((...args: any) => any) | undefined;
+    "onDelete-file"?: ((...args: any) => any) | undefined;
+    "onMove-file"?: ((...args: any) => any) | undefined;
+    "onUpload-files"?: ((...args: any) => any) | undefined;
 }>, {}, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;
 export default _default;
 //# sourceMappingURL=FileTreeNode.vue.d.ts.map

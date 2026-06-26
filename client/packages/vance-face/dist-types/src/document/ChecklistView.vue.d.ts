@@ -34,9 +34,9 @@ type __VLS_Props = {
     embedRef?: EmbedRef;
 };
 declare const _default: import("vue").DefineComponent<__VLS_Props, {}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {} & {
-    "update:doc": (doc: ChecklistDocument) => any;
+    "update:doc": any;
 }, string, import("vue").PublicProps, Readonly<__VLS_Props> & Readonly<{
-    "onUpdate:doc"?: ((doc: ChecklistDocument) => any) | undefined;
+    "onUpdate:doc"?: ((...args: any) => any) | undefined;
 }>, {
     meta: FenceMeta;
     mode: "editor" | "inline" | "embedded";

@@ -56,9 +56,9 @@ type __VLS_Props = {
     currentUserId?: string | null;
 };
 declare const _default: import("vue").DefineComponent<__VLS_Props, {}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {} & {
-    pickOption: (label: string) => any;
+    pickOption: any;
 }, string, import("vue").PublicProps, Readonly<__VLS_Props> & Readonly<{
-    onPickOption?: ((label: string) => any) | undefined;
+    onPickOption?: ((...args: any) => any) | undefined;
 }>, {
     worker: boolean;
     lineMaxChars: number;

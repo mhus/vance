@@ -165,7 +165,6 @@ export default {
       unnamedSession: 'Session',
     },
     backToSessions: '← Sessions',
-    projectTooltip: 'Project: {name}',
     connecting: 'Connecting to brain…',
     confirmLeave:
       'Leave this chat session? The connection will be released and any unsent draft is lost.',

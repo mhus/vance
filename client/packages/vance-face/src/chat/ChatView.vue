@@ -228,18 +228,6 @@ const chatProjectLabel = computed<string>(() => {
   return title && title.length > 0 ? title : id;
 });
 
-// Drop the project chip when the chat header gets cramped. The chip
-// eats ~224px of horizontal real estate (plus padding/gap), which is
-// the dominant culprit pushing SessionHeader into its overflow menu.
-// Hiding it here gives SessionHeader the breathing room to stay in
-// wide mode a bit longer; SessionHeader still has its own internal
-// collapse below ~520px once the chip is gone.
-const HEADER_DENSE_THRESHOLD_PX = 800;
-const headerEl = ref<HTMLElement | null>(null);
-const headerWidth = ref<number>(Number.POSITIVE_INFINITY);
-const headerDense = computed(() => headerWidth.value < HEADER_DENSE_THRESHOLD_PX);
-let headerResizeObserver: ResizeObserver | null = null;
-
 // Keep the embedded-document resolver and the save-as-document promote
 // path informed about the chat's current project — both fall back to
 // this store value when a vance:/-link or a kindbox action omits the
@@ -544,22 +532,10 @@ onMounted(async () => {
   // open its TTS gate.
   emit('history-loaded');
   window.addEventListener('vance-open-wizard', onWizardDeepLink);
-
-  if (headerEl.value) {
-    headerWidth.value = headerEl.value.offsetWidth;
-    headerResizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        headerWidth.value = entry.contentRect.width;
-      }
-    });
-    headerResizeObserver.observe(headerEl.value);
-  }
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener('vance-open-wizard', onWizardDeepLink);
-  headerResizeObserver?.disconnect();
-  headerResizeObserver = null;
   for (const off of subscriptions) off();
   reset();
 });
@@ -658,16 +634,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="h-full min-h-0 flex flex-col">
-    <header ref="headerEl" class="px-6 py-3 border-b border-base-300 bg-base-100 flex items-center gap-3">
-      <div
-        v-if="chatProjectLabel && !headerDense"
-        class="flex items-center gap-1 text-xs px-2 py-1 rounded
-               bg-base-200 text-base-content/80 max-w-[14rem] shrink-0"
-        :title="$t('chat.projectTooltip', { name: chatProjectId })"
-      >
-        <span aria-hidden="true">📁</span>
-        <span class="truncate font-medium">{{ chatProjectLabel }}</span>
-      </div>
+    <header class="px-6 py-3 border-b border-base-300 bg-base-100 flex items-center gap-3">
       <SessionHeader
         :session-id="sessionId"
         :can-save="canExportConversation"

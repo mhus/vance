@@ -804,6 +804,15 @@ function onComposerFocusOut(event: FocusEvent): void {
 }
 
 function onComposerKeydown(event: KeyboardEvent): void {
+  // F4 — toggle auto-AI mode (see planning/multi-user-sessions.md §6).
+  // Universal across browsers and platforms, no modifier needed, no
+  // conflict with text-editing shortcuts.
+  if (event.key === 'F4'
+      && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
+    event.preventDefault();
+    handleAutoAiCmd(null);
+    return;
+  }
   // Follow-up acceptance: Space (or Tab) against an active suggestion
   // while the composer is empty writes the suggestion into the input
   // instead of inserting whitespace. Shell-autosuggestion style.

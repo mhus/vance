@@ -88,6 +88,7 @@ public class LiveRegion {
     private volatile @Nullable Consumer<String> submitListener;
     private volatile @Nullable Runnable interruptListener;
     private volatile @Nullable Runnable quitListener;
+    private volatile @Nullable Runnable f4Listener;
     private volatile @Nullable LiveCompleter completer;
 
     /**
@@ -127,6 +128,14 @@ public class LiveRegion {
 
     public void setInterruptListener(@Nullable Runnable listener) {
         this.interruptListener = listener;
+    }
+
+    /**
+     * Callback invoked on the F4 key. Used by ChatRepl to toggle the
+     * auto-AI mode without going through the slash-command dispatch.
+     */
+    public void setF4Listener(@Nullable Runnable listener) {
+        this.f4Listener = listener;
     }
 
     public void setQuitListener(@Nullable Runnable listener) {
@@ -515,6 +524,19 @@ public class LiveRegion {
                         handleCsi(payload, r);
                         continue;
                     }
+                    if (next == 'O') {
+                        // SS3 escape for F1–F4 in xterm application
+                        // mode: ESC O {P,Q,R,S}. We only care about
+                        // F4 (auto-AI toggle); everything else is a
+                        // drop like the meta-combos below.
+                        int ss3;
+                        try { ss3 = r.read(80L); } catch (Exception ignored) { ss3 = -1; }
+                        if (ss3 == 'S') {
+                            fireF4();
+                            continue;
+                        }
+                        continue;
+                    }
                     if (next == 'b' || next == 'B') {
                         // Option/Alt + Left (readline meta-b) → backward-word.
                         if (moveWordLeft()) paintLive();
@@ -858,10 +880,22 @@ public class LiveRegion {
             case "4~":
             case "8~": changed = moveEnd();   break;
             case "3~": changed = deleteAtCursor(); break;
+            case "14~":
+                // F4 in CSI form (linux console, some xterms not in
+                // application mode). Symmetric with the SS3 path above.
+                fireF4();
+                return;
             default:
                 return;
         }
         if (changed) paintLive();
+    }
+
+    private void fireF4() {
+        Runnable r = f4Listener;
+        if (r != null) {
+            try { r.run(); } catch (RuntimeException ignored) { /* keep the input loop alive */ }
+        }
     }
 
     private static String readCsiPayload(NonBlockingReader reader) throws IOException {

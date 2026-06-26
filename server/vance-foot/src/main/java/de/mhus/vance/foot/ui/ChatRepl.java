@@ -1,5 +1,6 @@
 package de.mhus.vance.foot.ui;
 
+import de.mhus.vance.foot.command.AutoAiService;
 import de.mhus.vance.foot.command.ChatInputService;
 import de.mhus.vance.foot.command.CommandService;
 import de.mhus.vance.foot.command.SlashCommand;
@@ -44,6 +45,7 @@ public class ChatRepl {
     private final LiveRegion liveRegion;
     private final FootConfig config;
     private final CommandService commandService;
+    private final AutoAiService autoAi;
 
     private final AtomicBoolean stopRequested = new AtomicBoolean(false);
     private @Nullable Terminal terminal;
@@ -54,13 +56,15 @@ public class ChatRepl {
                     InterfaceService interfaceService,
                     LiveRegion liveRegion,
                     FootConfig config,
-                    @Lazy CommandService commandService) {
+                    @Lazy CommandService commandService,
+                    AutoAiService autoAi) {
         this.input = input;
         this.chatTerminal = chatTerminal;
         this.interfaceService = interfaceService;
         this.liveRegion = liveRegion;
         this.config = config;
         this.commandService = commandService;
+        this.autoAi = autoAi;
     }
 
     public void requestStop() {
@@ -94,6 +98,14 @@ public class ChatRepl {
         liveRegion.setSubmitListener(this::onSubmit);
         liveRegion.setInterruptListener(this::onInterrupt);
         liveRegion.setQuitListener(this::requestStop);
+        // F4 — toggle auto-AI mode. Same hotkey the Web composer uses.
+        // No conflict with readline / Lanterna / common terminals.
+        liveRegion.setF4Listener(() -> {
+            autoAi.toggle();
+            chatTerminal.info(autoAi.isOn()
+                    ? "Auto-AI: ON — every message goes to the AI (escape with @no)."
+                    : "Auto-AI: OFF — type @ai to address the agent.");
+        });
         liveRegion.attach(t);
 
         if (liveRegion.isAttached()) {

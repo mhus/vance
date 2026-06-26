@@ -75,6 +75,8 @@ public class ChatInputService {
                 return t;
             });
 
+    private final AutoAiService autoAi;
+
     public ChatInputService(CommandService commandService,
                             ConnectionService connection,
                             SessionService sessions,
@@ -82,7 +84,8 @@ public class ChatInputService {
                             PromptGate promptGate,
                             BusyIndicator busyIndicator,
                             IdeContextBuilder ideContextBuilder,
-                            PendingAskUserPicker askUserPicker) {
+                            PendingAskUserPicker askUserPicker,
+                            AutoAiService autoAi) {
         this.commandService = commandService;
         this.connection = connection;
         this.sessions = sessions;
@@ -91,6 +94,7 @@ public class ChatInputService {
         this.busyIndicator = busyIndicator;
         this.ideContextBuilder = ideContextBuilder;
         this.askUserPicker = askUserPicker;
+        this.autoAi = autoAi;
     }
 
     /**
@@ -303,9 +307,13 @@ public class ChatInputService {
         // back and waiting for input.
         busyIndicator.enter("chat-roundtrip");
         try {
+            // Auto-AI rewriting — see planning/multi-user-sessions.md §6.
+            // Strips a leading @no escape, otherwise prepends @ai when
+            // auto-mode is on. Applied just before the wire-send.
+            String wireLine = autoAi.apply(line);
             ProcessSteerRequest steer = ProcessSteerRequest.builder()
                     .processName(process)
-                    .content(line)
+                    .content(wireLine)
                     .ideContext(ideContextBuilder.buildAndConsumeForSteer().orElse(null))
                     .voiceMode(voiceMode ? Boolean.TRUE : null)
                     .build();

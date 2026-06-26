@@ -240,6 +240,11 @@ export default {
       whoEmpty: 'no one',
       whoFailed: '/who failed',
     },
+    autoAi: {
+      placeholder: '🤖 Auto-AI on — message (start with @no to skip the AI)',
+      statusOn: 'Auto-AI: ON — every message goes to the AI (escape with @no)',
+      statusOff: 'Auto-AI: OFF — type @ai to address the agent',
+    },
     sessionHeader: {
       untitled: 'Untitled',
       editTitlePlaceholder: 'Session title…',

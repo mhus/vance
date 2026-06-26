@@ -235,6 +235,11 @@ export default {
       whoEmpty: 'niemand',
       whoFailed: '/who fehlgeschlagen',
     },
+    autoAi: {
+      placeholder: '🤖 Auto-AI aktiv — Nachricht (@no = nur an Menschen)',
+      statusOn: 'Auto-AI: AN — jede Nachricht geht an die AI (mit @no escapen)',
+      statusOff: 'Auto-AI: AUS — @ai zum Adressieren tippen',
+    },
     sessionHeader: {
       untitled: 'Ohne Titel',
       editTitlePlaceholder: 'Session-Titel…',

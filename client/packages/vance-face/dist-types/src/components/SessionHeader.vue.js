@@ -1,6 +1,6 @@
 import { VButton, VColorPicker, VEmojiPicker, VTagEditor } from '@vance/components';
 import { AccentColor, SessionStatus, } from '@vance/generated';
-import { archiveSession, deleteSession, listSessions, patchSessionMetadata, reactivateSession, } from '@vance/shared';
+import { archiveSession, deleteSession, getUsername, listSessions, patchSessionMetadata, reactivateSession, } from '@vance/shared';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 const props = defineProps();
@@ -8,6 +8,18 @@ const emit = defineEmits();
 const { t } = useI18n();
 const session = ref(null);
 const loading = ref(false);
+/**
+ * Whether the current authenticated user is the session's owner.
+ * Multi-user gate: shared sessions surface to non-owners as
+ * read-only participants — they can view and join the chat, but
+ * lifecycle / metadata actions (archive, delete, settings toggles,
+ * shared flag) remain owner-only. See planning/multi-user-sessions.md
+ * §2.1 / §2.4.
+ */
+const isOwner = computed(() => {
+    const me = getUsername();
+    return me !== null && session.value !== null && session.value.userId === me;
+});
 const error = ref(null);
 const editingTitle = ref(false);
 const titleDraft = ref('');
@@ -130,6 +142,7 @@ async function patch(patch) {
             session.value.color = updated.color ?? undefined;
             session.value.tags = updated.tags ?? [];
             session.value.pinned = updated.pinned;
+            session.value.allowMultipleClients = updated.allowMultipleClients;
         }
     }
     catch (e) {
@@ -142,6 +155,8 @@ async function patch(patch) {
 function startTitleEdit() {
     if (isArchived.value)
         return;
+    if (!isOwner.value)
+        return; // owner-only edit — see top-level isOwner doc
     titleDraft.value = session.value?.title ?? '';
     editingTitle.value = true;
 }
@@ -173,6 +188,11 @@ async function togglePin() {
     if (isArchived.value || !session.value)
         return;
     await patch({ pinned: !session.value.pinned });
+}
+async function toggleAllowMultipleClients() {
+    if (isArchived.value || !session.value)
+        return;
+    await patch({ allowMultipleClients: !session.value.allowMultipleClients });
 }
 async function onTags(value) {
     if (isArchived.value)
@@ -298,7 +318,7 @@ if (__VLS_ctx.isArchived) {
     });
     (__VLS_ctx.t('chat.sessionHeader.archived'));
 }
-if (!__VLS_ctx.compact) {
+if (!__VLS_ctx.compact && __VLS_ctx.isOwner) {
     if (!__VLS_ctx.isArchived) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
             ...{ onClick: (__VLS_ctx.togglePin) },
@@ -317,12 +337,31 @@ if (!__VLS_ctx.compact) {
         }
     }
     if (!__VLS_ctx.isArchived) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+            ...{ onClick: (__VLS_ctx.toggleAllowMultipleClients) },
+            type: "button",
+            ...{ class: "btn btn-ghost btn-sm" },
+            title: (__VLS_ctx.session?.allowMultipleClients
+                ? __VLS_ctx.t('chat.sessionHeader.collabDisableLabel')
+                : __VLS_ctx.t('chat.sessionHeader.collabEnableLabel')),
+            disabled: (__VLS_ctx.saving),
+        });
+        if (__VLS_ctx.session?.allowMultipleClients) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+        }
+        else {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "opacity-40" },
+            });
+        }
+    }
+    if (!__VLS_ctx.isArchived) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "relative" },
         });
         __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
             ...{ onClick: (...[$event]) => {
-                    if (!(!__VLS_ctx.compact))
+                    if (!(!__VLS_ctx.compact && __VLS_ctx.isOwner))
                         return;
                     if (!(!__VLS_ctx.isArchived))
                         return;
@@ -362,7 +401,7 @@ if (!__VLS_ctx.compact) {
         });
         __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
             ...{ onClick: (...[$event]) => {
-                    if (!(!__VLS_ctx.compact))
+                    if (!(!__VLS_ctx.compact && __VLS_ctx.isOwner))
                         return;
                     if (!(!__VLS_ctx.isArchived))
                         return;
@@ -486,7 +525,7 @@ if (!__VLS_ctx.compact) {
     __VLS_43.slots.default;
     var __VLS_43;
 }
-else {
+else if (__VLS_ctx.isOwner) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ref: "menuEl",
         ...{ class: "relative" },
@@ -494,7 +533,9 @@ else {
     /** @type {typeof __VLS_ctx.menuEl} */ ;
     __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
         ...{ onClick: (...[$event]) => {
-                if (!!(!__VLS_ctx.compact))
+                if (!!(!__VLS_ctx.compact && __VLS_ctx.isOwner))
+                    return;
+                if (!(__VLS_ctx.isOwner))
                     return;
                 __VLS_ctx.menuOpen = !__VLS_ctx.menuOpen;
             } },
@@ -527,7 +568,9 @@ else {
         if (!__VLS_ctx.isArchived) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
                 ...{ onClick: (...[$event]) => {
-                        if (!!(!__VLS_ctx.compact))
+                        if (!!(!__VLS_ctx.compact && __VLS_ctx.isOwner))
+                            return;
+                        if (!(__VLS_ctx.isOwner))
                             return;
                         if (!(__VLS_ctx.menuOpen))
                             return;
@@ -550,10 +593,42 @@ else {
             });
             (__VLS_ctx.session?.pinned ? __VLS_ctx.t('chat.sessionHeader.unpinTooltip') : __VLS_ctx.t('chat.sessionHeader.pinTooltip'));
         }
+        if (!__VLS_ctx.isArchived && __VLS_ctx.isOwner) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.compact && __VLS_ctx.isOwner))
+                            return;
+                        if (!(__VLS_ctx.isOwner))
+                            return;
+                        if (!(__VLS_ctx.menuOpen))
+                            return;
+                        if (!(!__VLS_ctx.isArchived && __VLS_ctx.isOwner))
+                            return;
+                        __VLS_ctx.toggleAllowMultipleClients();
+                        __VLS_ctx.closeMenu();
+                    } },
+                type: "button",
+                ...{ class: "flex items-center gap-3 w-full px-3 py-2 text-sm hover:bg-base-200 disabled:opacity-50" },
+                disabled: (__VLS_ctx.saving),
+                role: "menuitem",
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "w-5 text-center" },
+                ...{ class: (__VLS_ctx.session?.allowMultipleClients ? '' : 'opacity-40') },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "flex-1 text-left" },
+            });
+            (__VLS_ctx.session?.allowMultipleClients
+                ? __VLS_ctx.t('chat.sessionHeader.collabDisableLabel')
+                : __VLS_ctx.t('chat.sessionHeader.collabEnableLabel'));
+        }
         if (!__VLS_ctx.isArchived) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
                 ...{ onClick: (...[$event]) => {
-                        if (!!(!__VLS_ctx.compact))
+                        if (!!(!__VLS_ctx.compact && __VLS_ctx.isOwner))
+                            return;
+                        if (!(__VLS_ctx.isOwner))
                             return;
                         if (!(__VLS_ctx.menuOpen))
                             return;
@@ -602,7 +677,9 @@ else {
             }
             __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
                 ...{ onClick: (...[$event]) => {
-                        if (!!(!__VLS_ctx.compact))
+                        if (!!(!__VLS_ctx.compact && __VLS_ctx.isOwner))
+                            return;
+                        if (!(__VLS_ctx.isOwner))
                             return;
                         if (!(__VLS_ctx.menuOpen))
                             return;
@@ -666,7 +743,9 @@ else {
         if (!__VLS_ctx.isArchived) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
                 ...{ onClick: (...[$event]) => {
-                        if (!!(!__VLS_ctx.compact))
+                        if (!!(!__VLS_ctx.compact && __VLS_ctx.isOwner))
+                            return;
+                        if (!(__VLS_ctx.isOwner))
                             return;
                         if (!(__VLS_ctx.menuOpen))
                             return;
@@ -691,7 +770,9 @@ else {
         else {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
                 ...{ onClick: (...[$event]) => {
-                        if (!!(!__VLS_ctx.compact))
+                        if (!!(!__VLS_ctx.compact && __VLS_ctx.isOwner))
+                            return;
+                        if (!(__VLS_ctx.isOwner))
                             return;
                         if (!(__VLS_ctx.menuOpen))
                             return;
@@ -715,7 +796,9 @@ else {
         }
         __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
             ...{ onClick: (...[$event]) => {
-                    if (!!(!__VLS_ctx.compact))
+                    if (!!(!__VLS_ctx.compact && __VLS_ctx.isOwner))
+                        return;
+                    if (!(__VLS_ctx.isOwner))
                         return;
                     if (!(__VLS_ctx.menuOpen))
                         return;
@@ -780,6 +863,10 @@ else {
 /** @type {__VLS_StyleScopedClasses['btn-ghost']} */ ;
 /** @type {__VLS_StyleScopedClasses['btn-sm']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-40']} */ ;
+/** @type {__VLS_StyleScopedClasses['btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['btn-ghost']} */ ;
+/** @type {__VLS_StyleScopedClasses['btn-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-40']} */ ;
 /** @type {__VLS_StyleScopedClasses['relative']} */ ;
 /** @type {__VLS_StyleScopedClasses['btn']} */ ;
 /** @type {__VLS_StyleScopedClasses['btn-ghost']} */ ;
@@ -835,6 +922,19 @@ else {
 /** @type {__VLS_StyleScopedClasses['bg-base-100']} */ ;
 /** @type {__VLS_StyleScopedClasses['shadow-lg']} */ ;
 /** @type {__VLS_StyleScopedClasses['overflow-hidden']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['w-full']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['hover:bg-base-200']} */ ;
+/** @type {__VLS_StyleScopedClasses['disabled:opacity-50']} */ ;
+/** @type {__VLS_StyleScopedClasses['w-5']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-left']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['items-center']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
@@ -942,6 +1042,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             VTagEditor: VTagEditor,
             t: t,
             session: session,
+            isOwner: isOwner,
             editingTitle: editingTitle,
             titleDraft: titleDraft,
             showColor: showColor,
@@ -962,6 +1063,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             onIcon: onIcon,
             onColor: onColor,
             togglePin: togglePin,
+            toggleAllowMultipleClients: toggleAllowMultipleClients,
             onTags: onTags,
             onArchive: onArchive,
             onReactivate: onReactivate,

@@ -13,15 +13,31 @@
  * land here. Most built-ins still use the static {@code if/else}
  * dispatch and don't need a registration — they'll migrate as
  * additional addons get carved out.
- *
- * v1: empty. Calendar — the first registry-driven Kind — moved to
- * the {@code vance-addon-brain-calendar} addon in Etappe 2.x and
- * registers itself from there.
  */
+import { defineAsyncComponent } from 'vue';
+import { registerKind } from '@vance/kind-registry';
 export function registerBuiltInKinds() {
-    // No built-in Kinds drive the registry path right now. Future
-    // built-ins land here; first-party addons that migrate keep the
-    // function trivially empty until at least one Kind stays in the
-    // host bundle.
+    // ── Markdown: code-preview toggle ──────────────────────────────
+    // Markdown files resolve to the catch-all 'code' binding in
+    // docTypeRegistry (resolveBinding skips Kind entries without a
+    // view). The codePreview field gives the shell a rendered
+    // MarkdownView for the View/Edit toggle — raw CodeEditor in
+    // 'edit', rendered HTML in 'view'. No view/codec needed.
+    registerKind({
+        id: 'markdown',
+        matches: (_kind, mime) => mime === 'text/markdown',
+        codePreview: defineAsyncComponent(() => import('@/components/MarkdownView.vue')),
+    });
+    // ── TeX: KaTeX code-preview toggle ─────────────────────────────
+    // Same pattern as Markdown: .tex files resolve to the catch-all
+    // 'code' binding, but get a View/Edit toggle via codePreview —
+    // KaTeX-rendered formula preview in 'view', raw CodeEditor with
+    // stex highlighting in 'edit'. The "Generate PDF" run adapter
+    // handles full LaTeX compilation independently.
+    registerKind({
+        id: 'tex',
+        matches: (_kind, mime) => mime === 'text/x-tex' || mime === 'application/x-tex',
+        codePreview: defineAsyncComponent(() => import('@/cortex/components/TexPreview.vue')),
+    });
 }
 //# sourceMappingURL=builtInKinds.js.map

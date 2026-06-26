@@ -46,9 +46,10 @@ function findSiblingCompose(doc, files) {
  * {@code tex-compose.yaml} in the same directory via the cortex store;
  * when none is found, the run fails with a hint to create one.
  *
- * <p>The result carries {@code { pdfPath }} on success so the shell
- * can render an "Open PDF" button that opens the freshly imported PDF
- * as a new tab.
+ * <p>On success, the handle carries a {@code RunAction} "Open PDF"
+ * that refreshes the file list and opens the freshly imported PDF as
+ * a new tab — the shell renders it as a button in the log panel
+ * without needing any TeX-specific knowledge.
  */
 export const texRunner = {
     id: 'tex',
@@ -60,6 +61,7 @@ export const texRunner = {
         const result = ref(null);
         const error = ref(null);
         const durationMs = ref(null);
+        const actions = ref([]);
         let detached = false;
         // Resolve the compose path. For a tex-compose.yaml file, use it
         // directly. For a .tex file, look for a sibling compose file.
@@ -94,6 +96,29 @@ export const texRunner = {
                 state.value = 'finished';
                 result.value = { pdfPath: resp.pdfPath ?? null };
                 logLines.value.push(`[tex] PDF generated: ${resp.pdfPath ?? '(unknown path)'}`, `[tex] Elapsed: ${resp.elapsedMs ?? '?'} ms`);
+                // Register the "Open PDF" action so the shell can render
+                // a generic button without knowing about TeX.
+                const pdfPath = resp.pdfPath ?? null;
+                if (pdfPath) {
+                    actions.value = [{
+                            id: 'open-pdf',
+                            label: 'Open PDF',
+                            icon: '📄',
+                            async execute() {
+                                const store = useCortexStore();
+                                if (store.projectId) {
+                                    await store.loadList(store.projectId);
+                                }
+                                const pdfDoc = store.files.find((f) => f.path === pdfPath);
+                                if (pdfDoc) {
+                                    await store.openFile(pdfDoc.id);
+                                }
+                                else {
+                                    console.warn('[cortex/tex] PDF not found in file list:', pdfPath);
+                                }
+                            },
+                        }];
+                }
             }
             else {
                 state.value = 'failed';
@@ -120,6 +145,7 @@ export const texRunner = {
                 result,
                 error,
                 durationMs,
+                actions,
                 async cancel() {
                     // Backend compile is synchronous — no cancellation endpoint.
                     // Just transition to cancelled locally.

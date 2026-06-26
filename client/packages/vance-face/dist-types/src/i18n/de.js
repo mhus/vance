@@ -208,6 +208,18 @@ export default {
             saveSucceeded: 'Gespeichert unter {path}',
             saveFailed: 'Konversation konnte nicht als Dokument gespeichert werden.',
         },
+        activity: {
+            joined: 'ist beigetreten',
+            left: 'hat verlassen',
+            whoHeader: 'Aktuell hier:',
+            whoEmpty: 'niemand',
+            whoFailed: '/who fehlgeschlagen',
+        },
+        autoAi: {
+            placeholder: '🤖 Auto-AI aktiv — Nachricht (@no = nur an Menschen)',
+            statusOn: 'Auto-AI: AN — jede Nachricht geht an die AI (mit @no escapen)',
+            statusOff: 'Auto-AI: AUS — @ai zum Adressieren tippen',
+        },
         sessionHeader: {
             untitled: 'Ohne Titel',
             editTitlePlaceholder: 'Session-Titel…',
@@ -215,6 +227,8 @@ export default {
             colorLabel: 'Akzentfarbe',
             pinTooltip: 'Session anpinnen',
             unpinTooltip: 'Anpinnen aufheben',
+            collabEnableLabel: 'Mehrere Teilnehmer erlauben',
+            collabDisableLabel: 'Auf privat (1:1) zurücksetzen',
             archiveTooltip: 'Session archivieren',
             archive: 'Archivieren',
             archiveConfirm: 'Diese Session jetzt archivieren? Der Chat bleibt erhalten und kann später reaktiviert werden.',
@@ -244,6 +258,10 @@ export default {
             noSessionsBody: 'Auf „Neue Session" klicken, um eine zu starten.',
             occupied: 'belegt',
             occupiedTooltip: 'Von einer anderen Verbindung belegt',
+            sharedTooltip: 'Geteilte Session — du kannst beitreten',
+            joinLive: 'live · beitreten',
+            hijackConfirm: 'Diese Session ist bereits von einer deiner anderen Sitzungen belegt. '
+                + 'Übernehmen und die andere Sitzung verdrängen?',
             available: 'Verfügbar',
             failedToLoadSessions: 'Sessions konnten nicht geladen werden.',
             failedToStartSession: 'Eine neue Session konnte nicht gestartet werden.',

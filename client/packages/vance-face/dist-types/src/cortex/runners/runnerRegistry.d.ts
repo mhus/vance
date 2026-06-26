@@ -1,9 +1,14 @@
-import type { CortexDocument } from '../types';
-import type { RunAdapter } from './types';
 /**
- * Pick the first adapter willing to execute the given document, or
- * {@code null} when none matches. The shell uses this to decide
- * whether to show the Run-Button + log panel at all.
+ * Host-side runner registry facade.
+ *
+ * Built-in adapters (JS, Python, TeX) are registered at boot via
+ * {@code registerRunner()} from {@code @vance/runner-registry}. Addons
+ * register their own runners from their {@code ./register} federation
+ * expose. The host and addons share the same globalThis-backed Map.
+ *
+ * This module re-exports the registry functions for the host's
+ * internal use and registers the built-in runners at import time.
  */
-export declare function resolveRunAdapter(doc: CortexDocument): RunAdapter | null;
+export { registerRunner, resolveRunner, resolveRunAdapter, listRunners, } from '@vance/runner-registry';
+export type { RunAdapter, RunHandle, RunInput, RunState, RunAction, RunnerDocument, } from '@vance/runner-registry';
 //# sourceMappingURL=runnerRegistry.d.ts.map

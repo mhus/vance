@@ -1,4 +1,4 @@
-import type { RunAdapter } from './types';
+import type { RunAdapter } from '@vance/runner-registry';
 /**
  * TeX compilation adapter: posts the compose path to the brain's
  * {@code tex/compile} endpoint, which runs latexmk (or the configured
@@ -11,9 +11,10 @@ import type { RunAdapter } from './types';
  * {@code tex-compose.yaml} in the same directory via the cortex store;
  * when none is found, the run fails with a hint to create one.
  *
- * <p>The result carries {@code { pdfPath }} on success so the shell
- * can render an "Open PDF" button that opens the freshly imported PDF
- * as a new tab.
+ * <p>On success, the handle carries a {@code RunAction} "Open PDF"
+ * that refreshes the file list and opens the freshly imported PDF as
+ * a new tab — the shell renders it as a button in the log panel
+ * without needing any TeX-specific knowledge.
  */
 export declare const texRunner: RunAdapter;
 //# sourceMappingURL=texRunner.d.ts.map

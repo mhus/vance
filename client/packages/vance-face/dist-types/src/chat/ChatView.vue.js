@@ -5,6 +5,8 @@ import { useConversationExport } from '@composables/useConversationExport';
 import { useTenantProjects } from '@composables/useTenantProjects';
 import { useDocumentRefStore } from '@/document/documentRefStore';
 import { SessionHeader, VAlert, VButton } from '@components/index';
+import { getUsername } from '@vance/shared';
+import { useSessionRoster, } from '@/cortex/composables/useSessionRoster';
 import MessageBubble from './MessageBubble.vue';
 import FollowUpGhost from './FollowUpGhost.vue';
 import PlanModeIndicator from './PlanModeIndicator.vue';
@@ -12,6 +14,73 @@ import { OPTIMISTIC_PREFIX } from './optimisticEcho';
 const props = defineProps();
 const emit = defineEmits();
 const { t: _ } = useI18n();
+/**
+ * Authenticated user of this tab — used by {@link MessageBubble} to
+ * decide whether a USER bubble is mine (right-side / primary
+ * colour) or someone else's (left-side / accent colour with name
+ * header) in a multi-user session. See
+ * planning/multi-user-sessions.md §6.
+ */
+const currentUserId = computed(() => getUsername());
+const activityEvents = ref([]);
+let activitySeq = 0;
+const sessionIdRef = computed(() => props.sessionId);
+const { onChange: onRosterChange, onInitial: onRosterInitial } = useSessionRoster(sessionIdRef);
+// On (re-)attach to a shared session, surface the current roster as
+// a "currently here" activity line — same render as the /who slash
+// command output, but triggered automatically.
+onRosterInitial((list) => {
+    if (list.length === 0)
+        return;
+    const names = list
+        .map((p) => p.displayName?.trim() || p.userId)
+        .filter((n) => Boolean(n));
+    if (names.length === 0)
+        return;
+    activityEvents.value.push({
+        id: `act-${++activitySeq}`,
+        kind: 'who',
+        displayName: names.join(', '),
+        at: new Date(),
+    });
+});
+onRosterChange((change) => {
+    for (const p of change.joined) {
+        activityEvents.value.push({
+            id: `act-${++activitySeq}`,
+            kind: 'joined',
+            displayName: p.displayName ?? p.userId,
+            at: change.at,
+        });
+    }
+    for (const p of change.left) {
+        activityEvents.value.push({
+            id: `act-${++activitySeq}`,
+            kind: 'left',
+            displayName: p.displayName ?? p.userId,
+            at: change.at,
+        });
+    }
+});
+// Reset the ephemeral feed when the chat-view is rebound to a fresh
+// session — otherwise the previous session's activity would bleed
+// into the next one.
+watch(() => props.sessionId, () => {
+    activityEvents.value = [];
+});
+/**
+ * Pushes a "who is here right now" activity line — called by the
+ * parent (ChatApp) after a successful {@code session-who} WS reply.
+ * Exposed via {@link defineExpose} below.
+ */
+function pushWhoActivity(names) {
+    activityEvents.value.push({
+        id: `act-${++activitySeq}`,
+        kind: 'who',
+        displayName: names.join(', '),
+        at: new Date(),
+    });
+}
 const { messages: history, loading: historyLoading, error: historyError, load, reset } = useChatHistory();
 /** Messages received via chat-message-appended after history load. Same shape as history. */
 const liveMessages = ref([]);
@@ -221,6 +290,9 @@ function appendMessageBubble(data) {
         content: data.content,
         createdAt: data.createdAt,
         meta: data.meta,
+        senderUserId: data.senderUserId,
+        senderDisplayName: data.senderDisplayName,
+        addressedToAgent: data.addressedToAgent,
     });
     if (isWorkerProcess(data.processName)) {
         workerMessageIds.value = new Set(workerMessageIds.value).add(data.chatMessageId);
@@ -300,7 +372,7 @@ function rollbackLocalEcho(messageId) {
     if (idx >= 0)
         liveMessages.value.splice(idx, 1);
 }
-const __VLS_exposed = { appendLocalEcho, rollbackLocalEcho };
+const __VLS_exposed = { appendLocalEcho, rollbackLocalEcho, pushWhoActivity };
 defineExpose(__VLS_exposed);
 // ──────────────── Wizard deep-link plumbing ────────────────
 //
@@ -631,6 +703,9 @@ for (const [msg, idx] of __VLS_getVForSourceType((__VLS_ctx.allMessages))) {
         worker: (__VLS_ctx.workerMessageIds.has(msg.messageId)),
         meta: (msg.meta),
         optionsActionable: (msg.messageId === __VLS_ctx.activeAskUserMessageId),
+        senderUserId: (msg.senderUserId),
+        senderDisplayName: (msg.senderDisplayName),
+        currentUserId: (__VLS_ctx.currentUserId),
     }));
     const __VLS_34 = __VLS_33({
         ...{ 'onPickOption': {} },
@@ -640,6 +715,9 @@ for (const [msg, idx] of __VLS_getVForSourceType((__VLS_ctx.allMessages))) {
         worker: (__VLS_ctx.workerMessageIds.has(msg.messageId)),
         meta: (msg.meta),
         optionsActionable: (msg.messageId === __VLS_ctx.activeAskUserMessageId),
+        senderUserId: (msg.senderUserId),
+        senderDisplayName: (msg.senderDisplayName),
+        currentUserId: (__VLS_ctx.currentUserId),
     }, ...__VLS_functionalComponentArgsRest(__VLS_33));
     let __VLS_36;
     let __VLS_37;
@@ -701,6 +779,48 @@ for (const [draft] of __VLS_getVForSourceType((__VLS_ctx.visibleWorkerDrafts))) 
         processName: (draft.processName),
         streaming: (true),
     }, ...__VLS_functionalComponentArgsRest(__VLS_50));
+}
+for (const [evt] of __VLS_getVForSourceType((__VLS_ctx.activityEvents))) {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        key: (evt.id),
+        ...{ class: "flex items-center gap-2 text-xs opacity-60 my-2" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div)({
+        ...{ class: "flex-1 border-t border-base-300" },
+    });
+    if (evt.kind === 'who') {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            'aria-hidden': "true",
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "ml-1" },
+        });
+        (__VLS_ctx._('chat.activity.whoHeader'));
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "font-medium ml-1" },
+        });
+        (evt.displayName);
+    }
+    else {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            'aria-hidden': "true",
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "font-medium ml-1" },
+        });
+        (evt.displayName);
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "ml-1" },
+        });
+        (evt.kind === 'joined'
+            ? __VLS_ctx._('chat.activity.joined')
+            : __VLS_ctx._('chat.activity.left'));
+    }
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div)({
+        ...{ class: "flex-1 border-t border-base-300" },
+    });
 }
 /** @type {[typeof PlanModeIndicator, ]} */ ;
 // @ts-ignore
@@ -774,6 +894,24 @@ const __VLS_54 = __VLS_53({
 /** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['my-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-t']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;
+/** @type {__VLS_StyleScopedClasses['ml-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-medium']} */ ;
+/** @type {__VLS_StyleScopedClasses['ml-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-medium']} */ ;
+/** @type {__VLS_StyleScopedClasses['ml-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['ml-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-t']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;
 var __VLS_dollars;
 const __VLS_self = (await import('vue')).defineComponent({
     setup() {
@@ -785,6 +923,9 @@ const __VLS_self = (await import('vue')).defineComponent({
             FollowUpGhost: FollowUpGhost,
             PlanModeIndicator: PlanModeIndicator,
             emit: emit,
+            _: _,
+            currentUserId: currentUserId,
+            activityEvents: activityEvents,
             historyLoading: historyLoading,
             historyError: historyError,
             workerMessageIds: workerMessageIds,

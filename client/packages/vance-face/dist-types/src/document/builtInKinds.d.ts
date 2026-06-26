@@ -13,10 +13,6 @@
  * land here. Most built-ins still use the static {@code if/else}
  * dispatch and don't need a registration — they'll migrate as
  * additional addons get carved out.
- *
- * v1: empty. Calendar — the first registry-driven Kind — moved to
- * the {@code vance-addon-brain-calendar} addon in Etappe 2.x and
- * registers itself from there.
  */
 export declare function registerBuiltInKinds(): void;
 //# sourceMappingURL=builtInKinds.d.ts.map

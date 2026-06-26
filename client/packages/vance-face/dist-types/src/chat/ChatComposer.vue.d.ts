@@ -79,6 +79,7 @@ declare const _default: import("vue").DefineComponent<__VLS_Props, {
     setTextAndSend: typeof setTextAndSend;
 }, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {} & {
     hub: () => any;
+    who: () => any;
     "local-echo": (message: ChatMessageDto) => any;
     "rollback-echo": (messageId: string) => any;
     "text-changed": (text: string) => any;
@@ -86,6 +87,7 @@ declare const _default: import("vue").DefineComponent<__VLS_Props, {
     "focus-changed": (focused: boolean) => any;
 }, string, import("vue").PublicProps, Readonly<__VLS_Props> & Readonly<{
     onHub?: (() => any) | undefined;
+    onWho?: (() => any) | undefined;
     "onLocal-echo"?: ((message: ChatMessageDto) => any) | undefined;
     "onRollback-echo"?: ((messageId: string) => any) | undefined;
     "onText-changed"?: ((text: string) => any) | undefined;

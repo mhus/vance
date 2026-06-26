@@ -1,4 +1,4 @@
-import type { RunAdapter } from './types';
+import type { RunAdapter } from '@vance/runner-registry';
 /**
  * JS-execution adapter: drives the brain's {@code scripts/execute}
  * endpoint, subscribes to {@code script-execution-*} push events,

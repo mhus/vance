@@ -1,4 +1,4 @@
-import type { RunAdapter } from './types';
+import type { RunAdapter } from '@vance/runner-registry';
 /**
  * Python-execution adapter for the Cortex Run button. Talks to the
  * brain's REST surface ({@code POST /python/execute},

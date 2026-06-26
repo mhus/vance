@@ -39,6 +39,21 @@ type __VLS_Props = {
      * instead of double-firing the same answer.
      */
     optionsActionable?: boolean;
+    /**
+     * UserId of the message author for USER turns (from
+     * {@code ChatMessageDto.senderUserId}). {@code null} for legacy rows
+     * and for non-USER roles — those render the way they always have.
+     * See planning/multi-user-sessions.md §6.
+     */
+    senderUserId?: string | null;
+    /** Display-name of the message author (from senderDisplayName). */
+    senderDisplayName?: string | null;
+    /**
+     * Authenticated user of the current tab — used to decide whether a
+     * USER bubble is "mine" (right-side / primary colour) or "someone
+     * else's" (left-side / accent colour, with display-name header).
+     */
+    currentUserId?: string | null;
 };
 declare const _default: import("vue").DefineComponent<__VLS_Props, {}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {} & {
     pickOption: (label: string) => any;

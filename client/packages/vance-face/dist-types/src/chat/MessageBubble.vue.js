@@ -57,6 +57,52 @@ const isUser = computed(() => props.role === 'USER');
 const isAssistant = computed(() => props.role === 'ASSISTANT');
 const isSystem = computed(() => props.role === 'SYSTEM');
 /**
+ * Multi-user awareness — see planning/multi-user-sessions.md §6.
+ *
+ * - {@code isOtherUser} is true for USER bubbles that another
+ *   participant wrote (their {@code senderUserId} differs from the
+ *   current tab's authenticated user). Legacy rows without
+ *   {@code senderUserId} stay treated as "mine" for backward
+ *   compatibility — they predate the multi-user wiring.
+ * - {@code otherDisplayName} is the label rendered above the
+ *   foreign-user bubble.
+ */
+const isOtherUser = computed(() => {
+    if (!isUser.value)
+        return false;
+    const sender = props.senderUserId;
+    if (!sender)
+        return false;
+    const me = props.currentUserId;
+    if (!me)
+        return false;
+    return sender !== me;
+});
+const otherDisplayName = computed(() => {
+    const name = props.senderDisplayName;
+    if (name && name.trim())
+        return name;
+    return props.senderUserId ?? '';
+});
+/**
+ * Deterministic accent colour per author so the same participant
+ * keeps the same chip across the session. Mirrors the palette used
+ * by {@code SessionParticipants.vue}.
+ */
+const PALETTE = [
+    '#ef4444', '#f97316', '#f59e0b', '#84cc16',
+    '#22c55e', '#14b8a6', '#06b6d4', '#3b82f6',
+    '#6366f1', '#8b5cf6', '#a855f7', '#ec4899',
+];
+const otherUserColour = computed(() => {
+    const userId = props.senderUserId ?? '';
+    let hash = 0;
+    for (let i = 0; i < userId.length; i++) {
+        hash = ((hash << 5) - hash + userId.charCodeAt(i)) | 0;
+    }
+    return PALETTE[Math.abs(hash) % PALETTE.length];
+});
+/**
  * True when the message contains rich-content artifacts (fenced code
  * blocks with a kind tag, or {@code vance:} Markdown links). Such
  * messages get a full-width bubble so the {@code <KindBox>} canvas
@@ -208,17 +254,20 @@ if (__VLS_ctx.worker) {
 else {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "flex" },
-        ...{ class: (__VLS_ctx.isUser ? 'justify-end' : 'justify-start') },
+        ...{ class: ((__VLS_ctx.isUser && !__VLS_ctx.isOtherUser) ? 'justify-end' : 'justify-start') },
     });
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "rounded-2xl px-4 py-2.5 shadow-sm relative group" },
         ...{ class: ([
                 __VLS_ctx.hasRichContent ? 'w-full' : 'max-w-[85%]',
-                __VLS_ctx.bubbleStyle ? '' : (__VLS_ctx.isUser ? 'bg-primary text-primary-content' : ''),
+                __VLS_ctx.bubbleStyle ? '' : (__VLS_ctx.isOtherUser ? 'text-white' : ''),
+                __VLS_ctx.bubbleStyle ? '' : (__VLS_ctx.isUser && !__VLS_ctx.isOtherUser ? 'bg-primary text-primary-content' : ''),
                 __VLS_ctx.bubbleStyle ? '' : (__VLS_ctx.isAssistant ? 'bg-base-100 border border-base-300' : ''),
                 __VLS_ctx.bubbleStyle ? '' : (__VLS_ctx.isSystem ? 'bg-base-200 text-sm italic opacity-80' : ''),
             ]) },
-        ...{ style: (__VLS_ctx.bubbleStyle ?? undefined) },
+        ...{ style: (__VLS_ctx.isOtherUser && !__VLS_ctx.bubbleStyle
+                ? { backgroundColor: __VLS_ctx.otherUserColour }
+                : (__VLS_ctx.bubbleStyle ?? undefined)) },
     });
     if (__VLS_ctx.canCopyContent) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
@@ -232,7 +281,20 @@ else {
         });
         (__VLS_ctx.copyJustHappened ? '✓' : '⧉');
     }
-    if (!__VLS_ctx.isUser) {
+    if (__VLS_ctx.isOtherUser) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "text-xs font-semibold mb-1 flex items-center gap-2 opacity-95" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+        (__VLS_ctx.otherDisplayName);
+        if (__VLS_ctx.formatted) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "opacity-70 font-normal" },
+            });
+            (__VLS_ctx.formatted);
+        }
+    }
+    else if (!__VLS_ctx.isUser) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "text-xs opacity-60 mb-1 flex items-center gap-2" },
         });
@@ -335,6 +397,15 @@ else {
 /** @type {__VLS_StyleScopedClasses['group']} */ ;
 /** @type {__VLS_StyleScopedClasses['mb-copy-btn']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-semibold']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-95']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-normal']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
 /** @type {__VLS_StyleScopedClasses['mb-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
@@ -374,6 +445,9 @@ const __VLS_self = (await import('vue')).defineComponent({
             isUser: isUser,
             isAssistant: isAssistant,
             isSystem: isSystem,
+            isOtherUser: isOtherUser,
+            otherDisplayName: otherDisplayName,
+            otherUserColour: otherUserColour,
             hasRichContent: hasRichContent,
             displayContent: displayContent,
             workerText: workerText,

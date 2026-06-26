@@ -202,6 +202,18 @@ declare const _default: {
             saveSucceeded: string;
             saveFailed: string;
         };
+        activity: {
+            joined: string;
+            left: string;
+            whoHeader: string;
+            whoEmpty: string;
+            whoFailed: string;
+        };
+        autoAi: {
+            placeholder: string;
+            statusOn: string;
+            statusOff: string;
+        };
         sessionHeader: {
             untitled: string;
             editTitlePlaceholder: string;
@@ -209,6 +221,8 @@ declare const _default: {
             colorLabel: string;
             pinTooltip: string;
             unpinTooltip: string;
+            collabEnableLabel: string;
+            collabDisableLabel: string;
             archiveTooltip: string;
             archive: string;
             archiveConfirm: string;
@@ -238,6 +252,9 @@ declare const _default: {
             noSessionsBody: string;
             occupied: string;
             occupiedTooltip: string;
+            sharedTooltip: string;
+            joinLive: string;
+            hijackConfirm: string;
             available: string;
             failedToLoadSessions: string;
             failedToStartSession: string;

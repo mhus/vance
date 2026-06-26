@@ -205,6 +205,28 @@ function onHistoryLoadedFromView() {
 function onAskUserPickFromView(label) {
     void composerRef.value?.setTextAndSend(label);
 }
+/**
+ * Handles the {@code /who} slash-command from the composer.
+ * Round-trips a {@code session-who} WS request and renders the
+ * current participant list as an ephemeral activity line. See
+ * planning/multi-user-sessions.md §7.
+ */
+async function onWhoFromComposer() {
+    const sock = socket.value;
+    if (!sock)
+        return;
+    try {
+        const reply = await sock.send('session-who', {});
+        const names = (reply.participants ?? [])
+            .map((p) => p.displayName?.trim() || p.userId)
+            .filter((n) => Boolean(n));
+        chatViewRef.value?.pushWhoActivity(names.length > 0 ? names : [t('chat.activity.whoEmpty')]);
+    }
+    catch (e) {
+        console.warn('[chat] /who lookup failed', e);
+        chatViewRef.value?.pushWhoActivity([t('chat.activity.whoFailed')]);
+    }
+}
 function onWizardDeepLinkFromView(detail) {
     rightPanelRef.value?.openWizard(detail.name, detail.prefill);
 }
@@ -942,6 +964,7 @@ else if (__VLS_ctx.mode === 'connecting') {
         // @ts-ignore
         const __VLS_92 = __VLS_asFunctionalComponent(ChatComposer, new ChatComposer({
             ...{ 'onHub': {} },
+            ...{ 'onWho': {} },
             ...{ 'onLocalEcho': {} },
             ...{ 'onRollbackEcho': {} },
             ...{ 'onTextChanged': {} },
@@ -959,6 +982,7 @@ else if (__VLS_ctx.mode === 'connecting') {
         }));
         const __VLS_93 = __VLS_92({
             ...{ 'onHub': {} },
+            ...{ 'onWho': {} },
             ...{ 'onLocalEcho': {} },
             ...{ 'onRollbackEcho': {} },
             ...{ 'onTextChanged': {} },
@@ -981,22 +1005,25 @@ else if (__VLS_ctx.mode === 'connecting') {
             onHub: (__VLS_ctx.backToHub)
         };
         const __VLS_99 = {
-            onLocalEcho: (__VLS_ctx.onLocalEchoFromComposer)
+            onWho: (__VLS_ctx.onWhoFromComposer)
         };
         const __VLS_100 = {
-            onRollbackEcho: (__VLS_ctx.onRollbackEchoFromComposer)
+            onLocalEcho: (__VLS_ctx.onLocalEchoFromComposer)
         };
         const __VLS_101 = {
-            onTextChanged: (__VLS_ctx.onComposerTextChanged)
+            onRollbackEcho: (__VLS_ctx.onRollbackEchoFromComposer)
         };
         const __VLS_102 = {
-            onFollowUpAccepted: (__VLS_ctx.onFollowUpAcceptedFromComposer)
+            onTextChanged: (__VLS_ctx.onComposerTextChanged)
         };
         const __VLS_103 = {
+            onFollowUpAccepted: (__VLS_ctx.onFollowUpAcceptedFromComposer)
+        };
+        const __VLS_104 = {
             onFocusChanged: (__VLS_ctx.onComposerFocusChanged)
         };
         /** @type {typeof __VLS_ctx.composerRef} */ ;
-        var __VLS_104 = {};
+        var __VLS_105 = {};
         var __VLS_94;
     }
 }
@@ -1022,7 +1049,7 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
 // @ts-ignore
-var __VLS_82 = __VLS_81, __VLS_91 = __VLS_90, __VLS_105 = __VLS_104;
+var __VLS_82 = __VLS_81, __VLS_91 = __VLS_90, __VLS_106 = __VLS_105;
 var __VLS_dollars;
 const __VLS_self = (await import('vue')).defineComponent({
     setup() {
@@ -1060,6 +1087,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             onNoteActivityFromView: onNoteActivityFromView,
             onHistoryLoadedFromView: onHistoryLoadedFromView,
             onAskUserPickFromView: onAskUserPickFromView,
+            onWhoFromComposer: onWhoFromComposer,
             onWizardDeepLinkFromView: onWizardDeepLinkFromView,
             onPromptReadyFromRightPanel: onPromptReadyFromRightPanel,
             followUpSuggestion: followUpSuggestion,

@@ -73,11 +73,38 @@ async function loadSessions(projectName) {
         sessionsLoading.value = false;
     }
 }
+/**
+ * "Hard-blocked" = the user can't open this session at all in the
+ * picker. Multi-user-aware: shared sessions are never hard-blocked
+ * (they can always be joined), even when another participant currently
+ * holds the bind.
+ */
+function isHardBlocked(session) {
+    if (!session.bound)
+        return false;
+    if (session.allowMultipleClients)
+        return false;
+    // Private + bound + not mine = can't take over.
+    return props.username === null || session.userId !== props.username;
+}
 function pickSession(session) {
-    if (session.bound)
-        return;
     if (session.status === SessionStatus.ARCHIVED)
         return;
+    // Multi-user routing — see planning/multi-user-sessions.md §2.5.
+    //  - Bound + shared (allowMultipleClients): always joinable, no
+    //    prompt. The owner already declared "anyone may join", we
+    //    just attach as a secondary participant.
+    //  - Bound + private + owner==me: another tab/device of mine has
+    //    the session. Confirm the hijack so the user knows what they're
+    //    about to do.
+    //  - Bound + private + owner!=me: blocked (legacy "occupied" UX).
+    if (session.bound && !session.allowMultipleClients) {
+        const mine = props.username !== null && session.userId === props.username;
+        if (!mine)
+            return;
+        if (!window.confirm(t('chat.picker.hijackConfirm')))
+            return;
+    }
     emit('session-picked', session.sessionId);
 }
 async function reactivateAndOpen(session) {
@@ -568,10 +595,8 @@ else {
             ...{ class: "card bg-base-100 shadow-sm border border-base-300 border-l-4" },
             ...{ class: ([
                     __VLS_ctx.colorBorderClass(session),
-                    session.bound
-                        ? 'opacity-60'
-                        : '',
-                    session.status !== __VLS_ctx.SessionStatus.ARCHIVED && !session.bound
+                    __VLS_ctx.isHardBlocked(session) ? 'opacity-60' : '',
+                    session.status !== __VLS_ctx.SessionStatus.ARCHIVED && !__VLS_ctx.isHardBlocked(session)
                         ? 'hover:border-primary cursor-pointer'
                         : '',
                     session.status === __VLS_ctx.SessionStatus.ARCHIVED ? 'bg-base-200/40' : '',
@@ -602,6 +627,12 @@ else {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
                 ...{ class: "shrink-0 text-xs" },
                 title: (__VLS_ctx.$t('chat.sessionHeader.pinTooltip')),
+            });
+        }
+        if (session.allowMultipleClients) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "shrink-0 text-xs" },
+                title: (__VLS_ctx.$t('chat.picker.sharedTooltip')),
             });
         }
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
@@ -656,11 +687,18 @@ else {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "shrink-0 flex flex-col items-end gap-1" },
         });
-        if (session.bound) {
+        if (__VLS_ctx.isHardBlocked(session)) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
                 ...{ class: "text-xs text-error" },
             });
             (__VLS_ctx.$t('chat.picker.occupied'));
+        }
+        else if (session.bound && session.allowMultipleClients) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "text-xs text-success" },
+                title: (__VLS_ctx.$t('chat.picker.sharedTooltip')),
+            });
+            (__VLS_ctx.$t('chat.picker.joinLive'));
         }
         if (session.status === __VLS_ctx.SessionStatus.ARCHIVED) {
             const __VLS_59 = {}.VButton;
@@ -944,6 +982,8 @@ var __VLS_78;
 /** @type {__VLS_StyleScopedClasses['min-w-0']} */ ;
 /** @type {__VLS_StyleScopedClasses['shrink-0']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['shrink-0']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-medium']} */ ;
 /** @type {__VLS_StyleScopedClasses['truncate']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-[10px]']} */ ;
@@ -997,6 +1037,8 @@ var __VLS_78;
 /** @type {__VLS_StyleScopedClasses['gap-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-error']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-success']} */ ;
 /** @type {__VLS_StyleScopedClasses['space-y-3']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
@@ -1078,6 +1120,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             sessionFilter: sessionFilter,
             pickerToolsOpen: pickerToolsOpen,
             filteredSessions: filteredSessions,
+            isHardBlocked: isHardBlocked,
             pickSession: pickSession,
             reactivateAndOpen: reactivateAndOpen,
             openRecipeModal: openRecipeModal,

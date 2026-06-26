@@ -24,11 +24,18 @@ type __VLS_Props = {
      *  composer (sibling) can use the same value for Space-acceptance. */
     followUpSuggestion?: string | null;
 };
+/**
+ * Pushes a "who is here right now" activity line — called by the
+ * parent (ChatApp) after a successful {@code session-who} WS reply.
+ * Exposed via {@link defineExpose} below.
+ */
+declare function pushWhoActivity(names: string[]): void;
 declare function appendLocalEcho(message: ChatMessageDto): void;
 declare function rollbackLocalEcho(messageId: string): void;
 declare const _default: import("vue").DefineComponent<__VLS_Props, {
     appendLocalEcho: typeof appendLocalEcho;
     rollbackLocalEcho: typeof rollbackLocalEcho;
+    pushWhoActivity: typeof pushWhoActivity;
 }, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {
     [x: string]: any;
 } & {

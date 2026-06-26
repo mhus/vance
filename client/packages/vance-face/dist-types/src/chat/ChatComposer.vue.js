@@ -47,6 +47,62 @@ const composerText = ref(readDraft());
 const sending = ref(false);
 const uploading = ref(false);
 const sendError = ref(null);
+/**
+ * Auto-AI mode — when on, every send prepends {@code @ai } to the
+ * message so the agent reacts to every turn from this tab (typical
+ * "pilot" role in a multi-user session). Starting a message with
+ * {@code @no } escapes the prepend for that single turn. Toggle via
+ * the {@code /aa} slash command. State is per-tab in-memory; a
+ * reload resets it to off. See planning/multi-user-sessions.md §6.
+ */
+const autoAiOn = ref(false);
+function handleAutoAiCmd(arg) {
+    if (arg === 'status' || arg === null && false /* /aa toggles */) {
+        // Will fall through to status display below.
+    }
+    if (arg === 'on')
+        autoAiOn.value = true;
+    else if (arg === 'off')
+        autoAiOn.value = false;
+    else if (arg === null)
+        autoAiOn.value = !autoAiOn.value;
+    // 'status' is read-only — no state change, just feedback.
+    const label = autoAiOn.value
+        ? t('chat.autoAi.statusOn')
+        : t('chat.autoAi.statusOff');
+    sendError.value = label;
+    if (autoAiFeedbackTimer)
+        clearTimeout(autoAiFeedbackTimer);
+    autoAiFeedbackTimer = setTimeout(() => {
+        if (sendError.value === label)
+            sendError.value = null;
+        autoAiFeedbackTimer = null;
+    }, 2500);
+}
+let autoAiFeedbackTimer = null;
+/**
+ * Returns the effective text that goes onto the wire. Encodes the
+ * auto-AI rules:
+ * <ul>
+ *   <li>Leading {@code @no} (space-terminated, case-insensitive) is
+ *       stripped — the user wants this turn to NOT wake the agent,
+ *       overrides auto-prepend.</li>
+ *   <li>If auto is on and the result does not already start with a
+ *       {@code @<word>} mention, {@code @ai } is prepended.</li>
+ * </ul>
+ */
+function applyAutoAi(text) {
+    const noPrefix = /^@no(?:\s+|$)/i;
+    if (noPrefix.test(text)) {
+        return text.replace(noPrefix, '').trim();
+    }
+    if (!autoAiOn.value)
+        return text;
+    // Already addressed manually — leave as-is.
+    if (/^@\w/.test(text))
+        return text;
+    return text.length === 0 ? '@ai' : `@ai ${text}`;
+}
 // Mirror composer text upward so the parent can drive the follow-up
 // ghost-bubble visibility (only shown while the composer is empty),
 // and into sessionStorage so a WS reconnect doesn't lose the draft.
@@ -89,9 +145,13 @@ function closeAttachmentMenu() {
  */
 const multiline = ref(false);
 const composerRows = computed(() => (multiline.value ? 4 : 1));
-const composerPlaceholder = computed(() => multiline.value
-    ? t('chat.composerPlaceholderMulti')
-    : t('chat.composerPlaceholderSingle'));
+const composerPlaceholder = computed(() => {
+    if (autoAiOn.value)
+        return t('chat.autoAi.placeholder');
+    return multiline.value
+        ? t('chat.composerPlaceholderMulti')
+        : t('chat.composerPlaceholderSingle');
+});
 /**
  * Narrow-viewport composer toolbar — the multiline toggle, speech
  * cluster, and file-picker collapse into a single {@code ⋯} menu
@@ -406,6 +466,34 @@ async function send() {
         emit('hub');
         return;
     }
+    // `/who` — multi-user participant lookup (see
+    // planning/multi-user-sessions.md §7). Frontend-only command: never
+    // sent to the engine as chat input; bounced up to the parent which
+    // round-trips a {@code session-who} WS request and renders the
+    // reply as an ephemeral activity line.
+    if (text === '/who'
+        && filesSnapshot.length === 0
+        && docsSnapshot.length === 0) {
+        composerText.value = '';
+        emit('who');
+        return;
+    }
+    // `/aa` — auto-AI toggle (see planning/multi-user-sessions.md §6).
+    // Frontend-only slash command: flips the prepend-@ai-to-every-message
+    // mode on or off. Lets a pilot keep talking to the agent without
+    // typing the mention on every turn, while leaving the navigator
+    // free to comment without unintentionally waking the agent. `@no`
+    // at the start of a message escapes the auto-prepend for that turn.
+    if ((text === '/aa'
+        || text === '/aa on'
+        || text === '/aa off'
+        || text === '/aa status')
+        && filesSnapshot.length === 0
+        && docsSnapshot.length === 0) {
+        composerText.value = '';
+        handleAutoAiCmd(text.length === 3 ? null : text.slice(4));
+        return;
+    }
     // Allow attachment-only sends so the user can drop a PDF and hit
     // send without typing — Arthur can then ask "what should I do with
     // this?" rather than the UI silently rejecting the click.
@@ -417,6 +505,9 @@ async function send() {
     sendError.value = null;
     clearTalkAutoSend();
     noteTalkActivity();
+    // Apply auto-AI rewriting just before the wire-send — keeps the
+    // user's typed text untouched in echoes / drafts / history.
+    const wireText = applyAutoAi(text);
     // Stage 1 — upload attachments.
     let attachmentRefs = [];
     if (filesSnapshot.length > 0) {
@@ -449,16 +540,20 @@ async function send() {
     ];
     // Stage 2 — emit the optimistic echo (the parent appends to its
     // message stream), clear the composer, and send the steer.
+    // The echo carries the wire-text (auto-AI rewriting applied) so
+    // what the user sees in the local stream matches what landed in
+    // chat history and what other participants will see.
     const optimisticId = `${OPTIMISTIC_PREFIX}${++optimisticSeq}`;
     const echoText = filesSnapshot.length > 0 || docsSnapshot.length > 0
-        ? attachmentEchoPrefix(filesSnapshot, docsSnapshot) + text
-        : text;
+        ? attachmentEchoPrefix(filesSnapshot, docsSnapshot) + wireText
+        : wireText;
     emit('local-echo', {
         messageId: optimisticId,
         thinkProcessId: '',
         role: 'USER',
         content: echoText,
         createdAt: new Date(),
+        addressedToAgent: true,
     });
     composerText.value = '';
     selectedFiles.value = [];
@@ -478,7 +573,7 @@ async function send() {
         const voiceMode = speakerEnabled.value || talkMode.value;
         await props.socket.send('process-steer', {
             processName: props.chatProcessName,
-            content: text,
+            content: wireText,
             attachments: allAttachments.length > 0 ? allAttachments : undefined,
             voiceMode: voiceMode ? true : undefined,
         });
@@ -552,6 +647,15 @@ function onComposerFocusOut(event) {
     emit('focus-changed', false);
 }
 function onComposerKeydown(event) {
+    // F4 — toggle auto-AI mode (see planning/multi-user-sessions.md §6).
+    // Universal across browsers and platforms, no modifier needed, no
+    // conflict with text-editing shortcuts.
+    if (event.key === 'F4'
+        && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
+        event.preventDefault();
+        handleAutoAiCmd(null);
+        return;
+    }
     // Follow-up acceptance: Space (or Tab) against an active suggestion
     // while the composer is empty writes the suggestion into the input
     // instead of inserting whitespace. Shell-autosuggestion style.

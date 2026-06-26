@@ -214,6 +214,18 @@ export default {
             saveSucceeded: 'Saved to {path}',
             saveFailed: 'Failed to save the conversation as a document.',
         },
+        activity: {
+            joined: 'joined',
+            left: 'left',
+            whoHeader: 'In the room:',
+            whoEmpty: 'no one',
+            whoFailed: '/who failed',
+        },
+        autoAi: {
+            placeholder: '🤖 Auto-AI on — message (start with @no to skip the AI)',
+            statusOn: 'Auto-AI: ON — every message goes to the AI (escape with @no)',
+            statusOff: 'Auto-AI: OFF — type @ai to address the agent',
+        },
         sessionHeader: {
             untitled: 'Untitled',
             editTitlePlaceholder: 'Session title…',
@@ -221,6 +233,8 @@ export default {
             colorLabel: 'Accent color',
             pinTooltip: 'Pin session',
             unpinTooltip: 'Unpin session',
+            collabEnableLabel: 'Allow multiple participants',
+            collabDisableLabel: 'Make private (1:1 again)',
             archiveTooltip: 'Archive session',
             archive: 'Archive',
             archiveConfirm: 'Archive this session now? The chat is preserved and can be reactivated later.',
@@ -250,6 +264,10 @@ export default {
             noSessionsBody: "Click 'New session' to start one.",
             occupied: 'occupied',
             occupiedTooltip: 'Occupied by another connection',
+            sharedTooltip: 'Shared session — you can join',
+            joinLive: 'live · join',
+            hijackConfirm: 'This session is already held by another of your tabs. '
+                + 'Take it over and disconnect the other one?',
             available: 'Available',
             failedToLoadSessions: 'Failed to load sessions.',
             failedToStartSession: 'Failed to start a new session.',

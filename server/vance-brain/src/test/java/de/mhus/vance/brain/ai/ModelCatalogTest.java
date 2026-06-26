@@ -45,7 +45,7 @@ class ModelCatalogTest {
         // to bundled-only.
         when(documentService.findAllByPathPrefix(ModelCatalog.MODEL_PATH_PREFIX))
                 .thenReturn(overrideDocs);
-        catalog = new ModelCatalog(documentService);
+        catalog = new ModelCatalog(documentService, new ModelQuirks());
     }
 
     // ──── Bundled-only behaviour (no scope) ────────────────────────────
@@ -516,6 +516,172 @@ class ModelCatalogTest {
         ModelInfo info = catalog.lookupOrDefault(
                 TENANT, PROJECT, "anthropic", "claude-sonnet-4-5");
         assertThat(info.contextWindowTokens()).isEqualTo(50_000);
+    }
+
+    // ──── LLM-friendly parsing tolerance ───────────────────────────────
+
+    @Test
+    void boolean_field_accepts_integer_one_as_true() {
+        // LLM occasionally writes `stripThinkTags: 1` instead of `true`.
+        stubModelDoc(TENANT, VANCE_TENANT_PROJECT,
+                "openai/llm-quirk-model.yaml", """
+                contextWindowTokens: 1000
+                stripThinkTags: 1
+                """);
+        catalog.refresh();
+        ModelInfo info = catalog.lookupOrDefault(
+                TENANT, null, "openai", "llm-quirk-model");
+        assertThat(info.stripThinkTags()).isTrue();
+    }
+
+    @Test
+    void boolean_field_accepts_yes_no_on_off() {
+        stubModelDoc(TENANT, VANCE_TENANT_PROJECT,
+                "openai/llm-bool-yes.yaml", """
+                contextWindowTokens: 1000
+                stripThinkTags: yes
+                """);
+        stubModelDoc(TENANT, VANCE_TENANT_PROJECT,
+                "openai/llm-bool-off.yaml", """
+                contextWindowTokens: 1000
+                stripThinkTags: off
+                """);
+        catalog.refresh();
+        assertThat(catalog.lookupOrDefault(TENANT, null, "openai", "llm-bool-yes")
+                .stripThinkTags()).isTrue();
+        assertThat(catalog.lookupOrDefault(TENANT, null, "openai", "llm-bool-off")
+                .stripThinkTags()).isFalse();
+    }
+
+    @Test
+    void integer_field_accepts_underscore_and_comma_separators() {
+        // YAML quotes the value because `200_000` would otherwise parse
+        // as a string anyway; LLMs do this when reading a number off a
+        // page that included thousand separators.
+        stubModelDoc(TENANT, VANCE_TENANT_PROJECT,
+                "openai/llm-int.yaml", """
+                contextWindowTokens: "200_000"
+                """);
+        stubModelDoc(TENANT, VANCE_TENANT_PROJECT,
+                "openai/llm-int-comma.yaml", """
+                contextWindowTokens: "200,000"
+                """);
+        catalog.refresh();
+        assertThat(catalog.lookupOrDefault(TENANT, null, "openai", "llm-int")
+                .contextWindowTokens()).isEqualTo(200_000);
+        assertThat(catalog.lookupOrDefault(TENANT, null, "openai", "llm-int-comma")
+                .contextWindowTokens()).isEqualTo(200_000);
+    }
+
+    @Test
+    void capabilities_accept_comma_separated_string() {
+        // LLM forgets the `[ ]` and writes a bare string.
+        stubModelDoc(TENANT, VANCE_TENANT_PROJECT,
+                "openai/llm-caps.yaml", """
+                contextWindowTokens: 1000
+                capabilities: vision, pdf, thinking
+                """);
+        catalog.refresh();
+        ModelInfo info = catalog.lookupOrDefault(
+                TENANT, null, "openai", "llm-caps");
+        assertThat(info.capabilities())
+                .containsExactlyInAnyOrder(
+                        ModelCapability.VISION,
+                        ModelCapability.PDF,
+                        ModelCapability.THINKING);
+    }
+
+    @Test
+    void pricing_accepts_synonym_field_names() {
+        // LLM writes inputPerMillionTokens / outputPerMillionTokens —
+        // the spelling-out variant. We translate to the canonical form.
+        stubModelDoc(TENANT, VANCE_TENANT_PROJECT,
+                "openai/llm-pricing-syn.yaml", """
+                contextWindowTokens: 1000
+                pricing:
+                  currency: USD
+                  inputPerMillionTokens: 2.50
+                  outputPerMillionTokens: 10.00
+                """);
+        catalog.refresh();
+        var pricing = catalog.lookupOrDefault(TENANT, null, "openai", "llm-pricing-syn")
+                .pricing();
+        assertThat(pricing).isNotNull();
+        assertThat(pricing.inputPerMTok()).isEqualTo(2.50);
+        assertThat(pricing.outputPerMTok()).isEqualTo(10.00);
+    }
+
+    @Test
+    void pricing_accepts_currency_symbol_and_thousands_separators() {
+        // LLM copies the price as written on a vendor's pricing page,
+        // currency symbol attached. We strip it before parsing.
+        stubModelDoc(TENANT, VANCE_TENANT_PROJECT,
+                "openai/llm-pricing-fmt.yaml", """
+                contextWindowTokens: 1000
+                pricing:
+                  currency: USD
+                  inputPerMTok: "$3.00"
+                  outputPerMTok: "15.00 USD"
+                """);
+        catalog.refresh();
+        var pricing = catalog.lookupOrDefault(TENANT, null, "openai", "llm-pricing-fmt")
+                .pricing();
+        assertThat(pricing).isNotNull();
+        assertThat(pricing.inputPerMTok()).isEqualTo(3.00);
+        assertThat(pricing.outputPerMTok()).isEqualTo(15.00);
+    }
+
+    @Test
+    void unknown_top_level_fields_are_skipped_not_fatal() {
+        // LLM adds explanatory fields not in the schema — should be
+        // ignored (with a WARN that the test doesn't assert on, but the
+        // model itself must still load with its valid fields applied).
+        stubModelDoc(TENANT, VANCE_TENANT_PROJECT,
+                "openai/llm-extra-fields.yaml", """
+                contextWindowTokens: 50000
+                size: SMALL
+                notes: "added 2026-06 from vendor pricing page"
+                source: "https://openai.com/pricing"
+                """);
+        catalog.refresh();
+        ModelInfo info = catalog.lookupOrDefault(
+                TENANT, null, "openai", "llm-extra-fields");
+        assertThat(info.contextWindowTokens()).isEqualTo(50_000);
+        assertThat(info.size()).isEqualTo(ModelSize.SMALL);
+    }
+
+    @Test
+    void unknown_pricing_fields_are_reported_but_dont_break_other_overrides() {
+        // Pricing block typed wrong → entire pricing dropped; the
+        // contextWindow override still applies.
+        stubModelDoc(TENANT, VANCE_TENANT_PROJECT,
+                "openai/llm-bad-pricing.yaml", """
+                contextWindowTokens: 50000
+                pricing:
+                  priceIn: 1.0
+                  priceOut: 2.0
+                """);
+        catalog.refresh();
+        ModelInfo info = catalog.lookupOrDefault(
+                TENANT, null, "openai", "llm-bad-pricing");
+        assertThat(info.contextWindowTokens()).isEqualTo(50_000);
+        assertThat(info.pricing()).isNull();
+    }
+
+    @Test
+    void broken_yaml_in_one_file_does_not_kill_other_overrides() {
+        // First doc has invalid YAML; second doc is fine. Catalog must
+        // skip the bad one and load the good one without aborting refresh.
+        stubModelDoc(TENANT, VANCE_TENANT_PROJECT,
+                "openai/broken.yaml", "this is not: : valid yaml :::");
+        stubModelDoc(TENANT, VANCE_TENANT_PROJECT,
+                "openai/sound-model.yaml", """
+                contextWindowTokens: 64000
+                """);
+        catalog.refresh();
+        ModelInfo info = catalog.lookupOrDefault(
+                TENANT, null, "openai", "sound-model");
+        assertThat(info.contextWindowTokens()).isEqualTo(64_000);
     }
 
     // ──── Helpers ──────────────────────────────────────────────────────

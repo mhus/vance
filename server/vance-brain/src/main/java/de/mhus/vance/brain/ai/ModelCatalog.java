@@ -115,17 +115,20 @@ public class ModelCatalog {
             ModelInfo.DEFAULT_TIMEOUT_SECONDS,
             ModelInfo.DEFAULT_ACTION_LOOP_CORRECTIONS,
             false,
+            /*messageParser*/ null,
             /*pricing*/ null);
 
     private final DocumentService documentService;
+    private final ModelQuirks modelQuirks;
     private final ResourcePatternResolver resourcePatternResolver =
             new PathMatchingResourcePatternResolver();
 
     /** Atomic-swap target — readers see a fully-built snapshot or the previous one. */
     private volatile Snapshot snapshot = Snapshot.empty();
 
-    public ModelCatalog(DocumentService documentService) {
+    public ModelCatalog(DocumentService documentService, ModelQuirks modelQuirks) {
         this.documentService = documentService;
+        this.modelQuirks = modelQuirks;
         try {
             // Eager initial load — covers both Spring-managed boot and
             // direct test construction. A Mongo glitch can't keep the
@@ -678,7 +681,27 @@ public class ModelCatalog {
                 costs, timeout);
     }
 
-    private static ModelInfo buildInfo(String provider, String modelName, Map<String, Object> spec) {
+    /**
+     * Known top-level field names accepted in a model YAML. Used by
+     * {@link #checkUnknownFields} to surface LLM-typed field-name typos
+     * — strict whitelist means anything not on this list shows up in
+     * the logs the first time the operator looks for "why doesn't my
+     * override work".
+     */
+    private static final Set<String> KNOWN_MODEL_FIELDS = Set.of(
+            // Identification
+            "wireName", "modelName",
+            // Chat
+            "contextWindowTokens", "defaultMaxOutputTokens", "size", "kind",
+            "capabilities", "stripThinkTags", "timeoutSeconds",
+            "actionLoopCorrections", "messageParser", "pricing",
+            // Image
+            "supportedAspectRatios", "maxPromptChars", "costPerImage",
+            // Discovery markers (informational)
+            "discoveredBy", "discoveredAt");
+
+    private ModelInfo buildInfo(String provider, String modelName, Map<String, Object> spec) {
+        checkUnknownFields(provider, modelName, spec);
         int ctx = readInt(spec.get("contextWindowTokens"),
                 FALLBACK_TEMPLATE.contextWindowTokens());
         int out = readInt(spec.get("defaultMaxOutputTokens"),
@@ -691,9 +714,31 @@ public class ModelCatalog {
                 FALLBACK_TEMPLATE.actionLoopCorrections());
         boolean stripThinkTags = readBoolean(spec.get("stripThinkTags"),
                 FALLBACK_TEMPLATE.stripThinkTags());
+        // Explicit per-model YAML wins; pattern-based quirks fill in
+        // the gap for whole model families (deepseek-v4*, gemma-4*, …).
+        String messageParser = readString(spec.get("messageParser"));
+        if (messageParser == null) {
+            messageParser = modelQuirks.messageParserFor(modelName).orElse(null);
+        }
         ModelInfo.Pricing pricing = readPricing(spec.get("pricing"), provider, modelName);
         return new ModelInfo(provider, modelName, ctx, out, size, caps,
-                timeout, corrections, stripThinkTags, pricing);
+                timeout, corrections, stripThinkTags, messageParser, pricing);
+    }
+
+    /**
+     * Diagnostic: log a WARN for any top-level field not in the
+     * whitelist. Drives operator/LLM error visibility — a typo'd
+     * {@code contextWindow} (missing "Tokens" suffix) otherwise
+     * silently loses the override.
+     */
+    private static void checkUnknownFields(
+            String provider, String modelName, Map<String, Object> spec) {
+        for (String key : spec.keySet()) {
+            if (KNOWN_MODEL_FIELDS.contains(key)) continue;
+            log.warn("ModelCatalog: '{}/{}' has unknown field '{}' — typo? "
+                            + "(known fields: {})",
+                    provider, modelName, key, KNOWN_MODEL_FIELDS);
+        }
     }
 
     private static ModelInfo fallback(@Nullable String provider, @Nullable String modelName) {
@@ -711,32 +756,70 @@ public class ModelCatalog {
                 FALLBACK_TEMPLATE.timeoutSeconds(),
                 FALLBACK_TEMPLATE.actionLoopCorrections(),
                 FALLBACK_TEMPLATE.stripThinkTags(),
+                /*messageParser*/ null,
                 /*pricing*/ null);
     }
 
+    /**
+     * Pricing block parser, lenient against LLM-typed input variants.
+     * Required field names are {@code inputPerMTok} and {@code outputPerMTok};
+     * a handful of common synonyms (snake_case, "PerMillion" spelling,
+     * "Price"-suffixed names) are silently translated. Anything outside
+     * the recognised set is logged and ignored — pricing is then dropped
+     * (the model shows as unpriced) rather than partial.
+     */
     @SuppressWarnings("unchecked")
     private static ModelInfo.@Nullable Pricing readPricing(
             @Nullable Object raw, String provider, String modelName) {
         if (raw == null) return null;
         if (!(raw instanceof Map<?, ?> m)) {
-            log.warn("ModelCatalog: '{}/{}' has non-map pricing '{}' — ignored",
-                    provider, modelName, raw);
+            log.warn("ModelCatalog: '{}/{}' has non-map pricing '{}' ({}) — ignored",
+                    provider, modelName, raw,
+                    raw.getClass().getSimpleName());
             return null;
         }
         Map<String, Object> map = (Map<String, Object>) m;
-        Double input = readDouble(map.get("inputPerMTok"));
-        Double output = readDouble(map.get("outputPerMTok"));
+        Double input = pickPricingField(map, "inputPerMTok",
+                "input_per_m_tok", "inputPerMillionTokens", "inputPricePerMTok",
+                "inputPrice", "inputCostPerMTok", "input");
+        Double output = pickPricingField(map, "outputPerMTok",
+                "output_per_m_tok", "outputPerMillionTokens", "outputPricePerMTok",
+                "outputPrice", "outputCostPerMTok", "output");
         if (input == null || output == null) {
-            log.warn("ModelCatalog: '{}/{}' pricing missing inputPerMTok/outputPerMTok — ignored",
-                    provider, modelName);
+            log.warn("ModelCatalog: '{}/{}' pricing missing inputPerMTok/outputPerMTok "
+                            + "(actual keys: {}) — pricing ignored",
+                    provider, modelName, map.keySet());
             return null;
         }
-        Double cacheRead = readDouble(map.get("cacheReadPerMTok"));
-        Double cacheWrite = readDouble(map.get("cacheWritePerMTok"));
+        Double cacheRead = pickPricingField(map, "cacheReadPerMTok",
+                "cache_read_per_m_tok", "cacheReadPerMillionTokens", "cacheReadPrice");
+        Double cacheWrite = pickPricingField(map, "cacheWritePerMTok",
+                "cache_write_per_m_tok", "cacheWritePerMillionTokens", "cacheWritePrice");
         Object currencyRaw = map.get("currency");
         String currency = currencyRaw == null ? "USD" : currencyRaw.toString().trim();
         if (currency.isEmpty()) currency = "USD";
         return new ModelInfo.Pricing(currency, input, output, cacheRead, cacheWrite);
+    }
+
+    /**
+     * Try the canonical field name first; if missing, fall back through
+     * a list of common LLM-misspellings. Logs at DEBUG when a synonym
+     * was used so the operator sees the file should be cleaned up, but
+     * doesn't spam WARN for known acceptable variants.
+     */
+    private static @Nullable Double pickPricingField(
+            Map<String, Object> map, String canonical, String... synonyms) {
+        if (map.containsKey(canonical)) {
+            return readDouble(map.get(canonical));
+        }
+        for (String s : synonyms) {
+            if (map.containsKey(s)) {
+                log.debug("ModelCatalog: pricing uses synonym '{}' (canonical: '{}')",
+                        s, canonical);
+                return readDouble(map.get(s));
+            }
+        }
+        return null;
     }
 
     @SuppressWarnings("unchecked")
@@ -780,33 +863,62 @@ public class ModelCatalog {
         if (raw instanceof Number n) return n.doubleValue();
         if (raw instanceof String s) {
             try {
-                return Double.parseDouble(s.trim());
-            } catch (NumberFormatException ignored) {
+                // Strip currency hints ($, €, £, USD/EUR/GBP suffixes) and
+                // thousands separators an LLM might leave in. The field
+                // semantics are "amount only" — currency is its own field.
+                String normalised = s.trim()
+                        .replaceAll("[\\$€£]", "")
+                        .replaceAll("(?i)\\s*(usd|eur|gbp)\\s*$", "")
+                        .replace("_", "")
+                        .replace(",", "")
+                        .trim();
+                return Double.parseDouble(normalised);
+            } catch (NumberFormatException e) {
+                log.warn("ModelCatalog: number field has unparseable string '{}' — ignored", s);
                 return null;
             }
         }
+        log.warn("ModelCatalog: number field has unexpected type {} (value: {}) — ignored",
+                raw.getClass().getSimpleName(), raw);
         return null;
     }
 
     private static boolean readBoolean(@Nullable Object raw, boolean fallback) {
+        if (raw == null) return fallback;
         if (raw instanceof Boolean b) return b;
+        if (raw instanceof Number n) {
+            // 0 → false, anything else → true. SnakeYAML can give an Integer
+            // for `field: 1` if the catalog file was written by an LLM that
+            // prefers numeric flags.
+            return n.intValue() != 0;
+        }
         if (raw instanceof String s) {
             String t = s.trim().toLowerCase(Locale.ROOT);
-            if (t.equals("true") || t.equals("yes") || t.equals("1")) return true;
-            if (t.equals("false") || t.equals("no") || t.equals("0")) return false;
+            if (t.equals("true") || t.equals("yes") || t.equals("on") || t.equals("1")) return true;
+            if (t.equals("false") || t.equals("no") || t.equals("off") || t.equals("0")) return false;
         }
+        log.warn("ModelCatalog: boolean field has unparseable value {} ({}) — using default {}",
+                raw, raw.getClass().getSimpleName(), fallback);
         return fallback;
     }
 
     private static int readInt(@Nullable Object raw, int fallback) {
+        if (raw == null) return fallback;
         if (raw instanceof Number n) return n.intValue();
         if (raw instanceof String s) {
             try {
-                return Integer.parseInt(s.trim());
-            } catch (NumberFormatException ignored) {
+                // Tolerate values like "200_000" (Java/Python literal style)
+                // or "200,000" (locale-formatted) that LLMs sometimes emit.
+                String normalised = s.trim().replace("_", "").replace(",", "");
+                return Integer.parseInt(normalised);
+            } catch (NumberFormatException e) {
+                log.warn("ModelCatalog: integer field has unparseable string '{}' — using default {}",
+                        s, fallback);
                 return fallback;
             }
         }
+        log.warn("ModelCatalog: integer field has unexpected type {} (value: {}) — using default {}",
+                raw.getClass().getSimpleName(), raw, fallback);
         return fallback;
     }
 
@@ -816,14 +928,27 @@ public class ModelCatalog {
         return s.isEmpty() ? null : s;
     }
 
+    /**
+     * Tolerant list-of-strings reader. Accepts proper YAML lists or a
+     * comma-separated single string ({@code "a, b, c"}) — LLMs forget
+     * the {@code []} regularly.
+     */
     private static Set<String> readStringList(@Nullable Object raw) {
         if (raw == null) return Set.of();
-        if (!(raw instanceof List<?> list)) return Set.of();
         Set<String> out = new LinkedHashSet<>();
-        for (Object e : list) {
-            if (e == null) continue;
-            String s = e.toString().trim();
-            if (!s.isEmpty()) out.add(s);
+        if (raw instanceof List<?> list) {
+            for (Object e : list) {
+                if (e == null) continue;
+                String s = e.toString().trim();
+                if (!s.isEmpty()) out.add(s);
+            }
+            return out;
+        }
+        if (raw instanceof String s) {
+            for (String part : s.split(",")) {
+                String trimmed = part.trim();
+                if (!trimmed.isEmpty()) out.add(trimmed);
+            }
         }
         return out;
     }
@@ -833,15 +958,33 @@ public class ModelCatalog {
         if (raw == null) {
             return Set.of();
         }
-        if (!(raw instanceof List<?> list)) {
-            log.warn("ModelCatalog: '{}/{}' has non-list capabilities '{}' — ignoring",
-                    provider, modelName, raw);
+        // Accept proper list OR a comma-separated string — LLMs that
+        // skip the YAML brackets ('capabilities: vision, pdf') still
+        // get the intended set rather than a silently-empty one.
+        Set<String> elements;
+        if (raw instanceof List<?> list) {
+            elements = new LinkedHashSet<>();
+            for (Object e : list) {
+                if (e == null) continue;
+                String s = e.toString().trim();
+                if (!s.isEmpty()) elements.add(s);
+            }
+        } else if (raw instanceof String s) {
+            log.debug("ModelCatalog: '{}/{}' capabilities given as comma-separated string — accepted",
+                    provider, modelName);
+            elements = new LinkedHashSet<>();
+            for (String part : s.split(",")) {
+                String trimmed = part.trim();
+                if (!trimmed.isEmpty()) elements.add(trimmed);
+            }
+        } else {
+            log.warn("ModelCatalog: '{}/{}' has capabilities of unsupported type {} (value: {}) — ignoring",
+                    provider, modelName, raw.getClass().getSimpleName(), raw);
             return Set.of();
         }
         EnumSet<ModelCapability> caps = EnumSet.noneOf(ModelCapability.class);
-        for (Object element : list) {
-            if (element == null) continue;
-            ModelCapability.fromString(element.toString()).ifPresentOrElse(
+        for (String element : elements) {
+            ModelCapability.fromString(element).ifPresentOrElse(
                     caps::add,
                     () -> log.warn("ModelCatalog: '{}/{}' has unknown capability '{}' — skipped",
                             provider, modelName, element));
@@ -851,11 +994,15 @@ public class ModelCatalog {
 
     private static ModelSize readSize(@Nullable Object raw, String provider, String modelName) {
         if (raw == null) return ModelSize.LARGE;
-        if (!(raw instanceof String s)) return ModelSize.LARGE;
+        if (!(raw instanceof String s)) {
+            log.warn("ModelCatalog: '{}/{}' has non-string size '{}' ({}) — defaulting to LARGE",
+                    provider, modelName, raw, raw.getClass().getSimpleName());
+            return ModelSize.LARGE;
+        }
         try {
             return ModelSize.valueOf(s.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
-            log.warn("ModelCatalog: '{}/{}' has unknown size '{}' — defaulting to LARGE",
+            log.warn("ModelCatalog: '{}/{}' has unknown size '{}' (valid: SMALL, LARGE) — defaulting to LARGE",
                     provider, modelName, s);
             return ModelSize.LARGE;
         }

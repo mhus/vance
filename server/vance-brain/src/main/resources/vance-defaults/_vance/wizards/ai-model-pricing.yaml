@@ -1,0 +1,157 @@
+title:
+  de: "AI-Modell pflegen (Pricing / Overrides)"
+  en: "Maintain AI model (pricing / overrides)"
+description:
+  de: "Trägt Pricing, Context-Window oder Capabilities für ein KI-Modell tenant-weit ein (manual layer, schreibt nach `_vance/model/<provider>/<slug>.yaml` im `_tenant`-Projekt). Auto-Discovery-Daten bleiben unangetastet."
+  en: "Sets pricing, context window or capabilities for an AI model tenant-wide (manual layer, writes to `_vance/model/<provider>/<slug>.yaml` in the `_tenant` project). Auto-discovery data stays untouched."
+icon: cpu-chip
+category: setup
+availableIn: [ "_tenant" ]
+
+fields:
+  - name: providerInstance
+    type: string
+    required: true
+    label:
+      de: "Provider-Instance"
+      en: "Provider instance"
+    help:
+      de: "Verzeichnis-Name unter `_vance/model/` — typischerweise `anthropic`, `openai`, `gemini`, `ollama`, `lmstudio`, `ollama-cloud`. Bei eigenen Named-Instances (z.B. `deepseek-direct`) den Setting-Namen verwenden."
+      en: "Directory name under `_vance/model/` — typically `anthropic`, `openai`, `gemini`, `ollama`, `lmstudio`, `ollama-cloud`. For named instances (e.g. `deepseek-direct`) use the setting name."
+
+  - name: wireModel
+    type: string
+    required: true
+    label:
+      de: "Wire-Modellname"
+      en: "Wire model name"
+    help:
+      de: "Genauer Modellname wie er an die Provider-API geht. Ollama-Tags wie `qwen3:30b` sind erlaubt — Eddie kodiert den `:` automatisch via Datei-Slug + `wireName:`-Feld."
+      en: "Exact model name as passed to the provider API. Ollama tags like `qwen3:30b` are fine — Eddie encodes the colon via filename slug + `wireName:` field."
+
+  - name: pricingCurrency
+    type: select
+    defaultValue: "USD"
+    label:
+      de: "Pricing-Währung"
+      en: "Pricing currency"
+    choices:
+      - value: USD
+        label: { de: "USD", en: "USD" }
+      - value: EUR
+        label: { de: "EUR", en: "EUR" }
+      - value: GBP
+        label: { de: "GBP", en: "GBP" }
+      - value: "__SKIP__"
+        label: { de: "Kein Pricing setzen", en: "Don't set pricing" }
+
+  - name: inputPerMTok
+    type: string
+    label:
+      de: "Input-Preis pro 1M Tokens"
+      en: "Input price per 1M tokens"
+    help:
+      de: "Z.B. `3.00` für $3 / 1M Tokens. Leer lassen wenn kein Pricing gesetzt werden soll."
+      en: "E.g. `3.00` for $3 per 1M tokens. Leave blank to skip pricing."
+
+  - name: outputPerMTok
+    type: string
+    label:
+      de: "Output-Preis pro 1M Tokens"
+      en: "Output price per 1M tokens"
+
+  - name: cacheReadPerMTok
+    type: string
+    label:
+      de: "Cache-Read-Preis pro 1M Tokens (optional)"
+      en: "Cache-read price per 1M tokens (optional)"
+    help:
+      de: "Nur für Provider mit Prompt-Cache (Anthropic, OpenAI-neuere). Leer lassen wenn nicht relevant."
+      en: "Only for providers with prompt caching (Anthropic, newer OpenAI). Leave blank otherwise."
+
+  - name: cacheWritePerMTok
+    type: string
+    label:
+      de: "Cache-Write-Preis pro 1M Tokens (optional)"
+      en: "Cache-write price per 1M tokens (optional)"
+
+  - name: contextWindowTokens
+    type: integer
+    integerMin: 1024
+    integerMax: 10000000
+    label:
+      de: "Context-Window-Override (optional)"
+      en: "Context-window override (optional)"
+    help:
+      de: "Nur setzen wenn der Bundled-Wert falsch ist oder ein Enterprise-Plan ein größeres Fenster freischaltet. Leer = Bundled erbt."
+      en: "Only set when the bundled value is wrong or an enterprise plan unlocks a bigger window. Empty = inherit from bundled."
+
+  - name: size
+    type: select
+    defaultValue: "__SKIP__"
+    label:
+      de: "Tier-Klassifikation (optional)"
+      en: "Tier classification (optional)"
+    help:
+      de: "Beeinflusst Recipe-Tier-Auswahl. `__SKIP__` lässt das Bundled-Wert greifen."
+      en: "Drives recipe-tier selection. `__SKIP__` keeps the bundled value."
+    choices:
+      - value: "__SKIP__"
+        label: { de: "Nicht setzen", en: "Don't set" }
+      - value: SMALL
+        label: { de: "SMALL (Cheap-Tier)", en: "SMALL (cheap tier)" }
+      - value: LARGE
+        label: { de: "LARGE (Capable-Tier)", en: "LARGE (capable tier)" }
+
+  - name: capabilitiesNote
+    type: textarea
+    rows: 2
+    label:
+      de: "Capabilities-Override (optional, Freitext)"
+      en: "Capabilities override (optional, free text)"
+    help:
+      de: "Z.B. `vision, pdf, thinking` — die ganze Liste, weil Listen als Ganzes ersetzt werden. Leer = Bundled erbt."
+      en: "E.g. `vision, pdf, thinking` — the whole list (lists are replaced as a whole). Empty = inherit from bundled."
+
+  - name: stripThinkTags
+    type: boolean
+    defaultValue: "false"
+    label:
+      de: "stripThinkTags setzen (für Reasoning-Modelle mit `<think>`-Output)"
+      en: "Set stripThinkTags (for reasoning models that emit `<think>` blocks)"
+
+promptTemplate: |
+  Lies zuerst `manual_read('ai-model-catalog')` und folge dem dortigen Workflow.
+
+  Trag einen **manual-layer**-Override für ein KI-Modell tenant-weit ein.
+  Schreib das Dokument mit `doc_create` (oder `doc_write` wenn die Datei
+  schon existiert), Parameter:
+
+  - `projectId`: `_tenant`
+  - `path`: `_vance/model/{{ providerInstance }}/<slug>.yaml`
+    (Slug aus `{{ wireModel }}` ableiten — `:` durch `-` ersetzen, dann
+    `wireName: "{{ wireModel }}"` ins YAML; `/` bleibt als Subverzeichnis)
+  - `kind`: `yaml`
+
+  YAML-Inhalt (nur die Felder unten, der Rest erbt aus Bundled):
+  {% if pricingCurrency != "__SKIP__" and inputPerMTok and outputPerMTok %}
+  - pricing:
+      - currency: {{ pricingCurrency }}
+      - inputPerMTok: {{ inputPerMTok }}
+      - outputPerMTok: {{ outputPerMTok }}
+      {% if cacheReadPerMTok %}- cacheReadPerMTok: {{ cacheReadPerMTok }}{% endif %}
+      {% if cacheWritePerMTok %}- cacheWritePerMTok: {{ cacheWritePerMTok }}{% endif %}
+  {% endif %}
+  {% if contextWindowTokens %}- contextWindowTokens: {{ contextWindowTokens }}{% endif %}
+  {% if size != "__SKIP__" %}- size: {{ size }}{% endif %}
+  {% if capabilitiesNote %}- capabilities: [{{ capabilitiesNote }}]{% endif %}
+  {% if stripThinkTags == "true" %}- stripThinkTags: true{% endif %}
+  - discoveredBy: manual
+
+  Wenn die Datei schon existiert, **erst `doc_read`**, dann die obigen
+  Felder hineinmergen statt die Datei komplett zu ersetzen.
+
+  Nach dem Schreiben weise mich darauf hin, dass ich **Profile →
+  Aktionen → "Refresh AI Model Catalog"** klicken soll, damit der
+  Override sofort wirkt (sonst zieht er beim nächsten 30-Min-Refresh
+  automatisch).

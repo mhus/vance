@@ -64,7 +64,11 @@ public class SessionUnbindHandler implements WsHandler {
                         ctx.getProjectId() == null ? "" : ctx.getProjectId(), sessionId),
                 Action.EXECUTE);
         sessionService.unbind(sessionId, editorId);
-        clientToolRegistry.unregister(sessionId);
+        // Editor-scoped: in multi-user sessions, only the owner's
+        // unbind wipes the tool registry (see
+        // planning/multi-user-sessions.md §2.5). A secondary
+        // participant's unbind leaves the owner's tools intact.
+        clientToolRegistry.unregister(sessionId, editorId);
         // Explicit unbind = the user severs *this* connection from the
         // session, regardless of whether other connections are still
         // attached (multi-user case). Drop only the calling editor.

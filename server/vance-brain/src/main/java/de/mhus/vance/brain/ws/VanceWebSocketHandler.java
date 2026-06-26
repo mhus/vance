@@ -224,9 +224,14 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
             // Snapshot the client-tools before we unregister so we can
             // mark them DOWN in the tool-health doc — once unregister
             // runs the registry no longer knows what was there.
+            // Editor-scoped: in a multi-user session, a secondary
+            // participant's close must not wipe the owner's tools.
+            // (see planning/multi-user-sessions.md §2.5).
             List<ToolSpec> clientTools = clientToolRegistry.toolsFor(sessionId);
-            clientToolRegistry.unregister(sessionId);
-            markClientToolsUnavailable(ctx.getTenantId(), sessionId, clientTools);
+            boolean wipedTools = clientToolRegistry.unregister(sessionId, ctx.getEditorId());
+            if (wipedTools) {
+                markClientToolsUnavailable(ctx.getTenantId(), sessionId, clientTools);
+            }
             connectionRegistry.unregister(sessionId, ctx.getEditorId());
             // Bind-holder escalation (multi-user — see
             // planning/multi-user-sessions.md §3b): if the leaving

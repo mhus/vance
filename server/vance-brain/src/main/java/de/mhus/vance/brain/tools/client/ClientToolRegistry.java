@@ -54,7 +54,8 @@ public class ClientToolRegistry {
 
     /**
      * Removes a session's registration and fails any pending invocations
-     * that were waiting for a reply over that connection.
+     * that were waiting for a reply over that connection. Full-session
+     * wipe — used by session-unbind / session-close paths.
      */
     public void unregister(String sessionId) {
         Entry removed = bySession.remove(sessionId);
@@ -70,6 +71,28 @@ public class ClientToolRegistry {
             }
             return false;
         });
+    }
+
+    /**
+     * Editor-scoped variant — only removes the registration when the
+     * stored entry was the one this {@code editorId} created. Used by
+     * the per-connection close path: in a multi-user session a
+     * secondary participant's disconnect must not wipe the owner's
+     * tool surface (see planning/multi-user-sessions.md §2.5).
+     *
+     * <p>Returns {@code true} when the entry was actually cleared.
+     */
+    public boolean unregister(String sessionId, String editorId) {
+        Entry current = bySession.get(sessionId);
+        if (current == null) return false;
+        if (!current.editorId.equals(editorId)) {
+            log.debug("ClientToolRegistry session='{}' close from non-owner "
+                            + "editor='{}' — keeping owner-bound tools (owner-editor='{}')",
+                    sessionId, editorId, current.editorId);
+            return false;
+        }
+        unregister(sessionId);
+        return true;
     }
 
     /** Tools registered for this session, empty if none. */

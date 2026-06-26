@@ -156,11 +156,6 @@ public class SessionService {
             @Nullable String projectId,
             @Nullable Set<SessionStatus> statuses,
             @Nullable String tag) {
-        Criteria c = Criteria.where("tenantId").is(tenantId)
-                .and("userId").is(userId);
-        if (projectId != null && !projectId.isBlank()) {
-            c = c.and("projectId").is(projectId);
-        }
         Set<SessionStatus> effective;
         if (statuses == null || statuses.isEmpty()) {
             effective = EnumSet.of(
@@ -172,6 +167,21 @@ public class SessionService {
         } else {
             effective = EnumSet.copyOf(statuses);
             effective.remove(SessionStatus.CLOSED);
+        }
+
+        // Two-branch scope (planning/multi-user-sessions.md §2.5):
+        //  - own sessions: userId == me
+        //  - join-able sessions: any session in this tenant whose
+        //    owner flipped allowMultipleClients=true, regardless of
+        //    project. The flip is the owner's explicit "anyone may
+        //    join" signal.
+        Criteria ownBranch = Criteria.where("userId").is(userId);
+        Criteria sharedBranch = Criteria.where("allowMultipleClients").is(true);
+
+        Criteria c = Criteria.where("tenantId").is(tenantId)
+                .orOperator(ownBranch, sharedBranch);
+        if (projectId != null && !projectId.isBlank()) {
+            c = c.and("projectId").is(projectId);
         }
         c = c.and(F_STATUS).in(effective);
         if (tag != null && !tag.isBlank()) {

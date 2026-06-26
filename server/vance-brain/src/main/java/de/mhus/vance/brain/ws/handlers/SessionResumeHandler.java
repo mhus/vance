@@ -81,8 +81,13 @@ public class SessionResumeHandler implements WsHandler {
             return;
         }
         SessionDocument doc = existing.get();
-        if (!doc.getTenantId().equals(ctx.getTenantId())
-                || !doc.getUserId().equals(ctx.getUserId())) {
+        if (!doc.getTenantId().equals(ctx.getTenantId())) {
+            sender.sendError(wsSession, envelope, 403,
+                    "Session '" + request.getSessionId() + "' belongs to another tenant");
+            return;
+        }
+        boolean isOwner = doc.getUserId().equals(ctx.getUserId());
+        if (!isOwner && !doc.isAllowMultipleClients()) {
             sender.sendError(wsSession, envelope, 403,
                     "Session '" + request.getSessionId() + "' belongs to another user");
             return;
@@ -100,16 +105,30 @@ public class SessionResumeHandler implements WsHandler {
             return;
         }
 
-        // Same-user takeover: the userId-match check above guarantees the
-        // existing bind (if any) belongs to the same human. Allow them to
-        // resume from a fresh tab/pod without waiting for the previous
-        // editor's heartbeat to go stale.
-        boolean bound = sessionService.tryBindWithUserTakeover(
-                doc.getSessionId(), ctx.getEditorId());
-        if (!bound) {
-            sender.sendError(wsSession, envelope, 409,
-                    "Session '" + doc.getSessionId() + "' is closed or archived");
-            return;
+        // Bind strategy depends on who's joining:
+        //  - Owner: same-user takeover from a fresh tab / pod —
+        //    unconditional, the userId-match above guarantees we're
+        //    the same human.
+        //  - Non-owner on a shared session: try to claim the Mongo
+        //    bind only if it's currently free or stale; never preempt
+        //    the owner. If the owner is bound and fresh, we still
+        //    accept the connection but it's "secondary" — no Mongo
+        //    bind, just an entry in the connection registry so the
+        //    broadcast paths reach it.
+        boolean bound;
+        if (isOwner) {
+            bound = sessionService.tryBindWithUserTakeover(
+                    doc.getSessionId(), ctx.getEditorId());
+            if (!bound) {
+                sender.sendError(wsSession, envelope, 409,
+                        "Session '" + doc.getSessionId() + "' is closed or archived");
+                return;
+            }
+        } else {
+            // Best-effort: gladly take the bind if nobody holds it.
+            // Failure is fine — we'll attach as a secondary participant.
+            bound = sessionService.tryBind(
+                    doc.getSessionId(), ctx.getEditorId());
         }
 
         ctx.bindSession(doc);
@@ -132,28 +151,21 @@ public class SessionResumeHandler implements WsHandler {
             return;
         }
         SessionConnectionRegistry.closeKicked(registerResult);
-        // Propagate the connection profile to every think-process on the
-        // session so the per-turn tool filter (Tool.allowedForProfile)
-        // sees the current bound profile. See engine-message-routing.md
-        // §4.1.1.
-        thinkProcessService.updateBoundProfileForSession(
-                doc.getSessionId(), ctx.getProfile());
-        // Resume any engines that were left in SUSPENDED — idle-suspended
-        // from before this reconnect, or FORCED-suspended at pod shutdown.
-        // Without this, the user's first chat message after reconnect
-        // would be appended to the pending queue and ignored (Lisbon
-        // bug, 2026-05-26 — see planning/session-resume-cascade-bug.md).
-        // sessionLifecycle.resumeSessionCascade is idempotent: a no-op
-        // when nothing is suspended.
-        try {
-            sessionLifecycle.resumeSessionCascade(doc.getSessionId(), processEventEmitter);
-        } catch (RuntimeException e) {
-            // Resume failures must not block the bind reply — the
-            // session is still usable for new turns, only the
-            // pre-suspend pending may sit one more turn. Log and
-            // continue.
-            log.warn("Resume cascade failed during session-resume sessionId='{}': {}",
-                    doc.getSessionId(), e.toString());
+        // Owner-driven session-state changes: profile update +
+        // resume cascade. A secondary participant joining a shared
+        // session is just a viewer/contributor — they must not flip
+        // the per-session profile (would mis-filter the owner's tool
+        // surface) and must not wake suspended engines (only the owner
+        // controls suspend/resume).
+        if (isOwner) {
+            thinkProcessService.updateBoundProfileForSession(
+                    doc.getSessionId(), ctx.getProfile());
+            try {
+                sessionLifecycle.resumeSessionCascade(doc.getSessionId(), processEventEmitter);
+            } catch (RuntimeException e) {
+                log.warn("Resume cascade failed during session-resume sessionId='{}': {}",
+                        doc.getSessionId(), e.toString());
+            }
         }
         inboxSummaryPusher.pushIfAny(wsSession, ctx.getTenantId(), ctx.getUserId());
         // Look up the chat-process name (typically "chat") so the

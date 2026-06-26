@@ -61,7 +61,18 @@ public class ChatMessageAppendedHandler implements MessageHandler {
             return;
         }
         String role = data.getRole() == null ? "?" : data.getRole().name().toLowerCase();
-        String header = "[" + data.getProcessName() + " · " + role + "] ";
+        // Multi-user header: USER turns that carry a senderDisplayName
+        // surface the speaker's name in place of the bare "user" tag.
+        // Solo sessions also see this (the speaker IS the owner) — a
+        // tiny upgrade from the generic `[chat · user]` to a personal
+        // tag. See planning/multi-user-sessions.md §6.
+        String speaker = role;
+        if (data.getRole() == ChatRole.USER
+                && data.getSenderDisplayName() != null
+                && !data.getSenderDisplayName().isBlank()) {
+            speaker = data.getSenderDisplayName();
+        }
+        String header = "[" + data.getProcessName() + " · " + speaker + "] ";
         String content = data.getContent() == null ? "" : data.getContent();
 
         // Only the bound main process (Arthur) writes into the main

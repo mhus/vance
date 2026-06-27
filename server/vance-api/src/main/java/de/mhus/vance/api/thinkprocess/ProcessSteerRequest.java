@@ -77,4 +77,22 @@ public class ProcessSteerRequest {
      * See {@code specification/voice-mode.md}.
      */
     private @Nullable Boolean voiceMode;
+
+    /**
+     * Active-app hint for this single turn. When the client is showing
+     * a folder-level app (Calendar / Kanban / Slideshow …) in the
+     * editor that sent this turn, this carries
+     * {@code { folder, app }} so the engine prompt can render a
+     * context block via the {@code activeApp} Pebble variable plus a
+     * dynamic {@code appInstructions} markdown chunk from the app's
+     * {@code VanceApplication.promptInject(...)}.
+     *
+     * <p>Per-message, not session state — the user may flip between
+     * the app view and other docs mid-conversation. {@code null} from
+     * old clients (or from any turn where no app is open) leaves the
+     * prompt block unrendered.
+     *
+     * <p>See {@code planning/apps-in-cortex-and-live.md} §5.
+     */
+    private @Nullable ActiveAppContext activeApp;
 }

@@ -20,6 +20,28 @@ const currentFileSource = computed(() => {
         return null;
     return { documentId: tab.id, label: tab.path };
 });
+/**
+ * Per-turn active-app hint forwarded to the brain via
+ * {@code ProcessSteerRequest.activeApp}. Derived from the visible
+ * Cortex tab — when its kind is {@code application} and the manifest
+ * carries an {@code app:} discriminator, the brain renders an
+ * app-context block in the engine prompt and asks the app's
+ * {@code VanceApplication.promptInject(...)} for dynamic content.
+ */
+const activeApp = computed(() => {
+    const tab = cortexStore.activeTab;
+    if (!tab)
+        return null;
+    if ((tab.kind ?? '').toLowerCase() !== 'application')
+        return null;
+    const app = tab.headers?.app;
+    if (!app || typeof app !== 'string' || app.trim() === '')
+        return null;
+    const folder = tab.path.replace(/\/_app\.yaml$/, '');
+    if (!folder)
+        return null;
+    return { folder, app };
+});
 // The chat-process name is fixed by {@code SessionChatBootstrapper} to
 // "chat" — exactly one per session, see chat/ChatApp.vue's
 // resolveSessionAndProcess. We don't need a session-list lookup here;
@@ -259,6 +281,7 @@ else {
             chatProjectId: (__VLS_ctx.projectId),
             compactTools: (true),
             currentFileSource: (__VLS_ctx.currentFileSource),
+            activeApp: (__VLS_ctx.activeApp),
             draftKey: (`cortex:${__VLS_ctx.sessionId}`),
         }));
         const __VLS_24 = __VLS_23({
@@ -271,6 +294,7 @@ else {
             chatProjectId: (__VLS_ctx.projectId),
             compactTools: (true),
             currentFileSource: (__VLS_ctx.currentFileSource),
+            activeApp: (__VLS_ctx.activeApp),
             draftKey: (`cortex:${__VLS_ctx.sessionId}`),
         }, ...__VLS_functionalComponentArgsRest(__VLS_23));
         let __VLS_26;
@@ -335,6 +359,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             ChatView: ChatView,
             ChatComposer: ChatComposer,
             currentFileSource: currentFileSource,
+            activeApp: activeApp,
             CHAT_PROCESS_NAME: CHAT_PROCESS_NAME,
             socket: socket,
             status: status,

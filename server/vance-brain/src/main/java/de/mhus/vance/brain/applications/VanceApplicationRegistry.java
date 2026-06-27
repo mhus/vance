@@ -41,6 +41,18 @@ public class VanceApplicationRegistry {
                 byName.size(), new TreeSet<>(byName.keySet()));
     }
 
+    /**
+     * Look up an app by its discriminator without throwing. Used by the
+     * engine drain when applying per-message {@code activeApp} hints —
+     * unknown app types degrade silently (no prompt-inject) rather than
+     * killing the turn.
+     */
+    public java.util.Optional<VanceApplication> find(String appName) {
+        if (appName == null || appName.isBlank()) return java.util.Optional.empty();
+        VanceApplication app = byName.get(appName.toLowerCase(Locale.ROOT));
+        return java.util.Optional.ofNullable(app);
+    }
+
     /** Look up an app by its discriminator. Throws when unknown. */
     public VanceApplication require(String appName) {
         if (appName == null || appName.isBlank()) {

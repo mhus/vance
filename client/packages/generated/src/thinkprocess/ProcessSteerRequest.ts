@@ -5,6 +5,7 @@
 
 import { IdeContext } from './IdeContext';
 import { AttachmentRef } from '../attachment/AttachmentRef';
+import { ActiveAppContext } from './ActiveAppContext';
 
 export interface ProcessSteerRequest {
   processName: string;
@@ -13,4 +14,5 @@ export interface ProcessSteerRequest {
   ideContext?: IdeContext;
   attachments?: AttachmentRef[];
   voiceMode?: boolean;
+  activeApp?: ActiveAppContext;
 }

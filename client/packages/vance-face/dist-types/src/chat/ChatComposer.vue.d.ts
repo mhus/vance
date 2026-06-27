@@ -1,5 +1,5 @@
 import { type BrainWsApi } from '@vance/shared';
-import type { ChatMessageDto } from '@vance/generated';
+import type { ActiveAppContext, ChatMessageDto } from '@vance/generated';
 /**
  * Mirrors {@code ChatApp.MediationState}. Non-null while the bound
  * session is one Eddie switched us into. Lets {@link send} intercept
@@ -47,6 +47,11 @@ type __VLS_Props = {
      *  via {@code v-if="liveOk"} when the socket drops — e.g. after the
      *  laptop wakes from sleep). When unset, draft persistence is off. */
     draftKey?: string | null;
+    /** Per-message active-app hint. Cortex sets this when the visible
+     *  tab is a `kind: application` document so the brain can render an
+     *  app-context block in the engine prompt. chat.html leaves it
+     *  unset. See planning/apps-in-cortex-and-live.md §5. */
+    activeApp?: ActiveAppContext | null;
 };
 /**
  * Reference to an already-existing document in the chat's project that

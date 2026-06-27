@@ -80,6 +80,23 @@ public class CalendarsApplication implements VanceApplication {
     @Override public String appName() { return APP_NAME; }
 
     /**
+     * Short markdown chunk inserted into the engine prompt while the
+     * user is viewing this calendar in their editor. v1 is intentionally
+     * minimal — it just orients the LLM. Richer details (lane list,
+     * window, conflict count) can be added later by reading the manifest
+     * via {@link CalendarFolderReader#readManifest} once we're confident
+     * that the prompt-render hot path can afford the IO.
+     */
+    @Override
+    public String promptInject(PromptInjectContext ctx) {
+        return "You can manage events in this calendar via the "
+                + "`calendar_create` / `calendar_event_create` / "
+                + "`calendar_event_update` tools. Regenerate `_gantt.md` "
+                + "and `_conflicts.yaml` via `app_rebuild('"
+                + ctx.folder() + "')` when sources change.";
+    }
+
+    /**
      * One-shot bootstrap for a new calendar suite.
      *
      * <p>Writes the {@code _app.yaml} manifest with the correct

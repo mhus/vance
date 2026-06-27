@@ -4,6 +4,7 @@ import de.mhus.vance.api.attachment.AttachmentRef;
 import de.mhus.vance.api.inbox.AnswerOutcome;
 import de.mhus.vance.api.inbox.AnswerPayload;
 import de.mhus.vance.api.inbox.InboxItemType;
+import de.mhus.vance.api.thinkprocess.ActiveAppContext;
 import de.mhus.vance.api.thinkprocess.PeerEventType;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.api.thinkprocess.ToolCallStatus;
@@ -54,6 +55,7 @@ public final class SteerMessageCodec {
                     .content(u.content())
                     .attachmentDocumentIds(toDocumentIds(u.attachments()))
                     .voiceMode(u.voiceMode())
+                    .activeApp(u.activeApp())
                     .build();
 
             case SteerMessage.ProcessEvent e -> b
@@ -124,7 +126,8 @@ public final class SteerMessageCodec {
                     d.getFromUserDisplayName(),
                     nullToEmpty(d.getContent()),
                     fromDocumentIds(d.getAttachmentDocumentIds()),
-                    Boolean.TRUE.equals(d.getVoiceMode()));
+                    Boolean.TRUE.equals(d.getVoiceMode()),
+                    d.getActiveApp());
 
             case PROCESS_EVENT -> new SteerMessage.ProcessEvent(
                     at, idem,

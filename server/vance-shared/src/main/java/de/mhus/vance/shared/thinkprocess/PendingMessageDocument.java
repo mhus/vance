@@ -2,6 +2,7 @@ package de.mhus.vance.shared.thinkprocess;
 
 import de.mhus.vance.api.inbox.AnswerPayload;
 import de.mhus.vance.api.inbox.InboxItemType;
+import de.mhus.vance.api.thinkprocess.ActiveAppContext;
 import de.mhus.vance.api.thinkprocess.PeerEventType;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.api.thinkprocess.ToolCallStatus;
@@ -86,6 +87,20 @@ public class PendingMessageDocument {
      * See {@code specification/voice-mode.md}.
      */
     private @Nullable Boolean voiceMode;
+
+    /**
+     * Per-message hint that the user was viewing a folder-level app
+     * (Calendar / Kanban / Slideshow …) when this chat turn was sent.
+     * Engine drain picks the most recent value off the queue and feeds
+     * the prompt template the Pebble variable {@code activeApp} plus
+     * a dynamic {@code appInstructions} markdown chunk returned by the
+     * app's {@code VanceApplication.promptInject(...)}.
+     *
+     * <p>Per-message, not session state. {@code null} on non-USER_CHAT_INPUT
+     * rows and on legacy rows from before this field existed.
+     * See {@code planning/apps-in-cortex-and-live.md} §5.
+     */
+    private @Nullable ActiveAppContext activeApp;
 
     // ─── PROCESS_EVENT ───────────────────────────────────────────
     /** {@code ThinkProcessDocument.id} of the emitter. */

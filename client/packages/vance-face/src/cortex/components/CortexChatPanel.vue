@@ -4,6 +4,7 @@ import {
   WebSocketRequestError,
 } from '@vance/shared';
 import type {
+  ActiveAppContext,
   ChatMessageDto,
   DocumentDto,
 } from '@vance/generated';
@@ -46,6 +47,25 @@ const currentFileSource = computed<ComposerCurrentFileSource | null>(() => {
   const tab = cortexStore.activeTab;
   if (!tab) return null;
   return { documentId: tab.id, label: tab.path };
+});
+
+/**
+ * Per-turn active-app hint forwarded to the brain via
+ * {@code ProcessSteerRequest.activeApp}. Derived from the visible
+ * Cortex tab — when its kind is {@code application} and the manifest
+ * carries an {@code app:} discriminator, the brain renders an
+ * app-context block in the engine prompt and asks the app's
+ * {@code VanceApplication.promptInject(...)} for dynamic content.
+ */
+const activeApp = computed<ActiveAppContext | null>(() => {
+  const tab = cortexStore.activeTab;
+  if (!tab) return null;
+  if ((tab.kind ?? '').toLowerCase() !== 'application') return null;
+  const app = tab.headers?.app;
+  if (!app || typeof app !== 'string' || app.trim() === '') return null;
+  const folder = tab.path.replace(/\/_app\.yaml$/, '');
+  if (!folder) return null;
+  return { folder, app };
 });
 
 // The chat-process name is fixed by {@code SessionChatBootstrapper} to
@@ -225,6 +245,7 @@ async function onConversationExported(
           :chat-project-id="projectId"
           :compact-tools="true"
           :current-file-source="currentFileSource"
+          :active-app="activeApp"
           :draft-key="`cortex:${sessionId}`"
           @hub="onLeave"
           @local-echo="onLocalEcho"

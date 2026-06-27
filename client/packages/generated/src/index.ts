@@ -182,6 +182,7 @@ export * from './skills/SkillSummaryDto';
 export * from './skills/SkillTriggerDto';
 export * from './skills/SkillTriggerType';
 
+export * from './thinkprocess/ActiveAppContext';
 export * from './thinkprocess/BootstrappedProcess';
 export * from './thinkprocess/IdeContext';
 export * from './thinkprocess/IdeFileRange';

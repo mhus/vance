@@ -231,6 +231,7 @@ public class EddieEngine extends StructuredActionEngine {
     private final de.mhus.vance.brain.discovery.DiscoveryService discoveryService;
     private final de.mhus.vance.brain.tools.client.CortexPromptResolver cortexPromptResolver;
     private final de.mhus.vance.brain.chat.CollabContextResolver collabContextResolver;
+    private final de.mhus.vance.brain.applications.ActiveAppPromptResolver activeAppPromptResolver;
     private final ObjectMapper objectMapper;
     private final de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeService
             actionLoopJudgeService;
@@ -283,6 +284,7 @@ public class EddieEngine extends StructuredActionEngine {
                     de.mhus.vance.brain.discovery.DiscoveryService discoveryService,
             de.mhus.vance.brain.tools.client.CortexPromptResolver cortexPromptResolver,
             de.mhus.vance.brain.chat.CollabContextResolver collabContextResolver,
+            de.mhus.vance.brain.applications.ActiveAppPromptResolver activeAppPromptResolver,
             de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeService actionLoopJudgeService) {
         super(streamingProperties, llmCallTracker, objectMapper, composer);
         this.thinkProcessService = thinkProcessService;
@@ -305,6 +307,7 @@ public class EddieEngine extends StructuredActionEngine {
         this.discoveryService = discoveryService;
         this.cortexPromptResolver = cortexPromptResolver;
         this.collabContextResolver = collabContextResolver;
+        this.activeAppPromptResolver = activeAppPromptResolver;
         this.objectMapper = objectMapper;
         this.actionLoopJudgeService = actionLoopJudgeService;
     }
@@ -2426,12 +2429,20 @@ public class EddieEngine extends StructuredActionEngine {
         // specification/voice-mode.md §6.
         boolean voiceMode = false;
         String mentionedByDisplayName = null;
+        de.mhus.vance.api.thinkprocess.ActiveAppContext activeApp = null;
         for (SteerMessage m : inbox) {
             if (m instanceof SteerMessage.UserChatInput uci) {
                 voiceMode = uci.voiceMode();
                 mentionedByDisplayName = uci.fromUserDisplayName();
+                activeApp = uci.activeApp();
             }
         }
+        String appInstructions = activeAppPromptResolver.resolve(process, activeApp);
+        // Strict-Mode: when the resolver couldn't produce inject text
+        // (unknown app, SPI returned null, threw) clear the activeApp
+        // hint too so the Pebble {% if activeApp %} block falls away
+        // cleanly instead of rendering a header with an empty body.
+        if (appInstructions == null) activeApp = null;
 
         // Cortex-mode: same per-turn injection as Arthur / Ford. Eddie
         // is the hub assistant — if a Cortex client is bound to her
@@ -2450,6 +2461,8 @@ public class EddieEngine extends StructuredActionEngine {
                         .tier(modelSize)
                         .engine(NAME)
                         .voiceMode(voiceMode)
+                        .activeApp(activeApp)
+                        .appInstructions(appInstructions)
                         .cortexMode(cortex.active())
                         .cortexBoundDocPath(cortex.boundDocPath())
                         .cortexBoundDocMime(cortex.boundDocMime())

@@ -998,6 +998,17 @@ Interpret generously; on real ambiguity → `ASK_USER`.
 verbatim. Store via `doc_create(kind="text", …)` and `ANSWER` with a brief
 pointer ("I put the full plan in your inbox.").
 {% endif %}
+{% if activeApp %}
+
+## Active App: {{ activeApp.app }}
+
+The user is currently viewing the **{{ activeApp.app }}** app rooted
+at folder `{{ activeApp.folder }}`. Treat that folder as the implied
+target for app-related questions ("what lanes are there?", "add an
+event") unless the user names a different path.
+
+{{ appInstructions | raw }}
+{% endif %}
 
 {% if collabActive %}
 ## Multi-user session

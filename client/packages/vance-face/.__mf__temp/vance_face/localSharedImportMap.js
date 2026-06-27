@@ -101,6 +101,30 @@
         
     }
       const usedRemotes = [
+                {
+                  entryGlobalName: "vance_addon_slideshow",
+                  name: "vance_addon_slideshow",
+                  type: "module",
+                  entry: "/addons/slideshow/remoteEntry.js",
+                  shareScope: "default",
+                }
+          ,
+                {
+                  entryGlobalName: "vance_addon_kanban",
+                  name: "vance_addon_kanban",
+                  type: "module",
+                  entry: "/addons/kanban/remoteEntry.js",
+                  shareScope: "default",
+                }
+          ,
+                {
+                  entryGlobalName: "vance_addon_calendar",
+                  name: "vance_addon_calendar",
+                  type: "module",
+                  entry: "/addons/calendar/remoteEntry.js",
+                  shareScope: "default",
+                }
+          
       ]
       export {
         usedShared,

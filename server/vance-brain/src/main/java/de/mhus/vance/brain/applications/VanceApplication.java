@@ -76,6 +76,28 @@ public interface VanceApplication {
                         + "manifest by hand or pick another app type.");
     }
 
+    /**
+     * Optional markdown snippet inserted into the chat-engine system
+     * prompt while the user is viewing this app in their editor. Lets
+     * each app surface its current state (lane names, column counts,
+     * gantt output path, …) so the LLM can answer "what's in here" /
+     * "add a task to the Backend lane" without scraping documents
+     * upfront.
+     *
+     * <p>Engines call this on every turn that arrives with
+     * {@link de.mhus.vance.api.thinkprocess.ActiveAppContext active-app}
+     * metadata. The returned string is rendered raw inside the
+     * {@code {% if activeApp %}} block of the engine prompt — keep it
+     * short (a handful of lines), no need to repeat the engine's own
+     * conventions. Return {@code null} when there's nothing useful to
+     * say for this turn; the prompt block falls away cleanly.
+     *
+     * <p>Default returns {@code null} — apps opt in by overriding.
+     */
+    default @Nullable String promptInject(PromptInjectContext ctx) {
+        return null;
+    }
+
     // ── Records ───────────────────────────────────────────────────
 
     /**
@@ -89,6 +111,21 @@ public interface VanceApplication {
             String projectName,
             String folder,
             @Nullable String userId,
+            @Nullable String processId) { }
+
+    /**
+     * Plumbing for {@link #promptInject}. Carries the scope the engine
+     * is asking about — tenant + project + the app folder root —
+     * plus the originating session / process for telemetry. The app
+     * implementation typically resolves its manifest under
+     * {@code folder + "/_app.yaml"} via {@code DocumentService} and
+     * formats whatever excerpt is useful.
+     */
+    record PromptInjectContext(
+            String tenantId,
+            String projectName,
+            String folder,
+            @Nullable String sessionId,
             @Nullable String processId) { }
 
     /**

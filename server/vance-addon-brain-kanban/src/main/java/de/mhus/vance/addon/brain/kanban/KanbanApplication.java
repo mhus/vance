@@ -67,6 +67,21 @@ public class KanbanApplication implements VanceApplication {
     @Override public String appName() { return APP_NAME; }
 
     /**
+     * Short markdown chunk inserted into the engine prompt while the
+     * user is viewing this kanban board in their editor. Orients the
+     * LLM toward the right tool family; column / card listings can be
+     * folded in later via the folder reader.
+     */
+    @Override
+    public String promptInject(PromptInjectContext ctx) {
+        return "You can move / create / update cards on this board via "
+                + "the `kanban_card_create` / `kanban_card_update` / "
+                + "`kanban_card_move` tools. Regenerate `_board.md` via "
+                + "`app_rebuild('" + ctx.folder() + "')` after structural "
+                + "edits.";
+    }
+
+    /**
      * One-shot bootstrap for a new kanban suite.
      *
      * <p>Writes the {@code _app.yaml} manifest with the correct schema.

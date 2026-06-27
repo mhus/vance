@@ -60,6 +60,20 @@ public class SlideshowApplication implements VanceApplication {
     @Override public String appName() { return APP_NAME; }
 
     /**
+     * Short markdown chunk inserted into the engine prompt while the
+     * user is viewing this slideshow in their editor. Orients the LLM
+     * toward image / caption tooling; richer state (slide count, autoplay
+     * settings) can be folded in later via the folder reader.
+     */
+    @Override
+    public String promptInject(PromptInjectContext ctx) {
+        return "Images dropped into `" + ctx.folder() + "` become slides "
+                + "automatically. Use `app_rebuild('" + ctx.folder() + "')` "
+                + "after adding / reordering / captioning images to refresh "
+                + "`_index.yaml`.";
+    }
+
+    /**
      * Bootstrap a new slideshow app. Writes the {@code _app.yaml}
      * manifest and runs an immediate refresh to produce the
      * {@code _index.yaml} for any images already in the folder.

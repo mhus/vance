@@ -887,6 +887,17 @@ Großzügig interpretieren; bei echter Ambiguität → `ASK_USER`.
 vorlesen — nutze `RELAY_INBOX` mit kurzem Hub-Satz + Pointer auf
 die Inbox.
 {% endif %}
+{% if activeApp %}
+
+## Active App: {{ activeApp.app }}
+
+The user is currently viewing the **{{ activeApp.app }}** app rooted
+at folder `{{ activeApp.folder }}`. Treat that folder as the implied
+target for app-related questions ("welche Lanes gibt es?", "füge
+einen Termin hinzu") unless the user names a different path.
+
+{{ appInstructions | raw }}
+{% endif %}
 
 {% if collabActive %}
 ## Multi-User-Session

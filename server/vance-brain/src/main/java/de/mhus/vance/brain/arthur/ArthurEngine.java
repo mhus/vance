@@ -226,6 +226,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     private final de.mhus.vance.brain.discovery.DiscoveryService discoveryService;
     private final de.mhus.vance.brain.tools.client.CortexPromptResolver cortexPromptResolver;
     private final de.mhus.vance.brain.chat.CollabContextResolver collabContextResolver;
+    private final de.mhus.vance.brain.applications.ActiveAppPromptResolver activeAppPromptResolver;
     private final ObjectMapper objectMapper;
     private final de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeService
             actionLoopJudgeService;
@@ -304,6 +305,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                     de.mhus.vance.brain.discovery.DiscoveryService discoveryService,
             de.mhus.vance.brain.tools.client.CortexPromptResolver cortexPromptResolver,
             de.mhus.vance.brain.chat.CollabContextResolver collabContextResolver,
+            de.mhus.vance.brain.applications.ActiveAppPromptResolver activeAppPromptResolver,
             de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeService actionLoopJudgeService) {
         super(streamingProperties, llmCallTracker, objectMapper, composer);
         this.thinkProcessService = thinkProcessService;
@@ -326,6 +328,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         this.discoveryService = discoveryService;
         this.cortexPromptResolver = cortexPromptResolver;
         this.collabContextResolver = collabContextResolver;
+        this.activeAppPromptResolver = activeAppPromptResolver;
         this.objectMapper = objectMapper;
         this.actionLoopJudgeService = actionLoopJudgeService;
     }
@@ -2359,12 +2362,17 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         // specification/voice-mode.md §6.
         boolean voiceMode = false;
         String mentionedByDisplayName = null;
+        de.mhus.vance.api.thinkprocess.ActiveAppContext activeApp = null;
         for (SteerMessage m : inbox) {
             if (m instanceof SteerMessage.UserChatInput uci) {
                 voiceMode = uci.voiceMode();
                 mentionedByDisplayName = uci.fromUserDisplayName();
+                activeApp = uci.activeApp();
             }
         }
+        String appInstructions = activeAppPromptResolver.resolve(process, activeApp);
+        // Strict-mode: see EddieEngine for the same pattern.
+        if (appInstructions == null) activeApp = null;
 
         // Cortex-mode: live-checked from the client-tool registry per
         // turn — fires only when a Cortex-view client is currently
@@ -2386,6 +2394,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                         .tier(modelSize)
                         .engine(NAME)
                         .voiceMode(voiceMode)
+                        .activeApp(activeApp)
+                        .appInstructions(appInstructions)
                         .cortexMode(cortex.active())
                         .cortexBoundDocPath(cortex.boundDocPath())
                         .cortexBoundDocMime(cortex.boundDocMime())

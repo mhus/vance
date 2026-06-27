@@ -576,6 +576,7 @@ async function send() {
             content: wireText,
             attachments: allAttachments.length > 0 ? allAttachments : undefined,
             voiceMode: voiceMode ? true : undefined,
+            activeApp: props.activeApp ?? undefined,
         });
     }
     catch (e) {

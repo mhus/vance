@@ -1,9 +1,10 @@
 package de.mhus.vance.brain.prompt;
 
+import de.mhus.vance.api.thinkprocess.ActiveAppContext;
+import de.mhus.vance.api.thinkprocess.ProcessMode;
 import de.mhus.vance.brain.ai.ModelInfo;
 import de.mhus.vance.brain.ai.ModelSize;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
-import de.mhus.vance.api.thinkprocess.ProcessMode;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Locale;
@@ -159,6 +160,45 @@ public final class PromptContextBuilder {
      */
     public PromptContextBuilder voiceMode(boolean voiceMode) {
         map.put("voiceMode", voiceMode);
+        return this;
+    }
+
+    /**
+     * Active-app hint for the current turn — set when the most recent
+     * USER_CHAT_INPUT in the drain-batch carried
+     * {@link ActiveAppContext}. Exposes a {@code Map<String,Object>}
+     * with keys {@code folder} and {@code app} on the Pebble variable
+     * {@code activeApp} so templates render
+     * {@code {% if activeApp %}… {{ activeApp.app }} … {% endif %}}
+     * blocks. Pair with {@link #appInstructions(String)} for the
+     * dynamic markdown chunk returned by
+     * {@code VanceApplication.promptInject(...)}.
+     *
+     * <p>Per-turn, never persisted. Default unset → block falls away
+     * cleanly. See {@code planning/apps-in-cortex-and-live.md} §5.
+     */
+    public PromptContextBuilder activeApp(@Nullable ActiveAppContext activeApp) {
+        if (activeApp != null) {
+            Map<String, Object> view = new LinkedHashMap<>();
+            view.put("folder", activeApp.getFolder());
+            view.put("app", activeApp.getApp());
+            map.put("activeApp", view);
+        }
+        return this;
+    }
+
+    /**
+     * Pre-rendered markdown chunk from the active app's
+     * {@code VanceApplication.promptInject(...)}. Exposed to templates
+     * as {@code {{ appInstructions | raw }}} inside the
+     * {@code {% if activeApp %}} block. {@code null} (the SPI default)
+     * leaves the variable unset; the template renders the bare
+     * "active app" header without the dynamic body.
+     */
+    public PromptContextBuilder appInstructions(@Nullable String appInstructions) {
+        if (appInstructions != null && !appInstructions.isBlank()) {
+            map.put("appInstructions", appInstructions);
+        }
         return this;
     }
 

@@ -23,6 +23,7 @@ import {
   saveSpeakerEnabled,
 } from '../platform/speechSettings';
 import type {
+  ActiveAppContext,
   AttachmentRef,
   ChatMessageDto,
   ChatRole,
@@ -85,6 +86,11 @@ const props = defineProps<{
    *  via {@code v-if="liveOk"} when the socket drops — e.g. after the
    *  laptop wakes from sleep). When unset, draft persistence is off. */
   draftKey?: string | null;
+  /** Per-message active-app hint. Cortex sets this when the visible
+   *  tab is a `kind: application` document so the brain can render an
+   *  app-context block in the engine prompt. chat.html leaves it
+   *  unset. See planning/apps-in-cortex-and-live.md §5. */
+  activeApp?: ActiveAppContext | null;
 }>();
 
 /**
@@ -735,6 +741,7 @@ async function send(): Promise<void> {
       content: wireText,
       attachments: allAttachments.length > 0 ? allAttachments : undefined,
       voiceMode: voiceMode ? true : undefined,
+      activeApp: props.activeApp ?? undefined,
     });
   } catch (e) {
     emit('rollback-echo', optimisticId);

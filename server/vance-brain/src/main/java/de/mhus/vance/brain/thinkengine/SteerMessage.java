@@ -3,6 +3,7 @@ package de.mhus.vance.brain.thinkengine;
 import de.mhus.vance.api.attachment.AttachmentRef;
 import de.mhus.vance.api.inbox.AnswerPayload;
 import de.mhus.vance.api.inbox.InboxItemType;
+import de.mhus.vance.api.thinkprocess.ActiveAppContext;
 import de.mhus.vance.api.thinkprocess.PeerEventType;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.api.thinkprocess.ToolCallStatus;
@@ -64,7 +65,8 @@ public sealed interface SteerMessage
             @Nullable String fromUserDisplayName,
             String content,
             List<AttachmentRef> attachments,
-            boolean voiceMode) implements SteerMessage {
+            boolean voiceMode,
+            @Nullable ActiveAppContext activeApp) implements SteerMessage {
 
         /**
          * Compact-form null-safety: {@code attachments == null} is
@@ -81,21 +83,22 @@ public sealed interface SteerMessage
          * Backward-compatible constructor for the many call sites that
          * predate multimodal attachments. Equivalent to passing
          * {@link List#of()} for {@code attachments}, {@code false}
-         * for {@code voiceMode}, and {@code null} for the display name.
+         * for {@code voiceMode}, {@code null} for the display name, and
+         * {@code null} for the active-app hint.
          */
         public UserChatInput(
                 Instant at,
                 @Nullable String idempotencyKey,
                 String fromUser,
                 String content) {
-            this(at, idempotencyKey, fromUser, null, content, List.of(), false);
+            this(at, idempotencyKey, fromUser, null, content, List.of(), false, null);
         }
 
         /**
          * Backward-compatible constructor for callers that already
          * carry attachments but predate voice mode. Equivalent to
-         * passing {@code false} for {@code voiceMode} and {@code null}
-         * for the display name.
+         * passing {@code false} for {@code voiceMode}, {@code null} for
+         * the display name and {@code null} for the active-app hint.
          */
         public UserChatInput(
                 Instant at,
@@ -103,12 +106,13 @@ public sealed interface SteerMessage
                 String fromUser,
                 String content,
                 List<AttachmentRef> attachments) {
-            this(at, idempotencyKey, fromUser, null, content, attachments, false);
+            this(at, idempotencyKey, fromUser, null, content, attachments, false, null);
         }
 
         /**
          * Backward-compatible constructor for callers that predate
-         * the multi-user-session display-name field.
+         * the multi-user-session display-name field and the
+         * active-app hint.
          */
         public UserChatInput(
                 Instant at,
@@ -117,7 +121,23 @@ public sealed interface SteerMessage
                 String content,
                 List<AttachmentRef> attachments,
                 boolean voiceMode) {
-            this(at, idempotencyKey, fromUser, null, content, attachments, voiceMode);
+            this(at, idempotencyKey, fromUser, null, content, attachments, voiceMode, null);
+        }
+
+        /**
+         * Backward-compatible constructor for callers that already
+         * carry the display-name field but predate the active-app hint.
+         */
+        public UserChatInput(
+                Instant at,
+                @Nullable String idempotencyKey,
+                String fromUser,
+                @Nullable String fromUserDisplayName,
+                String content,
+                List<AttachmentRef> attachments,
+                boolean voiceMode) {
+            this(at, idempotencyKey, fromUser, fromUserDisplayName, content,
+                    attachments, voiceMode, null);
         }
     }
 

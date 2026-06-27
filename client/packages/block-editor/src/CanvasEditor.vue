@@ -178,13 +178,11 @@ const editor = useEditor({
     GlobalDragHandle.configure({
       dragHandleWidth: 20,
       scrollTreshold: 100,
-      // Register vanceColumns so the WHOLE columns block can be picked
-      // up by the drag handle (e.g. when hovering empty space inside
-      // a column). Individual paragraphs inside columns are matched
-      // by the lib's built-in `p:not(:first-child)` selector — for
-      // that to work we render a sentinel div as first child of every
-      // vanceColumn (see extensions/VanceColumns.ts).
-      customNodes: ['vanceColumns'],
+      // No customNodes — deliberately keep vanceColumns / vanceColumn
+      // out so the drag handle never picks them up. Only their inner
+      // block children (paragraphs, headings, lists, …) are
+      // drag-sources. Re-arranging the whole columns block happens
+      // through the slash menu, not drag-and-drop.
     }),
     SlashCommands,
     VanceCallout,
@@ -205,6 +203,41 @@ const editor = useEditor({
       clipboard.preventDefault();
       void insertUploadedImages(files, null);
       return true;
+    },
+    /**
+     * Reject drops that land inside a vanceColumns container but
+     * OUTSIDE any vanceColumn child. Without this guard ProseMirror's
+     * schema-fixup wraps the dropped block in a fresh vanceColumn,
+     * silently growing the columns table by one slot per drop — exactly
+     * the "4 columns appeared out of nowhere" symptom.
+     *
+     * File drops are routed through the separate DOM-level capture
+     * listener (registered in onMounted) and skip this branch via the
+     * `moved === false` short-circuit.
+     */
+    handleDrop(view, event, _slice, moved) {
+      if (!moved) return false;
+      const dragEvent = event as DragEvent;
+      const coords = view.posAtCoords({
+        left: dragEvent.clientX,
+        top: dragEvent.clientY,
+      });
+      if (!coords) return false;
+      const $pos = view.state.doc.resolve(coords.pos);
+      let insideColumns = false;
+      for (let d = $pos.depth; d >= 0; d--) {
+        const name = $pos.node(d).type.name;
+        if (name === 'vanceColumn') return false; // allowed
+        if (name === 'vanceColumns') {
+          insideColumns = true;
+          break;
+        }
+      }
+      if (insideColumns) {
+        dragEvent.preventDefault();
+        return true;
+      }
+      return false;
     },
   },
   onUpdate: () => {

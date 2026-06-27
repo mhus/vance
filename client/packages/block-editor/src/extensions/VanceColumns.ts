@@ -16,13 +16,15 @@ export const VanceColumns = Node.create({
   name: 'vanceColumns',
   group: 'block',
   content: 'vanceColumn{2,}',
-  // `isolating: true` blocks ProseMirror's standard drag-to-move
-  // pipeline (delete source + insert at target) — without it gone the
-  // global drag handle copies the container instead of moving it.
-  // `defining` was equally over-conservative — the user shouldn't lose
-  // the entire columns-block to a Backspace anyway, so the schema-
-  // constraint `vanceColumn{2,}` does enough on its own.
-  draggable: true,
+  // NOT draggable. The whole columns table moving around as one block
+  // is rarely what users want — and worse, the drag-handle library
+  // tends to pick the outer container whenever the mouse isn't
+  // directly over an inner paragraph, which steals drags from the
+  // inner blocks. Inner blocks (paragraphs, headings, lists, …) are
+  // still moveable through their own drag handles. Removing /
+  // re-arranging the whole columns block goes through the slash
+  // menu instead.
+  draggable: false,
 
   parseHTML() {
     return [{ tag: 'div[data-vance-columns]' }];

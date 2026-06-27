@@ -10,7 +10,7 @@ overrides:
 
 patchedDependencies:
   tiptap-extension-global-drag-handle:
-    hash: 598e5e07a80f24601b5ece5c001dd1603b6e7ce76fafa469d4cb46805d89097a
+    hash: 3a5d37208fa91c9528b3f49c04f2cc4b55f4e8f389bc6bc050b5001b97c7839f
     path: patches/tiptap-extension-global-drag-handle.patch
 
 importers:
@@ -85,7 +85,7 @@ importers:
         version: 6.3.7
       tiptap-extension-global-drag-handle:
         specifier: ^0.1.16
-        version: 0.1.18(patch_hash=598e5e07a80f24601b5ece5c001dd1603b6e7ce76fafa469d4cb46805d89097a)
+        version: 0.1.18(patch_hash=3a5d37208fa91c9528b3f49c04f2cc4b55f4e8f389bc6bc050b5001b97c7839f)
     devDependencies:
       '@types/js-yaml':
         specifier: ^4.0.9
@@ -13125,7 +13125,7 @@ snapshots:
     dependencies:
       '@popperjs/core': 2.11.8
 
-  tiptap-extension-global-drag-handle@0.1.18(patch_hash=598e5e07a80f24601b5ece5c001dd1603b6e7ce76fafa469d4cb46805d89097a): {}
+  tiptap-extension-global-drag-handle@0.1.18(patch_hash=3a5d37208fa91c9528b3f49c04f2cc4b55f4e8f389bc6bc050b5001b97c7839f): {}
 
   tmp@0.2.7: {}
 

@@ -11,6 +11,37 @@ index 8e0aa34c382f9a40c208742ff2c565bc2fd70bfd..fcb908f78ca42943d3f0983585a25069
          'pre',
          'blockquote',
          'h1',
+@@ -90,17 +90,28 @@ function nodeDOMAtCoords(coords, options) {
+ }
+ function nodePosAtDOM(node, view, options) {
+     const boundingRect = node.getBoundingClientRect();
++    // Clamp the X offset so it never escapes the right edge of the
++    // node. Without the clamp, narrow nodes (e.g. paragraph inside a
++    // 200px column) overshoot and posAtCoords resolves to the parent.
+     return view.posAtCoords({
+-        left: boundingRect.left + 50 + options.dragHandleWidth,
++        left: Math.min(boundingRect.left + 50 + options.dragHandleWidth, boundingRect.right - 1),
+         top: boundingRect.top + 1,
+     })?.inside;
+ }
+ function calcNodePos(pos, view) {
+     const $pos = view.state.doc.resolve(pos);
+-    if ($pos.depth > 1)
++    if ($pos.depth > 1) {
++        // Stop at vanceColumn so dragging a paragraph INSIDE a column
++        // selects the paragraph, not the whole column. The library's
++        // default walk-up is tuned for `<li>` wrappers and would
++        // otherwise grab the column on every drag.
++        const parent = $pos.node($pos.depth);
++        if (parent && parent.type && parent.type.name === 'vanceColumn')
++            return pos;
+         return $pos.before($pos.depth);
++    }
+     return pos;
+ }
+ function DragHandlePlugin(options) {
+     let listType = '';
+     function handleDragStart(event, view) {
 diff --git a/dist/index.js b/dist/index.js
 index 1a245d89e5ed9534f13c6a6cd999b13b1e0c6485..97011aa078be760191face9cfa5715a4d62d7fe9 100644
 --- a/dist/index.js
@@ -24,3 +55,34 @@ index 1a245d89e5ed9534f13c6a6cd999b13b1e0c6485..97011aa078be760191face9cfa5715a4
          'pre',
          'blockquote',
          'h1',
+@@ -66,17 +66,28 @@ function nodeDOMAtCoords(coords, options) {
+ }
+ function nodePosAtDOM(node, view, options) {
+     const boundingRect = node.getBoundingClientRect();
++    // Clamp the X offset so it never escapes the right edge of the
++    // node. Without the clamp, narrow nodes (e.g. paragraph inside a
++    // 200px column) overshoot and posAtCoords resolves to the parent.
+     return view.posAtCoords({
+-        left: boundingRect.left + 50 + options.dragHandleWidth,
++        left: Math.min(boundingRect.left + 50 + options.dragHandleWidth, boundingRect.right - 1),
+         top: boundingRect.top + 1,
+     })?.inside;
+ }
+ function calcNodePos(pos, view) {
+     const $pos = view.state.doc.resolve(pos);
+-    if ($pos.depth > 1)
++    if ($pos.depth > 1) {
++        // Stop at vanceColumn so dragging a paragraph INSIDE a column
++        // selects the paragraph, not the whole column. The library's
++        // default walk-up is tuned for `<li>` wrappers and would
++        // otherwise grab the column on every drag.
++        const parent = $pos.node($pos.depth);
++        if (parent && parent.type && parent.type.name === 'vanceColumn')
++            return pos;
+         return $pos.before($pos.depth);
++    }
+     return pos;
+ }
+ function DragHandlePlugin(options) {
+     let listType = '';
+     function handleDragStart(event, view) {

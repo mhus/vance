@@ -58,6 +58,7 @@ export * from './documents/DocumentNoteUpdateRequest';
 export * from './documents/DocumentSummary';
 export * from './documents/DocumentSummaryRequest';
 export * from './documents/DocumentUpdateRequest';
+export * from './documents/WriterRole';
 
 export * from './oauth/OAuthProviderAdminDto';
 export * from './oauth/OAuthProviderListEntry';

@@ -4,9 +4,11 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
 import de.mhus.vance.api.common.AccentColor;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -133,4 +135,19 @@ public class DocumentDto {
      * Empty when the document has no notes.
      */
     private Map<String, DocumentNoteDto> notes = new LinkedHashMap<>();
+
+    /**
+     * Soft edit-protection — writer roles that are blocked from
+     * mutating this document. {@code null} or empty means no lock.
+     * Serialised as a sorted array so diffs are stable across saves.
+     *
+     * <p>The set is normalised server-side (see
+     * {@code DocumentService.setLockedFor}): {@code AI} is auto-added
+     * whenever {@code USER} or {@code KIT} is present. Mutated through
+     * the dedicated {@code PATCH /lock} endpoint and the
+     * {@code document_lock_*} LLM tools — never via
+     * {@code PUT /documents/{id}}.
+     */
+    @Builder.Default
+    private Set<WriterRole> lockedFor = EnumSet.noneOf(WriterRole.class);
 }

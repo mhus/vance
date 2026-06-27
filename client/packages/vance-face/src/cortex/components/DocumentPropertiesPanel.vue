@@ -12,8 +12,9 @@
  *    existing component as-is; restores re-fetch the doc into the tab).
  */
 import { computed, ref, watch } from 'vue';
-import { VAlert, VButton, VColorPicker, VInput, VSelect } from '@/components';
+import { VAlert, VButton, VCheckbox, VColorPicker, VInput, VSelect } from '@/components';
 import type { AccentColor, DocumentDto } from '@vance/generated';
+import { WriterRole } from '@vance/generated';
 import { useI18n } from 'vue-i18n';
 import DocumentArchives from '@/document/DocumentArchives.vue';
 import type { CortexDocument } from '../types';
@@ -31,6 +32,10 @@ const editTitle = ref('');
 const editTags = ref('');
 const editColor = ref<AccentColor | null>(null);
 const editMime = ref<string>('');
+const lockAi = ref(false);
+const lockUser = ref(false);
+const lockKit = ref(false);
+const savingLock = ref(false);
 const saving = ref(false);
 const error = ref<string | null>(null);
 
@@ -76,10 +81,32 @@ watch(
     editTags.value = (props.document.tags ?? []).join(', ');
     editColor.value = props.document.color ?? null;
     editMime.value = props.document.mimeType ?? '';
+    seedLockFlags();
     error.value = null;
   },
   { immediate: true },
 );
+
+// Also resync lock checkboxes when the doc's lockedFor changes from
+// outside (e.g. an LLM tool toggled the lock while we have the tab open).
+watch(
+  () => props.document.lockedFor,
+  () => seedLockFlags(),
+  { deep: true },
+);
+
+function seedLockFlags(): void {
+  const set = new Set(props.document.lockedFor ?? []);
+  lockAi.value = set.has(WriterRole.AI);
+  lockUser.value = set.has(WriterRole.USER);
+  lockKit.value = set.has(WriterRole.KIT);
+}
+
+// Mirror server-side normalisation client-side for immediate feedback —
+// turning USER or KIT on auto-checks AI; turning AI off while USER or
+// KIT is still on is a no-op (the server will re-add it on save).
+watch(lockUser, (v) => { if (v) lockAi.value = true; });
+watch(lockKit, (v) => { if (v) lockAi.value = true; });
 
 const isDirty = computed<boolean>(() => {
   const nameNow = props.document.name ?? '';
@@ -190,12 +217,57 @@ const dtoForArchives = computed<DocumentDto>(() => ({
   summaryDirty: props.document.summaryDirty ?? false,
   summary: props.document.summary ?? undefined,
   notes: props.document.notes ?? {},
+  lockedFor: props.document.lockedFor ?? [],
 }));
 
 async function onRestored(): Promise<void> {
   // Re-pull the document so the body + meta in the tab match the
   // restored version.
   await store.reloadTab(props.document.id);
+}
+
+// True when the lock checkboxes diverge from the document's current
+// {@code lockedFor}. The currently-displayed UI state is normalised
+// client-side (USER/KIT imply AI), so the comparison is against the
+// server-side set verbatim.
+const isLockDirty = computed<boolean>(() => {
+  const current = new Set(props.document.lockedFor ?? []);
+  const desired = new Set<WriterRole>();
+  if (lockAi.value) desired.add(WriterRole.AI);
+  if (lockUser.value) desired.add(WriterRole.USER);
+  if (lockKit.value) desired.add(WriterRole.KIT);
+  if (current.size !== desired.size) return true;
+  for (const r of current) if (!desired.has(r)) return true;
+  return false;
+});
+
+async function onSaveLock(): Promise<void> {
+  const removingKit
+    = (props.document.lockedFor ?? []).includes(WriterRole.KIT)
+    && !lockKit.value;
+  if (removingKit) {
+    const ok = confirm(
+      'Removing the KIT lock means this document can be overwritten by future Kit-Apply updates. Continue?',
+    );
+    if (!ok) {
+      seedLockFlags();
+      return;
+    }
+  }
+  savingLock.value = true;
+  error.value = null;
+  try {
+    const desired: WriterRole[] = [];
+    if (lockAi.value) desired.push(WriterRole.AI);
+    if (lockUser.value) desired.push(WriterRole.USER);
+    if (lockKit.value) desired.push(WriterRole.KIT);
+    await store.updateLock(props.document.id, desired);
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Failed to update lock';
+    seedLockFlags();
+  } finally {
+    savingLock.value = false;
+  }
 }
 </script>
 
@@ -264,6 +336,39 @@ async function onRestored(): Promise<void> {
       <div class="opacity-60 mb-0.5">Summary</div>
       <div class="bg-base-200 rounded px-2 py-1 whitespace-pre-wrap">
         {{ document.summary }}
+      </div>
+    </div>
+
+    <div class="mt-2 border-t border-base-300 pt-2">
+      <div class="opacity-60 mb-1">Lock (soft edit-protection)</div>
+      <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
+        <VCheckbox
+          v-model="lockAi"
+          label="AI"
+          help="Block LLM / tool writes"
+          :disabled="savingLock || lockUser || lockKit"
+        />
+        <VCheckbox
+          v-model="lockUser"
+          label="USER"
+          help="Block manual user writes (auto-implies AI)"
+          :disabled="savingLock"
+        />
+        <VCheckbox
+          v-model="lockKit"
+          label="KIT"
+          help="Freeze against Kit-Apply updates (auto-implies AI)"
+          :disabled="savingLock"
+        />
+        <div class="ml-auto">
+          <VButton
+            size="sm"
+            variant="primary"
+            :disabled="!isLockDirty"
+            :loading="savingLock"
+            @click="onSaveLock"
+          >Update lock</VButton>
+        </div>
       </div>
     </div>
 

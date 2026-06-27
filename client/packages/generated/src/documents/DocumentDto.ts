@@ -3,6 +3,7 @@
  Source: de.mhus.vance.api.documents.DocumentDto
 */
 
+import { WriterRole } from './WriterRole';
 import { AccentColor } from '../common/AccentColor';
 import { DocumentNoteDto } from './DocumentNoteDto';
 
@@ -32,4 +33,5 @@ export interface DocumentDto {
   lastDeepReviewedAtMs?: number;
   expiresAtMs?: number;
   notes: Record<string, DocumentNoteDto>;
+  lockedFor: WriterRole[];
 }

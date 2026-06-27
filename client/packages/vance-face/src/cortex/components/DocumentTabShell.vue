@@ -23,7 +23,7 @@
  *    just sourced the entry differently.
  */
 import { computed, onBeforeUnmount, ref, shallowRef, toRef, watch } from 'vue';
-import { CodeEditor, accentColorDotClass } from '@/components';
+import { CodeEditor, VLockBadge, accentColorDotClass } from '@/components';
 import { brainFetchBlob } from '@vance/shared';
 import type { DocumentDto } from '@vance/generated';
 import { resolveKindFor } from '@vance/kind-registry';
@@ -288,6 +288,7 @@ const docDtoForView = computed<DocumentDto>(() => ({
   autoSummary: false,
   summaryDirty: false,
   notes: props.document.notes ?? {},
+  lockedFor: props.document.lockedFor ?? [],
 }));
 
 // ─── Parse / serialize for typed-model + kind-registry modes ─────
@@ -652,6 +653,7 @@ function fmtDuration(ms: number | null): string {
         :aria-label="`color ${document.color}`"
       />
       <span class="font-mono opacity-80 truncate">{{ document.path }}</span>
+      <VLockBadge :locked-for="document.lockedFor" />
       <div
         v-if="showToggle"
         class="flex border border-base-300 rounded overflow-hidden text-xs"

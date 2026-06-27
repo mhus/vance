@@ -1,11 +1,14 @@
 package de.mhus.vance.shared.document;
 
 import de.mhus.vance.api.common.AccentColor;
+import de.mhus.vance.api.documents.WriterRole;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -248,4 +251,24 @@ public class DocumentDocument {
      * version history.
      */
     private Map<String, DocumentNote> notes = new LinkedHashMap<>();
+
+    /**
+     * Soft edit-protection — writer roles that are blocked from
+     * mutating this document. Empty/null means no lock; non-empty means
+     * a write whose {@code WriterRole} (derived from the
+     * {@code WriterIdentity}) is in this set is rejected with
+     * {@code DocumentLockedException}.
+     *
+     * <p>Set is normalised by {@code DocumentService.setLockedFor}: when
+     * {@code USER} or {@code KIT} is in the input, {@code AI} is auto-
+     * added. Initially seeded at create-time from the body's
+     * {@code $meta.lockedForInitial} header.
+     *
+     * <p>Not mutated by content updates — only by the dedicated
+     * {@code PATCH /lock} endpoint, the {@code document_lock_*} LLM
+     * tools, and the Kit-Apply seed path. See
+     * {@code planning/document-lock-level.md}.
+     */
+    @Builder.Default
+    private Set<WriterRole> lockedFor = EnumSet.noneOf(WriterRole.class);
 }

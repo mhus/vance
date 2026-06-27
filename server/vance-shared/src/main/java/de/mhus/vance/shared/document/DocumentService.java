@@ -677,6 +677,20 @@ public class DocumentService {
         // storage blob. One extra round-trip per create, but it keeps the
         // streaming-write path branch-free.
         applyHeader(doc);
+        // Soft-lock seed from $meta.lockedForInitial — runs once at
+        // create-time. The header is read from the parsed headers map
+        // (works for Markdown front-matter where the list is stored as a
+        // string); YAML/JSON documents whose header strategy drops list
+        // values must rely on the kit-manifest fallback instead. See
+        // planning/document-lock-level.md §3.1.
+        if (doc.getHeaders() != null) {
+            String seedRaw = doc.getHeaders().get(LOCKED_FOR_INITIAL_HEADER);
+            java.util.Set<de.mhus.vance.api.documents.WriterRole> seed =
+                    normalizeLockedFor(parseLockedForInitial(seedRaw));
+            if (!seed.isEmpty()) {
+                doc.setLockedFor(seed);
+            }
+        }
         // isRagEligible respects the override set above: if ragEnabled=false
         // it returns false and we never enqueue an embed run.
         doc.setRagDirty(isRagEligible(doc));
@@ -879,6 +893,7 @@ public class DocumentService {
         DocumentDocument doc = repository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Unknown document id='" + id + "'"));
+        requireWriteAllowed(doc, identity);
 
         // Buffer the new body so we can short-circuit no-op writes. The
         // editor's auto-save in Cortex fires on bare clicks too, sending
@@ -1456,6 +1471,7 @@ public class DocumentService {
 
         DocumentDocument doc = repository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown document id='" + id + "'"));
+        requireWriteAllowed(doc, identity);
 
         // Lazy backfill for documents created before lineage-tracking
         // landed — a blank lineageId would prevent archiving forever
@@ -2123,6 +2139,7 @@ public class DocumentService {
      */
     public void delete(String id, WriterIdentity identity) {
         repository.findById(id).ifPresent(doc -> {
+            requireWriteAllowed(doc, identity);
             String sid = doc.getStorageId();
             if (sid != null) {
                 try {
@@ -2210,6 +2227,7 @@ public class DocumentService {
     public DocumentDocument trash(String id, WriterIdentity identity) {
         DocumentDocument doc = repository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown document id='" + id + "'"));
+        requireWriteAllowed(doc, identity);
         if (isTrash(doc.getPath())) {
             log.debug("Document id='{}' is already in trash at path='{}'", id, doc.getPath());
             return doc;
@@ -2606,6 +2624,40 @@ public class DocumentService {
         }
     }
 
+    /**
+     * Raised when a write is rejected by the soft document-lock — the
+     * incoming {@link WriterIdentity}'s mapped role is in the document's
+     * {@code lockedFor} set. Carries both the rejected role and the full
+     * set so callers (tool-error adapter, REST 409 mapper, Kit-Apply
+     * skip-log) can render a precise message without re-loading the doc.
+     *
+     * <p>Soft lock: this is not an authorisation failure. Membership /
+     * role permits the write; the user / kit author has merely asked for
+     * a stop-sign against accidental overwrites. The remedy is
+     * {@code document_lock_remove} or the UI properties panel — see
+     * {@code planning/document-lock-level.md}.
+     */
+    public static class DocumentLockedException extends RuntimeException {
+        private final de.mhus.vance.api.documents.WriterRole blockedRole;
+        private final java.util.Set<de.mhus.vance.api.documents.WriterRole> lockedFor;
+
+        public DocumentLockedException(
+                de.mhus.vance.api.documents.WriterRole blockedRole,
+                java.util.Set<de.mhus.vance.api.documents.WriterRole> lockedFor) {
+            super("Document is locked against " + blockedRole + " writes (lockedFor=" + lockedFor + ")");
+            this.blockedRole = blockedRole;
+            this.lockedFor = java.util.EnumSet.copyOf(lockedFor);
+        }
+
+        public de.mhus.vance.api.documents.WriterRole getBlockedRole() {
+            return blockedRole;
+        }
+
+        public java.util.Set<de.mhus.vance.api.documents.WriterRole> getLockedFor() {
+            return java.util.Collections.unmodifiableSet(lockedFor);
+        }
+    }
+
     // ──────────────────── Event-bus publishing ────────────────────
     //
     // Fired right after a successful Mongo write (and the storage-side
@@ -2715,6 +2767,152 @@ public class DocumentService {
      */
     public static final WriterIdentity TOOL_IDENTITY =
             WriterIdentity.of(EDITOR_ID_TOOL, null, null);
+
+    /**
+     * Sentinel editorId used by the Kit-Apply path. Mapped to
+     * {@link de.mhus.vance.api.documents.WriterRole#KIT} for the
+     * soft-lock check, so a document whose {@code lockedFor} contains
+     * {@code KIT} skips Kit-Apply content overwrites while still
+     * allowing manual user writes (User-Fork scenario).
+     */
+    public static final String EDITOR_ID_KIT = "_kit";
+
+    /** Identity placeholder for {@code KitApplyService} content writes. */
+    public static final WriterIdentity KIT_IDENTITY =
+            WriterIdentity.of(EDITOR_ID_KIT, null, null);
+
+    /**
+     * Map a {@link WriterIdentity} onto the soft-lock writer role.
+     *
+     * <ul>
+     *   <li>{@link #EDITOR_ID_KIT} → {@link de.mhus.vance.api.documents.WriterRole#KIT}
+     *   <li>{@link #EDITOR_ID_TOOL} → {@link de.mhus.vance.api.documents.WriterRole#AI}
+     *   <li>{@code null} editorId (typed identity but no editorId) →
+     *       {@link de.mhus.vance.api.documents.WriterRole#AI}
+     *   <li>any other editorId (real client UUID) →
+     *       {@link de.mhus.vance.api.documents.WriterRole#USER}
+     * </ul>
+     */
+    public static de.mhus.vance.api.documents.WriterRole writerRoleOf(WriterIdentity identity) {
+        if (identity == null) return de.mhus.vance.api.documents.WriterRole.AI;
+        String eid = identity.editorId();
+        if (EDITOR_ID_KIT.equals(eid)) return de.mhus.vance.api.documents.WriterRole.KIT;
+        if (eid == null || EDITOR_ID_TOOL.equals(eid)) return de.mhus.vance.api.documents.WriterRole.AI;
+        return de.mhus.vance.api.documents.WriterRole.USER;
+    }
+
+    /**
+     * Plausibility-normalise a lock set: when {@code USER} or {@code KIT}
+     * is in the input, {@code AI} is auto-added. A {@code null} or empty
+     * input returns an empty {@link java.util.EnumSet}.
+     *
+     * <p>Centralised here so the REST controller, LLM tools, Kit-Apply
+     * seed path, and {@code $meta.lockedForInitial} parser all share one
+     * implementation. See {@code planning/document-lock-level.md} §2.1.
+     */
+    public static java.util.Set<de.mhus.vance.api.documents.WriterRole> normalizeLockedFor(
+            java.util.@Nullable Collection<de.mhus.vance.api.documents.WriterRole> input) {
+        java.util.EnumSet<de.mhus.vance.api.documents.WriterRole> out =
+                java.util.EnumSet.noneOf(de.mhus.vance.api.documents.WriterRole.class);
+        if (input == null || input.isEmpty()) return out;
+        out.addAll(input);
+        if (out.contains(de.mhus.vance.api.documents.WriterRole.USER)
+                || out.contains(de.mhus.vance.api.documents.WriterRole.KIT)) {
+            out.add(de.mhus.vance.api.documents.WriterRole.AI);
+        }
+        return out;
+    }
+
+    /**
+     * Set the {@code lockedFor} of a document outright — caller-supplied
+     * set is normalised via {@link #normalizeLockedFor}. This is the
+     * single mutation point for lock state; content writes never touch
+     * the field.
+     *
+     * @return the updated document
+     * @throws IllegalArgumentException if the id is unknown
+     */
+    public DocumentDocument setLockedFor(
+            String id,
+            java.util.@Nullable Collection<de.mhus.vance.api.documents.WriterRole> lockedFor) {
+        DocumentDocument doc = repository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Unknown document id='" + id + "'"));
+        java.util.Set<de.mhus.vance.api.documents.WriterRole> normalized = normalizeLockedFor(lockedFor);
+        doc.setLockedFor(normalized);
+        DocumentDocument saved = repository.save(doc);
+        log.info("Updated document lock tenantId='{}' projectId='{}' path='{}' id='{}' lockedFor={}",
+                saved.getTenantId(), saved.getProjectId(), saved.getPath(),
+                saved.getId(), normalized);
+        // No live-broadcast: the lock change is meta, not content, and
+        // the live-WS layer treats lockedFor as part of DocumentMetaDto —
+        // a subsequent read by the subscriber will see the new value.
+        return saved;
+    }
+
+    /**
+     * Header key under which authors bake the soft-lock seed —
+     * {@code $meta.lockedForInitial} normalised by
+     * {@link DocumentHeaderParser#normalizeKey(String)} (lower-cased,
+     * dots→underscores, leading {@code $} dropped).
+     *
+     * <p>Only read at document-create time; later writes leave this
+     * untouched. See {@code planning/document-lock-level.md} §3.1.
+     */
+    public static final String LOCKED_FOR_INITIAL_HEADER = "lockedforinitial";
+
+    /**
+     * Parse the {@code $meta.lockedForInitial} header value (a raw string
+     * like {@code "AI"}, {@code "[AI, KIT]"}, {@code "AI,KIT"}, or
+     * {@code "AI KIT"}) into a {@code Set<WriterRole>}. Unknown role
+     * names are silently dropped — the field is best-effort author
+     * intent, not a strict schema. Empty or blank input returns an
+     * empty set.
+     *
+     * <p>Caller is expected to feed the result through
+     * {@link #normalizeLockedFor} for the AI-auto-add rule.
+     */
+    public static java.util.Set<de.mhus.vance.api.documents.WriterRole> parseLockedForInitial(
+            @Nullable String raw) {
+        java.util.EnumSet<de.mhus.vance.api.documents.WriterRole> out =
+                java.util.EnumSet.noneOf(de.mhus.vance.api.documents.WriterRole.class);
+        if (raw == null) return out;
+        String trimmed = raw.trim();
+        if (trimmed.isEmpty()) return out;
+        // Strip optional surrounding brackets for inline YAML list form.
+        if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+            trimmed = trimmed.substring(1, trimmed.length() - 1);
+        }
+        for (String token : trimmed.split("[,\\s]+")) {
+            String t = token.trim();
+            if (t.isEmpty()) continue;
+            // Trim surrounding quotes that YAML inline-list emits.
+            if ((t.startsWith("\"") && t.endsWith("\""))
+                    || (t.startsWith("'") && t.endsWith("'"))) {
+                t = t.substring(1, t.length() - 1);
+            }
+            try {
+                out.add(de.mhus.vance.api.documents.WriterRole.valueOf(t.toUpperCase()));
+            } catch (IllegalArgumentException ignored) {
+                log.debug("Ignoring unknown WriterRole in $meta.lockedForInitial: '{}'", t);
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Throw {@link DocumentLockedException} if the document blocks the
+     * given writer role. Used by every mutating service method as the
+     * single gate; the role is derived from {@link #writerRoleOf}.
+     */
+    private void requireWriteAllowed(DocumentDocument doc, WriterIdentity identity) {
+        java.util.Set<de.mhus.vance.api.documents.WriterRole> locked = doc.getLockedFor();
+        if (locked == null || locked.isEmpty()) return;
+        de.mhus.vance.api.documents.WriterRole role = writerRoleOf(identity);
+        if (locked.contains(role)) {
+            throw new DocumentLockedException(role, locked);
+        }
+    }
 
     /**
      * Default overload — assumes the write produced a real change worth

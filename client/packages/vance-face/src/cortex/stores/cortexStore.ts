@@ -7,6 +7,7 @@ import type {
   DocumentDto,
   DocumentListResponse,
   DocumentSummary,
+  WriterRole,
 } from '@vance/generated';
 
 /**
@@ -202,6 +203,7 @@ export const useCortexStore = defineStore('cortex', () => {
       // reference so the composable's d.notes = {...} mutations are
       // local to this tab and don't share with other tab copies.
       notes: d.notes ? { ...d.notes } : {},
+      lockedFor: d.lockedFor ? [...d.lockedFor] : [],
     };
   }
 
@@ -210,6 +212,33 @@ export const useCortexStore = defineStore('cortex', () => {
    * the document body. Mirrors the {@code PUT /documents/{id}}
    * surface the legacy DocumentApp used.
    */
+  /**
+   * Patch the soft document-lock — replaces {@code lockedFor} outright.
+   * Server-side normalisation auto-adds {@code AI} when {@code USER}
+   * or {@code KIT} is present, so caller can submit just the user's
+   * intent ("USER lock") and the response carries the canonical set.
+   *
+   * <p>Throws on 409 (returned when the document is already locked at
+   * a level that blocks the caller — should not normally happen for
+   * the lock endpoint itself, but kept for symmetry).
+   */
+  async function updateLock(id: string, lockedFor: WriterRole[]): Promise<void> {
+    const dto = await brainFetch<DocumentDto>(
+      'PATCH',
+      `documents/${encodeURIComponent(id)}/lock`,
+      { body: { lockedFor } },
+    );
+    const tabIdx = openTabs.value.findIndex((t) => t.id === id);
+    if (tabIdx >= 0) {
+      const tab = openTabs.value[tabIdx];
+      openTabs.value = [
+        ...openTabs.value.slice(0, tabIdx),
+        { ...tab, lockedFor: dto.lockedFor ? [...dto.lockedFor] : [] },
+        ...openTabs.value.slice(tabIdx + 1),
+      ];
+    }
+  }
+
   async function updateMeta(id: string, body: MetaUpdateBody): Promise<void> {
     const dto = await brainFetch<DocumentDto>(
       'PUT',
@@ -610,6 +639,7 @@ export const useCortexStore = defineStore('cortex', () => {
     createFile,
     deleteFile,
     updateMeta,
+    updateLock,
     addVirtualFolder,
     currentSelection,
     setSelection,

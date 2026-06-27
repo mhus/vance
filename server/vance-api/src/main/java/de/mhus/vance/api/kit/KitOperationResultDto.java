@@ -40,6 +40,16 @@ public class KitOperationResultDto {
     @Builder.Default
     private List<String> documentsRemoved = new ArrayList<>();
 
+    /**
+     * Documents skipped because they are KIT-locked (soft-lock —
+     * {@code lockedFor} contains {@code KIT}). The kit installer leaves
+     * the existing content untouched and reports the path here so the
+     * operator can audit what was not refreshed. See
+     * {@code planning/document-lock-level.md} §6.
+     */
+    @Builder.Default
+    private List<String> documentsSkipped = new ArrayList<>();
+
     @Builder.Default
     private List<String> settingsAdded = new ArrayList<>();
 

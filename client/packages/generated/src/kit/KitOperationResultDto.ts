@@ -10,6 +10,7 @@ export interface KitOperationResultDto {
   documentsAdded: string[];
   documentsUpdated: string[];
   documentsRemoved: string[];
+  documentsSkipped: string[];
   settingsAdded: string[];
   settingsUpdated: string[];
   settingsRemoved: string[];

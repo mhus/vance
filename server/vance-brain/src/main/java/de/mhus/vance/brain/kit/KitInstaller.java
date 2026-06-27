@@ -181,12 +181,16 @@ public class KitInstaller {
 
         List<String> added = new ArrayList<>();
         List<String> updated = new ArrayList<>();
+        List<String> skipped = new ArrayList<>();
         for (Map.Entry<String, String> e : scan.documents().entrySet()) {
             String path = e.getKey();
             String content = e.getValue();
-            boolean existed = upsertDocument(tenantId, projectId, path, content, actor);
-            if (existed) updated.add(path);
-            else added.add(path);
+            UpsertOutcome outcome = upsertDocument(tenantId, projectId, path, content, actor);
+            switch (outcome) {
+                case CREATED -> added.add(path);
+                case UPDATED -> updated.add(path);
+                case SKIPPED -> skipped.add(path);
+            }
         }
 
         List<String> removed = new ArrayList<>();
@@ -196,11 +200,21 @@ public class KitInstaller {
                 if (nowKnown.contains(oldPath)) continue;
                 Optional<DocumentDocument> doc =
                         documentService.findByPath(tenantId, projectId, oldPath);
-                doc.ifPresent(d -> documentService.delete(d.getId()));
-                removed.add(oldPath);
+                if (doc.isEmpty()) continue;
+                try {
+                    documentService.delete(doc.get().getId(), DocumentService.KIT_IDENTITY);
+                    removed.add(oldPath);
+                } catch (DocumentService.DocumentLockedException ex) {
+                    log.info("KitInstaller: skipped prune of KIT-locked document '{}/{}/{}' lockedFor={}",
+                            tenantId, projectId, oldPath, ex.getLockedFor());
+                    skipped.add(oldPath);
+                }
             }
         }
-        result.documentsAdded(added).documentsUpdated(updated).documentsRemoved(removed);
+        result.documentsAdded(added)
+                .documentsUpdated(updated)
+                .documentsRemoved(removed)
+                .documentsSkipped(skipped);
 
         refreshAffectedToolEntries(tenantId, projectId, added, updated, removed);
     }
@@ -234,29 +248,58 @@ public class KitInstaller {
         }
     }
 
-    private boolean upsertDocument(
+    /**
+     * Upsert a document during kit-apply. New documents are created
+     * unconditionally; existing documents that are {@code KIT}-locked
+     * are skipped with a log entry, and the skip is reported back to
+     * the caller so the operation report can list the frozen paths.
+     * Other lock levels (AI, USER) do not block Kit-Apply — they are
+     * about user-driven / LLM-driven writes, not the kit-update path.
+     *
+     * @return {@code UpsertOutcome.CREATED} on first apply,
+     *         {@code UPDATED} on successful update, {@code SKIPPED} when
+     *         the document is frozen against Kit-Apply (KIT lock).
+     */
+    private UpsertOutcome upsertDocument(
             String tenantId, String projectId, String path, String content,
             @Nullable String actor) {
         Optional<DocumentDocument> existing =
                 documentService.findByPath(tenantId, projectId, path);
         if (existing.isEmpty()) {
             documentService.createText(tenantId, projectId, path, null, null, content, actor);
-            return false;
+            return UpsertOutcome.CREATED;
         }
         DocumentDocument doc = existing.get();
         if (documentService.readContent(doc) != null) {
             try {
-                documentService.update(doc.getId(), null, null, content, null);
-                return true;
+                documentService.update(doc.getId(),
+                        /*title*/ null, /*tags*/ null, /*inlineText*/ content,
+                        /*newPath*/ null, /*autoSummary*/ null,
+                        /*summaryDirty*/ null, /*ragEnabled*/ null,
+                        /*mimeType*/ null, DocumentService.KIT_IDENTITY);
+                return UpsertOutcome.UPDATED;
+            } catch (DocumentService.DocumentLockedException e) {
+                log.info("KitInstaller: skipped KIT-locked document '{}/{}/{}' lockedFor={}",
+                        tenantId, projectId, path, e.getLockedFor());
+                return UpsertOutcome.SKIPPED;
             } catch (IllegalArgumentException e) {
                 log.debug("inline update rejected for {} — falling back to recreate: {}",
                         path, e.getMessage());
             }
         }
-        documentService.delete(doc.getId());
+        try {
+            documentService.delete(doc.getId(), DocumentService.KIT_IDENTITY);
+        } catch (DocumentService.DocumentLockedException e) {
+            log.info("KitInstaller: skipped KIT-locked document '{}/{}/{}' lockedFor={}",
+                    tenantId, projectId, path, e.getLockedFor());
+            return UpsertOutcome.SKIPPED;
+        }
         documentService.createText(tenantId, projectId, path, null, null, content, actor);
-        return true;
+        return UpsertOutcome.UPDATED;
     }
+
+    /** Result of {@link #upsertDocument} — drives the per-path counters in the op report. */
+    private enum UpsertOutcome { CREATED, UPDATED, SKIPPED }
 
     // ──────────────────── settings ────────────────────
 
@@ -433,13 +476,17 @@ public class KitInstaller {
         DocumentDocument doc = existing.get();
         if (documentService.readContent(doc) != null) {
             try {
-                documentService.update(doc.getId(), null, null, yaml, null);
+                documentService.update(doc.getId(),
+                        /*title*/ null, /*tags*/ null, /*inlineText*/ yaml,
+                        /*newPath*/ null, /*autoSummary*/ null,
+                        /*summaryDirty*/ null, /*ragEnabled*/ null,
+                        /*mimeType*/ null, DocumentService.KIT_IDENTITY);
                 return;
             } catch (IllegalArgumentException ignored) {
                 // fall through
             }
         }
-        documentService.delete(doc.getId());
+        documentService.delete(doc.getId(), DocumentService.KIT_IDENTITY);
         documentService.createText(tenantId, projectId, MANIFEST_PATH,
                 "Kit Manifest", List.of("vance", "kit"), yaml, actor);
     }
@@ -456,7 +503,8 @@ public class KitInstaller {
     /** Removes the manifest document (used after a successful uninstall). */
     public void removeManifest(String tenantId, String projectId) {
         documentService.findByPath(tenantId, projectId, MANIFEST_PATH)
-                .ifPresent(doc -> documentService.delete(doc.getId()));
+                .ifPresent(doc -> documentService.delete(doc.getId(),
+                        DocumentService.KIT_IDENTITY));
     }
 
     /** Set-based union helper used by tests. */

@@ -78,6 +78,14 @@ export interface CortexDocument {
    * composable. Empty when the document has no notes.
    */
   notes?: Record<string, import('@vance/generated').DocumentNoteDto>;
+
+  /**
+   * Soft document-lock — writer roles blocked from mutating the
+   * document. Mirrors {@code DocumentDto.lockedFor}; mutated through
+   * the dedicated {@code PATCH /lock} endpoint via
+   * {@code cortexStore.updateLock}. Empty when no lock is set.
+   */
+  lockedFor?: import('@vance/generated').WriterRole[];
 }
 
 /**

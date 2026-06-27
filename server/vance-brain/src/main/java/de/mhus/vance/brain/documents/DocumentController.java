@@ -9,6 +9,7 @@ import de.mhus.vance.api.documents.DocumentFolderListResponse;
 import de.mhus.vance.api.documents.DocumentFoldersResponse;
 import de.mhus.vance.api.documents.DocumentKindsResponse;
 import de.mhus.vance.api.documents.DocumentListResponse;
+import de.mhus.vance.api.documents.DocumentLockRequest;
 import de.mhus.vance.api.documents.DocumentSummary;
 import de.mhus.vance.api.documents.DocumentSummaryRequest;
 import de.mhus.vance.api.documents.DocumentUpdateRequest;
@@ -41,7 +42,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -492,6 +495,56 @@ public class DocumentController {
     }
 
     /**
+     * Patch the soft document-lock — replaces {@code lockedFor} outright
+     * with the request body. {@code null}/empty clears the lock; non-empty
+     * sets it after server-side normalisation (see
+     * {@link DocumentService#normalizeLockedFor}).
+     *
+     * <p>Separate from {@code PUT /documents/{id}} on purpose: lock state
+     * is meta about who can write, not content the user is composing —
+     * one call should never accidentally couple a content save with a
+     * lock change. See {@code planning/document-lock-level.md} §3.2.
+     */
+    @PatchMapping("/brain/{tenant}/documents/{id}/lock")
+    public ResponseEntity<DocumentDto> updateLock(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("id") String id,
+            @Valid @RequestBody DocumentLockRequest request,
+            HttpServletRequest httpRequest) {
+
+        DocumentDocument existing = documentService.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        if (!tenant.equals(existing.getTenantId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
+        authority.enforce(httpRequest,
+                new Resource.Document(tenant, existing.getProjectId(), existing.getPath()), Action.WRITE);
+
+        DocumentDocument updated = documentService.setLockedFor(id, request.getLockedFor());
+        return ResponseEntity.ok(toDto(updated));
+    }
+
+    /**
+     * Translate a soft-lock rejection into a 409 carrying the structured
+     * lock state. Web-UI fans this out as a "Document is locked. Unlock
+     * first?" dialog; LLM tool-adapters re-wrap it as the
+     * {@code document_locked} tool-error response.
+     */
+    @ExceptionHandler(DocumentService.DocumentLockedException.class)
+    public ResponseEntity<Map<String, Object>> handleDocumentLocked(
+            DocumentService.DocumentLockedException ex) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("error", "document_locked");
+        body.put("blockedRole", ex.getBlockedRole().name());
+        body.put("lockedFor", ex.getLockedFor().stream()
+                .sorted()
+                .map(Enum::name)
+                .toList());
+        body.put("message", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+    }
+
+    /**
      * Build a {@link DocumentService.WriterIdentity} from the inbound REST
      * request — combines the JWT-authenticated user (via the
      * {@link de.mhus.vance.shared.permission.SecurityContext}) with the
@@ -887,6 +940,9 @@ public class DocumentController {
                 .ragEnabled(doc.getRagEnabled())
                 .expiresAtMs(toEpochMillis(doc.getExpiresAt()))
                 .notes(notesToDto(doc.getNotes()))
+                .lockedFor(doc.getLockedFor() == null
+                        ? java.util.EnumSet.noneOf(de.mhus.vance.api.documents.WriterRole.class)
+                        : java.util.EnumSet.copyOf(doc.getLockedFor()))
                 .build();
     }
 

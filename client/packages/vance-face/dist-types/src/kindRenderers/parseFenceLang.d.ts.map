@@ -1,1 +1,0 @@
-{"version":3,"file":"parseFenceLang.d.ts","sourceRoot":"","sources":["../../../src/kindRenderers/parseFenceLang.ts"],"names":[],"mappings":"AAAA;;;;;;;;;;;;GAYG;AAEH,MAAM,MAAM,SAAS,GAAG,MAAM,CAAC,MAAM,EAAE,MAAM,CAAC,CAAC;AAE/C,MAAM,WAAW,WAAW;IAC1B,IAAI,EAAE,MAAM,CAAC;IACb,IAAI,EAAE,SAAS,CAAC;CACjB;AAED,wBAAgB,cAAc,CAAC,IAAI,EAAE,MAAM,GAAG,SAAS,GAAG,IAAI,GAAG,WAAW,CAuB3E"}

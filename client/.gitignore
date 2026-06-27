@@ -3,4 +3,5 @@ dist/
 *.tsbuildinfo
 .vite/
 .__mf__temp/
+dist-types/
 .DS_Store

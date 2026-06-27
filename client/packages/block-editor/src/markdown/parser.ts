@@ -3,7 +3,8 @@
 // only need to recognise the subset we serialise back out.
 
 import yaml from 'js-yaml';
-import type { Block, CanvasDocument, TodoItem } from './blocks';
+import type { Block, CanvasDocument, ImageWidth, TodoItem } from './blocks';
+import { IMAGE_WIDTHS } from './blocks';
 
 const HEADING = /^(#{1,3})\s+(.+?)\s*$/;
 const BULLET = /^\s*[-*+]\s+(.+?)\s*$/;
@@ -156,10 +157,15 @@ export function parse(markdown: string): Block[] {
       continue;
     }
 
-    // Image-only line.
+    // Image-only line. Width preset (small/medium/large/full) may be
+    // suffixed to the alt-text after a pipe — strip it off here.
     const mImg = IMAGE_ONLY.exec(line);
     if (mImg) {
-      blocks.push({ kind: 'image', alt: mImg[1], src: mImg[2] });
+      const { alt, width } = parseImageAlt(mImg[1]);
+      const img: Block = width
+        ? { kind: 'image', alt, src: mImg[2], width }
+        : { kind: 'image', alt, src: mImg[2] };
+      blocks.push(img);
       i++;
       continue;
     }
@@ -334,6 +340,16 @@ function parseFence(info: string, body: string): Block {
     default:
       return { kind: 'unknown-fence', info, body };
   }
+}
+
+function parseImageAlt(raw: string): { alt: string; width: ImageWidth | null } {
+  const pipe = raw.lastIndexOf('|');
+  if (pipe < 0) return { alt: raw, width: null };
+  const suffix = raw.substring(pipe + 1).trim().toLowerCase();
+  if (!(IMAGE_WIDTHS as readonly string[]).includes(suffix)) {
+    return { alt: raw, width: null };
+  }
+  return { alt: raw.substring(0, pipe).trim(), width: suffix as ImageWidth };
 }
 
 function splitTableRow(line: string): string[] {

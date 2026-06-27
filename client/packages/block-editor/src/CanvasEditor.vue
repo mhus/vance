@@ -176,7 +176,28 @@ const editor = useEditor({
     }),
     TaskList,
     TaskItem.configure({ nested: false }),
-    Image,
+    // Extend Tiptap's default Image with a `width` attribute holding the
+    // selected preset ('small' | 'medium' | 'large' | 'full' | null).
+    // Rendered as `data-width` so a single CSS rule per preset can
+    // clamp the natural image width without forcing inline styles.
+    Image.extend({
+      addAttributes() {
+        return {
+          ...this.parent?.(),
+          width: {
+            default: null,
+            parseHTML: (el) => el.getAttribute('data-width'),
+            renderHTML: (attrs) => {
+              if (!attrs.width) return {};
+              return {
+                'data-width': attrs.width,
+                class: `canvas-image canvas-image--${attrs.width}`,
+              };
+            },
+          },
+        };
+      },
+    }),
     Table.configure({ resizable: false }),
     TableRow,
     TableCell,
@@ -326,6 +347,29 @@ function flush(): boolean {
 
 // ── Inline mark helpers (bubble-menu) ─────────────────────────────
 
+// ── Image-width toolbar ───────────────────────────────────────────
+type ImageWidthPreset = 'small' | 'medium' | 'large' | 'full';
+const IMAGE_WIDTH_OPTIONS: ImageWidthPreset[] = ['small', 'medium', 'large', 'full'];
+
+function isImageSelected(): boolean {
+  return editor.value?.isActive('image') ?? false;
+}
+function currentImageWidth(): ImageWidthPreset | null {
+  const w = editor.value?.getAttributes('image')?.width;
+  return (IMAGE_WIDTH_OPTIONS as readonly string[]).includes(w)
+    ? (w as ImageWidthPreset)
+    : null;
+}
+function setImageWidth(width: ImageWidthPreset) {
+  // `null` for the default 'full' so the markdown stays clean
+  // (no `|full` suffix on the alt-text).
+  editor.value
+    ?.chain()
+    .focus()
+    .updateAttributes('image', { width: width === 'full' ? null : width })
+    .run();
+}
+
 function toggleBold() { editor.value?.chain().focus().toggleBold().run(); }
 function toggleItalic() { editor.value?.chain().focus().toggleItalic().run(); }
 function toggleCode() { editor.value?.chain().focus().toggleCode().run(); }
@@ -454,6 +498,26 @@ defineExpose({ save, flush, insertImage, updateHeader, getHeader: () => currentH
         :title="'Link (Ctrl+K)'"
         @click="setLink"
       >🔗</button>
+    </BubbleMenu>
+
+    <BubbleMenu
+      v-if="editor"
+      :editor="editor"
+      :tippy-options="{ duration: 100, placement: 'top' }"
+      :should-show="() => isImageSelected()"
+      class="canvas-editor__bubble-menu canvas-editor__bubble-menu--image"
+    >
+      <button
+        v-for="opt in IMAGE_WIDTH_OPTIONS"
+        :key="opt"
+        class="canvas-editor__bubble-btn"
+        :class="{
+          'canvas-editor__bubble-btn--active':
+            (currentImageWidth() ?? 'full') === opt,
+        }"
+        :title="`Width: ${opt}`"
+        @click="setImageWidth(opt)"
+      >{{ opt === 'full' ? 'F' : opt[0].toUpperCase() }}</button>
     </BubbleMenu>
 
     <EditorContent :editor="editor" class="canvas-editor__body" />
@@ -631,6 +695,23 @@ defineExpose({ save, flush, insertImage, updateHeader, getHeader: () => currentH
    handle extension via `dragging` class on the ProseMirror root. */
 .ProseMirror.dragging .ProseMirror-selectednode {
   opacity: 0.35;
+}
+
+/* Image width presets — picked from the bubble-menu toolbar. The
+   classes ride on the <img> via the Image extension's renderHTML
+   when `width` is set; `data-width` is the round-trip attribute. */
+.ProseMirror img.canvas-image {
+  display: block;
+  height: auto;
+}
+.ProseMirror img.canvas-image--small {
+  max-width: 25%;
+}
+.ProseMirror img.canvas-image--medium {
+  max-width: 50%;
+}
+.ProseMirror img.canvas-image--large {
+  max-width: 75%;
 }
 
 /* Heading anchors — a tiny "#" button injected as a widget-decoration

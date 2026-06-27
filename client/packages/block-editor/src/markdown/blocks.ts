@@ -11,7 +11,7 @@ export type Block =
   | { kind: 'quote'; text: string }
   | { kind: 'code'; lang: string | null; code: string }
   | { kind: 'divider' }
-  | { kind: 'image'; alt: string; src: string }
+  | { kind: 'image'; alt: string; src: string; width?: ImageWidth | null }
   | { kind: 'table'; headers: string[]; rows: string[][] }
   | { kind: 'callout'; severity: string; title: string | null; body: string }
   | { kind: 'toggle'; summary: string; body: string }
@@ -30,6 +30,17 @@ export type Block =
       columns: Array<{ blocks: Block[]; width: number | null }>;
     }
   | { kind: 'unknown-fence'; info: string; body: string };
+
+/**
+ * Image-block width presets. `full` (default) takes the full content
+ * width; `small`/`medium`/`large` render the image at a fixed fraction.
+ * Persisted as a pipe-suffix in the markdown alt-text — e.g.
+ * {@code ![My pic|small](url.png)} — so the document round-trips
+ * losslessly without resorting to HTML.
+ */
+export type ImageWidth = 'small' | 'medium' | 'large' | 'full';
+
+export const IMAGE_WIDTHS: readonly ImageWidth[] = ['small', 'medium', 'large', 'full'];
 
 export interface TodoItem {
   checked: boolean;

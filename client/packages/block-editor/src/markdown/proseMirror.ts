@@ -59,7 +59,10 @@ function blockToNode(b: Block): JSONContent {
     case 'divider':
       return { type: 'horizontalRule' };
     case 'image':
-      return { type: 'image', attrs: { src: b.src, alt: b.alt } };
+      return {
+        type: 'image',
+        attrs: { src: b.src, alt: b.alt, width: b.width ?? null },
+      };
     case 'table': {
       const rows: JSONContent[] = [];
       if (b.headers.length > 0) {
@@ -163,14 +166,19 @@ function nodeToBlock(node: JSONContent): Block[] {
     }
     case 'horizontalRule':
       return [{ kind: 'divider' }];
-    case 'image':
+    case 'image': {
+      const width = node.attrs?.width;
+      const widthValid = width === 'small' || width === 'medium'
+        || width === 'large' || width === 'full';
       return [
         {
           kind: 'image',
           alt: (node.attrs?.alt as string) ?? '',
           src: (node.attrs?.src as string) ?? '',
+          ...(widthValid ? { width } : {}),
         },
       ];
+    }
     case 'table': {
       const rows = node.content ?? [];
       let headers: string[] = [];

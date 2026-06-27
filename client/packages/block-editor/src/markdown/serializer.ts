@@ -67,8 +67,15 @@ function renderBlock(b: Block): string {
       );
     case 'divider':
       return '---\n';
-    case 'image':
-      return `![${b.alt}](${b.src})\n`;
+    case 'image': {
+      // Width preset goes into the alt-text as a pipe-suffix so the
+      // markdown round-trips losslessly. Default 'full' (or null) is
+      // omitted to keep the common case clean.
+      const altWithWidth = b.width && b.width !== 'full'
+        ? `${b.alt}|${b.width}`
+        : b.alt;
+      return `![${altWithWidth}](${b.src})\n`;
+    }
     case 'table': {
       const head = '| ' + b.headers.join(' | ') + ' |';
       const div = '| ' + b.headers.map(() => '---').join(' | ') + ' |';

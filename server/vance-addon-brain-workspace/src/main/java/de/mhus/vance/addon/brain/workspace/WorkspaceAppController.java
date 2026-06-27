@@ -550,6 +550,33 @@ public class WorkspaceAppController {
         }
     }
 
+    /**
+     * Project-scoped image search for the asset picker's "Project" tab.
+     * Returns documents whose {@code mimeType} starts with
+     * {@code image/}, optionally constrained by {@code pathPrefix} and
+     * a case-insensitive substring match on {@code path} (=
+     * {@code query}). Results are capped at {@code size} (max 200).
+     */
+    @GetMapping("/brain/{tenant}/addon/workspace/images")
+    public WorkspaceImageSearchResponse searchImages(
+            @PathVariable("tenant") String tenant,
+            @RequestParam("projectId") String projectId,
+            @RequestParam(value = "pathPrefix", required = false) @Nullable String pathPrefix,
+            @RequestParam(value = "query", required = false) @Nullable String query,
+            @RequestParam(value = "size", defaultValue = "100") int size,
+            HttpServletRequest httpRequest) {
+
+        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.READ);
+        DocumentService.ImageListing listing = documentService.listImages(
+                tenant, projectId, pathPrefix, query, size);
+        List<WorkspaceImageItem> items = new ArrayList<>(listing.items().size());
+        for (DocumentService.ImageMatch m : listing.items()) {
+            items.add(new WorkspaceImageItem(
+                    m.id(), m.path(), m.name(), m.mimeType()));
+        }
+        return new WorkspaceImageSearchResponse(items, listing.total());
+    }
+
     @PostMapping("/brain/{tenant}/addon/workspace/rebuild")
     public WorkspaceRebuildResponse rebuild(
             @PathVariable("tenant") String tenant,

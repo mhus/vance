@@ -400,6 +400,57 @@ public class DocumentService {
             int pageSize,
             long totalFiles) {}
 
+    /**
+     * Project-scoped image listing — every active document whose
+     * {@code mimeType} starts with {@code image/}, optionally
+     * constrained by a path prefix and a case-insensitive substring
+     * match on the path. Returns a slim {@link ImageMatch} projection
+     * plus the total count for paging hints.
+     *
+     * <p>Used by the workspace asset picker so it can render images
+     * from anywhere in the project without forcing the caller to load
+     * every document. The text-match is server-side (Mongo regex on
+     * the indexed {@code path} field), not client-side filtering.
+     */
+    public ImageListing listImages(
+            String tenantId, String projectId,
+            @Nullable String pathPrefix,
+            @Nullable String pathSearch,
+            int limit) {
+        int safeLimit = Math.max(1, Math.min(limit, 200));
+        Query q = new Query()
+                .addCriteria(Criteria.where("tenantId").is(tenantId))
+                .addCriteria(Criteria.where("projectId").is(projectId))
+                .addCriteria(Criteria.where("status").is(DocumentStatus.ACTIVE))
+                .addCriteria(Criteria.where("mimeType").regex("^image/"));
+        if (pathPrefix != null && !pathPrefix.isBlank()) {
+            String prefix = pathPrefix.startsWith("/") ? pathPrefix.substring(1) : pathPrefix;
+            q.addCriteria(Criteria.where("path")
+                    .regex("^" + java.util.regex.Pattern.quote(prefix)));
+        }
+        if (pathSearch != null && !pathSearch.isBlank()) {
+            q.addCriteria(Criteria.where("path")
+                    .regex(java.util.regex.Pattern.quote(pathSearch.trim()), "i"));
+        }
+        long total = mongoTemplate.count(Query.of(q), DocumentDocument.class);
+        q.with(org.springframework.data.domain.Sort.by("path").ascending()).limit(safeLimit);
+        List<DocumentDocument> docs = mongoTemplate.find(q, DocumentDocument.class);
+        List<ImageMatch> matches = new ArrayList<>(docs.size());
+        for (DocumentDocument d : docs) {
+            String leaf = d.getPath();
+            int slash = leaf.lastIndexOf('/');
+            if (slash >= 0) leaf = leaf.substring(slash + 1);
+            matches.add(new ImageMatch(d.getId(), d.getPath(), leaf, d.getMimeType()));
+        }
+        return new ImageListing(matches, total);
+    }
+
+    /** Slim projection for {@link #listImages}. */
+    public record ImageMatch(String id, String path, String name, @Nullable String mimeType) {}
+
+    /** Return shape for {@link #listImages}. */
+    public record ImageListing(List<ImageMatch> items, long total) {}
+
     /** All {@link DocumentStatus#ACTIVE} documents in the project that declared {@code kind: <kind>}. */
     public List<DocumentDocument> listByKind(String tenantId, String projectId, String kind) {
         return repository.findByTenantIdAndProjectIdAndStatusAndKind(

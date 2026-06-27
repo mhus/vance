@@ -393,6 +393,36 @@ async function onEditorSave(body: string) {
  * `<img src>` immediately. Path collisions are avoided by
  * timestamp-prefix; the sanitised filename keeps URLs readable.
  */
+/**
+ * Resolve a {@code vance:} URI to an HTTP {@code <img src>}. The
+ * block-editor's image NodeView calls this whenever it encounters a
+ * URI in image-block src. Returns null on failure (NodeView shows a
+ * broken-link placeholder).
+ *
+ * - {@code vance:/<path>?kind=image}            → current project
+ * - {@code vance://<projectId>/<path>?kind=image} → explicit project
+ */
+async function resolveVanceImageSrc(uri: string): Promise<string | null> {
+  let parsed: URL;
+  try { parsed = new URL(uri); } catch { return null; }
+  if (parsed.protocol !== 'vance:') return null;
+  const targetProject = parsed.hostname
+    ? decodeURIComponent(parsed.hostname)
+    : projectId.value;
+  const path = decodeURIComponent(parsed.pathname.replace(/^\//, ''));
+  if (!targetProject || !path) return null;
+  try {
+    const dto = await brainFetch<{ id: string }>(
+      'GET',
+      `documents/by-path?projectId=${encodeURIComponent(targetProject)}` +
+        `&path=${encodeURIComponent(path)}`,
+    );
+    return documentContentUrl(dto.id);
+  } catch {
+    return null;
+  }
+}
+
 async function uploadImage(file: File): Promise<string | null> {
   const assetsFolder = `${folder.value}/assets`;
   const ts = Date.now();
@@ -409,12 +439,16 @@ async function uploadImage(file: File): Promise<string | null> {
   if (file.type) form.append('mimeType', file.type);
 
   try {
-    const dto = await brainFetch<{ id: string }>(
+    await brainFetch<{ id: string }>(
       'POST',
       'documents/upload',
       { body: form },
     );
-    return documentContentUrl(dto.id);
+    // Return a vance: URI rather than the absolute HTTP content URL —
+    // the markdown on disk must be portable across Brain instances /
+    // project renames. The image NodeView resolves it back to a real
+    // <img src> via /documents/by-path on render.
+    return `vance:/${encodeURI(path)}?kind=image`;
   } catch (e) {
     console.error('[Workspace] image upload failed', e);
     return null;
@@ -1058,6 +1092,8 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
           :source="activeMarkdown"
           :upload-image="uploadImage"
           :open-asset-picker="openAssetPicker"
+          :current-project-id="projectId"
+          :resolve-image-src="resolveVanceImageSrc"
           @save="onEditorSave"
           @dirty="onEditorDirty"
         />

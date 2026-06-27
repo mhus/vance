@@ -33,6 +33,8 @@ import {
 } from './extensions';
 import { SlashCommands } from './SlashCommands';
 import { HeadingAnchors } from './extensions/HeadingAnchors';
+import { VueNodeViewRenderer } from '@tiptap/vue-3';
+import VanceImageNodeView from './extensions/VanceImageNodeView.vue';
 import 'tippy.js/dist/tippy.css';
 
 /**
@@ -79,6 +81,21 @@ const props = withDefaults(
      * the editor via the {@link insertImageAt} helper exposed below.
      */
     openAssetPicker?: () => void;
+    /**
+     * Default project id for resolving {@code vance:} URIs that omit
+     * an explicit authority (`vance:/path/foo.png?kind=image`). The
+     * editor itself doesn't know which project a document lives in;
+     * the host (workspace addon, cortex, …) injects it so the image
+     * NodeView can turn {@code vance:} URIs into a real {@code <img src>}.
+     */
+    currentProjectId?: string;
+    /**
+     * Resolver called by the image NodeView when a {@code vance:} URI
+     * needs to be turned into an HTTP {@code <img src>}. Host-provided
+     * so the editor stays free of REST-client knowledge. Result is
+     * cached per URI; return {@code null} on resolve-failure.
+     */
+    resolveImageSrc?: (vanceUri: string) => Promise<string | null>;
   }>(),
   { autoSaveMs: 2000 },
 );
@@ -177,10 +194,18 @@ const editor = useEditor({
     TaskList,
     TaskItem.configure({ nested: false }),
     // Extend Tiptap's default Image with a `width` attribute holding the
-    // selected preset ('small' | 'medium' | 'large' | 'full' | null).
-    // Rendered as `data-width` so a single CSS rule per preset can
-    // clamp the natural image width without forcing inline styles.
+    // selected preset, plus a Vue NodeView that resolves `vance:` URIs
+    // to a real HTTP src. The on-disk markdown carries the `vance:` URI
+    // (per the embedded-content spec), but `<img>` only speaks HTTP —
+    // the NodeView does the lookup once + caches the resolved URL.
     Image.extend({
+      addOptions() {
+        return {
+          ...this.parent?.(),
+          resolveImageSrc: (uri: string) =>
+            props.resolveImageSrc?.(uri) ?? Promise.resolve(null),
+        };
+      },
       addAttributes() {
         return {
           ...this.parent?.(),
@@ -196,6 +221,9 @@ const editor = useEditor({
             },
           },
         };
+      },
+      addNodeView() {
+        return VueNodeViewRenderer(VanceImageNodeView as never);
       },
     }),
     Table.configure({ resizable: false }),

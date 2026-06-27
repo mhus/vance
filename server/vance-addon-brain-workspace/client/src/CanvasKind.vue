@@ -1,20 +1,18 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
-import { CanvasEditor } from '@vance/block-editor';
+import { computed } from 'vue';
+import { BlockView, parseDocument } from '@vance/block-editor';
 
 /**
- * Adapter from the kind-registry mount contract (single `document` prop)
- * to {@link CanvasEditor}. Owns the save handler — the host invokes us
- * with the document state and we relay block edits back via the host's
- * standard write endpoint.
+ * Mount wrapper for `kind: canvas` documents in the Cortex/Notepad
+ * tab system. v1 is **read-only** — the rendered Markdown view tab.
+ * Edits go through the shell's standard View/Edit toggle into the raw
+ * CodeEditor (same pattern Markdown / TeX use). The Tiptap-based
+ * editor lives one level up in `WorkspaceAppKind.vue` where it has
+ * the page-tree context that makes Notion-style editing meaningful.
  *
- * Save flow:
- *   editor save → emit('save', body) → host write → server persists →
- *   live-WS pushes back to other connected clients
- *
- * In v1 this component does NOT call the REST endpoints itself — it
- * delegates the write to the parent slot (DocumentApp shell) by emitting
- * `save`. That keeps the kind-mount free of host-internal API knowledge.
+ * Receives the standard kind-registry `document` prop (raw DTO, no
+ * codec). The parser pulls headers + blocks out of the inlineText and
+ * BlockView renders them.
  */
 const props = defineProps<{
   document: {
@@ -27,33 +25,44 @@ const props = defineProps<{
   };
 }>();
 
-const emit = defineEmits<{
-  (e: 'save', body: string): void;
-  (e: 'dirty', dirty: boolean): void;
-}>();
-
-const editorRef = ref<InstanceType<typeof CanvasEditor> | null>(null);
-const source = computed(() => props.document.inlineText ?? '');
-
-function onSave(body: string) {
-  emit('save', body);
-}
-
-function onDirty(d: boolean) {
-  emit('dirty', d);
-}
-
-defineExpose({
-  save: () => editorRef.value?.save(),
-});
+const parsed = computed(() => parseDocument(props.document.inlineText ?? ''));
+const blocks = computed(() => parsed.value.blocks);
+const title = computed(
+  () => parsed.value.title ?? props.document.title ?? null,
+);
+const description = computed(() => parsed.value.description);
 </script>
 
 <template>
-  <CanvasEditor
-    ref="editorRef"
-    :document="document"
-    :source="source"
-    @save="onSave"
-    @dirty="onDirty"
-  />
+  <div class="canvas-kind">
+    <header v-if="title || description" class="canvas-kind__header">
+      <h1 v-if="title" class="canvas-kind__title">{{ title }}</h1>
+      <p v-if="description" class="canvas-kind__description">{{ description }}</p>
+    </header>
+    <BlockView :blocks="blocks" />
+  </div>
 </template>
+
+<style scoped>
+.canvas-kind {
+  height: 100%;
+  overflow-y: auto;
+  background: var(--color-bg, #fff);
+}
+.canvas-kind__header {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 1.5rem 2rem 0;
+  border-bottom: 1px solid var(--color-border, #e5e7eb);
+  margin-bottom: 1rem;
+}
+.canvas-kind__title {
+  font-size: 1.875rem;
+  font-weight: 700;
+  margin: 0 0 0.25em;
+}
+.canvas-kind__description {
+  color: var(--color-text-muted, #6b7280);
+  margin: 0 0 1rem;
+}
+</style>

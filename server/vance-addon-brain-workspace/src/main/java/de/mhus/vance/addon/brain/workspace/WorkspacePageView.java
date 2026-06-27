@@ -6,6 +6,7 @@ import org.jspecify.annotations.Nullable;
 /** Wire DTO for one page inside a workspace. */
 @GenerateTypeScript("workspace")
 public record WorkspacePageView(
+        String id,
         String path,
         String relativePath,
         String section,

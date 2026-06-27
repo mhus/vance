@@ -11,5 +11,7 @@ public record WorkspaceView(
         @Nullable String title,
         @Nullable String description,
         @Nullable String landingPagePath,
+        @Nullable String landingPageId,
         @Nullable String indexPagePath,
+        @Nullable String indexPageId,
         List<WorkspacePageView> pages) {}

@@ -4,6 +4,7 @@
 */
 
 export interface WorkspacePageView {
+  id: string;
   path: string;
   relativePath: string;
   section: string;

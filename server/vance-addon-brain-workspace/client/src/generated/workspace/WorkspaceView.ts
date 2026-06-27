@@ -10,6 +10,8 @@ export interface WorkspaceView {
   title?: string;
   description?: string;
   landingPagePath?: string;
+  landingPageId?: string;
   indexPagePath?: string;
+  indexPageId?: string;
   pages: WorkspacePageView[];
 }

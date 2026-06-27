@@ -4,6 +4,7 @@
 // markdown grammar is a single source of truth shared across consumers.
 
 export { default as CanvasEditor } from './CanvasEditor.vue';
+export { default as BlockView } from './BlockView.vue';
 export { default as SlashMenu } from './SlashMenu.vue';
 
 export { parse, parseDocument } from './markdown/parser';

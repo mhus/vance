@@ -1,8 +1,9 @@
-import { configurePlatform } from '@vance/shared';
+import { configurePlatform, configureVanceWs } from '@vance/shared';
 import { refreshAccessCookie } from './refreshWeb';
 import { hydrateIdentity } from './webUiSession';
 import { applyTheme } from './themeWeb';
 import { storageWeb } from './storageWeb';
+import { onDocumentChanged, onDocumentChangedPrefix, onDocumentPrefixReconnect, subscribeDocument, subscribeDocumentPrefix, unsubscribeDocument, unsubscribeDocumentPrefix, } from '@/ws/wsConnectionStore';
 /**
  * Web boot hook. Imported for side effect at the top of every
  * editor's `main.ts` so `configurePlatform` runs before any other
@@ -34,6 +35,21 @@ configurePlatform({
         refreshAccess: refreshAccessCookie,
         onUnauthorized: redirectToLogin,
     },
+});
+// Expose the wsConnectionStore singleton through `@vance/shared` so
+// Module-Federation addons (Calendar, Kanban, Slideshow, …) can drive
+// the same WebSocket / subscription set. See
+// `repos/vance/client/packages/shared/src/ws/bridge.ts` for the
+// rationale (each addon ships its own `@vance/shared` copy; the
+// `__VANCE_WS__` globalThis stash is the rendezvous point).
+configureVanceWs({
+    subscribeDocument,
+    unsubscribeDocument,
+    onDocumentChanged,
+    subscribeDocumentPrefix,
+    unsubscribeDocumentPrefix,
+    onDocumentChangedPrefix,
+    onDocumentPrefixReconnect,
 });
 // Cookie-derived identity → prefsStore. Idempotent — runs every page
 // load, ensuring the values stay synchronised with the data cookie.

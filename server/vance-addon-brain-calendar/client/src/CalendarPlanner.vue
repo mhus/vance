@@ -197,6 +197,13 @@ function rangeLabel(c: CalendarConflictView): string {
 }
 
 onMounted(load);
+
+// Exposed so the CalendarAppKind wrapper can drive reloads in response
+// to documents.changed pushes — see useDocumentPrefixReaction wire-up
+// in the wrapper. Apps-side WS subscriptions stay in the wrapper; the
+// Planner itself remains WS-free and trivially mountable from REST
+// fixtures in tests.
+defineExpose({ reload: load });
 </script>
 
 <template>

@@ -189,6 +189,11 @@ function priorityClass(priority?: string | null): string {
 }
 
 onMounted(load);
+
+// Exposed so the KanbanAppKind wrapper can drive reloads in response
+// to documents.changed pushes. WS subscription lives in the wrapper;
+// the Board itself stays WS-free.
+defineExpose({ reload: load });
 </script>
 
 <template>

@@ -169,6 +169,9 @@ importers:
       '@vance/generated':
         specifier: workspace:*
         version: link:../generated
+      vue:
+        specifier: ^3.5.0
+        version: 3.5.38(typescript@5.9.3)
 
   client/packages/vance-face:
     dependencies:

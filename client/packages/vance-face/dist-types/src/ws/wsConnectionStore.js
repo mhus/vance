@@ -87,6 +87,18 @@ const documentChangedListeners = new Map();
  * the changed path.
  */
 const documentChangedPrefixListeners = new Map();
+/**
+ * Per-prefix callback registrations for the synthetic "reconnect" tick
+ * ({@link onDocumentPrefixReconnect}). After each successful resubscribe
+ * during reconnect-recovery the store emits a notification with
+ * {@code kind: "reconnect"} and {@code path = prefix} so app-level
+ * consumers can run a force-reload to catch up on writes that happened
+ * while the WS was down. Separate map from
+ * {@link documentChangedPrefixListeners} so consumers that don't care
+ * about reconnect (presence-roster components, single-doc editors with
+ * their own ETag-based recovery) don't get woken up.
+ */
+const documentPrefixReconnectListeners = new Map();
 const documentNoteChangedListeners = new Map();
 let releaseTimer = null;
 let reconnectTimer = null;
@@ -407,6 +419,33 @@ export function onDocumentChangedPrefix(prefix, handler) {
     };
 }
 /**
+ * Register a callback that fires once per reconnect-recovery cycle for
+ * the given prefix. The store emits a synthetic notification with
+ * {@code kind: "reconnect"} and {@code path = prefix} after the
+ * resubscribe frame went out on the fresh socket. Consumers (typically
+ * the {@code useDocumentPrefixReaction} composable) use this to run a
+ * full reload — without it, writes that happened while the WS was
+ * down stay invisible until the next live change.
+ *
+ * <p>Returns an unsubscribe.
+ */
+export function onDocumentPrefixReconnect(prefix, handler) {
+    let set = documentPrefixReconnectListeners.get(prefix);
+    if (!set) {
+        set = new Set();
+        documentPrefixReconnectListeners.set(prefix, set);
+    }
+    set.add(handler);
+    return () => {
+        const current = documentPrefixReconnectListeners.get(prefix);
+        if (!current)
+            return;
+        current.delete(handler);
+        if (current.size === 0)
+            documentPrefixReconnectListeners.delete(prefix);
+    };
+}
+/**
  * Register a callback for the {@code documents.note-changed} frame —
  * fires when a sticky-note on the path is added / updated / deleted by
  * another connection. Returns an unsubscribe function. Server-side
@@ -541,6 +580,27 @@ function wireDocumentsSocketWatch() {
                 }
                 catch (e) {
                     console.warn(`[wsStore] reconnect-resubscribe failed for prefix='${prefix}':`, e);
+                }
+                // Force-reload tick: tell prefix-consumers they may have missed
+                // writes while the WS was down so they can refresh. Skipped on
+                // the very first socket attach (prev==null) — that's the boot
+                // path, no missed writes yet.
+                if (prev) {
+                    const reconnectListeners = documentPrefixReconnectListeners.get(prefix);
+                    if (reconnectListeners && reconnectListeners.size > 0) {
+                        const notification = {
+                            path: prefix,
+                            kind: 'reconnect',
+                        };
+                        for (const handler of Array.from(reconnectListeners)) {
+                            try {
+                                handler(notification);
+                            }
+                            catch (e) {
+                                console.warn(`[wsStore] reconnect-tick handler for '${prefix}' threw:`, e);
+                            }
+                        }
+                    }
                 }
             }
         }

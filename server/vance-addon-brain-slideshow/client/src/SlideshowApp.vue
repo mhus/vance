@@ -166,6 +166,11 @@ onBeforeUnmount(() => {
   document.removeEventListener('fullscreenchange', onFullscreenChange);
   stopAutoplay();
 });
+
+// Exposed so the SlideshowAppKind wrapper can drive reloads in response
+// to documents.changed pushes. WS subscription lives in the wrapper;
+// SlideshowApp itself stays WS-free.
+defineExpose({ reload: load });
 </script>
 
 <template>

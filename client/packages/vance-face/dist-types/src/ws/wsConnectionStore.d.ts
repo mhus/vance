@@ -106,6 +106,18 @@ export declare function onDocumentChanged(path: string, handler: DocumentChanged
  */
 export declare function onDocumentChangedPrefix(prefix: string, handler: DocumentChangedHandler): () => void;
 /**
+ * Register a callback that fires once per reconnect-recovery cycle for
+ * the given prefix. The store emits a synthetic notification with
+ * {@code kind: "reconnect"} and {@code path = prefix} after the
+ * resubscribe frame went out on the fresh socket. Consumers (typically
+ * the {@code useDocumentPrefixReaction} composable) use this to run a
+ * full reload — without it, writes that happened while the WS was
+ * down stay invisible until the next live change.
+ *
+ * <p>Returns an unsubscribe.
+ */
+export declare function onDocumentPrefixReconnect(prefix: string, handler: DocumentChangedHandler): () => void;
+/**
  * Register a callback for the {@code documents.note-changed} frame —
  * fires when a sticky-note on the path is added / updated / deleted by
  * another connection. Returns an unsubscribe function. Server-side

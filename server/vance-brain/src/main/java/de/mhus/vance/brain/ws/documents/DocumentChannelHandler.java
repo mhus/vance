@@ -1,12 +1,12 @@
 package de.mhus.vance.brain.ws.documents;
 
+import de.mhus.vance.api.ws.DocumentPrefixSubscribeRequest;
 import de.mhus.vance.api.ws.DocumentSubscribeRequest;
 import de.mhus.vance.api.ws.LiveEnvelope;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
-import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -64,6 +64,8 @@ public class DocumentChannelHandler {
             case MessageType.DOCUMENT_SUBSCRIBE -> handleSubscribe(wsSession, ctx, inner);
             case MessageType.DOCUMENT_UNSUBSCRIBE -> handleUnsubscribe(wsSession, inner);
             case MessageType.DOCUMENT_UNSUBSCRIBE_ALL -> registry.unsubscribeAll(wsSession);
+            case MessageType.DOCUMENT_SUBSCRIBE_PREFIX -> handleSubscribePrefix(wsSession, ctx, inner);
+            case MessageType.DOCUMENT_UNSUBSCRIBE_PREFIX -> handleUnsubscribePrefix(wsSession, inner);
             default -> sendError(wsSession, 400,
                     "Unknown documents-channel type: '" + type + "'");
         }
@@ -76,12 +78,13 @@ public class DocumentChannelHandler {
             sendError(wsSession, 400, "documents.subscribe payload missing 'path'");
             return;
         }
-        // Per-WS path-count cap — protects against runaway clients without
-        // adding a hard global limit.
-        Set<String> subscribedPaths = subscribedPathsOf(wsSession);
-        if (!subscribedPaths.contains(req.getPath()) && subscribedPaths.size() >= MAX_PATHS_PER_WS) {
+        // Per-WS subscription-count cap — protects against runaway
+        // clients without adding a hard global limit. Shared between
+        // path and prefix subs (see #handleSubscribePrefix).
+        if (!registry.pathsOf(wsSession).contains(req.getPath())
+                && registry.subscriptionCountOf(wsSession) >= MAX_PATHS_PER_WS) {
             sendError(wsSession, 429,
-                    "Subscription limit reached (" + MAX_PATHS_PER_WS + " paths per connection)");
+                    "Subscription limit reached (" + MAX_PATHS_PER_WS + " per connection)");
             return;
         }
         registry.subscribe(wsSession, ctx, req.getPath());
@@ -97,6 +100,51 @@ public class DocumentChannelHandler {
         registry.unsubscribe(wsSession, req.getPath());
     }
 
+    private void handleSubscribePrefix(WebSocketSession wsSession, ConnectionContext ctx, WebSocketEnvelope inner)
+            throws java.io.IOException {
+        DocumentPrefixSubscribeRequest req = parsePrefixRequest(inner);
+        if (req == null || isBlank(req.getPrefix())) {
+            sendError(wsSession, 400, "documents.subscribePrefix payload missing 'prefix'");
+            return;
+        }
+        String prefix = req.getPrefix();
+        if (!prefix.endsWith("/")) {
+            sendError(wsSession, 400,
+                    "documents.subscribePrefix 'prefix' must end with '/'");
+            return;
+        }
+        if (prefix.length() < 2) {
+            // A single '/' would subscribe to literally every doc in the
+            // tenant. That's never the intent and the resulting fan-out
+            // is a footgun, not a feature.
+            sendError(wsSession, 400,
+                    "documents.subscribePrefix 'prefix' too short (need at least 2 chars including the trailing '/')");
+            return;
+        }
+        if (prefix.contains("..") || prefix.contains("\\")) {
+            sendError(wsSession, 400,
+                    "documents.subscribePrefix 'prefix' contains forbidden sequence");
+            return;
+        }
+        if (!registry.prefixesOf(wsSession).contains(prefix)
+                && registry.subscriptionCountOf(wsSession) >= MAX_PATHS_PER_WS) {
+            sendError(wsSession, 429,
+                    "Subscription limit reached (" + MAX_PATHS_PER_WS + " per connection)");
+            return;
+        }
+        registry.subscribePrefix(wsSession, ctx, prefix);
+    }
+
+    private void handleUnsubscribePrefix(WebSocketSession wsSession, WebSocketEnvelope inner)
+            throws java.io.IOException {
+        DocumentPrefixSubscribeRequest req = parsePrefixRequest(inner);
+        if (req == null || isBlank(req.getPrefix())) {
+            sendError(wsSession, 400, "documents.unsubscribePrefix payload missing 'prefix'");
+            return;
+        }
+        registry.unsubscribePrefix(wsSession, req.getPrefix());
+    }
+
     private DocumentSubscribeRequest parseSubscribeRequest(WebSocketEnvelope inner) {
         Object data = inner.getData();
         if (data == null) return null;
@@ -108,8 +156,15 @@ public class DocumentChannelHandler {
         }
     }
 
-    private Set<String> subscribedPathsOf(WebSocketSession wsSession) {
-        return registry.pathsOf(wsSession);
+    private DocumentPrefixSubscribeRequest parsePrefixRequest(WebSocketEnvelope inner) {
+        Object data = inner.getData();
+        if (data == null) return null;
+        try {
+            return objectMapper.convertValue(data, DocumentPrefixSubscribeRequest.class);
+        } catch (RuntimeException e) {
+            log.debug("documents-channel: cannot decode prefix payload: {}", e.toString());
+            return null;
+        }
     }
 
     private void sendError(WebSocketSession wsSession, int code, String message) throws java.io.IOException {

@@ -11,7 +11,9 @@ import jakarta.annotation.PreDestroy;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.HashSet;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -150,9 +152,14 @@ public class DocumentChangedBroadcaster {
         WebSocketEnvelope envelope = WebSocketEnvelope.notification(
                 MessageType.DOCUMENT_CHANGED, payload);
 
+        // Dedupe across the two recipient lanes: a session subscribed
+        // both by exact-path AND by a matching prefix would otherwise
+        // get the same change twice.
+        Set<String> deliveredTo = new HashSet<>();
         int[] sent = {0};
         int[] skipped = {0};
-        registry.forEachLocalSubscriber(path, (wsSession, ctx) -> {
+        java.util.function.BiConsumer<org.springframework.web.socket.WebSocketSession,
+                de.mhus.vance.brain.ws.ConnectionContext> deliver = (wsSession, ctx) -> {
             // Skip the writer's own connection — they just performed the
             // save themselves, they already have the freshest content.
             if (writer.editorId() != null
@@ -162,6 +169,7 @@ public class DocumentChangedBroadcaster {
                         source, wsSession.getId(), ctx.getEditorId(), path);
                 return;
             }
+            if (!deliveredTo.add(wsSession.getId())) return;
             try {
                 sender.sendOnChannel(wsSession, "documents", envelope);
                 sent[0]++;
@@ -171,7 +179,9 @@ public class DocumentChangedBroadcaster {
                 log.debug("documents.changed[{}] push failed ws='{}' path='{}': {}",
                         source, wsSession.getId(), path, e.toString());
             }
-        });
+        };
+        registry.forEachLocalSubscriber(path, deliver);
+        registry.forEachLocalPrefixSubscriber(path, deliver);
         log.trace("documents.changed[{}] fanOut path={} kind={} recipients={} skippedWriter={}",
                 source, path, kind, sent[0], skipped[0]);
     }

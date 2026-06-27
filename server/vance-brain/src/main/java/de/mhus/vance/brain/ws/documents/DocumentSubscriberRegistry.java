@@ -99,6 +99,18 @@ public class DocumentSubscriberRegistry {
     /** ws-session-id → set of paths (cleanup + heartbeat index). */
     private final Map<String, Set<String>> bySession = new ConcurrentHashMap<>();
 
+    /**
+     * prefix → ws-session-ids on this pod that subscribed by folder
+     * prefix. Used by {@link DocumentChangedBroadcaster} to fan out a
+     * doc-change to every prefix-sub whose prefix is a startsWith-match
+     * of the changed path. Prefix subs do <b>not</b> have a Redis
+     * presence-roster entry — they're silent watchers.
+     */
+    private final Map<String, Set<String>> localPrefixSubs = new ConcurrentHashMap<>();
+
+    /** ws-session-id → set of subscribed prefixes (cleanup index). */
+    private final Map<String, Set<String>> bySessionPrefixes = new ConcurrentHashMap<>();
+
     /** ws-session-id → LocalSubscriber snapshot (push target). */
     private final Map<String, LocalSubscriber> bySessionInfo = new ConcurrentHashMap<>();
 
@@ -174,9 +186,13 @@ public class DocumentSubscriberRegistry {
             redis.publish(tenantId, CHANNEL, encodeChangedPayload(path));
             broadcastPresence(path, tenantId);
         }
-        // If this was the session's last path, drop the info entry too.
-        Set<String> remaining = bySession.get(wsId);
-        if (remaining == null || remaining.isEmpty()) {
+        // If this WS now holds no path-subs and no prefix-subs, drop the
+        // info entry too.
+        Set<String> remainingPaths = bySession.get(wsId);
+        Set<String> remainingPrefixes = bySessionPrefixes.get(wsId);
+        boolean noPaths = remainingPaths == null || remainingPaths.isEmpty();
+        boolean noPrefixes = remainingPrefixes == null || remainingPrefixes.isEmpty();
+        if (noPaths && noPrefixes) {
             bySessionInfo.remove(wsId);
         }
         log.debug("documents.unsubscribe: ws='{}' path='{}'", wsId, path);
@@ -185,30 +201,96 @@ public class DocumentSubscriberRegistry {
     public void unsubscribeAll(WebSocketSession wsSession) {
         String wsId = wsSession.getId();
         Set<String> paths = bySession.remove(wsId);
-        if (paths == null || paths.isEmpty()) {
+        Set<String> prefixes = bySessionPrefixes.remove(wsId);
+        boolean nothingToDo = (paths == null || paths.isEmpty())
+                && (prefixes == null || prefixes.isEmpty());
+        if (nothingToDo) {
             bySessionInfo.remove(wsId);
             return;
         }
         LocalSubscriber sub = bySessionInfo.remove(wsId);
         String tenantId = sub != null ? sub.context().getTenantId() : null;
-        for (String path : paths) {
-            Set<String> ids = localSubsByPath.get(path);
-            if (ids != null) {
-                ids.remove(wsId);
-                if (ids.isEmpty()) localSubsByPath.remove(path);
-            }
-            if (tenantId != null && sub != null) {
-                redis.hashDelete(tenantId, hashSubKey(path), sub.context().getEditorId());
-                redis.publish(tenantId, CHANNEL, encodeChangedPayload(path));
-                broadcastPresence(path, tenantId);
+        if (paths != null) {
+            for (String path : paths) {
+                Set<String> ids = localSubsByPath.get(path);
+                if (ids != null) {
+                    ids.remove(wsId);
+                    if (ids.isEmpty()) localSubsByPath.remove(path);
+                }
+                if (tenantId != null && sub != null) {
+                    redis.hashDelete(tenantId, hashSubKey(path), sub.context().getEditorId());
+                    redis.publish(tenantId, CHANNEL, encodeChangedPayload(path));
+                    broadcastPresence(path, tenantId);
+                }
             }
         }
-        log.debug("documents.unsubscribeAll: ws='{}' paths={}", wsId, paths.size());
+        if (prefixes != null) {
+            for (String prefix : prefixes) {
+                Set<String> ids = localPrefixSubs.get(prefix);
+                if (ids != null) {
+                    ids.remove(wsId);
+                    if (ids.isEmpty()) localPrefixSubs.remove(prefix);
+                }
+            }
+        }
+        log.debug("documents.unsubscribeAll: ws='{}' paths={} prefixes={}",
+                wsId, paths == null ? 0 : paths.size(),
+                prefixes == null ? 0 : prefixes.size());
     }
 
     public Set<String> pathsOf(WebSocketSession wsSession) {
         Set<String> paths = bySession.get(wsSession.getId());
         return paths == null ? Collections.emptySet() : Set.copyOf(paths);
+    }
+
+    public Set<String> prefixesOf(WebSocketSession wsSession) {
+        Set<String> prefixes = bySessionPrefixes.get(wsSession.getId());
+        return prefixes == null ? Collections.emptySet() : Set.copyOf(prefixes);
+    }
+
+    /**
+     * Total subscription count (paths + prefixes) for the given session
+     * — used by {@link DocumentChannelHandler} to enforce a single
+     * shared per-connection cap.
+     */
+    public int subscriptionCountOf(WebSocketSession wsSession) {
+        Set<String> paths = bySession.get(wsSession.getId());
+        Set<String> prefixes = bySessionPrefixes.get(wsSession.getId());
+        return (paths == null ? 0 : paths.size())
+                + (prefixes == null ? 0 : prefixes.size());
+    }
+
+    /**
+     * Subscribe to every document change under {@code prefix}. Prefix
+     * MUST end with {@code /} — the channel handler validates this
+     * before reaching here. No Redis roster entry is written; prefix
+     * subscriptions are silent watchers (see {@link MessageType#DOCUMENT_SUBSCRIBE_PREFIX}).
+     */
+    public void subscribePrefix(WebSocketSession wsSession, ConnectionContext ctx, String prefix) {
+        String wsId = wsSession.getId();
+        bySessionPrefixes.computeIfAbsent(wsId, k -> ConcurrentHashMap.newKeySet()).add(prefix);
+        // bySessionInfo doubles as the recipient-context lookup for the
+        // broadcaster. We seed it here too so a session with only
+        // prefix-subs (no path-subs) still resolves to a LocalSubscriber.
+        bySessionInfo.putIfAbsent(wsId, new LocalSubscriber(wsSession, ctx));
+        localPrefixSubs.computeIfAbsent(prefix, k -> ConcurrentHashMap.newKeySet()).add(wsId);
+        log.debug("documents.subscribePrefix: ws='{}' user='{}' prefix='{}'",
+                wsId, ctx.getUserId(), prefix);
+    }
+
+    public void unsubscribePrefix(WebSocketSession wsSession, String prefix) {
+        String wsId = wsSession.getId();
+        if (!removeLocalPrefix(wsId, prefix)) return;
+        // If this WS now holds no path-subs and no prefix-subs, drop the
+        // info entry — symmetric to unsubscribe(path).
+        Set<String> remainingPaths = bySession.get(wsId);
+        Set<String> remainingPrefixes = bySessionPrefixes.get(wsId);
+        boolean noPaths = remainingPaths == null || remainingPaths.isEmpty();
+        boolean noPrefixes = remainingPrefixes == null || remainingPrefixes.isEmpty();
+        if (noPaths && noPrefixes) {
+            bySessionInfo.remove(wsId);
+        }
+        log.debug("documents.unsubscribePrefix: ws='{}' prefix='{}'", wsId, prefix);
     }
 
     /**
@@ -232,7 +314,36 @@ public class DocumentSubscriberRegistry {
     /** {@code true} when at least one WS session on this pod subscribes to {@code path}. */
     public boolean hasLocalSubscribers(String path) {
         Set<String> wsIds = localSubsByPath.get(path);
-        return wsIds != null && !wsIds.isEmpty();
+        if (wsIds != null && !wsIds.isEmpty()) return true;
+        // Also true when at least one prefix-sub on this pod would match
+        // the path. Keeps broadcasters cheap (single check) and lets them
+        // skip the full prefix-iteration when nobody's listening at all.
+        for (String prefix : localPrefixSubs.keySet()) {
+            if (path.startsWith(prefix)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Invoke {@code action} for every WS session on this pod that has
+     * a prefix subscription matching {@code path} (i.e. {@code path}
+     * starts with the registered prefix). Counterpart to
+     * {@link #forEachLocalSubscriber(String, java.util.function.BiConsumer)}
+     * for folder-prefix watchers — used by
+     * {@link DocumentChangedBroadcaster} so a single doc-change fan-out
+     * reaches both path-subs and prefix-subs without double-pushing.
+     */
+    public void forEachLocalPrefixSubscriber(String path,
+            java.util.function.BiConsumer<WebSocketSession, ConnectionContext> action) {
+        if (localPrefixSubs.isEmpty()) return;
+        for (Map.Entry<String, Set<String>> entry : localPrefixSubs.entrySet()) {
+            if (!path.startsWith(entry.getKey())) continue;
+            for (String wsId : entry.getValue()) {
+                LocalSubscriber sub = bySessionInfo.get(wsId);
+                if (sub == null) continue;
+                action.accept(sub.wsSession(), sub.context());
+            }
+        }
     }
 
     /**
@@ -362,6 +473,19 @@ public class DocumentSubscriberRegistry {
         if (ids != null) {
             ids.remove(wsId);
             if (ids.isEmpty()) localSubsByPath.remove(path);
+        }
+        return true;
+    }
+
+    /** Remove a (wsId, prefix) local mapping. Returns {@code true} if state changed. */
+    private boolean removeLocalPrefix(String wsId, String prefix) {
+        Set<String> prefixes = bySessionPrefixes.get(wsId);
+        if (prefixes == null || !prefixes.remove(prefix)) return false;
+        if (prefixes.isEmpty()) bySessionPrefixes.remove(wsId);
+        Set<String> ids = localPrefixSubs.get(prefix);
+        if (ids != null) {
+            ids.remove(wsId);
+            if (ids.isEmpty()) localPrefixSubs.remove(prefix);
         }
         return true;
     }

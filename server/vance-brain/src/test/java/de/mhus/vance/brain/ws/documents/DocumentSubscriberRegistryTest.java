@@ -301,6 +301,89 @@ class DocumentSubscriberRegistryTest {
         verify(redis, never()).hashPut(any(), any(), any(), any(), any());
     }
 
+    // ── folder-prefix subscriptions ───────────────────────────
+
+    @Test
+    void subscribePrefix_isTrackedInPrefixesOf() {
+        WebSocketSession ws = wsSession("ws-1");
+        registry.subscribePrefix(ws, contextFor("ed-1", "alice", "Alice"), "calendars/q3/");
+        assertThat(registry.prefixesOf(ws)).containsExactly("calendars/q3/");
+    }
+
+    @Test
+    void subscribePrefix_doesNotWriteToRedisRoster() {
+        WebSocketSession ws = wsSession("ws-1");
+        registry.subscribePrefix(ws, contextFor("ed-1", "alice", "Alice"), "calendars/q3/");
+        // Prefix subs are silent watchers — no Redis presence-hash entry,
+        // no presence-push (no Redis publish either).
+        verify(redis, never()).hashPut(anyString(), anyString(), anyString(), anyString(), any(Duration.class));
+        verify(redis, never()).publish(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void forEachLocalPrefixSubscriber_invokesActionForMatchingPath() {
+        WebSocketSession ws = wsSession("ws-1");
+        ConnectionContext ctx = contextFor("ed-1", "alice", "Alice");
+        registry.subscribePrefix(ws, ctx, "calendars/q3/");
+        java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+        registry.forEachLocalPrefixSubscriber("calendars/q3/lane-design/work.yaml",
+                (s, c) -> calls.incrementAndGet());
+        assertThat(calls.get()).isEqualTo(1);
+    }
+
+    @Test
+    void forEachLocalPrefixSubscriber_skipsNonMatchingPath() {
+        WebSocketSession ws = wsSession("ws-1");
+        registry.subscribePrefix(ws, contextFor("ed-1", "alice", "Alice"), "calendars/q3/");
+        java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+        registry.forEachLocalPrefixSubscriber("calendars/q4/work.yaml",
+                (s, c) -> calls.incrementAndGet());
+        assertThat(calls.get()).isZero();
+    }
+
+    @Test
+    void hasLocalSubscribers_trueWhenPrefixMatches() {
+        WebSocketSession ws = wsSession("ws-1");
+        registry.subscribePrefix(ws, contextFor("ed-1", "alice", "Alice"), "calendars/q3/");
+        assertThat(registry.hasLocalSubscribers("calendars/q3/lane/work.yaml")).isTrue();
+        assertThat(registry.hasLocalSubscribers("other/file.md")).isFalse();
+    }
+
+    @Test
+    void unsubscribePrefix_removesFromIndex() {
+        WebSocketSession ws = wsSession("ws-1");
+        registry.subscribePrefix(ws, contextFor("ed-1", "alice", "Alice"), "calendars/q3/");
+        registry.unsubscribePrefix(ws, "calendars/q3/");
+        assertThat(registry.prefixesOf(ws)).isEmpty();
+        java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+        registry.forEachLocalPrefixSubscriber("calendars/q3/lane/work.yaml",
+                (s, c) -> calls.incrementAndGet());
+        assertThat(calls.get()).isZero();
+    }
+
+    @Test
+    void unsubscribeAll_clearsBothPathAndPrefixSubs() {
+        WebSocketSession ws = wsSession("ws-1");
+        ConnectionContext ctx = contextFor("ed-1", "alice", "Alice");
+        registry.subscribe(ws, ctx, "notes.md");
+        registry.subscribePrefix(ws, ctx, "calendars/q3/");
+
+        registry.unsubscribeAll(ws);
+
+        assertThat(registry.pathsOf(ws)).isEmpty();
+        assertThat(registry.prefixesOf(ws)).isEmpty();
+    }
+
+    @Test
+    void subscriptionCountOf_sumsPathsAndPrefixes() {
+        WebSocketSession ws = wsSession("ws-1");
+        ConnectionContext ctx = contextFor("ed-1", "alice", "Alice");
+        registry.subscribe(ws, ctx, "a.md");
+        registry.subscribe(ws, ctx, "b.md");
+        registry.subscribePrefix(ws, ctx, "calendars/q3/");
+        assertThat(registry.subscriptionCountOf(ws)).isEqualTo(3);
+    }
+
     // ── helpers ────────────────────────────────────────────────
 
     private static WebSocketSession wsSession(String id) {

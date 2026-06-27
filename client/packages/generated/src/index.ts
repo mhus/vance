@@ -293,6 +293,7 @@ export * from './ws/ClientAgentUploadRequest';
 export * from './ws/DocumentChangedNotification';
 export * from './ws/DocumentNoteChangedNotification';
 export * from './ws/DocumentPresenceNotification';
+export * from './ws/DocumentPrefixSubscribeRequest';
 export * from './ws/DocumentSubscribeRequest';
 export * from './ws/DocumentViewer';
 export * from './ws/ErrorData';

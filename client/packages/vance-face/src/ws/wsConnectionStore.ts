@@ -8,6 +8,7 @@ import {
 import type {
   DocumentChangedNotification,
   DocumentNoteChangedNotification,
+  DocumentPrefixSubscribeRequest,
   DocumentPresenceNotification,
   DocumentSubscribeRequest,
   DocumentViewer,
@@ -89,6 +90,14 @@ const activeSessionId: Ref<string | null> = ref(null);
 const desiredSubscriptions: Set<string> = new Set();
 
 /**
+ * Same as {@link desiredSubscriptions} but for folder-prefix subscriptions
+ * (the {@code documents.subscribePrefix} frame, see
+ * planning/apps-in-cortex-and-live.md §6). Replayed on every socket-swap
+ * so reconnects restore the App-Live-Watch state automatically.
+ */
+const desiredPrefixSubscriptions: Set<string> = new Set();
+
+/**
  * Server-pushed viewer roster per path. Reactive map — consumed by the
  * {@code &lt;DocumentPresenceStrip&gt;} component. Server pre-filters the
  * recipient's own editorId out of each list, so the entries are always
@@ -108,6 +117,16 @@ let documentsUnsubscribe: (() => void) | null = null;
  */
 type DocumentChangedHandler = (notification: DocumentChangedNotification) => void;
 const documentChangedListeners = new Map<string, Set<DocumentChangedHandler>>();
+
+/**
+ * Per-prefix callback registrations for the {@code documents.changed}
+ * frame ({@link onDocumentChangedPrefix}). Folder-bound apps subscribe
+ * with a single prefix and receive every change whose path starts with
+ * it (manifest + sub-documents). The dispatcher walks this map for each
+ * incoming frame and invokes every handler whose prefix is a prefix of
+ * the changed path.
+ */
+const documentChangedPrefixListeners = new Map<string, Set<DocumentChangedHandler>>();
 
 /**
  * Per-path callbacks for the {@code documents.note-changed} frame —
@@ -371,6 +390,38 @@ export async function unsubscribeDocument(path: string): Promise<void> {
 }
 
 /**
+ * Subscribe to every {@code documents.changed} frame whose path starts
+ * with {@code prefix}. The prefix MUST end with {@code /} so it never
+ * matches a path that merely happens to share a name-stem. Adds the
+ * prefix to the desired-set so Reconnect-Resubscribe replays it after a
+ * socket-swap.
+ *
+ * <p>Unlike {@link subscribeDocument}, prefix subscriptions don't add
+ * the connection to the presence-roster of any document — they're silent
+ * watchers used by folder-bound apps (Calendar, Kanban, Slideshow) to
+ * react to changes anywhere under the app folder without enumerating
+ * individual paths.
+ */
+export async function subscribeDocumentPrefix(prefix: string): Promise<void> {
+  desiredPrefixSubscriptions.add(prefix);
+  const sock = await ensureConnected();
+  sock.sendOnChannel('documents', 'subscribePrefix',
+      { prefix } as DocumentPrefixSubscribeRequest);
+}
+
+/**
+ * Drop a prefix subscription. Removes from desired-set so it stays gone
+ * after Reconnect-Resubscribe.
+ */
+export async function unsubscribeDocumentPrefix(prefix: string): Promise<void> {
+  desiredPrefixSubscriptions.delete(prefix);
+  if (socket.value && !socket.value.closed()) {
+    socket.value.sendOnChannel('documents', 'unsubscribePrefix',
+        { prefix } as DocumentPrefixSubscribeRequest);
+  }
+}
+
+/**
  * Register a callback for the {@code documents.changed} frame of the
  * given path. Returns an unsubscribe function. Editors use this to learn
  * when "their" document was written or deleted on any pod in the
@@ -400,6 +451,34 @@ export function onDocumentChanged(
     if (!current) return;
     current.delete(handler);
     if (current.size === 0) documentChangedListeners.delete(path);
+  };
+}
+
+/**
+ * Register a callback for every {@code documents.changed} frame whose
+ * path starts with {@code prefix}. Returns an unsubscribe function.
+ *
+ * <p>Folder-bound apps wire this in their {@code setup()} once they know
+ * their folder path, paired with the {@link subscribeDocumentPrefix}
+ * call. The handler receives the full notification including the
+ * changed {@code path}, so the app can re-fetch the specific sub-document
+ * (lane, column, slide, …) without enumerating them all upfront.
+ */
+export function onDocumentChangedPrefix(
+  prefix: string,
+  handler: DocumentChangedHandler,
+): () => void {
+  let set = documentChangedPrefixListeners.get(prefix);
+  if (!set) {
+    set = new Set();
+    documentChangedPrefixListeners.set(prefix, set);
+  }
+  set.add(handler);
+  return () => {
+    const current = documentChangedPrefixListeners.get(prefix);
+    if (!current) return;
+    current.delete(handler);
+    if (current.size === 0) documentChangedPrefixListeners.delete(prefix);
   };
 }
 
@@ -446,13 +525,30 @@ function attachDocumentsListener(sock: BrainWebSocket): void {
     'changed',
     (data) => {
       if (!data || !data.path) return;
-      const listeners = documentChangedListeners.get(data.path);
-      if (!listeners || listeners.size === 0) return;
-      for (const handler of Array.from(listeners)) {
-        try {
-          handler(data);
-        } catch (e) {
-          console.warn(`[wsStore] document-changed handler for '${data.path}' threw:`, e);
+      const exact = documentChangedListeners.get(data.path);
+      if (exact && exact.size > 0) {
+        for (const handler of Array.from(exact)) {
+          try {
+            handler(data);
+          } catch (e) {
+            console.warn(`[wsStore] document-changed handler for '${data.path}' threw:`, e);
+          }
+        }
+      }
+      // Prefix listeners — match every registered prefix whose value is
+      // a startsWith-prefix of the changed path. Walks the whole map,
+      // expected size is small (one prefix per open folder-bound app).
+      if (documentChangedPrefixListeners.size > 0) {
+        for (const [prefix, handlers] of documentChangedPrefixListeners) {
+          if (!data.path.startsWith(prefix)) continue;
+          for (const handler of Array.from(handlers)) {
+            try {
+              handler(data);
+            } catch (e) {
+              console.warn(
+                  `[wsStore] document-changed-prefix handler for '${prefix}' threw:`, e);
+            }
+          }
         }
       }
     },
@@ -508,6 +604,14 @@ function wireDocumentsSocketWatch(): void {
           next.sendOnChannel('documents', 'subscribe', { path } as DocumentSubscribeRequest);
         } catch (e) {
           console.warn(`[wsStore] reconnect-resubscribe failed for path='${path}':`, e);
+        }
+      }
+      for (const prefix of desiredPrefixSubscriptions) {
+        try {
+          next.sendOnChannel('documents', 'subscribePrefix',
+              { prefix } as DocumentPrefixSubscribeRequest);
+        } catch (e) {
+          console.warn(`[wsStore] reconnect-resubscribe failed for prefix='${prefix}':`, e);
         }
       }
     }

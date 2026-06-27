@@ -388,6 +388,33 @@ public final class MessageType {
     public static final String DOCUMENT_UNSUBSCRIBE_ALL = "unsubscribe-all";
 
     /**
+     * Client → server: subscribe to {@link #DOCUMENT_CHANGED} frames for
+     * every document path under a folder prefix. Payload:
+     * {@link DocumentPrefixSubscribeRequest}. The prefix MUST end with
+     * {@code /} so it never matches a path that merely happens to share
+     * a name-stem (e.g. {@code foo/} matches {@code foo/x} but not
+     * {@code foobar/x}).
+     *
+     * <p>Unlike {@link #DOCUMENT_SUBSCRIBE}, prefix subscriptions are
+     * silent watchers — they don't appear in the per-path Redis
+     * presence roster and don't trigger {@link #DOCUMENT_PRESENCE}
+     * pushes. The mental model is "tell me when anything under here
+     * changes", not "show me to others as a viewer of these docs".
+     *
+     * <p>The per-WS subscription cap (100, see
+     * {@code MAX_PATHS_PER_WS}) is shared with path subscriptions —
+     * one prefix counts as one slot.
+     */
+    public static final String DOCUMENT_SUBSCRIBE_PREFIX = "subscribePrefix";
+
+    /**
+     * Client → server: drop a previously-registered prefix subscription.
+     * Payload: {@link DocumentPrefixSubscribeRequest} (same shape — only
+     * the {@code prefix} field is used).
+     */
+    public static final String DOCUMENT_UNSUBSCRIBE_PREFIX = "unsubscribePrefix";
+
+    /**
      * Server → client: presence roster for a document path. Payload:
      * {@link DocumentPresenceNotification}. The {@code viewers} list is
      * pre-filtered per recipient — the receiver's own {@code editorId}

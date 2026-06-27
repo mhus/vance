@@ -218,6 +218,79 @@ class DocumentChangedBroadcasterTest {
         verify(sender, never()).sendOnChannel(any(), eq("documents"), any());
     }
 
+    // ── folder-prefix subscriptions ───────────────────────────
+
+    @Test
+    void localEvent_pushedToPrefixSubscriber_whenPathStartsWithPrefix() throws IOException {
+        WebSocketSession ws = wsSession("ws-1");
+        registry.subscribePrefix(ws, contextFor("ed-1", "alice", "Alice"), "calendars/q3/");
+        org.mockito.Mockito.reset(sender);
+
+        broadcaster.onLocalChanged(new DocumentLiveChangedEvent(
+                "acme", "_user_alice", "calendars/q3/lane-design/work.yaml",
+                DocumentLiveChangedEvent.Kind.UPSERTED,
+                "ed-other", "bob", "Bob"));
+
+        DocumentChangedNotification pushed = captureChanged(ws);
+        assertThat(pushed.getPath()).isEqualTo("calendars/q3/lane-design/work.yaml");
+        assertThat(pushed.getKind()).isEqualTo("upserted");
+    }
+
+    @Test
+    void localEvent_outsidePrefix_noPushToPrefixSub() throws IOException {
+        WebSocketSession ws = wsSession("ws-1");
+        registry.subscribePrefix(ws, contextFor("ed-1", "alice", "Alice"), "calendars/q3/");
+        org.mockito.Mockito.reset(sender);
+
+        broadcaster.onLocalChanged(new DocumentLiveChangedEvent(
+                "acme", "_user_alice", "calendars/q4/work.yaml",
+                DocumentLiveChangedEvent.Kind.UPSERTED,
+                "ed-other", "bob", "Bob"));
+
+        verify(sender, never()).sendOnChannel(eq(ws), eq("documents"), any());
+    }
+
+    @Test
+    void localEvent_byOwnEditorId_doesNotEchoToPrefixSub() throws IOException {
+        WebSocketSession ws = wsSession("ws-1");
+        registry.subscribePrefix(ws, contextFor("ed-self", "alice", "Alice"), "calendars/q3/");
+        org.mockito.Mockito.reset(sender);
+
+        // The very same connection just wrote the doc — Brain knows from
+        // the X-Editor-Id header carried into DocumentLiveChangedEvent.
+        broadcaster.onLocalChanged(new DocumentLiveChangedEvent(
+                "acme", "_user_alice", "calendars/q3/lane-design/work.yaml",
+                DocumentLiveChangedEvent.Kind.UPSERTED,
+                "ed-self", "alice", "Alice"));
+
+        verify(sender, never()).sendOnChannel(eq(ws), eq("documents"), any());
+    }
+
+    @Test
+    void localEvent_pathSubAndPrefixSub_onSameWs_sendsExactlyOnce() throws IOException {
+        WebSocketSession ws = wsSession("ws-1");
+        ConnectionContext ctx = contextFor("ed-1", "alice", "Alice");
+        // Same connection holds BOTH a path-sub on the manifest AND a
+        // prefix-sub on the folder above it. Dedupe must prevent the
+        // double-push.
+        registry.subscribe(ws, ctx, "calendars/q3/_app.yaml");
+        registry.subscribePrefix(ws, ctx, "calendars/q3/");
+        org.mockito.Mockito.reset(sender);
+
+        broadcaster.onLocalChanged(new DocumentLiveChangedEvent(
+                "acme", "_user_alice", "calendars/q3/_app.yaml",
+                DocumentLiveChangedEvent.Kind.UPSERTED,
+                "ed-other", "bob", "Bob"));
+
+        ArgumentCaptor<WebSocketEnvelope> cap = ArgumentCaptor.forClass(WebSocketEnvelope.class);
+        verify(sender, org.mockito.Mockito.atLeastOnce())
+                .sendOnChannel(eq(ws), eq("documents"), cap.capture());
+        long changedFrames = cap.getAllValues().stream()
+                .filter(e -> MessageType.DOCUMENT_CHANGED.equals(e.getType()))
+                .count();
+        assertThat(changedFrames).isEqualTo(1);
+    }
+
     // ── helpers ────────────────────────────────────────────────
 
     private static WebSocketSession wsSession(String id) {

@@ -60,6 +60,25 @@ export declare function subscribeDocument(path: string): Promise<void>;
  */
 export declare function unsubscribeDocument(path: string): Promise<void>;
 /**
+ * Subscribe to every {@code documents.changed} frame whose path starts
+ * with {@code prefix}. The prefix MUST end with {@code /} so it never
+ * matches a path that merely happens to share a name-stem. Adds the
+ * prefix to the desired-set so Reconnect-Resubscribe replays it after a
+ * socket-swap.
+ *
+ * <p>Unlike {@link subscribeDocument}, prefix subscriptions don't add
+ * the connection to the presence-roster of any document — they're silent
+ * watchers used by folder-bound apps (Calendar, Kanban, Slideshow) to
+ * react to changes anywhere under the app folder without enumerating
+ * individual paths.
+ */
+export declare function subscribeDocumentPrefix(prefix: string): Promise<void>;
+/**
+ * Drop a prefix subscription. Removes from desired-set so it stays gone
+ * after Reconnect-Resubscribe.
+ */
+export declare function unsubscribeDocumentPrefix(prefix: string): Promise<void>;
+/**
  * Register a callback for the {@code documents.changed} frame of the
  * given path. Returns an unsubscribe function. Editors use this to learn
  * when "their" document was written or deleted on any pod in the
@@ -75,6 +94,17 @@ export declare function unsubscribeDocument(path: string): Promise<void>;
  * badge after a silent merge).
  */
 export declare function onDocumentChanged(path: string, handler: DocumentChangedHandler): () => void;
+/**
+ * Register a callback for every {@code documents.changed} frame whose
+ * path starts with {@code prefix}. Returns an unsubscribe function.
+ *
+ * <p>Folder-bound apps wire this in their {@code setup()} once they know
+ * their folder path, paired with the {@link subscribeDocumentPrefix}
+ * call. The handler receives the full notification including the
+ * changed {@code path}, so the app can re-fetch the specific sub-document
+ * (lane, column, slide, …) without enumerating them all upfront.
+ */
+export declare function onDocumentChangedPrefix(prefix: string, handler: DocumentChangedHandler): () => void;
 /**
  * Register a callback for the {@code documents.note-changed} frame —
  * fires when a sticky-note on the path is added / updated / deleted by

@@ -98,6 +98,18 @@ function blockToNode(b: Block): JSONContent {
       };
     case 'toc':
       return { type: 'vanceToc' };
+    case 'columns':
+      return {
+        type: 'vanceColumns',
+        content: b.columns.map((col) => ({
+          type: 'vanceColumn',
+          attrs: { width: col.width },
+          content:
+            col.blocks.length > 0
+              ? blocksToContent(col.blocks)
+              : [{ type: 'paragraph' }],
+        })),
+      };
     case 'unknown-fence':
       return { type: 'vanceUnknownFence', attrs: { info: b.info, body: b.body } };
   }
@@ -208,6 +220,16 @@ function nodeToBlock(node: JSONContent): Block[] {
       ];
     case 'vanceToc':
       return [{ kind: 'toc' }];
+    case 'vanceColumns': {
+      const cols = (node.content ?? []).map((colNode) => ({
+        blocks: contentToBlocks(colNode.content ?? []),
+        width:
+          typeof colNode.attrs?.width === 'number'
+            ? (colNode.attrs.width as number)
+            : null,
+      }));
+      return [{ kind: 'columns', columns: cols }];
+    }
     case 'vanceUnknownFence':
       return [
         {

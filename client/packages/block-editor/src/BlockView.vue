@@ -96,6 +96,14 @@ const tocEntries = computed<TocEntry[]>(() => {
   return out;
 });
 
+function columnsTemplate(cols: Array<{ width: number | null }>): string {
+  // Translate widths to CSS-grid fractional units. null falls back to 1fr;
+  // explicit fractions are passed straight through (so 0.4 + 0.6 becomes
+  // "0.4fr 0.6fr" with the right proportion). Mixed null/number columns
+  // share whatever's left equally — common case after a single resize.
+  return cols.map((c) => (c.width != null ? `${c.width}fr` : '1fr')).join(' ');
+}
+
 function scrollToHeading(slug: string) {
   const el = document.getElementById(slug);
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -265,6 +273,20 @@ const items = computed(() => props.blocks ?? []);
         <code class="vance-dataview-stub__source">{{ block.source }}</code>
         <div class="vance-dataview-stub__hint">
           Dataview rendering not yet implemented.
+        </div>
+      </div>
+
+      <div
+        v-else-if="block.kind === 'columns'"
+        class="vance-columns"
+        :style="`grid-template-columns: ${columnsTemplate(block.columns)};`"
+      >
+        <div
+          v-for="(col, k) in block.columns"
+          :key="k"
+          class="vance-column"
+        >
+          <BlockView :blocks="col.blocks" />
         </div>
       </div>
 
@@ -443,6 +465,28 @@ const items = computed(() => props.blocks ?? []);
 .vance-dataview-stub__hint {
   font-size: 0.85em;
   color: var(--color-text-muted, #6b7280);
+}
+
+/* BlockView-only column layout — namespaced under `.block-view` so it
+   doesn't override the editor-side NodeView CSS for the same class
+   names. The editor uses display:block on the wrapper and an inner
+   `.vance-columns__content` grid; this read-only path inlines its grid
+   on the outer container instead, since there's no resize-handle to
+   accommodate. */
+.block-view .vance-columns {
+  display: grid;
+  gap: 1rem;
+  margin: 0.75em 0;
+}
+.block-view .vance-column {
+  min-width: 0;
+}
+.block-view .vance-column > .block-view {
+  padding: 0;
+  margin: 0;
+}
+.block-view .vance-column > .block-view :first-child {
+  margin-top: 0;
 }
 
 .vance-unknown-fence {

@@ -27,6 +27,8 @@ import {
   VanceLink,
   VanceDataview,
   VanceToc,
+  VanceColumns,
+  VanceColumn,
   VanceUnknownFence,
 } from './extensions';
 import { SlashCommands } from './SlashCommands';
@@ -176,6 +178,13 @@ const editor = useEditor({
     GlobalDragHandle.configure({
       dragHandleWidth: 20,
       scrollTreshold: 100,
+      // Register vanceColumns so the WHOLE columns block can be picked
+      // up by the drag handle (e.g. when hovering empty space inside
+      // a column). Individual paragraphs inside columns are matched
+      // by the lib's built-in `p:not(:first-child)` selector — for
+      // that to work we render a sentinel div as first child of every
+      // vanceColumn (see extensions/VanceColumns.ts).
+      customNodes: ['vanceColumns'],
     }),
     SlashCommands,
     VanceCallout,
@@ -183,6 +192,8 @@ const editor = useEditor({
     VanceLink,
     VanceDataview,
     VanceToc,
+    VanceColumns,
+    VanceColumn,
     VanceUnknownFence,
   ],
   content: initial.value.content,
@@ -552,6 +563,10 @@ defineExpose({ save, flush, insertImage });
 .ProseMirror.dragging .ProseMirror-selectednode {
   opacity: 0.35;
 }
+
+/* Multi-column layout — the NodeView in @vance/block-editor handles
+   the actual grid-template-columns + resize handles. CSS here only
+   covers the dragging-target visuals. */
 
 .vance-callout {
   border-left: 3px solid var(--vance-callout-color, #3b82f6);

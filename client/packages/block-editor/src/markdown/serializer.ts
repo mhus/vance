@@ -93,6 +93,31 @@ function renderBlock(b: Block): string {
     }
     case 'toc':
       return '```vance-toc\n```\n';
+    case 'columns': {
+      // 4-backtick outer fence so each column body can still contain
+      // a regular triple-backtick code block without closing the
+      // container prematurely. Columns are separated by a sentinel
+      // line that optionally carries the column's width fraction
+      // (e.g. `=== column 0.4 ===`). The first column's width is
+      // implicit (no leading separator).
+      let out = '````vance-columns\n';
+      b.columns.forEach((col, i) => {
+        if (i > 0) {
+          // Separator is an HTML-comment so it round-trips cleanly
+          // and won't collide with anything a user could type
+          // accidentally inside a column body. Leading + trailing
+          // newlines anchor it to its own physical line so the regex
+          // can't be tricked by inline text.
+          out += col.width != null
+            ? `\n<!--vance:column ${col.width}-->\n`
+            : '\n<!--vance:column-->\n';
+        }
+        out += serialize(col.blocks);
+      });
+      if (!out.endsWith('\n')) out += '\n';
+      out += '````\n';
+      return out;
+    }
     case 'unknown-fence':
       return '```' + b.info + '\n' + b.body + (b.body.endsWith('\n') ? '' : '\n') + '```\n';
   }

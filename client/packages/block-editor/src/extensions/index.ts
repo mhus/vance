@@ -3,4 +3,5 @@ export { VanceToggle } from './VanceToggle';
 export { VanceLink } from './VanceLink';
 export { VanceDataview } from './VanceDataview';
 export { VanceToc } from './VanceToc';
+export { VanceColumns, VanceColumn } from './VanceColumns';
 export { VanceUnknownFence } from './VanceUnknownFence';

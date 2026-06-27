@@ -170,6 +170,45 @@ const ITEMS: SlashItemDef[] = [
     run: ({ editor, range }) =>
       editor.chain().focus().deleteRange(range).insertContent({ type: 'vanceToc' }).run(),
   },
+  {
+    id: 'columns2',
+    title: '2 columns',
+    hint: 'Side-by-side layout',
+    run: ({ editor, range }) => {
+      editor
+        .chain()
+        .focus()
+        .deleteRange(range)
+        .insertContent({
+          type: 'vanceColumns',
+          content: [
+            { type: 'vanceColumn', content: [{ type: 'paragraph' }] },
+            { type: 'vanceColumn', content: [{ type: 'paragraph' }] },
+          ],
+        })
+        .run();
+    },
+  },
+  {
+    id: 'columns3',
+    title: '3 columns',
+    hint: 'Three-pane layout',
+    run: ({ editor, range }) => {
+      editor
+        .chain()
+        .focus()
+        .deleteRange(range)
+        .insertContent({
+          type: 'vanceColumns',
+          content: [
+            { type: 'vanceColumn', content: [{ type: 'paragraph' }] },
+            { type: 'vanceColumn', content: [{ type: 'paragraph' }] },
+            { type: 'vanceColumn', content: [{ type: 'paragraph' }] },
+          ],
+        })
+        .run();
+    },
+  },
 ];
 
 export const SlashCommands = Extension.create({

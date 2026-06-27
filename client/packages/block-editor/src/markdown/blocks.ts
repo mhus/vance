@@ -18,6 +18,17 @@ export type Block =
   | { kind: 'dataview'; source: string }
   | { kind: 'link-card'; href: string; title: string | null; description: string | null }
   | { kind: 'toc' }
+  | {
+      kind: 'columns';
+      /**
+       * One slot per column. `blocks` is the column's content; `width`
+       * is the relative fraction (0..1) of the container row. `null`
+       * means "equal share of the remaining space" — when all widths
+       * are null the columns are equally wide. Widths are not required
+       * to sum to 1; the renderer normalises by total.
+       */
+      columns: Array<{ blocks: Block[]; width: number | null }>;
+    }
   | { kind: 'unknown-fence'; info: string; body: string };
 
 export interface TodoItem {

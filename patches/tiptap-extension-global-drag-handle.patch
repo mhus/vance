@@ -1,0 +1,26 @@
+diff --git a/dist/index.cjs b/dist/index.cjs
+index 8e0aa34c382f9a40c208742ff2c565bc2fd70bfd..fcb908f78ca42943d3f0983585a25069b510f712 100644
+--- a/dist/index.cjs
++++ b/dist/index.cjs
+@@ -71,7 +71,7 @@ function absoluteRect(node) {
+ function nodeDOMAtCoords(coords, options) {
+     const selectors = [
+         'li',
+-        'p:not(:first-child)',
++        'p',
+         'pre',
+         'blockquote',
+         'h1',
+diff --git a/dist/index.js b/dist/index.js
+index 1a245d89e5ed9534f13c6a6cd999b13b1e0c6485..97011aa078be760191face9cfa5715a4d62d7fe9 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -47,7 +47,7 @@ function absoluteRect(node) {
+ function nodeDOMAtCoords(coords, options) {
+     const selectors = [
+         'li',
+-        'p:not(:first-child)',
++        'p',
+         'pre',
+         'blockquote',
+         'h1',

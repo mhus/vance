@@ -10,7 +10,9 @@ const BULLET = /^\s*[-*+]\s+(.+?)\s*$/;
 const NUMBERED = /^\s*\d+\.\s+(.+?)\s*$/;
 const TODO = /^\s*[-*+]\s+\[([ xX])\]\s+(.+?)\s*$/;
 const QUOTE = /^>\s?(.*)$/;
-const FENCE_OPEN = /^```(\S*)\s*$/;
+// Fence-open accepts 3+ backticks so containers (vance-columns) can use
+// 4 backticks and still embed a regular ```code``` block inside.
+const FENCE_OPEN = /^(`{3,})(\S*)\s*$/;
 const DIVIDER = /^---+\s*$/;
 const IMAGE_ONLY = /^!\[(.*?)\]\((.+?)\)\s*$/;
 const TABLE_DIVIDER = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/;
@@ -130,8 +132,9 @@ export function parse(markdown: string): Block[] {
     // Fenced block.
     const mFence = FENCE_OPEN.exec(line);
     if (mFence) {
-      const info = mFence[1];
-      const end = findFenceClose(lines, i + 1);
+      const marker = mFence[1];
+      const info = mFence[2];
+      const end = findFenceClose(lines, i + 1, marker);
       const body = lines.slice(i + 1, end).join('\n');
       blocks.push(parseFence(info, body));
       i = end + 1;
@@ -244,9 +247,12 @@ export function parse(markdown: string): Block[] {
   return blocks;
 }
 
-function findFenceClose(lines: string[], from: number): number {
+function findFenceClose(lines: string[], from: number, marker: string): number {
+  // CommonMark-style: closing fence must be a run of the same character
+  // with at least the same length as the opener.
+  const re = new RegExp(`^${marker[0]}{${marker.length},}\\s*$`);
   for (let j = from; j < lines.length; j++) {
-    if (lines[j].trim() === '```') return j;
+    if (re.test(lines[j])) return j;
   }
   return lines.length;
 }
@@ -302,6 +308,29 @@ function parseFence(info: string, body: string): Block {
       };
     case 'vance-toc':
       return { kind: 'toc' };
+    case 'vance-columns': {
+      // Column separator uses an HTML-comment marker so it survives
+      // Markdown rendering elsewhere and is extremely unlikely to be
+      // typed by accident inside a column. Optional width follows the
+      // word: `<!--vance:column 0.4-->`.
+      const widthSep = /\n<!--vance:column(?:\s+([\d.]+))?-->\n/g;
+      const parts: string[] = [];
+      const widths: (number | null)[] = [null];
+      let last = 0;
+      let m: RegExpExecArray | null;
+      while ((m = widthSep.exec(body)) !== null) {
+        parts.push(body.substring(last, m.index));
+        const w = m[1] ? Number(m[1]) : NaN;
+        widths.push(Number.isFinite(w) && w > 0 ? w : null);
+        last = m.index + m[0].length;
+      }
+      parts.push(body.substring(last));
+      const cols = parts.map((p, i) => ({
+        blocks: parse(p.trim()),
+        width: widths[i] ?? null,
+      }));
+      return { kind: 'columns', columns: cols };
+    }
     default:
       return { kind: 'unknown-fence', info, body };
   }

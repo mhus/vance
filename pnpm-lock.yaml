@@ -8,6 +8,11 @@ overrides:
   yallist: 4.0.0
   '@module-federation/vite': 1.4.0
 
+patchedDependencies:
+  tiptap-extension-global-drag-handle:
+    hash: 598e5e07a80f24601b5ece5c001dd1603b6e7ce76fafa469d4cb46805d89097a
+    path: patches/tiptap-extension-global-drag-handle.patch
+
 importers:
 
   .:
@@ -80,7 +85,7 @@ importers:
         version: 6.3.7
       tiptap-extension-global-drag-handle:
         specifier: ^0.1.16
-        version: 0.1.18
+        version: 0.1.18(patch_hash=598e5e07a80f24601b5ece5c001dd1603b6e7ce76fafa469d4cb46805d89097a)
     devDependencies:
       '@types/js-yaml':
         specifier: ^4.0.9
@@ -13120,7 +13125,7 @@ snapshots:
     dependencies:
       '@popperjs/core': 2.11.8
 
-  tiptap-extension-global-drag-handle@0.1.18: {}
+  tiptap-extension-global-drag-handle@0.1.18(patch_hash=598e5e07a80f24601b5ece5c001dd1603b6e7ce76fafa469d4cb46805d89097a): {}
 
   tmp@0.2.7: {}
 

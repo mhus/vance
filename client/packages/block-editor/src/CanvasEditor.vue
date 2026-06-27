@@ -32,17 +32,28 @@ import SlashMenu from './SlashMenu.vue';
  * registry shell) which watches the document and re-invokes us with a
  * fresh body when the remote changes.
  */
-const props = defineProps<{
-  document: {
-    id: string;
-    path: string;
-    projectId: string;
-    title?: string | null;
-    inlineText?: string | null;
-    mimeType?: string | null;
-  };
-  source?: string | null;
-}>();
+const props = withDefaults(
+  defineProps<{
+    document: {
+      id: string;
+      path: string;
+      projectId: string;
+      title?: string | null;
+      inlineText?: string | null;
+      mimeType?: string | null;
+    };
+    source?: string | null;
+    /**
+     * Auto-save debounce in milliseconds. {@code 0} disables auto-save
+     * (the host can still trigger {@link save} explicitly via
+     * {@link defineExpose}). Default 800ms — fast enough that the user
+     * sees "saved" within a second of stopping to type, slow enough to
+     * batch typed bursts into one write.
+     */
+    autoSaveMs?: number;
+  }>(),
+  { autoSaveMs: 800 },
+);
 
 const emit = defineEmits<{
   (e: 'save', body: string): void;
@@ -51,6 +62,23 @@ const emit = defineEmits<{
 
 const dirty = ref(false);
 const slashOpen = ref(false);
+let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleAutoSave() {
+  if (props.autoSaveMs <= 0) return;
+  if (autoSaveTimer != null) clearTimeout(autoSaveTimer);
+  autoSaveTimer = setTimeout(() => {
+    autoSaveTimer = null;
+    save();
+  }, props.autoSaveMs);
+}
+
+function cancelAutoSave() {
+  if (autoSaveTimer != null) {
+    clearTimeout(autoSaveTimer);
+    autoSaveTimer = null;
+  }
+}
 
 const initial = computed(() => {
   const md = props.source ?? props.document.inlineText ?? '';
@@ -91,6 +119,7 @@ const editor = useEditor({
       dirty.value = true;
       emit('dirty', true);
     }
+    scheduleAutoSave();
   },
 });
 
@@ -98,6 +127,10 @@ watch(
   () => props.source,
   (next, prev) => {
     if (next === prev || !editor.value) return;
+    // External source change (e.g. live-WS reload OR page switch in
+    // the workspace). Cancel any pending auto-save so we don't write
+    // stale content back over the fresh remote.
+    cancelAutoSave();
     const parsed = parseDocument(next ?? '');
     editor.value.commands.setContent(
       { type: 'doc', content: blocksToContent(parsed.blocks) },
@@ -110,6 +143,7 @@ watch(
 
 function save() {
   if (!editor.value) return;
+  cancelAutoSave();
   const json = editor.value.getJSON();
   const blocks = contentToBlocks(json.content as never[]);
   const fm = parseDocument(props.source ?? props.document.inlineText ?? '');
@@ -121,6 +155,18 @@ function save() {
   emit('save', md);
   dirty.value = false;
   emit('dirty', false);
+}
+
+/**
+ * Force any pending auto-save to flush immediately. Used by the host
+ * before switching to another page so the in-flight edit doesn't get
+ * lost. Returns true if a flush was triggered, false if nothing was
+ * pending.
+ */
+function flush(): boolean {
+  if (autoSaveTimer == null && !dirty.value) return false;
+  save();
+  return true;
 }
 
 function insertBlock(kind: string): void {
@@ -195,10 +241,16 @@ function insertBlock(kind: string): void {
 }
 
 onBeforeUnmount(() => {
+  // Flush any pending edits so an unmount doesn't lose the user's last
+  // keystrokes — the host then has the body for one final write.
+  if (autoSaveTimer != null) {
+    save();
+  }
+  cancelAutoSave();
   editor.value?.destroy();
 });
 
-defineExpose({ save });
+defineExpose({ save, flush });
 </script>
 
 <template>

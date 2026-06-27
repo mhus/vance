@@ -68,7 +68,7 @@ public class KanbanBoardController {
 
     // ── Board view ────────────────────────────────────────────────
 
-    @GetMapping("/brain/{tenant}/kanban/board")
+    @GetMapping("/brain/{tenant}/addon/kanban/board")
     public KanbanBoardView getBoard(
             @PathVariable("tenant") String tenant,
             @RequestParam("projectId") String projectId,
@@ -83,7 +83,7 @@ public class KanbanBoardController {
 
     // ── Move ──────────────────────────────────────────────────────
 
-    @PostMapping("/brain/{tenant}/kanban/move")
+    @PostMapping("/brain/{tenant}/addon/kanban/move")
     public KanbanMoveResponse move(
             @PathVariable("tenant") String tenant,
             @RequestParam("projectId") String projectId,
@@ -109,7 +109,7 @@ public class KanbanBoardController {
 
     // ── Card create ───────────────────────────────────────────────
 
-    @PostMapping("/brain/{tenant}/kanban/cards")
+    @PostMapping("/brain/{tenant}/addon/kanban/cards")
     public KanbanCardView createCard(
             @PathVariable("tenant") String tenant,
             @RequestParam("projectId") String projectId,
@@ -154,7 +154,7 @@ public class KanbanBoardController {
 
     // ── Card update ───────────────────────────────────────────────
 
-    @PatchMapping("/brain/{tenant}/kanban/cards")
+    @PatchMapping("/brain/{tenant}/addon/kanban/cards")
     public KanbanCardView updateCard(
             @PathVariable("tenant") String tenant,
             @RequestParam("projectId") String projectId,
@@ -200,7 +200,7 @@ public class KanbanBoardController {
 
     // ── Card delete ───────────────────────────────────────────────
 
-    @DeleteMapping("/brain/{tenant}/kanban/cards")
+    @DeleteMapping("/brain/{tenant}/addon/kanban/cards")
     public void deleteCard(
             @PathVariable("tenant") String tenant,
             @RequestParam("projectId") String projectId,
@@ -225,7 +225,7 @@ public class KanbanBoardController {
 
     // ── Rebuild ───────────────────────────────────────────────────
 
-    @PostMapping("/brain/{tenant}/kanban/rebuild")
+    @PostMapping("/brain/{tenant}/addon/kanban/rebuild")
     public KanbanRebuildResponse rebuild(
             @PathVariable("tenant") String tenant,
             @RequestParam("projectId") String projectId,

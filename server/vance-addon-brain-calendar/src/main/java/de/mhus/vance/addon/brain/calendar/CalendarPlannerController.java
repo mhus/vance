@@ -58,7 +58,7 @@ public class CalendarPlannerController {
 
     // ── Planner view ──────────────────────────────────────────────
 
-    @GetMapping("/brain/{tenant}/calendar/planner")
+    @GetMapping("/brain/{tenant}/addon/calendar/planner")
     public CalendarPlannerView getPlanner(
             @PathVariable("tenant") String tenant,
             @RequestParam("projectId") String projectId,
@@ -83,7 +83,7 @@ public class CalendarPlannerController {
 
     // ── Event create ──────────────────────────────────────────────
 
-    @PostMapping("/brain/{tenant}/calendar/events")
+    @PostMapping("/brain/{tenant}/addon/calendar/events")
     public CalendarEventView createEvent(
             @PathVariable("tenant") String tenant,
             @RequestParam("projectId") String projectId,
@@ -124,7 +124,7 @@ public class CalendarPlannerController {
 
     // ── Event update ──────────────────────────────────────────────
 
-    @PatchMapping("/brain/{tenant}/calendar/events")
+    @PatchMapping("/brain/{tenant}/addon/calendar/events")
     public CalendarEventView updateEvent(
             @PathVariable("tenant") String tenant,
             @RequestParam("projectId") String projectId,
@@ -165,7 +165,7 @@ public class CalendarPlannerController {
 
     // ── Event delete ──────────────────────────────────────────────
 
-    @DeleteMapping("/brain/{tenant}/calendar/events")
+    @DeleteMapping("/brain/{tenant}/addon/calendar/events")
     public void deleteEvent(
             @PathVariable("tenant") String tenant,
             @RequestParam("projectId") String projectId,
@@ -185,7 +185,7 @@ public class CalendarPlannerController {
 
     // ── Rebuild ───────────────────────────────────────────────────
 
-    @PostMapping("/brain/{tenant}/calendar/rebuild")
+    @PostMapping("/brain/{tenant}/addon/calendar/rebuild")
     public CalendarRebuildResponse rebuild(
             @PathVariable("tenant") String tenant,
             @RequestParam("projectId") String projectId,

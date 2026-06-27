@@ -1,6 +1,8 @@
 import { brainFetch } from '@vance/shared';
 import type { WorkspaceView } from './generated/workspace/WorkspaceView';
 import type { WorkspaceRebuildResponse } from './generated/workspace/WorkspaceRebuildResponse';
+import type { WorkspaceCreatePageRequest } from './generated/workspace/WorkspaceCreatePageRequest';
+import type { WorkspacePageView } from './generated/workspace/WorkspacePageView';
 
 function qs(params: Record<string, string>): string {
   const u = new URLSearchParams();
@@ -12,7 +14,7 @@ export async function scanWorkspace(
   projectId: string,
   folder: string,
 ): Promise<WorkspaceView> {
-  return brainFetch<WorkspaceView>('GET', `workspace/scan?${qs({ projectId, folder })}`);
+  return brainFetch<WorkspaceView>('GET', `addon/workspace/scan?${qs({ projectId, folder })}`);
 }
 
 export async function rebuildWorkspace(
@@ -21,6 +23,18 @@ export async function rebuildWorkspace(
 ): Promise<WorkspaceRebuildResponse> {
   return brainFetch<WorkspaceRebuildResponse>(
     'POST',
-    `workspace/rebuild?${qs({ projectId, folder })}`,
+    `addon/workspace/rebuild?${qs({ projectId, folder })}`,
+  );
+}
+
+export async function createWorkspacePage(
+  projectId: string,
+  folder: string,
+  request: WorkspaceCreatePageRequest,
+): Promise<WorkspacePageView> {
+  return brainFetch<WorkspacePageView>(
+    'POST',
+    `addon/workspace/page?${qs({ projectId, folder })}`,
+    { body: request },
   );
 }

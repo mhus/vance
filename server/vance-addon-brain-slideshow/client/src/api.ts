@@ -14,7 +14,7 @@ export async function getSlideshow(
 ): Promise<SlideshowView> {
   return brainFetch<SlideshowView>(
     'GET',
-    `slideshow/show?${qs({ projectId, folder })}`,
+    `addon/slideshow/show?${qs({ projectId, folder })}`,
   );
 }
 
@@ -24,6 +24,6 @@ export async function rebuildSlideshow(
 ): Promise<SlideshowRebuildResponse> {
   return brainFetch<SlideshowRebuildResponse>(
     'POST',
-    `slideshow/rebuild?${qs({ projectId, folder })}`,
+    `addon/slideshow/rebuild?${qs({ projectId, folder })}`,
   );
 }

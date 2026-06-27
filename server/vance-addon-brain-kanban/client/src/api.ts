@@ -19,7 +19,7 @@ export async function getKanbanBoard(
 ): Promise<KanbanBoardView> {
   return brainFetch<KanbanBoardView>(
     'GET',
-    `kanban/board?${qs({ projectId, folder })}`,
+    `addon/kanban/board?${qs({ projectId, folder })}`,
   );
 }
 
@@ -30,7 +30,7 @@ export async function moveKanbanCard(
 ): Promise<KanbanMoveResponse> {
   return brainFetch<KanbanMoveResponse>(
     'POST',
-    `kanban/move?${qs({ projectId, folder })}`,
+    `addon/kanban/move?${qs({ projectId, folder })}`,
     { body: request },
   );
 }
@@ -42,7 +42,7 @@ export async function createKanbanCard(
 ): Promise<KanbanCardView> {
   return brainFetch<KanbanCardView>(
     'POST',
-    `kanban/cards?${qs({ projectId, folder })}`,
+    `addon/kanban/cards?${qs({ projectId, folder })}`,
     { body: request },
   );
 }
@@ -55,7 +55,7 @@ export async function updateKanbanCard(
 ): Promise<KanbanCardView> {
   return brainFetch<KanbanCardView>(
     'PATCH',
-    `kanban/cards?${qs({ projectId, folder, path })}`,
+    `addon/kanban/cards?${qs({ projectId, folder, path })}`,
     { body: request },
   );
 }
@@ -67,7 +67,7 @@ export async function deleteKanbanCard(
 ): Promise<void> {
   return brainFetch<void>(
     'DELETE',
-    `kanban/cards?${qs({ projectId, folder, path })}`,
+    `addon/kanban/cards?${qs({ projectId, folder, path })}`,
   );
 }
 
@@ -77,6 +77,6 @@ export async function rebuildKanbanBoard(
 ): Promise<KanbanRebuildResponse> {
   return brainFetch<KanbanRebuildResponse>(
     'POST',
-    `kanban/rebuild?${qs({ projectId, folder })}`,
+    `addon/kanban/rebuild?${qs({ projectId, folder })}`,
   );
 }

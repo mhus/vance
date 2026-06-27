@@ -36,7 +36,7 @@ public class SlideshowController {
     private final DocumentLinkBuilder linkBuilder;
     private final RequestAuthority authority;
 
-    @GetMapping("/brain/{tenant}/slideshow/show")
+    @GetMapping("/brain/{tenant}/addon/slideshow/show")
     public SlideshowView getShow(
             @PathVariable("tenant") String tenant,
             @RequestParam("projectId") String projectId,
@@ -72,7 +72,7 @@ public class SlideshowController {
                 .build();
     }
 
-    @PostMapping("/brain/{tenant}/slideshow/rebuild")
+    @PostMapping("/brain/{tenant}/addon/slideshow/rebuild")
     public SlideshowRebuildResponse rebuild(
             @PathVariable("tenant") String tenant,
             @RequestParam("projectId") String projectId,

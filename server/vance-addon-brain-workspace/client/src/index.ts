@@ -6,7 +6,7 @@
 
 export { default as CanvasKind } from './CanvasKind.vue';
 export { default as WorkspaceAppKind } from './WorkspaceAppKind.vue';
-export { scanWorkspace, rebuildWorkspace } from './api';
+export { scanWorkspace, rebuildWorkspace, createWorkspacePage } from './api';
 export type { WorkspaceView } from './generated/workspace/WorkspaceView';
 export type { WorkspacePageView } from './generated/workspace/WorkspacePageView';
 export type { WorkspaceRebuildResponse } from './generated/workspace/WorkspaceRebuildResponse';

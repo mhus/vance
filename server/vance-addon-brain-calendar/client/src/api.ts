@@ -17,7 +17,7 @@ export async function getCalendarPlanner(
 ): Promise<CalendarPlannerView> {
   return brainFetch<CalendarPlannerView>(
     'GET',
-    `calendar/planner?${qs({ projectId, folder })}`,
+    `addon/calendar/planner?${qs({ projectId, folder })}`,
   );
 }
 
@@ -28,7 +28,7 @@ export async function createCalendarEvent(
 ): Promise<CalendarEventView> {
   return brainFetch<CalendarEventView>(
     'POST',
-    `calendar/events?${qs({ projectId, folder })}`,
+    `addon/calendar/events?${qs({ projectId, folder })}`,
     { body: request },
   );
 }
@@ -41,7 +41,7 @@ export async function updateCalendarEvent(
 ): Promise<CalendarEventView> {
   return brainFetch<CalendarEventView>(
     'PATCH',
-    `calendar/events?${qs({ projectId, folder, id })}`,
+    `addon/calendar/events?${qs({ projectId, folder, id })}`,
     { body: request },
   );
 }
@@ -53,7 +53,7 @@ export async function deleteCalendarEvent(
 ): Promise<void> {
   return brainFetch<void>(
     'DELETE',
-    `calendar/events?${qs({ projectId, folder, id })}`,
+    `addon/calendar/events?${qs({ projectId, folder, id })}`,
   );
 }
 
@@ -63,6 +63,6 @@ export async function rebuildCalendarPlanner(
 ): Promise<CalendarRebuildResponse> {
   return brainFetch<CalendarRebuildResponse>(
     'POST',
-    `calendar/rebuild?${qs({ projectId, folder })}`,
+    `addon/calendar/rebuild?${qs({ projectId, folder })}`,
   );
 }

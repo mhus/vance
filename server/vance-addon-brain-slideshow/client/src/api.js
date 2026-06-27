@@ -6,9 +6,9 @@ function qs(params) {
     return u.toString();
 }
 export async function getSlideshow(projectId, folder) {
-    return brainFetch('GET', `slideshow/show?${qs({ projectId, folder })}`);
+    return brainFetch('GET', `addon/slideshow/show?${qs({ projectId, folder })}`);
 }
 export async function rebuildSlideshow(projectId, folder) {
-    return brainFetch('POST', `slideshow/rebuild?${qs({ projectId, folder })}`);
+    return brainFetch('POST', `addon/slideshow/rebuild?${qs({ projectId, folder })}`);
 }
 //# sourceMappingURL=api.js.map

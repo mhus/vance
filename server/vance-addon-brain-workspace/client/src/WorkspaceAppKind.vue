@@ -58,6 +58,26 @@ const lastSaveError = ref<string | null>(null);
 
 const editorRef = ref<{ save: () => void; flush: () => boolean } | null>(null);
 
+// Self-write tracker — the last body we PUT for the active page. The
+// server's editorId-based filter should already prevent the
+// documents.changed broadcast from echoing back to us, but in practice
+// (server may normalise whitespace, ID header may be missing on a stale
+// session, frame ordering may interleave) we can't rely on that alone.
+const lastSavedBodies = ref<Map<string, string>>(new Map());
+
+// Quiet-window after a save during which we suppress remote-content
+// reloads for the active page. Without this, the WS echo of our own
+// write rebuilds the ProseMirror doc → cursor jumps. 3 s is long
+// enough to cover RTT + broadcast lag, short enough that genuine
+// cross-user edits land quickly.
+const SELF_WRITE_QUIET_MS = 3000;
+const lastSelfWriteAt = ref<Map<string, number>>(new Map());
+
+function withinSelfWriteWindow(id: string): boolean {
+  const t = lastSelfWriteAt.value.get(id);
+  return t != null && Date.now() - t < SELF_WRITE_QUIET_MS;
+}
+
 const creating = ref(false);
 const newPageOpen = ref(false);
 const newPageTitle = ref('');
@@ -171,7 +191,7 @@ function findPageById(id: string): WorkspacePageView | null {
   return v.pages.find((p) => p.id === id) ?? null;
 }
 
-async function loadActivePageContent() {
+async function loadActivePageContent(options: { force?: boolean } = {}) {
   if (!activePageId.value) {
     activeMarkdown.value = null;
     return;
@@ -179,9 +199,18 @@ async function loadActivePageContent() {
   pageLoading.value = true;
   pageError.value = null;
   try {
-    activeMarkdown.value = await brainFetchText(
-      `documents/${encodeURIComponent(activePageId.value)}/content`,
+    const id = activePageId.value;
+    if (!options.force && withinSelfWriteWindow(id)) {
+      return;
+    }
+    const fresh = await brainFetchText(
+      `documents/${encodeURIComponent(id)}/content`,
     );
+    const ours = lastSavedBodies.value.get(id);
+    if (!options.force && ours != null && fresh === ours) {
+      return;
+    }
+    activeMarkdown.value = fresh;
   } catch (e) {
     pageError.value = e instanceof Error ? e.message : 'Could not load page.';
     activeMarkdown.value = null;
@@ -194,6 +223,8 @@ async function onEditorSave(body: string) {
   if (!activePageId.value) return;
   const id = activePageId.value;
   saveStatus.value = 'saving';
+  lastSavedBodies.value.set(id, body);
+  lastSelfWriteAt.value.set(id, Date.now());
   try {
     await brainSendRaw<unknown>(
       'PUT',
@@ -201,16 +232,17 @@ async function onEditorSave(body: string) {
       body,
       'text/markdown',
     );
-    // Race-protection: if the user switched pages while the PUT was
-    // in flight, the saved status only applies to the page we were
-    // saving — for the new active page we leave whatever status is
-    // already there.
+    // Refresh the timestamp on successful save — the WS echo arrives
+    // *after* the PUT response, not before, so the suppression window
+    // is measured from response-time.
+    lastSelfWriteAt.value.set(id, Date.now());
+    // Only update status. DO NOT touch activeMarkdown — the editor
+    // already holds the right content; rewriting it would trip the
+    // `watch(() => props.source, …)` and rebuild the ProseMirror doc,
+    // dropping the cursor.
     if (id === activePageId.value) {
       saveStatus.value = 'saved';
       lastSaveError.value = null;
-      // Sync our local source so the next remote-change-watch doesn't
-      // bounce the editor content unnecessarily.
-      activeMarkdown.value = body;
     }
   } catch (e) {
     if (id === activePageId.value) {
@@ -223,6 +255,13 @@ async function onEditorSave(body: string) {
 function onEditorDirty(dirty: boolean) {
   if (dirty) {
     saveStatus.value = 'dirty';
+    // Start (or refresh) the self-write quiet window the moment the
+    // user types — without this an auto-save round-trip is the only
+    // thing keeping the editor immune to WS echoes, but a WS push that
+    // arrives BEFORE the first save would still clobber the cursor.
+    if (activePageId.value) {
+      lastSelfWriteAt.value.set(activePageId.value, Date.now());
+    }
   }
 }
 
@@ -234,7 +273,10 @@ async function rebuild() {
     }
     await rebuildWorkspace(projectId.value, folder.value);
     await loadWorkspace();
-    await loadActivePageContent();
+    // Rebuild may have regenerated _index.md or another page the user
+    // is viewing — force the reload so the fresh server content lands
+    // even if it byte-matches our last write.
+    await loadActivePageContent({ force: true });
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Rebuild failed.';
   } finally {
@@ -261,10 +303,17 @@ useDocumentPrefixReaction({
   prefix: computed(() => `${folder.value}/`),
   debounceMs: 250,
   onRemoteChange: async (paths) => {
-    // Refresh tree on any change in the folder. Reload the active
-    // page's content only when that page itself was in the batch —
-    // otherwise the live-WS push (e.g. another user editing a different
-    // page in the same workspace) would clobber the current editor.
+    const activeId = activePageId.value;
+    if (activeId != null && withinSelfWriteWindow(activeId)) {
+      // Self-echo of our own write. Skip the tree reload too — even
+      // though setContent on the editor is guarded by the quiet
+      // window, re-running scanWorkspace replaces `view.value` and
+      // forces a parent re-render that interacts badly with the
+      // Tiptap editor lifecycle (focus / cursor get lost).
+      return;
+    }
+    // Refresh tree first; then reload the active page only if it was
+    // among the changed paths.
     await loadWorkspace();
     const v = view.value;
     if (!v || !activePageId.value) return;

@@ -1,11 +1,11 @@
 // Bridge between Block[] (markdown-shaped data model) and ProseMirror
-// JSON content. Inline-formatting (bold/italic/inline-code/inline-link)
-// is NOT parsed in v1 — the paragraph/heading text passes through as
-// plain text. The user sees raw `**bold**` and `[text](url)` markers in
-// the editor for now; richer inline support is a v1.1 concern.
+// JSON content. Inline-formatting (bold/italic/inline-code/inline-link/
+// strike) is parsed from Markdown syntax into ProseMirror marks and
+// re-serialized on save — see ./inline.ts for the inline codec.
 
 import type { JSONContent } from '@tiptap/core';
 import type { Block } from './blocks';
+import { parseInlineToProseMirror, serializeProseMirrorInline } from './inline';
 
 export function blocksToContent(blocks: Block[]): JSONContent[] {
   return blocks.map(blockToNode);
@@ -24,7 +24,7 @@ function blockToNode(b: Block): JSONContent {
       return {
         type: 'heading',
         attrs: { level: b.level },
-        content: textRun(b.text),
+        content: parseInlineToProseMirror(b.text),
       };
     case 'bullet-list':
       return {
@@ -104,23 +104,23 @@ function blockToNode(b: Block): JSONContent {
 function nodeToBlock(node: JSONContent): Block[] {
   switch (node.type) {
     case 'paragraph':
-      return [{ kind: 'paragraph', text: collectText(node) }];
+      return [{ kind: 'paragraph', text: collectInline(node) }];
     case 'heading': {
       const level = clampHeading(node.attrs?.level);
-      return [{ kind: 'heading', level, text: collectText(node) }];
+      return [{ kind: 'heading', level, text: collectInline(node) }];
     }
     case 'bulletList':
       return [
         {
           kind: 'bullet-list',
-          items: (node.content ?? []).map((li) => collectText(li)),
+          items: (node.content ?? []).map((li) => collectInline(li)),
         },
       ];
     case 'orderedList':
       return [
         {
           kind: 'numbered-list',
-          items: (node.content ?? []).map((li) => collectText(li)),
+          items: (node.content ?? []).map((li) => collectInline(li)),
         },
       ];
     case 'taskList':
@@ -129,12 +129,12 @@ function nodeToBlock(node: JSONContent): Block[] {
           kind: 'todo',
           items: (node.content ?? []).map((it) => ({
             checked: Boolean(it.attrs?.checked),
-            text: collectText(it),
+            text: collectInline(it),
           })),
         },
       ];
     case 'blockquote': {
-      const lines = (node.content ?? []).map((p) => collectText(p));
+      const lines = (node.content ?? []).map((p) => collectInline(p));
       return [{ kind: 'quote', text: lines.join('\n') }];
     }
     case 'codeBlock': {
@@ -163,7 +163,7 @@ function nodeToBlock(node: JSONContent): Block[] {
       const dataRows: string[][] = [];
       let first = true;
       for (const row of rows) {
-        const cells = (row.content ?? []).map((c) => collectText(c));
+        const cells = (row.content ?? []).map((c) => collectInline(c));
         const isHeader = (row.content ?? []).some((c) => c.type === 'tableHeader');
         if (first && isHeader) {
           headers = cells;
@@ -218,22 +218,54 @@ function nodeToBlock(node: JSONContent): Block[] {
 }
 
 function paraNode(text: string): JSONContent {
-  return { type: 'paragraph', content: textRun(text) };
-}
-
-function textRun(text: string): JSONContent[] {
-  return text.length === 0 ? [] : [{ type: 'text', text }];
+  return { type: 'paragraph', content: parseInlineToProseMirror(text) };
 }
 
 function listItemNode(text: string): JSONContent {
   return { type: 'listItem', content: [paraNode(text)] };
 }
 
+/**
+ * Plain-text collector — flat character content, no mark-awareness.
+ * Used for code blocks and table-cell-without-inline contexts.
+ */
 function collectText(node: JSONContent | undefined): string {
   if (!node) return '';
   if (node.type === 'text' && typeof node.text === 'string') return node.text;
   if (Array.isArray(node.content)) {
     return node.content.map((c) => collectText(c)).join(node.type === 'paragraph' ? '' : '\n');
+  }
+  return '';
+}
+
+/**
+ * Inline-aware collector — preserves mark formatting by re-emitting
+ * Markdown syntax around mark-wrapped text nodes. Used for paragraphs,
+ * headings, list items, blockquotes, todo items and table cells —
+ * anything where the Block model stores Markdown-shaped strings.
+ */
+function collectInline(node: JSONContent | undefined): string {
+  if (!node) return '';
+  if (Array.isArray(node.content)) {
+    if (node.type === 'paragraph' || node.type === 'heading') {
+      return serializeProseMirrorInline(node.content);
+    }
+    if (node.type === 'listItem' || node.type === 'taskItem') {
+      // listItem wraps one or more paragraphs (often one). Serialize
+      // each paragraph's inline content, join with newlines for the
+      // rare multi-paragraph case.
+      return node.content
+        .map((c) => collectInline(c))
+        .filter((s) => s.length > 0)
+        .join('\n');
+    }
+    if (node.type === 'blockquote' || node.type === 'tableCell' || node.type === 'tableHeader') {
+      return node.content.map((c) => collectInline(c)).join('\n');
+    }
+    return serializeProseMirrorInline(node.content);
+  }
+  if (node.type === 'text' && typeof node.text === 'string') {
+    return serializeProseMirrorInline([node]);
   }
   return '';
 }

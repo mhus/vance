@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import type { Block } from './markdown/blocks';
 import { parse } from './markdown/parser';
+import InlineRender from './InlineRender.vue';
 
 /**
  * Read-only renderer for a Canvas-block list. Plain Vue templates per
@@ -46,31 +47,33 @@ const items = computed(() => props.blocks ?? []);
   <article class="block-view">
     <template v-for="(block, i) in items" :key="i">
       <p v-if="block.kind === 'paragraph'" class="block-view__paragraph">
-        {{ block.text }}
+        <InlineRender :text="block.text" />
       </p>
 
-      <h1 v-else-if="block.kind === 'heading' && block.level === 1" class="block-view__h1">{{ block.text }}</h1>
-      <h2 v-else-if="block.kind === 'heading' && block.level === 2" class="block-view__h2">{{ block.text }}</h2>
-      <h3 v-else-if="block.kind === 'heading' && block.level === 3" class="block-view__h3">{{ block.text }}</h3>
+      <h1 v-else-if="block.kind === 'heading' && block.level === 1" class="block-view__h1"><InlineRender :text="block.text" /></h1>
+      <h2 v-else-if="block.kind === 'heading' && block.level === 2" class="block-view__h2"><InlineRender :text="block.text" /></h2>
+      <h3 v-else-if="block.kind === 'heading' && block.level === 3" class="block-view__h3"><InlineRender :text="block.text" /></h3>
 
       <ul v-else-if="block.kind === 'bullet-list'" class="block-view__bullet-list">
-        <li v-for="(item, k) in block.items" :key="k">{{ item }}</li>
+        <li v-for="(item, k) in block.items" :key="k"><InlineRender :text="item" /></li>
       </ul>
 
       <ol v-else-if="block.kind === 'numbered-list'" class="block-view__numbered-list">
-        <li v-for="(item, k) in block.items" :key="k">{{ item }}</li>
+        <li v-for="(item, k) in block.items" :key="k"><InlineRender :text="item" /></li>
       </ol>
 
       <ul v-else-if="block.kind === 'todo'" class="block-view__todo-list">
         <li v-for="(item, k) in block.items" :key="k" class="block-view__todo-item">
           <input type="checkbox" :checked="item.checked" disabled />
-          <span :class="{ 'block-view__todo-text--done': item.checked }">{{ item.text }}</span>
+          <span :class="{ 'block-view__todo-text--done': item.checked }">
+            <InlineRender :text="item.text" />
+          </span>
         </li>
       </ul>
 
       <blockquote v-else-if="block.kind === 'quote'" class="block-view__quote">
         <template v-for="(line, k) in block.text.split('\n')" :key="k">
-          <span>{{ line }}</span><br v-if="k < block.text.split('\n').length - 1" />
+          <span><InlineRender :text="line" /></span><br v-if="k < block.text.split('\n').length - 1" />
         </template>
       </blockquote>
 
@@ -154,8 +157,16 @@ const items = computed(() => props.blocks ?? []);
 .block-view__h2 { font-size: 1.4rem;  font-weight: 600; margin: 1em 0 0.5em; }
 .block-view__h3 { font-size: 1.15rem; font-weight: 600; margin: 0.8em 0 0.4em; }
 .block-view__paragraph { margin: 0.5em 0; white-space: pre-wrap; }
-.block-view__bullet-list,
-.block-view__numbered-list { padding-left: 1.5em; margin: 0.5em 0; }
+.block-view__bullet-list {
+  list-style-type: disc;
+  padding-left: 1.5em;
+  margin: 0.5em 0;
+}
+.block-view__numbered-list {
+  list-style-type: decimal;
+  padding-left: 1.5em;
+  margin: 0.5em 0;
+}
 .block-view__todo-list { list-style: none; padding: 0; margin: 0.5em 0; }
 .block-view__todo-item { display: flex; gap: 0.5em; align-items: flex-start; }
 .block-view__todo-text--done { text-decoration: line-through; opacity: 0.6; }

@@ -5,6 +5,7 @@
 
 export { default as CanvasEditor } from './CanvasEditor.vue';
 export { default as BlockView } from './BlockView.vue';
+export { default as InlineRender } from './InlineRender.vue';
 export { default as SlashMenu } from './SlashMenu.vue';
 
 export { parse, parseDocument } from './markdown/parser';

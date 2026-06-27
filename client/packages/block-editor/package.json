@@ -1,9 +1,9 @@
 {
-  "name": "@vance-addon/canvas",
+  "name": "@vance/block-editor",
   "version": "1.0.0",
   "private": true,
-  "description": "Client surface of the Canvas Brain addon — Tiptap-based linear block-editor and Markdown-Superset codec (mirrors the Java parser/serializer). Federation remote consumed by vance-face.",
-  "license": "SEE LICENSE IN ../../../../client/LICENSE.txt",
+  "description": "Shared Notion-style block editor (Tiptap-based) + Markdown-Superset codec for Vance. Consumed by the canvas addon's mount wrapper and any other addon that wants to embed the editor (e.g. workspace master-detail view). Single source of truth for editor schema, NodeViews and Markdown round-trip.",
+  "license": "SEE LICENSE IN ../../../LICENSE.txt",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./dist/index.d.ts",
@@ -17,10 +17,8 @@
       "import": "./src/CanvasEditor.vue"
     }
   },
-  "files": ["src", "dist"],
+  "files": ["src"],
   "scripts": {
-    "build": "vue-tsc -b && vite build",
-    "dev": "vite",
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
@@ -35,20 +33,13 @@
     "@tiptap/extension-table-row": "^2.10.4",
     "@tiptap/extension-table-cell": "^2.10.4",
     "@tiptap/extension-table-header": "^2.10.4",
-    "@vance/components": "workspace:*",
-    "@vance/kind-registry": "workspace:*",
-    "@vance/shared": "workspace:*",
     "js-yaml": "^4.1.0"
   },
   "peerDependencies": {
     "vue": "^3.5.0"
   },
   "devDependencies": {
-    "@module-federation/vite": "^1.4.0",
     "@types/js-yaml": "^4.0.9",
-    "@vitejs/plugin-vue": "^5.2.1",
-    "vite": "^5.4.11",
-    "vue": "^3.5.13",
-    "vue-tsc": "^2.1.10"
+    "vue": "^3.5.13"
   }
 }

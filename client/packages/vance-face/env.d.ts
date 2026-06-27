@@ -35,22 +35,11 @@ declare module 'vance_addon_calendar/CalendarView' {
 }
 
 // Optional ./register exposes — addons that contribute Kind codecs or
-// other host-side side effects implement these. Loaded at boot by
-// vance-face/src/platform/loadAddonRegistrations.ts. The function may
-// be absent at runtime; the loader handles that.
-declare module 'vance_addon_slideshow/register' {
-  export function register(): void;
-}
-declare module 'vance_addon_kanban/register' {
-  export function register(): void;
-}
-declare module 'vance_addon_calendar/register' {
-  export function register(): void;
-}
-declare module 'vance_addon_canvas/register' {
-  export function register(): void;
-}
-declare module 'vance_addon_workspace/register' {
+// other host-side side effects implement these. Loaded at runtime by
+// vance-face/src/platform/loadAddonRegistrations.ts via
+// `loadRemote('vance_addon_<id>/register')` — no static imports, so no
+// per-addon type stub needed beyond this wildcard.
+declare module 'vance_addon_*/register' {
   export function register(): void;
 }
 

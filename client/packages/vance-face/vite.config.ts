@@ -24,47 +24,17 @@ const editorEntries = {
   'setting-forms': resolve(__dirname, 'setting-forms.html'),
 };
 
-// Static addon remote map. v1: hardcoded one entry per first-party
-// addon, keyed by the addon's federation name (matches the remote's
-// vite.config.ts `name:`). Etappe 4 swaps this for a /face/manifest.json
-// fetched at boot, so admin-installed addons can be discovered without
-// a vance-face rebuild. URL path matches the convention the face Docker
-// image's entrypoint sets up: nginx symlinks /shared/addons/<id>/<ver>/face
-// → /usr/share/nginx/html/addons/<id>/.
-// `type: 'module'` tells the Federation runtime to load the remoteEntry
-// via <script type="module"> instead of a classic script. Without it
-// the host throws "Cannot use import statement outside a module"
-// because Vite emits the remoteEntry with top-level `import`s.
-// The Record<string, string> shape in the @module-federation/vite TS
-// surface doesn't expose the object form — but the plugin's actual
-// schema (RemoteObjectConfig) supports it; cast through `any`.
-const addonRemotes: Record<string, any> = {
-  vance_addon_slideshow: {
-    name: 'vance_addon_slideshow',
-    entry: '/addons/slideshow/remoteEntry.js',
-    type: 'module',
-  },
-  vance_addon_kanban: {
-    name: 'vance_addon_kanban',
-    entry: '/addons/kanban/remoteEntry.js',
-    type: 'module',
-  },
-  vance_addon_calendar: {
-    name: 'vance_addon_calendar',
-    entry: '/addons/calendar/remoteEntry.js',
-    type: 'module',
-  },
-  vance_addon_canvas: {
-    name: 'vance_addon_canvas',
-    entry: '/addons/canvas/remoteEntry.js',
-    type: 'module',
-  },
-  vance_addon_workspace: {
-    name: 'vance_addon_workspace',
-    entry: '/addons/workspace/remoteEntry.js',
-    type: 'module',
-  },
-};
+// Build-time remotes list is intentionally empty — addons are discovered
+// and registered at RUNTIME via `registerRemotes()` from
+// `@module-federation/runtime` (see loadAddonRegistrations.ts). The host
+// fetches `/face/addons` at boot, gets a list of installed addon ids,
+// and registers each remote dynamically before calling its `register()`
+// expose. No more rebuild-on-new-addon, no more dual-mapping
+// (vite.config + loadAddonRegistrations). New addons just need their
+// `client/dist/remoteEntry.js` reachable under `/addons/<id>/` — the
+// dev-server middleware below already path-scans for that, the
+// production Docker entrypoint symlinks `/shared/addons/<id>/<ver>/face`.
+const addonRemotes: Record<string, any> = {};
 
 /**
  * Dev-server middleware that resolves `/addons/<id>/<path>` to the

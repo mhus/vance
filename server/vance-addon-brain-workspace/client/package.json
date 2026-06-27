@@ -2,7 +2,7 @@
   "name": "@vance-addon/workspace",
   "version": "1.0.0",
   "private": true,
-  "description": "Client surface of the Workspace Brain addon — Vue component for the workspace view (page-tree sidebar + index preview). Federation remote consumed by vance-face.",
+  "description": "Client surface of the Workspace + Canvas Brain addon. Registers two kinds (canvas, application:workspace) and consumes @vance/block-editor as its shared editor implementation.",
   "license": "SEE LICENSE IN ../../../../client/LICENSE.txt",
   "type": "module",
   "main": "./src/index.ts",
@@ -20,6 +20,7 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
+    "@vance/block-editor": "workspace:*",
     "@vance/components": "workspace:*",
     "@vance/kind-registry": "workspace:*",
     "@vance/shared": "workspace:*"

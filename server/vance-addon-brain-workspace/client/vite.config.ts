@@ -3,9 +3,15 @@ import vue from '@vitejs/plugin-vue';
 import { federation } from '@module-federation/vite';
 
 /**
- * Workspace addon — Module Federation remote. Exposes the
- * WorkspaceAppKind wrapper that mounts inside cortex/notepad as the
- * editor for application:workspace documents.
+ * Workspace + Canvas addon — Module Federation remote. Exposes the
+ * `./register` side-effect entry that registers both kinds
+ * (`canvas` + `application:workspace`) with the host's kind-registry.
+ *
+ * Tiptap is declared shared so a future second consumer of the block
+ * editor (if any) resolves to the same ProseMirror instance.
+ * `@vance/block-editor` is intentionally NOT shared — workspace packages
+ * cause a top-level-await deadlock if shared (see
+ * vance-face/vite.config.ts comment).
  */
 export default defineConfig({
   base: '',
@@ -15,11 +21,13 @@ export default defineConfig({
       name: 'vance_addon_workspace',
       filename: 'remoteEntry.js',
       exposes: {
-        './WorkspaceAppKind': './src/WorkspaceAppKind.vue',
         './register': './src/register.ts',
       },
       shared: {
         vue: { singleton: true, requiredVersion: '^3.5.0' },
+        '@tiptap/core': { singleton: true, requiredVersion: '^2.10.0' },
+        '@tiptap/pm': { singleton: true, requiredVersion: '^2.10.0' },
+        '@tiptap/vue-3': { singleton: true, requiredVersion: '^2.10.0' },
       },
       dts: false,
     }),

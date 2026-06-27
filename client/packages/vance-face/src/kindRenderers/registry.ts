@@ -33,10 +33,19 @@ const ChartView   = defineAsyncComponent(() => import('@/document/ChartView.vue'
 const MapView     = defineAsyncComponent(() => import('@/document/MapView.vue'));
 // Calendar's view moved to the calendar addon (Etappe 2.x). The
 // chat-stream still references it for inline-fence rendering;
-// federation gives us the same component at runtime.
-const CalendarView = defineAsyncComponent(
-  () => import(/* @vite-ignore */ 'vance_addon_calendar/CalendarView'),
-);
+// federation gives us the same component at runtime via the dynamic
+// runtime API (no static remote map entry needed — the remote is
+// registered at boot by loadAddonRegistrations).
+const CalendarView = defineAsyncComponent(async () => {
+  const { loadRemote } = await import('@module-federation/runtime');
+  const mod = await loadRemote<{ default?: unknown } | unknown>(
+    'vance_addon_calendar/CalendarView',
+  );
+  // loadRemote may return either the module object or the default
+  // export depending on how the remote exposes the component.
+  const m = mod as { default?: unknown };
+  return (m?.default ?? mod) as ReturnType<typeof defineAsyncComponent>;
+});
 const SlidesView  = defineAsyncComponent(() => import('@/document/SlidesView.vue'));
 const ImageView   = defineAsyncComponent(() => import('@/document/ImageView.vue'));
 const PdfView     = defineAsyncComponent(() => import('@/document/PdfView.vue'));

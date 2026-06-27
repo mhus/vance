@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import CanvasEditor from './CanvasEditor.vue';
+import { CanvasEditor } from '@vance/block-editor';
 
 /**
  * Adapter from the kind-registry mount contract (single `document` prop)

@@ -4,13 +4,22 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.context.annotation.ComponentScan;
 
 /**
- * Entry point of the Workspace Brain addon. Discovered via
+ * Entry point of the Workspace + Canvas Brain addon. Discovered via
  * {@code META-INF/spring/.../AutoConfiguration.imports}; component-scans
- * this package so {@link WorkspaceApplication}, the REST controller (if
- * added later) and the {@code workspace_*} server tools register
+ * both packages so the canvas-related services / tools (under
+ * {@code de.mhus.vance.addon.brain.canvas}) and the workspace-related
+ * ones (under {@code de.mhus.vance.addon.brain.workspace}) register
  * themselves into the Brain context.
+ *
+ * <p>The two domains live in one addon because Workspace is a container
+ * for Canvas pages — splitting them was premature; consolidating them
+ * here removes duplicated wiring (one pom, one assembly, one federation
+ * remote, one entry in {@code /face/addons}).
  */
 @AutoConfiguration
-@ComponentScan(basePackageClasses = WorkspaceAddon.class)
+@ComponentScan(basePackages = {
+        "de.mhus.vance.addon.brain.workspace",
+        "de.mhus.vance.addon.brain.canvas",
+})
 public class WorkspaceAddon {
 }

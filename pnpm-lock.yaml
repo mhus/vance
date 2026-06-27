@@ -16,6 +16,52 @@ importers:
         specifier: 5.6.3
         version: 5.6.3
 
+  client/packages/block-editor:
+    dependencies:
+      '@tiptap/core':
+        specifier: ^2.10.4
+        version: 2.27.2(@tiptap/pm@2.27.2)
+      '@tiptap/extension-image':
+        specifier: ^2.10.4
+        version: 2.27.2(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))
+      '@tiptap/extension-table':
+        specifier: ^2.10.4
+        version: 2.27.2(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))(@tiptap/pm@2.27.2)
+      '@tiptap/extension-table-cell':
+        specifier: ^2.10.4
+        version: 2.27.2(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))
+      '@tiptap/extension-table-header':
+        specifier: ^2.10.4
+        version: 2.27.2(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))
+      '@tiptap/extension-table-row':
+        specifier: ^2.10.4
+        version: 2.27.2(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))
+      '@tiptap/extension-task-item':
+        specifier: ^2.10.4
+        version: 2.27.2(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))(@tiptap/pm@2.27.2)
+      '@tiptap/extension-task-list':
+        specifier: ^2.10.4
+        version: 2.27.2(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))
+      '@tiptap/pm':
+        specifier: ^2.10.4
+        version: 2.27.2
+      '@tiptap/starter-kit':
+        specifier: ^2.10.4
+        version: 2.27.2
+      '@tiptap/vue-3':
+        specifier: ^2.10.4
+        version: 2.27.2(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))(@tiptap/pm@2.27.2)(vue@3.5.38(typescript@5.9.3))
+      js-yaml:
+        specifier: ^4.1.0
+        version: 4.2.0
+    devDependencies:
+      '@types/js-yaml':
+        specifier: ^4.0.9
+        version: 4.0.9
+      vue:
+        specifier: ^3.5.13
+        version: 3.5.38(typescript@5.9.3)
+
   client/packages/components:
     dependencies:
       '@codemirror/commands':
@@ -437,73 +483,6 @@ importers:
         specifier: ^2.1.10
         version: 2.2.12(typescript@5.6.3)
 
-  server/vance-addon-brain-canvas/client:
-    dependencies:
-      '@tiptap/core':
-        specifier: ^2.10.4
-        version: 2.27.2(@tiptap/pm@2.27.2)
-      '@tiptap/extension-image':
-        specifier: ^2.10.4
-        version: 2.27.2(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))
-      '@tiptap/extension-table':
-        specifier: ^2.10.4
-        version: 2.27.2(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))(@tiptap/pm@2.27.2)
-      '@tiptap/extension-table-cell':
-        specifier: ^2.10.4
-        version: 2.27.2(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))
-      '@tiptap/extension-table-header':
-        specifier: ^2.10.4
-        version: 2.27.2(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))
-      '@tiptap/extension-table-row':
-        specifier: ^2.10.4
-        version: 2.27.2(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))
-      '@tiptap/extension-task-item':
-        specifier: ^2.10.4
-        version: 2.27.2(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))(@tiptap/pm@2.27.2)
-      '@tiptap/extension-task-list':
-        specifier: ^2.10.4
-        version: 2.27.2(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))
-      '@tiptap/pm':
-        specifier: ^2.10.4
-        version: 2.27.2
-      '@tiptap/starter-kit':
-        specifier: ^2.10.4
-        version: 2.27.2
-      '@tiptap/vue-3':
-        specifier: ^2.10.4
-        version: 2.27.2(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))(@tiptap/pm@2.27.2)(vue@3.5.38(typescript@5.6.3))
-      '@vance/components':
-        specifier: workspace:*
-        version: link:../../../client/packages/components
-      '@vance/kind-registry':
-        specifier: workspace:*
-        version: link:../../../client/packages/kind-registry
-      '@vance/shared':
-        specifier: workspace:*
-        version: link:../../../client/packages/shared
-      js-yaml:
-        specifier: ^4.1.0
-        version: 4.2.0
-    devDependencies:
-      '@module-federation/vite':
-        specifier: 1.4.0
-        version: 1.4.0(rollup@4.62.0)
-      '@types/js-yaml':
-        specifier: ^4.0.9
-        version: 4.0.9
-      '@vitejs/plugin-vue':
-        specifier: ^5.2.1
-        version: 5.2.4(vite@5.4.21(@types/node@22.19.21)(lightningcss@1.32.0)(terser@5.48.0))(vue@3.5.38(typescript@5.6.3))
-      vite:
-        specifier: ^5.4.11
-        version: 5.4.21(@types/node@22.19.21)(lightningcss@1.32.0)(terser@5.48.0)
-      vue:
-        specifier: ^3.5.13
-        version: 3.5.38(typescript@5.6.3)
-      vue-tsc:
-        specifier: ^2.1.10
-        version: 2.2.12(typescript@5.6.3)
-
   server/vance-addon-brain-kanban/client:
     dependencies:
       '@vance/components':
@@ -565,6 +544,9 @@ importers:
 
   server/vance-addon-brain-workspace/client:
     dependencies:
+      '@vance/block-editor':
+        specifier: workspace:*
+        version: link:../../../client/packages/block-editor
       '@vance/components':
         specifier: workspace:*
         version: link:../../../client/packages/components
@@ -8714,13 +8696,13 @@ snapshots:
       '@tiptap/extension-text-style': 2.27.2(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))
       '@tiptap/pm': 2.27.2
 
-  '@tiptap/vue-3@2.27.2(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))(@tiptap/pm@2.27.2)(vue@3.5.38(typescript@5.6.3))':
+  '@tiptap/vue-3@2.27.2(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))(@tiptap/pm@2.27.2)(vue@3.5.38(typescript@5.9.3))':
     dependencies:
       '@tiptap/core': 2.27.2(@tiptap/pm@2.27.2)
       '@tiptap/extension-bubble-menu': 2.27.2(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))(@tiptap/pm@2.27.2)
       '@tiptap/extension-floating-menu': 2.27.2(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))(@tiptap/pm@2.27.2)
       '@tiptap/pm': 2.27.2
-      vue: 3.5.38(typescript@5.6.3)
+      vue: 3.5.38(typescript@5.9.3)
 
   '@trapezedev/gradle-parse@7.1.3': {}
 

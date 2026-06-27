@@ -115,6 +115,28 @@ public class ToolDispatcher {
                     e.getMessage(), e);
             triage(name, e, ctx);
             throw withHint(r.tool(), e);
+        } catch (de.mhus.vance.shared.document.DocumentService.DocumentLockedException e) {
+            // Soft document-lock — surface as a clean, recognizable
+            // ToolException so the LLM sees a specific "document_locked"
+            // signal rather than a generic "Tool failed" wrapper. The
+            // structured fields (blockedRole, lockedFor) go into the
+            // message so the model can decide whether to ask the user
+            // or call `document_lock_remove` itself.
+            String lockedFor = e.getLockedFor().stream()
+                    .sorted()
+                    .map(Enum::name)
+                    .reduce((a, b) -> a + "," + b)
+                    .orElse("");
+            String msg = "document_locked: write blocked because the document's "
+                    + "lockedFor set contains " + e.getBlockedRole()
+                    + " (full set: [" + lockedFor + "]). Ask the user to unlock "
+                    + "via the document properties panel, or call document_lock_remove "
+                    + "if you have a clear reason.";
+            log.info("Tool '{}' rejected by document lock blocked={} lockedFor={}",
+                    name, e.getBlockedRole(), e.getLockedFor());
+            ToolException te = new ToolException(msg, e);
+            triage(name, te, ctx);
+            throw withHint(r.tool(), te);
         } catch (RuntimeException e) {
             log.warn("Tool '{}' raised RuntimeException tenant='{}' project='{}' session='{}' process='{}': {}",
                     name, ctx == null ? null : ctx.tenantId(),

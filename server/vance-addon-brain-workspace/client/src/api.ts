@@ -5,6 +5,7 @@ import type { WorkspaceCreatePageRequest } from './generated/workspace/Workspace
 import type { WorkspaceUpdatePageRequest } from './generated/workspace/WorkspaceUpdatePageRequest';
 import type { WorkspaceReorderRequest } from './generated/workspace/WorkspaceReorderRequest';
 import type { WorkspaceRenameSectionRequest } from './generated/workspace/WorkspaceRenameSectionRequest';
+import type { WorkspaceSetLandingRequest } from './generated/workspace/WorkspaceSetLandingRequest';
 import type { WorkspacePageView } from './generated/workspace/WorkspacePageView';
 
 function qs(params: Record<string, string>): string {
@@ -63,6 +64,29 @@ export async function reorderWorkspacePages(
   await brainFetch<unknown>(
     'POST',
     `addon/workspace/reorder?${qs({ projectId, folder })}`,
+    { body: request },
+  );
+}
+
+export async function duplicateWorkspacePage(
+  projectId: string,
+  folder: string,
+  id: string,
+): Promise<WorkspacePageView> {
+  return brainFetch<WorkspacePageView>(
+    'POST',
+    `addon/workspace/page/${encodeURIComponent(id)}/duplicate?${qs({ projectId, folder })}`,
+  );
+}
+
+export async function setWorkspaceLandingPage(
+  projectId: string,
+  folder: string,
+  request: WorkspaceSetLandingRequest,
+): Promise<WorkspaceView> {
+  return brainFetch<WorkspaceView>(
+    'POST',
+    `addon/workspace/landing?${qs({ projectId, folder })}`,
     { body: request },
   );
 }

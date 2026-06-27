@@ -16,6 +16,8 @@ import {
   deleteWorkspacePage,
   reorderWorkspacePages,
   renameWorkspaceSection,
+  duplicateWorkspacePage,
+  setWorkspaceLandingPage,
 } from './api';
 import AssetPickerModal from './AssetPickerModal.vue';
 import EmojiPickerModal from './EmojiPickerModal.vue';
@@ -530,6 +532,33 @@ async function submitRename() {
     renameBusy.value = false;
   }
 }
+async function duplicatePage(page: WorkspacePageView) {
+  closeCtxMenu();
+  try {
+    const copy = await duplicateWorkspacePage(projectId.value, folder.value, page.id);
+    await loadWorkspace();
+    // Open the new copy right away — matches the typical user intent
+    // ("I wanted to start from this page, then edit").
+    await selectPage(copy.id, copy);
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Duplicate failed.';
+  }
+}
+
+async function togglePinLanding(page: WorkspacePageView) {
+  closeCtxMenu();
+  const v = view.value;
+  if (!v) return;
+  const isLanding = v.landingPageId === page.id;
+  try {
+    view.value = await setWorkspaceLandingPage(projectId.value, folder.value, {
+      pageId: isLanding ? undefined : page.id,
+    });
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Could not update landing page.';
+  }
+}
+
 async function confirmDelete(page: WorkspacePageView) {
   closeCtxMenu();
   if (!window.confirm(`Delete page "${page.title}"?`)) return;
@@ -933,6 +962,7 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
             >
               <span class="workspace-app__page-link-icon" :class="{ 'workspace-app__page-link-icon--emoji': !!effectiveIcon(p) }">{{ effectiveIcon(p) ?? '·' }}</span>
               <span class="workspace-app__page-link-title">{{ effectiveTitle(p) }}</span>
+              <span v-if="view && view.landingPageId === p.id" class="workspace-app__landing-pin" title="Landing page">📌</span>
             </button>
             <button
               class="workspace-app__page-row-menu"
@@ -1065,6 +1095,10 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
         @click.stop
       >
         <button class="workspace-app__ctx-item" @click="openRename(ctxMenu.page)">Rename / Move…</button>
+        <button class="workspace-app__ctx-item" @click="duplicatePage(ctxMenu.page)">Duplicate</button>
+        <button class="workspace-app__ctx-item" @click="togglePinLanding(ctxMenu.page)">
+          {{ view && view.landingPageId === ctxMenu.page.id ? 'Unpin landing page' : 'Pin as landing page' }}
+        </button>
         <button class="workspace-app__ctx-item workspace-app__ctx-item--danger" @click="confirmDelete(ctxMenu.page)">Delete</button>
       </div>
     </div>
@@ -1474,6 +1508,12 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+  flex: 1;
+}
+.workspace-app__landing-pin {
+  font-size: 0.7em;
+  opacity: 0.7;
+  flex-shrink: 0;
 }
 .workspace-app__empty {
   color: var(--color-text-muted, #6b7280);

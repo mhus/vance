@@ -364,6 +364,154 @@ public class WorkspaceAppController {
      * Section-level metadata is path-only in v1, so this is purely a
      * batched path-move.
      */
+    /**
+     * Duplicate a page. Copies the body byte-for-byte into a fresh
+     * document under the same section; the title front-matter is
+     * patched with a {@code "(Copy)"} suffix so the new page is
+     * distinguishable from the source. {@code sortIndex} is intentionally
+     * dropped so the copy lands at the end of the section.
+     */
+    @PostMapping("/brain/{tenant}/addon/workspace/page/{id}/duplicate")
+    public WorkspacePageView duplicatePage(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("id") String id,
+            @RequestParam("projectId") String projectId,
+            @RequestParam("folder") String folder,
+            HttpServletRequest httpRequest) {
+
+        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.CREATE);
+        String normalised = WorkspaceFolderReader.normaliseFolder(folder);
+        DocumentDocument src = documentService.findById(id)
+                .orElseThrow(() -> new ToolException("Unknown page id='" + id + "'"));
+        if (!src.getPath().startsWith(normalised + "/")) {
+            throw new ToolException("Page is not inside workspace '" + normalised + "'");
+        }
+
+        String body;
+        try (InputStream in = documentService.loadContent(src)) {
+            body = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (java.io.IOException e) {
+            throw new ToolException("Could not read source page: " + e.getMessage());
+        }
+
+        // Compute the destination path: same parent + base slug + "-copy".
+        String srcPath = src.getPath();
+        int lastSlash = srcPath.lastIndexOf('/');
+        String parent = srcPath.substring(0, lastSlash);
+        String leaf = srcPath.substring(lastSlash + 1);
+        String baseLeaf = leaf.replaceFirst("\\.canvas\\.md$", "");
+        String basePath = parent + "/" + baseLeaf + "-copy";
+        String newPath = uniquePath(tenant, projectId, basePath);
+
+        // Patch the title in the YAML front-matter so the copy is
+        // visually distinct in the sidebar.
+        String newBody = patchTitleSuffix(body, " (Copy)");
+
+        DocumentDocument copy = documentService.createText(
+                tenant, projectId, newPath, null, null, newBody, currentUser(httpRequest));
+
+        // Re-scan to read the canonical view fields back (icon, section, …).
+        WorkspaceFolderReader.Scan scan = folderReader.scan(tenant, projectId, normalised);
+        for (WorkspacePage p : scan.pages()) {
+            if (p.doc().getId().equals(copy.getId())) {
+                return new WorkspacePageView(
+                        p.doc().getId(), p.doc().getPath(), p.relativePath(),
+                        p.section(), p.title(), p.description(),
+                        p.icon(), p.sortIndex());
+            }
+        }
+        String relativePath = copy.getPath().substring(normalised.length() + 1);
+        return new WorkspacePageView(
+                copy.getId(), copy.getPath(), relativePath, "",
+                copy.getTitle(), null, null, null);
+    }
+
+    @SuppressWarnings("unchecked")
+    private String patchTitleSuffix(String body, String suffix) {
+        if (!body.startsWith("---\n")) return body;
+        int end = body.indexOf("\n---\n", 4);
+        if (end < 0) return body;
+        String headerText = body.substring(4, end);
+        Object loaded = new Yaml().load(headerText);
+        if (!(loaded instanceof Map<?, ?> m)) return body;
+        Map<String, Object> header = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> e : m.entrySet()) {
+            if (e.getKey() != null) header.put(e.getKey().toString(), e.getValue());
+        }
+        Object t = header.get("title");
+        String newTitle = (t == null ? "Untitled" : t.toString()) + suffix;
+        header.put("title", newTitle);
+        DumperOptions opts = new DumperOptions();
+        opts.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
+        String dumped = new Yaml(opts).dump(header);
+        return "---\n" + dumped + body.substring(end + 1);
+    }
+
+    /**
+     * Pin or unpin a page as the workspace's landing page by patching
+     * the {@code landingPage} key in the {@code _app.yaml} manifest.
+     * Pass {@code pageId=null} to unpin.
+     */
+    @PostMapping("/brain/{tenant}/addon/workspace/landing")
+    public WorkspaceView setLandingPage(
+            @PathVariable("tenant") String tenant,
+            @RequestParam("projectId") String projectId,
+            @RequestParam("folder") String folder,
+            @RequestBody WorkspaceSetLandingRequest request,
+            HttpServletRequest httpRequest) {
+
+        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
+        if (request == null) throw new ToolException("body is required");
+        String normalised = WorkspaceFolderReader.normaliseFolder(folder);
+        String manifestPath = normalised + "/_app.yaml";
+        DocumentDocument manifest = documentService.findByPath(tenant, projectId, manifestPath)
+                .orElseThrow(() -> new ToolException("No workspace manifest at '" + manifestPath + "'."));
+
+        @Nullable String newLanding = null;
+        if (request.pageId() != null && !request.pageId().isBlank()) {
+            DocumentDocument page = documentService.findById(request.pageId())
+                    .orElseThrow(() -> new ToolException("Unknown page id='" + request.pageId() + "'"));
+            if (!page.getPath().startsWith(normalised + "/")) {
+                throw new ToolException("Page is not inside workspace '" + normalised + "'");
+            }
+            newLanding = page.getPath().substring(normalised.length() + 1);
+        }
+
+        try (InputStream in = documentService.loadContent(manifest)) {
+            String body = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            String newBody = patchManifestLanding(body, newLanding);
+            documentService.replaceContent(
+                    manifest.getId(),
+                    new java.io.ByteArrayInputStream(newBody.getBytes(StandardCharsets.UTF_8)),
+                    "application/yaml",
+                    currentUser(httpRequest));
+        } catch (java.io.IOException e) {
+            throw new ToolException("Could not update manifest: " + e.getMessage());
+        }
+
+        // Re-issue a fresh scan so the client gets the new landingPageId.
+        return scan(tenant, projectId, folder, httpRequest);
+    }
+
+    @SuppressWarnings("unchecked")
+    private String patchManifestLanding(String body, @Nullable String newLanding) {
+        // The manifest is pure YAML — no `---` front-matter wrapper.
+        Object loaded = new Yaml().load(body);
+        Map<String, Object> root = loaded instanceof Map<?, ?> m
+                ? new LinkedHashMap<>((Map<String, Object>) m)
+                : new LinkedHashMap<>();
+        Object wsRaw = root.get("workspace");
+        Map<String, Object> ws = wsRaw instanceof Map<?, ?> wm
+                ? new LinkedHashMap<>((Map<String, Object>) wm)
+                : new LinkedHashMap<>();
+        if (newLanding == null) ws.remove("landingPage");
+        else ws.put("landingPage", newLanding);
+        root.put("workspace", ws);
+        DumperOptions opts = new DumperOptions();
+        opts.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
+        return new Yaml(opts).dump(root);
+    }
+
     @PostMapping("/brain/{tenant}/addon/workspace/section/rename")
     public void renameSection(
             @PathVariable("tenant") String tenant,

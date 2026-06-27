@@ -39,6 +39,16 @@
             <artifactId>vance-addon-brain-rlang</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <dependency>
+            <groupId>de.mhus.vance</groupId>
+            <artifactId>vance-addon-brain-canvas</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>de.mhus.vance</groupId>
+            <artifactId>vance-addon-brain-workspace</artifactId>
+            <version>${project.version}</version>
+        </dependency>
     </dependencies>
 
     <build>

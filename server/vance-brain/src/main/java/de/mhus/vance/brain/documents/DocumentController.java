@@ -940,7 +940,7 @@ public class DocumentController {
                 .ragEnabled(doc.getRagEnabled())
                 .expiresAtMs(toEpochMillis(doc.getExpiresAt()))
                 .notes(notesToDto(doc.getNotes()))
-                .lockedFor(doc.getLockedFor() == null
+                .lockedFor(doc.getLockedFor() == null || doc.getLockedFor().isEmpty()
                         ? java.util.EnumSet.noneOf(de.mhus.vance.api.documents.WriterRole.class)
                         : java.util.EnumSet.copyOf(doc.getLockedFor()))
                 .build();

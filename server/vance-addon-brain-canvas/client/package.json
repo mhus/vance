@@ -1,0 +1,54 @@
+{
+  "name": "@vance-addon/canvas",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Client surface of the Canvas Brain addon — Tiptap-based linear block-editor and Markdown-Superset codec (mirrors the Java parser/serializer). Federation remote consumed by vance-face.",
+  "license": "SEE LICENSE IN ../../../../client/LICENSE.txt",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./src/index.ts"
+    },
+    "./CanvasEditor.vue": {
+      "types": "./dist/CanvasEditor.vue.d.ts",
+      "import": "./src/CanvasEditor.vue"
+    }
+  },
+  "files": ["src", "dist"],
+  "scripts": {
+    "build": "vue-tsc -b && vite build",
+    "dev": "vite",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@tiptap/core": "^2.10.4",
+    "@tiptap/pm": "^2.10.4",
+    "@tiptap/starter-kit": "^2.10.4",
+    "@tiptap/vue-3": "^2.10.4",
+    "@tiptap/extension-task-list": "^2.10.4",
+    "@tiptap/extension-task-item": "^2.10.4",
+    "@tiptap/extension-image": "^2.10.4",
+    "@tiptap/extension-table": "^2.10.4",
+    "@tiptap/extension-table-row": "^2.10.4",
+    "@tiptap/extension-table-cell": "^2.10.4",
+    "@tiptap/extension-table-header": "^2.10.4",
+    "@vance/components": "workspace:*",
+    "@vance/kind-registry": "workspace:*",
+    "@vance/shared": "workspace:*",
+    "js-yaml": "^4.1.0"
+  },
+  "peerDependencies": {
+    "vue": "^3.5.0"
+  },
+  "devDependencies": {
+    "@module-federation/vite": "^1.4.0",
+    "@types/js-yaml": "^4.0.9",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "vite": "^5.4.11",
+    "vue": "^3.5.13",
+    "vue-tsc": "^2.1.10"
+  }
+}

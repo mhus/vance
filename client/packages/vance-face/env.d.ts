@@ -47,6 +47,12 @@ declare module 'vance_addon_kanban/register' {
 declare module 'vance_addon_calendar/register' {
   export function register(): void;
 }
+declare module 'vance_addon_canvas/register' {
+  export function register(): void;
+}
+declare module 'vance_addon_workspace/register' {
+  export function register(): void;
+}
 
 interface ImportMetaEnv {
   // Note: no VITE_BRAIN_URL here — runtime config lives in

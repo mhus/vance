@@ -29,6 +29,8 @@ const importers: Record<string, () => Promise<RegisterModule>> = {
   slideshow: () => import(/* @vite-ignore */ 'vance_addon_slideshow/register'),
   kanban: () => import(/* @vite-ignore */ 'vance_addon_kanban/register'),
   calendar: () => import(/* @vite-ignore */ 'vance_addon_calendar/register'),
+  canvas: () => import(/* @vite-ignore */ 'vance_addon_canvas/register'),
+  workspace: () => import(/* @vite-ignore */ 'vance_addon_workspace/register'),
 };
 
 export async function loadAddonRegistrations(): Promise<void> {

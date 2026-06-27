@@ -54,6 +54,16 @@ const addonRemotes: Record<string, any> = {
     entry: '/addons/calendar/remoteEntry.js',
     type: 'module',
   },
+  vance_addon_canvas: {
+    name: 'vance_addon_canvas',
+    entry: '/addons/canvas/remoteEntry.js',
+    type: 'module',
+  },
+  vance_addon_workspace: {
+    name: 'vance_addon_workspace',
+    entry: '/addons/workspace/remoteEntry.js',
+    type: 'module',
+  },
 };
 
 /**

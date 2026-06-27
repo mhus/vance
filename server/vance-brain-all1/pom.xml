@@ -39,6 +39,16 @@
             <artifactId>vance-addon-brain-rlang</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <dependency>
+            <groupId>de.mhus.vance</groupId>
+            <artifactId>vance-addon-brain-canvas</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>de.mhus.vance</groupId>
+            <artifactId>vance-addon-brain-workspace</artifactId>
+            <version>${project.version}</version>
+        </dependency>
     </dependencies>
 
     <build>
@@ -47,7 +57,7 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
-                    <mainClass>de.mhus.vance.brain.all.VanceBrainAll2Application</mainClass>
+                    <mainClass>de.mhus.vance.brain.all.VanceBrainAll1Application</mainClass>
                     <classifier>exec</classifier>
                 </configuration>
             </plugin>

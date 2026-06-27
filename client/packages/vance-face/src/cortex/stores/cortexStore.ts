@@ -517,6 +517,14 @@ export const useCortexStore = defineStore('cortex', () => {
       { body },
     );
     const file = dtoToDocument(dto);
+    // The create response carries metadata only — bodies live behind
+    // /documents/{id}/content since the inline→storage migration. Seed
+    // both the visible text and the dirty-baseline from the request
+    // we just sent so the new tab reflects the templated/typed stub
+    // (and a later save does not overwrite the server copy with '').
+    const initialText = body.inlineText ?? '';
+    file.inlineText = initialText;
+    file.baselineInlineText = initialText;
     files.value = [...files.value, summaryToDocument({
       id: dto.id,
       projectId: dto.projectId,

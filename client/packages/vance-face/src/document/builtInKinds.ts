@@ -27,7 +27,19 @@ export function registerBuiltInKinds(): void {
   // 'edit', rendered HTML in 'view'. No view/codec needed.
   registerKind({
     id: 'markdown',
-    matches: (_kind, mime) => mime === 'text/markdown',
+    // Markdown built-in is the *fallback* for plain Markdown files —
+    // not a generic catch-all for every `text/markdown` document. If a
+    // document has an explicit `kind` (e.g. `canvas`, registered by an
+    // addon), that addon's view should win. We treat a missing / blank
+    // / generic `markdown` kind as "plain Markdown" and only match
+    // then. Without this guard, registerKind insertion order makes
+    // markdown swallow every canvas / addon kind that happens to live
+    // on a `text/markdown` mime.
+    matches: (kind, mime) => {
+      if (mime !== 'text/markdown') return false;
+      const k = (kind ?? '').toLowerCase();
+      return k === '' || k === 'markdown' || k === 'text';
+    },
     codePreview: defineAsyncComponent(
       () => import('@/components/MarkdownView.vue'),
     ),

@@ -8,6 +8,7 @@ import { isAudioVideoMime, tryThreeWayMerge, } from '@/composables/useDocumentCh
 import { onDocumentChanged } from '@/ws/wsConnectionStore';
 import { isBinaryMime } from './stores/cortexStore';
 import { useCortexStore } from './stores/cortexStore';
+import { useViewEditMode } from './useViewEditMode';
 import { CortexClientToolService } from './clientToolService';
 import { useDocumentInvalidate } from './composables/useDocumentInvalidate';
 import FileTreeSidebar from './components/FileTreeSidebar.vue';
@@ -282,6 +283,17 @@ function onPopState() {
     }
 }
 const activeTab = computed(() => store.activeTab);
+const viewEditMode = useViewEditMode();
+// True when the active tab is a kind: application document (an
+// `_app.yaml` manifest of a folder-level app) AND the user is in App
+// view-mode. In that case we suppress the file-tree sidebar so the App
+// has more horizontal room; the chat right-panel and tabs strip stay.
+// Clicking the slim header's Edit toggle flips viewEditMode to 'edit',
+// which brings the sidebar back so the user can navigate while patching
+// the raw YAML manifest. The App itself owns any deeper "fullscreen"
+// toggle (Slideshow already does this internally).
+const isAppTab = computed(() => (activeTab.value?.kind ?? '').toLowerCase() === 'application'
+    && viewEditMode.value === 'view');
 const tabReactions = new Map();
 const tabReactionRevision = ref(0);
 const RECENT_EDITOR_TTL_MS = 2500;
@@ -781,7 +793,7 @@ if (__VLS_ctx.bootReadyKey) {
         breadcrumbs: (__VLS_ctx.breadcrumbs),
         fullHeight: (true),
         focusModel: "auto",
-        showSidebar: (true),
+        showSidebar: (!__VLS_ctx.isAppTab),
         showRightPanel: (__VLS_ctx.isCortex),
         titleClickable: true,
     }));
@@ -792,7 +804,7 @@ if (__VLS_ctx.bootReadyKey) {
         breadcrumbs: (__VLS_ctx.breadcrumbs),
         fullHeight: (true),
         focusModel: "auto",
-        showSidebar: (true),
+        showSidebar: (!__VLS_ctx.isAppTab),
         showRightPanel: (__VLS_ctx.isCortex),
         titleClickable: true,
     }, ...__VLS_functionalComponentArgsRest(__VLS_1));
@@ -1018,115 +1030,10 @@ if (__VLS_ctx.bootReadyKey) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "flex flex-col h-full min-h-0" },
     });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "flex items-center gap-1 px-2 py-1 border-b border-base-300 bg-base-200 text-sm shrink-0" },
-    });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "dropdown" },
-    });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        tabindex: "0",
-        role: "button",
-        ...{ class: "btn btn-ghost btn-xs" },
-    });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.ul, __VLS_intrinsicElements.ul)({
-        tabindex: "0",
-        ...{ class: "dropdown-content menu menu-sm bg-base-100 rounded-box z-[20] mt-1 w-56 p-2 shadow" },
-    });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({});
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
-        ...{ onClick: (...[$event]) => {
-                if (!(__VLS_ctx.bootReadyKey))
-                    return;
-                __VLS_ctx.closeMenus();
-                __VLS_ctx.onNew();
-            } },
-    });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-        ...{ class: "flex-1" },
-    });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({});
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
-        ...{ onClick: (...[$event]) => {
-                if (!(__VLS_ctx.bootReadyKey))
-                    return;
-                __VLS_ctx.closeMenus();
-                __VLS_ctx.onNewFolder();
-            } },
-    });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-        ...{ class: "flex-1" },
-    });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
-        ...{ class: ({ disabled: !__VLS_ctx.activeTab || !__VLS_ctx.activeTab.dirty }) },
-    });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
-        ...{ onClick: (...[$event]) => {
-                if (!(__VLS_ctx.bootReadyKey))
-                    return;
-                __VLS_ctx.closeMenus();
-                __VLS_ctx.onSave();
-            } },
-    });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-        ...{ class: "flex-1" },
-    });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.kbd, __VLS_intrinsicElements.kbd)({
-        ...{ class: "kbd kbd-xs" },
-    });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
-        ...{ class: ({ disabled: !__VLS_ctx.hasDirtyTabs }) },
-    });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
-        ...{ onClick: (...[$event]) => {
-                if (!(__VLS_ctx.bootReadyKey))
-                    return;
-                __VLS_ctx.closeMenus();
-                __VLS_ctx.onSaveAll();
-            } },
-    });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-        ...{ class: "flex-1" },
-    });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({});
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.div)({
-        ...{ class: "divider my-0" },
-    });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
-        ...{ class: ({ disabled: !__VLS_ctx.activeTab }) },
-    });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
-        ...{ onClick: (...[$event]) => {
-                if (!(__VLS_ctx.bootReadyKey))
-                    return;
-                __VLS_ctx.closeMenus();
-                __VLS_ctx.onCloseActiveTab();
-            } },
-    });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-        ...{ class: "flex-1" },
-    });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.kbd, __VLS_intrinsicElements.kbd)({
-        ...{ class: "kbd kbd-xs" },
-    });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({});
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.div)({
-        ...{ class: "divider my-0" },
-    });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({});
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
-        ...{ onClick: (...[$event]) => {
-                if (!(__VLS_ctx.bootReadyKey))
-                    return;
-                __VLS_ctx.closeMenus();
-                __VLS_ctx.backHome();
-            } },
-    });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-        ...{ class: "flex-1" },
-    });
-    (__VLS_ctx.isCortex ? 'Back to chat' : 'Back to documents');
-    if (__VLS_ctx.isCortex) {
+    if (!__VLS_ctx.isAppTab) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "flex items-center gap-1 px-2 py-1 border-b border-base-300 bg-base-200 text-sm shrink-0" },
+        });
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "dropdown" },
         });
@@ -1137,93 +1044,218 @@ if (__VLS_ctx.bootReadyKey) {
         });
         __VLS_asFunctionalElement(__VLS_intrinsicElements.ul, __VLS_intrinsicElements.ul)({
             tabindex: "0",
-            ...{ class: "dropdown-content menu menu-sm bg-base-100 rounded-box z-[20] mt-1 w-64 p-2 shadow" },
+            ...{ class: "dropdown-content menu menu-sm bg-base-100 rounded-box z-[20] mt-1 w-56 p-2 shadow" },
         });
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
-            ...{ class: ({ disabled: !__VLS_ctx.activeTab || __VLS_ctx.isActiveTabBound }) },
-        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({});
         __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
             ...{ onClick: (...[$event]) => {
                     if (!(__VLS_ctx.bootReadyKey))
                         return;
-                    if (!(__VLS_ctx.isCortex))
+                    if (!(!__VLS_ctx.isAppTab))
                         return;
                     __VLS_ctx.closeMenus();
-                    __VLS_ctx.onBindActiveTab();
+                    __VLS_ctx.onNew();
+                } },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "flex-1" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({});
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
+            ...{ onClick: (...[$event]) => {
+                    if (!(__VLS_ctx.bootReadyKey))
+                        return;
+                    if (!(!__VLS_ctx.isAppTab))
+                        return;
+                    __VLS_ctx.closeMenus();
+                    __VLS_ctx.onNewFolder();
                 } },
         });
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
             ...{ class: "flex-1" },
         });
         __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
-            ...{ class: ({ disabled: !__VLS_ctx.chatBoundDocumentId }) },
+            ...{ class: ({ disabled: !__VLS_ctx.activeTab || !__VLS_ctx.activeTab.dirty }) },
         });
         __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
             ...{ onClick: (...[$event]) => {
                     if (!(__VLS_ctx.bootReadyKey))
                         return;
-                    if (!(__VLS_ctx.isCortex))
+                    if (!(!__VLS_ctx.isAppTab))
                         return;
                     __VLS_ctx.closeMenus();
-                    __VLS_ctx.onUnbindChat();
+                    __VLS_ctx.onSave();
                 } },
         });
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
             ...{ class: "flex-1" },
         });
-    }
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.span)({
-        ...{ class: "flex-1" },
-    });
-    if (__VLS_ctx.isCortex) {
-        if (__VLS_ctx.clientToolService?.isExecuting.value) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.kbd, __VLS_intrinsicElements.kbd)({
+            ...{ class: "kbd kbd-xs" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
+            ...{ class: ({ disabled: !__VLS_ctx.hasDirtyTabs }) },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
+            ...{ onClick: (...[$event]) => {
+                    if (!(__VLS_ctx.bootReadyKey))
+                        return;
+                    if (!(!__VLS_ctx.isAppTab))
+                        return;
+                    __VLS_ctx.closeMenus();
+                    __VLS_ctx.onSaveAll();
+                } },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "flex-1" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({});
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div)({
+            ...{ class: "divider my-0" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
+            ...{ class: ({ disabled: !__VLS_ctx.activeTab }) },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
+            ...{ onClick: (...[$event]) => {
+                    if (!(__VLS_ctx.bootReadyKey))
+                        return;
+                    if (!(!__VLS_ctx.isAppTab))
+                        return;
+                    __VLS_ctx.closeMenus();
+                    __VLS_ctx.onCloseActiveTab();
+                } },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "flex-1" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.kbd, __VLS_intrinsicElements.kbd)({
+            ...{ class: "kbd kbd-xs" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({});
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div)({
+            ...{ class: "divider my-0" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({});
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
+            ...{ onClick: (...[$event]) => {
+                    if (!(__VLS_ctx.bootReadyKey))
+                        return;
+                    if (!(!__VLS_ctx.isAppTab))
+                        return;
+                    __VLS_ctx.closeMenus();
+                    __VLS_ctx.backHome();
+                } },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "flex-1" },
+        });
+        (__VLS_ctx.isCortex ? 'Back to chat' : 'Back to documents');
+        if (__VLS_ctx.isCortex) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "dropdown" },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                tabindex: "0",
+                role: "button",
+                ...{ class: "btn btn-ghost btn-xs" },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.ul, __VLS_intrinsicElements.ul)({
+                tabindex: "0",
+                ...{ class: "dropdown-content menu menu-sm bg-base-100 rounded-box z-[20] mt-1 w-64 p-2 shadow" },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
+                ...{ class: ({ disabled: !__VLS_ctx.activeTab || __VLS_ctx.isActiveTabBound }) },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
+                ...{ onClick: (...[$event]) => {
+                        if (!(__VLS_ctx.bootReadyKey))
+                            return;
+                        if (!(!__VLS_ctx.isAppTab))
+                            return;
+                        if (!(__VLS_ctx.isCortex))
+                            return;
+                        __VLS_ctx.closeMenus();
+                        __VLS_ctx.onBindActiveTab();
+                    } },
+            });
             __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                ...{ class: "text-xs px-2 py-0.5 rounded bg-warning/15 text-warning border border-warning/30 animate-pulse" },
-                title: "An agent tool is currently editing the chat-bound document",
+                ...{ class: "flex-1" },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
+                ...{ class: ({ disabled: !__VLS_ctx.chatBoundDocumentId }) },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
+                ...{ onClick: (...[$event]) => {
+                        if (!(__VLS_ctx.bootReadyKey))
+                            return;
+                        if (!(!__VLS_ctx.isAppTab))
+                            return;
+                        if (!(__VLS_ctx.isCortex))
+                            return;
+                        __VLS_ctx.closeMenus();
+                        __VLS_ctx.onUnbindChat();
+                    } },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "flex-1" },
             });
         }
-        else if (__VLS_ctx.activeTab || __VLS_ctx.chatBoundDocumentId) {
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-                ...{ onClick: (__VLS_ctx.onBindActiveTab) },
-                type: "button",
-                ...{ class: "\u0074\u0065\u0078\u0074\u002d\u0078\u0073\u0020\u0070\u0078\u002d\u0032\u0020\u0070\u0079\u002d\u0030\u002e\u0035\u0020\u0072\u006f\u0075\u006e\u0064\u0065\u0064\u0020\u0066\u006f\u006e\u0074\u002d\u006d\u006f\u006e\u006f\u0020\u0066\u006c\u0065\u0078\u0020\u0069\u0074\u0065\u006d\u0073\u002d\u0063\u0065\u006e\u0074\u0065\u0072\u0020\u0067\u0061\u0070\u002d\u0031\u000a\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0074\u0072\u0061\u006e\u0073\u0069\u0074\u0069\u006f\u006e\u002d\u0063\u006f\u006c\u006f\u0072\u0073\u0020\u0065\u006e\u0061\u0062\u006c\u0065\u0064\u003a\u0068\u006f\u0076\u0065\u0072\u003a\u0062\u0067\u002d\u0062\u0061\u0073\u0065\u002d\u0032\u0030\u0030\u0020\u0064\u0069\u0073\u0061\u0062\u006c\u0065\u0064\u003a\u0063\u0075\u0072\u0073\u006f\u0072\u002d\u0064\u0065\u0066\u0061\u0075\u006c\u0074" },
-                ...{ class: (__VLS_ctx.isActiveTabBound ? 'text-primary bg-primary/10' : 'opacity-70') },
-                disabled: (!__VLS_ctx.activeTab || __VLS_ctx.isActiveTabBound),
-                title: (__VLS_ctx.bindIconTooltip),
-            });
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                'aria-hidden': "true",
-            });
-            if (__VLS_ctx.chatBoundDocumentPathDisplay) {
-                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
-                (__VLS_ctx.chatBoundDocumentPathDisplay);
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span)({
+            ...{ class: "flex-1" },
+        });
+        if (__VLS_ctx.isCortex) {
+            if (__VLS_ctx.clientToolService?.isExecuting.value) {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                    ...{ class: "text-xs px-2 py-0.5 rounded bg-warning/15 text-warning border border-warning/30 animate-pulse" },
+                    title: "An agent tool is currently editing the chat-bound document",
+                });
+            }
+            else if (__VLS_ctx.activeTab || __VLS_ctx.chatBoundDocumentId) {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                    ...{ onClick: (__VLS_ctx.onBindActiveTab) },
+                    type: "button",
+                    ...{ class: "\u0074\u0065\u0078\u0074\u002d\u0078\u0073\u0020\u0070\u0078\u002d\u0032\u0020\u0070\u0079\u002d\u0030\u002e\u0035\u0020\u0072\u006f\u0075\u006e\u0064\u0065\u0064\u0020\u0066\u006f\u006e\u0074\u002d\u006d\u006f\u006e\u006f\u0020\u0066\u006c\u0065\u0078\u0020\u0069\u0074\u0065\u006d\u0073\u002d\u0063\u0065\u006e\u0074\u0065\u0072\u0020\u0067\u0061\u0070\u002d\u0031\u000a\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0074\u0072\u0061\u006e\u0073\u0069\u0074\u0069\u006f\u006e\u002d\u0063\u006f\u006c\u006f\u0072\u0073\u0020\u0065\u006e\u0061\u0062\u006c\u0065\u0064\u003a\u0068\u006f\u0076\u0065\u0072\u003a\u0062\u0067\u002d\u0062\u0061\u0073\u0065\u002d\u0032\u0030\u0030\u0020\u0064\u0069\u0073\u0061\u0062\u006c\u0065\u0064\u003a\u0063\u0075\u0072\u0073\u006f\u0072\u002d\u0064\u0065\u0066\u0061\u0075\u006c\u0074" },
+                    ...{ class: (__VLS_ctx.isActiveTabBound ? 'text-primary bg-primary/10' : 'opacity-70') },
+                    disabled: (!__VLS_ctx.activeTab || __VLS_ctx.isActiveTabBound),
+                    title: (__VLS_ctx.bindIconTooltip),
+                });
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                    'aria-hidden': "true",
+                });
+                if (__VLS_ctx.chatBoundDocumentPathDisplay) {
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+                    (__VLS_ctx.chatBoundDocumentPathDisplay);
+                }
             }
         }
     }
-    /** @type {[typeof EditorTabs, ]} */ ;
-    // @ts-ignore
-    const __VLS_46 = __VLS_asFunctionalComponent(EditorTabs, new EditorTabs({
-        ...{ 'onSelect': {} },
-        ...{ 'onClose': {} },
-        tabs: (__VLS_ctx.store.openTabs),
-        activeTabId: (__VLS_ctx.store.activeTabId),
-    }));
-    const __VLS_47 = __VLS_46({
-        ...{ 'onSelect': {} },
-        ...{ 'onClose': {} },
-        tabs: (__VLS_ctx.store.openTabs),
-        activeTabId: (__VLS_ctx.store.activeTabId),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_46));
-    let __VLS_49;
-    let __VLS_50;
-    let __VLS_51;
-    const __VLS_52 = {
-        onSelect: (__VLS_ctx.store.setActiveTab)
-    };
-    const __VLS_53 = {
-        onClose: (__VLS_ctx.store.closeTab)
-    };
-    var __VLS_48;
+    if (!__VLS_ctx.isAppTab) {
+        /** @type {[typeof EditorTabs, ]} */ ;
+        // @ts-ignore
+        const __VLS_46 = __VLS_asFunctionalComponent(EditorTabs, new EditorTabs({
+            ...{ 'onSelect': {} },
+            ...{ 'onClose': {} },
+            tabs: (__VLS_ctx.store.openTabs),
+            activeTabId: (__VLS_ctx.store.activeTabId),
+        }));
+        const __VLS_47 = __VLS_46({
+            ...{ 'onSelect': {} },
+            ...{ 'onClose': {} },
+            tabs: (__VLS_ctx.store.openTabs),
+            activeTabId: (__VLS_ctx.store.activeTabId),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_46));
+        let __VLS_49;
+        let __VLS_50;
+        let __VLS_51;
+        const __VLS_52 = {
+            onSelect: (__VLS_ctx.store.setActiveTab)
+        };
+        const __VLS_53 = {
+            onClose: (__VLS_ctx.store.closeTab)
+        };
+        var __VLS_48;
+    }
     if (__VLS_ctx.saveError) {
         const __VLS_54 = {}.VAlert;
         /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
@@ -1533,6 +1565,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             title: title,
             breadcrumbs: breadcrumbs,
             activeTab: activeTab,
+            isAppTab: isAppTab,
             isAgentEditing: isAgentEditing,
             activePendingChange: activePendingChange,
             activeRecentEditor: activeRecentEditor,

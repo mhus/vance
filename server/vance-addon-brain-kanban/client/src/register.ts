@@ -1,13 +1,27 @@
 /**
  * Federation expose `./register` — called by the vance-face host at
- * boot after fetching {@code /face/addons}. The kanban addon doesn't
- * contribute a document Kind (its UI is the AppEditor's folder-level
- * KanbanBoard, not a single-doc renderer), so this is currently a
- * no-op announcement. The hook is kept symmetrical with slideshow so
- * the loader can apply the same wire-up to every addon regardless of
- * whether it currently contributes a Kind.
+ * boot after fetching {@code /face/addons}.
+ *
+ * The kanban addon contributes a folder-level application kind:
+ * documents with {@code kind: application} + {@code app: kanban}
+ * (i.e. {@code _app.yaml} manifests) render via {@link KanbanAppKind},
+ * which adapts the manifest DTO to the existing {@code KanbanBoard}'s
+ * (projectId, folder, title) interface. The host's docTypeRegistry
+ * resolves this entry by explicit id lookup (resolveKind), not via
+ * the generic kind+mime scan, so the {@code matches} predicate
+ * returns false on purpose.
  */
+import { defineAsyncComponent } from 'vue';
+import { registerKind } from '@vance/kind-registry';
+
+const KanbanAppKind = defineAsyncComponent(() => import('./KanbanAppKind.vue'));
+
 export function register(): void {
   // eslint-disable-next-line no-console
   console.log('[vance-addon/kanban] register() called');
+  registerKind({
+    id: 'application:kanban',
+    matches: () => false,
+    view: KanbanAppKind,
+  });
 }

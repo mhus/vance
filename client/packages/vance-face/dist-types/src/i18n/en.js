@@ -388,8 +388,6 @@ export default {
             sizeBy: 'by {user}',
             kindBadgeTooltip: 'Document kind, parsed from front matter',
             kindLabel: 'kind: {kind}',
-            openApplicationEditor: 'Open in Application editor',
-            openApplicationEditorTooltip: 'Jump to the Applications page that uses this _app.yaml as its manifest',
             changedBadge: 'Changed',
             changedBadgeTooltip: 'You have unsaved changes — click Apply or Save.',
             propsToggleLabel: 'Properties',

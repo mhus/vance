@@ -25,6 +25,7 @@
   },
   "dependencies": {
     "@vance/components": "workspace:*",
+    "@vance/kind-registry": "workspace:*",
     "@vance/shared": "workspace:*"
   },
   "peerDependencies": {

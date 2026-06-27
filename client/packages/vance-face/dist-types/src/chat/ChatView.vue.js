@@ -24,6 +24,15 @@ const { t: _ } = useI18n();
 const currentUserId = computed(() => getUsername());
 const activityEvents = ref([]);
 let activitySeq = 0;
+function lastMessageIdSnapshot() {
+    const msgs = allMessages.value;
+    for (let i = msgs.length - 1; i >= 0; i--) {
+        const id = msgs[i].messageId;
+        if (id)
+            return id;
+    }
+    return null;
+}
 const sessionIdRef = computed(() => props.sessionId);
 const { onChange: onRosterChange, onInitial: onRosterInitial } = useSessionRoster(sessionIdRef);
 // On (re-)attach to a shared session, surface the current roster as
@@ -42,15 +51,18 @@ onRosterInitial((list) => {
         kind: 'who',
         displayName: names.join(', '),
         at: new Date(),
+        afterMessageId: lastMessageIdSnapshot(),
     });
 });
 onRosterChange((change) => {
+    const anchor = lastMessageIdSnapshot();
     for (const p of change.joined) {
         activityEvents.value.push({
             id: `act-${++activitySeq}`,
             kind: 'joined',
             displayName: p.displayName ?? p.userId,
             at: change.at,
+            afterMessageId: anchor,
         });
     }
     for (const p of change.left) {
@@ -59,6 +71,7 @@ onRosterChange((change) => {
             kind: 'left',
             displayName: p.displayName ?? p.userId,
             at: change.at,
+            afterMessageId: anchor,
         });
     }
 });
@@ -73,12 +86,40 @@ watch(() => props.sessionId, () => {
  * parent (ChatApp) after a successful {@code session-who} WS reply.
  * Exposed via {@link defineExpose} below.
  */
+/**
+ * Activity events grouped by their anchor messageId. Used by the
+ * template to interleave roster join/leave/who lines into the message
+ * stream right where they arrived, instead of dumping them all at the
+ * bottom (which made the feed slide down whenever a new bubble landed).
+ * Key {@code ''} holds the leading bucket — events that arrived before
+ * any message did.
+ */
+const activityEventsByAnchor = computed(() => {
+    const map = new Map();
+    for (const evt of activityEvents.value) {
+        const key = evt.afterMessageId ?? '';
+        let bucket = map.get(key);
+        if (!bucket) {
+            bucket = [];
+            map.set(key, bucket);
+        }
+        bucket.push(evt);
+    }
+    return map;
+});
+const leadingActivityEvents = computed(() => activityEventsByAnchor.value.get('') ?? []);
+function activityEventsAfter(messageId) {
+    if (!messageId)
+        return [];
+    return activityEventsByAnchor.value.get(messageId) ?? [];
+}
 function pushWhoActivity(names) {
     activityEvents.value.push({
         id: `act-${++activitySeq}`,
         kind: 'who',
         displayName: names.join(', '),
         at: new Date(),
+        afterMessageId: lastMessageIdSnapshot(),
     });
 }
 const { messages: history, loading: historyLoading, error: historyError, load, reset } = useChatHistory();
@@ -635,6 +676,48 @@ else if (__VLS_ctx.historyError) {
     (__VLS_ctx.historyError);
     var __VLS_25;
 }
+for (const [evt] of __VLS_getVForSourceType((__VLS_ctx.leadingActivityEvents))) {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        key: (evt.id),
+        ...{ class: "flex items-center gap-2 text-xs opacity-60 my-2" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div)({
+        ...{ class: "flex-1 border-t border-base-300" },
+    });
+    if (evt.kind === 'who') {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            'aria-hidden': "true",
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "ml-1" },
+        });
+        (__VLS_ctx._('chat.activity.whoHeader'));
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "font-medium ml-1" },
+        });
+        (evt.displayName);
+    }
+    else {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            'aria-hidden': "true",
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "font-medium ml-1" },
+        });
+        (evt.displayName);
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "ml-1" },
+        });
+        (evt.kind === 'joined'
+            ? __VLS_ctx._('chat.activity.joined')
+            : __VLS_ctx._('chat.activity.left'));
+    }
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div)({
+        ...{ class: "flex-1 border-t border-base-300" },
+    });
+}
 for (const [msg, idx] of __VLS_getVForSourceType((__VLS_ctx.allMessages))) {
     (msg.messageId);
     /** @type {[typeof MessageBubble, ]} */ ;
@@ -689,6 +772,48 @@ for (const [msg, idx] of __VLS_getVForSourceType((__VLS_ctx.allMessages))) {
         };
         var __VLS_35;
     }
+    for (const [evt] of __VLS_getVForSourceType((__VLS_ctx.activityEventsAfter(msg.messageId)))) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            key: (evt.id),
+            ...{ class: "flex items-center gap-2 text-xs opacity-60 my-2" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div)({
+            ...{ class: "flex-1 border-t border-base-300" },
+        });
+        if (evt.kind === 'who') {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                'aria-hidden': "true",
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "ml-1" },
+            });
+            (__VLS_ctx._('chat.activity.whoHeader'));
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "font-medium ml-1" },
+            });
+            (evt.displayName);
+        }
+        else {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                'aria-hidden': "true",
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "font-medium ml-1" },
+            });
+            (evt.displayName);
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "ml-1" },
+            });
+            (evt.kind === 'joined'
+                ? __VLS_ctx._('chat.activity.joined')
+                : __VLS_ctx._('chat.activity.left'));
+        }
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div)({
+            ...{ class: "flex-1 border-t border-base-300" },
+        });
+    }
 }
 if (__VLS_ctx.visibleDraft) {
     /** @type {[typeof MessageBubble, ]} */ ;
@@ -723,48 +848,6 @@ for (const [draft] of __VLS_getVForSourceType((__VLS_ctx.visibleWorkerDrafts))) 
         processName: (draft.processName),
         streaming: (true),
     }, ...__VLS_functionalComponentArgsRest(__VLS_43));
-}
-for (const [evt] of __VLS_getVForSourceType((__VLS_ctx.activityEvents))) {
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        key: (evt.id),
-        ...{ class: "flex items-center gap-2 text-xs opacity-60 my-2" },
-    });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.div)({
-        ...{ class: "flex-1 border-t border-base-300" },
-    });
-    if (evt.kind === 'who') {
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-            'aria-hidden': "true",
-        });
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-            ...{ class: "ml-1" },
-        });
-        (__VLS_ctx._('chat.activity.whoHeader'));
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-            ...{ class: "font-medium ml-1" },
-        });
-        (evt.displayName);
-    }
-    else {
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-            'aria-hidden': "true",
-        });
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-            ...{ class: "font-medium ml-1" },
-        });
-        (evt.displayName);
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-            ...{ class: "ml-1" },
-        });
-        (evt.kind === 'joined'
-            ? __VLS_ctx._('chat.activity.joined')
-            : __VLS_ctx._('chat.activity.left'));
-    }
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.div)({
-        ...{ class: "flex-1 border-t border-base-300" },
-    });
 }
 /** @type {[typeof PlanModeIndicator, ]} */ ;
 // @ts-ignore
@@ -843,6 +926,24 @@ const __VLS_47 = __VLS_46({
 /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['border-t']} */ ;
 /** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['my-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-t']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;
+/** @type {__VLS_StyleScopedClasses['ml-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-medium']} */ ;
+/** @type {__VLS_StyleScopedClasses['ml-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-medium']} */ ;
+/** @type {__VLS_StyleScopedClasses['ml-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['ml-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-t']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;
 var __VLS_dollars;
 const __VLS_self = (await import('vue')).defineComponent({
     setup() {
@@ -856,7 +957,8 @@ const __VLS_self = (await import('vue')).defineComponent({
             emit: emit,
             _: _,
             currentUserId: currentUserId,
-            activityEvents: activityEvents,
+            leadingActivityEvents: leadingActivityEvents,
+            activityEventsAfter: activityEventsAfter,
             historyLoading: historyLoading,
             historyError: historyError,
             workerMessageIds: workerMessageIds,

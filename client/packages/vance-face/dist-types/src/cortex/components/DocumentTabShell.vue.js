@@ -6,6 +6,7 @@ import ImageView from '@/document/ImageView.vue';
 import DocumentPreview from '@/document/DocumentPreview.vue';
 import { useCortexStore } from '../stores/cortexStore';
 import { resolveBinding } from '../docTypeRegistry';
+import { useViewEditMode } from '../useViewEditMode';
 import { resolveRunAdapter } from '../runners/runnerRegistry';
 import { useDocumentNotes } from '../composables/useDocumentNotes';
 import CortexValidateDialog from './CortexValidateDialog.vue';
@@ -16,6 +17,20 @@ const props = defineProps();
 const emit = defineEmits();
 const store = useCortexStore();
 const binding = computed(() => resolveBinding(props.document));
+// True when the binding dispatched to an application:<type> kind from
+// the kind-registry (i.e. the doc is an _app.yaml manifest mounted as a
+// folder-level app: Calendar, Kanban, Slideshow, …). Drives shell
+// trimming — apps get the whole tab body and a slim chrome so the
+// folder-level UI doesn't share vertical space with a path/toggle bar
+// that's irrelevant for a single-manifest doc.
+const isAppKindBinding = computed(() => binding.value.id.startsWith('kind-registry:application:'));
+// In immersive App view, Properties + Notes side-panels stay
+// suppressed even if the user previously had them pinned open on a
+// different doc — they'd steal vertical / horizontal space from the
+// folder-level App. The sessionStorage-backed `propertiesOpen` /
+// `notesOpen` refs aren't reset, so flipping to Edit (or opening a
+// non-App doc) restores the user's pinned preference.
+const isAppView = computed(() => isAppKindBinding.value && viewEditMode.value === 'view');
 const reloading = ref(false);
 const downloading = ref(false);
 async function onDownload() {
@@ -332,41 +347,15 @@ const codePreviewKind = computed(() => {
     return undefined;
 });
 const showToggle = computed(() => isViewMode.value || codePreviewKind.value !== undefined);
-// ─── Application manifest jump-link ─────────────────────────────
+// ─── View / Edit toggle ──────────────────────────────────────────
 //
-// A {@code kind: application} document at {@code …/_app.yaml} is the
-// manifest of an app folder (Kanban, Calendar, Slideshow). The
-// generic CodeEditor view is fine for inspecting the YAML, but most
-// of the time the user wants the dedicated app editor under
-// {@code /app.html}. Surface a small ↗ jump-link in the toolbar so
-// the user is never stuck without a way to the rich editor.
-const appEditorUrl = computed(() => {
-    const doc = props.document;
-    // Path is the load-order-independent signal: `kind` arrives only
-    // after the full DTO fetch and stays null on tabs that started life
-    // as a summary (file-tree-driven openFile races, browser back from
-    // the app editor, …). The basename `_app.yaml` is unambiguous and
-    // doesn't drift with metadata-load timing.
-    if (!doc.path?.endsWith('/_app.yaml'))
-        return null;
-    return `/app.html?documentId=${encodeURIComponent(doc.id)}`;
-});
-const VIEW_EDIT_KEY = 'editor:viewEditMode';
-function loadViewEditMode() {
-    try {
-        return sessionStorage.getItem(VIEW_EDIT_KEY) === 'edit' ? 'edit' : 'view';
-    }
-    catch {
-        return 'view';
-    }
-}
-const viewEditMode = ref(loadViewEditMode());
-watch(viewEditMode, (v) => {
-    try {
-        sessionStorage.setItem(VIEW_EDIT_KEY, v);
-    }
-    catch { /* sessionStorage unavailable */ }
-});
+// For typed-model and kind-registry modes the user can flip between
+// the rendered view (Mermaid diagram, Marpit slides, ListView,
+// ChecklistView, …) and the raw source in a CodeEditor — mirrors the
+// preview / raw tab pair in DocumentApp.vue. Persisted per browser
+// tab in sessionStorage (same pattern as propertiesOpen/notesOpen) so
+// a user who prefers 'edit' keeps it across doc switches.
+const viewEditMode = useViewEditMode();
 // In a view-capable mode, 'edit' falls back to the same CodeEditor
 // the catch-all 'code' mode uses — same selection-tracking, same
 // keyboard model.
@@ -532,179 +521,218 @@ let __VLS_directives;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "h-full flex flex-col min-h-0" },
 });
-__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "flex items-center gap-2 px-3 py-2 border-b border-base-300 bg-base-100 text-sm" },
-});
-__VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-    ...{ onClick: (__VLS_ctx.onReload) },
-    type: "button",
-    ...{ class: "\u006f\u0070\u0061\u0063\u0069\u0074\u0079\u002d\u0036\u0030\u0020\u0065\u006e\u0061\u0062\u006c\u0065\u0064\u003a\u0068\u006f\u0076\u0065\u0072\u003a\u006f\u0070\u0061\u0063\u0069\u0074\u0079\u002d\u0031\u0030\u0030\u0020\u0065\u006e\u0061\u0062\u006c\u0065\u0064\u003a\u0068\u006f\u0076\u0065\u0072\u003a\u0062\u0067\u002d\u0062\u0061\u0073\u0065\u002d\u0032\u0030\u0030\u0020\u0064\u0069\u0073\u0061\u0062\u006c\u0065\u0064\u003a\u0063\u0075\u0072\u0073\u006f\u0072\u002d\u0064\u0065\u0066\u0061\u0075\u006c\u0074\u000a\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0072\u006f\u0075\u006e\u0064\u0065\u0064\u0020\u0070\u0078\u002d\u0031\u0020\u006c\u0065\u0061\u0064\u0069\u006e\u0067\u002d\u006e\u006f\u006e\u0065" },
-    disabled: (__VLS_ctx.reloading),
-    title: (__VLS_ctx.document.dirty ? 'Reload (discards unsaved changes)' : 'Reload from server'),
-});
-__VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-    ...{ class: (__VLS_ctx.reloading ? 'animate-spin inline-block' : '') },
-});
-if (__VLS_ctx.document.color) {
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.span)({
-        ...{ class: "size-2.5 rounded-full flex-shrink-0" },
-        ...{ class: (__VLS_ctx.accentColorDotClass(__VLS_ctx.document.color)) },
-        'aria-label': (`color ${__VLS_ctx.document.color}`),
+if (__VLS_ctx.isAppKindBinding && __VLS_ctx.viewEditMode === 'view') {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "flex items-center gap-2 px-3 py-1.5 border-b border-base-300 bg-base-100 text-sm" },
     });
-}
-__VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-    ...{ class: "font-mono opacity-80 truncate" },
-});
-(__VLS_ctx.document.path);
-if (__VLS_ctx.appEditorUrl) {
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
-        href: (__VLS_ctx.appEditorUrl),
-        ...{ class: "text-xs px-1.5 py-0.5 rounded border border-primary/40 text-primary hover:bg-primary/10 leading-none" },
-        title: "Open in Application editor",
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+        ...{ class: "font-mono opacity-60 truncate flex-1" },
     });
-}
-if (__VLS_ctx.showToggle) {
+    (__VLS_ctx.document.path);
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "flex border border-base-300 rounded overflow-hidden text-xs" },
         role: "group",
-        'aria-label': "View / edit toggle",
+        'aria-label': "App / edit toggle",
     });
     __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-        ...{ onClick: (...[$event]) => {
-                if (!(__VLS_ctx.showToggle))
-                    return;
-                __VLS_ctx.viewEditMode = 'view';
-            } },
         type: "button",
-        ...{ class: "px-2 py-0.5" },
-        ...{ class: (__VLS_ctx.viewEditMode === 'view' ? 'bg-base-300' : 'opacity-60 hover:bg-base-200') },
-        title: "Rendered view",
+        ...{ class: "px-2 py-0.5 bg-base-300" },
+        title: "App view",
     });
     __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
         ...{ onClick: (...[$event]) => {
-                if (!(__VLS_ctx.showToggle))
+                if (!(__VLS_ctx.isAppKindBinding && __VLS_ctx.viewEditMode === 'view'))
                     return;
                 __VLS_ctx.viewEditMode = 'edit';
             } },
         type: "button",
-        ...{ class: "px-2 py-0.5 border-l border-base-300" },
-        ...{ class: (__VLS_ctx.viewEditMode === 'edit' ? 'bg-base-300' : 'opacity-60 hover:bg-base-200') },
-        title: "Raw source editor",
+        ...{ class: "px-2 py-0.5 border-l border-base-300 opacity-60 hover:bg-base-200" },
+        title: "Raw YAML manifest editor",
     });
 }
-if (__VLS_ctx.runAdapter) {
-    if (!__VLS_ctx.isRunning) {
+if (!__VLS_ctx.isAppKindBinding || __VLS_ctx.viewEditMode === 'edit') {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "flex items-center gap-2 px-3 py-2 border-b border-base-300 bg-base-100 text-sm" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+        ...{ onClick: (__VLS_ctx.onReload) },
+        type: "button",
+        ...{ class: "\u006f\u0070\u0061\u0063\u0069\u0074\u0079\u002d\u0036\u0030\u0020\u0065\u006e\u0061\u0062\u006c\u0065\u0064\u003a\u0068\u006f\u0076\u0065\u0072\u003a\u006f\u0070\u0061\u0063\u0069\u0074\u0079\u002d\u0031\u0030\u0030\u0020\u0065\u006e\u0061\u0062\u006c\u0065\u0064\u003a\u0068\u006f\u0076\u0065\u0072\u003a\u0062\u0067\u002d\u0062\u0061\u0073\u0065\u002d\u0032\u0030\u0030\u0020\u0064\u0069\u0073\u0061\u0062\u006c\u0065\u0064\u003a\u0063\u0075\u0072\u0073\u006f\u0072\u002d\u0064\u0065\u0066\u0061\u0075\u006c\u0074\u000a\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0072\u006f\u0075\u006e\u0064\u0065\u0064\u0020\u0070\u0078\u002d\u0031\u0020\u006c\u0065\u0061\u0064\u0069\u006e\u0067\u002d\u006e\u006f\u006e\u0065" },
+        disabled: (__VLS_ctx.reloading),
+        title: (__VLS_ctx.document.dirty ? 'Reload (discards unsaved changes)' : 'Reload from server'),
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+        ...{ class: (__VLS_ctx.reloading ? 'animate-spin inline-block' : '') },
+    });
+    if (__VLS_ctx.document.color) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span)({
+            ...{ class: "size-2.5 rounded-full flex-shrink-0" },
+            ...{ class: (__VLS_ctx.accentColorDotClass(__VLS_ctx.document.color)) },
+            'aria-label': (`color ${__VLS_ctx.document.color}`),
+        });
+    }
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+        ...{ class: "font-mono opacity-80 truncate" },
+    });
+    (__VLS_ctx.document.path);
+    if (__VLS_ctx.showToggle) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "flex border border-base-300 rounded overflow-hidden text-xs" },
+            role: "group",
+            'aria-label': (__VLS_ctx.isAppKindBinding ? 'App / edit toggle' : 'View / edit toggle'),
+        });
         __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-            ...{ onClick: (__VLS_ctx.onRun) },
+            ...{ onClick: (...[$event]) => {
+                    if (!(!__VLS_ctx.isAppKindBinding || __VLS_ctx.viewEditMode === 'edit'))
+                        return;
+                    if (!(__VLS_ctx.showToggle))
+                        return;
+                    __VLS_ctx.viewEditMode = 'view';
+                } },
+            type: "button",
+            ...{ class: "px-2 py-0.5" },
+            ...{ class: (__VLS_ctx.viewEditMode === 'view' ? 'bg-base-300' : 'opacity-60 hover:bg-base-200') },
+            title: (__VLS_ctx.isAppKindBinding ? 'App view' : 'Rendered view'),
+        });
+        (__VLS_ctx.isAppKindBinding ? 'App' : 'View');
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+            ...{ onClick: (...[$event]) => {
+                    if (!(!__VLS_ctx.isAppKindBinding || __VLS_ctx.viewEditMode === 'edit'))
+                        return;
+                    if (!(__VLS_ctx.showToggle))
+                        return;
+                    __VLS_ctx.viewEditMode = 'edit';
+                } },
+            type: "button",
+            ...{ class: "px-2 py-0.5 border-l border-base-300" },
+            ...{ class: (__VLS_ctx.viewEditMode === 'edit' ? 'bg-base-300' : 'opacity-60 hover:bg-base-200') },
+            title: "Raw source editor",
+        });
+    }
+    if (__VLS_ctx.runAdapter) {
+        if (!__VLS_ctx.isRunning) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (__VLS_ctx.onRun) },
+                type: "button",
+                ...{ class: "text-xs px-2 py-0.5 rounded border border-base-300 hover:bg-base-200" },
+                title: (`${__VLS_ctx.runAdapter.label} — execute the document`),
+            });
+            (__VLS_ctx.runAdapter.label);
+        }
+        else {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (__VLS_ctx.onCancel) },
+                type: "button",
+                ...{ class: "text-xs px-2 py-0.5 rounded border border-warning/40 bg-warning/10 text-warning hover:bg-warning/20" },
+                title: "Cancel the running execution",
+            });
+        }
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.input)({
+            value: (__VLS_ctx.argsJson),
+            type: "text",
+            spellcheck: "false",
+            ...{ class: "text-xs font-mono px-2 py-0.5 rounded border w-32" },
+            ...{ class: (__VLS_ctx.argsError ? 'border-error' : 'border-base-300') },
+            title: (__VLS_ctx.argsError ?? 'JSON args object, default `{}`'),
+            placeholder: "{}",
+        });
+    }
+    if (__VLS_ctx.isJsLanguage) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+            ...{ onClick: (...[$event]) => {
+                    if (!(!__VLS_ctx.isAppKindBinding || __VLS_ctx.viewEditMode === 'edit'))
+                        return;
+                    if (!(__VLS_ctx.isJsLanguage))
+                        return;
+                    __VLS_ctx.showValidate = true;
+                } },
             type: "button",
             ...{ class: "text-xs px-2 py-0.5 rounded border border-base-300 hover:bg-base-200" },
-            title: (`${__VLS_ctx.runAdapter.label} — execute the document`),
+            title: "Validate (quick + deep)",
         });
-        (__VLS_ctx.runAdapter.label);
+        if (!__VLS_ctx.editorHasContent) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!(!__VLS_ctx.isAppKindBinding || __VLS_ctx.viewEditMode === 'edit'))
+                            return;
+                        if (!(__VLS_ctx.isJsLanguage))
+                            return;
+                        if (!(!__VLS_ctx.editorHasContent))
+                            return;
+                        __VLS_ctx.openSlart('CREATE');
+                    } },
+                type: "button",
+                ...{ class: "text-xs px-2 py-0.5 rounded border border-base-300 hover:bg-base-200" },
+                title: "Generate a new script from a free-text description (Slart SCRIPT_JS)",
+            });
+        }
+        else {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!(!__VLS_ctx.isAppKindBinding || __VLS_ctx.viewEditMode === 'edit'))
+                            return;
+                        if (!(__VLS_ctx.isJsLanguage))
+                            return;
+                        if (!!(!__VLS_ctx.editorHasContent))
+                            return;
+                        __VLS_ctx.openSlart('UPDATE');
+                    } },
+                type: "button",
+                ...{ class: "text-xs px-2 py-0.5 rounded border border-base-300 hover:bg-base-200" },
+                title: "Update this script — describe the change and Slart rewrites it preserving structure",
+            });
+        }
     }
-    else {
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-            ...{ onClick: (__VLS_ctx.onCancel) },
-            type: "button",
-            ...{ class: "text-xs px-2 py-0.5 rounded border border-warning/40 bg-warning/10 text-warning hover:bg-warning/20" },
-            title: "Cancel the running execution",
-        });
-    }
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.input)({
-        value: (__VLS_ctx.argsJson),
-        type: "text",
-        spellcheck: "false",
-        ...{ class: "text-xs font-mono px-2 py-0.5 rounded border w-32" },
-        ...{ class: (__VLS_ctx.argsError ? 'border-error' : 'border-base-300') },
-        title: (__VLS_ctx.argsError ?? 'JSON args object, default `{}`'),
-        placeholder: "{}",
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+        ...{ onClick: (__VLS_ctx.onDownload) },
+        type: "button",
+        ...{ class: "\u006f\u0070\u0061\u0063\u0069\u0074\u0079\u002d\u0036\u0030\u0020\u0065\u006e\u0061\u0062\u006c\u0065\u0064\u003a\u0068\u006f\u0076\u0065\u0072\u003a\u006f\u0070\u0061\u0063\u0069\u0074\u0079\u002d\u0031\u0030\u0030\u0020\u0065\u006e\u0061\u0062\u006c\u0065\u0064\u003a\u0068\u006f\u0076\u0065\u0072\u003a\u0062\u0067\u002d\u0062\u0061\u0073\u0065\u002d\u0032\u0030\u0030\u0020\u0064\u0069\u0073\u0061\u0062\u006c\u0065\u0064\u003a\u0063\u0075\u0072\u0073\u006f\u0072\u002d\u0064\u0065\u0066\u0061\u0075\u006c\u0074\u000a\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0072\u006f\u0075\u006e\u0064\u0065\u0064\u0020\u0070\u0078\u002d\u0031\u002e\u0035\u0020\u0070\u0079\u002d\u0030\u002e\u0035\u0020\u0074\u0065\u0078\u0074\u002d\u0078\u0073" },
+        disabled: (__VLS_ctx.downloading),
+        title: (`Download ${__VLS_ctx.document.name}`),
+        'aria-label': (`Download ${__VLS_ctx.document.name}`),
     });
-}
-if (__VLS_ctx.isJsLanguage) {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+        ...{ class: (__VLS_ctx.downloading ? 'animate-pulse' : '') },
+    });
     __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
         ...{ onClick: (...[$event]) => {
-                if (!(__VLS_ctx.isJsLanguage))
+                if (!(!__VLS_ctx.isAppKindBinding || __VLS_ctx.viewEditMode === 'edit'))
                     return;
-                __VLS_ctx.showValidate = true;
+                __VLS_ctx.propertiesOpen = !__VLS_ctx.propertiesOpen;
             } },
         type: "button",
-        ...{ class: "text-xs px-2 py-0.5 rounded border border-base-300 hover:bg-base-200" },
-        title: "Validate (quick + deep)",
+        ...{ class: "opacity-60 hover:opacity-100 hover:bg-base-200 rounded px-1.5 py-0.5 text-xs" },
+        ...{ class: ({ 'bg-base-300 opacity-100': __VLS_ctx.propertiesOpen }) },
+        title: (__VLS_ctx.propertiesOpen ? 'Hide properties' : 'Show properties'),
     });
-    if (!__VLS_ctx.editorHasContent) {
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-            ...{ onClick: (...[$event]) => {
-                    if (!(__VLS_ctx.isJsLanguage))
-                        return;
-                    if (!(!__VLS_ctx.editorHasContent))
-                        return;
-                    __VLS_ctx.openSlart('CREATE');
-                } },
-            type: "button",
-            ...{ class: "text-xs px-2 py-0.5 rounded border border-base-300 hover:bg-base-200" },
-            title: "Generate a new script from a free-text description (Slart SCRIPT_JS)",
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+        ...{ onClick: (...[$event]) => {
+                if (!(!__VLS_ctx.isAppKindBinding || __VLS_ctx.viewEditMode === 'edit'))
+                    return;
+                __VLS_ctx.notesOpen = !__VLS_ctx.notesOpen;
+            } },
+        type: "button",
+        ...{ class: "opacity-60 hover:opacity-100 hover:bg-base-200 rounded px-1.5 py-0.5 text-xs" },
+        ...{ class: ({ 'bg-base-300 opacity-100': __VLS_ctx.notesOpen }) },
+        title: (__VLS_ctx.notesOpen ? 'Notizen ausblenden' : 'Notizen einblenden'),
+    });
+    (__VLS_ctx.docNotes.notes.value.length);
+    if (__VLS_ctx.document.dirty && __VLS_ctx.binding.editLocation === 'client-memory') {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "opacity-60" },
         });
     }
-    else {
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-            ...{ onClick: (...[$event]) => {
-                    if (!(__VLS_ctx.isJsLanguage))
-                        return;
-                    if (!!(!__VLS_ctx.editorHasContent))
-                        return;
-                    __VLS_ctx.openSlart('UPDATE');
-                } },
-            type: "button",
-            ...{ class: "text-xs px-2 py-0.5 rounded border border-base-300 hover:bg-base-200" },
-            title: "Update this script — describe the change and Slart rewrites it preserving structure",
-        });
-    }
-}
-__VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-    ...{ onClick: (__VLS_ctx.onDownload) },
-    type: "button",
-    ...{ class: "\u006f\u0070\u0061\u0063\u0069\u0074\u0079\u002d\u0036\u0030\u0020\u0065\u006e\u0061\u0062\u006c\u0065\u0064\u003a\u0068\u006f\u0076\u0065\u0072\u003a\u006f\u0070\u0061\u0063\u0069\u0074\u0079\u002d\u0031\u0030\u0030\u0020\u0065\u006e\u0061\u0062\u006c\u0065\u0064\u003a\u0068\u006f\u0076\u0065\u0072\u003a\u0062\u0067\u002d\u0062\u0061\u0073\u0065\u002d\u0032\u0030\u0030\u0020\u0064\u0069\u0073\u0061\u0062\u006c\u0065\u0064\u003a\u0063\u0075\u0072\u0073\u006f\u0072\u002d\u0064\u0065\u0066\u0061\u0075\u006c\u0074\u000a\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0072\u006f\u0075\u006e\u0064\u0065\u0064\u0020\u0070\u0078\u002d\u0031\u002e\u0035\u0020\u0070\u0079\u002d\u0030\u002e\u0035\u0020\u0074\u0065\u0078\u0074\u002d\u0078\u0073" },
-    disabled: (__VLS_ctx.downloading),
-    title: (`Download ${__VLS_ctx.document.name}`),
-    'aria-label': (`Download ${__VLS_ctx.document.name}`),
-});
-__VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-    ...{ class: (__VLS_ctx.downloading ? 'animate-pulse' : '') },
-});
-__VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-    ...{ onClick: (...[$event]) => {
-            __VLS_ctx.propertiesOpen = !__VLS_ctx.propertiesOpen;
-        } },
-    type: "button",
-    ...{ class: "opacity-60 hover:opacity-100 hover:bg-base-200 rounded px-1.5 py-0.5 text-xs" },
-    ...{ class: ({ 'bg-base-300 opacity-100': __VLS_ctx.propertiesOpen }) },
-    title: (__VLS_ctx.propertiesOpen ? 'Hide properties' : 'Show properties'),
-});
-__VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-    ...{ onClick: (...[$event]) => {
-            __VLS_ctx.notesOpen = !__VLS_ctx.notesOpen;
-        } },
-    type: "button",
-    ...{ class: "opacity-60 hover:opacity-100 hover:bg-base-200 rounded px-1.5 py-0.5 text-xs" },
-    ...{ class: ({ 'bg-base-300 opacity-100': __VLS_ctx.notesOpen }) },
-    title: (__VLS_ctx.notesOpen ? 'Notizen ausblenden' : 'Notizen einblenden'),
-});
-(__VLS_ctx.docNotes.notes.value.length);
-if (__VLS_ctx.document.dirty && __VLS_ctx.binding.editLocation === 'client-memory') {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span)({
+        ...{ class: "flex-1" },
+    });
     __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-        ...{ class: "opacity-60" },
+        ...{ class: "opacity-50 text-xs font-mono" },
+        title: (`binding=${__VLS_ctx.binding.id} mode=${__VLS_ctx.binding.mode} kind=${__VLS_ctx.document.kind ?? 'null'} mime=${__VLS_ctx.document.mimeType ?? 'null'}`),
     });
+    (__VLS_ctx.binding.id);
+    (__VLS_ctx.binding.mode === 'code' ? __VLS_ctx.effectiveMimeType : (__VLS_ctx.document.mimeType ?? __VLS_ctx.binding.mode));
 }
-__VLS_asFunctionalElement(__VLS_intrinsicElements.span)({
-    ...{ class: "flex-1" },
-});
-__VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-    ...{ class: "opacity-50 text-xs font-mono" },
-    title: (`binding=${__VLS_ctx.binding.id} mode=${__VLS_ctx.binding.mode} kind=${__VLS_ctx.document.kind ?? 'null'} mime=${__VLS_ctx.document.mimeType ?? 'null'}`),
-});
-(__VLS_ctx.binding.id);
-(__VLS_ctx.binding.mode === 'code' ? __VLS_ctx.effectiveMimeType : (__VLS_ctx.document.mimeType ?? __VLS_ctx.binding.mode));
-if (__VLS_ctx.propertiesOpen) {
+if (__VLS_ctx.propertiesOpen && !__VLS_ctx.isAppView) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "shrink-0 max-h-[50%] overflow-y-auto" },
     });
@@ -1031,7 +1059,7 @@ if (__VLS_ctx.runHandle) {
         }
     }
 }
-if (__VLS_ctx.notesOpen) {
+if (__VLS_ctx.notesOpen && !__VLS_ctx.isAppView) {
     /** @type {[typeof DocumentNotesPanel, ]} */ ;
     // @ts-ignore
     const __VLS_54 = __VLS_asFunctionalComponent(DocumentNotesPanel, new DocumentNotesPanel({
@@ -1137,6 +1165,34 @@ if (__VLS_ctx.showSlart && __VLS_ctx.store.projectId) {
 /** @type {__VLS_StyleScopedClasses['items-center']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['px-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-1.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-b']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;
+/** @type {__VLS_StyleScopedClasses['bg-base-100']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['truncate']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['border']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;
+/** @type {__VLS_StyleScopedClasses['rounded']} */ ;
+/** @type {__VLS_StyleScopedClasses['overflow-hidden']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-0.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['bg-base-300']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-0.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-l']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['hover:bg-base-200']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-3']} */ ;
 /** @type {__VLS_StyleScopedClasses['py-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['border-b']} */ ;
 /** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;
@@ -1155,15 +1211,6 @@ if (__VLS_ctx.showSlart && __VLS_ctx.store.projectId) {
 /** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-80']} */ ;
 /** @type {__VLS_StyleScopedClasses['truncate']} */ ;
-/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
-/** @type {__VLS_StyleScopedClasses['px-1.5']} */ ;
-/** @type {__VLS_StyleScopedClasses['py-0.5']} */ ;
-/** @type {__VLS_StyleScopedClasses['rounded']} */ ;
-/** @type {__VLS_StyleScopedClasses['border']} */ ;
-/** @type {__VLS_StyleScopedClasses['border-primary/40']} */ ;
-/** @type {__VLS_StyleScopedClasses['text-primary']} */ ;
-/** @type {__VLS_StyleScopedClasses['hover:bg-primary/10']} */ ;
-/** @type {__VLS_StyleScopedClasses['leading-none']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['border']} */ ;
 /** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;
@@ -1421,6 +1468,8 @@ const __VLS_self = (await import('vue')).defineComponent({
             emit: emit,
             store: store,
             binding: binding,
+            isAppKindBinding: isAppKindBinding,
+            isAppView: isAppView,
             reloading: reloading,
             downloading: downloading,
             onDownload: onDownload,
@@ -1446,7 +1495,6 @@ const __VLS_self = (await import('vue')).defineComponent({
             isViewMode: isViewMode,
             codePreviewKind: codePreviewKind,
             showToggle: showToggle,
-            appEditorUrl: appEditorUrl,
             viewEditMode: viewEditMode,
             showRawEditor: showRawEditor,
             runAdapter: runAdapter,

@@ -16,6 +16,7 @@ import {
 } from './calendarCodec';
 
 const CalendarView = defineAsyncComponent(() => import('./CalendarView.vue'));
+const CalendarAppKind = defineAsyncComponent(() => import('./CalendarAppKind.vue'));
 
 /**
  * Type-guard the host's DocumentApp uses to surface a Calendar-specific
@@ -48,5 +49,16 @@ export function register(): void {
     isParseError: isCalendarParseError,
     tabLabelKey: 'documents.detail.tabCalendar',
     parseErrorKey: 'documents.detail.calendarParseError',
+  });
+  // Application-kind entry: kind: application + app: calendar inside
+  // an _app.yaml manifest dispatches to the folder-level Planner. The
+  // matcher returns false on purpose — the host's docTypeRegistry
+  // resolves this entry by explicit id lookup (resolveKind), not via
+  // the generic kind+mime scan, so multiple application:<type> entries
+  // don't collide on shared kind/mime metadata.
+  registerKind({
+    id: 'application:calendar',
+    matches: () => false,
+    view: CalendarAppKind,
   });
 }

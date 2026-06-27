@@ -24,11 +24,6 @@ type __VLS_Props = {
      *  composer (sibling) can use the same value for Space-acceptance. */
     followUpSuggestion?: string | null;
 };
-/**
- * Pushes a "who is here right now" activity line — called by the
- * parent (ChatApp) after a successful {@code session-who} WS reply.
- * Exposed via {@link defineExpose} below.
- */
 declare function pushWhoActivity(names: string[]): void;
 declare function appendLocalEcho(message: ChatMessageDto): void;
 declare function rollbackLocalEcho(messageId: string): void;

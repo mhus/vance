@@ -52,12 +52,17 @@ export interface DocTypeBinding {
  * Resolve which binding renders the given document.
  *
  * Lookup order:
- *  1. {@code @vance/kind-registry} — addon-contributed Kinds (e.g.
+ *  1. {@code kind: application} (the {@code _app.yaml} manifest of an
+ *     app folder) — dispatch by the manifest's {@code app:} discriminator
+ *     to the addon-registered {@code application:<type>} entry. Falls
+ *     through to the catch-all CodeEditor when the addon bundle isn't
+ *     loaded or the discriminator is missing.
+ *  2. {@code @vance/kind-registry} — addon-contributed Kinds (e.g.
  *     Calendar) and any host built-ins that have migrated to the
  *     registry.
- *  2. Hand-rolled bindings — for the kinds DocumentApp still dispatches
+ *  3. Hand-rolled bindings — for the kinds DocumentApp still dispatches
  *     via hard-coded {@code if/else}.
- *  3. Catch-all CodeEditor on the raw inlineText.
+ *  4. Catch-all CodeEditor on the raw inlineText.
  */
 export declare function resolveBinding(doc: CortexDocument): DocTypeBinding;
 //# sourceMappingURL=docTypeRegistry.d.ts.map

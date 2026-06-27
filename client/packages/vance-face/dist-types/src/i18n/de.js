@@ -382,8 +382,6 @@ export default {
             sizeBy: 'von {user}',
             kindBadgeTooltip: 'Dokumentart, aus der Front-Matter gelesen',
             kindLabel: 'Art: {kind}',
-            openApplicationEditor: 'Im Application-Editor öffnen',
-            openApplicationEditorTooltip: 'Zur Applications-Seite springen, die dieses _app.yaml als Manifest nutzt',
             changedBadge: 'Geändert',
             changedBadgeTooltip: 'Es gibt ungespeicherte Änderungen — auf „Anwenden" oder „Speichern" klicken.',
             propsToggleLabel: 'Eigenschaften',

@@ -439,6 +439,9 @@ importers:
       '@vance/components':
         specifier: workspace:*
         version: link:../../../client/packages/components
+      '@vance/kind-registry':
+        specifier: workspace:*
+        version: link:../../../client/packages/kind-registry
       '@vance/shared':
         specifier: workspace:*
         version: link:../../../client/packages/shared
@@ -467,6 +470,9 @@ importers:
       '@vance/components':
         specifier: workspace:*
         version: link:../../../client/packages/components
+      '@vance/kind-registry':
+        specifier: workspace:*
+        version: link:../../../client/packages/kind-registry
       '@vance/shared':
         specifier: workspace:*
         version: link:../../../client/packages/shared

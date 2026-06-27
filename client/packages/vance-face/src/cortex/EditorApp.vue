@@ -37,6 +37,7 @@ import {
 import { onDocumentChanged } from '@/ws/wsConnectionStore';
 import { isBinaryMime } from './stores/cortexStore';
 import { useCortexStore } from './stores/cortexStore';
+import { useViewEditMode } from './useViewEditMode';
 import { CortexClientToolService } from './clientToolService';
 import { useDocumentInvalidate } from './composables/useDocumentInvalidate';
 import FileTreeSidebar from './components/FileTreeSidebar.vue';
@@ -340,6 +341,21 @@ function onPopState(): void {
 }
 
 const activeTab = computed(() => store.activeTab);
+
+const viewEditMode = useViewEditMode();
+
+// True when the active tab is a kind: application document (an
+// `_app.yaml` manifest of a folder-level app) AND the user is in App
+// view-mode. In that case we suppress the file-tree sidebar so the App
+// has more horizontal room; the chat right-panel and tabs strip stay.
+// Clicking the slim header's Edit toggle flips viewEditMode to 'edit',
+// which brings the sidebar back so the user can navigate while patching
+// the raw YAML manifest. The App itself owns any deeper "fullscreen"
+// toggle (Slideshow already does this internally).
+const isAppTab = computed<boolean>(() =>
+  (activeTab.value?.kind ?? '').toLowerCase() === 'application'
+    && viewEditMode.value === 'view',
+);
 
 // ──────────────── Live document-change reactions ────────────────
 interface TabReaction {
@@ -858,7 +874,7 @@ const bootReadyKey = computed(() => (isCortex.value ? !!sessionId.value : !!proj
     :breadcrumbs="breadcrumbs"
     :full-height="true"
     focus-model="auto"
-    :show-sidebar="true"
+    :show-sidebar="!isAppTab"
     :show-right-panel="isCortex"
     title-clickable
     @title-click="focusZone = 'sidebar'"
@@ -953,7 +969,13 @@ const bootReadyKey = computed(() => (isCortex.value ? !!sessionId.value : !!proj
     </template>
 
     <div class="flex flex-col h-full min-h-0">
-      <div class="flex items-center gap-1 px-2 py-1 border-b border-base-300 bg-base-200 text-sm shrink-0">
+      <!-- File/Chat menu bar. Hidden in App view-mode so the App component
+           gets the full vertical space; the slim header inside
+           DocumentTabShell carries the App|Edit toggle to leave the mode. -->
+      <div
+        v-if="!isAppTab"
+        class="flex items-center gap-1 px-2 py-1 border-b border-base-300 bg-base-200 text-sm shrink-0"
+      >
         <div class="dropdown">
           <div tabindex="0" role="button" class="btn btn-ghost btn-xs">File</div>
           <ul tabindex="0" class="dropdown-content menu menu-sm bg-base-100 rounded-box z-[20] mt-1 w-56 p-2 shadow">
@@ -1034,7 +1056,13 @@ const bootReadyKey = computed(() => (isCortex.value ? !!sessionId.value : !!proj
         </template>
       </div>
 
+      <!-- Tab strip. Hidden in App view-mode — an _app.yaml manifest
+           is folder-bound; the user's mental model is "I'm in this app",
+           not "I'm flipping between docs". Edit-toggle in the slim
+           header brings the strip back along with the rest of the
+           chrome. -->
       <EditorTabs
+        v-if="!isAppTab"
         :tabs="store.openTabs"
         :active-tab-id="store.activeTabId"
         @select="store.setActiveTab"

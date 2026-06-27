@@ -32,6 +32,7 @@ import DocumentPreview from '@/document/DocumentPreview.vue';
 import type { CortexDocument } from '../types';
 import { useCortexStore } from '../stores/cortexStore';
 import { resolveBinding } from '../docTypeRegistry';
+import { useViewEditMode } from '../useViewEditMode';
 import { resolveRunAdapter } from '../runners/runnerRegistry';
 import type { RunHandle } from '../runners/types';
 import { useDocumentNotes } from '../composables/useDocumentNotes';
@@ -54,6 +55,26 @@ const emit = defineEmits<{
 
 const store = useCortexStore();
 const binding = computed(() => resolveBinding(props.document));
+
+// True when the binding dispatched to an application:<type> kind from
+// the kind-registry (i.e. the doc is an _app.yaml manifest mounted as a
+// folder-level app: Calendar, Kanban, Slideshow, …). Drives shell
+// trimming — apps get the whole tab body and a slim chrome so the
+// folder-level UI doesn't share vertical space with a path/toggle bar
+// that's irrelevant for a single-manifest doc.
+const isAppKindBinding = computed<boolean>(() =>
+  binding.value.id.startsWith('kind-registry:application:'),
+);
+
+// In immersive App view, Properties + Notes side-panels stay
+// suppressed even if the user previously had them pinned open on a
+// different doc — they'd steal vertical / horizontal space from the
+// folder-level App. The sessionStorage-backed `propertiesOpen` /
+// `notesOpen` refs aren't reset, so flipping to Edit (or opening a
+// non-App doc) restores the user's pinned preference.
+const isAppView = computed<boolean>(
+  () => isAppKindBinding.value && viewEditMode.value === 'view',
+);
 
 const reloading = ref(false);
 const downloading = ref(false);
@@ -393,26 +414,6 @@ const showToggle = computed<boolean>(
   () => isViewMode.value || codePreviewKind.value !== undefined,
 );
 
-// ─── Application manifest jump-link ─────────────────────────────
-//
-// A {@code kind: application} document at {@code …/_app.yaml} is the
-// manifest of an app folder (Kanban, Calendar, Slideshow). The
-// generic CodeEditor view is fine for inspecting the YAML, but most
-// of the time the user wants the dedicated app editor under
-// {@code /app.html}. Surface a small ↗ jump-link in the toolbar so
-// the user is never stuck without a way to the rich editor.
-
-const appEditorUrl = computed<string | null>(() => {
-  const doc = props.document;
-  // Path is the load-order-independent signal: `kind` arrives only
-  // after the full DTO fetch and stays null on tabs that started life
-  // as a summary (file-tree-driven openFile races, browser back from
-  // the app editor, …). The basename `_app.yaml` is unambiguous and
-  // doesn't drift with metadata-load timing.
-  if (!doc.path?.endsWith('/_app.yaml')) return null;
-  return `/app.html?documentId=${encodeURIComponent(doc.id)}`;
-});
-
 // ─── View / Edit toggle ──────────────────────────────────────────
 //
 // For typed-model and kind-registry modes the user can flip between
@@ -422,21 +423,7 @@ const appEditorUrl = computed<string | null>(() => {
 // tab in sessionStorage (same pattern as propertiesOpen/notesOpen) so
 // a user who prefers 'edit' keeps it across doc switches.
 
-type ViewEditMode = 'view' | 'edit';
-const VIEW_EDIT_KEY = 'editor:viewEditMode';
-function loadViewEditMode(): ViewEditMode {
-  try {
-    return sessionStorage.getItem(VIEW_EDIT_KEY) === 'edit' ? 'edit' : 'view';
-  } catch {
-    return 'view';
-  }
-}
-const viewEditMode = ref<ViewEditMode>(loadViewEditMode());
-watch(viewEditMode, (v) => {
-  try {
-    sessionStorage.setItem(VIEW_EDIT_KEY, v);
-  } catch { /* sessionStorage unavailable */ }
-});
+const viewEditMode = useViewEditMode();
 
 // In a view-capable mode, 'edit' falls back to the same CodeEditor
 // the catch-all 'code' mode uses — same selection-tracking, same
@@ -611,7 +598,43 @@ function fmtDuration(ms: number | null): string {
 
 <template>
   <div class="h-full flex flex-col min-h-0">
-    <div class="flex items-center gap-2 px-3 py-2 border-b border-base-300 bg-base-100 text-sm">
+    <!-- App-kind slim header: only an App|Edit toggle (plus the path for
+         orientation). Default state when opening an `_app.yaml` is the
+         App view; clicking Edit drops to the YAML CodeEditor with the
+         full toolbar restored. -->
+    <div
+      v-if="isAppKindBinding && viewEditMode === 'view'"
+      class="flex items-center gap-2 px-3 py-1.5 border-b border-base-300 bg-base-100 text-sm"
+    >
+      <span class="font-mono opacity-60 truncate flex-1">{{ document.path }}</span>
+      <div
+        class="flex border border-base-300 rounded overflow-hidden text-xs"
+        role="group"
+        aria-label="App / edit toggle"
+      >
+        <button
+          type="button"
+          class="px-2 py-0.5 bg-base-300"
+          title="App view"
+        >App</button>
+        <button
+          type="button"
+          class="px-2 py-0.5 border-l border-base-300 opacity-60 hover:bg-base-200"
+          title="Raw YAML manifest editor"
+          @click="viewEditMode = 'edit'"
+        >Edit</button>
+      </div>
+    </div>
+    <!-- Full toolbar: path, View/Edit toggle, reload, download, properties.
+         Hidden for application-kind manifests in view-mode (slim header
+         above replaces it) so the folder-level App (Calendar / Kanban /
+         Slideshow) gets the whole tab body. In edit-mode the full toolbar
+         comes back so the user has reload / download / properties for the
+         YAML manifest while patching it. -->
+    <div
+      v-if="!isAppKindBinding || viewEditMode === 'edit'"
+      class="flex items-center gap-2 px-3 py-2 border-b border-base-300 bg-base-100 text-sm"
+    >
       <button
         type="button"
         class="opacity-60 enabled:hover:opacity-100 enabled:hover:bg-base-200 disabled:cursor-default
@@ -629,25 +652,19 @@ function fmtDuration(ms: number | null): string {
         :aria-label="`color ${document.color}`"
       />
       <span class="font-mono opacity-80 truncate">{{ document.path }}</span>
-      <a
-        v-if="appEditorUrl"
-        :href="appEditorUrl"
-        class="text-xs px-1.5 py-0.5 rounded border border-primary/40 text-primary hover:bg-primary/10 leading-none"
-        title="Open in Application editor"
-      >↗</a>
       <div
         v-if="showToggle"
         class="flex border border-base-300 rounded overflow-hidden text-xs"
         role="group"
-        aria-label="View / edit toggle"
+        :aria-label="isAppKindBinding ? 'App / edit toggle' : 'View / edit toggle'"
       >
         <button
           type="button"
           class="px-2 py-0.5"
           :class="viewEditMode === 'view' ? 'bg-base-300' : 'opacity-60 hover:bg-base-200'"
-          title="Rendered view"
+          :title="isAppKindBinding ? 'App view' : 'Rendered view'"
           @click="viewEditMode = 'view'"
-        >View</button>
+        >{{ isAppKindBinding ? 'App' : 'View' }}</button>
         <button
           type="button"
           class="px-2 py-0.5 border-l border-base-300"
@@ -752,7 +769,7 @@ function fmtDuration(ms: number | null): string {
          the panel owns its own scroll so a long Archives list doesn't
          push the editor off-screen. -->
     <div
-      v-if="propertiesOpen"
+      v-if="propertiesOpen && !isAppView"
       class="shrink-0 max-h-[50%] overflow-y-auto"
     >
       <DocumentPropertiesPanel :document="document" />
@@ -946,7 +963,7 @@ function fmtDuration(ms: number | null): string {
 
       </div>
       <DocumentNotesPanel
-        v-if="notesOpen"
+        v-if="notesOpen && !isAppView"
         :notes="docNotes.notes.value"
         :highlighted-note-id="highlightedNoteId"
         @add="onAddUnanchoredNote"

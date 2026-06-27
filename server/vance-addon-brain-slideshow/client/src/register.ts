@@ -1,13 +1,27 @@
 /**
  * Federation expose `./register` — called by the vance-face host at
- * boot after fetching {@code /face/addons}. The slideshow addon
- * doesn't contribute a single-doc Kind (its UI is the AppEditor's
- * folder-level Slideshow viewer, not a per-document renderer), so
- * this is currently a no-op announcement. Kept as a symmetry hook
- * for future cross-addon registrations (Hooks, Tools, …) and as the
- * wire-up verification path for the loader.
+ * boot after fetching {@code /face/addons}.
+ *
+ * The slideshow addon contributes a folder-level application kind:
+ * documents with {@code kind: application} + {@code app: slideshow}
+ * (i.e. {@code _app.yaml} manifests) render via {@link SlideshowAppKind},
+ * which adapts the manifest DTO to the existing {@code SlideshowApp}'s
+ * (projectId, folder, title) interface. The host's docTypeRegistry
+ * resolves this entry by explicit id lookup (resolveKind), not via
+ * the generic kind+mime scan, so the {@code matches} predicate
+ * returns false on purpose.
  */
+import { defineAsyncComponent } from 'vue';
+import { registerKind } from '@vance/kind-registry';
+
+const SlideshowAppKind = defineAsyncComponent(() => import('./SlideshowAppKind.vue'));
+
 export function register(): void {
   // eslint-disable-next-line no-console
   console.log('[vance-addon/slideshow] register() called');
+  registerKind({
+    id: 'application:slideshow',
+    matches: () => false,
+    view: SlideshowAppKind,
+  });
 }

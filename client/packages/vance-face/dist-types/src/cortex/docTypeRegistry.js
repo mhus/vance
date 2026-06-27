@@ -1,5 +1,5 @@
 import { defineAsyncComponent } from 'vue';
-import { resolveKindFor } from '@vance/kind-registry';
+import { resolveKind, resolveKindFor } from '@vance/kind-registry';
 import ListView from '@/document/ListView.vue';
 import TreeView from '@/document/TreeView.vue';
 import RecordsView from '@/document/RecordsView.vue';
@@ -222,14 +222,36 @@ const handRolled = [
  * Resolve which binding renders the given document.
  *
  * Lookup order:
- *  1. {@code @vance/kind-registry} — addon-contributed Kinds (e.g.
+ *  1. {@code kind: application} (the {@code _app.yaml} manifest of an
+ *     app folder) — dispatch by the manifest's {@code app:} discriminator
+ *     to the addon-registered {@code application:<type>} entry. Falls
+ *     through to the catch-all CodeEditor when the addon bundle isn't
+ *     loaded or the discriminator is missing.
+ *  2. {@code @vance/kind-registry} — addon-contributed Kinds (e.g.
  *     Calendar) and any host built-ins that have migrated to the
  *     registry.
- *  2. Hand-rolled bindings — for the kinds DocumentApp still dispatches
+ *  3. Hand-rolled bindings — for the kinds DocumentApp still dispatches
  *     via hard-coded {@code if/else}.
- *  3. Catch-all CodeEditor on the raw inlineText.
+ *  4. Catch-all CodeEditor on the raw inlineText.
  */
 export function resolveBinding(doc) {
+    if ((doc.kind ?? '').toLowerCase() === 'application') {
+        const appType = (doc.headers?.app ?? '').toLowerCase();
+        if (appType) {
+            const appEntry = resolveKind(`application:${appType}`);
+            if (appEntry?.view) {
+                return {
+                    id: `kind-registry:application:${appType}`,
+                    mode: 'kind-registry',
+                    editLocation: appEntry.serialize ? 'client-memory' : 'server-side',
+                    kindEntry: appEntry,
+                };
+            }
+        }
+        // Addon bundle missing or discriminator absent — fall through to the
+        // generic dispatch. The catch-all CodeEditor then renders the YAML
+        // manifest so the user can still inspect / fix it.
+    }
     const kindEntry = resolveKindFor(doc.kind, doc.mimeType);
     // Only dispatch to kind-registry mode when the entry has a full
     // view + codec. Entries with only codePreview (Markdown, TeX) stay

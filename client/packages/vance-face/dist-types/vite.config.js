@@ -7,7 +7,6 @@ import { createReadStream, existsSync, readdirSync, statSync } from 'node:fs';
 // are implemented — see specification/web-ui.md §3 for the full list.
 const editorEntries = {
     index: resolve(__dirname, 'index.html'),
-    app: resolve(__dirname, 'app.html'),
     documents: resolve(__dirname, 'documents.html'),
     inbox: resolve(__dirname, 'inbox.html'),
     chat: resolve(__dirname, 'chat.html'),

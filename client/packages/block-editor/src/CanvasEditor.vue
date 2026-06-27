@@ -32,6 +32,7 @@ import {
   VanceUnknownFence,
 } from './extensions';
 import { SlashCommands } from './SlashCommands';
+import { HeadingAnchors } from './extensions/HeadingAnchors';
 import 'tippy.js/dist/tippy.css';
 
 /**
@@ -203,6 +204,7 @@ const editor = useEditor({
       // through the slash menu, not drag-and-drop.
     }),
     SlashCommands,
+    HeadingAnchors,
     VanceCallout,
     VanceToggle,
     VanceLink,
@@ -629,6 +631,51 @@ defineExpose({ save, flush, insertImage, updateHeader, getHeader: () => currentH
    handle extension via `dragging` class on the ProseMirror root. */
 .ProseMirror.dragging .ProseMirror-selectednode {
   opacity: 0.35;
+}
+
+/* Heading anchors — a tiny "#" button injected as a widget-decoration
+   in front of every h1/h2/h3 by the HeadingAnchors extension. Hidden
+   by default, fades in on heading hover. Click copies the URL with
+   the heading's slug to the clipboard; the brief --copied class
+   gives a visual confirmation. */
+/* Anchor positions absolutely so it sits OUTSIDE the heading flow —
+   that way the drag-handle (20px column at `rect.left - 20px`) and
+   the anchor button can both live in the left gutter without
+   overlapping. The button parks at the next slot further left. */
+.ProseMirror h1,
+.ProseMirror h2,
+.ProseMirror h3 {
+  position: relative;
+}
+.heading-anchor-btn {
+  position: absolute;
+  left: -2.6em;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-block;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  padding: 0 0.3em;
+  font-size: 0.7em;
+  color: var(--color-text-muted, #6b7280);
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease;
+  font-family: inherit;
+  user-select: none;
+  line-height: 1;
+}
+h1:hover > .heading-anchor-btn,
+h2:hover > .heading-anchor-btn,
+h3:hover > .heading-anchor-btn {
+  opacity: 1;
+}
+.heading-anchor-btn:hover {
+  color: var(--color-link, #3b82f6);
+}
+.heading-anchor-btn--copied {
+  color: #16a34a !important;
+  opacity: 1 !important;
 }
 
 /* Multi-column layout — the NodeView in @vance/block-editor handles

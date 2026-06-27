@@ -17,13 +17,8 @@ import org.springframework.stereotype.Component;
 
 /**
  * Replace the soft-lock {@code lockedFor} set on a document outright.
- * Empty array clears the lock. Normalised server-side: when {@code USER}
- * or {@code KIT} is in the input, {@code AI} is auto-added.
- *
- * <p>When the call <em>removes</em> {@code KIT} (i.e. the previous set
- * contained {@code KIT} but the new one does not), a {@code reason} is
- * required — KIT-removal kills the user's protection against
- * auto-updates and should be a deliberate verbalisation, not a reflex.
+ * Empty array clears the lock. The three writer-roles are independently
+ * selectable — no auto-add, no implicit dependencies.
  *
  * <p>See {@code planning/document-lock-level.md} §3.3.
  */
@@ -42,13 +37,7 @@ public class DocLockSetTool implements Tool {
                             "items", Map.of("type", "string", "enum", List.of("AI", "USER", "KIT")),
                             "description",
                             "Writer roles to block. Empty array clears the lock. "
-                                    + "Plausibility rule: if USER or KIT is set, AI is auto-added."),
-                    "reason", Map.of(
-                            "type", "string",
-                            "description",
-                            "Required when removing KIT from the existing set. Free-text "
-                                    + "justification of why the document should now be "
-                                    + "subject to Kit-Apply auto-updates again.")),
+                                    + "Each role is independently selectable.")),
             "required", List.of("documentId", "lockedFor"));
 
     private final DocumentService documentService;
@@ -64,8 +53,8 @@ public class DocLockSetTool implements Tool {
         return "Set the soft document-lock on a document outright. lockedFor "
                 + "lists the writer roles to block: AI (LLM writes), USER "
                 + "(manual user writes), KIT (Kit-Apply content updates). "
-                + "Empty array clears the lock. Removing KIT from an existing "
-                + "lock requires a reason.";
+                + "Empty array clears the lock. The three roles are "
+                + "independently selectable — no auto-add, no implicit rules.";
     }
 
     @Override public boolean primary() { return false; }
@@ -93,28 +82,14 @@ public class DocLockSetTool implements Tool {
             throw new ToolException("Unknown document id '" + documentId + "'");
         }
 
-        Set<WriterRole> existing = doc.getLockedFor() == null
-                ? EnumSet.noneOf(WriterRole.class)
-                : EnumSet.copyOf(doc.getLockedFor());
-        Set<WriterRole> normalized = DocumentService.normalizeLockedFor(requested);
-
-        boolean removingKit = existing.contains(WriterRole.KIT)
-                && !normalized.contains(WriterRole.KIT);
-        String reason = paramString(params, "reason");
-        if (removingKit && reason == null) {
-            throw new ToolException(
-                    "Removing KIT from the lock requires a 'reason' — the "
-                            + "document will be eligible for Kit-Apply auto-updates again.");
-        }
-
-        DocumentDocument saved = documentService.setLockedFor(documentId, normalized);
-        log.info("DocLockSetTool tenant='{}' id='{}' before={} after={} reason='{}'",
-                ctx.tenantId(), documentId, existing, normalized, reason);
+        DocumentDocument saved = documentService.setLockedFor(documentId, requested);
+        log.info("DocLockSetTool tenant='{}' id='{}' lockedFor={}",
+                ctx.tenantId(), documentId, requested);
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("id", documentId);
         out.put("path", saved.getPath());
-        out.put("lockedFor", normalized.stream().sorted().map(Enum::name).toList());
+        out.put("lockedFor", requested.stream().sorted().map(Enum::name).toList());
         return out;
     }
 

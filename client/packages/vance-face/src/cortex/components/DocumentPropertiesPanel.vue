@@ -101,12 +101,6 @@ function seedLockFlags(): void {
   lockKit.value = set.has(WriterRole.KIT);
 }
 
-// Mirror server-side normalisation client-side for immediate feedback —
-// turning USER or KIT on auto-checks AI; turning AI off while USER or
-// KIT is still on is a no-op (the server will re-add it on save).
-watch(lockUser, (v) => { if (v) lockAi.value = true; });
-watch(lockKit, (v) => { if (v) lockAi.value = true; });
-
 const isLockDirty = computed<boolean>(() => {
   const current = new Set(props.document.lockedFor ?? []);
   const desired = new Set<WriterRole>();
@@ -170,22 +164,6 @@ function formatDate(ms: number | null | undefined): string {
 }
 
 async function onSave(): Promise<void> {
-  // Confirm-dialog for the one lock transition that matters — removing
-  // KIT re-opens the document to Kit-Apply auto-updates and should be
-  // a deliberate choice, not a click-through. Other lock changes go
-  // through silently.
-  if (
-    (props.document.lockedFor ?? []).includes(WriterRole.KIT)
-    && !lockKit.value
-  ) {
-    const ok = confirm(
-      'Removing the KIT lock means this document can be overwritten by future Kit-Apply updates. Continue?',
-    );
-    if (!ok) {
-      seedLockFlags();
-      return;
-    }
-  }
   saving.value = true;
   error.value = null;
   try {
@@ -344,24 +322,15 @@ async function onRestored(): Promise<void> {
     <div class="mt-2 border-t border-base-300 pt-2">
       <div class="opacity-60 mb-1">Lock (soft edit-protection)</div>
       <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
-        <VCheckbox
-          v-model="lockAi"
-          label="AI"
-          help="Block LLM / tool writes"
-          :disabled="saving || lockUser || lockKit"
-        />
-        <VCheckbox
-          v-model="lockUser"
-          label="USER"
-          help="Block manual user writes (auto-implies AI)"
-          :disabled="saving"
-        />
-        <VCheckbox
-          v-model="lockKit"
-          label="KIT"
-          help="Freeze against Kit-Apply updates (auto-implies AI)"
-          :disabled="saving"
-        />
+        <span title="Block LLM / tool writes">
+          <VCheckbox v-model="lockAi" label="AI" :disabled="saving" />
+        </span>
+        <span title="Block manual user writes">
+          <VCheckbox v-model="lockUser" label="USER" :disabled="saving" />
+        </span>
+        <span title="Freeze against Kit-Apply updates">
+          <VCheckbox v-model="lockKit" label="KIT" :disabled="saving" />
+        </span>
       </div>
     </div>
 

@@ -16,9 +16,8 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
 /**
- * Add a single role to the soft-lock {@code lockedFor} set. Tightening
- * the lock is always allowed without a reason — the user is opting into
- * additional protection.
+ * Add a single role to the soft-lock {@code lockedFor} set. No-op when
+ * the role is already in the set.
  *
  * <p>See {@code planning/document-lock-level.md} §3.3.
  */
@@ -35,9 +34,7 @@ public class DocLockAddTool implements Tool {
                     "role", Map.of(
                             "type", "string",
                             "enum", List.of("AI", "USER", "KIT"),
-                            "description",
-                            "Writer role to block. Setting USER or KIT auto-adds AI "
-                                    + "via server-side normalisation.")),
+                            "description", "Writer role to block.")),
             "required", List.of("documentId", "role"));
 
     private final DocumentService documentService;
@@ -52,8 +49,8 @@ public class DocLockAddTool implements Tool {
     public String description() {
         return "Add a writer role to the soft document-lock. Use AI to "
                 + "block LLM writes, USER for manual user writes, KIT for "
-                + "Kit-Apply content updates. Tightening the lock is always "
-                + "allowed.";
+                + "Kit-Apply content updates. The three roles are "
+                + "independent.";
     }
 
     @Override public boolean primary() { return false; }
@@ -85,16 +82,15 @@ public class DocLockAddTool implements Tool {
                 ? EnumSet.noneOf(WriterRole.class)
                 : EnumSet.copyOf(doc.getLockedFor());
         next.add(role);
-        Set<WriterRole> normalized = DocumentService.normalizeLockedFor(next);
 
-        DocumentDocument saved = documentService.setLockedFor(documentId, normalized);
+        DocumentDocument saved = documentService.setLockedFor(documentId, next);
         log.info("DocLockAddTool tenant='{}' id='{}' added={} now={}",
-                ctx.tenantId(), documentId, role, normalized);
+                ctx.tenantId(), documentId, role, next);
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("id", documentId);
         out.put("path", saved.getPath());
-        out.put("lockedFor", normalized.stream().sorted().map(Enum::name).toList());
+        out.put("lockedFor", next.stream().sorted().map(Enum::name).toList());
         return out;
     }
 

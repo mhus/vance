@@ -27,37 +27,29 @@ class DocumentLockTest {
     }
 
     @Test
-    void normalize_aiOnly_staysAiOnly() {
-        Set<WriterRole> out = DocumentService.normalizeLockedFor(EnumSet.of(WriterRole.AI));
-        assertThat(out).containsExactly(WriterRole.AI);
+    void normalize_singleRole_preservedExactly() {
+        // Free selection — no auto-add, no implicit dependencies.
+        assertThat(DocumentService.normalizeLockedFor(EnumSet.of(WriterRole.AI)))
+                .containsExactly(WriterRole.AI);
+        assertThat(DocumentService.normalizeLockedFor(EnumSet.of(WriterRole.USER)))
+                .containsExactly(WriterRole.USER);
+        assertThat(DocumentService.normalizeLockedFor(EnumSet.of(WriterRole.KIT)))
+                .containsExactly(WriterRole.KIT);
     }
 
     @Test
-    void normalize_userWithoutAi_autoAddsAi() {
-        Set<WriterRole> out = DocumentService.normalizeLockedFor(EnumSet.of(WriterRole.USER));
-        assertThat(out).containsExactlyInAnyOrder(WriterRole.AI, WriterRole.USER);
-    }
-
-    @Test
-    void normalize_kitWithoutAi_autoAddsAi() {
-        Set<WriterRole> out = DocumentService.normalizeLockedFor(EnumSet.of(WriterRole.KIT));
-        assertThat(out).containsExactlyInAnyOrder(WriterRole.AI, WriterRole.KIT);
-    }
-
-    @Test
-    void normalize_userAndKit_keepsBothPlusAi() {
+    void normalize_multipleRoles_preservedAsIs() {
         Set<WriterRole> out = DocumentService.normalizeLockedFor(
                 EnumSet.of(WriterRole.USER, WriterRole.KIT));
-        assertThat(out).containsExactlyInAnyOrder(
-                WriterRole.AI, WriterRole.USER, WriterRole.KIT);
+        assertThat(out).containsExactlyInAnyOrder(WriterRole.USER, WriterRole.KIT);
     }
 
     @Test
     void normalize_inputUnaffected() {
-        // The normaliser must not mutate the caller's collection — the
-        // returned set is independent.
+        // The defensive copy must not mutate the caller's collection.
         EnumSet<WriterRole> input = EnumSet.of(WriterRole.USER);
-        DocumentService.normalizeLockedFor(input);
+        Set<WriterRole> out = DocumentService.normalizeLockedFor(input);
+        out.add(WriterRole.KIT);
         assertThat(input).containsExactly(WriterRole.USER);
     }
 

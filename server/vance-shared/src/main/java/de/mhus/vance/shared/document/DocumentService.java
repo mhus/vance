@@ -2802,13 +2802,13 @@ public class DocumentService {
     }
 
     /**
-     * Plausibility-normalise a lock set: when {@code USER} or {@code KIT}
-     * is in the input, {@code AI} is auto-added. A {@code null} or empty
-     * input returns an empty {@link java.util.EnumSet}.
+     * Convert a caller-supplied collection of writer roles into a stable
+     * {@link java.util.EnumSet} owned by the service. Defensive copy;
+     * {@code null} or empty input maps to an empty set.
      *
-     * <p>Centralised here so the REST controller, LLM tools, Kit-Apply
-     * seed path, and {@code $meta.lockedForInitial} parser all share one
-     * implementation. See {@code planning/document-lock-level.md} §2.1.
+     * <p>No semantic rules — the three roles are independently
+     * selectable. The caller decides which combination makes sense for
+     * their use case. See {@code planning/document-lock-level.md}.
      */
     public static java.util.Set<de.mhus.vance.api.documents.WriterRole> normalizeLockedFor(
             java.util.@Nullable Collection<de.mhus.vance.api.documents.WriterRole> input) {
@@ -2816,10 +2816,6 @@ public class DocumentService {
                 java.util.EnumSet.noneOf(de.mhus.vance.api.documents.WriterRole.class);
         if (input == null || input.isEmpty()) return out;
         out.addAll(input);
-        if (out.contains(de.mhus.vance.api.documents.WriterRole.USER)
-                || out.contains(de.mhus.vance.api.documents.WriterRole.KIT)) {
-            out.add(de.mhus.vance.api.documents.WriterRole.AI);
-        }
         return out;
     }
 

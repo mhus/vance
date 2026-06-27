@@ -13,7 +13,10 @@
       "import": "./src/index.ts"
     }
   },
-  "files": ["src", "dist"],
+  "files": [
+    "src",
+    "dist"
+  ],
   "scripts": {
     "build": "vue-tsc -b && vite build",
     "dev": "vite",
@@ -23,7 +26,8 @@
     "@vance/block-editor": "workspace:*",
     "@vance/components": "workspace:*",
     "@vance/kind-registry": "workspace:*",
-    "@vance/shared": "workspace:*"
+    "@vance/shared": "workspace:*",
+    "emoji-picker-element": "^1.29.1"
   },
   "peerDependencies": {
     "vue": "^3.5.0"

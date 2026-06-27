@@ -10,6 +10,7 @@ import {
 import { CanvasEditor, parseDocument } from '@vance/block-editor';
 import { scanWorkspace, rebuildWorkspace, createWorkspacePage } from './api';
 import AssetPickerModal from './AssetPickerModal.vue';
+import EmojiPickerModal from './EmojiPickerModal.vue';
 import type { WorkspaceView } from './generated/workspace/WorkspaceView';
 import type { WorkspacePageView } from './generated/workspace/WorkspacePageView';
 
@@ -61,13 +62,39 @@ const pageError = ref<string | null>(null);
 const parsedPage = computed(() =>
   activeMarkdown.value == null ? null : parseDocument(activeMarkdown.value),
 );
-const pageIcon = computed(() => parsedPage.value?.icon ?? null);
-const pageCover = computed(() => parsedPage.value?.cover ?? null);
+
+// Local header cache — refreshed by onEditorSave with the freshly
+// serialised front-matter so icon/cover edits show up immediately.
+// Without this we'd have to wait for an activeMarkdown refresh, which
+// the self-write quiet window deliberately suppresses to protect the
+// cursor. Reset on page switch.
+interface HeaderCache {
+  icon: string | null;
+  cover: string | null;
+  title: string | null;
+  description: string | null;
+}
+const headerCache = ref<HeaderCache | null>(null);
+
+const pageIcon = computed(
+  () => headerCache.value?.icon ?? parsedPage.value?.icon ?? null,
+);
+const pageCover = computed(
+  () => headerCache.value?.cover ?? parsedPage.value?.cover ?? null,
+);
 const pageDisplayTitle = computed(
-  () => parsedPage.value?.title ?? activePageView.value?.title ?? '',
+  () =>
+    headerCache.value?.title
+    ?? parsedPage.value?.title
+    ?? activePageView.value?.title
+    ?? '',
 );
 const pageDisplayDescription = computed(
-  () => parsedPage.value?.description ?? activePageView.value?.description ?? null,
+  () =>
+    headerCache.value?.description
+    ?? parsedPage.value?.description
+    ?? activePageView.value?.description
+    ?? null,
 );
 
 type SaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
@@ -78,15 +105,65 @@ const editorRef = ref<{
   save: () => void;
   flush: () => boolean;
   insertImage: (src: string, alt: string) => void;
+  updateHeader: (patch: {
+    title?: string | null;
+    description?: string | null;
+    icon?: string | null;
+    cover?: string | null;
+  }) => void;
+  getHeader: () => {
+    title: string | null;
+    description: string | null;
+    icon: string | null;
+    cover: string | null;
+  };
 } | null>(null);
 
+// Asset picker is shared between two destinations: inline image
+// insertion from the slash-menu (mode='content') and the cover image
+// on the active page (mode='cover'). Tracking the mode here avoids
+// passing it through CanvasEditor — the editor itself doesn't care.
+type AssetPickerMode = 'content' | 'cover';
 const assetPickerOpen = ref(false);
+const assetPickerMode = ref<AssetPickerMode>('content');
 function openAssetPicker() {
+  assetPickerMode.value = 'content';
+  assetPickerOpen.value = true;
+}
+function openCoverPicker() {
+  assetPickerMode.value = 'cover';
   assetPickerOpen.value = true;
 }
 function onAssetPick(src: string, alt: string) {
-  editorRef.value?.insertImage(src, alt);
+  if (assetPickerMode.value === 'cover') {
+    editorRef.value?.updateHeader({ cover: src });
+  } else {
+    editorRef.value?.insertImage(src, alt);
+  }
   assetPickerOpen.value = false;
+}
+
+// Icon picker — modal with a searchable emoji grid (provided by
+// `emoji-picker-element`). The element renders as a native custom
+// element; we set up `isCustomElement` in vite.config so Vue lets it
+// through unresolved.
+const iconPickerOpen = ref(false);
+function openIconPicker() {
+  iconPickerOpen.value = true;
+}
+function closeIconPicker() {
+  iconPickerOpen.value = false;
+}
+function onEmojiPicked(unicode: string) {
+  editorRef.value?.updateHeader({ icon: unicode });
+  iconPickerOpen.value = false;
+}
+function removeIcon() {
+  editorRef.value?.updateHeader({ icon: null });
+  iconPickerOpen.value = false;
+}
+function removeCover() {
+  editorRef.value?.updateHeader({ cover: null });
 }
 
 // Self-write tracker — the last body we PUT for the active page. The
@@ -213,6 +290,7 @@ async function selectPage(id: string, page: WorkspacePageView | null) {
   activePageView.value = page ?? findPageById(id);
   saveStatus.value = 'idle';
   lastSaveError.value = null;
+  headerCache.value = null;
   await loadActivePageContent();
 }
 
@@ -256,6 +334,16 @@ async function onEditorSave(body: string) {
   saveStatus.value = 'saving';
   lastSavedBodies.value.set(id, body);
   lastSelfWriteAt.value.set(id, Date.now());
+  // Cache freshly-saved header so icon/cover changes show up
+  // immediately — activeMarkdown stays frozen during the self-write
+  // quiet window to keep the cursor stable.
+  const parsedBody = parseDocument(body);
+  headerCache.value = {
+    icon: parsedBody.icon,
+    cover: parsedBody.cover,
+    title: parsedBody.title,
+    description: parsedBody.description,
+  };
   try {
     await brainSendRaw<unknown>(
       'PUT',
@@ -531,16 +619,44 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
       <div v-if="loading" class="workspace-app__main-empty">Lade Workspace…</div>
 
       <template v-else-if="activePageId">
-        <img
-          v-if="pageCover"
-          :src="pageCover"
-          alt=""
-          class="workspace-app__page-cover"
-        />
+        <div v-if="pageCover" class="workspace-app__page-cover-wrap">
+          <img
+            :src="pageCover"
+            alt=""
+            class="workspace-app__page-cover"
+          />
+          <div class="workspace-app__page-cover-actions">
+            <button
+              class="workspace-app__page-cover-btn"
+              @click="openCoverPicker"
+            >Change cover</button>
+            <button
+              class="workspace-app__page-cover-btn"
+              @click="removeCover"
+            >Remove</button>
+          </div>
+        </div>
         <header v-if="activePageView" class="workspace-app__page-header">
+          <div v-if="!pageCover || !pageIcon" class="workspace-app__page-add-row">
+            <button
+              v-if="!pageIcon"
+              class="workspace-app__page-add-btn"
+              @click="openIconPicker"
+            >😀 Add icon</button>
+            <button
+              v-if="!pageCover"
+              class="workspace-app__page-add-btn"
+              @click="openCoverPicker"
+            >🖼 Add cover</button>
+          </div>
           <div class="workspace-app__page-header-row">
             <h1 class="workspace-app__page-title">
-              <span v-if="pageIcon" class="workspace-app__page-icon">{{ pageIcon }}</span>
+              <button
+                v-if="pageIcon"
+                class="workspace-app__page-icon"
+                title="Change icon"
+                @click="openIconPicker"
+              >{{ pageIcon }}</button>
               {{ pageDisplayTitle }}
             </h1>
             <span
@@ -586,6 +702,13 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
           :upload-image="uploadImage"
           @pick="onAssetPick"
           @close="assetPickerOpen = false"
+        />
+        <EmojiPickerModal
+          v-if="iconPickerOpen"
+          :has-current="!!pageIcon"
+          @pick="onEmojiPicked"
+          @remove="removeIcon"
+          @close="closeIconPicker"
         />
       </template>
 
@@ -764,6 +887,12 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
   gap: 1rem;
   flex-wrap: wrap;
 }
+.workspace-app__page-cover-wrap {
+  position: relative;
+}
+.workspace-app__page-cover-wrap:hover .workspace-app__page-cover-actions {
+  opacity: 1;
+}
 .workspace-app__page-cover {
   display: block;
   width: 100%;
@@ -771,10 +900,57 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
   object-fit: cover;
   background: var(--color-button-bg, #f3f4f6);
 }
+.workspace-app__page-cover-actions {
+  position: absolute;
+  right: 0.75rem;
+  bottom: 0.75rem;
+  display: flex;
+  gap: 0.25rem;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.workspace-app__page-cover-btn {
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  border: 0;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+}
+.workspace-app__page-cover-btn:hover {
+  background: rgba(0, 0, 0, 0.75);
+}
+.workspace-app__page-add-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.workspace-app__page-add-btn {
+  background: transparent;
+  border: 0;
+  color: var(--color-text-muted, #6b7280);
+  font-size: 0.85rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.workspace-app__page-add-btn:hover {
+  background: var(--color-button-bg, #f3f4f6);
+  color: var(--color-text, #111827);
+}
 .workspace-app__page-icon {
   font-size: 1.2em;
   line-height: 1;
   margin-right: 0.25em;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
+}
+.workspace-app__page-icon:hover {
+  filter: brightness(1.2);
 }
 .workspace-app__page-title {
   font-size: 1.875rem;

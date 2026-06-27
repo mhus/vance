@@ -16,7 +16,15 @@ import { federation } from '@module-federation/vite';
 export default defineConfig({
   base: '',
   plugins: [
-    vue(),
+    vue({
+      template: {
+        compilerOptions: {
+          // emoji-picker-element registers as a native custom element.
+          // Without this hint Vue would try to resolve it as a component.
+          isCustomElement: (tag) => tag === 'emoji-picker',
+        },
+      },
+    }),
     federation({
       name: 'vance_addon_workspace',
       filename: 'remoteEntry.js',

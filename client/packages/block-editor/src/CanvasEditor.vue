@@ -112,6 +112,24 @@ const initial = computed(() => {
   return { doc, content: { type: 'doc', content: blocksToContent(doc.blocks) } };
 });
 
+interface CanvasHeader {
+  title: string | null;
+  description: string | null;
+  icon: string | null;
+  cover: string | null;
+}
+
+// Front-matter state held independently from props.source so the host
+// can patch icon/cover atomically (see updateHeader below) without
+// rewriting activeMarkdown — which would trip the source-watch and
+// rebuild the ProseMirror doc, dropping the cursor.
+const currentHeader = ref<CanvasHeader>({
+  title: initial.value.doc.title,
+  description: initial.value.doc.description,
+  icon: initial.value.doc.icon,
+  cover: initial.value.doc.cover,
+});
+
 function imageFilesFrom(list: FileList | null | undefined): File[] {
   if (!list) return [];
   const out: File[] = [];
@@ -259,6 +277,12 @@ watch(
       { type: 'doc', content: blocksToContent(parsed.blocks) },
       false,
     );
+    currentHeader.value = {
+      title: parsed.title,
+      description: parsed.description,
+      icon: parsed.icon,
+      cover: parsed.cover,
+    };
     dirty.value = false;
     emit('dirty', false);
   },
@@ -269,17 +293,27 @@ function save() {
   cancelAutoSave();
   const json = editor.value.getJSON();
   const blocks = contentToBlocks(json.content as never[]);
-  const fm = parseDocument(props.source ?? props.document.inlineText ?? '');
   const md = serializeDocument({
-    title: fm.title ?? props.document.title ?? null,
-    description: fm.description,
-    icon: fm.icon,
-    cover: fm.cover,
+    title: currentHeader.value.title ?? props.document.title ?? null,
+    description: currentHeader.value.description,
+    icon: currentHeader.value.icon,
+    cover: currentHeader.value.cover,
     blocks,
   });
   emit('save', md);
   dirty.value = false;
   emit('dirty', false);
+}
+
+/**
+ * Patch one or more front-matter fields and immediately persist via
+ * the regular save pipeline. The host calls this from icon/cover
+ * edit UIs — it deliberately bypasses ProseMirror so the cursor and
+ * selection in the body stay intact.
+ */
+function updateHeader(patch: Partial<CanvasHeader>) {
+  currentHeader.value = { ...currentHeader.value, ...patch };
+  save();
 }
 
 function flush(): boolean {
@@ -377,7 +411,7 @@ function insertImage(src: string, alt: string) {
   editor.value?.chain().focus().setImage({ src, alt }).run();
 }
 
-defineExpose({ save, flush, insertImage });
+defineExpose({ save, flush, insertImage, updateHeader, getHeader: () => currentHeader.value });
 </script>
 
 <template>

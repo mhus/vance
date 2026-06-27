@@ -588,6 +588,9 @@ importers:
       '@vance/shared':
         specifier: workspace:*
         version: link:../../../client/packages/shared
+      emoji-picker-element:
+        specifier: ^1.29.1
+        version: 1.29.1
     devDependencies:
       '@module-federation/vite':
         specifier: 1.4.0
@@ -3645,6 +3648,9 @@ packages:
   elementtree@0.1.7:
     resolution: {integrity: sha512-wkgGT6kugeQk/P6VZ/f4T+4HB41BVgNBq5CDIZVbQ02nvTVqAiVTbskxxu3eA/X96lMlfYOwnLQpN2v5E1zDEg==}
     engines: {node: '>= 0.4.0'}
+
+  emoji-picker-element@1.29.1:
+    resolution: {integrity: sha512-TOiHzu9Dqib3x4MwcAi3wi3RdyT4SoeB4b15AvH1ks4SBwTl7DeebhZ0d3x6dNi4XfNU7IGRZ7NBQllj0RqwrQ==}
 
   emoji-regex@8.0.0:
     resolution: {integrity: sha512-MSjYzcWNOA0ewAHpz0MxpYFvwg6yjy1NG3xteoqz644VCo/RPgnr1/GGt+ic3iJTzQ8Eu3TdM14SawnVUmGE6A==}
@@ -10259,6 +10265,8 @@ snapshots:
   elementtree@0.1.7:
     dependencies:
       sax: 1.1.4
+
+  emoji-picker-element@1.29.1: {}
 
   emoji-regex@8.0.0: {}
 

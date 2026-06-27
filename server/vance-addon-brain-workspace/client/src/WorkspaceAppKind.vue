@@ -8,7 +8,14 @@ import {
   useDocumentPrefixReaction,
 } from '@vance/shared';
 import { CanvasEditor, parseDocument } from '@vance/block-editor';
-import { scanWorkspace, rebuildWorkspace, createWorkspacePage } from './api';
+import {
+  scanWorkspace,
+  rebuildWorkspace,
+  createWorkspacePage,
+  updateWorkspacePage,
+  deleteWorkspacePage,
+  reorderWorkspacePages,
+} from './api';
 import AssetPickerModal from './AssetPickerModal.vue';
 import EmojiPickerModal from './EmojiPickerModal.vue';
 import type { WorkspaceView } from './generated/workspace/WorkspaceView';
@@ -437,6 +444,209 @@ async function rebuild() {
   }
 }
 
+// Sidebar uses the latest known icon/title — for the active page that
+// includes the in-memory headerCache so an emoji-picker / rename
+// change shows up immediately, before the next workspace scan.
+function effectiveIcon(p: WorkspacePageView): string | null {
+  if (p.id === activePageId.value && headerCache.value?.icon != null) {
+    return headerCache.value.icon;
+  }
+  return p.icon ?? null;
+}
+function effectiveTitle(p: WorkspacePageView): string {
+  if (p.id === activePageId.value && headerCache.value?.title != null) {
+    return headerCache.value.title;
+  }
+  return p.title;
+}
+
+// ── Page context menu (right-click + ⋯ button) ────────────────────
+const ctxMenu = ref<{ page: WorkspacePageView; x: number; y: number } | null>(null);
+const renameDialog = ref<WorkspacePageView | null>(null);
+const renameValue = ref('');
+const renameSection = ref('');
+const renameError = ref<string | null>(null);
+const renameBusy = ref(false);
+const renameInputRef = ref<HTMLInputElement | null>(null);
+
+function openCtxMenu(page: WorkspacePageView, e: MouseEvent) {
+  e.preventDefault();
+  ctxMenu.value = { page, x: e.clientX, y: e.clientY };
+}
+function closeCtxMenu() {
+  ctxMenu.value = null;
+}
+async function openRename(page: WorkspacePageView) {
+  closeCtxMenu();
+  renameDialog.value = page;
+  renameValue.value = page.title;
+  renameSection.value = page.section ?? '';
+  renameError.value = null;
+  await nextTick();
+  renameInputRef.value?.focus();
+  renameInputRef.value?.select();
+}
+function closeRename() {
+  renameDialog.value = null;
+  renameError.value = null;
+  renameBusy.value = false;
+}
+async function submitRename() {
+  const page = renameDialog.value;
+  if (!page) return;
+  const newTitle = renameValue.value.trim();
+  if (!newTitle) {
+    renameError.value = 'Title required';
+    return;
+  }
+  const newSection = renameSection.value.trim();
+  const patch: { title?: string; section?: string } = {};
+  if (newTitle !== page.title) patch.title = newTitle;
+  if (newSection !== (page.section ?? '')) patch.section = newSection;
+  if (Object.keys(patch).length === 0) {
+    closeRename();
+    return;
+  }
+  renameBusy.value = true;
+  try {
+    await updateWorkspacePage(projectId.value, folder.value, page.id, patch);
+    // Reflect immediately in the local header cache for the active page.
+    if (page.id === activePageId.value && patch.title) {
+      headerCache.value = { ...(headerCache.value ?? {
+        icon: null, cover: null, title: null, description: null,
+      }), title: patch.title };
+    }
+    closeRename();
+    await loadWorkspace();
+  } catch (e) {
+    renameError.value = e instanceof Error ? e.message : 'Rename failed.';
+    renameBusy.value = false;
+  }
+}
+async function confirmDelete(page: WorkspacePageView) {
+  closeCtxMenu();
+  if (!window.confirm(`Delete page "${page.title}"?`)) return;
+  try {
+    await deleteWorkspacePage(projectId.value, folder.value, page.id);
+    if (page.id === activePageId.value) {
+      activePageId.value = null;
+      activePageView.value = null;
+      activeMarkdown.value = null;
+      headerCache.value = null;
+    }
+    await loadWorkspace();
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Delete failed.';
+  }
+}
+
+// ── Drag-and-drop reorder ─────────────────────────────────────────
+// Native HTML5 D&D over the page-row list. Drop semantics:
+//   * onto another row inside the SAME section → reorder
+//   * onto a row of a DIFFERENT section → move page into that section
+//     and insert at the drop position (path-update via PUT /page/{id},
+//     then reorder of the target section)
+//   * onto a section label → move + append to the end of that section
+type DropPosition = 'before' | 'after';
+const dragPageId = ref<string | null>(null);
+const dropTarget = ref<{ pageId: string; position: DropPosition } | null>(null);
+const dropSectionTarget = ref<string | null>(null); // section name (incl. '')
+
+function onDragStart(p: WorkspacePageView, e: DragEvent) {
+  dragPageId.value = p.id;
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move';
+    // Some browsers require text/plain payload to start a drag at all.
+    e.dataTransfer.setData('text/plain', p.id);
+  }
+}
+function onDragEnd() {
+  dragPageId.value = null;
+  dropTarget.value = null;
+  dropSectionTarget.value = null;
+}
+function onRowDragOver(p: WorkspacePageView, e: DragEvent) {
+  if (!dragPageId.value || dragPageId.value === p.id) return;
+  e.preventDefault();
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+  // Top half = before, bottom half = after — classic insertion semantics.
+  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+  const half = rect.top + rect.height / 2;
+  const position: DropPosition = e.clientY < half ? 'before' : 'after';
+  dropTarget.value = { pageId: p.id, position };
+  dropSectionTarget.value = null;
+}
+function onSectionDragOver(section: string, e: DragEvent) {
+  if (!dragPageId.value) return;
+  e.preventDefault();
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+  dropSectionTarget.value = section;
+  dropTarget.value = null;
+}
+async function onRowDrop(p: WorkspacePageView) {
+  const sourceId = dragPageId.value;
+  const target = dropTarget.value;
+  dragPageId.value = null;
+  dropTarget.value = null;
+  dropSectionTarget.value = null;
+  if (!sourceId || !target || sourceId === p.id) return;
+  await applyReorder(sourceId, p.section, target.pageId, target.position);
+}
+async function onSectionDrop(section: string) {
+  const sourceId = dragPageId.value;
+  dragPageId.value = null;
+  dropTarget.value = null;
+  dropSectionTarget.value = null;
+  if (!sourceId) return;
+  // Drop on the bare section label = move to end of section.
+  await applyReorder(sourceId, section, null, 'after');
+}
+
+async function applyReorder(
+  sourceId: string,
+  targetSection: string,
+  anchorPageId: string | null,
+  position: DropPosition,
+) {
+  const v = view.value;
+  if (!v) return;
+  const source = v.pages.find((q) => q.id === sourceId);
+  if (!source) return;
+
+  // Cross-section move first — path-update — so the next scan/reorder
+  // sees the page where it now belongs.
+  if (source.section !== targetSection) {
+    try {
+      await updateWorkspacePage(projectId.value, folder.value, sourceId, {
+        section: targetSection,
+      });
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Move failed.';
+      return;
+    }
+  }
+
+  // Build the new in-section order from the *current* view, sans source.
+  const sectionPages = v.pages
+    .filter((q) => q.section === targetSection && q.id !== sourceId)
+    .slice();
+  let insertAt = sectionPages.length; // default: append
+  if (anchorPageId) {
+    const idx = sectionPages.findIndex((q) => q.id === anchorPageId);
+    if (idx >= 0) insertAt = position === 'before' ? idx : idx + 1;
+  }
+  sectionPages.splice(insertAt, 0, source);
+
+  try {
+    await reorderWorkspacePages(projectId.value, folder.value, {
+      orderedIds: sectionPages.map((q) => q.id),
+    });
+    await loadWorkspace();
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Reorder failed.';
+  }
+}
+
 function pagesBySection(): Map<string, WorkspacePageView[]> {
   const grouped = new Map<string, WorkspacePageView[]>();
   if (!view.value) return grouped;
@@ -589,21 +799,50 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
         </template>
 
         <template v-for="[section, pages] in pagesBySection()" :key="section">
-          <div class="workspace-app__section-label">
+          <div
+            class="workspace-app__section-label"
+            :class="{ 'workspace-app__section-label--drop': dropSectionTarget === section }"
+            @dragover="onSectionDragOver(section, $event)"
+            @drop="onSectionDrop(section)"
+          >
             {{ section || 'Pages' }}
           </div>
-          <button
+          <div
             v-for="p in pages"
             :key="p.id"
-            class="workspace-app__page-link"
+            class="workspace-app__page-row"
             :class="{
-              'workspace-app__page-link--active': activePageId === p.id,
+              'workspace-app__page-row--active': activePageId === p.id,
+              'workspace-app__page-row--drop-before':
+                dropTarget && dropTarget.pageId === p.id && dropTarget.position === 'before',
+              'workspace-app__page-row--drop-after':
+                dropTarget && dropTarget.pageId === p.id && dropTarget.position === 'after',
+              'workspace-app__page-row--dragging': dragPageId === p.id,
             }"
-            @click="selectPage(p.id, p)"
-            :title="p.description ?? p.path"
+            draggable="true"
+            @dragstart="onDragStart(p, $event)"
+            @dragend="onDragEnd"
+            @dragover="onRowDragOver(p, $event)"
+            @drop="onRowDrop(p)"
           >
-            {{ p.title }}
-          </button>
+            <button
+              class="workspace-app__page-link"
+              :class="{
+                'workspace-app__page-link--active': activePageId === p.id,
+              }"
+              @click="selectPage(p.id, p)"
+              @contextmenu="openCtxMenu(p, $event)"
+              :title="p.description ?? p.path"
+            >
+              <span class="workspace-app__page-link-icon" :class="{ 'workspace-app__page-link-icon--emoji': !!effectiveIcon(p) }">{{ effectiveIcon(p) ?? '·' }}</span>
+              <span class="workspace-app__page-link-title">{{ effectiveTitle(p) }}</span>
+            </button>
+            <button
+              class="workspace-app__page-row-menu"
+              title="More actions"
+              @click.stop="openCtxMenu(p, $event)"
+            >⋯</button>
+          </div>
         </template>
       </div>
 
@@ -716,6 +955,71 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
         Wähle eine Page aus der Sidebar.
       </div>
     </main>
+
+    <div
+      v-if="ctxMenu"
+      class="workspace-app__ctx-backdrop"
+      @click="closeCtxMenu"
+      @contextmenu.prevent="closeCtxMenu"
+    >
+      <div
+        class="workspace-app__ctx-menu"
+        :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }"
+        @click.stop
+      >
+        <button class="workspace-app__ctx-item" @click="openRename(ctxMenu.page)">Rename / Move…</button>
+        <button class="workspace-app__ctx-item workspace-app__ctx-item--danger" @click="confirmDelete(ctxMenu.page)">Delete</button>
+      </div>
+    </div>
+
+    <div
+      v-if="renameDialog"
+      class="workspace-app__modal-backdrop"
+      @click.self="closeRename"
+    >
+      <form class="workspace-app__modal" @submit.prevent="submitRename">
+        <div class="workspace-app__modal-header">Rename / Move</div>
+        <label class="workspace-app__modal-label">
+          Title
+          <input
+            ref="renameInputRef"
+            v-model="renameValue"
+            type="text"
+            class="workspace-app__modal-input"
+            :disabled="renameBusy"
+            @keydown.escape="closeRename"
+          />
+        </label>
+        <label class="workspace-app__modal-label">
+          Section
+          <input
+            v-model="renameSection"
+            type="text"
+            class="workspace-app__modal-input"
+            list="workspace-sections-rename"
+            placeholder="(top-level)"
+            :disabled="renameBusy"
+          />
+        </label>
+        <datalist id="workspace-sections-rename">
+          <option v-for="s in existingSections" :key="s" :value="s" />
+        </datalist>
+        <div v-if="renameError" class="workspace-app__error">{{ renameError }}</div>
+        <div class="workspace-app__modal-actions">
+          <button
+            type="submit"
+            class="workspace-app__new-page-btn workspace-app__new-page-btn--primary"
+            :disabled="renameBusy || !renameValue.trim()"
+          >{{ renameBusy ? 'Saving…' : 'Save' }}</button>
+          <button
+            type="button"
+            class="workspace-app__new-page-btn"
+            :disabled="renameBusy"
+            @click="closeRename"
+          >Cancel</button>
+        </div>
+      </form>
+    </div>
   </div>
 </template>
 
@@ -833,10 +1137,41 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
   color: var(--color-text-muted, #6b7280);
   padding: 0.5rem 0.5rem 0.25rem;
 }
+.workspace-app__page-row {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  border-radius: 0.25rem;
+}
+.workspace-app__page-row--dragging {
+  opacity: 0.45;
+}
+.workspace-app__page-row--drop-before::before,
+.workspace-app__page-row--drop-after::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--color-link, #3b82f6);
+  pointer-events: none;
+}
+.workspace-app__page-row--drop-before::before { top: -1px; }
+.workspace-app__page-row--drop-after::after { bottom: -1px; }
+.workspace-app__section-label--drop {
+  background: rgba(59, 130, 246, 0.12);
+  border-radius: 0.25rem;
+}
+.workspace-app__page-row:hover {
+  background: var(--color-button-bg, #f3f4f6);
+}
+.workspace-app__page-row--active {
+  background: var(--color-button-bg, #f3f4f6);
+}
 .workspace-app__page-link {
   text-align: left;
   padding: 0.375rem 0.5rem;
-  border-radius: 0.25rem;
+  border-radius: 0.25rem 0 0 0.25rem;
   background: none;
   border: none;
   cursor: pointer;
@@ -845,9 +1180,106 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
   display: flex;
   align-items: center;
   gap: 0.4em;
+  flex: 1;
+  min-width: 0;
 }
-.workspace-app__page-link:hover {
+.workspace-app__page-row-menu {
+  background: none;
+  border: 0;
+  color: var(--color-text-muted, #6b7280);
+  cursor: pointer;
+  padding: 0 0.5rem;
+  font-size: 1rem;
+  opacity: 0;
+  transition: opacity 0.1s ease;
+  border-radius: 0 0.25rem 0.25rem 0;
+}
+.workspace-app__page-row:hover .workspace-app__page-row-menu,
+.workspace-app__page-row--active .workspace-app__page-row-menu {
+  opacity: 1;
+}
+.workspace-app__page-row-menu:hover {
+  background: var(--color-border, #e5e7eb);
+  color: var(--color-text, #111827);
+}
+.workspace-app__ctx-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+}
+.workspace-app__ctx-menu {
+  position: fixed;
+  background: var(--color-bg, #fff);
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  min-width: 180px;
+  padding: 0.25rem 0;
+  display: flex;
+  flex-direction: column;
+}
+.workspace-app__ctx-item {
+  background: none;
+  border: 0;
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+  color: var(--color-text, #111827);
+}
+.workspace-app__ctx-item:hover {
   background: var(--color-button-bg, #f3f4f6);
+}
+.workspace-app__ctx-item--danger {
+  color: #dc2626;
+}
+.workspace-app__ctx-item--danger:hover {
+  background: rgba(220, 38, 38, 0.08);
+}
+.workspace-app__modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.workspace-app__modal {
+  background: var(--color-bg, #fff);
+  border-radius: 8px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+  padding: 1rem;
+  width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.workspace-app__modal-header {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text, #111827);
+}
+.workspace-app__modal-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  color: var(--color-text-muted, #6b7280);
+}
+.workspace-app__modal-input {
+  font-size: 0.95rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 4px;
+  background: var(--color-bg, #fff);
+  color: var(--color-text, #111827);
+}
+.workspace-app__modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
 }
 .workspace-app__page-link--active {
   background: var(--color-active-bg, #e0e7ff);
@@ -856,7 +1288,20 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
 }
 .workspace-app__page-link-icon {
   font-size: 0.85em;
-  opacity: 0.7;
+  opacity: 0.45;
+  width: 1.1em;
+  text-align: center;
+  flex-shrink: 0;
+}
+.workspace-app__page-link-icon--emoji {
+  font-size: 1em;
+  opacity: 1;
+}
+.workspace-app__page-link-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 .workspace-app__empty {
   color: var(--color-text-muted, #6b7280);

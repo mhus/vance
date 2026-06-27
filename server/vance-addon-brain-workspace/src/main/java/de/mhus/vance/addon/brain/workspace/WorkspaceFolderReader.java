@@ -73,38 +73,51 @@ public class WorkspaceFolderReader {
             String title = hdr.title != null && !hdr.title.isBlank()
                     ? hdr.title
                     : stem(leaf);
-            pages.add(new WorkspacePage(doc, rel, section, title, hdr.description));
+            pages.add(new WorkspacePage(
+                    doc, rel, section, title, hdr.description, hdr.icon, hdr.sortIndex));
         }
 
+        // sortIndex (null sorts last), then case-insensitive title.
         pages.sort(Comparator
                 .comparing(WorkspacePage::section)
+                .thenComparing((p) -> p.sortIndex() == null
+                        ? Double.POSITIVE_INFINITY : p.sortIndex())
                 .thenComparing((p) -> p.title().toLowerCase(java.util.Locale.ROOT)));
 
         return new Scan(normalized, manifest.get(), config, pages);
     }
 
-    private record PageHeader(@Nullable String title, @Nullable String description) {}
+    private record PageHeader(
+            @Nullable String title,
+            @Nullable String description,
+            @Nullable String icon,
+            @Nullable Double sortIndex) {}
 
     private PageHeader readPageHeader(DocumentDocument doc) {
         try (InputStream in = documentService.loadContent(doc)) {
             String body = new String(in.readAllBytes(), StandardCharsets.UTF_8);
             if (!body.startsWith("---\n")) {
-                return new PageHeader(doc.getTitle(), null);
+                return new PageHeader(doc.getTitle(), null, null, null);
             }
             int end = body.indexOf("\n---\n", 4);
-            if (end < 0) return new PageHeader(doc.getTitle(), null);
+            if (end < 0) return new PageHeader(doc.getTitle(), null, null, null);
             String headerText = body.substring(4, end);
             Object loaded = new Yaml().load(headerText);
             if (loaded instanceof Map<?, ?> m) {
-                Object t = m.get("title");
-                Object d = m.get("description");
-                String title = t != null ? t.toString() : doc.getTitle();
-                String desc = d != null ? d.toString() : null;
-                return new PageHeader(title, desc);
+                String title = m.get("title") != null ? m.get("title").toString() : doc.getTitle();
+                String desc = m.get("description") != null ? m.get("description").toString() : null;
+                String icon = m.get("icon") != null ? m.get("icon").toString() : null;
+                Double sortIdx = null;
+                Object si = m.get("sortIndex");
+                if (si instanceof Number n) sortIdx = n.doubleValue();
+                else if (si instanceof String s) {
+                    try { sortIdx = Double.parseDouble(s); } catch (NumberFormatException ignored) { /* leave null */ }
+                }
+                return new PageHeader(title, desc, icon, sortIdx);
             }
-            return new PageHeader(doc.getTitle(), null);
+            return new PageHeader(doc.getTitle(), null, null, null);
         } catch (IOException | RuntimeException e) {
-            return new PageHeader(doc.getTitle(), null);
+            return new PageHeader(doc.getTitle(), null, null, null);
         }
     }
 

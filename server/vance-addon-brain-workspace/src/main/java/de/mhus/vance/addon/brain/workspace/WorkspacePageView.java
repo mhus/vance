@@ -11,4 +11,6 @@ public record WorkspacePageView(
         String relativePath,
         String section,
         String title,
-        @Nullable String description) {}
+        @Nullable String description,
+        @Nullable String icon,
+        @Nullable Double sortIndex) {}

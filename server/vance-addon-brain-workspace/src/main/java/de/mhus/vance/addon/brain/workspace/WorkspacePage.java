@@ -13,5 +13,7 @@ public record WorkspacePage(
         String relativePath,
         String section,
         String title,
-        @Nullable String description) {
+        @Nullable String description,
+        @Nullable String icon,
+        @Nullable Double sortIndex) {
 }

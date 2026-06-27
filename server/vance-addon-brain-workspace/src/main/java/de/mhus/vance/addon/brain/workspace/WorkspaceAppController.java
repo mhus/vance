@@ -17,12 +17,21 @@ import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.yaml.snakeyaml.DumperOptions;
+import org.yaml.snakeyaml.Yaml;
 
 /**
  * REST endpoints for the interactive Workspace editor in the Web-UI.
@@ -56,7 +65,7 @@ public class WorkspaceAppController {
         for (WorkspacePage p : scan.pages()) {
             pages.add(new WorkspacePageView(
                     p.doc().getId(), p.doc().getPath(), p.relativePath(), p.section(),
-                    p.title(), p.description()));
+                    p.title(), p.description(), p.icon(), p.sortIndex()));
         }
 
         String indexPath = WorkspaceFolderReader.resolveOutputPath(
@@ -124,7 +133,7 @@ public class WorkspaceAppController {
                 tenant, normalised, doc.getPath());
         return new WorkspacePageView(
                 doc.getId(), doc.getPath(), relativePath, section,
-                request.title(), request.description());
+                request.title(), request.description(), null, null);
     }
 
     private String uniquePath(String tenant, String projectId, String basePath) {
@@ -160,6 +169,184 @@ public class WorkspaceAppController {
             sb.setLength(sb.length() - 1);
         }
         return sb.toString();
+    }
+
+    /**
+     * Rename + move + sort-reorder for one page. Each field is optional;
+     * fields left {@code null} are not touched. Touches both the
+     * front-matter of the page's body and (for section moves) the
+     * document's storage path.
+     */
+    @PutMapping("/brain/{tenant}/addon/workspace/page/{id}")
+    public WorkspacePageView updatePage(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("id") String id,
+            @RequestParam("projectId") String projectId,
+            @RequestParam("folder") String folder,
+            @RequestBody WorkspaceUpdatePageRequest request,
+            HttpServletRequest httpRequest) {
+
+        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
+        if (request == null) throw new ToolException("body is required");
+
+        String normalised = WorkspaceFolderReader.normaliseFolder(folder);
+        DocumentDocument doc = documentService.findById(id)
+                .orElseThrow(() -> new ToolException("Unknown page id='" + id + "'"));
+        if (!doc.getPath().startsWith(normalised + "/")) {
+            throw new ToolException("Page is not inside workspace '" + normalised + "'");
+        }
+
+        boolean patchFrontMatter = request.title() != null || request.sortIndex() != null;
+        if (patchFrontMatter) {
+            patchFrontMatter(doc, request, currentUser(httpRequest));
+            // Reload to pick up the storageId / inlineText that the
+            // content-write produced.
+            doc = documentService.findById(id).orElse(doc);
+        }
+
+        if (request.section() != null) {
+            String newSection = sanitiseSegment(request.section());
+            String leaf = doc.getPath().substring(doc.getPath().lastIndexOf('/') + 1);
+            String newPath = newSection.isEmpty()
+                    ? normalised + "/" + leaf
+                    : normalised + "/" + newSection + "/" + leaf;
+            if (!newPath.equals(doc.getPath())) {
+                // Avoid clobbering an existing page at the destination.
+                if (documentService.findByPath(tenant, projectId, newPath).isPresent()) {
+                    throw new ToolException("Target path already exists: '" + newPath + "'");
+                }
+                doc = documentService.update(
+                        id, null, null, null, newPath, null, null, null, null,
+                        currentUser(httpRequest));
+            }
+        }
+
+        // Re-scan to pick up the canonical header values for the view DTO.
+        WorkspaceFolderReader.Scan scan = folderReader.scan(tenant, projectId, normalised);
+        for (WorkspacePage p : scan.pages()) {
+            if (p.doc().getId().equals(id)) {
+                return new WorkspacePageView(
+                        p.doc().getId(), p.doc().getPath(), p.relativePath(),
+                        p.section(), p.title(), p.description(),
+                        p.icon(), p.sortIndex());
+            }
+        }
+        throw new ToolException("Page disappeared after update id='" + id + "'");
+    }
+
+    /**
+     * Delete a page outright. The underlying document goes through
+     * {@code DocumentService.trash} so it lands in the project trash
+     * (recoverable) rather than being wiped immediately.
+     */
+    @DeleteMapping("/brain/{tenant}/addon/workspace/page/{id}")
+    public ResponseEntity<Void> deletePage(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("id") String id,
+            @RequestParam("projectId") String projectId,
+            @RequestParam("folder") String folder,
+            HttpServletRequest httpRequest) {
+
+        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.DELETE);
+        String normalised = WorkspaceFolderReader.normaliseFolder(folder);
+        DocumentDocument doc = documentService.findById(id)
+                .orElseThrow(() -> new ToolException("Unknown page id='" + id + "'"));
+        if (!doc.getPath().startsWith(normalised + "/")) {
+            throw new ToolException("Page is not inside workspace '" + normalised + "'");
+        }
+        documentService.trash(id, currentUser(httpRequest));
+        log.info("WorkspaceAppController.deletePage tenant='{}' folder='{}' path='{}'",
+                tenant, normalised, doc.getPath());
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Read current body, patch the front-matter map with the requested
+     * fields, write back. Preserves all other front-matter keys (icon,
+     * cover, custom fields) verbatim.
+     */
+    @SuppressWarnings("unchecked")
+    private void patchFrontMatter(
+            DocumentDocument doc,
+            WorkspaceUpdatePageRequest request,
+            @Nullable String editorId) {
+        try (InputStream in = documentService.loadContent(doc)) {
+            String body = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            String headerText = "";
+            String rest = body;
+            if (body.startsWith("---\n")) {
+                int end = body.indexOf("\n---\n", 4);
+                if (end > 0) {
+                    headerText = body.substring(4, end);
+                    rest = body.substring(end + 5);
+                }
+            }
+            Map<String, Object> header = new LinkedHashMap<>();
+            if (!headerText.isEmpty()) {
+                Object loaded = new Yaml().load(headerText);
+                if (loaded instanceof Map<?, ?> m) {
+                    for (Map.Entry<?, ?> e : m.entrySet()) {
+                        if (e.getKey() != null) header.put(e.getKey().toString(), e.getValue());
+                    }
+                }
+            }
+            // Make sure $meta.kind stays first — recreate the map in
+            // canonical order so the file remains a valid canvas doc
+            // even when downstream YAML libs rewrite key order.
+            if (!header.containsKey("$meta")) {
+                Map<String, Object> meta = new LinkedHashMap<>();
+                meta.put("kind", "canvas");
+                header.put("$meta", meta);
+            }
+            if (request.title() != null) header.put("title", request.title());
+            if (request.sortIndex() != null) header.put("sortIndex", request.sortIndex());
+
+            DumperOptions opts = new DumperOptions();
+            opts.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
+            opts.setPrettyFlow(false);
+            String dumped = new Yaml(opts).dump(header);
+            String newBody = "---\n" + dumped + "---\n" + rest;
+            documentService.replaceContent(
+                    doc.getId(),
+                    new java.io.ByteArrayInputStream(newBody.getBytes(StandardCharsets.UTF_8)),
+                    "text/markdown",
+                    editorId);
+        } catch (java.io.IOException e) {
+            throw new ToolException("Could not patch front-matter: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Assign {@code sortIndex} {@code 10, 20, 30 …} to the given page
+     * ids in the listed order. Used by the sidebar drag-and-drop to
+     * persist a new manual ordering inside one section. Pages not
+     * referenced in {@code orderedIds} stay untouched, which lets a
+     * cross-section drop combine {@link #updatePage} (path-move) with
+     * a section-local reorder.
+     */
+    @PostMapping("/brain/{tenant}/addon/workspace/reorder")
+    public void reorderPages(
+            @PathVariable("tenant") String tenant,
+            @RequestParam("projectId") String projectId,
+            @RequestParam("folder") String folder,
+            @RequestBody WorkspaceReorderRequest request,
+            HttpServletRequest httpRequest) {
+
+        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
+        if (request == null || request.orderedIds() == null || request.orderedIds().isEmpty()) {
+            return;
+        }
+        String normalised = WorkspaceFolderReader.normaliseFolder(folder);
+        String editorId = currentUser(httpRequest);
+
+        double step = 10.0;
+        double idx = step;
+        for (String id : request.orderedIds()) {
+            DocumentDocument doc = documentService.findById(id).orElse(null);
+            if (doc == null || !doc.getPath().startsWith(normalised + "/")) continue;
+            patchFrontMatter(doc, new WorkspaceUpdatePageRequest(null, null, idx), editorId);
+            idx += step;
+        }
     }
 
     @PostMapping("/brain/{tenant}/addon/workspace/rebuild")

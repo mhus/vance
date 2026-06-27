@@ -10,4 +10,6 @@ export interface WorkspacePageView {
   section: string;
   title: string;
   description?: string;
+  icon?: string;
+  sortIndex?: number;
 }

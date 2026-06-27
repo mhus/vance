@@ -26,6 +26,7 @@ import { computed, onBeforeUnmount, ref, shallowRef, toRef, watch } from 'vue';
 import { CodeEditor, VLockBadge, accentColorDotClass } from '@/components';
 import { brainFetchBlob } from '@vance/shared';
 import type { DocumentDto } from '@vance/generated';
+import { WriterRole } from '@vance/generated';
 import { resolveKindFor } from '@vance/kind-registry';
 import ImageView from '@/document/ImageView.vue';
 import DocumentPreview from '@/document/DocumentPreview.vue';
@@ -213,6 +214,17 @@ async function onNoteGutterClick(line: number): Promise<void> {
   const created = await docNotes.addNote('', line);
   if (created) highlightedNoteId.value = created.id;
 }
+
+// A USER-locked document still shows the Edit view (so the user can
+// read the code with full syntax highlighting), but the editor is
+// read-only — keystrokes are dropped, save is moot. The lock badge in
+// the header carries the visual cue; the editor itself just gates the
+// keystrokes via CodeEditor's readOnly prop. The other lock roles
+// don't affect the human user's view — AI and KIT block other writer
+// classes.
+const isUserLocked = computed<boolean>(() =>
+  (props.document.lockedFor ?? []).includes(WriterRole.USER),
+);
 
 // Derive a language hint for CodeEditor. Path extension wins over the
 // server-supplied mime: a file named {@code foo.js} should highlight
@@ -805,6 +817,7 @@ function fmtDuration(ms: number | null): string {
         :model-value="document.inlineText"
         :mime-type="effectiveMimeType"
         :note-lines="docNotes.linesWithNotes.value"
+        :read-only="isUserLocked"
         @update:model-value="(v: string) => emit('update', v)"
         @selection-changed="onSelectionChanged"
         @note-anchor-click="onNoteAnchorClick"

@@ -82,10 +82,17 @@ public class WorkspaceAppController {
             landingPageId = resolveId(tenant, projectId, landingPagePath);
         }
 
+        // Manifest title/description come from the parsed `_app.yaml`
+        // body (top-level YAML keys). The DocumentDocument.title is a
+        // weaker fallback — it's only set if the upstream tool that
+        // created the doc bothered to copy the YAML title across.
+        String viewTitle = scan.config().title() != null
+                ? scan.config().title()
+                : scan.manifest().getTitle();
         return new WorkspaceView(
                 normalised,
-                scan.manifest().getTitle(),
-                null, // description is not directly on DocumentDocument; read from manifest body if needed
+                viewTitle,
+                scan.config().description(),
                 landingPagePath,
                 landingPageId,
                 indexPath,
@@ -346,6 +353,52 @@ public class WorkspaceAppController {
             if (doc == null || !doc.getPath().startsWith(normalised + "/")) continue;
             patchFrontMatter(doc, new WorkspaceUpdatePageRequest(null, null, idx), editorId);
             idx += step;
+        }
+    }
+
+    /**
+     * Rename a section by rewriting the storage path of every page in
+     * the workspace whose current section equals {@code from}. The
+     * {@code to} value may be empty to lift the pages to top level, or
+     * may already exist — in which case the rename merges into it.
+     * Section-level metadata is path-only in v1, so this is purely a
+     * batched path-move.
+     */
+    @PostMapping("/brain/{tenant}/addon/workspace/section/rename")
+    public void renameSection(
+            @PathVariable("tenant") String tenant,
+            @RequestParam("projectId") String projectId,
+            @RequestParam("folder") String folder,
+            @RequestBody WorkspaceRenameSectionRequest request,
+            HttpServletRequest httpRequest) {
+
+        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
+        if (request == null) throw new ToolException("body is required");
+
+        String normalised = WorkspaceFolderReader.normaliseFolder(folder);
+        String fromSection = sanitiseSegment(request.from());
+        String toSection = sanitiseSegment(request.to());
+        if (fromSection.equals(toSection)) return;
+
+        String editorId = currentUser(httpRequest);
+        WorkspaceFolderReader.Scan scan = folderReader.scan(tenant, projectId, normalised);
+        for (WorkspacePage page : scan.pages()) {
+            if (!fromSection.equals(page.section())) continue;
+            DocumentDocument doc = page.doc();
+            String leaf = doc.getPath().substring(doc.getPath().lastIndexOf('/') + 1);
+            String newPath = toSection.isEmpty()
+                    ? normalised + "/" + leaf
+                    : normalised + "/" + toSection + "/" + leaf;
+            if (newPath.equals(doc.getPath())) continue;
+            // Refuse to clobber an unrelated page that already sits at
+            // the destination path.
+            documentService.findByPath(tenant, projectId, newPath).ifPresent(existing -> {
+                if (!existing.getId().equals(doc.getId())) {
+                    throw new ToolException("Target path already exists: '" + newPath + "'");
+                }
+            });
+            documentService.update(
+                    doc.getId(), null, null, null, newPath, null, null, null, null, editorId);
         }
     }
 

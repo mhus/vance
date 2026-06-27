@@ -4,6 +4,7 @@ import type { WorkspaceRebuildResponse } from './generated/workspace/WorkspaceRe
 import type { WorkspaceCreatePageRequest } from './generated/workspace/WorkspaceCreatePageRequest';
 import type { WorkspaceUpdatePageRequest } from './generated/workspace/WorkspaceUpdatePageRequest';
 import type { WorkspaceReorderRequest } from './generated/workspace/WorkspaceReorderRequest';
+import type { WorkspaceRenameSectionRequest } from './generated/workspace/WorkspaceRenameSectionRequest';
 import type { WorkspacePageView } from './generated/workspace/WorkspacePageView';
 
 function qs(params: Record<string, string>): string {
@@ -62,6 +63,18 @@ export async function reorderWorkspacePages(
   await brainFetch<unknown>(
     'POST',
     `addon/workspace/reorder?${qs({ projectId, folder })}`,
+    { body: request },
+  );
+}
+
+export async function renameWorkspaceSection(
+  projectId: string,
+  folder: string,
+  request: WorkspaceRenameSectionRequest,
+): Promise<void> {
+  await brainFetch<unknown>(
+    'POST',
+    `addon/workspace/section/rename?${qs({ projectId, folder })}`,
     { body: request },
   );
 }

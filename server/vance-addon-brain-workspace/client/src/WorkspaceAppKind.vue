@@ -15,6 +15,7 @@ import {
   updateWorkspacePage,
   deleteWorkspacePage,
   reorderWorkspacePages,
+  renameWorkspaceSection,
 } from './api';
 import AssetPickerModal from './AssetPickerModal.vue';
 import EmojiPickerModal from './EmojiPickerModal.vue';
@@ -50,7 +51,13 @@ const props = defineProps<{
 
 const projectId = computed(() => props.document.projectId);
 const folder = computed(() => props.document.path.replace(/\/_app\.yaml$/, ''));
-const title = computed(() => props.document.title ?? folder.value);
+// Sidebar header — prefer the manifest title from `_app.yaml`
+// (returned by /scan as view.title) over the container document's
+// title field, since that's the one workspace authors edit. Final
+// fallback is the folder name so the header is never blank.
+const title = computed(
+  () => view.value?.title ?? props.document.title ?? folder.value,
+);
 
 const view = ref<WorkspaceView | null>(null);
 const error = ref<string | null>(null);
@@ -540,6 +547,52 @@ async function confirmDelete(page: WorkspacePageView) {
   }
 }
 
+// ── Section rename ────────────────────────────────────────────────
+// Mirrors the page context-menu pattern (right-click + ⋯ button) for
+// consistency. Inline-edit on the label, server batches the path-move
+// for every page currently in that section. Empty sections vanish on
+// their own — they only exist as path prefixes, no first-class entity.
+const sectionCtxMenu = ref<{ section: string; x: number; y: number } | null>(null);
+const editingSection = ref<string | null>(null);
+const editingSectionValue = ref('');
+const sectionInputRef = ref<HTMLInputElement | null>(null);
+
+function openSectionCtxMenu(section: string, e: MouseEvent) {
+  // Top-level ('') has nothing renameable, so skip the menu altogether.
+  if (!section) return;
+  e.preventDefault();
+  sectionCtxMenu.value = { section, x: e.clientX, y: e.clientY };
+}
+function closeSectionCtxMenu() {
+  sectionCtxMenu.value = null;
+}
+async function startSectionRename(section: string) {
+  closeSectionCtxMenu();
+  if (!section) return;
+  editingSection.value = section;
+  editingSectionValue.value = section;
+  await nextTick();
+  sectionInputRef.value?.focus();
+  sectionInputRef.value?.select();
+}
+function cancelSectionRename() {
+  editingSection.value = null;
+  editingSectionValue.value = '';
+}
+async function commitSectionRename() {
+  const from = editingSection.value;
+  if (from == null) return;
+  const to = editingSectionValue.value.trim();
+  editingSection.value = null;
+  if (to === from) return;
+  try {
+    await renameWorkspaceSection(projectId.value, folder.value, { from, to });
+    await loadWorkspace();
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Section rename failed.';
+  }
+}
+
 // ── Drag-and-drop reorder ─────────────────────────────────────────
 // Native HTML5 D&D over the page-row list. Drop semantics:
 //   * onto another row inside the SAME section → reorder
@@ -647,10 +700,24 @@ async function applyReorder(
   }
 }
 
+// Sidebar filter — case-insensitive substring match against title +
+// section. Empty input shows everything. Filter runs client-side; for
+// the page sizes we expect (~dozens, occasionally low hundreds) this
+// is well below any perceptible cost and avoids a server round-trip.
+const filterText = ref('');
+function pageMatchesFilter(p: WorkspacePageView, needle: string): boolean {
+  if (!needle) return true;
+  const t = (effectiveTitle(p) ?? '').toLowerCase();
+  const s = (p.section ?? '').toLowerCase();
+  return t.includes(needle) || s.includes(needle);
+}
+
 function pagesBySection(): Map<string, WorkspacePageView[]> {
   const grouped = new Map<string, WorkspacePageView[]>();
   if (!view.value) return grouped;
+  const needle = filterText.value.trim().toLowerCase();
   for (const p of view.value.pages) {
+    if (!pageMatchesFilter(p, needle)) continue;
     const key = p.section ?? '';
     let list = grouped.get(key);
     if (!list) {
@@ -738,6 +805,16 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
         </div>
       </header>
 
+      <div class="workspace-app__search">
+        <input
+          v-model="filterText"
+          type="search"
+          class="workspace-app__search-input"
+          placeholder="Filter pages…"
+          @keydown.escape="filterText = ''"
+        />
+      </div>
+
       <form
         v-if="newPageOpen"
         class="workspace-app__new-page"
@@ -784,7 +861,7 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
       <div v-if="error" class="workspace-app__error">{{ error }}</div>
 
       <div v-if="view" class="workspace-app__tree">
-        <template v-if="view.indexPageId">
+        <template v-if="view.indexPageId && (!filterText.trim() || 'index workspace'.includes(filterText.trim().toLowerCase()))">
           <div class="workspace-app__section-label">Workspace</div>
           <button
             class="workspace-app__page-link"
@@ -804,8 +881,28 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
             :class="{ 'workspace-app__section-label--drop': dropSectionTarget === section }"
             @dragover="onSectionDragOver(section, $event)"
             @drop="onSectionDrop(section)"
+            @contextmenu="openSectionCtxMenu(section, $event)"
           >
-            {{ section || 'Pages' }}
+            <input
+              v-if="editingSection === section"
+              ref="sectionInputRef"
+              v-model="editingSectionValue"
+              type="text"
+              class="workspace-app__section-input"
+              @keydown.enter.prevent="commitSectionRename"
+              @keydown.escape="cancelSectionRename"
+              @blur="commitSectionRename"
+              @click.stop
+            />
+            <template v-else>
+              <span class="workspace-app__section-label-text">{{ section || 'Pages' }}</span>
+              <button
+                v-if="section"
+                class="workspace-app__section-menu"
+                title="More actions"
+                @click.stop="openSectionCtxMenu(section, $event)"
+              >⋯</button>
+            </template>
           </div>
           <div
             v-for="p in pages"
@@ -973,6 +1070,21 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
     </div>
 
     <div
+      v-if="sectionCtxMenu"
+      class="workspace-app__ctx-backdrop"
+      @click="closeSectionCtxMenu"
+      @contextmenu.prevent="closeSectionCtxMenu"
+    >
+      <div
+        class="workspace-app__ctx-menu"
+        :style="{ left: sectionCtxMenu.x + 'px', top: sectionCtxMenu.y + 'px' }"
+        @click.stop
+      >
+        <button class="workspace-app__ctx-item" @click="startSectionRename(sectionCtxMenu.section)">Rename section…</button>
+      </div>
+    </div>
+
+    <div
       v-if="renameDialog"
       class="workspace-app__modal-backdrop"
       @click.self="closeRename"
@@ -1078,6 +1190,24 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
 }
 .workspace-app__icon-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+.workspace-app__search {
+  padding: 0 0.25rem 0.5rem;
+}
+.workspace-app__search-input {
+  width: 100%;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.85rem;
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 0.25rem;
+  background: var(--color-bg, #fff);
+  color: var(--color-text, #111827);
+  box-sizing: border-box;
+}
+.workspace-app__search-input:focus {
+  outline: none;
+  border-color: var(--color-link, #3b82f6);
+}
+
 .workspace-app__new-page {
   display: flex;
   flex-direction: column;
@@ -1135,7 +1265,37 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--color-text-muted, #6b7280);
-  padding: 0.5rem 0.5rem 0.25rem;
+  padding: 0.5rem 0.25rem 0.25rem 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  border-radius: 0.25rem;
+}
+.workspace-app__section-label-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workspace-app__section-menu {
+  background: none;
+  border: 0;
+  color: var(--color-text-muted, #6b7280);
+  cursor: pointer;
+  padding: 0 0.35rem;
+  font-size: 1rem;
+  line-height: 1;
+  border-radius: 3px;
+  opacity: 0;
+  transition: opacity 0.1s ease;
+}
+.workspace-app__section-label:hover .workspace-app__section-menu {
+  opacity: 1;
+}
+.workspace-app__section-menu:hover {
+  background: var(--color-border, #e5e7eb);
+  color: var(--color-text, #111827);
 }
 .workspace-app__page-row {
   position: relative;
@@ -1161,6 +1321,18 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
 .workspace-app__section-label--drop {
   background: rgba(59, 130, 246, 0.12);
   border-radius: 0.25rem;
+}
+.workspace-app__section-input {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  width: 100%;
+  padding: 0.125rem 0.25rem;
+  border: 1px solid var(--color-link, #3b82f6);
+  border-radius: 3px;
+  background: var(--color-bg, #fff);
+  color: var(--color-text, #111827);
+  font-family: inherit;
 }
 .workspace-app__page-row:hover {
   background: var(--color-button-bg, #f3f4f6);

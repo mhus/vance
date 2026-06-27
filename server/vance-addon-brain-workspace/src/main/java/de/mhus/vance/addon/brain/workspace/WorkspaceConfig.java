@@ -10,6 +10,8 @@ import org.yaml.snakeyaml.Yaml;
  * an LLM-generated manifest with sparse content still mounts.
  */
 public record WorkspaceConfig(
+        @Nullable String title,
+        @Nullable String description,
         @Nullable String landingPage,
         IndexCfg index,
         String defaultPageKind) {
@@ -32,8 +34,18 @@ public record WorkspaceConfig(
         if (!(loaded instanceof Map<?, ?> m)) {
             return defaults();
         }
-        Object wsRaw = m.get("workspace");
-        if (!(wsRaw instanceof Map<?, ?> ws)) return defaults();
+        @SuppressWarnings("unchecked") Map<String, Object> root = (Map<String, Object>) m;
+        String topTitle = str(root, "title");
+        String topDesc = str(root, "description");
+        Object wsRaw = root.get("workspace");
+        if (!(wsRaw instanceof Map<?, ?> ws)) {
+            // No `workspace:` block — still expose top-level title /
+            // description so the sidebar header has the right name.
+            return new WorkspaceConfig(
+                    topTitle, topDesc, null,
+                    new IndexCfg("_index.md", "cards", true, true),
+                    "canvas");
+        }
         @SuppressWarnings("unchecked") Map<String, Object> wsM = (Map<String, Object>) ws;
         String landing = str(wsM, "landingPage");
         String defaultKind = str(wsM, "defaultPageKind");
@@ -49,11 +61,15 @@ public record WorkspaceConfig(
         } else {
             idx = new IndexCfg("_index.md", "cards", true, true);
         }
-        return new WorkspaceConfig(landing, idx, defaultKind == null ? "canvas" : defaultKind);
+        return new WorkspaceConfig(
+                topTitle, topDesc, landing, idx,
+                defaultKind == null ? "canvas" : defaultKind);
     }
 
     public static WorkspaceConfig defaults() {
         return new WorkspaceConfig(
+                null,
+                null,
                 null,
                 new IndexCfg("_index.md", "cards", true, true),
                 "canvas");

@@ -35,7 +35,6 @@ const editMime = ref<string>('');
 const lockAi = ref(false);
 const lockUser = ref(false);
 const lockKit = ref(false);
-const savingLock = ref(false);
 const saving = ref(false);
 const error = ref<string | null>(null);
 
@@ -108,6 +107,17 @@ function seedLockFlags(): void {
 watch(lockUser, (v) => { if (v) lockAi.value = true; });
 watch(lockKit, (v) => { if (v) lockAi.value = true; });
 
+const isLockDirty = computed<boolean>(() => {
+  const current = new Set(props.document.lockedFor ?? []);
+  const desired = new Set<WriterRole>();
+  if (lockAi.value) desired.add(WriterRole.AI);
+  if (lockUser.value) desired.add(WriterRole.USER);
+  if (lockKit.value) desired.add(WriterRole.KIT);
+  if (current.size !== desired.size) return true;
+  for (const r of current) if (!desired.has(r)) return true;
+  return false;
+});
+
 const isDirty = computed<boolean>(() => {
   const nameNow = props.document.name ?? '';
   const titleNow = props.document.title ?? '';
@@ -120,6 +130,7 @@ const isDirty = computed<boolean>(() => {
     || editTags.value !== tagsNow
     || editColor.value !== colorNow
     || editMime.value !== mimeNow
+    || isLockDirty.value
   );
 });
 
@@ -159,6 +170,22 @@ function formatDate(ms: number | null | undefined): string {
 }
 
 async function onSave(): Promise<void> {
+  // Confirm-dialog for the one lock transition that matters — removing
+  // KIT re-opens the document to Kit-Apply auto-updates and should be
+  // a deliberate choice, not a click-through. Other lock changes go
+  // through silently.
+  if (
+    (props.document.lockedFor ?? []).includes(WriterRole.KIT)
+    && !lockKit.value
+  ) {
+    const ok = confirm(
+      'Removing the KIT lock means this document can be overwritten by future Kit-Apply updates. Continue?',
+    );
+    if (!ok) {
+      seedLockFlags();
+      return;
+    }
+  }
   saving.value = true;
   error.value = null;
   try {
@@ -186,7 +213,26 @@ async function onSave(): Promise<void> {
     if (renamedPath !== null) {
       body.newPath = renamedPath;
     }
-    await store.updateMeta(props.document.id, body);
+    // Lock update runs first — if the user is removing USER from the
+    // lock so they can also rename in the same save, the rename below
+    // would otherwise hit the lock check on the existing setting.
+    if (isLockDirty.value) {
+      const desired: WriterRole[] = [];
+      if (lockAi.value) desired.push(WriterRole.AI);
+      if (lockUser.value) desired.push(WriterRole.USER);
+      if (lockKit.value) desired.push(WriterRole.KIT);
+      await store.updateLock(props.document.id, desired);
+    }
+    // Only fire the meta update if something other than the lock changed.
+    const metaDirty
+      = editName.value.trim() !== (props.document.name ?? '')
+      || editTitle.value !== (props.document.title ?? '')
+      || editTags.value !== (props.document.tags ?? []).join(', ')
+      || editColor.value !== wasColor
+      || editMime.value !== wasMime;
+    if (metaDirty) {
+      await store.updateMeta(props.document.id, body);
+    }
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to save properties';
   } finally {
@@ -224,50 +270,6 @@ async function onRestored(): Promise<void> {
   // Re-pull the document so the body + meta in the tab match the
   // restored version.
   await store.reloadTab(props.document.id);
-}
-
-// True when the lock checkboxes diverge from the document's current
-// {@code lockedFor}. The currently-displayed UI state is normalised
-// client-side (USER/KIT imply AI), so the comparison is against the
-// server-side set verbatim.
-const isLockDirty = computed<boolean>(() => {
-  const current = new Set(props.document.lockedFor ?? []);
-  const desired = new Set<WriterRole>();
-  if (lockAi.value) desired.add(WriterRole.AI);
-  if (lockUser.value) desired.add(WriterRole.USER);
-  if (lockKit.value) desired.add(WriterRole.KIT);
-  if (current.size !== desired.size) return true;
-  for (const r of current) if (!desired.has(r)) return true;
-  return false;
-});
-
-async function onSaveLock(): Promise<void> {
-  const removingKit
-    = (props.document.lockedFor ?? []).includes(WriterRole.KIT)
-    && !lockKit.value;
-  if (removingKit) {
-    const ok = confirm(
-      'Removing the KIT lock means this document can be overwritten by future Kit-Apply updates. Continue?',
-    );
-    if (!ok) {
-      seedLockFlags();
-      return;
-    }
-  }
-  savingLock.value = true;
-  error.value = null;
-  try {
-    const desired: WriterRole[] = [];
-    if (lockAi.value) desired.push(WriterRole.AI);
-    if (lockUser.value) desired.push(WriterRole.USER);
-    if (lockKit.value) desired.push(WriterRole.KIT);
-    await store.updateLock(props.document.id, desired);
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to update lock';
-    seedLockFlags();
-  } finally {
-    savingLock.value = false;
-  }
 }
 </script>
 
@@ -346,29 +348,20 @@ async function onSaveLock(): Promise<void> {
           v-model="lockAi"
           label="AI"
           help="Block LLM / tool writes"
-          :disabled="savingLock || lockUser || lockKit"
+          :disabled="saving || lockUser || lockKit"
         />
         <VCheckbox
           v-model="lockUser"
           label="USER"
           help="Block manual user writes (auto-implies AI)"
-          :disabled="savingLock"
+          :disabled="saving"
         />
         <VCheckbox
           v-model="lockKit"
           label="KIT"
           help="Freeze against Kit-Apply updates (auto-implies AI)"
-          :disabled="savingLock"
+          :disabled="saving"
         />
-        <div class="ml-auto">
-          <VButton
-            size="sm"
-            variant="primary"
-            :disabled="!isLockDirty"
-            :loading="savingLock"
-            @click="onSaveLock"
-          >Update lock</VButton>
-        </div>
       </div>
     </div>
 

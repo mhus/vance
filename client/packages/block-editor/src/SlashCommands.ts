@@ -152,6 +152,24 @@ const ITEMS: SlashItemDef[] = [
         .insertContent({ type: 'vanceDataview', attrs: { source: '' } })
         .run(),
   },
+  {
+    id: 'image',
+    title: 'Image',
+    hint: 'Pick from assets or upload',
+    run: ({ editor, range }) => {
+      editor.chain().focus().deleteRange(range).run();
+      editor.view.dom.dispatchEvent(
+        new CustomEvent('vance:open-asset-picker', { bubbles: true }),
+      );
+    },
+  },
+  {
+    id: 'toc',
+    title: 'Table of contents',
+    hint: 'Auto-generated from page headings',
+    run: ({ editor, range }) =>
+      editor.chain().focus().deleteRange(range).insertContent({ type: 'vanceToc' }).run(),
+  },
 ];
 
 export const SlashCommands = Extension.create({

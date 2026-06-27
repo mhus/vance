@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch, onBeforeUnmount } from 'vue';
+import { computed, ref, watch, onBeforeUnmount, onMounted } from 'vue';
 import { useEditor, EditorContent, BubbleMenu } from '@tiptap/vue-3';
 import StarterKit from '@tiptap/starter-kit';
 import TaskList from '@tiptap/extension-task-list';
@@ -12,6 +12,11 @@ import TableHeader from '@tiptap/extension-table-header';
 import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
 import GlobalDragHandle from 'tiptap-extension-global-drag-handle';
+import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
+import { createLowlight, common } from 'lowlight';
+import 'highlight.js/styles/github.css';
+
+const lowlight = createLowlight(common);
 
 import { parseDocument } from './markdown/parser';
 import { serializeDocument } from './markdown/serializer';
@@ -21,6 +26,7 @@ import {
   VanceToggle,
   VanceLink,
   VanceDataview,
+  VanceToc,
   VanceUnknownFence,
 } from './extensions';
 import { SlashCommands } from './SlashCommands';
@@ -52,6 +58,24 @@ const props = withDefaults(
     };
     source?: string | null;
     autoSaveMs?: number;
+    /**
+     * Image-upload callback. Invoked when the user drops or pastes an
+     * image file into the editor. Returns the URL to embed (typically
+     * the streaming-content URL of a freshly created `kind: image`
+     * document, but any absolute URL works). Returning {@code null}
+     * cancels the insert silently. The host owns the upload pipeline —
+     * the editor itself doesn't know about projects / workspaces /
+     * REST endpoints.
+     */
+    uploadImage?: (file: File) => Promise<string | null>;
+    /**
+     * Open an asset-picker UI. Invoked when the user selects the
+     * "Image" slash command. The host (workspace addon) implements the
+     * modal — it knows about workspace paths, asset folders, and how
+     * to list existing images. The host inserts the picked image into
+     * the editor via the {@link insertImageAt} helper exposed below.
+     */
+    openAssetPicker?: () => void;
   }>(),
   { autoSaveMs: 2000 },
 );
@@ -86,15 +110,48 @@ const initial = computed(() => {
   return { doc, content: { type: 'doc', content: blocksToContent(doc.blocks) } };
 });
 
+function imageFilesFrom(list: FileList | null | undefined): File[] {
+  if (!list) return [];
+  const out: File[] = [];
+  for (let i = 0; i < list.length; i++) {
+    const f = list.item(i);
+    if (f && f.type.startsWith('image/')) out.push(f);
+  }
+  return out;
+}
+
+async function insertUploadedImages(files: File[], dropPos: number | null) {
+  const ed = editor.value;
+  if (!ed || !props.uploadImage || files.length === 0) return;
+  for (const file of files) {
+    let url: string | null = null;
+    try {
+      url = await props.uploadImage(file);
+    } catch (e) {
+      console.error('[CanvasEditor] image upload failed', e);
+    }
+    if (!url) continue;
+    const chain = ed.chain().focus();
+    if (dropPos != null) chain.insertContentAt(dropPos, { type: 'image', attrs: { src: url, alt: file.name } });
+    else chain.setImage({ src: url, alt: file.name });
+    chain.run();
+  }
+}
+
 const editor = useEditor({
   extensions: [
     StarterKit.configure({
       heading: { levels: [1, 2, 3] },
-      codeBlock: { languageClassPrefix: 'language-' },
-      // Visible drop indicator while dragging a block via the global
-      // drag handle — without this the user has no way to tell where
-      // the block will land.
+      // Disable the StarterKit's plain code-block — we wire in the
+      // lowlight-powered variant below for syntax highlighting.
+      codeBlock: false,
       dropcursor: { color: '#3b82f6', width: 3 },
+    }),
+    CodeBlockLowlight.configure({
+      lowlight,
+      defaultLanguage: null,
+      languageClassPrefix: 'language-',
+      HTMLAttributes: { class: 'hljs' },
     }),
     TaskList,
     TaskItem.configure({ nested: false }),
@@ -125,9 +182,20 @@ const editor = useEditor({
     VanceToggle,
     VanceLink,
     VanceDataview,
+    VanceToc,
     VanceUnknownFence,
   ],
   content: initial.value.content,
+  editorProps: {
+    handlePaste(_view, event) {
+      const clipboard = event as ClipboardEvent;
+      const files = imageFilesFrom(clipboard.clipboardData?.files);
+      if (files.length === 0) return false;
+      clipboard.preventDefault();
+      void insertUploadedImages(files, null);
+      return true;
+    },
+  },
   onUpdate: () => {
     if (!dirty.value) {
       dirty.value = true;
@@ -161,6 +229,8 @@ function save() {
   const md = serializeDocument({
     title: fm.title ?? props.document.title ?? null,
     description: fm.description,
+    icon: fm.icon,
+    cover: fm.cover,
     blocks,
   });
   emit('save', md);
@@ -198,13 +268,72 @@ function setLink() {
     .run();
 }
 
+// File-drop handler at the DOM level with `capture: true` so it fires
+// before ProseMirror's own drop logic (and before any other extension's
+// handleDOMEvents). External image drops route to uploadImage; anything
+// else (internal block-reorder, plain-text drop, …) is left alone.
+function onCaptureDragOver(e: DragEvent) {
+  if (!props.uploadImage) return;
+  const types = e.dataTransfer?.types ?? [];
+  // Check `types` instead of files — `files` is restricted to the drop
+  // event for security, but `types` is readable during dragover.
+  if ([...types].some((t) => t === 'Files' || t.startsWith('image/'))) {
+    // Only preventDefault — without it the browser rejects the drop
+    // entirely. NO stopPropagation: ProseMirror's dropcursor extension
+    // still needs to see the dragover so it can render the blue
+    // drop-position indicator.
+    e.preventDefault();
+  }
+}
+function onCaptureDrop(e: DragEvent) {
+  if (!props.uploadImage) return;
+  const files = imageFilesFrom(e.dataTransfer?.files);
+  if (files.length === 0) return;
+  // On drop we DO stop propagation — once we have the file in hand,
+  // ProseMirror's own drop handler must not also try to process it
+  // (it would otherwise insert garbled text or navigate).
+  e.preventDefault();
+  e.stopPropagation();
+  const ed = editor.value;
+  if (!ed) return;
+  const pos = ed.view.posAtCoords({ left: e.clientX, top: e.clientY });
+  void insertUploadedImages(files, pos ? pos.pos : null);
+}
+
+function onAssetPickerEvent() {
+  props.openAssetPicker?.();
+}
+
+onMounted(() => {
+  const dom = editor.value?.view.dom;
+  if (!dom) return;
+  dom.addEventListener('dragover', onCaptureDragOver, { capture: true });
+  dom.addEventListener('drop', onCaptureDrop, { capture: true });
+  dom.addEventListener('vance:open-asset-picker', onAssetPickerEvent);
+});
+
 onBeforeUnmount(() => {
   if (autoSaveTimer != null) save();
   cancelAutoSave();
+  const dom = editor.value?.view.dom;
+  if (dom) {
+    dom.removeEventListener('dragover', onCaptureDragOver, { capture: true });
+    dom.removeEventListener('drop', onCaptureDrop, { capture: true });
+    dom.removeEventListener('vance:open-asset-picker', onAssetPickerEvent);
+  }
   editor.value?.destroy();
 });
 
-defineExpose({ save, flush });
+/**
+ * Insert an image at the current cursor. Used by the host's asset
+ * picker callback — it picks a stored image and calls this to drop the
+ * URL into the editor.
+ */
+function insertImage(src: string, alt: string) {
+  editor.value?.chain().focus().setImage({ src, alt }).run();
+}
+
+defineExpose({ save, flush, insertImage });
 </script>
 
 <template>

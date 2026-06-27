@@ -96,6 +96,8 @@ function blockToNode(b: Block): JSONContent {
         type: 'vanceLink',
         attrs: { href: b.href, title: b.title, description: b.description },
       };
+    case 'toc':
+      return { type: 'vanceToc' };
     case 'unknown-fence':
       return { type: 'vanceUnknownFence', attrs: { info: b.info, body: b.body } };
   }
@@ -204,6 +206,8 @@ function nodeToBlock(node: JSONContent): Block[] {
           description: (node.attrs?.description as string | null) ?? null,
         },
       ];
+    case 'vanceToc':
+      return [{ kind: 'toc' }];
     case 'vanceUnknownFence':
       return [
         {

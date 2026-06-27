@@ -31,12 +31,18 @@ const title = computed(
   () => parsed.value.title ?? props.document.title ?? null,
 );
 const description = computed(() => parsed.value.description);
+const icon = computed(() => parsed.value.icon);
+const cover = computed(() => parsed.value.cover);
 </script>
 
 <template>
   <div class="canvas-kind">
-    <header v-if="title || description" class="canvas-kind__header">
-      <h1 v-if="title" class="canvas-kind__title">{{ title }}</h1>
+    <img v-if="cover" :src="cover" alt="" class="canvas-kind__cover" />
+    <header v-if="title || description || icon" class="canvas-kind__header">
+      <h1 v-if="title || icon" class="canvas-kind__title">
+        <span v-if="icon" class="canvas-kind__icon">{{ icon }}</span>
+        {{ title }}
+      </h1>
       <p v-if="description" class="canvas-kind__description">{{ description }}</p>
     </header>
     <BlockView :blocks="blocks" />
@@ -56,10 +62,24 @@ const description = computed(() => parsed.value.description);
   border-bottom: 1px solid var(--color-border, #e5e7eb);
   margin-bottom: 1rem;
 }
+.canvas-kind__cover {
+  display: block;
+  width: 100%;
+  max-height: 12rem;
+  object-fit: cover;
+  background: var(--color-button-bg, #f3f4f6);
+}
 .canvas-kind__title {
   font-size: 1.875rem;
   font-weight: 700;
   margin: 0 0 0.25em;
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+}
+.canvas-kind__icon {
+  font-size: 1.6em;
+  line-height: 1;
 }
 .canvas-kind__description {
   color: var(--color-text-muted, #6b7280);

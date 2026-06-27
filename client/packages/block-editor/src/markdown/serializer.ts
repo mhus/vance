@@ -14,6 +14,12 @@ export function serializeDocument(doc: CanvasDocument): string {
   if (doc.description && doc.description.trim().length > 0) {
     out += `description: ${escapeYaml(doc.description)}\n`;
   }
+  if (doc.icon && doc.icon.trim().length > 0) {
+    out += `icon: ${escapeYaml(doc.icon)}\n`;
+  }
+  if (doc.cover && doc.cover.trim().length > 0) {
+    out += `cover: ${escapeYaml(doc.cover)}\n`;
+  }
   out += '---\n';
   out += serialize(doc.blocks);
   return out;
@@ -85,6 +91,8 @@ function renderBlock(b: Block): string {
       if (b.description) body.description = b.description;
       return renderFence('vance-link', body);
     }
+    case 'toc':
+      return '```vance-toc\n```\n';
     case 'unknown-fence':
       return '```' + b.info + '\n' + b.body + (b.body.endsWith('\n') ? '' : '\n') + '```\n';
   }

@@ -1,9 +1,12 @@
 import { Node, mergeAttributes } from '@tiptap/core';
+import { VueNodeViewRenderer } from '@tiptap/vue-3';
+import VanceToggleNodeView from './VanceToggleNodeView.vue';
 
 /**
- * Tiptap node for {@code ```vance-toggle} fence blocks. Atomic in v1
- * (collapsible body is a single text field; nested-block rendering is
- * v2). Summary + body live as node attributes.
+ * Tiptap node for {@code ```vance-toggle} fence blocks. Atomic —
+ * summary + body live as node attributes; the NodeView exposes a
+ * chevron-toggle plus summary input and body textarea. Nested-block
+ * rendering inside the body remains v2.
  */
 export const VanceToggle = Node.create({
   name: 'vanceToggle',
@@ -29,5 +32,9 @@ export const VanceToggle = Node.create({
       ['summary', { class: 'vance-toggle__summary' }, (HTMLAttributes.summary as string) ?? ''],
       ['div', { class: 'vance-toggle__body' }, (HTMLAttributes.body as string) ?? ''],
     ];
+  },
+
+  addNodeView() {
+    return VueNodeViewRenderer(VanceToggleNodeView as never);
   },
 });

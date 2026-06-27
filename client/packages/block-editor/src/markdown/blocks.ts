@@ -17,6 +17,7 @@ export type Block =
   | { kind: 'toggle'; summary: string; body: string }
   | { kind: 'dataview'; source: string }
   | { kind: 'link-card'; href: string; title: string | null; description: string | null }
+  | { kind: 'toc' }
   | { kind: 'unknown-fence'; info: string; body: string };
 
 export interface TodoItem {
@@ -27,5 +28,16 @@ export interface TodoItem {
 export interface CanvasDocument {
   title: string | null;
   description: string | null;
+  /**
+   * Page icon — usually a single emoji ("📚") but any short string is
+   * accepted. Rendered next to the title in the page header.
+   */
+  icon: string | null;
+  /**
+   * Cover image — relative document path under the workspace
+   * ("assets/foo.png") or absolute URL. Rendered as a wide banner
+   * above the page title.
+   */
+  cover: string | null;
   blocks: Block[];
 }

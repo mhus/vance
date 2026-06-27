@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import {
+  brainFetch,
   brainFetchText,
   brainSendRaw,
+  documentContentUrl,
   useDocumentPrefixReaction,
 } from '@vance/shared';
-import { CanvasEditor } from '@vance/block-editor';
+import { CanvasEditor, parseDocument } from '@vance/block-editor';
 import { scanWorkspace, rebuildWorkspace, createWorkspacePage } from './api';
+import AssetPickerModal from './AssetPickerModal.vue';
 import type { WorkspaceView } from './generated/workspace/WorkspaceView';
 import type { WorkspacePageView } from './generated/workspace/WorkspacePageView';
 
@@ -52,11 +55,39 @@ const activeMarkdown = ref<string | null>(null);
 const pageLoading = ref(false);
 const pageError = ref<string | null>(null);
 
+// Parsed front-matter of the active page — drives the header
+// (icon, cover, title override, description override). Updated
+// whenever activeMarkdown changes.
+const parsedPage = computed(() =>
+  activeMarkdown.value == null ? null : parseDocument(activeMarkdown.value),
+);
+const pageIcon = computed(() => parsedPage.value?.icon ?? null);
+const pageCover = computed(() => parsedPage.value?.cover ?? null);
+const pageDisplayTitle = computed(
+  () => parsedPage.value?.title ?? activePageView.value?.title ?? '',
+);
+const pageDisplayDescription = computed(
+  () => parsedPage.value?.description ?? activePageView.value?.description ?? null,
+);
+
 type SaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
 const saveStatus = ref<SaveStatus>('idle');
 const lastSaveError = ref<string | null>(null);
 
-const editorRef = ref<{ save: () => void; flush: () => boolean } | null>(null);
+const editorRef = ref<{
+  save: () => void;
+  flush: () => boolean;
+  insertImage: (src: string, alt: string) => void;
+} | null>(null);
+
+const assetPickerOpen = ref(false);
+function openAssetPicker() {
+  assetPickerOpen.value = true;
+}
+function onAssetPick(src: string, alt: string) {
+  editorRef.value?.insertImage(src, alt);
+  assetPickerOpen.value = false;
+}
 
 // Self-write tracker — the last body we PUT for the active page. The
 // server's editorId-based filter should already prevent the
@@ -249,6 +280,40 @@ async function onEditorSave(body: string) {
       saveStatus.value = 'error';
       lastSaveError.value = e instanceof Error ? e.message : 'Save failed.';
     }
+  }
+}
+
+/**
+ * Upload a dropped/pasted image into `<workspace>/assets/`. Returns
+ * the streaming-content URL so the editor can embed it as
+ * `<img src>` immediately. Path collisions are avoided by
+ * timestamp-prefix; the sanitised filename keeps URLs readable.
+ */
+async function uploadImage(file: File): Promise<string | null> {
+  const assetsFolder = `${folder.value}/assets`;
+  const ts = Date.now();
+  const safe = file.name
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  const path = `${assetsFolder}/${ts}-${safe || 'image'}`;
+
+  const form = new FormData();
+  form.append('file', file);
+  form.append('projectId', projectId.value);
+  form.append('path', path);
+  if (file.type) form.append('mimeType', file.type);
+
+  try {
+    const dto = await brainFetch<{ id: string }>(
+      'POST',
+      'documents/upload',
+      { body: form },
+    );
+    return documentContentUrl(dto.id);
+  } catch (e) {
+    console.error('[Workspace] image upload failed', e);
+    return null;
   }
 }
 
@@ -466,9 +531,18 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
       <div v-if="loading" class="workspace-app__main-empty">Lade Workspace…</div>
 
       <template v-else-if="activePageId">
+        <img
+          v-if="pageCover"
+          :src="pageCover"
+          alt=""
+          class="workspace-app__page-cover"
+        />
         <header v-if="activePageView" class="workspace-app__page-header">
           <div class="workspace-app__page-header-row">
-            <h1 class="workspace-app__page-title">{{ activePageView.title }}</h1>
+            <h1 class="workspace-app__page-title">
+              <span v-if="pageIcon" class="workspace-app__page-icon">{{ pageIcon }}</span>
+              {{ pageDisplayTitle }}
+            </h1>
             <span
               v-if="saveStatusLabel"
               class="workspace-app__save-status"
@@ -480,8 +554,8 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
           <div v-if="activePageView.section" class="workspace-app__page-section">
             {{ activePageView.section }}
           </div>
-          <p v-if="activePageView.description" class="workspace-app__page-description">
-            {{ activePageView.description }}
+          <p v-if="pageDisplayDescription" class="workspace-app__page-description">
+            {{ pageDisplayDescription }}
           </p>
         </header>
 
@@ -500,8 +574,18 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
             mimeType: 'text/markdown',
           }"
           :source="activeMarkdown"
+          :upload-image="uploadImage"
+          :open-asset-picker="openAssetPicker"
           @save="onEditorSave"
           @dirty="onEditorDirty"
+        />
+        <AssetPickerModal
+          v-if="assetPickerOpen"
+          :project-id="projectId"
+          :workspace-folder="folder"
+          :upload-image="uploadImage"
+          @pick="onAssetPick"
+          @close="assetPickerOpen = false"
         />
       </template>
 
@@ -680,12 +764,27 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
   gap: 1rem;
   flex-wrap: wrap;
 }
+.workspace-app__page-cover {
+  display: block;
+  width: 100%;
+  max-height: 14rem;
+  object-fit: cover;
+  background: var(--color-button-bg, #f3f4f6);
+}
+.workspace-app__page-icon {
+  font-size: 1.2em;
+  line-height: 1;
+  margin-right: 0.25em;
+}
 .workspace-app__page-title {
   font-size: 1.875rem;
   font-weight: 700;
   margin: 0 0 0.25em;
   flex: 1;
   min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
 }
 .workspace-app__page-section {
   font-size: 0.75rem;

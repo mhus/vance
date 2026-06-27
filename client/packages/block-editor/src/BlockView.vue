@@ -1,8 +1,33 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import hljs from 'highlight.js/lib/common';
+import 'highlight.js/styles/github.css';
 import type { Block } from './markdown/blocks';
 import { parse } from './markdown/parser';
 import InlineRender from './InlineRender.vue';
+
+function highlightCode(code: string, lang: string | null): string {
+  // Vue interpolation auto-escapes, but the rendered hljs output is
+  // intentionally raw HTML — language tokens become <span>s. Use
+  // highlight.js's escape pipeline (no language) as a safe fallback
+  // when the language is unknown or not bundled.
+  if (lang) {
+    try {
+      return hljs.highlight(code, { language: lang, ignoreIllegals: true }).value;
+    } catch {
+      /* fall through to auto */
+    }
+  }
+  try {
+    return hljs.highlightAuto(code).value;
+  } catch {
+    // Final fallback: escape manually to avoid raw injection.
+    return code
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+}
 
 /**
  * Read-only renderer for a Canvas-block list. Plain Vue templates per
@@ -22,6 +47,71 @@ import InlineRender from './InlineRender.vue';
 const props = defineProps<{
   blocks: Block[];
 }>();
+
+// ── Heading anchors ────────────────────────────────────────────────
+// Each heading gets a slug-id so a ToC entry can scrollIntoView() and
+// users can link directly to a section. Slugs come from the heading
+// text — lowercase, alphanumerics + dashes, collapsing runs. Duplicate
+// headings get `-2`, `-3` suffixes so anchor links stay unique.
+
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+interface TocEntry {
+  level: number;
+  text: string;
+  slug: string;
+}
+
+const headingSlugs = computed<Map<number, string>>(() => {
+  const slugs = new Map<number, string>();
+  const counts = new Map<string, number>();
+  props.blocks.forEach((b, idx) => {
+    if (b.kind !== 'heading') return;
+    let base = slugify(b.text);
+    if (!base) base = `heading-${idx}`;
+    const n = (counts.get(base) ?? 0) + 1;
+    counts.set(base, n);
+    slugs.set(idx, n === 1 ? base : `${base}-${n}`);
+  });
+  return slugs;
+});
+
+const tocEntries = computed<TocEntry[]>(() => {
+  const out: TocEntry[] = [];
+  props.blocks.forEach((b, idx) => {
+    if (b.kind !== 'heading') return;
+    out.push({
+      level: b.level,
+      text: b.text,
+      slug: headingSlugs.value.get(idx) ?? '',
+    });
+  });
+  return out;
+});
+
+function scrollToHeading(slug: string) {
+  const el = document.getElementById(slug);
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function copyAnchor(slug: string, event: Event) {
+  event.preventDefault();
+  const url = `${window.location.origin}${window.location.pathname}${window.location.search}#${slug}`;
+  void navigator.clipboard?.writeText(url);
+  // Quietly succeed — a toast notification would be nicer but keeps
+  // BlockView free of UI deps. Browser visit history shows the # too.
+  if (typeof history?.replaceState === 'function') {
+    history.replaceState(null, '', `#${slug}`);
+  }
+  scrollToHeading(slug);
+}
 
 // Toggle bodies are themselves Markdown — parse them recursively so a
 // toggle can wrap headings / lists / nested callouts. Bounded depth in
@@ -50,9 +140,48 @@ const items = computed(() => props.blocks ?? []);
         <InlineRender :text="block.text" />
       </p>
 
-      <h1 v-else-if="block.kind === 'heading' && block.level === 1" class="block-view__h1"><InlineRender :text="block.text" /></h1>
-      <h2 v-else-if="block.kind === 'heading' && block.level === 2" class="block-view__h2"><InlineRender :text="block.text" /></h2>
-      <h3 v-else-if="block.kind === 'heading' && block.level === 3" class="block-view__h3"><InlineRender :text="block.text" /></h3>
+      <h1
+        v-else-if="block.kind === 'heading' && block.level === 1"
+        :id="headingSlugs.get(i)"
+        class="block-view__h1 block-view__heading"
+      >
+        <InlineRender :text="block.text" />
+        <a
+          v-if="headingSlugs.get(i)"
+          :href="`#${headingSlugs.get(i)}`"
+          class="block-view__anchor"
+          title="Link kopieren"
+          @click="copyAnchor(headingSlugs.get(i)!, $event)"
+        >🔗</a>
+      </h1>
+      <h2
+        v-else-if="block.kind === 'heading' && block.level === 2"
+        :id="headingSlugs.get(i)"
+        class="block-view__h2 block-view__heading"
+      >
+        <InlineRender :text="block.text" />
+        <a
+          v-if="headingSlugs.get(i)"
+          :href="`#${headingSlugs.get(i)}`"
+          class="block-view__anchor"
+          title="Link kopieren"
+          @click="copyAnchor(headingSlugs.get(i)!, $event)"
+        >🔗</a>
+      </h2>
+      <h3
+        v-else-if="block.kind === 'heading' && block.level === 3"
+        :id="headingSlugs.get(i)"
+        class="block-view__h3 block-view__heading"
+      >
+        <InlineRender :text="block.text" />
+        <a
+          v-if="headingSlugs.get(i)"
+          :href="`#${headingSlugs.get(i)}`"
+          class="block-view__anchor"
+          title="Link kopieren"
+          @click="copyAnchor(headingSlugs.get(i)!, $event)"
+        >🔗</a>
+      </h3>
 
       <ul v-else-if="block.kind === 'bullet-list'" class="block-view__bullet-list">
         <li v-for="(item, k) in block.items" :key="k"><InlineRender :text="item" /></li>
@@ -77,7 +206,10 @@ const items = computed(() => props.blocks ?? []);
         </template>
       </blockquote>
 
-      <pre v-else-if="block.kind === 'code'" class="block-view__code"><code :class="block.lang ? `language-${block.lang}` : ''">{{ block.code }}</code></pre>
+      <pre v-else-if="block.kind === 'code'" class="block-view__code hljs"><code
+        :class="block.lang ? `language-${block.lang}` : ''"
+        v-html="highlightCode(block.code, block.lang)"
+      /></pre>
 
       <hr v-else-if="block.kind === 'divider'" class="block-view__divider" />
 
@@ -136,6 +268,27 @@ const items = computed(() => props.blocks ?? []);
         </div>
       </div>
 
+      <aside v-else-if="block.kind === 'toc'" class="vance-toc">
+        <div class="vance-toc__label">Inhaltsverzeichnis</div>
+        <div v-if="tocEntries.length === 0" class="vance-toc__empty">
+          Noch keine Überschriften auf dieser Seite.
+        </div>
+        <ul v-else class="vance-toc__list">
+          <li
+            v-for="(e, k) in tocEntries"
+            :key="k"
+            class="vance-toc__item"
+            :class="`vance-toc__item--h${e.level}`"
+          >
+            <a
+              :href="`#${e.slug}`"
+              class="vance-toc__link"
+              @click.prevent="scrollToHeading(e.slug)"
+            >{{ e.text }}</a>
+          </li>
+        </ul>
+      </aside>
+
       <pre v-else-if="block.kind === 'unknown-fence'" class="vance-unknown-fence">
         <div class="vance-unknown-fence__label">Unknown block: {{ block.info }}</div>
         <code>{{ block.body }}</code>
@@ -156,6 +309,21 @@ const items = computed(() => props.blocks ?? []);
 .block-view__h1 { font-size: 1.75rem; font-weight: 600; margin: 1.25em 0 0.5em; }
 .block-view__h2 { font-size: 1.4rem;  font-weight: 600; margin: 1em 0 0.5em; }
 .block-view__h3 { font-size: 1.15rem; font-weight: 600; margin: 0.8em 0 0.4em; }
+.block-view__heading {
+  scroll-margin-top: 1rem;
+  position: relative;
+}
+.block-view__anchor {
+  margin-left: 0.5em;
+  font-size: 0.65em;
+  opacity: 0;
+  text-decoration: none;
+  color: var(--color-text-muted, #9ca3af);
+  vertical-align: middle;
+  transition: opacity 0.15s ease;
+}
+.block-view__heading:hover .block-view__anchor { opacity: 1; }
+.block-view__anchor:hover { color: var(--color-link, #2563eb); }
 .block-view__paragraph { margin: 0.5em 0; white-space: pre-wrap; }
 .block-view__bullet-list {
   list-style-type: disc;

@@ -31,7 +31,14 @@ const TABLE_DIVIDER = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/;
  * </ol>
  */
 export function parseDocument(fullMarkdown: string): CanvasDocument {
-  if (!fullMarkdown) return { title: null, description: null, blocks: [] };
+  const empty: CanvasDocument = {
+    title: null,
+    description: null,
+    icon: null,
+    cover: null,
+    blocks: [],
+  };
+  if (!fullMarkdown) return empty;
 
   // 1. Markdown front-matter.
   if (fullMarkdown.startsWith('---\n')) {
@@ -57,15 +64,14 @@ export function parseDocument(fullMarkdown: string): CanvasDocument {
         typeof loaded.$meta === 'object' &&
         (loaded.$meta as { kind?: unknown }).kind === 'canvas'
       ) {
-        const headers = {
-          title:
-            typeof loaded.title === 'string' ? (loaded.title as string) : null,
+        return {
+          title: typeof loaded.title === 'string' ? loaded.title : null,
           description:
-            typeof loaded.description === 'string'
-              ? (loaded.description as string)
-              : null,
+            typeof loaded.description === 'string' ? loaded.description : null,
+          icon: typeof loaded.icon === 'string' ? loaded.icon : null,
+          cover: typeof loaded.cover === 'string' ? loaded.cover : null,
+          blocks: [],
         };
-        return { ...headers, blocks: [] };
       }
     } catch {
       /* fall through — treat as Markdown */
@@ -73,12 +79,14 @@ export function parseDocument(fullMarkdown: string): CanvasDocument {
   }
 
   // 3. Pure Markdown.
-  return { title: null, description: null, blocks: parse(fullMarkdown) };
+  return { ...empty, blocks: parse(fullMarkdown) };
 }
 
 function extractHeaders(headerText: string): {
   title: string | null;
   description: string | null;
+  icon: string | null;
+  cover: string | null;
 } {
   try {
     const loaded = yaml.load(headerText) as Record<string, unknown> | null;
@@ -87,12 +95,14 @@ function extractHeaders(headerText: string): {
         title: typeof loaded.title === 'string' ? loaded.title : null,
         description:
           typeof loaded.description === 'string' ? loaded.description : null,
+        icon: typeof loaded.icon === 'string' ? loaded.icon : null,
+        cover: typeof loaded.cover === 'string' ? loaded.cover : null,
       };
     }
   } catch {
     /* fall through */
   }
-  return { title: null, description: null };
+  return { title: null, description: null, icon: null, cover: null };
 }
 
 function looksLikeYamlDoc(text: string): boolean {
@@ -290,6 +300,8 @@ function parseFence(info: string, body: string): Block {
         title: str(parsed, 'title'),
         description: str(parsed, 'description'),
       };
+    case 'vance-toc':
+      return { kind: 'toc' };
     default:
       return { kind: 'unknown-fence', info, body };
   }

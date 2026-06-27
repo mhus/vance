@@ -1,9 +1,12 @@
 import { Node, mergeAttributes } from '@tiptap/core';
+import { VueNodeViewRenderer } from '@tiptap/vue-3';
+import VanceLinkNodeView from './VanceLinkNodeView.vue';
 
 /**
  * Tiptap node for {@code ```vance-link} fence blocks. Visual link card
- * (href + title + description). Inline {@code [text](url)} stays the
- * default for prose; this is the rich card variant.
+ * (href + title + description) editable inline via the NodeView. Inline
+ * {@code [text](url)} stays the default for prose; this is the rich
+ * card variant for "here's an important external resource".
  */
 export const VanceLink = Node.create({
   name: 'vanceLink',
@@ -40,5 +43,9 @@ export const VanceLink = Node.create({
         (HTMLAttributes.description as string | null) ?? '',
       ],
     ];
+  },
+
+  addNodeView() {
+    return VueNodeViewRenderer(VanceLinkNodeView as never);
   },
 });

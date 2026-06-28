@@ -80,23 +80,23 @@ function onHref(e: Event) {
   border: none;
   background: transparent;
   font-size: 0.9em;
-  color: var(--color-text-muted, #6b7280);
+  color: oklch(var(--bc) / 0.65);
   outline: none;
 }
 .vance-link-card__href-input {
   border: none;
   background: transparent;
   font-size: 0.8em;
-  color: var(--color-text-muted, #9ca3af);
+  color: oklch(var(--bc) / 0.65);
   outline: none;
   font-family: monospace;
 }
 .vance-link-card__title-input::placeholder,
 .vance-link-card__description-input::placeholder,
 .vance-link-card__href-input::placeholder {
-  color: var(--color-text-muted, #9ca3af);
+  color: oklch(var(--bc) / 0.65);
 }
 .vance-link-card--selected {
-  box-shadow: 0 0 0 2px var(--color-link, #3b82f6);
+  box-shadow: 0 0 0 2px oklch(var(--p));
 }
 </style>

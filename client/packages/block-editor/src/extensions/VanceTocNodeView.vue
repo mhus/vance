@@ -109,21 +109,21 @@ onBeforeUnmount(() => {
 
 <style>
 .vance-toc {
-  border: 1px solid var(--color-border, #e5e7eb);
+  border: 1px solid oklch(var(--bc) / 0.18);
   border-radius: 0.5rem;
   padding: 0.75em 1em;
   margin: 0.75em 0;
-  background: var(--color-button-bg, #fafafa);
+  background: oklch(var(--bc) / 0.06);
 }
 .vance-toc__label {
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--color-text-muted, #6b7280);
+  color: oklch(var(--bc) / 0.65);
   margin-bottom: 0.5em;
 }
 .vance-toc__empty {
-  color: var(--color-text-muted, #9ca3af);
+  color: oklch(var(--bc) / 0.65);
   font-style: italic;
   font-size: 0.9rem;
 }
@@ -141,7 +141,7 @@ onBeforeUnmount(() => {
   padding: 0.2em 0;
   cursor: pointer;
   text-align: left;
-  color: var(--color-link, #2563eb);
+  color: oklch(var(--p));
   font-size: 0.9rem;
   text-decoration: none;
 }

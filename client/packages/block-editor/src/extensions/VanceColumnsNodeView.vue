@@ -210,7 +210,7 @@ function writeWidths(updates: Array<{ idx: number; width: number }>) {
 }
 .vance-columns > .vance-columns__content > .vance-column:hover,
 .vance-columns > .vance-columns__content > .vance-column:focus-within {
-  border-color: var(--color-border, #e5e7eb);
+  border-color: oklch(var(--bc) / 0.18);
 }
 .vance-columns > .vance-columns__content > .vance-column > :first-child {
   margin-top: 0;
@@ -236,10 +236,10 @@ function writeWidths(updates: Array<{ idx: number; width: number }>) {
   transition: background 0.15s ease;
 }
 .vance-columns:hover .vance-column-resize-handle::before {
-  background: var(--color-border, #d1d5db);
+  background: oklch(var(--bc) / 0.18);
 }
 .vance-column-resize-handle:hover::before,
 .vance-column-resize-handle--active::before {
-  background: var(--color-link, #3b82f6);
+  background: oklch(var(--p));
 }
 </style>

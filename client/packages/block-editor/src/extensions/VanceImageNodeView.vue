@@ -101,16 +101,16 @@ const imgClass = computed(() =>
 .canvas-image-placeholder {
   display: inline-block;
   padding: 0.4em 0.8em;
-  background: #f3f4f6;
-  border: 1px dashed #d1d5db;
+  background: oklch(var(--bc) / 0.06);
+  border: 1px dashed oklch(var(--bc) / 0.25);
   border-radius: 0.25rem;
-  color: #6b7280;
+  color: oklch(var(--bc) / 0.65);
   font-size: 0.85em;
   font-family: monospace;
 }
 .canvas-image-placeholder--error {
-  background: #fef2f2;
-  border-color: #fca5a5;
-  color: #991b1b;
+  background: oklch(var(--er) / 0.12);
+  border-color: oklch(var(--er) / 0.5);
+  color: oklch(var(--er));
 }
 </style>

@@ -340,12 +340,12 @@ const items = computed(() => props.blocks ?? []);
   font-size: 0.65em;
   opacity: 0;
   text-decoration: none;
-  color: var(--color-text-muted, #9ca3af);
+  color: oklch(var(--bc) / 0.65);
   vertical-align: middle;
   transition: opacity 0.15s ease;
 }
 .block-view__heading:hover .block-view__anchor { opacity: 1; }
-.block-view__anchor:hover { color: var(--color-link, #2563eb); }
+.block-view__anchor:hover { color: oklch(var(--p)); }
 .block-view__paragraph { margin: 0.5em 0; white-space: pre-wrap; }
 .block-view__bullet-list {
   list-style-type: disc;
@@ -361,14 +361,14 @@ const items = computed(() => props.blocks ?? []);
 .block-view__todo-item { display: flex; gap: 0.5em; align-items: flex-start; }
 .block-view__todo-text--done { text-decoration: line-through; opacity: 0.6; }
 .block-view__quote {
-  border-left: 3px solid var(--color-border, #d1d5db);
+  border-left: 3px solid oklch(var(--bc) / 0.18);
   padding-left: 1em;
-  color: var(--color-text-muted, #6b7280);
+  color: oklch(var(--bc) / 0.65);
   margin: 0.75em 0;
   font-style: italic;
 }
 .block-view__code {
-  background: var(--color-code-bg, #f3f4f6);
+  background: oklch(var(--bc) / 0.08);
   border-radius: 0.375rem;
   padding: 0.75em 1em;
   font-family: monospace;
@@ -378,7 +378,7 @@ const items = computed(() => props.blocks ?? []);
 }
 .block-view__divider {
   border: none;
-  border-top: 1px solid var(--color-border, #e5e7eb);
+  border-top: 1px solid oklch(var(--bc) / 0.18);
   margin: 1.25em 0;
 }
 .block-view__image-wrap { text-align: center; margin: 1em 0; }
@@ -390,31 +390,31 @@ const items = computed(() => props.blocks ?? []);
 }
 .block-view__table th,
 .block-view__table td {
-  border: 1px solid var(--color-border, #e5e7eb);
+  border: 1px solid oklch(var(--bc) / 0.18);
   padding: 0.4em 0.75em;
   text-align: left;
 }
 .block-view__table th {
-  background: var(--color-button-bg, #f9fafb);
+  background: oklch(var(--bc) / 0.06);
   font-weight: 600;
 }
 
 .vance-callout {
-  border-left: 3px solid var(--vance-callout-color, #3b82f6);
-  background: var(--vance-callout-bg, #eff6ff);
+  border-left: 3px solid var(--vance-callout-color, oklch(var(--in)));
+  background: var(--vance-callout-bg, oklch(var(--in) / 0.12));
   border-radius: 0.375rem;
   padding: 0.75em 1em;
   margin: 0.75em 0;
 }
-.vance-callout--warn { --vance-callout-color: #f59e0b; --vance-callout-bg: #fffbeb; }
-.vance-callout--error { --vance-callout-color: #ef4444; --vance-callout-bg: #fef2f2; }
-.vance-callout--success { --vance-callout-color: #10b981; --vance-callout-bg: #ecfdf5; }
-.vance-callout--note { --vance-callout-color: #6b7280; --vance-callout-bg: #f9fafb; }
+.vance-callout--warn { --vance-callout-color: oklch(var(--wa)); --vance-callout-bg: oklch(var(--wa) / 0.12); }
+.vance-callout--error { --vance-callout-color: oklch(var(--er)); --vance-callout-bg: oklch(var(--er) / 0.12); }
+.vance-callout--success { --vance-callout-color: oklch(var(--su)); --vance-callout-bg: oklch(var(--su) / 0.12); }
+.vance-callout--note { --vance-callout-color: oklch(var(--bc) / 0.55); --vance-callout-bg: oklch(var(--bc) / 0.06); }
 .vance-callout__title { font-weight: 600; margin-bottom: 0.25em; }
 .vance-callout__body { white-space: pre-wrap; }
 
 .vance-toggle {
-  border: 1px solid var(--color-border, #e5e7eb);
+  border: 1px solid oklch(var(--bc) / 0.18);
   border-radius: 0.375rem;
   padding: 0.5em 0.75em;
   margin: 0.5em 0;
@@ -424,38 +424,38 @@ const items = computed(() => props.blocks ?? []);
 
 .vance-link-card {
   display: block;
-  border: 1px solid var(--color-border, #e5e7eb);
+  border: 1px solid oklch(var(--bc) / 0.18);
   border-radius: 0.5rem;
   padding: 0.75em 1em;
   margin: 0.5em 0;
   text-decoration: none;
   color: inherit;
-  background: var(--color-button-bg, #f9fafb);
+  background: oklch(var(--bc) / 0.06);
 }
 .vance-link-card__title { font-weight: 600; }
 .vance-link-card__description {
   font-size: 0.9em;
-  color: var(--color-text-muted, #6b7280);
+  color: oklch(var(--bc) / 0.65);
   margin-top: 0.25em;
 }
 .vance-link-card__href {
   font-size: 0.8em;
-  color: var(--color-text-muted, #9ca3af);
+  color: oklch(var(--bc) / 0.65);
   margin-top: 0.25em;
   word-break: break-all;
 }
 
 .vance-dataview-stub {
-  border: 1px dashed var(--color-border, #d1d5db);
+  border: 1px dashed oklch(var(--bc) / 0.18);
   border-radius: 0.375rem;
   padding: 0.75em 1em;
   margin: 0.75em 0;
-  background: var(--color-button-bg, #fafafa);
+  background: oklch(var(--bc) / 0.06);
 }
 .vance-dataview-stub__label {
   font-weight: 600;
   font-size: 0.85em;
-  color: var(--color-text-muted, #6b7280);
+  color: oklch(var(--bc) / 0.65);
 }
 .vance-dataview-stub__source {
   display: block;
@@ -464,7 +464,7 @@ const items = computed(() => props.blocks ?? []);
 }
 .vance-dataview-stub__hint {
   font-size: 0.85em;
-  color: var(--color-text-muted, #6b7280);
+  color: oklch(var(--bc) / 0.65);
 }
 
 /* BlockView-only column layout — namespaced under `.block-view` so it
@@ -490,8 +490,8 @@ const items = computed(() => props.blocks ?? []);
 }
 
 .vance-unknown-fence {
-  background: #fef2f2;
-  border: 1px solid #fca5a5;
+  background: oklch(var(--er) / 0.12);
+  border: 1px solid oklch(var(--er) / 0.5);
   border-radius: 0.375rem;
   padding: 0.5em 0.75em;
   margin: 0.5em 0;
@@ -499,5 +499,5 @@ const items = computed(() => props.blocks ?? []);
   font-family: monospace;
   font-size: 0.85em;
 }
-.vance-unknown-fence__label { font-weight: 600; margin-bottom: 0.25em; color: #b91c1c; }
+.vance-unknown-fence__label { font-weight: 600; margin-bottom: 0.25em; color: oklch(var(--er)); }
 </style>

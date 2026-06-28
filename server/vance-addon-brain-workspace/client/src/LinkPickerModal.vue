@@ -246,7 +246,7 @@ watch(tab, async (next) => {
   padding: 2rem;
 }
 .link-picker__panel {
-  background: var(--color-bg, #fff);
+  background: oklch(var(--b1));
   border-radius: 0.5rem;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
   width: 100%;
@@ -262,7 +262,7 @@ watch(tab, async (next) => {
   align-items: center;
   padding: 0.75rem 1rem;
   font-weight: 600;
-  border-bottom: 1px solid var(--color-border, #e5e7eb);
+  border-bottom: 1px solid oklch(var(--bc) / 0.18);
 }
 .link-picker__close {
   background: none;
@@ -270,15 +270,15 @@ watch(tab, async (next) => {
   font-size: 1.4rem;
   line-height: 1;
   cursor: pointer;
-  color: var(--color-text-muted, #6b7280);
+  color: oklch(var(--bc) / 0.65);
   padding: 0 0.25rem;
 }
 .link-picker__tabs {
   display: flex;
   gap: 0.25rem;
   padding: 0.25rem 0.5rem;
-  border-bottom: 1px solid var(--color-border, #e5e7eb);
-  background: var(--color-button-bg, #fafafa);
+  border-bottom: 1px solid oklch(var(--bc) / 0.18);
+  background: oklch(var(--bc) / 0.06);
 }
 .link-picker__tab {
   background: none;
@@ -287,47 +287,47 @@ watch(tab, async (next) => {
   border-radius: 0.25rem;
   cursor: pointer;
   font-size: 0.85rem;
-  color: var(--color-text-muted, #6b7280);
+  color: oklch(var(--bc) / 0.65);
 }
-.link-picker__tab:hover { color: var(--color-text, #111827); }
+.link-picker__tab:hover { color: oklch(var(--bc)); }
 .link-picker__tab--active {
-  background: var(--color-bg, #fff);
-  color: var(--color-text, #111827);
+  background: oklch(var(--b1));
+  color: oklch(var(--bc));
   font-weight: 600;
 }
 .link-picker__actions {
   padding: 0.5rem 1rem;
-  border-bottom: 1px solid var(--color-border, #e5e7eb);
+  border-bottom: 1px solid oklch(var(--bc) / 0.18);
 }
 .link-picker__search-input,
 .link-picker__url-input {
   width: 100%;
   padding: 0.4rem 0.6rem;
   font-size: 0.9rem;
-  border: 1px solid var(--color-border, #d1d5db);
+  border: 1px solid oklch(var(--bc) / 0.18);
   border-radius: 0.25rem;
-  background: var(--color-bg, #fff);
+  background: oklch(var(--b1));
   box-sizing: border-box;
 }
 .link-picker__error {
-  background: #fef2f2;
-  color: #991b1b;
+  background: oklch(var(--er) / 0.12);
+  color: oklch(var(--er));
   font-size: 0.85rem;
   padding: 0.5rem 1rem;
 }
 .link-picker__loading,
 .link-picker__empty {
   padding: 2rem;
-  color: var(--color-text-muted, #6b7280);
+  color: oklch(var(--bc) / 0.65);
   text-align: center;
   font-size: 0.9rem;
 }
 .link-picker__truncated {
   padding: 0.5rem 1rem;
   font-size: 0.75rem;
-  color: var(--color-text-muted, #6b7280);
+  color: oklch(var(--bc) / 0.65);
   text-align: center;
-  border-top: 1px solid var(--color-border, #e5e7eb);
+  border-top: 1px solid oklch(var(--bc) / 0.18);
 }
 .link-picker__list {
   flex: 1;
@@ -345,10 +345,10 @@ watch(tab, async (next) => {
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
-  color: var(--color-text, #111827);
+  color: oklch(var(--bc));
 }
 .link-picker__list-item:hover {
-  background: var(--color-button-bg, #f3f4f6);
+  background: oklch(var(--bc) / 0.06);
 }
 .link-picker__list-title {
   font-size: 0.9rem;
@@ -362,11 +362,11 @@ watch(tab, async (next) => {
   gap: 0.5rem;
   align-items: center;
   font-size: 0.7rem;
-  color: var(--color-text-muted, #6b7280);
+  color: oklch(var(--bc) / 0.65);
 }
 .link-picker__list-kind {
-  background: var(--color-border, #e5e7eb);
-  color: var(--color-text, #111827);
+  background: oklch(var(--bc) / 0.18);
+  color: oklch(var(--bc));
   border-radius: 999px;
   padding: 0 0.4rem;
   font-family: monospace;
@@ -388,7 +388,7 @@ watch(tab, async (next) => {
   align-items: center;
   gap: 0.5rem;
   font-size: 0.85rem;
-  color: var(--color-text, #111827);
+  color: oklch(var(--bc));
   cursor: pointer;
 }
 .link-picker__url-actions {
@@ -399,31 +399,31 @@ watch(tab, async (next) => {
 .link-picker__url-spacer { flex: 1; }
 .link-picker__btn {
   padding: 0.4rem 0.9rem;
-  border: 1px solid var(--color-border, #d1d5db);
+  border: 1px solid oklch(var(--bc) / 0.18);
   border-radius: 0.25rem;
-  background: var(--color-button-bg, #fff);
+  background: oklch(var(--bc) / 0.06);
   cursor: pointer;
   font-size: 0.85rem;
-  color: var(--color-text, #111827);
+  color: oklch(var(--bc));
 }
 .link-picker__btn:hover:not(:disabled) {
-  background: var(--color-bg, #fafafa);
+  background: oklch(var(--b1));
 }
 .link-picker__btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .link-picker__btn--primary {
-  background: var(--color-link, #3b82f6);
-  color: #fff;
-  border-color: var(--color-link, #3b82f6);
+  background: oklch(var(--p));
+  color: oklch(var(--pc));
+  border-color: oklch(var(--p));
 }
 .link-picker__btn--primary:hover:not(:disabled) {
-  background: #2563eb;
+  background: oklch(var(--p) / 0.85);
 }
 .link-picker__btn--danger {
   background: transparent;
-  color: #dc2626;
-  border-color: #dc2626;
+  color: oklch(var(--er));
+  border-color: oklch(var(--er));
 }
 .link-picker__btn--danger:hover {
-  background: #fef2f2;
+  background: oklch(var(--er) / 0.12);
 }
 </style>

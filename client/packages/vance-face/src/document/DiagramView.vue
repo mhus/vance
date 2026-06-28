@@ -154,6 +154,10 @@ function attachPanZoom(): void {
     bounds: false,
     zoomDoubleClickSpeed: 1, // disable double-click zoom (1 = no animation = effectively off)
     smoothScroll: false,
+    // Only wheel-zoom while the Meta key (⌘) is held. Returning true
+    // tells panzoom to ignore the wheel event, so a plain scroll over
+    // the diagram bubbles up to the page instead of resizing the SVG.
+    beforeWheel: (e: WheelEvent) => !e.metaKey,
   });
   // Give Vue a tick so the SVG's natural size is measurable before
   // the initial fit-to-container calculation.

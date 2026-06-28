@@ -10,8 +10,13 @@
  * doc changes, the editor doesn't know. Hover-Refresh lets the
  * user pull a fresh snapshot manually.
  *
- * v1 = generic card. Inline rendering of mindmap / tree / chart /
- * calendar / … is v2 and will plug into the kind-renderer registry.
+ * The inner content wrappers carry an explicit
+ * {@code contenteditable="true"} attribute. ProseMirror sets
+ * {@code contenteditable="false"} on the NodeViewWrapper automatically
+ * (because the node has no editable PM children), which would block
+ * native text-selection inside the hosted renderer. Re-asserting
+ * {@code true} on the inner DOM hands selection control back to the
+ * browser without breaking PM's view-level invariants.
  */
 import { computed, onMounted, ref, watch } from 'vue';
 import { NodeViewWrapper } from '@tiptap/vue-3';
@@ -64,14 +69,12 @@ const isBlocked = computed(
 );
 
 const KIND_ICONS: Record<string, string> = {
-  canvas: '📄', markdown: '📝', text: '📝',
+  canvas: '📄', workpage: '📄', markdown: '📝', text: '📝',
   yaml: '⚙️', json: '⚙️', data: '⚙️',
   mindmap: '🧠', tree: '🌳', list: '•', items: '•',
   checklist: '☑', records: '▤', graph: '🕸', chart: '📊',
   map: '🗺', calendar: '📅', slides: '📽️',
-  // Code / script kinds
   code: '⌨', script: '⌨',
-  // Media — shown as warning placeholder, but icon stays informative
   image: '🖼', svg: '🖼', pdf: '📄',
   audio: '🔊', video: '🎬',
 };
@@ -106,19 +109,12 @@ async function resolve() {
 
 function refresh() {
   void resolve();
-  // Also remount the host renderer so it re-fetches the underlying
-  // document. Without this the meta-card refreshes but the embedded
-  // mindmap / tree / chart would still show the cached content.
   renderEpoch.value += 1;
 }
 
 function openEmbed(e: MouseEvent) {
   if (!meta.value) return;
   e.preventDefault();
-  // Dispatch a custom event the host can listen to (same pattern as
-  // the asset-picker bridge); the host knows how to map an embed
-  // open to its router. Falls through to a window.open(vance:URI)
-  // which won't actually navigate but at least surfaces in devtools.
   const detail = { uri: uri.value, openInNewTab: e.ctrlKey || e.metaKey || true };
   const evt = new CustomEvent('vance:open-embed', { detail, bubbles: true });
   (e.currentTarget as HTMLElement).dispatchEvent(evt);
@@ -130,7 +126,11 @@ watch(uri, resolve);
 
 <template>
   <NodeViewWrapper as="aside" class="vance-embed" :data-uri="uri">
-    <div v-if="isBlocked" class="vance-embed__media-warning">
+    <div
+      v-if="isBlocked"
+      class="vance-embed__media-warning"
+      contenteditable="true"
+    >
       <span class="vance-embed__icon">{{ icon }}</span>
       <div class="vance-embed__body">
         <div class="vance-embed__title">
@@ -141,34 +141,29 @@ watch(uri, resolve);
         <div class="vance-embed__path">{{ uri }}</div>
       </div>
     </div>
-    <!-- Full kind-aware renderer (vance-face's EmbeddedKindBox wrapped
-         via VanceEmbedView). Mounted with the URI; key=renderEpoch
-         forces a remount on ↻. The card's chrome (icon + actions)
-         floats on top so refresh + open work the same as in the
-         card-only fallback. -->
-    <div v-else-if="hostComponent" class="vance-embed__hosted">
+    <div
+      v-else-if="hostComponent"
+      class="vance-embed__hosted"
+      contenteditable="true"
+    >
       <component
         :is="hostComponent"
         :key="renderEpoch"
         :uri="uri"
-        contenteditable="false"
       />
       <div class="vance-embed__hosted-actions">
+        <!-- Only Refresh here. The Open/Copy/Download buttons come
+             from the kind-renderer's own chrome (EmbeddedKindBox in
+             vance-face), embedding our own would just duplicate them. -->
         <button
           class="vance-embed__action"
           type="button"
           title="Refresh — embedded documents don't auto-update"
           @click.stop="refresh"
         >↻</button>
-        <button
-          class="vance-embed__action"
-          type="button"
-          title="Open document (or ⌘/Ctrl+click)"
-          @click="openEmbed"
-        >↗</button>
       </div>
     </div>
-    <div v-else class="vance-embed__card">
+    <div v-else class="vance-embed__card" contenteditable="true">
       <span class="vance-embed__icon">{{ icon }}</span>
       <div class="vance-embed__body">
         <div class="vance-embed__title">{{ title }}</div>
@@ -197,19 +192,21 @@ watch(uri, resolve);
 <style scoped>
 .vance-embed {
   margin: 0.75em 0;
-  user-select: none;
 }
-/* Hosted variant — the kind-renderer component renders inside this
-   block. The floating action buttons (refresh + open) sit at the
-   top-right corner and only show on hover so they don't fight the
-   content for visual real-estate. */
 .vance-embed__hosted {
   position: relative;
 }
 .vance-embed__hosted-actions {
   position: absolute;
-  top: 0.4rem;
-  right: 0.4rem;
+  /* Top-right corner, pushed slightly above the box. Far enough from
+     the kind-renderer's own action row (copy/open/download) so the
+     two strips don't overlap visually. */
+  /* Half a button-height (0.9rem) further down — aligns the refresh
+     button roughly with the kind-renderer's own action row. */
+  top: 0.3rem;
+  /* One button-width (1.8rem) further right so the refresh button
+     sits past the kind-renderer's action row instead of above it. */
+  right: -1.2rem;
   display: flex;
   gap: 0.25rem;
   opacity: 0;
@@ -226,19 +223,19 @@ watch(uri, resolve);
   align-items: flex-start;
   gap: 0.75rem;
   padding: 0.75rem 1rem;
-  border: 1px solid var(--color-border, #e5e7eb);
+  border: 1px solid oklch(var(--bc) / 0.18);
   border-radius: 0.5rem;
-  background: var(--color-button-bg, #fafafa);
+  background: oklch(var(--bc) / 0.06);
   position: relative;
   transition: border-color 0.15s ease, background 0.15s ease;
   cursor: default;
 }
 .vance-embed__card:hover {
-  border-color: var(--color-link, #3b82f6);
+  border-color: oklch(var(--p));
 }
 .vance-embed__media-warning {
-  background: #fef9c3;
-  border-color: #fcd34d;
+  background: oklch(var(--wa) / 0.15);
+  border-color: oklch(var(--wa) / 0.5);
 }
 .vance-embed__icon {
   font-size: 1.5em;
@@ -262,21 +259,21 @@ watch(uri, resolve);
   font-size: 0.7rem;
   padding: 0 0.35em;
   margin-top: 0.2em;
-  background: var(--color-border, #e5e7eb);
+  background: oklch(var(--bc) / 0.18);
   border-radius: 999px;
-  color: var(--color-text, #111827);
+  color: oklch(var(--bc));
 }
 .vance-embed__path {
   font-family: monospace;
   font-size: 0.75rem;
-  color: var(--color-text-muted, #6b7280);
+  color: oklch(var(--bc) / 0.65);
   margin-top: 0.2em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .vance-embed__error {
-  color: #b91c1c;
+  color: oklch(var(--er));
   font-size: 0.8rem;
   margin-top: 0.25rem;
 }
@@ -290,8 +287,8 @@ watch(uri, resolve);
   opacity: 1;
 }
 .vance-embed__action {
-  background: var(--color-bg, #fff);
-  border: 1px solid var(--color-border, #e5e7eb);
+  background: oklch(var(--b1));
+  border: 1px solid oklch(var(--bc) / 0.18);
   border-radius: 0.25rem;
   cursor: pointer;
   width: 1.8rem;
@@ -300,11 +297,11 @@ watch(uri, resolve);
   align-items: center;
   justify-content: center;
   font-size: 0.95rem;
-  color: var(--color-text-muted, #6b7280);
+  color: oklch(var(--bc) / 0.65);
   padding: 0;
 }
 .vance-embed__action:hover {
-  background: var(--color-button-bg, #f3f4f6);
-  color: var(--color-text, #111827);
+  background: oklch(var(--bc) / 0.06);
+  color: oklch(var(--bc));
 }
 </style>

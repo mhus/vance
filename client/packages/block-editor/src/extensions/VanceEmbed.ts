@@ -17,8 +17,18 @@ import VanceEmbedNodeView from './VanceEmbedNodeView.vue';
 export const VanceEmbed = Node.create({
   name: 'vanceEmbed',
   group: 'block',
-  atom: true,
-  draggable: true,
+  // The atom/selectable/draggable trio of false is what makes the
+  // embed transparent to ProseMirror's mouse handling. PM otherwise
+  // (a) preventDefaults mousedown on atoms, (b) converts clicks to
+  // NodeSelection if selectable, (c) starts a native HTML5-drag if
+  // draggable. Together with the inner `contenteditable="true"`
+  // override in the NodeView this lets the browser handle native
+  // text-selection inside the embed's hosted renderer. Deletion via
+  // backspace from the surrounding paragraph still works fine.
+  atom: false,
+  content: '',
+  draggable: false,
+  selectable: false,
 
   addAttributes() {
     return {

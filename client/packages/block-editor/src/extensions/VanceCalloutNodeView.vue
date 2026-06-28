@@ -94,7 +94,7 @@ function onBody(e: Event) {
 }
 .vance-callout__severity {
   background: transparent;
-  border: 1px solid var(--color-border, #d1d5db);
+  border: 1px solid oklch(var(--bc) / 0.18);
   border-radius: 0.25rem;
   padding: 0.15em 0.4em;
   font-size: 0.8em;
@@ -125,9 +125,9 @@ function onBody(e: Event) {
 }
 .vance-callout__title::placeholder,
 .vance-callout__body::placeholder {
-  color: var(--color-text-muted, #9ca3af);
+  color: oklch(var(--bc) / 0.65);
 }
 .vance-callout--selected {
-  box-shadow: 0 0 0 2px var(--color-link, #3b82f6);
+  box-shadow: 0 0 0 2px oklch(var(--p));
 }
 </style>

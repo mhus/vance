@@ -359,7 +359,7 @@ onMounted(() => {
   padding: 2rem;
 }
 .asset-picker__panel {
-  background: var(--color-bg, #fff);
+  background: oklch(var(--b1));
   border-radius: 0.5rem;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
   width: 100%;
@@ -375,7 +375,7 @@ onMounted(() => {
   align-items: center;
   padding: 0.75rem 1rem;
   font-weight: 600;
-  border-bottom: 1px solid var(--color-border, #e5e7eb);
+  border-bottom: 1px solid oklch(var(--bc) / 0.18);
 }
 .asset-picker__close {
   background: none;
@@ -383,15 +383,15 @@ onMounted(() => {
   font-size: 1.4rem;
   line-height: 1;
   cursor: pointer;
-  color: var(--color-text-muted, #6b7280);
+  color: oklch(var(--bc) / 0.65);
   padding: 0 0.25rem;
 }
 .asset-picker__tabs {
   display: flex;
   gap: 0.25rem;
   padding: 0.25rem 0.5rem;
-  border-bottom: 1px solid var(--color-border, #e5e7eb);
-  background: var(--color-button-bg, #fafafa);
+  border-bottom: 1px solid oklch(var(--bc) / 0.18);
+  background: oklch(var(--bc) / 0.06);
 }
 .asset-picker__tab {
   background: none;
@@ -400,25 +400,25 @@ onMounted(() => {
   border-radius: 0.25rem;
   cursor: pointer;
   font-size: 0.85rem;
-  color: var(--color-text-muted, #6b7280);
+  color: oklch(var(--bc) / 0.65);
 }
-.asset-picker__tab:hover { color: var(--color-text, #111827); }
+.asset-picker__tab:hover { color: oklch(var(--bc)); }
 .asset-picker__tab--active {
-  background: var(--color-bg, #fff);
-  color: var(--color-text, #111827);
+  background: oklch(var(--b1));
+  color: oklch(var(--bc));
   font-weight: 600;
 }
 .asset-picker__actions {
   display: flex;
   gap: 0.5rem;
   padding: 0.5rem 1rem;
-  border-bottom: 1px solid var(--color-border, #e5e7eb);
+  border-bottom: 1px solid oklch(var(--bc) / 0.18);
 }
 .asset-picker__upload-btn {
   padding: 0.3rem 0.8rem;
-  border: 1px solid var(--color-border, #d1d5db);
+  border: 1px solid oklch(var(--bc) / 0.18);
   border-radius: 0.25rem;
-  background: var(--color-button-bg, #fff);
+  background: oklch(var(--bc) / 0.06);
   cursor: pointer;
 }
 .asset-picker__upload-btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -426,21 +426,21 @@ onMounted(() => {
   flex: 1;
   padding: 0.3rem 0.5rem;
   font-size: 0.9rem;
-  border: 1px solid var(--color-border, #d1d5db);
+  border: 1px solid oklch(var(--bc) / 0.18);
   border-radius: 0.25rem;
-  background: var(--color-bg, #fff);
+  background: oklch(var(--b1));
 }
 .asset-picker__file-input { display: none; }
 .asset-picker__error {
-  background: #fef2f2;
-  color: #991b1b;
+  background: oklch(var(--er) / 0.12);
+  color: oklch(var(--er));
   font-size: 0.85rem;
   padding: 0.5rem 1rem;
 }
 .asset-picker__loading,
 .asset-picker__empty {
   padding: 2rem;
-  color: var(--color-text-muted, #6b7280);
+  color: oklch(var(--bc) / 0.65);
   text-align: center;
   font-size: 0.9rem;
 }
@@ -451,9 +451,9 @@ onMounted(() => {
 .asset-picker__truncated {
   padding: 0.5rem 1rem;
   font-size: 0.75rem;
-  color: var(--color-text-muted, #6b7280);
+  color: oklch(var(--bc) / 0.65);
   text-align: center;
-  border-top: 1px solid var(--color-border, #e5e7eb);
+  border-top: 1px solid oklch(var(--bc) / 0.18);
 }
 .asset-picker__grid {
   flex: 1;
@@ -464,9 +464,9 @@ onMounted(() => {
   gap: 0.75rem;
 }
 .asset-picker__item {
-  border: 1px solid var(--color-border, #e5e7eb);
+  border: 1px solid oklch(var(--bc) / 0.18);
   border-radius: 0.375rem;
-  background: var(--color-button-bg, #fafafa);
+  background: oklch(var(--bc) / 0.06);
   cursor: pointer;
   padding: 0;
   display: flex;
@@ -482,7 +482,7 @@ onMounted(() => {
   width: 100%;
   height: 7rem;
   object-fit: cover;
-  background: #f3f4f6;
+  background: oklch(var(--bc) / 0.06);
 }
 .asset-picker__item-name {
   padding: 0.4rem 0.5rem 0;
@@ -490,7 +490,7 @@ onMounted(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--color-text-muted, #6b7280);
+  color: oklch(var(--bc) / 0.65);
   font-family: monospace;
 }
 .asset-picker__item-path {
@@ -499,7 +499,7 @@ onMounted(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--color-text-muted, #9ca3af);
+  color: oklch(var(--bc) / 0.65);
   font-family: monospace;
 }
 </style>

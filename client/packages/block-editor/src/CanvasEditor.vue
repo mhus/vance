@@ -96,6 +96,29 @@ const props = withDefaults(
      * cached per URI; return {@code null} on resolve-failure.
      */
     resolveImageSrc?: (vanceUri: string) => Promise<string | null>;
+    /**
+     * Open the host-provided link picker (similar contract to
+     * {@code openAssetPicker}). The host renders a modal that lets the
+     * user search documents in the project or paste a URL, then calls
+     * back into the editor via {@code applyLink}. If the host omits
+     * this prop, the editor falls back to a plain {@code window.prompt}.
+     */
+    openLinkPicker?: () => void;
+    /**
+     * Hide all floating editor menus (inline-mark bubble, image-width
+     * bubble) while the host is showing a modal. Tippy's z-index is
+     * ~9999 — without this flag the menus float above the modal.
+     */
+    suppressFloating?: boolean;
+    /**
+     * Host-side link-open callback. Invoked when the user
+     * ctrl/cmd-clicks an {@code <a>} tag inside the editor — the
+     * editor itself doesn't know how to route {@code vance:} URIs
+     * (cortex tab-switch, project lookup, …). The host returns a
+     * {@code true} to indicate it handled the navigation; a falsy
+     * return lets the editor fall back to {@code window.open}.
+     */
+    openLink?: (href: string, openInNewTab: boolean) => boolean | void;
   }>(),
   { autoSaveMs: 2000 },
 );
@@ -230,10 +253,33 @@ const editor = useEditor({
     TableRow,
     TableCell,
     TableHeader,
-    Link.configure({
+    // Link with a per-link `target` attribute (default Tiptap Link
+    // ships `target` as a static HTMLAttributes setting only). We
+    // need it per-link so the bubble-menu picker can let the user
+    // pick "open in new tab" individually. The actual roundtrip
+    // through Markdown drops the target attribute though — by
+    // convention, on reload vance: URIs stay in the same tab and
+    // external URLs open in a new tab.
+    Link.extend({
+      addAttributes() {
+        return {
+          ...this.parent?.(),
+          target: {
+            default: null,
+            parseHTML: (el) => el.getAttribute('target'),
+            renderHTML: (attrs) => attrs.target ? { target: attrs.target } : {},
+          },
+        };
+      },
+    }).configure({
       openOnClick: false,
       autolink: true,
-      HTMLAttributes: { rel: 'noopener noreferrer', target: '_blank' },
+      // Whitelist the `vance:` scheme so internal document links pass
+      // Tiptap's URL validation. Without this, setLink({ href:
+      // 'vance:/...' }) silently no-ops because the default allowed
+      // set is { http, https, ftp, mailto, tel }.
+      protocols: ['vance'],
+      HTMLAttributes: { rel: 'noopener noreferrer' },
     }),
     Placeholder.configure({
       placeholder: ({ node }) => {
@@ -271,6 +317,34 @@ const editor = useEditor({
       if (files.length === 0) return false;
       clipboard.preventDefault();
       void insertUploadedImages(files, null);
+      return true;
+    },
+    /**
+     * Notion-style link interaction: a plain click positions the
+     * caret (so the user can edit the link text), while ⌘/Ctrl+click
+     * opens the link. Without the modifier we leave ProseMirror to
+     * its default selection handling.
+     */
+    handleClick(_view, _pos, event) {
+      if (!(event.ctrlKey || event.metaKey)) return false;
+      const target = event.target as HTMLElement | null;
+      const anchor = target?.closest('a');
+      if (!anchor) return false;
+      const href = anchor.getAttribute('href');
+      if (!href) return false;
+      event.preventDefault();
+      const openInNewTab = anchor.getAttribute('target') === '_blank';
+      // Host-routing first — only the host knows how to resolve a
+      // `vance:` URI to an in-app navigation (e.g. swap the cortex
+      // tab to the linked document).
+      const handled = props.openLink?.(href, openInNewTab);
+      if (handled) return true;
+      // Default: `window.open` for new-tab, in-place navigation for
+      // same-tab. `vance:` URIs without a host handler will fail —
+      // the browser can't navigate those — but that's the price of
+      // not wiring a router.
+      if (openInNewTab) window.open(href, '_blank', 'noopener,noreferrer');
+      else window.location.href = href;
       return true;
     },
     /**
@@ -405,19 +479,54 @@ function toggleStrike() { editor.value?.chain().focus().toggleStrike().run(); }
 
 function setLink() {
   if (!editor.value) return;
+  // If the host wired up a link picker, delegate. The host then calls
+  // back through `applyLink` / `clearLink` on the exposed ref.
+  if (props.openLinkPicker) {
+    props.openLinkPicker();
+    return;
+  }
+  // Fallback: plain prompt for hosts that don't provide a picker.
   const previous = editor.value.getAttributes('link').href as string | undefined;
   const href = window.prompt('Link URL', previous ?? '');
   if (href === null) return;
-  if (href === '') {
-    editor.value.chain().focus().extendMarkRange('link').unsetLink().run();
-    return;
-  }
+  if (href === '') { clearLink(); return; }
+  applyLink(href);
+}
+
+/**
+ * Apply a link to the current selection. {@code openInNewTab} maps to
+ * the Tiptap link's {@code target} attribute. We default the target
+ * by URL convention: {@code vance:} URIs stay in the same tab
+ * (cortex-internal navigation), everything else opens in a new tab.
+ *
+ * Note: Markdown can't round-trip the {@code target} attribute, so an
+ * explicit override is transient — on the next load the convention
+ * default kicks back in. Per-link target persistence is a v2 concern.
+ */
+function applyLink(href: string, openInNewTab?: boolean) {
+  if (!editor.value) return;
+  if (!href || href.trim().length === 0) { clearLink(); return; }
+  const isVance = href.startsWith('vance:');
+  const useTarget = openInNewTab ?? !isVance;
+  const attrs: { href: string; target: string | null } = {
+    href,
+    target: useTarget ? '_blank' : null,
+  };
   editor.value
     .chain()
     .focus()
     .extendMarkRange('link')
-    .setLink({ href })
+    .setLink(attrs)
     .run();
+}
+
+function clearLink() {
+  editor.value?.chain().focus().extendMarkRange('link').unsetLink().run();
+}
+
+function currentLinkHref(): string | null {
+  const href = editor.value?.getAttributes('link').href;
+  return typeof href === 'string' ? href : null;
 }
 
 // File-drop handler at the DOM level with `capture: true` so it fires
@@ -485,7 +594,11 @@ function insertImage(src: string, alt: string) {
   editor.value?.chain().focus().setImage({ src, alt }).run();
 }
 
-defineExpose({ save, flush, insertImage, updateHeader, getHeader: () => currentHeader.value });
+defineExpose({
+  save, flush, insertImage, updateHeader,
+  applyLink, clearLink, currentLinkHref,
+  getHeader: () => currentHeader.value,
+});
 </script>
 
 <template>
@@ -494,6 +607,7 @@ defineExpose({ save, flush, insertImage, updateHeader, getHeader: () => currentH
       v-if="editor"
       :editor="editor"
       :tippy-options="{ duration: 100, placement: 'top' }"
+      :should-show="() => !suppressFloating"
       class="canvas-editor__bubble-menu"
     >
       <button
@@ -532,7 +646,7 @@ defineExpose({ save, flush, insertImage, updateHeader, getHeader: () => currentH
       v-if="editor"
       :editor="editor"
       :tippy-options="{ duration: 100, placement: 'top' }"
-      :should-show="() => isImageSelected()"
+      :should-show="() => !suppressFloating && isImageSelected()"
       class="canvas-editor__bubble-menu canvas-editor__bubble-menu--image"
     >
       <button
@@ -740,6 +854,20 @@ defineExpose({ save, flush, insertImage, updateHeader, getHeader: () => currentH
 }
 .ProseMirror img.canvas-image--large {
   max-width: 75%;
+}
+
+/* Links inside the editor — plain click positions the caret (Tiptap
+   default), ⌘/Ctrl+click opens the URL (handled by editorProps.click
+   above). The visual cue is in the cursor on modifier hover, plus a
+   `title` injection on render so the browser tooltip says so. */
+.ProseMirror a {
+  color: var(--color-link, #3b82f6);
+  text-decoration: underline;
+  cursor: text;
+}
+.ProseMirror a:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 /* Heading anchors — a tiny "#" button injected as a widget-decoration

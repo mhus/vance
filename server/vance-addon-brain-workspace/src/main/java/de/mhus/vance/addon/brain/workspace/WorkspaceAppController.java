@@ -577,6 +577,32 @@ public class WorkspaceAppController {
         return new WorkspaceImageSearchResponse(items, listing.total());
     }
 
+    /**
+     * Project-wide recursive document search for the link picker.
+     * Matches the {@code query} as a case-insensitive substring on
+     * {@code path} or {@code title}. Useful when the user wants to
+     * link to a document anywhere in the project without remembering
+     * the exact folder.
+     */
+    @GetMapping("/brain/{tenant}/addon/workspace/documents/search")
+    public WorkspaceDocumentSearchResponse searchDocuments(
+            @PathVariable("tenant") String tenant,
+            @RequestParam("projectId") String projectId,
+            @RequestParam(value = "query", required = false) @Nullable String query,
+            @RequestParam(value = "size", defaultValue = "40") int size,
+            HttpServletRequest httpRequest) {
+
+        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.READ);
+        DocumentService.DocumentListing listing =
+                documentService.searchProjectDocuments(tenant, projectId, query, size);
+        List<WorkspaceDocumentItem> items = new ArrayList<>(listing.items().size());
+        for (DocumentService.DocumentMatch m : listing.items()) {
+            items.add(new WorkspaceDocumentItem(
+                    m.id(), m.path(), m.title(), m.kind(), m.mimeType()));
+        }
+        return new WorkspaceDocumentSearchResponse(items, listing.total());
+    }
+
     @PostMapping("/brain/{tenant}/addon/workspace/rebuild")
     public WorkspaceRebuildResponse rebuild(
             @PathVariable("tenant") String tenant,

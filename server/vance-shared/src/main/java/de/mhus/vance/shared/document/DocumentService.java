@@ -451,6 +451,55 @@ public class DocumentService {
     /** Return shape for {@link #listImages}. */
     public record ImageListing(List<ImageMatch> items, long total) {}
 
+    /**
+     * Project-wide, recursive document search by path / title substring.
+     * Unlike {@link #listByFolder} this does NOT restrict to one folder
+     * level — the regex matches the substring anywhere in the path, so
+     * the user can find {@code studium/mathe/skript.yaml} by typing
+     * {@code "yaml"}. Used by the link picker.
+     *
+     * <p>Trash folder is excluded. Result ordered alphabetically by
+     * path, capped at {@code limit} (max 200).
+     */
+    public DocumentListing searchProjectDocuments(
+            String tenantId, String projectId,
+            @Nullable String query,
+            int limit) {
+        int safeLimit = Math.max(1, Math.min(limit, 200));
+        Query q = new Query()
+                .addCriteria(Criteria.where("tenantId").is(tenantId))
+                .addCriteria(Criteria.where("projectId").is(projectId))
+                .addCriteria(Criteria.where("status").is(DocumentStatus.ACTIVE))
+                .addCriteria(Criteria.where("path")
+                        .not()
+                        .regex("^" + java.util.regex.Pattern.quote(TRASH_FOLDER_PREFIX)));
+        if (query != null && !query.isBlank()) {
+            String needle = java.util.regex.Pattern.quote(query.trim());
+            q.addCriteria(new Criteria().orOperator(
+                    Criteria.where("path").regex(needle, "i"),
+                    Criteria.where("title").regex(needle, "i")));
+        }
+        long total = mongoTemplate.count(Query.of(q), DocumentDocument.class);
+        q.with(org.springframework.data.domain.Sort.by("path").ascending()).limit(safeLimit);
+        List<DocumentDocument> docs = mongoTemplate.find(q, DocumentDocument.class);
+        List<DocumentMatch> matches = new ArrayList<>(docs.size());
+        for (DocumentDocument d : docs) {
+            matches.add(new DocumentMatch(
+                    d.getId(), d.getPath(), d.getTitle(), d.getKind(), d.getMimeType()));
+        }
+        return new DocumentListing(matches, total);
+    }
+
+    /** Slim projection for {@link #searchProjectDocuments}. */
+    public record DocumentMatch(
+            String id, String path,
+            @Nullable String title,
+            @Nullable String kind,
+            @Nullable String mimeType) {}
+
+    /** Return shape for {@link #searchProjectDocuments}. */
+    public record DocumentListing(List<DocumentMatch> items, long total) {}
+
     /** All {@link DocumentStatus#ACTIVE} documents in the project that declared {@code kind: <kind>}. */
     public List<DocumentDocument> listByKind(String tenantId, String projectId, String kind) {
         return repository.findByTenantIdAndProjectIdAndStatusAndKind(

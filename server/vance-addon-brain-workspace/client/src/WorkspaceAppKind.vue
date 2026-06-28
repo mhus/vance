@@ -21,6 +21,7 @@ import {
 } from './api';
 import AssetPickerModal from './AssetPickerModal.vue';
 import EmojiPickerModal from './EmojiPickerModal.vue';
+import LinkPickerModal from './LinkPickerModal.vue';
 import type { WorkspaceView } from './generated/workspace/WorkspaceView';
 import type { WorkspacePageView } from './generated/workspace/WorkspacePageView';
 
@@ -133,6 +134,9 @@ const editorRef = ref<{
     icon: string | null;
     cover: string | null;
   };
+  applyLink: (href: string, openInNewTab?: boolean) => void;
+  clearLink: () => void;
+  currentLinkHref: () => string | null;
 } | null>(null);
 
 // Asset picker is shared between two destinations: inline image
@@ -158,6 +162,38 @@ function onAssetPick(src: string, alt: string) {
   }
   assetPickerOpen.value = false;
 }
+
+// Link picker — modal with two tabs (project document search + direct
+// URL). Opened by the editor's bubble-menu link button via the
+// `openLinkPicker` callback. The modal emits the chosen href +
+// "open in new tab" flag back; we call into the editor ref to apply
+// the mark on the current selection.
+const linkPickerOpen = ref(false);
+const linkPickerInitialHref = ref<string | null>(null);
+function openLinkPicker() {
+  linkPickerInitialHref.value = editorRef.value?.currentLinkHref() ?? null;
+  linkPickerOpen.value = true;
+}
+function closeLinkPicker() {
+  linkPickerOpen.value = false;
+  linkPickerInitialHref.value = null;
+}
+function onLinkPicked(href: string, openInNewTab: boolean) {
+  editorRef.value?.applyLink(href, openInNewTab);
+  closeLinkPicker();
+}
+function onLinkClear() {
+  editorRef.value?.clearLink();
+  closeLinkPicker();
+}
+
+// Any open modal should hide the editor's floating bubble menus —
+// tippy.js's default z-index sits above our modal layer, so without
+// this flag the inline-mark + image-width toolbars float on top of
+// the picker dialogs.
+const editorFloatingSuppressed = computed(
+  () => linkPickerOpen.value || iconPickerOpen.value || assetPickerOpen.value,
+);
 
 // Icon picker — modal with a searchable emoji grid (provided by
 // `emoji-picker-element`). The element renders as a native custom
@@ -1092,8 +1128,10 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
           :source="activeMarkdown"
           :upload-image="uploadImage"
           :open-asset-picker="openAssetPicker"
+          :open-link-picker="openLinkPicker"
           :current-project-id="projectId"
           :resolve-image-src="resolveVanceImageSrc"
+          :suppress-floating="editorFloatingSuppressed"
           @save="onEditorSave"
           @dirty="onEditorDirty"
         />
@@ -1111,6 +1149,14 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
           @pick="onEmojiPicked"
           @remove="removeIcon"
           @close="closeIconPicker"
+        />
+        <LinkPickerModal
+          v-if="linkPickerOpen"
+          :project-id="projectId"
+          :initial-href="linkPickerInitialHref"
+          @pick="onLinkPicked"
+          @clear="onLinkClear"
+          @close="closeLinkPicker"
         />
       </template>
 

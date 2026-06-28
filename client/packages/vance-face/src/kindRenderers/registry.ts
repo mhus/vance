@@ -24,6 +24,7 @@ export interface KindRenderer {
 // is fetched on first encounter (chat-stream with a mindmap, an
 // embedded PDF, etc.).
 const MindmapView = defineAsyncComponent(() => import('@/document/MindmapView.vue'));
+const DiagramView = defineAsyncComponent(() => import('@/document/DiagramView.vue'));
 const ListView    = defineAsyncComponent(() => import('@/document/ListView.vue'));
 const ChecklistView = defineAsyncComponent(() => import('@/document/ChecklistView.vue'));
 const TreeView    = defineAsyncComponent(() => import('@/document/TreeView.vue'));
@@ -79,6 +80,11 @@ export const kindRegistry: Record<string, KindRenderer> = {
   chart:   { inline: ChartView,   embedded: ChartView,   label: 'Chart',   icon: '📊' },
   map:     { inline: MapView,     embedded: MapView,     label: 'Map',     icon: '🗺' },
   calendar: { inline: CalendarView, embedded: CalendarView, label: 'Calendar', icon: '📅' },
+  // Mermaid / Gantt / sequence / pie / … — DiagramView parses the
+  // fenced mermaid block (or full markdown document with one) and
+  // renders via the bundled mermaid runtime. Embedded mode reads the
+  // body from doc.inlineText (populated by documentRefStore).
+  diagram: { inline: DiagramView, embedded: DiagramView, label: 'Diagram', icon: '📈' },
 
   // Slides are embedded-only by design (spec inline-and-embedded-content
   // §8 + doc-kind-slides §1): presentation artefacts belong in the

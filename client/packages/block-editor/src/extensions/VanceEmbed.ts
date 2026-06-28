@@ -51,6 +51,14 @@ export const VanceEmbed = Node.create({
       resolveDocumentMeta: null as
         | null
         | ((uri: string) => Promise<EmbedDocMeta | null>),
+      /**
+       * Lazy accessor for the host-provided kind-aware renderer
+       * component. The NodeView calls this on mount; null returns the
+       * fallback card. Accessor (not raw component) so the host's
+       * reactive injection updates the NodeView when the component
+       * becomes available after deferred provide/inject resolves.
+       */
+      embedComponent: null as null | (() => import('vue').Component | null),
     };
   },
 

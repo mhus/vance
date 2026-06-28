@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue';
 import {
   brainFetch,
   brainFetchText,
@@ -188,6 +188,14 @@ function onLinkClear() {
   editorRef.value?.clearLink();
   closeLinkPicker();
 }
+
+// Kind-aware embed renderer — vance-face provides a component that
+// takes a single `uri` prop and renders the full embed (mindmap /
+// tree / chart / …) via the kind registry. We inject it by string
+// key so this addon doesn't have to import vance-face directly.
+// Null = vance-face not the host (e.g. running in notepad standalone
+// outside cortex) → block-editor falls back to its kind-icon card.
+const embedComponent = inject<Component | null>('vance:embed-component', null);
 
 // ── Embed picker (slash-command /embed) ───────────────────────────
 const embedPickerOpen = ref(false);
@@ -1264,6 +1272,7 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
           :open-link="openVanceLink"
           :open-embed-picker="openEmbedPicker"
           :resolve-embed-doc="resolveEmbedDoc"
+          :embed-component="embedComponent ?? undefined"
           @save="onEditorSave"
           @dirty="onEditorDirty"
         />

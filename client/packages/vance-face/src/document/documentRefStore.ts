@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, watch } from 'vue';
-import { brainFetch } from '@vance/shared';
+import { brainFetch, brainFetchText } from '@vance/shared';
 import type { DocumentDto } from '@vance/generated';
 import type { EmbedRef } from '@/kindRenderers/parseVanceUri';
 
@@ -92,8 +92,26 @@ export const useDocumentRefStore = defineStore('documentRef', () => {
       projectId: projectName,
       path: embedRef.path,
     });
+    // /documents/by-path returns metadata only — inlineText is a
+    // client-side cache field (see DocumentDto.java). The embedded
+    // views (RecordsView, MindmapView, …) read inlineText
+    // synchronously, so we stream the body via /{id}/content here
+    // and stash it onto the DTO before caching. Skip the body fetch
+    // for binary kinds — ImageView / PdfView / VideoView fetch
+    // their own blob URL from the content endpoint anyway.
     const p = brainFetch<DocumentDto>('GET', `documents/by-path?${params}`)
-      .then((doc) => {
+      .then(async (doc) => {
+        if (shouldFetchBody(doc)) {
+          try {
+            const text = await brainFetchText(
+              `documents/${encodeURIComponent(doc.id)}/content`,
+            );
+            doc.inlineText = text ?? '';
+            doc.inline = true;
+          } catch (e) {
+            console.warn('documentRefStore: body fetch failed', e);
+          }
+        }
         cache.value.set(key, doc);
         pending.value.delete(key);
         return doc;
@@ -104,6 +122,23 @@ export const useDocumentRefStore = defineStore('documentRef', () => {
       });
     pending.value.set(key, p);
     return p;
+  }
+
+  /**
+   * Body fetch is needed for text-shaped kinds where the view reads
+   * {@code inlineText} directly. Binary kinds (image / pdf / video /
+   * audio) fetch their own blob URL through {@code documentContentUrl(id)}
+   * and don't need the text on the DTO. The check is best-effort —
+   * unknown mime types still go through the fetch so we don't
+   * accidentally short-circuit a kind we haven't classified.
+   */
+  function shouldFetchBody(doc: DocumentDto): boolean {
+    const mime = doc.mimeType ?? '';
+    if (mime.startsWith('image/')) return false;
+    if (mime.startsWith('audio/')) return false;
+    if (mime.startsWith('video/')) return false;
+    if (mime === 'application/pdf') return false;
+    return true;
   }
 
   /** Drop a single cache entry (e.g. when a document was edited). */

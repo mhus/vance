@@ -1,5 +1,5 @@
 ---
-triggers: canvas block, block type, paragraph, heading, bullet, numbered list, todo, checkbox, quote, code block, image, image width, table, callout, info box, warning box, toggle, accordion, columns, multi-column, link card, table of contents, toc, divider, dataview
+triggers: canvas block, block type, paragraph, heading, bullet, numbered list, todo, checkbox, quote, code block, image, image width, table, callout, info box, warning box, toggle, accordion, columns, multi-column, link card, table of contents, toc, divider, dataview, embed, embedded document, vance uri, reference document
 summary: Copy-paste cheatsheet for every canvas block type. JSON shape for `canvas_create` / `canvas_block_append` tools plus the underlying Markdown the block round-trips to. Use this when you need to pick the right block or look up the exact param keys.
 ---
 # Canvas Block Cheatsheet
@@ -145,26 +145,45 @@ A horizontal rule. Useful as a section separator.
 ## image
 
 ```json
-{ "type": "image", "alt": "Cluster topology", "src": "assets/topology.png" }
+{ "type": "image", "alt": "Cluster topology", "src": "vance:/diagrams/topology.png?kind=image" }
 ```
 
 ```markdown
-![Cluster topology](assets/topology.png)
+![Cluster topology](vance:/diagrams/topology.png?kind=image)
 ```
 
 **With width preset** (`small` = 25%, `medium` = 50%, `large` = 75%, `full` = 100% / default):
 
 ```json
-{ "type": "image", "alt": "Cluster topology", "src": "assets/topology.png" }
+{ "type": "image", "alt": "Cluster topology", "src": "vance:/diagrams/topology.png?kind=image", "width": "medium" }
 ```
 
 The width attribute is encoded as a pipe-suffix in the alt text on disk:
 
 ```markdown
-![Cluster topology|medium](assets/topology.png)
+![Cluster topology|medium](vance:/diagrams/topology.png?kind=image)
 ```
 
-For images uploaded by the user via drag-and-drop, the editor stores them under `<workspace>/assets/<timestamp>-<filename>` and rewrites the path as `assets/<timestamp>-<filename>`. The src can be a relative path (inside the project) or an absolute URL.
+**Source URI conventions (important):**
+
+The `src` SHOULD be a [`vance:` URI](inline-and-embedded-content), not
+an absolute HTTP URL. `vance:` URIs are portable across Brain
+instances, project renames, and pod migrations; HTTP URLs are not.
+
+- `vance:/<path>?kind=image` — image in the **current project** (no
+  authority).
+- `vance://<projectId>/<path>?kind=image` — image in a **specific
+  project**, same tenant. Use this for the tenant-shared
+  `_tenant` project (`vance://_tenant/workspace/images/foo.png?kind=image`).
+
+The editor's image NodeView resolves the URI via
+`documents/by-path` and substitutes the real `<img src>` at render
+time. For uploads the workspace addon writes to
+`<workspace>/assets/<timestamp>-<filename>` and stores the corresponding
+`vance:/<workspace>/assets/<filename>?kind=image` URI in the markdown.
+
+Plain HTTP / HTTPS `src` values still render (for legacy markdown), but
+new content should always use `vance:` URIs.
 
 ---
 
@@ -325,6 +344,40 @@ Two columns is the common case, three works, four is the edge. More columns than
 
 ---
 
+## embed
+
+```json
+{ "type": "embed", "uri": "vance:/notes/architecture-2026-05.canvas.md?kind=canvas" }
+```
+
+```markdown
+```vance-embed
+uri: vance:/notes/architecture-2026-05.canvas.md?kind=canvas
+```
+```
+
+Renders as a kind-aware preview card with icon + title + path +
+refresh-on-hover. Used when you want to **inline-reference** another
+Vance document inside this canvas — a study page that references the
+exam schedule, a meeting note that references a project plan, an
+overview page that lists pinned documents.
+
+URI forms (same convention as image `src`):
+
+- `vance:/<path>?kind=<kind>` — current project
+- `vance://<projectId>/<path>?kind=<kind>` — cross-project, same tenant
+
+**Embeddable kinds** are anything *except*:
+
+- `image`, `svg`, `pdf`, `audio`, `video` — use a regular image block
+  or link-card for those
+- `application` — applications are folder containers, not content;
+  link to a *page inside* the application instead
+
+For unknown kinds the card still renders with a generic 📄 icon. The
+v1 NodeView shows only the card; full inline rendering of vance-kinds
+(mindmap / tree / calendar / …) is v2.
+
 ## dataview
 
 ```json
@@ -362,4 +415,5 @@ Headings must be unique; duplicates throw and you disambiguate with `index`. Hea
 | "Visual reference to a URL" | `link-card` (standalone), `[text](url)` (inline) |
 | "Show code with highlighting" | `code` with `lang` set |
 | "A horizontal break between sections" | `divider` |
-| "Picture from the user's upload" | `image`, `src` = `assets/...` path |
+| "Picture from the user's upload" | `image`, `src` = `vance:/<workspace>/assets/...?kind=image` |
+| "Reference another Vance document inline" | `embed`, `uri` = `vance:/<path>?kind=<kind>` |

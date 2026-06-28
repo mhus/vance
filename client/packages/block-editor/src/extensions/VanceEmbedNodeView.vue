@@ -27,6 +27,7 @@ interface EmbedDocMeta {
 
 interface ExtensionOptions {
   resolveDocumentMeta?: ((uri: string) => Promise<EmbedDocMeta | null>) | null;
+  embedComponent?: (() => import('vue').Component | null) | null;
 }
 
 const props = defineProps<{
@@ -38,6 +39,16 @@ const uri = computed(() => (props.node.attrs?.uri as string | null) ?? '');
 const meta = ref<EmbedDocMeta | null>(null);
 const loading = ref(false);
 const error = ref<string | null>(null);
+
+// Host-supplied full kind-aware renderer (from vance-face). When
+// present we mount that component and wrap it with the same hover
+// actions (refresh + open) so the card-only fallback and the full
+// renderer share the same chrome.
+const hostComponent = computed(() => props.extension.options.embedComponent?.() ?? null);
+
+// Increment to force a refresh: bound as :key on the host component
+// so it remounts (= re-fetches its document) when the user clicks ↻.
+const renderEpoch = ref(0);
 
 // Kinds that are intentionally NOT embeddable. Media (image / svg /
 // pdf / audio / video) belong in a link card, not an inline embed.
@@ -95,6 +106,10 @@ async function resolve() {
 
 function refresh() {
   void resolve();
+  // Also remount the host renderer so it re-fetches the underlying
+  // document. Without this the meta-card refreshes but the embedded
+  // mindmap / tree / chart would still show the cached content.
+  renderEpoch.value += 1;
 }
 
 function openEmbed(e: MouseEvent) {
@@ -124,6 +139,33 @@ watch(uri, resolve);
             : "Media kinds aren't embedded inline — use a link instead" }}
         </div>
         <div class="vance-embed__path">{{ uri }}</div>
+      </div>
+    </div>
+    <!-- Full kind-aware renderer (vance-face's EmbeddedKindBox wrapped
+         via VanceEmbedView). Mounted with the URI; key=renderEpoch
+         forces a remount on ↻. The card's chrome (icon + actions)
+         floats on top so refresh + open work the same as in the
+         card-only fallback. -->
+    <div v-else-if="hostComponent" class="vance-embed__hosted">
+      <component
+        :is="hostComponent"
+        :key="renderEpoch"
+        :uri="uri"
+        contenteditable="false"
+      />
+      <div class="vance-embed__hosted-actions">
+        <button
+          class="vance-embed__action"
+          type="button"
+          title="Refresh — embedded documents don't auto-update"
+          @click.stop="refresh"
+        >↻</button>
+        <button
+          class="vance-embed__action"
+          type="button"
+          title="Open document (or ⌘/Ctrl+click)"
+          @click="openEmbed"
+        >↗</button>
       </div>
     </div>
     <div v-else class="vance-embed__card">
@@ -157,6 +199,27 @@ watch(uri, resolve);
   margin: 0.75em 0;
   user-select: none;
 }
+/* Hosted variant — the kind-renderer component renders inside this
+   block. The floating action buttons (refresh + open) sit at the
+   top-right corner and only show on hover so they don't fight the
+   content for visual real-estate. */
+.vance-embed__hosted {
+  position: relative;
+}
+.vance-embed__hosted-actions {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+  display: flex;
+  gap: 0.25rem;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  z-index: 2;
+}
+.vance-embed__hosted:hover .vance-embed__hosted-actions {
+  opacity: 1;
+}
+
 .vance-embed__card,
 .vance-embed__media-warning {
   display: flex;

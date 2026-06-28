@@ -72,6 +72,7 @@ Quick reference:
 | link-card | fenced `vance-link` with `href` + `title` + `description` |
 | toc | fenced `vance-toc` (auto from h1/h2/h3) |
 | columns | 4-backtick fenced `vance-columns` with `<!--vance:column-->` separators |
+| embed | fenced `vance-embed` with `uri:` body (kind-aware reference card) |
 
 ## Tool inventory
 

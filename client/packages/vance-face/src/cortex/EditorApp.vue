@@ -35,6 +35,8 @@ import {
   tryThreeWayMerge,
 } from '@/composables/useDocumentChangeReaction';
 import { onDocumentChanged } from '@/ws/wsConnectionStore';
+import VanceEmbedView from '@/components/VanceEmbedView.vue';
+import { useDocumentRefStore } from '@/document/documentRefStore';
 import { isBinaryMime } from './stores/cortexStore';
 import { useCortexStore } from './stores/cortexStore';
 import { useViewEditMode } from './useViewEditMode';
@@ -98,6 +100,13 @@ const onVanceLink: VanceLinkHandler = async ({ documentId, projectId: refProject
   return true;
 };
 provide(VANCE_LINK_HANDLER_KEY, onVanceLink);
+
+// Expose the embed-renderer to module-federation remotes (canvas
+// editor inside the workspace addon, etc.) via a string-keyed
+// provide. The remote can `inject('vance:embed-component', null)`
+// without importing vance-face directly. The component takes a single
+// `uri` prop and renders the full kind-aware EmbeddedKindBox.
+provide('vance:embed-component', VanceEmbedView);
 
 const { projects: tenantProjects, reload: loadTenantProjects } = useTenantProjects();
 
@@ -166,6 +175,10 @@ async function resolveSession(id: string): Promise<void> {
     }
     projectId.value = match.projectId;
     sessionTitle.value = match.title ?? null;
+    // See resolveProject() — seed the documentRefStore so embed
+    // NodeViews can resolve `vance:` URIs without an explicit project
+    // authority.
+    useDocumentRefStore().setCurrentProject(match.projectId);
     void loadTenantProjects();
     await store.loadList(match.projectId);
     await restoreCortexState(match);
@@ -182,6 +195,11 @@ async function resolveSession(id: string): Promise<void> {
 async function resolveProject(pid: string): Promise<void> {
   try {
     projectId.value = pid;
+    // Seed the documentRefStore so any embedded `vance:` URI inside
+    // a doc (workspace embed-block, chat history loaded later, …) can
+    // resolve without an explicit authority. Without this, the embed
+    // NodeView fails with "No project context to resolve vance: URI".
+    useDocumentRefStore().setCurrentProject(pid);
     void loadTenantProjects();
     await store.loadList(pid);
   } catch (e) {

@@ -135,6 +135,14 @@ const props = withDefaults(
      * into the editor via {@code insertEmbed}.
      */
     openEmbedPicker?: () => void;
+    /**
+     * Vue component used to render an embed in full (Mindmap / Tree /
+     * Calendar / …). Receives a single {@code uri} prop. The host
+     * injects this from {@code vance-face} so the block-editor stays
+     * decoupled from the kind-renderer registry. When omitted, the
+     * NodeView falls back to a generic kind-icon card.
+     */
+    embedComponent?: import('vue').Component;
   }>(),
   { autoSaveMs: 2000 },
 );
@@ -327,6 +335,10 @@ const editor = useEditor({
     VanceEmbed.configure({
       resolveDocumentMeta: (uri: string) =>
         props.resolveEmbedDoc?.(uri) ?? Promise.resolve(null),
+      // Host-provided full renderer (kind-aware view from vance-face).
+      // The NodeView mounts this with the embed's URI as the only
+      // prop. Null → NodeView shows the fallback card.
+      embedComponent: () => props.embedComponent ?? null,
     }),
   ],
   content: initial.value.content,

@@ -7,7 +7,7 @@ import org.jspecify.annotations.Nullable;
  * Request body for {@code PUT /brain/{tenant}/addon/workspace/page/{id}}.
  * Every field is optional — fields left {@code null} are not touched.
  * <ul>
- *   <li>{@code title} — rename the page (patches canvas front-matter
+ *   <li>{@code title} — rename the page (patches workpage front-matter
  *       {@code title}; the document title field follows).</li>
  *   <li>{@code section} — move the page under the named section
  *       (path-move; pass {@code ""} to lift the page to top level).</li>

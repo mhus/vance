@@ -1,4 +1,4 @@
-package de.mhus.vance.addon.brain.canvas;
+package de.mhus.vance.addon.brain.workpage;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -9,7 +9,7 @@ import org.yaml.snakeyaml.Yaml;
 
 /**
  * {@link Block} list → Markdown serializer. Counterpart to
- * {@link CanvasParser}. Output rules:
+ * {@link WorkPageParser}. Output rules:
  *
  * <ul>
  *   <li>One blank line between blocks.</li>
@@ -21,17 +21,17 @@ import org.yaml.snakeyaml.Yaml;
  * </ul>
  */
 @Component
-public class CanvasSerializer {
+public class WorkPageSerializer {
 
     /**
-     * Render a full canvas document — YAML front-matter (with
-     * {@code $meta.kind: canvas} + optional title/description) followed
-     * by the block body. Used for {@link CanvasDocument} persistence.
+     * Render a full workpage document — YAML front-matter (with
+     * {@code $meta.kind: workpage} + optional title/description) followed
+     * by the block body. Used for {@link WorkPageDocument} persistence.
      */
-    public String serializeDocument(CanvasDocument doc) {
+    public String serializeDocument(WorkPageDocument doc) {
         StringBuilder sb = new StringBuilder();
         sb.append("---\n");
-        sb.append("$meta:\n  kind: canvas\n");
+        sb.append("$meta:\n  kind: workpage\n");
         if (doc.title() != null && !doc.title().isBlank()) {
             sb.append("title: ").append(escapeYaml(doc.title())).append("\n");
         }

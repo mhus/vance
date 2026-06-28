@@ -36,7 +36,7 @@ function highlightCode(code: string, lang: string | null): string {
  * our own block-kind switch.
  *
  * Used in two places:
- * - `CanvasKind.vue`: read-only View tab for `kind: canvas` documents.
+ * - `CanvasKind.vue`: read-only View tab for `kind: workpage` documents.
  * - `WorkspaceAppKind.vue`: Master-Detail right pane for the currently
  *   selected workspace page.
  *

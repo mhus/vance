@@ -1,6 +1,6 @@
 package de.mhus.vance.addon.brain.workspace;
 
-import de.mhus.vance.addon.brain.canvas.CanvasService;
+import de.mhus.vance.addon.brain.workpage.WorkPageService;
 import de.mhus.vance.brain.applications.VanceApplication;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.tools.document.DocumentLinkBuilder;
@@ -46,7 +46,7 @@ public class WorkspaceAppController {
     private final WorkspaceApplication application;
     private final WorkspaceFolderReader folderReader;
     private final DocumentService documentService;
-    private final CanvasService canvasService;
+    private final WorkPageService workPageService;
     private final DocumentLinkBuilder linkBuilder;
     private final RequestAuthority authority;
 
@@ -129,7 +129,7 @@ public class WorkspaceAppController {
                 : normalised + "/" + section + "/" + slug;
         String path = uniquePath(tenant, projectId, basePath);
 
-        DocumentDocument doc = canvasService.create(
+        DocumentDocument doc = workPageService.create(
                 tenant, projectId, path,
                 request.title(), request.description(),
                 List.of(),
@@ -144,12 +144,12 @@ public class WorkspaceAppController {
     }
 
     private String uniquePath(String tenant, String projectId, String basePath) {
-        String candidate = basePath + ".canvas.md";
+        String candidate = basePath + ".workpage.md";
         if (documentService.findByPath(tenant, projectId, candidate).isEmpty()) {
             return candidate;
         }
         for (int n = 2; n < 1000; n++) {
-            candidate = basePath + "-" + n + ".canvas.md";
+            candidate = basePath + "-" + n + ".workpage.md";
             if (documentService.findByPath(tenant, projectId, candidate).isEmpty()) {
                 return candidate;
             }
@@ -298,11 +298,11 @@ public class WorkspaceAppController {
                 }
             }
             // Make sure $meta.kind stays first — recreate the map in
-            // canonical order so the file remains a valid canvas doc
+            // canonical order so the file remains a valid workpage doc
             // even when downstream YAML libs rewrite key order.
             if (!header.containsKey("$meta")) {
                 Map<String, Object> meta = new LinkedHashMap<>();
-                meta.put("kind", "canvas");
+                meta.put("kind", "workpage");
                 header.put("$meta", meta);
             }
             if (request.title() != null) header.put("title", request.title());
@@ -399,7 +399,7 @@ public class WorkspaceAppController {
         int lastSlash = srcPath.lastIndexOf('/');
         String parent = srcPath.substring(0, lastSlash);
         String leaf = srcPath.substring(lastSlash + 1);
-        String baseLeaf = leaf.replaceFirst("\\.canvas\\.md$", "");
+        String baseLeaf = leaf.replaceFirst("\\.workpage\\.md$", "");
         String basePath = parent + "/" + baseLeaf + "-copy";
         String newPath = uniquePath(tenant, projectId, basePath);
 

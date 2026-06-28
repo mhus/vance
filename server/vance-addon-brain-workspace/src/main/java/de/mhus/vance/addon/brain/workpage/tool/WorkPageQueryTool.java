@@ -1,7 +1,7 @@
-package de.mhus.vance.addon.brain.canvas.tool;
+package de.mhus.vance.addon.brain.workpage.tool;
 
-import de.mhus.vance.addon.brain.canvas.Block;
-import de.mhus.vance.addon.brain.canvas.CanvasService;
+import de.mhus.vance.addon.brain.workpage.Block;
+import de.mhus.vance.addon.brain.workpage.WorkPageService;
 import de.mhus.vance.brain.tools.eddie.EddieContext;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.toolpack.Tool;
@@ -13,9 +13,9 @@ import java.util.Map;
 import java.util.Set;
 import org.springframework.stereotype.Component;
 
-/** Read-only — list blocks in a canvas, optionally filtered. */
+/** Read-only — list blocks in a workpage, optionally filtered. */
 @Component
-public class CanvasQueryTool implements Tool {
+public class WorkPageQueryTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
@@ -33,43 +33,43 @@ public class CanvasQueryTool implements Tool {
 
     private final EddieContext eddieContext;
     private final DocumentService documentService;
-    private final CanvasService canvasService;
+    private final WorkPageService workPageService;
 
-    public CanvasQueryTool(EddieContext eddieContext,
+    public WorkPageQueryTool(EddieContext eddieContext,
                            DocumentService documentService,
-                           CanvasService canvasService) {
+                           WorkPageService workPageService) {
         this.eddieContext = eddieContext;
         this.documentService = documentService;
-        this.canvasService = canvasService;
+        this.workPageService = workPageService;
     }
 
-    @Override public String name() { return "canvas_query"; }
+    @Override public String name() { return "workpage_query"; }
 
     @Override
     public String description() {
-        return "List blocks in a canvas. Filters: `type` (block-type "
+        return "List blocks in a workpage. Filters: `type` (block-type "
                 + "name), `contains` (substring of textual content). "
                 + "Returns blocks with their resolved index — useful "
-                + "as input to other canvas_* tools.";
+                + "as input to other workpage_* tools.";
     }
 
     @Override public boolean primary() { return false; }
 
     @Override public Set<String> labels() {
-        return Set.of("eddie", "read", "document", "canvas");
+        return Set.of("eddie", "read", "document", "workpage");
     }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        CanvasToolSupport.Resolved r = CanvasToolSupport.resolveByPath(
+        WorkPageToolSupport.Resolved r = WorkPageToolSupport.resolveByPath(
                 eddieContext, documentService, params, ctx);
-        String typeFilter = CanvasToolSupport.paramString(params, "type");
-        String contains = CanvasToolSupport.paramString(params, "contains");
+        String typeFilter = WorkPageToolSupport.paramString(params, "type");
+        String contains = WorkPageToolSupport.paramString(params, "contains");
 
         // Use full list to expose absolute indices; then filter in-place.
-        List<Block> all = canvasService.readDocument(r.doc()).blocks();
+        List<Block> all = workPageService.readDocument(r.doc()).blocks();
         List<Map<String, Object>> matches = new ArrayList<>();
         for (int i = 0; i < all.size(); i++) {
             Block b = all.get(i);
@@ -78,12 +78,12 @@ public class CanvasQueryTool implements Tool {
                     && !simpleName.equalsIgnoreCase(typeFilter.replace("-", ""))) {
                 continue;
             }
-            if (contains != null && !CanvasService.blockText(b)
+            if (contains != null && !WorkPageService.blockText(b)
                     .toLowerCase(java.util.Locale.ROOT)
                     .contains(contains.toLowerCase(java.util.Locale.ROOT))) {
                 continue;
             }
-            Map<String, Object> m = CanvasService.blockToMap(b);
+            Map<String, Object> m = WorkPageService.blockToMap(b);
             m.put("index", i);
             matches.add(m);
         }

@@ -3,7 +3,7 @@ import { computed } from 'vue';
 import { BlockView, parseDocument } from '@vance/block-editor';
 
 /**
- * Mount wrapper for `kind: canvas` documents in the Cortex/Notepad
+ * Mount wrapper for `kind: workpage` documents in the Cortex/Notepad
  * tab system. v1 is **read-only** — the rendered Markdown view tab.
  * Edits go through the shell's standard View/Edit toggle into the raw
  * CodeEditor (same pattern Markdown / TeX use). The Tiptap-based

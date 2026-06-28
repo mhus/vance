@@ -40,7 +40,7 @@ import VanceImageNodeView from './extensions/VanceImageNodeView.vue';
 import 'tippy.js/dist/tippy.css';
 
 /**
- * Tiptap-based Canvas editor. Mount contract matches the kind-registry
+ * Tiptap-based WorkPage editor. Mount contract matches the kind-registry
  * (single `document` prop carrying the CortexDocument shape).
  *
  * Sprint-B feature set:
@@ -177,7 +177,7 @@ const initial = computed(() => {
   return { doc, content: { type: 'doc', content: blocksToContent(doc.blocks) } };
 });
 
-interface CanvasHeader {
+interface WorkPageHeader {
   title: string | null;
   description: string | null;
   icon: string | null;
@@ -188,7 +188,7 @@ interface CanvasHeader {
 // can patch icon/cover atomically (see updateHeader below) without
 // rewriting activeMarkdown — which would trip the source-watch and
 // rebuild the ProseMirror doc, dropping the cursor.
-const currentHeader = ref<CanvasHeader>({
+const currentHeader = ref<WorkPageHeader>({
   title: initial.value.doc.title,
   description: initial.value.doc.description,
   icon: initial.value.doc.icon,
@@ -213,7 +213,7 @@ async function insertUploadedImages(files: File[], dropPos: number | null) {
     try {
       url = await props.uploadImage(file);
     } catch (e) {
-      console.error('[CanvasEditor] image upload failed', e);
+      console.error('[WorkPageEditor] image upload failed', e);
     }
     if (!url) continue;
     const chain = ed.chain().focus();
@@ -440,7 +440,7 @@ function save() {
  * edit UIs — it deliberately bypasses ProseMirror so the cursor and
  * selection in the body stay intact.
  */
-function updateHeader(patch: Partial<CanvasHeader>) {
+function updateHeader(patch: Partial<WorkPageHeader>) {
   currentHeader.value = { ...currentHeader.value, ...patch };
   save();
 }

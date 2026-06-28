@@ -7,7 +7,7 @@ import {
   documentContentUrl,
   useDocumentPrefixReaction,
 } from '@vance/shared';
-import { CanvasEditor, parseDocument } from '@vance/block-editor';
+import { WorkPageEditor, parseDocument } from '@vance/block-editor';
 import {
   scanWorkspace,
   rebuildWorkspace,
@@ -31,14 +31,14 @@ import type { WorkspacePageView } from './generated/workspace/WorkspacePageView'
  *
  *  ┌────────────┬─────────────────────────────────────┐
  *  │            │                                     │
- *  │  Sidebar   │   Active page (CanvasEditor, live)  │
+ *  │  Sidebar   │   Active page (WorkPageEditor, live)  │
  *  │  page list │                                     │
  *  │            │                                     │
  *  └────────────┴─────────────────────────────────────┘
  *
  *  - Sidebar: page-tree grouped by section. Click swaps the active
  *    page. Pending edits are flushed before the switch.
- *  - Right pane: Tiptap CanvasEditor mounted with the page's Markdown
+ *  - Right pane: Tiptap WorkPageEditor mounted with the page's Markdown
  *    source. Auto-saves debounced (~800ms after last keystroke) via
  *    PUT documents/{id}/content.
  *  - Initial selection: `landingPage` → `_index.md` → first page.
@@ -144,7 +144,7 @@ const editorRef = ref<{
 // Asset picker is shared between two destinations: inline image
 // insertion from the slash-menu (mode='content') and the cover image
 // on the active page (mode='cover'). Tracking the mode here avoids
-// passing it through CanvasEditor — the editor itself doesn't care.
+// passing it through WorkPageEditor — the editor itself doesn't care.
 type AssetPickerMode = 'content' | 'cover';
 const assetPickerOpen = ref(false);
 const assetPickerMode = ref<AssetPickerMode>('content');
@@ -1012,7 +1012,7 @@ const saveStatusLabel = computed<string | null>(() => {
   }
 });
 
-// Force the CanvasEditor to remount when the active page changes so the
+// Force the WorkPageEditor to remount when the active page changes so the
 // initial source is loaded cleanly (Tiptap doesn't track per-document
 // state — it just owns one ProseMirror instance per mount).
 const editorKey = computed(() => activePageId.value ?? 'empty');
@@ -1250,7 +1250,7 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
 
         <div v-if="pageLoading" class="workspace-app__main-empty">Lade Page…</div>
         <div v-else-if="pageError" class="workspace-app__error">{{ pageError }}</div>
-        <CanvasEditor
+        <WorkPageEditor
           v-else-if="activeMarkdown != null && activePageView"
           :key="editorKey"
           ref="editorRef"

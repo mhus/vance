@@ -1,7 +1,7 @@
-package de.mhus.vance.addon.brain.canvas.tool;
+package de.mhus.vance.addon.brain.workpage.tool;
 
-import de.mhus.vance.addon.brain.canvas.Block;
-import de.mhus.vance.addon.brain.canvas.CanvasService;
+import de.mhus.vance.addon.brain.workpage.Block;
+import de.mhus.vance.addon.brain.workpage.WorkPageService;
 import de.mhus.vance.brain.tools.eddie.EddieContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
@@ -15,40 +15,40 @@ import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
-/** Append one block to the end of a canvas document. */
+/** Append one block to the end of a workpage document. */
 @Component
 @Slf4j
-public class CanvasBlockAppendTool implements Tool {
+public class WorkPageBlockAppendTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
             "properties", new LinkedHashMap<String, Object>() {{
                 put("path", Map.of("type", "string",
-                        "description", "Path of the existing canvas document."));
+                        "description", "Path of the existing workpage document."));
                 put("block", Map.of("type", "object",
                         "description", "Block spec — `{ type, …fields }`. "
-                                + "See canvas-tools manual for the full grammar."));
+                                + "See workpage-blocks manual for the full grammar."));
                 put("projectId", Map.of("type", "string"));
             }},
             "required", List.of("path", "block"));
 
     private final EddieContext eddieContext;
     private final DocumentService documentService;
-    private final CanvasService canvasService;
+    private final WorkPageService workPageService;
 
-    public CanvasBlockAppendTool(EddieContext eddieContext,
+    public WorkPageBlockAppendTool(EddieContext eddieContext,
                                  DocumentService documentService,
-                                 CanvasService canvasService) {
+                                 WorkPageService workPageService) {
         this.eddieContext = eddieContext;
         this.documentService = documentService;
-        this.canvasService = canvasService;
+        this.workPageService = workPageService;
     }
 
-    @Override public String name() { return "canvas_block_append"; }
+    @Override public String name() { return "workpage_block_append"; }
 
     @Override
     public String description() {
-        return "Append one block to the end of a canvas. Block spec is "
+        return "Append one block to the end of a workpage. Block spec is "
                 + "`{ type: 'paragraph' | 'heading' | 'todo' | 'callout' | …, "
                 + "…type-specific-fields }`.";
     }
@@ -56,22 +56,22 @@ public class CanvasBlockAppendTool implements Tool {
     @Override public boolean primary() { return false; }
 
     @Override public Set<String> labels() {
-        return Set.of("eddie", "write", "document", "canvas");
+        return Set.of("eddie", "write", "document", "workpage");
     }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        Map<String, Object> blockRaw = CanvasToolSupport.paramMap(params, "block");
+        Map<String, Object> blockRaw = WorkPageToolSupport.paramMap(params, "block");
         if (blockRaw == null) throw new ToolException("block is required");
-        Block block = CanvasService.buildBlock(blockRaw);
+        Block block = WorkPageService.buildBlock(blockRaw);
 
-        CanvasToolSupport.Resolved r = CanvasToolSupport.resolveByPath(
+        WorkPageToolSupport.Resolved r = WorkPageToolSupport.resolveByPath(
                 eddieContext, documentService, params, ctx);
-        DocumentDocument updated = canvasService.appendBlock(r.doc(), block);
+        DocumentDocument updated = workPageService.appendBlock(r.doc(), block);
 
-        log.info("CanvasBlockAppendTool path='{}' type='{}'",
+        log.info("WorkPageBlockAppendTool path='{}' type='{}'",
                 updated.getPath(), block.getClass().getSimpleName());
 
         Map<String, Object> result = new LinkedHashMap<>();

@@ -16,7 +16,7 @@ import org.springframework.stereotype.Component;
 import org.yaml.snakeyaml.Yaml;
 
 /**
- * Scans a workspace folder for {@code kind: canvas} pages plus the
+ * Scans a workspace folder for {@code kind: workpage} pages plus the
  * {@code _app.yaml} manifest. System-managed files (underscore-prefixed)
  * are excluded from the page list — they're outputs, not sources.
  */
@@ -48,9 +48,9 @@ public class WorkspaceFolderReader {
         }
         WorkspaceConfig config = parseConfig(manifest.get());
 
-        // Page list = all kind: canvas documents inside the folder.
+        // Page list = all kind: workpage documents inside the folder.
         String prefix = normalized + "/";
-        List<DocumentDocument> all = documentService.listByKind(tenantId, projectId, "canvas");
+        List<DocumentDocument> all = documentService.listByKind(tenantId, projectId, "workpage");
         List<WorkspacePage> pages = new ArrayList<>();
         for (DocumentDocument doc : all) {
             String path = doc.getPath();

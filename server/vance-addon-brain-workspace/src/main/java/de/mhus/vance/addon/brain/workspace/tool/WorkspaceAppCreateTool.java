@@ -34,7 +34,7 @@ public class WorkspaceAppCreateTool implements Tool {
                 put("description", Map.of("type", "string"));
                 put("landingPage", Map.of("type", "string",
                         "description", "Optional default page to mount when "
-                                + "the workspace opens — e.g. 'ueberblick.canvas.md'."));
+                                + "the workspace opens — e.g. 'ueberblick.workpage.md'."));
                 put("indexStyle", Map.of("type", "string",
                         "description", "'cards' (default) or 'list'."));
                 put("overwrite", Map.of("type", "boolean",
@@ -59,7 +59,7 @@ public class WorkspaceAppCreateTool implements Tool {
         return "Bootstrap a Workspace folder. Writes the _app.yaml manifest "
                 + "(kind: application, app: workspace) and seeds an empty "
                 + "_index.md so the folder is immediately mountable. Add "
-                + "pages afterwards with canvas_create(path=\"folder/<slug>\", ...) "
+                + "pages afterwards with workpage_create(path=\"folder/<slug>\", ...) "
                 + "and rerun app_rebuild('folder') to refresh the index.";
     }
 

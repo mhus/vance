@@ -1,13 +1,13 @@
 <script setup lang="ts">
 /**
- * NodeView for the canvas Image — resolves {@code vance:} URIs to a
+ * NodeView for the workpage Image — resolves {@code vance:} URIs to a
  * browser-renderable HTTP URL while keeping the canonical {@code src}
  * attribute (and the on-disk Markdown) in the `vance:` form.
  *
  * The actual resolver (URI → HTTP URL) lives in the host (workspace
  * addon / cortex), since only the host knows about REST clients and
  * the current project context. The host passes it in via the Image
- * extension's `resolveImageSrc` option — see `CanvasEditor.vue`.
+ * extension's `resolveImageSrc` option — see `WorkPageEditor.vue`.
  *
  * Plain HTTPS or relative URLs pass through unchanged.
  */

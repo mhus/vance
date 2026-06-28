@@ -7,8 +7,8 @@ import org.springframework.stereotype.Component;
 
 /**
  * Render the {@code _index.md} body for a workspace scan. Output is a
- * {@code kind: canvas} document — when opened in the editor it shows up
- * with the same Tiptap rendering as a hand-written canvas. Idempotent
+ * {@code kind: workpage} document — when opened in the editor it shows up
+ * with the same Tiptap rendering as a hand-written workpage. Idempotent
  * by construction: same scan → same output.
  */
 @Component
@@ -16,7 +16,7 @@ public class WorkspaceIndexRenderer {
 
     public String render(WorkspaceFolderReader.Scan scan, String workspaceTitle) {
         StringBuilder sb = new StringBuilder();
-        sb.append("---\n$meta:\n  kind: canvas\n");
+        sb.append("---\n$meta:\n  kind: workpage\n");
         sb.append("title: \"").append(escape(workspaceTitle)).append(" — Index\"\n");
         sb.append("description: \"Automatisch generiert aus Workspace-Pages.\"\n");
         sb.append("---\n");

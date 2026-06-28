@@ -21,7 +21,7 @@ import org.springframework.stereotype.Service;
 /**
  * {@link VanceApplication} for {@code app: workspace} folders. Owns
  * orchestration of the workspace's single derived artefact: the
- * {@code _index.md} canvas page. Page discovery + scanning lives in
+ * {@code _index.md} workpage. Page discovery + scanning lives in
  * {@link WorkspaceFolderReader}; rendering in
  * {@link WorkspaceIndexRenderer}.
  */
@@ -53,12 +53,12 @@ public class WorkspaceApplication implements VanceApplication {
     @Override
     public String promptInject(PromptInjectContext ctx) {
         return "You are in a workspace at `" + ctx.folder() + "`. "
-                + "Pages live as `*.canvas.md` files inside this folder. "
-                + "Use `canvas_create(path=\"" + ctx.folder() + "/<slug>\", ...)` "
-                + "to add a page, `canvas_block_append/_insert/_update` to "
+                + "Pages live as `*.workpage.md` files inside this folder. "
+                + "Use `workpage_create(path=\"" + ctx.folder() + "/<slug>\", ...)` "
+                + "to add a page, `workpage_block_append/_insert/_update` to "
                 + "write content, and `app_rebuild('" + ctx.folder() + "')` "
                 + "to refresh `_index.md` after structural changes. "
-                + "Read `manual_read('canvas-tools')` for the full block grammar.";
+                + "Read `manual_read('workpage-blocks')` for the full block grammar.";
     }
 
     @Override
@@ -92,7 +92,7 @@ public class WorkspaceApplication implements VanceApplication {
                 .append("    style: ").append(indexStyle != null ? indexStyle.toLowerCase(Locale.ROOT) : "cards").append("\n")
                 .append("    showDescriptions: true\n")
                 .append("    groupBySection: true\n");
-        mb.append("  defaultPageKind: canvas\n");
+        mb.append("  defaultPageKind: workpage\n");
         String manifestBody = mb.toString();
 
         DocumentDocument stored;
@@ -132,7 +132,7 @@ public class WorkspaceApplication implements VanceApplication {
                 : refresh.artefacts().get(0).stats().getOrDefault("pageCount", 0));
 
         String nextStep = "Workspace ready. Add pages with "
-                + "`canvas_create(path=\"" + folder + "/<slug>\", title=\"...\", blocks=[...])` "
+                + "`workpage_create(path=\"" + folder + "/<slug>\", title=\"...\", blocks=[...])` "
                 + "then `app_rebuild('" + folder + "')` to refresh the index.";
 
         return new CreateResult(

@@ -4,7 +4,7 @@ import de.mhus.vance.shared.document.DocumentDocument;
 import org.jspecify.annotations.Nullable;
 
 /**
- * One discovered Canvas-Page inside a workspace folder. {@code section}
+ * One discovered WorkPage inside a workspace folder. {@code section}
  * is the leaf-folder name of the page's parent (relative to the
  * workspace root) — empty string means top-level.
  */

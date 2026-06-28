@@ -1,9 +1,9 @@
-// Markdown → block list (TS counterpart of CanvasParser.java).
+// Markdown → block list (TS counterpart of WorkPageParser.java).
 // Kept line-based and grammar-precise rather than full-CommonMark — we
 // only need to recognise the subset we serialise back out.
 
 import yaml from 'js-yaml';
-import type { Block, CanvasDocument, ImageWidth, TodoItem } from './blocks';
+import type { Block, WorkPageDocument, ImageWidth, TodoItem } from './blocks';
 import { IMAGE_WIDTHS } from './blocks';
 
 const HEADING = /^(#{1,3})\s+(.+?)\s*$/;
@@ -19,13 +19,13 @@ const IMAGE_ONLY = /^!\[(.*?)\]\((.+?)\)\s*$/;
 const TABLE_DIVIDER = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/;
 
 /**
- * Parse a full canvas document into a typed {@link CanvasDocument}.
+ * Parse a full workpage document into a typed {@link WorkPageDocument}.
  * Three input shapes are recognised:
  *
  * <ol>
  *   <li><b>Markdown with YAML front-matter</b> — {@code ---\n$meta:\n
- *       kind: canvas\n---\nBODY}. Standard canvas format.</li>
- *   <li><b>Pure YAML</b> — {@code $meta:\n  kind: canvas\ntitle: ...}.
+ *       kind: workpage\n---\nBODY}. Standard workpage format.</li>
+ *   <li><b>Pure YAML</b> — {@code $meta:\n  kind: workpage\ntitle: ...}.
  *       The {@code $meta.kind} header alone is enough for Vance to
  *       route the document to this editor, so we accept the format.
  *       No body blocks; only the headers are usable.</li>
@@ -33,8 +33,8 @@ const TABLE_DIVIDER = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/;
  *       text is the block body.</li>
  * </ol>
  */
-export function parseDocument(fullMarkdown: string): CanvasDocument {
-  const empty: CanvasDocument = {
+export function parseDocument(fullMarkdown: string): WorkPageDocument {
+  const empty: WorkPageDocument = {
     title: null,
     description: null,
     icon: null,
@@ -56,7 +56,7 @@ export function parseDocument(fullMarkdown: string): CanvasDocument {
   // 2. Pure YAML — starts with a YAML key, no Markdown front-matter
   //    fence. Detect heuristically: the very first non-blank line is
   //    {@code <name>:} (a top-level YAML key) and the whole text parses
-  //    as a YAML map with {@code $meta.kind === 'canvas'}.
+  //    as a YAML map with {@code $meta.kind === 'workpage'}.
   if (looksLikeYamlDoc(fullMarkdown)) {
     try {
       const loaded = yaml.load(fullMarkdown) as Record<string, unknown> | null;
@@ -65,7 +65,7 @@ export function parseDocument(fullMarkdown: string): CanvasDocument {
         typeof loaded === 'object' &&
         loaded.$meta &&
         typeof loaded.$meta === 'object' &&
-        (loaded.$meta as { kind?: unknown }).kind === 'canvas'
+        (loaded.$meta as { kind?: unknown }).kind === 'workpage'
       ) {
         return {
           title: typeof loaded.title === 'string' ? loaded.title : null,

@@ -1,13 +1,13 @@
-// Block list → Markdown (TS counterpart of CanvasSerializer.java).
+// Block list → Markdown (TS counterpart of WorkPageSerializer.java).
 
 import yaml from 'js-yaml';
-import type { Block, CanvasDocument } from './blocks';
+import type { Block, WorkPageDocument } from './blocks';
 
 /**
- * Render a full canvas document (front-matter + body).
+ * Render a full workpage document (front-matter + body).
  */
-export function serializeDocument(doc: CanvasDocument): string {
-  let out = '---\n$meta:\n  kind: canvas\n';
+export function serializeDocument(doc: WorkPageDocument): string {
+  let out = '---\n$meta:\n  kind: workpage\n';
   if (doc.title && doc.title.trim().length > 0) {
     out += `title: ${escapeYaml(doc.title)}\n`;
   }

@@ -1,10 +1,10 @@
-package de.mhus.vance.addon.brain.canvas;
+package de.mhus.vance.addon.brain.workpage;
 
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Block-Tree primitive for the {@code kind: canvas} document. Sealed —
+ * Block-Tree primitive for the {@code kind: workpage} document. Sealed —
  * the parser, serializer and tools exhaustively switch over the
  * permitted subtypes.
  *

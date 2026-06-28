@@ -1,4 +1,4 @@
-package de.mhus.vance.addon.brain.canvas;
+package de.mhus.vance.addon.brain.workpage;
 
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
@@ -17,7 +17,7 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 
 /**
- * High-level operations on {@code kind: canvas} documents — built on top
+ * High-level operations on {@code kind: workpage} documents — built on top
  * of {@link DocumentService} (no MongoDB collections of its own).
  *
  * <p>All block operations are read-modify-write through the parser /
@@ -29,18 +29,18 @@ import org.springframework.stereotype.Service;
  */
 @Service
 @Slf4j
-public class CanvasService {
+public class WorkPageService {
 
-    public static final String KIND = "canvas";
+    public static final String KIND = "workpage";
     public static final String MIME = "text/markdown";
 
     private final DocumentService documentService;
-    private final CanvasParser parser;
-    private final CanvasSerializer serializer;
+    private final WorkPageParser parser;
+    private final WorkPageSerializer serializer;
 
-    public CanvasService(DocumentService documentService,
-                         CanvasParser parser,
-                         CanvasSerializer serializer) {
+    public WorkPageService(DocumentService documentService,
+                         WorkPageParser parser,
+                         WorkPageSerializer serializer) {
         this.documentService = documentService;
         this.parser = parser;
         this.serializer = serializer;
@@ -58,35 +58,35 @@ public class CanvasService {
                 tenantId, projectId, normalisedPath);
         if (existing.isPresent()) {
             throw new ToolException(
-                    "Canvas already exists at '" + normalisedPath + "'.");
+                    "WorkPage already exists at '" + normalisedPath + "'.");
         }
-        CanvasDocument doc = new CanvasDocument(title, description,
+        WorkPageDocument doc = new WorkPageDocument(title, description,
                 initialBlocks == null ? new ArrayList<>() : initialBlocks);
         String body = serializer.serializeDocument(doc);
         try (InputStream in = new java.io.ByteArrayInputStream(
                 body.getBytes(StandardCharsets.UTF_8))) {
             DocumentDocument stored = documentService.create(
                     tenantId, projectId, normalisedPath,
-                    title, List.of("canvas"), MIME, in, userId);
-            log.info("CanvasService.create tenant='{}' project='{}' path='{}'",
+                    title, List.of("workpage"), MIME, in, userId);
+            log.info("WorkPageService.create tenant='{}' project='{}' path='{}'",
                     tenantId, projectId, normalisedPath);
             return stored;
         } catch (IOException e) {
             throw new ToolException(
-                    "Could not write canvas '" + normalisedPath + "': " + e.getMessage());
+                    "Could not write workpage '" + normalisedPath + "': " + e.getMessage());
         }
     }
 
-    public CanvasDocument readDocument(DocumentDocument doc) {
+    public WorkPageDocument readDocument(DocumentDocument doc) {
         String body = readBody(doc);
         return parser.parseDocument(body);
     }
 
-    public DocumentDocument writeDocument(DocumentDocument doc, CanvasDocument canvas) {
-        String body = serializer.serializeDocument(canvas);
+    public DocumentDocument writeDocument(DocumentDocument doc, WorkPageDocument page) {
+        String body = serializer.serializeDocument(page);
         return documentService.update(
                 doc.getId(),
-                canvas.title() != null ? canvas.title() : doc.getTitle(),
+                page.title() != null ? page.title() : doc.getTitle(),
                 null, body, null, null, null, null, MIME);
     }
 
@@ -95,54 +95,54 @@ public class CanvasService {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
             throw new ToolException(
-                    "Could not load canvas '" + doc.getPath() + "': " + e.getMessage());
+                    "Could not load workpage '" + doc.getPath() + "': " + e.getMessage());
         }
     }
 
     // ── Block operations ──────────────────────────────────────────
 
     public DocumentDocument appendBlock(DocumentDocument doc, Block block) {
-        CanvasDocument canvas = readDocument(doc);
-        List<Block> blocks = new ArrayList<>(canvas.blocks());
+        WorkPageDocument page = readDocument(doc);
+        List<Block> blocks = new ArrayList<>(page.blocks());
         blocks.add(block);
-        return writeDocument(doc, canvas.withBlocks(blocks));
+        return writeDocument(doc, page.withBlocks(blocks));
     }
 
     public DocumentDocument insertBlock(DocumentDocument doc, BlockAnchor anchor, Block block) {
-        CanvasDocument canvas = readDocument(doc);
-        List<Block> blocks = new ArrayList<>(canvas.blocks());
+        WorkPageDocument page = readDocument(doc);
+        List<Block> blocks = new ArrayList<>(page.blocks());
         int pos = anchor.resolve(blocks);
         if (pos < 0 || pos > blocks.size()) {
             throw new ToolException("Anchor out of range: " + anchor);
         }
         blocks.add(pos, block);
-        return writeDocument(doc, canvas.withBlocks(blocks));
+        return writeDocument(doc, page.withBlocks(blocks));
     }
 
     public DocumentDocument updateBlock(DocumentDocument doc, BlockAnchor anchor, Block block) {
-        CanvasDocument canvas = readDocument(doc);
-        List<Block> blocks = new ArrayList<>(canvas.blocks());
+        WorkPageDocument page = readDocument(doc);
+        List<Block> blocks = new ArrayList<>(page.blocks());
         int pos = anchor.resolveExisting(blocks);
         blocks.set(pos, block);
-        return writeDocument(doc, canvas.withBlocks(blocks));
+        return writeDocument(doc, page.withBlocks(blocks));
     }
 
     public DocumentDocument deleteBlock(DocumentDocument doc, BlockAnchor anchor) {
-        CanvasDocument canvas = readDocument(doc);
-        List<Block> blocks = new ArrayList<>(canvas.blocks());
+        WorkPageDocument page = readDocument(doc);
+        List<Block> blocks = new ArrayList<>(page.blocks());
         int pos = anchor.resolveExisting(blocks);
         blocks.remove(pos);
-        return writeDocument(doc, canvas.withBlocks(blocks));
+        return writeDocument(doc, page.withBlocks(blocks));
     }
 
     public DocumentDocument moveBlock(DocumentDocument doc, BlockAnchor from, int targetIndex) {
-        CanvasDocument canvas = readDocument(doc);
-        List<Block> blocks = new ArrayList<>(canvas.blocks());
+        WorkPageDocument page = readDocument(doc);
+        List<Block> blocks = new ArrayList<>(page.blocks());
         int src = from.resolveExisting(blocks);
         Block b = blocks.remove(src);
         int dst = Math.max(0, Math.min(blocks.size(), targetIndex));
         blocks.add(dst, b);
-        return writeDocument(doc, canvas.withBlocks(blocks));
+        return writeDocument(doc, page.withBlocks(blocks));
     }
 
     /**
@@ -153,11 +153,11 @@ public class CanvasService {
     public List<Block> query(DocumentDocument doc,
                              @Nullable String typeFilter,
                              @Nullable String textContains) {
-        CanvasDocument canvas = readDocument(doc);
+        WorkPageDocument page = readDocument(doc);
         String needle = textContains == null ? null
                 : textContains.toLowerCase(Locale.ROOT);
         List<Block> out = new ArrayList<>();
-        for (Block b : canvas.blocks()) {
+        for (Block b : page.blocks()) {
             if (typeFilter != null
                     && !b.getClass().getSimpleName().equalsIgnoreCase(typeFilter)) {
                 continue;
@@ -174,8 +174,8 @@ public class CanvasService {
 
     private static String ensureExtension(String path) {
         if (path.endsWith(".md")) return path;
-        if (path.endsWith(".canvas")) return path + ".md";
-        return path + ".canvas.md";
+        if (path.endsWith(".workpage")) return path + ".md";
+        return path + ".workpage.md";
     }
 
     public static String blockText(Block b) {
@@ -274,7 +274,7 @@ public class CanvasService {
      * factory unwraps it into a typed record.
      *
      * <p>Required field: {@code type} (case-insensitive). Other fields
-     * depend on the type; see {@code canvas-tools.md} manual for the
+     * depend on the type; see {@code workpage-blocks.md} manual for the
      * full grammar.
      */
     @SuppressWarnings("unchecked")

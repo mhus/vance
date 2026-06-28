@@ -1,4 +1,4 @@
-package de.mhus.vance.addon.brain.canvas;
+package de.mhus.vance.addon.brain.workpage;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -21,7 +21,7 @@ import org.yaml.snakeyaml.Yaml;
  * normalisation.
  */
 @Component
-public class CanvasParser {
+public class WorkPageParser {
 
     private static final Pattern HEADING = Pattern.compile("^(#{1,3})\\s+(.+?)\\s*$");
     private static final Pattern BULLET = Pattern.compile("^\\s*[-*+]\\s+(.+?)\\s*$");
@@ -36,12 +36,12 @@ public class CanvasParser {
     private final Yaml yaml = new Yaml();
 
     /**
-     * Parse a full canvas document — YAML front-matter (if present) plus
-     * the block body — into a {@link CanvasDocument}. Missing or invalid
+     * Parse a full workpage document — YAML front-matter (if present) plus
+     * the block body — into a {@link WorkPageDocument}. Missing or invalid
      * front-matter is treated as "no headers"; the body parses regardless.
      */
-    public CanvasDocument parseDocument(String fullMarkdown) {
-        if (fullMarkdown == null) return new CanvasDocument(null, null, List.of());
+    public WorkPageDocument parseDocument(String fullMarkdown) {
+        if (fullMarkdown == null) return new WorkPageDocument(null, null, List.of());
         String body = fullMarkdown;
         String title = null;
         String description = null;
@@ -61,7 +61,7 @@ public class CanvasParser {
                 body = fullMarkdown.substring(end + 5);
             }
         }
-        return new CanvasDocument(title, description, parse(body));
+        return new WorkPageDocument(title, description, parse(body));
     }
 
     /** Parse the Markdown body into a block list. Never returns null. */

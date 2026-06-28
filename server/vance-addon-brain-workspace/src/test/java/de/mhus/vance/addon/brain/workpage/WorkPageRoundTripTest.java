@@ -1,4 +1,4 @@
-package de.mhus.vance.addon.brain.canvas;
+package de.mhus.vance.addon.brain.workpage;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -6,15 +6,15 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
- * Round-trip tests for {@link CanvasParser} + {@link CanvasSerializer}.
+ * Round-trip tests for {@link WorkPageParser} + {@link WorkPageSerializer}.
  * One block-kind per test plus a combined fixture, asserting that
  * {@code parse(serialize(blocks))} returns the same block list as
  * {@code blocks} (parser-stable normal form).
  */
-class CanvasRoundTripTest {
+class WorkPageRoundTripTest {
 
-    private final CanvasParser parser = new CanvasParser();
-    private final CanvasSerializer serializer = new CanvasSerializer();
+    private final WorkPageParser parser = new WorkPageParser();
+    private final WorkPageSerializer serializer = new WorkPageSerializer();
 
     @Test
     void paragraphAndHeading_roundTrip() {

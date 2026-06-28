@@ -1,6 +1,6 @@
-package de.mhus.vance.addon.brain.canvas.tool;
+package de.mhus.vance.addon.brain.workpage.tool;
 
-import de.mhus.vance.addon.brain.canvas.CanvasService;
+import de.mhus.vance.addon.brain.workpage.WorkPageService;
 import de.mhus.vance.brain.tools.eddie.EddieContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
@@ -17,7 +17,7 @@ import org.springframework.stereotype.Component;
 /** Move an existing block to a new position (zero-based index). */
 @Component
 @Slf4j
-public class CanvasBlockMoveTool implements Tool {
+public class WorkPageBlockMoveTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
@@ -34,17 +34,17 @@ public class CanvasBlockMoveTool implements Tool {
 
     private final EddieContext eddieContext;
     private final DocumentService documentService;
-    private final CanvasService canvasService;
+    private final WorkPageService workPageService;
 
-    public CanvasBlockMoveTool(EddieContext eddieContext,
+    public WorkPageBlockMoveTool(EddieContext eddieContext,
                                DocumentService documentService,
-                               CanvasService canvasService) {
+                               WorkPageService workPageService) {
         this.eddieContext = eddieContext;
         this.documentService = documentService;
-        this.canvasService = canvasService;
+        this.workPageService = workPageService;
     }
 
-    @Override public String name() { return "canvas_block_move"; }
+    @Override public String name() { return "workpage_block_move"; }
 
     @Override
     public String description() {
@@ -55,24 +55,24 @@ public class CanvasBlockMoveTool implements Tool {
     @Override public boolean primary() { return false; }
 
     @Override public Set<String> labels() {
-        return Set.of("eddie", "write", "document", "canvas");
+        return Set.of("eddie", "write", "document", "workpage");
     }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        Map<String, Object> fromRaw = CanvasToolSupport.paramMap(params, "from");
+        Map<String, Object> fromRaw = WorkPageToolSupport.paramMap(params, "from");
         if (fromRaw == null) throw new ToolException("from is required");
-        CanvasService.BlockAnchor from = CanvasService.BlockAnchor.fromMap(fromRaw);
-        int toIndex = CanvasToolSupport.paramInt(params, "toIndex", -1);
+        WorkPageService.BlockAnchor from = WorkPageService.BlockAnchor.fromMap(fromRaw);
+        int toIndex = WorkPageToolSupport.paramInt(params, "toIndex", -1);
         if (toIndex < 0) throw new ToolException("toIndex must be >= 0");
 
-        CanvasToolSupport.Resolved r = CanvasToolSupport.resolveByPath(
+        WorkPageToolSupport.Resolved r = WorkPageToolSupport.resolveByPath(
                 eddieContext, documentService, params, ctx);
-        DocumentDocument updated = canvasService.moveBlock(r.doc(), from, toIndex);
+        DocumentDocument updated = workPageService.moveBlock(r.doc(), from, toIndex);
 
-        log.info("CanvasBlockMoveTool path='{}' from='{}' toIndex={}",
+        log.info("WorkPageBlockMoveTool path='{}' from='{}' toIndex={}",
                 updated.getPath(), from, toIndex);
 
         Map<String, Object> result = new LinkedHashMap<>();

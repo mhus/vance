@@ -1,19 +1,19 @@
 ---
-triggers: canvas, page, block document, rich text, notion page, markdown page, notes, block, callout, toggle, columns, todo list, code block, table, link card, table of contents, toc, single page document
-summary: Vance "canvas" — a single rich-text page (block document) stored as Markdown with `$meta.kind: canvas`. Use this when the user wants ONE rich page with formatting (callouts, code blocks, todos, columns, images), as opposed to a workspace with many pages or a kanban board. For the full block grammar see `canvas-blocks`.
+triggers: workpage, canvas, page, block document, rich text, notion page, markdown page, notes, block, callout, toggle, columns, todo list, code block, table, link card, table of contents, toc, single page document
+summary: Vance "workpage" — a single rich-text page (block document) stored as Markdown with `$meta.kind: workpage`. Use this when the user wants ONE rich page with formatting (callouts, code blocks, todos, columns, images), as opposed to a workspace with many pages or a kanban board. For the full block grammar see `workpage-blocks`.
 ---
-# Document Kind — `canvas`
+# Document Kind — `workpage`
 
-A **canvas** is one rich-text page in the Notion sense. It's a Markdown file (`*.canvas.md` by convention) with `$meta.kind: canvas` in the YAML front-matter. The body is a sequence of *blocks*: paragraphs, headings, lists, todos, code, images, callouts, toggles, columns, …
+A **workpage** is one rich-text page in the Notion sense. It's a Markdown file (`*.workpage.md` by convention) with `$meta.kind: workpage` in the YAML front-matter. The body is a sequence of *blocks*: paragraphs, headings, lists, todos, code, images, callouts, toggles, columns, …
 
-Canvas is the standalone document kind. To organise many canvases under a folder with sections + an auto-index, see `manual_read('app-workspace')`.
+WorkPage is the standalone document kind. To organise many workpages under a folder with sections + an auto-index, see `manual_read('app-workspace')`.
 
-## When to use canvas
+## When to use workpage
 
 | Want | Choose |
 |---|---|
-| A single richly-formatted page | **`canvas`** |
-| A notebook with many pages, sections, sidebar | `app: workspace` (each page inside is still a canvas) |
+| A single richly-formatted page | **`workpage`** |
+| A notebook with many pages, sections, sidebar | `app: workspace` (each page inside is still a workpage) |
 | A task board with columns | `app: kanban` |
 | A calendar of events | `app: calendar` |
 | A pure data file (no rendering) | `kind: data` (YAML) |
@@ -24,7 +24,7 @@ Canvas is the standalone document kind. To organise many canvases under a folder
 ```markdown
 ---
 $meta:
-  kind: canvas
+  kind: workpage
 title: "Architecture Notes"
 description: "API + storage decisions, May 2026"
 icon: "📐"                 # optional emoji shown in sidebar / header
@@ -50,7 +50,7 @@ The front-matter is **YAML**; the body is **Markdown** with a small set of `vanc
 
 ## Block inventory
 
-Full grammar with copy-paste examples per block: `manual_read('canvas-blocks')`.
+Full grammar with copy-paste examples per block: `manual_read('workpage-blocks')`.
 
 Quick reference:
 
@@ -78,20 +78,20 @@ Quick reference:
 
 | Tool | What it does |
 |---|---|
-| **`canvas_create(path, title?, description?, blocks=[…])`** | Create a new canvas. `path` auto-suffixed with `.canvas.md` if no extension. `blocks` seeds the document body. |
-| `canvas_block_append(path, block)` | Append a block at the end. |
-| `canvas_block_insert(path, block, anchor)` | Insert at `{ index: N }` or after `{ heading: "exact text" }`. |
-| `canvas_block_update(path, anchor, …)` | Mutate one block — text, level, items, etc. |
-| `canvas_block_delete(path, anchor)` | Remove a block. |
-| `canvas_block_move(path, from, to)` | Move a block to a new position. |
-| `canvas_query(path, type?, textMatch?, todoState?)` | Read-only block search. |
+| **`workpage_create(path, title?, description?, blocks=[…])`** | Create a new workpage. `path` auto-suffixed with `.workpage.md` if no extension. `blocks` seeds the document body. |
+| `workpage_block_append(path, block)` | Append a block at the end. |
+| `workpage_block_insert(path, block, anchor)` | Insert at `{ index: N }` or after `{ heading: "exact text" }`. |
+| `workpage_block_update(path, anchor, …)` | Mutate one block — text, level, items, etc. |
+| `workpage_block_delete(path, anchor)` | Remove a block. |
+| `workpage_block_move(path, from, to)` | Move a block to a new position. |
+| `workpage_query(path, type?, textMatch?, todoState?)` | Read-only block search. |
 
 ## Canonical flow — seed in one shot
 
-When you know the page structure up front, **one** `canvas_create` call writes the file complete:
+When you know the page structure up front, **one** `workpage_create` call writes the file complete:
 
 ```
-canvas_create(
+workpage_create(
   path="notes/architecture-2026-05",
   title="Architecture Notes",
   description="API + storage decisions",
@@ -113,22 +113,22 @@ canvas_create(
 )
 ```
 
-## Incremental flow — edit an existing canvas
+## Incremental flow — edit an existing workpage
 
 ```
 # Append a new section
-canvas_block_append(
-  path="notes/architecture-2026-05.canvas.md",
+workpage_block_append(
+  path="notes/architecture-2026-05.workpage.md",
   block={ type: "heading", level: 2, text: "Performance budget" }
 )
-canvas_block_append(
-  path="notes/architecture-2026-05.canvas.md",
+workpage_block_append(
+  path="notes/architecture-2026-05.workpage.md",
   block={ type: "paragraph", text: "p95 LLM call under 4 s. WS broadcast under 50 ms." }
 )
 
 # Mark a TODO as done
-canvas_block_update(
-  path="notes/architecture-2026-05.canvas.md",
+workpage_block_update(
+  path="notes/architecture-2026-05.workpage.md",
   anchor={ heading: "Open questions" },
   items=[
     { checked: true, text: "Sharding strategy for memory collection" },
@@ -138,28 +138,28 @@ canvas_block_update(
 )
 
 # Pull all callouts from the document
-canvas_query(
-  path="notes/architecture-2026-05.canvas.md",
+workpage_query(
+  path="notes/architecture-2026-05.workpage.md",
   type="callout"
 )
 ```
 
-`canvas_block_*` anchors are **`{ index: N }`** (0-based) or **`{ heading: "exact text" }`**. If a heading text occurs more than once the resolver throws and you must disambiguate with `index`.
+`workpage_block_*` anchors are **`{ index: N }`** (0-based) or **`{ heading: "exact text" }`**. If a heading text occurs more than once the resolver throws and you must disambiguate with `index`.
 
 ## Anti-patterns
 
 - **Don't embed YAML or HTML directly in the body** for things that have a block type. Use `callout` not a `<div class="warning">`. The TS editor on the user side won't parse hand-rolled HTML — it round-trips through the block model.
 - **Don't add custom `vance-<type>` fences** beyond the inventory above. Unknown ones render as a literal "unknown vance block" placeholder.
-- **Don't write `$meta.kind: canvas` page-headers without a `title`.** The UI uses it everywhere (sidebar, breadcrumbs, search).
+- **Don't write `$meta.kind: workpage` page-headers without a `title`.** The UI uses it everywhere (sidebar, breadcrumbs, search).
 - **Don't fight the editor** by writing comments or microformats that only make sense to an LLM. The user sees + edits the same file. If a hint to yourself is needed, use a real `callout` with `severity: info`.
 
 ## Round-trip guarantee
 
-The TypeScript editor parses and re-emits the same Markdown grammar as the Java backend. So a file written by `canvas_create` and edited in the Web-UI keeps its block structure on save. The image-width preset, columns, callouts, etc. all survive a round-trip; that's what makes the canvas viable as a *file you can also LLM-edit*.
+The TypeScript editor parses and re-emits the same Markdown grammar as the Java backend. So a file written by `workpage_create` and edited in the Web-UI keeps its block structure on save. The image-width preset, columns, callouts, etc. all survive a round-trip; that's what makes the workpage viable as a *file you can also LLM-edit*.
 
 ## What v1 does NOT support
 
 - Multi-user CRDT live-edit (the file reloads on remote-write; cursor survives self-writes inside the 3 s quiet window).
 - Per-block history (file-level archives exist).
-- Cross-canvas block refs / synced blocks.
+- Cross-workpage block refs / synced blocks.
 - Embed-blocks for external services (YouTube, Figma, …).

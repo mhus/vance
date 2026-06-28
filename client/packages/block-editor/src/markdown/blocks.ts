@@ -56,7 +56,7 @@ export interface TodoItem {
   text: string;
 }
 
-export interface CanvasDocument {
+export interface WorkPageDocument {
   title: string | null;
   description: string | null;
   /**

@@ -44,7 +44,7 @@ public record WorkspaceConfig(
             return new WorkspaceConfig(
                     topTitle, topDesc, null,
                     new IndexCfg("_index.md", "cards", true, true),
-                    "canvas");
+                    "workpage");
         }
         @SuppressWarnings("unchecked") Map<String, Object> wsM = (Map<String, Object>) ws;
         String landing = str(wsM, "landingPage");
@@ -63,7 +63,7 @@ public record WorkspaceConfig(
         }
         return new WorkspaceConfig(
                 topTitle, topDesc, landing, idx,
-                defaultKind == null ? "canvas" : defaultKind);
+                defaultKind == null ? "workpage" : defaultKind);
     }
 
     public static WorkspaceConfig defaults() {
@@ -72,7 +72,7 @@ public record WorkspaceConfig(
                 null,
                 null,
                 new IndexCfg("_index.md", "cards", true, true),
-                "canvas");
+                "workpage");
     }
 
     private static @Nullable String str(Map<String, Object> m, String key) {

@@ -1,7 +1,7 @@
-package de.mhus.vance.addon.brain.canvas.tool;
+package de.mhus.vance.addon.brain.workpage.tool;
 
-import de.mhus.vance.addon.brain.canvas.Block;
-import de.mhus.vance.addon.brain.canvas.CanvasService;
+import de.mhus.vance.addon.brain.workpage.Block;
+import de.mhus.vance.addon.brain.workpage.WorkPageService;
 import de.mhus.vance.brain.tools.eddie.EddieContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
@@ -18,7 +18,7 @@ import org.springframework.stereotype.Component;
 /** Insert a block at an explicit anchor (index or heading-text). */
 @Component
 @Slf4j
-public class CanvasBlockInsertTool implements Tool {
+public class WorkPageBlockInsertTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
@@ -36,17 +36,17 @@ public class CanvasBlockInsertTool implements Tool {
 
     private final EddieContext eddieContext;
     private final DocumentService documentService;
-    private final CanvasService canvasService;
+    private final WorkPageService workPageService;
 
-    public CanvasBlockInsertTool(EddieContext eddieContext,
+    public WorkPageBlockInsertTool(EddieContext eddieContext,
                                  DocumentService documentService,
-                                 CanvasService canvasService) {
+                                 WorkPageService workPageService) {
         this.eddieContext = eddieContext;
         this.documentService = documentService;
-        this.canvasService = canvasService;
+        this.workPageService = workPageService;
     }
 
-    @Override public String name() { return "canvas_block_insert"; }
+    @Override public String name() { return "workpage_block_insert"; }
 
     @Override
     public String description() {
@@ -57,26 +57,26 @@ public class CanvasBlockInsertTool implements Tool {
     @Override public boolean primary() { return false; }
 
     @Override public Set<String> labels() {
-        return Set.of("eddie", "write", "document", "canvas");
+        return Set.of("eddie", "write", "document", "workpage");
     }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        Map<String, Object> anchorRaw = CanvasToolSupport.paramMap(params, "anchor");
+        Map<String, Object> anchorRaw = WorkPageToolSupport.paramMap(params, "anchor");
         if (anchorRaw == null) throw new ToolException("anchor is required");
-        CanvasService.BlockAnchor anchor = CanvasService.BlockAnchor.fromMap(anchorRaw);
+        WorkPageService.BlockAnchor anchor = WorkPageService.BlockAnchor.fromMap(anchorRaw);
 
-        Map<String, Object> blockRaw = CanvasToolSupport.paramMap(params, "block");
+        Map<String, Object> blockRaw = WorkPageToolSupport.paramMap(params, "block");
         if (blockRaw == null) throw new ToolException("block is required");
-        Block block = CanvasService.buildBlock(blockRaw);
+        Block block = WorkPageService.buildBlock(blockRaw);
 
-        CanvasToolSupport.Resolved r = CanvasToolSupport.resolveByPath(
+        WorkPageToolSupport.Resolved r = WorkPageToolSupport.resolveByPath(
                 eddieContext, documentService, params, ctx);
-        DocumentDocument updated = canvasService.insertBlock(r.doc(), anchor, block);
+        DocumentDocument updated = workPageService.insertBlock(r.doc(), anchor, block);
 
-        log.info("CanvasBlockInsertTool path='{}' anchor='{}' type='{}'",
+        log.info("WorkPageBlockInsertTool path='{}' anchor='{}' type='{}'",
                 updated.getPath(), anchor, block.getClass().getSimpleName());
 
         Map<String, Object> result = new LinkedHashMap<>();

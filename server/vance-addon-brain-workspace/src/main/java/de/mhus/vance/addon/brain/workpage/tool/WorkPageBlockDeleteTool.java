@@ -1,6 +1,6 @@
-package de.mhus.vance.addon.brain.canvas.tool;
+package de.mhus.vance.addon.brain.workpage.tool;
 
-import de.mhus.vance.addon.brain.canvas.CanvasService;
+import de.mhus.vance.addon.brain.workpage.WorkPageService;
 import de.mhus.vance.brain.tools.eddie.EddieContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
@@ -17,7 +17,7 @@ import org.springframework.stereotype.Component;
 /** Delete the block at an anchor. */
 @Component
 @Slf4j
-public class CanvasBlockDeleteTool implements Tool {
+public class WorkPageBlockDeleteTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
@@ -30,17 +30,17 @@ public class CanvasBlockDeleteTool implements Tool {
 
     private final EddieContext eddieContext;
     private final DocumentService documentService;
-    private final CanvasService canvasService;
+    private final WorkPageService workPageService;
 
-    public CanvasBlockDeleteTool(EddieContext eddieContext,
+    public WorkPageBlockDeleteTool(EddieContext eddieContext,
                                  DocumentService documentService,
-                                 CanvasService canvasService) {
+                                 WorkPageService workPageService) {
         this.eddieContext = eddieContext;
         this.documentService = documentService;
-        this.canvasService = canvasService;
+        this.workPageService = workPageService;
     }
 
-    @Override public String name() { return "canvas_block_delete"; }
+    @Override public String name() { return "workpage_block_delete"; }
 
     @Override
     public String description() {
@@ -51,22 +51,22 @@ public class CanvasBlockDeleteTool implements Tool {
     @Override public boolean primary() { return false; }
 
     @Override public Set<String> labels() {
-        return Set.of("eddie", "write", "document", "canvas");
+        return Set.of("eddie", "write", "document", "workpage");
     }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        Map<String, Object> anchorRaw = CanvasToolSupport.paramMap(params, "anchor");
+        Map<String, Object> anchorRaw = WorkPageToolSupport.paramMap(params, "anchor");
         if (anchorRaw == null) throw new ToolException("anchor is required");
-        CanvasService.BlockAnchor anchor = CanvasService.BlockAnchor.fromMap(anchorRaw);
+        WorkPageService.BlockAnchor anchor = WorkPageService.BlockAnchor.fromMap(anchorRaw);
 
-        CanvasToolSupport.Resolved r = CanvasToolSupport.resolveByPath(
+        WorkPageToolSupport.Resolved r = WorkPageToolSupport.resolveByPath(
                 eddieContext, documentService, params, ctx);
-        DocumentDocument updated = canvasService.deleteBlock(r.doc(), anchor);
+        DocumentDocument updated = workPageService.deleteBlock(r.doc(), anchor);
 
-        log.info("CanvasBlockDeleteTool path='{}' anchor='{}'",
+        log.info("WorkPageBlockDeleteTool path='{}' anchor='{}'",
                 updated.getPath(), anchor);
 
         Map<String, Object> result = new LinkedHashMap<>();

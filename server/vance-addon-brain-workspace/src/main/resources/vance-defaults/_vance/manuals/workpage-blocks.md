@@ -1,10 +1,10 @@
 ---
-triggers: canvas block, block type, paragraph, heading, bullet, numbered list, todo, checkbox, quote, code block, image, image width, table, callout, info box, warning box, toggle, accordion, columns, multi-column, link card, table of contents, toc, divider, dataview, embed, embedded document, vance uri, reference document
-summary: Copy-paste cheatsheet for every canvas block type. JSON shape for `canvas_create` / `canvas_block_append` tools plus the underlying Markdown the block round-trips to. Use this when you need to pick the right block or look up the exact param keys.
+triggers: workpage block, block type, paragraph, heading, bullet, numbered list, todo, checkbox, quote, code block, image, image width, table, callout, info box, warning box, toggle, accordion, columns, multi-column, link card, table of contents, toc, divider, dataview, embed, embedded document, vance uri, reference document
+summary: Copy-paste cheatsheet for every workpage block type. JSON shape for `workpage_create` / `workpage_block_append` tools plus the underlying Markdown the block round-trips to. Use this when you need to pick the right block or look up the exact param keys.
 ---
-# Canvas Block Cheatsheet
+# WorkPage Block Cheatsheet
 
-Every block has a `type` field plus block-specific attributes. The tools (`canvas_create`, `canvas_block_append`, `canvas_block_insert`, `canvas_block_update`) accept the same shape; the editor renders the same way regardless of which tool wrote the block.
+Every block has a `type` field plus block-specific attributes. The tools (`workpage_create`, `workpage_block_append`, `workpage_block_insert`, `workpage_block_update`) accept the same shape; the editor renders the same way regardless of which tool wrote the block.
 
 The Markdown form is what ends up on disk and what the user sees if they look at the raw file. The TS editor parses and re-emits this grammar; round-trip is byte-identical for the structures shown.
 
@@ -347,18 +347,18 @@ Two columns is the common case, three works, four is the edge. More columns than
 ## embed
 
 ```json
-{ "type": "embed", "uri": "vance:/notes/architecture-2026-05.canvas.md?kind=canvas" }
+{ "type": "embed", "uri": "vance:/notes/architecture-2026-05.workpage.md?kind=workpage" }
 ```
 
 ```markdown
 ```vance-embed
-uri: vance:/notes/architecture-2026-05.canvas.md?kind=canvas
+uri: vance:/notes/architecture-2026-05.workpage.md?kind=workpage
 ```
 ```
 
 Renders as a kind-aware preview card with icon + title + path +
 refresh-on-hover. Used when you want to **inline-reference** another
-Vance document inside this canvas — a study page that references the
+Vance document inside this workpage — a study page that references the
 exam schedule, a meeting note that references a project plan, an
 overview page that lists pinned documents.
 
@@ -394,14 +394,14 @@ v1: placeholder — renders the source string. v2 will execute the query and emb
 
 ---
 
-## Anchor shape for `canvas_block_*` tools
+## Anchor shape for `workpage_block_*` tools
 
 ```json
 { "index": 3 }              // 0-based position in the block list
 { "heading": "Decisions" }  // exact-match heading text
 ```
 
-Headings must be unique; duplicates throw and you disambiguate with `index`. Heading match is case-sensitive and trim-sensitive — use `canvas_query(path, type: 'heading')` first if you're not sure of the exact text.
+Headings must be unique; duplicates throw and you disambiguate with `index`. Heading match is case-sensitive and trim-sensitive — use `workpage_query(path, type: 'heading')` first if you're not sure of the exact text.
 
 ## Picking the right block
 

@@ -1,6 +1,6 @@
-package de.mhus.vance.addon.brain.canvas.tool;
+package de.mhus.vance.addon.brain.workpage.tool;
 
-import de.mhus.vance.addon.brain.canvas.CanvasService;
+import de.mhus.vance.addon.brain.workpage.WorkPageService;
 import de.mhus.vance.brain.tools.eddie.EddieContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
@@ -14,12 +14,12 @@ import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Shared helpers for the {@code canvas_*} tool family — project
+ * Shared helpers for the {@code workpage_*} tool family — project
  * resolution, document lookup by path, param coercion.
  */
-final class CanvasToolSupport {
+final class WorkPageToolSupport {
 
-    private CanvasToolSupport() {}
+    private WorkPageToolSupport() {}
 
     static record Resolved(String tenantId, String projectName,
                            DocumentDocument doc) {}
@@ -34,10 +34,10 @@ final class CanvasToolSupport {
         Optional<DocumentDocument> existing = documentService.findByPath(
                 ctx.tenantId(), project.getName(), path);
         DocumentDocument doc = existing.orElseThrow(() ->
-                new ToolException("No canvas at '" + path + "'."));
-        if (!CanvasService.KIND.equals(doc.getKind())) {
+                new ToolException("No workpage at '" + path + "'."));
+        if (!WorkPageService.KIND.equals(doc.getKind())) {
             throw new ToolException(
-                    "Document '" + path + "' is not a canvas (kind="
+                    "Document '" + path + "' is not a workpage (kind="
                             + doc.getKind() + ").");
         }
         return new Resolved(ctx.tenantId(), project.getName(), doc);

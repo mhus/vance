@@ -320,34 +320,6 @@ const editor = useEditor({
       return true;
     },
     /**
-     * Notion-style link interaction: a plain click positions the
-     * caret (so the user can edit the link text), while ⌘/Ctrl+click
-     * opens the link. Without the modifier we leave ProseMirror to
-     * its default selection handling.
-     */
-    handleClick(_view, _pos, event) {
-      if (!(event.ctrlKey || event.metaKey)) return false;
-      const target = event.target as HTMLElement | null;
-      const anchor = target?.closest('a');
-      if (!anchor) return false;
-      const href = anchor.getAttribute('href');
-      if (!href) return false;
-      event.preventDefault();
-      const openInNewTab = anchor.getAttribute('target') === '_blank';
-      // Host-routing first — only the host knows how to resolve a
-      // `vance:` URI to an in-app navigation (e.g. swap the cortex
-      // tab to the linked document).
-      const handled = props.openLink?.(href, openInNewTab);
-      if (handled) return true;
-      // Default: `window.open` for new-tab, in-place navigation for
-      // same-tab. `vance:` URIs without a host handler will fail —
-      // the browser can't navigate those — but that's the price of
-      // not wiring a router.
-      if (openInNewTab) window.open(href, '_blank', 'noopener,noreferrer');
-      else window.location.href = href;
-      return true;
-    },
-    /**
      * Reject drops that land inside a vanceColumns container but
      * OUTSIDE any vanceColumn child. Without this guard ProseMirror's
      * schema-fixup wraps the dropped block in a fresh vanceColumn,
@@ -565,11 +537,40 @@ function onAssetPickerEvent() {
   props.openAssetPicker?.();
 }
 
+/**
+ * Notion-style link interaction: a plain click positions the caret
+ * (Tiptap default), ⌘/Ctrl+click opens the link. We register on the
+ * capture phase so we run BEFORE Tiptap's own link click-handler
+ * (which the link mark installs as a ProseMirror plugin) — that one
+ * calls preventDefault even when openOnClick is false, which would
+ * otherwise swallow the browser's built-in modifier-click behaviour.
+ */
+function onLinkClickCapture(e: MouseEvent) {
+  if (!(e.ctrlKey || e.metaKey)) return;
+  if (e.button !== 0) return; // primary button only
+  const anchor = (e.target as HTMLElement | null)?.closest('a');
+  if (!anchor) return;
+  const href = anchor.getAttribute('href');
+  if (!href) return;
+  // Stop ProseMirror + Tiptap's link-plugin from also handling this
+  // click. We're taking ownership of the navigation.
+  e.preventDefault();
+  e.stopPropagation();
+  const openInNewTab = anchor.getAttribute('target') === '_blank' || true;
+  // Host-routing first — only the host knows how to map a `vance:`
+  // URI to an in-app navigation (e.g. cortex tab-switch).
+  const handled = props.openLink?.(href, openInNewTab);
+  if (handled) return;
+  // Default: open in a new tab (cmd/ctrl-click convention).
+  window.open(href, '_blank', 'noopener,noreferrer');
+}
+
 onMounted(() => {
   const dom = editor.value?.view.dom;
   if (!dom) return;
   dom.addEventListener('dragover', onCaptureDragOver, { capture: true });
   dom.addEventListener('drop', onCaptureDrop, { capture: true });
+  dom.addEventListener('click', onLinkClickCapture, { capture: true });
   dom.addEventListener('vance:open-asset-picker', onAssetPickerEvent);
 });
 
@@ -580,6 +581,7 @@ onBeforeUnmount(() => {
   if (dom) {
     dom.removeEventListener('dragover', onCaptureDragOver, { capture: true });
     dom.removeEventListener('drop', onCaptureDrop, { capture: true });
+    dom.removeEventListener('click', onLinkClickCapture, { capture: true });
     dom.removeEventListener('vance:open-asset-picker', onAssetPickerEvent);
   }
   editor.value?.destroy();

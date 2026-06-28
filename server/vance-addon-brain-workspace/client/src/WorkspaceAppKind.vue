@@ -459,6 +459,59 @@ async function resolveVanceImageSrc(uri: string): Promise<string | null> {
   }
 }
 
+/**
+ * In-app routing for {@code vance:} hrefs in the editor. The editor
+ * calls this on ⌘/Ctrl+click; we resolve the path → document id and
+ * navigate to the same URL with an updated {@code ?doc=...} query.
+ * Returning {@code true} tells the editor not to fall back to a raw
+ * {@code window.open(href)} — the browser can't navigate the
+ * {@code vance:} scheme on its own.
+ *
+ * A blank tab is opened synchronously (when the user asked for a
+ * new tab) so the browser counts the click as a user-initiated
+ * action. We then navigate that tab once the by-path lookup returns.
+ */
+function openVanceLink(href: string, openInNewTab: boolean): boolean {
+  if (!href.startsWith('vance:')) return false;
+  let parsed: URL;
+  try { parsed = new URL(href); } catch { return false; }
+  if (parsed.protocol !== 'vance:') return false;
+
+  const targetProject = parsed.hostname
+    ? decodeURIComponent(parsed.hostname)
+    : projectId.value;
+  const path = decodeURIComponent(parsed.pathname.replace(/^\//, ''));
+  if (!path) return false;
+
+  // Open the placeholder synchronously so the browser sees a direct
+  // user-gesture. Without this, async-then-window.open gets popup-
+  // blocked by Safari + Firefox.
+  const newTab = openInNewTab ? window.open('about:blank', '_blank') : null;
+
+  void (async () => {
+    try {
+      const dto = await brainFetch<{ id: string }>(
+        'GET',
+        `documents/by-path?projectId=${encodeURIComponent(targetProject)}` +
+          `&path=${encodeURIComponent(path)}`,
+      );
+      const cur = new URL(window.location.href);
+      cur.searchParams.set('doc', dto.id);
+      if (targetProject !== projectId.value) {
+        cur.searchParams.set('projectId', targetProject);
+        cur.searchParams.delete('sessionId');
+      }
+      const finalUrl = cur.toString();
+      if (newTab) newTab.location.href = finalUrl;
+      else window.location.href = finalUrl;
+    } catch (e) {
+      console.warn('[Workspace] vance: link could not be resolved', path, e);
+      if (newTab) newTab.close();
+    }
+  })();
+  return true;
+}
+
 async function uploadImage(file: File): Promise<string | null> {
   const assetsFolder = `${folder.value}/assets`;
   const ts = Date.now();
@@ -1132,6 +1185,7 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
           :current-project-id="projectId"
           :resolve-image-src="resolveVanceImageSrc"
           :suppress-floating="editorFloatingSuppressed"
+          :open-link="openVanceLink"
           @save="onEditorSave"
           @dirty="onEditorDirty"
         />

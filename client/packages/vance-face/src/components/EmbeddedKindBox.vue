@@ -103,7 +103,7 @@ async function onOpen(event?: MouseEvent): Promise<void> {
       // Fall through to default navigation rather than swallow.
     }
   }
-  const url = `/notepad.html?project=${encodeURIComponent(projectId)}`
+  const url = `/cortex.html?project=${encodeURIComponent(projectId)}`
     + `&doc=${encodeURIComponent(documentId)}`;
   if (newTab) {
     window.open(url, '_blank', 'noopener');

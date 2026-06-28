@@ -1,18 +1,20 @@
 <script setup lang="ts">
 /**
- * Shared editor surface used by both {@code cortex.html} (with chat
- * right-panel) and {@code notepad.html} (without chat). All file-tree
- * + tab + document-rendering behavior lives here. Chat-bound logic
- * (state persistence on the session, chat menu, bind-icon, the
- * {@code CortexClientToolService} tool surface, the right-panel mount)
- * is gated on {@code mode === 'cortex'}.
+ * Unified editor surface for {@code cortex.html}. Two boot modes are
+ * driven purely by URL params:
  *
- * Mode boots:
- *  - {@code cortex}: requires {@code ?sessionId=…}, resolves the
- *    session → project, restores open-tabs from the session document.
- *  - {@code notepad}: requires {@code ?project=…}, optional
- *    {@code ?doc=…} deep-link, optional {@code ?path=…&create=1} to
- *    auto-open the create-document modal pre-filled.
+ *  - With {@code ?sessionId=…}: session-bound. Resolves session →
+ *    project, restores open-tabs from the session document, mounts
+ *    the chat right-panel + {@code CortexClientToolService} tool
+ *    surface, enables the bind-icon and chat-bound persistence.
+ *  - With {@code ?project=…} (no sessionId): chatless. Project comes
+ *    from URL, optional {@code ?doc=…} deep-link, optional
+ *    {@code ?path=…&create=1} to auto-open the create-document modal.
+ *    Right-panel collapses by default; the user can toggle it open
+ *    (session-picker content lands here later).
+ *
+ * The right-panel toggle is always available regardless of mode —
+ * a stupid show/hide switch on top of the slot.
  */
 import { computed, onBeforeUnmount, onMounted, provide, ref, watch, type Ref } from 'vue';
 import {
@@ -46,21 +48,11 @@ import FileTreeSidebar from './components/FileTreeSidebar.vue';
 import EditorTabs from './components/EditorTabs.vue';
 import TabRendererHost from './components/TabRendererHost.vue';
 import CortexRightPanel from './components/CortexRightPanel.vue';
+import SessionPickerPanel from './components/SessionPickerPanel.vue';
 import CreateDocumentModal, {
   type CreateModalResult,
 } from './components/CreateDocumentModal.vue';
 import NewFolderModal from './components/NewFolderModal.vue';
-
-type EditorMode = 'cortex' | 'notepad';
-
-const props = withDefaults(
-  defineProps<{
-    mode?: EditorMode;
-  }>(),
-  { mode: 'cortex' },
-);
-
-const isCortex = computed(() => props.mode === 'cortex');
 
 // The generated SessionSummaryRichDto picks up these fields on the next
 // {@code mvn install} of the api module. Until then, augment locally so
@@ -75,18 +67,32 @@ interface CortexStateBody {
   chatBoundDocumentId: string | null;
 }
 
-const sessionId = ref<string | null>(null);
+// Session-id is read from the URL synchronously so the rest of the
+// script setup can branch on it (e.g. {@link clientToolService}). Boot
+// still happens in {@link onMounted}.
+const initialSessionId = new URLSearchParams(window.location.search).get('sessionId');
+const sessionId = ref<string | null>(initialSessionId);
 const sessionTitle = ref<string | null>(null);
 const projectId = ref<string | null>(null);
 const chatBoundDocumentId = ref<string | null>(null);
 const focusZone = ref<FocusZone>('main');
 
+// Session-bound mode = there's a sessionId on this tab. Used everywhere
+// the chat-bound logic, persistence, bind-icon, etc. needs to gate.
+const hasSession = computed(() => sessionId.value !== null);
+
+// Right-panel visibility — stupid show/hide toggle. Default is open
+// when chat is available, closed otherwise. The toggle works regardless
+// of state; when no session is bound the slot stays empty (session-
+// picker lands in phase 2).
+const rightPanelOpen = ref(hasSession.value);
+
 const store = useCortexStore();
 
 // Hijack vance:-doc links inside any descendant MarkdownView so a plain
 // click opens the document as a tab instead of navigating away. Both
-// modes benefit — notepad just doesn't have a chat bubble to do this
-// for. Cross-project refs fall through to the default jump.
+// modes benefit — chatless mode just doesn't have a chat bubble to do
+// this for. Cross-project refs fall through to the default jump.
 const onVanceLink: VanceLinkHandler = async ({ documentId, projectId: refProjectId, newTab }) => {
   if (newTab) return false;
   if (!store.projectId || refProjectId !== store.projectId) return false;
@@ -127,22 +133,12 @@ const restoring = ref(false);
 
 onMounted(async () => {
   const params = new URLSearchParams(window.location.search);
-  if (isCortex.value) {
-    const id = params.get('sessionId');
-    if (!id) {
-      window.location.replace('/chat.html');
-      return;
-    }
-    sessionId.value = id;
-    await resolveSession(id);
-  } else {
-    const pid = params.get('project') ?? params.get('projectId');
-    if (!pid) {
-      window.location.replace('/documents.html');
-      return;
-    }
+  const pid = params.get('project') ?? params.get('projectId');
+  if (sessionId.value) {
+    await resolveSession(sessionId.value);
+  } else if (pid) {
     await resolveProject(pid);
-    // Optional URL-driven actions for the explorer → notepad handoff.
+    // Optional URL-driven actions for the explorer → chatless handoff.
     const createPath = params.get('path');
     if (params.get('create') === '1') {
       createPrefill.value = { path: createPath ?? '' };
@@ -156,6 +152,8 @@ onMounted(async () => {
         // doc id might be stale (deleted, moved); stay on empty state.
       }
     }
+  } else {
+    window.location.replace('/documents.html');
   }
 });
 
@@ -188,7 +186,7 @@ async function resolveSession(id: string): Promise<void> {
 }
 
 /**
- * Notepad bootstrap: project is given via URL — no session involved.
+ * Chatless bootstrap: project is given via URL — no session involved.
  * Tab state is ephemeral by design (deep-links via {@code ?doc=…} cover
  * the bookmark case; we don't persist multi-tab state to the server).
  */
@@ -237,7 +235,6 @@ async function restoreCortexState(summary: CortexAwareSessionSummary): Promise<v
 }
 
 async function persistCortexState(): Promise<void> {
-  if (!isCortex.value) return;
   if (!sessionId.value || restoring.value) return;
   const body: CortexStateBody = {
     openDocumentIds: store.openTabs.map((t) => t.id),
@@ -254,11 +251,11 @@ async function persistCortexState(): Promise<void> {
   }
 }
 
-// Bind chat to the first opened tab automatically — Cortex only.
+// Bind chat to the first opened tab automatically — session-mode only.
 watch(
   () => store.openTabs.map((t) => t.id).join(','),
   (idsKey) => {
-    if (!isCortex.value) return;
+    if (!hasSession.value) return;
     if (restoring.value) return;
     const ids = idsKey ? idsKey.split(',') : [];
     if (ids.length === 0) {
@@ -278,12 +275,9 @@ watch(chatBoundDocumentId, () => {
 });
 
 const title = computed<string>(() => {
-  if (isCortex.value) {
-    if (sessionTitle.value) return `Cortex · ${sessionTitle.value}`;
-    return 'Cortex';
-  }
-  if (projectLabel.value) return `Notepad · ${projectLabel.value}`;
-  return 'Notepad';
+  if (hasSession.value && sessionTitle.value) return `Cortex · ${sessionTitle.value}`;
+  if (projectLabel.value) return `Cortex · ${projectLabel.value}`;
+  return 'Cortex';
 });
 
 const projectLabel = computed<string | null>(() => {
@@ -295,13 +289,14 @@ const projectLabel = computed<string | null>(() => {
 });
 
 /**
- * Cortex: jump back to chat picker with project pre-selected. Notepad:
- * jump back to documents.html explorer with the same project selected.
+ * Session mode: jump back to chat picker with project pre-selected.
+ * Chatless mode: jump back to documents.html explorer with the same
+ * project selected.
  */
 function onProjectCrumbClick(): void {
   const id = projectId.value;
   if (!id) return;
-  if (isCortex.value) {
+  if (hasSession.value) {
     window.location.href = `/chat.html?project=${encodeURIComponent(id)}`;
   } else {
     window.location.href = `/documents.html?projectId=${encodeURIComponent(id)}`;
@@ -607,9 +602,9 @@ const bindIconTooltip = computed<string>(() => {
 
 /**
  * The client-tool surface Cortex exposes to the LLM agent. Built only
- * in cortex mode — notepad has no chat agent to talk to.
+ * when a session is bound — chatless mode has no agent to talk to.
  */
-const clientToolService = isCortex.value
+const clientToolService = hasSession.value
   ? new CortexClientToolService({
     getSelection: () => store.currentSelection,
     getActiveTab: () => {
@@ -742,21 +737,15 @@ async function onUploadFiles(payload: { files: File[]; targetFolder: string }): 
 }
 
 function backHome(): void {
-  if (isCortex.value) {
-    if (sessionId.value) {
-      const params = new URLSearchParams();
-      params.set('sessionId', sessionId.value);
-      if (projectId.value) params.set('project', projectId.value);
-      window.location.href = `/chat.html?${params.toString()}`;
-    } else {
-      window.location.href = '/chat.html';
-    }
+  if (hasSession.value && sessionId.value) {
+    const params = new URLSearchParams();
+    params.set('sessionId', sessionId.value);
+    if (projectId.value) params.set('project', projectId.value);
+    window.location.href = `/chat.html?${params.toString()}`;
+  } else if (projectId.value) {
+    window.location.href = `/documents.html?projectId=${encodeURIComponent(projectId.value)}`;
   } else {
-    if (projectId.value) {
-      window.location.href = `/documents.html?projectId=${encodeURIComponent(projectId.value)}`;
-    } else {
-      window.location.href = '/documents.html';
-    }
+    window.location.href = '/documents.html';
   }
 }
 
@@ -880,8 +869,37 @@ onBeforeUnmount(() => {
   void store.saveAllDirty();
 });
 
-const backLabel = computed(() => (isCortex.value ? '← Chat' : '← Documents'));
-const bootReadyKey = computed(() => (isCortex.value ? !!sessionId.value : !!projectId.value));
+const backLabel = computed(() => (hasSession.value ? '← Chat' : '← Documents'));
+const bootReadyKey = computed(() => !!projectId.value);
+
+/**
+ * Right-panel toggle.
+ *
+ * In session mode, "hide the chat" means **leave the session** — drop
+ * the {@code sessionId} from the URL and reload, which brings us back
+ * to chatless mode (the session-picker can then be re-opened with the
+ * same toggle). This matches the user's mental model: the toggle is a
+ * single "am I currently in a chat?" switch, not a panel-visibility
+ * checkbox.
+ *
+ * In chatless mode the toggle is a stupid show/hide of the picker
+ * panel — no URL change.
+ */
+function toggleRightPanel(): void {
+  if (hasSession.value) {
+    const params = new URLSearchParams();
+    if (projectId.value) params.set('project', projectId.value);
+    const qs = params.toString();
+    window.location.href = `/cortex.html${qs ? `?${qs}` : ''}`;
+    return;
+  }
+  rightPanelOpen.value = !rightPanelOpen.value;
+}
+
+const toggleTooltip = computed<string>(() => {
+  if (hasSession.value) return 'Leave chat';
+  return rightPanelOpen.value ? 'Hide sessions' : 'Show sessions';
+});
 </script>
 
 <template>
@@ -893,7 +911,7 @@ const bootReadyKey = computed(() => (isCortex.value ? !!sessionId.value : !!proj
     :full-height="true"
     focus-model="auto"
     :show-sidebar="!isAppTab"
-    :show-right-panel="isCortex"
+    :show-right-panel="rightPanelOpen"
     title-clickable
     @title-click="focusZone = 'sidebar'"
   >
@@ -958,6 +976,17 @@ const bootReadyKey = computed(() => (isCortex.value ? !!sessionId.value : !!proj
         class="mr-2"
       />
       <VButton size="sm" variant="ghost" @click="backHome">{{ backLabel }}</VButton>
+      <VButton
+        size="sm"
+        variant="ghost"
+        :class="hasSession
+          ? 'bg-primary/15 text-primary hover:bg-primary/25'
+          : 'opacity-60 hover:opacity-100'"
+        :title="toggleTooltip"
+        @click="toggleRightPanel"
+      >
+        <span aria-hidden="true">💬</span>
+      </VButton>
     </template>
 
     <template #sidebar>
@@ -1028,13 +1057,13 @@ const bootReadyKey = computed(() => (isCortex.value ? !!sessionId.value : !!proj
             <li><div class="divider my-0" /></li>
             <li>
               <a @click="closeMenus(); backHome()">
-                <span class="flex-1">{{ isCortex ? 'Back to chat' : 'Back to documents' }}</span>
+                <span class="flex-1">{{ hasSession ? 'Back to chat' : 'Back to documents' }}</span>
               </a>
             </li>
           </ul>
         </div>
 
-        <div v-if="isCortex" class="dropdown">
+        <div v-if="hasSession" class="dropdown">
           <div tabindex="0" role="button" class="btn btn-ghost btn-xs">Chat</div>
           <ul tabindex="0" class="dropdown-content menu menu-sm bg-base-100 rounded-box z-[20] mt-1 w-64 p-2 shadow">
             <li :class="{ disabled: !activeTab || isActiveTabBound }">
@@ -1052,7 +1081,7 @@ const bootReadyKey = computed(() => (isCortex.value ? !!sessionId.value : !!proj
 
         <span class="flex-1" />
 
-        <template v-if="isCortex">
+        <template v-if="hasSession">
           <span
             v-if="clientToolService?.isExecuting.value"
             class="text-xs px-2 py-0.5 rounded bg-warning/15 text-warning border border-warning/30 animate-pulse"
@@ -1105,16 +1134,29 @@ const bootReadyKey = computed(() => (isCortex.value ? !!sessionId.value : !!proj
       </div>
     </div>
 
-    <template v-if="isCortex" #right-panel>
+    <template #right-panel>
       <CortexRightPanel
-        v-if="sessionId && projectId && clientToolService"
+        v-if="hasSession && sessionId && projectId && clientToolService"
         :session-id="sessionId"
         :project-id="projectId"
         :tool-service="clientToolService"
         :active-document="activeTab"
       />
-      <div v-else class="h-full p-3 text-sm opacity-60">
+      <div
+        v-else-if="hasSession"
+        class="h-full p-3 text-sm opacity-60"
+      >
         Waiting for session…
+      </div>
+      <SessionPickerPanel
+        v-else-if="projectId"
+        :project-id="projectId"
+      />
+      <div
+        v-else
+        class="h-full p-3 text-sm opacity-60"
+      >
+        No project context.
       </div>
     </template>
   </EditorShell>
@@ -1123,7 +1165,7 @@ const bootReadyKey = computed(() => (isCortex.value ? !!sessionId.value : !!proj
     v-model:open="showCreate"
     :project-id="projectId"
     :initial-path="createPrefill?.path ?? ''"
-    :consume-draft="!isCortex"
+    :consume-draft="!hasSession"
     @confirm="onCreateConfirm"
   />
 

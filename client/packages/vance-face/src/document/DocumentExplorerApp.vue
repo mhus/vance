@@ -3,10 +3,10 @@
  * Multi-project document Explorer — the new shape of documents.html.
  * Browses projects, folders and file metadata, but never renders a
  * document body: a click on a file row hands off to
- * {@code /notepad.html?project=X&doc=Y}, which mounts the shared
- * Cortex editor surface in notepad-mode (no chat).
+ * {@code /cortex.html?project=X&doc=Y}, which mounts the unified
+ * Cortex editor surface (chatless when no sessionId is given).
  *
- * Editing (title, tags, body, versions, archives) lives in Notepad
+ * Editing (title, tags, body, versions, archives) lives in Cortex
  * now — keeping the Explorer focused on structure + bulk actions
  * lets the two views share the dispatch / properties / archives code
  * exactly once.
@@ -69,7 +69,7 @@ function forwardDraftToNotepad(projectId: string): void {
   const params = new URLSearchParams();
   params.set('project', projectId);
   params.set('create', '1');
-  window.location.href = `/notepad.html?${params.toString()}`;
+  window.location.href = `/cortex.html?${params.toString()}`;
 }
 
 onBeforeUnmount(() => {
@@ -160,7 +160,7 @@ function openInNotepad(docId: string): void {
   const params = new URLSearchParams();
   params.set('project', selectedProjectId.value);
   params.set('doc', docId);
-  window.location.href = `/notepad.html?${params.toString()}`;
+  window.location.href = `/cortex.html?${params.toString()}`;
 }
 
 function openCreateInNotepad(): void {
@@ -169,7 +169,7 @@ function openCreateInNotepad(): void {
   params.set('project', selectedProjectId.value);
   params.set('path', docsState.pathPrefix.value.replace(/\/+$/, ''));
   params.set('create', '1');
-  window.location.href = `/notepad.html?${params.toString()}`;
+  window.location.href = `/cortex.html?${params.toString()}`;
 }
 
 // Server-side filter through the existing endpoint: re-load on every

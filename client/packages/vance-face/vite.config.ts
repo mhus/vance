@@ -17,6 +17,9 @@ const editorEntries = {
   users: resolve(__dirname, 'users.html'),
   profile: resolve(__dirname, 'profile.html'),
   cortex: resolve(__dirname, 'cortex.html'),
+  // notepad merged into cortex (2026-06); this stub keeps old bookmarks
+  // and inline server redirects (3rd-party tools, history links)
+  // working by forwarding to /cortex.html with all query params intact.
   notepad: resolve(__dirname, 'notepad.html'),
   'connected-accounts': resolve(__dirname, 'connected-accounts.html'),
   'oauth-providers': resolve(__dirname, 'oauth-providers.html'),

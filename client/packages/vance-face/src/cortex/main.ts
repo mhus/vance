@@ -15,7 +15,7 @@ await ensureAuthenticated();
 registerBuiltInKinds();
 await loadAddonRegistrations();
 createApp({
-  render: () => h(EditorApp, { mode: 'cortex' }),
+  render: () => h(EditorApp),
 })
   .use(i18n)
   .use(createPinia())

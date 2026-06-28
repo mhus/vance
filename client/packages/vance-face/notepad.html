@@ -4,10 +4,16 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <title>Vance · Notepad</title>
+    <title>Vance · Notepad → Cortex</title>
+    <script>
+      // Notepad merged into Cortex. Keep this stub so old bookmarks
+      // continue to work — strip the path, hand any ?project=… or
+      // ?doc=… params straight through.
+      (function () {
+        var params = window.location.search;
+        window.location.replace('/cortex.html' + params);
+      })();
+    </script>
   </head>
-  <body>
-    <div id="app"></div>
-    <script type="module" src="/src/notepad/main.ts"></script>
-  </body>
+  <body></body>
 </html>

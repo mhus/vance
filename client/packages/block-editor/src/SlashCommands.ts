@@ -171,6 +171,20 @@ const ITEMS: SlashItemDef[] = [
       editor.chain().focus().deleteRange(range).insertContent({ type: 'vanceToc' }).run(),
   },
   {
+    id: 'embed',
+    title: 'Embed document',
+    hint: 'Inline another Vance document — kind-aware card',
+    run: ({ editor, range }) => {
+      // Remove the slash trigger, then bubble a DOM event so the host
+      // (workspace addon, etc.) can open its embed picker. Same
+      // pattern as the asset picker for image inserts.
+      editor.chain().focus().deleteRange(range).run();
+      editor.view.dom.dispatchEvent(
+        new CustomEvent('vance:open-embed-picker', { bubbles: true }),
+      );
+    },
+  },
+  {
     id: 'columns2',
     title: '2 columns',
     hint: 'Side-by-side layout',

@@ -314,6 +314,8 @@ function parseFence(info: string, body: string): Block {
       };
     case 'vance-toc':
       return { kind: 'toc' };
+    case 'vance-embed':
+      return { kind: 'embed', uri: str(parsed, 'uri') ?? '' };
     case 'vance-columns': {
       // Column separator uses an HTML-comment marker so it survives
       // Markdown rendering elsewhere and is extremely unlikely to be

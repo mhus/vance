@@ -5,3 +5,4 @@ export { VanceDataview } from './VanceDataview';
 export { VanceToc } from './VanceToc';
 export { VanceColumns, VanceColumn } from './VanceColumns';
 export { VanceUnknownFence } from './VanceUnknownFence';
+export { VanceEmbed, type EmbedDocMeta } from './VanceEmbed';

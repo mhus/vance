@@ -19,6 +19,15 @@ export type Block =
   | { kind: 'link-card'; href: string; title: string | null; description: string | null }
   | { kind: 'toc' }
   | {
+      /**
+       * Embedded reference to another Vance document. Rendered as a
+       * kind-aware preview card (Refresh-on-hover, ⌘+click to open).
+       * Spec: specification/inline-and-embedded-content.md §3 / §11.
+       */
+      kind: 'embed';
+      uri: string;
+    }
+  | {
       kind: 'columns';
       /**
        * One slot per column. `blocks` is the column's content; `width`

@@ -100,6 +100,8 @@ function renderBlock(b: Block): string {
     }
     case 'toc':
       return '```vance-toc\n```\n';
+    case 'embed':
+      return renderFence('vance-embed', { uri: b.uri });
     case 'columns': {
       // 4-backtick outer fence so each column body can still contain
       // a regular triple-backtick code block without closing the

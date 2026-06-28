@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
   brainFetch,
   brainFetchText,
@@ -22,6 +22,7 @@ import {
 import AssetPickerModal from './AssetPickerModal.vue';
 import EmojiPickerModal from './EmojiPickerModal.vue';
 import LinkPickerModal from './LinkPickerModal.vue';
+import EmbedPickerModal from './EmbedPickerModal.vue';
 import type { WorkspaceView } from './generated/workspace/WorkspaceView';
 import type { WorkspacePageView } from './generated/workspace/WorkspacePageView';
 
@@ -137,6 +138,7 @@ const editorRef = ref<{
   applyLink: (href: string, openInNewTab?: boolean) => void;
   clearLink: () => void;
   currentLinkHref: () => string | null;
+  insertEmbed: (uri: string) => void;
 } | null>(null);
 
 // Asset picker is shared between two destinations: inline image
@@ -187,13 +189,87 @@ function onLinkClear() {
   closeLinkPicker();
 }
 
+// ── Embed picker (slash-command /embed) ───────────────────────────
+const embedPickerOpen = ref(false);
+function openEmbedPicker() { embedPickerOpen.value = true; }
+function closeEmbedPicker() { embedPickerOpen.value = false; }
+function onEmbedPicked(uri: string) {
+  editorRef.value?.insertEmbed(uri);
+  closeEmbedPicker();
+}
+
+/**
+ * Embed NodeView resolver — turn a {@code vance:} URI into the
+ * metadata the card needs (kind, title, path). Uses the existing
+ * {@code /documents/by-path} lookup; null on 404 → NodeView shows
+ * a "not found" placeholder.
+ */
+async function resolveEmbedDoc(uri: string): Promise<{
+  id: string;
+  path: string;
+  title: string | null;
+  kind: string | null;
+  mimeType: string | null;
+} | null> {
+  let parsed: URL;
+  try { parsed = new URL(uri); } catch { return null; }
+  if (parsed.protocol !== 'vance:') return null;
+  const target = parsed.hostname
+    ? decodeURIComponent(parsed.hostname)
+    : projectId.value;
+  const path = decodeURIComponent(parsed.pathname.replace(/^\//, ''));
+  if (!target || !path) return null;
+  try {
+    const dto = await brainFetch<{
+      id: string; path: string; title?: string | null;
+      kind?: string | null; mimeType?: string | null;
+    }>(
+      'GET',
+      `documents/by-path?projectId=${encodeURIComponent(target)}` +
+        `&path=${encodeURIComponent(path)}`,
+    );
+    return {
+      id: dto.id,
+      path: dto.path,
+      title: dto.title ?? null,
+      kind: dto.kind ?? null,
+      mimeType: dto.mimeType ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 // Any open modal should hide the editor's floating bubble menus —
 // tippy.js's default z-index sits above our modal layer, so without
 // this flag the inline-mark + image-width toolbars float on top of
 // the picker dialogs.
 const editorFloatingSuppressed = computed(
-  () => linkPickerOpen.value || iconPickerOpen.value || assetPickerOpen.value,
+  () =>
+    linkPickerOpen.value
+    || iconPickerOpen.value
+    || assetPickerOpen.value
+    || embedPickerOpen.value,
 );
+
+// On clicking an embed card's "Open" button, the NodeView dispatches
+// a `vance:open-embed` CustomEvent that bubbles up the DOM. Route it
+// through our vance: handler so the document opens in a new tab
+// (cortex with ?doc=...). Registered as a plain DOM listener instead
+// of `@vance:open-embed` because Vue's template compiler chokes on
+// the colon-in-event-name when combined with a `:` modifier.
+const workspaceRootRef = ref<HTMLElement | null>(null);
+function onOpenEmbedEvent(e: Event) {
+  const detail = (e as CustomEvent<{ uri: string; openInNewTab: boolean }>).detail;
+  if (!detail?.uri) return;
+  openVanceLink(detail.uri, detail.openInNewTab);
+}
+onMounted(() => {
+  workspaceRootRef.value?.addEventListener('vance:open-embed', onOpenEmbedEvent);
+});
+onBeforeUnmount(() => {
+  workspaceRootRef.value?.removeEventListener('vance:open-embed', onOpenEmbedEvent);
+});
 
 // Icon picker — modal with a searchable emoji grid (provided by
 // `emoji-picker-element`). The element renders as a native custom
@@ -935,7 +1011,7 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
 </script>
 
 <template>
-  <div class="workspace-app">
+  <div ref="workspaceRootRef" class="workspace-app">
     <aside class="workspace-app__sidebar">
       <header class="workspace-app__title">
         <div class="workspace-app__title-text">{{ title }}</div>
@@ -1186,6 +1262,8 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
           :resolve-image-src="resolveVanceImageSrc"
           :suppress-floating="editorFloatingSuppressed"
           :open-link="openVanceLink"
+          :open-embed-picker="openEmbedPicker"
+          :resolve-embed-doc="resolveEmbedDoc"
           @save="onEditorSave"
           @dirty="onEditorDirty"
         />
@@ -1211,6 +1289,12 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
           @pick="onLinkPicked"
           @clear="onLinkClear"
           @close="closeLinkPicker"
+        />
+        <EmbedPickerModal
+          v-if="embedPickerOpen"
+          :project-id="projectId"
+          @pick="onEmbedPicked"
+          @close="closeEmbedPicker"
         />
       </template>
 

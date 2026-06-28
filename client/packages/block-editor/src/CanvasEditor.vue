@@ -30,6 +30,8 @@ import {
   VanceColumns,
   VanceColumn,
   VanceUnknownFence,
+  VanceEmbed,
+  type EmbedDocMeta,
 } from './extensions';
 import { SlashCommands } from './SlashCommands';
 import { HeadingAnchors } from './extensions/HeadingAnchors';
@@ -119,6 +121,20 @@ const props = withDefaults(
      * return lets the editor fall back to {@code window.open}.
      */
     openLink?: (href: string, openInNewTab: boolean) => boolean | void;
+    /**
+     * Resolver for the embed NodeView. Takes a {@code vance:} URI
+     * and returns {@code id / path / kind / title / mimeType} for
+     * the host's document, or {@code null} if no such document
+     * exists. Host-side because only the host knows about REST.
+     */
+    resolveEmbedDoc?: (uri: string) => Promise<EmbedDocMeta | null>;
+    /**
+     * Open the host-provided embed picker (slash-command {@code /embed}
+     * triggers this). The host renders a modal that lets the user
+     * search for a document in the project; on pick it calls back
+     * into the editor via {@code insertEmbed}.
+     */
+    openEmbedPicker?: () => void;
   }>(),
   { autoSaveMs: 2000 },
 );
@@ -308,6 +324,10 @@ const editor = useEditor({
     VanceColumns,
     VanceColumn,
     VanceUnknownFence,
+    VanceEmbed.configure({
+      resolveDocumentMeta: (uri: string) =>
+        props.resolveEmbedDoc?.(uri) ?? Promise.resolve(null),
+    }),
   ],
   content: initial.value.content,
   editorProps: {
@@ -537,6 +557,10 @@ function onAssetPickerEvent() {
   props.openAssetPicker?.();
 }
 
+function onEmbedPickerEvent() {
+  props.openEmbedPicker?.();
+}
+
 /**
  * Notion-style link interaction: a plain click positions the caret
  * (Tiptap default), ⌘/Ctrl+click opens the link. We register on the
@@ -572,6 +596,7 @@ onMounted(() => {
   dom.addEventListener('drop', onCaptureDrop, { capture: true });
   dom.addEventListener('click', onLinkClickCapture, { capture: true });
   dom.addEventListener('vance:open-asset-picker', onAssetPickerEvent);
+  dom.addEventListener('vance:open-embed-picker', onEmbedPickerEvent);
 });
 
 onBeforeUnmount(() => {
@@ -583,6 +608,7 @@ onBeforeUnmount(() => {
     dom.removeEventListener('drop', onCaptureDrop, { capture: true });
     dom.removeEventListener('click', onLinkClickCapture, { capture: true });
     dom.removeEventListener('vance:open-asset-picker', onAssetPickerEvent);
+    dom.removeEventListener('vance:open-embed-picker', onEmbedPickerEvent);
   }
   editor.value?.destroy();
 });
@@ -596,8 +622,22 @@ function insertImage(src: string, alt: string) {
   editor.value?.chain().focus().setImage({ src, alt }).run();
 }
 
+/**
+ * Insert a `vance-embed` block referencing the given URI. Used by
+ * the host's embed picker — picks a project document and calls this
+ * to drop a kind-aware card into the editor.
+ */
+function insertEmbed(uri: string) {
+  if (!uri) return;
+  editor.value
+    ?.chain()
+    .focus()
+    .insertContent({ type: 'vanceEmbed', attrs: { uri } })
+    .run();
+}
+
 defineExpose({
-  save, flush, insertImage, updateHeader,
+  save, flush, insertImage, insertEmbed, updateHeader,
   applyLink, clearLink, currentLinkHref,
   getHeader: () => currentHeader.value,
 });

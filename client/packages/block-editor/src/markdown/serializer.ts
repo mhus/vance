@@ -103,13 +103,19 @@ function renderBlock(b: Block): string {
     case 'embed':
       return renderFence('vance-embed', { uri: b.uri });
     case 'columns': {
-      // 4-backtick outer fence so each column body can still contain
-      // a regular triple-backtick code block without closing the
-      // container prematurely. Columns are separated by a sentinel
-      // line that optionally carries the column's width fraction
-      // (e.g. `=== column 0.4 ===`). The first column's width is
-      // implicit (no leading separator).
-      let out = '````vance-columns\n';
+      // Outer fence must be longer than ANY inner fence so nested
+      // code / vance-* / sub-columns blocks don't close the columns
+      // prematurely. Default is 4 backticks (covers a single
+      // triple-backtick block inside); we bump it dynamically if a
+      // column contains another columns block (4-backticks inside →
+      // need 5 outside, etc.).
+      const innerBodies = b.columns.map((c) => serialize(c.blocks));
+      const innerMaxFence = Math.max(
+        3,
+        ...innerBodies.map((s) => maxFenceLength(s)),
+      );
+      const fence = '`'.repeat(innerMaxFence + 1);
+      let out = fence + 'vance-columns\n';
       b.columns.forEach((col, i) => {
         if (i > 0) {
           // Separator is an HTML-comment so it round-trips cleanly
@@ -121,15 +127,30 @@ function renderBlock(b: Block): string {
             ? `\n<!--vance:column ${col.width}-->\n`
             : '\n<!--vance:column-->\n';
         }
-        out += serialize(col.blocks);
+        out += innerBodies[i];
       });
       if (!out.endsWith('\n')) out += '\n';
-      out += '````\n';
+      out += fence + '\n';
       return out;
     }
     case 'unknown-fence':
       return '```' + b.info + '\n' + b.body + (b.body.endsWith('\n') ? '' : '\n') + '```\n';
   }
+}
+
+/**
+ * Longest contiguous run of backticks at the start of any line in
+ * the given text. Used to size the outer fence of a columns block so
+ * inner fenced blocks (code, vance-embed, nested columns) don't
+ * close it prematurely. Returns 0 when no fence is present.
+ */
+function maxFenceLength(text: string): number {
+  let max = 0;
+  for (const line of text.split('\n')) {
+    const m = /^(`{3,})/.exec(line);
+    if (m && m[1].length > max) max = m[1].length;
+  }
+  return max;
 }
 
 function renderFence(info: string, body: Record<string, unknown>): string {

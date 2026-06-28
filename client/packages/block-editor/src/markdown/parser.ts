@@ -280,6 +280,37 @@ function parseFence(info: string, body: string): Block {
   if (!info || !info.startsWith('vance-')) {
     return { kind: 'code', lang: info || null, code: body };
   }
+  // Markdown-body kinds — handle BEFORE the YAML parse attempt below.
+  // Their bodies legitimately contain nested fences (`vance-columns`
+  // carrying a `vance-embed`, code blocks, …) which would make
+  // yaml.load() throw and incorrectly fall through to unknown-fence.
+  if (info === 'vance-toc') {
+    return { kind: 'toc' };
+  }
+  if (info === 'vance-columns') {
+    // Column separator uses an HTML-comment marker so it survives
+    // Markdown rendering elsewhere and is extremely unlikely to be
+    // typed by accident inside a column. Optional width follows the
+    // word: `<!--vance:column 0.4-->`.
+    const widthSep = /\n<!--vance:column(?:\s+([\d.]+))?-->\n/g;
+    const parts: string[] = [];
+    const widths: (number | null)[] = [null];
+    let last = 0;
+    let m: RegExpExecArray | null;
+    while ((m = widthSep.exec(body)) !== null) {
+      parts.push(body.substring(last, m.index));
+      const w = m[1] ? Number(m[1]) : NaN;
+      widths.push(Number.isFinite(w) && w > 0 ? w : null);
+      last = m.index + m[0].length;
+    }
+    parts.push(body.substring(last));
+    const cols = parts.map((p, i) => ({
+      blocks: parse(p.trim()),
+      width: widths[i] ?? null,
+    }));
+    return { kind: 'columns', columns: cols };
+  }
+  // YAML-body kinds — parsed key/value-style.
   let parsed: Record<string, unknown> = {};
   try {
     const loaded = yaml.load(body);
@@ -312,33 +343,8 @@ function parseFence(info: string, body: string): Block {
         title: str(parsed, 'title'),
         description: str(parsed, 'description'),
       };
-    case 'vance-toc':
-      return { kind: 'toc' };
     case 'vance-embed':
       return { kind: 'embed', uri: str(parsed, 'uri') ?? '' };
-    case 'vance-columns': {
-      // Column separator uses an HTML-comment marker so it survives
-      // Markdown rendering elsewhere and is extremely unlikely to be
-      // typed by accident inside a column. Optional width follows the
-      // word: `<!--vance:column 0.4-->`.
-      const widthSep = /\n<!--vance:column(?:\s+([\d.]+))?-->\n/g;
-      const parts: string[] = [];
-      const widths: (number | null)[] = [null];
-      let last = 0;
-      let m: RegExpExecArray | null;
-      while ((m = widthSep.exec(body)) !== null) {
-        parts.push(body.substring(last, m.index));
-        const w = m[1] ? Number(m[1]) : NaN;
-        widths.push(Number.isFinite(w) && w > 0 ? w : null);
-        last = m.index + m[0].length;
-      }
-      parts.push(body.substring(last));
-      const cols = parts.map((p, i) => ({
-        blocks: parse(p.trim()),
-        width: widths[i] ?? null,
-      }));
-      return { kind: 'columns', columns: cols };
-    }
     default:
       return { kind: 'unknown-fence', info, body };
   }

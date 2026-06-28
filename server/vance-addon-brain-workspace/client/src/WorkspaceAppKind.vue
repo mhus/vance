@@ -387,8 +387,14 @@ async function loadWorkspace() {
     if (activePageId.value == null) {
       pickInitialPage();
     } else {
+      // Pages list excludes underscore-prefixed system files
+      // (_index.md, _app.yaml). For the index we synthesise a view
+      // from the scan response so a rebuild — which reloads view
+      // while the index is open — doesn't wipe the editor.
       const matched =
-        view.value.pages.find((p) => p.id === activePageId.value) ?? null;
+        view.value.pages.find((p) => p.id === activePageId.value)
+        ?? syntheticIndexView(activePageId.value)
+        ?? null;
       activePageView.value = matched;
     }
   } catch (e) {
@@ -423,7 +429,7 @@ async function selectPage(id: string, page: WorkspacePageView | null) {
     await nextTick();
   }
   activePageId.value = id;
-  activePageView.value = page ?? findPageById(id);
+  activePageView.value = page ?? findPageById(id) ?? syntheticIndexView(id);
   saveStatus.value = 'idle';
   lastSaveError.value = null;
   headerCache.value = null;
@@ -434,6 +440,33 @@ function findPageById(id: string): WorkspacePageView | null {
   const v = view.value;
   if (!v) return null;
   return v.pages.find((p) => p.id === id) ?? null;
+}
+
+/**
+ * The generated `_index.md` is intentionally NOT in `view.pages` (the
+ * folder reader filters underscore-prefixed files out). Without a
+ * corresponding {@link WorkspacePageView} the editor template's
+ * {@code v-if="activeMarkdown != null && activePageView"} short-
+ * circuits and the index never paints. Synthesise a minimal view here
+ * so the index opens like any other page.
+ */
+function syntheticIndexView(id: string): WorkspacePageView | null {
+  const v = view.value;
+  if (!v || v.indexPageId !== id || !v.indexPagePath) return null;
+  const leaf = v.indexPagePath.substring(v.indexPagePath.lastIndexOf('/') + 1);
+  const relativePath = v.indexPagePath.startsWith(folder.value + '/')
+    ? v.indexPagePath.substring(folder.value.length + 1)
+    : v.indexPagePath;
+  return {
+    id,
+    path: v.indexPagePath,
+    relativePath,
+    section: '',
+    title: leaf.replace(/\.workpage\.md$|\.canvas\.md$|\.md$/, '') || 'Index',
+    description: undefined,
+    icon: '⌂',
+    sortIndex: undefined,
+  };
 }
 
 async function loadActivePageContent(options: { force?: boolean } = {}) {

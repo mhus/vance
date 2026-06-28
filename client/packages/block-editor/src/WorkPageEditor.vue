@@ -601,6 +601,49 @@ function onLinkClickCapture(e: MouseEvent) {
   window.open(href, '_blank', 'noopener,noreferrer');
 }
 
+// Drag-source tracker for the trash drop-zone. Set true the moment a
+// block is picked up via the global-drag-handle (its dragstart fires
+// on the floating handle, which lives as a sibling of view.dom — we
+// listen at document level to catch it). Cleared on dragend regardless
+// of where the user releases.
+const isDragging = ref(false);
+const trashOver = ref(false);
+function onGlobalDragStart(e: DragEvent) {
+  // Only react to drags that originated INSIDE this editor's DOM —
+  // the global-drag-handle stores the slice on view.dragging, but
+  // its DOM-handle is a sibling of view.dom so we sniff for it.
+  const target = e.target as HTMLElement | null;
+  if (!target) return;
+  // The drag-handle library marks its handle with data-drag-handle.
+  if (target.dataset?.dragHandle != null) {
+    isDragging.value = true;
+  }
+}
+function onGlobalDragEnd() {
+  isDragging.value = false;
+  trashOver.value = false;
+}
+function onTrashDragOver(e: DragEvent) {
+  if (!isDragging.value) return;
+  e.preventDefault();
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+  trashOver.value = true;
+}
+function onTrashDragLeave() {
+  trashOver.value = false;
+}
+function onTrashDrop(e: DragEvent) {
+  if (!isDragging.value) return;
+  e.preventDefault();
+  e.stopPropagation();
+  // The global-drag-handle plugin sets a NodeSelection on the
+  // dragged block before dispatching native dragstart. Deleting
+  // that selection removes the block in a single transaction.
+  editor.value?.chain().focus().deleteSelection().run();
+  isDragging.value = false;
+  trashOver.value = false;
+}
+
 onMounted(() => {
   const dom = editor.value?.view.dom;
   if (!dom) return;
@@ -609,6 +652,8 @@ onMounted(() => {
   dom.addEventListener('click', onLinkClickCapture, { capture: true });
   dom.addEventListener('vance:open-asset-picker', onAssetPickerEvent);
   dom.addEventListener('vance:open-embed-picker', onEmbedPickerEvent);
+  document.addEventListener('dragstart', onGlobalDragStart, true);
+  document.addEventListener('dragend', onGlobalDragEnd, true);
 });
 
 onBeforeUnmount(() => {
@@ -622,6 +667,8 @@ onBeforeUnmount(() => {
     dom.removeEventListener('vance:open-asset-picker', onAssetPickerEvent);
     dom.removeEventListener('vance:open-embed-picker', onEmbedPickerEvent);
   }
+  document.removeEventListener('dragstart', onGlobalDragStart, true);
+  document.removeEventListener('dragend', onGlobalDragEnd, true);
   editor.value?.destroy();
 });
 
@@ -717,6 +764,21 @@ defineExpose({
     </BubbleMenu>
 
     <EditorContent :editor="editor" class="canvas-editor__body" />
+
+    <!-- Drag-to-delete drop-zone. Sticky on the left edge of the
+         editor; only visible while a block is being dragged via the
+         global drag-handle. Drop = deleteSelection() on the currently
+         selected block (the handle plugin sets a NodeSelection on the
+         picked-up node). -->
+    <div
+      v-show="isDragging"
+      class="canvas-editor__trash"
+      :class="{ 'canvas-editor__trash--over': trashOver }"
+      :title="trashOver ? 'Release to delete' : 'Drop here to delete'"
+      @dragover="onTrashDragOver"
+      @dragleave="onTrashDragLeave"
+      @drop="onTrashDrop"
+    >🗑</div>
   </div>
 </template>
 
@@ -745,6 +807,33 @@ defineExpose({
   opacity: 0.5;
   cursor: not-allowed;
 }
+.canvas-editor__trash {
+  position: fixed;
+  left: 1.5rem;
+  bottom: 2rem;
+  width: 3.4rem;
+  height: 3.4rem;
+  border-radius: 50%;
+  background: oklch(var(--er) / 0.18);
+  border: 2px dashed oklch(var(--er) / 0.6);
+  color: oklch(var(--er));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.6rem;
+  z-index: 100;
+  cursor: copy;
+  transition: transform 0.15s ease, background 0.15s ease;
+  pointer-events: auto;
+  user-select: none;
+}
+.canvas-editor__trash--over {
+  background: oklch(var(--er));
+  color: oklch(var(--erc, var(--b1)));
+  transform: scale(1.15);
+  border-style: solid;
+}
+
 .canvas-editor__body {
   flex: 1;
   min-height: 0;

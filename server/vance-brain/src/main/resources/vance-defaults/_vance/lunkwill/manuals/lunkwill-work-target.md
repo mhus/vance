@@ -1,18 +1,19 @@
 ---
-triggers: work target, work_target, where do files go, client vs work, switch backend, foot vs workspace, dispatch
+triggers: work target, work_target, where do files go, client vs work, switch backend, foot vs workspace, daemon, dispatch
 summary: How file_*/exec_* dispatch via the per-process WorkTarget — when to leave it alone and when to switch.
 ---
 
 # WorkTarget — where your file_* and exec_* calls land
 
 The generic `file_*` / `exec_*` tools don't know any filesystem
-paths or hosts directly. They dispatch to one of two backends
+paths or hosts directly. They dispatch to one of three backends
 based on the active **WorkTarget** of your process:
 
 | `kind`  | Backend                            | When |
 |---------|------------------------------------|------|
-| CLIENT  | the user's local host via Foot CLI | a `vance-foot` client is connected and the user wants you to touch their files |
+| CLIENT  | the user's local host via the session-bound Foot CLI | a `vance-foot` client is connected and the user wants you to touch their files |
 | WORK    | a workspace RootDir on the Brain server | ephemeral scratch — build outputs, generated artefacts, isolated experiments |
+| DAEMON  | a named `profile=daemon` Foot in the project | a long-lived worker host (build box, CI runner) the project registered under a name |
 
 ## You almost never need to switch
 
@@ -38,10 +39,12 @@ Rare. Real cases:
   RootDir, and now you want to read them back without disturbing
   the user's local tree.
 
-For those cases:
+For those cases the single `targetName` param is kind-dependent —
+the RootDir name for WORK, the daemon name for DAEMON, ignored for
+CLIENT:
 
 ```
-work_target_set(kind="WORK", dirName="experiment-42")
+work_target_set(kind="WORK", targetName="experiment-42")
 ```
 
 or back:
@@ -50,8 +53,16 @@ or back:
 work_target_set(kind="CLIENT")
 ```
 
+To run against a named project daemon:
+
+```
+work_target_set(kind="DAEMON", targetName="build-box")
+```
+
 `work_target_set` is not in your primary manifest — call
 `find_tools` or `describe_tool` first if you need its exact schema.
+`work_target_get` lists which daemons are currently online in the
+project (plus the workspace RootDir names and Foot connectivity).
 
 ## When a call fails because the target is wrong
 
@@ -61,6 +72,9 @@ The dispatcher tells you:
   session …` — the user disconnected Foot mid-task. Either ask
   them to reconnect, or `work_target_set(kind="WORK")` to keep
   working on the server side.
+- `daemon '<name>' is offline …` — the target DAEMON isn't
+  connected. Check `work_target_get` for the live daemon names,
+  switch to one that's online, or fall back to WORK.
 
 ## What "CWD" means per target
 
@@ -69,6 +83,8 @@ The dispatcher tells you:
   outside that directory — Foot rejects them.
 - **WORK**: the active RootDir is the cwd. Default = process-temp
   (lazy-created on first call, scrubbed at process close).
+- **DAEMON**: the daemon Foot's own `--workdir` is the cwd — same
+  rules as CLIENT, just a different (named, long-lived) host.
 
 ## What you should NOT do
 

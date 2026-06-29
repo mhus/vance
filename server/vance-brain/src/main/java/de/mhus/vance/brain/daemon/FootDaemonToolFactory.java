@@ -1,15 +1,10 @@
 package de.mhus.vance.brain.daemon;
 
-import de.mhus.vance.api.tools.ClientToolInvokeRequest;
 import de.mhus.vance.api.tools.ToolSpec;
-import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.brain.tools.types.ToolFactory;
-import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.shared.servertool.ServerToolDocument;
 import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -17,9 +12,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -72,7 +64,7 @@ public class FootDaemonToolFactory implements ToolFactory {
                                     + DEFAULT_TIMEOUT_SECONDS + "s)")));
 
     private final DaemonRegistry daemonRegistry;
-    private final WebSocketSender sender;
+    private final DaemonToolInvoker daemonToolInvoker;
 
     @Override public String typeId() { return TYPE_ID; }
     @Override public Map<String, Object> parametersSchema() { return PARAMETERS_SCHEMA; }
@@ -201,54 +193,9 @@ public class FootDaemonToolFactory implements ToolFactory {
 
         @Override
         public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-            // Re-resolve at call time so a daemon that disappeared between
-            // materialise and invoke produces a fresh, accurate error
-            // instead of trying to write to a stale WS.
-            var refOpt = daemonRegistry.find(daemonKey);
-            if (refOpt.isEmpty()) {
-                throw new ToolException("daemon '" + daemonKey.daemonName()
-                        + "' is offline in project '" + daemonKey.projectId() + "'");
-            }
-            var ref = refOpt.get();
-            if (ref.stale()) {
-                // Listed but unreachable — give the chat agent enough context
-                // to either wait + retry or apologise to the user.
-                String since = ref.disconnectedAt() == null
-                        ? "recently" : "since " + ref.disconnectedAt();
-                throw new ToolException("daemon '" + daemonKey.daemonName()
-                        + "' is offline " + since
-                        + " — sub-tools are still listed but unreachable until reconnect");
-            }
-            String subToolName = spec.getName();
-            DaemonRegistry.DaemonPending pending = daemonRegistry.beginInvocation(daemonKey, subToolName);
-            try {
-                ClientToolInvokeRequest invoke = ClientToolInvokeRequest.builder()
-                        .correlationId(pending.correlationId())
-                        .name(subToolName)
-                        .params(params == null ? Map.of() : params)
-                        .build();
-                sender.sendNotification(ref.wsSession(), MessageType.CLIENT_TOOL_INVOKE, invoke);
-            } catch (IOException ioe) {
-                daemonRegistry.cancel(pending.correlationId(),
-                        "failed to write invoke envelope: " + ioe.getMessage());
-                throw new ToolException("daemon invoke send failed: " + ioe.getMessage(), ioe);
-            }
-            try {
-                return pending.future().get(timeout.toMillis(), TimeUnit.MILLISECONDS);
-            } catch (TimeoutException te) {
-                daemonRegistry.cancel(pending.correlationId(),
-                        "daemon '" + daemonKey.daemonName() + "' timed out after " + timeout);
-                throw new ToolException("daemon '" + daemonKey.daemonName()
-                        + "' did not respond within " + timeout, te);
-            } catch (InterruptedException ie) {
-                Thread.currentThread().interrupt();
-                daemonRegistry.cancel(pending.correlationId(), "invoke interrupted");
-                throw new ToolException("daemon invoke interrupted", ie);
-            } catch (ExecutionException ee) {
-                Throwable cause = ee.getCause() == null ? ee : ee.getCause();
-                throw new ToolException(cause.getMessage() == null
-                        ? "daemon invoke failed" : cause.getMessage(), cause);
-            }
+            // The announced manifest entry's name is the wire tool name —
+            // routing (re-resolve, stale-check, send, await) is shared.
+            return daemonToolInvoker.invoke(daemonKey, spec.getName(), params, timeout);
         }
     }
 }

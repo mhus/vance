@@ -10,6 +10,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.brain.daemon.DaemonRegistry;
+import de.mhus.vance.brain.daemon.DaemonToolInvoker;
 import de.mhus.vance.brain.tools.client.ClientToolRegistry;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
@@ -17,6 +19,7 @@ import de.mhus.vance.shared.worktarget.WorkTarget;
 import de.mhus.vance.toolpack.ToolBus;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -28,10 +31,13 @@ class WorkTargetDispatcherTest {
 
     private static final String PROC_ID = "proc-1";
     private static final String SESSION_ID = "session-1";
+    private static final String TENANT_ID = "tenant-1";
+    private static final String PROJECT_ID = "project-1";
 
     private ThinkProcessService thinkProcessService;
     private ClientToolRegistry clientToolRegistry;
     private WorkTargetService workTargetService;
+    private DaemonToolInvoker daemonToolInvoker;
     private WorkTargetDispatcher dispatcher;
     private ToolBus bus;
     private ToolInvocationContext ctx;
@@ -41,15 +47,18 @@ class WorkTargetDispatcherTest {
     void setUp() {
         thinkProcessService = mock(ThinkProcessService.class);
         clientToolRegistry = mock(ClientToolRegistry.class);
+        daemonToolInvoker = mock(DaemonToolInvoker.class);
         workTargetService = new WorkTargetService(thinkProcessService, clientToolRegistry);
         dispatcher = new WorkTargetDispatcher(workTargetService, thinkProcessService,
-                mock(de.mhus.vance.brain.tools.ToolDispatcher.class));
+                mock(de.mhus.vance.brain.tools.ToolDispatcher.class), daemonToolInvoker);
         bus = mock(ToolBus.class);
         ctx = mock(ToolInvocationContext.class);
         lenient().when(ctx.processId()).thenReturn(PROC_ID);
         process = new ThinkProcessDocument();
         process.setId(PROC_ID);
         process.setSessionId(SESSION_ID);
+        process.setTenantId(TENANT_ID);
+        process.setProjectId(PROJECT_ID);
         lenient().when(thinkProcessService.findById(PROC_ID)).thenReturn(Optional.of(process));
         lenient().when(bus.invoke(any(), any())).thenReturn(Map.of("ok", true));
     }
@@ -78,7 +87,7 @@ class WorkTargetDispatcherTest {
     @Test
     void workTarget_dispatchesToWorkBackend_injectsDirNameFromTarget() {
         process.setEngineParams(new LinkedHashMap<>(Map.of(
-                WorkTarget.KEY, Map.of("kind", "WORK", "dirName", "main"))));
+                WorkTarget.KEY, Map.of("kind", "WORK", "targetName", "main"))));
 
         Map<String, Object> params = Map.of("path", "src/Foo.java");
 
@@ -94,7 +103,7 @@ class WorkTargetDispatcherTest {
     @Test
     void workTarget_callerDirNameWins() {
         process.setEngineParams(new LinkedHashMap<>(Map.of(
-                WorkTarget.KEY, Map.of("kind", "WORK", "dirName", "main"))));
+                WorkTarget.KEY, Map.of("kind", "WORK", "targetName", "main"))));
 
         Map<String, Object> params = Map.of("path", "Foo.java", "dirName", "build-output");
 
@@ -156,5 +165,38 @@ class WorkTargetDispatcherTest {
                 Map.of("path", "Foo.java"));
 
         verify(bus).invoke(eq("work_file_read"), any());
+    }
+
+    @Test
+    void daemonTarget_routesClientBackendOverDaemon_stripsDirName() {
+        process.setEngineParams(new LinkedHashMap<>(Map.of(
+                WorkTarget.KEY, Map.of("kind", "DAEMON", "targetName", "build-box"))));
+        when(daemonToolInvoker.invoke(any(), eq("client_file_read"), any(), any()))
+                .thenReturn(Map.of("ok", true));
+
+        Map<String, Object> params = new LinkedHashMap<>();
+        params.put("path", "Foo.java");
+        params.put("dirName", "leftover");
+
+        Map<String, Object> result =
+                dispatcher.dispatch(ctx, bus, "client_file_read", "work_file_read", params);
+
+        assertThat(result).containsEntry("ok", true);
+        // DAEMON routes the client_* tool over the daemon's WS — never the bus.
+        verify(bus, never()).invoke(any(), any());
+
+        ArgumentCaptor<DaemonRegistry.DaemonKey> keyCaptor =
+                ArgumentCaptor.forClass(DaemonRegistry.DaemonKey.class);
+        ArgumentCaptor<Map<String, Object>> paramsCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(daemonToolInvoker).invoke(
+                keyCaptor.capture(), eq("client_file_read"),
+                paramsCaptor.capture(), any(Duration.class));
+        DaemonRegistry.DaemonKey key = keyCaptor.getValue();
+        assertThat(key.tenantId()).isEqualTo(TENANT_ID);
+        assertThat(key.projectId()).isEqualTo(PROJECT_ID);
+        assertThat(key.daemonName()).isEqualTo("build-box");
+        // Foot client tools don't take dirName.
+        assertThat(paramsCaptor.getValue()).containsEntry("path", "Foo.java")
+                .doesNotContainKey("dirName");
     }
 }

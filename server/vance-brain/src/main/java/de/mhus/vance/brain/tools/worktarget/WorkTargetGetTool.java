@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.tools.worktarget;
 
+import de.mhus.vance.brain.daemon.DaemonRegistry;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.shared.worktarget.WorkTarget;
@@ -32,6 +33,7 @@ public class WorkTargetGetTool implements Tool {
     private final WorkTargetService workTargetService;
     private final ThinkProcessService thinkProcessService;
     private final WorkspaceService workspaceService;
+    private final DaemonRegistry daemonRegistry;
 
     @Override
     public String name() {
@@ -41,14 +43,16 @@ public class WorkTargetGetTool implements Tool {
     @Override
     public String description() {
         return "Report the current WorkTarget — i.e. where the generic "
-                + "file_* and exec_* tools currently dispatch to. Two "
-                + "kinds: CLIENT (user's local host via Foot CLI) and "
-                + "WORK (Brain-server workspace RootDir; dirName picks "
-                + "which RootDir, null = process temp). The response "
-                + "also lists alternatives the caller can switch to "
-                + "via work_target_set: whether a foot client is "
-                + "connected, and the existing workspace RootDir names "
-                + "in the current project.";
+                + "file_* and exec_* tools currently dispatch to. Three "
+                + "kinds: CLIENT (session-bound Foot CLI on the user's "
+                + "host), WORK (Brain-server workspace RootDir; targetName "
+                + "picks which RootDir, null = process temp) and DAEMON "
+                + "(a named profile=daemon Foot in this project; "
+                + "targetName is the daemon name). The response also "
+                + "lists alternatives the caller can switch to via "
+                + "work_target_set: whether a foot client is connected, "
+                + "the existing workspace RootDir names, and the names of "
+                + "online daemons in the current project.";
     }
 
     @Override
@@ -106,6 +110,18 @@ public class WorkTargetGetTool implements Tool {
             available.put("rootDirsError", ex.getMessage());
         }
         available.put("rootDirs", rootDirNames);
+
+        // Online (non-stale) daemons the caller could target via
+        // work_target_set(kind=DAEMON). Stale entries are reconnect
+        // placeholders — don't advertise them as switchable.
+        List<String> daemonNames = new ArrayList<>();
+        for (DaemonRegistry.DaemonRef ref :
+                daemonRegistry.listInProject(process.getTenantId(), process.getProjectId())) {
+            if (!ref.stale()) {
+                daemonNames.add(ref.key().daemonName());
+            }
+        }
+        available.put("daemons", daemonNames);
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("current", current.toMap());

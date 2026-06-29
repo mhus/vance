@@ -35,7 +35,9 @@ class FootDaemonToolFactoryTest {
     void setUp() {
         registry = new DaemonRegistry();
         sender = mock(WebSocketSender.class);
-        factory = new FootDaemonToolFactory(registry, sender);
+        // Real invoker over the mocked sender — the WS interactions the
+        // tests below capture/complete are unchanged by the extraction.
+        factory = new FootDaemonToolFactory(registry, new DaemonToolInvoker(registry, sender));
         daemonWs = mock(WebSocketSession.class);
         // Phase B tests assume immediate-drop on disconnect; tests below
         // that exercise the stale path re-enable the TTL explicitly.

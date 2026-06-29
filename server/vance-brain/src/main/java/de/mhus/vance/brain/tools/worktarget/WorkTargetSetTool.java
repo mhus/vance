@@ -18,15 +18,16 @@ import org.springframework.stereotype.Component;
  * Switches the calling process's {@link WorkTarget}. Persistent —
  * future turns see the new value via {@link WorkTargetService}.
  *
- * <p>For {@code kind=WORK}, {@code dirName} is optional: omitting
- * it resolves to the process's lazy temp RootDir on the next
- * {@code file_*} / {@code exec_*} call.
+ * <p>The single {@code targetName} parameter is kind-dependent:
+ * for {@code kind=WORK} it picks the RootDir (omit for the process's
+ * lazy temp RootDir), for {@code kind=DAEMON} it is the required name
+ * of a {@code profile=daemon} Foot in the project, and for
+ * {@code kind=CLIENT} it is ignored.
  *
- * <p>For {@code kind=CLIENT}, {@code dirName} is ignored. The tool
- * does NOT block the switch when no Foot client is currently
- * connected — the caller may be setting up the target for a
- * later turn. The {@code work_target_get} response signals
- * connectivity separately.
+ * <p>The tool does NOT block the switch when the target backend is
+ * not currently reachable (no Foot bound, daemon offline) — the caller
+ * may be setting up the target for a later turn. The
+ * {@code work_target_get} response signals reachability separately.
  */
 @Component
 @RequiredArgsConstructor
@@ -37,19 +38,24 @@ public class WorkTargetSetTool implements Tool {
             "properties", Map.of(
                     "kind", Map.of(
                             "type", "string",
-                            "enum", List.of("CLIENT", "WORK"),
+                            "enum", List.of("CLIENT", "WORK", "DAEMON"),
                             "description",
                                     "Backend to dispatch generic file_* / "
-                                            + "exec_* tools to. CLIENT = Foot "
-                                            + "CLI on the user's host; WORK = "
-                                            + "Brain-server workspace RootDir."),
-                    "dirName", Map.of(
+                                            + "exec_* tools to. CLIENT = the "
+                                            + "session-bound Foot CLI on the "
+                                            + "user's host; WORK = Brain-server "
+                                            + "workspace RootDir; DAEMON = a "
+                                            + "named profile=daemon Foot in this "
+                                            + "project."),
+                    "targetName", Map.of(
                             "type", "string",
                             "description",
-                                    "WORK only: which RootDir to use. Omit "
-                                            + "for the process's temp RootDir "
-                                            + "(lazy-created on first use). "
-                                            + "Ignored when kind=CLIENT.")),
+                                    "Kind-dependent name. WORK: which RootDir "
+                                            + "to use (omit for the process's "
+                                            + "temp RootDir, lazy-created on "
+                                            + "first use). DAEMON: the daemon "
+                                            + "name (required). Ignored when "
+                                            + "kind=CLIENT.")),
             "required", List.of("kind"));
 
     private final WorkTargetService workTargetService;
@@ -106,22 +112,31 @@ public class WorkTargetSetTool implements Tool {
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         Object rawKind = params == null ? null : params.get("kind");
         if (!(rawKind instanceof String kindStr) || kindStr.isBlank()) {
-            throw new ToolException("'kind' is required (CLIENT or WORK)");
+            throw new ToolException("'kind' is required (CLIENT, WORK or DAEMON)");
         }
         WorkTargetKind kind;
         try {
             kind = WorkTargetKind.valueOf(kindStr.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException ex) {
-            throw new ToolException("Unknown kind '" + kindStr + "' — expected CLIENT or WORK");
+            throw new ToolException(
+                    "Unknown kind '" + kindStr + "' — expected CLIENT, WORK or DAEMON");
         }
-        String dirName = null;
-        Object rawDir = params == null ? null : params.get("dirName");
-        if (rawDir instanceof String s && !s.isBlank()) {
-            dirName = s;
+        String targetName = null;
+        Object rawName = params == null ? null : params.get("targetName");
+        if (rawName instanceof String s && !s.isBlank()) {
+            targetName = s;
         }
-        WorkTarget next = kind == WorkTargetKind.WORK
-                ? WorkTarget.work(dirName)
-                : WorkTarget.client();
+        WorkTarget next = switch (kind) {
+            case WORK -> WorkTarget.work(targetName);
+            case CLIENT -> WorkTarget.client();
+            case DAEMON -> {
+                if (targetName == null) {
+                    throw new ToolException(
+                            "'targetName' (the daemon name) is required when kind=DAEMON");
+                }
+                yield WorkTarget.daemon(targetName);
+            }
+        };
 
         ThinkProcessDocument process = thinkProcessService.findById(ctx.processId())
                 .orElseThrow(() -> new ToolException(

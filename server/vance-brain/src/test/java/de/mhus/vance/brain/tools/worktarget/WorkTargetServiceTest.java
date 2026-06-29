@@ -58,7 +58,7 @@ class WorkTargetServiceTest {
         WorkTarget t = service.current(process);
 
         assertThat(t.kind()).isEqualTo(WorkTargetKind.WORK);
-        assertThat(t.dirName()).isNull();
+        assertThat(t.targetName()).isNull();
     }
 
     @Test
@@ -69,18 +69,42 @@ class WorkTargetServiceTest {
         WorkTarget t = service.current(process);
 
         assertThat(t.kind()).isEqualTo(WorkTargetKind.CLIENT);
-        assertThat(t.dirName()).isNull();
+        assertThat(t.targetName()).isNull();
     }
 
     @Test
-    void current_engineParamsWorkWithDirName_returnsWork() {
+    void current_engineParamsWorkWithTargetName_returnsWork() {
         process.setEngineParams(new LinkedHashMap<>(Map.of(
-                WorkTarget.KEY, Map.of("kind", "WORK", "dirName", "tmp52"))));
+                WorkTarget.KEY, Map.of("kind", "WORK", "targetName", "tmp52"))));
 
         WorkTarget t = service.current(process);
 
         assertThat(t.kind()).isEqualTo(WorkTargetKind.WORK);
-        assertThat(t.dirName()).isEqualTo("tmp52");
+        assertThat(t.targetName()).isEqualTo("tmp52");
+    }
+
+    @Test
+    void current_engineParamsLegacyDirName_stillResolves() {
+        // Pre-rename engineParams used the "dirName" sub-key — fromMap
+        // tolerates it so existing processes keep working.
+        process.setEngineParams(new LinkedHashMap<>(Map.of(
+                WorkTarget.KEY, Map.of("kind", "WORK", "dirName", "legacy-root"))));
+
+        WorkTarget t = service.current(process);
+
+        assertThat(t.kind()).isEqualTo(WorkTargetKind.WORK);
+        assertThat(t.targetName()).isEqualTo("legacy-root");
+    }
+
+    @Test
+    void current_engineParamsDaemon_returnsDaemon() {
+        process.setEngineParams(new LinkedHashMap<>(Map.of(
+                WorkTarget.KEY, Map.of("kind", "DAEMON", "targetName", "build-box"))));
+
+        WorkTarget t = service.current(process);
+
+        assertThat(t.kind()).isEqualTo(WorkTargetKind.DAEMON);
+        assertThat(t.targetName()).isEqualTo("build-box");
     }
 
     @Test
@@ -111,11 +135,11 @@ class WorkTargetServiceTest {
         assertThat(persisted.get("otherKey")).isEqualTo("otherValue");
         @SuppressWarnings("unchecked")
         Map<String, Object> wt = (Map<String, Object>) persisted.get(WorkTarget.KEY);
-        assertThat(wt).containsEntry("kind", "WORK").containsEntry("dirName", "main");
+        assertThat(wt).containsEntry("kind", "WORK").containsEntry("targetName", "main");
     }
 
     @Test
-    void set_clientTarget_dropsDirName() {
+    void set_clientTarget_dropsTargetName() {
         when(thinkProcessService.replaceEngineParams(eq(PROC_ID), any())).thenReturn(true);
 
         service.set(PROC_ID, WorkTarget.client());
@@ -125,6 +149,19 @@ class WorkTargetServiceTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> wt = (Map<String, Object>) captor.getValue().get(WorkTarget.KEY);
         assertThat(wt).containsEntry("kind", "CLIENT");
-        assertThat(wt).doesNotContainKey("dirName");
+        assertThat(wt).doesNotContainKey("targetName");
+    }
+
+    @Test
+    void set_daemonTarget_persistsName() {
+        when(thinkProcessService.replaceEngineParams(eq(PROC_ID), any())).thenReturn(true);
+
+        service.set(PROC_ID, WorkTarget.daemon("build-box"));
+
+        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        verify(thinkProcessService).replaceEngineParams(eq(PROC_ID), captor.capture());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> wt = (Map<String, Object>) captor.getValue().get(WorkTarget.KEY);
+        assertThat(wt).containsEntry("kind", "DAEMON").containsEntry("targetName", "build-box");
     }
 }

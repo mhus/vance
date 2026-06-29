@@ -14,12 +14,18 @@ import org.jspecify.annotations.Nullable;
  * <p>Use {@link #toMap()} / {@link #fromMap(Map)} to round-trip
  * through {@code engineParams}.
  *
- * <p>{@code dirName} is only meaningful when {@link #kind()} is
- * {@link WorkTargetKind#WORK}. For {@link WorkTargetKind#CLIENT}
- * the field is ignored — Foot operates against its own configured
- * {@code --workdir}, not against a Brain-side RootDir.
+ * <p>{@code targetName} is a kind-dependent qualifier:
+ * <ul>
+ *   <li>{@link WorkTargetKind#CLIENT} — ignored. Foot operates
+ *       against its own configured {@code --workdir}, not against a
+ *       Brain-side RootDir.</li>
+ *   <li>{@link WorkTargetKind#WORK} — the RootDir name; {@code null}
+ *       resolves to the process's lazy temp RootDir at dispatch time.</li>
+ *   <li>{@link WorkTargetKind#DAEMON} — the (required) name of a
+ *       {@code profile=daemon} Foot registered in the same project.</li>
+ * </ul>
  */
-public record WorkTarget(WorkTargetKind kind, @Nullable String dirName) {
+public record WorkTarget(WorkTargetKind kind, @Nullable String targetName) {
 
     /** {@code engineParams} key under which the persisted Map lives. */
     public static final String KEY = "workTarget";
@@ -27,16 +33,27 @@ public record WorkTarget(WorkTargetKind kind, @Nullable String dirName) {
     /** Sub-key for {@link #kind()} in the persisted Map. */
     public static final String FIELD_KIND = "kind";
 
-    /** Sub-key for {@link #dirName()} in the persisted Map. */
-    public static final String FIELD_DIR_NAME = "dirName";
+    /** Sub-key for {@link #targetName()} in the persisted Map. */
+    public static final String FIELD_TARGET_NAME = "targetName";
+
+    /**
+     * Legacy sub-key (pre-{@code targetName} rename, when WORK was the
+     * only qualifier-bearing kind). Still read by {@link #fromMap(Map)}
+     * so existing {@code engineParams} keep resolving; never written.
+     */
+    static final String LEGACY_FIELD_DIR_NAME = "dirName";
 
     public WorkTarget {
         if (kind == null) {
             throw new IllegalArgumentException("WorkTarget.kind is required");
         }
+        if (kind == WorkTargetKind.DAEMON && (targetName == null || targetName.isBlank())) {
+            throw new IllegalArgumentException(
+                    "WorkTarget.targetName (the daemon name) is required for kind=DAEMON");
+        }
     }
 
-    /** Shortcut for the user-local Foot-CLI surface. */
+    /** Shortcut for the user-local Foot-CLI surface bound to the session. */
     public static WorkTarget client() {
         return new WorkTarget(WorkTargetKind.CLIENT, null);
     }
@@ -49,21 +66,30 @@ public record WorkTarget(WorkTargetKind kind, @Nullable String dirName) {
         return new WorkTarget(WorkTargetKind.WORK, dirName);
     }
 
+    /**
+     * Named {@code profile=daemon} Foot in the same project. Routes the
+     * {@code client_*} backend tools over the daemon's WebSocket.
+     */
+    public static WorkTarget daemon(String daemonName) {
+        return new WorkTarget(WorkTargetKind.DAEMON, daemonName);
+    }
+
     /** Round-trips into the form persisted on {@code engineParams[KEY]}. */
     public Map<String, Object> toMap() {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put(FIELD_KIND, kind.name());
-        if (dirName != null && !dirName.isBlank()) {
-            out.put(FIELD_DIR_NAME, dirName);
+        if (targetName != null && !targetName.isBlank()) {
+            out.put(FIELD_TARGET_NAME, targetName);
         }
         return out;
     }
 
     /**
      * Inverse of {@link #toMap()}. Tolerates legacy lowercase /
-     * mixed-case {@code kind} strings; throws
-     * {@link IllegalArgumentException} on missing or unparseable
-     * input so a malformed recipe / engineParams surfaces cleanly.
+     * mixed-case {@code kind} strings and the pre-rename
+     * {@code dirName} sub-key; throws {@link IllegalArgumentException}
+     * on missing or unparseable input so a malformed recipe /
+     * engineParams surfaces cleanly.
      */
     public static WorkTarget fromMap(@Nullable Map<String, Object> raw) {
         if (raw == null) {
@@ -81,8 +107,10 @@ public record WorkTarget(WorkTargetKind kind, @Nullable String dirName) {
             throw new IllegalArgumentException(
                     "Unknown WorkTargetKind: '" + kindStr + "'", ex);
         }
-        Object rawDir = raw.get(FIELD_DIR_NAME);
-        String dir = rawDir instanceof String s && !s.isBlank() ? s : null;
-        return new WorkTarget(k, dir);
+        Object rawName = raw.containsKey(FIELD_TARGET_NAME)
+                ? raw.get(FIELD_TARGET_NAME)
+                : raw.get(LEGACY_FIELD_DIR_NAME);
+        String name = rawName instanceof String s && !s.isBlank() ? s : null;
+        return new WorkTarget(k, name);
     }
 }

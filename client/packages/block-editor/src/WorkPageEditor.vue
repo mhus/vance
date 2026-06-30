@@ -768,7 +768,7 @@ defineExpose({
       v-if="editor"
       :editor="editor"
       :tippy-options="{ duration: 100, placement: 'top' }"
-      :should-show="() => !suppressFloating"
+      :should-show="() => editor?.isEditable === true && !suppressFloating"
       class="canvas-editor__bubble-menu"
     >
       <button
@@ -807,7 +807,7 @@ defineExpose({
       v-if="editor"
       :editor="editor"
       :tippy-options="{ duration: 100, placement: 'top' }"
-      :should-show="() => !suppressFloating && isImageSelected()"
+      :should-show="() => editor?.isEditable === true && !suppressFloating && isImageSelected()"
       class="canvas-editor__bubble-menu canvas-editor__bubble-menu--image"
     >
       <button

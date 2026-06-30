@@ -148,6 +148,51 @@ public class ChatTerminal {
         emitStyled(styled);
     }
 
+    /**
+     * Draws a single-style box around {@code contentLines} using
+     * box-drawing glyphs — a top border, one line per content line, and a
+     * bottom border. The box width follows the longest content line
+     * (capped at the terminal width). Used for the startup
+     * "sandbox disabled" warning; the same {@code style} is applied to
+     * border and content so the whole block reads as one coloured frame.
+     */
+    public void printBoxed(Verbosity level, AttributedStyle style, List<String> contentLines) {
+        if (!threshold.get().shows(level)) {
+            return;
+        }
+        for (String line : buildBox(contentLines, Math.max(1, width() - 4))) {
+            AttributedString styled = new AttributedStringBuilder()
+                    .style(style)
+                    .append(line)
+                    .toAttributedString();
+            printlnStyled(level, styled);
+        }
+    }
+
+    /**
+     * Pure box-drawing: returns the framed lines (top border, one line
+     * per content line padded to a common inner width, bottom border).
+     * Inner width follows the longest content line, capped at
+     * {@code maxInner}. Package-private so it can be unit-tested without
+     * a terminal.
+     */
+    static List<String> buildBox(List<String> contentLines, int maxInner) {
+        int inner = 0;
+        for (String l : contentLines) {
+            inner = Math.max(inner, l.length());
+        }
+        inner = Math.min(inner, Math.max(1, maxInner));
+        String horiz = "─".repeat(inner + 2);
+        List<String> out = new ArrayList<>(contentLines.size() + 2);
+        out.add("┌" + horiz + "┐");
+        for (String l : contentLines) {
+            String body = l.length() > inner ? l.substring(0, inner) : l;
+            out.add("│ " + body + " ".repeat(inner - body.length()) + " │");
+        }
+        out.add("└" + horiz + "┘");
+        return out;
+    }
+
     public void error(String message) { println(Verbosity.ERROR, message); }
     public void warn(String message)  { println(Verbosity.WARN, message); }
     public void info(String message)  { println(Verbosity.INFO, message); }

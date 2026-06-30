@@ -9,6 +9,7 @@ import de.mhus.vance.foot.chat.PendingAskUserPicker;
 import de.mhus.vance.foot.connection.BrainException;
 import de.mhus.vance.foot.connection.ConnectionService;
 import de.mhus.vance.foot.ide.IdeContextBuilder;
+import de.mhus.vance.foot.permission.PendingPermissionPrompt;
 import de.mhus.vance.foot.session.SessionService;
 import de.mhus.vance.foot.ui.BusyIndicator;
 import de.mhus.vance.foot.ui.ChatTerminal;
@@ -62,6 +63,7 @@ public class ChatInputService {
     private final BusyIndicator busyIndicator;
     private final IdeContextBuilder ideContextBuilder;
     private final PendingAskUserPicker askUserPicker;
+    private final PendingPermissionPrompt pendingPermission;
 
     /**
      * Background executor for async chat submission. Keeps the REPL
@@ -85,6 +87,7 @@ public class ChatInputService {
                             BusyIndicator busyIndicator,
                             IdeContextBuilder ideContextBuilder,
                             PendingAskUserPicker askUserPicker,
+                            PendingPermissionPrompt pendingPermission,
                             AutoAiService autoAi) {
         this.commandService = commandService;
         this.connection = connection;
@@ -94,6 +97,7 @@ public class ChatInputService {
         this.busyIndicator = busyIndicator;
         this.ideContextBuilder = ideContextBuilder;
         this.askUserPicker = askUserPicker;
+        this.pendingPermission = pendingPermission;
         this.autoAi = autoAi;
     }
 
@@ -109,6 +113,11 @@ public class ChatInputService {
         String trimmed = line.trim();
         if (trimmed.isEmpty()) {
             return InputResult.command("", false, "blank input");
+        }
+        // An active sandbox prompt swallows the next line as its answer —
+        // it must never reach the brain or the slash dispatcher.
+        if (pendingPermission.offerAnswer(trimmed)) {
+            return InputResult.command(trimmed, true, null);
         }
         promptGate.enterExclusive();
         try {
@@ -156,6 +165,13 @@ public class ChatInputService {
         if (line == null) return;
         String trimmed = line.trim();
         if (trimmed.isEmpty()) return;
+        // Answer to an active sandbox prompt: handle synchronously on the
+        // REPL input thread. Routing it through the async chat executor
+        // would deadlock — that thread is blocked inside the very chat
+        // round-trip whose tool call is waiting for this answer.
+        if (pendingPermission.offerAnswer(trimmed)) {
+            return;
+        }
         if (trimmed.startsWith("/")) {
             // Slash commands stay synchronous — they're cheap and the
             // REPL expects their feedback before the next prompt.

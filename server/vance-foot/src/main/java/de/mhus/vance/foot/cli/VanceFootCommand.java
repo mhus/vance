@@ -5,17 +5,21 @@ import de.mhus.vance.foot.config.FootConfig;
 import de.mhus.vance.foot.connection.ConnectionService;
 import de.mhus.vance.foot.ide.IdeBridgeService;
 import de.mhus.vance.foot.markdown.MarkdownRenderState;
+import de.mhus.vance.foot.permission.PermissionService;
 import de.mhus.vance.foot.session.AutoBootstrapService;
 import de.mhus.vance.foot.session.SessionResumeFlow;
 import de.mhus.vance.foot.tools.ClientToolService;
 import de.mhus.vance.foot.transfer.FootTransferService;
 import de.mhus.vance.foot.ui.ChatRepl;
 import de.mhus.vance.foot.ui.ChatTerminal;
+import de.mhus.vance.foot.ui.Verbosity;
 import de.mhus.vance.foot.ui.WindowTitleService;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
+import org.jline.utils.AttributedStyle;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import picocli.CommandLine.Command;
@@ -98,6 +102,12 @@ public class VanceFootCommand implements Callable<Integer> {
             description = "Refuse local-resource integration (ClientTools, agent doc, "
                     + "file transfer, IDE bridge). Use for web-style restricted clients.")
     boolean noTools;
+
+    @Option(names = "--no-sandbox",
+            description = "Disable the file/exec permission sandbox: all brain-issued "
+                    + "file and exec commands run unrestricted. Overrides the "
+                    + "permissions.yaml sandbox switch for this run.")
+    boolean noSandbox;
 
     @Option(names = "--no-tool-output",
             description = "Suppress the cosmetic 'tool used' block in the chat output. "
@@ -205,6 +215,7 @@ public class VanceFootCommand implements Callable<Integer> {
     private final SessionResumeFlow resumeFlow;
     private final WindowTitleService windowTitle;
     private final MarkdownRenderState markdownState;
+    private final PermissionService permissions;
 
     public VanceFootCommand(ChatRepl repl,
                             ConnectionService connection,
@@ -216,7 +227,8 @@ public class VanceFootCommand implements Callable<Integer> {
                             FootTransferService transfers,
                             SessionResumeFlow resumeFlow,
                             WindowTitleService windowTitle,
-                            MarkdownRenderState markdownState) {
+                            MarkdownRenderState markdownState,
+                            PermissionService permissions) {
         this.repl = repl;
         this.connection = connection;
         this.terminal = terminal;
@@ -228,6 +240,7 @@ public class VanceFootCommand implements Callable<Integer> {
         this.resumeFlow = resumeFlow;
         this.windowTitle = windowTitle;
         this.markdownState = markdownState;
+        this.permissions = permissions;
     }
 
     @Override
@@ -296,6 +309,9 @@ public class VanceFootCommand implements Callable<Integer> {
             agentDoc.setSuppressed(true);
             transfers.setSuppressed(true);
         }
+        if (noSandbox) {
+            permissions.disableSandbox();
+        }
         if (noToolOutput) {
             config.getUi().getToolOutput().setEnabled(false);
         }
@@ -342,6 +358,13 @@ public class VanceFootCommand implements Callable<Integer> {
                 }
             }
         }
+        if (!permissions.isSandboxEnabled()) {
+            terminal.printBoxed(
+                    Verbosity.WARN,
+                    AttributedStyle.DEFAULT.foreground(AttributedStyle.RED).bold(),
+                    List.of("⚠  SANDBOX DISABLED — all file & exec commands run unrestricted."));
+        }
+
         if (noUi) {
             terminal.info("vance-foot running headless — Ctrl-C to exit.");
             CountDownLatch park = new CountDownLatch(1);

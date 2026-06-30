@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.tools.exec;
 
 import lombok.Data;
+import org.jspecify.annotations.Nullable;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
@@ -33,4 +34,24 @@ public class ExecProperties {
      * {@code work_exec_tail} on demand.
      */
     private int completionTailLines = 40;
+
+    /**
+     * Opt-in OS-isolation for {@code work_exec_run}. The exec gate already
+     * confines <em>file tools</em> to the RootDir, but a shell command can
+     * still read arbitrary paths; isolation wraps the command in a
+     * sandboxing tool so it physically only sees its RootDir. Off by default.
+     */
+    private Isolation isolation = new Isolation();
+
+    /**
+     * {@code mode: custom} wraps the command in {@link #wrapper} (a
+     * whitespace-separated argv template with {@code {workdir}} = the job's
+     * RootDir cwd and {@code {cmd}} = the command, kept as one argv element).
+     * {@code mode: none} (default) runs the command directly under the shell.
+     */
+    @Data
+    public static class Isolation {
+        private String mode = "none";
+        private @Nullable String wrapper;
+    }
 }

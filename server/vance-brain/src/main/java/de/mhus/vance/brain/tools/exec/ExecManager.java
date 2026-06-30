@@ -467,9 +467,7 @@ public class ExecManager {
         try (BufferedWriter stdoutW = openLog(job.stdoutFile());
              BufferedWriter stderrW = openLog(job.stderrFile())) {
 
-            ProcessBuilder pb = isWindows()
-                    ? new ProcessBuilder("cmd.exe", "/c", job.command())
-                    : new ProcessBuilder("/bin/sh", "-c", job.command());
+            ProcessBuilder pb = new ProcessBuilder(buildArgv(job.command(), cwd));
             pb.directory(cwd.toFile());
             pb.redirectErrorStream(false);
             Map<String, String> sealedEnv = job.env();
@@ -736,6 +734,25 @@ public class ExecManager {
         if (projectId == null || projectId.isBlank()) {
             throw new ExecException("Exec tools require a project scope");
         }
+    }
+
+    /**
+     * Builds the process argv for {@code command}. With exec-isolation
+     * enabled the command is wrapped in the configured tool (the job's
+     * RootDir {@code cwd} fills {@code {workdir}}); otherwise it runs under
+     * the platform shell.
+     */
+    private List<String> buildArgv(String command, Path cwd) {
+        ExecProperties.Isolation iso = properties.getIsolation();
+        if (ExecIsolation.enabled(iso)) {
+            List<String> argv = ExecIsolation.wrap(iso.getWrapper(), cwd.toString(), command);
+            log.info("exec isolation: wrapping work_exec command in '{}'",
+                    argv.isEmpty() ? "?" : argv.get(0));
+            return argv;
+        }
+        return isWindows()
+                ? List.of("cmd.exe", "/c", command)
+                : List.of("/bin/sh", "-c", command);
     }
 
     private static boolean isWindows() {

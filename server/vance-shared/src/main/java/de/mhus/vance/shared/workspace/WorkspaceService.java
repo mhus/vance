@@ -56,6 +56,7 @@ public class WorkspaceService {
     private final Map<String, WorkspaceContentHandler> handlersByType;
     private final ObjectMapper objectMapper;
     private final WorkspaceSnapshotRepository snapshotRepository;
+    private final WorkspaceRootService rootService;
 
     /** Lazy temp-RootDir per {@code (tenantId, projectId, creatorProcessId)} triple — see §7.3. */
     private final Map<String, String> tempDirCache = new ConcurrentHashMap<>();
@@ -65,9 +66,11 @@ public class WorkspaceService {
 
     public WorkspaceService(WorkspaceProperties properties,
                             List<WorkspaceContentHandler> handlers,
-                            WorkspaceSnapshotRepository snapshotRepository) {
+                            WorkspaceSnapshotRepository snapshotRepository,
+                            WorkspaceRootService rootService) {
         this.properties = properties;
         this.snapshotRepository = snapshotRepository;
+        this.rootService = rootService;
         Map<String, WorkspaceContentHandler> map = new HashMap<>();
         for (WorkspaceContentHandler h : handlers) {
             WorkspaceContentHandler prev = map.put(h.type(), h);
@@ -595,23 +598,16 @@ public class WorkspaceService {
     // Path operations within a RootDir
     // ---------------------------------------------------------------------
 
-    /** Sandboxed path resolution; throws on escape attempts or unknown RootDir. */
+    /**
+     * Sandboxed path resolution; throws on escape attempts or unknown
+     * RootDir. Containment (syntactic {@code ..} collapse + symlink
+     * escape) is enforced centrally by {@link WorkspaceRootService}.
+     */
     public Path resolve(String tenantId, String projectId, String dirName, String relativePath) {
-        if (StringUtils.isBlank(relativePath)) {
-            throw new WorkspaceException("Path is required");
-        }
-        if (relativePath.indexOf('\0') >= 0) {
-            throw new WorkspaceException("Path contains NUL byte");
-        }
         RootDirHandle handle = getRootDir(tenantId, projectId, dirName)
                 .orElseThrow(() -> new WorkspaceException(
                         "Unknown RootDir: " + tenantId + "/" + projectId + "/" + dirName));
-        Path base = handle.getPath();
-        Path resolved = base.resolve(relativePath).normalize();
-        if (!resolved.startsWith(base)) {
-            throw new WorkspaceException("Path escapes RootDir: '" + relativePath + "'");
-        }
-        return resolved;
+        return rootService.resolveWithin(handle.getPath(), relativePath);
     }
 
     /**

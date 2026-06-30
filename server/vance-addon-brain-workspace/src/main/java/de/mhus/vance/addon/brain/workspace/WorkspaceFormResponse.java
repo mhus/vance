@@ -6,18 +6,17 @@ import java.util.Map;
 
 /**
  * Response body for {@code GET /brain/{tenant}/addon/workspace/form}.
- * Carries the edit-config's field schema, the target data file's
- * current values (flat {@code fieldName -> value} map) and the resolved
- * target path. Consumed by the {@code vance-form} block's editor view.
+ * Carries the data document's {@code $meta.form} field schema, the
+ * {@code single} flag and the current {@code items} records, plus the
+ * document path. Consumed by the {@code vance-form} block's editor view.
  *
  * <p>Not {@code @GenerateTypeScript}-annotated on purpose — the client
  * imports {@link FormFieldDto} from {@code @vance/generated} and defines
  * the slim response shape inline, avoiding generator handling of the
- * untyped {@code values} map.
+ * untyped record maps.
  */
 public record WorkspaceFormResponse(
         List<FormFieldDto> fields,
-        String mode,
-        Map<String, Object> values,
+        boolean single,
         List<Map<String, Object>> records,
         String target) {}

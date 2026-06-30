@@ -1,14 +1,13 @@
 <script setup lang="ts">
 /**
- * Form picker — lists app-local edit-config documents
- * ({@code $meta.kind: edit-form}) so the user can drop a
- * {@code vance-form} block bound to one. Scoped to the current app
- * folder via the {@code pathPrefix} search param; the result is
- * client-side filtered to the {@code edit-form} kind.
+ * Form picker — lists app-local data documents the typed form can edit
+ * (kinds {@code records} / {@code list} / {@code data}). The picked
+ * document's {@code $meta.form} carries (or will carry, via design mode)
+ * the field schema. Scoped to the current app folder via the
+ * {@code pathPrefix} search param.
  *
  * On pick it emits a current-project {@code vance:} URI
- * ({@code vance:/<path>?kind=edit-form}) — the same portable form the
- * embed picker uses.
+ * ({@code vance:/<path>?kind=records}).
  */
 import { onMounted, ref, watch } from 'vue';
 import { brainFetch } from '@vance/shared';
@@ -30,6 +29,9 @@ interface DocSummary {
   title: string | null;
   mimeType: string | null;
 }
+
+// Data-holding kinds a typed form can edit (one-file model, §13).
+const FORM_KINDS = new Set(['records', 'list', 'data']);
 
 const query = ref('');
 const results = ref<DocSummary[]>([]);
@@ -53,7 +55,7 @@ async function search(q: string) {
       `addon/workspace/documents/search?${params}`,
     );
     results.value = (resp.items ?? []).filter(
-      (d) => (d.kind ?? '').toLowerCase() === 'edit-form',
+      (d) => FORM_KINDS.has((d.kind ?? '').toLowerCase()),
     );
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Search failed';
@@ -72,7 +74,8 @@ function scheduleSearch() {
 }
 
 function pick(doc: DocSummary) {
-  const uri = `vance:/${encodeURI(doc.path)}?kind=edit-form`;
+  const kind = (doc.kind ?? 'records').toLowerCase();
+  const uri = `vance:/${encodeURI(doc.path)}?kind=${encodeURIComponent(kind)}`;
   emit('pick', uri);
 }
 
@@ -95,7 +98,7 @@ async function createForm() {
       `addon/workspace/form/create?${params}`,
       { body: { name } },
     );
-    emit('pick', `vance:/${encodeURI(resp.configPath)}?kind=edit-form`);
+    emit('pick', `vance:/${encodeURI(resp.configPath)}?kind=records`);
   } catch (e) {
     createError.value = e instanceof Error ? e.message : 'Create failed';
   } finally {
@@ -125,7 +128,7 @@ watch(() => [props.projectId, props.folder], () => search(query.value.trim()));
           v-model="query"
           type="search"
           class="form-picker__search-input"
-          placeholder="Search edit-config forms in this app…"
+          placeholder="Search data documents in this app…"
           autofocus
           @input="scheduleSearch"
           @keydown.escape="close"
@@ -135,10 +138,10 @@ watch(() => [props.projectId, props.folder], () => search(query.value.trim()));
       <div v-if="error" class="form-picker__error">{{ error }}</div>
       <div v-if="loading" class="form-picker__loading">Suche…</div>
       <div v-else-if="results.length === 0" class="form-picker__empty">
-        Keine edit-config-Formulare in dieser App gefunden.
+        Keine Daten-Dokumente in dieser App gefunden.
         <div class="form-picker__hint">
-          Lege ein Dokument mit <code>$meta.kind: edit-form</code> an
-          (Felder unter <code>form.fields</code>, Ziel unter <code>target</code>).
+          Lege unten ein neues an — es entsteht ein <code>kind: records</code>
+          Dokument mit Schema unter <code>$meta.form.fields</code>.
         </div>
       </div>
       <div v-else class="form-picker__list">

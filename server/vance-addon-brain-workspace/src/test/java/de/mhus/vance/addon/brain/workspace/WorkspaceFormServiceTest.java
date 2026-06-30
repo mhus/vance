@@ -40,14 +40,12 @@ class WorkspaceFormServiceTest {
 
     @Test
     void parseFields_validSchema_returnsTypedFields() {
-        Map<String, Object> config = Map.of(
-                "target", "inputs.yaml",
-                "form", Map.of("fields", List.of(
-                        Map.of("name", "title", "type", "string", "required", true),
-                        Map.of("name", "tags", "type", "multi_select"))));
+        List<Object> fieldList = List.of(
+                Map.of("name", "title", "type", "string", "required", true),
+                Map.of("name", "tags", "type", "multi_select"));
 
         List<FormFieldDto> fields =
-                WorkspaceFormService.parseFields(objectMapper, config, "x/edit-config.yaml");
+                WorkspaceFormService.parseFieldsFromList(objectMapper, fieldList, "x/team.yaml");
 
         assertThat(fields).hasSize(2);
         assertThat(fields.get(0).getName()).isEqualTo("title");
@@ -58,12 +56,8 @@ class WorkspaceFormServiceTest {
     }
 
     @Test
-    void parseFields_noFormBlock_returnsEmptyList() {
-        Map<String, Object> config = Map.of("target", "inputs.yaml");
-
-        List<FormFieldDto> fields =
-                WorkspaceFormService.parseFields(objectMapper, config, "x/edit-config.yaml");
-
-        assertThat(fields).isEmpty();
+    void parseFields_noFieldList_returnsEmptyList() {
+        assertThat(WorkspaceFormService.parseFieldsFromList(objectMapper, null, "x/team.yaml"))
+                .isEmpty();
     }
 }

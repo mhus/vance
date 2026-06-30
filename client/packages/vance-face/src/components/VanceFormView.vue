@@ -1,19 +1,18 @@
 <script setup lang="ts">
 /**
- * Editable form for a {@code vance-form} block. Two modes, driven by the
- * injected {@code vance:page-mode} ref (provided by the workspace shell):
+ * Editable form for a {@code vance-form} block. The block's {@code config}
+ * is a {@code vance:} URI to a DATA document (`kind: records`) that carries
+ * its own typed schema in {@code $meta.form.fields} plus an optional
+ * {@code $meta.onSave} recompute hook (one-file model, §13). Data lives in
+ * the document's {@code items}.
  *
- * - **work** (default): renders {@link FormFields} for data entry with
- *   explicit Save / Cancel; Save writes the target data file and runs
- *   the edit-config's onSave script (server-side).
- * - **design**: a field builder — add / remove / reorder fields and edit
- *   name / type / label / required (+ choices for select kinds). Save
- *   persists the schema back into the edit-config's {@code form.fields}.
+ * Two work-mode shapes, driven by {@code $meta.form.single}:
+ * - **single**: one record, rendered as a single form.
+ * - **records** (default): a collection, rendered as cards with Add/Remove.
  *
- * Provided to the block-editor as {@code vance:form-component} so the
- * editor stays decoupled from the form-engine + REST.
- *
- * Reactive-data, Schritt 3–5 (planning/workspace-reactive-data.md).
+ * Design mode (driven by the injected {@code vance:page-mode} ref) shows a
+ * field builder + a "single" toggle; Save persists the schema back into
+ * {@code $meta.form}.
  */
 import { computed, inject, onMounted, ref, type Ref } from 'vue';
 import { brainFetch } from '@vance/shared';
@@ -24,12 +23,9 @@ import { useDocumentRefStore } from '@/document/documentRefStore';
 
 const props = defineProps<{ config: string }>();
 
-type FormMode = 'single' | 'records';
-
 interface FormResponse {
   fields: FormFieldDto[];
-  mode: FormMode;
-  values: Record<string, unknown>;
+  single: boolean;
   records: Record<string, unknown>[];
   target: string;
 }
@@ -39,9 +35,7 @@ const pageMode = inject<Ref<'design' | 'work'>>('vance:page-mode', ref('work'));
 const store = useDocumentRefStore();
 
 const fields = ref<FormFieldDto[]>([]);
-const mode = ref<FormMode>('single');
-const values = ref<Record<string, FormValue>>({});
-const baseline = ref<Record<string, FormValue>>({});
+const single = ref(false);
 const records = ref<Record<string, FormValue>[]>([]);
 const baselineRecords = ref<Record<string, FormValue>[]>([]);
 const target = ref<string>('');
@@ -51,20 +45,22 @@ const saving = ref(false);
 const error = ref<string | null>(null);
 const savedAt = ref(false);
 
-const dirty = computed(() =>
-  mode.value === 'records'
-    ? JSON.stringify(records.value) !== JSON.stringify(baselineRecords.value)
-    : JSON.stringify(values.value) !== JSON.stringify(baseline.value),
+const dirty = computed(
+  () => JSON.stringify(records.value) !== JSON.stringify(baselineRecords.value),
 );
+
+// Single mode edits records[0]; bridge it as one form value object.
+const singleRecord = computed<Record<string, FormValue>>({
+  get: () => records.value[0] ?? {},
+  set: (v) => { records.value = [v]; },
+});
 
 function addRecord() { records.value.push({}); }
 function removeRecord(i: number) { records.value.splice(i, 1); }
 
-const FIELD_TYPES = [
-  'string', 'textarea', 'integer', 'boolean', 'select', 'multi_select',
-];
+// ── Design builder state ──────────────────────────────────────────
+const FIELD_TYPES = ['string', 'textarea', 'integer', 'boolean', 'select', 'multi_select'];
 
-/** Editable mirror of a FormFieldDto for the design builder. */
 interface DesignField {
   name: string;
   type: string;
@@ -74,7 +70,7 @@ interface DesignField {
 }
 
 const designFields = ref<DesignField[]>([]);
-const designMode = ref<FormMode>('single');
+const designSingle = ref(false);
 const schemaSaving = ref(false);
 const schemaSavedAt = ref(false);
 
@@ -117,6 +113,7 @@ function fromDesign(d: DesignField): FormFieldDto {
 
 function syncDesignFromFields() {
   designFields.value = fields.value.map(toDesign);
+  designSingle.value = single.value;
 }
 
 function addField() {
@@ -136,10 +133,11 @@ function moveField(i: number, delta: number) {
   [arr[i], arr[j]] = [arr[j], arr[i]];
 }
 
+// ── Load / save ───────────────────────────────────────────────────
 async function resolveProject(): Promise<{ projectId: string; path: string }> {
   const parsed = parseVanceUri(props.config, { text: '', imageStyle: false });
   const projectId = parsed.project ?? (await store.waitForCurrentProject());
-  if (!projectId) throw new Error('No project context to resolve form config');
+  if (!projectId) throw new Error('No project context to resolve form document');
   return { projectId, path: parsed.path };
 }
 
@@ -170,24 +168,18 @@ async function load() {
   error.value = null;
   try {
     const { projectId, path } = await resolveProject();
-    const params = new URLSearchParams({ projectId, config: path });
+    const params = new URLSearchParams({ projectId, doc: path });
     const resp = await brainFetch<FormResponse>('GET', `addon/workspace/form?${params}`);
     fields.value = resp.fields ?? [];
+    single.value = !!resp.single;
     target.value = resp.target ?? '';
-    mode.value = resp.mode === 'records' ? 'records' : 'single';
-    designMode.value = mode.value;
-    if (mode.value === 'records') {
-      const recs = (resp.records ?? []).map((r) => normalise(r));
-      records.value = recs;
-      baselineRecords.value = JSON.parse(JSON.stringify(recs));
-    } else {
-      const v = normalise(resp.values ?? {});
-      values.value = v;
-      baseline.value = JSON.parse(JSON.stringify(v));
-    }
+    const recs = (resp.records ?? []).map((r) => normalise(r));
+    if (single.value && recs.length === 0) recs.push({});
+    records.value = recs;
+    baselineRecords.value = JSON.parse(JSON.stringify(recs));
     syncDesignFromFields();
   } catch (e) {
-    if (e instanceof VanceUriParseError) error.value = `Invalid form config URI: ${props.config}`;
+    if (e instanceof VanceUriParseError) error.value = `Invalid form document URI: ${props.config}`;
     else error.value = e instanceof Error ? e.message : 'Failed to load form';
   } finally {
     loading.value = false;
@@ -200,16 +192,11 @@ async function save() {
   savedAt.value = false;
   try {
     const { projectId, path } = await resolveProject();
-    const params = new URLSearchParams({ projectId, config: path });
-    const body = mode.value === 'records'
-      ? { records: records.value }
-      : { values: values.value };
-    await brainFetch<void>('POST', `addon/workspace/form/save?${params}`, { body });
-    if (mode.value === 'records') {
-      baselineRecords.value = JSON.parse(JSON.stringify(records.value));
-    } else {
-      baseline.value = JSON.parse(JSON.stringify(values.value));
-    }
+    const params = new URLSearchParams({ projectId, doc: path });
+    await brainFetch<void>('POST', `addon/workspace/form/save?${params}`, {
+      body: { records: records.value },
+    });
+    baselineRecords.value = JSON.parse(JSON.stringify(records.value));
     savedAt.value = true;
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Save failed';
@@ -219,11 +206,8 @@ async function save() {
 }
 
 function cancel() {
-  if (mode.value === 'records') {
-    records.value = JSON.parse(JSON.stringify(baselineRecords.value));
-  } else {
-    values.value = JSON.parse(JSON.stringify(baseline.value));
-  }
+  records.value = JSON.parse(JSON.stringify(baselineRecords.value));
+  if (single.value && records.value.length === 0) records.value = [{}];
   savedAt.value = false;
 }
 
@@ -233,15 +217,13 @@ async function saveSchema() {
   schemaSavedAt.value = false;
   try {
     const { projectId, path } = await resolveProject();
-    const params = new URLSearchParams({ projectId, config: path });
-    const built = designFields.value
-      .filter((d) => d.name.trim())
-      .map(fromDesign);
+    const params = new URLSearchParams({ projectId, doc: path });
+    const built = designFields.value.filter((d) => d.name.trim()).map(fromDesign);
     await brainFetch<void>('POST', `addon/workspace/form/schema?${params}`, {
-      body: { fields: built, mode: designMode.value },
+      body: { fields: built, single: designSingle.value },
     });
     schemaSavedAt.value = true;
-    await load(); // refresh so work mode reflects the new schema
+    await load();
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Schema save failed';
   } finally {
@@ -261,15 +243,12 @@ onMounted(load);
       <!-- DESIGN MODE: field builder -->
       <template v-if="pageMode === 'design'">
         <div class="vance-form-view__design-hint">
-          Design-Modus — Felder bearbeiten. Datendatei: <code>{{ target }}</code>
+          Design-Modus — Felder bearbeiten. Dokument: <code>{{ target }}</code>
         </div>
         <div class="vance-form-view__mode-row">
-          <span class="vance-form-view__mode-label">Form type:</span>
           <label class="vance-form-view__req">
-            <input v-model="designMode" type="radio" value="single" /> Single (ein Datensatz)
-          </label>
-          <label class="vance-form-view__req">
-            <input v-model="designMode" type="radio" value="records" /> Records (Karten-Liste)
+            <input v-model="designSingle" type="checkbox" />
+            Single record (eine Form statt Karten-Liste)
           </label>
         </div>
         <div
@@ -322,8 +301,10 @@ onMounted(load);
 
       <!-- WORK MODE: data entry -->
       <template v-else>
-        <!-- records: one card per entry -->
-        <template v-if="mode === 'records'">
+        <template v-if="single">
+          <FormFields v-model="singleRecord" :fields="fields" :disabled="saving" />
+        </template>
+        <template v-else>
           <div
             v-for="(rec, i) in records"
             :key="i"
@@ -353,8 +334,6 @@ onMounted(load);
             @click="addRecord"
           >+ Add record</button>
         </template>
-        <!-- single: one record -->
-        <FormFields v-else v-model="values" :fields="fields" :disabled="saving" />
         <div class="vance-form-view__footer">
           <span v-if="savedAt && !dirty" class="vance-form-view__saved">Gespeichert ✓</span>
           <span v-else-if="dirty" class="vance-form-view__dirty">Ungespeicherte Änderungen</span>
@@ -417,7 +396,6 @@ onMounted(load);
   border-bottom: 1px solid oklch(var(--bc) / 0.12);
   font-size: 0.82rem;
 }
-.vance-form-view__mode-label { color: oklch(var(--bc) / 0.7); }
 .vance-form-view__record-card {
   border: 1px solid oklch(var(--bc) / 0.15);
   border-radius: 0.4rem;

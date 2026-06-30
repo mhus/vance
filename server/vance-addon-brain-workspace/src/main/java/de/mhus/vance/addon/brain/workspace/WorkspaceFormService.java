@@ -21,28 +21,42 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.Yaml;
 
 /**
- * Backend for the {@code vance-form} block (reactive-data, Schritt 3).
+ * Backend for the {@code vance-form} block (reactive-data).
  *
- * <p>An <em>edit-config</em> document ({@code $meta.kind: edit-form})
- * declares a {@link FormFieldDto} schema under {@code form.fields} plus
- * a {@code target} data file. This service loads the schema + the
- * target's current values for the editor, and writes the submitted
- * values back into the target as a flat {@code fieldName: value} YAML
- * map (the agreed data-mapping shape).
+ * <p><b>One-file model (Umbau 2026-06-30, §13):</b> a {@code vance-form}
+ * block points directly at a <em>data document</em> ({@code kind: records})
+ * that carries everything in its {@code $meta}:
  *
- * <p>Datenhoheit: all YAML parsing / serialisation lives here, never
- * in the client. The {@code onSave} script run + rebuild are wired in a
- * later step ({@code planning/workspace-reactive-data.md} §4 / Schritt
- * 4); this service only persists the data file.
+ * <pre>
+ * $meta:
+ *   kind: records
+ *   form:
+ *     single: false           # true = one record, form-style
+ *     fields: [ &lt;FormFieldDto&gt; … ]
+ *   onSave:
+ *     runScript: update.js     # optional recompute hook
+ * schema: [name, role]         # native RecordsView columns (synced from fields)
+ * items:                       # the data
+ *   - { name: Alice, role: admin }
+ * </pre>
+ *
+ * The same document renders natively as a table (RecordsView) when
+ * embedded, and as a typed form (FormFields, reading {@code $meta.form})
+ * via the {@code vance-form} block. There is no separate edit-config.
+ *
+ * <p>Datenhoheit: all YAML parsing / serialisation lives here, never in
+ * the client.
  */
 @Service
 @RequiredArgsConstructor
@@ -56,134 +70,164 @@ public class WorkspaceFormService {
 
     /** Wall-clock cap for an onSave recompute script. */
     private static final Duration ON_SAVE_TIMEOUT = Duration.ofSeconds(30);
+    private static final String FORM_KIND = "records";
 
     /**
-     * Schema + current data + resolved target path for one form.
-     * {@code mode} is {@code "single"} (one record → flat {@code values}
-     * map) or {@code "records"} (a collection → {@code records} list);
-     * the unused side is empty.
+     * Schema + current records + form flags for one data document.
+     * {@code single} = the form edits a single record (form-style) rather
+     * than a card collection; data is still stored under {@code items}.
      */
     public record LoadedForm(
             List<FormFieldDto> fields,
-            String mode,
-            Map<String, Object> values,
+            boolean single,
             List<Map<String, Object>> records,
             String target) {}
 
-    private static final String MODE_RECORDS = "records";
-    private static final String MODE_SINGLE = "single";
-
     /**
-     * Resolve the edit-config at {@code configPath}, returning its field
-     * schema and the target data file's current values.
+     * Read the data document at {@code docPath}, returning its field
+     * schema ({@code $meta.form.fields}), the {@code single} flag and the
+     * current {@code items} records.
      */
-    public LoadedForm loadForm(String tenantId, String projectId, String configPath) {
-        Map<String, Object> config = readYamlMap(tenantId, projectId, configPath,
-                "edit-config '" + configPath + "' not found");
+    @SuppressWarnings("unchecked")
+    public LoadedForm loadForm(String tenantId, String projectId, String docPath) {
+        Map<String, Object> doc = readYamlMap(tenantId, projectId, docPath,
+                "form document '" + docPath + "' not found");
+        Map<String, Object> form = formMap(doc);
+        List<FormFieldDto> fields = parseFieldsFromList(objectMapper, form.get("fields"), docPath);
+        boolean single = boolOf(form.get("single"));
 
-        String target = stringValue(config.get("target"));
-        if (target == null || target.isBlank()) {
-            throw new ToolException("edit-config '" + configPath + "' has no 'target'");
-        }
-        String targetPath = resolveRelative(configPath, target);
-        String mode = modeOf(config);
-
-        List<FormFieldDto> fields = parseFields(objectMapper, config, configPath);
-
-        Map<String, Object> values = new LinkedHashMap<>();
         List<Map<String, Object>> records = new ArrayList<>();
-        Optional<DocumentDocument> targetDoc =
-                documentService.findByPath(tenantId, projectId, targetPath);
-        if (targetDoc.isPresent()) {
-            Object loaded = loadYamlRaw(readContent(targetDoc.get()));
-            if (MODE_RECORDS.equals(mode)) {
-                // Records mode: target is a YAML list of flat maps.
-                if (loaded instanceof List<?> list) {
-                    for (Object o : list) {
-                        if (o instanceof Map<?, ?> m) records.add(toStringMap(m));
-                    }
-                }
-            } else if (loaded instanceof Map<?, ?> m) {
-                // Single mode: flat fieldName -> value map. Drop any
-                // accidental $meta so it never leaks into the form values.
-                values.putAll(toStringMap(m));
-                values.remove("$meta");
+        Object items = doc.get("items");
+        if (items instanceof List<?> list) {
+            for (Object o : list) {
+                if (o instanceof Map<?, ?> m) records.add(toStringMap(m));
             }
         }
-        return new LoadedForm(fields, mode, values, records, targetPath);
-    }
-
-    private static String modeOf(Map<String, Object> config) {
-        String mode = config.get("mode") == null ? null : config.get("mode").toString();
-        return MODE_RECORDS.equals(mode) ? MODE_RECORDS : MODE_SINGLE;
+        return new LoadedForm(fields, single, records, docPath);
     }
 
     /**
-     * Write the submitted {@code values} into the edit-config's target
-     * as a flat {@code fieldName: value} YAML map. Creates the target
-     * document if it does not exist yet, otherwise replaces its content.
+     * Write the submitted {@code records} into the data document's
+     * {@code items}, syncing the native {@code schema} column list and
+     * preserving {@code $meta} (form + onSave). Then run the onSave
+     * recompute hook synchronously.
      */
     public void saveForm(
-            String tenantId, String projectId, String configPath,
-            @org.jspecify.annotations.Nullable Map<String, Object> values,
-            @org.jspecify.annotations.Nullable List<Map<String, Object>> records,
-            String editorId) {
-        Map<String, Object> config = readYamlMap(tenantId, projectId, configPath,
-                "edit-config '" + configPath + "' not found");
-        String target = stringValue(config.get("target"));
-        if (target == null || target.isBlank()) {
-            throw new ToolException("edit-config '" + configPath + "' has no 'target'");
-        }
-        String targetPath = resolveRelative(configPath, target);
+            String tenantId, String projectId, String docPath,
+            @Nullable List<Map<String, Object>> records, String editorId) {
+        DocumentDocument docDoc = documentService.findByPath(tenantId, projectId, docPath)
+                .orElseThrow(() -> new ToolException("form document '" + docPath + "' not found"));
+        Map<String, Object> doc = loadYaml(readContent(docDoc));
 
-        // Records mode persists a YAML list; single mode a flat map.
-        Object data = MODE_RECORDS.equals(modeOf(config))
-                ? (records != null ? records : new ArrayList<>())
-                : (values != null ? values : new LinkedHashMap<>());
-        String yaml = dumpYaml(data);
-        byte[] bytes = yaml.getBytes(StandardCharsets.UTF_8);
+        List<Map<String, Object>> rows = records != null ? records : new ArrayList<>();
+        doc.put("items", rows);
+        doc.put("schema", schemaNames(formMap(doc)));
 
-        Optional<DocumentDocument> existing =
-                documentService.findByPath(tenantId, projectId, targetPath);
-        if (existing.isPresent()) {
-            documentService.replaceContent(
-                    existing.get().getId(),
-                    new ByteArrayInputStream(bytes),
-                    DocumentService.mimeFromPath(targetPath),
-                    editorId);
-        } else {
-            documentService.createText(
-                    tenantId, projectId, targetPath, null, null, yaml, editorId);
-        }
-        log.info("WorkspaceFormService.saveForm tenant='{}' config='{}' target='{}' mode='{}'",
-                tenantId, configPath, targetPath, modeOf(config));
+        writeDoc(docDoc.getId(), docPath, doc, editorId);
+        log.info("WorkspaceFormService.saveForm tenant='{}' doc='{}' records={}",
+                tenantId, docPath, rows.size());
 
-        runOnSave(tenantId, projectId, configPath, config, editorId);
+        runOnSave(tenantId, projectId, docPath, doc, editorId);
     }
 
     /**
-     * Run the edit-config's {@code onSave.runScript} synchronously after
-     * the data file was written (Schritt 4, sync variant). The script
-     * reads the freshly-written target via {@code vance.documents.*} and
-     * recomputes derived files; their writes fan out to the client via
-     * the documents live-push. A script failure surfaces as a
-     * {@link ToolException} (→ HTTP 500), the data file stays written.
-     *
-     * <p>{@code onSave.session} is accepted but informational in v1:
-     * {@code vance.documents.*} and {@code vance.llm.*} both operate on
-     * the tenant/project scope and need no session. A dedicated per-form
-     * system session is a later refinement.
+     * Replace the data document's {@code $meta.form.fields} + {@code single}
+     * flag (design-mode form builder) and re-sync the native {@code schema}
+     * column list. {@code items} and {@code onSave} are preserved.
+     */
+    @SuppressWarnings("unchecked")
+    public void saveSchema(
+            String tenantId, String projectId, String docPath,
+            List<FormFieldDto> fields, boolean single, String editorId) {
+        DocumentDocument docDoc = documentService.findByPath(tenantId, projectId, docPath)
+                .orElseThrow(() -> new ToolException("form document '" + docPath + "' not found"));
+        Map<String, Object> doc = loadYaml(readContent(docDoc));
+
+        List<Map<String, Object>> fieldMaps = objectMapper.convertValue(
+                fields != null ? fields : List.of(),
+                new TypeReference<List<Map<String, Object>>>() {});
+
+        Map<String, Object> meta = metaMap(doc);
+        meta.put("kind", FORM_KIND);
+        Map<String, Object> form = formMap(doc);
+        form.put("fields", fieldMaps);
+        form.put("single", single);
+        meta.put("form", form);
+        doc.put("$meta", meta);
+        doc.put("schema", namesOf(fieldMaps));
+        doc.putIfAbsent("items", new ArrayList<>());
+
+        writeDoc(docDoc.getId(), docPath, doc, editorId);
+        log.info("WorkspaceFormService.saveSchema tenant='{}' doc='{}' fields={} single={}",
+                tenantId, docPath, fieldMaps.size(), single);
+    }
+
+    /**
+     * Create a new form data document ({@code <folder>/<slug>.yaml},
+     * {@code kind: records}) with one starter field and an empty
+     * {@code items} list. Returns the created path so the caller can drop
+     * a {@code vance-form} block referencing it.
+     */
+    public String createForm(
+            String tenantId, String projectId, String folder,
+            String name, @Nullable String title, String editorId) {
+        String slug = slugify(name);
+        if (slug.isBlank()) {
+            throw new ToolException("form name must not be empty");
+        }
+        String base = folder == null ? "" : folder.strip();
+        if (base.endsWith("/")) base = base.substring(0, base.length() - 1);
+        String docPath = base.isEmpty() ? slug + ".yaml" : base + "/" + slug + ".yaml";
+        if (documentService.findByPath(tenantId, projectId, docPath).isPresent()) {
+            throw new ToolException("document already exists: " + docPath);
+        }
+        String displayTitle = (title != null && !title.isBlank()) ? title.strip() : name.strip();
+
+        Map<String, Object> starterLabel = new LinkedHashMap<>();
+        starterLabel.put("en", "Field 1");
+        Map<String, Object> starterField = new LinkedHashMap<>();
+        starterField.put("name", "field1");
+        starterField.put("type", "string");
+        starterField.put("label", starterLabel);
+
+        Map<String, Object> form = new LinkedHashMap<>();
+        form.put("single", false);
+        form.put("fields", new ArrayList<>(List.of(starterField)));
+        Map<String, Object> meta = new LinkedHashMap<>();
+        meta.put("kind", FORM_KIND);
+        meta.put("form", form);
+        Map<String, Object> doc = new LinkedHashMap<>();
+        doc.put("$meta", meta);
+        doc.put("title", displayTitle);
+        doc.put("schema", new ArrayList<>(List.of("field1")));
+        doc.put("items", new ArrayList<>());
+
+        documentService.createText(
+                tenantId, projectId, docPath, displayTitle, null, dumpYaml(doc), editorId);
+        log.info("WorkspaceFormService.createForm tenant='{}' doc='{}'", tenantId, docPath);
+        return docPath;
+    }
+
+    // ---- onSave --------------------------------------------------------
+
+    /**
+     * Run the document's {@code $meta.onSave.runScript} synchronously
+     * after {@code items} was written. The script reads the fresh data via
+     * {@code vance.documents.*} and recomputes derived files; their writes
+     * fan out to the client via the documents live-push. A script failure
+     * surfaces as a {@link ToolException} (→ HTTP 500); the data stays
+     * written.
      */
     private void runOnSave(
-            String tenantId, String projectId, String configPath,
-            Map<String, Object> config, String editorId) {
-        Object onSave = config.get("onSave");
+            String tenantId, String projectId, String docPath,
+            Map<String, Object> doc, String editorId) {
+        Object onSave = metaMap(doc).get("onSave");
         if (!(onSave instanceof Map<?, ?> onSaveMap)) return;
         String runScript = stringValue(onSaveMap.get("runScript"));
         if (runScript == null || runScript.isBlank()) return;
 
-        String scriptPath = resolveRelative(configPath, runScript);
-        if (!scriptPath.toLowerCase(java.util.Locale.ROOT).endsWith(".js")) {
+        String scriptPath = resolveRelative(docPath, runScript);
+        if (!scriptPath.toLowerCase(Locale.ROOT).endsWith(".js")) {
             throw new ToolException(
                     "onSave.runScript must be a .js document (got '" + scriptPath
                             + "') — only in-JVM JavaScript is supported in v1");
@@ -208,105 +252,57 @@ public class WorkspaceFormService {
         }
     }
 
-    /**
-     * Replace the edit-config's {@code form.fields} with the given schema
-     * (design-mode form builder). Everything else in the config —
-     * {@code $meta}, {@code title}, {@code target}, {@code onSave} — is
-     * preserved verbatim. Fields are normalised through Jackson so only
-     * the populated {@link FormFieldDto} attributes land in the YAML.
-     */
+    // ---- $meta helpers -------------------------------------------------
+
+    /** The mutable {@code $meta} map (created if absent). */
     @SuppressWarnings("unchecked")
-    public void saveSchema(
-            String tenantId, String projectId, String configPath,
-            List<FormFieldDto> fields, @org.jspecify.annotations.Nullable String mode,
-            String editorId) {
-        DocumentDocument configDoc = documentService.findByPath(tenantId, projectId, configPath)
-                .orElseThrow(() -> new ToolException("edit-config not found: " + configPath));
-        Map<String, Object> config = loadYaml(readContent(configDoc));
-
-        config.put("mode", MODE_RECORDS.equals(mode) ? MODE_RECORDS : MODE_SINGLE);
-
-        List<Map<String, Object>> fieldMaps = objectMapper.convertValue(
-                fields != null ? fields : List.of(),
-                new TypeReference<List<Map<String, Object>>>() {});
-
-        Object formObj = config.get("form");
-        Map<String, Object> form = (formObj instanceof Map<?, ?> m)
+    private static Map<String, Object> metaMap(Map<String, Object> doc) {
+        Object meta = doc.get("$meta");
+        return meta instanceof Map<?, ?> m
                 ? (Map<String, Object>) m
                 : new LinkedHashMap<>();
-        form.put("fields", fieldMaps);
-        config.put("form", form);
-
-        documentService.replaceContent(
-                configDoc.getId(),
-                new ByteArrayInputStream(dumpYaml(config).getBytes(StandardCharsets.UTF_8)),
-                DocumentService.mimeFromPath(configPath),
-                editorId);
-        log.info("WorkspaceFormService.saveSchema tenant='{}' config='{}' fields={}",
-                tenantId, configPath, fieldMaps.size());
     }
 
-    /**
-     * Create a new edit-config skeleton ({@code <folder>/<slug>-edit-config.yaml},
-     * {@code $meta.kind: edit-form}) with one starter field and a target
-     * data file {@code <slug>.yaml}. Returns the created config path so
-     * the caller can drop a {@code vance-form} block referencing it. The
-     * target data file is created lazily on first save.
-     */
-    public String createForm(
-            String tenantId, String projectId, String folder,
-            String name, @org.jspecify.annotations.Nullable String title, String editorId) {
-        String slug = slugify(name);
-        if (slug.isBlank()) {
-            throw new ToolException("form name must not be empty");
-        }
-        String base = folder == null ? "" : folder.strip();
-        if (base.endsWith("/")) base = base.substring(0, base.length() - 1);
-        String configPath = base.isEmpty()
-                ? slug + "-edit-config.yaml"
-                : base + "/" + slug + "-edit-config.yaml";
-        if (documentService.findByPath(tenantId, projectId, configPath).isPresent()) {
-            throw new ToolException("edit-config already exists: " + configPath);
-        }
-        String displayTitle = (title != null && !title.isBlank()) ? title.strip() : name.strip();
-
-        Map<String, Object> meta = new LinkedHashMap<>();
-        meta.put("kind", "edit-form");
-        Map<String, Object> starterLabel = new LinkedHashMap<>();
-        starterLabel.put("en", "Field 1");
-        Map<String, Object> starterField = new LinkedHashMap<>();
-        starterField.put("name", "field1");
-        starterField.put("type", "string");
-        starterField.put("label", starterLabel);
-        Map<String, Object> form = new LinkedHashMap<>();
-        form.put("fields", new java.util.ArrayList<>(List.of(starterField)));
-        Map<String, Object> root = new LinkedHashMap<>();
-        root.put("$meta", meta);
-        root.put("title", displayTitle);
-        root.put("target", slug + ".yaml");
-        root.put("form", form);
-
-        documentService.createText(
-                tenantId, projectId, configPath, displayTitle, null, dumpYaml(root), editorId);
-        log.info("WorkspaceFormService.createForm tenant='{}' config='{}'", tenantId, configPath);
-        return configPath;
-    }
-
-    private static String slugify(String name) {
-        if (name == null) return "";
-        return name.strip().toLowerCase(java.util.Locale.ROOT)
-                .replaceAll("[^a-z0-9]+", "-")
-                .replaceAll("(^-+)|(-+$)", "");
-    }
-
-    // ---- helpers -------------------------------------------------------
-
+    /** The mutable {@code $meta.form} map (created if absent). */
     @SuppressWarnings("unchecked")
-    static List<FormFieldDto> parseFields(
-            ObjectMapper objectMapper, Map<String, Object> config, String configPath) {
-        Object form = config.get("form");
-        if (!(form instanceof Map<?, ?> formMap)) return new ArrayList<>();
-        Object fields = ((Map<String, Object>) formMap).get("fields");
+    private static Map<String, Object> formMap(Map<String, Object> doc) {
+        Object form = metaMap(doc).get("form");
+        return form instanceof Map<?, ?> m
+                ? (Map<String, Object>) m
+                : new LinkedHashMap<>();
+    }
+
+    /** Native RecordsView column names, derived from the form fields. */
+    private static List<String> schemaNames(Map<String, Object> form) {
+        Object fields = form.get("fields");
+        List<String> names = new ArrayList<>();
+        if (fields instanceof List<?> list) {
+            for (Object o : list) {
+                if (o instanceof Map<?, ?> m && m.get("name") != null) {
+                    names.add(m.get("name").toString());
+                }
+            }
+        }
+        return names;
+    }
+
+    private static List<String> namesOf(List<Map<String, Object>> fieldMaps) {
+        List<String> names = new ArrayList<>();
+        for (Map<String, Object> f : fieldMaps) {
+            if (f.get("name") != null) names.add(f.get("name").toString());
+        }
+        return names;
+    }
+
+    private static boolean boolOf(@Nullable Object o) {
+        if (o instanceof Boolean b) return b;
+        return o != null && Boolean.parseBoolean(o.toString());
+    }
+
+    // ---- field parsing -------------------------------------------------
+
+    static List<FormFieldDto> parseFieldsFromList(
+            ObjectMapper objectMapper, @Nullable Object fields, String docPath) {
         if (!(fields instanceof List<?> list)) return new ArrayList<>();
         // Be lenient: a field that omits a primitive key (e.g. `required`)
         // is valid YAML and must default, not blow up. Jackson 3 enables
@@ -318,9 +314,19 @@ public class WorkspaceFormService {
             return lenient.convertValue(list, new TypeReference<List<FormFieldDto>>() {});
         } catch (RuntimeException e) {
             throw new ToolException(
-                    "edit-config '" + configPath + "' has an invalid form.fields schema: "
+                    "form document '" + docPath + "' has an invalid $meta.form.fields schema: "
                             + e.getMessage());
         }
+    }
+
+    // ---- I/O helpers ---------------------------------------------------
+
+    private void writeDoc(String docId, String docPath, Map<String, Object> doc, String editorId) {
+        documentService.replaceContent(
+                docId,
+                new ByteArrayInputStream(dumpYaml(doc).getBytes(StandardCharsets.UTF_8)),
+                DocumentService.mimeFromPath(docPath),
+                editorId);
     }
 
     private Map<String, Object> readYamlMap(
@@ -339,13 +345,9 @@ public class WorkspaceFormService {
     }
 
     private Map<String, Object> loadYaml(String text) {
-        Object loaded = loadYamlRaw(text);
+        if (text == null || text.isBlank()) return new LinkedHashMap<>();
+        Object loaded = new Yaml().load(text);
         return loaded instanceof Map<?, ?> m ? toStringMap(m) : new LinkedHashMap<>();
-    }
-
-    private static @org.jspecify.annotations.Nullable Object loadYamlRaw(String text) {
-        if (text == null || text.isBlank()) return null;
-        return new Yaml().load(text);
     }
 
     private static Map<String, Object> toStringMap(Map<?, ?> m) {
@@ -363,8 +365,15 @@ public class WorkspaceFormService {
         return new Yaml(opts).dump(data);
     }
 
-    private static @org.jspecify.annotations.Nullable String stringValue(Object o) {
+    private static @Nullable String stringValue(Object o) {
         return o == null ? null : o.toString();
+    }
+
+    private static String slugify(String name) {
+        if (name == null) return "";
+        return name.strip().toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9]+", "-")
+                .replaceAll("(^-+)|(-+$)", "");
     }
 
     /**

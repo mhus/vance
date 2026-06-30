@@ -6,10 +6,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Request body for {@code POST /brain/{tenant}/addon/workspace/form/save}.
- * Single-mode forms send {@code values} (a flat {@code fieldName -> value}
- * map); records-mode forms send {@code records} (a list of such maps).
- * The service picks the side that matches the edit-config's {@code mode}.
+ * The form data is always a list of records ({@code items}); a single-mode
+ * form just sends a one-element list.
  */
 public record WorkspaceFormSaveRequest(
-        @Nullable Map<String, Object> values,
         @Nullable List<Map<String, Object>> records) {}

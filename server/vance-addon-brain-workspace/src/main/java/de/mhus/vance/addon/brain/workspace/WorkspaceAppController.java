@@ -608,64 +608,63 @@ public class WorkspaceAppController {
     }
 
     /**
-     * Load the field schema + current target values for a
-     * {@code vance-form} block, resolved from its edit-config document.
+     * Load the field schema + current records for a {@code vance-form}
+     * block, resolved from its data document ({@code $meta.form}).
      */
     @GetMapping("/brain/{tenant}/addon/workspace/form")
     public WorkspaceFormResponse loadForm(
             @PathVariable("tenant") String tenant,
             @RequestParam("projectId") String projectId,
-            @RequestParam("config") String config,
+            @RequestParam("doc") String doc,
             HttpServletRequest httpRequest) {
 
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.READ);
-        WorkspaceFormService.LoadedForm loaded = formService.loadForm(tenant, projectId, config);
+        WorkspaceFormService.LoadedForm loaded = formService.loadForm(tenant, projectId, doc);
         return new WorkspaceFormResponse(
-                loaded.fields(), loaded.mode(), loaded.values(), loaded.records(), loaded.target());
+                loaded.fields(), loaded.single(), loaded.records(), loaded.target());
     }
 
     /**
-     * Persist submitted form values into the edit-config's target data
-     * file (flat {@code fieldName -> value} YAML). The {@code onSave}
-     * script run + rebuild are a later step — this only writes the data.
+     * Persist submitted records into the data document's {@code items}
+     * and run its {@code $meta.onSave} recompute hook.
      */
     @PostMapping("/brain/{tenant}/addon/workspace/form/save")
     public ResponseEntity<Void> saveForm(
             @PathVariable("tenant") String tenant,
             @RequestParam("projectId") String projectId,
-            @RequestParam("config") String config,
+            @RequestParam("doc") String doc,
             @RequestBody WorkspaceFormSaveRequest request,
             HttpServletRequest httpRequest) {
 
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
-        formService.saveForm(tenant, projectId, config,
-                request != null ? request.values() : null,
+        formService.saveForm(tenant, projectId, doc,
                 request != null ? request.records() : null,
                 currentUser(httpRequest));
         return ResponseEntity.noContent().build();
     }
 
     /**
-     * Replace an edit-config's field schema (design-mode form builder).
+     * Replace a data document's {@code $meta.form} schema (design-mode
+     * form builder).
      */
     @PostMapping("/brain/{tenant}/addon/workspace/form/schema")
     public ResponseEntity<Void> saveFormSchema(
             @PathVariable("tenant") String tenant,
             @RequestParam("projectId") String projectId,
-            @RequestParam("config") String config,
+            @RequestParam("doc") String doc,
             @RequestBody WorkspaceFormSchemaRequest request,
             HttpServletRequest httpRequest) {
 
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
-        formService.saveSchema(tenant, projectId, config,
+        formService.saveSchema(tenant, projectId, doc,
                 request != null ? request.fields() : java.util.List.of(),
-                request != null ? request.mode() : null,
+                request != null && request.single(),
                 currentUser(httpRequest));
         return ResponseEntity.noContent().build();
     }
 
     /**
-     * Create a new edit-config skeleton in the app folder and return its
+     * Create a new form data document in the app folder and return its
      * path, so the client can insert a {@code vance-form} block for it.
      */
     @PostMapping("/brain/{tenant}/addon/workspace/form/create")

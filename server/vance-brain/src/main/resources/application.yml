@@ -118,6 +118,26 @@ vance:
       cache-ttl: 30m
       connect-timeout: 2s
       read-timeout: 30s
+  exec:
+    isolation:
+      # OS-isolation for work_exec_run — see specification/public/work-target.md §8.
+      # File tools (work_file_*) are ALWAYS confined to their RootDir; a shell
+      # command however can read arbitrary paths, so it must be wrapped to be
+      # confined too. mode: none (default) runs the command directly under the
+      # shell; mode: custom wraps it in the template below so it only sees its
+      # RootDir. The brain Docker image ships bubblewrap, so the default wrapper
+      # works there once enabled — flip it on per deployment with
+      # VANCE_EXEC_ISOLATION_MODE=custom (requires the container runtime to
+      # permit unprivileged user namespaces). Operators tune the wrapper for
+      # their workload (e.g. drop --unshare-net when exec needs the network).
+      mode: ${VANCE_EXEC_ISOLATION_MODE:none}
+      # {workdir} = the job's RootDir cwd, {cmd} = the command (one argv element).
+      wrapper: >-
+        bwrap --ro-bind /usr /usr --ro-bind /bin /bin --ro-bind /lib /lib
+        --ro-bind-try /lib64 /lib64 --ro-bind-try /etc/ssl /etc/ssl
+        --bind {workdir} {workdir} --chdir {workdir}
+        --proc /proc --dev /dev --tmpfs /tmp --unshare-net --die-with-parent
+        /bin/sh -c {cmd}
   ai:
     cache:
       # Master switch for Anthropic prompt caching. When false, the

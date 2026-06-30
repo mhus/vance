@@ -57,11 +57,21 @@ public class WorkspaceFormService {
     /** Wall-clock cap for an onSave recompute script. */
     private static final Duration ON_SAVE_TIMEOUT = Duration.ofSeconds(30);
 
-    /** Schema + current values + resolved target path for one form. */
+    /**
+     * Schema + current data + resolved target path for one form.
+     * {@code mode} is {@code "single"} (one record → flat {@code values}
+     * map) or {@code "records"} (a collection → {@code records} list);
+     * the unused side is empty.
+     */
     public record LoadedForm(
             List<FormFieldDto> fields,
+            String mode,
             Map<String, Object> values,
+            List<Map<String, Object>> records,
             String target) {}
+
+    private static final String MODE_RECORDS = "records";
+    private static final String MODE_SINGLE = "single";
 
     /**
      * Resolve the edit-config at {@code configPath}, returning its field
@@ -76,20 +86,36 @@ public class WorkspaceFormService {
             throw new ToolException("edit-config '" + configPath + "' has no 'target'");
         }
         String targetPath = resolveRelative(configPath, target);
+        String mode = modeOf(config);
 
         List<FormFieldDto> fields = parseFields(objectMapper, config, configPath);
 
         Map<String, Object> values = new LinkedHashMap<>();
+        List<Map<String, Object>> records = new ArrayList<>();
         Optional<DocumentDocument> targetDoc =
                 documentService.findByPath(tenantId, projectId, targetPath);
         if (targetDoc.isPresent()) {
-            Map<String, Object> loaded = loadYaml(readContent(targetDoc.get()));
-            // The data file is a flat fieldName -> value map. Drop any
-            // accidental $meta so it never leaks into the form values.
-            loaded.remove("$meta");
-            values.putAll(loaded);
+            Object loaded = loadYamlRaw(readContent(targetDoc.get()));
+            if (MODE_RECORDS.equals(mode)) {
+                // Records mode: target is a YAML list of flat maps.
+                if (loaded instanceof List<?> list) {
+                    for (Object o : list) {
+                        if (o instanceof Map<?, ?> m) records.add(toStringMap(m));
+                    }
+                }
+            } else if (loaded instanceof Map<?, ?> m) {
+                // Single mode: flat fieldName -> value map. Drop any
+                // accidental $meta so it never leaks into the form values.
+                values.putAll(toStringMap(m));
+                values.remove("$meta");
+            }
         }
-        return new LoadedForm(fields, values, targetPath);
+        return new LoadedForm(fields, mode, values, records, targetPath);
+    }
+
+    private static String modeOf(Map<String, Object> config) {
+        String mode = config.get("mode") == null ? null : config.get("mode").toString();
+        return MODE_RECORDS.equals(mode) ? MODE_RECORDS : MODE_SINGLE;
     }
 
     /**
@@ -99,7 +125,9 @@ public class WorkspaceFormService {
      */
     public void saveForm(
             String tenantId, String projectId, String configPath,
-            Map<String, Object> values, String editorId) {
+            @org.jspecify.annotations.Nullable Map<String, Object> values,
+            @org.jspecify.annotations.Nullable List<Map<String, Object>> records,
+            String editorId) {
         Map<String, Object> config = readYamlMap(tenantId, projectId, configPath,
                 "edit-config '" + configPath + "' not found");
         String target = stringValue(config.get("target"));
@@ -108,7 +136,10 @@ public class WorkspaceFormService {
         }
         String targetPath = resolveRelative(configPath, target);
 
-        Map<String, Object> data = values != null ? values : new LinkedHashMap<>();
+        // Records mode persists a YAML list; single mode a flat map.
+        Object data = MODE_RECORDS.equals(modeOf(config))
+                ? (records != null ? records : new ArrayList<>())
+                : (values != null ? values : new LinkedHashMap<>());
         String yaml = dumpYaml(data);
         byte[] bytes = yaml.getBytes(StandardCharsets.UTF_8);
 
@@ -124,8 +155,8 @@ public class WorkspaceFormService {
             documentService.createText(
                     tenantId, projectId, targetPath, null, null, yaml, editorId);
         }
-        log.info("WorkspaceFormService.saveForm tenant='{}' config='{}' target='{}' fields={}",
-                tenantId, configPath, targetPath, data.size());
+        log.info("WorkspaceFormService.saveForm tenant='{}' config='{}' target='{}' mode='{}'",
+                tenantId, configPath, targetPath, modeOf(config));
 
         runOnSave(tenantId, projectId, configPath, config, editorId);
     }
@@ -187,10 +218,13 @@ public class WorkspaceFormService {
     @SuppressWarnings("unchecked")
     public void saveSchema(
             String tenantId, String projectId, String configPath,
-            List<FormFieldDto> fields, String editorId) {
+            List<FormFieldDto> fields, @org.jspecify.annotations.Nullable String mode,
+            String editorId) {
         DocumentDocument configDoc = documentService.findByPath(tenantId, projectId, configPath)
                 .orElseThrow(() -> new ToolException("edit-config not found: " + configPath));
         Map<String, Object> config = loadYaml(readContent(configDoc));
+
+        config.put("mode", MODE_RECORDS.equals(mode) ? MODE_RECORDS : MODE_SINGLE);
 
         List<Map<String, Object>> fieldMaps = objectMapper.convertValue(
                 fields != null ? fields : List.of(),
@@ -304,21 +338,25 @@ public class WorkspaceFormService {
         }
     }
 
-    @SuppressWarnings("unchecked")
     private Map<String, Object> loadYaml(String text) {
-        if (text == null || text.isBlank()) return new LinkedHashMap<>();
-        Object loaded = new Yaml().load(text);
-        if (loaded instanceof Map<?, ?> m) {
-            Map<String, Object> out = new LinkedHashMap<>();
-            for (Map.Entry<?, ?> e : m.entrySet()) {
-                if (e.getKey() != null) out.put(e.getKey().toString(), e.getValue());
-            }
-            return out;
-        }
-        return new LinkedHashMap<>();
+        Object loaded = loadYamlRaw(text);
+        return loaded instanceof Map<?, ?> m ? toStringMap(m) : new LinkedHashMap<>();
     }
 
-    private String dumpYaml(Map<String, Object> data) {
+    private static @org.jspecify.annotations.Nullable Object loadYamlRaw(String text) {
+        if (text == null || text.isBlank()) return null;
+        return new Yaml().load(text);
+    }
+
+    private static Map<String, Object> toStringMap(Map<?, ?> m) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> e : m.entrySet()) {
+            if (e.getKey() != null) out.put(e.getKey().toString(), e.getValue());
+        }
+        return out;
+    }
+
+    private String dumpYaml(Object data) {
         DumperOptions opts = new DumperOptions();
         opts.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
         opts.setPrettyFlow(false);

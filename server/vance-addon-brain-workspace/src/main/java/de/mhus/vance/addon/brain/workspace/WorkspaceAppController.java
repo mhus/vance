@@ -620,7 +620,8 @@ public class WorkspaceAppController {
 
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.READ);
         WorkspaceFormService.LoadedForm loaded = formService.loadForm(tenant, projectId, config);
-        return new WorkspaceFormResponse(loaded.fields(), loaded.values(), loaded.target());
+        return new WorkspaceFormResponse(
+                loaded.fields(), loaded.mode(), loaded.values(), loaded.records(), loaded.target());
     }
 
     /**
@@ -639,6 +640,7 @@ public class WorkspaceAppController {
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
         formService.saveForm(tenant, projectId, config,
                 request != null ? request.values() : null,
+                request != null ? request.records() : null,
                 currentUser(httpRequest));
         return ResponseEntity.noContent().build();
     }
@@ -657,6 +659,7 @@ public class WorkspaceAppController {
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
         formService.saveSchema(tenant, projectId, config,
                 request != null ? request.fields() : java.util.List.of(),
+                request != null ? request.mode() : null,
                 currentUser(httpRequest));
         return ResponseEntity.noContent().build();
     }

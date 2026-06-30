@@ -24,9 +24,13 @@ import { useDocumentRefStore } from '@/document/documentRefStore';
 
 const props = defineProps<{ config: string }>();
 
+type FormMode = 'single' | 'records';
+
 interface FormResponse {
   fields: FormFieldDto[];
+  mode: FormMode;
   values: Record<string, unknown>;
+  records: Record<string, unknown>[];
   target: string;
 }
 
@@ -35,8 +39,11 @@ const pageMode = inject<Ref<'design' | 'work'>>('vance:page-mode', ref('work'));
 const store = useDocumentRefStore();
 
 const fields = ref<FormFieldDto[]>([]);
+const mode = ref<FormMode>('single');
 const values = ref<Record<string, FormValue>>({});
 const baseline = ref<Record<string, FormValue>>({});
+const records = ref<Record<string, FormValue>[]>([]);
+const baselineRecords = ref<Record<string, FormValue>[]>([]);
 const target = ref<string>('');
 
 const loading = ref(false);
@@ -44,9 +51,14 @@ const saving = ref(false);
 const error = ref<string | null>(null);
 const savedAt = ref(false);
 
-const dirty = computed(
-  () => JSON.stringify(values.value) !== JSON.stringify(baseline.value),
+const dirty = computed(() =>
+  mode.value === 'records'
+    ? JSON.stringify(records.value) !== JSON.stringify(baselineRecords.value)
+    : JSON.stringify(values.value) !== JSON.stringify(baseline.value),
 );
+
+function addRecord() { records.value.push({}); }
+function removeRecord(i: number) { records.value.splice(i, 1); }
 
 const FIELD_TYPES = [
   'string', 'textarea', 'integer', 'boolean', 'select', 'multi_select',
@@ -62,6 +74,7 @@ interface DesignField {
 }
 
 const designFields = ref<DesignField[]>([]);
+const designMode = ref<FormMode>('single');
 const schemaSaving = ref(false);
 const schemaSavedAt = ref(false);
 
@@ -161,9 +174,17 @@ async function load() {
     const resp = await brainFetch<FormResponse>('GET', `addon/workspace/form?${params}`);
     fields.value = resp.fields ?? [];
     target.value = resp.target ?? '';
-    const v = normalise(resp.values ?? {});
-    values.value = v;
-    baseline.value = JSON.parse(JSON.stringify(v));
+    mode.value = resp.mode === 'records' ? 'records' : 'single';
+    designMode.value = mode.value;
+    if (mode.value === 'records') {
+      const recs = (resp.records ?? []).map((r) => normalise(r));
+      records.value = recs;
+      baselineRecords.value = JSON.parse(JSON.stringify(recs));
+    } else {
+      const v = normalise(resp.values ?? {});
+      values.value = v;
+      baseline.value = JSON.parse(JSON.stringify(v));
+    }
     syncDesignFromFields();
   } catch (e) {
     if (e instanceof VanceUriParseError) error.value = `Invalid form config URI: ${props.config}`;
@@ -180,10 +201,15 @@ async function save() {
   try {
     const { projectId, path } = await resolveProject();
     const params = new URLSearchParams({ projectId, config: path });
-    await brainFetch<void>('POST', `addon/workspace/form/save?${params}`, {
-      body: { values: values.value },
-    });
-    baseline.value = JSON.parse(JSON.stringify(values.value));
+    const body = mode.value === 'records'
+      ? { records: records.value }
+      : { values: values.value };
+    await brainFetch<void>('POST', `addon/workspace/form/save?${params}`, { body });
+    if (mode.value === 'records') {
+      baselineRecords.value = JSON.parse(JSON.stringify(records.value));
+    } else {
+      baseline.value = JSON.parse(JSON.stringify(values.value));
+    }
     savedAt.value = true;
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Save failed';
@@ -193,7 +219,11 @@ async function save() {
 }
 
 function cancel() {
-  values.value = JSON.parse(JSON.stringify(baseline.value));
+  if (mode.value === 'records') {
+    records.value = JSON.parse(JSON.stringify(baselineRecords.value));
+  } else {
+    values.value = JSON.parse(JSON.stringify(baseline.value));
+  }
   savedAt.value = false;
 }
 
@@ -208,7 +238,7 @@ async function saveSchema() {
       .filter((d) => d.name.trim())
       .map(fromDesign);
     await brainFetch<void>('POST', `addon/workspace/form/schema?${params}`, {
-      body: { fields: built },
+      body: { fields: built, mode: designMode.value },
     });
     schemaSavedAt.value = true;
     await load(); // refresh so work mode reflects the new schema
@@ -232,6 +262,15 @@ onMounted(load);
       <template v-if="pageMode === 'design'">
         <div class="vance-form-view__design-hint">
           Design-Modus — Felder bearbeiten. Datendatei: <code>{{ target }}</code>
+        </div>
+        <div class="vance-form-view__mode-row">
+          <span class="vance-form-view__mode-label">Form type:</span>
+          <label class="vance-form-view__req">
+            <input v-model="designMode" type="radio" value="single" /> Single (ein Datensatz)
+          </label>
+          <label class="vance-form-view__req">
+            <input v-model="designMode" type="radio" value="records" /> Records (Karten-Liste)
+          </label>
         </div>
         <div
           v-for="(f, i) in designFields"
@@ -283,7 +322,39 @@ onMounted(load);
 
       <!-- WORK MODE: data entry -->
       <template v-else>
-        <FormFields v-model="values" :fields="fields" :disabled="saving" />
+        <!-- records: one card per entry -->
+        <template v-if="mode === 'records'">
+          <div
+            v-for="(rec, i) in records"
+            :key="i"
+            class="vance-form-view__record-card"
+          >
+            <div class="vance-form-view__record-head">
+              <span class="vance-form-view__record-idx">#{{ i + 1 }}</span>
+              <button
+                type="button"
+                class="vance-form-view__mini"
+                title="Remove record"
+                :disabled="saving"
+                @click="removeRecord(i)"
+              >✕</button>
+            </div>
+            <FormFields
+              :model-value="rec"
+              :fields="fields"
+              :disabled="saving"
+              @update:model-value="(v) => (records[i] = v)"
+            />
+          </div>
+          <button
+            type="button"
+            class="vance-form-view__btn"
+            :disabled="saving"
+            @click="addRecord"
+          >+ Add record</button>
+        </template>
+        <!-- single: one record -->
+        <FormFields v-else v-model="values" :fields="fields" :disabled="saving" />
         <div class="vance-form-view__footer">
           <span v-if="savedAt && !dirty" class="vance-form-view__saved">Gespeichert ✓</span>
           <span v-else-if="dirty" class="vance-form-view__dirty">Ungespeicherte Änderungen</span>
@@ -336,6 +407,33 @@ onMounted(load);
   background: oklch(var(--bc) / 0.1);
   padding: 0 0.25em;
   border-radius: 0.2em;
+}
+.vance-form-view__mode-row {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin-bottom: 0.7rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid oklch(var(--bc) / 0.12);
+  font-size: 0.82rem;
+}
+.vance-form-view__mode-label { color: oklch(var(--bc) / 0.7); }
+.vance-form-view__record-card {
+  border: 1px solid oklch(var(--bc) / 0.15);
+  border-radius: 0.4rem;
+  padding: 0.6rem 0.75rem;
+  margin-bottom: 0.6rem;
+}
+.vance-form-view__record-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.4rem;
+}
+.vance-form-view__record-idx {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: oklch(var(--bc) / 0.55);
 }
 .vance-form-view__field-row {
   border: 1px solid oklch(var(--bc) / 0.12);

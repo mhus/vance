@@ -17,5 +17,7 @@ import java.util.Map;
  */
 public record WorkspaceFormResponse(
         List<FormFieldDto> fields,
+        String mode,
         Map<String, Object> values,
+        List<Map<String, Object>> records,
         String target) {}

@@ -458,21 +458,37 @@ public class DocumentService {
      * the user can find {@code studium/mathe/skript.yaml} by typing
      * {@code "yaml"}. Used by the link picker.
      *
-     * <p>Trash folder is excluded. Result ordered alphabetically by
+     * <p>Trash folder is excluded. When {@code pathPrefix} is given the
+     * match is constrained to that folder prefix (anchored at the path
+     * start) — used by the embed picker's "App" tab to scope to the
+     * current application folder. Result ordered alphabetically by
      * path, capped at {@code limit} (max 200).
      */
     public DocumentListing searchProjectDocuments(
             String tenantId, String projectId,
+            @Nullable String pathPrefix,
             @Nullable String query,
             int limit) {
         int safeLimit = Math.max(1, Math.min(limit, 200));
         Query q = new Query()
                 .addCriteria(Criteria.where("tenantId").is(tenantId))
                 .addCriteria(Criteria.where("projectId").is(projectId))
-                .addCriteria(Criteria.where("status").is(DocumentStatus.ACTIVE))
-                .addCriteria(Criteria.where("path")
-                        .not()
-                        .regex("^" + java.util.regex.Pattern.quote(TRASH_FOLDER_PREFIX)));
+                .addCriteria(Criteria.where("status").is(DocumentStatus.ACTIVE));
+        // Trash-exclusion and the optional pathPrefix both constrain the
+        // "path" field. Spring Data rejects two separate top-level criteria
+        // on the same key, so combine them under one $and.
+        List<Criteria> pathConstraints = new ArrayList<>();
+        pathConstraints.add(Criteria.where("path")
+                .not()
+                .regex("^" + java.util.regex.Pattern.quote(TRASH_FOLDER_PREFIX)));
+        if (pathPrefix != null && !pathPrefix.isBlank()) {
+            String prefix = pathPrefix.startsWith("/") ? pathPrefix.substring(1) : pathPrefix;
+            pathConstraints.add(Criteria.where("path")
+                    .regex("^" + java.util.regex.Pattern.quote(prefix)));
+        }
+        q.addCriteria(pathConstraints.size() == 1
+                ? pathConstraints.get(0)
+                : new Criteria().andOperator(pathConstraints.toArray(new Criteria[0])));
         if (query != null && !query.isBlank()) {
             String needle = java.util.regex.Pattern.quote(query.trim());
             q.addCriteria(new Criteria().orOperator(

@@ -1,18 +1,24 @@
 <script setup lang="ts">
 /**
- * Embed picker — single tab, server-side recursive document search.
- * Mirrors the link-picker's "Project document" tab but the result
- * goes into a {@code vance-embed} block rather than a Markdown link.
+ * Embed picker — two tabs over the server-side recursive document search.
  *
- * Media kinds (image / svg / pdf / audio / video) and applications
- * are excluded from the result list — they're either link material
- * (media) or container folders (applications) and don't embed well.
+ * - "App" tab scopes the search to the current application folder
+ *   (`pathPrefix=<folder>/`), so app-local data / output documents are
+ *   one click away. This is the default tab.
+ * - "Project" tab is the full project-wide search (no prefix).
+ *
+ * Both go into a {@code vance-embed} block. Media kinds (image / svg /
+ * pdf / audio / video) and applications are excluded from the result
+ * list — they're either link material (media) or container folders
+ * (applications) and don't embed well.
  */
-import { onMounted, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { brainFetch } from '@vance/shared';
 
 const props = defineProps<{
   projectId: string;
+  /** The current application folder (path of `_app.yaml` minus the file). */
+  folder: string;
 }>();
 
 const emit = defineEmits<{
@@ -27,6 +33,8 @@ interface DocSummary {
   title: string | null;
   mimeType: string | null;
 }
+
+type Tab = 'app' | 'project';
 
 // Same blocklist as VanceEmbedNodeView — duplicated here so the
 // picker can filter results client-side. (Server-side filter would
@@ -49,6 +57,7 @@ function isEmbeddable(d: DocSummary): boolean {
   return true;
 }
 
+const tab = ref<Tab>('app');
 const docQuery = ref('');
 const docResults = ref<DocSummary[]>([]);
 const docLoading = ref(false);
@@ -56,12 +65,20 @@ const docError = ref<string | null>(null);
 const docTotal = ref(0);
 let docTimer: ReturnType<typeof setTimeout> | null = null;
 
+// Prefix the "App" tab constrains the search to. The Project tab
+// passes no prefix. A blank folder degrades gracefully to project-wide.
+const appPrefix = computed(() =>
+  props.folder && props.folder.trim() ? `${props.folder}/` : '');
+
 async function searchDocs(query: string) {
   docLoading.value = true;
   docError.value = null;
   try {
     const params = new URLSearchParams();
     params.set('projectId', props.projectId);
+    if (tab.value === 'app' && appPrefix.value) {
+      params.set('pathPrefix', appPrefix.value);
+    }
     if (query) params.set('query', query);
     params.set('size', '60');
     const resp = await brainFetch<{ items: DocSummary[]; total: number }>(
@@ -87,6 +104,12 @@ function scheduleSearch() {
   }, 200);
 }
 
+function setTab(next: Tab) {
+  if (tab.value === next) return;
+  tab.value = next;
+  void searchDocs(docQuery.value.trim());
+}
+
 function pickDoc(doc: DocSummary) {
   // Build the embedded-channel URI. Same convention as the link
   // picker: `vance:/<path>?kind=<kind>` for current-project refs.
@@ -104,7 +127,7 @@ function onBackdrop(e: MouseEvent) {
 onMounted(() => {
   void searchDocs('');
 });
-watch(() => props.projectId, () => searchDocs(docQuery.value.trim()));
+watch(() => [props.projectId, props.folder], () => searchDocs(docQuery.value.trim()));
 </script>
 
 <template>
@@ -114,6 +137,19 @@ watch(() => props.projectId, () => searchDocs(docQuery.value.trim()));
         <span>Embed document</span>
         <button class="embed-picker__close" type="button" @click="close">×</button>
       </header>
+
+      <div class="embed-picker__tabs">
+        <button
+          type="button"
+          :class="['embed-picker__tab', { 'embed-picker__tab--active': tab === 'app' }]"
+          @click="setTab('app')"
+        >App</button>
+        <button
+          type="button"
+          :class="['embed-picker__tab', { 'embed-picker__tab--active': tab === 'project' }]"
+          @click="setTab('project')"
+        >Project</button>
+      </div>
 
       <div class="embed-picker__actions">
         <input
@@ -130,7 +166,12 @@ watch(() => props.projectId, () => searchDocs(docQuery.value.trim()));
       <div v-if="docError" class="embed-picker__error">{{ docError }}</div>
       <div v-if="docLoading" class="embed-picker__loading">Suche…</div>
       <div v-else-if="docResults.length === 0" class="embed-picker__empty">
-        Keine einbettbaren Documents im Projekt gefunden.
+        <template v-if="tab === 'app'">
+          Keine einbettbaren Documents in dieser App gefunden.
+        </template>
+        <template v-else>
+          Keine einbettbaren Documents im Projekt gefunden.
+        </template>
       </div>
       <div v-else class="embed-picker__list">
         <button
@@ -195,6 +236,26 @@ watch(() => props.projectId, () => searchDocs(docQuery.value.trim()));
   cursor: pointer;
   color: oklch(var(--bc) / 0.65);
   padding: 0 0.25rem;
+}
+.embed-picker__tabs {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.5rem 1rem 0;
+  border-bottom: 1px solid oklch(var(--bc) / 0.18);
+}
+.embed-picker__tab {
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  color: oklch(var(--bc) / 0.65);
+}
+.embed-picker__tab--active {
+  color: oklch(var(--bc));
+  border-bottom-color: oklch(var(--p));
+  font-weight: 600;
 }
 .embed-picker__actions {
   padding: 0.5rem 1rem;

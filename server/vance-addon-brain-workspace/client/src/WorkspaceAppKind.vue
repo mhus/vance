@@ -1335,6 +1335,7 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
         <EmbedPickerModal
           v-if="embedPickerOpen"
           :project-id="projectId"
+          :folder="folder"
           @pick="onEmbedPicked"
           @close="closeEmbedPicker"
         />

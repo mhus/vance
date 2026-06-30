@@ -199,6 +199,17 @@ const ITEMS: SlashItemDef[] = [
     },
   },
   {
+    id: 'input',
+    title: 'Input',
+    hint: 'Editable text bound to a file (single or multi-line)',
+    run: ({ editor, range }) => {
+      editor.chain().focus().deleteRange(range).run();
+      editor.view.dom.dispatchEvent(
+        new CustomEvent('vance:create-input', { bubbles: true }),
+      );
+    },
+  },
+  {
     id: 'columns2',
     title: '2 columns',
     hint: 'Side-by-side layout',

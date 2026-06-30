@@ -141,6 +141,7 @@ const editorRef = ref<{
   currentLinkHref: () => string | null;
   insertEmbed: (uri: string) => void;
   insertForm: (config: string) => void;
+  insertInput: (config: string) => void;
 } | null>(null);
 
 // Asset picker is shared between two destinations: inline image
@@ -233,6 +234,41 @@ function closeFormPicker() { formPickerOpen.value = false; }
 function onFormPicked(configUri: string) {
   editorRef.value?.insertForm(configUri);
   closeFormPicker();
+}
+
+// ── Input block (slash-command /input) ────────────────────────────
+// Parse a vance: URI into { projectId, path }, falling back to the
+// current project when no authority segment is present.
+function parseVanceTarget(uri: string): { projectId: string; path: string } | null {
+  let parsed: URL;
+  try { parsed = new URL(uri); } catch { return null; }
+  if (parsed.protocol !== 'vance:') return null;
+  const target = parsed.hostname ? decodeURIComponent(parsed.hostname) : projectId.value;
+  const path = decodeURIComponent(parsed.pathname.replace(/^\//, ''));
+  if (!target || !path) return null;
+  return { projectId: target, path };
+}
+
+async function loadText(uri: string): Promise<string> {
+  const t = parseVanceTarget(uri);
+  if (!t) return '';
+  const params = new URLSearchParams({ projectId: t.projectId, doc: t.path });
+  const resp = await brainFetch<{ content: string }>('GET', `addon/workspace/input?${params}`);
+  return resp.content ?? '';
+}
+
+async function saveText(uri: string, content: string): Promise<void> {
+  const t = parseVanceTarget(uri);
+  if (!t) throw new Error(`Invalid input URI: ${uri}`);
+  const params = new URLSearchParams({ projectId: t.projectId, doc: t.path });
+  await brainFetch<void>('POST', `addon/workspace/input/save?${params}`, { body: { content } });
+}
+
+async function createInput(): Promise<void> {
+  const params = new URLSearchParams({ projectId: projectId.value, folder: folder.value });
+  const resp = await brainFetch<{ path: string }>(
+    'POST', `addon/workspace/input/create?${params}`, { body: {} });
+  if (resp.path) editorRef.value?.insertInput(`vance:/${encodeURI(resp.path)}?kind=text`);
 }
 
 /**
@@ -1356,6 +1392,9 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
           :embed-component="embedComponent ?? undefined"
           :open-form-picker="openFormPicker"
           :form-component="formComponent ?? undefined"
+          :load-text="loadText"
+          :save-text="saveText"
+          :create-input="createInput"
           :editable="pageMode === 'design'"
           @save="onEditorSave"
           @dirty="onEditorDirty"

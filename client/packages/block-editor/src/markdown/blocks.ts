@@ -37,6 +37,15 @@ export type Block =
       config: string;
     }
   | {
+      /**
+       * Editable single text value bound to a text document. {@code config}
+       * is a {@code vance:} URI; {@code multiline} picks input vs. textarea.
+       */
+      kind: 'input';
+      config: string;
+      multiline: boolean;
+    }
+  | {
       kind: 'columns';
       /**
        * One slot per column. `blocks` is the column's content; `width`

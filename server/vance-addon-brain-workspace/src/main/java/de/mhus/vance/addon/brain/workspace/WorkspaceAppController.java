@@ -50,6 +50,7 @@ public class WorkspaceAppController {
     private final DocumentLinkBuilder linkBuilder;
     private final RequestAuthority authority;
     private final WorkspaceFormService formService;
+    private final WorkspaceInputService inputService;
 
     @GetMapping("/brain/{tenant}/addon/workspace/scan")
     public WorkspaceView scan(
@@ -705,6 +706,48 @@ public class WorkspaceAppController {
                 tenant, projectId, WorkspaceFolderReader.normaliseFolder(folder),
                 request.name(), request.title(), currentUser(httpRequest));
         return new WorkspaceFormCreateResponse(configPath);
+    }
+
+    /** Load the bound text for a {@code vance-input} block. */
+    @GetMapping("/brain/{tenant}/addon/workspace/input")
+    public WorkspaceInputResponse loadInput(
+            @PathVariable("tenant") String tenant,
+            @RequestParam("projectId") String projectId,
+            @RequestParam("doc") String doc,
+            HttpServletRequest httpRequest) {
+
+        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.READ);
+        return new WorkspaceInputResponse(inputService.loadText(tenant, projectId, doc));
+    }
+
+    /** Persist the text of a {@code vance-input} block into its document. */
+    @PostMapping("/brain/{tenant}/addon/workspace/input/save")
+    public ResponseEntity<Void> saveInput(
+            @PathVariable("tenant") String tenant,
+            @RequestParam("projectId") String projectId,
+            @RequestParam("doc") String doc,
+            @RequestBody WorkspaceInputSaveRequest request,
+            HttpServletRequest httpRequest) {
+
+        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
+        inputService.saveText(tenant, projectId, doc,
+                request != null ? request.content() : null, currentUser(httpRequest));
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Create a fresh text document for a new {@code vance-input} block. */
+    @PostMapping("/brain/{tenant}/addon/workspace/input/create")
+    public WorkspaceInputCreateResponse createInput(
+            @PathVariable("tenant") String tenant,
+            @RequestParam("projectId") String projectId,
+            @RequestParam("folder") String folder,
+            HttpServletRequest httpRequest) {
+
+        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
+        String path = inputService.createInput(
+                tenant, projectId, WorkspaceFolderReader.normaliseFolder(folder),
+                currentUser(httpRequest));
+        return new WorkspaceInputCreateResponse(path);
     }
 
     @PostMapping("/brain/{tenant}/addon/workspace/rebuild")

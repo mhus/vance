@@ -32,6 +32,7 @@ import {
   VanceUnknownFence,
   VanceEmbed,
   VanceForm,
+  VanceInput,
   type EmbedDocMeta,
 } from './extensions';
 import { SlashCommands } from './SlashCommands';
@@ -167,6 +168,12 @@ const props = withDefaults(
      * (use, don't restructure). Default {@code true}.
      */
     editable?: boolean;
+    /** Load the bound text of a `vance-input` block (vance: URI → content). */
+    loadText?: (uri: string) => Promise<string>;
+    /** Persist a `vance-input` block's text. */
+    saveText?: (uri: string, content: string) => Promise<void>;
+    /** Create a fresh text doc + insert a `vance-input` block (slash `/input`). */
+    createInput?: () => void;
   }>(),
   { autoSaveMs: 2000, editable: true },
 );
@@ -370,6 +377,11 @@ const editor = useEditor({
       // vance-face). The NodeView mounts this with the block's config
       // URI. Null → NodeView shows the fallback notice.
       formComponent: () => props.formComponent ?? null,
+    }),
+    VanceInput.configure({
+      loadText: (uri: string) => props.loadText?.(uri) ?? Promise.resolve(''),
+      saveText: (uri: string, content: string) =>
+        props.saveText?.(uri, content) ?? Promise.resolve(),
     }),
   ],
   content: initial.value.content,
@@ -613,6 +625,10 @@ function onFormPickerEvent() {
   props.openFormPicker?.();
 }
 
+function onCreateInputEvent() {
+  props.createInput?.();
+}
+
 /**
  * Notion-style link interaction: a plain click positions the caret
  * (Tiptap default), ⌘/Ctrl+click opens the link. We register on the
@@ -698,6 +714,7 @@ onMounted(() => {
   dom.addEventListener('vance:open-asset-picker', onAssetPickerEvent);
   dom.addEventListener('vance:open-embed-picker', onEmbedPickerEvent);
   dom.addEventListener('vance:open-form-picker', onFormPickerEvent);
+  dom.addEventListener('vance:create-input', onCreateInputEvent);
   document.addEventListener('dragstart', onGlobalDragStart, true);
   document.addEventListener('dragend', onGlobalDragEnd, true);
 });
@@ -713,6 +730,7 @@ onBeforeUnmount(() => {
     dom.removeEventListener('vance:open-asset-picker', onAssetPickerEvent);
     dom.removeEventListener('vance:open-embed-picker', onEmbedPickerEvent);
     dom.removeEventListener('vance:open-form-picker', onFormPickerEvent);
+    dom.removeEventListener('vance:create-input', onCreateInputEvent);
   }
   document.removeEventListener('dragstart', onGlobalDragStart, true);
   document.removeEventListener('dragend', onGlobalDragEnd, true);
@@ -755,8 +773,18 @@ function insertForm(config: string) {
     .run();
 }
 
+/** Insert a `vance-input` block bound to the given text-document URI. */
+function insertInput(config: string) {
+  if (!config) return;
+  editor.value
+    ?.chain()
+    .focus()
+    .insertContent({ type: 'vanceInput', attrs: { config, multiline: false } })
+    .run();
+}
+
 defineExpose({
-  save, flush, insertImage, insertEmbed, insertForm, updateHeader,
+  save, flush, insertImage, insertEmbed, insertForm, insertInput, updateHeader,
   applyLink, clearLink, currentLinkHref,
   getHeader: () => currentHeader.value,
 });

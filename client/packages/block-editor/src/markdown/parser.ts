@@ -347,6 +347,12 @@ function parseFence(info: string, body: string): Block {
       return { kind: 'embed', uri: str(parsed, 'uri') ?? '' };
     case 'vance-form':
       return { kind: 'form', config: str(parsed, 'config') ?? '' };
+    case 'vance-input':
+      return {
+        kind: 'input',
+        config: str(parsed, 'config') ?? '',
+        multiline: parsed.multiline === true,
+      };
     default:
       return { kind: 'unknown-fence', info, body };
   }

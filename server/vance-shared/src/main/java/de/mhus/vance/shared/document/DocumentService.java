@@ -474,27 +474,7 @@ public class DocumentService {
                 .addCriteria(Criteria.where("tenantId").is(tenantId))
                 .addCriteria(Criteria.where("projectId").is(projectId))
                 .addCriteria(Criteria.where("status").is(DocumentStatus.ACTIVE));
-        // Trash-exclusion and the optional pathPrefix both constrain the
-        // "path" field. Spring Data rejects two separate top-level criteria
-        // on the same key, so combine them under one $and.
-        List<Criteria> pathConstraints = new ArrayList<>();
-        pathConstraints.add(Criteria.where("path")
-                .not()
-                .regex("^" + java.util.regex.Pattern.quote(TRASH_FOLDER_PREFIX)));
-        if (pathPrefix != null && !pathPrefix.isBlank()) {
-            String prefix = pathPrefix.startsWith("/") ? pathPrefix.substring(1) : pathPrefix;
-            pathConstraints.add(Criteria.where("path")
-                    .regex("^" + java.util.regex.Pattern.quote(prefix)));
-        }
-        q.addCriteria(pathConstraints.size() == 1
-                ? pathConstraints.get(0)
-                : new Criteria().andOperator(pathConstraints.toArray(new Criteria[0])));
-        if (query != null && !query.isBlank()) {
-            String needle = java.util.regex.Pattern.quote(query.trim());
-            q.addCriteria(new Criteria().orOperator(
-                    Criteria.where("path").regex(needle, "i"),
-                    Criteria.where("title").regex(needle, "i")));
-        }
+        q.addCriteria(searchPathCriterion(pathPrefix, query));
         long total = mongoTemplate.count(Query.of(q), DocumentDocument.class);
         q.with(org.springframework.data.domain.Sort.by("path").ascending()).limit(safeLimit);
         List<DocumentDocument> docs = mongoTemplate.find(q, DocumentDocument.class);
@@ -504,6 +484,39 @@ public class DocumentService {
                     d.getId(), d.getPath(), d.getTitle(), d.getKind(), d.getMimeType()));
         }
         return new DocumentListing(matches, total);
+    }
+
+    /**
+     * Build the combined path/query criterion for
+     * {@link #searchProjectDocuments}. Trash-exclusion, the optional
+     * {@code pathPrefix} and the query-OR each constrain {@code path} or
+     * carry a {@code null} key ({@code $and}/{@code $or}). Spring Data
+     * keys criteria by {@code CriteriaDefinition.getKey()} and rejects a
+     * second entry for the same key — two {@code path} entries, or even
+     * two {@code null}-keyed operators, collide. Returning a <em>single</em>
+     * criterion (the lone constraint, or all of them under one
+     * {@code $and}) makes that collision structurally impossible. Package
+     * -private + static so it's unit-testable without Mongo.
+     */
+    static Criteria searchPathCriterion(@Nullable String pathPrefix, @Nullable String query) {
+        List<Criteria> constraints = new ArrayList<>();
+        constraints.add(Criteria.where("path")
+                .not()
+                .regex("^" + java.util.regex.Pattern.quote(TRASH_FOLDER_PREFIX)));
+        if (pathPrefix != null && !pathPrefix.isBlank()) {
+            String prefix = pathPrefix.startsWith("/") ? pathPrefix.substring(1) : pathPrefix;
+            constraints.add(Criteria.where("path")
+                    .regex("^" + java.util.regex.Pattern.quote(prefix)));
+        }
+        if (query != null && !query.isBlank()) {
+            String needle = java.util.regex.Pattern.quote(query.trim());
+            constraints.add(new Criteria().orOperator(
+                    Criteria.where("path").regex(needle, "i"),
+                    Criteria.where("title").regex(needle, "i")));
+        }
+        return constraints.size() == 1
+                ? constraints.get(0)
+                : new Criteria().andOperator(constraints.toArray(new Criteria[0]));
     }
 
     /** Slim projection for {@link #searchProjectDocuments}. */

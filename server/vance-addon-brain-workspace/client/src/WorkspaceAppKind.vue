@@ -23,6 +23,7 @@ import AssetPickerModal from './AssetPickerModal.vue';
 import EmojiPickerModal from './EmojiPickerModal.vue';
 import LinkPickerModal from './LinkPickerModal.vue';
 import EmbedPickerModal from './EmbedPickerModal.vue';
+import FormPickerModal from './FormPickerModal.vue';
 import type { WorkspaceView } from './generated/workspace/WorkspaceView';
 import type { WorkspacePageView } from './generated/workspace/WorkspacePageView';
 
@@ -139,6 +140,7 @@ const editorRef = ref<{
   clearLink: () => void;
   currentLinkHref: () => string | null;
   insertEmbed: (uri: string) => void;
+  insertForm: (config: string) => void;
 } | null>(null);
 
 // Asset picker is shared between two destinations: inline image
@@ -197,6 +199,12 @@ function onLinkClear() {
 // outside cortex) → block-editor falls back to its kind-icon card.
 const embedComponent = inject<Component | null>('vance:embed-component', null);
 
+// Editable-form renderer — vance-face provides a component that takes a
+// single `config` prop (the edit-config URI) and renders the form via
+// the shared form-engine. Injected by string key like embed-component;
+// null = not in a vance-face host → block-editor shows a fallback.
+const formComponent = inject<Component | null>('vance:form-component', null);
+
 // ── Embed picker (slash-command /embed) ───────────────────────────
 const embedPickerOpen = ref(false);
 function openEmbedPicker() { embedPickerOpen.value = true; }
@@ -204,6 +212,15 @@ function closeEmbedPicker() { embedPickerOpen.value = false; }
 function onEmbedPicked(uri: string) {
   editorRef.value?.insertEmbed(uri);
   closeEmbedPicker();
+}
+
+// ── Form picker (slash-command /form) ─────────────────────────────
+const formPickerOpen = ref(false);
+function openFormPicker() { formPickerOpen.value = true; }
+function closeFormPicker() { formPickerOpen.value = false; }
+function onFormPicked(configUri: string) {
+  editorRef.value?.insertForm(configUri);
+  closeFormPicker();
 }
 
 /**
@@ -257,7 +274,8 @@ const editorFloatingSuppressed = computed(
     linkPickerOpen.value
     || iconPickerOpen.value
     || assetPickerOpen.value
-    || embedPickerOpen.value,
+    || embedPickerOpen.value
+    || formPickerOpen.value,
 );
 
 // On clicking an embed card's "Open" button, the NodeView dispatches
@@ -1306,6 +1324,8 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
           :open-embed-picker="openEmbedPicker"
           :resolve-embed-doc="resolveEmbedDoc"
           :embed-component="embedComponent ?? undefined"
+          :open-form-picker="openFormPicker"
+          :form-component="formComponent ?? undefined"
           @save="onEditorSave"
           @dirty="onEditorDirty"
         />
@@ -1338,6 +1358,13 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
           :folder="folder"
           @pick="onEmbedPicked"
           @close="closeEmbedPicker"
+        />
+        <FormPickerModal
+          v-if="formPickerOpen"
+          :project-id="projectId"
+          :folder="folder"
+          @pick="onFormPicked"
+          @close="closeFormPicker"
         />
       </template>
 

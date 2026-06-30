@@ -102,6 +102,8 @@ function renderBlock(b: Block): string {
       return '```vance-toc\n```\n';
     case 'embed':
       return renderFence('vance-embed', { uri: b.uri });
+    case 'form':
+      return renderFence('vance-form', { config: b.config });
     case 'columns': {
       // Outer fence must be longer than ANY inner fence so nested
       // code / vance-* / sub-columns blocks don't close the columns

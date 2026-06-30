@@ -155,6 +155,7 @@ export const useDocumentRefStore = defineStore('documentRef', () => {
   return {
     currentProject,
     setCurrentProject,
+    waitForCurrentProject,
     resolve,
     invalidate,
     clear,

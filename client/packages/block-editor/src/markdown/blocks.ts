@@ -28,6 +28,15 @@ export type Block =
       uri: string;
     }
   | {
+      /**
+       * Editable data-entry form. References an edit-config document
+       * (via a {@code vance:} URI in {@code config}) that declares the
+       * field schema + target data file. Reactive-data, Schritt 3.
+       */
+      kind: 'form';
+      config: string;
+    }
+  | {
       kind: 'columns';
       /**
        * One slot per column. `blocks` is the column's content; `width`

@@ -38,6 +38,7 @@ import {
 } from '@/composables/useDocumentChangeReaction';
 import { onDocumentChanged } from '@/ws/wsConnectionStore';
 import VanceEmbedView from '@/components/VanceEmbedView.vue';
+import VanceFormView from '@/components/VanceFormView.vue';
 import { useDocumentRefStore } from '@/document/documentRefStore';
 import { isBinaryMime } from './stores/cortexStore';
 import { useCortexStore } from './stores/cortexStore';
@@ -113,6 +114,11 @@ provide(VANCE_LINK_HANDLER_KEY, onVanceLink);
 // without importing vance-face directly. The component takes a single
 // `uri` prop and renders the full kind-aware EmbeddedKindBox.
 provide('vance:embed-component', VanceEmbedView);
+
+// Same federation-bridge pattern for the editable form block: the
+// remote injects 'vance:form-component' and mounts it with the
+// edit-config `config` URI as the only prop.
+provide('vance:form-component', VanceFormView);
 
 const { projects: tenantProjects, reload: loadTenantProjects } = useTenantProjects();
 

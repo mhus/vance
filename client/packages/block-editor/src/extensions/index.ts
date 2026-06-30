@@ -6,3 +6,4 @@ export { VanceToc } from './VanceToc';
 export { VanceColumns, VanceColumn } from './VanceColumns';
 export { VanceUnknownFence } from './VanceUnknownFence';
 export { VanceEmbed, type EmbedDocMeta } from './VanceEmbed';
+export { VanceForm } from './VanceForm';

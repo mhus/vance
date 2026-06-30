@@ -185,6 +185,20 @@ const ITEMS: SlashItemDef[] = [
     },
   },
   {
+    id: 'form',
+    title: 'Form',
+    hint: 'Editable data-entry form (bound to an edit-config)',
+    run: ({ editor, range }) => {
+      // Same pattern as the embed picker: drop the slash trigger and
+      // bubble a DOM event so the host opens its form (edit-config)
+      // picker, which calls back via insertForm.
+      editor.chain().focus().deleteRange(range).run();
+      editor.view.dom.dispatchEvent(
+        new CustomEvent('vance:open-form-picker', { bubbles: true }),
+      );
+    },
+  },
+  {
     id: 'columns2',
     title: '2 columns',
     hint: 'Side-by-side layout',

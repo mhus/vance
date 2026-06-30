@@ -103,6 +103,8 @@ function blockToNode(b: Block): JSONContent {
       return { type: 'vanceToc' };
     case 'embed':
       return { type: 'vanceEmbed', attrs: { uri: b.uri } };
+    case 'form':
+      return { type: 'vanceForm', attrs: { config: b.config } };
     case 'columns':
       return {
         type: 'vanceColumns',
@@ -232,6 +234,8 @@ function nodeToBlock(node: JSONContent): Block[] {
       return [{ kind: 'toc' }];
     case 'vanceEmbed':
       return [{ kind: 'embed', uri: (node.attrs?.uri as string) ?? '' }];
+    case 'vanceForm':
+      return [{ kind: 'form', config: (node.attrs?.config as string) ?? '' }];
     case 'vanceColumns': {
       const cols = (node.content ?? []).map((colNode) => ({
         blocks: contentToBlocks(colNode.content ?? []),

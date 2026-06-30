@@ -49,6 +49,7 @@ public class WorkspaceAppController {
     private final WorkPageService workPageService;
     private final DocumentLinkBuilder linkBuilder;
     private final RequestAuthority authority;
+    private final WorkspaceFormService formService;
 
     @GetMapping("/brain/{tenant}/addon/workspace/scan")
     public WorkspaceView scan(
@@ -604,6 +605,42 @@ public class WorkspaceAppController {
                     m.id(), m.path(), m.title(), m.kind(), m.mimeType()));
         }
         return new WorkspaceDocumentSearchResponse(items, listing.total());
+    }
+
+    /**
+     * Load the field schema + current target values for a
+     * {@code vance-form} block, resolved from its edit-config document.
+     */
+    @GetMapping("/brain/{tenant}/addon/workspace/form")
+    public WorkspaceFormResponse loadForm(
+            @PathVariable("tenant") String tenant,
+            @RequestParam("projectId") String projectId,
+            @RequestParam("config") String config,
+            HttpServletRequest httpRequest) {
+
+        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.READ);
+        WorkspaceFormService.LoadedForm loaded = formService.loadForm(tenant, projectId, config);
+        return new WorkspaceFormResponse(loaded.fields(), loaded.values(), loaded.target());
+    }
+
+    /**
+     * Persist submitted form values into the edit-config's target data
+     * file (flat {@code fieldName -> value} YAML). The {@code onSave}
+     * script run + rebuild are a later step — this only writes the data.
+     */
+    @PostMapping("/brain/{tenant}/addon/workspace/form/save")
+    public ResponseEntity<Void> saveForm(
+            @PathVariable("tenant") String tenant,
+            @RequestParam("projectId") String projectId,
+            @RequestParam("config") String config,
+            @RequestBody WorkspaceFormSaveRequest request,
+            HttpServletRequest httpRequest) {
+
+        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
+        formService.saveForm(tenant, projectId, config,
+                request != null ? request.values() : null,
+                currentUser(httpRequest));
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/brain/{tenant}/addon/workspace/rebuild")

@@ -31,6 +31,7 @@ import {
   VanceColumn,
   VanceUnknownFence,
   VanceEmbed,
+  VanceForm,
   type EmbedDocMeta,
 } from './extensions';
 import { SlashCommands } from './SlashCommands';
@@ -143,6 +144,21 @@ const props = withDefaults(
      * NodeView falls back to a generic kind-icon card.
      */
     embedComponent?: import('vue').Component;
+    /**
+     * Open the host-provided form picker (slash-command {@code /form}
+     * triggers this). The host renders a modal listing app-local
+     * edit-config documents; on pick it calls back via {@code insertForm}.
+     */
+    openFormPicker?: () => void;
+    /**
+     * Vue component used to render an editable {@code vance-form} block.
+     * Receives a single {@code config} prop (the edit-config URI), loads
+     * the field schema + current values and renders the form with
+     * Save / Cancel. Injected from vance-face so the block-editor stays
+     * decoupled from the form-engine + REST. When omitted, the NodeView
+     * shows a static fallback notice.
+     */
+    formComponent?: import('vue').Component;
   }>(),
   { autoSaveMs: 2000 },
 );
@@ -339,6 +355,12 @@ const editor = useEditor({
       // The NodeView mounts this with the embed's URI as the only
       // prop. Null → NodeView shows the fallback card.
       embedComponent: () => props.embedComponent ?? null,
+    }),
+    VanceForm.configure({
+      // Host-provided editable form renderer (form-engine view from
+      // vance-face). The NodeView mounts this with the block's config
+      // URI. Null → NodeView shows the fallback notice.
+      formComponent: () => props.formComponent ?? null,
     }),
   ],
   content: initial.value.content,
@@ -573,6 +595,10 @@ function onEmbedPickerEvent() {
   props.openEmbedPicker?.();
 }
 
+function onFormPickerEvent() {
+  props.openFormPicker?.();
+}
+
 /**
  * Notion-style link interaction: a plain click positions the caret
  * (Tiptap default), ⌘/Ctrl+click opens the link. We register on the
@@ -652,6 +678,7 @@ onMounted(() => {
   dom.addEventListener('click', onLinkClickCapture, { capture: true });
   dom.addEventListener('vance:open-asset-picker', onAssetPickerEvent);
   dom.addEventListener('vance:open-embed-picker', onEmbedPickerEvent);
+  dom.addEventListener('vance:open-form-picker', onFormPickerEvent);
   document.addEventListener('dragstart', onGlobalDragStart, true);
   document.addEventListener('dragend', onGlobalDragEnd, true);
 });
@@ -666,6 +693,7 @@ onBeforeUnmount(() => {
     dom.removeEventListener('click', onLinkClickCapture, { capture: true });
     dom.removeEventListener('vance:open-asset-picker', onAssetPickerEvent);
     dom.removeEventListener('vance:open-embed-picker', onEmbedPickerEvent);
+    dom.removeEventListener('vance:open-form-picker', onFormPickerEvent);
   }
   document.removeEventListener('dragstart', onGlobalDragStart, true);
   document.removeEventListener('dragend', onGlobalDragEnd, true);
@@ -695,8 +723,21 @@ function insertEmbed(uri: string) {
     .run();
 }
 
+/**
+ * Insert a `vance-form` block referencing the given edit-config URI.
+ * Used by the host's form picker.
+ */
+function insertForm(config: string) {
+  if (!config) return;
+  editor.value
+    ?.chain()
+    .focus()
+    .insertContent({ type: 'vanceForm', attrs: { config } })
+    .run();
+}
+
 defineExpose({
-  save, flush, insertImage, insertEmbed, updateHeader,
+  save, flush, insertImage, insertEmbed, insertForm, updateHeader,
   applyLink, clearLink, currentLinkHref,
   getHeader: () => currentHeader.value,
 });

@@ -12,11 +12,12 @@
  * kind (kindHint first-paint, then verified against the loaded
  * Document's metadata).
  */
-import { computed, inject, onMounted, ref } from 'vue';
+import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import KindBox from './KindBox.vue';
 import { kindIcon, kindLabel, resolveRenderer } from '@/kindRenderers/registry';
 import { useDocumentRefStore } from '@/document/documentRefStore';
 import type { EmbedRef } from '@/kindRenderers/parseVanceUri';
+import { onDocumentChanged } from '@/ws/wsConnectionStore';
 import { VANCE_LINK_HANDLER_KEY } from './vanceLinkHandler';
 
 interface Props {
@@ -59,13 +60,45 @@ const label = computed(() => kindLabel(effectiveKind.value));
 const icon = computed(() => kindIcon(effectiveKind.value));
 const title = computed(() => doc.value?.title ?? props.embedRef.text ?? props.embedRef.path);
 
-onMounted(async () => {
+async function load() {
+  loadError.value = null;
   try {
     doc.value = await store.resolve(props.embedRef);
   } catch (e) {
     loadError.value = (e as Error).message;
   }
+}
+
+/**
+ * Auto-refresh: when a {@code documents.changed} frame arrives for this
+ * embed's path (delivered whenever any subscription — e.g. a folder-bound
+ * app's prefix subscription — covers it), drop the cached snapshot and
+ * re-resolve so the rendered content reflects the new file. Without the
+ * cache-invalidate the store would hand back the stale snapshot. This is
+ * what makes a workspace form's onSave recompute show up live in an
+ * embedded diagram.
+ */
+function reloadFresh() {
+  const project = props.embedRef.project ?? store.currentProject;
+  if (project) store.invalidate(project, props.embedRef.path);
+  void load();
+}
+
+let unsubscribeChanged: (() => void) | null = null;
+function subscribeChanged(path: string) {
+  unsubscribeChanged?.();
+  unsubscribeChanged = onDocumentChanged(path, reloadFresh);
+}
+
+onMounted(() => {
+  subscribeChanged(props.embedRef.path);
+  void load();
 });
+watch(() => props.embedRef.path, (path) => {
+  subscribeChanged(path);
+  reloadFresh();
+});
+onBeforeUnmount(() => unsubscribeChanged?.());
 
 function onCopy(): void {
   if (typeof navigator === 'undefined' || !navigator.clipboard) return;

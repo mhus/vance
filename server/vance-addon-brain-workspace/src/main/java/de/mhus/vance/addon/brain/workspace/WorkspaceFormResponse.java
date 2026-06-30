@@ -3,6 +3,7 @@ package de.mhus.vance.addon.brain.workspace;
 import de.mhus.vance.api.form.FormFieldDto;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Response body for {@code GET /brain/{tenant}/addon/workspace/form}.
@@ -19,4 +20,7 @@ public record WorkspaceFormResponse(
         List<FormFieldDto> fields,
         boolean single,
         List<Map<String, Object>> records,
-        String target) {}
+        String target,
+        @Nullable String title,
+        @Nullable String onSaveScript,
+        boolean onSaveSession) {}

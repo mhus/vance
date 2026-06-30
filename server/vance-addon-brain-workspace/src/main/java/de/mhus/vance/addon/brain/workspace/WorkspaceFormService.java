@@ -4,6 +4,7 @@ import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.ObjectMapper;
 import de.mhus.vance.api.form.FormFieldDto;
+import de.mhus.vance.api.ws.Profiles;
 import de.mhus.vance.brain.script.ScriptExecutionException;
 import de.mhus.vance.brain.script.ScriptExecutor;
 import de.mhus.vance.brain.script.ScriptRequest;
@@ -11,6 +12,8 @@ import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.shared.session.SessionDocument;
+import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.io.ByteArrayInputStream;
@@ -67,6 +70,7 @@ public class WorkspaceFormService {
     private final ObjectMapper objectMapper;
     private final ScriptExecutor scriptExecutor;
     private final ToolDispatcher toolDispatcher;
+    private final SessionService sessionService;
 
     /** Wall-clock cap for an onSave recompute script. */
     private static final Duration ON_SAVE_TIMEOUT = Duration.ofSeconds(30);
@@ -81,7 +85,10 @@ public class WorkspaceFormService {
             List<FormFieldDto> fields,
             boolean single,
             List<Map<String, Object>> records,
-            String target) {}
+            String target,
+            @Nullable String title,
+            @Nullable String onSaveScript,
+            boolean onSaveSession) {}
 
     /**
      * Read the data document at {@code docPath}, returning its field
@@ -103,7 +110,42 @@ public class WorkspaceFormService {
                 if (o instanceof Map<?, ?> m) records.add(toStringMap(m));
             }
         }
-        return new LoadedForm(fields, single, records, docPath);
+        Map<String, Object> onSave = onSaveMap(doc);
+        return new LoadedForm(fields, single, records, docPath,
+                stringValue(doc.get("title")),
+                stringValue(onSave.get("runScript")),
+                boolOf(onSave.get("session")));
+    }
+
+    /**
+     * Update the form-level settings (the design-mode settings dialog):
+     * {@code $meta.form.single}, {@code $meta.onSave.{runScript,session}}
+     * and the top-level {@code title}. Fields and items are untouched.
+     */
+    public void saveSettings(
+            String tenantId, String projectId, String docPath,
+            boolean single, @Nullable String runScript, boolean session,
+            @Nullable String title, String editorId) {
+        DocumentDocument docDoc = documentService.findByPath(tenantId, projectId, docPath)
+                .orElseThrow(() -> new ToolException("form document '" + docPath + "' not found"));
+        Map<String, Object> doc = loadYaml(readContent(docDoc));
+
+        Map<String, Object> meta = metaMap(doc);
+        meta.put("kind", FORM_KIND);
+        Map<String, Object> form = formMap(doc);
+        form.put("single", single);
+        meta.put("form", form);
+
+        Map<String, Object> onSave = new LinkedHashMap<>();
+        if (runScript != null && !runScript.isBlank()) onSave.put("runScript", runScript.strip());
+        onSave.put("session", session);
+        meta.put("onSave", onSave);
+        doc.put("$meta", meta);
+        if (title != null && !title.isBlank()) doc.put("title", title.strip());
+
+        writeDoc(docDoc.getId(), docPath, doc, editorId);
+        log.info("WorkspaceFormService.saveSettings tenant='{}' doc='{}' single={} session={} script='{}'",
+                tenantId, docPath, single, session, runScript);
     }
 
     /**
@@ -138,7 +180,7 @@ public class WorkspaceFormService {
     @SuppressWarnings("unchecked")
     public void saveSchema(
             String tenantId, String projectId, String docPath,
-            List<FormFieldDto> fields, boolean single, String editorId) {
+            List<FormFieldDto> fields, String editorId) {
         DocumentDocument docDoc = documentService.findByPath(tenantId, projectId, docPath)
                 .orElseThrow(() -> new ToolException("form document '" + docPath + "' not found"));
         Map<String, Object> doc = loadYaml(readContent(docDoc));
@@ -149,17 +191,16 @@ public class WorkspaceFormService {
 
         Map<String, Object> meta = metaMap(doc);
         meta.put("kind", FORM_KIND);
-        Map<String, Object> form = formMap(doc);
+        Map<String, Object> form = formMap(doc);   // keeps existing `single`
         form.put("fields", fieldMaps);
-        form.put("single", single);
         meta.put("form", form);
         doc.put("$meta", meta);
         doc.put("schema", namesOf(fieldMaps));
         doc.putIfAbsent("items", new ArrayList<>());
 
         writeDoc(docDoc.getId(), docPath, doc, editorId);
-        log.info("WorkspaceFormService.saveSchema tenant='{}' doc='{}' fields={} single={}",
-                tenantId, docPath, fieldMaps.size(), single);
+        log.info("WorkspaceFormService.saveSchema tenant='{}' doc='{}' fields={}",
+                tenantId, docPath, fieldMaps.size());
     }
 
     /**
@@ -221,9 +262,8 @@ public class WorkspaceFormService {
     private void runOnSave(
             String tenantId, String projectId, String docPath,
             Map<String, Object> doc, String editorId) {
-        Object onSave = metaMap(doc).get("onSave");
-        if (!(onSave instanceof Map<?, ?> onSaveMap)) return;
-        String runScript = stringValue(onSaveMap.get("runScript"));
+        Map<String, Object> onSave = onSaveMap(doc);
+        String runScript = stringValue(onSave.get("runScript"));
         if (runScript == null || runScript.isBlank()) return;
 
         String scriptPath = resolveRelative(docPath, runScript);
@@ -236,8 +276,13 @@ public class WorkspaceFormService {
                 .orElseThrow(() -> new ToolException("onSave script not found: " + scriptPath));
         String code = readContent(scriptDoc);
 
+        // When the form's settings request it, attach a per-form system
+        // session so the script can use session-scoped tools / LLM.
+        String sessionId = boolOf(onSave.get("session"))
+                ? resolveFormSession(tenantId, projectId, docPath, editorId)
+                : null;
         ToolInvocationContext scope =
-                new ToolInvocationContext(tenantId, projectId, null, null, editorId);
+                new ToolInvocationContext(tenantId, projectId, sessionId, null, editorId);
         ContextToolsApi tools = new ContextToolsApi(toolDispatcher, scope);
         try {
             scriptExecutor.run(new ScriptRequest(
@@ -250,6 +295,27 @@ public class WorkspaceFormService {
             throw new ToolException(
                     "onSave script '" + scriptPath + "' failed: " + e.getMessage());
         }
+    }
+
+    /**
+     * Reuse-or-create a per-form system session (deterministic display
+     * name {@code _form_<docPath>}, {@code system=true}) so an onSave
+     * script that opted in ({@code $meta.onSave.session: true}) runs
+     * inside a session scope. Same lazy-reuse pattern as the scheduler /
+     * hook system sessions, but workspace-form-owned (not scheduler).
+     */
+    private String resolveFormSession(
+            String tenantId, String projectId, String docPath, String runAs) {
+        String displayName = "_form_" + docPath.replaceAll("[^a-zA-Z0-9._-]", "_");
+        return sessionService.findSystemSession(tenantId, projectId, displayName)
+                .map(SessionDocument::getSessionId)
+                .orElseGet(() -> {
+                    SessionDocument created = sessionService.create(
+                            tenantId, runAs, projectId, displayName,
+                            Profiles.DAEMON, "workspace-form", null, /*system*/ true);
+                    sessionService.markBootstrapped(created.getSessionId());
+                    return created.getSessionId();
+                });
     }
 
     // ---- $meta helpers -------------------------------------------------
@@ -268,6 +334,15 @@ public class WorkspaceFormService {
     private static Map<String, Object> formMap(Map<String, Object> doc) {
         Object form = metaMap(doc).get("form");
         return form instanceof Map<?, ?> m
+                ? (Map<String, Object>) m
+                : new LinkedHashMap<>();
+    }
+
+    /** The {@code $meta.onSave} map (empty if absent). */
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> onSaveMap(Map<String, Object> doc) {
+        Object onSave = metaMap(doc).get("onSave");
+        return onSave instanceof Map<?, ?> m
                 ? (Map<String, Object>) m
                 : new LinkedHashMap<>();
     }

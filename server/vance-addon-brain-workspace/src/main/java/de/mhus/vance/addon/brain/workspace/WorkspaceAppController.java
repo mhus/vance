@@ -621,7 +621,8 @@ public class WorkspaceAppController {
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.READ);
         WorkspaceFormService.LoadedForm loaded = formService.loadForm(tenant, projectId, doc);
         return new WorkspaceFormResponse(
-                loaded.fields(), loaded.single(), loaded.records(), loaded.target());
+                loaded.fields(), loaded.single(), loaded.records(), loaded.target(),
+                loaded.title(), loaded.onSaveScript(), loaded.onSaveSession());
     }
 
     /**
@@ -658,7 +659,28 @@ public class WorkspaceAppController {
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
         formService.saveSchema(tenant, projectId, doc,
                 request != null ? request.fields() : java.util.List.of(),
-                request != null && request.single(),
+                currentUser(httpRequest));
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Update a data document's form-level settings (single / onSave script
+     * + session / title) — the design-mode settings dialog.
+     */
+    @PostMapping("/brain/{tenant}/addon/workspace/form/settings")
+    public ResponseEntity<Void> saveFormSettings(
+            @PathVariable("tenant") String tenant,
+            @RequestParam("projectId") String projectId,
+            @RequestParam("doc") String doc,
+            @RequestBody WorkspaceFormSettingsRequest request,
+            HttpServletRequest httpRequest) {
+
+        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
+        if (request == null) {
+            throw new ToolException("settings request must not be empty");
+        }
+        formService.saveSettings(tenant, projectId, doc,
+                request.single(), request.runScript(), request.session(), request.title(),
                 currentUser(httpRequest));
         return ResponseEntity.noContent().build();
     }

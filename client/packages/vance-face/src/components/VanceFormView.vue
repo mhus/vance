@@ -28,6 +28,9 @@ interface FormResponse {
   single: boolean;
   records: Record<string, unknown>[];
   target: string;
+  title: string | null;
+  onSaveScript: string | null;
+  onSaveSession: boolean;
 }
 
 const pageMode = inject<Ref<'design' | 'work'>>('vance:page-mode', ref('work'));
@@ -70,9 +73,27 @@ interface DesignField {
 }
 
 const designFields = ref<DesignField[]>([]);
-const designSingle = ref(false);
 const schemaSaving = ref(false);
 const schemaSavedAt = ref(false);
+
+// ── Form-settings dialog (rendered via the form-engine itself) ────
+const SETTINGS_FIELDS: FormFieldDto[] = [
+  { name: 'title', type: 'string',
+    label: { en: 'Title' }, required: false, choices: [] },
+  { name: 'single', type: 'boolean',
+    label: { en: 'Single record (one form instead of a card list)' },
+    required: false, choices: [] },
+  { name: 'runScript', type: 'string',
+    label: { en: 'onSave script (.js, relative to the document folder)' },
+    required: false, choices: [] },
+  { name: 'session', type: 'boolean',
+    label: { en: 'Create a session for the onSave script' },
+    required: false, choices: [] },
+];
+const showSettings = ref(false);
+const settingsValues = ref<Record<string, FormValue>>({});
+const settingsSaving = ref(false);
+const settingsSavedAt = ref(false);
 
 function toDesign(f: FormFieldDto): DesignField {
   const label = f.label ?? {};
@@ -113,7 +134,6 @@ function fromDesign(d: DesignField): FormFieldDto {
 
 function syncDesignFromFields() {
   designFields.value = fields.value.map(toDesign);
-  designSingle.value = single.value;
 }
 
 function addField() {
@@ -177,6 +197,12 @@ async function load() {
     if (single.value && recs.length === 0) recs.push({});
     records.value = recs;
     baselineRecords.value = JSON.parse(JSON.stringify(recs));
+    settingsValues.value = {
+      title: resp.title ?? '',
+      single: single.value ? 'true' : 'false',
+      runScript: resp.onSaveScript ?? '',
+      session: resp.onSaveSession ? 'true' : 'false',
+    };
     syncDesignFromFields();
   } catch (e) {
     if (e instanceof VanceUriParseError) error.value = `Invalid form document URI: ${props.config}`;
@@ -220,7 +246,7 @@ async function saveSchema() {
     const params = new URLSearchParams({ projectId, doc: path });
     const built = designFields.value.filter((d) => d.name.trim()).map(fromDesign);
     await brainFetch<void>('POST', `addon/workspace/form/schema?${params}`, {
-      body: { fields: built, single: designSingle.value },
+      body: { fields: built },
     });
     schemaSavedAt.value = true;
     await load();
@@ -228,6 +254,35 @@ async function saveSchema() {
     error.value = e instanceof Error ? e.message : 'Schema save failed';
   } finally {
     schemaSaving.value = false;
+  }
+}
+
+function settingStr(name: string): string {
+  const v = settingsValues.value[name];
+  return typeof v === 'string' ? v : '';
+}
+
+async function saveSettings() {
+  settingsSaving.value = true;
+  error.value = null;
+  settingsSavedAt.value = false;
+  try {
+    const { projectId, path } = await resolveProject();
+    const params = new URLSearchParams({ projectId, doc: path });
+    await brainFetch<void>('POST', `addon/workspace/form/settings?${params}`, {
+      body: {
+        single: settingStr('single') === 'true',
+        runScript: settingStr('runScript'),
+        session: settingStr('session') === 'true',
+        title: settingStr('title'),
+      },
+    });
+    settingsSavedAt.value = true;
+    await load();
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Settings save failed';
+  } finally {
+    settingsSaving.value = false;
   }
 }
 
@@ -244,12 +299,26 @@ onMounted(load);
       <template v-if="pageMode === 'design'">
         <div class="vance-form-view__design-hint">
           Design-Modus — Felder bearbeiten. Dokument: <code>{{ target }}</code>
+          <button
+            class="vance-form-view__mini"
+            :class="{ 'vance-form-view__mini--active': showSettings }"
+            title="Form settings (single / onSave script / session)"
+            @click="showSettings = !showSettings"
+          >⚙</button>
         </div>
-        <div class="vance-form-view__mode-row">
-          <label class="vance-form-view__req">
-            <input v-model="designSingle" type="checkbox" />
-            Single record (eine Form statt Karten-Liste)
-          </label>
+
+        <!-- Form settings — rendered with the form-engine itself. -->
+        <div v-if="showSettings" class="vance-form-view__settings">
+          <FormFields v-model="settingsValues" :fields="SETTINGS_FIELDS" :disabled="settingsSaving" />
+          <div class="vance-form-view__footer">
+            <span v-if="settingsSavedAt" class="vance-form-view__saved">Settings gespeichert ✓</span>
+            <span class="vance-form-view__spacer" />
+            <button
+              class="vance-form-view__btn vance-form-view__btn--primary"
+              :disabled="settingsSaving"
+              @click="saveSettings"
+            >{{ settingsSaving ? 'Speichere…' : 'Save settings' }}</button>
+          </div>
         </div>
         <div
           v-for="(f, i) in designFields"
@@ -380,21 +449,27 @@ onMounted(load);
   font-size: 0.8rem;
   color: oklch(var(--bc) / 0.6);
   margin-bottom: 0.6rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.vance-form-view__settings {
+  border: 1px solid oklch(var(--bc) / 0.15);
+  border-radius: 0.4rem;
+  padding: 0.6rem 0.75rem;
+  margin-bottom: 0.8rem;
+  background: oklch(var(--bc) / 0.03);
+}
+.vance-form-view__mini--active {
+  background: oklch(var(--p) / 0.18);
+  color: oklch(var(--p));
+  border-color: oklch(var(--p));
 }
 .vance-form-view__design-hint code {
   font-family: monospace;
   background: oklch(var(--bc) / 0.1);
   padding: 0 0.25em;
   border-radius: 0.2em;
-}
-.vance-form-view__mode-row {
-  display: flex;
-  align-items: center;
-  gap: 0.9rem;
-  margin-bottom: 0.7rem;
-  padding-bottom: 0.6rem;
-  border-bottom: 1px solid oklch(var(--bc) / 0.12);
-  font-size: 0.82rem;
 }
 .vance-form-view__record-card {
   border: 1px solid oklch(var(--bc) / 0.15);

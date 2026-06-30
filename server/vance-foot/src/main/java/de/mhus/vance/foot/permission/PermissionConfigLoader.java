@@ -139,7 +139,35 @@ public class PermissionConfigLoader {
         eff.getCommands().getAllow().addAll(central.getCommands().getAllow());
         eff.getCommands().getDeny().addAll(central.getCommands().getDeny());
         eff.getCommands().getDeny().addAll(local.getCommands().getDeny());
+
+        // Exec-isolation, tightening only: the central setting is
+        // authoritative; a local file may only *introduce* isolation where
+        // the user defined none — it can neither disable nor replace it.
+        PermissionConfig.Isolation chosen = mergeIsolation(isolation(central), isolation(local));
+        if (chosen != null) {
+            PermissionConfig.Exec ex = new PermissionConfig.Exec();
+            ex.setIsolation(chosen);
+            eff.setExec(ex);
+        }
         return eff;
+    }
+
+    private static PermissionConfig.@org.jspecify.annotations.Nullable Isolation isolation(
+            PermissionConfig config) {
+        PermissionConfig.Exec exec = config.getExec();
+        return exec == null ? null : exec.getIsolation();
+    }
+
+    private static PermissionConfig.@org.jspecify.annotations.Nullable Isolation mergeIsolation(
+            PermissionConfig.@org.jspecify.annotations.Nullable Isolation central,
+            PermissionConfig.@org.jspecify.annotations.Nullable Isolation local) {
+        if (central != null && "custom".equals(central.getMode())) {
+            return central;
+        }
+        if (local != null && "custom".equals(local.getMode())) {
+            return local;
+        }
+        return null;
     }
 
     /**

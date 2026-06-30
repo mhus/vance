@@ -68,8 +68,12 @@ public class ClientExecutorService {
     /** Lazy — dispatcher in turn depends on ConnectionService which depends on this one indirectly. */
     private final ObjectProvider<FootExecEventDispatcher> dispatcher;
 
-    public ClientExecutorService(ObjectProvider<FootExecEventDispatcher> dispatcher) {
+    private final de.mhus.vance.foot.permission.PermissionService permissions;
+
+    public ClientExecutorService(ObjectProvider<FootExecEventDispatcher> dispatcher,
+                                 de.mhus.vance.foot.permission.PermissionService permissions) {
         this.dispatcher = dispatcher;
+        this.permissions = permissions;
     }
 
     public ClientExecJob submit(String command) {
@@ -308,9 +312,7 @@ public class ClientExecutorService {
         try (BufferedWriter stdoutW = openLog(job.stdoutFile());
              BufferedWriter stderrW = openLog(job.stderrFile())) {
 
-            ProcessBuilder pb = isWindows()
-                    ? new ProcessBuilder("cmd.exe", "/c", job.command())
-                    : new ProcessBuilder("/bin/sh", "-c", job.command());
+            ProcessBuilder pb = new ProcessBuilder(buildArgv(job.command()));
             pb.redirectErrorStream(false);
             Process p = pb.start();
             job.process(p);
@@ -396,6 +398,25 @@ public class ClientExecutorService {
                 }
             }
         }
+    }
+
+    /**
+     * Builds the process argv for {@code command}. With exec-isolation
+     * active the command is wrapped in the configured isolation tool;
+     * otherwise it runs under the platform shell ({@code /bin/sh -c} /
+     * {@code cmd.exe /c}).
+     */
+    private List<String> buildArgv(String command) {
+        de.mhus.vance.foot.permission.ExecIsolation isolation = permissions.isolation();
+        if (isolation.enabled()) {
+            List<String> argv = isolation.wrap(command);
+            log.info("exec isolation: wrapping command in '{}'",
+                    argv.isEmpty() ? "?" : argv.get(0));
+            return argv;
+        }
+        return isWindows()
+                ? List.of("cmd.exe", "/c", command)
+                : List.of("/bin/sh", "-c", command);
     }
 
     private static boolean isWindows() {

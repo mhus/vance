@@ -44,6 +44,13 @@ public class PermissionConfig {
     private DomainRules commands = new DomainRules();
 
     /**
+     * Optional exec-isolation block. Nullable so an absent block keeps the
+     * file clean (no empty {@code exec:} noise written by the "always"
+     * writer). See {@link ExecIsolation}.
+     */
+    private @Nullable Exec exec;
+
+    /**
      * Allow/deny rule lists for one domain (paths use globs, commands
      * use regex — see {@link PermissionPolicy}).
      */
@@ -51,5 +58,24 @@ public class PermissionConfig {
     public static class DomainRules {
         private List<String> deny = new ArrayList<>();
         private List<String> allow = new ArrayList<>();
+    }
+
+    @Data
+    public static class Exec {
+        private Isolation isolation = new Isolation();
+    }
+
+    /**
+     * Opt-in OS-isolation wrapper for {@code client_exec_run}.
+     * {@code mode: custom} wraps the command in {@link #wrapper} (a
+     * whitespace-separated argv template with {@code {workdir}} and
+     * {@code {cmd}} placeholders); {@code mode: none} (default) runs it
+     * unwrapped.
+     */
+    @Data
+    public static class Isolation {
+        private String mode = "none";
+        private String workdir = "./";
+        private @Nullable String wrapper;
     }
 }

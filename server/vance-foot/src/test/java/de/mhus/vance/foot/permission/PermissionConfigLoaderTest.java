@@ -159,4 +159,64 @@ class PermissionConfigLoaderTest {
 
         assertThat(eff.getSandbox()).isFalse();
     }
+
+    // --- exec isolation merge ---
+
+    private static String isolationYaml(String wrapper) {
+        return """
+                permissions:
+                  exec:
+                    isolation:
+                      mode: custom
+                      wrapper: "%s"
+                """.formatted(wrapper);
+    }
+
+    @Test
+    void effectiveConfig_centralIsolation_wins(@TempDir Path dir) throws Exception {
+        Path central = dir.resolve("central.yaml");
+        Path local = dir.resolve("local.yaml");
+        Files.writeString(central, isolationYaml("central {cmd}"));
+        Files.writeString(local, isolationYaml("local {cmd}"));
+
+        PermissionConfig eff = loader(central, local).effectiveConfig();
+
+        assertThat(eff.getExec()).isNotNull();
+        assertThat(eff.getExec().getIsolation().getWrapper()).isEqualTo("central {cmd}");
+    }
+
+    @Test
+    void effectiveConfig_localIsolation_introducesWhenCentralNone(@TempDir Path dir)
+            throws Exception {
+        Path central = dir.resolve("central.yaml");
+        Path local = dir.resolve("local.yaml");
+        Files.writeString(central, "permissions:\n  sandbox: true\n"); // no isolation
+        Files.writeString(local, isolationYaml("local {cmd}"));
+
+        PermissionConfig eff = loader(central, local).effectiveConfig();
+
+        assertThat(eff.getExec()).isNotNull();
+        assertThat(eff.getExec().getIsolation().getWrapper()).isEqualTo("local {cmd}");
+    }
+
+    @Test
+    void effectiveConfig_localCannotDisableCentralIsolation(@TempDir Path dir) throws Exception {
+        Path central = dir.resolve("central.yaml");
+        Path local = dir.resolve("local.yaml");
+        Files.writeString(central, isolationYaml("central {cmd}"));
+        Files.writeString(local, "permissions:\n  exec:\n    isolation:\n      mode: none\n");
+
+        PermissionConfig eff = loader(central, local).effectiveConfig();
+
+        assertThat(eff.getExec()).isNotNull();
+        assertThat(eff.getExec().getIsolation().getWrapper()).isEqualTo("central {cmd}");
+    }
+
+    @Test
+    void effectiveConfig_noIsolationAnywhere_leavesExecNull(@TempDir Path dir) throws Exception {
+        Path central = dir.resolve("central.yaml");
+        Files.writeString(central, "permissions:\n  sandbox: true\n");
+
+        assertThat(loader(central, null).effectiveConfig().getExec()).isNull();
+    }
 }

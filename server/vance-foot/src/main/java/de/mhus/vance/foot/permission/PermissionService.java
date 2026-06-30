@@ -26,11 +26,14 @@ public class PermissionService {
     private volatile boolean cliDisabled = false;
     private volatile boolean sandboxEnabled;
     private volatile PermissionPolicy policy;
+    private volatile ExecIsolation isolation = ExecIsolation.DISABLED;
 
     public PermissionService(PermissionConfigLoader loader) {
         this.loader = loader;
         reload();
-        log.info("permission sandbox {} at startup", sandboxEnabled ? "ENABLED" : "DISABLED");
+        log.info("permission sandbox {} at startup (exec isolation {})",
+                sandboxEnabled ? "ENABLED" : "DISABLED",
+                isolation.enabled() ? "ON" : "off");
     }
 
     /** Reloads config + policy from disk (e.g. after an "always" write). */
@@ -38,6 +41,43 @@ public class PermissionService {
         PermissionConfig effective = loader.effectiveConfig();
         this.sandboxEnabled = !cliDisabled && Boolean.TRUE.equals(effective.getSandbox());
         this.policy = PermissionPolicy.compile(effective, PermissionConfigLoader.DEFAULT_PATH_DENY);
+        this.isolation = resolveIsolation(effective);
+    }
+
+    /**
+     * Resolves the effective exec-isolation. Active only when the sandbox
+     * is on and the config requests {@code mode: custom} with a usable
+     * wrapper template ({@code {cmd}} placeholder present). A broken
+     * template logs an error and disables isolation — the allow/deny gate
+     * still applies, the command just runs unwrapped.
+     */
+    private ExecIsolation resolveIsolation(PermissionConfig effective) {
+        if (!sandboxEnabled) {
+            return ExecIsolation.DISABLED;
+        }
+        PermissionConfig.Exec exec = effective.getExec();
+        if (exec == null || exec.getIsolation() == null) {
+            return ExecIsolation.DISABLED;
+        }
+        PermissionConfig.Isolation iso = exec.getIsolation();
+        if (!"custom".equals(iso.getMode())) {
+            return ExecIsolation.DISABLED;
+        }
+        String wrapper = iso.getWrapper();
+        if (wrapper == null || wrapper.isBlank() || !wrapper.contains("{cmd}")) {
+            log.error("exec isolation mode=custom but wrapper is missing/invalid "
+                    + "(needs a '{cmd}' placeholder) — isolation DISABLED, commands run unwrapped");
+            return ExecIsolation.DISABLED;
+        }
+        String workdir = iso.getWorkdir() == null || iso.getWorkdir().isBlank()
+                ? "." : iso.getWorkdir();
+        String resolvedWorkdir = PermissionPaths.canonicalize(workdir).toString();
+        return new ExecIsolation(true, resolvedWorkdir, wrapper);
+    }
+
+    /** Effective exec-isolation for {@code client_exec_run}. */
+    public ExecIsolation isolation() {
+        return isolation;
     }
 
     public boolean isSandboxEnabled() {

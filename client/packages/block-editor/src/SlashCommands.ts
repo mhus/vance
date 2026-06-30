@@ -205,7 +205,7 @@ const ITEMS: SlashItemDef[] = [
     run: ({ editor, range }) => {
       editor.chain().focus().deleteRange(range).run();
       editor.view.dom.dispatchEvent(
-        new CustomEvent('vance:create-input', { bubbles: true }),
+        new CustomEvent('vance:open-input-picker', { bubbles: true }),
       );
     },
   },

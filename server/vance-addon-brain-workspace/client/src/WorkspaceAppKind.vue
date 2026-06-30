@@ -24,6 +24,7 @@ import EmojiPickerModal from './EmojiPickerModal.vue';
 import LinkPickerModal from './LinkPickerModal.vue';
 import EmbedPickerModal from './EmbedPickerModal.vue';
 import FormPickerModal from './FormPickerModal.vue';
+import InputPickerModal from './InputPickerModal.vue';
 import type { WorkspaceView } from './generated/workspace/WorkspaceView';
 import type { WorkspacePageView } from './generated/workspace/WorkspacePageView';
 
@@ -264,11 +265,12 @@ async function saveText(uri: string, content: string): Promise<void> {
   await brainFetch<void>('POST', `addon/workspace/input/save?${params}`, { body: { content } });
 }
 
-async function createInput(): Promise<void> {
-  const params = new URLSearchParams({ projectId: projectId.value, folder: folder.value });
-  const resp = await brainFetch<{ path: string }>(
-    'POST', `addon/workspace/input/create?${params}`, { body: {} });
-  if (resp.path) editorRef.value?.insertInput(`vance:/${encodeURI(resp.path)}?kind=text`);
+const inputPickerOpen = ref(false);
+function openInputPicker() { inputPickerOpen.value = true; }
+function closeInputPicker() { inputPickerOpen.value = false; }
+function onInputPicked(uri: string) {
+  editorRef.value?.insertInput(uri);
+  closeInputPicker();
 }
 
 /**
@@ -323,7 +325,8 @@ const editorFloatingSuppressed = computed(
     || iconPickerOpen.value
     || assetPickerOpen.value
     || embedPickerOpen.value
-    || formPickerOpen.value,
+    || formPickerOpen.value
+    || inputPickerOpen.value,
 );
 
 // On clicking an embed card's "Open" button, the NodeView dispatches
@@ -1394,7 +1397,7 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
           :form-component="formComponent ?? undefined"
           :load-text="loadText"
           :save-text="saveText"
-          :create-input="createInput"
+          :open-input-picker="openInputPicker"
           :editable="pageMode === 'design'"
           @save="onEditorSave"
           @dirty="onEditorDirty"
@@ -1435,6 +1438,13 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
           :folder="folder"
           @pick="onFormPicked"
           @close="closeFormPicker"
+        />
+        <InputPickerModal
+          v-if="inputPickerOpen"
+          :project-id="projectId"
+          :folder="folder"
+          @pick="onInputPicked"
+          @close="closeInputPicker"
         />
       </template>
 

@@ -741,12 +741,13 @@ public class WorkspaceAppController {
             @PathVariable("tenant") String tenant,
             @RequestParam("projectId") String projectId,
             @RequestParam("folder") String folder,
+            @RequestParam(value = "name", required = false) @Nullable String name,
             HttpServletRequest httpRequest) {
 
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
         String path = inputService.createInput(
                 tenant, projectId, WorkspaceFolderReader.normaliseFolder(folder),
-                currentUser(httpRequest));
+                name, currentUser(httpRequest));
         return new WorkspaceInputCreateResponse(path);
     }
 

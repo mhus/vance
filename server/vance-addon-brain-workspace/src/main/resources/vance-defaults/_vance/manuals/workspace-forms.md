@@ -125,7 +125,9 @@ multiline: true
 ```
 ````
 
-- `multiline: false` → a single-line input; `true` → a textarea.
+- `multiline: false` → a single-line input; `true` → an auto-growing textarea
+  (no scrollbar). The user picks the bound file (existing text doc or a new one)
+  via the `/input` picker when inserting.
 - Work mode: the user edits the text and Saves. Design mode: a single/multi
   toggle. The value is the entire file — no schema, no `items`, no onSave script.
 - If you embed the same file elsewhere with `vance-embed`, it refreshes live

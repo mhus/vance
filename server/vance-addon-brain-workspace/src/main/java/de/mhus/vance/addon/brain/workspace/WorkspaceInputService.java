@@ -56,14 +56,26 @@ public class WorkspaceInputService {
     }
 
     /**
-     * Create a fresh empty text document in {@code folder} with the first
-     * free {@code input-<n>.md} name, returning its path so the caller can
-     * insert a {@code vance-input} block for it.
+     * Create a fresh empty text document in {@code folder}, returning its
+     * path so the caller can insert a {@code vance-input} block for it.
+     * With a {@code name} the file is {@code <slug>.md} (error if it
+     * exists); without one the first free {@code input-<n>.md} is used.
      */
     public String createInput(
-            String tenantId, String projectId, String folder, String editorId) {
+            String tenantId, String projectId, String folder,
+            @Nullable String name, String editorId) {
         String base = folder == null ? "" : folder.strip();
         if (base.endsWith("/")) base = base.substring(0, base.length() - 1);
+        String slug = slugify(name);
+        if (!slug.isBlank()) {
+            String path = (base.isEmpty() ? "" : base + "/") + slug + ".md";
+            if (documentService.findByPath(tenantId, projectId, path).isPresent()) {
+                throw new ToolException("document already exists: " + path);
+            }
+            documentService.createText(tenantId, projectId, path, null, null, "", editorId);
+            log.info("WorkspaceInputService.createInput tenant='{}' doc='{}'", tenantId, path);
+            return path;
+        }
         for (int n = 1; n <= 9999; n++) {
             String path = (base.isEmpty() ? "" : base + "/") + "input-" + n + ".md";
             if (documentService.findByPath(tenantId, projectId, path).isEmpty()) {
@@ -73,6 +85,13 @@ public class WorkspaceInputService {
             }
         }
         throw new ToolException("Could not allocate a free input document name in " + base);
+    }
+
+    private static String slugify(@Nullable String name) {
+        if (name == null) return "";
+        return name.strip().toLowerCase(java.util.Locale.ROOT)
+                .replaceAll("[^a-z0-9]+", "-")
+                .replaceAll("(^-+)|(-+$)", "");
     }
 
     private String read(DocumentDocument doc) {

@@ -172,8 +172,9 @@ const props = withDefaults(
     loadText?: (uri: string) => Promise<string>;
     /** Persist a `vance-input` block's text. */
     saveText?: (uri: string, content: string) => Promise<void>;
-    /** Create a fresh text doc + insert a `vance-input` block (slash `/input`). */
-    createInput?: () => void;
+    /** Open the host input picker (slash `/input`) — pick or create a text
+     *  doc, then call back via `insertInput`. */
+    openInputPicker?: () => void;
   }>(),
   { autoSaveMs: 2000, editable: true },
 );
@@ -625,8 +626,8 @@ function onFormPickerEvent() {
   props.openFormPicker?.();
 }
 
-function onCreateInputEvent() {
-  props.createInput?.();
+function onOpenInputPicker() {
+  props.openInputPicker?.();
 }
 
 /**
@@ -714,7 +715,7 @@ onMounted(() => {
   dom.addEventListener('vance:open-asset-picker', onAssetPickerEvent);
   dom.addEventListener('vance:open-embed-picker', onEmbedPickerEvent);
   dom.addEventListener('vance:open-form-picker', onFormPickerEvent);
-  dom.addEventListener('vance:create-input', onCreateInputEvent);
+  dom.addEventListener('vance:open-input-picker', onOpenInputPicker);
   document.addEventListener('dragstart', onGlobalDragStart, true);
   document.addEventListener('dragend', onGlobalDragEnd, true);
 });
@@ -730,7 +731,7 @@ onBeforeUnmount(() => {
     dom.removeEventListener('vance:open-asset-picker', onAssetPickerEvent);
     dom.removeEventListener('vance:open-embed-picker', onEmbedPickerEvent);
     dom.removeEventListener('vance:open-form-picker', onFormPickerEvent);
-    dom.removeEventListener('vance:create-input', onCreateInputEvent);
+    dom.removeEventListener('vance:open-input-picker', onOpenInputPicker);
   }
   document.removeEventListener('dragstart', onGlobalDragStart, true);
   document.removeEventListener('dragend', onGlobalDragEnd, true);

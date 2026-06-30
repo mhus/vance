@@ -10,7 +10,7 @@
  * I/O is done through the host-provided {@code loadText} / {@code saveText}
  * options so the block-editor stays decoupled from REST.
  */
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { NodeViewWrapper } from '@tiptap/vue-3';
 import type { Editor } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
@@ -49,6 +49,19 @@ const error = ref<string | null>(null);
 const savedAt = ref(false);
 
 const dirty = computed(() => content.value !== baseline.value);
+
+// Auto-grow the multiline textarea so it never shows a scrollbar.
+const taRef = ref<HTMLTextAreaElement | null>(null);
+function autoGrow() {
+  const el = taRef.value;
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = `${el.scrollHeight}px`;
+}
+watch(
+  [content, multiline, editable],
+  () => { void nextTick(autoGrow); },
+);
 
 async function load() {
   const loader = props.extension.options.loadText;
@@ -141,11 +154,13 @@ onMounted(load);
     <template v-else>
       <textarea
         v-if="multiline"
+        ref="taRef"
         v-model="content"
-        class="vance-input__field"
-        rows="3"
+        class="vance-input__field vance-input__field--auto"
+        rows="1"
         :disabled="saving || loading"
         contenteditable="false"
+        @input="autoGrow"
         @mousedown.stop
         @keydown.stop
       />
@@ -228,6 +243,12 @@ onMounted(load);
 .vance-input__field:disabled {
   background: oklch(var(--bc) / 0.04);
   color: oklch(var(--bc) / 0.7);
+}
+/* Auto-grow textarea: hide the scrollbar, height is driven by JS. */
+.vance-input__field--auto {
+  overflow: hidden;
+  resize: none;
+  min-height: 2.2em;
 }
 .vance-input__actions {
   display: flex;

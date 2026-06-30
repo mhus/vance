@@ -159,8 +159,16 @@ const props = withDefaults(
      * shows a static fallback notice.
      */
     formComponent?: import('vue').Component;
+    /**
+     * When {@code false}, the page is read-only: no text edits, no slash
+     * menu, no block drag/reorder. Interactive NodeView widgets (embedded
+     * forms, embed refresh) keep working — they are native controls, not
+     * ProseMirror-editable content. Drives the workspace's "work mode"
+     * (use, don't restructure). Default {@code true}.
+     */
+    editable?: boolean;
   }>(),
-  { autoSaveMs: 2000 },
+  { autoSaveMs: 2000, editable: true },
 );
 
 const emit = defineEmits<{
@@ -240,6 +248,7 @@ async function insertUploadedImages(files: File[], dropPos: number | null) {
 }
 
 const editor = useEditor({
+  editable: props.editable,
   extensions: [
     StarterKit.configure({
       heading: { levels: [1, 2, 3] },
@@ -417,6 +426,11 @@ const editor = useEditor({
     scheduleAutoSave();
   },
 });
+
+watch(
+  () => props.editable,
+  (v) => editor.value?.setEditable(v !== false),
+);
 
 watch(
   () => props.source,

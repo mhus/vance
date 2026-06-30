@@ -1346,6 +1346,7 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
           :embed-component="embedComponent ?? undefined"
           :open-form-picker="openFormPicker"
           :form-component="formComponent ?? undefined"
+          :editable="pageMode === 'design'"
           @save="onEditorSave"
           @dirty="onEditorDirty"
         />

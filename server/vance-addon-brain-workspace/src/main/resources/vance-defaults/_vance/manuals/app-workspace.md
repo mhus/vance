@@ -186,3 +186,12 @@ workpage_block_insert(
 ## Web-UI behaviour (LLM context)
 
 The Web-UI renders the workspace inplace: sidebar with the page tree (grouped by section), main area is the active page in the workpage editor. The user can rename / move / duplicate / delete pages and rearrange them by drag-and-drop. Page icon + cover are first-class — when seeding pages, set `icon:` on prominent ones for a polished look. Don't fight the UI by writing front-matter that only makes sense to the LLM — the user sees and edits the same file.
+
+## Editable forms + recompute (reactive data)
+
+A workspace page can embed an **editable form** over a `kind: records`
+document, optionally with a script that recomputes derived files (a chart, a
+summary) on Save. Use this when the user wants to *enter structured data and
+have something computed from it*. See `manual_read('workspace-forms')` for the
+`$meta.form` / `$meta.onSave` shape, the `vance-form` block and what the onSave
+script can do.

@@ -1,5 +1,5 @@
 ---
-triggers: form, data entry form, editable form, record form, fillable form, collect data, data table with form, recompute on save, reactive data, form that runs a script, generate chart from data, dropdown form, survey, intake form, dataset with computed output
+triggers: form, data entry form, editable form, record form, fillable form, collect data, data table with form, recompute on save, reactive data, form that runs a script, generate chart from data, dropdown form, survey, intake form, dataset with computed output, editable text field, text input, inline editable text, single text value, note field, textarea on page, editable note
 summary: How to build an editable, typed FORM over a data document, optionally with an onSave script that recomputes derived files (chart, summary, …) when the user saves. The form doc is a `kind: records` document whose `$meta.form` carries the typed schema and `$meta.onSave` the recompute hook. Use this when the user wants to enter structured data and have something computed/visualised from it.
 ---
 # Reactive Forms in a Workspace
@@ -111,6 +111,28 @@ Design mode they edit fields (field builder) and open **⚙ Settings** to set
 `single`, the onSave script, the session flag and the title. In Work mode they
 enter data and Save. You (the model) normally set all of this directly in the
 YAML when you create the document — no UI step needed.
+
+## 4b. `/input` — a single editable text bound to a file
+
+For **one editable text value** (a note, a description, a single field) use the
+simpler `vance-input` block instead of a full form. It binds to a plain text
+document; Save writes the **whole** file content.
+
+````
+```vance-input
+config: vance:/notes/intro.md?kind=text
+multiline: true
+```
+````
+
+- `multiline: false` → a single-line input; `true` → a textarea.
+- Work mode: the user edits the text and Saves. Design mode: a single/multi
+  toggle. The value is the entire file — no schema, no `items`, no onSave script.
+- If you embed the same file elsewhere with `vance-embed`, it refreshes live
+  after a save.
+
+Use `/input` for a lone text value; use `/form` (`$meta.form`) when you need
+typed fields, multiple records, or an onSave recompute.
 
 ## 5. Don't
 

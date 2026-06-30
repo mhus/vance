@@ -1269,7 +1269,10 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
             alt=""
             class="workspace-app__page-cover"
           />
-          <div class="workspace-app__page-cover-actions">
+          <div
+            v-if="pageMode === 'design'"
+            class="workspace-app__page-cover-actions"
+          >
             <button
               class="workspace-app__page-cover-btn"
               @click="openCoverPicker"
@@ -1281,7 +1284,10 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
           </div>
         </div>
         <header v-if="activePageView" class="workspace-app__page-header">
-          <div v-if="!pageCover || !pageIcon" class="workspace-app__page-add-row">
+          <div
+            v-if="pageMode === 'design' && (!pageCover || !pageIcon)"
+            class="workspace-app__page-add-row"
+          >
             <button
               v-if="!pageIcon"
               class="workspace-app__page-add-btn"
@@ -1296,11 +1302,15 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
           <div class="workspace-app__page-header-row">
             <h1 class="workspace-app__page-title">
               <button
-                v-if="pageIcon"
+                v-if="pageIcon && pageMode === 'design'"
                 class="workspace-app__page-icon"
                 title="Change icon"
                 @click="openIconPicker"
               >{{ pageIcon }}</button>
+              <span
+                v-else-if="pageIcon"
+                class="workspace-app__page-icon workspace-app__page-icon--static"
+              >{{ pageIcon }}</span>
               {{ pageDisplayTitle }}
             </h1>
             <span
@@ -1923,6 +1933,12 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
 }
 .workspace-app__page-icon:hover {
   filter: brightness(1.2);
+}
+.workspace-app__page-icon--static {
+  cursor: default;
+}
+.workspace-app__page-icon--static:hover {
+  filter: none;
 }
 .workspace-app__page-title {
   font-size: 1.875rem;

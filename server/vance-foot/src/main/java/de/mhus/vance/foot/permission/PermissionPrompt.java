@@ -54,8 +54,14 @@ public class PermissionPrompt implements InteractivePermissionResolver {
      */
     @Override
     public PermissionDecision resolve(String toolName, PermissionDomain domain, String subject) {
+        if (!permissions.isInteractive()) {
+            log.warn("permission DENY (headless/daemon, no user to ask): tool='{}' {}",
+                    toolName, subject);
+            return PermissionDecision.DENY;
+        }
         if (!liveRegion.isAttached()) {
-            log.info("permission ASK for '{}' but no interactive REPL — denying", toolName);
+            log.warn("permission DENY (no interactive REPL attached): tool='{}' {}",
+                    toolName, subject);
             return PermissionDecision.DENY;
         }
 

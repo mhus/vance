@@ -56,6 +56,18 @@ class PermissionPromptTest {
     }
 
     @Test
+    void resolve_daemonHeadless_deniesEvenWhenReplAttached(@TempDir Path dir) {
+        Stack s = stack(dir, true); // REPL attached …
+        s.permissions().setInteractive(false); // … but running headless (daemon / --no-ui)
+
+        PermissionDecision decision =
+                s.prompt().resolve("client_exec_run", PermissionDomain.COMMANDS, "ls");
+
+        assertThat(decision).isEqualTo(PermissionDecision.DENY);
+        assertThat(s.pending().hasActive()).isFalse();
+    }
+
+    @Test
     void resolve_allowAlways_persistsRule_andReloadsPolicy(@TempDir Path dir) {
         Stack s = stack(dir, true);
 

@@ -252,6 +252,13 @@ public class VanceFootCommand implements Callable<Integer> {
         applyDaemonShortcut();
         applyWebShortcut();
 
+        // Headless runs (daemon / --no-ui) have no user to answer a sandbox
+        // prompt — set this before connect() so an early tool-invoke
+        // auto-denies instead of blocking on input that never comes.
+        if (noUi) {
+            permissions.setInteractive(false);
+        }
+
         // --resume validation. --last and --eddie imply --resume; --eddie
         // is mutually exclusive with --project (Eddie sessions live in
         // user-scoped projects we resolve from the profile, so an

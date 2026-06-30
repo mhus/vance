@@ -24,6 +24,12 @@ public class PermissionService {
 
     /** Set once by {@code --no-sandbox}; overrides any file setting for this run. */
     private volatile boolean cliDisabled = false;
+    /**
+     * Whether a human can answer permission prompts. False in headless runs
+     * ({@code --no-ui} / daemon) — there the prompt must auto-deny instead of
+     * blocking forever on input that will never come.
+     */
+    private volatile boolean interactive = true;
     private volatile boolean sandboxEnabled;
     private volatile PermissionPolicy policy;
     private volatile ExecIsolation isolation = ExecIsolation.DISABLED;
@@ -88,6 +94,16 @@ public class PermissionService {
     public void disableSandbox() {
         this.cliDisabled = true;
         this.sandboxEnabled = false;
+    }
+
+    /** True when a human can answer permission prompts (interactive REPL). */
+    public boolean isInteractive() {
+        return interactive;
+    }
+
+    /** Marks this run headless ({@code --no-ui} / daemon) — prompts auto-deny. */
+    public void setInteractive(boolean interactive) {
+        this.interactive = interactive;
     }
 
     public PermissionPolicy policy() {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue';
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, provide, ref, watch, type Component } from 'vue';
 import {
   brainFetch,
   brainFetchText,
@@ -204,6 +204,18 @@ const embedComponent = inject<Component | null>('vance:embed-component', null);
 // the shared form-engine. Injected by string key like embed-component;
 // null = not in a vance-face host → block-editor shows a fallback.
 const formComponent = inject<Component | null>('vance:form-component', null);
+
+// Page mode (design vs work) — per app-instance, client-only, default
+// "work" (the user enters data). Switching to "design" lets embedded
+// forms edit their own field schema. Provided down the component tree
+// so the deeply-nested VanceFormView NodeViews can inject it reactively
+// without threading it through the block-editor.
+type PageMode = 'design' | 'work';
+const pageMode = ref<PageMode>('work');
+provide('vance:page-mode', pageMode);
+function togglePageMode() {
+  pageMode.value = pageMode.value === 'work' ? 'design' : 'work';
+}
 
 // ── Embed picker (slash-command /embed) ───────────────────────────
 const embedPickerOpen = ref(false);
@@ -1077,6 +1089,14 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
         <div class="workspace-app__title-actions">
           <button
             class="workspace-app__icon-btn"
+            :class="{ 'workspace-app__icon-btn--active': pageMode === 'design' }"
+            :title="pageMode === 'design'
+              ? 'Design mode — editing form fields. Click for Work mode.'
+              : 'Work mode — entering data. Click for Design mode.'"
+            @click="togglePageMode"
+          >{{ pageMode === 'design' ? '🛠' : '✎' }}</button>
+          <button
+            class="workspace-app__icon-btn"
             :disabled="creating"
             title="New page"
             @click="openNewPage"
@@ -1513,6 +1533,10 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
   background: oklch(var(--bc) / 0.1);
 }
 .workspace-app__icon-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.workspace-app__icon-btn--active {
+  background: oklch(var(--p) / 0.18);
+  color: oklch(var(--p));
+}
 
 .workspace-app__search {
   padding: 0 0.25rem 0.5rem;

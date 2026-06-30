@@ -178,6 +178,41 @@ public class WorkspaceFormService {
     }
 
     /**
+     * Replace the edit-config's {@code form.fields} with the given schema
+     * (design-mode form builder). Everything else in the config —
+     * {@code $meta}, {@code title}, {@code target}, {@code onSave} — is
+     * preserved verbatim. Fields are normalised through Jackson so only
+     * the populated {@link FormFieldDto} attributes land in the YAML.
+     */
+    @SuppressWarnings("unchecked")
+    public void saveSchema(
+            String tenantId, String projectId, String configPath,
+            List<FormFieldDto> fields, String editorId) {
+        DocumentDocument configDoc = documentService.findByPath(tenantId, projectId, configPath)
+                .orElseThrow(() -> new ToolException("edit-config not found: " + configPath));
+        Map<String, Object> config = loadYaml(readContent(configDoc));
+
+        List<Map<String, Object>> fieldMaps = objectMapper.convertValue(
+                fields != null ? fields : List.of(),
+                new TypeReference<List<Map<String, Object>>>() {});
+
+        Object formObj = config.get("form");
+        Map<String, Object> form = (formObj instanceof Map<?, ?> m)
+                ? (Map<String, Object>) m
+                : new LinkedHashMap<>();
+        form.put("fields", fieldMaps);
+        config.put("form", form);
+
+        documentService.replaceContent(
+                configDoc.getId(),
+                new ByteArrayInputStream(dumpYaml(config).getBytes(StandardCharsets.UTF_8)),
+                DocumentService.mimeFromPath(configPath),
+                editorId);
+        log.info("WorkspaceFormService.saveSchema tenant='{}' config='{}' fields={}",
+                tenantId, configPath, fieldMaps.size());
+    }
+
+    /**
      * Create a new edit-config skeleton ({@code <folder>/<slug>-edit-config.yaml},
      * {@code $meta.kind: edit-form}) with one starter field and a target
      * data file {@code <slug>.yaml}. Returns the created config path so

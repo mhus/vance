@@ -644,6 +644,24 @@ public class WorkspaceAppController {
     }
 
     /**
+     * Replace an edit-config's field schema (design-mode form builder).
+     */
+    @PostMapping("/brain/{tenant}/addon/workspace/form/schema")
+    public ResponseEntity<Void> saveFormSchema(
+            @PathVariable("tenant") String tenant,
+            @RequestParam("projectId") String projectId,
+            @RequestParam("config") String config,
+            @RequestBody WorkspaceFormSchemaRequest request,
+            HttpServletRequest httpRequest) {
+
+        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
+        formService.saveSchema(tenant, projectId, config,
+                request != null ? request.fields() : java.util.List.of(),
+                currentUser(httpRequest));
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
      * Create a new edit-config skeleton in the app folder and return its
      * path, so the client can insert a {@code vance-form} block for it.
      */

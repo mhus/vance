@@ -4,13 +4,20 @@ import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.ObjectMapper;
 import de.mhus.vance.api.form.FormFieldDto;
+import de.mhus.vance.brain.script.ScriptExecutionException;
+import de.mhus.vance.brain.script.ScriptExecutor;
+import de.mhus.vance.brain.script.ScriptRequest;
+import de.mhus.vance.brain.tools.ContextToolsApi;
+import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -44,6 +51,11 @@ public class WorkspaceFormService {
 
     private final DocumentService documentService;
     private final ObjectMapper objectMapper;
+    private final ScriptExecutor scriptExecutor;
+    private final ToolDispatcher toolDispatcher;
+
+    /** Wall-clock cap for an onSave recompute script. */
+    private static final Duration ON_SAVE_TIMEOUT = Duration.ofSeconds(30);
 
     /** Schema + current values + resolved target path for one form. */
     public record LoadedForm(
@@ -114,6 +126,55 @@ public class WorkspaceFormService {
         }
         log.info("WorkspaceFormService.saveForm tenant='{}' config='{}' target='{}' fields={}",
                 tenantId, configPath, targetPath, data.size());
+
+        runOnSave(tenantId, projectId, configPath, config, editorId);
+    }
+
+    /**
+     * Run the edit-config's {@code onSave.runScript} synchronously after
+     * the data file was written (Schritt 4, sync variant). The script
+     * reads the freshly-written target via {@code vance.documents.*} and
+     * recomputes derived files; their writes fan out to the client via
+     * the documents live-push. A script failure surfaces as a
+     * {@link ToolException} (→ HTTP 500), the data file stays written.
+     *
+     * <p>{@code onSave.session} is accepted but informational in v1:
+     * {@code vance.documents.*} and {@code vance.llm.*} both operate on
+     * the tenant/project scope and need no session. A dedicated per-form
+     * system session is a later refinement.
+     */
+    private void runOnSave(
+            String tenantId, String projectId, String configPath,
+            Map<String, Object> config, String editorId) {
+        Object onSave = config.get("onSave");
+        if (!(onSave instanceof Map<?, ?> onSaveMap)) return;
+        String runScript = stringValue(onSaveMap.get("runScript"));
+        if (runScript == null || runScript.isBlank()) return;
+
+        String scriptPath = resolveRelative(configPath, runScript);
+        if (!scriptPath.toLowerCase(java.util.Locale.ROOT).endsWith(".js")) {
+            throw new ToolException(
+                    "onSave.runScript must be a .js document (got '" + scriptPath
+                            + "') — only in-JVM JavaScript is supported in v1");
+        }
+        DocumentDocument scriptDoc = documentService.findByPath(tenantId, projectId, scriptPath)
+                .orElseThrow(() -> new ToolException("onSave script not found: " + scriptPath));
+        String code = readContent(scriptDoc);
+
+        ToolInvocationContext scope =
+                new ToolInvocationContext(tenantId, projectId, null, null, editorId);
+        ContextToolsApi tools = new ContextToolsApi(toolDispatcher, scope);
+        try {
+            scriptExecutor.run(new ScriptRequest(
+                    "js", code, "form-onSave:" + scriptPath, tools, ON_SAVE_TIMEOUT));
+            log.info("WorkspaceFormService.runOnSave tenant='{}' script='{}' ok",
+                    tenantId, scriptPath);
+        } catch (ScriptExecutionException e) {
+            log.warn("WorkspaceFormService.runOnSave tenant='{}' script='{}' failed [{}]: {}",
+                    tenantId, scriptPath, e.errorClass(), e.getMessage());
+            throw new ToolException(
+                    "onSave script '" + scriptPath + "' failed: " + e.getMessage());
+        }
     }
 
     /**

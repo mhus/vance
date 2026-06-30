@@ -40,10 +40,18 @@ export const VanceInput = Node.create({
 
   addOptions() {
     return {
-      /** Host-provided load: vance: URI → current text content. */
-      loadText: null as null | ((uri: string) => Promise<string>),
-      /** Host-provided save: write the full text into the bound document. */
-      saveText: null as null | ((uri: string, content: string) => Promise<void>),
+      /** Host load: vance: URI → editable body + onSave config (from header). */
+      loadInput: null as
+        | null
+        | ((
+            uri: string,
+          ) => Promise<{ content: string; runScript: string | null; session: boolean }>),
+      /** Host save: write the body back (header preserved, onSave runs). */
+      saveInput: null as null | ((uri: string, content: string) => Promise<void>),
+      /** Host save: persist the design-mode onSave settings into the header. */
+      saveInputSettings: null as
+        | null
+        | ((uri: string, runScript: string | null, session: boolean) => Promise<void>),
     };
   },
 

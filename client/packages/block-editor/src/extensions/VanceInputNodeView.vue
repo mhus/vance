@@ -3,12 +3,15 @@
  * NodeView for the {@code vance-input} block.
  *
  * - **work mode** (read-only page): an editable single-line input or
- *   textarea bound to a text document; Save writes the whole document.
- * - **design mode**: a single-line / multi-line toggle (writes the block
- *   attribute); the field is shown disabled as a preview.
+ *   textarea bound to a text document; Save writes the body back (the
+ *   front-matter header is preserved server-side) and runs the onSave hook.
+ * - **design mode**: a single-line / multi-line toggle plus the onSave
+ *   settings (script path + session flag, stored in the document header);
+ *   the field is shown disabled as a preview.
  *
- * I/O is done through the host-provided {@code loadText} / {@code saveText}
- * options so the block-editor stays decoupled from REST.
+ * I/O is done through the host-provided {@code loadInput} / {@code saveInput}
+ * / {@code saveInputSettings} options so the block-editor stays decoupled
+ * from REST.
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { NodeViewWrapper } from '@tiptap/vue-3';
@@ -16,8 +19,13 @@ import type { Editor } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 
 interface ExtensionOptions {
-  loadText?: ((uri: string) => Promise<string>) | null;
-  saveText?: ((uri: string, content: string) => Promise<void>) | null;
+  loadInput?:
+    | ((uri: string) => Promise<{ content: string; runScript: string | null; session: boolean }>)
+    | null;
+  saveInput?: ((uri: string, content: string) => Promise<void>) | null;
+  saveInputSettings?:
+    | ((uri: string, runScript: string | null, session: boolean) => Promise<void>)
+    | null;
 }
 
 const props = defineProps<{
@@ -48,6 +56,11 @@ const saving = ref(false);
 const error = ref<string | null>(null);
 const savedAt = ref(false);
 
+// onSave config (read from / written to the bound document's header).
+const runScript = ref('');
+const session = ref(false);
+const settingsSaving = ref(false);
+
 const dirty = computed(() => content.value !== baseline.value);
 
 // Auto-grow the multiline textarea so it never shows a scrollbar.
@@ -64,14 +77,16 @@ watch(
 );
 
 async function load() {
-  const loader = props.extension.options.loadText;
+  const loader = props.extension.options.loadInput;
   if (!config.value || !loader) return;
   loading.value = true;
   error.value = null;
   try {
-    const text = await loader(config.value);
-    content.value = text ?? '';
+    const loaded = await loader(config.value);
+    content.value = loaded.content ?? '';
     baseline.value = content.value;
+    runScript.value = loaded.runScript ?? '';
+    session.value = loaded.session === true;
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Load failed';
   } finally {
@@ -80,7 +95,7 @@ async function load() {
 }
 
 async function save() {
-  const saver = props.extension.options.saveText;
+  const saver = props.extension.options.saveInput;
   if (!saver) return;
   saving.value = true;
   error.value = null;
@@ -103,6 +118,27 @@ function cancel() {
 
 function setMultiline(v: boolean) {
   props.updateAttributes({ multiline: v });
+}
+
+// Persist the design-mode onSave settings (script path + session flag) into
+// the bound document's header. Called on change/blur of the settings inputs.
+async function persistSettings() {
+  const saver = props.extension.options.saveInputSettings;
+  if (!config.value || !saver) return;
+  settingsSaving.value = true;
+  error.value = null;
+  try {
+    await saver(config.value, runScript.value.trim() || null, session.value);
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Settings save failed';
+  } finally {
+    settingsSaving.value = false;
+  }
+}
+
+function setSession(v: boolean) {
+  session.value = v;
+  void persistSettings();
 }
 
 onMounted(load);
@@ -148,6 +184,31 @@ onMounted(load);
         disabled
         contenteditable="false"
       />
+
+      <!-- onSave settings — written into the bound document's header -->
+      <div class="vance-input__settings" contenteditable="false">
+        <label class="vance-input__settings-label">onSave-Script</label>
+        <input
+          v-model="runScript"
+          type="text"
+          class="vance-input__settings-input"
+          placeholder="z.B. update.js (relativ zum Ordner, optional)"
+          :disabled="settingsSaving"
+          @blur="persistSettings"
+          @keydown.enter.prevent="persistSettings"
+          @mousedown.stop
+          @keydown.stop
+        />
+        <label class="vance-input__opt">
+          <input
+            type="checkbox"
+            :checked="session"
+            :disabled="settingsSaving"
+            @change="setSession(($event.target as HTMLInputElement).checked)"
+            @mousedown.stop
+          /> Session für Script
+        </label>
+      </div>
     </template>
 
     <!-- WORK: editable field + Save/Cancel -->
@@ -227,6 +288,29 @@ onMounted(load);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.vance-input__settings {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.4rem;
+  font-size: 0.78rem;
+  color: oklch(var(--bc) / 0.7);
+}
+.vance-input__settings-label {
+  white-space: nowrap;
+}
+.vance-input__settings-input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid oklch(var(--bc) / 0.2);
+  border-radius: 0.3rem;
+  padding: 0.25rem 0.45rem;
+  font: inherit;
+  font-size: 0.78rem;
+  color: inherit;
+  background: oklch(var(--b1));
+  outline: none;
 }
 .vance-input__field {
   width: 100%;

@@ -708,7 +708,7 @@ public class WorkspaceAppController {
         return new WorkspaceFormCreateResponse(configPath);
     }
 
-    /** Load the bound text for a {@code vance-input} block. */
+    /** Load the bound text body + onSave config for a {@code vance-input} block. */
     @GetMapping("/brain/{tenant}/addon/workspace/input")
     public WorkspaceInputResponse loadInput(
             @PathVariable("tenant") String tenant,
@@ -717,10 +717,15 @@ public class WorkspaceAppController {
             HttpServletRequest httpRequest) {
 
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.READ);
-        return new WorkspaceInputResponse(inputService.loadText(tenant, projectId, doc));
+        WorkspaceInputService.LoadedInput loaded = inputService.loadInput(tenant, projectId, doc);
+        return new WorkspaceInputResponse(
+                loaded.content(), loaded.onSaveScript(), loaded.onSaveSession());
     }
 
-    /** Persist the text of a {@code vance-input} block into its document. */
+    /**
+     * Persist the body of a {@code vance-input} block into its document
+     * (header preserved) and run its {@code onSave} recompute hook.
+     */
     @PostMapping("/brain/{tenant}/addon/workspace/input/save")
     public ResponseEntity<Void> saveInput(
             @PathVariable("tenant") String tenant,
@@ -730,8 +735,30 @@ public class WorkspaceAppController {
             HttpServletRequest httpRequest) {
 
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
-        inputService.saveText(tenant, projectId, doc,
+        inputService.saveInput(tenant, projectId, doc,
                 request != null ? request.content() : null, currentUser(httpRequest));
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Update a {@code vance-input} document's design-mode {@code onSave}
+     * settings (script path + session flag), written into its front-matter
+     * header.
+     */
+    @PostMapping("/brain/{tenant}/addon/workspace/input/settings")
+    public ResponseEntity<Void> saveInputSettings(
+            @PathVariable("tenant") String tenant,
+            @RequestParam("projectId") String projectId,
+            @RequestParam("doc") String doc,
+            @RequestBody WorkspaceInputSettingsRequest request,
+            HttpServletRequest httpRequest) {
+
+        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
+        if (request == null) {
+            throw new ToolException("settings request must not be empty");
+        }
+        inputService.saveSettings(tenant, projectId, doc,
+                request.runScript(), request.session(), currentUser(httpRequest));
         return ResponseEntity.noContent().build();
     }
 

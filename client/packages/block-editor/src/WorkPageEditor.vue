@@ -168,10 +168,18 @@ const props = withDefaults(
      * (use, don't restructure). Default {@code true}.
      */
     editable?: boolean;
-    /** Load the bound text of a `vance-input` block (vance: URI → content). */
-    loadText?: (uri: string) => Promise<string>;
-    /** Persist a `vance-input` block's text. */
-    saveText?: (uri: string, content: string) => Promise<void>;
+    /** Load a `vance-input` block (vance: URI → editable body + onSave config). */
+    loadInput?: (
+      uri: string,
+    ) => Promise<{ content: string; runScript: string | null; session: boolean }>;
+    /** Persist a `vance-input` block's body (header preserved, onSave runs). */
+    saveInput?: (uri: string, content: string) => Promise<void>;
+    /** Persist a `vance-input` block's design-mode onSave settings. */
+    saveInputSettings?: (
+      uri: string,
+      runScript: string | null,
+      session: boolean,
+    ) => Promise<void>;
     /** Open the host input picker (slash `/input`) — pick or create a text
      *  doc, then call back via `insertInput`. */
     openInputPicker?: () => void;
@@ -380,9 +388,13 @@ const editor = useEditor({
       formComponent: () => props.formComponent ?? null,
     }),
     VanceInput.configure({
-      loadText: (uri: string) => props.loadText?.(uri) ?? Promise.resolve(''),
-      saveText: (uri: string, content: string) =>
-        props.saveText?.(uri, content) ?? Promise.resolve(),
+      loadInput: (uri: string) =>
+        props.loadInput?.(uri) ??
+        Promise.resolve({ content: '', runScript: null, session: false }),
+      saveInput: (uri: string, content: string) =>
+        props.saveInput?.(uri, content) ?? Promise.resolve(),
+      saveInputSettings: (uri: string, runScript: string | null, session: boolean) =>
+        props.saveInputSettings?.(uri, runScript, session) ?? Promise.resolve(),
     }),
   ],
   content: initial.value.content,

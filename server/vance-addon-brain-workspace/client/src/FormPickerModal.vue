@@ -76,6 +76,33 @@ function pick(doc: DocSummary) {
   emit('pick', uri);
 }
 
+// ── Create a new edit-config in the app folder ────────────────────
+const newName = ref('');
+const creating = ref(false);
+const createError = ref<string | null>(null);
+
+async function createForm() {
+  const name = newName.value.trim();
+  if (!name || creating.value) return;
+  creating.value = true;
+  createError.value = null;
+  try {
+    const params = new URLSearchParams();
+    params.set('projectId', props.projectId);
+    params.set('folder', props.folder ?? '');
+    const resp = await brainFetch<{ configPath: string }>(
+      'POST',
+      `addon/workspace/form/create?${params}`,
+      { body: { name } },
+    );
+    emit('pick', `vance:/${encodeURI(resp.configPath)}?kind=edit-form`);
+  } catch (e) {
+    createError.value = e instanceof Error ? e.message : 'Create failed';
+  } finally {
+    creating.value = false;
+  }
+}
+
 function close() { emit('close'); }
 function onBackdrop(e: MouseEvent) {
   if (e.target === e.currentTarget) close();
@@ -125,6 +152,27 @@ watch(() => [props.projectId, props.folder], () => search(query.value.trim()));
           <span class="form-picker__list-title">{{ d.title || d.path }}</span>
           <span class="form-picker__list-path">{{ d.path }}</span>
         </button>
+      </div>
+
+      <div class="form-picker__create">
+        <div v-if="createError" class="form-picker__create-error">{{ createError }}</div>
+        <div class="form-picker__create-row">
+          <input
+            v-model="newName"
+            type="text"
+            class="form-picker__search-input"
+            placeholder="New form name…"
+            :disabled="creating"
+            @keydown.enter.prevent="createForm"
+            @keydown.escape="close"
+          />
+          <button
+            type="button"
+            class="form-picker__create-btn"
+            :disabled="creating || !newName.trim()"
+            @click="createForm"
+          >{{ creating ? '…' : 'Create' }}</button>
+        </div>
       </div>
     </div>
   </div>
@@ -241,5 +289,29 @@ watch(() => [props.projectId, props.folder], () => search(query.value.trim()));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.form-picker__create {
+  border-top: 1px solid oklch(var(--bc) / 0.18);
+  padding: 0.6rem 1rem;
+}
+.form-picker__create-row {
+  display: flex;
+  gap: 0.5rem;
+}
+.form-picker__create-btn {
+  border: 1px solid oklch(var(--p));
+  background: oklch(var(--p));
+  color: oklch(var(--pc));
+  border-radius: 0.25rem;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.form-picker__create-btn:disabled { opacity: 0.5; cursor: default; }
+.form-picker__create-error {
+  color: oklch(var(--er));
+  font-size: 0.8rem;
+  margin-bottom: 0.4rem;
 }
 </style>

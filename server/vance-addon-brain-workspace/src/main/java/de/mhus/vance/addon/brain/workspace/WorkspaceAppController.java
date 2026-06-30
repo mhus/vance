@@ -643,6 +643,28 @@ public class WorkspaceAppController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * Create a new edit-config skeleton in the app folder and return its
+     * path, so the client can insert a {@code vance-form} block for it.
+     */
+    @PostMapping("/brain/{tenant}/addon/workspace/form/create")
+    public WorkspaceFormCreateResponse createForm(
+            @PathVariable("tenant") String tenant,
+            @RequestParam("projectId") String projectId,
+            @RequestParam("folder") String folder,
+            @RequestBody WorkspaceFormCreateRequest request,
+            HttpServletRequest httpRequest) {
+
+        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
+        if (request == null || request.name() == null || request.name().isBlank()) {
+            throw new ToolException("form name must not be empty");
+        }
+        String configPath = formService.createForm(
+                tenant, projectId, WorkspaceFolderReader.normaliseFolder(folder),
+                request.name(), request.title(), currentUser(httpRequest));
+        return new WorkspaceFormCreateResponse(configPath);
+    }
+
     @PostMapping("/brain/{tenant}/addon/workspace/rebuild")
     public WorkspaceRebuildResponse rebuild(
             @PathVariable("tenant") String tenant,

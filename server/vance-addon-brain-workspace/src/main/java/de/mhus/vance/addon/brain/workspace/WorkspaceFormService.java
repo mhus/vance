@@ -116,6 +116,59 @@ public class WorkspaceFormService {
                 tenantId, configPath, targetPath, data.size());
     }
 
+    /**
+     * Create a new edit-config skeleton ({@code <folder>/<slug>-edit-config.yaml},
+     * {@code $meta.kind: edit-form}) with one starter field and a target
+     * data file {@code <slug>.yaml}. Returns the created config path so
+     * the caller can drop a {@code vance-form} block referencing it. The
+     * target data file is created lazily on first save.
+     */
+    public String createForm(
+            String tenantId, String projectId, String folder,
+            String name, @org.jspecify.annotations.Nullable String title, String editorId) {
+        String slug = slugify(name);
+        if (slug.isBlank()) {
+            throw new ToolException("form name must not be empty");
+        }
+        String base = folder == null ? "" : folder.strip();
+        if (base.endsWith("/")) base = base.substring(0, base.length() - 1);
+        String configPath = base.isEmpty()
+                ? slug + "-edit-config.yaml"
+                : base + "/" + slug + "-edit-config.yaml";
+        if (documentService.findByPath(tenantId, projectId, configPath).isPresent()) {
+            throw new ToolException("edit-config already exists: " + configPath);
+        }
+        String displayTitle = (title != null && !title.isBlank()) ? title.strip() : name.strip();
+
+        Map<String, Object> meta = new LinkedHashMap<>();
+        meta.put("kind", "edit-form");
+        Map<String, Object> starterLabel = new LinkedHashMap<>();
+        starterLabel.put("en", "Field 1");
+        Map<String, Object> starterField = new LinkedHashMap<>();
+        starterField.put("name", "field1");
+        starterField.put("type", "string");
+        starterField.put("label", starterLabel);
+        Map<String, Object> form = new LinkedHashMap<>();
+        form.put("fields", new java.util.ArrayList<>(List.of(starterField)));
+        Map<String, Object> root = new LinkedHashMap<>();
+        root.put("$meta", meta);
+        root.put("title", displayTitle);
+        root.put("target", slug + ".yaml");
+        root.put("form", form);
+
+        documentService.createText(
+                tenantId, projectId, configPath, displayTitle, null, dumpYaml(root), editorId);
+        log.info("WorkspaceFormService.createForm tenant='{}' config='{}'", tenantId, configPath);
+        return configPath;
+    }
+
+    private static String slugify(String name) {
+        if (name == null) return "";
+        return name.strip().toLowerCase(java.util.Locale.ROOT)
+                .replaceAll("[^a-z0-9]+", "-")
+                .replaceAll("(^-+)|(-+$)", "");
+    }
+
     // ---- helpers -------------------------------------------------------
 
     @SuppressWarnings("unchecked")

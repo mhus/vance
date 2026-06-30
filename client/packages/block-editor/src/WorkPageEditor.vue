@@ -622,8 +622,13 @@ function onFormPickerEvent() {
  * otherwise swallow the browser's built-in modifier-click behaviour.
  */
 function onLinkClickCapture(e: MouseEvent) {
-  if (!(e.ctrlKey || e.metaKey)) return;
   if (e.button !== 0) return; // primary button only
+  // Editable (design) mode: plain click positions the caret / edits;
+  // ⌘/Ctrl+click opens. Read-only (work) mode: a plain click opens the
+  // link — there's nothing to edit, and a `/link` card renders as a
+  // clickable link there.
+  const modifier = e.ctrlKey || e.metaKey;
+  if (editor.value?.isEditable && !modifier) return;
   const anchor = (e.target as HTMLElement | null)?.closest('a');
   if (!anchor) return;
   const href = anchor.getAttribute('href');

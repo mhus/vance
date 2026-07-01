@@ -2416,9 +2416,6 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         // via doc_read. Never persisted into chat history.
         String cortexBoundDocPath = cortexBoundDocumentResolver.resolvePath(
                 boundDocumentId, process.getTenantId(), process.getProjectId());
-        log.trace("arthur cortex-bound: boundDocumentId={} tenant={} project={} resolvedPath={} selection={}",
-                boundDocumentId, process.getTenantId(), process.getProjectId(),
-                cortexBoundDocPath, boundDocSelection);
         // Stash this turn's selection so the no-arg doc_get_selection() can
         // find it; clear when the turn carried none (tied to the bound doc).
         cortexTurnSelectionHolder.set(process.getId(),

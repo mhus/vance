@@ -853,6 +853,11 @@ above aren't listed this turn. Read with
 `doc_read(path="{{ cortexBoundDocPath }}")` and edit in-place — do
 not delegate small edits to a worker. You do **not** need IDE or MCP
 tools to answer "which file is open" — it is this one.
+{% if cortexBoundDocSelection %}
+The user has text **selected** in it (character range {{ cortexBoundDocSelection }}).
+When they mean "the selected part" / "diesen Teil", read its exact text
+with `doc_get_selection()` (no args uses this selection).
+{% endif %}
 {% endif %}
 {% if voiceMode %}
 

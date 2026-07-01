@@ -231,6 +231,7 @@ public class EddieEngine extends StructuredActionEngine {
     private final de.mhus.vance.brain.discovery.DiscoveryService discoveryService;
     private final de.mhus.vance.brain.tools.client.CortexPromptResolver cortexPromptResolver;
     private final de.mhus.vance.brain.tools.client.CortexBoundDocumentResolver cortexBoundDocumentResolver;
+    private final de.mhus.vance.brain.tools.client.CortexTurnSelectionHolder cortexTurnSelectionHolder;
     private final de.mhus.vance.brain.chat.CollabContextResolver collabContextResolver;
     private final de.mhus.vance.brain.applications.ActiveAppPromptResolver activeAppPromptResolver;
     private final ObjectMapper objectMapper;
@@ -285,6 +286,7 @@ public class EddieEngine extends StructuredActionEngine {
                     de.mhus.vance.brain.discovery.DiscoveryService discoveryService,
             de.mhus.vance.brain.tools.client.CortexPromptResolver cortexPromptResolver,
             de.mhus.vance.brain.tools.client.CortexBoundDocumentResolver cortexBoundDocumentResolver,
+            de.mhus.vance.brain.tools.client.CortexTurnSelectionHolder cortexTurnSelectionHolder,
             de.mhus.vance.brain.chat.CollabContextResolver collabContextResolver,
             de.mhus.vance.brain.applications.ActiveAppPromptResolver activeAppPromptResolver,
             de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeService actionLoopJudgeService) {
@@ -309,6 +311,7 @@ public class EddieEngine extends StructuredActionEngine {
         this.discoveryService = discoveryService;
         this.cortexPromptResolver = cortexPromptResolver;
         this.cortexBoundDocumentResolver = cortexBoundDocumentResolver;
+        this.cortexTurnSelectionHolder = cortexTurnSelectionHolder;
         this.collabContextResolver = collabContextResolver;
         this.activeAppPromptResolver = activeAppPromptResolver;
         this.objectMapper = objectMapper;
@@ -2434,12 +2437,14 @@ public class EddieEngine extends StructuredActionEngine {
         String mentionedByDisplayName = null;
         de.mhus.vance.api.thinkprocess.ActiveAppContext activeApp = null;
         String boundDocumentId = null;
+        de.mhus.vance.api.thinkprocess.BoundDocSelection boundDocSelection = null;
         for (SteerMessage m : inbox) {
             if (m instanceof SteerMessage.UserChatInput uci) {
                 voiceMode = uci.voiceMode();
                 mentionedByDisplayName = uci.fromUserDisplayName();
                 activeApp = uci.activeApp();
                 boundDocumentId = uci.boundDocumentId();
+                boundDocSelection = uci.boundDocSelection();
             }
         }
         String appInstructions = activeAppPromptResolver.resolve(process, activeApp);
@@ -2457,6 +2462,10 @@ public class EddieEngine extends StructuredActionEngine {
                 cortexPromptResolver.resolve(process.getSessionId());
         String cortexBoundDocPath = cortexBoundDocumentResolver.resolvePath(
                 boundDocumentId, process.getTenantId(), process.getProjectId());
+        cortexTurnSelectionHolder.set(process.getId(),
+                (boundDocSelection == null || boundDocumentId == null) ? null
+                        : new de.mhus.vance.brain.tools.client.CortexTurnSelectionHolder.Selection(
+                                boundDocumentId, boundDocSelection.getFrom(), boundDocSelection.getTo()));
 
         // Multi-user collab context — see planning/multi-user-sessions.md §5/§6.
         de.mhus.vance.brain.chat.CollabContextResolver.CollabContext collab =
@@ -2472,6 +2481,7 @@ public class EddieEngine extends StructuredActionEngine {
                         .appInstructions(appInstructions)
                         .cortexMode(cortex.active())
                         .cortexBoundDoc(cortexBoundDocPath)
+                        .cortexBoundDocSelection(boundDocSelection)
                         .collabActive(collab.active())
                         .participants(collab.participants())
                         .mentionedBy(collab.mentionedBy())

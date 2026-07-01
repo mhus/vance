@@ -197,6 +197,7 @@ public class Ford implements ThinkEngine {
     private final de.mhus.vance.brain.prak.HistoryStrengthFilter historyStrengthFilter;
     private final de.mhus.vance.brain.tools.client.CortexPromptResolver cortexPromptResolver;
     private final de.mhus.vance.brain.tools.client.CortexBoundDocumentResolver cortexBoundDocumentResolver;
+    private final de.mhus.vance.brain.tools.client.CortexTurnSelectionHolder cortexTurnSelectionHolder;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -1139,15 +1140,21 @@ public class Ford implements ThinkEngine {
         // Bound file: last UserChatInput in this batch wins. Path only —
         // the model reads content on demand via doc_read.
         String boundDocumentId = null;
+        de.mhus.vance.api.thinkprocess.BoundDocSelection boundDocSelection = null;
         if (inboxExtras != null) {
             for (SteerMessage m : inboxExtras) {
                 if (m instanceof SteerMessage.UserChatInput uci) {
                     boundDocumentId = uci.boundDocumentId();
+                    boundDocSelection = uci.boundDocSelection();
                 }
             }
         }
         String cortexBoundDocPath = cortexBoundDocumentResolver.resolvePath(
                 boundDocumentId, process.getTenantId(), process.getProjectId());
+        cortexTurnSelectionHolder.set(process.getId(),
+                (boundDocSelection == null || boundDocumentId == null) ? null
+                        : new de.mhus.vance.brain.tools.client.CortexTurnSelectionHolder.Selection(
+                                boundDocumentId, boundDocSelection.getFrom(), boundDocSelection.getTo()));
 
         de.mhus.vance.brain.prompt.PromptContextBuilder ctxBuilder =
                 de.mhus.vance.brain.prompt.PromptContextBuilder
@@ -1156,6 +1163,7 @@ public class Ford implements ThinkEngine {
                         .engine(NAME)
                         .cortexMode(cortex.active())
                         .cortexBoundDoc(cortexBoundDocPath)
+                        .cortexBoundDocSelection(boundDocSelection)
                         .withRootDirTypes(workspaceService.getRootDirTypes(
                                 process.getTenantId(), process.getProjectId()));
         String base = composer.compose(process,

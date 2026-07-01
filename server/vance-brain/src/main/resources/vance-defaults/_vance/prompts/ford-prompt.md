@@ -176,6 +176,10 @@ Currently bound: `{{ cortexBoundDocPath }}`. When the user says
 write tools; these supersede any "no local filesystem" caveat. You do
 **not** need IDE or MCP tools to answer "which file is open" — it is
 this one.
+{% if cortexBoundDocSelection %}
+The user has text **selected** in it (character range {{ cortexBoundDocSelection }}).
+Read its exact text with `doc_get_selection()` (no args uses this selection).
+{% endif %}
 {% endif %}
 {% if addonSections %}
 

@@ -24,6 +24,7 @@ import { useAdminProjects } from '@/composables/useAdminProjects';
 import { useProjectKitsCatalog } from '@/composables/useProjectKitsCatalog';
 import { useScopeSettings } from '@/composables/useScopeSettings';
 import { useKitAdmin } from '@/composables/useKitAdmin';
+import { useSessionGroups } from '@/composables/useSessionGroups';
 import {
   KitImportMode,
   SettingType,
@@ -31,6 +32,7 @@ import {
   type KitExportRequestDto,
   type ProjectDto,
   type ProjectGroupSummary,
+  type SessionGroupDto,
   type SettingDto,
   type SettingFormSummaryDto,
 } from '@vance/generated';
@@ -51,6 +53,7 @@ const projectsState = useAdminProjects();
 const settingsState = useScopeSettings();
 const kitState = useKitAdmin();
 const projectKitsCatalog = useProjectKitsCatalog();
+const sessionGroupsState = useSessionGroups();
 
 const selection = ref<Selection>({ kind: 'tenant' });
 const banner = ref<string | null>(null);
@@ -94,6 +97,14 @@ const kitForm = reactive({
   trackManifest: true,
   commitMessage: '',
 });
+
+// ─── Session-group editor state ───
+// Session groups are per-user, per-project. Shown on the project card only
+// (the selected project row is the scope). See planning/session-groups.md.
+const newSessionGroupName = ref('');
+const newSessionGroupTitle = ref('');
+const editingSessionGroup = ref<string | null>(null);
+const editingSessionGroupTitle = ref('');
 
 // ─── Setting editor state ───
 const newSettingKey = ref('');
@@ -240,12 +251,14 @@ onMounted(async () => {
   applySelectionToForm();
   loadSettingsForSelection();
   loadKitForSelection();
+  loadSessionGroupsForSelection();
 });
 
 watch(selection, () => {
   applySelectionToForm();
   loadSettingsForSelection();
   loadKitForSelection();
+  loadSessionGroupsForSelection();
 });
 
 watch(() => tenantState.tenant.value, () => {
@@ -293,6 +306,17 @@ function loadKitForSelection(): void {
     return;
   }
   void kitState.load(selection.value.name);
+}
+
+function loadSessionGroupsForSelection(): void {
+  cancelSessionGroupRename();
+  newSessionGroupName.value = '';
+  newSessionGroupTitle.value = '';
+  if (selection.value.kind !== 'project') {
+    sessionGroupsState.groups.value = [];
+    return;
+  }
+  void sessionGroupsState.reload(selection.value.name);
 }
 
 function resetSettingEditor(): void {
@@ -384,6 +408,78 @@ async function archiveProject(): Promise<void> {
     applySelectionToForm();
   } catch {
     /* state.error */
+  }
+}
+
+// ─── Session-group actions ───
+
+/**
+ * Slugify a human-typed group name into the server's identifier shape
+ * ({@code ^[a-z0-9][a-z0-9_-]*$}): lowercase, invalid runs → '-', must start
+ * with an alphanumeric, no trailing separator. Mirrors the create-project
+ * behaviour in {@link ProjectListSidebar}.
+ */
+function slugifyGroupName(raw: string): string {
+  return raw
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/^[^a-z0-9]+/, '')
+    .replace(/[-_]+$/, '');
+}
+
+async function createSessionGroupAction(): Promise<void> {
+  if (selection.value.kind !== 'project') return;
+  const raw = newSessionGroupName.value.trim();
+  const name = slugifyGroupName(raw);
+  if (!name) return;
+  // If the user's original typing didn't survive slugification and they left
+  // the title blank, promote the original spelling to the display title.
+  const title = newSessionGroupTitle.value.trim() || (raw !== name ? raw : null);
+  const projectId = selection.value.name;
+  banner.value = null;
+  try {
+    await sessionGroupsState.create(projectId, name, title);
+    newSessionGroupName.value = '';
+    newSessionGroupTitle.value = '';
+    banner.value = t('scopes.sessionGroups.created', { name });
+  } catch {
+    /* sessionGroupsState.error */
+  }
+}
+
+function startEditSessionGroup(group: SessionGroupDto): void {
+  editingSessionGroup.value = group.name;
+  editingSessionGroupTitle.value = group.title ?? '';
+}
+
+function cancelSessionGroupRename(): void {
+  editingSessionGroup.value = null;
+  editingSessionGroupTitle.value = '';
+}
+
+async function saveSessionGroupRename(name: string): Promise<void> {
+  if (selection.value.kind !== 'project') return;
+  const projectId = selection.value.name;
+  banner.value = null;
+  try {
+    await sessionGroupsState.rename(projectId, name, editingSessionGroupTitle.value.trim() || null);
+    cancelSessionGroupRename();
+    banner.value = t('scopes.sessionGroups.renamed');
+  } catch {
+    /* sessionGroupsState.error */
+  }
+}
+
+async function deleteSessionGroupAction(name: string): Promise<void> {
+  if (selection.value.kind !== 'project') return;
+  if (!confirm(t('scopes.sessionGroups.confirmDelete', { name }))) return;
+  const projectId = selection.value.name;
+  banner.value = null;
+  try {
+    await sessionGroupsState.remove(projectId, name);
+    banner.value = t('scopes.sessionGroups.deleted', { name });
+  } catch {
+    /* sessionGroupsState.error */
   }
 }
 
@@ -689,7 +785,8 @@ const combinedError = computed<string | null>(() =>
   || groupsState.error.value
   || projectsState.error.value
   || settingsState.error.value
-  || kitState.error.value);
+  || kitState.error.value
+  || sessionGroupsState.error.value);
 </script>
 
 <template>
@@ -901,6 +998,88 @@ const combinedError = computed<string | null>(() =>
           <p class="text-xs opacity-60 -mt-2">
             {{ $t('scopes.project.contentLanguageHelp') }}
           </p>
+        </div>
+      </VCard>
+
+      <!-- Session Groups -->
+      <VCard
+        v-if="selection.kind === 'project' && selectedProject"
+        :title="$t('scopes.sessionGroups.cardTitle')"
+      >
+        <p class="text-sm opacity-70 mb-3">
+          {{ $t('scopes.sessionGroups.description') }}
+        </p>
+
+        <VEmptyState
+          v-if="!sessionGroupsState.loading.value && sessionGroupsState.groups.value.length === 0"
+          :headline="$t('scopes.sessionGroups.empty')"
+        />
+
+        <ul v-else class="flex flex-col divide-y divide-base-300">
+          <li
+            v-for="g in sessionGroupsState.groups.value"
+            :key="g.name"
+            class="py-2 flex flex-col gap-1"
+          >
+            <template v-if="editingSessionGroup === g.name">
+              <VInput
+                v-model="editingSessionGroupTitle"
+                :label="$t('scopes.sessionGroups.titleLabel')"
+              />
+              <div class="flex justify-end gap-2 mt-1">
+                <VButton variant="ghost" size="sm" @click="cancelSessionGroupRename">
+                  {{ $t('scopes.common.cancel') }}
+                </VButton>
+                <VButton
+                  variant="primary"
+                  size="sm"
+                  :loading="sessionGroupsState.busy.value"
+                  @click="saveSessionGroupRename(g.name)"
+                >{{ $t('scopes.common.save') }}</VButton>
+              </div>
+            </template>
+            <template v-else>
+              <div class="flex items-center justify-between gap-2">
+                <div class="min-w-0">
+                  <div class="text-sm font-semibold truncate">{{ g.title || g.name }}</div>
+                  <div class="text-xs opacity-60 font-mono truncate">{{ g.name }}</div>
+                </div>
+                <span class="opacity-60 text-xs whitespace-nowrap">
+                  {{ $t('scopes.sessionGroups.sessionCount', { count: g.sessionIds.length }) }}
+                </span>
+              </div>
+              <div class="flex justify-end gap-2 mt-1">
+                <VButton variant="ghost" size="sm" @click="startEditSessionGroup(g)">
+                  {{ $t('scopes.sessionGroups.rename') }}
+                </VButton>
+                <VButton
+                  variant="ghost"
+                  size="sm"
+                  :loading="sessionGroupsState.busy.value"
+                  @click="deleteSessionGroupAction(g.name)"
+                >{{ $t('scopes.sessionGroups.delete') }}</VButton>
+              </div>
+            </template>
+          </li>
+        </ul>
+
+        <div class="border-t border-base-300 pt-3 mt-2 flex flex-col gap-2">
+          <VInput
+            v-model="newSessionGroupName"
+            :label="$t('scopes.sessionGroups.nameLabel')"
+            :help="$t('scopes.sessionGroups.nameHint')"
+          />
+          <VInput
+            v-model="newSessionGroupTitle"
+            :label="$t('scopes.sessionGroups.titleLabel')"
+          />
+          <VButton
+            variant="primary"
+            size="sm"
+            :disabled="!newSessionGroupName.trim()"
+            :loading="sessionGroupsState.busy.value"
+            @click="createSessionGroupAction"
+          >{{ $t('scopes.sessionGroups.add') }}</VButton>
         </div>
       </VCard>
 

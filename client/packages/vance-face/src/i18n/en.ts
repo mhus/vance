@@ -310,6 +310,21 @@ export default {
       recipeDefaultDescription: 'Use the project default recipe — same as starting without picking one.',
       recipeLoadFailed: 'Failed to load recipes.',
       recipeBadgeTooltip: 'Recipe of the session-chat process',
+      groups: {
+        create: '+ Group',
+        createTooltip: 'Create session group',
+        createTitle: 'Create session group',
+        nameLabel: 'Name',
+        nameHint: 'Automatically normalised to lower-case.',
+        titleLabel: 'Title (optional)',
+        add: 'Create',
+        ungrouped: 'Ungrouped',
+        moveUp: 'Move up',
+        moveDown: 'Move down',
+        delete: 'Delete group',
+        confirmDelete: 'Delete group "{name}"? Its sessions are only removed from the group, not deleted.',
+        emptyDropHint: 'Drag a session here',
+      },
     },
     search: {
       title: 'Search sessions',
@@ -1494,6 +1509,24 @@ export default {
       contentLanguageLabel: 'Content language (documents, insights, memory)',
       contentLanguageHelp:
         'Language the assistant writes content in. No user layer by design — content belongs to the project.',
+    },
+    sessionGroups: {
+      cardTitle: 'Session Groups',
+      description:
+        "Per-user grouping of this project's sessions — UI organisation only. Each user sees only their own groups.",
+      empty: 'No session groups in this project yet.',
+      nameLabel: 'Name',
+      nameHint: 'Automatically normalised to lower-case. Immutable.',
+      titleLabel: 'Title',
+      add: 'Create group',
+      sessionCount: '{count} sessions',
+      rename: 'Rename',
+      delete: 'Delete',
+      created: 'Session group "{name}" created.',
+      renamed: 'Session group saved.',
+      deleted: 'Session group "{name}" deleted.',
+      confirmDelete:
+        'Delete session group "{name}"? Its sessions are only removed from the group, not deleted.',
     },
     kit: {
       cardTitle: 'Kit',

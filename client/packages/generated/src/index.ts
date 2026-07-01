@@ -257,6 +257,11 @@ export * from './toolhealth/ToolSafety';
 
 export * from './session/DisconnectPolicy';
 export * from './session/IdlePolicy';
+export * from './session/SessionGroupAssignRequest';
+export * from './session/SessionGroupCreateRequest';
+export * from './session/SessionGroupDto';
+export * from './session/SessionGroupRenameRequest';
+export * from './session/SessionGroupReorderRequest';
 export * from './session/SessionLifecycleConfig';
 export * from './session/SessionMetadataDto';
 export * from './session/SessionMetadataPatchRequest';

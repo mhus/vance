@@ -305,6 +305,21 @@ export default {
       recipeDefaultDescription: 'Verwendet das Default-Recipe des Projekts — wie ein Start ohne Auswahl.',
       recipeLoadFailed: 'Recipes konnten nicht geladen werden.',
       recipeBadgeTooltip: 'Recipe des Session-Chat-Prozesses',
+      groups: {
+        create: '+ Gruppe',
+        createTooltip: 'Session-Gruppe anlegen',
+        createTitle: 'Session-Gruppe anlegen',
+        nameLabel: 'Name',
+        nameHint: 'Wird automatisch in Kleinbuchstaben normalisiert.',
+        titleLabel: 'Titel (optional)',
+        add: 'Anlegen',
+        ungrouped: 'Ohne Gruppe',
+        moveUp: 'Nach oben',
+        moveDown: 'Nach unten',
+        delete: 'Gruppe löschen',
+        confirmDelete: 'Gruppe „{name}" löschen? Die Sitzungen werden nur aus der Gruppe entfernt, nicht gelöscht.',
+        emptyDropHint: 'Sitzung hierher ziehen',
+      },
     },
     search: {
       title: 'Sessions durchsuchen',
@@ -1502,6 +1517,24 @@ export default {
       contentLanguageLabel: 'Inhaltssprache (Dokumente, Insights, Memory)',
       contentLanguageHelp:
         'Sprache der vom Assistenten geschriebenen Inhalte. Bewusst ohne User-Ebene — Inhalte gehören dem Projekt.',
+    },
+    sessionGroups: {
+      cardTitle: 'Session-Gruppen',
+      description:
+        'Pro-Nutzer-Gruppierung der Sessions dieses Projekts — reine UI-Ordnung. Jeder Nutzer sieht nur seine eigenen Gruppen.',
+      empty: 'Noch keine Session-Gruppen in diesem Projekt.',
+      nameLabel: 'Name',
+      nameHint: 'Wird automatisch in Kleinbuchstaben normalisiert. Nicht änderbar.',
+      titleLabel: 'Titel',
+      add: 'Gruppe anlegen',
+      sessionCount: '{count} Sitzungen',
+      rename: 'Umbenennen',
+      delete: 'Löschen',
+      created: 'Session-Gruppe „{name}" angelegt.',
+      renamed: 'Session-Gruppe gespeichert.',
+      deleted: 'Session-Gruppe „{name}" gelöscht.',
+      confirmDelete:
+        'Session-Gruppe „{name}" löschen? Enthaltene Sitzungen werden nur aus der Gruppe entfernt, nicht gelöscht.',
     },
     kit: {
       cardTitle: 'Kit',

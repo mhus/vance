@@ -13,9 +13,11 @@ import { listSessions } from '@vance/shared';
 import {
   AccentColor,
   SessionStatus,
+  type SessionGroupDto,
   type SessionSummaryRichDto,
 } from '@vance/generated';
 import { VAlert, VButton, VInput } from '@/components';
+import { useSessionGroups } from '@/composables/useSessionGroups';
 
 const { t } = useI18n();
 
@@ -52,6 +54,64 @@ async function reload(): Promise<void> {
     loading.value = false;
   }
 }
+
+// ─── Session groups (read-only grouped view) ───
+// Membership lives on the groups, not the sessions; grouping is computed by
+// joining `filtered` against each group's sessionIds. See planning/session-groups.md.
+
+const sessionGroupsState = useSessionGroups();
+const hasGroups = computed(() => sessionGroupsState.groups.value.length > 0);
+
+const UNGROUPED_KEY = ' ungrouped';
+const collapsedGroups = ref<Set<string>>(new Set());
+
+function groupKey(g: SessionGroupDto | null): string {
+  return g ? g.name : UNGROUPED_KEY;
+}
+
+function isCollapsed(g: SessionGroupDto | null): boolean {
+  if (filter.value.trim()) return false;
+  return collapsedGroups.value.has(groupKey(g));
+}
+
+function toggleCollapsed(g: SessionGroupDto | null): void {
+  const key = groupKey(g);
+  const next = new Set(collapsedGroups.value);
+  if (next.has(key)) next.delete(key);
+  else next.add(key);
+  collapsedGroups.value = next;
+}
+
+interface SessionBlock {
+  group: SessionGroupDto | null;
+  sessions: SessionSummaryRichDto[];
+}
+
+const sessionBlocks = computed<SessionBlock[]>(() => {
+  const groups = sessionGroupsState.groups.value;
+  if (groups.length === 0) {
+    return [{ group: null, sessions: filtered.value }];
+  }
+  const byId = new Map<string, SessionSummaryRichDto>();
+  for (const s of filtered.value) byId.set(s.sessionId, s);
+
+  const grouped = new Set<string>();
+  const groupBlocks: SessionBlock[] = [];
+  for (const g of groups) {
+    const members: SessionSummaryRichDto[] = [];
+    for (const sid of g.sessionIds) {
+      const s = byId.get(sid);
+      if (s) {
+        members.push(s);
+        grouped.add(sid);
+      }
+    }
+    groupBlocks.push({ group: g, sessions: members });
+  }
+  const ungrouped = filtered.value.filter((s) => !grouped.has(s.sessionId));
+  // "Ungrouped" leads, named groups follow (by sortIndex) — mirrors chat picker.
+  return [{ group: null, sessions: ungrouped }, ...groupBlocks];
+});
 
 function sessionTitle(session: SessionSummaryRichDto): string {
   if (session.title && session.title.trim().length > 0) return session.title;
@@ -120,10 +180,13 @@ function newSession(): void {
 
 onMounted(() => {
   void reload();
+  void sessionGroupsState.reload(props.projectId);
 });
 
-watch(() => props.projectId, () => {
+watch(() => props.projectId, (id) => {
+  collapsedGroups.value = new Set();
   void reload();
+  void sessionGroupsState.reload(id);
 });
 
 watch(showArchived, () => {
@@ -182,18 +245,38 @@ watch(showArchived, () => {
         {{ $t('chat.picker.sessionFilterNoMatch', { filter }) }}
       </div>
 
-      <ul v-else class="flex flex-col">
-        <li
-          v-for="session in filtered"
-          :key="session.sessionId"
-          class="border-b border-base-300 border-l-2 px-2 py-1.5 cursor-pointer
-                 hover:bg-base-200 flex items-start gap-2"
-          :class="[
-            colorBorderClass(session),
-            session.status === SessionStatus.ARCHIVED ? 'opacity-60' : '',
-          ]"
-          @click="openSession(session)"
-        >
+      <template v-else>
+        <div v-for="block in sessionBlocks" :key="block.group ? block.group.name : '__ungrouped__'">
+          <!-- Group header — only when the project has groups (read-only). -->
+          <div
+            v-if="hasGroups"
+            class="flex items-center gap-1.5 px-2 py-1 bg-base-200/50 border-b border-base-300
+                   cursor-pointer select-none sticky top-0 z-10"
+            @click="toggleCollapsed(block.group)"
+          >
+            <span class="opacity-60 w-3 text-center text-xs">
+              {{ isCollapsed(block.group) ? '▸' : '▾' }}
+            </span>
+            <span class="font-semibold text-xs truncate flex-1">
+              {{ block.group
+                ? (block.group.title || block.group.name)
+                : $t('chat.picker.groups.ungrouped') }}
+            </span>
+            <span class="opacity-50 text-xs">{{ block.sessions.length }}</span>
+          </div>
+
+          <ul v-show="!isCollapsed(block.group)" class="flex flex-col">
+            <li
+              v-for="session in block.sessions"
+              :key="session.sessionId"
+              class="border-b border-base-300 border-l-2 px-2 py-1.5 cursor-pointer
+                     hover:bg-base-200 flex items-start gap-2"
+              :class="[
+                colorBorderClass(session),
+                session.status === SessionStatus.ARCHIVED ? 'opacity-60' : '',
+              ]"
+              @click="openSession(session)"
+            >
           <span class="shrink-0 w-5 text-center leading-none mt-0.5">
             <span v-if="session.icon">{{ session.icon }}</span>
             <span v-else class="opacity-30">💬</span>
@@ -211,8 +294,10 @@ watch(showArchived, () => {
               {{ formatRelativeTime(session.lastActivityAt) }}
             </div>
           </div>
-        </li>
-      </ul>
+            </li>
+          </ul>
+        </div>
+      </template>
     </div>
   </div>
 </template>

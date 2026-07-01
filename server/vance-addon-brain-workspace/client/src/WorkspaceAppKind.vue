@@ -219,6 +219,14 @@ function togglePageMode() {
   pageMode.value = pageMode.value === 'work' ? 'design' : 'work';
 }
 
+// The generated `_index.md` is rewritten on every rebuild/recreate, so
+// editing it would be silently discarded — keep it read-only regardless of
+// page mode.
+const activeIsIndex = computed(
+  () => view.value?.indexPageId != null && activePageId.value === view.value.indexPageId,
+);
+const editorEditable = computed(() => pageMode.value === 'design' && !activeIsIndex.value);
+
 // ── Embed picker (slash-command /embed) ───────────────────────────
 const embedPickerOpen = ref(false);
 function openEmbedPicker() { embedPickerOpen.value = true; }
@@ -1422,7 +1430,7 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
           :save-input="saveInput"
           :save-input-settings="saveInputSettings"
           :open-input-picker="openInputPicker"
-          :editable="pageMode === 'design'"
+          :editable="editorEditable"
           @save="onEditorSave"
           @dirty="onEditorDirty"
         />

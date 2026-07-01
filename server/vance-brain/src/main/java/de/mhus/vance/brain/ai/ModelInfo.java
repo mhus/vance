@@ -117,4 +117,20 @@ public record ModelInfo(
         }
         return timeoutSeconds;
     }
+
+    /**
+     * Resolve the per-call output-token cap that providers should send
+     * as {@code max_tokens}. A caller-set value wins when not
+     * {@code null}; otherwise the model-level {@link
+     * #defaultMaxOutputTokens()} from the catalog applies. Without this
+     * fallback the wire request omits {@code max_tokens} entirely and
+     * OpenAI-wire gateways reserve the whole remaining context window as
+     * output — which overflows the context limit on large prompts.
+     */
+    public int effectiveMaxOutputTokens(@org.jspecify.annotations.Nullable Integer callerOverride) {
+        if (callerOverride != null && callerOverride > 0) {
+            return callerOverride;
+        }
+        return defaultMaxOutputTokens;
+    }
 }

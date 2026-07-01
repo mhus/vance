@@ -1,6 +1,7 @@
 package de.mhus.vance.toolpack;
 
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Minimal "call another tool" surface that {@link Tool} implementations
@@ -33,4 +34,20 @@ public interface ToolBus {
      * {@link Tool#invoke(Map, ToolInvocationContext, ToolBus)} entry.
      */
     Map<String, Object> invoke(String name, Map<String, Object> params);
+
+    /**
+     * Names of the tools this bus can actually invoke in the current
+     * engine scope — i.e. calling {@link #invoke(String, Map)} with any
+     * other name is expected to fail. Discovery tools ({@code find_tools})
+     * use this to avoid advertising tools the engine would reject.
+     *
+     * <p>An <b>empty</b> set means "no restriction known" — either an
+     * unrestricted engine or a bus that doesn't track a scope; callers
+     * must treat empty as "don't filter", not "nothing is invocable".
+     * Default is empty so existing {@link ToolBus} implementations
+     * (including {@link #NOOP} and lambdas) keep compiling.
+     */
+    default Set<String> invocableToolNames() {
+        return Set.of();
+    }
 }

@@ -3,6 +3,7 @@ package de.mhus.vance.brain.tools.builtins;
 import de.mhus.vance.api.tools.ToolSpec;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.brain.tools.ToolDispatcher;
+import de.mhus.vance.toolpack.ToolBus;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -78,15 +79,50 @@ public class FindToolsTool implements Tool {
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
+        // No bus bound → no engine allow-set to scope by (foot-side /
+        // legacy dispatch). List the whole context-dispatchable pool.
+        return find(params, ctx, Set.of());
+    }
+
+    @Override
+    public Map<String, Object> invoke(
+            Map<String, Object> params, ToolInvocationContext ctx, ToolBus bus) {
+        // Scope to what the engine can actually invoke, so we never
+        // advertise a tool whose call would hard-fail with
+        // "not available to this engine" (misleads the model into
+        // wasted calls and hallucinated success). Empty set → the
+        // engine is unrestricted, so don't filter.
+        return find(params, ctx, bus.invocableToolNames());
+    }
+
+    private Map<String, Object> find(
+            Map<String, Object> params, ToolInvocationContext ctx, Set<String> invocable) {
         String query = params == null ? null : (String) params.get("query");
-        String needle = query == null ? null : query.toLowerCase();
         boolean includePrimary = params != null
                 && Boolean.TRUE.equals(params.get("includePrimary"));
 
         List<ToolSpec> all = ToolDispatcher.specs(
                 dispatcher.getObject().resolveAll(ctx));
-        List<Map<String, Object>> matches = all.stream()
+        List<Map<String, Object>> matches = filterMatches(all, query, includePrimary, invocable);
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("tools", matches);
+        out.put("count", matches.size());
+        return out;
+    }
+
+    /**
+     * Pure filtering step — extracted so the visibility/scoping rules
+     * are unit-testable without a live dispatcher. When {@code invocable}
+     * is non-empty, only tools in that set are returned (the engine
+     * allow-set); an empty {@code invocable} means "no scope filter".
+     */
+    static List<Map<String, Object>> filterMatches(
+            List<ToolSpec> all, String query, boolean includePrimary, Set<String> invocable) {
+        String needle = query == null ? null : query.toLowerCase();
+        return all.stream()
                 .filter(t -> includePrimary || !t.isPrimary())
+                .filter(t -> invocable.isEmpty() || invocable.contains(t.getName()))
                 .filter(t -> needle == null
                         || t.getName().toLowerCase().contains(needle)
                         || (t.getDescription() != null
@@ -99,10 +135,5 @@ public class FindToolsTool implements Tool {
                     return row;
                 })
                 .toList();
-
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("tools", matches);
-        out.put("count", matches.size());
-        return out;
     }
 }

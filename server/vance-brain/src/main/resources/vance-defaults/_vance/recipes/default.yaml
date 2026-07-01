@@ -51,6 +51,32 @@ dataRelayCorrection: |
   data, but your reply has only %d. The caller cannot see tool
   results — only your reply text. Re-issue the reply with the
   actual data pasted in.
+# Ford's engine baseline is read/research/exec-oriented and keeps
+# mutating doc/app tools opt-in per recipe. As the generalist DELEGATE
+# fallback, `default` is expected to actually author content (the
+# prompt above tells the worker to "save it as a Document via
+# doc_create") and to build the workspace pages / apps a user asks
+# for. Without these the worker finds the tools via find_tools but
+# every call hard-fails "not available to this engine" (observed
+# 2026-07-01: a delegated worker looped on workpage_create / doc_create
+# and then hallucinated success). Entry-points stay visible; the
+# block-level workpage family is deferred (discoverable + auto-activated)
+# to keep the manifest lean.
+allowedToolsAdd:
+  - doc_create
+  - doc_write
+  - doc_edit
+  - doc_append
+  - workpage_create
+  - workspace_app_create
+  - app_rebuild
+allowedToolsDefer:
+  - workpage_query
+  - workpage_block_append
+  - workpage_block_insert
+  - workpage_block_update
+  - workpage_block_move
+  - workpage_block_delete
 profiles:
   # The foot CLI is the user's terminal on their own machine. Lean
   # into client_* tools — that's the point of the foot client.

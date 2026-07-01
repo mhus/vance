@@ -36,3 +36,13 @@ rules:
   # the same shape as for structured-output-capable models.
   - match: "gemma-4*"
     messageParser: "gemma4"
+
+  # Gemini 2.5 family: intermittently emits tool calls as `tool_code`
+  # pseudo-code in the assistant text (fenced ```tool_code``` block or a
+  # bare `tool_code: name(args)` line) instead of a structured tool_call —
+  # even for properly declared functions, and even though the prompt
+  # forbids it. It then narrates success while nothing ran (observed
+  # 2026-07-01: workspace page never created). The parser rewrites those
+  # pseudo-calls into real ToolExecutionRequests.
+  - match: "gemini-2.5*"
+    messageParser: "gemini-tool-code"

@@ -608,6 +608,18 @@ public final class ContextToolsApi implements ToolBus {
         return allowed;
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>Exposes the engine dispatch allow-set — the same set
+     * {@link #isInDispatch} gates on. Empty for unrestricted engines,
+     * which correctly reads as "don't filter" for discovery tools.
+     */
+    @Override
+    public Set<String> invocableToolNames() {
+        return allowed;
+    }
+
     /** Names classified as primary for this turn. */
     public Set<String> primary() {
         return primary;

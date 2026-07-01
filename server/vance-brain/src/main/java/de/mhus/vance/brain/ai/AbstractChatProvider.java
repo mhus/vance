@@ -74,7 +74,17 @@ public abstract class AbstractChatProvider implements AiModelProvider {
         ModelInfo modelInfo = modelCatalog.lookupOrDefault(
                 options.getTenantId(), options.getProjectId(),
                 config.providerInstance(), wireName, config.modelName());
-        AiChatOptions effective = applyOptionGates(options, modelInfo);
+        AiChatOptions gated = applyOptionGates(options, modelInfo);
+        // Ensure an output-token cap is always present. When neither the
+        // caller nor the recipe set maxTokens, fall back to the model's
+        // catalog default; otherwise OpenAI-wire gateways reserve the
+        // entire remaining context window as output and overflow the
+        // context limit on large prompts.
+        AiChatOptions effective = gated.getMaxTokens() != null
+                ? gated
+                : gated.toBuilder()
+                        .maxTokens(modelInfo.effectiveMaxOutputTokens(null))
+                        .build();
         MessageParser parser = messageParserRegistry
                 .get(modelInfo.messageParser())
                 .orElse(null);

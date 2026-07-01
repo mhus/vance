@@ -18,12 +18,15 @@ import {
 } from '@vance/generated';
 import { VAlert, VButton, VInput } from '@/components';
 import { useSessionGroups } from '@/composables/useSessionGroups';
+import { useSessionGroupCollapse } from '@/composables/useSessionGroupCollapse';
 
 const { t } = useI18n();
 
 const props = defineProps<{
   projectId: string;
 }>();
+
+const projectIdRef = computed(() => props.projectId);
 
 const sessions = ref<SessionSummaryRichDto[]>([]);
 const loading = ref(false);
@@ -62,8 +65,8 @@ async function reload(): Promise<void> {
 const sessionGroupsState = useSessionGroups();
 const hasGroups = computed(() => sessionGroupsState.groups.value.length > 0);
 
-const UNGROUPED_KEY = ' ungrouped';
-const collapsedGroups = ref<Set<string>>(new Set());
+const UNGROUPED_KEY = 'ungrouped';
+const collapse = useSessionGroupCollapse(projectIdRef);
 
 function groupKey(g: SessionGroupDto | null): string {
   return g ? g.name : UNGROUPED_KEY;
@@ -71,15 +74,11 @@ function groupKey(g: SessionGroupDto | null): string {
 
 function isCollapsed(g: SessionGroupDto | null): boolean {
   if (filter.value.trim()) return false;
-  return collapsedGroups.value.has(groupKey(g));
+  return collapse.has(groupKey(g));
 }
 
 function toggleCollapsed(g: SessionGroupDto | null): void {
-  const key = groupKey(g);
-  const next = new Set(collapsedGroups.value);
-  if (next.has(key)) next.delete(key);
-  else next.add(key);
-  collapsedGroups.value = next;
+  collapse.toggle(groupKey(g));
 }
 
 interface SessionBlock {
@@ -184,7 +183,6 @@ onMounted(() => {
 });
 
 watch(() => props.projectId, (id) => {
-  collapsedGroups.value = new Set();
   void reload();
   void sessionGroupsState.reload(id);
 });

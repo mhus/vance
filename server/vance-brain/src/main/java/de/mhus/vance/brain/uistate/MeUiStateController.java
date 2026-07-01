@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.uistate;
 
+import de.mhus.vance.api.uistate.SessionGroupsUiStateDto;
 import de.mhus.vance.api.uistate.SidebarUiStateDto;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.home.HomeBootstrapService;
@@ -49,6 +50,9 @@ public class MeUiStateController {
     static final String KEY_SIDEBAR_COLLAPSED_GROUPS =
             "webui.sidebar.collapsedProjectGroups";
 
+    static final String KEY_SESSION_GROUPS_COLLAPSED =
+            "webui.sessionGroups.collapsed";
+
     private final SettingService settingService;
     private final ObjectMapper objectMapper;
 
@@ -89,6 +93,43 @@ public class MeUiStateController {
                 value);
         return SidebarUiStateDto.builder()
                 .collapsedProjectGroups(normalised)
+                .build();
+    }
+
+    @GetMapping("/session-groups")
+    public SessionGroupsUiStateDto getSessionGroups(
+            @PathVariable("tenant") String tenant,
+            HttpServletRequest httpRequest) {
+        String username = currentUser(httpRequest);
+        String raw = settingService.getUserStringValue(
+                tenant, username, KEY_SESSION_GROUPS_COLLAPSED);
+        return SessionGroupsUiStateDto.builder()
+                .collapsedKeys(parseGroupList(raw))
+                .build();
+    }
+
+    @PutMapping("/session-groups")
+    public SessionGroupsUiStateDto putSessionGroups(
+            @PathVariable("tenant") String tenant,
+            @Valid @RequestBody SessionGroupsUiStateDto request,
+            HttpServletRequest httpRequest) {
+        String username = currentUser(httpRequest);
+        List<String> normalised = normalise(request.getCollapsedKeys());
+        String value;
+        try {
+            value = objectMapper.writeValueAsString(normalised);
+        } catch (JacksonException e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Failed to serialise session-group UI state", e);
+        }
+        settingService.setStringValue(
+                tenant,
+                SettingService.SCOPE_PROJECT,
+                HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + username,
+                KEY_SESSION_GROUPS_COLLAPSED,
+                value);
+        return SessionGroupsUiStateDto.builder()
+                .collapsedKeys(normalised)
                 .build();
     }
 

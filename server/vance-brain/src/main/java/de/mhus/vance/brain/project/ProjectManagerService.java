@@ -205,10 +205,20 @@ public class ProjectManagerService {
      * <p>Returns {@link Optional#empty()} if the project does not exist,
      * is podless ({@link ProjectService#isPodless}), has not yet been
      * claimed, or its {@code homeNode} points at a node that the
-     * cluster registry no longer knows. Callers that need a present
-     * endpoint should treat the empty case as "lives wherever the WS
-     * lands" or "pending bootstrap" and either retry or surface a
-     * {@code 409 Conflict} to the user.
+     * cluster registry no longer knows <em>or that has gone stale</em>
+     * (crashed / lost its heartbeat — e.g. after a restart on a new host
+     * IP). Callers that need a present endpoint should treat the empty
+     * case as "lives wherever the WS lands" or "pending bootstrap" and
+     * either retry or surface a {@code 409 Conflict} to the user.
+     *
+     * <p>The staleness filter is what stops a session from becoming
+     * permanently unreachable after its home pod dies: without it,
+     * {@link ClusterService#resolveEndpoint} happily returns the dead
+     * pod's {@code host:port} (it only checks the row exists, not its
+     * heartbeat), so every {@code session-resume} is tunnelled to a host
+     * that no longer answers (observed 2026-07-01: connect timeout to a
+     * pre-IP-change endpoint). Falling back to empty lets the live pod
+     * that received the WS serve the session locally.
      *
      * <p>This is the lookup primitive for engine-to-engine routing
      * (Eddie → Arthur via Working WS) and for workspace REST routing.
@@ -221,7 +231,21 @@ public class ProjectManagerService {
         return projectService.findByTenantAndName(tenantId, projectName)
                 .map(ProjectDocument::getHomeNode)
                 .filter(c -> c != null && !c.isBlank())
+                .filter(this::isHomeNodeLive)
                 .flatMap(clusterService::resolveEndpoint);
+    }
+
+    /**
+     * {@code true} when {@code homeNode} is backed by a live (non-stale,
+     * non-stopped) pod. A raw {@code host:port} home (colon form, legacy /
+     * external) can't be liveness-checked by node-name, so it is trusted
+     * as-is — only the node-name form is gated against the live set.
+     */
+    private boolean isHomeNodeLive(String homeNode) {
+        if (homeNode.contains(":")) {
+            return true;
+        }
+        return clusterService.liveClusterNodeNames().contains(homeNode);
     }
 
     /**

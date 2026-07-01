@@ -8,7 +8,6 @@ import de.mhus.vance.api.wizard.WizardSummaryDto;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.prompt.PromptTemplateException;
 import de.mhus.vance.brain.prompt.PromptTemplateRenderer;
-import de.mhus.vance.shared.form.FormValidationException;
 import de.mhus.vance.shared.form.FormValidator;
 import de.mhus.vance.shared.form.LocalizedTexts;
 import de.mhus.vance.shared.permission.Action;
@@ -120,12 +119,10 @@ public class WizardController {
         ResolvedWizard w = hit.get();
         Map<String, Object> values = body.getValues() == null ? Map.of() : body.getValues();
 
-        try {
-            formValidator.validate(w.fields(), values);
-        } catch (FormValidationException e) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST, e.getMessage(), e);
-        }
+        // A FormValidationException here propagates to
+        // FormValidationExceptionAdvice, which returns a structured 400 with
+        // per-field errors.
+        formValidator.validate(w.fields(), values);
 
         String lang = body.getLang() != null && !body.getLang().isBlank()
                 ? body.getLang()

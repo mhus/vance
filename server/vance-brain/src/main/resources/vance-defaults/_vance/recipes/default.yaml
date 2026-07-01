@@ -14,7 +14,11 @@ engine: ford
 params:
   model: default:analyze
   validation: true
-  maxIterations: 8
+  # Generalist authoring tasks are multi-step (create data doc + script +
+  # multi-block workpage, with the occasional discovery / retry). 8 was too
+  # tight — a page build routinely burned the budget mid-task. See
+  # planning/worker-spawn-context.md.
+  maxIterations: 20
   manualPaths:
     - _vance/manuals/
   # Selector-routed fallback recipe — used for Arthur's DELEGATE
@@ -67,6 +71,7 @@ allowedToolsAdd:
   - doc_write
   - doc_edit
   - doc_append
+  - doc_trash
   - workpage_create
   - workspace_app_create
   - app_rebuild

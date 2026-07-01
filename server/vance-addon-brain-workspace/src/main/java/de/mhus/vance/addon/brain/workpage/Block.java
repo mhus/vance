@@ -18,6 +18,7 @@ public sealed interface Block
         Block.NumberedList, Block.TodoList, Block.Quote, Block.Code,
         Block.Divider, Block.Image, Block.Table, Block.Callout,
         Block.Toggle, Block.DataviewEmbed, Block.LinkCard,
+        Block.Embed, Block.Form, Block.Input, Block.Toc, Block.Columns,
         Block.UnknownFence {
 
     /** Free-form text block (default for any non-special line group). */
@@ -68,6 +69,38 @@ public sealed interface Block
     /** {@code ```vance-link} fence — visual link card. */
     record LinkCard(String href, @Nullable String title,
                     @Nullable String description) implements Block {}
+
+    /**
+     * {@code ```vance-embed} fence — a kind-aware card referencing another
+     * Vance document by {@code vance:} URI.
+     */
+    record Embed(String uri) implements Block {}
+
+    /**
+     * {@code ```vance-form} fence — reactive-data form bound to a
+     * {@code kind: records} document ({@code config} = its {@code vance:} URI).
+     */
+    record Form(String config) implements Block {}
+
+    /**
+     * {@code ```vance-input} fence — single editable text value bound to a
+     * text document ({@code config} = its {@code vance:} URI); {@code multiline}
+     * toggles textarea vs. single line.
+     */
+    record Input(String config, boolean multiline) implements Block {}
+
+    /** {@code ```vance-toc} fence — auto table-of-contents (no body). */
+    record Toc() implements Block {}
+
+    /**
+     * {@code ```vance-columns} fence — a horizontal multi-column layout.
+     * Each column carries an optional relative {@code width} and its own
+     * nested block list (recursively parsed / serialized).
+     */
+    record Columns(List<Column> columns) implements Block {}
+
+    /** One column of a {@link Columns} block. */
+    record Column(@Nullable Double width, List<Block> blocks) {}
 
     /**
      * Unknown / forward-compat fence. Rendered as a placeholder; never

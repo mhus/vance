@@ -227,7 +227,10 @@ public class ProcessSteerHandler implements WsHandler {
                 ctx.getDisplayName(),
                 content,
                 request.getAttachments() == null ? java.util.List.of() : request.getAttachments(),
-                Boolean.TRUE.equals(request.getVoiceMode()));
+                Boolean.TRUE.equals(request.getVoiceMode()),
+                request.getActiveApp(),
+                request.getBoundDocumentId(),
+                request.getBoundDocSelection());
         PendingMessageDocument doc = SteerMessageCodec.toDocument(userInput);
 
         if (!thinkProcessService.appendPending(processId, doc)) {

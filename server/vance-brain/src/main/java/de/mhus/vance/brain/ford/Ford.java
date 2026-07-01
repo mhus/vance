@@ -196,6 +196,7 @@ public class Ford implements ThinkEngine {
     private final de.mhus.vance.shared.workspace.WorkspaceService workspaceService;
     private final de.mhus.vance.brain.prak.HistoryStrengthFilter historyStrengthFilter;
     private final de.mhus.vance.brain.tools.client.CortexPromptResolver cortexPromptResolver;
+    private final de.mhus.vance.brain.tools.client.CortexBoundDocumentResolver cortexBoundDocumentResolver;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -463,6 +464,19 @@ public class Ford implements ThinkEngine {
             awaitingUserInput = outcome.awaitingUserInput();
             String finalText = outcome.finalText();
 
+            // Budget-exhausted worker: the "best free text" is whatever the
+            // model last said mid-task (often a progress note like "I'm now
+            // reading the docs"), which a parent orchestrator can't tell
+            // apart from a real answer and would silently WAIT on. Prefix an
+            // explicit non-completion marker so both the parent's RELAY and
+            // the chat history state the truth. Pairs with the INCOMPLETE
+            // close reason below (→ FAILED ProcessEvent for non-Working-WS
+            // parents + honest audit).
+            if (recoveredFromMaxIter && process.getParentProcessId() != null) {
+                finalText = "⚠️ I could not finish this task within my step budget ("
+                        + maxIters + " steps). Progress so far:\n\n" + finalText;
+            }
+
             ChatMessageDocument saved = chatLog.append(ChatMessageDocument.builder()
                     .tenantId(process.getTenantId())
                     .sessionId(process.getSessionId())
@@ -511,9 +525,9 @@ public class Ford implements ThinkEngine {
                 // inbox). Without this the worker stays BLOCKED and
                 // every subsequent user message auto-forwards into a
                 // dead-end.
-                log.info("Ford id='{}' worker hit maxIter — closing DONE so parent '{}' releases delegation pointer",
+                log.info("Ford id='{}' worker hit maxIter — closing INCOMPLETE so parent '{}' releases delegation pointer and learns the task did not finish",
                         process.getId(), process.getParentProcessId());
-                thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
+                thinkProcessService.closeProcess(process.getId(), CloseReason.INCOMPLETE);
             } else {
                 ThinkProcessStatus exitStatus = awaitingUserInput
                         ? ThinkProcessStatus.BLOCKED
@@ -1122,6 +1136,18 @@ public class Ford implements ThinkEngine {
         // {% if cortexMode %} blocks.
         de.mhus.vance.brain.tools.client.CortexPromptResolver.CortexContext cortex =
                 cortexPromptResolver.resolve(process.getSessionId());
+        // Bound file: last UserChatInput in this batch wins. Path only —
+        // the model reads content on demand via doc_read.
+        String boundDocumentId = null;
+        if (inboxExtras != null) {
+            for (SteerMessage m : inboxExtras) {
+                if (m instanceof SteerMessage.UserChatInput uci) {
+                    boundDocumentId = uci.boundDocumentId();
+                }
+            }
+        }
+        String cortexBoundDocPath = cortexBoundDocumentResolver.resolvePath(
+                boundDocumentId, process.getTenantId(), process.getProjectId());
 
         de.mhus.vance.brain.prompt.PromptContextBuilder ctxBuilder =
                 de.mhus.vance.brain.prompt.PromptContextBuilder
@@ -1129,8 +1155,7 @@ public class Ford implements ThinkEngine {
                         .tier(tier)
                         .engine(NAME)
                         .cortexMode(cortex.active())
-                        .cortexBoundDocPath(cortex.boundDocPath())
-                        .cortexBoundDocMime(cortex.boundDocMime())
+                        .cortexBoundDoc(cortexBoundDocPath)
                         .withRootDirTypes(workspaceService.getRootDirTypes(
                                 process.getTenantId(), process.getProjectId()));
         String base = composer.compose(process,

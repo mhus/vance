@@ -55,17 +55,20 @@ import CreateDocumentModal, {
 } from './components/CreateDocumentModal.vue';
 import NewFolderModal from './components/NewFolderModal.vue';
 
-// The generated SessionSummaryRichDto picks up these fields on the next
-// {@code mvn install} of the api module. Until then, augment locally so
-// the rest of this file stays type-safe and the regen is a no-op diff.
-type CortexAwareSessionSummary = SessionSummaryRichDto & {
-  openDocumentIds?: string[];
-  chatBoundDocumentId?: string | null;
-};
+// How the chat binds to a Cortex document for per-turn LLM context.
+//  - 'auto'   (default): the bound doc follows the active tab, and the
+//              current text selection rides along with each steer.
+//  - 'pinned': the bound doc is locked to one specific document
+//              regardless of which tab is active (the old "bind file"
+//              behaviour).
+//  - 'off':    nothing is bound.
+type ChatBindMode = 'auto' | 'pinned' | 'off';
 
+// Cortex view-state persisted in sessionStorage (see persistCortexState).
 interface CortexStateBody {
   openDocumentIds: string[];
-  chatBoundDocumentId: string | null;
+  chatBindMode?: ChatBindMode;
+  pinnedDocumentId?: string | null;
 }
 
 // Session-id is read from the URL synchronously so the rest of the
@@ -75,7 +78,12 @@ const initialSessionId = new URLSearchParams(window.location.search).get('sessio
 const sessionId = ref<string | null>(initialSessionId);
 const sessionTitle = ref<string | null>(null);
 const projectId = ref<string | null>(null);
-const chatBoundDocumentId = ref<string | null>(null);
+// Chat-binding mode + the explicitly pinned document (only meaningful
+// while {@link chatBindMode} is 'pinned'). The document actually bound
+// to the chat this turn is derived from these — see
+// {@link chatBoundDocumentId}.
+const chatBindMode = ref<ChatBindMode>('auto');
+const pinnedDocumentId = ref<string | null>(null);
 const focusZone = ref<FocusZone>('main');
 
 // Session-bound mode = there's a sessionId on this tab. Used everywhere
@@ -89,6 +97,26 @@ const hasSession = computed(() => sessionId.value !== null);
 const rightPanelOpen = ref(hasSession.value);
 
 const store = useCortexStore();
+
+// The document actually bound to the chat this turn — forwarded down to
+// the composer as per-turn LLM context. Derived from {@link chatBindMode}:
+// in 'auto' it tracks the active tab so it always reflects the file the
+// user is looking at; in 'pinned' it stays on the pinned document (unless
+// that tab was closed); 'off' binds nothing.
+const chatBoundDocumentId = computed<string | null>(() => {
+  if (!hasSession.value) return null;
+  switch (chatBindMode.value) {
+    case 'auto':
+      return store.activeTab?.id ?? null;
+    case 'pinned':
+      return pinnedDocumentId.value
+        && store.openTabs.some((t) => t.id === pinnedDocumentId.value)
+        ? pinnedDocumentId.value
+        : null;
+    default:
+      return null;
+  }
+});
 
 // Hijack vance:-doc links inside any descendant MarkdownView so a plain
 // click opens the document as a tab instead of navigating away. Both
@@ -171,7 +199,7 @@ onMounted(async () => {
  */
 async function resolveSession(id: string): Promise<void> {
   try {
-    const sessions = await brainFetch<CortexAwareSessionSummary[]>('GET', 'sessions');
+    const sessions = await brainFetch<SessionSummaryRichDto[]>('GET', 'sessions');
     const match = sessions.find((s) => s.sessionId === id);
     if (!match) {
       bootError.value = `Session ${id} not found.`;
@@ -185,7 +213,7 @@ async function resolveSession(id: string): Promise<void> {
     useDocumentRefStore().setCurrentProject(match.projectId);
     void loadTenantProjects();
     await store.loadList(match.projectId);
-    await restoreCortexState(match);
+    await restoreCortexState();
   } catch (e) {
     bootError.value = e instanceof Error ? e.message : 'Failed to load session.';
   }
@@ -211,12 +239,31 @@ async function resolveProject(pid: string): Promise<void> {
   }
 }
 
-async function restoreCortexState(summary: CortexAwareSessionSummary): Promise<void> {
-  const tabIds = summary.openDocumentIds ?? [];
-  if (tabIds.length === 0) {
-    chatBoundDocumentId.value = null;
+// Cortex view-state (open tabs + which is chat-bound) is pure per-tab UI
+// state, keyed by session — it belongs in the browser, not the server DB.
+// sessionStorage survives a refresh (F5) but not a tab close, which is
+// exactly the "reopen my tabs when I reload this session" scope. The
+// LLM-facing "bound file" travels with each steer instead (see
+// ChatComposer.boundDocumentId), so nothing about this needs the server.
+function cortexStateKey(sid: string): string {
+  return `cortex:${sid}`;
+}
+
+async function restoreCortexState(): Promise<void> {
+  const sid = sessionId.value;
+  chatBindMode.value = 'auto';
+  pinnedDocumentId.value = null;
+  if (!sid) return;
+  const raw = sessionStorage.getItem(cortexStateKey(sid));
+  if (!raw) return;
+  let parsed: CortexStateBody | null = null;
+  try {
+    parsed = JSON.parse(raw) as CortexStateBody;
+  } catch {
     return;
   }
+  const tabIds = parsed?.openDocumentIds ?? [];
+  if (tabIds.length === 0) return;
   restoring.value = true;
   try {
     for (const docId of tabIds) {
@@ -226,13 +273,28 @@ async function restoreCortexState(summary: CortexAwareSessionSummary): Promise<v
         // Document gone or unreadable — skip silently.
       }
     }
-    const bound = summary.chatBoundDocumentId ?? null;
-    chatBoundDocumentId.value = bound;
+    const mode = parsed?.chatBindMode ?? 'auto';
+    const pinned = parsed?.pinnedDocumentId ?? null;
+    if (mode === 'pinned' && pinned && store.openTabs.some((t) => t.id === pinned)) {
+      chatBindMode.value = 'pinned';
+      pinnedDocumentId.value = pinned;
+    } else if (mode === 'off') {
+      chatBindMode.value = 'off';
+      pinnedDocumentId.value = null;
+    } else {
+      // Default, plus graceful fallback when a pinned doc is gone.
+      chatBindMode.value = 'auto';
+      pinnedDocumentId.value = null;
+    }
     const urlDoc = readDocFromUrl();
     if (urlDoc && store.openTabs.some((t) => t.id === urlDoc)) {
       store.setActiveTab(urlDoc);
-    } else if (bound && store.openTabs.some((t) => t.id === bound)) {
-      store.setActiveTab(bound);
+    } else if (
+      chatBindMode.value === 'pinned'
+      && pinnedDocumentId.value
+      && store.openTabs.some((t) => t.id === pinnedDocumentId.value)
+    ) {
+      store.setActiveTab(pinnedDocumentId.value);
     }
     replaceDocInUrl(store.activeTabId ?? null);
   } finally {
@@ -240,43 +302,44 @@ async function restoreCortexState(summary: CortexAwareSessionSummary): Promise<v
   }
 }
 
-async function persistCortexState(): Promise<void> {
-  if (!sessionId.value || restoring.value) return;
+function persistCortexState(): void {
+  const sid = sessionId.value;
+  if (!sid || restoring.value) return;
   const body: CortexStateBody = {
     openDocumentIds: store.openTabs.map((t) => t.id),
-    chatBoundDocumentId: chatBoundDocumentId.value,
+    chatBindMode: chatBindMode.value,
+    pinnedDocumentId: chatBindMode.value === 'pinned' ? pinnedDocumentId.value : null,
   };
   try {
-    await brainFetch<void>(
-      'PUT',
-      `sessions/${encodeURIComponent(sessionId.value)}/cortex-state`,
-      { body },
-    );
+    sessionStorage.setItem(cortexStateKey(sid), JSON.stringify(body));
   } catch (e) {
     console.warn('Failed to persist Cortex state', e);
   }
 }
 
-// Bind chat to the first opened tab automatically — session-mode only.
+// Keep the persisted view-state in sync with open tabs, and gracefully
+// drop back to 'auto' when the pinned document's tab is closed — a
+// pinned binding pointing at a gone tab would otherwise silently bind
+// nothing. 'auto' needs no tab bookkeeping: it derives from the active
+// tab in {@link chatBoundDocumentId}.
 watch(
   () => store.openTabs.map((t) => t.id).join(','),
-  (idsKey) => {
+  () => {
     if (!hasSession.value) return;
     if (restoring.value) return;
-    const ids = idsKey ? idsKey.split(',') : [];
-    if (ids.length === 0) {
-      if (chatBoundDocumentId.value !== null) chatBoundDocumentId.value = null;
-    } else if (
-      chatBoundDocumentId.value === null
-      || !ids.includes(chatBoundDocumentId.value)
+    if (
+      chatBindMode.value === 'pinned'
+      && pinnedDocumentId.value
+      && !store.openTabs.some((t) => t.id === pinnedDocumentId.value)
     ) {
-      chatBoundDocumentId.value = ids[0];
+      chatBindMode.value = 'auto';
+      pinnedDocumentId.value = null;
     }
     void persistCortexState();
   },
 );
 
-watch(chatBoundDocumentId, () => {
+watch([chatBindMode, pinnedDocumentId], () => {
   void persistCortexState();
 });
 
@@ -592,18 +655,30 @@ const chatBoundDocumentPathDisplay = computed<string | null>(() => {
   return '…' + p.slice(p.length - (MAX - 1));
 });
 
+// Short, mode-aware label for the topbar bind chip. Switching happens
+// through the "Chat" menu; the chip is a status readout only.
+const bindStatusLabel = computed<string>(() => {
+  if (chatBindMode.value === 'off') return 'unbound';
+  const p = chatBoundDocumentPathDisplay.value;
+  if (chatBindMode.value === 'auto') {
+    return p ? `auto · ${p}` : 'auto';
+  }
+  return p ?? 'pinned (closed)';
+});
+
 const bindIconTooltip = computed<string>(() => {
-  if (isActiveTabBound.value) {
-    return 'Chat is bound to this document';
+  switch (chatBindMode.value) {
+    case 'off':
+      return 'Chat is not bound to any document. Switch via the Chat menu.';
+    case 'auto':
+      return chatBoundDocumentPath.value
+        ? `Auto: chat follows the current tab (${chatBoundDocumentPath.value}); your text selection is sent too. Switch via the Chat menu.`
+        : 'Auto: chat follows the current tab. Open a document to bind it.';
+    default:
+      return chatBoundDocumentPath.value
+        ? `Pinned: chat is bound to ${chatBoundDocumentPath.value}. Switch via the Chat menu.`
+        : 'Pinned document is closed — reopen it or switch mode via the Chat menu.';
   }
-  if (!activeTab.value) {
-    return chatBoundDocumentPath.value
-      ? `Chat is bound to ${chatBoundDocumentPath.value}`
-      : 'Open a document to bind';
-  }
-  return chatBoundDocumentPath.value
-    ? `Bind chat to current tab (currently: ${chatBoundDocumentPath.value})`
-    : 'Bind chat to current tab';
 });
 
 /**
@@ -772,13 +847,20 @@ function onCloseActiveTab(): void {
   store.closeTab(activeTab.value.id);
 }
 
-function onBindActiveTab(): void {
+function onBindModeAuto(): void {
+  chatBindMode.value = 'auto';
+  pinnedDocumentId.value = null;
+}
+
+function onPinActiveTab(): void {
   if (!activeTab.value) return;
-  chatBoundDocumentId.value = activeTab.value.id;
+  chatBindMode.value = 'pinned';
+  pinnedDocumentId.value = activeTab.value.id;
 }
 
 function onUnbindChat(): void {
-  chatBoundDocumentId.value = null;
+  chatBindMode.value = 'off';
+  pinnedDocumentId.value = null;
 }
 
 function closeMenus(): void {
@@ -1071,14 +1153,22 @@ const toggleTooltip = computed<string>(() => {
 
         <div v-if="hasSession" class="dropdown">
           <div tabindex="0" role="button" class="btn btn-ghost btn-xs">Chat</div>
-          <ul tabindex="0" class="dropdown-content menu menu-sm bg-base-100 rounded-box z-[20] mt-1 w-64 p-2 shadow">
-            <li :class="{ disabled: !activeTab || isActiveTabBound }">
-              <a @click="closeMenus(); onBindActiveTab()">
-                <span class="flex-1">Bind chat to current tab</span>
+          <ul tabindex="0" class="dropdown-content menu menu-sm bg-base-100 rounded-box z-[20] mt-1 w-72 p-2 shadow">
+            <li>
+              <a @click="closeMenus(); onBindModeAuto()">
+                <span class="w-4 text-center">{{ chatBindMode === 'auto' ? '✓' : '' }}</span>
+                <span class="flex-1">Auto — follow current tab</span>
               </a>
             </li>
-            <li :class="{ disabled: !chatBoundDocumentId }">
+            <li :class="{ disabled: !activeTab }">
+              <a @click="closeMenus(); onPinActiveTab()">
+                <span class="w-4 text-center">{{ chatBindMode === 'pinned' ? '✓' : '' }}</span>
+                <span class="flex-1">Pin to current tab</span>
+              </a>
+            </li>
+            <li :class="{ disabled: chatBindMode === 'off' }">
               <a @click="closeMenus(); onUnbindChat()">
+                <span class="w-4 text-center">{{ chatBindMode === 'off' ? '✓' : '' }}</span>
                 <span class="flex-1">Unbind chat</span>
               </a>
             </li>
@@ -1093,19 +1183,17 @@ const toggleTooltip = computed<string>(() => {
             class="text-xs px-2 py-0.5 rounded bg-warning/15 text-warning border border-warning/30 animate-pulse"
             title="An agent tool is currently editing the chat-bound document"
           >agent editing…</span>
-          <button
-            v-else-if="activeTab || chatBoundDocumentId"
-            type="button"
-            class="text-xs px-2 py-0.5 rounded font-mono flex items-center gap-1
-                   transition-colors enabled:hover:bg-base-200 disabled:cursor-default"
-            :class="isActiveTabBound ? 'text-primary bg-primary/10' : 'opacity-70'"
-            :disabled="!activeTab || isActiveTabBound"
+          <span
+            v-else
+            class="text-xs px-2 py-0.5 rounded font-mono flex items-center gap-1 select-none"
+            :class="chatBindMode === 'off'
+              ? 'opacity-50'
+              : (isActiveTabBound ? 'text-primary bg-primary/10' : 'opacity-70')"
             :title="bindIconTooltip"
-            @click="onBindActiveTab"
           >
             <span aria-hidden="true">🔗</span>
-            <span v-if="chatBoundDocumentPathDisplay">{{ chatBoundDocumentPathDisplay }}</span>
-          </button>
+            <span>{{ bindStatusLabel }}</span>
+          </span>
         </template>
       </div>
 
@@ -1147,6 +1235,7 @@ const toggleTooltip = computed<string>(() => {
         :project-id="projectId"
         :tool-service="clientToolService"
         :active-document="activeTab"
+        :bound-document-id="chatBoundDocumentId"
       />
       <div
         v-else-if="hasSession"

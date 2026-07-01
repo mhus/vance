@@ -95,4 +95,27 @@ public class ProcessSteerRequest {
      * <p>See {@code planning/apps-in-cortex-and-live.md} §5.
      */
     private @Nullable ActiveAppContext activeApp;
+
+    /**
+     * Id of the document the sending Cortex view has "bound" to the
+     * chat for this turn (the {@code bind file} affordance). Per-message
+     * LLM context — the engine resolves the id, inlines the document so
+     * the agent can see the file the user is working on, and does not
+     * persist it. {@code null} when nothing is bound or from clients
+     * that don't have a Cortex view.
+     *
+     * <p>Deliberately travels with the steer instead of via persisted
+     * session state: "which file the agent should see right now" is a
+     * per-turn signal, not durable session status.
+     */
+    private @Nullable String boundDocumentId;
+
+    /**
+     * Character range selected inside {@link #boundDocumentId} at send
+     * time. Per-message LLM context — the engine surfaces "the user has
+     * a selection [from:to]" to the prompt; the model reads the content
+     * on demand via {@code doc_get_selection}. {@code null} when nothing
+     * is selected.
+     */
+    private @Nullable BoundDocSelection boundDocSelection;
 }

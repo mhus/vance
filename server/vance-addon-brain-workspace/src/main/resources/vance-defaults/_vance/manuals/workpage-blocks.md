@@ -1,5 +1,5 @@
 ---
-triggers: workpage block, block type, paragraph, heading, bullet, numbered list, todo, checkbox, quote, code block, image, image width, table, callout, info box, warning box, toggle, accordion, columns, multi-column, link card, table of contents, toc, divider, dataview, embed, embedded document, vance uri, reference document
+triggers: workpage block, block type, paragraph, heading, bullet, numbered list, todo, checkbox, quote, code block, image, image width, table, callout, info box, warning box, toggle, accordion, columns, multi-column, link card, table of contents, toc, divider, dataview, embed, embedded document, vance uri, reference document, form, input, reactive form, data entry, text input, onSave script
 summary: Copy-paste cheatsheet for every workpage block type. JSON shape for `workpage_create` / `workpage_block_append` tools plus the underlying Markdown the block round-trips to. Use this when you need to pick the right block or look up the exact param keys.
 ---
 # WorkPage Block Cheatsheet
@@ -378,6 +378,45 @@ For unknown kinds the card still renders with a generic 📄 icon. The
 v1 NodeView shows only the card; full inline rendering of vance-kinds
 (mindmap / tree / calendar / …) is v2.
 
+## form
+
+```json
+{ "type": "form", "config": "vance:/apps/ws/data/people.records.json?kind=records" }
+```
+
+```markdown
+```vance-form
+config: vance:/apps/ws/data/people.records.json?kind=records
+```
+```
+
+An **editable, typed form** over a `kind: records` data document. The
+`config` is the `vance:` URI of that document; its `$meta.form.fields`
+define the inputs and `$meta.onSave.runScript` an optional recompute
+script that runs server-side on Save (see the reactive-forms feature).
+Use this for "user enters structured data, a script derives something"
+pages. The bound document must already exist (create it with
+`doc_create`, `kind: records`, carrying the `$meta.form` schema).
+
+## input
+
+```json
+{ "type": "input", "config": "vance:/notes/intro.md?kind=text", "multiline": true }
+```
+
+```markdown
+```vance-input
+config: vance:/notes/intro.md?kind=text
+multiline: true
+```
+```
+
+A **single editable text value** bound to a text document (the whole
+file content is the value). `multiline: true` renders a growing
+textarea, `false` a single-line input. Like `form`, the bound text
+document may carry an `onSave` script in its front-matter header. Use
+`form` for structured multi-field data, `input` for one free-text value.
+
 ## dataview
 
 ```json
@@ -417,3 +456,6 @@ Headings must be unique; duplicates throw and you disambiguate with `index`. Hea
 | "A horizontal break between sections" | `divider` |
 | "Picture from the user's upload" | `image`, `src` = `vance:/<workspace>/assets/...?kind=image` |
 | "Reference another Vance document inline" | `embed`, `uri` = `vance:/<path>?kind=<kind>` |
+| "Show the result of another document (computed file, chart)" | `embed`, `uri` = `vance:/<path>?kind=<kind>` |
+| "Let the user fill in structured data (a form)" | `form`, `config` = `vance:/<records-doc>?kind=records` |
+| "Let the user edit one free-text value" | `input`, `config` = `vance:/<text-doc>?kind=text` |

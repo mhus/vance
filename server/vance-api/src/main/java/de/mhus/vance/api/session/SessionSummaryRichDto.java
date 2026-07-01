@@ -105,19 +105,4 @@ public class SessionSummaryRichDto {
     private @Nullable String lastMessageRole;
 
     private @Nullable Instant lastMessageAt;
-
-    // ─── Cortex view state — see planning/cortex.md §4.1 ───
-
-    /**
-     * Document ids open as tabs in the Cortex view of this session.
-     * Order is the tab order. Empty when the session has never been
-     * opened in Cortex, or all tabs were closed.
-     */
-    private List<String> openDocumentIds = List.of();
-
-    /**
-     * Document the Cortex chat operates on through client-tools.
-     * {@code null} when no document is chat-bound.
-     */
-    private @Nullable String chatBoundDocumentId;
 }

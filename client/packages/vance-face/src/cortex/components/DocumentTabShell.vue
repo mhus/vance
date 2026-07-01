@@ -8,7 +8,7 @@
  * Modes:
  *  - {@code 'code'}          → CodeEditor from `@vance/components`, with
  *    text-selection mirroring into the cortex store so the
- *    {@code cortex_get_selection} client tool can surface it.
+ *    {@code doc_get_selection} client tool can surface it.
  *  - {@code 'image'}         → ImageView from `src/document/`, read-only.
  *  - {@code 'typed-model'}   → domain view from `src/document/` (Tree,
  *    List, Checklist, Records, Chart, Sheet, Graph, Diagram, Slides,

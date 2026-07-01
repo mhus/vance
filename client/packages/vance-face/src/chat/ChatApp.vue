@@ -17,6 +17,7 @@ import type {
 } from '@vance/generated';
 import {
   bindSession,
+  ensureBound as wsEnsureBound,
   ensureConnected as wsEnsureConnected,
   markBound,
   unbindNow,
@@ -442,15 +443,18 @@ watch(
 );
 
 /**
- * Composer-facing reconnect hook. Returns {@code true} once the
- * tab-singleton WebSocket is up; the store's auto-reconnect loop is
- * already running in the background, so this just awaits its result.
+ * Composer-facing pre-send hook. Returns {@code true} once the
+ * tab-singleton WebSocket is up <em>and</em> the session is
+ * server-confirmed bound. Socket-up alone is not enough: after an
+ * auto-reconnect the socket comes back before the {@code session-resume}
+ * completes (or the resume failed and was swallowed), and a steer sent on
+ * that unbound connection earns a 403 "requires a bound session". The
+ * store's {@link wsEnsureBound} re-binds the desired session if needed.
  * Falsy result triggers the composer's "send failed" banner.
  */
 async function ensureConnected(): Promise<boolean> {
   try {
-    await wsEnsureConnected();
-    return socket.value !== null;
+    return await wsEnsureBound();
   } catch {
     return false;
   }

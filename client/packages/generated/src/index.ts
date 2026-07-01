@@ -185,6 +185,7 @@ export * from './skills/SkillTriggerType';
 
 export * from './thinkprocess/ActiveAppContext';
 export * from './thinkprocess/BootstrappedProcess';
+export * from './thinkprocess/BoundDocSelection';
 export * from './thinkprocess/IdeContext';
 export * from './thinkprocess/IdeFileRange';
 export * from './thinkprocess/PlanProposedNotification';

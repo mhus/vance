@@ -156,6 +156,12 @@ let onCloseUnsubscribe: (() => void) | null = null;
 let visibilityWired = false;
 let documentsSocketWatchStopped = false;
 
+/**
+ * In-flight socket-open promise. Guards against concurrent callers each
+ * opening their OWN WebSocket — see {@link connectSingleton}.
+ */
+let pendingOpen: Promise<BrainWebSocket> | null = null;
+
 // ─── helpers ────────────────────────────────────────────────
 
 function clearReleaseTimer(): void {
@@ -212,6 +218,47 @@ function openRaw(opts: { tenant: string; jwt?: string }): Promise<BrainWebSocket
   });
 }
 
+/**
+ * Open the tab-singleton socket, guarded against concurrent callers.
+ *
+ * <p>Multiple consumers open the connection in parallel on mount — most
+ * visibly in cortex.html, where the chat-bind, the {@code documents}
+ * live-watch (subscribe / subscribePrefix), the notification subscription
+ * and the tool-service attach all call {@link ensureConnected} in the same
+ * tick. Without this guard, each caller that observed a {@code null}
+ * socket opened its OWN WebSocket; the brain's single-client session
+ * registry then kicks all but one, the kicked ones auto-reconnect and kick
+ * the survivor, and the tab settles into a ~3s connect/kick ping-pong.
+ * Every steer that lands in a kicked connection's brief unbound window
+ * earns a 403 "process-steer requires a bound session". chat.html happened
+ * to dodge it only because its picker→openAndBind flow opens sequentially.
+ *
+ * <p>Collapses concurrent opens into ONE socket, and centralises
+ * {@code socket.value} assignment + close-listener wiring so both
+ * {@link ensureConnected} and {@link attemptReconnect} share one path.
+ */
+function connectSingleton(opts: { tenant: string; jwt?: string }): Promise<BrainWebSocket> {
+  if (socket.value && !socket.value.closed()) {
+    return Promise.resolve(socket.value);
+  }
+  if (pendingOpen) {
+    return pendingOpen;
+  }
+  const p = (async () => {
+    try {
+      const fresh = await openRaw(opts);
+      detachCloseListener();
+      socket.value = fresh;
+      onCloseUnsubscribe = fresh.onClose(handleSocketClose);
+      return fresh;
+    } finally {
+      pendingOpen = null;
+    }
+  })();
+  pendingOpen = p;
+  return p;
+}
+
 function handleSocketClose(): void {
   detachCloseListener();
   socket.value = null;
@@ -247,12 +294,10 @@ async function attemptReconnect(): Promise<void> {
     return;
   }
   try {
-    const fresh = await openRaw({ tenant });
-    socket.value = fresh;
+    const fresh = await connectSingleton({ tenant });
     status.value = 'connected';
     reconnectAttempts.value = 0;
     lastError.value = null;
-    onCloseUnsubscribe = fresh.onClose(handleSocketClose);
     // Auto-resume desired session, if the editor had one before the drop.
     if (desiredSessionId.value) {
       try {
@@ -320,11 +365,9 @@ export async function ensureConnected(opts?: { jwt?: string }): Promise<BrainWeb
   status.value = 'connecting';
   lastError.value = null;
   try {
-    const fresh = await openRaw({ tenant, jwt: opts?.jwt });
-    socket.value = fresh;
+    const fresh = await connectSingleton({ tenant, jwt: opts?.jwt });
     status.value = 'connected';
     reconnectAttempts.value = 0;
-    onCloseUnsubscribe = fresh.onClose(handleSocketClose);
     return fresh;
   } catch (e) {
     lastError.value = e instanceof Error ? e.message : String(e);
@@ -358,6 +401,46 @@ export async function bindSession(sessionId: string): Promise<BrainWsApi> {
   }
   await doSendResume(sessionId);
   return sock;
+}
+
+/**
+ * Guarantee the tab-singleton socket is open <em>and</em> the desired
+ * session is server-confirmed bound, before the caller sends a
+ * session-scoped frame ({@code process-steer}, …).
+ *
+ * <p>Closes the reconnect race: after a socket drop {@link attemptReconnect}
+ * reopens and re-resumes asynchronously, flipping {@code status} to
+ * {@code 'connected'} <em>before</em> the {@code session-resume} roundtrip
+ * completes — and it swallows a failed auto-resume, leaving the socket up
+ * but unbound. A steer sent in either window earns a server 403
+ * "process-steer requires a bound session". Checking only "is the socket
+ * open?" (the previous composer guard) does not catch this.
+ *
+ * <p>Idempotent and cheap when already bound; self-heals a previously
+ * failed / still-in-flight auto-resume by re-issuing the bind.
+ *
+ * @returns {@code true} when a session is bound afterwards; {@code false}
+ * when there is no desired session or the (re-)bind failed.
+ */
+export async function ensureBound(): Promise<boolean> {
+  const want = desiredSessionId.value;
+  if (!want) return false;
+  try {
+    await ensureConnected();
+  } catch (e) {
+    console.warn('[wsStore] ensureBound: connect failed:', e);
+    return false;
+  }
+  if (activeSessionId.value === want && socket.value && !socket.value.closed()) {
+    return true;
+  }
+  try {
+    await bindSession(want);
+    return activeSessionId.value === want;
+  } catch (e) {
+    console.warn('[wsStore] ensureBound: rebind failed:', e);
+    return false;
+  }
 }
 
 /**

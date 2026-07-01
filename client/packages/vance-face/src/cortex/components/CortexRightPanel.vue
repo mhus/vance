@@ -23,6 +23,7 @@ interface Props {
   projectId: string;
   toolService?: CortexClientToolService | null;
   activeDocument: CortexDocument | null;
+  boundDocumentId?: string | null;
 }
 
 const props = defineProps<Props>();
@@ -65,6 +66,7 @@ const helpPath = computed<string | null>(() => resolveHelpPath(props.activeDocum
           :session-id="sessionId"
           :project-id="projectId"
           :tool-service="toolService ?? null"
+          :bound-document-id="boundDocumentId ?? null"
         />
       </div>
       <div v-show="activeTab === 'help'" class="h-full">

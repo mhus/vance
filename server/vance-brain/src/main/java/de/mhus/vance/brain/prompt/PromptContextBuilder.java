@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.prompt;
 
 import de.mhus.vance.api.thinkprocess.ActiveAppContext;
+import de.mhus.vance.api.thinkprocess.BoundDocSelection;
 import de.mhus.vance.api.thinkprocess.ProcessMode;
 import de.mhus.vance.brain.ai.ModelInfo;
 import de.mhus.vance.brain.ai.ModelSize;
@@ -249,7 +250,9 @@ public final class PromptContextBuilder {
      * client-tool registry contains tools labelled {@code "cortex"}).
      * Engines render a {@code {% if cortexMode %}} block in their
      * system prompt to tell the LLM the {@code cortex_*} tools are
-     * available and which document is bound.
+     * available. The document the user is working on arrives inlined
+     * with the steer ({@code ProcessSteerRequest.boundDocumentId}), so
+     * the prompt no longer carries a bound-doc path/mime.
      *
      * <p>Per-turn — never persisted on the process. Default
      * {@code false} when the setter is not called. See
@@ -261,26 +264,28 @@ public final class PromptContextBuilder {
     }
 
     /**
-     * Path of the document the Cortex chat is currently bound to —
-     * exposed to templates as {@code {{ cortexBoundDocPath }}}. Only
-     * meaningful when {@link #cortexMode(boolean)} is {@code true};
-     * {@code null} when Cortex is open without a binding (the agent
-     * has tools but no target yet).
+     * Per-turn Cortex "bound file" — the path of the document the user
+     * bound to the chat, resolved fresh this turn from the id that rode
+     * in with the steer (never persisted). Sets {@code {{ cortexBoundDocPath }}}
+     * so the prompt can tell the model which file "this file" means; the
+     * model reads the content on demand with {@code doc_read}. Unset when
+     * nothing is bound.
      */
-    public PromptContextBuilder cortexBoundDocPath(@Nullable String path) {
+    public PromptContextBuilder cortexBoundDoc(@Nullable String path) {
         if (path != null && !path.isBlank()) map.put("cortexBoundDocPath", path);
         return this;
     }
 
     /**
-     * Mime-type of the bound Cortex document — companion to
-     * {@link #cortexBoundDocPath(String)}. Lets the template tell the
-     * agent up front when the bound document is a binary type
-     * (image/PDF) so it doesn't waste a call on {@code doc_read}
-     * just to discover the text tools won't apply.
+     * Per-turn Cortex selection range inside the bound document
+     * ({@code from}..{@code to} character offsets). Exposed as
+     * {@code {{ cortexBoundDocSelection }}} (a {@code "from:to"} string)
+     * so the prompt can tell the model a selection exists; the model
+     * reads its text on demand via {@code doc_get_selection}. Unset when
+     * nothing is selected.
      */
-    public PromptContextBuilder cortexBoundDocMime(@Nullable String mime) {
-        if (mime != null && !mime.isBlank()) map.put("cortexBoundDocMime", mime);
+    public PromptContextBuilder cortexBoundDocSelection(@Nullable BoundDocSelection sel) {
+        if (sel != null) map.put("cortexBoundDocSelection", sel.getFrom() + ":" + sel.getTo());
         return this;
     }
 

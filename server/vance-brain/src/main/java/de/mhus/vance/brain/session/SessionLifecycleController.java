@@ -1,7 +1,6 @@
 package de.mhus.vance.brain.session;
 
 import de.mhus.vance.api.common.AccentColor;
-import de.mhus.vance.api.session.SessionCortexStateRequest;
 import de.mhus.vance.api.session.SessionMetadataDto;
 import de.mhus.vance.api.session.SessionMetadataPatchRequest;
 import de.mhus.vance.api.session.SessionStatus;
@@ -135,54 +134,6 @@ public class SessionLifecycleController {
                 new Resource.Session(tenant, session.getProjectId(), session.getSessionId()),
                 Action.DELETE);
         lifecycleService.deleteSession(sessionId);
-        return ResponseEntity.noContent().build();
-    }
-
-    /**
-     * Persist the Cortex view state (open tabs + chat-bound document)
-     * for a session. Called by the Cortex client on tab open/close and
-     * on bind changes. Replacement semantics — the request body is the
-     * full state, not a patch.
-     *
-     * <p>Returns 204 even when no field changed (idempotent). Closed
-     * sessions reject the call with 409 — Cortex doesn't operate on
-     * terminal sessions.
-     */
-    @PutMapping("/{sessionId}/cortex-state")
-    public ResponseEntity<Void> setCortexState(
-            @PathVariable("tenant") String tenant,
-            @PathVariable("sessionId") String sessionId,
-            @RequestBody SessionCortexStateRequest body,
-            HttpServletRequest request) {
-        String currentUser = currentUser(request);
-        SessionDocument session = sessionService.findBySessionId(sessionId)
-                .filter(s -> tenant.equals(s.getTenantId()))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Session '" + sessionId + "' not found"));
-        boolean isOwner = currentUser.equals(session.getUserId());
-        if (!isOwner) {
-            // Multi-user routing: non-owners may read a shared session
-            // but Cortex tab state is owner-scoped (one canonical view
-            // per session). Silently no-op the write so the UI doesn't
-            // need to special-case the request, and reject when the
-            // session isn't shared at all.
-            if (!session.isAllowMultipleClients()) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                        "Session '" + sessionId + "' belongs to another user");
-            }
-            return ResponseEntity.noContent().build();
-        }
-        authority.enforce(request,
-                new Resource.Session(tenant, session.getProjectId(), session.getSessionId()),
-                Action.WRITE);
-        if (session.getStatus() == SessionStatus.CLOSED) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Cannot update Cortex state on a CLOSED session");
-        }
-        List<String> ids = body.getOpenDocumentIds() == null
-                ? List.of()
-                : List.copyOf(body.getOpenDocumentIds());
-        sessionService.setCortexState(sessionId, ids, body.getChatBoundDocumentId());
         return ResponseEntity.noContent().build();
     }
 

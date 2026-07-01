@@ -145,6 +145,11 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
     @Override
     protected void handleTextMessage(WebSocketSession wsSession, TextMessage message) throws Exception {
         ConnectionContext ctx = resolveContext(wsSession);
+        // Raw inbound frame — every WS message, plain, at TRACE. The
+        // single most useful thing when debugging "did the client send
+        // X?" without guessing from parsed side-effects.
+        log.trace("WS inbound [editor={} session={}]: {}",
+                ctx.getEditorId(), ctx.getSessionId(), message.getPayload());
         WebSocketEnvelope envelope;
         try {
             envelope = objectMapper.readValue(message.getPayload(), WebSocketEnvelope.class);

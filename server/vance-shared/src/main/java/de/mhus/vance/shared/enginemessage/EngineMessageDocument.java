@@ -2,6 +2,8 @@ package de.mhus.vance.shared.enginemessage;
 
 import de.mhus.vance.api.inbox.AnswerPayload;
 import de.mhus.vance.api.inbox.InboxItemType;
+import de.mhus.vance.api.thinkprocess.ActiveAppContext;
+import de.mhus.vance.api.thinkprocess.BoundDocSelection;
 import de.mhus.vance.api.thinkprocess.PeerEventType;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.api.thinkprocess.ToolCallStatus;
@@ -122,6 +124,29 @@ public class EngineMessageDocument {
      * turn. {@code null} or empty when the turn is text-only.
      */
     private @Nullable List<String> attachmentDocumentIds;
+
+    /**
+     * Per-message active-app hint (folder-level app open in the sending
+     * editor) — pulled into the prompt as {@code activeApp}. Mirrors
+     * {@code PendingMessageDocument.activeApp}; must be carried here or
+     * it's lost across the pending-queue round-trip.
+     */
+    private @Nullable ActiveAppContext activeApp;
+
+    /**
+     * Per-message Cortex "bound file" id — the document the user bound to
+     * the chat for this turn, resolved to a path and injected into the
+     * prompt. Mirrors {@code PendingMessageDocument.boundDocumentId}; must
+     * be carried here or it's lost across the pending-queue round-trip.
+     */
+    private @Nullable String boundDocumentId;
+
+    /**
+     * Character range selected in the bound document at send time.
+     * Mirrors {@code PendingMessageDocument.boundDocSelection}; carried
+     * here so it survives the pending-queue round-trip.
+     */
+    private @Nullable BoundDocSelection boundDocSelection;
 
     // ─── PROCESS_EVENT ───────────────────────────────────────────
     /**

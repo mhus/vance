@@ -6,6 +6,7 @@
 import { IdeContext } from './IdeContext';
 import { AttachmentRef } from '../attachment/AttachmentRef';
 import { ActiveAppContext } from './ActiveAppContext';
+import { BoundDocSelection } from './BoundDocSelection';
 
 export interface ProcessSteerRequest {
   processName: string;
@@ -15,4 +16,6 @@ export interface ProcessSteerRequest {
   attachments?: AttachmentRef[];
   voiceMode?: boolean;
   activeApp?: ActiveAppContext;
+  boundDocumentId?: string;
+  boundDocSelection?: BoundDocSelection;
 }

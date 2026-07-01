@@ -14,9 +14,8 @@ import org.springframework.stereotype.Service;
 
 /**
  * Pre-turn RAG auto-injection (Variante C: Pre-Turn-Hybrid with score
- * threshold). When the recipe's {@code rag.autoInject} param is on (or the
- * cascade setting {@code rag.autoInject.enabled} overrides to true), the
- * service embeds the last user message, queries the project-default RAG
+ * threshold). When auto-inject resolves to ON for a turn, the service
+ * embeds the last user message, queries the project-default RAG
  * ({@code _documents}), filters by minimum score and renders a compact
  * markdown block that engines append to their system prompt.
  *
@@ -24,29 +23,50 @@ import org.springframework.stereotype.Service;
  * no RAG exists, auto-inject is off, query text is blank, or no hit
  * passes the threshold. Engines treat {@code null} as "skip the block".
  *
- * <p>Recipe-param defaults (see {@code specification/rag.md} §5):
+ * <p><b>Enablement resolution — innermost wins</b> (consistent with every
+ * other cascade in Vance). Both the recipe param {@code rag.autoInject}
+ * and the cascade settings take a three-state value: {@code ON} /
+ * {@code OFF} / {@code AUTO} (legacy booleans {@code true}/{@code false}
+ * map to {@code ON}/{@code OFF}). Precedence, first decisive level wins:
+ * <ol>
+ *   <li>Recipe param {@code rag.autoInject} = {@code ON}/{@code OFF} — the
+ *       recipe's RAG stance is part of its identity, so an explicit value
+ *       beats any operator setting. (A {@code discuss}-style recipe pins
+ *       {@code OFF} and can no longer be force-enabled by a project.)</li>
+ *   <li>Cascade setting {@code rag.autoInject.enabled} = {@code ON}/{@code OFF}
+ *       (accepts legacy {@code true}/{@code false} too) — the operator
+ *       default for recipes that stay on {@code AUTO}.</li>
+ *   <li>{@code AUTO} / absent everywhere → hard default {@code OFF}.</li>
+ * </ol>
+ * {@code AUTO} means "no forced opinion at this level, defer outward";
+ * writing it at a scope shadows an outer {@code ON}/{@code OFF} back to
+ * the default.
+ *
+ * <p>Other recipe-param defaults (see {@code specification/rag.md} §5):
  * <ul>
- *   <li>{@code rag.autoInject} — default {@code false}</li>
  *   <li>{@code rag.topK} — default {@code 5}</li>
  *   <li>{@code rag.minScore} — default {@code 0.65}</li>
  * </ul>
- * Cascade override: {@code rag.autoInject.enabled} (Tenant/Project) wins
- * over the recipe when set.
  */
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class RagAutoInjectService {
 
-    /** Recipe-param key for the auto-inject master toggle. */
+    /** Three-state auto-inject toggle shared by the recipe param and settings. */
+    public enum Mode { ON, OFF, AUTO }
+
+    /** Recipe-param key for the auto-inject master toggle (ON/OFF/AUTO). */
     public static final String PARAM_AUTO_INJECT = "rag.autoInject";
     /** Recipe-param key for the score threshold. */
     public static final String PARAM_MIN_SCORE = "rag.minScore";
     /** Recipe-param key for top-K. */
     public static final String PARAM_TOP_K = "rag.topK";
-    /** Cascade-setting key — Tenant/Project override for the recipe param. */
-    public static final String SETTING_AUTO_INJECT_OVERRIDE = "rag.autoInject.enabled";
+    /** Cascade-setting key — Tenant/Project default. Accepts ON/OFF/AUTO plus legacy true/false. */
+    public static final String SETTING_AUTO_INJECT_ENABLED = "rag.autoInject.enabled";
 
+    /** Resolution fallback when nothing forces a value. */
+    private static final Mode DEFAULT_MODE = Mode.OFF;
     private static final double DEFAULT_MIN_SCORE = 0.65;
     private static final int DEFAULT_TOP_K = 5;
 
@@ -110,29 +130,47 @@ public class RagAutoInjectService {
         return sb.toString();
     }
 
-    private boolean isEnabled(ThinkProcessDocument process) {
-        // Cascade override wins when explicitly set (true/false). When the
-        // setting is absent the recipe param decides.
-        String raw = settingService.getStringValueCascade(
+    /**
+     * Resolve auto-inject enablement for this turn. See the class javadoc
+     * for the full precedence table: recipe {@code ON}/{@code OFF} wins,
+     * then the cascade setting, then the hard {@code OFF} default.
+     */
+    boolean isEnabled(ThinkProcessDocument process) {
+        // 1. Explicit recipe intent is innermost — it wins outright.
+        Mode recipeMode = parseMode(readParam(process.getEngineParams(), PARAM_AUTO_INJECT));
+        if (recipeMode == Mode.ON) return true;
+        if (recipeMode == Mode.OFF) return false;
+
+        // 2. Recipe stayed AUTO / silent → the operator's cascade default
+        //    decides (the setting takes ON/OFF/AUTO plus legacy true/false).
+        Mode settingMode = parseMode(settingService.getStringValueCascade(
                 process.getTenantId(), process.getProjectId(),
-                /*thinkProcessId*/ null, SETTING_AUTO_INJECT_OVERRIDE);
-        if (raw != null && !raw.isBlank()) {
-            String n = raw.trim().toLowerCase();
-            if ("true".equals(n) || "1".equals(n) || "yes".equals(n) || "on".equals(n)) return true;
-            if ("false".equals(n) || "0".equals(n) || "no".equals(n) || "off".equals(n)) return false;
-        }
-        return readBoolParam(process, PARAM_AUTO_INJECT, false);
+                /*thinkProcessId*/ null, SETTING_AUTO_INJECT_ENABLED));
+        if (settingMode == Mode.ON) return true;
+        if (settingMode == Mode.OFF) return false;
+
+        // 3. AUTO / absent everywhere → hard default.
+        return DEFAULT_MODE == Mode.ON;
     }
 
-    private static boolean readBoolParam(ThinkProcessDocument process, String key, boolean defaultValue) {
-        Object v = readParam(process.getEngineParams(), key);
-        if (v instanceof Boolean b) return b;
-        if (v instanceof String s && !s.isBlank()) {
+    /**
+     * Parse a three-state auto-inject value from a recipe-param object or a
+     * setting string. Legacy booleans map to {@code ON}/{@code OFF}.
+     * Returns {@code null} for absent / blank / unrecognised input so the
+     * caller can defer to the next precedence level.
+     */
+    static @Nullable Mode parseMode(@Nullable Object value) {
+        if (value instanceof Boolean b) return b ? Mode.ON : Mode.OFF;
+        if (value instanceof String s && !s.isBlank()) {
             String n = s.trim().toLowerCase();
-            if ("true".equals(n) || "1".equals(n) || "yes".equals(n) || "on".equals(n)) return true;
-            if ("false".equals(n) || "0".equals(n) || "no".equals(n) || "off".equals(n)) return false;
+            return switch (n) {
+                case "true", "1", "yes", "on" -> Mode.ON;
+                case "false", "0", "no", "off" -> Mode.OFF;
+                case "auto", "default" -> Mode.AUTO;
+                default -> null;
+            };
         }
-        return defaultValue;
+        return null;
     }
 
     private static int readIntParam(ThinkProcessDocument process, String key, int defaultValue) {

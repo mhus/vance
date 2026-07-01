@@ -1,12 +1,7 @@
 package de.mhus.vance.brain.tools.client;
 
 import de.mhus.vance.api.tools.ToolSpec;
-import de.mhus.vance.shared.document.DocumentDocument;
-import de.mhus.vance.shared.document.DocumentService;
-import de.mhus.vance.shared.session.SessionDocument;
-import de.mhus.vance.shared.session.SessionService;
 import java.util.List;
-import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
@@ -24,9 +19,12 @@ import org.springframework.stereotype.Service;
  * {@code "cortex"} label on bind, and the registration drops when the
  * WebSocket closes (the user navigates back to plain chat or closes
  * the tab). So this check answers "is a Cortex client connected to
- * this session right now?" — not "has Cortex ever been used here?",
- * which would falsely fire from the persisted
- * {@code SessionDocument.chatBoundDocumentId} after the user left.
+ * this session right now?".
+ *
+ * <p>The chat-bound document is <em>not</em> resolved here anymore. It
+ * travels with each steer ({@code ProcessSteerRequest.boundDocumentId})
+ * and is inlined per-turn by {@code ProcessSteerHandler} — per-turn LLM
+ * context, not persisted session status.
  */
 @Service
 @RequiredArgsConstructor
@@ -35,16 +33,11 @@ public class CortexPromptResolver {
     private static final String CORTEX_LABEL = "cortex";
 
     private final ClientToolRegistry clientToolRegistry;
-    private final SessionService sessionService;
-    private final DocumentService documentService;
 
-    public record CortexContext(
-            boolean active,
-            @Nullable String boundDocPath,
-            @Nullable String boundDocMime) {
+    public record CortexContext(boolean active) {
 
         public static CortexContext inactive() {
-            return new CortexContext(false, null, null);
+            return new CortexContext(false);
         }
     }
 
@@ -54,22 +47,7 @@ public class CortexPromptResolver {
         List<ToolSpec> tools = clientToolRegistry.toolsFor(sessionId);
         boolean cortexClientConnected = tools.stream()
                 .anyMatch(t -> t.getLabels() != null && t.getLabels().contains(CORTEX_LABEL));
-        if (!cortexClientConnected) return CortexContext.inactive();
 
-        Optional<SessionDocument> session = sessionService.findBySessionId(sessionId);
-        if (session.isEmpty()) return CortexContext.inactive();
-
-        String docId = session.get().getChatBoundDocumentId();
-        if (docId == null || docId.isBlank()) {
-            // Cortex is open but no document is chat-bound yet — the
-            // agent should still know it has cortex_* tools available,
-            // just no path to report.
-            return new CortexContext(true, null, null);
-        }
-
-        Optional<DocumentDocument> doc = documentService.findById(docId);
-        if (doc.isEmpty()) return new CortexContext(true, null, null);
-
-        return new CortexContext(true, doc.get().getPath(), doc.get().getMimeType());
+        return new CortexContext(cortexClientConnected);
     }
 }

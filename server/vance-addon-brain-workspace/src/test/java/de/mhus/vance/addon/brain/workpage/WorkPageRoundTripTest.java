@@ -99,6 +99,47 @@ class WorkPageRoundTripTest {
     }
 
     @Test
+    void embed_roundTrip() {
+        List<Block> in = List.of(new Block.Embed(
+                "vance:/apps/ws/data/durchschnitt.md?kind=text"));
+        assertRoundTrip(in);
+    }
+
+    @Test
+    void form_roundTrip() {
+        List<Block> in = List.of(new Block.Form(
+                "vance:/apps/ws/data/noten.records.json?kind=records"));
+        assertRoundTrip(in);
+    }
+
+    @Test
+    void input_roundTrip_multilineAndSingle() {
+        assertRoundTrip(List.of(new Block.Input("vance:/notes/intro.md?kind=text", true)));
+        assertRoundTrip(List.of(new Block.Input("vance:/notes/name.txt?kind=text", false)));
+    }
+
+    @Test
+    void toc_roundTrip() {
+        assertRoundTrip(List.of(new Block.Toc()));
+    }
+
+    @Test
+    void columns_roundTrip_withNestedBlocksAndWidth() {
+        // A nested code block (triple backtick) forces the outer columns
+        // fence to grow to four backticks — exercises the length-aware
+        // parser. Second column carries an explicit width.
+        List<Block> in = List.of(new Block.Columns(List.of(
+                new Block.Column(null, List.of(
+                        new Block.Heading(2, "Links"),
+                        new Block.Paragraph("Erste Spalte."),
+                        new Block.Code("js", "const x = 1;"))),
+                new Block.Column(0.4, List.of(
+                        new Block.Paragraph("Zweite Spalte."),
+                        new Block.Embed("vance:/apps/ws/data/result.md?kind=text"))))));
+        assertRoundTrip(in);
+    }
+
+    @Test
     void unknownFence_isPreserved() {
         List<Block> in = List.of(new Block.UnknownFence(
                 "vance-future",

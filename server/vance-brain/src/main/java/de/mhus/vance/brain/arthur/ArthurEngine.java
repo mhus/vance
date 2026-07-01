@@ -225,6 +225,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     private final UserMemoryService userMemoryService;
     private final de.mhus.vance.brain.discovery.DiscoveryService discoveryService;
     private final de.mhus.vance.brain.tools.client.CortexPromptResolver cortexPromptResolver;
+    private final de.mhus.vance.brain.tools.client.CortexBoundDocumentResolver cortexBoundDocumentResolver;
+    private final de.mhus.vance.brain.tools.client.CortexTurnSelectionHolder cortexTurnSelectionHolder;
     private final de.mhus.vance.brain.chat.CollabContextResolver collabContextResolver;
     private final de.mhus.vance.brain.applications.ActiveAppPromptResolver activeAppPromptResolver;
     private final ObjectMapper objectMapper;
@@ -304,6 +306,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             @org.springframework.context.annotation.Lazy
                     de.mhus.vance.brain.discovery.DiscoveryService discoveryService,
             de.mhus.vance.brain.tools.client.CortexPromptResolver cortexPromptResolver,
+            de.mhus.vance.brain.tools.client.CortexBoundDocumentResolver cortexBoundDocumentResolver,
+            de.mhus.vance.brain.tools.client.CortexTurnSelectionHolder cortexTurnSelectionHolder,
             de.mhus.vance.brain.chat.CollabContextResolver collabContextResolver,
             de.mhus.vance.brain.applications.ActiveAppPromptResolver activeAppPromptResolver,
             de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeService actionLoopJudgeService) {
@@ -327,6 +331,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         this.userMemoryService = userMemoryService;
         this.discoveryService = discoveryService;
         this.cortexPromptResolver = cortexPromptResolver;
+        this.cortexBoundDocumentResolver = cortexBoundDocumentResolver;
+        this.cortexTurnSelectionHolder = cortexTurnSelectionHolder;
         this.collabContextResolver = collabContextResolver;
         this.activeAppPromptResolver = activeAppPromptResolver;
         this.objectMapper = objectMapper;
@@ -725,6 +731,15 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         // {@code activeDelegationWorkerId} to a dead-end. Top-level
         // chat processes keep the legacy BLOCKED-awaits-user behaviour.
         boolean actionLoopFallback = false;
+        // True when the action-loop fallback represents a genuine
+        // non-completion (LLM never committed to a terminal action / lost
+        // the thread) rather than the graceful plan-completion summary
+        // sub-case. Drives the terminal close reason for sub-process
+        // workers: INCOMPLETE (→ FAILED ProcessEvent, parent delivers an
+        // honest "couldn't finish") vs DONE. Without the split, a worker
+        // that gave up would close DONE and the parent would relay a stale
+        // progress note as if it were the answer (Ford had the same bug).
+        boolean workerGaveUp = false;
         try {
             ChatMessageService chatLog = ctx.chatMessageService();
 
@@ -949,8 +964,11 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                     // as the user-facing reply rather than the internal
                     // diagnostic. The validator gave it
                     // actionLoopCorrections chances; this is the best
-                    // we can do without making something up.
+                    // we can do without making something up. It never
+                    // committed to a terminal action, so a worker in this
+                    // state did not cleanly finish.
                     outcome = new ActionTurnOutcome(text, true);
+                    workerGaveUp = true;
                 } else if (process.getMode()
                         == de.mhus.vance.api.thinkprocess.ProcessMode.EXECUTING
                         && allTodosCompleted(process)) {
@@ -968,6 +986,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                             "_Mir ist gerade die Spur verloren gegangen "
                                     + "— sag mir kurz wo es weitergehen soll._",
                             true);
+                    workerGaveUp = true;
                     log.warn("Arthur.turn id='{}' action-loop fallback with no usable "
                                     + "text (reason={}) — posting placeholder reply",
                             process.getId(), loopResult.fallbackReason());
@@ -1025,17 +1044,24 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             currentTurnEventsByRef.remove(process.getId());
             if (actionLoopFallback && awaitingUserInput
                     && process.getParentProcessId() != null) {
-                // Sub-process worker fell out of the action loop without
-                // a parseable action. The best Free-Text reply has
-                // already been appended to chat history; close
+                // Sub-process worker fell out of the action loop. The best
+                // reply has already been appended to chat history; close
                 // terminally so the parent's delegation pointer releases
-                // (ParentNotificationListener turns CLOSED+DONE into a
-                // DONE ProcessEvent on the parent's inbox). Without
-                // this the worker stays BLOCKED and every subsequent
-                // user message auto-forwards into a dead-end.
-                log.info("Arthur id='{}' worker action-loop fallback — closing DONE so parent '{}' releases delegation pointer",
-                        process.getId(), process.getParentProcessId());
-                thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
+                // (ParentNotificationListener turns the CLOSED event into a
+                // ProcessEvent on the parent's inbox, carrying the last
+                // reply). Without this the worker stays BLOCKED and every
+                // subsequent user message auto-forwards into a dead-end.
+                //
+                // Reason mirrors the outcome: a genuine give-up (no
+                // terminal action / lost the thread) closes INCOMPLETE
+                // (→ FAILED event, parent delivers an honest "couldn't
+                // finish"); the graceful plan-completion summary closes
+                // DONE. Closing every fallback DONE would relay a stale
+                // progress note as if it were the answer.
+                CloseReason reason = workerGaveUp ? CloseReason.INCOMPLETE : CloseReason.DONE;
+                log.info("Arthur id='{}' worker action-loop fallback — closing {} so parent '{}' releases delegation pointer",
+                        process.getId(), reason, process.getParentProcessId());
+                thinkProcessService.closeProcess(process.getId(), reason);
             } else {
                 ThinkProcessStatus exitStatus = awaitingUserInput
                         ? ThinkProcessStatus.BLOCKED
@@ -2363,11 +2389,15 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         boolean voiceMode = false;
         String mentionedByDisplayName = null;
         de.mhus.vance.api.thinkprocess.ActiveAppContext activeApp = null;
+        String boundDocumentId = null;
+        de.mhus.vance.api.thinkprocess.BoundDocSelection boundDocSelection = null;
         for (SteerMessage m : inbox) {
             if (m instanceof SteerMessage.UserChatInput uci) {
                 voiceMode = uci.voiceMode();
                 mentionedByDisplayName = uci.fromUserDisplayName();
                 activeApp = uci.activeApp();
+                boundDocumentId = uci.boundDocumentId();
+                boundDocSelection = uci.boundDocSelection();
             }
         }
         String appInstructions = activeAppPromptResolver.resolve(process, activeApp);
@@ -2381,6 +2411,20 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         // user navigates back to plain chat).
         de.mhus.vance.brain.tools.client.CortexPromptResolver.CortexContext cortex =
                 cortexPromptResolver.resolve(process.getSessionId());
+        // Bound file: resolved fresh this turn from the id that rode in
+        // with the steer — path only, the model reads content on demand
+        // via doc_read. Never persisted into chat history.
+        String cortexBoundDocPath = cortexBoundDocumentResolver.resolvePath(
+                boundDocumentId, process.getTenantId(), process.getProjectId());
+        log.trace("arthur cortex-bound: boundDocumentId={} tenant={} project={} resolvedPath={} selection={}",
+                boundDocumentId, process.getTenantId(), process.getProjectId(),
+                cortexBoundDocPath, boundDocSelection);
+        // Stash this turn's selection so the no-arg doc_get_selection() can
+        // find it; clear when the turn carried none (tied to the bound doc).
+        cortexTurnSelectionHolder.set(process.getId(),
+                (boundDocSelection == null || boundDocumentId == null) ? null
+                        : new de.mhus.vance.brain.tools.client.CortexTurnSelectionHolder.Selection(
+                                boundDocumentId, boundDocSelection.getFrom(), boundDocSelection.getTo()));
 
         // Multi-user collab context — collabActive + participants +
         // mentionedBy variables for the prompt-render. See
@@ -2397,8 +2441,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                         .activeApp(activeApp)
                         .appInstructions(appInstructions)
                         .cortexMode(cortex.active())
-                        .cortexBoundDocPath(cortex.boundDocPath())
-                        .cortexBoundDocMime(cortex.boundDocMime())
+                        .cortexBoundDoc(cortexBoundDocPath)
+                        .cortexBoundDocSelection(boundDocSelection)
                         .collabActive(collab.active())
                         .participants(collab.participants())
                         .mentionedBy(collab.mentionedBy())

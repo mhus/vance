@@ -3,6 +3,7 @@ package de.mhus.vance.shared.thinkprocess;
 import de.mhus.vance.api.inbox.AnswerPayload;
 import de.mhus.vance.api.inbox.InboxItemType;
 import de.mhus.vance.api.thinkprocess.ActiveAppContext;
+import de.mhus.vance.api.thinkprocess.BoundDocSelection;
 import de.mhus.vance.api.thinkprocess.PeerEventType;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.api.thinkprocess.ToolCallStatus;
@@ -101,6 +102,24 @@ public class PendingMessageDocument {
      * See {@code planning/apps-in-cortex-and-live.md} §5.
      */
     private @Nullable ActiveAppContext activeApp;
+
+    /**
+     * Per-message id of the document the user has "bound" to the Cortex
+     * chat for this turn. The engine drain picks the most recent value
+     * off the queue, resolves the document, and inlines its current
+     * content into the prompt render — per-turn only, never written back
+     * into chat history. {@code null} on non-USER_CHAT_INPUT rows and
+     * when no file is bound.
+     */
+    private @Nullable String boundDocumentId;
+
+    /**
+     * Character range selected in the bound document at send time
+     * (from..to offsets). Per-message; surfaced to the prompt so the
+     * model knows a selection exists and can read it via
+     * {@code doc_get_selection}. {@code null} when nothing is selected.
+     */
+    private @Nullable BoundDocSelection boundDocSelection;
 
     // ─── PROCESS_EVENT ───────────────────────────────────────────
     /** {@code ThinkProcessDocument.id} of the emitter. */

@@ -73,6 +73,11 @@ public class LiveWebSocketHandler extends TextWebSocketHandler {
     protected void handleTextMessage(WebSocketSession wsSession, TextMessage message)
             throws Exception {
         ConnectionContext ctx = resolveContext(wsSession);
+        // Raw inbound frame — every Live-WS message (the web-UI path),
+        // plain, at TRACE. Primary lens for "did the client actually
+        // send X?" without inferring from parsed side-effects.
+        log.trace("WS inbound [editor={} session={}]: {}",
+                ctx.getEditorId(), ctx.getSessionId(), message.getPayload());
         LiveEnvelope live;
         try {
             live = objectMapper.readValue(message.getPayload(), LiveEnvelope.class);

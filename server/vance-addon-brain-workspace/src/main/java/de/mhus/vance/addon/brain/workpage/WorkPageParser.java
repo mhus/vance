@@ -28,7 +28,11 @@ public class WorkPageParser {
     private static final Pattern NUMBERED = Pattern.compile("^\\s*\\d+\\.\\s+(.+?)\\s*$");
     private static final Pattern TODO = Pattern.compile("^\\s*[-*+]\\s+\\[([ xX])]\\s+(.+?)\\s*$");
     private static final Pattern QUOTE = Pattern.compile("^>\\s?(.*)$");
-    private static final Pattern FENCE_OPEN = Pattern.compile("^```(\\S*)\\s*$");
+    // Fence run is captured so a longer outer fence (vance-columns wraps
+    // nested fenced blocks) can be closed only by an equally-long fence.
+    private static final Pattern FENCE_OPEN = Pattern.compile("^(`{3,})(\\S*)\\s*$");
+    private static final Pattern COLUMN_SEP =
+            Pattern.compile("\\n<!--vance:column(?:\\s+([\\d.]+))?-->\\n");
     private static final Pattern DIVIDER = Pattern.compile("^---+\\s*$");
     private static final Pattern IMAGE_ONLY = Pattern.compile("^!\\[(.*?)]\\((.+?)\\)\\s*$");
     private static final Pattern TABLE_DIVIDER = Pattern.compile("^\\s*\\|?\\s*:?-+:?\\s*(\\|\\s*:?-+:?\\s*)+\\|?\\s*$");
@@ -78,8 +82,9 @@ public class WorkPageParser {
             // Fenced block?
             Matcher mFence = FENCE_OPEN.matcher(line);
             if (mFence.matches()) {
-                String info = mFence.group(1);
-                int end = findFenceClose(lines, i + 1);
+                int fenceLen = mFence.group(1).length();
+                String info = mFence.group(2);
+                int end = findFenceClose(lines, i + 1, fenceLen);
                 String body = String.join("\n", lines.subList(i + 1, end));
                 blocks.add(parseFence(info, body));
                 i = end + 1;
@@ -188,9 +193,10 @@ public class WorkPageParser {
         return blocks;
     }
 
-    private int findFenceClose(List<String> lines, int from) {
+    private int findFenceClose(List<String> lines, int from, int fenceLen) {
+        String close = "`".repeat(fenceLen);
         for (int j = from; j < lines.size(); j++) {
-            if (lines.get(j).trim().equals("```")) return j;
+            if (lines.get(j).trim().equals(close)) return j;
         }
         return lines.size();
     }
@@ -208,11 +214,16 @@ public class WorkPageParser {
         return false;
     }
 
-    @SuppressWarnings("unchecked")
     private Block parseFence(String info, String body) {
         if (info == null || info.isBlank() || !info.startsWith("vance-")) {
             return new Block.Code(info == null || info.isBlank() ? null : info, body);
         }
+        // Markdown-body kinds — handle BEFORE the YAML parse: their bodies
+        // legitimately carry nested fences (columns) or nothing (toc),
+        // which would make yaml.load() throw and drop to unknown-fence.
+        if (info.equals("vance-toc")) return new Block.Toc();
+        if (info.equals("vance-columns")) return parseColumns(body);
+
         Map<String, Object> yamlBody;
         try {
             Object parsed = yaml.load(body);
@@ -234,8 +245,54 @@ public class WorkPageParser {
                     str(yamlBody, "href", ""),
                     str(yamlBody, "title", null),
                     str(yamlBody, "description", null));
+            case "vance-embed" -> new Block.Embed(str(yamlBody, "uri", ""));
+            case "vance-form" -> new Block.Form(str(yamlBody, "config", ""));
+            case "vance-input" -> new Block.Input(
+                    str(yamlBody, "config", ""),
+                    boolVal(yamlBody, "multiline"));
             default -> new Block.UnknownFence(info, body);
         };
+    }
+
+    /**
+     * Split a {@code vance-columns} body on the {@code <!--vance:column
+     * [width]-->} separators and parse each column's blocks recursively.
+     * Mirrors the TS parser.
+     */
+    private Block parseColumns(String body) {
+        Matcher m = COLUMN_SEP.matcher(body);
+        List<String> parts = new ArrayList<>();
+        List<Double> widths = new ArrayList<>();
+        widths.add(null);   // first column carries no explicit width
+        int last = 0;
+        while (m.find()) {
+            parts.add(body.substring(last, m.start()));
+            widths.add(parseWidth(m.group(1)));
+            last = m.end();
+        }
+        parts.add(body.substring(last));
+        List<Block.Column> cols = new ArrayList<>();
+        for (int i = 0; i < parts.size(); i++) {
+            cols.add(new Block.Column(widths.get(i), parse(parts.get(i).trim())));
+        }
+        return new Block.Columns(cols);
+    }
+
+    private static @org.jspecify.annotations.Nullable Double parseWidth(
+            @org.jspecify.annotations.Nullable String raw) {
+        if (raw == null) return null;
+        try {
+            double d = Double.parseDouble(raw);
+            return d > 0 ? d : null;
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private static boolean boolVal(Map<String, Object> m, String key) {
+        Object v = m.get(key);
+        if (v instanceof Boolean b) return b;
+        return v != null && Boolean.parseBoolean(v.toString());
     }
 
     private Block.Table parseTable(List<String> lines, int start) {

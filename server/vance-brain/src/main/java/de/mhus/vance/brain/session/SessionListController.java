@@ -176,10 +176,6 @@ public class SessionListController {
                 .lastMessagePreview(s.getLastMessagePreview())
                 .lastMessageRole(s.getLastMessageRole())
                 .lastMessageAt(s.getLastMessageAt())
-                .openDocumentIds(s.getOpenDocumentIds() == null
-                        ? List.of()
-                        : List.copyOf(s.getOpenDocumentIds()))
-                .chatBoundDocumentId(s.getChatBoundDocumentId())
                 .build();
     }
 

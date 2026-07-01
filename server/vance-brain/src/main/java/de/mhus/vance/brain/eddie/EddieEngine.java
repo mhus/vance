@@ -230,6 +230,7 @@ public class EddieEngine extends StructuredActionEngine {
     private final de.mhus.vance.brain.memory.MemoryCompactionService memoryCompactionService;
     private final de.mhus.vance.brain.discovery.DiscoveryService discoveryService;
     private final de.mhus.vance.brain.tools.client.CortexPromptResolver cortexPromptResolver;
+    private final de.mhus.vance.brain.tools.client.CortexBoundDocumentResolver cortexBoundDocumentResolver;
     private final de.mhus.vance.brain.chat.CollabContextResolver collabContextResolver;
     private final de.mhus.vance.brain.applications.ActiveAppPromptResolver activeAppPromptResolver;
     private final ObjectMapper objectMapper;
@@ -283,6 +284,7 @@ public class EddieEngine extends StructuredActionEngine {
             @org.springframework.context.annotation.Lazy
                     de.mhus.vance.brain.discovery.DiscoveryService discoveryService,
             de.mhus.vance.brain.tools.client.CortexPromptResolver cortexPromptResolver,
+            de.mhus.vance.brain.tools.client.CortexBoundDocumentResolver cortexBoundDocumentResolver,
             de.mhus.vance.brain.chat.CollabContextResolver collabContextResolver,
             de.mhus.vance.brain.applications.ActiveAppPromptResolver activeAppPromptResolver,
             de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeService actionLoopJudgeService) {
@@ -306,6 +308,7 @@ public class EddieEngine extends StructuredActionEngine {
         this.memoryCompactionService = memoryCompactionService;
         this.discoveryService = discoveryService;
         this.cortexPromptResolver = cortexPromptResolver;
+        this.cortexBoundDocumentResolver = cortexBoundDocumentResolver;
         this.collabContextResolver = collabContextResolver;
         this.activeAppPromptResolver = activeAppPromptResolver;
         this.objectMapper = objectMapper;
@@ -2430,11 +2433,13 @@ public class EddieEngine extends StructuredActionEngine {
         boolean voiceMode = false;
         String mentionedByDisplayName = null;
         de.mhus.vance.api.thinkprocess.ActiveAppContext activeApp = null;
+        String boundDocumentId = null;
         for (SteerMessage m : inbox) {
             if (m instanceof SteerMessage.UserChatInput uci) {
                 voiceMode = uci.voiceMode();
                 mentionedByDisplayName = uci.fromUserDisplayName();
                 activeApp = uci.activeApp();
+                boundDocumentId = uci.boundDocumentId();
             }
         }
         String appInstructions = activeAppPromptResolver.resolve(process, activeApp);
@@ -2450,6 +2455,8 @@ public class EddieEngine extends StructuredActionEngine {
         // worker delegation.
         de.mhus.vance.brain.tools.client.CortexPromptResolver.CortexContext cortex =
                 cortexPromptResolver.resolve(process.getSessionId());
+        String cortexBoundDocPath = cortexBoundDocumentResolver.resolvePath(
+                boundDocumentId, process.getTenantId(), process.getProjectId());
 
         // Multi-user collab context — see planning/multi-user-sessions.md §5/§6.
         de.mhus.vance.brain.chat.CollabContextResolver.CollabContext collab =
@@ -2464,8 +2471,7 @@ public class EddieEngine extends StructuredActionEngine {
                         .activeApp(activeApp)
                         .appInstructions(appInstructions)
                         .cortexMode(cortex.active())
-                        .cortexBoundDocPath(cortex.boundDocPath())
-                        .cortexBoundDocMime(cortex.boundDocMime())
+                        .cortexBoundDoc(cortexBoundDocPath)
                         .collabActive(collab.active())
                         .participants(collab.participants())
                         .mentionedBy(collab.mentionedBy())

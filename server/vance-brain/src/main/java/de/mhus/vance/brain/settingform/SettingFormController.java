@@ -9,7 +9,6 @@ import de.mhus.vance.api.settingform.SettingFormDto;
 import de.mhus.vance.api.settingform.SettingFormListResponseDto;
 import de.mhus.vance.api.settingform.SettingFormSummaryDto;
 import de.mhus.vance.brain.permission.RequestAuthority;
-import de.mhus.vance.shared.form.FormValidationException;
 import de.mhus.vance.shared.form.LocalizedTexts;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
@@ -132,9 +131,6 @@ public class SettingFormController {
         List<PlannedSettingAction> plan;
         try {
             plan = settingFormService.apply(form, values, tenant, projectId, userId, lang);
-        } catch (FormValidationException e) {
-            log.warn("Setting form '{}' validation failed: {}", name, e.getMessage());
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
         } catch (IllegalStateException e) {
             log.warn("Setting form '{}' apply failed: {}", name, e.getMessage(), e);
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
@@ -166,9 +162,6 @@ public class SettingFormController {
         List<PlannedSettingAction> plan;
         try {
             plan = settingFormService.validate(form, values, tenant, projectId, userId, lang);
-        } catch (FormValidationException e) {
-            log.warn("Setting form '{}' validation (dry-run) failed: {}", name, e.getMessage());
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
         } catch (IllegalStateException e) {
             log.warn("Setting form '{}' validate failed: {}", name, e.getMessage(), e);
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);

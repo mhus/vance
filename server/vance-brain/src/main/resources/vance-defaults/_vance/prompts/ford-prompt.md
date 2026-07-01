@@ -161,24 +161,21 @@ edits). No "save" prompt needed.
 
 UI-state surface from the Cortex tab:
 
-- `cortex_get_selection` — the user's current text highlight, or
+- `doc_get_selection` — the user's current text highlight, or
   `hasSelection: false`. Use when the user refers to "this part"
   / "the highlighted text" / "diesen Teil".
 - `cortex_get_active_tab` — which document is in the foreground.
 - `cortex_open_file` — bring a document to the user's foreground tab.
 
-{% if cortexBoundDocPath %}
-Currently bound: `{{ cortexBoundDocPath }}`{% if cortexBoundDocMime %} (`{{ cortexBoundDocMime }}`){% endif %}.
-When the user says "this file" / "the document I'm editing",
-they mean **{{ cortexBoundDocPath }}**. Read with
-`doc_read(path="{{ cortexBoundDocPath }}")` and edit with the
-`doc_*` write tools; these supersede any "no local filesystem"
-caveat from the web-client context.
-{% else %}
-No document is bound to the chat yet. If the user asks about
-"the file", explain they can bind one by opening a document in
-Cortex and clicking "Bind chat to current tab".
 {% endif %}
+{% if cortexBoundDocPath %}
+Currently bound: `{{ cortexBoundDocPath }}`. When the user says
+"this file" / "the document I'm editing", they mean **that** document
+— even if the Cortex UI tools above aren't listed this turn. Read with
+`doc_read(path="{{ cortexBoundDocPath }}")` and edit with the `doc_*`
+write tools; these supersede any "no local filesystem" caveat. You do
+**not** need IDE or MCP tools to answer "which file is open" — it is
+this one.
 {% endif %}
 {% if addonSections %}
 

@@ -25,6 +25,7 @@ import {
 import type {
   ActiveAppContext,
   AttachmentRef,
+  BoundDocSelection,
   ChatMessageDto,
   ChatRole,
   ProcessPauseRequest,
@@ -91,6 +92,17 @@ const props = defineProps<{
    *  app-context block in the engine prompt. chat.html leaves it
    *  unset. See planning/apps-in-cortex-and-live.md §5. */
   activeApp?: ActiveAppContext | null;
+  /** Per-message "bound file" hint. Cortex sets this to the document
+   *  currently bound to the chat (the `bind file` affordance) so the
+   *  brain inlines it into this turn — the agent sees the file the user
+   *  is working on. Per-turn, not persisted. chat.html leaves it unset. */
+  boundDocumentId?: string | null;
+  /** Per-message character range the user has selected inside the
+   *  bound document at send time. Only the range travels — the model
+   *  reads the selected text on demand via {@code doc_get_selection}.
+   *  Cortex sets this when the selection lives inside the bound doc;
+   *  chat.html leaves it unset. */
+  boundDocSelection?: BoundDocSelection | null;
 }>();
 
 /**
@@ -724,15 +736,22 @@ async function send(): Promise<void> {
   selectedDocs.value = [];
 
   try {
-    // The WS may have been closed by the server during idle. Try a
-    // transparent reconnect before failing the send — the user expects
-    // their click to land, not to hit a "connection lost" banner just
-    // because nothing happened on the connection for a while.
-    if (props.socket.closed() && props.ensureConnected) {
-      const reconnected = await props.ensureConnected();
-      if (!reconnected) {
+    // The WS may have been closed by the server during idle, OR it may be
+    // open but the session unbound after an auto-reconnect (socket back up
+    // before session-resume completed / after a swallowed resume failure).
+    // A steer on an unbound connection earns a 403 "requires a bound
+    // session", so checking props.socket.closed() alone is not enough.
+    // The ensure hook guarantees socket-up AND session-bound; call it
+    // unconditionally (it is cheap / idempotent when already bound).
+    if (props.ensureConnected) {
+      const ready = await props.ensureConnected();
+      if (!ready) {
         throw new WebSocketClosedError('Reconnect failed');
       }
+    } else if (props.socket.closed()) {
+      // Host manages binding itself and wired no hook — best effort: a
+      // closed socket cannot send.
+      throw new WebSocketClosedError('Connection closed');
     }
     // Per-turn voice-mode signal — see specification/voice-mode.md.
     const voiceMode = speakerEnabled.value || talkMode.value;
@@ -742,6 +761,8 @@ async function send(): Promise<void> {
       attachments: allAttachments.length > 0 ? allAttachments : undefined,
       voiceMode: voiceMode ? true : undefined,
       activeApp: props.activeApp ?? undefined,
+      boundDocumentId: props.boundDocumentId ?? undefined,
+      boundDocSelection: props.boundDocSelection ?? undefined,
     });
   } catch (e) {
     emit('rollback-echo', optimisticId);

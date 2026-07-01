@@ -79,6 +79,10 @@ class ProjectManagerServicePodlessTest {
                 .build();
         when(projectService.findByTenantAndName("acme", "ferienhaus-versicherung"))
                 .thenReturn(Optional.of(doc));
+        // findProjectEndpoint now gates the home node against the live set —
+        // a stale home is treated as "no live home" (returns empty).
+        when(clusterService.liveClusterNodeNames())
+                .thenReturn(java.util.Set.of("maya-prosser"));
         when(clusterService.resolveEndpoint("maya-prosser"))
                 .thenReturn(Optional.of("10.0.0.5:9990"));
 

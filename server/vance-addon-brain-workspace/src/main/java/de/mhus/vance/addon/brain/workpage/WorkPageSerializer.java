@@ -1,5 +1,6 @@
 package de.mhus.vance.addon.brain.workpage;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -116,9 +117,71 @@ public class WorkPageSerializer {
                 if (lc.title() != null) put("title", lc.title());
                 if (lc.description() != null) put("description", lc.description());
             }});
+            case Block.Embed em -> renderFence("vance-embed", new LinkedHashMap<>() {{
+                put("uri", em.uri());
+            }});
+            case Block.Form fo -> renderFence("vance-form", new LinkedHashMap<>() {{
+                put("config", fo.config());
+            }});
+            case Block.Input in -> renderFence("vance-input", new LinkedHashMap<>() {{
+                put("config", in.config());
+                put("multiline", in.multiline());
+            }});
+            case Block.Toc ignored -> "```vance-toc\n```\n";
+            case Block.Columns cols -> renderColumns(cols);
             case Block.UnknownFence uf -> "```" + uf.infoString() + "\n"
                     + uf.body() + (uf.body().endsWith("\n") ? "" : "\n") + "```\n";
         };
+    }
+
+    /**
+     * Render a {@code vance-columns} block. The outer fence is one
+     * backtick longer than the longest fence appearing in any column
+     * body, so nested code / {@code vance-*} / sub-column blocks don't
+     * close it early. Columns are separated by an HTML-comment marker
+     * carrying the optional relative width. Mirrors the TS serializer.
+     */
+    private String renderColumns(Block.Columns cols) {
+        List<String> innerBodies = new ArrayList<>();
+        int innerMaxFence = 3;
+        for (Block.Column col : cols.columns()) {
+            String body = serialize(col.blocks());
+            innerBodies.add(body);
+            innerMaxFence = Math.max(innerMaxFence, maxFenceLength(body));
+        }
+        String fence = "`".repeat(innerMaxFence + 1);
+        StringBuilder out = new StringBuilder(fence).append("vance-columns\n");
+        for (int i = 0; i < cols.columns().size(); i++) {
+            Block.Column col = cols.columns().get(i);
+            if (i > 0) {
+                out.append(col.width() != null
+                        ? "\n<!--vance:column " + formatWidth(col.width()) + "-->\n"
+                        : "\n<!--vance:column-->\n");
+            }
+            out.append(innerBodies.get(i));
+        }
+        if (out.charAt(out.length() - 1) != '\n') out.append("\n");
+        out.append(fence).append("\n");
+        return out.toString();
+    }
+
+    /** Longest run of leading backticks over all lines (min sensible 0). */
+    private static int maxFenceLength(String text) {
+        int max = 0;
+        for (String line : text.split("\n", -1)) {
+            int n = 0;
+            while (n < line.length() && line.charAt(n) == '`') n++;
+            if (n >= 3 && n > max) max = n;
+        }
+        return max;
+    }
+
+    /** Compact width formatting — {@code 0.4}, {@code 1} (no trailing {@code .0}). */
+    private static String formatWidth(double w) {
+        if (w == Math.rint(w) && !Double.isInfinite(w)) {
+            return Long.toString((long) w);
+        }
+        return Double.toString(w);
     }
 
     private String renderTable(Block.Table tbl) {

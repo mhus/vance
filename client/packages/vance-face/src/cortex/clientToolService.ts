@@ -56,7 +56,7 @@ interface ClientToolInvokeResponse {
  *
  * <p>Tool surface today:
  * <ul>
- *   <li>{@code cortex_get_selection} — user's current text selection.</li>
+ *   <li>{@code doc_get_selection} — user's current text selection.</li>
  *   <li>{@code cortex_get_active_tab} — which tab is in the
  *       foreground.</li>
  *   <li>{@code cortex_open_file} — bring a document to the user's tab.</li>
@@ -66,7 +66,7 @@ export interface CortexToolDeps {
   /**
    * Returns the user's current editor selection or {@code null} when
    * nothing is highlighted. The renderer mirrors the CodeEditor's
-   * selection events into the store; the {@code cortex_get_selection}
+   * selection events into the store; the {@code doc_get_selection}
    * tool surfaces it on demand. Caret-only positions (zero-length
    * range) are stored as {@code null} — they're not a "selection" in
    * the user-intent sense.
@@ -185,31 +185,6 @@ export class CortexClientToolService {
   private toolSpecs(): ToolSpec[] {
     return [
       {
-        name: 'cortex_get_selection',
-        description:
-          'Return the user\'s current text selection in the active '
-          + 'Cortex editor, or indicate that nothing is selected. Use '
-          + 'this when the user refers to "this part", "the highlighted '
-          + 'text", "what I selected", or similar — the selection is the '
-          + 'piece of the document they want you to focus on. Returns '
-          + 'the selected text plus its source document path (which may '
-          + 'differ from the chat-bound document if the user is viewing '
-          + 'another tab).',
-        primary: true,
-        source: 'cortex',
-        paramsSchema: {
-          type: 'object',
-          properties: {},
-          required: [],
-        },
-        labels: ['read-only', 'cortex'],
-        allowedProfiles: ['web'],
-        deferred: false,
-        searchHint: '',
-        safety: 'SAFE_PROBE',
-        requiresEngineRoles: [],
-      },
-      {
         name: 'cortex_get_active_tab',
         description:
           'Return the document currently shown in the foreground of the '
@@ -267,21 +242,9 @@ export class CortexClientToolService {
   }
 
   private registerCortexHandlers(): void {
-    this.handlers.set('cortex_get_selection', () => {
-      const sel = this.deps.getSelection();
-      if (!sel) {
-        return { hasSelection: false };
-      }
-      return {
-        hasSelection: true,
-        path: sel.docPath,
-        text: sel.text,
-        from: sel.from,
-        to: sel.to,
-        length: sel.text.length,
-      };
-    });
-
+    // Note: the selection *read* is now a server-side tool
+    // (`doc_get_selection`), fed by the per-turn `boundDocSelection`
+    // range that rides with the steer. The client no longer serves it.
     this.handlers.set('cortex_get_active_tab', () => {
       const tab = this.deps.getActiveTab();
       if (!tab) {

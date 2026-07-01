@@ -263,8 +263,9 @@ public class MemoryContextLoader {
      * memory context. Engine-agnostic: every engine that hands a
      * {@code userQuery} to {@link #composeBlock(ThinkProcessDocument, String)}
      * gets the same treatment, no per-engine wiring. Off by default;
-     * opted in via recipe-param {@code rag.autoInject} (cascade-
-     * override {@code rag.autoInject.enabled}).
+     * enabled via recipe-param {@code rag.autoInject} (ON/OFF/AUTO,
+     * innermost-wins over the cascade setting {@code rag.autoInject.enabled})
+     * — see {@link de.mhus.vance.brain.rag.RagAutoInjectService}.
      */
     private void appendRagAutoInject(
             StringBuilder sb,

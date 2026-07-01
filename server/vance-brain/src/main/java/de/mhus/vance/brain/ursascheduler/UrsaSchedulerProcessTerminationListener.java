@@ -123,7 +123,7 @@ public class UrsaSchedulerProcessTerminationListener {
         }
         return switch (reason) {
             case DONE -> EventType.COMPLETED;
-            case STALE -> EventType.FAILED;
+            case STALE, INCOMPLETE -> EventType.FAILED;
             // STOPPED is ambiguous: it covers both scheduler-cancel
             // (already logged) and external/admin stops. Return null
             // when scheduler cancelled (we suppress duplicate CANCELLED

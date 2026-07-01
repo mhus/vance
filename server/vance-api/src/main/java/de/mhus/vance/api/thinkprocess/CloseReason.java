@@ -12,6 +12,12 @@ import de.mhus.vance.api.annotations.GenerateTypeScript;
  *   <li>{@link #DONE} — goal reached, task tree finished. Batch-style
  *       engines (Vogon, Marvin) reach this naturally; reactive engines
  *       (Arthur) do not.</li>
+ *   <li>{@link #INCOMPLETE} — the engine terminated <em>without</em>
+ *       reaching its goal — e.g. a worker exhausted its tool-iteration
+ *       budget mid-task. Distinct from {@link #DONE} so an orchestrator
+ *       parent can tell "finished" from "gave up" and deliver an honest
+ *       "couldn't complete" message instead of a stale progress note.
+ *       Maps to a {@code FAILED} ProcessEvent.</li>
  *   <li>{@link #STOPPED} — user, parent, or session-close cascade
  *       called {@code engine.stop}.</li>
  *   <li>{@link #STALE} — inconsistent state (engine version mismatch,
@@ -34,6 +40,7 @@ import de.mhus.vance.api.annotations.GenerateTypeScript;
 @GenerateTypeScript("thinkprocess")
 public enum CloseReason {
     DONE,
+    INCOMPLETE,
     STOPPED,
     STALE,
     ARCHIVED,

@@ -200,6 +200,17 @@ public class WorkPageService {
             case Block.LinkCard lc -> lc.href()
                     + (lc.title() == null ? "" : " " + lc.title())
                     + (lc.description() == null ? "" : " " + lc.description());
+            case Block.Embed em -> em.uri();
+            case Block.Form fo -> fo.config();
+            case Block.Input in -> in.config();
+            case Block.Toc ignored -> "";
+            case Block.Columns cols -> {
+                StringBuilder sb = new StringBuilder();
+                for (Block.Column c : cols.columns()) {
+                    for (Block child : c.blocks()) sb.append(blockText(child)).append("\n");
+                }
+                yield sb.toString();
+            }
             case Block.UnknownFence uf -> uf.infoString() + " " + uf.body();
         };
     }
@@ -329,6 +340,23 @@ public class WorkPageService {
                     strOrEmpty(raw, "href"),
                     str(raw, "title"),
                     str(raw, "description"));
+            case "embed" -> new Block.Embed(strOrEmpty(raw, "uri"));
+            case "form" -> new Block.Form(strOrEmpty(raw, "config"));
+            case "input" -> new Block.Input(
+                    strOrEmpty(raw, "config"),
+                    boolValue(raw.get("multiline"), false));
+            case "toc", "table-of-contents" -> new Block.Toc();
+            case "columns" -> {
+                List<Block.Column> cols = new ArrayList<>();
+                for (Map<String, Object> cm : mapList(raw.get("columns"))) {
+                    List<Block> inner = new ArrayList<>();
+                    for (Map<String, Object> bm : mapList(cm.get("blocks"))) {
+                        inner.add(buildBlock(bm));
+                    }
+                    cols.add(new Block.Column(doubleOrNull(cm.get("width")), inner));
+                }
+                yield new Block.Columns(cols);
+            }
             default -> throw new ToolException("Unknown block.type='" + type + "'");
         };
     }
@@ -379,6 +407,27 @@ public class WorkPageService {
                 if (lc.title() != null) m.put("title", lc.title());
                 if (lc.description() != null) m.put("description", lc.description());
             }
+            case Block.Embed em -> { m.put("type", "embed"); m.put("uri", em.uri()); }
+            case Block.Form fo -> { m.put("type", "form"); m.put("config", fo.config()); }
+            case Block.Input in -> {
+                m.put("type", "input");
+                m.put("config", in.config());
+                m.put("multiline", in.multiline());
+            }
+            case Block.Toc ignored -> m.put("type", "toc");
+            case Block.Columns cols -> {
+                m.put("type", "columns");
+                List<Map<String, Object>> colOut = new ArrayList<>();
+                for (Block.Column c : cols.columns()) {
+                    Map<String, Object> cm = new LinkedHashMap<>();
+                    if (c.width() != null) cm.put("width", c.width());
+                    List<Map<String, Object>> inner = new ArrayList<>();
+                    for (Block child : c.blocks()) inner.add(blockToMap(child));
+                    cm.put("blocks", inner);
+                    colOut.add(cm);
+                }
+                m.put("columns", colOut);
+            }
             case Block.UnknownFence uf -> {
                 m.put("type", "unknown-fence");
                 m.put("infoString", uf.infoString());
@@ -386,6 +435,14 @@ public class WorkPageService {
             }
         }
         return m;
+    }
+
+    private static @Nullable Double doubleOrNull(@Nullable Object o) {
+        if (o instanceof Number n) return n.doubleValue();
+        if (o instanceof String s) {
+            try { return Double.parseDouble(s.trim()); } catch (NumberFormatException ignored) { /* skipped */ }
+        }
+        return null;
     }
 
     @SuppressWarnings("unchecked")

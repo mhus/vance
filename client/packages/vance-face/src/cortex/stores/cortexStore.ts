@@ -124,7 +124,7 @@ export interface MetaUpdateBody {
 /**
  * Current text selection inside the active tab's editor. {@code null}
  * when nothing is selected (or the active doc isn't a text doc). The
- * cortex_get_selection client tool reads this; DocumentTabShell writes
+ * doc_get_selection client tool reads this; DocumentTabShell writes
  * it via the CodeEditor's {@code selection-changed} emit.
  */
 export interface CortexSelection {

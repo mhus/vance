@@ -75,8 +75,6 @@ public class SessionService {
     private static final String F_PINNED = "pinned";
     private static final String F_USER_TOUCHED_AT = "userTouchedAt";
     private static final String F_ALLOW_MULTIPLE_CLIENTS = "allowMultipleClients";
-    private static final String F_OPEN_DOCUMENT_IDS = "openDocumentIds";
-    private static final String F_CHAT_BOUND_DOCUMENT_ID = "chatBoundDocumentId";
 
     /** Hard cap for the denormalised preview / topic strings. */
     public static final int PREVIEW_MAX_CHARS = 250;
@@ -878,36 +876,6 @@ public class SessionService {
      *
      * <p>Returns {@code true} on at least one persisted field change.
      */
-    /**
-     * Persist the Cortex view state on a session. The Cortex client
-     * calls this whenever the user opens/closes a tab or binds the
-     * chat to a different document. Both fields are replaced wholesale
-     * (no per-element semantics). {@code chatBoundDocumentId} is
-     * unset when {@code null} is passed; an empty {@code openDocumentIds}
-     * list collapses all tabs.
-     *
-     * <p>Does not touch {@code userTouchedAt} — Cortex layout edits
-     * are not "the user invested in the session content" signals; they
-     * are pure UI restoration state. See planning/cortex.md §4.1.
-     */
-    public boolean setCortexState(
-            String sessionId,
-            List<String> openDocumentIds,
-            @Nullable String chatBoundDocumentId) {
-        Update update = new Update();
-        update.set(F_OPEN_DOCUMENT_IDS,
-                openDocumentIds == null ? List.of() : List.copyOf(openDocumentIds));
-        if (chatBoundDocumentId == null || chatBoundDocumentId.isBlank()) {
-            update.unset(F_CHAT_BOUND_DOCUMENT_ID);
-        } else {
-            update.set(F_CHAT_BOUND_DOCUMENT_ID, chatBoundDocumentId);
-        }
-        UpdateResult result = mongoTemplate.updateFirst(
-                new Query(Criteria.where(F_SESSION_ID).is(sessionId)),
-                update, SessionDocument.class);
-        return result.getModifiedCount() == 1;
-    }
-
     public boolean patchMetadata(String sessionId, SessionMetadataPatchRequest patch) {
         if (patch == null) return false;
         Update update = new Update();

@@ -4,6 +4,7 @@ import de.mhus.vance.api.attachment.AttachmentRef;
 import de.mhus.vance.api.inbox.AnswerPayload;
 import de.mhus.vance.api.inbox.InboxItemType;
 import de.mhus.vance.api.thinkprocess.ActiveAppContext;
+import de.mhus.vance.api.thinkprocess.BoundDocSelection;
 import de.mhus.vance.api.thinkprocess.PeerEventType;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.api.thinkprocess.ToolCallStatus;
@@ -66,7 +67,10 @@ public sealed interface SteerMessage
             String content,
             List<AttachmentRef> attachments,
             boolean voiceMode,
-            @Nullable ActiveAppContext activeApp) implements SteerMessage {
+            @Nullable ActiveAppContext activeApp,
+            @Nullable String boundDocumentId,
+            @Nullable BoundDocSelection boundDocSelection)
+            implements SteerMessage {
 
         /**
          * Compact-form null-safety: {@code attachments == null} is
@@ -91,7 +95,7 @@ public sealed interface SteerMessage
                 @Nullable String idempotencyKey,
                 String fromUser,
                 String content) {
-            this(at, idempotencyKey, fromUser, null, content, List.of(), false, null);
+            this(at, idempotencyKey, fromUser, null, content, List.of(), false, null, null, null);
         }
 
         /**
@@ -106,7 +110,7 @@ public sealed interface SteerMessage
                 String fromUser,
                 String content,
                 List<AttachmentRef> attachments) {
-            this(at, idempotencyKey, fromUser, null, content, attachments, false, null);
+            this(at, idempotencyKey, fromUser, null, content, attachments, false, null, null, null);
         }
 
         /**
@@ -121,7 +125,7 @@ public sealed interface SteerMessage
                 String content,
                 List<AttachmentRef> attachments,
                 boolean voiceMode) {
-            this(at, idempotencyKey, fromUser, null, content, attachments, voiceMode, null);
+            this(at, idempotencyKey, fromUser, null, content, attachments, voiceMode, null, null, null);
         }
 
         /**
@@ -137,7 +141,7 @@ public sealed interface SteerMessage
                 List<AttachmentRef> attachments,
                 boolean voiceMode) {
             this(at, idempotencyKey, fromUser, fromUserDisplayName, content,
-                    attachments, voiceMode, null);
+                    attachments, voiceMode, null, null, null);
         }
     }
 

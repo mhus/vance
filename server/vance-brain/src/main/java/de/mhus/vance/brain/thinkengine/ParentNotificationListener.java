@@ -366,7 +366,7 @@ public class ParentNotificationListener {
         return switch (reason) {
             case DONE -> ProcessEventType.DONE;
             case STOPPED, AUTO_CLOSE -> ProcessEventType.STOPPED;
-            case STALE -> ProcessEventType.FAILED;
+            case STALE, INCOMPLETE -> ProcessEventType.FAILED;
             // Session-driven terminal states (engine was shut down as
             // part of an archive / hard-delete / abandoned-detection
             // cascade). The parent (if any) is being torn down too —

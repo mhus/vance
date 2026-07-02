@@ -164,4 +164,35 @@ class PromptTemplateRendererTest {
                 "{% if tier == \"small\" %}small{% endif %}", ctx))
                 .isEqualTo("small");
     }
+
+    // ── active-app block: map-valued context var guarded by presence ──
+    // Regression for the 2026-07-02 crash: `{% if activeApp %}` on a
+    // Map throws "Unsupported value type LinkedHashMap" — the block
+    // must guard on `is not null`, not on the map's truthiness.
+
+    @Test
+    void render_activeAppBlock_rendersWhenMapPresent() {
+        String tpl = "{% if activeApp is not null %}App: {{ activeApp.app }}"
+                + " @ {{ activeApp.folder }}{% endif %}";
+        Map<String, Object> ctx = Map.of(
+                "activeApp", Map.of("app", "calendar", "folder", "calendars/q3"));
+
+        assertThat(renderer.render(tpl, ctx)).isEqualTo("App: calendar @ calendars/q3");
+    }
+
+    @Test
+    void render_activeAppBlock_omittedWhenAbsent() {
+        String tpl = "X{% if activeApp is not null %}App: {{ activeApp.app }}{% endif %}Y";
+        assertThat(renderer.render(tpl, Map.of())).isEqualTo("XY");
+    }
+
+    @Test
+    void render_bareIfOnMap_throws_documentingWhyPresenceCheckIsNeeded() {
+        // This is the shape that crashed in the prompt templates; kept as
+        // an executable note so nobody "simplifies" the guard back.
+        assertThatThrownBy(() -> renderer.render(
+                "{% if activeApp %}x{% endif %}",
+                Map.of("activeApp", Map.of("app", "calendar"))))
+                .isInstanceOf(PromptTemplateException.class);
+    }
 }

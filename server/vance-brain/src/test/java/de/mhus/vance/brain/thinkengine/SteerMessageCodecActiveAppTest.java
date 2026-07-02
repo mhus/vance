@@ -31,7 +31,9 @@ class SteerMessageCodecActiveAppTest {
                 "what's next this week?",
                 java.util.List.of(),
                 false,
-                app);
+                app,
+                null,
+                null);
 
         PendingMessageDocument encoded = SteerMessageCodec.toDocument(original);
 

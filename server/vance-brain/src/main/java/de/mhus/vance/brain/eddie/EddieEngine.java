@@ -1122,6 +1122,24 @@ public class EddieEngine extends StructuredActionEngine {
     }
 
     /**
+     * Deliver a model's plain prose reply (no {@code eddie_action} wrapper)
+     * as a spoken {@code ANSWER} instead of the gave-up free-text fallback.
+     * See {@link de.mhus.vance.brain.thinkengine.action.StructuredActionEngine#answerActionFromText}.
+     */
+    @Override
+    protected de.mhus.vance.brain.thinkengine.action.@Nullable EngineAction
+            answerActionFromText(String text) {
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        return new de.mhus.vance.brain.thinkengine.action.EngineAction(
+                EddieActionSchema.TYPE_ANSWER,
+                "Model replied in prose without the action wrapper; "
+                        + "delivering it as ANSWER.",
+                java.util.Map.of(EddieActionSchema.PARAM_MESSAGE, text));
+    }
+
+    /**
      * Plan-mode actions that mutate state but don't end the turn —
      * the LLM should chain real work (read tools, write tools,
      * delegation) immediately after. Without in-loop chaining the

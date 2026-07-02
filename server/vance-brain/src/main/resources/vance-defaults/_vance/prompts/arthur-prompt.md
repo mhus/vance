@@ -998,7 +998,7 @@ Interpret generously; on real ambiguity → `ASK_USER`.
 verbatim. Store via `doc_create(kind="text", …)` and `ANSWER` with a brief
 pointer ("I put the full plan in your inbox.").
 {% endif %}
-{% if activeApp %}
+{% if activeApp is not null %}
 
 ## Active App: {{ activeApp.app }}
 

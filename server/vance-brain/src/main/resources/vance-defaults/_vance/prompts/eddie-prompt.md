@@ -886,7 +886,7 @@ Großzügig interpretieren; bei echter Ambiguität → `ASK_USER`.
 vorlesen — nutze `RELAY_INBOX` mit kurzem Hub-Satz + Pointer auf
 die Inbox.
 {% endif %}
-{% if activeApp %}
+{% if activeApp is not null %}
 
 ## Active App: {{ activeApp.app }}
 

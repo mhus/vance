@@ -1311,6 +1311,26 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     }
 
     /**
+     * When the model answers in prose without emitting {@code arthur_action}
+     * (common for DeepSeek-V4 via strict OpenAI-compatible proxies),
+     * deliver that prose as a plain {@code ANSWER} instead of the gave-up
+     * free-text fallback — a real action that closes a delegated worker
+     * DONE rather than INCOMPLETE.
+     */
+    @Override
+    protected de.mhus.vance.brain.thinkengine.action.@Nullable EngineAction
+            answerActionFromText(String text) {
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        return new de.mhus.vance.brain.thinkengine.action.EngineAction(
+                ArthurActionSchema.TYPE_ANSWER,
+                "Model replied in prose without the action wrapper; "
+                        + "delivering it as ANSWER.",
+                java.util.Map.of(ArthurActionSchema.PARAM_MESSAGE, text));
+    }
+
+    /**
      * Event-only turn gate — see {@link #currentTurnHadUserInput} and
      * {@link #SPAWN_ACTIONS_FORBIDDEN_ON_EVENT_TURNS}. When the turn
      * was triggered solely by a process-event (child closed,

@@ -170,8 +170,11 @@ public final class PromptContextBuilder {
      * {@link ActiveAppContext}. Exposes a {@code Map<String,Object>}
      * with keys {@code folder} and {@code app} on the Pebble variable
      * {@code activeApp} so templates render
-     * {@code {% if activeApp %}… {{ activeApp.app }} … {% endif %}}
-     * blocks. Pair with {@link #appInstructions(String)} for the
+     * {@code {% if activeApp is not null %}… {{ activeApp.app }} … {% endif %}}
+     * blocks. Note the {@code is not null} test: Pebble rejects a bare
+     * {@code {% if <map> %}} ("Unsupported value type LinkedHashMap"),
+     * so guard the block on the map's presence, not its truthiness.
+     * Pair with {@link #appInstructions(String)} for the
      * dynamic markdown chunk returned by
      * {@code VanceApplication.promptInject(...)}.
      *

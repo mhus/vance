@@ -21,6 +21,7 @@ import ChatComposer, {
   type ComposerCurrentFileSource,
 } from '@/chat/ChatComposer.vue';
 import { useCortexStore } from '../stores/cortexStore';
+import { useViewEditMode } from '../useViewEditMode';
 import type { CortexClientToolService } from '../clientToolService';
 
 interface Props {
@@ -83,7 +84,15 @@ const boundDocSelection = computed<BoundDocSelection | null>(() => {
   return { from: sel.from, to: sel.to };
 });
 
+const viewEditMode = useViewEditMode();
+
 const activeApp = computed<ActiveAppContext | null>(() => {
+  // Only forward the hint when the tab is actually running the app
+  // ("App" mode). In "Edit" mode the user is editing the raw _app.yaml
+  // manifest, not operating the app, so the app-context block would be
+  // misleading. (App mode only exists for application docs, so the
+  // kind check below is the precondition; the mode is the deciding one.)
+  if (viewEditMode.value !== 'view') return null;
   const tab = cortexStore.activeTab;
   if (!tab) return null;
   if ((tab.kind ?? '').toLowerCase() !== 'application') return null;

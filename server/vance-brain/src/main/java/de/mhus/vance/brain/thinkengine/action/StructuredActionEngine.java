@@ -156,6 +156,26 @@ public abstract class StructuredActionEngine implements ThinkEngine {
     protected abstract Set<String> supportedActionTypes();
 
     /**
+     * Turn a plain free-text reply — the model answered in prose without
+     * wrapping it in the action tool-call — into the engine's terminal
+     * "just deliver this text" action (typically {@code ANSWER}). Returns
+     * {@code null} when the engine has no such action or the text isn't
+     * answer-worthy (blank).
+     *
+     * <p>Consulted only at correction exhaustion, after
+     * {@link #tryParseActionFromFreeText}. Lets a model that reliably
+     * skips the action wrapper (e.g. DeepSeek-V4 via a strict
+     * OpenAI-compatible proxy) land a clean action instead of the
+     * "gave-up" free-text fallback — which for a delegated worker would
+     * otherwise close INCOMPLETE and hand the parent a stale note. Pair
+     * with a low {@code actionLoopCorrections} (0) on such models so the
+     * wrap happens immediately, without burning correction rounds.
+     */
+    protected @Nullable EngineAction answerActionFromText(String text) {
+        return null;
+    }
+
+    /**
      * Engine-specific dispatch. Called once per turn with the
      * parsed action. Subclass returns the chat-message to persist
      * (may be empty/null = no chat append) and the post-turn
@@ -351,6 +371,18 @@ public abstract class StructuredActionEngine implements ThinkEngine {
                                     + "after exhausting corrections",
                             name(), process.getId(), recovered.type());
                     return ActionLoopResult.action(recovered, toolInvocations);
+                }
+                // The model answered in prose without the action wrapper.
+                // Let the engine wrap that prose as its terminal answer
+                // action (clean action → clean DONE for workers) instead
+                // of the gave-up free-text fallback.
+                EngineAction wrapped = answerActionFromText(bestFreeText);
+                if (wrapped != null) {
+                    log.info(
+                            "{} id='{}' action-loop: wrapped free-text as '{}' action "
+                                    + "(model emitted no action call)",
+                            name(), process.getId(), wrapped.type());
+                    return ActionLoopResult.action(wrapped, toolInvocations);
                 }
                 log.warn(
                         "{} id='{}' action-loop: out of corrections, falling back to free-text",

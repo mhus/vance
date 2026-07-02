@@ -1,3 +1,9 @@
 contextWindowTokens: 1048576
 defaultMaxOutputTokens: 8192
 size: LARGE
+
+# DeepSeek V4 via strict OpenAI-compatible proxy (Cortecs) reliably
+# answers in prose without the action-tool wrapper. Skip the correction
+# rounds: the StructuredActionEngine wraps that prose straight into an
+# ANSWER action (see answerActionFromText). 0 = no wasted re-prompts.
+actionLoopCorrections: 0

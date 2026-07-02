@@ -8,3 +8,4 @@ export { VanceUnknownFence } from './VanceUnknownFence';
 export { VanceEmbed, type EmbedDocMeta } from './VanceEmbed';
 export { VanceForm } from './VanceForm';
 export { VanceInput } from './VanceInput';
+export { VanceButton } from './VanceButton';

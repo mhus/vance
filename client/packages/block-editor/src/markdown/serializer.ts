@@ -102,10 +102,23 @@ function renderBlock(b: Block): string {
       return '```vance-toc\n```\n';
     case 'embed':
       return renderFence('vance-embed', { uri: b.uri });
-    case 'form':
-      return renderFence('vance-form', { config: b.config });
-    case 'input':
-      return renderFence('vance-input', { config: b.config, multiline: b.multiline });
+    case 'form': {
+      const body: Record<string, unknown> = { config: b.config };
+      if (b.saveScript) body.saveScript = b.saveScript;
+      if (b.form && Object.keys(b.form).length > 0) body.form = b.form;
+      return renderFence('vance-form', body);
+    }
+    case 'input': {
+      const body: Record<string, unknown> = { config: b.config, multiline: b.multiline };
+      if (b.saveScript) body.saveScript = b.saveScript;
+      return renderFence('vance-input', body);
+    }
+    case 'button':
+      return renderFence('vance-button', {
+        type: b.buttonType || 'script',
+        title: b.title,
+        script: b.script,
+      });
     case 'columns': {
       // Outer fence must be longer than ANY inner fence so nested
       // code / vance-* / sub-columns blocks don't close the columns

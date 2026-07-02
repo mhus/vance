@@ -258,42 +258,20 @@ function parseVanceTarget(uri: string): { projectId: string; path: string } | nu
   return { projectId: target, path };
 }
 
-async function loadInput(
-  uri: string,
-): Promise<{ content: string; runScript: string | null; session: boolean }> {
+async function loadInput(uri: string): Promise<string> {
   const t = parseVanceTarget(uri);
-  if (!t) return { content: '', runScript: null, session: false };
+  if (!t) return '';
   const params = new URLSearchParams({ projectId: t.projectId, doc: t.path });
-  const resp = await brainFetch<{
-    content: string;
-    onSaveScript: string | null;
-    onSaveSession: boolean;
-  }>('GET', `addon/workspace/input?${params}`);
-  return {
-    content: resp.content ?? '',
-    runScript: resp.onSaveScript ?? null,
-    session: resp.onSaveSession === true,
-  };
+  const resp = await brainFetch<{ content: string }>('GET', `addon/workspace/input?${params}`);
+  return resp.content ?? '';
 }
 
-async function saveInput(uri: string, content: string): Promise<void> {
+async function saveInput(uri: string, content: string, saveScript: string): Promise<void> {
   const t = parseVanceTarget(uri);
   if (!t) throw new Error(`Invalid input URI: ${uri}`);
   const params = new URLSearchParams({ projectId: t.projectId, doc: t.path });
+  if (saveScript && saveScript.trim()) params.set('saveScript', saveScript.trim());
   await brainFetch<void>('POST', `addon/workspace/input/save?${params}`, { body: { content } });
-}
-
-async function saveInputSettings(
-  uri: string,
-  runScript: string | null,
-  session: boolean,
-): Promise<void> {
-  const t = parseVanceTarget(uri);
-  if (!t) throw new Error(`Invalid input URI: ${uri}`);
-  const params = new URLSearchParams({ projectId: t.projectId, doc: t.path });
-  await brainFetch<void>('POST', `addon/workspace/input/settings?${params}`, {
-    body: { runScript, session },
-  });
 }
 
 const inputPickerOpen = ref(false);
@@ -302,6 +280,19 @@ function closeInputPicker() { inputPickerOpen.value = false; }
 function onInputPicked(uri: string) {
   editorRef.value?.insertInput(uri);
   closeInputPicker();
+}
+
+// ── Button block (slash /button) — run the button's script ────────
+// A bare name resolves relative to the app folder; `vance:/…` is
+// project-absolute. Runs server-side via the script/run endpoint.
+async function runButtonScript(scriptRef: string): Promise<void> {
+  let ref = scriptRef.trim();
+  if (ref.startsWith('vance:')) ref = ref.slice('vance:'.length);
+  const path = ref.startsWith('/')
+    ? ref.slice(1)
+    : (folder.value ? `${folder.value}/${ref}` : ref);
+  const params = new URLSearchParams({ projectId: projectId.value, script: path });
+  await brainFetch<void>('POST', `addon/workspace/script/run?${params}`, { body: {} });
 }
 
 /**
@@ -1428,8 +1419,8 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
           :form-component="formComponent ?? undefined"
           :load-input="loadInput"
           :save-input="saveInput"
-          :save-input-settings="saveInputSettings"
           :open-input-picker="openInputPicker"
+          :run-button-script="runButtonScript"
           :editable="editorEditable"
           @save="onEditorSave"
           @dirty="onEditorDirty"

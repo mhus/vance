@@ -74,7 +74,8 @@ public class WorkspaceFolderReader {
                     ? hdr.title
                     : stem(leaf);
             pages.add(new WorkspacePage(
-                    doc, rel, section, title, hdr.description, hdr.icon, hdr.sortIndex));
+                    doc, rel, section, title, hdr.description, hdr.icon, hdr.sortIndex,
+                    hdr.rebuildScripts));
         }
 
         // sortIndex (null sorts last), then case-insensitive title.
@@ -91,16 +92,17 @@ public class WorkspaceFolderReader {
             @Nullable String title,
             @Nullable String description,
             @Nullable String icon,
-            @Nullable Double sortIndex) {}
+            @Nullable Double sortIndex,
+            List<String> rebuildScripts) {}
 
     private PageHeader readPageHeader(DocumentDocument doc) {
         try (InputStream in = documentService.loadContent(doc)) {
             String body = new String(in.readAllBytes(), StandardCharsets.UTF_8);
             if (!body.startsWith("---\n")) {
-                return new PageHeader(doc.getTitle(), null, null, null);
+                return new PageHeader(doc.getTitle(), null, null, null, List.of());
             }
             int end = body.indexOf("\n---\n", 4);
-            if (end < 0) return new PageHeader(doc.getTitle(), null, null, null);
+            if (end < 0) return new PageHeader(doc.getTitle(), null, null, null, List.of());
             String headerText = body.substring(4, end);
             Object loaded = new Yaml().load(headerText);
             if (loaded instanceof Map<?, ?> m) {
@@ -113,12 +115,34 @@ public class WorkspaceFolderReader {
                 else if (si instanceof String s) {
                     try { sortIdx = Double.parseDouble(s); } catch (NumberFormatException ignored) { /* leave null */ }
                 }
-                return new PageHeader(title, desc, icon, sortIdx);
+                return new PageHeader(title, desc, icon, sortIdx, readRebuildScripts(m));
             }
-            return new PageHeader(doc.getTitle(), null, null, null);
+            return new PageHeader(doc.getTitle(), null, null, null, List.of());
         } catch (IOException | RuntimeException e) {
-            return new PageHeader(doc.getTitle(), null, null, null);
+            return new PageHeader(doc.getTitle(), null, null, null, List.of());
         }
+    }
+
+    /**
+     * The list of scripts a page opts into running on {@code app_rebuild},
+     * declared as {@code $meta.rebuildScripts} (list of vance: URIs / paths)
+     * — or the top-level {@code rebuildScripts} as a fallback. Only pages
+     * that declare it participate; nothing is auto-discovered.
+     */
+    private static List<String> readRebuildScripts(Map<?, ?> m) {
+        Object src = null;
+        Object meta = m.get("$meta");
+        if (meta instanceof Map<?, ?> mm) src = mm.get("rebuildScripts");
+        if (src == null) src = m.get("rebuildScripts");
+        List<String> out = new ArrayList<>();
+        if (src instanceof List<?> list) {
+            for (Object o : list) {
+                if (o != null && !o.toString().isBlank()) out.add(o.toString().strip());
+            }
+        } else if (src instanceof String s && !s.isBlank()) {
+            out.add(s.strip());
+        }
+        return out;
     }
 
     private WorkspaceConfig parseConfig(DocumentDocument manifest) {

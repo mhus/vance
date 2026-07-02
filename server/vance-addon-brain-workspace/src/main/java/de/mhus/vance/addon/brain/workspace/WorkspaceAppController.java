@@ -51,6 +51,7 @@ public class WorkspaceAppController {
     private final RequestAuthority authority;
     private final WorkspaceFormService formService;
     private final WorkspaceInputService inputService;
+    private final WorkspaceScriptService scriptService;
 
     @GetMapping("/brain/{tenant}/addon/workspace/scan")
     public WorkspaceView scan(
@@ -608,10 +609,7 @@ public class WorkspaceAppController {
         return new WorkspaceDocumentSearchResponse(items, listing.total());
     }
 
-    /**
-     * Load the field schema + current records for a {@code vance-form}
-     * block, resolved from its data document ({@code $meta.form}).
-     */
+    /** Load the current {@code items} records for a {@code vance-form} block. */
     @GetMapping("/brain/{tenant}/addon/workspace/form")
     public WorkspaceFormResponse loadForm(
             @PathVariable("tenant") String tenant,
@@ -620,69 +618,27 @@ public class WorkspaceAppController {
             HttpServletRequest httpRequest) {
 
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.READ);
-        WorkspaceFormService.LoadedForm loaded = formService.loadForm(tenant, projectId, doc);
-        return new WorkspaceFormResponse(
-                loaded.fields(), loaded.single(), loaded.records(), loaded.target(),
-                loaded.title(), loaded.onSaveScript(), loaded.onSaveSession());
+        return new WorkspaceFormResponse(formService.loadForm(tenant, projectId, doc));
     }
 
     /**
      * Persist submitted records into the data document's {@code items}
-     * and run its {@code $meta.onSave} recompute hook.
+     * (+ sync {@code schema}) and run the fence {@code saveScript}.
      */
     @PostMapping("/brain/{tenant}/addon/workspace/form/save")
     public ResponseEntity<Void> saveForm(
             @PathVariable("tenant") String tenant,
             @RequestParam("projectId") String projectId,
             @RequestParam("doc") String doc,
+            @RequestParam(value = "saveScript", required = false) @Nullable String saveScript,
             @RequestBody WorkspaceFormSaveRequest request,
             HttpServletRequest httpRequest) {
 
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
         formService.saveForm(tenant, projectId, doc,
                 request != null ? request.records() : null,
-                currentUser(httpRequest));
-        return ResponseEntity.noContent().build();
-    }
-
-    /**
-     * Replace a data document's {@code $meta.form} schema (design-mode
-     * form builder).
-     */
-    @PostMapping("/brain/{tenant}/addon/workspace/form/schema")
-    public ResponseEntity<Void> saveFormSchema(
-            @PathVariable("tenant") String tenant,
-            @RequestParam("projectId") String projectId,
-            @RequestParam("doc") String doc,
-            @RequestBody WorkspaceFormSchemaRequest request,
-            HttpServletRequest httpRequest) {
-
-        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
-        formService.saveSchema(tenant, projectId, doc,
-                request != null ? request.fields() : java.util.List.of(),
-                currentUser(httpRequest));
-        return ResponseEntity.noContent().build();
-    }
-
-    /**
-     * Update a data document's form-level settings (single / onSave script
-     * + session / title) — the design-mode settings dialog.
-     */
-    @PostMapping("/brain/{tenant}/addon/workspace/form/settings")
-    public ResponseEntity<Void> saveFormSettings(
-            @PathVariable("tenant") String tenant,
-            @RequestParam("projectId") String projectId,
-            @RequestParam("doc") String doc,
-            @RequestBody WorkspaceFormSettingsRequest request,
-            HttpServletRequest httpRequest) {
-
-        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
-        if (request == null) {
-            throw new ToolException("settings request must not be empty");
-        }
-        formService.saveSettings(tenant, projectId, doc,
-                request.single(), request.runScript(), request.session(), request.title(),
-                currentUser(httpRequest));
+                request != null ? request.schema() : null,
+                saveScript, currentUser(httpRequest));
         return ResponseEntity.noContent().build();
     }
 
@@ -708,7 +664,7 @@ public class WorkspaceAppController {
         return new WorkspaceFormCreateResponse(configPath);
     }
 
-    /** Load the bound text body + onSave config for a {@code vance-input} block. */
+    /** Load the bound text body for a {@code vance-input} block. */
     @GetMapping("/brain/{tenant}/addon/workspace/input")
     public WorkspaceInputResponse loadInput(
             @PathVariable("tenant") String tenant,
@@ -717,48 +673,25 @@ public class WorkspaceAppController {
             HttpServletRequest httpRequest) {
 
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.READ);
-        WorkspaceInputService.LoadedInput loaded = inputService.loadInput(tenant, projectId, doc);
-        return new WorkspaceInputResponse(
-                loaded.content(), loaded.onSaveScript(), loaded.onSaveSession());
+        return new WorkspaceInputResponse(inputService.loadInput(tenant, projectId, doc));
     }
 
     /**
      * Persist the body of a {@code vance-input} block into its document
-     * (header preserved) and run its {@code onSave} recompute hook.
+     * and run the fence {@code saveScript}.
      */
     @PostMapping("/brain/{tenant}/addon/workspace/input/save")
     public ResponseEntity<Void> saveInput(
             @PathVariable("tenant") String tenant,
             @RequestParam("projectId") String projectId,
             @RequestParam("doc") String doc,
+            @RequestParam(value = "saveScript", required = false) @Nullable String saveScript,
             @RequestBody WorkspaceInputSaveRequest request,
             HttpServletRequest httpRequest) {
 
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
         inputService.saveInput(tenant, projectId, doc,
-                request != null ? request.content() : null, currentUser(httpRequest));
-        return ResponseEntity.noContent().build();
-    }
-
-    /**
-     * Update a {@code vance-input} document's design-mode {@code onSave}
-     * settings (script path + session flag), written into its front-matter
-     * header.
-     */
-    @PostMapping("/brain/{tenant}/addon/workspace/input/settings")
-    public ResponseEntity<Void> saveInputSettings(
-            @PathVariable("tenant") String tenant,
-            @RequestParam("projectId") String projectId,
-            @RequestParam("doc") String doc,
-            @RequestBody WorkspaceInputSettingsRequest request,
-            HttpServletRequest httpRequest) {
-
-        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
-        if (request == null) {
-            throw new ToolException("settings request must not be empty");
-        }
-        inputService.saveSettings(tenant, projectId, doc,
-                request.runScript(), request.session(), currentUser(httpRequest));
+                request != null ? request.content() : null, saveScript, currentUser(httpRequest));
         return ResponseEntity.noContent().build();
     }
 
@@ -776,6 +709,19 @@ public class WorkspaceAppController {
                 tenant, projectId, WorkspaceFolderReader.normaliseFolder(folder),
                 name, currentUser(httpRequest));
         return new WorkspaceInputCreateResponse(path);
+    }
+
+    /** Run a {@code vance-button} block's script ({@code type: script}). */
+    @PostMapping("/brain/{tenant}/addon/workspace/script/run")
+    public ResponseEntity<Void> runScript(
+            @PathVariable("tenant") String tenant,
+            @RequestParam("projectId") String projectId,
+            @RequestParam("script") String script,
+            HttpServletRequest httpRequest) {
+
+        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
+        scriptService.run(tenant, projectId, script, currentUser(httpRequest));
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/brain/{tenant}/addon/workspace/rebuild")

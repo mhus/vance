@@ -210,6 +210,15 @@ const ITEMS: SlashItemDef[] = [
     },
   },
   {
+    id: 'button',
+    title: 'Button',
+    hint: 'Clickable button that runs a script',
+    run: ({ editor, range }) =>
+      editor.chain().focus().deleteRange(range)
+        .insertContent({ type: 'vanceButton', attrs: { type: 'script', script: '', title: '' } })
+        .run(),
+  },
+  {
     id: 'columns2',
     title: '2 columns',
     hint: 'Side-by-side layout',

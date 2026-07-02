@@ -24,19 +24,33 @@ interface ExtensionOptions {
 
 const props = defineProps<{
   node: ProseMirrorNode;
+  updateAttributes: (attrs: Record<string, unknown>) => void;
   extension: { options: ExtensionOptions };
 }>();
 
 const config = computed(() => (props.node.attrs?.config as string | null) ?? '');
+const saveScript = computed(() => (props.node.attrs?.saveScript as string | null) ?? '');
+const form = computed(() => props.node.attrs?.form ?? { single: false, fields: [] });
 const hostComponent = computed(
   () => props.extension.options.formComponent?.() ?? null,
 );
+
+// Persist an edited form definition (design-mode builder) into the fence.
+function updateForm(next: unknown) {
+  props.updateAttributes({ form: next });
+}
 </script>
 
 <template>
   <NodeViewWrapper as="aside" class="vance-form" :data-config="config">
     <div v-if="hostComponent" class="vance-form__hosted" contenteditable="true">
-      <component :is="hostComponent" :config="config" />
+      <component
+        :is="hostComponent"
+        :config="config"
+        :save-script="saveScript"
+        :form="form"
+        :update-form="updateForm"
+      />
     </div>
     <div v-else class="vance-form__fallback" contenteditable="true">
       <span class="vance-form__icon">▦</span>

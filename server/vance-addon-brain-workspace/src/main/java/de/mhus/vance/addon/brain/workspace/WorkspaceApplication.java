@@ -37,15 +37,18 @@ public class WorkspaceApplication implements VanceApplication {
     private final WorkspaceIndexRenderer indexRenderer;
     private final DocumentService documentService;
     private final DocumentLinkBuilder linkBuilder;
+    private final WorkspaceScriptService scriptService;
 
     public WorkspaceApplication(WorkspaceFolderReader folderReader,
                                 WorkspaceIndexRenderer indexRenderer,
                                 DocumentService documentService,
-                                DocumentLinkBuilder linkBuilder) {
+                                DocumentLinkBuilder linkBuilder,
+                                WorkspaceScriptService scriptService) {
         this.folderReader = folderReader;
         this.indexRenderer = indexRenderer;
         this.documentService = documentService;
         this.linkBuilder = linkBuilder;
+        this.scriptService = scriptService;
     }
 
     @Override public String appName() { return APP_NAME; }
@@ -166,13 +169,36 @@ public class WorkspaceApplication implements VanceApplication {
                 .distinct().count();
         stats.put("sectionCount", sectionCount);
 
+        // Run the scripts each page opted into via $meta.rebuildScripts —
+        // NOT every script found in the folder. A failing script is logged
+        // and skipped so it doesn't block the rest of the rebuild.
+        int scriptsRun = 0;
+        int scriptsFailed = 0;
+        for (WorkspacePage page : scan.pages()) {
+            for (String ref : page.rebuildScripts()) {
+                String scriptPath = WorkspaceFormService.resolveRelative(
+                        page.doc().getPath(), WorkspaceFormService.stripVanceScheme(ref));
+                try {
+                    scriptService.run(ctx.tenantId(), ctx.projectName(), scriptPath, ctx.userId());
+                    scriptsRun++;
+                } catch (RuntimeException e) {
+                    scriptsFailed++;
+                    log.warn("WorkspaceApplication.refresh rebuild-script failed "
+                                    + "tenant='{}' page='{}' script='{}': {}",
+                            ctx.tenantId(), page.doc().getPath(), scriptPath, e.getMessage());
+                }
+            }
+        }
+        stats.put("scriptsRun", scriptsRun);
+        if (scriptsFailed > 0) stats.put("scriptsFailed", scriptsFailed);
+
         ArtefactResult index = new ArtefactResult(
                 "index", stored.getPath(),
                 linkBuilder.linkFor(stored, ctx.projectName()),
                 stats);
 
-        log.info("WorkspaceApplication.refresh tenant='{}' folder='{}' pages={}",
-                ctx.tenantId(), folder, scan.pages().size());
+        log.info("WorkspaceApplication.refresh tenant='{}' folder='{}' pages={} scriptsRun={} scriptsFailed={}",
+                ctx.tenantId(), folder, scan.pages().size(), scriptsRun, scriptsFailed);
 
         return new RefreshResult(APP_NAME, folder, List.of(index));
     }

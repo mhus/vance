@@ -78,7 +78,29 @@ Workspace-relevant front-matter fields beyond the workpage basics:
 | `workpage_block_delete(path, anchor)` | Remove a block. |
 | `workpage_block_move(path, from, to)` | Reorder blocks within a page. |
 | `workpage_query(path, type?, textMatch?)` | Read-only block search inside one page. |
-| `app_rebuild(folder)` | Regenerate `_index.md`. Generic — works for every Vance app. |
+| `app_rebuild(folder)` | Regenerate `_index.md` **and** run each page's declared rebuild scripts (see below). Generic — works for every Vance app. |
+
+## Rebuild scripts (`$meta.rebuildScripts`)
+
+`app_rebuild` (and the "Rebuild" button) additionally runs the scripts a page
+**explicitly declares** in its front-matter — nothing is auto-discovered. Only
+listed scripts run:
+
+```yaml
+---
+$meta:
+  kind: workpage
+  rebuildScripts:
+    - update_all.js          # .js doc; bare name = relative to the page's folder,
+    - vance:/apps/x/agg.js   # vance:/… = project-absolute
+title: "Noten"
+---
+```
+
+Each script runs server-side (synchronous, `vance.documents.*` on the tenant/
+project scope, 30 s). A failing script is logged and skipped so it doesn't block
+the rest of the rebuild. Use this to recompute derived files (charts, aggregates)
+for a whole workspace in one action.
 
 ## Canonical flow
 
@@ -193,5 +215,5 @@ A workspace page can embed an **editable form** over a `kind: records`
 document, optionally with a script that recomputes derived files (a chart, a
 summary) on Save. Use this when the user wants to *enter structured data and
 have something computed from it*. See `manual_read('workspace-forms')` for the
-`$meta.form` / `$meta.onSave` shape, the `vance-form` block and what the onSave
-script can do.
+`vance-form` fence (`config` + `form:` + `saveScript` — the record file holds
+only `schema` + `items`) and what the saveScript can do.

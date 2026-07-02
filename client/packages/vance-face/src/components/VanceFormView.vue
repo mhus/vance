@@ -1,58 +1,81 @@
 <script setup lang="ts">
 /**
- * Editable form for a {@code vance-form} block. The block's {@code config}
- * is a {@code vance:} URI to a DATA document (`kind: records`) that carries
- * its own typed schema in {@code $meta.form.fields} plus an optional
- * {@code $meta.onSave} recompute hook (one-file model, §13). Data lives in
- * the document's {@code items}.
+ * Editable form for a {@code vance-form} block. The **form definition**
+ * (fields + single) lives in the block's fence (`form:` attribute) — it is
+ * specific to the block, not the data. The bound `kind: records` document
+ * holds only the data (`items`) + a bare `schema` (column names). The
+ * fence also carries `config` (the data doc URI) and optional `saveScript`.
  *
- * Two work-mode shapes, driven by {@code $meta.form.single}:
- * - **single**: one record, rendered as a single form.
- * - **records** (default): a collection, rendered as cards with Add/Remove.
- *
- * Design mode (driven by the injected {@code vance:page-mode} ref) shows a
- * field builder + a "single" toggle; Save persists the schema back into
- * {@code $meta.form}.
+ * - **work mode**: renders the fields (single → one form; else → cards with
+ *   Add/Remove). Save writes `items` and runs `saveScript`.
+ * - **design mode**: a field builder + single toggle; changes are written
+ *   back into the block via `updateForm` (→ fence), not into the data file.
  */
-import { computed, inject, onMounted, ref, type Ref } from 'vue';
+import { computed, inject, onMounted, ref, watch, type Ref } from 'vue';
 import { brainFetch } from '@vance/shared';
 import type { FormFieldDto, FormChoiceDto } from '@vance/generated';
 import { FormFields, type FormValue } from './index';
 import { parseVanceUri, VanceUriParseError } from '@/kindRenderers/parseVanceUri';
 import { useDocumentRefStore } from '@/document/documentRefStore';
 
-const props = defineProps<{ config: string }>();
-
-interface FormResponse {
-  fields: FormFieldDto[];
-  single: boolean;
-  records: Record<string, unknown>[];
-  target: string;
-  title: string | null;
-  onSaveScript: string | null;
-  onSaveSession: boolean;
+interface FormDef {
+  single?: boolean;
+  fields?: unknown[];
 }
 
-const pageMode = inject<Ref<'design' | 'work'>>('vance:page-mode', ref('work'));
+const props = defineProps<{
+  config: string;
+  /** Recompute script from the fence (vance: URI / path). */
+  saveScript?: string;
+  /** Form definition from the fence (single + fields). */
+  form?: FormDef;
+  /** Persist an edited form definition back into the block/fence. */
+  updateForm?: (form: { single: boolean; fields: FormFieldDto[] }) => void;
+}>();
 
+const pageMode = inject<Ref<'design' | 'work'>>('vance:page-mode', ref('work'));
 const store = useDocumentRefStore();
 
-const fields = ref<FormFieldDto[]>([]);
-const single = ref(false);
+// Coerce a bare-string label/help (`label: Fach`) into the i18n map
+// FormFields expects. Fence YAML is written by humans/models in shorthand.
+function locMap(v: unknown): Record<string, string> {
+  if (typeof v === 'string') return { en: v };
+  if (v && typeof v === 'object') return v as Record<string, string>;
+  return {};
+}
+function normalizeField(raw: unknown): FormFieldDto {
+  const f = (raw ?? {}) as Record<string, unknown>;
+  const choices = Array.isArray(f.choices) ? f.choices : [];
+  return {
+    ...(f as object),
+    name: String(f.name ?? ''),
+    type: String(f.type ?? 'string'),
+    label: locMap(f.label),
+    required: f.required === true || f.required === 'true',
+    choices: choices.map((c) => {
+      const cc = (c ?? {}) as Record<string, unknown>;
+      return { value: String(cc.value ?? ''), label: locMap(cc.label), defaultSelected: cc.defaultSelected === true };
+    }),
+  } as FormFieldDto;
+}
+
+// Data (loaded from the doc); form def comes from the fence prop.
 const records = ref<Record<string, FormValue>[]>([]);
 const baselineRecords = ref<Record<string, FormValue>[]>([]);
-const target = ref<string>('');
-
 const loading = ref(false);
 const saving = ref(false);
 const error = ref<string | null>(null);
 const savedAt = ref(false);
 
+const fields = computed<FormFieldDto[]>(
+  () => (props.form?.fields ?? []).map(normalizeField),
+);
+const single = computed(() => !!props.form?.single);
+
 const dirty = computed(
   () => JSON.stringify(records.value) !== JSON.stringify(baselineRecords.value),
 );
 
-// Single mode edits records[0]; bridge it as one form value object.
 const singleRecord = computed<Record<string, FormValue>>({
   get: () => records.value[0] ?? {},
   set: (v) => { records.value = [v]; },
@@ -61,7 +84,7 @@ const singleRecord = computed<Record<string, FormValue>>({
 function addRecord() { records.value.push({}); }
 function removeRecord(i: number) { records.value.splice(i, 1); }
 
-// ── Design builder state ──────────────────────────────────────────
+// ── Design builder ────────────────────────────────────────────────
 const FIELD_TYPES = ['string', 'textarea', 'integer', 'boolean', 'select', 'multi_select'];
 
 interface DesignField {
@@ -73,27 +96,8 @@ interface DesignField {
 }
 
 const designFields = ref<DesignField[]>([]);
-const schemaSaving = ref(false);
-const schemaSavedAt = ref(false);
-
-// ── Form-settings dialog (rendered via the form-engine itself) ────
-const SETTINGS_FIELDS: FormFieldDto[] = [
-  { name: 'title', type: 'string',
-    label: { en: 'Title' }, required: false, choices: [] },
-  { name: 'single', type: 'boolean',
-    label: { en: 'Single record (one form instead of a card list)' },
-    required: false, choices: [] },
-  { name: 'runScript', type: 'string',
-    label: { en: 'onSave script (.js, relative to the document folder)' },
-    required: false, choices: [] },
-  { name: 'session', type: 'boolean',
-    label: { en: 'Create a session for the onSave script' },
-    required: false, choices: [] },
-];
-const showSettings = ref(false);
-const settingsValues = ref<Record<string, FormValue>>({});
-const settingsSaving = ref(false);
-const settingsSavedAt = ref(false);
+const designSingle = ref(false);
+const appliedAt = ref(false);
 
 function toDesign(f: FormFieldDto): DesignField {
   const label = f.label ?? {};
@@ -132,8 +136,9 @@ function fromDesign(d: DesignField): FormFieldDto {
   };
 }
 
-function syncDesignFromFields() {
+function syncDesign() {
   designFields.value = fields.value.map(toDesign);
+  designSingle.value = single.value;
 }
 
 function addField() {
@@ -153,7 +158,18 @@ function moveField(i: number, delta: number) {
   [arr[i], arr[j]] = [arr[j], arr[i]];
 }
 
-// ── Load / save ───────────────────────────────────────────────────
+function applyForm() {
+  const built = designFields.value.filter((d) => d.name.trim()).map(fromDesign);
+  props.updateForm?.({ single: designSingle.value, fields: built });
+  appliedAt.value = true;
+}
+
+// Re-seed the builder whenever the fence form changes or we enter design.
+watch([() => props.form, pageMode], () => {
+  if (pageMode.value === 'design') syncDesign();
+}, { deep: true });
+
+// ── Load / save (data only) ───────────────────────────────────────
 async function resolveProject(): Promise<{ projectId: string; path: string }> {
   const parsed = parseVanceUri(props.config, { text: '', imageStyle: false });
   const projectId = parsed.project ?? (await store.waitForCurrentProject());
@@ -189,21 +205,13 @@ async function load() {
   try {
     const { projectId, path } = await resolveProject();
     const params = new URLSearchParams({ projectId, doc: path });
-    const resp = await brainFetch<FormResponse>('GET', `addon/workspace/form?${params}`);
-    fields.value = resp.fields ?? [];
-    single.value = !!resp.single;
-    target.value = resp.target ?? '';
+    const resp = await brainFetch<{ records: Record<string, unknown>[] }>(
+      'GET', `addon/workspace/form?${params}`);
     const recs = (resp.records ?? []).map((r) => normalise(r));
     if (single.value && recs.length === 0) recs.push({});
     records.value = recs;
     baselineRecords.value = JSON.parse(JSON.stringify(recs));
-    settingsValues.value = {
-      title: resp.title ?? '',
-      single: single.value ? 'true' : 'false',
-      runScript: resp.onSaveScript ?? '',
-      session: resp.onSaveSession ? 'true' : 'false',
-    };
-    syncDesignFromFields();
+    if (pageMode.value === 'design') syncDesign();
   } catch (e) {
     if (e instanceof VanceUriParseError) error.value = `Invalid form document URI: ${props.config}`;
     else error.value = e instanceof Error ? e.message : 'Failed to load form';
@@ -219,8 +227,13 @@ async function save() {
   try {
     const { projectId, path } = await resolveProject();
     const params = new URLSearchParams({ projectId, doc: path });
+    if (props.saveScript && props.saveScript.trim()) {
+      params.set('saveScript', props.saveScript.trim());
+    }
     await brainFetch<void>('POST', `addon/workspace/form/save?${params}`, {
-      body: { records: records.value },
+      // schema = column names from the fence form, so the record's native
+      // RecordsView columns stay aligned even when items is empty.
+      body: { records: records.value, schema: fields.value.map((f) => f.name) },
     });
     baselineRecords.value = JSON.parse(JSON.stringify(records.value));
     savedAt.value = true;
@@ -237,55 +250,6 @@ function cancel() {
   savedAt.value = false;
 }
 
-async function saveSchema() {
-  schemaSaving.value = true;
-  error.value = null;
-  schemaSavedAt.value = false;
-  try {
-    const { projectId, path } = await resolveProject();
-    const params = new URLSearchParams({ projectId, doc: path });
-    const built = designFields.value.filter((d) => d.name.trim()).map(fromDesign);
-    await brainFetch<void>('POST', `addon/workspace/form/schema?${params}`, {
-      body: { fields: built },
-    });
-    schemaSavedAt.value = true;
-    await load();
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Schema save failed';
-  } finally {
-    schemaSaving.value = false;
-  }
-}
-
-function settingStr(name: string): string {
-  const v = settingsValues.value[name];
-  return typeof v === 'string' ? v : '';
-}
-
-async function saveSettings() {
-  settingsSaving.value = true;
-  error.value = null;
-  settingsSavedAt.value = false;
-  try {
-    const { projectId, path } = await resolveProject();
-    const params = new URLSearchParams({ projectId, doc: path });
-    await brainFetch<void>('POST', `addon/workspace/form/settings?${params}`, {
-      body: {
-        single: settingStr('single') === 'true',
-        runScript: settingStr('runScript'),
-        session: settingStr('session') === 'true',
-        title: settingStr('title'),
-      },
-    });
-    settingsSavedAt.value = true;
-    await load();
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Settings save failed';
-  } finally {
-    settingsSaving.value = false;
-  }
-}
-
 onMounted(load);
 </script>
 
@@ -295,30 +259,17 @@ onMounted(load);
     <template v-else>
       <div v-if="error" class="vance-form-view__error">{{ error }}</div>
 
-      <!-- DESIGN MODE: field builder -->
+      <!-- DESIGN MODE: field builder (edits the fence form) -->
       <template v-if="pageMode === 'design'">
         <div class="vance-form-view__design-hint">
-          Design-Modus — Felder bearbeiten. Dokument: <code>{{ target }}</code>
-          <button
-            class="vance-form-view__mini"
-            :class="{ 'vance-form-view__mini--active': showSettings }"
-            title="Form settings (single / onSave script / session)"
-            @click="showSettings = !showSettings"
-          >⚙</button>
+          Design-Modus — Formular-Felder (im Block gespeichert). Daten:
+          <code>{{ config }}</code>
         </div>
-
-        <!-- Form settings — rendered with the form-engine itself. -->
-        <div v-if="showSettings" class="vance-form-view__settings">
-          <FormFields v-model="settingsValues" :fields="SETTINGS_FIELDS" :disabled="settingsSaving" />
-          <div class="vance-form-view__footer">
-            <span v-if="settingsSavedAt" class="vance-form-view__saved">Settings gespeichert ✓</span>
-            <span class="vance-form-view__spacer" />
-            <button
-              class="vance-form-view__btn vance-form-view__btn--primary"
-              :disabled="settingsSaving"
-              @click="saveSettings"
-            >{{ settingsSaving ? 'Speichere…' : 'Save settings' }}</button>
-          </div>
+        <div class="vance-form-view__mode-row">
+          <label class="vance-form-view__req">
+            <input v-model="designSingle" type="checkbox" />
+            Single record (eine Form statt Karten-Liste)
+          </label>
         </div>
         <div
           v-for="(f, i) in designFields"
@@ -326,24 +277,12 @@ onMounted(load);
           class="vance-form-view__field-row"
         >
           <div class="vance-form-view__field-main">
-            <input
-              v-model="f.name"
-              class="vance-form-view__inp"
-              placeholder="name"
-              style="width: 9rem"
-            />
+            <input v-model="f.name" class="vance-form-view__inp" placeholder="name" style="width: 9rem" />
             <select v-model="f.type" class="vance-form-view__inp">
               <option v-for="t in FIELD_TYPES" :key="t" :value="t">{{ t }}</option>
             </select>
-            <input
-              v-model="f.labelText"
-              class="vance-form-view__inp"
-              placeholder="Label"
-              style="flex: 1"
-            />
-            <label class="vance-form-view__req">
-              <input v-model="f.required" type="checkbox" /> req
-            </label>
+            <input v-model="f.labelText" class="vance-form-view__inp" placeholder="Label" style="flex: 1" />
+            <label class="vance-form-view__req"><input v-model="f.required" type="checkbox" /> req</label>
             <button class="vance-form-view__mini" title="Move up" @click="moveField(i, -1)">↑</button>
             <button class="vance-form-view__mini" title="Move down" @click="moveField(i, 1)">↓</button>
             <button class="vance-form-view__mini" title="Remove" @click="removeField(i)">✕</button>
@@ -359,12 +298,10 @@ onMounted(load);
         <div class="vance-form-view__footer">
           <button class="vance-form-view__btn" @click="addField">+ Add field</button>
           <span class="vance-form-view__spacer" />
-          <span v-if="schemaSavedAt" class="vance-form-view__saved">Schema gespeichert ✓</span>
-          <button
-            class="vance-form-view__btn vance-form-view__btn--primary"
-            :disabled="schemaSaving"
-            @click="saveSchema"
-          >{{ schemaSaving ? 'Speichere…' : 'Save fields' }}</button>
+          <span v-if="appliedAt" class="vance-form-view__saved">Übernommen ✓</span>
+          <button class="vance-form-view__btn vance-form-view__btn--primary" @click="applyForm">
+            Apply fields
+          </button>
         </div>
       </template>
 
@@ -374,11 +311,7 @@ onMounted(load);
           <FormFields v-model="singleRecord" :fields="fields" :disabled="saving" />
         </template>
         <template v-else>
-          <div
-            v-for="(rec, i) in records"
-            :key="i"
-            class="vance-form-view__record-card"
-          >
+          <div v-for="(rec, i) in records" :key="i" class="vance-form-view__record-card">
             <div class="vance-form-view__record-head">
               <span class="vance-form-view__record-idx">#{{ i + 1 }}</span>
               <button
@@ -396,23 +329,17 @@ onMounted(load);
               @update:model-value="(v) => (records[i] = v)"
             />
           </div>
-          <button
-            type="button"
-            class="vance-form-view__btn"
-            :disabled="saving"
-            @click="addRecord"
-          >+ Add record</button>
+          <button type="button" class="vance-form-view__btn" :disabled="saving" @click="addRecord">
+            + Add record
+          </button>
         </template>
         <div class="vance-form-view__footer">
           <span v-if="savedAt && !dirty" class="vance-form-view__saved">Gespeichert ✓</span>
           <span v-else-if="dirty" class="vance-form-view__dirty">Ungespeicherte Änderungen</span>
           <span class="vance-form-view__spacer" />
-          <button
-            type="button"
-            class="vance-form-view__btn"
-            :disabled="saving || !dirty"
-            @click="cancel"
-          >Cancel</button>
+          <button type="button" class="vance-form-view__btn" :disabled="saving || !dirty" @click="cancel">
+            Cancel
+          </button>
           <button
             type="button"
             class="vance-form-view__btn vance-form-view__btn--primary"
@@ -432,11 +359,7 @@ onMounted(load);
   padding: 0.85rem 1rem;
   background: oklch(var(--b1));
 }
-.vance-form-view__status {
-  color: oklch(var(--bc) / 0.65);
-  font-size: 0.9rem;
-  padding: 0.5rem 0;
-}
+.vance-form-view__status { color: oklch(var(--bc) / 0.65); font-size: 0.9rem; padding: 0.5rem 0; }
 .vance-form-view__error {
   background: oklch(var(--er) / 0.12);
   color: oklch(var(--er));
@@ -449,27 +372,21 @@ onMounted(load);
   font-size: 0.8rem;
   color: oklch(var(--bc) / 0.6);
   margin-bottom: 0.6rem;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-.vance-form-view__settings {
-  border: 1px solid oklch(var(--bc) / 0.15);
-  border-radius: 0.4rem;
-  padding: 0.6rem 0.75rem;
-  margin-bottom: 0.8rem;
-  background: oklch(var(--bc) / 0.03);
-}
-.vance-form-view__mini--active {
-  background: oklch(var(--p) / 0.18);
-  color: oklch(var(--p));
-  border-color: oklch(var(--p));
 }
 .vance-form-view__design-hint code {
   font-family: monospace;
   background: oklch(var(--bc) / 0.1);
   padding: 0 0.25em;
   border-radius: 0.2em;
+}
+.vance-form-view__mode-row {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin-bottom: 0.7rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid oklch(var(--bc) / 0.12);
+  font-size: 0.82rem;
 }
 .vance-form-view__record-card {
   border: 1px solid oklch(var(--bc) / 0.15);
@@ -483,22 +400,14 @@ onMounted(load);
   align-items: center;
   margin-bottom: 0.4rem;
 }
-.vance-form-view__record-idx {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: oklch(var(--bc) / 0.55);
-}
+.vance-form-view__record-idx { font-size: 0.75rem; font-weight: 600; color: oklch(var(--bc) / 0.55); }
 .vance-form-view__field-row {
   border: 1px solid oklch(var(--bc) / 0.12);
   border-radius: 0.35rem;
   padding: 0.4rem 0.5rem;
   margin-bottom: 0.45rem;
 }
-.vance-form-view__field-main {
-  display: flex;
-  gap: 0.4rem;
-  align-items: center;
-}
+.vance-form-view__field-main { display: flex; gap: 0.4rem; align-items: center; }
 .vance-form-view__inp {
   border: 1px solid oklch(var(--bc) / 0.2);
   border-radius: 0.25rem;

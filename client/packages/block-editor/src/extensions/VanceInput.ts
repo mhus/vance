@@ -21,6 +21,8 @@ export const VanceInput = Node.create({
     return {
       config: { default: '' },          // vance: URI of the bound text document
       multiline: { default: false },    // single-line input vs. textarea
+      // Recompute script (form-related) — lives in the fence, not the file.
+      saveScript: { default: '' },
     };
   },
 
@@ -40,18 +42,12 @@ export const VanceInput = Node.create({
 
   addOptions() {
     return {
-      /** Host load: vance: URI → editable body + onSave config (from header). */
-      loadInput: null as
+      /** Host load: vance: URI → editable body text. */
+      loadInput: null as null | ((uri: string) => Promise<string>),
+      /** Host save: write the body back and run the fence saveScript. */
+      saveInput: null as
         | null
-        | ((
-            uri: string,
-          ) => Promise<{ content: string; runScript: string | null; session: boolean }>),
-      /** Host save: write the body back (header preserved, onSave runs). */
-      saveInput: null as null | ((uri: string, content: string) => Promise<void>),
-      /** Host save: persist the design-mode onSave settings into the header. */
-      saveInputSettings: null as
-        | null
-        | ((uri: string, runScript: string | null, session: boolean) => Promise<void>),
+        | ((uri: string, content: string, saveScript: string) => Promise<void>),
     };
   },
 

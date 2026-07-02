@@ -1,5 +1,5 @@
 ---
-triggers: workpage block, block type, paragraph, heading, bullet, numbered list, todo, checkbox, quote, code block, image, image width, table, callout, info box, warning box, toggle, accordion, columns, multi-column, link card, table of contents, toc, divider, dataview, embed, embedded document, vance uri, reference document, form, input, reactive form, data entry, text input, onSave script
+triggers: workpage block, block type, paragraph, heading, bullet, numbered list, todo, checkbox, quote, code block, image, image width, table, callout, info box, warning box, toggle, accordion, columns, multi-column, link card, table of contents, toc, divider, dataview, embed, embedded document, vance uri, reference document, form, input, reactive form, data entry, text input, saveScript, button, run script button, action button
 summary: Copy-paste cheatsheet for every workpage block type. JSON shape for `workpage_create` / `workpage_block_append` tools plus the underlying Markdown the block round-trips to. Use this when you need to pick the right block or look up the exact param keys.
 ---
 # WorkPage Block Cheatsheet
@@ -381,41 +381,87 @@ v1 NodeView shows only the card; full inline rendering of vance-kinds
 ## form
 
 ```json
-{ "type": "form", "config": "vance:/apps/ws/data/people.records.json?kind=records" }
+{ "type": "form", "config": "vance:/apps/ws/data/people.records.json?kind=records",
+  "saveScript": "vance:by-role.js" }
 ```
 
 ```markdown
 ```vance-form
 config: vance:/apps/ws/data/people.records.json?kind=records
+saveScript: vance:by-role.js
+form:
+  single: false
+  fields:
+    - name: name
+      type: string
+      label: Name
+      required: true
 ```
 ```
 
 An **editable, typed form** over a `kind: records` data document. The
-`config` is the `vance:` URI of that document; its `$meta.form.fields`
-define the inputs and `$meta.onSave.runScript` an optional recompute
-script that runs server-side on Save (see the reactive-forms feature).
-Use this for "user enters structured data, a script derives something"
-pages. The bound document must already exist (create it with
-`doc_create`, `kind: records`, carrying the `$meta.form` schema).
+data document holds **only** `schema` + `items`; the **form definition**
+(`form:` — fields + single) and the recompute **`saveScript`** live in the
+block's **fence**, not in the file. `config` is the `vance:` URI of the data
+doc (create it with `doc_create`, `kind: records`, `items: []`). Use this for
+"user enters structured data, a script derives something" pages.
+
+**Before you author the fence, call `manual_read('workspace-forms')`** — it has
+the full contract. The essentials you'll otherwise get wrong:
+
+- **Field `type` is a closed set:** `string` | `textarea` | `integer` |
+  `boolean` | `select` | `multi_select`. There is **no `number`** — use
+  `integer`. `select`/`multi_select` carry `choices`.
+- **`label` / `help` are i18n maps**, but a bare `label: Name` is tolerated
+  (coerced to `{en: …}`).
+- **Running a script = fence `saveScript`**, a **`.js`** document (Python is
+  not supported), runs server-side **on Save** with no session. The form's
+  Save button *is* the trigger. There is **no** `$meta.onSave` in the file.
+- **For a standalone "click to run" action, use the `button` block** (below) —
+  not a hidden hook.
 
 ## input
 
 ```json
-{ "type": "input", "config": "vance:/notes/intro.md?kind=text", "multiline": true }
+{ "type": "input", "config": "vance:/notes/intro.md?kind=text", "multiline": true,
+  "saveScript": "vance:update.js" }
 ```
 
 ```markdown
 ```vance-input
 config: vance:/notes/intro.md?kind=text
 multiline: true
+saveScript: vance:update.js
 ```
 ```
 
-A **single editable text value** bound to a text document (the whole
-file content is the value). `multiline: true` renders a growing
-textarea, `false` a single-line input. Like `form`, the bound text
-document may carry an `onSave` script in its front-matter header. Use
-`form` for structured multi-field data, `input` for one free-text value.
+A **single editable text value** bound to a text document (the file **body**
+is the value; a front-matter header, if any, is preserved but not edited).
+`multiline: true` renders a growing textarea, `false` a single-line input. Like
+`form`, the block may carry an optional **`saveScript`** in its fence (`.js`,
+runs on Save, no session) — see `manual_read('workspace-forms')`. Use `form`
+for structured multi-field data, `input` for one free-text value.
+
+## button
+
+```json
+{ "type": "button", "buttonType": "script", "title": "Recompute everything",
+  "script": "vance:update_all.js" }
+```
+
+```markdown
+```vance-button
+type: script
+title: Recompute everything
+script: vance:update_all.js
+```
+```
+
+A **clickable button** that runs a project `.js` script server-side on click
+(v1 `type: script` only). `script` is a `vance:` URI — a bare name resolves
+relative to the **app folder**, `vance:/abs/path.js` is project-absolute.
+`title` is the label. Use this for an explicit "run this now" action; use
+`form`/`input` `saveScript` when the script should run on data save.
 
 ## dataview
 
@@ -459,3 +505,4 @@ Headings must be unique; duplicates throw and you disambiguate with `index`. Hea
 | "Show the result of another document (computed file, chart)" | `embed`, `uri` = `vance:/<path>?kind=<kind>` |
 | "Let the user fill in structured data (a form)" | `form`, `config` = `vance:/<records-doc>?kind=records` |
 | "Let the user edit one free-text value" | `input`, `config` = `vance:/<text-doc>?kind=text` |
+| "A button that runs a script / computes on click" | `button`, `type: script`, `script` = `vance:<script>.js`. For recompute on data save, use the form's/input's fence `saveScript` instead. See `manual_read('workspace-forms')`. |

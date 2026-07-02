@@ -10,4 +10,5 @@ import org.jspecify.annotations.Nullable;
  * form just sends a one-element list.
  */
 public record WorkspaceFormSaveRequest(
-        @Nullable List<Map<String, Object>> records) {}
+        @Nullable List<Map<String, Object>> records,
+        @Nullable List<String> schema) {}

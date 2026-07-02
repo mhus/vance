@@ -1,10 +1,5 @@
 package de.mhus.vance.addon.brain.workspace;
 
-import tools.jackson.core.type.TypeReference;
-import tools.jackson.databind.DeserializationFeature;
-import tools.jackson.databind.ObjectMapper;
-import de.mhus.vance.api.form.FormFieldDto;
-import de.mhus.vance.api.ws.Profiles;
 import de.mhus.vance.brain.script.ScriptExecutionException;
 import de.mhus.vance.brain.script.ScriptExecutor;
 import de.mhus.vance.brain.script.ScriptRequest;
@@ -12,8 +7,6 @@ import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
-import de.mhus.vance.shared.session.SessionDocument;
-import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.io.ByteArrayInputStream;
@@ -37,29 +30,18 @@ import org.yaml.snakeyaml.Yaml;
 /**
  * Backend for the {@code vance-form} block (reactive-data).
  *
- * <p><b>One-file model (Umbau 2026-06-30, §13):</b> a {@code vance-form}
- * block points directly at a <em>data document</em> ({@code kind: records})
- * that carries everything in its {@code $meta}:
+ * <p><b>Split of concerns:</b> the data document ({@code kind: records})
+ * holds only the <em>data</em> — a bare {@code schema} (column names) +
+ * {@code items}. The <em>form definition</em> (fields + single) and the
+ * recompute {@code saveScript} are block-specific and live in the
+ * {@code vance-form} <b>fence</b>, not in the data file. There is no
+ * {@code $meta.form} / {@code $meta.onSave} in the record — no migration,
+ * no fallback.
  *
- * <pre>
- * $meta:
- *   kind: records
- *   form:
- *     single: false           # true = one record, form-style
- *     fields: [ &lt;FormFieldDto&gt; … ]
- *   onSave:
- *     runScript: update.js     # optional recompute hook
- * schema: [name, role]         # native RecordsView columns (synced from fields)
- * items:                       # the data
- *   - { name: Alice, role: admin }
- * </pre>
- *
- * The same document renders natively as a table (RecordsView) when
- * embedded, and as a typed form (FormFields, reading {@code $meta.form})
- * via the {@code vance-form} block. There is no separate edit-config.
- *
- * <p>Datenhoheit: all YAML parsing / serialisation lives here, never in
- * the client.
+ * <p>This service therefore only: reads {@code items} for the editor,
+ * writes {@code items} (+ syncs {@code schema} from the fence field names)
+ * on save, and runs the fence {@code saveScript}. Datenhoheit: all YAML
+ * parsing / serialisation lives here.
  */
 @Service
 @RequiredArgsConstructor
@@ -67,42 +49,17 @@ import org.yaml.snakeyaml.Yaml;
 public class WorkspaceFormService {
 
     private final DocumentService documentService;
-    private final ObjectMapper objectMapper;
     private final ScriptExecutor scriptExecutor;
     private final ToolDispatcher toolDispatcher;
-    private final SessionService sessionService;
 
-    /** Wall-clock cap for an onSave recompute script. */
+    /** Wall-clock cap for a saveScript recompute run. */
     private static final Duration ON_SAVE_TIMEOUT = Duration.ofSeconds(30);
     private static final String FORM_KIND = "records";
 
-    /**
-     * Schema + current records + form flags for one data document.
-     * {@code single} = the form edits a single record (form-style) rather
-     * than a card collection; data is still stored under {@code items}.
-     */
-    public record LoadedForm(
-            List<FormFieldDto> fields,
-            boolean single,
-            List<Map<String, Object>> records,
-            String target,
-            @Nullable String title,
-            @Nullable String onSaveScript,
-            boolean onSaveSession) {}
-
-    /**
-     * Read the data document at {@code docPath}, returning its field
-     * schema ({@code $meta.form.fields}), the {@code single} flag and the
-     * current {@code items} records.
-     */
-    @SuppressWarnings("unchecked")
-    public LoadedForm loadForm(String tenantId, String projectId, String docPath) {
+    /** Current {@code items} records of the data document. */
+    public List<Map<String, Object>> loadForm(String tenantId, String projectId, String docPath) {
         Map<String, Object> doc = readYamlMap(tenantId, projectId, docPath,
                 "form document '" + docPath + "' not found");
-        Map<String, Object> form = formMap(doc);
-        List<FormFieldDto> fields = parseFieldsFromList(objectMapper, form.get("fields"), docPath);
-        boolean single = boolOf(form.get("single"));
-
         List<Map<String, Object>> records = new ArrayList<>();
         Object items = doc.get("items");
         if (items instanceof List<?> list) {
@@ -110,104 +67,39 @@ public class WorkspaceFormService {
                 if (o instanceof Map<?, ?> m) records.add(toStringMap(m));
             }
         }
-        Map<String, Object> onSave = onSaveMap(doc);
-        return new LoadedForm(fields, single, records, docPath,
-                stringValue(doc.get("title")),
-                stringValue(onSave.get("runScript")),
-                boolOf(onSave.get("session")));
-    }
-
-    /**
-     * Update the form-level settings (the design-mode settings dialog):
-     * {@code $meta.form.single}, {@code $meta.onSave.{runScript,session}}
-     * and the top-level {@code title}. Fields and items are untouched.
-     */
-    public void saveSettings(
-            String tenantId, String projectId, String docPath,
-            boolean single, @Nullable String runScript, boolean session,
-            @Nullable String title, String editorId) {
-        DocumentDocument docDoc = documentService.findByPath(tenantId, projectId, docPath)
-                .orElseThrow(() -> new ToolException("form document '" + docPath + "' not found"));
-        Map<String, Object> doc = loadYaml(readContent(docDoc));
-
-        Map<String, Object> meta = metaMap(doc);
-        meta.put("kind", FORM_KIND);
-        Map<String, Object> form = formMap(doc);
-        form.put("single", single);
-        meta.put("form", form);
-
-        Map<String, Object> onSave = new LinkedHashMap<>();
-        if (runScript != null && !runScript.isBlank()) onSave.put("runScript", runScript.strip());
-        onSave.put("session", session);
-        meta.put("onSave", onSave);
-        doc.put("$meta", meta);
-        if (title != null && !title.isBlank()) doc.put("title", title.strip());
-
-        writeDoc(docDoc.getId(), docPath, doc, editorId);
-        log.info("WorkspaceFormService.saveSettings tenant='{}' doc='{}' single={} session={} script='{}'",
-                tenantId, docPath, single, session, runScript);
+        return records;
     }
 
     /**
      * Write the submitted {@code records} into the data document's
-     * {@code items}, syncing the native {@code schema} column list and
-     * preserving {@code $meta} (form + onSave). Then run the onSave
-     * recompute hook synchronously.
+     * {@code items}, sync the native {@code schema} column list (from the
+     * fence field names, else the union of item keys), then run the fence
+     * {@code saveScript}.
      */
     public void saveForm(
             String tenantId, String projectId, String docPath,
-            @Nullable List<Map<String, Object>> records, String editorId) {
+            @Nullable List<Map<String, Object>> records,
+            @Nullable List<String> schema,
+            @Nullable String saveScript, String editorId) {
         DocumentDocument docDoc = documentService.findByPath(tenantId, projectId, docPath)
                 .orElseThrow(() -> new ToolException("form document '" + docPath + "' not found"));
         Map<String, Object> doc = loadYaml(readContent(docDoc));
 
         List<Map<String, Object>> rows = records != null ? records : new ArrayList<>();
         doc.put("items", rows);
-        doc.put("schema", schemaNames(formMap(doc)));
+        doc.put("schema", (schema != null && !schema.isEmpty()) ? schema : unionKeys(rows));
 
         writeDoc(docDoc.getId(), docPath, doc, editorId);
         log.info("WorkspaceFormService.saveForm tenant='{}' doc='{}' records={}",
                 tenantId, docPath, rows.size());
 
-        runOnSave(tenantId, projectId, docPath, doc, editorId);
+        runOnSave(tenantId, projectId, docPath, saveScript, editorId);
     }
 
     /**
-     * Replace the data document's {@code $meta.form.fields} + {@code single}
-     * flag (design-mode form builder) and re-sync the native {@code schema}
-     * column list. {@code items} and {@code onSave} are preserved.
-     */
-    @SuppressWarnings("unchecked")
-    public void saveSchema(
-            String tenantId, String projectId, String docPath,
-            List<FormFieldDto> fields, String editorId) {
-        DocumentDocument docDoc = documentService.findByPath(tenantId, projectId, docPath)
-                .orElseThrow(() -> new ToolException("form document '" + docPath + "' not found"));
-        Map<String, Object> doc = loadYaml(readContent(docDoc));
-
-        List<Map<String, Object>> fieldMaps = objectMapper.convertValue(
-                fields != null ? fields : List.of(),
-                new TypeReference<List<Map<String, Object>>>() {});
-
-        Map<String, Object> meta = metaMap(doc);
-        meta.put("kind", FORM_KIND);
-        Map<String, Object> form = formMap(doc);   // keeps existing `single`
-        form.put("fields", fieldMaps);
-        meta.put("form", form);
-        doc.put("$meta", meta);
-        doc.put("schema", namesOf(fieldMaps));
-        doc.putIfAbsent("items", new ArrayList<>());
-
-        writeDoc(docDoc.getId(), docPath, doc, editorId);
-        log.info("WorkspaceFormService.saveSchema tenant='{}' doc='{}' fields={}",
-                tenantId, docPath, fieldMaps.size());
-    }
-
-    /**
-     * Create a new form data document ({@code <folder>/<slug>.yaml},
-     * {@code kind: records}) with one starter field and an empty
-     * {@code items} list. Returns the created path so the caller can drop
-     * a {@code vance-form} block referencing it.
+     * Create a new empty data document ({@code <folder>/<slug>.yaml},
+     * {@code kind: records}) — just {@code schema} + {@code items}. The form
+     * definition lives in the block's fence. Returns the created path.
      */
     public String createForm(
             String tenantId, String projectId, String folder,
@@ -224,23 +116,12 @@ public class WorkspaceFormService {
         }
         String displayTitle = (title != null && !title.isBlank()) ? title.strip() : name.strip();
 
-        Map<String, Object> starterLabel = new LinkedHashMap<>();
-        starterLabel.put("en", "Field 1");
-        Map<String, Object> starterField = new LinkedHashMap<>();
-        starterField.put("name", "field1");
-        starterField.put("type", "string");
-        starterField.put("label", starterLabel);
-
-        Map<String, Object> form = new LinkedHashMap<>();
-        form.put("single", false);
-        form.put("fields", new ArrayList<>(List.of(starterField)));
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("kind", FORM_KIND);
-        meta.put("form", form);
         Map<String, Object> doc = new LinkedHashMap<>();
         doc.put("$meta", meta);
         doc.put("title", displayTitle);
-        doc.put("schema", new ArrayList<>(List.of("field1")));
+        doc.put("schema", new ArrayList<>());
         doc.put("items", new ArrayList<>());
 
         documentService.createText(
@@ -249,152 +130,55 @@ public class WorkspaceFormService {
         return docPath;
     }
 
-    // ---- onSave --------------------------------------------------------
+    // ---- saveScript ----------------------------------------------------
 
     /**
-     * Run the document's {@code $meta.onSave.runScript} synchronously
-     * after {@code items} was written. The script reads the fresh data via
-     * {@code vance.documents.*} and recomputes derived files; their writes
-     * fan out to the client via the documents live-push. A script failure
-     * surfaces as a {@link ToolException} (→ HTTP 500); the data stays
-     * written.
+     * Run the fence {@code saveScript} synchronously after {@code items} was
+     * written: it reads the fresh data via {@code vance.documents.*} and
+     * recomputes derived files (live-push updates embeds). A failure surfaces
+     * as {@link ToolException} (→ HTTP 500); the data stays written. No
+     * {@code saveScript} → no-op.
      */
     private void runOnSave(
             String tenantId, String projectId, String docPath,
-            Map<String, Object> doc, String editorId) {
-        Map<String, Object> onSave = onSaveMap(doc);
-        String runScript = stringValue(onSave.get("runScript"));
-        if (runScript == null || runScript.isBlank()) return;
-
-        String scriptPath = resolveRelative(docPath, runScript);
+            @Nullable String fenceScript, String editorId) {
+        if (fenceScript == null || fenceScript.isBlank()) return;
+        String scriptPath = resolveRelative(docPath, stripVanceScheme(fenceScript));
         if (!scriptPath.toLowerCase(Locale.ROOT).endsWith(".js")) {
             throw new ToolException(
-                    "onSave.runScript must be a .js document (got '" + scriptPath
+                    "saveScript must be a .js document (got '" + scriptPath
                             + "') — only in-JVM JavaScript is supported in v1");
         }
         DocumentDocument scriptDoc = documentService.findByPath(tenantId, projectId, scriptPath)
-                .orElseThrow(() -> new ToolException("onSave script not found: " + scriptPath));
+                .orElseThrow(() -> new ToolException("saveScript not found: " + scriptPath));
         String code = readContent(scriptDoc);
 
-        // When the form's settings request it, attach a per-form system
-        // session so the script can use session-scoped tools / LLM.
-        String sessionId = boolOf(onSave.get("session"))
-                ? resolveFormSession(tenantId, projectId, docPath, editorId)
-                : null;
         ToolInvocationContext scope =
-                new ToolInvocationContext(tenantId, projectId, sessionId, null, editorId);
+                new ToolInvocationContext(tenantId, projectId, null, null, editorId);
         ContextToolsApi tools = new ContextToolsApi(toolDispatcher, scope);
         try {
             scriptExecutor.run(new ScriptRequest(
-                    "js", code, "form-onSave:" + scriptPath, tools, ON_SAVE_TIMEOUT));
+                    "js", code, "form-saveScript:" + scriptPath, tools, ON_SAVE_TIMEOUT));
             log.info("WorkspaceFormService.runOnSave tenant='{}' script='{}' ok",
                     tenantId, scriptPath);
         } catch (ScriptExecutionException e) {
             log.warn("WorkspaceFormService.runOnSave tenant='{}' script='{}' failed [{}]: {}",
                     tenantId, scriptPath, e.errorClass(), e.getMessage());
             throw new ToolException(
-                    "onSave script '" + scriptPath + "' failed: " + e.getMessage());
+                    "saveScript '" + scriptPath + "' failed: " + e.getMessage());
         }
     }
 
-    /**
-     * Reuse-or-create a per-form system session (deterministic display
-     * name {@code _form_<docPath>}, {@code system=true}) so an onSave
-     * script that opted in ({@code $meta.onSave.session: true}) runs
-     * inside a session scope. Same lazy-reuse pattern as the scheduler /
-     * hook system sessions, but workspace-form-owned (not scheduler).
-     */
-    private String resolveFormSession(
-            String tenantId, String projectId, String docPath, String runAs) {
-        String displayName = "_form_" + docPath.replaceAll("[^a-zA-Z0-9._-]", "_");
-        return sessionService.findSystemSession(tenantId, projectId, displayName)
-                .map(SessionDocument::getSessionId)
-                .orElseGet(() -> {
-                    SessionDocument created = sessionService.create(
-                            tenantId, runAs, projectId, displayName,
-                            Profiles.DAEMON, "workspace-form", null, /*system*/ true);
-                    sessionService.markBootstrapped(created.getSessionId());
-                    return created.getSessionId();
-                });
-    }
+    // ---- helpers -------------------------------------------------------
 
-    // ---- $meta helpers -------------------------------------------------
-
-    /** The mutable {@code $meta} map (created if absent). */
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> metaMap(Map<String, Object> doc) {
-        Object meta = doc.get("$meta");
-        return meta instanceof Map<?, ?> m
-                ? (Map<String, Object>) m
-                : new LinkedHashMap<>();
-    }
-
-    /** The mutable {@code $meta.form} map (created if absent). */
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> formMap(Map<String, Object> doc) {
-        Object form = metaMap(doc).get("form");
-        return form instanceof Map<?, ?> m
-                ? (Map<String, Object>) m
-                : new LinkedHashMap<>();
-    }
-
-    /** The {@code $meta.onSave} map (empty if absent). */
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> onSaveMap(Map<String, Object> doc) {
-        Object onSave = metaMap(doc).get("onSave");
-        return onSave instanceof Map<?, ?> m
-                ? (Map<String, Object>) m
-                : new LinkedHashMap<>();
-    }
-
-    /** Native RecordsView column names, derived from the form fields. */
-    private static List<String> schemaNames(Map<String, Object> form) {
-        Object fields = form.get("fields");
-        List<String> names = new ArrayList<>();
-        if (fields instanceof List<?> list) {
-            for (Object o : list) {
-                if (o instanceof Map<?, ?> m && m.get("name") != null) {
-                    names.add(m.get("name").toString());
-                }
-            }
+    /** Ordered union of keys across all record rows (schema fallback). */
+    private static List<String> unionKeys(List<Map<String, Object>> rows) {
+        java.util.LinkedHashSet<String> keys = new java.util.LinkedHashSet<>();
+        for (Map<String, Object> row : rows) {
+            if (row != null) for (String k : row.keySet()) keys.add(k);
         }
-        return names;
+        return new ArrayList<>(keys);
     }
-
-    private static List<String> namesOf(List<Map<String, Object>> fieldMaps) {
-        List<String> names = new ArrayList<>();
-        for (Map<String, Object> f : fieldMaps) {
-            if (f.get("name") != null) names.add(f.get("name").toString());
-        }
-        return names;
-    }
-
-    private static boolean boolOf(@Nullable Object o) {
-        if (o instanceof Boolean b) return b;
-        return o != null && Boolean.parseBoolean(o.toString());
-    }
-
-    // ---- field parsing -------------------------------------------------
-
-    static List<FormFieldDto> parseFieldsFromList(
-            ObjectMapper objectMapper, @Nullable Object fields, String docPath) {
-        if (!(fields instanceof List<?> list)) return new ArrayList<>();
-        // Be lenient: a field that omits a primitive key (e.g. `required`)
-        // is valid YAML and must default, not blow up. Jackson 3 enables
-        // FAIL_ON_NULL_FOR_PRIMITIVES by default, so derive a tolerant view.
-        ObjectMapper lenient = objectMapper.rebuild()
-                .configure(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES, false)
-                .build();
-        try {
-            return lenient.convertValue(list, new TypeReference<List<FormFieldDto>>() {});
-        } catch (RuntimeException e) {
-            throw new ToolException(
-                    "form document '" + docPath + "' has an invalid $meta.form.fields schema: "
-                            + e.getMessage());
-        }
-    }
-
-    // ---- I/O helpers ---------------------------------------------------
 
     private void writeDoc(String docId, String docPath, Map<String, Object> doc, String editorId) {
         documentService.replaceContent(
@@ -440,15 +224,23 @@ public class WorkspaceFormService {
         return new Yaml(opts).dump(data);
     }
 
-    private static @Nullable String stringValue(Object o) {
-        return o == null ? null : o.toString();
-    }
-
     private static String slugify(String name) {
         if (name == null) return "";
         return name.strip().toLowerCase(Locale.ROOT)
                 .replaceAll("[^a-z0-9]+", "-")
                 .replaceAll("(^-+)|(-+$)", "");
+    }
+
+    /**
+     * Strip a leading {@code vance:} scheme from a fence-supplied script
+     * reference. The remainder keeps its leading {@code /} (if any) so
+     * {@link #resolveRelative} treats it as project-absolute; a bare name
+     * ({@code vance:update_all.js}) resolves relative to the doc's folder.
+     */
+    static String stripVanceScheme(String ref) {
+        String s = ref.strip();
+        if (s.startsWith("vance:")) s = s.substring("vance:".length());
+        return s;
     }
 
     /**

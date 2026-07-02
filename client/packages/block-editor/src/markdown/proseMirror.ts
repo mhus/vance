@@ -104,9 +104,20 @@ function blockToNode(b: Block): JSONContent {
     case 'embed':
       return { type: 'vanceEmbed', attrs: { uri: b.uri } };
     case 'form':
-      return { type: 'vanceForm', attrs: { config: b.config } };
+      return {
+        type: 'vanceForm',
+        attrs: { config: b.config, saveScript: b.saveScript, form: b.form },
+      };
     case 'input':
-      return { type: 'vanceInput', attrs: { config: b.config, multiline: b.multiline } };
+      return {
+        type: 'vanceInput',
+        attrs: { config: b.config, multiline: b.multiline, saveScript: b.saveScript },
+      };
+    case 'button':
+      return {
+        type: 'vanceButton',
+        attrs: { type: b.buttonType, script: b.script, title: b.title },
+      };
     case 'columns':
       return {
         type: 'vanceColumns',
@@ -237,12 +248,25 @@ function nodeToBlock(node: JSONContent): Block[] {
     case 'vanceEmbed':
       return [{ kind: 'embed', uri: (node.attrs?.uri as string) ?? '' }];
     case 'vanceForm':
-      return [{ kind: 'form', config: (node.attrs?.config as string) ?? '' }];
+      return [{
+        kind: 'form',
+        config: (node.attrs?.config as string) ?? '',
+        saveScript: (node.attrs?.saveScript as string) ?? '',
+        form: (node.attrs?.form as Record<string, unknown>) ?? { single: false, fields: [] },
+      }];
     case 'vanceInput':
       return [{
         kind: 'input',
         config: (node.attrs?.config as string) ?? '',
         multiline: node.attrs?.multiline === true,
+        saveScript: (node.attrs?.saveScript as string) ?? '',
+      }];
+    case 'vanceButton':
+      return [{
+        kind: 'button',
+        buttonType: (node.attrs?.type as string) ?? 'script',
+        script: (node.attrs?.script as string) ?? '',
+        title: (node.attrs?.title as string) ?? '',
       }];
     case 'vanceColumns': {
       const cols = (node.content ?? []).map((colNode) => ({

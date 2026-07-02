@@ -2,16 +2,16 @@
 /**
  * NodeView for the {@code vance-input} block.
  *
+ * Data (the text body) lives in the file; form-related config (multiline
+ * + the onSave saveScript) lives in the fence (block attributes).
+ *
  * - **work mode** (read-only page): an editable single-line input or
- *   textarea bound to a text document; Save writes the body back (the
- *   front-matter header is preserved server-side) and runs the onSave hook.
- * - **design mode**: a single-line / multi-line toggle plus the onSave
- *   settings (script path + session flag, stored in the document header);
- *   the field is shown disabled as a preview.
+ *   textarea; Save writes the body back and runs the fence `saveScript`.
+ * - **design mode**: single-line / multi-line toggle + a `saveScript`
+ *   input — both written into the fence via `updateAttributes`.
  *
  * I/O is done through the host-provided {@code loadInput} / {@code saveInput}
- * / {@code saveInputSettings} options so the block-editor stays decoupled
- * from REST.
+ * options so the block-editor stays decoupled from REST.
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { NodeViewWrapper } from '@tiptap/vue-3';
@@ -19,13 +19,8 @@ import type { Editor } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 
 interface ExtensionOptions {
-  loadInput?:
-    | ((uri: string) => Promise<{ content: string; runScript: string | null; session: boolean }>)
-    | null;
-  saveInput?: ((uri: string, content: string) => Promise<void>) | null;
-  saveInputSettings?:
-    | ((uri: string, runScript: string | null, session: boolean) => Promise<void>)
-    | null;
+  loadInput?: ((uri: string) => Promise<string>) | null;
+  saveInput?: ((uri: string, content: string, saveScript: string) => Promise<void>) | null;
 }
 
 const props = defineProps<{
@@ -37,6 +32,8 @@ const props = defineProps<{
 
 const config = computed(() => (props.node.attrs?.config as string | null) ?? '');
 const multiline = computed(() => props.node.attrs?.multiline === true);
+const saveScript = computed(() => (props.node.attrs?.saveScript as string | null) ?? '');
+function setSaveScript(v: string) { props.updateAttributes({ saveScript: v }); }
 
 const editable = ref(props.editor.isEditable);
 function syncEditable() { editable.value = props.editor.isEditable; }
@@ -55,11 +52,6 @@ const loading = ref(false);
 const saving = ref(false);
 const error = ref<string | null>(null);
 const savedAt = ref(false);
-
-// onSave config (read from / written to the bound document's header).
-const runScript = ref('');
-const session = ref(false);
-const settingsSaving = ref(false);
 
 const dirty = computed(() => content.value !== baseline.value);
 
@@ -83,10 +75,8 @@ async function load() {
   error.value = null;
   try {
     const loaded = await loader(config.value);
-    content.value = loaded.content ?? '';
+    content.value = loaded ?? '';
     baseline.value = content.value;
-    runScript.value = loaded.runScript ?? '';
-    session.value = loaded.session === true;
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Load failed';
   } finally {
@@ -101,7 +91,7 @@ async function save() {
   error.value = null;
   savedAt.value = false;
   try {
-    await saver(config.value, content.value);
+    await saver(config.value, content.value, saveScript.value);
     baseline.value = content.value;
     savedAt.value = true;
   } catch (e) {
@@ -118,27 +108,6 @@ function cancel() {
 
 function setMultiline(v: boolean) {
   props.updateAttributes({ multiline: v });
-}
-
-// Persist the design-mode onSave settings (script path + session flag) into
-// the bound document's header. Called on change/blur of the settings inputs.
-async function persistSettings() {
-  const saver = props.extension.options.saveInputSettings;
-  if (!config.value || !saver) return;
-  settingsSaving.value = true;
-  error.value = null;
-  try {
-    await saver(config.value, runScript.value.trim() || null, session.value);
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Settings save failed';
-  } finally {
-    settingsSaving.value = false;
-  }
-}
-
-function setSession(v: boolean) {
-  session.value = v;
-  void persistSettings();
 }
 
 onMounted(load);
@@ -185,29 +154,18 @@ onMounted(load);
         contenteditable="false"
       />
 
-      <!-- onSave settings — written into the bound document's header -->
+      <!-- saveScript — lives in the fence (block attribute) -->
       <div class="vance-input__settings" contenteditable="false">
-        <label class="vance-input__settings-label">onSave-Script</label>
+        <label class="vance-input__settings-label">saveScript</label>
         <input
-          v-model="runScript"
+          :value="saveScript"
           type="text"
           class="vance-input__settings-input"
           placeholder="z.B. update.js (relativ zum Ordner, optional)"
-          :disabled="settingsSaving"
-          @blur="persistSettings"
-          @keydown.enter.prevent="persistSettings"
+          @input="setSaveScript(($event.target as HTMLInputElement).value)"
           @mousedown.stop
           @keydown.stop
         />
-        <label class="vance-input__opt">
-          <input
-            type="checkbox"
-            :checked="session"
-            :disabled="settingsSaving"
-            @change="setSession(($event.target as HTMLInputElement).checked)"
-            @mousedown.stop
-          /> Session für Script
-        </label>
       </div>
     </template>
 

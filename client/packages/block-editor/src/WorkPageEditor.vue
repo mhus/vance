@@ -33,6 +33,7 @@ import {
   VanceEmbed,
   VanceForm,
   VanceInput,
+  VanceButton,
   type EmbedDocMeta,
 } from './extensions';
 import { SlashCommands } from './SlashCommands';
@@ -168,21 +169,15 @@ const props = withDefaults(
      * (use, don't restructure). Default {@code true}.
      */
     editable?: boolean;
-    /** Load a `vance-input` block (vance: URI → editable body + onSave config). */
-    loadInput?: (
-      uri: string,
-    ) => Promise<{ content: string; runScript: string | null; session: boolean }>;
-    /** Persist a `vance-input` block's body (header preserved, onSave runs). */
-    saveInput?: (uri: string, content: string) => Promise<void>;
-    /** Persist a `vance-input` block's design-mode onSave settings. */
-    saveInputSettings?: (
-      uri: string,
-      runScript: string | null,
-      session: boolean,
-    ) => Promise<void>;
+    /** Load a `vance-input` block's body text (vance: URI → content). */
+    loadInput?: (uri: string) => Promise<string>;
+    /** Persist a `vance-input` block's body + run its fence saveScript. */
+    saveInput?: (uri: string, content: string, saveScript: string) => Promise<void>;
     /** Open the host input picker (slash `/input`) — pick or create a text
      *  doc, then call back via `insertInput`. */
     openInputPicker?: () => void;
+    /** Run a `vance-button` block's script (by ref) — host resolves + POSTs. */
+    runButtonScript?: (scriptRef: string) => Promise<void>;
   }>(),
   { autoSaveMs: 2000, editable: true },
 );
@@ -388,13 +383,13 @@ const editor = useEditor({
       formComponent: () => props.formComponent ?? null,
     }),
     VanceInput.configure({
-      loadInput: (uri: string) =>
-        props.loadInput?.(uri) ??
-        Promise.resolve({ content: '', runScript: null, session: false }),
-      saveInput: (uri: string, content: string) =>
-        props.saveInput?.(uri, content) ?? Promise.resolve(),
-      saveInputSettings: (uri: string, runScript: string | null, session: boolean) =>
-        props.saveInputSettings?.(uri, runScript, session) ?? Promise.resolve(),
+      loadInput: (uri: string) => props.loadInput?.(uri) ?? Promise.resolve(''),
+      saveInput: (uri: string, content: string, saveScript: string) =>
+        props.saveInput?.(uri, content, saveScript) ?? Promise.resolve(),
+    }),
+    VanceButton.configure({
+      runScript: (scriptRef: string) =>
+        props.runButtonScript?.(scriptRef) ?? Promise.resolve(),
     }),
   ],
   content: initial.value.content,
@@ -782,7 +777,14 @@ function insertForm(config: string) {
   editor.value
     ?.chain()
     .focus()
-    .insertContent({ type: 'vanceForm', attrs: { config } })
+    .insertContent({
+      type: 'vanceForm',
+      attrs: {
+        config,
+        // Starter form definition lives in the fence (block-specific).
+        form: { single: false, fields: [{ name: 'field1', type: 'string', label: 'Field 1' }] },
+      },
+    })
     .run();
 }
 

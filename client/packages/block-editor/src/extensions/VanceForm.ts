@@ -29,6 +29,14 @@ export const VanceForm = Node.create({
   addAttributes() {
     return {
       config: { default: '' },
+      // Optional recompute script, lives in the fence (not the data file).
+      // A vance: URI / path; runs on save.
+      saveScript: { default: '' },
+      // The form definition (single + typed fields). Block-specific, so it
+      // lives in the fence — the data doc keeps only `schema` + `items`.
+      // (Static default; updateForm always sets a fresh object, so the
+      // shared reference is never mutated in place.)
+      form: { default: { single: false, fields: [] } },
     };
   },
 

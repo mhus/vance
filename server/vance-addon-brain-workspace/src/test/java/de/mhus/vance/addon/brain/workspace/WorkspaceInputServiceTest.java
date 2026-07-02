@@ -13,7 +13,6 @@ import de.mhus.vance.brain.script.ScriptExecutor;
 import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
-import de.mhus.vance.shared.session.SessionService;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -22,10 +21,18 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 /**
- * Unit tests for {@link WorkspaceInputService#fileNameFrom(String)} — the
- * deterministic name-to-filename mapping behind the {@code /input} create
- * action. A user-typed extension must be preserved so the document kind
- * follows it; without one the file defaults to {@code .md}.
+ * Unit tests for {@link WorkspaceInputService}. Two groups:
+ *
+ * <ul>
+ *   <li>{@link WorkspaceInputService#fileNameFrom(String)} — the deterministic
+ *       name-to-filename mapping behind the {@code /input} create action. A
+ *       user-typed extension must be preserved so the document kind follows it;
+ *       without one the file defaults to {@code .md}.</li>
+ *   <li>{@code loadInput} / {@code saveInput} — the block edits only the body;
+ *       any front-matter header is stripped on load and preserved on save. The
+ *       recompute {@code saveScript} comes from the block fence, not the file
+ *       header — no {@code $meta.onSave}, no session, no fallback.</li>
+ * </ul>
  */
 class WorkspaceInputServiceTest {
 
@@ -73,14 +80,13 @@ class WorkspaceInputServiceTest {
         assertThat(WorkspaceInputService.fileNameFrom(null)).isNull();
     }
 
-    // ---- load / save body + header round-trip --------------------------
+    // ---- load / save body (fence-only, no header onSave) ---------------
 
     private final DocumentService documentService = mock(DocumentService.class);
     private final ScriptExecutor scriptExecutor = mock(ScriptExecutor.class);
     private final ToolDispatcher toolDispatcher = mock(ToolDispatcher.class);
-    private final SessionService sessionService = mock(SessionService.class);
     private final WorkspaceInputService service = new WorkspaceInputService(
-            documentService, scriptExecutor, toolDispatcher, sessionService);
+            documentService, scriptExecutor, toolDispatcher);
 
     private DocumentDocument docWith(String content) {
         DocumentDocument doc = mock(DocumentDocument.class);
@@ -92,49 +98,41 @@ class WorkspaceInputServiceTest {
     }
 
     @Test
-    void loadInput_withHeader_stripsHeaderAndReadsConfig() {
-        DocumentDocument doc = docWith("---\nonSave: update.js\nsession: true\n---\nhello body\n");
+    void loadInput_withHeader_stripsHeaderAndReturnsBody() {
+        DocumentDocument doc = docWith("---\ntitle: Intro\n---\nhello body\n");
         when(documentService.findByPath("t", "p", "notes/intro.md")).thenReturn(Optional.of(doc));
 
-        WorkspaceInputService.LoadedInput loaded = service.loadInput("t", "p", "notes/intro.md");
-
-        assertThat(loaded.content()).isEqualTo("hello body\n");
-        assertThat(loaded.onSaveScript()).isEqualTo("update.js");
-        assertThat(loaded.onSaveSession()).isTrue();
+        assertThat(service.loadInput("t", "p", "notes/intro.md")).isEqualTo("hello body\n");
     }
 
     @Test
     void loadInput_missingDoc_returnsEmpty() {
         when(documentService.findByPath("t", "p", "notes/intro.md")).thenReturn(Optional.empty());
 
-        WorkspaceInputService.LoadedInput loaded = service.loadInput("t", "p", "notes/intro.md");
-
-        assertThat(loaded.content()).isEmpty();
-        assertThat(loaded.onSaveScript()).isNull();
-        assertThat(loaded.onSaveSession()).isFalse();
+        assertThat(service.loadInput("t", "p", "notes/intro.md")).isEmpty();
     }
 
     @Test
-    void saveInput_preservesHeaderAndSkipsScriptWhenNoHook() {
+    void saveInput_preservesHeaderAndSkipsScriptWhenNoSaveScript() {
         DocumentDocument doc = docWith("---\ntitle: Intro\n---\nold body");
         when(documentService.findByPath("t", "p", "notes/intro.md")).thenReturn(Optional.of(doc));
 
-        service.saveInput("t", "p", "notes/intro.md", "new body", "user-1");
+        service.saveInput("t", "p", "notes/intro.md", "new body", null, "user-1");
 
         assertThat(writtenContent()).isEqualTo("---\ntitle: Intro\n---\nnew body");
-        // No onSave key in the header → the script executor must not run.
+        // No fence saveScript → the script executor must not run.
         verifyNoInteractions(scriptExecutor);
     }
 
     @Test
-    void saveSettings_writesOnSaveHeaderKeysPreservingBody() {
+    void saveInput_blankSaveScript_skipsScript() {
         DocumentDocument doc = docWith("plain body, no header");
         when(documentService.findByPath("t", "p", "notes/intro.md")).thenReturn(Optional.of(doc));
 
-        service.saveSettings("t", "p", "notes/intro.md", "update.js", true, "user-1");
+        service.saveInput("t", "p", "notes/intro.md", "changed", "   ", "user-1");
 
-        assertThat(writtenContent())
-                .isEqualTo("---\nonSave: update.js\nsession: true\n---\nplain body, no header");
+        assertThat(writtenContent()).isEqualTo("changed");
+        verifyNoInteractions(scriptExecutor);
     }
 
     /** The content handed to the single replaceContent call, as a string. */

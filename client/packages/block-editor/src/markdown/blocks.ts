@@ -35,6 +35,10 @@ export type Block =
        */
       kind: 'form';
       config: string;
+      /** Optional recompute script (vance: URI / path) run on save. */
+      saveScript: string;
+      /** Form definition (single + fields) — block-specific, in the fence. */
+      form: Record<string, unknown>;
     }
   | {
       /**
@@ -44,6 +48,19 @@ export type Block =
       kind: 'input';
       config: string;
       multiline: boolean;
+      /** Optional recompute script (vance: URI / path) run on save. */
+      saveScript: string;
+    }
+  | {
+      /**
+       * Clickable button that runs a project script. v1: {@code type:
+       * 'script'}, {@code script} is a vance: URI / path, {@code title}
+       * is the label.
+       */
+      kind: 'button';
+      buttonType: string;
+      script: string;
+      title: string;
     }
   | {
       kind: 'columns';

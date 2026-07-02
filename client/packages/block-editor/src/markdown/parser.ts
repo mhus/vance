@@ -346,12 +346,27 @@ function parseFence(info: string, body: string): Block {
     case 'vance-embed':
       return { kind: 'embed', uri: str(parsed, 'uri') ?? '' };
     case 'vance-form':
-      return { kind: 'form', config: str(parsed, 'config') ?? '' };
+      return {
+        kind: 'form',
+        config: str(parsed, 'config') ?? '',
+        saveScript: str(parsed, 'saveScript') ?? '',
+        form: (parsed.form && typeof parsed.form === 'object' && !Array.isArray(parsed.form))
+          ? (parsed.form as Record<string, unknown>)
+          : { single: false, fields: [] },
+      };
     case 'vance-input':
       return {
         kind: 'input',
         config: str(parsed, 'config') ?? '',
         multiline: parsed.multiline === true,
+        saveScript: str(parsed, 'saveScript') ?? '',
+      };
+    case 'vance-button':
+      return {
+        kind: 'button',
+        buttonType: str(parsed, 'type') ?? 'script',
+        script: str(parsed, 'script') ?? '',
+        title: str(parsed, 'title') ?? '',
       };
     default:
       return { kind: 'unknown-fence', info, body };

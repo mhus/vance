@@ -14,6 +14,7 @@
  */
 import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import KindBox from './KindBox.vue';
+import MarkdownView from './MarkdownView.vue';
 import { kindIcon, kindLabel, resolveRenderer } from '@/kindRenderers/registry';
 import { useDocumentRefStore } from '@/document/documentRefStore';
 import type { EmbedRef } from '@/kindRenderers/parseVanceUri';
@@ -56,6 +57,16 @@ const effectiveKind = computed<string>(() => {
 });
 
 const renderer = computed(() => resolveRenderer(effectiveKind.value, 'embedded'));
+
+// Textual kinds have no structured embedded renderer — instead of a bare
+// card, render their body as Markdown inline (a `kind: text`/`markdown` doc
+// like a computed `durchschnitt.md` is far more useful shown than linked).
+const TEXTUAL_KINDS = new Set(['text', 'markdown', 'md', 'plain']);
+const textBody = computed<string | null>(() => {
+  if (renderer.value || !doc.value) return null;
+  if (!TEXTUAL_KINDS.has(effectiveKind.value)) return null;
+  return doc.value.inlineText ?? '';
+});
 const label = computed(() => kindLabel(effectiveKind.value));
 const icon = computed(() => kindIcon(effectiveKind.value));
 const title = computed(() => doc.value?.title ?? props.embedRef.text ?? props.embedRef.path);
@@ -179,6 +190,7 @@ function onDownload(): void {
       :document="doc"
       :embed-ref="embedRef"
     />
+    <MarkdownView v-else-if="textBody != null" :source="textBody" />
     <div v-else class="kbx-fallback">
       <span class="opacity-70">{{ embedRef.path }}</span>
     </div>

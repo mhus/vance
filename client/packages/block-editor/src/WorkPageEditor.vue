@@ -149,12 +149,12 @@ const props = withDefaults(
     /**
      * Open the host-provided form picker (slash-command {@code /form}
      * triggers this). The host renders a modal listing app-local
-     * edit-config documents; on pick it calls back via {@code insertForm}.
+     * edit-data documents; on pick it calls back via {@code insertForm}.
      */
     openFormPicker?: () => void;
     /**
      * Vue component used to render an editable {@code vance-form} block.
-     * Receives a single {@code config} prop (the edit-config URI), loads
+     * Receives a single {@code data} prop (the edit-data URI), loads
      * the field schema + current values and renders the form with
      * Save / Cancel. Injected from vance-face so the block-editor stays
      * decoupled from the form-engine + REST. When omitted, the NodeView
@@ -380,7 +380,7 @@ const editor = useEditor({
     }),
     VanceForm.configure({
       // Host-provided editable form renderer (form-engine view from
-      // vance-face). The NodeView mounts this with the block's config
+      // vance-face). The NodeView mounts this with the block's data
       // URI. Null → NodeView shows the fallback notice.
       formComponent: () => props.formComponent ?? null,
     }),
@@ -771,18 +771,18 @@ function insertEmbed(uri: string) {
 }
 
 /**
- * Insert a `vance-form` block referencing the given edit-config URI.
+ * Insert a `vance-form` block referencing the given edit-data URI.
  * Used by the host's form picker.
  */
-function insertForm(config: string) {
-  if (!config) return;
+function insertForm(data: string) {
+  if (!data) return;
   editor.value
     ?.chain()
     .focus()
     .insertContent({
       type: 'vanceForm',
       attrs: {
-        config,
+        data,
         // Starter form definition lives in the fence (block-specific).
         form: { single: false, fields: [{ name: 'field1', type: 'string', label: 'Field 1' }] },
       },
@@ -791,12 +791,12 @@ function insertForm(config: string) {
 }
 
 /** Insert a `vance-input` block bound to the given text-document URI. */
-function insertInput(config: string) {
-  if (!config) return;
+function insertInput(data: string) {
+  if (!data) return;
   editor.value
     ?.chain()
     .focus()
-    .insertContent({ type: 'vanceInput', attrs: { config, multiline: false } })
+    .insertContent({ type: 'vanceInput', attrs: { data, multiline: false } })
     .run();
 }
 

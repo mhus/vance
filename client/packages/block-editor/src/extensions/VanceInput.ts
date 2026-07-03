@@ -19,7 +19,7 @@ export const VanceInput = Node.create({
 
   addAttributes() {
     return {
-      config: { default: '' },          // vance: URI of the bound text document
+      data: { default: '' },          // vance: URI of the bound text document
       multiline: { default: false },    // single-line input vs. textarea
       // Recompute script (form-related) — lives in the fence, not the file.
       saveScript: { default: '' },

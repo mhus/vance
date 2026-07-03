@@ -29,12 +29,12 @@ export type Block =
     }
   | {
       /**
-       * Editable data-entry form. References an edit-config document
-       * (via a {@code vance:} URI in {@code config}) that declares the
-       * field schema + target data file. Reactive-data, Schritt 3.
+       * Editable data-entry form. {@code data} is a {@code vance:} URI to
+       * the bound {@code kind: records} document (schema + items); the form
+       * definition + saveScript live in the fence. Reactive-data, Schritt 3.
        */
       kind: 'form';
-      config: string;
+      data: string;
       /** Optional recompute script (vance: URI / path) run on save. */
       saveScript: string;
       /** Opt-in: run the saveScript inside a per-form system session. */
@@ -44,11 +44,11 @@ export type Block =
     }
   | {
       /**
-       * Editable single text value bound to a text document. {@code config}
+       * Editable single text value bound to a text document. {@code data}
        * is a {@code vance:} URI; {@code multiline} picks input vs. textarea.
        */
       kind: 'input';
-      config: string;
+      data: string;
       multiline: boolean;
       /** Optional recompute script (vance: URI / path) run on save. */
       saveScript: string;

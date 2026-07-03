@@ -2,9 +2,9 @@
 /**
  * NodeView for {@code ```vance-form} blocks. Mounts the host-provided
  * form component (injected from vance-face) with the block's
- * {@code config} URI. The host component loads the field schema +
- * current values from the edit-config's target and renders an editable
- * form with explicit Save / Cancel.
+ * {@code data} URI. The host component loads the current records from
+ * the bound data document and renders an editable form with explicit
+ * Save / Cancel.
  *
  * When no host component is configured (e.g. the editor runs outside a
  * Vance host) the NodeView shows a static notice instead of the form —
@@ -28,7 +28,7 @@ const props = defineProps<{
   extension: { options: ExtensionOptions };
 }>();
 
-const config = computed(() => (props.node.attrs?.config as string | null) ?? '');
+const data = computed(() => (props.node.attrs?.data as string | null) ?? '');
 const saveScript = computed(() => (props.node.attrs?.saveScript as string | null) ?? '');
 const session = computed(() => props.node.attrs?.session === true);
 const form = computed(() => props.node.attrs?.form ?? { single: false, fields: [] });
@@ -48,11 +48,11 @@ function updateSession(next: boolean) {
 </script>
 
 <template>
-  <NodeViewWrapper as="aside" class="vance-form" :data-config="config">
+  <NodeViewWrapper as="aside" class="vance-form" :data-src="data">
     <div v-if="hostComponent" class="vance-form__hosted" contenteditable="true">
       <component
         :is="hostComponent"
-        :config="config"
+        :data="data"
         :save-script="saveScript"
         :session="session"
         :form="form"
@@ -64,7 +64,7 @@ function updateSession(next: boolean) {
       <span class="vance-form__icon">▦</span>
       <div class="vance-form__body">
         <div class="vance-form__title">Form</div>
-        <div class="vance-form__path">{{ config }}</div>
+        <div class="vance-form__path">{{ data }}</div>
       </div>
     </div>
   </NodeViewWrapper>

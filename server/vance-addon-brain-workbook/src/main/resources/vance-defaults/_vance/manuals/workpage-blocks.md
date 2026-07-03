@@ -381,13 +381,13 @@ v1 NodeView shows only the card; full inline rendering of vance-kinds
 ## form
 
 ```json
-{ "type": "form", "config": "vance:/apps/ws/data/people.records.json?kind=records",
+{ "type": "form", "data": "vance:/apps/ws/data/people.records.json?kind=records",
   "saveScript": "vance:by-role.js" }
 ```
 
 ```markdown
 ```vance-form
-config: vance:/apps/ws/data/people.records.json?kind=records
+data: vance:/apps/ws/data/people.records.json?kind=records
 saveScript: vance:by-role.js
 form:
   single: false
@@ -402,7 +402,7 @@ form:
 An **editable, typed form** over a `kind: records` data document. The
 data document holds **only** `schema` + `items`; the **form definition**
 (`form:` — fields + single) and the recompute **`saveScript`** live in the
-block's **fence**, not in the file. `config` is the `vance:` URI of the data
+block's **fence**, not in the file. `data` is the `vance:` URI of the data
 doc (create it with `doc_create`, `kind: records`, `items: []`). Use this for
 "user enters structured data, a script derives something" pages.
 
@@ -428,13 +428,13 @@ the full contract. The essentials you'll otherwise get wrong:
 ## input
 
 ```json
-{ "type": "input", "config": "vance:/notes/intro.md?kind=text", "multiline": true,
+{ "type": "input", "data": "vance:/notes/intro.md?kind=text", "multiline": true,
   "saveScript": "vance:update.js" }
 ```
 
 ```markdown
 ```vance-input
-config: vance:/notes/intro.md?kind=text
+data: vance:/notes/intro.md?kind=text
 multiline: true
 saveScript: vance:update.js
 ```
@@ -510,6 +510,6 @@ Headings must be unique; duplicates throw and you disambiguate with `index`. Hea
 | "Picture from the user's upload" | `image`, `src` = `vance:/<workbook>/assets/...?kind=image` |
 | "Reference another Vance document inline" | `embed`, `uri` = `vance:/<path>?kind=<kind>` |
 | "Show the result of another document (computed file, chart)" | `embed`, `uri` = `vance:/<path>?kind=<kind>` |
-| "Let the user fill in structured data (a form)" | `form`, `config` = `vance:/<records-doc>?kind=records` |
-| "Let the user edit one free-text value" | `input`, `config` = `vance:/<text-doc>?kind=text` |
+| "Let the user fill in structured data (a form)" | `form`, `data` = `vance:/<records-doc>?kind=records` |
+| "Let the user edit one free-text value" | `input`, `data` = `vance:/<text-doc>?kind=text` |
 | "A button that runs a script / computes on click" | `button`, `type: script`, `script` = `vance:<script>.js`. For recompute on data save, use the form's/input's fence `saveScript` instead. See `manual_read('workbook-forms')`. |

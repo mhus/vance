@@ -78,16 +78,16 @@ public sealed interface Block
 
     /**
      * {@code ```vance-form} fence — reactive-data form bound to a
-     * {@code kind: records} document ({@code config} = its {@code vance:} URI).
+     * {@code kind: records} document ({@code data} = its {@code vance:} URI).
      */
-    record Form(String config) implements Block {}
+    record Form(String data) implements Block {}
 
     /**
      * {@code ```vance-input} fence — single editable text value bound to a
-     * text document ({@code config} = its {@code vance:} URI); {@code multiline}
+     * text document ({@code data} = its {@code vance:} URI); {@code multiline}
      * toggles textarea vs. single line.
      */
-    record Input(String config, boolean multiline) implements Block {}
+    record Input(String data, boolean multiline) implements Block {}
 
     /** {@code ```vance-toc} fence — auto table-of-contents (no body). */
     record Toc() implements Block {}

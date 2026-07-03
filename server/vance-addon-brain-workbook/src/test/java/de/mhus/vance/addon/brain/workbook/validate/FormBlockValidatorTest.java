@@ -40,7 +40,7 @@ class FormBlockValidatorTest {
         List<Finding> f = validator.validate(
                 formBlock(null, null, fields(Map.of("name", "n", "type", "string"))),
                 ctx(new FakeDocRefs()));
-        assertThat(codes(f)).contains("missing-config");
+        assertThat(codes(f)).contains("missing-data");
     }
 
     @Test
@@ -50,7 +50,7 @@ class FormBlockValidatorTest {
         List<Finding> f = validator.validate(formBlock(
                 "vance:data/x.records.json?kind=records", null,
                 fields(Map.of("name", "n", "type", "string"))), ctx(docs));
-        assertThat(codes(f)).contains("kind-mismatch-config");
+        assertThat(codes(f)).contains("kind-mismatch-data");
     }
 
     @Test
@@ -96,10 +96,10 @@ class FormBlockValidatorTest {
     }
 
     private static FenceBlock formBlock(
-            @Nullable String config, @Nullable String saveScript,
+            @Nullable String data, @Nullable String saveScript,
             List<Map<String, Object>> fields) {
         Map<String, Object> attrs = new LinkedHashMap<>();
-        if (config != null) attrs.put("config", config);
+        if (data != null) attrs.put("data", data);
         if (saveScript != null) attrs.put("saveScript", saveScript);
         Map<String, Object> form = new LinkedHashMap<>();
         form.put("single", false);

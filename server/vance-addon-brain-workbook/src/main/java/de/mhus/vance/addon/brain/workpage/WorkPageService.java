@@ -201,8 +201,8 @@ public class WorkPageService {
                     + (lc.title() == null ? "" : " " + lc.title())
                     + (lc.description() == null ? "" : " " + lc.description());
             case Block.Embed em -> em.uri();
-            case Block.Form fo -> fo.config();
-            case Block.Input in -> in.config();
+            case Block.Form fo -> fo.data();
+            case Block.Input in -> in.data();
             case Block.Toc ignored -> "";
             case Block.Columns cols -> {
                 StringBuilder sb = new StringBuilder();
@@ -341,9 +341,9 @@ public class WorkPageService {
                     str(raw, "title"),
                     str(raw, "description"));
             case "embed" -> new Block.Embed(strOrEmpty(raw, "uri"));
-            case "form" -> new Block.Form(strOrEmpty(raw, "config"));
+            case "form" -> new Block.Form(strOrEmpty(raw, "data"));
             case "input" -> new Block.Input(
-                    strOrEmpty(raw, "config"),
+                    strOrEmpty(raw, "data"),
                     boolValue(raw.get("multiline"), false));
             case "toc", "table-of-contents" -> new Block.Toc();
             case "columns" -> {
@@ -408,10 +408,10 @@ public class WorkPageService {
                 if (lc.description() != null) m.put("description", lc.description());
             }
             case Block.Embed em -> { m.put("type", "embed"); m.put("uri", em.uri()); }
-            case Block.Form fo -> { m.put("type", "form"); m.put("config", fo.config()); }
+            case Block.Form fo -> { m.put("type", "form"); m.put("data", fo.data()); }
             case Block.Input in -> {
                 m.put("type", "input");
-                m.put("config", in.config());
+                m.put("data", in.data());
                 m.put("multiline", in.multiline());
             }
             case Block.Toc ignored -> m.put("type", "toc");

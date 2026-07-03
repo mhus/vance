@@ -32,7 +32,7 @@ const props = defineProps<{
   extension: { options: ExtensionOptions };
 }>();
 
-const config = computed(() => (props.node.attrs?.config as string | null) ?? '');
+const data = computed(() => (props.node.attrs?.data as string | null) ?? '');
 const multiline = computed(() => props.node.attrs?.multiline === true);
 const saveScript = computed(() => (props.node.attrs?.saveScript as string | null) ?? '');
 function setSaveScript(v: string) { props.updateAttributes({ saveScript: v }); }
@@ -74,11 +74,11 @@ watch(
 
 async function load() {
   const loader = props.extension.options.loadInput;
-  if (!config.value || !loader) return;
+  if (!data.value || !loader) return;
   loading.value = true;
   error.value = null;
   try {
-    const loaded = await loader(config.value);
+    const loaded = await loader(data.value);
     content.value = loaded ?? '';
     baseline.value = content.value;
   } catch (e) {
@@ -95,7 +95,7 @@ async function save() {
   error.value = null;
   savedAt.value = false;
   try {
-    await saver(config.value, content.value, saveScript.value, session.value);
+    await saver(data.value, content.value, saveScript.value, session.value);
     baseline.value = content.value;
     savedAt.value = true;
   } catch (e) {
@@ -118,7 +118,7 @@ onMounted(load);
 </script>
 
 <template>
-  <NodeViewWrapper as="aside" class="vance-input" :data-config="config">
+  <NodeViewWrapper as="aside" class="vance-input" :data-src="data">
     <div v-if="error" class="vance-input__error">{{ error }}</div>
 
     <!-- DESIGN: single/multi toggle + disabled preview -->
@@ -140,7 +140,7 @@ onMounted(load);
             @mousedown.stop
           /> Multi line
         </label>
-        <span class="vance-input__path">{{ config }}</span>
+        <span class="vance-input__path">{{ data }}</span>
       </div>
       <textarea
         v-if="multiline"

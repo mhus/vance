@@ -121,10 +121,10 @@ public class WorkPageSerializer {
                 put("uri", em.uri());
             }});
             case Block.Form fo -> renderFence("vance-form", new LinkedHashMap<>() {{
-                put("config", fo.config());
+                put("data", fo.data());
             }});
             case Block.Input in -> renderFence("vance-input", new LinkedHashMap<>() {{
-                put("config", in.config());
+                put("data", in.data());
                 put("multiline", in.multiline());
             }});
             case Block.Toc ignored -> "```vance-toc\n```\n";

@@ -141,8 +141,8 @@ const editorRef = ref<{
   clearLink: () => void;
   currentLinkHref: () => string | null;
   insertEmbed: (uri: string) => void;
-  insertForm: (config: string) => void;
-  insertInput: (config: string) => void;
+  insertForm: (data: string) => void;
+  insertInput: (data: string) => void;
 } | null>(null);
 
 // Asset picker is shared between two destinations: inline image
@@ -202,7 +202,7 @@ function onLinkClear() {
 const embedComponent = inject<Component | null>('vance:embed-component', null);
 
 // Editable-form renderer — vance-face provides a component that takes a
-// single `config` prop (the edit-config URI) and renders the form via
+// single `data` prop (the data doc URI) and renders the form via
 // the shared form-engine. Injected by string key like embed-component;
 // null = not in a vance-face host → block-editor shows a fallback.
 const formComponent = inject<Component | null>('vance:form-component', null);

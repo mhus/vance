@@ -145,7 +145,7 @@ provide('vance:embed-component', VanceEmbedView);
 
 // Same federation-bridge pattern for the editable form block: the
 // remote injects 'vance:form-component' and mounts it with the
-// edit-config `config` URI as the only prop.
+// bound data doc `data` URI as the only prop.
 provide('vance:form-component', VanceFormView);
 
 const { projects: tenantProjects, reload: loadTenantProjects } = useTenantProjects();

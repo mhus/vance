@@ -7,7 +7,7 @@ import java.util.Set;
 import org.springframework.stereotype.Component;
 
 /**
- * Validates a {@code vance-form} fence: the {@code config} data doc
+ * Validates a {@code vance-form} fence: the {@code data} data doc
  * (kind: records), the optional {@code saveScript}, the {@code form:}
  * definition (fields + types), and that the bound records doc carries no
  * legacy {@code $meta.form} / {@code $meta.onSave}.
@@ -26,12 +26,12 @@ public class FormBlockValidator implements BlockValidator {
     @Override
     public List<Finding> validate(FenceBlock b, ValidationContext ctx) {
         List<Finding> out = new ArrayList<>();
-        VanceRef config = Checks.docRef(out, b, ctx, "config", true, "records");
+        VanceRef data = Checks.docRef(out, b, ctx, "data", true, "records");
         Checks.scriptRef(out, b, ctx, "saveScript", false);
         Checks.boolAttr(out, b, "session");
 
         validateForm(out, b);
-        checkDataDoc(out, b, ctx, config);
+        checkDataDoc(out, b, ctx, data);
         return out;
     }
 
@@ -77,14 +77,14 @@ public class FormBlockValidator implements BlockValidator {
     }
 
     private void checkDataDoc(
-            List<Finding> out, FenceBlock b, ValidationContext ctx, VanceRef config) {
-        if (config == null || !ctx.docs().exists(config.path())) return;
-        Map<String, Object> doc = ctx.docs().readYaml(config.path());
+            List<Finding> out, FenceBlock b, ValidationContext ctx, VanceRef data) {
+        if (data == null || !ctx.docs().exists(data.path())) return;
+        Map<String, Object> doc = ctx.docs().readYaml(data.path());
         if (doc == null) return;
         Object meta = doc.get("$meta");
         if (meta instanceof Map<?, ?> m && (m.containsKey("form") || m.containsKey("onSave"))) {
             out.add(Finding.error(b.location(), "legacy-meta",
-                    "data doc '" + config.path() + "' still has $meta.form/$meta.onSave — "
+                    "data doc '" + data.path() + "' still has $meta.form/$meta.onSave — "
                             + "the form definition and saveScript belong in the fence, "
                             + "the records doc holds only schema + items."));
         }

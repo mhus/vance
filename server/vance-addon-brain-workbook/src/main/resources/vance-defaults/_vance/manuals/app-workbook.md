@@ -215,7 +215,7 @@ A workbook page can embed an **editable form** over a `kind: records`
 document, optionally with a script that recomputes derived files (a chart, a
 summary) on Save. Use this when the user wants to *enter structured data and
 have something computed from it*. See `manual_read('workbook-forms')` for the
-`vance-form` fence (`config` + `form:` + `saveScript` — the record file holds
+`vance-form` fence (`data` + `form:` + `saveScript` — the record file holds
 only `schema` + `items`) and what the saveScript can do.
 
 After building or editing fences, run `workbook_validate(folder)` to confirm

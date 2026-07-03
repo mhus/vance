@@ -246,9 +246,9 @@ public class WorkPageParser {
                     str(yamlBody, "title", null),
                     str(yamlBody, "description", null));
             case "vance-embed" -> new Block.Embed(str(yamlBody, "uri", ""));
-            case "vance-form" -> new Block.Form(str(yamlBody, "config", ""));
+            case "vance-form" -> new Block.Form(str(yamlBody, "data", ""));
             case "vance-input" -> new Block.Input(
-                    str(yamlBody, "config", ""),
+                    str(yamlBody, "data", ""),
                     boolVal(yamlBody, "multiline"));
             default -> new Block.UnknownFence(info, body);
         };

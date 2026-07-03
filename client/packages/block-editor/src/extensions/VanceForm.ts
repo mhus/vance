@@ -4,8 +4,9 @@ import VanceFormNodeView from './VanceFormNodeView.vue';
 
 /**
  * Tiptap node for {@code ```vance-form} fence blocks. Carries a
- * {@code config} reference (a {@code vance:} URI) to an <em>edit-config</em>
- * document, which declares a form-field schema + a target data file.
+ * {@code data} reference (a {@code vance:} URI) to the bound
+ * {@code kind: records} data document (schema + items). The form
+ * definition (fields + single) and {@code saveScript} live in the fence.
  * The NodeView mounts a host-provided form component (from vance-face)
  * that loads the schema + current values and renders an editable form
  * with explicit Save / Cancel — mirroring the {@code embedComponent}
@@ -28,7 +29,7 @@ export const VanceForm = Node.create({
 
   addAttributes() {
     return {
-      config: { default: '' },
+      data: { default: '' },
       // Optional recompute script, lives in the fence (not the data file).
       // A vance: URI / path; runs on save.
       saveScript: { default: '' },

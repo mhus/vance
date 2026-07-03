@@ -33,12 +33,12 @@ Keep it **YAML/JSON**. Values are stored as **strings**.
 ## 2. Embed it as a form (the form def lives in the fence)
 
 The **form definition** (fields + single) is block-specific, so it lives in the
-`vance-form` **fence**, not in the record file. Also in the fence: `config`
+`vance-form` **fence**, not in the record file. Also in the fence: `data`
 (the data doc) and optional `saveScript`.
 
 ````
 ```vance-form
-config: vance:/team/people.yaml?kind=records
+data: vance:/team/people.yaml?kind=records
 saveScript: vance:by-role.js
 form:
   single: false            # false = card list (many records); true = one record
@@ -128,7 +128,7 @@ In the workbook the user toggles **Design** (🛠) vs **Work** (✎) mode. In
 Design mode the field builder (fields + single toggle + session checkbox) edits
 the block's fence; "Apply fields" writes the form def back into the fence. In
 Work mode they enter data and Save. You (the model) normally author the whole
-`vance-form` fence (`config` + `saveScript` + `session` + `form:`) directly —
+`vance-form` fence (`data` + `saveScript` + `session` + `form:`) directly —
 no UI step needed.
 
 ## 4b. `/input` — a single editable text bound to a file
@@ -140,7 +140,7 @@ header split.
 
 ````
 ```vance-input
-config: vance:/notes/intro.md?kind=text
+data: vance:/notes/intro.md?kind=text
 multiline: true
 saveScript: vance:update.js
 session: true
@@ -190,7 +190,7 @@ script should run when the user **saves data**.
 After building or editing a workbook, call
 `workbook_validate('<folder-or-page>')` (a folder like `apps/grades` or a
 single `…​.workpage.md`). It statically checks every fence: required keys
-present, `config`/`uri`/`script`/`saveScript` references **exist** with the
+present, `data`/`uri`/`script`/`saveScript` references **exist** with the
 right kind and `.js` extension, field types valid, and no legacy `$meta.form`/
 `$meta.onSave` on the data doc. It's **read-only** — safe to call anytime.
 Fix reported `error`s before telling the user it's done. It does **not** check

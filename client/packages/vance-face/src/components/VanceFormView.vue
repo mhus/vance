@@ -4,7 +4,7 @@
  * (fields + single) lives in the block's fence (`form:` attribute) — it is
  * specific to the block, not the data. The bound `kind: records` document
  * holds only the data (`items`) + a bare `schema` (column names). The
- * fence also carries `config` (the data doc URI) and optional `saveScript`.
+ * fence also carries `data` (the data doc URI) and optional `saveScript`.
  *
  * - **work mode**: renders the fields (single → one form; else → cards with
  *   Add/Remove). Save writes `items` and runs `saveScript`.
@@ -24,7 +24,7 @@ interface FormDef {
 }
 
 const props = defineProps<{
-  config: string;
+  data: string;
   /** Recompute script from the fence (vance: URI / path). */
   saveScript?: string;
   /** Opt-in: run the saveScript inside a per-form system session. */
@@ -175,7 +175,7 @@ watch([() => props.form, pageMode], () => {
 
 // ── Load / save (data only) ───────────────────────────────────────
 async function resolveProject(): Promise<{ projectId: string; path: string }> {
-  const parsed = parseVanceUri(props.config, { text: '', imageStyle: false });
+  const parsed = parseVanceUri(props.data, { text: '', imageStyle: false });
   const projectId = parsed.project ?? (await store.waitForCurrentProject());
   if (!projectId) throw new Error('No project context to resolve form document');
   return { projectId, path: parsed.path };
@@ -217,7 +217,7 @@ async function load() {
     baselineRecords.value = JSON.parse(JSON.stringify(recs));
     if (pageMode.value === 'design') syncDesign();
   } catch (e) {
-    if (e instanceof VanceUriParseError) error.value = `Invalid form document URI: ${props.config}`;
+    if (e instanceof VanceUriParseError) error.value = `Invalid form document URI: ${props.data}`;
     else error.value = e instanceof Error ? e.message : 'Failed to load form';
   } finally {
     loading.value = false;
@@ -268,7 +268,7 @@ onMounted(load);
       <template v-if="pageMode === 'design'">
         <div class="vance-form-view__design-hint">
           Design-Modus — Formular-Felder (im Block gespeichert). Daten:
-          <code>{{ config }}</code>
+          <code>{{ data }}</code>
         </div>
         <div class="vance-form-view__mode-row">
           <label class="vance-form-view__req">

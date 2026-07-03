@@ -77,8 +77,10 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <ul>
  *   <li><b>Malformed JSON / missing fields</b> — the LLM is told
- *       what's missing and asked to retry, up to
- *       {@link #MAX_ACTION_CORRECTIONS}. After that we fall back
+ *       what's missing and asked to retry, up to the caller's
+ *       correction budget
+ *       ({@link de.mhus.vance.brain.ai.ModelInfo#actionLoopCorrections()}).
+ *       After that we fall back
  *       to the longest free-text the model produced this turn,
  *       packaged as an {@code ANSWER}-style outcome (preserves
  *       work, never crashes).</li>
@@ -92,18 +94,6 @@ import tools.jackson.databind.ObjectMapper;
 public abstract class StructuredActionEngine implements ThinkEngine {
 
     private static final Logger log = LoggerFactory.getLogger(StructuredActionEngine.class);
-
-    /**
-     * Global default for the action-loop "free text / invalid action"
-     * correction budget. Mirrors
-     * {@link de.mhus.vance.brain.ai.ModelInfo#DEFAULT_ACTION_LOOP_CORRECTIONS}.
-     * Per-model overrides come from {@code ai-models.yaml} via
-     * {@link de.mhus.vance.brain.ai.ModelInfo#actionLoopCorrections()};
-     * callers pass that value into
-     * {@link #runStructuredActionLoop(AiChat, Function, List,
-     * ThinkEngineContext, ThinkProcessDocument, int, String, int)}.
-     */
-    protected static final int MAX_ACTION_CORRECTIONS = 2;
 
     private final StreamingProperties streamingProperties;
     private final LlmCallTracker llmCallTracker;
@@ -272,28 +262,16 @@ public abstract class StructuredActionEngine implements ThinkEngine {
      * @param process       the running process
      * @param maxIters      per-turn iteration cap
      * @param modelAlias    label for LLM-call telemetry
+     * @param maxCorrections action-loop "free text without tool call"
+     *                      correction budget. Engines pass a per-model
+     *                      value from {@code ai-models.yaml} (via
+     *                      {@link de.mhus.vance.brain.ai.ModelInfo#actionLoopCorrections()},
+     *                      which defaults to
+     *                      {@link de.mhus.vance.brain.ai.ModelInfo#DEFAULT_ACTION_LOOP_CORRECTIONS})
+     *                      so chatty / silent-prone models get more
+     *                      head-room.
      * @return the parsed action plus enough conversation context for
      *         the subclass to synthesise its chat message and status
-     */
-    protected ActionLoopResult runStructuredActionLoop(
-            AiChat aiChat,
-            Function<ContextToolsApi, List<ToolSpecification>> readToolSpecsFactory,
-            List<ChatMessage> messages,
-            ThinkEngineContext ctx,
-            ThinkProcessDocument process,
-            int maxIters,
-            String modelAlias) {
-        return runStructuredActionLoop(aiChat, readToolSpecsFactory, messages,
-                ctx, process, maxIters, modelAlias, MAX_ACTION_CORRECTIONS);
-    }
-
-    /**
-     * Action-loop variant that lets the caller override the action
-     * correction budget. {@link #MAX_ACTION_CORRECTIONS} is the global
-     * default; engines pass a per-model value from
-     * {@code ai-models.yaml} (via
-     * {@link de.mhus.vance.brain.ai.ModelInfo#actionLoopCorrections()})
-     * so chatty / silent-prone models get more head-room.
      */
     protected ActionLoopResult runStructuredActionLoop(
             AiChat aiChat,

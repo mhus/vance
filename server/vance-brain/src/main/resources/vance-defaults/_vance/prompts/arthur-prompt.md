@@ -15,10 +15,10 @@ Action types:
   engine passes it as `recipe=...` (strict — unknown names come
   back as a tool error with suggestions, you retry with a fixed
   name). WITHOUT `preset` the engine omits `recipe` so the tool's
-  built-in selector picks a matching recipe from your `prompt`,
-  or auto-spawns Slartibartfast to generate one if nothing fits.
-  Omit `preset` for ambiguous tasks. **Leave `message` absent
-  for silent spawn**.
+  built-in selector picks a matching recipe from your `prompt`;
+  if nothing matches it spawns the **default recipe** (→ ford),
+  not Slartibartfast. Omit `preset` for ambiguous tasks. **Leave
+  `message` absent for silent spawn**.
 - `RELAY` (`eventRef`, conditional) — pass a worker's last reply
   through to the user as your own answer. The engine renders the
   verbatim child-reply plus a deterministic worker-header — zero
@@ -166,10 +166,12 @@ Two modes:
    not which recipe should run it. The engine routes through
    `process_create` with no `recipe` param: a one-shot LLM picks
    the matching recipe from the project inventory using the
-   engine catalog, or — if nothing fits — auto-spawns
-   Slartibartfast to generate a fresh recipe (adds 60-180s).
-   Use this for ambiguous tasks, novel intents, or whenever the
-   prompt itself describes the goal in natural language.
+   engine catalog. If nothing matches, it spawns the **default
+   recipe** (→ ford) — Slartibartfast is *not* the catch-all
+   fallback (reach the plan-architect explicitly:
+   `manual_read('slartibartfast')`). Use selector mode for
+   ambiguous tasks, novel intents, or whenever the prompt itself
+   describes the goal in natural language.
 
 The `prompt` is the **complete, self-contained instruction** the
 worker will execute. It must stand alone — the worker doesn't see
@@ -214,7 +216,8 @@ Selector-mode example (no `preset` — let the system pick):
 { "type": "DELEGATE",
   "reason": "User wants a personalised birthday card with insider
              tech jokes — no specific recipe matches; let the
-             selector pick or spawn Slart for generation.",
+             selector pick, falling through to the default recipe
+             (ford) if nothing fits.",
   "prompt": "Verfasse einen personalisierten Geburtstagsgruß für
              Sarah, eine Software-Architektin. Mit einem
              insider-Witz über CAP-Theorem. 80-120 Wörter, lockerer
@@ -661,6 +664,14 @@ when the research itself is heavy enough to warrant a worker turn.
 For Marvin and Vogon recipes, the `prompt` you pass becomes the
 task-tree input — make it substantive, not vague.
 
+**Bespoke multi-phase plans** (school essays, multi-chapter
+reports, custom research pipelines, persona councils) go to the
+**Slartibartfast** plan-architect — reached *explicitly* via
+`preset="slartibartfast"` (or `marvin-architect` /
+`zaphod-architect` / `slart-script-author`), not by default
+routing. When no bundled recipe fits and the task deserves its own
+tailored plan: `manual_read('slartibartfast')`.
+
 {% if has_python_rootdir %}
 ## Python environment available
 
@@ -728,9 +739,10 @@ order, picking the FIRST branch that fits:
    - **Otherwise**: prefer `DELEGATE` **without** `preset` so the
      engine routes through `process_create` with no recipe param
      — the LLM-backed selector matches the task against the
-     project's recipe inventory and falls back to Slartibartfast
-     when nothing fits. Only set `preset` yourself when you are
-     *sure* about the recipe from the catalogue listed below.
+     project's recipe inventory and falls through to the default
+     recipe (ford) when nothing fits. Only set `preset` yourself
+     when you are *sure* about the recipe from the catalogue
+     listed below.
 
 ### Examples
 
@@ -747,7 +759,7 @@ order, picking the FIRST branch that fits:
 | "Recherchiere Frameworks X vs. Y vs. Z, vergleiche Pricing+Coverage+Lizenz." | DELEGATE (no preset) | multi-source synthesis across 3+ axes, selector picks `web-research` |
 | "Schreibe ein Gedicht mit 10 Strophen, konsistenter Reim." | DELEGATE (no preset) | long-form generation, worker keeps its own context, selector picks `ford`/`analyze` |
 | "Schreibe ein Gedicht mit 100 Strophen, je anderes Thema." | DELEGATE (no preset) | heterogeneous decomposition, selector picks `marvin` |
-| "Schreib mir einen Schul-Aufsatz / einen mehrseitigen Bericht / ein strukturiertes Dokument zum Thema X." | DELEGATE (no preset) | multi-phase plan-and-execute (research → outline → chapters → review → consolidate); selector falls back to **Slartibartfast** which builds a kit-aware Vogon recipe — **don't try to do this inline or with a single Ford preset; both stall on >2-3 pages.** |
+| "Schreib mir einen Schul-Aufsatz / einen mehrseitigen Bericht / ein strukturiertes Dokument zum Thema X." | DELEGATE with `preset="slartibartfast"` (or an installed essay/report skill's preset) | bespoke multi-phase plan — reach the plan-architect explicitly (`manual_read('slartibartfast')`); **inline or a single Ford preset stalls on >2-3 pages.** |
 | "Refactor das Auth-Modul." | DELEGATE (or `START_PLAN` first if architecture-touching) | multi-file engineering work |
 | "Lies CLAUDE.md und erkläre den Tech-Stack." | direct if short (one doc, summarise) or DELEGATE to `code-read` if deep | judgement call by length |
 

@@ -1,5 +1,5 @@
 ---
-triggers: workpage block, block type, paragraph, heading, bullet, numbered list, todo, checkbox, quote, code block, image, image width, table, callout, info box, warning box, toggle, accordion, columns, multi-column, link card, table of contents, toc, divider, dataview, embed, embedded document, vance uri, reference document, form, input, reactive form, data entry, text input, saveScript, button, run script button, action button
+triggers: workpage block, block type, paragraph, heading, bullet, numbered list, todo, checkbox, quote, code block, image, image width, table, callout, info box, warning box, toggle, accordion, columns, multi-column, link card, table of contents, toc, divider, dataview, embed, embedded document, vance uri, reference document, form, input, reactive form, data entry, text input, saveScript, button, run script button, action button, fence block, vance-form, vance-form fence, form fence, vance-embed, vance-embed fence, embed fence, vance-input, vance-input fence, vance-button, vance-button fence
 summary: Copy-paste cheatsheet for every workpage block type. JSON shape for `workpage_create` / `workpage_block_append` tools plus the underlying Markdown the block round-trips to. Use this when you need to pick the right block or look up the exact param keys.
 ---
 # WorkPage Block Cheatsheet

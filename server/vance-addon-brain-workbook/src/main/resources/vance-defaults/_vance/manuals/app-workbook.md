@@ -217,3 +217,7 @@ summary) on Save. Use this when the user wants to *enter structured data and
 have something computed from it*. See `manual_read('workbook-forms')` for the
 `vance-form` fence (`config` + `form:` + `saveScript` — the record file holds
 only `schema` + `items`) and what the saveScript can do.
+
+After building or editing fences, run `workbook_validate(folder)` to confirm
+all fence references resolve (config/embed targets, `.js` scripts) before
+telling the user it's done — read-only, safe to call anytime.

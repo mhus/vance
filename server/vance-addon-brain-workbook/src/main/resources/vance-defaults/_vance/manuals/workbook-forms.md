@@ -185,6 +185,17 @@ script: vance:update_all.js
 Use `/button` for an explicit "run this now" action; use `/form` when the
 script should run when the user **saves data**.
 
+## 4d. Self-check before you finish
+
+After building or editing a workbook, call
+`workbook_validate('<folder-or-page>')` (a folder like `apps/grades` or a
+single `…​.workpage.md`). It statically checks every fence: required keys
+present, `config`/`uri`/`script`/`saveScript` references **exist** with the
+right kind and `.js` extension, field types valid, and no legacy `$meta.form`/
+`$meta.onSave` on the data doc. It's **read-only** — safe to call anytime.
+Fix reported `error`s before telling the user it's done. It does **not** check
+runtime script logic.
+
 ## 5. Don't
 
 - Don't add a document-change hook to recompute — the trigger is the Save

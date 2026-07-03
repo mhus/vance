@@ -52,6 +52,19 @@ public class WorkbookAppController {
     private final WorkbookFormService formService;
     private final WorkbookInputService inputService;
     private final WorkbookScriptService scriptService;
+    private final de.mhus.vance.addon.brain.workbook.validate.WorkbookValidationService validationService;
+
+    @GetMapping("/brain/{tenant}/addon/workbook/validate")
+    public WorkbookValidationResponse validate(
+            @PathVariable("tenant") String tenant,
+            @RequestParam("projectId") String projectId,
+            @RequestParam("path") String path,
+            HttpServletRequest httpRequest) {
+
+        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.READ);
+        return WorkbookValidationResponse.from(
+                validationService.validate(tenant, projectId, path));
+    }
 
     @GetMapping("/brain/{tenant}/addon/workbook/scan")
     public WorkbookView scan(

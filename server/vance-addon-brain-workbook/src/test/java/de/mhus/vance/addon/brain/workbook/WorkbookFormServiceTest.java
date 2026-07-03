@@ -2,13 +2,44 @@ package de.mhus.vance.addon.brain.workbook;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
  * Unit tests for the deterministic, Mongo-free helpers of
- * {@link WorkbookFormService}: fence saveScript path resolution.
+ * {@link WorkbookFormService}: fence saveScript path resolution + the
+ * extension-aware serialisation (a {@code .json} records doc must contain real
+ * JSON so a saveScript's {@code JSON.parse} works, not YAML).
  */
 class WorkbookFormServiceTest {
+
+    @Test
+    void serialize_jsonExtension_writesRealJson() {
+        Map<String, Object> doc = new LinkedHashMap<>();
+        doc.put("$meta", Map.of("kind", "records"));
+        doc.put("schema", List.of("fach", "note"));
+        doc.put("items", List.of(Map.of("fach", "m", "note", "1")));
+
+        String out = WorkbookFormService.serialize("apps/ws/data/noten.records.json", doc);
+
+        // Real JSON — starts with '{', not the YAML '$meta:' the bug produced.
+        assertThat(out.stripLeading()).startsWith("{");
+        assertThat(out).contains("\"$meta\"").contains("\"kind\" : \"records\"");
+        assertThat(out).doesNotContain("$meta:\n");
+    }
+
+    @Test
+    void serialize_yamlExtension_writesYaml() {
+        Map<String, Object> doc = new LinkedHashMap<>();
+        doc.put("$meta", Map.of("kind", "records"));
+
+        String out = WorkbookFormService.serialize("apps/ws/data/noten.yaml", doc);
+
+        assertThat(out).contains("$meta:");
+        assertThat(out.stripLeading()).doesNotStartWith("{");
+    }
 
     @Test
     void resolveRelative_bareName_isResolvedAgainstDocFolder() {

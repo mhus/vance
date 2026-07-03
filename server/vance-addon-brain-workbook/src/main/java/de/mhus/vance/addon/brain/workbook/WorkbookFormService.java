@@ -29,6 +29,7 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.Yaml;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Backend for the {@code vance-form} block (reactive-data).
@@ -130,7 +131,7 @@ public class WorkbookFormService {
         doc.put("items", new ArrayList<>());
 
         documentService.createText(
-                tenantId, projectId, docPath, displayTitle, null, dumpYaml(doc), editorId);
+                tenantId, projectId, docPath, displayTitle, null, serialize(docPath, doc), editorId);
         log.info("WorkbookFormService.createForm tenant='{}' doc='{}'", tenantId, docPath);
         return docPath;
     }
@@ -214,7 +215,7 @@ public class WorkbookFormService {
     private void writeDoc(String docId, String docPath, Map<String, Object> doc, String editorId) {
         documentService.replaceContent(
                 docId,
-                new ByteArrayInputStream(dumpYaml(doc).getBytes(StandardCharsets.UTF_8)),
+                new ByteArrayInputStream(serialize(docPath, doc).getBytes(StandardCharsets.UTF_8)),
                 DocumentService.mimeFromPath(docPath),
                 editorId);
     }
@@ -248,11 +249,27 @@ public class WorkbookFormService {
         return out;
     }
 
-    private String dumpYaml(Object data) {
+    private static String dumpYaml(Object data) {
         DumperOptions opts = new DumperOptions();
         opts.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
         opts.setPrettyFlow(false);
         return new Yaml(opts).dump(data);
+    }
+
+    private static final JsonMapper JSON = JsonMapper.builder().build();
+
+    /**
+     * Serialize the data document matching its extension so the on-disk
+     * content is what the file name promises: a {@code .json} records doc gets
+     * real JSON (so a saveScript's {@code JSON.parse(read(...))} works),
+     * everything else gets YAML. Reads stay format-agnostic — SnakeYAML parses
+     * JSON as a YAML subset.
+     */
+    static String serialize(String docPath, Object data) {
+        if (docPath.toLowerCase(Locale.ROOT).endsWith(".json")) {
+            return JSON.writerWithDefaultPrettyPrinter().writeValueAsString(data);
+        }
+        return dumpYaml(data);
     }
 
     private static String slugify(String name) {

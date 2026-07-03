@@ -246,10 +246,20 @@ public class WorkPageParser {
                     str(yamlBody, "title", null),
                     str(yamlBody, "description", null));
             case "vance-embed" -> new Block.Embed(str(yamlBody, "uri", ""));
-            case "vance-form" -> new Block.Form(str(yamlBody, "data", ""));
+            case "vance-form" -> new Block.Form(
+                    str(yamlBody, "data", ""),
+                    str(yamlBody, "saveScript", null),
+                    boolVal(yamlBody, "session"),
+                    mapVal(yamlBody, "form"));
             case "vance-input" -> new Block.Input(
                     str(yamlBody, "data", ""),
-                    boolVal(yamlBody, "multiline"));
+                    boolVal(yamlBody, "multiline"),
+                    str(yamlBody, "saveScript", null),
+                    boolVal(yamlBody, "session"));
+            case "vance-button" -> new Block.Button(
+                    str(yamlBody, "type", "script"),
+                    str(yamlBody, "script", ""),
+                    str(yamlBody, "title", null));
             default -> new Block.UnknownFence(info, body);
         };
     }
@@ -293,6 +303,12 @@ public class WorkPageParser {
         Object v = m.get(key);
         if (v instanceof Boolean b) return b;
         return v != null && Boolean.parseBoolean(v.toString());
+    }
+
+    private static @org.jspecify.annotations.Nullable Map<String, Object> mapVal(
+            Map<String, Object> m, String key) {
+        Object v = m.get(key);
+        return v instanceof Map<?, ?> mm ? coerceMap(mm) : null;
     }
 
     private Block.Table parseTable(List<String> lines, int start) {

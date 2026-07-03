@@ -203,6 +203,7 @@ public class WorkPageService {
             case Block.Embed em -> em.uri();
             case Block.Form fo -> fo.data();
             case Block.Input in -> in.data();
+            case Block.Button bt -> bt.title() == null ? "" : bt.title();
             case Block.Toc ignored -> "";
             case Block.Columns cols -> {
                 StringBuilder sb = new StringBuilder();
@@ -341,10 +342,20 @@ public class WorkPageService {
                     str(raw, "title"),
                     str(raw, "description"));
             case "embed" -> new Block.Embed(strOrEmpty(raw, "uri"));
-            case "form" -> new Block.Form(strOrEmpty(raw, "data"));
+            case "form" -> new Block.Form(
+                    strOrEmpty(raw, "data"),
+                    str(raw, "saveScript"),
+                    boolValue(raw.get("session"), false),
+                    mapVal(raw.get("form")));
             case "input" -> new Block.Input(
                     strOrEmpty(raw, "data"),
-                    boolValue(raw.get("multiline"), false));
+                    boolValue(raw.get("multiline"), false),
+                    str(raw, "saveScript"),
+                    boolValue(raw.get("session"), false));
+            case "button" -> new Block.Button(
+                    raw.get("buttonType") != null ? raw.get("buttonType").toString() : "script",
+                    strOrEmpty(raw, "script"),
+                    str(raw, "title"));
             case "toc", "table-of-contents" -> new Block.Toc();
             case "columns" -> {
                 List<Block.Column> cols = new ArrayList<>();
@@ -408,11 +419,25 @@ public class WorkPageService {
                 if (lc.description() != null) m.put("description", lc.description());
             }
             case Block.Embed em -> { m.put("type", "embed"); m.put("uri", em.uri()); }
-            case Block.Form fo -> { m.put("type", "form"); m.put("data", fo.data()); }
+            case Block.Form fo -> {
+                m.put("type", "form");
+                m.put("data", fo.data());
+                if (fo.saveScript() != null) m.put("saveScript", fo.saveScript());
+                if (fo.session()) m.put("session", true);
+                if (fo.form() != null) m.put("form", fo.form());
+            }
             case Block.Input in -> {
                 m.put("type", "input");
                 m.put("data", in.data());
                 m.put("multiline", in.multiline());
+                if (in.saveScript() != null) m.put("saveScript", in.saveScript());
+                if (in.session()) m.put("session", true);
+            }
+            case Block.Button bt -> {
+                m.put("type", "button");
+                m.put("buttonType", bt.buttonType());
+                if (bt.title() != null) m.put("title", bt.title());
+                m.put("script", bt.script());
             }
             case Block.Toc ignored -> m.put("type", "toc");
             case Block.Columns cols -> {
@@ -488,6 +513,15 @@ public class WorkPageService {
             }
         }
         return out;
+    }
+
+    private static @Nullable Map<String, Object> mapVal(@Nullable Object raw) {
+        if (!(raw instanceof Map<?, ?> mm)) return null;
+        Map<String, Object> m = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> e : mm.entrySet()) {
+            if (e.getKey() != null) m.put(e.getKey().toString(), e.getValue());
+        }
+        return m;
     }
 
     private static int intValue(@Nullable Object o, int fallback) {

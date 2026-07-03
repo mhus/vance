@@ -2,6 +2,7 @@ package de.mhus.vance.addon.brain.workbook.validate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import de.mhus.vance.addon.brain.workpage.Block;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -12,10 +13,11 @@ import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 /**
- * Unit tests for {@link FormBlockValidator} using an in-memory {@link DocRefs}
- * — no Spring, no Mongo. Covers the failure paths the log analysis surfaced
- * (missing config, wrong script extension, legacy $meta, bad field type) plus
- * the clean case.
+ * Unit tests for {@link FormBlockValidator} against the canonical
+ * {@link Block.Form} model, using an in-memory {@link DocRefs} — no Spring, no
+ * Mongo, no second parser. Covers the failure paths the log analysis surfaced
+ * (missing data doc, wrong script extension, legacy $meta, bad field type)
+ * plus the clean case.
  */
 class FormBlockValidatorTest {
 
@@ -28,28 +30,27 @@ class FormBlockValidatorTest {
         docs.put("apps/g/data/x.records.json", "records", null);
         docs.put("apps/g/calc.js", "javascript", null);
 
-        List<Finding> f = validator.validate(formBlock(
+        List<Finding> f = validator.validate(form(
                 "vance:data/x.records.json?kind=records", "vance:calc.js",
-                fields(Map.of("name", "note", "type", "integer"))), ctx(docs));
+                field("note", "integer")), ctx(docs));
 
         assertThat(errors(f)).isEmpty();
     }
 
     @Test
-    void missingConfig_isError() {
+    void missingData_isError() {
         List<Finding> f = validator.validate(
-                formBlock(null, null, fields(Map.of("name", "n", "type", "string"))),
-                ctx(new FakeDocRefs()));
+                form("", null, field("n", "string")), ctx(new FakeDocRefs()));
         assertThat(codes(f)).contains("missing-data");
     }
 
     @Test
-    void configWrongKind_warns() {
+    void dataWrongKind_warns() {
         FakeDocRefs docs = new FakeDocRefs();
         docs.put("apps/g/data/x.records.json", "text", null);   // not records
-        List<Finding> f = validator.validate(formBlock(
+        List<Finding> f = validator.validate(form(
                 "vance:data/x.records.json?kind=records", null,
-                fields(Map.of("name", "n", "type", "string"))), ctx(docs));
+                field("n", "string")), ctx(docs));
         assertThat(codes(f)).contains("kind-mismatch-data");
     }
 
@@ -58,9 +59,9 @@ class FormBlockValidatorTest {
         FakeDocRefs docs = new FakeDocRefs();
         docs.put("apps/g/data/x.records.json", "records", null);
         docs.put("apps/g/calc.py", "python", null);
-        List<Finding> f = validator.validate(formBlock(
+        List<Finding> f = validator.validate(form(
                 "vance:data/x.records.json?kind=records", "vance:calc.py",
-                fields(Map.of("name", "n", "type", "string"))), ctx(docs));
+                field("n", "string")), ctx(docs));
         assertThat(codes(f)).contains("not-js-saveScript");
     }
 
@@ -68,9 +69,9 @@ class FormBlockValidatorTest {
     void badFieldType_isError() {
         FakeDocRefs docs = new FakeDocRefs();
         docs.put("apps/g/data/x.records.json", "records", null);
-        List<Finding> f = validator.validate(formBlock(
+        List<Finding> f = validator.validate(form(
                 "vance:data/x.records.json?kind=records", null,
-                fields(Map.of("name", "n", "type", "number"))), ctx(docs));   // no 'number'
+                field("n", "number")), ctx(docs));   // no 'number'
         assertThat(codes(f)).contains("field-bad-type");
     }
 
@@ -79,33 +80,31 @@ class FormBlockValidatorTest {
         FakeDocRefs docs = new FakeDocRefs();
         docs.put("apps/g/data/x.records.json", "records",
                 Map.of("$meta", Map.of("form", Map.of("single", true))));
-        List<Finding> f = validator.validate(formBlock(
+        List<Finding> f = validator.validate(form(
                 "vance:data/x.records.json?kind=records", null,
-                fields(Map.of("name", "n", "type", "string"))), ctx(docs));
+                field("n", "string")), ctx(docs));
         assertThat(codes(f)).contains("legacy-meta");
     }
 
     // ---- helpers -------------------------------------------------------
 
     private static ValidationContext ctx(DocRefs docs) {
-        return new ValidationContext(PAGE, docs);
+        return new ValidationContext(PAGE, PAGE + " (vance-form #1)", docs);
     }
 
-    private static List<Map<String, Object>> fields(Map<String, Object> field) {
-        return List.of(new LinkedHashMap<>(field));
+    private static List<Map<String, Object>> field(String name, String type) {
+        Map<String, Object> f = new LinkedHashMap<>();
+        f.put("name", name);
+        f.put("type", type);
+        return List.of(f);
     }
 
-    private static FenceBlock formBlock(
-            @Nullable String data, @Nullable String saveScript,
-            List<Map<String, Object>> fields) {
-        Map<String, Object> attrs = new LinkedHashMap<>();
-        if (data != null) attrs.put("data", data);
-        if (saveScript != null) attrs.put("saveScript", saveScript);
+    private static Block.Form form(
+            String data, @Nullable String saveScript, List<Map<String, Object>> fields) {
         Map<String, Object> form = new LinkedHashMap<>();
         form.put("single", false);
         form.put("fields", fields);
-        attrs.put("form", form);
-        return new FenceBlock("form", attrs, "", PAGE, 1, null);
+        return new Block.Form(data, saveScript, false, form);
     }
 
     private static List<Finding> errors(List<Finding> f) {

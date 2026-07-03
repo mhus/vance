@@ -2,6 +2,8 @@ package de.mhus.vance.addon.brain.workbook.validate;
 
 import de.mhus.vance.addon.brain.workbook.WorkbookFolderReader;
 import de.mhus.vance.addon.brain.workbook.WorkbookPage;
+import de.mhus.vance.addon.brain.workpage.Block;
+import de.mhus.vance.addon.brain.workpage.WorkPageParser;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.toolpack.ToolException;
@@ -13,35 +15,42 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 import org.yaml.snakeyaml.Yaml;
 
 /**
  * Read-only static validator for a workbook folder or a single workpage.
- * Extracts every {@code vance-*} fence and dispatches it to the matching
- * {@link BlockValidator} (Spring injects the full registry — new block types
- * plug in with no change here), then adds folder-level structure checks.
- * Checks structure + references only, never runtime logic.
+ * Parses each workpage with the <b>canonical</b> {@link WorkPageParser} (the
+ * one server-side fence parser — no second parser) and dispatches every
+ * {@link Block} to the matching {@link BlockValidator} (Spring injects the
+ * full registry — new block types plug in with no change here), then adds
+ * folder-level structure checks. Checks structure + references only, never
+ * runtime logic.
  */
 @Service
 public class WorkbookValidationService {
 
+    /** Fence types this validator covers — used to flag malformed ones. */
+    private static final Set<String> KNOWN_FENCES = Set.of(
+            "vance-form", "vance-input", "vance-button", "vance-embed");
+
     private final DocumentService documentService;
     private final WorkbookFolderReader folderReader;
-    private final FenceExtractor fenceExtractor;
+    private final WorkPageParser workPageParser;
     private final List<BlockValidator> blockValidators;
     private final WorkbookStructureValidator structureValidator;
 
     public WorkbookValidationService(
             DocumentService documentService,
             WorkbookFolderReader folderReader,
-            FenceExtractor fenceExtractor,
+            WorkPageParser workPageParser,
             List<BlockValidator> blockValidators,
             WorkbookStructureValidator structureValidator) {
         this.documentService = documentService;
         this.folderReader = folderReader;
-        this.fenceExtractor = fenceExtractor;
+        this.workPageParser = workPageParser;
         this.blockValidators = blockValidators;
         this.structureValidator = structureValidator;
     }
@@ -111,22 +120,48 @@ public class WorkbookValidationService {
     }
 
     private int validatePage(DocumentDocument doc, DocRefs docs, List<Finding> findings) {
-        String body = read(doc);
-        List<FenceBlock> fences = fenceExtractor.extract(doc.getPath(), body);
-        ValidationContext ctx = new ValidationContext(doc.getPath(), docs);
-        for (FenceBlock fence : fences) {
-            if (fence.parseError() != null) {
-                findings.add(Finding.error(fence.location(), "fence-parse",
-                        fence.parseError()));
+        List<Block> blocks = workPageParser.parseDocument(read(doc)).blocks();
+        return walk(blocks, doc.getPath(), docs, findings, new int[]{0});
+    }
+
+    /** Depth-first walk (descends into columns); returns count of checked fences. */
+    private int walk(List<Block> blocks, String docPath, DocRefs docs,
+                     List<Finding> findings, int[] fenceCount) {
+        int checked = 0;
+        for (Block b : blocks) {
+            if (b instanceof Block.Columns cols) {
+                for (Block.Column c : cols.columns()) {
+                    checked += walk(c.blocks(), docPath, docs, findings, fenceCount);
+                }
                 continue;
             }
-            for (BlockValidator v : blockValidators) {
-                if (v.supports(fence.type())) {
-                    findings.addAll(v.validate(fence, ctx));
-                }
+            if (b instanceof Block.UnknownFence uf && KNOWN_FENCES.contains(uf.infoString())) {
+                findings.add(Finding.warning(docPath + " (" + uf.infoString() + ")",
+                        "fence-unparsed",
+                        "could not parse the " + uf.infoString() + " fence — malformed YAML?"));
+                continue;
             }
+            List<BlockValidator> matching = blockValidators.stream()
+                    .filter(v -> v.supports(b)).toList();
+            if (matching.isEmpty()) continue;
+            String location = docPath + " (" + fenceTag(b) + " #" + (++fenceCount[0]) + ")";
+            ValidationContext ctx = new ValidationContext(docPath, location, docs);
+            for (BlockValidator v : matching) {
+                findings.addAll(v.validate(b, ctx));
+            }
+            checked++;
         }
-        return fences.size();
+        return checked;
+    }
+
+    private static String fenceTag(Block b) {
+        return switch (b) {
+            case Block.Form ignored -> "vance-form";
+            case Block.Input ignored -> "vance-input";
+            case Block.Button ignored -> "vance-button";
+            case Block.Embed ignored -> "vance-embed";
+            default -> b.getClass().getSimpleName();
+        };
     }
 
     private String read(DocumentDocument doc) {

@@ -106,16 +106,38 @@ class WorkPageRoundTripTest {
     }
 
     @Test
-    void form_roundTrip() {
+    void form_roundTrip_dataOnly() {
         List<Block> in = List.of(new Block.Form(
-                "vance:/apps/ws/data/noten.records.json?kind=records"));
+                "vance:/apps/ws/data/noten.records.json?kind=records", null, false, null));
         assertRoundTrip(in);
     }
 
     @Test
+    void form_roundTrip_preservesSaveScriptSessionAndFormDef() {
+        // Regression: the fence saveScript/session/form definition must survive
+        // parse → serialize (previously dropped by the lossy Block model).
+        java.util.Map<String, Object> field = new java.util.LinkedHashMap<>();
+        field.put("name", "note");
+        field.put("type", "integer");
+        java.util.Map<String, Object> form = new java.util.LinkedHashMap<>();
+        form.put("single", false);
+        form.put("fields", List.of(field));
+        assertRoundTrip(List.of(new Block.Form(
+                "vance:/apps/ws/data/noten.records.json?kind=records",
+                "vance:calc.js", true, form)));
+    }
+
+    @Test
     void input_roundTrip_multilineAndSingle() {
-        assertRoundTrip(List.of(new Block.Input("vance:/notes/intro.md?kind=text", true)));
-        assertRoundTrip(List.of(new Block.Input("vance:/notes/name.txt?kind=text", false)));
+        assertRoundTrip(List.of(new Block.Input(
+                "vance:/notes/intro.md?kind=text", true, null, false)));
+        assertRoundTrip(List.of(new Block.Input(
+                "vance:/notes/name.txt?kind=text", false, "vance:onsave.js", true)));
+    }
+
+    @Test
+    void button_roundTrip() {
+        assertRoundTrip(List.of(new Block.Button("script", "vance:run.js", "Recompute")));
     }
 
     @Test

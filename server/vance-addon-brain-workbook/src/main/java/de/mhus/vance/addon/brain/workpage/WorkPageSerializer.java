@@ -122,10 +122,20 @@ public class WorkPageSerializer {
             }});
             case Block.Form fo -> renderFence("vance-form", new LinkedHashMap<>() {{
                 put("data", fo.data());
+                if (fo.saveScript() != null) put("saveScript", fo.saveScript());
+                if (fo.session()) put("session", true);
+                if (fo.form() != null && !fo.form().isEmpty()) put("form", fo.form());
             }});
             case Block.Input in -> renderFence("vance-input", new LinkedHashMap<>() {{
                 put("data", in.data());
                 put("multiline", in.multiline());
+                if (in.saveScript() != null) put("saveScript", in.saveScript());
+                if (in.session()) put("session", true);
+            }});
+            case Block.Button bt -> renderFence("vance-button", new LinkedHashMap<>() {{
+                put("type", bt.buttonType());
+                if (bt.title() != null) put("title", bt.title());
+                put("script", bt.script());
             }});
             case Block.Toc ignored -> "```vance-toc\n```\n";
             case Block.Columns cols -> renderColumns(cols);

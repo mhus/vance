@@ -1,36 +1,34 @@
 package de.mhus.vance.addon.brain.workbook.validate;
 
+import de.mhus.vance.addon.brain.workpage.Block;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.stereotype.Component;
 
 /**
- * Validates a {@code vance-button} fence: {@code type} (v1: only
- * {@code script}), the {@code script} {@code .js} document (must exist), and
- * a present {@code title}.
+ * Validates a {@link Block.Button}: {@code buttonType} (v1: only
+ * {@code script}), the {@code script} {@code .js} document (must exist), and a
+ * present {@code title}.
  */
 @Component
 public class ButtonBlockValidator implements BlockValidator {
 
     @Override
-    public boolean supports(String fenceType) {
-        return "button".equals(fenceType);
+    public boolean supports(Block block) {
+        return block instanceof Block.Button;
     }
 
     @Override
-    public List<Finding> validate(FenceBlock b, ValidationContext ctx) {
+    public List<Finding> validate(Block block, ValidationContext ctx) {
+        Block.Button bt = (Block.Button) block;
         List<Finding> out = new ArrayList<>();
-        String type = b.str("type");
-        if (type == null) {
-            out.add(Finding.error(b.location(), "missing-type",
-                    "`type` is required (v1: 'script')."));
-        } else if (!"script".equals(type)) {
-            out.add(Finding.error(b.location(), "bad-type",
-                    "`type: " + type + "` is not supported — v1 only 'script'."));
+        if (!"script".equals(bt.buttonType())) {
+            out.add(Finding.error(ctx.location(), "bad-type",
+                    "`type: " + bt.buttonType() + "` is not supported — v1 only 'script'."));
         }
-        Checks.scriptRef(out, b, ctx, "script", true);
-        if (b.str("title") == null) {
-            out.add(Finding.warning(b.location(), "missing-title",
+        Checks.scriptRef(out, ctx, "script", bt.script(), true);
+        if (bt.title() == null || bt.title().isBlank()) {
+            out.add(Finding.warning(ctx.location(), "missing-title",
                     "`title` is empty — the button has no label."));
         }
         return out;

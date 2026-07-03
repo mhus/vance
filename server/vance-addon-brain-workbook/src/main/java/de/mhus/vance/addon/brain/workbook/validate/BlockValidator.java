@@ -1,24 +1,26 @@
 package de.mhus.vance.addon.brain.workbook.validate;
 
+import de.mhus.vance.addon.brain.workpage.Block;
 import java.util.List;
 
 /**
- * SPI for validating one {@code vance-<type>} fence block. One
+ * SPI for validating one {@link Block} of a parsed workpage. One
  * implementation per block type, registered as a Spring {@code @Component};
  * {@link WorkbookValidationService} injects them all and dispatches by
- * {@link #supports(String)}. <b>Adding a new block type = add one
- * {@code @Component} here — no central switch to touch.</b>
+ * {@link #supports(Block)} (an {@code instanceof} on the sealed {@link Block}
+ * type). <b>Adding a new block type = add one {@code @Component} here — no
+ * central switch to touch.</b>
  *
- * <p>Validators must be pure: they read only the {@link FenceBlock} and the
- * {@link ValidationContext} (reference facade), never mutate, and return
- * findings. Reference/existence checks go through {@code ctx.docs()} so the
- * validator is unit-testable with an in-memory {@link DocRefs}.
+ * <p>Validators consume the <em>canonical</em> {@link Block} model produced by
+ * {@code WorkPageParser} (the single server-side fence parser) — no second
+ * parser. They must be pure: read only the block + the {@link ValidationContext}
+ * reference facade, never mutate, and return findings.
  */
 public interface BlockValidator {
 
-    /** The fence type this validator handles, e.g. {@code "form"}. */
-    boolean supports(String fenceType);
+    /** Whether this validator handles the given block (usually an instanceof). */
+    boolean supports(Block block);
 
-    /** Check one fence; return zero or more findings. */
-    List<Finding> validate(FenceBlock block, ValidationContext ctx);
+    /** Check one block; return zero or more findings. */
+    List<Finding> validate(Block block, ValidationContext ctx);
 }

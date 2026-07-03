@@ -1,30 +1,30 @@
 package de.mhus.vance.addon.brain.workbook.validate;
 
+import de.mhus.vance.addon.brain.workpage.Block;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.stereotype.Component;
 
 /**
- * Validates a {@code vance-input} fence: the {@code data} text document
- * (must exist), the optional {@code saveScript}, and the {@code multiline} /
- * {@code session} booleans. The bound file is treated verbatim, so no kind
- * constraint is enforced on {@code data}.
+ * Validates a {@link Block.Input}: the {@code data} text document (must exist)
+ * and the optional {@code saveScript}. {@code multiline}/{@code session} are
+ * typed booleans in the model, so no attribute check is needed here. The bound
+ * file is treated verbatim → no kind constraint on {@code data}.
  */
 @Component
 public class InputBlockValidator implements BlockValidator {
 
     @Override
-    public boolean supports(String fenceType) {
-        return "input".equals(fenceType);
+    public boolean supports(Block block) {
+        return block instanceof Block.Input;
     }
 
     @Override
-    public List<Finding> validate(FenceBlock b, ValidationContext ctx) {
+    public List<Finding> validate(Block block, ValidationContext ctx) {
+        Block.Input in = (Block.Input) block;
         List<Finding> out = new ArrayList<>();
-        Checks.docRef(out, b, ctx, "data", true, null);
-        Checks.scriptRef(out, b, ctx, "saveScript", false);
-        Checks.boolAttr(out, b, "multiline");
-        Checks.boolAttr(out, b, "session");
+        Checks.docRef(out, ctx, "data", in.data(), true, null);
+        Checks.scriptRef(out, ctx, "saveScript", in.saveScript(), false);
         return out;
     }
 }

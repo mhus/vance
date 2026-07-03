@@ -419,6 +419,9 @@ the full contract. The essentials you'll otherwise get wrong:
   trigger. There is **no** `$meta.onSave` in the file. Add fence `session: true`
   only if the script needs a session (LLM / session-bound tools); default is
   sessionless.
+- **Create the script with `doc_write`/`doc_create`, NOT `work_file_write`.**
+  It's a project document; `work_file_write` targets the Brain WORK sandbox and
+  fails on an app path ("Unknown RootDir").
 - **For a standalone "click to run" action, use the `button` block** (below) —
   not a hidden hook.
 
@@ -464,7 +467,8 @@ A **clickable button** that runs a project `.js` script server-side on click
 (v1 `type: script` only). `script` is a `vance:` URI — a bare name resolves
 relative to the **app folder**, `vance:/abs/path.js` is project-absolute.
 `title` is the label. Use this for an explicit "run this now" action; use
-`form`/`input` `saveScript` when the script should run on data save.
+`form`/`input` `saveScript` when the script should run on data save. The script
+is a project document — create it with `doc_write`, not `work_file_write`.
 
 ## dataview
 

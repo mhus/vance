@@ -83,6 +83,14 @@ Save**, server-side. It reads the fresh data and writes derived files via
 `vance.documents.*`. A failure surfaces to the user as an error; the data stays
 saved.
 
+> **The saveScript is a project DOCUMENT — create it with `doc_write` /
+> `doc_create`, NEVER `work_file_write`.** Everything in a workbook (the data
+> doc, the workpage, and this `.js` saveScript) is a project document resolved
+> by path. `work_file_*` writes to the Brain's WORK sandbox (a separate
+> `WorkspaceRootService` RootDir) — those files are invisible to the workbook,
+> and `work_file_write` on an app path fails with "Unknown RootDir". Same for a
+> `/button` script.
+
 ```js
 // by-role.js — count people per role, write a bar chart next to the data
 const doc = vance.documents.read('team/people.yaml');
@@ -186,6 +194,7 @@ script should run when the user **saves data**.
 - Don't put the `form:` definition in the data file — it belongs in the fence.
 - Don't use Markdown for the data document — use `.yaml`/`.json`.
 - Don't expect typed values back — everything in `items` is a string.
+- Don't create the saveScript (or a `/button` script) with `work_file_write` —
+  it's a project document (`doc_write`/`doc_create`), see §3.
 
-Related: `manual_read('app-workbook')`, `manual_read('workpage-blocks')`,
-`manual_read('doc-kind-records')`.
+Related: `manual_read('app-workbook')`, `manual_read('workpage-blocks')`.

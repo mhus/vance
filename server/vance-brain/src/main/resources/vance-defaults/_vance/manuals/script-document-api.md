@@ -30,9 +30,13 @@ script cannot reach documents in another project, even by guessing a
 path. Permissions are the spawning user's; nothing is escalated.
 
 Paths follow the standard project layout (`notes/foo.md`,
-`data/seed.json`, `scripts/utils.py`). No leading slash. The
-`_bin/` trash folder is read-only to scripts — writes there are
-rejected with a clear error.
+`data/seed.json`, `scripts/utils.py`). A **relative path resolves against
+the run's current path** (`documentBasePath` — for a workbook form/input/
+button script that is the script's own folder, so `data/out.md` lands next
+to the script); a **leading `/` is project-root absolute**. Most runs
+(Cortex, Hactar, Python) set no base, so relative paths are
+project-root-relative there. The `_bin/` trash folder is read-only to
+scripts — writes there are rejected with a clear error.
 
 ## JavaScript surface
 

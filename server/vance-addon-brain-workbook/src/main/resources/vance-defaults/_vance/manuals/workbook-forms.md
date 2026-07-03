@@ -91,22 +91,21 @@ saved.
 > and `work_file_write` on an app path fails with "Unknown RootDir". Same for a
 > `/button` script.
 
-```js
-// by-role.js — count people per role, write a bar chart next to the data
-const doc = vance.documents.read('team/people.yaml');
-// doc is YAML text; parse the items (simple split or JSON if you wrote JSON)
-const rows = (vance.documents.exists('team/people.yaml'))
-  ? (JSON.parse(vance.documents.read('team/people.json') || '{"items":[]}').items || [])
-  : [];
-const counts = {};
-for (const r of rows) counts[r.role] = (counts[r.role] || 0) + 1;
+**Paths are relative to the script's own folder** (its "current path"). A
+saveScript at `apps/grades/calc.js` reading `data/noten.records.json` resolves
+to `apps/grades/data/noten.records.json` — use the same relative paths the
+workbook's fence keys use. A **leading `/` is project-root absolute**
+(`/shared/x.yaml`). This is the documents system (documents + paths), distinct
+from the WORK sandbox (files + directories).
 
-vance.documents.write('team/_by-role.chart.yaml', [
-  '$meta:', '  kind: chart', 'type: bar',
-  'categories: [' + Object.keys(counts).join(', ') + ']',
-  'series:', '  - name: Headcount',
-  '    data: [' + Object.values(counts).join(', ') + ']',
-].join('\n'));
+```js
+// calc.js in apps/grades/ — relative paths resolve against apps/grades/
+const src = JSON.parse(vance.documents.read('data/noten.records.json'));
+const notes = (src.items ?? []).map(r => parseFloat(r.note)).filter(n => !isNaN(n));
+const out = notes.length
+  ? `Notendurchschnitt: **${(notes.reduce((a, b) => a + b, 0) / notes.length).toFixed(2)}**`
+  : 'Noch keine Noten eingetragen.';
+vance.documents.write('data/durchschnitt.md', out);
 ```
 
 **What the script can do** (see `manual_read('python')` analog / Script

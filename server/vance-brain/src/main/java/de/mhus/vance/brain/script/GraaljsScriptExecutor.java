@@ -237,7 +237,7 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
                 effectiveTools, request.recipeName(), deniedToolNames,
                 documentService, request.progressEmitter(),
                 request.notificationEmitter(), paramsForApi,
-                lightLlmService, settingService);
+                lightLlmService, settingService, request.documentBasePath());
         ResourceLimits limits = ResourceLimits.newBuilder()
                 .statementLimit(effectiveStatements, null)
                 .build();

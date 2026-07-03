@@ -57,7 +57,8 @@ public class WorkbookScriptService {
         ContextToolsApi tools = new ContextToolsApi(toolDispatcher, scope);
         try {
             scriptExecutor.run(new ScriptRequest(
-                    "js", code, "button:" + scriptPath, tools, TIMEOUT));
+                    "js", code, "button:" + scriptPath, tools, TIMEOUT)
+                    .withDocumentBasePath(WorkbookFormService.parentPath(scriptPath)));
             log.info("WorkbookScriptService.run tenant='{}' script='{}' ok", tenantId, scriptPath);
         } catch (ScriptExecutionException e) {
             log.warn("WorkbookScriptService.run tenant='{}' script='{}' failed [{}]: {}",

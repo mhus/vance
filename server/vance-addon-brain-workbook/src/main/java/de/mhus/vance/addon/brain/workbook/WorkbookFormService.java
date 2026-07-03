@@ -167,7 +167,8 @@ public class WorkbookFormService {
         ContextToolsApi tools = new ContextToolsApi(toolDispatcher, scope);
         try {
             scriptExecutor.run(new ScriptRequest(
-                    "js", code, "form-saveScript:" + scriptPath, tools, ON_SAVE_TIMEOUT));
+                    "js", code, "form-saveScript:" + scriptPath, tools, ON_SAVE_TIMEOUT)
+                    .withDocumentBasePath(parentPath(scriptPath)));
             log.info("WorkbookFormService.runOnSave tenant='{}' script='{}' session={} ok",
                     tenantId, scriptPath, session);
         } catch (ScriptExecutionException e) {
@@ -282,5 +283,15 @@ public class WorkbookFormService {
         int slash = basePath.lastIndexOf('/');
         String parent = slash >= 0 ? basePath.substring(0, slash) : "";
         return parent.isEmpty() ? rel : parent + "/" + rel;
+    }
+
+    /**
+     * Folder containing {@code path} (empty when at the project root) — the
+     * "current directory" a script's relative {@code vance.documents.*} paths
+     * resolve against.
+     */
+    static String parentPath(String path) {
+        int slash = path.lastIndexOf('/');
+        return slash < 0 ? "" : path.substring(0, slash);
     }
 }

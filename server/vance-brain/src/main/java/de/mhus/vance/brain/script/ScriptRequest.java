@@ -35,7 +35,8 @@ public record ScriptRequest(
         @Nullable String recipeName,
         ScopeLevel scopeLevel,
         @Nullable BiConsumer<String, @Nullable Map<String, Object>> progressEmitter,
-        @Nullable BiConsumer<String, @Nullable NotificationSeverity> notificationEmitter) {
+        @Nullable BiConsumer<String, @Nullable NotificationSeverity> notificationEmitter,
+        @Nullable String documentBasePath) {
 
     public ScriptRequest {
         if (!"js".equals(language)) {
@@ -75,7 +76,7 @@ public record ScriptRequest(
             ContextToolsApi tools,
             Duration timeout) {
         this(language, code, sourceName, tools, timeout, Map.of(), null,
-                ScopeLevel.PROCESS_SCOPED, null, null);
+                ScopeLevel.PROCESS_SCOPED, null, null, null);
     }
 
     /**
@@ -91,7 +92,7 @@ public record ScriptRequest(
             Duration timeout,
             Map<String, @Nullable Object> bindings) {
         this(language, code, sourceName, tools, timeout, bindings, null,
-                ScopeLevel.PROCESS_SCOPED, null, null);
+                ScopeLevel.PROCESS_SCOPED, null, null, null);
     }
 
     /**
@@ -109,7 +110,7 @@ public record ScriptRequest(
             Map<String, @Nullable Object> bindings,
             @Nullable String recipeName) {
         this(language, code, sourceName, tools, timeout, bindings, recipeName,
-                ScopeLevel.PROCESS_SCOPED, null, null);
+                ScopeLevel.PROCESS_SCOPED, null, null, null);
     }
 
     /**
@@ -127,7 +128,7 @@ public record ScriptRequest(
             @Nullable String recipeName,
             ScopeLevel scopeLevel) {
         this(language, code, sourceName, tools, timeout, bindings, recipeName,
-                scopeLevel, null, null);
+                scopeLevel, null, null, null);
     }
 
     /**
@@ -148,6 +149,39 @@ public record ScriptRequest(
             ScopeLevel scopeLevel,
             @Nullable BiConsumer<String, @Nullable Map<String, Object>> progressEmitter) {
         this(language, code, sourceName, tools, timeout, bindings, recipeName,
-                scopeLevel, progressEmitter, null);
+                scopeLevel, progressEmitter, null, null);
+    }
+
+    /**
+     * 10-argument convenience — the historical "full" shape before
+     * {@code documentBasePath} was added. Defaults {@code documentBasePath}
+     * to {@code null} (project-root-relative document paths); callers that
+     * need a base use {@link #withDocumentBasePath}.
+     */
+    public ScriptRequest(
+            String language,
+            String code,
+            @Nullable String sourceName,
+            ContextToolsApi tools,
+            Duration timeout,
+            Map<String, @Nullable Object> bindings,
+            @Nullable String recipeName,
+            ScopeLevel scopeLevel,
+            @Nullable BiConsumer<String, @Nullable Map<String, Object>> progressEmitter,
+            @Nullable BiConsumer<String, @Nullable NotificationSeverity> notificationEmitter) {
+        this(language, code, sourceName, tools, timeout, bindings, recipeName,
+                scopeLevel, progressEmitter, notificationEmitter, null);
+    }
+
+    /**
+     * Copy with the {@code documentBasePath} set — the "current directory"
+     * that {@code vance.documents.*} resolves relative paths against
+     * ({@code /abs} paths stay project-root-absolute). Used by the workbook
+     * form/input/button runs to set the base to the script's own folder;
+     * {@code null}/empty (the default) keeps paths project-root-relative.
+     */
+    public ScriptRequest withDocumentBasePath(@Nullable String dir) {
+        return new ScriptRequest(language, code, sourceName, tools, timeout, bindings,
+                recipeName, scopeLevel, progressEmitter, notificationEmitter, dir);
     }
 }

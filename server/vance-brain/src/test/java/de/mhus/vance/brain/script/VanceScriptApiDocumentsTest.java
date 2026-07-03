@@ -196,6 +196,51 @@ class VanceScriptApiDocumentsTest {
         assertThat(noDocs.documents).isNull();
     }
 
+    // ─── documentBasePath resolution (current path) ──────────────────────
+
+    @Test
+    void basePath_relativeWrite_resolvesUnderBasePath() {
+        VanceScriptApi scoped = apiWithBasePath("apps/ws");
+        scoped.documents.write("data/out.md", "x");
+        verify(documentService).upsertText(
+                eq("acme"), eq("proj"), eq("apps/ws/data/out.md"),
+                eq(null), eq(null), eq("x"), eq("alice"));
+    }
+
+    @Test
+    void basePath_relativeRead_resolvesUnderBasePath() {
+        DocumentDocument doc = doc("apps/ws/data/in.json", "{}");
+        when(documentService.findByPath("acme", "proj", "apps/ws/data/in.json"))
+                .thenReturn(Optional.of(doc));
+        when(documentService.readContent(doc)).thenReturn("{}");
+
+        assertThat(apiWithBasePath("apps/ws").documents.read("data/in.json")).isEqualTo("{}");
+    }
+
+    @Test
+    void basePath_leadingSlash_isProjectRootAbsolute() {
+        VanceScriptApi scoped = apiWithBasePath("apps/ws");
+        scoped.documents.write("/shared/g.md", "x");
+        verify(documentService).upsertText(
+                eq("acme"), eq("proj"), eq("shared/g.md"),
+                eq(null), eq(null), eq("x"), eq("alice"));
+    }
+
+    @Test
+    void noBasePath_relativePathStaysProjectRootRelative() {
+        // Default (no base) must be unchanged behaviour for other consumers.
+        api.documents.write("data/out.md", "x");
+        verify(documentService).upsertText(
+                eq("acme"), eq("proj"), eq("data/out.md"),
+                eq(null), eq(null), eq("x"), eq("alice"));
+    }
+
+    private VanceScriptApi apiWithBasePath(String basePath) {
+        return new VanceScriptApi(
+                contextTools("acme", "proj", "sess", "proc", "alice"),
+                null, Set.of(), documentService, null, null, null, null, null, basePath);
+    }
+
     // ─── helpers ─────────────────────────────────────────────────────────
 
     private static ContextToolsApi contextTools(

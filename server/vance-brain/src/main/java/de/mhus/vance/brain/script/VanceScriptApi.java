@@ -200,7 +200,7 @@ public final class VanceScriptApi {
         this.params = Map.of();
         this.documents = documentService == null
                 ? null
-                : new ScriptDocumentApi(documentService, toolsApi.scope());
+                : new ScriptDocumentApi(documentService, toolsApi.scope(), null);
         this.llm = null;
         this.settings = null;
     }
@@ -223,7 +223,7 @@ public final class VanceScriptApi {
                                   @Nullable NotificationSeverity> notificationEmitter,
                           @Nullable Map<String, Object> paramsMap) {
         this(toolsApi, recipeName, deniedToolNames, documentService,
-                progressEmitter, notificationEmitter, paramsMap, null, null);
+                progressEmitter, notificationEmitter, paramsMap, null, null, null);
     }
 
     public VanceScriptApi(ContextToolsApi toolsApi,
@@ -237,14 +237,13 @@ public final class VanceScriptApi {
                           @Nullable Map<String, Object> paramsMap,
                           @Nullable LightLlmService lightLlmService) {
         this(toolsApi, recipeName, deniedToolNames, documentService,
-                progressEmitter, notificationEmitter, paramsMap, lightLlmService, null);
+                progressEmitter, notificationEmitter, paramsMap, lightLlmService, null, null);
     }
 
     /**
      * 9-arg constructor adding {@code settingService} — wires the
-     * {@code vance.settings} surface. Pass {@code null} to leave
-     * {@code vance.settings} unset. GraaljsScriptExecutor uses this
-     * constructor to inject the Spring-managed bean.
+     * {@code vance.settings} surface. Delegates with a {@code null}
+     * {@code documentBasePath} (project-root-relative document paths).
      */
     public VanceScriptApi(ContextToolsApi toolsApi,
                           @Nullable String recipeName,
@@ -257,6 +256,29 @@ public final class VanceScriptApi {
                           @Nullable Map<String, Object> paramsMap,
                           @Nullable LightLlmService lightLlmService,
                           @Nullable SettingService settingService) {
+        this(toolsApi, recipeName, deniedToolNames, documentService, progressEmitter,
+                notificationEmitter, paramsMap, lightLlmService, settingService, null);
+    }
+
+    /**
+     * 10-arg canonical constructor — adds {@code documentBasePath}, the
+     * "current path" that {@code vance.documents.*} resolves relative paths
+     * against ({@code /abs} stays project-root). {@code null}/empty keeps
+     * document paths project-root-relative. GraaljsScriptExecutor uses this,
+     * threading {@code ScriptRequest#documentBasePath}.
+     */
+    public VanceScriptApi(ContextToolsApi toolsApi,
+                          @Nullable String recipeName,
+                          Set<String> deniedToolNames,
+                          @Nullable DocumentService documentService,
+                          @Nullable BiConsumer<String,
+                                  @Nullable Map<String, Object>> progressEmitter,
+                          @Nullable BiConsumer<String,
+                                  @Nullable NotificationSeverity> notificationEmitter,
+                          @Nullable Map<String, Object> paramsMap,
+                          @Nullable LightLlmService lightLlmService,
+                          @Nullable SettingService settingService,
+                          @Nullable String documentBasePath) {
         this.tools = new ScriptToolsApi(toolsApi, deniedToolNames);
         this.context = new ScriptContextView(toolsApi.scope(), recipeName);
         this.log = new ScriptLog(toolsApi.scope());
@@ -266,7 +288,7 @@ public final class VanceScriptApi {
                 : java.util.Collections.unmodifiableMap(new LinkedHashMap<>(paramsMap));
         this.documents = documentService == null
                 ? null
-                : new ScriptDocumentApi(documentService, toolsApi.scope());
+                : new ScriptDocumentApi(documentService, toolsApi.scope(), documentBasePath);
         this.llm = lightLlmService == null
                 ? null
                 : new ScriptLightLlmApi(lightLlmService, toolsApi.scope());
@@ -549,10 +571,36 @@ public final class VanceScriptApi {
 
         private final DocumentService documentService;
         private final ToolInvocationContext scope;
+        /** "Current directory" — relative paths resolve against it. "" = project root. */
+        private final String basePath;
 
-        ScriptDocumentApi(DocumentService documentService, ToolInvocationContext scope) {
+        ScriptDocumentApi(DocumentService documentService, ToolInvocationContext scope,
+                          @Nullable String basePath) {
             this.documentService = documentService;
             this.scope = scope;
+            this.basePath = normalizeBasePath(basePath);
+        }
+
+        /**
+         * Resolve a script-supplied path: a leading {@code /} is
+         * project-root-absolute (slash stripped); anything else is relative
+         * to {@link #basePath} (the script's folder). With an empty basePath
+         * (default) relative paths stay project-root-relative — unchanged
+         * behaviour for non-workbook script runs.
+         */
+        private String resolve(String path) {
+            if (path.startsWith("/")) return path.substring(1);
+            if (basePath.isEmpty()) return path;
+            if (path.isEmpty()) return basePath;
+            return basePath + "/" + path;
+        }
+
+        private static String normalizeBasePath(@Nullable String base) {
+            if (base == null) return "";
+            String b = base.strip();
+            while (b.startsWith("/")) b = b.substring(1);
+            while (b.endsWith("/")) b = b.substring(0, b.length() - 1);
+            return b;
         }
 
         /**
@@ -578,14 +626,15 @@ public final class VanceScriptApi {
                 throw new ScriptHostException(
                         "vance.documents.write: content must not be null", null);
             }
-            if (path.startsWith(DocumentService.TRASH_FOLDER_PREFIX)) {
+            String resolved = resolve(path);
+            if (resolved.startsWith(DocumentService.TRASH_FOLDER_PREFIX)) {
                 throw new ScriptHostException(
                         "vance.documents.write: cannot write under '"
                                 + DocumentService.TRASH_FOLDER_PREFIX + "'", null);
             }
             documentService.upsertText(
                     scope.tenantId(), scope.projectId(),
-                    path, null, null, content, scope.userId());
+                    resolved, null, null, content, scope.userId());
         }
 
         @HostAccess.Export
@@ -593,7 +642,7 @@ public final class VanceScriptApi {
             requireProject();
             requirePath(path);
             return documentService.findByPath(
-                    scope.tenantId(), scope.projectId(), path).isPresent();
+                    scope.tenantId(), scope.projectId(), resolve(path)).isPresent();
         }
 
         /**
@@ -606,7 +655,7 @@ public final class VanceScriptApi {
             requireProject();
             requirePath(path);
             return documentService.findByPath(
-                            scope.tenantId(), scope.projectId(), path)
+                            scope.tenantId(), scope.projectId(), resolve(path))
                     .map(doc -> {
                         documentService.trash(doc.getId());
                         return true;
@@ -627,11 +676,16 @@ public final class VanceScriptApi {
         @HostAccess.Export
         public List<Map<String, Object>> list(@Nullable String prefix) {
             requireProject();
+            // Resolve the prefix against basePath; null prefix lists the whole
+            // basePath (or project-wide when no basePath is set).
+            String effectivePrefix = prefix == null
+                    ? (basePath.isEmpty() ? null : basePath)
+                    : resolve(prefix);
             List<Map<String, Object>> out = new ArrayList<>();
             // Page through up to 200 at a time — caller can pass a more
             // specific prefix if they hit the cap in practice.
             documentService.listByProjectPaged(
-                            scope.tenantId(), scope.projectId(), 0, 200, prefix)
+                            scope.tenantId(), scope.projectId(), 0, 200, effectivePrefix)
                     .forEach(doc -> out.add(toSummary(doc)));
             return out;
         }
@@ -649,10 +703,11 @@ public final class VanceScriptApi {
         private DocumentDocument requireDoc(String path) {
             requireProject();
             requirePath(path);
+            String resolved = resolve(path);
             return documentService.findByPath(
-                            scope.tenantId(), scope.projectId(), path)
+                            scope.tenantId(), scope.projectId(), resolved)
                     .orElseThrow(() -> new ScriptHostException(
-                            "vance.documents: not found '" + path + "'", null));
+                            "vance.documents: not found '" + resolved + "'", null));
         }
 
         private void requireProject() {

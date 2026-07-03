@@ -149,7 +149,8 @@ public class WorkbookInputService {
         ContextToolsApi tools = new ContextToolsApi(toolDispatcher, scope);
         try {
             scriptExecutor.run(new ScriptRequest(
-                    "js", code, "input-saveScript:" + scriptPath, tools, ON_SAVE_TIMEOUT));
+                    "js", code, "input-saveScript:" + scriptPath, tools, ON_SAVE_TIMEOUT)
+                    .withDocumentBasePath(WorkbookFormService.parentPath(scriptPath)));
             log.info("WorkbookInputService.runOnSave tenant='{}' script='{}' session={} ok",
                     tenantId, scriptPath, session);
         } catch (ScriptExecutionException e) {

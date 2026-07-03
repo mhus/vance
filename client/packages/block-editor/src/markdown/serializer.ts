@@ -105,12 +105,14 @@ function renderBlock(b: Block): string {
     case 'form': {
       const body: Record<string, unknown> = { config: b.config };
       if (b.saveScript) body.saveScript = b.saveScript;
+      if (b.session) body.session = true;
       if (b.form && Object.keys(b.form).length > 0) body.form = b.form;
       return renderFence('vance-form', body);
     }
     case 'input': {
       const body: Record<string, unknown> = { config: b.config, multiline: b.multiline };
       if (b.saveScript) body.saveScript = b.saveScript;
+      if (b.session) body.session = true;
       return renderFence('vance-input', body);
     }
     case 'button':

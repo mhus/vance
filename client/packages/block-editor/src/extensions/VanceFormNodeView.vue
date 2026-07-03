@@ -30,6 +30,7 @@ const props = defineProps<{
 
 const config = computed(() => (props.node.attrs?.config as string | null) ?? '');
 const saveScript = computed(() => (props.node.attrs?.saveScript as string | null) ?? '');
+const session = computed(() => props.node.attrs?.session === true);
 const form = computed(() => props.node.attrs?.form ?? { single: false, fields: [] });
 const hostComponent = computed(
   () => props.extension.options.formComponent?.() ?? null,
@@ -38,6 +39,11 @@ const hostComponent = computed(
 // Persist an edited form definition (design-mode builder) into the fence.
 function updateForm(next: unknown) {
   props.updateAttributes({ form: next });
+}
+
+// Persist the session opt-in (design-mode) into the fence.
+function updateSession(next: boolean) {
+  props.updateAttributes({ session: next });
 }
 </script>
 
@@ -48,8 +54,10 @@ function updateForm(next: unknown) {
         :is="hostComponent"
         :config="config"
         :save-script="saveScript"
+        :session="session"
         :form="form"
         :update-form="updateForm"
+        :update-session="updateSession"
       />
     </div>
     <div v-else class="vance-form__fallback" contenteditable="true">

@@ -27,10 +27,14 @@ const props = defineProps<{
   config: string;
   /** Recompute script from the fence (vance: URI / path). */
   saveScript?: string;
+  /** Opt-in: run the saveScript inside a per-form system session. */
+  session?: boolean;
   /** Form definition from the fence (single + fields). */
   form?: FormDef;
   /** Persist an edited form definition back into the block/fence. */
   updateForm?: (form: { single: boolean; fields: FormFieldDto[] }) => void;
+  /** Persist the session opt-in back into the block/fence. */
+  updateSession?: (session: boolean) => void;
 }>();
 
 const pageMode = inject<Ref<'design' | 'work'>>('vance:page-mode', ref('work'));
@@ -229,6 +233,7 @@ async function save() {
     const params = new URLSearchParams({ projectId, doc: path });
     if (props.saveScript && props.saveScript.trim()) {
       params.set('saveScript', props.saveScript.trim());
+      if (props.session) params.set('session', 'true');
     }
     await brainFetch<void>('POST', `addon/workspace/form/save?${params}`, {
       // schema = column names from the fence form, so the record's native
@@ -269,6 +274,14 @@ onMounted(load);
           <label class="vance-form-view__req">
             <input v-model="designSingle" type="checkbox" />
             Single record (eine Form statt Karten-Liste)
+          </label>
+          <label class="vance-form-view__req">
+            <input
+              type="checkbox"
+              :checked="!!session"
+              @change="updateSession?.(($event.target as HTMLInputElement).checked)"
+            />
+            Session für das Script (nur für LLM / session-gebundene Tools)
           </label>
         </div>
         <div

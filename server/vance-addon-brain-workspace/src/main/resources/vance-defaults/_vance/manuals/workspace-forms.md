@@ -61,6 +61,9 @@ form:
   string is fine — coerced to `{en: …}`), `required`, and `choices` for selects.
 - `saveScript` is a `vance:` URI/path: bare name resolves next to the data file;
   `vance:/abs/path.js` is project-absolute. Omit for no recompute.
+- `session: true` (optional): run the saveScript inside a per-form system
+  session so session-bound APIs (LLM calls etc.) work. Default omitted =
+  sessionless (pure data transform). Only set it if the script needs it.
 
 To show a computed result, embed the output document read-only:
 
@@ -105,31 +108,34 @@ Document API):
   `.exists(path)` / `.delete(path)` / `.meta(path)` — project documents.
 - `vance.settings.get(key)` — read settings.
 - `vance.log.info(...)` — logging.
+- `vance.llm.call(...)` / session-bound tools — **only** when the fence sets
+  `session: true` (see above); otherwise the run is sessionless.
 
 Scope is pinned to the current tenant/project — the script cannot reach other
-projects. The run has **no session**, so session-bound APIs (LLM calls etc.)
-are unavailable — a saveScript is a pure data transformation over
-`vance.documents.*`. Only `.js` is supported; timeout 30 s.
+projects. Only `.js` is supported; timeout 30 s.
 
 ## 4. Design vs. Work mode (UI hint for the user)
 
 In the workspace the user toggles **Design** (🛠) vs **Work** (✎) mode. In
-Design mode the field builder (fields + single toggle) edits the block's fence
-`form:`; "Apply fields" writes it back into the fence. In Work mode they enter
-data and Save. You (the model) normally author the whole `vance-form` fence
-(`config` + `saveScript` + `form:`) directly — no UI step needed.
+Design mode the field builder (fields + single toggle + session checkbox) edits
+the block's fence; "Apply fields" writes the form def back into the fence. In
+Work mode they enter data and Save. You (the model) normally author the whole
+`vance-form` fence (`config` + `saveScript` + `session` + `form:`) directly —
+no UI step needed.
 
 ## 4b. `/input` — a single editable text bound to a file
 
 For **one editable text value** (a note, a description, a single field) use the
 simpler `vance-input` block instead of a full form. It binds to a plain text
-document; Save writes the **whole** file content.
+document and treats it **verbatim** — the whole file content is the value, no
+header split.
 
 ````
 ```vance-input
 config: vance:/notes/intro.md?kind=text
 multiline: true
 saveScript: vance:update.js
+session: true
 ```
 ````
 
@@ -137,10 +143,12 @@ saveScript: vance:update.js
   (no scrollbar). The user picks the bound file (existing text doc or a new one)
   via the `/input` picker when inserting.
 - `saveScript` (optional): a `.js` document — same fence key and semantics as the
-  form (§3), runs on Save with no session. Omit for no recompute.
+  form (§3), runs on Save. Omit for no recompute.
+- `session: true` (optional): run the saveScript inside a per-input system
+  session (for LLM / session-bound tools). Default omitted = sessionless.
 - Work mode: the user edits the text and Saves. Design mode: a single/multi
-  toggle plus a `saveScript` field. The value is the file **body** — a
-  front-matter header, if present, is preserved but not edited.
+  toggle plus a `saveScript` field. The value is the **whole file content** —
+  a text file is plain, there is no header.
 - If you embed the same file elsewhere with `vance-embed`, it refreshes live
   after a save.
 

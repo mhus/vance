@@ -13,6 +13,8 @@ import de.mhus.vance.brain.script.ScriptExecutor;
 import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.shared.session.SessionDocument;
+import de.mhus.vance.shared.session.SessionService;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -28,10 +30,10 @@ import org.mockito.ArgumentCaptor;
  *       name-to-filename mapping behind the {@code /input} create action. A
  *       user-typed extension must be preserved so the document kind follows it;
  *       without one the file defaults to {@code .md}.</li>
- *   <li>{@code loadInput} / {@code saveInput} — the block edits only the body;
- *       any front-matter header is stripped on load and preserved on save. The
- *       recompute {@code saveScript} comes from the block fence, not the file
- *       header — no {@code $meta.onSave}, no session, no fallback.</li>
+ *   <li>{@code loadInput} / {@code saveInput} — the bound file is treated
+ *       verbatim (whole content is the value, no front-matter header split).
+ *       The recompute {@code saveScript} comes from the block fence — no
+ *       {@code $meta.onSave}, no session, no fallback.</li>
  * </ul>
  */
 class WorkspaceInputServiceTest {
@@ -80,29 +82,33 @@ class WorkspaceInputServiceTest {
         assertThat(WorkspaceInputService.fileNameFrom(null)).isNull();
     }
 
-    // ---- load / save body (fence-only, no header onSave) ---------------
+    // ---- load / save content (verbatim, fence-only saveScript) ---------
 
     private final DocumentService documentService = mock(DocumentService.class);
     private final ScriptExecutor scriptExecutor = mock(ScriptExecutor.class);
     private final ToolDispatcher toolDispatcher = mock(ToolDispatcher.class);
+    private final SessionService sessionService = mock(SessionService.class);
     private final WorkspaceInputService service = new WorkspaceInputService(
-            documentService, scriptExecutor, toolDispatcher);
+            documentService, scriptExecutor, toolDispatcher, sessionService);
 
     private DocumentDocument docWith(String content) {
         DocumentDocument doc = mock(DocumentDocument.class);
         lenient().when(doc.getId()).thenReturn("doc-1");
         lenient().when(doc.getPath()).thenReturn("notes/intro.md");
-        when(documentService.loadContent(doc))
+        // Only loadInput reads content back; the verbatim save path does not.
+        lenient().when(documentService.loadContent(doc))
                 .thenReturn(new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8)));
         return doc;
     }
 
     @Test
-    void loadInput_withHeader_stripsHeaderAndReturnsBody() {
+    void loadInput_returnsWholeContentVerbatim() {
+        // A leading '---' block is NOT a header for input — it is content.
         DocumentDocument doc = docWith("---\ntitle: Intro\n---\nhello body\n");
         when(documentService.findByPath("t", "p", "notes/intro.md")).thenReturn(Optional.of(doc));
 
-        assertThat(service.loadInput("t", "p", "notes/intro.md")).isEqualTo("hello body\n");
+        assertThat(service.loadInput("t", "p", "notes/intro.md"))
+                .isEqualTo("---\ntitle: Intro\n---\nhello body\n");
     }
 
     @Test
@@ -113,26 +119,55 @@ class WorkspaceInputServiceTest {
     }
 
     @Test
-    void saveInput_preservesHeaderAndSkipsScriptWhenNoSaveScript() {
-        DocumentDocument doc = docWith("---\ntitle: Intro\n---\nold body");
+    void saveInput_writesContentVerbatimAndSkipsScriptWhenNoSaveScript() {
+        DocumentDocument doc = docWith("old body");
         when(documentService.findByPath("t", "p", "notes/intro.md")).thenReturn(Optional.of(doc));
 
-        service.saveInput("t", "p", "notes/intro.md", "new body", null, "user-1");
+        service.saveInput("t", "p", "notes/intro.md", "new body", null, false, "user-1");
 
-        assertThat(writtenContent()).isEqualTo("---\ntitle: Intro\n---\nnew body");
+        assertThat(writtenContent()).isEqualTo("new body");
         // No fence saveScript → the script executor must not run.
         verifyNoInteractions(scriptExecutor);
+        verifyNoInteractions(sessionService);
     }
 
     @Test
     void saveInput_blankSaveScript_skipsScript() {
-        DocumentDocument doc = docWith("plain body, no header");
+        DocumentDocument doc = docWith("plain body");
         when(documentService.findByPath("t", "p", "notes/intro.md")).thenReturn(Optional.of(doc));
 
-        service.saveInput("t", "p", "notes/intro.md", "changed", "   ", "user-1");
+        service.saveInput("t", "p", "notes/intro.md", "changed", "   ", false, "user-1");
 
         assertThat(writtenContent()).isEqualTo("changed");
         verifyNoInteractions(scriptExecutor);
+    }
+
+    @Test
+    void saveInput_sessionOptIn_reusesOrCreatesPerInputSystemSession() {
+        DocumentDocument doc = docWith("body");
+        when(documentService.findByPath("t", "p", "notes/intro.md")).thenReturn(Optional.of(doc));
+        DocumentDocument scriptDoc = mock(DocumentDocument.class);
+        lenient().when(scriptDoc.getPath()).thenReturn("notes/update.js");
+        when(documentService.findByPath("t", "p", "notes/update.js"))
+                .thenReturn(Optional.of(scriptDoc));
+        when(documentService.loadContent(scriptDoc))
+                .thenReturn(new ByteArrayInputStream("// recompute".getBytes(StandardCharsets.UTF_8)));
+        // No existing system session → the service creates one.
+        when(sessionService.findSystemSession("t", "p", "_input_notes_intro.md"))
+                .thenReturn(Optional.empty());
+        SessionDocument created = mock(SessionDocument.class);
+        when(created.getSessionId()).thenReturn("sess-1");
+        when(sessionService.create(
+                eq("t"), eq("user-1"), eq("p"), eq("_input_notes_intro.md"),
+                any(String.class), eq("workspace-input"), eq(null), eq(true)))
+                .thenReturn(created);
+
+        service.saveInput("t", "p", "notes/intro.md", "body", "vance:update.js", true, "user-1");
+
+        verify(sessionService).create(
+                eq("t"), eq("user-1"), eq("p"), eq("_input_notes_intro.md"),
+                any(String.class), eq("workspace-input"), eq(null), eq(true));
+        verify(sessionService).markBootstrapped("sess-1");
     }
 
     /** The content handed to the single replaceContent call, as a string. */

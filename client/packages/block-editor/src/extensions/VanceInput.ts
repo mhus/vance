@@ -23,6 +23,8 @@ export const VanceInput = Node.create({
       multiline: { default: false },    // single-line input vs. textarea
       // Recompute script (form-related) — lives in the fence, not the file.
       saveScript: { default: '' },
+      // Opt-in: run the saveScript inside a per-input system session.
+      session: { default: false },
     };
   },
 
@@ -47,7 +49,7 @@ export const VanceInput = Node.create({
       /** Host save: write the body back and run the fence saveScript. */
       saveInput: null as
         | null
-        | ((uri: string, content: string, saveScript: string) => Promise<void>),
+        | ((uri: string, content: string, saveScript: string, session: boolean) => Promise<void>),
     };
   },
 

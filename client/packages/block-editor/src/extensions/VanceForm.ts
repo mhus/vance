@@ -32,6 +32,9 @@ export const VanceForm = Node.create({
       // Optional recompute script, lives in the fence (not the data file).
       // A vance: URI / path; runs on save.
       saveScript: { default: '' },
+      // Opt-in: run the saveScript inside a per-form system session (for
+      // session-bound tools / LLM). Default false = sessionless.
+      session: { default: false },
       // The form definition (single + typed fields). Block-specific, so it
       // lives in the fence — the data doc keeps only `schema` + `items`.
       // (Static default; updateForm always sets a fresh object, so the

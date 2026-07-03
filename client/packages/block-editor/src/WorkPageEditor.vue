@@ -172,7 +172,9 @@ const props = withDefaults(
     /** Load a `vance-input` block's body text (vance: URI → content). */
     loadInput?: (uri: string) => Promise<string>;
     /** Persist a `vance-input` block's body + run its fence saveScript. */
-    saveInput?: (uri: string, content: string, saveScript: string) => Promise<void>;
+    saveInput?: (
+      uri: string, content: string, saveScript: string, session: boolean,
+    ) => Promise<void>;
     /** Open the host input picker (slash `/input`) — pick or create a text
      *  doc, then call back via `insertInput`. */
     openInputPicker?: () => void;
@@ -384,8 +386,8 @@ const editor = useEditor({
     }),
     VanceInput.configure({
       loadInput: (uri: string) => props.loadInput?.(uri) ?? Promise.resolve(''),
-      saveInput: (uri: string, content: string, saveScript: string) =>
-        props.saveInput?.(uri, content, saveScript) ?? Promise.resolve(),
+      saveInput: (uri: string, content: string, saveScript: string, session: boolean) =>
+        props.saveInput?.(uri, content, saveScript, session) ?? Promise.resolve(),
     }),
     VanceButton.configure({
       runScript: (scriptRef: string) =>

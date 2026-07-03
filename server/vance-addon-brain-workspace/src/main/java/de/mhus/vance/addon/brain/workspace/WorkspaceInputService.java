@@ -3,11 +3,13 @@ package de.mhus.vance.addon.brain.workspace;
 import de.mhus.vance.brain.script.ScriptExecutionException;
 import de.mhus.vance.brain.script.ScriptExecutor;
 import de.mhus.vance.brain.script.ScriptRequest;
+import de.mhus.vance.api.ws.Profiles;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
-import de.mhus.vance.shared.document.FrontMatter;
+import de.mhus.vance.shared.session.SessionDocument;
+import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.io.ByteArrayInputStream;
@@ -24,13 +26,11 @@ import org.springframework.stereotype.Service;
 
 /**
  * Backend for the {@code vance-input} block — a single editable text value
- * bound to a plain text document. The document may carry a front-matter
- * header (same {@code --- key: value ---} format as markdown, supported for
- * {@code .txt} too); the header holds the optional {@code onSave} config and
- * is split off so the block edits only the body. Save writes the body back
- * under the preserved header and runs the {@code onSave} script (mirroring
- * {@link WorkspaceFormService}); embedded views of the same document refresh
- * live via the documents channel.
+ * bound to a plain text document. The bound file is treated <b>verbatim</b>:
+ * the whole content is the value, there is no front-matter header split. The
+ * recompute {@code saveScript} is block-specific and comes from the fence
+ * (mirroring {@link WorkspaceFormService}); embedded views of the same
+ * document refresh live via the documents channel.
  */
 @Service
 @RequiredArgsConstructor
@@ -40,37 +40,35 @@ public class WorkspaceInputService {
     private final DocumentService documentService;
     private final ScriptExecutor scriptExecutor;
     private final ToolDispatcher toolDispatcher;
+    private final SessionService sessionService;
 
     /** Wall-clock cap for an onSave recompute script. */
     private static final Duration ON_SAVE_TIMEOUT = Duration.ofSeconds(30);
 
-    /** Body text of the bound document (front-matter header stripped). */
+    /** Full text content of the bound document (verbatim, no header split). */
     public String loadInput(String tenantId, String projectId, String docPath) {
         Optional<DocumentDocument> doc = documentService.findByPath(tenantId, projectId, docPath);
         if (doc.isEmpty()) return "";
-        return FrontMatter.parse(read(doc.get())).body();
+        return read(doc.get());
     }
 
     /**
-     * Persist the edited body into the bound document, preserving the
-     * front-matter header, then run the {@code onSave} recompute hook
-     * declared in that header. A new document is created header-less.
+     * Persist the edited content into the bound document verbatim, then run
+     * the fence {@code saveScript} recompute hook (if any). A missing document
+     * is created. When {@code session} is set, the script runs inside a
+     * per-input system session (fence {@code session: true}).
      */
     public void saveInput(
             String tenantId, String projectId, String docPath,
-            @Nullable String content, @Nullable String saveScript, String editorId) {
-        String body = content != null ? content : "";
+            @Nullable String content, @Nullable String saveScript,
+            boolean session, String editorId) {
+        String full = content != null ? content : "";
         Optional<DocumentDocument> existing =
                 documentService.findByPath(tenantId, projectId, docPath);
-        FrontMatter fm = existing.map(d -> FrontMatter.parse(read(d)))
-                .orElseGet(() -> FrontMatter.parse(""));
-        fm.setBody(body);
-        String full = fm.render();
-        byte[] bytes = full.getBytes(StandardCharsets.UTF_8);
         if (existing.isPresent()) {
             documentService.replaceContent(
                     existing.get().getId(),
-                    new ByteArrayInputStream(bytes),
+                    new ByteArrayInputStream(full.getBytes(StandardCharsets.UTF_8)),
                     DocumentService.mimeFromPath(docPath),
                     editorId);
         } else {
@@ -78,9 +76,9 @@ public class WorkspaceInputService {
                     tenantId, projectId, docPath, null, null, full, editorId);
         }
         log.info("WorkspaceInputService.saveInput tenant='{}' doc='{}' len={}",
-                tenantId, docPath, body.length());
+                tenantId, docPath, full.length());
 
-        runOnSave(tenantId, projectId, docPath, fm, saveScript, editorId);
+        runOnSave(tenantId, projectId, docPath, saveScript, session, editorId);
     }
 
     /**
@@ -125,11 +123,12 @@ public class WorkspaceInputService {
      * written: the script reads fresh data via {@code vance.documents.*} and
      * recomputes derived files (live-push updates embeds). A failure surfaces
      * as {@link ToolException} (→ HTTP 500); the data stays written. No
-     * {@code saveScript} → no-op. (No file-header onSave, no session.)
+     * {@code saveScript} → no-op. When {@code session} is set, the run gets a
+     * per-input system session so session-bound tools / LLM are available.
      */
     private void runOnSave(
             String tenantId, String projectId, String docPath,
-            FrontMatter fm, @Nullable String fenceScript, String editorId) {
+            @Nullable String fenceScript, boolean session, String editorId) {
         if (fenceScript == null || fenceScript.isBlank()) return;
         String scriptPath = resolveRelative(
                 docPath, WorkspaceFormService.stripVanceScheme(fenceScript).strip());
@@ -142,20 +141,43 @@ public class WorkspaceInputService {
                 .orElseThrow(() -> new ToolException("saveScript not found: " + scriptPath));
         String code = read(scriptDoc);
 
+        String sessionId = session
+                ? resolveInputSession(tenantId, projectId, docPath, editorId)
+                : null;
         ToolInvocationContext scope =
-                new ToolInvocationContext(tenantId, projectId, null, null, editorId);
+                new ToolInvocationContext(tenantId, projectId, sessionId, null, editorId);
         ContextToolsApi tools = new ContextToolsApi(toolDispatcher, scope);
         try {
             scriptExecutor.run(new ScriptRequest(
                     "js", code, "input-saveScript:" + scriptPath, tools, ON_SAVE_TIMEOUT));
-            log.info("WorkspaceInputService.runOnSave tenant='{}' script='{}' ok",
-                    tenantId, scriptPath);
+            log.info("WorkspaceInputService.runOnSave tenant='{}' script='{}' session={} ok",
+                    tenantId, scriptPath, session);
         } catch (ScriptExecutionException e) {
             log.warn("WorkspaceInputService.runOnSave tenant='{}' script='{}' failed [{}]: {}",
                     tenantId, scriptPath, e.errorClass(), e.getMessage());
             throw new ToolException(
                     "saveScript '" + scriptPath + "' failed: " + e.getMessage());
         }
+    }
+
+    /**
+     * Reuse-or-create a per-input system session (deterministic display name
+     * {@code _input_<docPath>}, {@code system=true}) so a fence {@code saveScript}
+     * that opted in ({@code session: true}) runs inside a session scope. Same
+     * lazy-reuse pattern as {@code WorkspaceFormService#resolveFormSession}.
+     */
+    private String resolveInputSession(
+            String tenantId, String projectId, String docPath, String runAs) {
+        String displayName = "_input_" + docPath.replaceAll("[^a-zA-Z0-9._-]", "_");
+        return sessionService.findSystemSession(tenantId, projectId, displayName)
+                .map(SessionDocument::getSessionId)
+                .orElseGet(() -> {
+                    SessionDocument created = sessionService.create(
+                            tenantId, runAs, projectId, displayName,
+                            Profiles.DAEMON, "workspace-input", null, /*system*/ true);
+                    sessionService.markBootstrapped(created.getSessionId());
+                    return created.getSessionId();
+                });
     }
 
     // ---- helpers -------------------------------------------------------

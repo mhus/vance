@@ -37,6 +37,8 @@ export type Block =
       config: string;
       /** Optional recompute script (vance: URI / path) run on save. */
       saveScript: string;
+      /** Opt-in: run the saveScript inside a per-form system session. */
+      session: boolean;
       /** Form definition (single + fields) — block-specific, in the fence. */
       form: Record<string, unknown>;
     }
@@ -50,6 +52,8 @@ export type Block =
       multiline: boolean;
       /** Optional recompute script (vance: URI / path) run on save. */
       saveScript: string;
+      /** Opt-in: run the saveScript inside a per-input system session. */
+      session: boolean;
     }
   | {
       /**

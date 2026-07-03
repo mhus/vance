@@ -3,10 +3,13 @@ package de.mhus.vance.addon.brain.workspace;
 import de.mhus.vance.brain.script.ScriptExecutionException;
 import de.mhus.vance.brain.script.ScriptExecutor;
 import de.mhus.vance.brain.script.ScriptRequest;
+import de.mhus.vance.api.ws.Profiles;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.shared.session.SessionDocument;
+import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.io.ByteArrayInputStream;
@@ -51,6 +54,7 @@ public class WorkspaceFormService {
     private final DocumentService documentService;
     private final ScriptExecutor scriptExecutor;
     private final ToolDispatcher toolDispatcher;
+    private final SessionService sessionService;
 
     /** Wall-clock cap for a saveScript recompute run. */
     private static final Duration ON_SAVE_TIMEOUT = Duration.ofSeconds(30);
@@ -74,13 +78,14 @@ public class WorkspaceFormService {
      * Write the submitted {@code records} into the data document's
      * {@code items}, sync the native {@code schema} column list (from the
      * fence field names, else the union of item keys), then run the fence
-     * {@code saveScript}.
+     * {@code saveScript}. When {@code session} is set, the script runs inside
+     * a per-form system session (fence {@code session: true}).
      */
     public void saveForm(
             String tenantId, String projectId, String docPath,
             @Nullable List<Map<String, Object>> records,
             @Nullable List<String> schema,
-            @Nullable String saveScript, String editorId) {
+            @Nullable String saveScript, boolean session, String editorId) {
         DocumentDocument docDoc = documentService.findByPath(tenantId, projectId, docPath)
                 .orElseThrow(() -> new ToolException("form document '" + docPath + "' not found"));
         Map<String, Object> doc = loadYaml(readContent(docDoc));
@@ -93,7 +98,7 @@ public class WorkspaceFormService {
         log.info("WorkspaceFormService.saveForm tenant='{}' doc='{}' records={}",
                 tenantId, docPath, rows.size());
 
-        runOnSave(tenantId, projectId, docPath, saveScript, editorId);
+        runOnSave(tenantId, projectId, docPath, saveScript, session, editorId);
     }
 
     /**
@@ -137,11 +142,12 @@ public class WorkspaceFormService {
      * written: it reads the fresh data via {@code vance.documents.*} and
      * recomputes derived files (live-push updates embeds). A failure surfaces
      * as {@link ToolException} (→ HTTP 500); the data stays written. No
-     * {@code saveScript} → no-op.
+     * {@code saveScript} → no-op. When {@code session} is set, the run gets a
+     * per-form system session so session-bound tools / LLM are available.
      */
     private void runOnSave(
             String tenantId, String projectId, String docPath,
-            @Nullable String fenceScript, String editorId) {
+            @Nullable String fenceScript, boolean session, String editorId) {
         if (fenceScript == null || fenceScript.isBlank()) return;
         String scriptPath = resolveRelative(docPath, stripVanceScheme(fenceScript));
         if (!scriptPath.toLowerCase(Locale.ROOT).endsWith(".js")) {
@@ -153,20 +159,44 @@ public class WorkspaceFormService {
                 .orElseThrow(() -> new ToolException("saveScript not found: " + scriptPath));
         String code = readContent(scriptDoc);
 
+        String sessionId = session
+                ? resolveFormSession(tenantId, projectId, docPath, editorId)
+                : null;
         ToolInvocationContext scope =
-                new ToolInvocationContext(tenantId, projectId, null, null, editorId);
+                new ToolInvocationContext(tenantId, projectId, sessionId, null, editorId);
         ContextToolsApi tools = new ContextToolsApi(toolDispatcher, scope);
         try {
             scriptExecutor.run(new ScriptRequest(
                     "js", code, "form-saveScript:" + scriptPath, tools, ON_SAVE_TIMEOUT));
-            log.info("WorkspaceFormService.runOnSave tenant='{}' script='{}' ok",
-                    tenantId, scriptPath);
+            log.info("WorkspaceFormService.runOnSave tenant='{}' script='{}' session={} ok",
+                    tenantId, scriptPath, session);
         } catch (ScriptExecutionException e) {
             log.warn("WorkspaceFormService.runOnSave tenant='{}' script='{}' failed [{}]: {}",
                     tenantId, scriptPath, e.errorClass(), e.getMessage());
             throw new ToolException(
                     "saveScript '" + scriptPath + "' failed: " + e.getMessage());
         }
+    }
+
+    /**
+     * Reuse-or-create a per-form system session (deterministic display name
+     * {@code _form_<docPath>}, {@code system=true}) so a fence {@code saveScript}
+     * that opted in ({@code session: true}) runs inside a session scope. Same
+     * lazy-reuse pattern as the scheduler / hook system sessions, but
+     * workspace-form-owned.
+     */
+    private String resolveFormSession(
+            String tenantId, String projectId, String docPath, String runAs) {
+        String displayName = "_form_" + docPath.replaceAll("[^a-zA-Z0-9._-]", "_");
+        return sessionService.findSystemSession(tenantId, projectId, displayName)
+                .map(SessionDocument::getSessionId)
+                .orElseGet(() -> {
+                    SessionDocument created = sessionService.create(
+                            tenantId, runAs, projectId, displayName,
+                            Profiles.DAEMON, "workspace-form", null, /*system*/ true);
+                    sessionService.markBootstrapped(created.getSessionId());
+                    return created.getSessionId();
+                });
     }
 
     // ---- helpers -------------------------------------------------------

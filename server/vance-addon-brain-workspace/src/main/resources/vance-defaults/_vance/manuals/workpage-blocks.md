@@ -415,8 +415,10 @@ the full contract. The essentials you'll otherwise get wrong:
 - **`label` / `help` are i18n maps**, but a bare `label: Name` is tolerated
   (coerced to `{en: …}`).
 - **Running a script = fence `saveScript`**, a **`.js`** document (Python is
-  not supported), runs server-side **on Save** with no session. The form's
-  Save button *is* the trigger. There is **no** `$meta.onSave` in the file.
+  not supported), runs server-side **on Save**. The form's Save button *is* the
+  trigger. There is **no** `$meta.onSave` in the file. Add fence `session: true`
+  only if the script needs a session (LLM / session-bound tools); default is
+  sessionless.
 - **For a standalone "click to run" action, use the `button` block** (below) —
   not a hidden hook.
 
@@ -435,11 +437,12 @@ saveScript: vance:update.js
 ```
 ```
 
-A **single editable text value** bound to a text document (the file **body**
-is the value; a front-matter header, if any, is preserved but not edited).
+A **single editable text value** bound to a text document (the **whole file
+content** is the value — a text file is plain, no header split).
 `multiline: true` renders a growing textarea, `false` a single-line input. Like
 `form`, the block may carry an optional **`saveScript`** in its fence (`.js`,
-runs on Save, no session) — see `manual_read('workspace-forms')`. Use `form`
+runs on Save; add `session: true` for a session) — see
+`manual_read('workspace-forms')`. Use `form`
 for structured multi-field data, `input` for one free-text value.
 
 ## button

@@ -20,7 +20,9 @@ import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 
 interface ExtensionOptions {
   loadInput?: ((uri: string) => Promise<string>) | null;
-  saveInput?: ((uri: string, content: string, saveScript: string) => Promise<void>) | null;
+  saveInput?:
+    | ((uri: string, content: string, saveScript: string, session: boolean) => Promise<void>)
+    | null;
 }
 
 const props = defineProps<{
@@ -34,6 +36,8 @@ const config = computed(() => (props.node.attrs?.config as string | null) ?? '')
 const multiline = computed(() => props.node.attrs?.multiline === true);
 const saveScript = computed(() => (props.node.attrs?.saveScript as string | null) ?? '');
 function setSaveScript(v: string) { props.updateAttributes({ saveScript: v }); }
+const session = computed(() => props.node.attrs?.session === true);
+function setSession(v: boolean) { props.updateAttributes({ session: v }); }
 
 const editable = ref(props.editor.isEditable);
 function syncEditable() { editable.value = props.editor.isEditable; }
@@ -91,7 +95,7 @@ async function save() {
   error.value = null;
   savedAt.value = false;
   try {
-    await saver(config.value, content.value, saveScript.value);
+    await saver(config.value, content.value, saveScript.value, session.value);
     baseline.value = content.value;
     savedAt.value = true;
   } catch (e) {
@@ -167,6 +171,15 @@ onMounted(load);
           @keydown.stop
         />
       </div>
+      <label class="vance-input__session" contenteditable="false">
+        <input
+          type="checkbox"
+          :checked="session"
+          @change="setSession(($event.target as HTMLInputElement).checked)"
+          @mousedown.stop
+        />
+        Session für das Script (nur für LLM / session-gebundene Tools)
+      </label>
     </template>
 
     <!-- WORK: editable field + Save/Cancel -->
@@ -257,6 +270,14 @@ onMounted(load);
 }
 .vance-input__settings-label {
   white-space: nowrap;
+}
+.vance-input__session {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.35rem;
+  font-size: 0.76rem;
+  color: oklch(var(--bc) / 0.65);
 }
 .vance-input__settings-input {
   flex: 1;

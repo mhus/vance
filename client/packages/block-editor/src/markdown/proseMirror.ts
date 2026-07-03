@@ -106,12 +106,15 @@ function blockToNode(b: Block): JSONContent {
     case 'form':
       return {
         type: 'vanceForm',
-        attrs: { config: b.config, saveScript: b.saveScript, form: b.form },
+        attrs: { config: b.config, saveScript: b.saveScript, session: b.session, form: b.form },
       };
     case 'input':
       return {
         type: 'vanceInput',
-        attrs: { config: b.config, multiline: b.multiline, saveScript: b.saveScript },
+        attrs: {
+          config: b.config, multiline: b.multiline,
+          saveScript: b.saveScript, session: b.session,
+        },
       };
     case 'button':
       return {
@@ -252,6 +255,7 @@ function nodeToBlock(node: JSONContent): Block[] {
         kind: 'form',
         config: (node.attrs?.config as string) ?? '',
         saveScript: (node.attrs?.saveScript as string) ?? '',
+        session: node.attrs?.session === true,
         form: (node.attrs?.form as Record<string, unknown>) ?? { single: false, fields: [] },
       }];
     case 'vanceInput':
@@ -260,6 +264,7 @@ function nodeToBlock(node: JSONContent): Block[] {
         config: (node.attrs?.config as string) ?? '',
         multiline: node.attrs?.multiline === true,
         saveScript: (node.attrs?.saveScript as string) ?? '',
+        session: node.attrs?.session === true,
       }];
     case 'vanceButton':
       return [{

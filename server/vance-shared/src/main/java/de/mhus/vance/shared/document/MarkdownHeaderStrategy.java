@@ -20,12 +20,11 @@ import org.springframework.stereotype.Component;
  * actual content...
  * </pre>
  *
- * <p>Handles both {@code text/markdown} and {@code text/plain}: the format is
- * identical, so a {@code .txt} document carries the same header a {@code .md}
- * one does (the {@code vance-input} block relies on this). Only flat
- * {@code key: value} lines are supported — no nesting, no list syntax, no
- * quoted multi-line strings. Lines starting with {@code #} are treated as
- * comments. A missing or unterminated fence yields no header.
+ * <p>Handles {@code text/markdown} only — a {@code .txt} document is plain
+ * text and carries no header. Only flat {@code key: value} lines are supported
+ * — no nesting, no list syntax, no quoted multi-line strings. Lines starting
+ * with {@code #} are treated as comments. A missing or unterminated fence
+ * yields no header.
  *
  * <p>The actual split lives in {@link FrontMatter}; this strategy projects
  * the parsed entries onto the {@link DocumentHeader} (normalised keys + kind).
@@ -47,8 +46,7 @@ public class MarkdownHeaderStrategy implements HeaderStrategy {
     public boolean supports(@Nullable String mimeType) {
         String mt = DocumentHeaderParser.canonicalMime(mimeType);
         return "text/markdown".equals(mt)
-                || "text/x-markdown".equals(mt)
-                || "text/plain".equals(mt);
+                || "text/x-markdown".equals(mt);
     }
 
     @Override

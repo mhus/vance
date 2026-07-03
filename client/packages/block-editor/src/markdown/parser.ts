@@ -350,6 +350,7 @@ function parseFence(info: string, body: string): Block {
         kind: 'form',
         config: str(parsed, 'config') ?? '',
         saveScript: str(parsed, 'saveScript') ?? '',
+        session: parsed.session === true,
         form: (parsed.form && typeof parsed.form === 'object' && !Array.isArray(parsed.form))
           ? (parsed.form as Record<string, unknown>)
           : { single: false, fields: [] },
@@ -360,6 +361,7 @@ function parseFence(info: string, body: string): Block {
         config: str(parsed, 'config') ?? '',
         multiline: parsed.multiline === true,
         saveScript: str(parsed, 'saveScript') ?? '',
+        session: parsed.session === true,
       };
     case 'vance-button':
       return {

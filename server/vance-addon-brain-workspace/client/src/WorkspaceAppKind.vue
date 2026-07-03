@@ -266,11 +266,16 @@ async function loadInput(uri: string): Promise<string> {
   return resp.content ?? '';
 }
 
-async function saveInput(uri: string, content: string, saveScript: string): Promise<void> {
+async function saveInput(
+  uri: string, content: string, saveScript: string, session: boolean,
+): Promise<void> {
   const t = parseVanceTarget(uri);
   if (!t) throw new Error(`Invalid input URI: ${uri}`);
   const params = new URLSearchParams({ projectId: t.projectId, doc: t.path });
-  if (saveScript && saveScript.trim()) params.set('saveScript', saveScript.trim());
+  if (saveScript && saveScript.trim()) {
+    params.set('saveScript', saveScript.trim());
+    if (session) params.set('session', 'true');
+  }
   await brainFetch<void>('POST', `addon/workspace/input/save?${params}`, { body: { content } });
 }
 

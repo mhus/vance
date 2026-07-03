@@ -631,6 +631,7 @@ public class WorkspaceAppController {
             @RequestParam("projectId") String projectId,
             @RequestParam("doc") String doc,
             @RequestParam(value = "saveScript", required = false) @Nullable String saveScript,
+            @RequestParam(value = "session", defaultValue = "false") boolean session,
             @RequestBody WorkspaceFormSaveRequest request,
             HttpServletRequest httpRequest) {
 
@@ -638,7 +639,7 @@ public class WorkspaceAppController {
         formService.saveForm(tenant, projectId, doc,
                 request != null ? request.records() : null,
                 request != null ? request.schema() : null,
-                saveScript, currentUser(httpRequest));
+                saveScript, session, currentUser(httpRequest));
         return ResponseEntity.noContent().build();
     }
 
@@ -686,12 +687,14 @@ public class WorkspaceAppController {
             @RequestParam("projectId") String projectId,
             @RequestParam("doc") String doc,
             @RequestParam(value = "saveScript", required = false) @Nullable String saveScript,
+            @RequestParam(value = "session", defaultValue = "false") boolean session,
             @RequestBody WorkspaceInputSaveRequest request,
             HttpServletRequest httpRequest) {
 
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
         inputService.saveInput(tenant, projectId, doc,
-                request != null ? request.content() : null, saveScript, currentUser(httpRequest));
+                request != null ? request.content() : null, saveScript, session,
+                currentUser(httpRequest));
         return ResponseEntity.noContent().build();
     }
 

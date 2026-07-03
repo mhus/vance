@@ -27,7 +27,7 @@
         <module>vance-addon-brain-slideshow</module>
         <module>vance-addon-brain-kanban</module>
         <module>vance-addon-brain-calendar</module>
-        <module>vance-addon-brain-workspace</module>
+        <module>vance-addon-brain-workbook</module>
         <module>vance-addon-brain-rlang</module>
         <module>vance-brain-all1</module>
         <module>vance-brain-all2</module>

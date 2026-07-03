@@ -73,7 +73,7 @@ allowedToolsAdd:
   - doc_append
   - doc_trash
   - workpage_create
-  - workspace_app_create
+  - workbook_app_create
   - app_rebuild
 allowedToolsDefer:
   - workpage_query

@@ -210,7 +210,7 @@ async function load() {
     const { projectId, path } = await resolveProject();
     const params = new URLSearchParams({ projectId, doc: path });
     const resp = await brainFetch<{ records: Record<string, unknown>[] }>(
-      'GET', `addon/workspace/form?${params}`);
+      'GET', `addon/workbook/form?${params}`);
     const recs = (resp.records ?? []).map((r) => normalise(r));
     if (single.value && recs.length === 0) recs.push({});
     records.value = recs;
@@ -235,7 +235,7 @@ async function save() {
       params.set('saveScript', props.saveScript.trim());
       if (props.session) params.set('session', 'true');
     }
-    await brainFetch<void>('POST', `addon/workspace/form/save?${params}`, {
+    await brainFetch<void>('POST', `addon/workbook/form/save?${params}`, {
       // schema = column names from the fence form, so the record's native
       // RecordsView columns stay aligned even when items is empty.
       body: { records: records.value, schema: fields.value.map((f) => f.name) },

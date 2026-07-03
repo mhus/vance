@@ -41,7 +41,7 @@
         </dependency>
         <dependency>
             <groupId>de.mhus.vance</groupId>
-            <artifactId>vance-addon-brain-workspace</artifactId>
+            <artifactId>vance-addon-brain-workbook</artifactId>
             <version>${project.version}</version>
         </dependency>
     </dependencies>

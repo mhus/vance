@@ -574,7 +574,7 @@ importers:
         specifier: ^2.1.10
         version: 2.2.12(typescript@5.6.3)
 
-  server/vance-addon-brain-workspace/client:
+  server/vance-addon-brain-workbook/client:
     dependencies:
       '@vance/block-editor':
         specifier: workspace:*

@@ -116,6 +116,7 @@ public class ChatHistoryController {
                 .thinkProcessId(doc.getThinkProcessId())
                 .role(doc.getRole())
                 .content(doc.getContent())
+                .thinking(doc.getThinking())
                 .createdAt(doc.getCreatedAt())
                 .meta(doc.getMeta() == null || doc.getMeta().isEmpty()
                         ? null : doc.getMeta())

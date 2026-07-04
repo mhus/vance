@@ -34,6 +34,17 @@ public class ChatMessageDto {
 
     private String content;
 
+    /**
+     * The model's reasoning ("thinking") text for ASSISTANT messages —
+     * the {@code <think>…</think>} / Harmony-{@code analysis} markup that
+     * was stripped from {@link #content} but captured per turn so the
+     * user can review the model's train of thought. {@code null} for
+     * models without reasoning markup, for non-ASSISTANT roles, and for
+     * legacy rows persisted before this field existed. Clients render it
+     * as a collapsible "thoughts" section under the reply.
+     */
+    private @Nullable String thinking;
+
     private @Nullable Instant createdAt;
 
     /**

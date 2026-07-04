@@ -149,6 +149,18 @@ public class ChatMessageDocument {
     private String content = "";
 
     /**
+     * The model's reasoning ("thinking") text for ASSISTANT messages —
+     * the {@code <think>…</think>} / Harmony-{@code analysis} markup that
+     * the sanitizer strips out of {@link #content}, captured per turn so
+     * the user can review the model's train of thought (rendered as a
+     * collapsible section in the chat UI). {@code null} for models
+     * without reasoning markup, for non-ASSISTANT roles, and for rows
+     * written before this field existed. Not text-indexed — internal
+     * monologue is deliberately excluded from chat search.
+     */
+    private @Nullable String thinking;
+
+    /**
      * Set when the message has been rolled into a memory compaction
      * ({@code MemoryDocument.id}). Replay paths skip these so the LLM
      * sees the compacted summary instead of the originals; the

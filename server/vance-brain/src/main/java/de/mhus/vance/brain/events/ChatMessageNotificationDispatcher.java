@@ -74,6 +74,7 @@ public class ChatMessageNotificationDispatcher {
                 .processName(processName)
                 .role(msg.getRole())
                 .content(msg.getContent())
+                .thinking(msg.getThinking())
                 .createdAt(msg.getCreatedAt())
                 .meta(msg.getMeta() == null || msg.getMeta().isEmpty()
                         ? null : msg.getMeta())

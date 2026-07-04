@@ -441,6 +441,7 @@ function appendMessageBubble(data: ChatMessageAppendedData): void {
     thinkProcessId: data.thinkProcessId,
     role: data.role,
     content: data.content,
+    thinking: data.thinking,
     createdAt: data.createdAt,
     meta: data.meta,
     senderUserId: data.senderUserId,
@@ -760,6 +761,7 @@ onBeforeUnmount(() => {
           <MessageBubble
             :role="String(msg.role)"
             :content="msg.content"
+            :thinking="msg.thinking"
             :created-at="msg.createdAt"
             :worker="workerMessageIds.has(msg.messageId)"
             :meta="msg.meta"

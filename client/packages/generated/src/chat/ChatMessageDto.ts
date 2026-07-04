@@ -10,6 +10,7 @@ export interface ChatMessageDto {
   thinkProcessId: string;
   role: ChatRole;
   content: string;
+  thinking?: string;
   createdAt?: Date;
   meta?: Record<string, any>;
   senderUserId?: string;

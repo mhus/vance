@@ -28,6 +28,14 @@ export type AskUserOption = QuestionOption;
 const props = withDefaults(defineProps<{
   role: RoleName | string;
   content: string;
+  /**
+   * The model's reasoning ("thinking") text for ASSISTANT messages
+   * (from {@code ChatMessageDto.thinking}). Rendered as a collapsed,
+   * expandable "thoughts" section above the answer. Absent for models
+   * without reasoning markup, for non-ASSISTANT roles, and for the
+   * still-streaming draft (which has no canonical message yet).
+   */
+  thinking?: string | null;
   /** ISO string or epoch-millis number — both rendered as relative/local. */
   createdAt?: string | number | Date;
   /** True if the bubble is still streaming (no canonical message yet). */
@@ -128,6 +136,15 @@ function onPick(label: string): void {
 const isUser = computed(() => props.role === 'USER');
 const isAssistant = computed(() => props.role === 'ASSISTANT');
 const isSystem = computed(() => props.role === 'SYSTEM');
+
+/**
+ * Reasoning ("thoughts") present on this bubble — only for ASSISTANT
+ * messages that carried reasoning markup. The still-streaming draft
+ * has no {@code thinking} yet, so this is naturally false mid-stream.
+ */
+const hasThinking = computed<boolean>(() =>
+  isAssistant.value && (props.thinking?.trim().length ?? 0) > 0,
+);
 
 /**
  * Multi-user awareness — see planning/multi-user-sessions.md §6.
@@ -343,6 +360,18 @@ async function onCopyMarkdown(): Promise<void> {
         <span v-if="streaming" class="inline-block w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
         <span v-if="formatted" class="opacity-60">· {{ formatted }}</span>
       </div>
+      <!-- Reasoning ("thoughts") — collapsed by default. Present only on
+           the final ASSISTANT message; the raw narration the model
+           streamed live is captured + persisted server-side verbatim
+           (see web-ui.md §6.5) so it stays reviewable after the stream
+           ends. Rendered verbatim (not Markdown) to preserve the raw
+           thoughts exactly, including any <think> markup. -->
+      <details v-if="hasThinking" class="mb-thinking">
+        <summary class="mb-thinking-summary">
+          💭 {{ _?.('chat.bubble.thoughts') ?? 'Gedanken' }}
+        </summary>
+        <pre class="mb-thinking-body">{{ thinking }}</pre>
+      </details>
       <!-- ASK_USER question canvas — question text + structured option
            buttons as one closed unit. See spec §11 (meta.actionType
            dispatch). Falls back to legacy showOptions check so old
@@ -399,5 +428,29 @@ async function onCopyMarkdown(): Promise<void> {
 .mb-copy-btn--done {
   opacity: 1 !important;
   color: hsl(var(--su));
+}
+.mb-thinking {
+  margin-bottom: 0.5rem;
+  border-left: 2px solid hsl(var(--bc) / 0.2);
+  padding-left: 0.6rem;
+}
+.mb-thinking-summary {
+  cursor: pointer;
+  font-size: 0.75rem;
+  opacity: 0.6;
+  user-select: none;
+  list-style: none;
+}
+.mb-thinking-summary:hover {
+  opacity: 0.85;
+}
+.mb-thinking-body {
+  margin-top: 0.35rem;
+  font-size: 0.8rem;
+  opacity: 0.75;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  margin-bottom: 0;
 }
 </style>

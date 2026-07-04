@@ -1002,7 +1002,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                         .sessionId(process.getSessionId())
                         .thinkProcessId(process.getId())
                         .role(ChatRole.ASSISTANT)
-                        .content(chatMessage);
+                        .content(chatMessage)
+                        .thinking(ctx.reasoning() == null ? null : ctx.reasoning().snapshot());
                 Map<String, Object> outcomeMeta = outcome.chatMessageMeta();
                 Map<String, Object> mergedMeta = null;
                 if (outcomeMeta != null && !outcomeMeta.isEmpty()) {

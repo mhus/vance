@@ -217,6 +217,11 @@ public class ThinkEngineService {
         // the lifetime of this context only.
         de.mhus.vance.brain.history.BufferingHistoryTagSink tagSink =
                 new de.mhus.vance.brain.history.BufferingHistoryTagSink();
+        // Fresh per-turn reasoning accumulator — same lifecycle as the
+        // tag sink. Engines read its snapshot when persisting the turn's
+        // assistant message (thinking field).
+        de.mhus.vance.brain.history.TurnReasoningBuffer reasoningBuffer =
+                new de.mhus.vance.brain.history.TurnReasoningBuffer();
         Set<String> engineRoles = engine.roles() == null ? Set.of() : Set.copyOf(engine.roles());
         return new DefaultThinkEngineContext(
                 process, projectId, userId, base,
@@ -231,6 +236,7 @@ public class ThinkEngineService {
                 llmTraceService,
                 historyTagBuilder,
                 tagSink,
+                reasoningBuffer,
                 toolResultStorage,
                 toolHealthService,
                 engineRoles);

@@ -1051,7 +1051,8 @@ public class EddieEngine extends StructuredActionEngine {
                         .sessionId(process.getSessionId())
                         .thinkProcessId(process.getId())
                         .role(ChatRole.ASSISTANT)
-                        .content(chatMessage);
+                        .content(chatMessage)
+                        .thinking(ctx.reasoning() == null ? null : ctx.reasoning().snapshot());
                 Map<String, Object> outcomeMeta = outcome.chatMessageMeta();
                 Map<String, Object> mergedMeta = null;
                 if (outcomeMeta != null && !outcomeMeta.isEmpty()) {

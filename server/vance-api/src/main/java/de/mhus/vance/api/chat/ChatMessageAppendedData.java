@@ -36,6 +36,15 @@ public class ChatMessageAppendedData {
 
     private String content;
 
+    /**
+     * The model's reasoning ("thinking") text for ASSISTANT messages —
+     * mirrors {@link ChatMessageDto#getThinking()}. {@code null} unless
+     * the model emitted reasoning markup that was stripped from
+     * {@link #content}. Clients render it as a collapsible "thoughts"
+     * section under the reply.
+     */
+    private @Nullable String thinking;
+
     private @Nullable Instant createdAt;
 
     /**

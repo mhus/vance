@@ -225,6 +225,7 @@ export default {
     bubble: {
       copy: 'Copy as Markdown',
       copyDone: 'Copied',
+      thoughts: 'Thoughts',
     },
     export: {
       saveAsDocumentTooltip:

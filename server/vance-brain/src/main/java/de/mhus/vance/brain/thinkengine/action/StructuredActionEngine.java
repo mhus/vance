@@ -5,6 +5,7 @@ import de.mhus.vance.api.chat.ChatRole;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.brain.ai.AiChat;
 import de.mhus.vance.brain.ai.AiChatException;
+import de.mhus.vance.brain.history.TurnReasoningBuffer;
 import de.mhus.vance.brain.events.ChunkBatcher;
 import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.brain.events.StreamingProperties;
@@ -319,6 +320,19 @@ public abstract class StructuredActionEngine implements ThinkEngine {
             String replyText = reply.text();
             if (replyText != null && replyText.length() > bestFreeText.length()) {
                 bestFreeText = replyText;
+            }
+
+            // Capture the model's raw streamed narration ("thoughts")
+            // for this iteration, verbatim — this is exactly the text the
+            // user saw stream live (reasoning models emit their
+            // <think>… monologue here). It is dropped from the final
+            // user-facing content (which comes from the structured action
+            // message), so we accumulate it per turn and persist it in
+            // the assistant message's `thinking` field to stay reviewable
+            // after the stream is replaced by the final answer.
+            TurnReasoningBuffer reasoning = ctx.reasoning();
+            if (reasoning != null) {
+                reasoning.append(replyText);
             }
 
             if (!reply.hasToolExecutionRequests()) {

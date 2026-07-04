@@ -3,6 +3,7 @@ package de.mhus.vance.brain.thinkengine;
 import de.mhus.vance.brain.ai.AiModelService;
 import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.brain.history.BufferingHistoryTagSink;
+import de.mhus.vance.brain.history.TurnReasoningBuffer;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.llmtrace.LlmTraceService;
@@ -196,4 +197,15 @@ public interface ThinkEngineContext {
      * {@code planning/process-history-search.md} §5.
      */
     BufferingHistoryTagSink historyTagSink();
+
+    /**
+     * Per-turn accumulator for the model's reasoning ("thinking") text.
+     * The structured-action loop appends each iteration's extracted
+     * reasoning; the engine reads {@link TurnReasoningBuffer#snapshot()}
+     * when persisting the turn's assistant {@link ChatMessageService
+     * chat-message} and stores it in the {@code thinking} field so the
+     * client can show it as a collapsible section. Fresh per turn — same
+     * lifecycle as {@link #historyTagSink()}.
+     */
+    TurnReasoningBuffer reasoning();
 }

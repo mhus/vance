@@ -219,6 +219,7 @@ public class EddieChatFrameHandler implements EddieFrameRouter.ChatFrameHandler 
                 .processName(eddie.getName())
                 .role(workerData.getRole())
                 .content(workerData.getContent())
+                .thinking(workerData.getThinking())
                 .createdAt(workerData.getCreatedAt())
                 .meta(workerData.getMeta())
                 .senderUserId(workerData.getSenderUserId())

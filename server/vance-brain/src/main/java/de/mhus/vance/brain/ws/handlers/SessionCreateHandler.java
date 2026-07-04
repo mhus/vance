@@ -209,6 +209,7 @@ public class SessionCreateHandler implements WsHandler {
                             .processName(process.getName())
                             .role(appended.getRole())
                             .content(appended.getContent())
+                            .thinking(appended.getThinking())
                             .createdAt(appended.getCreatedAt())
                             .senderUserId(appended.getSenderUserId())
                             .senderDisplayName(appended.getSenderDisplayName())

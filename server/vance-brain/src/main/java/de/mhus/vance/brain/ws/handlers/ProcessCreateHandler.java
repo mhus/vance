@@ -162,6 +162,7 @@ public class ProcessCreateHandler implements WsHandler {
                 .processName(processName)
                 .role(doc.getRole())
                 .content(doc.getContent())
+                .thinking(doc.getThinking())
                 .createdAt(doc.getCreatedAt())
                 .senderUserId(doc.getSenderUserId())
                 .senderDisplayName(doc.getSenderDisplayName())

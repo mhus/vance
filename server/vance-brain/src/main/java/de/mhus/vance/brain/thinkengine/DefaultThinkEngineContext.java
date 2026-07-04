@@ -4,6 +4,7 @@ import de.mhus.vance.brain.ai.AiModelService;
 import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.brain.history.BufferingHistoryTagSink;
 import de.mhus.vance.brain.history.HistoryTagBuilder;
+import de.mhus.vance.brain.history.TurnReasoningBuffer;
 import de.mhus.vance.brain.progress.ProgressEmitter;
 import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.tools.ContextToolsApi;
@@ -66,6 +67,7 @@ record DefaultThinkEngineContext(
         LlmTraceService llmTraceService,
         HistoryTagBuilder historyTagBuilder,
         BufferingHistoryTagSink historyTagSink,
+        TurnReasoningBuffer reasoning,
         @Nullable ToolResultStorage toolResultStorage,
         ToolHealthService toolHealthService,
         Set<String> engineRoles

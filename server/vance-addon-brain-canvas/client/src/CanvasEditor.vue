@@ -16,28 +16,19 @@ const props = withDefaults(
 );
 const emit = defineEmits<{ (e: 'change', graph: CanvasGraphDto): void }>();
 
-const COLORS = ['1', '2', '3', '4', '5', '6'];
-const SWATCH: Record<string, string> = {
-  '1': '#fecaca', '2': '#fed7aa', '3': '#fef08a',
-  '4': '#bbf7d0', '5': '#bfdbfe', '6': '#ddd6fe',
-};
-
 const nodes = ref<CanvasNodeDto[]>([]);
 const edges = ref<CanvasEdgeDto[]>([]);
-const selectedId = ref<string | null>(null);
 
 watch(
   () => props.graph,
   (g) => {
     nodes.value = (g?.nodes ?? []).map((n) => ({ ...n }));
     edges.value = (g?.edges ?? []).map((e) => ({ ...e }));
-    selectedId.value = null;
   },
   { immediate: true },
 );
 
 const isEditable = computed(() => props.editable === true);
-const selected = computed(() => nodes.value.find((n) => n.id === selectedId.value) ?? null);
 
 // ── VueFlow projection ────────────────────────────────────────
 const vfNodes = computed<Node[]>(() =>
@@ -45,12 +36,16 @@ const vfNodes = computed<Node[]>(() =>
     id: n.id,
     position: { x: n.x, y: n.y },
     type: n.type,
-    data: { node: n, editable: isEditable.value, onText: commitText },
+    data: { node: n, editable: isEditable.value, onText: commitText, onResize, onPatch: patchNode, onDelete: removeNode },
     draggable: isEditable.value,
     selectable: isEditable.value,
     connectable: isEditable.value,
     zIndex: n.type === 'group' ? 0 : 1,
-    style: { width: `${n.w || 200}px`, height: `${n.h || 100}px` },
+    // Text nodes auto-grow their height to fit the text (never scroll);
+    // other kinds keep the resized box.
+    style: n.type === 'text'
+      ? { width: `${n.w || 200}px` }
+      : { width: `${n.w || 200}px`, height: `${n.h || 100}px` },
   })),
 );
 
@@ -64,12 +59,14 @@ const vfEdges = computed<Edge[]>(() => {
       id: e.id,
       source: e.from,
       target: e.to,
+      sourceHandle: `s-${e.fromSide ?? 'right'}`,
+      targetHandle: `t-${e.toSide ?? 'left'}`,
       label: e.label ?? undefined,
       type: 'default',
       markerEnd: e.toEnd === 'arrow' ? 'arrowclosed' : undefined,
       markerStart: e.fromEnd === 'arrow' ? 'arrowclosed' : undefined,
       style: e.color ? { stroke: e.color } : undefined,
-      updatable: isEditable.value,
+      updatable: false,
       selectable: isEditable.value,
     });
   }
@@ -88,6 +85,20 @@ function emitChange(): void {
 
 function patchNode(id: string, patch: Partial<CanvasNodeDto>): void {
   nodes.value = nodes.value.map((n) => (n.id === id ? { ...n, ...patch } : n));
+  emitChange();
+}
+
+function commitText(id: string, text: string): void {
+  patchNode(id, { text });
+}
+
+function onResize(id: string, w: number, h: number, x: number, y: number): void {
+  patchNode(id, { w, h, x, y });
+}
+
+function removeNode(id: string): void {
+  nodes.value = nodes.value.filter((n) => n.id !== id);
+  edges.value = edges.value.filter((e) => e.from !== id && e.to !== id);
   emitChange();
 }
 
@@ -116,7 +127,6 @@ function onNodesChange(changes: NodeChange[]): void {
     } else if (c.type === 'remove') {
       next = next.filter((n) => n.id !== c.id);
       edges.value = edges.value.filter((e) => e.from !== c.id && e.to !== c.id);
-      if (selectedId.value === c.id) selectedId.value = null;
       dirty = true;
     }
   }
@@ -150,6 +160,10 @@ function onEdgesChange(changes: EdgeChange[]): void {
   if (dirty) emitChange();
 }
 
+function handleSide(h: string | null | undefined): string | undefined {
+  return h ? h.split('-')[1] : undefined;
+}
+
 function onConnect(conn: Connection): void {
   if (!isEditable.value || !conn.source || !conn.target) return;
   edges.value = [
@@ -158,6 +172,8 @@ function onConnect(conn: Connection): void {
       id: nextId('e', edges.value.map((e) => e.id)),
       from: conn.source,
       to: conn.target,
+      fromSide: handleSide(conn.sourceHandle) ?? 'right',
+      toSide: handleSide(conn.targetHandle) ?? 'left',
       fromEnd: 'none',
       toEnd: 'arrow',
     },
@@ -192,37 +208,7 @@ function addNode(type: 'text' | 'doc' | 'link' | 'group'): void {
     node = { id, type, x: p.x, y: p.y, w: 420, h: 300, label };
   }
   nodes.value = [...nodes.value, node];
-  selectedId.value = id;
   emitChange();
-}
-
-// ── Properties panel actions ──────────────────────────────────
-function commitText(id: string, text: string): void {
-  patchNode(id, { text });
-}
-function setColor(color: string | undefined): void {
-  if (selected.value) patchNode(selected.value.id, { color });
-}
-function setFont(fontSize: string): void {
-  if (selected.value) patchNode(selected.value.id, { fontSize });
-}
-function toggleBold(): void {
-  if (selected.value) patchNode(selected.value.id, { bold: !selected.value.bold });
-}
-function toggleItalic(): void {
-  if (selected.value) patchNode(selected.value.id, { italic: !selected.value.italic });
-}
-function removeSelected(): void {
-  if (!selected.value) return;
-  const id = selected.value.id;
-  nodes.value = nodes.value.filter((n) => n.id !== id);
-  edges.value = edges.value.filter((e) => e.from !== id && e.to !== id);
-  selectedId.value = null;
-  emitChange();
-}
-
-function onNodeClick(e: { node: Node }): void {
-  selectedId.value = e.node.id;
 }
 </script>
 
@@ -236,7 +222,8 @@ function onNodeClick(e: { node: Node }): void {
       <VButton size="sm" @click="addNode('link')">🔗 Link</VButton>
       <VButton size="sm" @click="addNode('group')">▢ Gruppe</VButton>
       <div class="mt-2 text-[11px] leading-snug opacity-50">
-        Doppelklick editiert eine Notiz · Griff ziehen für Kante · Entf löscht
+        Node anklicken → Toolbar für Farbe/Stil · Doppelklick editiert Notiz ·
+        Ecken ziehen = Größe · Griff rechts→links = Kante · Entf löscht
       </div>
     </div>
 
@@ -249,65 +236,17 @@ function onNodeClick(e: { node: Node }): void {
         :nodes-draggable="isEditable"
         :nodes-connectable="isEditable"
         :elements-selectable="isEditable"
-        :edges-updatable="isEditable"
+        :edges-updatable="false"
         @nodes-change="onNodesChange"
         @node-drag-stop="onNodeDragStop"
         @edges-change="onEdgesChange"
         @connect="onConnect"
-        @node-click="onNodeClick"
-        @pane-click="selectedId = null"
       >
         <template #node-text="p"><CanvasNodeCard v-bind="p" /></template>
         <template #node-doc="p"><CanvasNodeCard v-bind="p" /></template>
         <template #node-link="p"><CanvasNodeCard v-bind="p" /></template>
         <template #node-group="p"><CanvasNodeCard v-bind="p" /></template>
       </VueFlow>
-    </div>
-
-    <!-- Properties -->
-    <div v-if="isEditable && selected" class="flex w-56 flex-col gap-3 border-l border-base-300 p-3">
-      <div class="text-xs font-semibold uppercase opacity-50">
-        {{ selected.type }} · {{ selected.id }}
-      </div>
-
-      <div>
-        <div class="mb-1 text-xs opacity-60">Farbe</div>
-        <div class="flex flex-wrap gap-1">
-          <button
-            class="h-6 w-6 rounded border border-base-300"
-            title="keine"
-            style="background: #ffffff"
-            @click="setColor(undefined)"
-          >×</button>
-          <button
-            v-for="c in COLORS"
-            :key="c"
-            class="h-6 w-6 rounded border border-base-300"
-            :style="{ background: SWATCH[c], outline: selected.color === c ? '2px solid #2563eb' : 'none' }"
-            @click="setColor(c)"
-          ></button>
-        </div>
-      </div>
-
-      <template v-if="selected.type === 'text'">
-        <div>
-          <div class="mb-1 text-xs opacity-60">Schriftgröße</div>
-          <div class="flex gap-1">
-            <VButton size="sm" :variant="(selected.fontSize ?? 'm') === 's' ? 'primary' : 'ghost'" @click="setFont('s')">S</VButton>
-            <VButton size="sm" :variant="(selected.fontSize ?? 'm') === 'm' ? 'primary' : 'ghost'" @click="setFont('m')">M</VButton>
-            <VButton size="sm" :variant="(selected.fontSize ?? 'm') === 'l' ? 'primary' : 'ghost'" @click="setFont('l')">L</VButton>
-          </div>
-        </div>
-        <div>
-          <div class="mb-1 text-xs opacity-60">Stil</div>
-          <div class="flex gap-1">
-            <VButton size="sm" :variant="selected.bold ? 'primary' : 'ghost'" @click="toggleBold"><b>B</b></VButton>
-            <VButton size="sm" :variant="selected.italic ? 'primary' : 'ghost'" @click="toggleItalic"><i>K</i></VButton>
-          </div>
-        </div>
-      </template>
-
-      <VButton size="sm" variant="ghost" class="mt-auto" @click="removeSelected">🗑 Löschen</VButton>
     </div>
   </div>
 </template>

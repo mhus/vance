@@ -23,7 +23,9 @@
     "@vance/components": "workspace:*",
     "@vance/kind-registry": "workspace:*",
     "@vance/shared": "workspace:*",
-    "@vue-flow/core": "^1.48.2"
+    "@vue-flow/core": "^1.48.2",
+    "@vue-flow/node-resizer": "^1.4.0",
+    "@vue-flow/node-toolbar": "^1.1.0"
   },
   "peerDependencies": {
     "vue": "^3.5.0"

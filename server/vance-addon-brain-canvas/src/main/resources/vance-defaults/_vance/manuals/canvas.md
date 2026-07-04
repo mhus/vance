@@ -78,6 +78,7 @@ both to `none` for a plain line. Optional `label`, `color`,
 | `canvas_edge_add(path, from, to, label?, toEnd?, …)` | Connect two nodes; returns the minted `edgeId`. |
 | `canvas_edge_delete(path, id)` | Delete an edge. |
 | `canvas_query(path, type?, textContains?)` | Read-only: list / filter nodes. |
+| `canvas_validate(path)` | Read-only structural check — duplicate ids, edges pointing at missing nodes, bad `parent` references. Run it after building/editing to self-check. Returns `{ ok, errors, warnings, findings[] }`. |
 
 ## Typical flow
 
@@ -85,7 +86,12 @@ both to `none` for a plain line. Optional `label`, `color`,
 2. `canvas_node_add` for each note/image/link, spacing them on the grid
    (e.g. columns at `x = 80, 400, 720`; rows at `y = 80, 300, 520`).
 3. `canvas_edge_add(from, to, label)` to connect related nodes.
-4. Optionally wrap a cluster in a `group` node placed behind them.
+4. Optionally wrap a cluster in a `group` node and set each member's
+   `parent` to that group's id (see "Grouping is explicit" above).
+5. `canvas_validate(path)` to self-check before telling the user it's done.
+
+Users can also drag & drop files onto the board in the web UI — they land in
+`<board-folder>/assets/` and become `doc` nodes automatically.
 
 **Never** claim canvases are unsupported without first reading this manual —
 the tools above are the canonical path. To *edit* a canvas visually the user

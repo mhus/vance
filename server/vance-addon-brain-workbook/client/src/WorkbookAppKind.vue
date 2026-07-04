@@ -6,7 +6,9 @@ import {
   brainSendRaw,
   documentContentUrl,
   useDocumentPrefixReaction,
+  usePointers,
 } from '@vance/shared';
+import { getUsername } from '@vance/shared/auth';
 import { WorkPageEditor, parseDocument } from '@vance/block-editor';
 import {
   scanWorkbook,
@@ -143,6 +145,9 @@ const editorRef = ref<{
   insertEmbed: (uri: string) => void;
   insertForm: (data: string) => void;
   insertInput: (data: string) => void;
+  getCaretPos: () => number | null;
+  caretRectAtPos: (pos: number) => { left: number; top: number; height: number } | null;
+  getContentEl: () => HTMLElement | null;
 } | null>(null);
 
 // Asset picker is shared between two destinations: inline image
@@ -1145,6 +1150,120 @@ const saveStatusLabel = computed<string | null>(() => {
 // initial source is loaded cleanly (Tiptap doesn't track per-document
 // state — it just owns one ProseMirror instance per mount).
 const editorKey = computed(() => activePageId.value ?? 'empty');
+
+// ── Live cursors (pointers channel) ───────────────────────────
+// A workpage is a document, so the pointers channel is scoped to the
+// active page's path. Two distinct signals, deliberately modelled
+// differently (see specification/public/pointers-channel.md §6.2):
+//
+//  • Mouse pointer — opaque x/y in the editor CONTENT element's own
+//    coordinate space (measured against `getContentEl()`'s live rect, so
+//    scrolling is handled for free — the rect moves with the content).
+//    Reflow across browser widths makes it slightly imprecise; that's
+//    acceptable for a mouse pointer.
+//  • Text caret — a LOGICAL ProseMirror position (`data.caret.pos`), never
+//    pixels. The receiver resolves it to screen coordinates via its OWN
+//    editor layout (`caretRectAtPos`), so different window widths / text
+//    reflow / scroll positions all resolve correctly. Pixels would be
+//    wrong here — the same x/y means a different character on a narrower
+//    screen.
+const mainRef = ref<HTMLElement | null>(null);
+const activePagePath = computed(() => activePageView.value?.path ?? null);
+const { pointers, report } = usePointers({ path: activePagePath });
+const remotePointers = computed(() => Array.from(pointers.values()));
+
+function colorFor(id: string): string {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) % 360;
+  return `hsl(${h} 70% 45%)`;
+}
+const myColor = computed(() => colorFor(getUsername() ?? 'me'));
+
+// Bumped on any layout change (scroll of the pane or a descendant,
+// window resize) so the overlay recomputes screen coordinates from the
+// live editor layout. coordsAtPos / getBoundingClientRect aren't reactive
+// on their own, so this tick is the reactive trigger.
+const layoutTick = ref(0);
+function bumpLayout(): void { layoutTick.value++; }
+
+const lastCaretPos = ref<number | null>(null);
+const lastMouse = ref<{ x: number; y: number } | null>(null);
+
+function buildData(): Record<string, unknown> {
+  const d: Record<string, unknown> = { color: myColor.value };
+  if (lastCaretPos.value != null) d.caret = { pos: lastCaretPos.value };
+  return d;
+}
+
+function reportPointer(ev: PointerEvent): void {
+  if (!activePagePath.value) return;
+  const contentEl = editorRef.value?.getContentEl() ?? null;
+  if (!contentEl) return;
+  const rect = contentEl.getBoundingClientRect();
+  const x = ev.clientX - rect.left;
+  const y = ev.clientY - rect.top;
+  lastMouse.value = { x, y };
+  report(x, y, buildData());
+}
+
+// Keyboard navigation moves the caret without a mouse event — re-report
+// (reusing the last mouse position) so peers see the caret jump.
+function onEditorCaret(pos: number): void {
+  lastCaretPos.value = pos;
+  const m = lastMouse.value;
+  if (m && activePagePath.value) report(m.x, m.y, buildData());
+}
+
+function cursorColor(p: { data?: Record<string, unknown> }): string {
+  return typeof p.data?.color === 'string' ? p.data.color : '#3b82f6';
+}
+
+// Resolve each remote pointer to screen coordinates against the LOCAL
+// layout, so every viewer positions cursors/carets in their own render.
+interface Overlay {
+  editorId: string;
+  displayName: string;
+  color: string;
+  mouse: { left: number; top: number } | null;
+  caret: { left: number; top: number; height: number } | null;
+}
+const overlays = computed<Overlay[]>(() => {
+  void layoutTick.value; // reactive dep — recompute on scroll / resize
+  const main = mainRef.value;
+  const api = editorRef.value;
+  if (!main) return [];
+  const mainRect = main.getBoundingClientRect();
+  const contentEl = api?.getContentEl() ?? null;
+  const contentRect = contentEl ? contentEl.getBoundingClientRect() : null;
+  return remotePointers.value.map((p) => {
+    let mouse: Overlay['mouse'] = null;
+    if (contentRect && typeof p.x === 'number') {
+      mouse = {
+        left: contentRect.left - mainRect.left + p.x,
+        top: contentRect.top - mainRect.top + p.y,
+      };
+    }
+    let caret: Overlay['caret'] = null;
+    const cp = p.data?.caret as { pos?: number } | undefined;
+    if (api?.caretRectAtPos && cp && typeof cp.pos === 'number') {
+      const r = api.caretRectAtPos(cp.pos);
+      if (r) caret = { left: r.left - mainRect.left, top: r.top - mainRect.top, height: r.height };
+    }
+    return { editorId: p.editorId, displayName: p.displayName, color: cursorColor(p), mouse, caret };
+  });
+});
+
+onMounted(() => {
+  // Capture-phase scroll on window catches scrolls of ANY container
+  // (the main pane, the editor body, an inner block) — whichever
+  // actually scrolls, the overlay recomputes against the live layout.
+  window.addEventListener('scroll', bumpLayout, true);
+  window.addEventListener('resize', bumpLayout);
+});
+onBeforeUnmount(() => {
+  window.removeEventListener('scroll', bumpLayout, true);
+  window.removeEventListener('resize', bumpLayout);
+});
 </script>
 
 <template>
@@ -1325,7 +1444,42 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
       </div>
     </aside>
 
-    <main class="workbook-app__main">
+    <main
+      ref="mainRef"
+      class="workbook-app__main"
+      @pointermove="reportPointer"
+    >
+      <!-- Remote live cursors. Mouse pointer = content-space x/y resolved
+           against the local editor layout; text caret = logical position
+           resolved via caretRectAtPos (reflow/width/scroll independent).
+           Non-interactive overlay. -->
+      <div v-if="activePageId" class="workbook-cursors">
+        <template v-for="o in overlays" :key="o.editorId">
+          <div
+            v-if="o.caret"
+            class="workbook-caret"
+            :style="{
+              left: o.caret.left + 'px',
+              top: o.caret.top + 'px',
+              height: o.caret.height + 'px',
+              '--cursor-color': o.color,
+            }"
+          >
+            <span class="workbook-caret__label">{{ o.displayName }}</span>
+          </div>
+          <div
+            v-if="o.mouse"
+            class="workbook-cursor"
+            :style="{ left: o.mouse.left + 'px', top: o.mouse.top + 'px', '--cursor-color': o.color }"
+          >
+            <svg width="18" height="18" viewBox="0 0 18 18" class="workbook-cursor__icon">
+              <path d="M2 2 L2 14 L6 10 L9 16 L11 15 L8 9 L14 9 Z" />
+            </svg>
+            <span class="workbook-cursor__label">{{ o.displayName }}</span>
+          </div>
+        </template>
+      </div>
+
       <div v-if="loading" class="workbook-app__main-empty">Lade Workbook…</div>
 
       <template v-else-if="activePageId">
@@ -1429,6 +1583,7 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
           :editable="editorEditable"
           @save="onEditorSave"
           @dirty="onEditorDirty"
+          @caret="onEditorCaret"
         />
         <AssetPickerModal
           v-if="assetPickerOpen"
@@ -1923,10 +2078,66 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
   padding: 0.5rem;
 }
 .workbook-app__main {
+  position: relative;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+
+/* Live-cursor overlay — fixed to the scroll viewport (direct child of the
+   scroll container), coords mapped from content-space via scrollTop. */
+.workbook-cursors {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 6;
+}
+.workbook-cursor {
+  position: absolute;
+  transform: translate(-2px, -2px);
+  will-change: left, top;
+  transition: left 0.08s linear, top 0.08s linear;
+}
+.workbook-cursor__icon {
+  fill: var(--cursor-color, #3b82f6);
+  stroke: #ffffff;
+  stroke-width: 1;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.3));
+}
+.workbook-cursor__label {
+  position: absolute;
+  left: 16px;
+  top: 12px;
+  padding: 1px 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
+  color: #ffffff;
+  background: var(--cursor-color, #3b82f6);
+  border-radius: 6px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+.workbook-caret {
+  position: absolute;
+  width: 2px;
+  background: var(--cursor-color, #3b82f6);
+  opacity: 0.9;
+  will-change: left, top;
+  transition: left 0.08s linear, top 0.08s linear;
+}
+.workbook-caret__label {
+  position: absolute;
+  left: 0;
+  top: -1.1em;
+  padding: 0 4px;
+  font-size: 10px;
+  line-height: 1.4;
+  white-space: nowrap;
+  color: #ffffff;
+  background: var(--cursor-color, #3b82f6);
+  border-radius: 4px 4px 4px 0;
 }
 .workbook-app__main-empty {
   color: oklch(var(--bc) / 0.65);

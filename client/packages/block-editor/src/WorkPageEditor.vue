@@ -187,6 +187,14 @@ const props = withDefaults(
 const emit = defineEmits<{
   (e: 'save', body: string): void;
   (e: 'dirty', dirty: boolean): void;
+  /**
+   * The text caret moved. Carries the ProseMirror head position — a
+   * logical document offset, NOT pixels. Consumers that share the caret
+   * (live cursors) send this integer and let the receiver resolve it back
+   * to screen coordinates via {@link caretRectAtPos} against its own
+   * layout, so browser width / reflow / scroll differences don't matter.
+   */
+  (e: 'caret', pos: number): void;
 }>();
 
 const dirty = ref(false);
@@ -446,6 +454,9 @@ const editor = useEditor({
       emit('dirty', true);
     }
     scheduleAutoSave();
+  },
+  onSelectionUpdate: ({ editor: ed }) => {
+    emit('caret', ed.state.selection.head);
   },
 });
 
@@ -800,10 +811,42 @@ function insertInput(data: string) {
     .run();
 }
 
+/** Current text-caret head position (logical ProseMirror offset). */
+function getCaretPos(): number | null {
+  return editor.value ? editor.value.state.selection.head : null;
+}
+
+/**
+ * Resolve a logical ProseMirror position to on-screen coordinates using
+ * THIS editor's current layout (viewport-relative). Returns null when the
+ * position is out of range for the local document. Consumers convert the
+ * viewport rect into their own overlay space. This is what makes shared
+ * carets reflow/width/scroll independent — each side maps the same logical
+ * position through its own render.
+ */
+function caretRectAtPos(pos: number): { left: number; top: number; height: number } | null {
+  const view = editor.value?.view;
+  if (!view) return null;
+  const size = view.state.doc.content.size;
+  if (pos < 0 || pos > size) return null;
+  try {
+    const c = view.coordsAtPos(pos);
+    return { left: c.left, top: c.top, height: Math.max(c.bottom - c.top, 12) };
+  } catch {
+    return null;
+  }
+}
+
+/** The contentEditable root element (ProseMirror DOM) — for content-space anchoring. */
+function getContentEl(): HTMLElement | null {
+  return (editor.value?.view.dom as HTMLElement | undefined) ?? null;
+}
+
 defineExpose({
   save, flush, insertImage, insertEmbed, insertForm, insertInput, updateHeader,
   applyLink, clearLink, currentLinkHref,
   getHeader: () => currentHeader.value,
+  getCaretPos, caretRectAtPos, getContentEl,
 });
 </script>
 

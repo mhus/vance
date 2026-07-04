@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { VAlert, VButton } from '@vance/components';
+import { useDocumentPrefixReaction } from '@vance/shared';
 import CanvasEditor from './CanvasEditor.vue';
 import InputDialog from './InputDialog.vue';
 import { createCanvasPage, getGraph, putGraph, rebuildCanvasbook, scanCanvasbook } from './api';
@@ -73,6 +74,7 @@ async function openPage(path: string): Promise<void> {
 // ── Debounced save ────────────────────────────────────────────
 let timer: ReturnType<typeof setTimeout> | null = null;
 let pending: CanvasGraphDto | null = null;
+let lastSelfWriteAt = 0;
 
 function onEditorChange(g: CanvasGraphDto): void {
   // Do NOT feed g back into `graph` (the editor's :graph prop) — that
@@ -93,6 +95,7 @@ async function flushPending(): Promise<void> {
   saveState.value = 'saving';
   try {
     await putGraph(props.document.projectId, path, g);
+    lastSelfWriteAt = Date.now();
     saveState.value = 'saved';
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
@@ -121,6 +124,27 @@ async function rebuild(): Promise<void> {
     error.value = e instanceof Error ? e.message : String(e);
   }
 }
+
+// ── Live document updates (documents channel) ─────────────────
+// A canvas page is a document, so remote saves fire `documents.changed`.
+// Reload the active board when it changes elsewhere. Own echoes are
+// skipped via a self-write window; local unsaved edits are never clobbered.
+useDocumentPrefixReaction({
+  prefix: computed(() => (folder.value ? `${folder.value}/` : null)),
+  onRemoteChange: async (paths) => {
+    const ap = activePath.value;
+    if (!ap) return;
+    const relevant = paths.includes(ap) || paths.includes(`${folder.value}/`);
+    if (!relevant) return;
+    if (Date.now() - lastSelfWriteAt < 2500) return; // our own save echo
+    if (saveState.value !== 'saved' || pending) return; // don't drop local edits
+    try {
+      graph.value = await getGraph(props.document.projectId, ap);
+    } catch {
+      /* transient — next change or reconnect retries */
+    }
+  },
+});
 
 onMounted(() => refreshScan());
 onBeforeUnmount(flushPending);

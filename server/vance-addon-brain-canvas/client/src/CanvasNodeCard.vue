@@ -1,10 +1,15 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { Handle, Position } from '@vue-flow/core';
 import { NodeResizer } from '@vue-flow/node-resizer';
 import '@vue-flow/node-resizer/dist/style.css';
 import { NodeToolbar } from '@vue-flow/node-toolbar';
+import { brainFetchText, documentContentUrl } from '@vance/shared';
+import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 import type { CanvasNodeDto } from './generated/canvas/CanvasNodeDto';
+import type { CanvasDocItem } from './generated/canvas/CanvasDocItem';
+import { resolveDocument } from './api';
 
 /**
  * Custom VueFlow node. Text nodes support inline editing (double-click),
@@ -19,13 +24,18 @@ const props = defineProps<{
   data: {
     node: CanvasNodeDto;
     editable?: boolean;
+    projectId?: string;
     onText?: (id: string, text: string) => void;
     onResize?: (id: string, w: number, h: number, x: number, y: number) => void;
     onPatch?: (id: string, patch: Partial<CanvasNodeDto>) => void;
     onDelete?: (id: string) => void;
+    onFront?: (id: string) => void;
+    onBack?: (id: string) => void;
   };
   selected?: boolean;
 }>();
+
+const TEXT_COLORS = ['#111827', '#dc2626', '#2563eb', '#16a34a', '#ca8a04'];
 
 const COLORS = ['1', '2', '3', '4', '5', '6'];
 const PALETTE: Record<string, string> = {
@@ -52,16 +62,83 @@ const bg = computed(() => {
   return kind.value === 'text' ? '#fef9c3' : '#ffffff';
 });
 
+function hexToRgba(hex: string, a: number): string {
+  const m = /^#?([0-9a-fA-F]{6})$/.exec(hex.trim());
+  if (!m) return hex;
+  const n = Number.parseInt(m[1], 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+}
+
+const groupColor = computed(() =>
+  node.value.color ? (PALETTE[node.value.color] ?? node.value.color) : null,
+);
+const groupBg = computed(() =>
+  groupColor.value ? hexToRgba(groupColor.value, 0.18) : 'rgba(148, 163, 184, 0.08)',
+);
+const groupBorder = computed(() => groupColor.value ?? '#94a3b8');
+
 const textStyle = computed(() => ({
   fontSize: FONT_PX[node.value.fontSize ?? 'm'] ?? '13px',
   fontWeight: node.value.bold ? '700' : '400',
   fontStyle: node.value.italic ? 'italic' : 'normal',
+  color: node.value.textColor ?? '#1f2937',
 }));
 
 function basename(uri: string): string {
   const clean = (uri ?? '').split('?')[0];
   const seg = clean.split('/');
   return seg[seg.length - 1] || uri;
+}
+
+// ── Embedded document (doc nodes) ─────────────────────────────
+const docMeta = ref<CanvasDocItem | null>(null);
+const imgSrc = ref<string | null>(null);
+const mdHtml = ref<string | null>(null);
+const docError = ref<string | null>(null);
+
+function refToPath(ref: string): string {
+  let s = ref ?? '';
+  if (s.startsWith('vance:')) s = s.slice('vance:'.length);
+  return s.replace(/^\/+/, '').split('?')[0];
+}
+
+async function loadDoc(): Promise<void> {
+  docMeta.value = null;
+  imgSrc.value = null;
+  mdHtml.value = null;
+  docError.value = null;
+  if (kind.value !== 'doc') return;
+  const pid = props.data.projectId;
+  const ref = node.value.ref;
+  if (!pid || !ref) return;
+  try {
+    const meta = await resolveDocument(pid, refToPath(ref));
+    docMeta.value = meta;
+    const mime = meta.mimeType ?? '';
+    if (mime.startsWith('image/')) {
+      imgSrc.value = documentContentUrl(meta.id);
+    } else if (mime === 'text/markdown' || mime === 'text/x-markdown') {
+      const txt = await brainFetchText('documents/' + meta.id + '/content');
+      mdHtml.value = DOMPurify.sanitize(await marked.parse(txt ?? ''));
+    } else if (mime.startsWith('text/')) {
+      const txt = await brainFetchText('documents/' + meta.id + '/content');
+      mdHtml.value = DOMPurify.sanitize(await marked.parse('```\n' + (txt ?? '') + '\n```'));
+    }
+  } catch (e) {
+    docError.value = e instanceof Error ? e.message : String(e);
+  }
+}
+
+onMounted(loadDoc);
+watch(() => [node.value.ref, props.data.projectId], loadDoc);
+
+/** Jump: open the referenced document in a new Cortex tab. */
+function openInCortex(): void {
+  const pid = props.data.projectId;
+  const id = docMeta.value?.id;
+  if (!pid || !id) return;
+  const url = `/cortex.html?project=${encodeURIComponent(pid)}&doc=${encodeURIComponent(id)}`;
+  window.open(url, '_blank', 'noopener');
 }
 
 function patch(p: Partial<CanvasNodeDto>): void {
@@ -119,7 +196,9 @@ function onResizeEnd(e: { params: { x: number; y: number; width: number; height:
     class="canvas-node"
     :class="[`canvas-node--${kind}`, { 'canvas-node--selected': selected }]"
     :style="[
-      kind === 'group' ? {} : { background: bg },
+      kind === 'group'
+        ? { background: groupBg, borderColor: groupBorder }
+        : { background: bg },
       kind === 'text' ? { minHeight: (node.h || 80) + 'px' } : { height: '100%' },
     ]"
     @dblclick.stop="beginEdit"
@@ -150,9 +229,21 @@ function onResizeEnd(e: { params: { x: number; y: number; width: number; height:
           <span class="cv-sep"></span>
           <button class="cv-btn" :class="{ 'cv-active': node.bold }" @click="patch({ bold: !node.bold })"><b>B</b></button>
           <button class="cv-btn" :class="{ 'cv-active': node.italic }" @click="patch({ italic: !node.italic })"><i>K</i></button>
+          <span class="cv-sep"></span>
+          <button
+            v-for="tc in TEXT_COLORS"
+            :key="tc"
+            class="cv-tcolor"
+            :style="{ color: tc }"
+            :class="{ 'cv-active': node.textColor === tc }"
+            title="Textfarbe"
+            @click="patch({ textColor: tc })"
+          >A</button>
         </template>
 
         <span class="cv-sep"></span>
+        <button class="cv-btn" title="in den Vordergrund" @click="props.data.onFront?.(node.id)">⬆</button>
+        <button class="cv-btn" title="in den Hintergrund" @click="props.data.onBack?.(node.id)">⬇</button>
         <button class="cv-btn cv-danger" title="Löschen" @click="props.data.onDelete?.(node.id)">🗑</button>
       </div>
     </NodeToolbar>
@@ -201,11 +292,26 @@ function onResizeEnd(e: { params: { x: number; y: number; width: number; height:
       <div v-else class="canvas-note-body" :style="textStyle">
         {{ node.text || '(leere Notiz)' }}
       </div>
+      <div v-if="node.author && !editing" class="canvas-note-author">✎ {{ node.author }}</div>
     </template>
 
     <template v-else-if="kind === 'doc'">
-      <div class="canvas-card-title">📄 {{ basename(node.ref ?? '') }}</div>
-      <div class="canvas-card-sub">{{ node.ref }}</div>
+      <button
+        v-if="docMeta"
+        class="canvas-embed-open nodrag"
+        title="Im Cortex öffnen"
+        @click.stop="openInCortex"
+        @pointerdown.stop
+        @dblclick.stop
+      >↗</button>
+      <img v-if="imgSrc" :src="imgSrc" class="canvas-embed-img" alt="" />
+      <div v-else-if="mdHtml" class="canvas-embed-md" v-html="mdHtml"></div>
+      <template v-else>
+        <div class="canvas-card-title">📄 {{ docMeta?.title || basename(node.ref ?? '') }}</div>
+        <div class="canvas-card-sub">
+          {{ docError ?? ((docMeta?.kind ? docMeta.kind + ' · ' : '') + basename(node.ref ?? '')) }}
+        </div>
+      </template>
     </template>
 
     <template v-else-if="kind === 'link'">
@@ -221,6 +327,7 @@ function onResizeEnd(e: { params: { x: number; y: number; width: number; height:
 
 <style scoped>
 .canvas-node {
+  position: relative;
   width: 100%;
   box-sizing: border-box;
   line-height: 1.35;
@@ -249,6 +356,18 @@ function onResizeEnd(e: { params: { x: number; y: number; width: number; height:
   white-space: pre-wrap;
   word-break: break-word;
 }
+.canvas-note-author {
+  position: absolute;
+  right: 4px;
+  bottom: 3px;
+  z-index: 5;
+  padding: 0 4px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.75);
+  font-size: 9px;
+  color: #475569;
+  pointer-events: none;
+}
 .canvas-note-edit {
   width: 100%;
   resize: none;
@@ -268,6 +387,39 @@ function onResizeEnd(e: { params: { x: number; y: number; width: number; height:
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
   font-size: 12px;
   overflow: hidden;
+}
+.canvas-embed-open {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 6;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid #d1d5db;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  color: #1f2937;
+}
+.canvas-embed-open:hover {
+  background: #ffffff;
+}
+.canvas-embed-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.canvas-embed-md {
+  height: 100%;
+  overflow: auto;
+  font-size: 12px;
+  word-break: break-word;
+}
+.canvas-embed-md :deep(img) {
+  max-width: 100%;
 }
 .canvas-card-title {
   font-weight: 600;
@@ -344,6 +496,19 @@ function onResizeEnd(e: { params: { x: number; y: number; width: number; height:
   color: #1f2937;
 }
 .cv-btn:hover {
+  background: #f1f5f9;
+}
+.cv-tcolor {
+  min-width: 20px;
+  height: 22px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 13px;
+}
+.cv-tcolor:hover {
   background: #f1f5f9;
 }
 .cv-active {

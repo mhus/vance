@@ -46,11 +46,18 @@ You never hand-write this — use the tools below. Read the whole document with
 | `text`  | `text` (Markdown snippet) | inline note card |
 | `doc`   | `ref` (a `vance:`-URI) | references another document/image, rendered as a card / image |
 | `link`  | `href`, `title?` | external link card |
-| `group` | `label?` | a labelled background frame; membership is **implicit by position** (nodes whose box sits inside the group's box belong to it — there is no child list) |
+| `group` | `label?` | a labelled frame that contains other nodes |
+
+**Grouping is explicit.** A node that belongs to a group carries
+`parent: <group-id>`, and its `x`/`y` are then **relative to that group's
+top-left corner**. So the graph makes membership machine-readable: to see what
+belongs together, read each node's `parent`. A group with no members is just an
+empty frame. Deleting a group detaches its members back to the canvas root.
 
 Common geometry on every node: `x`, `y`, `w`, `h`, optional `color`
-(palette `"1"`–`"6"` or a hex string), optional `z`. Node `id`s are minted
-server-side (`n1`, `n2`, …) — you don't supply them.
+(palette `"1"`–`"6"` or a hex string), optional `z`, optional `parent`
+(containing group id). Node `id`s are minted server-side (`n1`, `n2`, …) — you
+don't supply them.
 
 ## Edges are directed (arrows)
 

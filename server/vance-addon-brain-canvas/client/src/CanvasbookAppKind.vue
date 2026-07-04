@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { VAlert, VButton } from '@vance/components';
 import CanvasEditor from './CanvasEditor.vue';
+import InputDialog from './InputDialog.vue';
 import { createCanvasPage, getGraph, putGraph, rebuildCanvasbook, scanCanvasbook } from './api';
 import type { CanvasbookView } from './generated/canvas/CanvasbookView';
 import type { CanvasbookPageView } from './generated/canvas/CanvasbookPageView';
@@ -30,6 +31,14 @@ const graph = ref<CanvasGraphDto | null>(null);
 const error = ref<string | null>(null);
 const menuOpen = ref(false);
 const saveState = ref<'saved' | 'dirty' | 'saving'>('saved');
+
+type DialogApi = {
+  open: (
+    t: string,
+    f: { key: string; label: string; placeholder?: string; value?: string }[],
+  ) => Promise<Record<string, string> | null>;
+};
+const dialog = ref<DialogApi | null>(null);
 
 const activeTitle = computed(
   () => pages.value.find((p) => p.path === activePath.value)?.title ?? '—',
@@ -92,10 +101,12 @@ async function flushPending(): Promise<void> {
 }
 
 async function addPage(): Promise<void> {
-  const title = window.prompt('Titel der neuen Canvas:', 'Neue Canvas');
-  if (title === null) return;
+  const v = await dialog.value?.open('Neue Canvas', [
+    { key: 'title', label: 'Titel', value: 'Neue Canvas' },
+  ]);
+  if (!v || !v.title) return;
   try {
-    const created = await createCanvasPage(props.document.projectId, folder.value, { title });
+    const created = await createCanvasPage(props.document.projectId, folder.value, { title: v.title });
     await refreshScan(created.path);
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
@@ -165,11 +176,15 @@ onBeforeUnmount(flushPending);
         :key="activePath ?? ''"
         :graph="graph"
         :editable="true"
+        :project-id="document.projectId"
+        :path="activePath"
         @change="onEditorChange"
       />
       <div v-else class="p-4 text-sm opacity-60">
         {{ pages.length === 0 ? 'Leeres Canvasbook — „+ Canvas" anlegen.' : 'Wähle eine Canvas.' }}
       </div>
     </div>
+
+    <InputDialog ref="dialog" />
   </div>
 </template>

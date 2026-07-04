@@ -137,21 +137,23 @@ public final class CanvasCodec {
         double h = dbl(raw, "h", DEFAULT_H);
         String color = str(raw, "color");
         Integer z = intOrNull(raw.get("z"));
+        String parent = str(raw, "parent");
         return switch (type.toLowerCase(Locale.ROOT)) {
-            case "text" -> new CanvasNode.Text(id, x, y, w, h, color, z, strOrEmpty(raw, "text"),
+            case "text" -> new CanvasNode.Text(id, x, y, w, h, color, z, parent,
+                    strOrEmpty(raw, "text"),
                     boolOrNull(raw.get("bold")), boolOrNull(raw.get("italic")),
-                    str(raw, "fontSize"));
+                    str(raw, "fontSize"), str(raw, "textColor"), str(raw, "author"));
             case "doc" -> {
                 String ref = str(raw, "ref");
                 if (ref == null) throw new KindCodecException("canvas doc-node requires `ref`");
-                yield new CanvasNode.Doc(id, x, y, w, h, color, z, ref);
+                yield new CanvasNode.Doc(id, x, y, w, h, color, z, parent, ref);
             }
             case "link" -> {
                 String href = str(raw, "href");
                 if (href == null) throw new KindCodecException("canvas link-node requires `href`");
-                yield new CanvasNode.Link(id, x, y, w, h, color, z, href, str(raw, "title"));
+                yield new CanvasNode.Link(id, x, y, w, h, color, z, parent, href, str(raw, "title"));
             }
-            case "group" -> new CanvasNode.Group(id, x, y, w, h, color, z, str(raw, "label"));
+            case "group" -> new CanvasNode.Group(id, x, y, w, h, color, z, parent, str(raw, "label"));
             default -> throw new KindCodecException("Unknown canvas node.type='" + type + "'");
         };
     }
@@ -166,12 +168,15 @@ public final class CanvasCodec {
         m.put("h", n.h());
         if (n.color() != null) m.put("color", n.color());
         if (n.z() != null) m.put("z", n.z());
+        if (n.parent() != null) m.put("parent", n.parent());
         switch (n) {
             case CanvasNode.Text t -> {
                 m.put("text", t.text());
                 if (Boolean.TRUE.equals(t.bold())) m.put("bold", true);
                 if (Boolean.TRUE.equals(t.italic())) m.put("italic", true);
                 if (t.fontSize() != null) m.put("fontSize", t.fontSize());
+                if (t.textColor() != null) m.put("textColor", t.textColor());
+                if (t.author() != null) m.put("author", t.author());
             }
             case CanvasNode.Doc d -> m.put("ref", d.ref());
             case CanvasNode.Link l -> {

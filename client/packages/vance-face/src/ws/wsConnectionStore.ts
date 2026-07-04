@@ -12,6 +12,10 @@ import type {
   DocumentPresenceNotification,
   DocumentSubscribeRequest,
   DocumentViewer,
+  PointerLeaveNotification,
+  PointerMoveRequest,
+  PointerNotification,
+  PointerSubscribeRequest,
   SessionResumeRequest,
   SessionResumeResponse,
 } from '@vance/generated';
@@ -149,6 +153,26 @@ const documentPrefixReconnectListeners = new Map<string, Set<DocumentChangedHand
  */
 type DocumentNoteChangedHandler = (notification: DocumentNoteChangedNotification) => void;
 const documentNoteChangedListeners = new Map<string, Set<DocumentNoteChangedHandler>>();
+
+/**
+ * Desired-state of {@code pointers}-channel subscriptions. Replayed on
+ * every socket-swap so reconnects restore live-cursor participation
+ * automatically — mirrors {@link desiredSubscriptions}. The pointers
+ * channel keeps no roster server-side, so there's no cached viewer map
+ * here; stale cursors are cleared client-side by the composable's TTL.
+ */
+const desiredPointerSubscriptions: Set<string> = new Set();
+
+/** Per-path callbacks for the {@code pointers} channel {@code pointer} frame. */
+type PointerHandler = (notification: PointerNotification) => void;
+const pointerListeners = new Map<string, Set<PointerHandler>>();
+
+/** Per-path callbacks for the {@code pointers} channel {@code pointer-leave} frame. */
+type PointerLeaveHandler = (notification: PointerLeaveNotification) => void;
+const pointerLeaveListeners = new Map<string, Set<PointerLeaveHandler>>();
+
+let pointersUnsubscribe: (() => void) | null = null;
+let pointersSocketWatchStopped = false;
 
 let releaseTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -767,6 +791,151 @@ function wireDocumentsSocketWatch(): void {
 // Wire the documents socket-watch lazily on first store use — keeps the
 // module-import side-effect-free for tests / SSR.
 wireDocumentsSocketWatch();
+
+// ─── pointers-channel ────────────────────────────────────────
+
+/**
+ * Subscribe to the live-pointer stream for {@code path}. Enables both
+ * sending ({@link sendPointerMove}) and receiving ({@link onPointer} /
+ * {@link onPointerLeave}). Adds to the desired-set so
+ * Reconnect-Resubscribe replays it. Idempotent on the wire.
+ */
+export async function subscribePointers(path: string): Promise<void> {
+  desiredPointerSubscriptions.add(path);
+  const sock = await ensureConnected();
+  sock.sendOnChannel('pointers', 'subscribe', { path } as PointerSubscribeRequest);
+}
+
+/**
+ * Drop a pointers-channel subscription. Removes from desired-set and
+ * sends {@code unsubscribe} so the server broadcasts our {@code leave}
+ * to the remaining participants.
+ */
+export async function unsubscribePointers(path: string): Promise<void> {
+  desiredPointerSubscriptions.delete(path);
+  if (socket.value && !socket.value.closed()) {
+    socket.value.sendOnChannel('pointers', 'unsubscribe', { path } as PointerSubscribeRequest);
+  }
+}
+
+/**
+ * Send our current pointer position on {@code path}. Fire-and-forget:
+ * dropped silently when the socket is down (the next move replaces it).
+ * Callers MUST coalesce high-frequency {@code mousemove} events
+ * (requestAnimationFrame / ~30 Hz) before calling this — the server also
+ * rate-caps but the client should not flood the socket in the first
+ * place. Coordinates are opaque application space.
+ */
+export function sendPointerMove(
+  path: string,
+  x: number,
+  y: number,
+  data?: Record<string, unknown>,
+): void {
+  const sock = socket.value;
+  if (!sock || sock.closed()) return;
+  sock.sendOnChannel('pointers', 'pointer-move', { path, x, y, data } as PointerMoveRequest);
+}
+
+/** Register a callback for {@code pointer} frames on {@code path}. Returns an unsubscribe. */
+export function onPointer(path: string, handler: PointerHandler): () => void {
+  let set = pointerListeners.get(path);
+  if (!set) {
+    set = new Set();
+    pointerListeners.set(path, set);
+  }
+  set.add(handler);
+  return () => {
+    const current = pointerListeners.get(path);
+    if (!current) return;
+    current.delete(handler);
+    if (current.size === 0) pointerListeners.delete(path);
+  };
+}
+
+/** Register a callback for {@code pointer-leave} frames on {@code path}. Returns an unsubscribe. */
+export function onPointerLeave(path: string, handler: PointerLeaveHandler): () => void {
+  let set = pointerLeaveListeners.get(path);
+  if (!set) {
+    set = new Set();
+    pointerLeaveListeners.set(path, set);
+  }
+  set.add(handler);
+  return () => {
+    const current = pointerLeaveListeners.get(path);
+    if (!current) return;
+    current.delete(handler);
+    if (current.size === 0) pointerLeaveListeners.delete(path);
+  };
+}
+
+function attachPointersListener(sock: BrainWebSocket): void {
+  detachPointersListener();
+  const pointerOff = sock.onChannel<PointerNotification>(
+    'pointers',
+    'pointer',
+    (data) => {
+      if (!data || !data.path) return;
+      const listeners = pointerListeners.get(data.path);
+      if (!listeners || listeners.size === 0) return;
+      for (const handler of Array.from(listeners)) {
+        try {
+          handler(data);
+        } catch (e) {
+          console.warn(`[wsStore] pointer handler for '${data.path}' threw:`, e);
+        }
+      }
+    },
+  );
+  const leaveOff = sock.onChannel<PointerLeaveNotification>(
+    'pointers',
+    'pointer-leave',
+    (data) => {
+      if (!data || !data.path) return;
+      const listeners = pointerLeaveListeners.get(data.path);
+      if (!listeners || listeners.size === 0) return;
+      for (const handler of Array.from(listeners)) {
+        try {
+          handler(data);
+        } catch (e) {
+          console.warn(`[wsStore] pointer-leave handler for '${data.path}' threw:`, e);
+        }
+      }
+    },
+  );
+  pointersUnsubscribe = () => {
+    try { pointerOff(); } catch { /* ignore */ }
+    try { leaveOff(); } catch { /* ignore */ }
+  };
+}
+
+function detachPointersListener(): void {
+  if (pointersUnsubscribe) {
+    try { pointersUnsubscribe(); } catch { /* ignore */ }
+    pointersUnsubscribe = null;
+  }
+}
+
+function wirePointersSocketWatch(): void {
+  if (pointersSocketWatchStopped) return;
+  pointersSocketWatchStopped = true;
+  watch(socket, (next) => {
+    detachPointersListener();
+    if (next) {
+      attachPointersListener(next);
+      // Re-emit desired-set on every fresh socket (idempotent server-side).
+      for (const path of desiredPointerSubscriptions) {
+        try {
+          next.sendOnChannel('pointers', 'subscribe', { path } as PointerSubscribeRequest);
+        } catch (e) {
+          console.warn(`[wsStore] pointers reconnect-resubscribe failed for path='${path}':`, e);
+        }
+      }
+    }
+  }, { immediate: true });
+}
+
+wirePointersSocketWatch();
 
 /**
  * Inform the store that the server-side binding is already in place

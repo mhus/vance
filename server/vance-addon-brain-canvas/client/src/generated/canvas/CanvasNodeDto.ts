@@ -12,6 +12,7 @@ export interface CanvasNodeDto {
   h: number;
   color?: string;
   z?: number;
+  parent?: string;
   text?: string;
   ref?: string;
   href?: string;
@@ -20,4 +21,6 @@ export interface CanvasNodeDto {
   bold?: boolean;
   italic?: boolean;
   fontSize?: string;
+  textColor?: string;
+  author?: string;
 }

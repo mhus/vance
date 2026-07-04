@@ -38,6 +38,12 @@ watch(() => [props.document.projectId, props.document.path], load);
   <div class="h-full w-full">
     <VAlert v-if="error" variant="error">{{ error }}</VAlert>
     <div v-else-if="loading" class="p-4 text-sm opacity-60">Lädt…</div>
-    <CanvasEditor v-else-if="graph" :graph="graph" :editable="false" />
+    <CanvasEditor
+      v-else-if="graph"
+      :graph="graph"
+      :editable="false"
+      :project-id="document.projectId"
+      :path="document.path"
+    />
   </div>
 </template>

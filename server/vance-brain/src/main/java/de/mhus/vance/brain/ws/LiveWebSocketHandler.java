@@ -4,6 +4,8 @@ import de.mhus.vance.api.ws.LiveEnvelope;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.brain.ws.documents.DocumentChannelHandler;
 import de.mhus.vance.brain.ws.documents.DocumentSubscriberRegistry;
+import de.mhus.vance.brain.ws.pointers.PointerBroadcaster;
+import de.mhus.vance.brain.ws.pointers.PointerChannelHandler;
 import de.mhus.vance.brain.ws.live.HomePodLookupService;
 import de.mhus.vance.brain.ws.live.HomePodTarget;
 import de.mhus.vance.brain.ws.live.LiveChatTunnel;
@@ -51,6 +53,7 @@ public class LiveWebSocketHandler extends TextWebSocketHandler {
 
     private static final String CHANNEL_SESSION = "session";
     private static final String CHANNEL_DOCUMENTS = "documents";
+    private static final String CHANNEL_POINTERS = "pointers";
 
     private final VanceWebSocketHandler chatHandler;
     private final ObjectMapper objectMapper;
@@ -59,6 +62,8 @@ public class LiveWebSocketHandler extends TextWebSocketHandler {
     private final LiveChatTunnelRegistry tunnelRegistry;
     private final DocumentChannelHandler documentChannelHandler;
     private final DocumentSubscriberRegistry documentSubscriberRegistry;
+    private final PointerChannelHandler pointerChannelHandler;
+    private final PointerBroadcaster pointerBroadcaster;
 
     @Override
     public void afterConnectionEstablished(WebSocketSession wsSession) throws Exception {
@@ -95,6 +100,7 @@ public class LiveWebSocketHandler extends TextWebSocketHandler {
         switch (channel) {
             case CHANNEL_SESSION -> handleSessionChannel(wsSession, ctx, live);
             case CHANNEL_DOCUMENTS -> documentChannelHandler.handle(wsSession, ctx, live);
+            case CHANNEL_POINTERS -> pointerChannelHandler.handle(wsSession, ctx, live);
             default -> sender.sendError(wsSession, null, 400,
                     "Channel not supported in v1: '" + channel + "'");
         }
@@ -146,6 +152,13 @@ public class LiveWebSocketHandler extends TextWebSocketHandler {
             documentSubscriberRegistry.unsubscribeAll(wsSession);
         } catch (RuntimeException e) {
             log.warn("documents.unsubscribeAll for external='{}' failed: {}",
+                    wsSession.getId(), e.toString());
+        }
+        try {
+            pointerBroadcaster.unsubscribeAll(wsSession);
+            pointerChannelHandler.forgetConnection(wsSession);
+        } catch (RuntimeException e) {
+            log.warn("pointers.unsubscribeAll for external='{}' failed: {}",
                     wsSession.getId(), e.toString());
         }
         chatHandler.afterConnectionClosed(wsSession, status);

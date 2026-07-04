@@ -141,6 +141,37 @@ public class CanvasbookAppController {
         return CanvasDtoMapper.toDto(canvasService.readDocument(saved));
     }
 
+    // ── Document picker / embed resolution ───────────────────────
+
+    @GetMapping("/brain/{tenant}/addon/canvas/documents/search")
+    public CanvasDocSearchResponse searchDocuments(@PathVariable String tenant,
+                                                   @RequestParam String projectId,
+                                                   @RequestParam(required = false) @Nullable String query,
+                                                   @RequestParam(defaultValue = "40") int size,
+                                                   HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
+        int limit = Math.min(Math.max(size, 1), 200);
+        DocumentService.DocumentListing listing =
+                documentService.searchProjectDocuments(tenant, projectId, null, query, limit);
+        List<CanvasDocItem> items = new ArrayList<>();
+        for (DocumentService.DocumentMatch m : listing.items()) {
+            items.add(new CanvasDocItem(m.id(), m.path(), m.title(), m.kind(), m.mimeType()));
+        }
+        return new CanvasDocSearchResponse(items, listing.total());
+    }
+
+    @GetMapping("/brain/{tenant}/addon/canvas/document")
+    public CanvasDocItem resolveDocument(@PathVariable String tenant,
+                                         @RequestParam String projectId,
+                                         @RequestParam String path,
+                                         HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
+        DocumentDocument doc = documentService.findByPath(tenant, projectId, path)
+                .orElseThrow(() -> new ToolException("No document at '" + path + "'."));
+        return new CanvasDocItem(doc.getId(), doc.getPath(), doc.getTitle(),
+                doc.getKind(), doc.getMimeType());
+    }
+
     // ── Helpers ───────────────────────────────────────────────────
 
     private DocumentDocument requireCanvas(String tenant, String projectId, String path) {

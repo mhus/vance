@@ -82,7 +82,7 @@ class CanvasServiceTest {
 
     @Test
     void addNode_duplicateExplicitId_throws() {
-        CanvasNode existing = new CanvasNode.Text("n1", 0, 0, 10, 10, null, null, "a", null, null, null);
+        CanvasNode existing = new CanvasNode.Text("n1", 0, 0, 10, 10, null, null, null, "a", null, null, null, null, null);
         String body = CanvasCodec.serialize(
                 new CanvasDocument("T", null, new CanvasGraph(List.of(existing), List.of())), YAML);
         DocumentDocument doc = docWithBody(body);
@@ -104,8 +104,8 @@ class CanvasServiceTest {
 
     @Test
     void deleteNode_dropsIncidentEdges() {
-        CanvasNode n1 = new CanvasNode.Text("n1", 0, 0, 10, 10, null, null, "a", null, null, null);
-        CanvasNode n2 = new CanvasNode.Text("n2", 20, 0, 10, 10, null, null, "b", null, null, null);
+        CanvasNode n1 = new CanvasNode.Text("n1", 0, 0, 10, 10, null, null, null, "a", null, null, null, null, null);
+        CanvasNode n2 = new CanvasNode.Text("n2", 20, 0, 10, 10, null, null, null, "b", null, null, null, null, null);
         CanvasEdge e1 = new CanvasEdge("e1", "n1", "n2", null, null,
                 CanvasEdge.End.NONE, CanvasEdge.End.ARROW, null, null);
         String body = CanvasCodec.serialize(
@@ -121,7 +121,7 @@ class CanvasServiceTest {
 
     @Test
     void updateNode_patchesPositionKeepsId() {
-        CanvasNode n1 = new CanvasNode.Text("n1", 0, 0, 10, 10, null, null, "a", null, null, null);
+        CanvasNode n1 = new CanvasNode.Text("n1", 0, 0, 10, 10, null, null, null, "a", null, null, null, null, null);
         String body = CanvasCodec.serialize(
                 new CanvasDocument("T", null, new CanvasGraph(List.of(n1), List.of())), YAML);
         DocumentDocument doc = docWithBody(body);

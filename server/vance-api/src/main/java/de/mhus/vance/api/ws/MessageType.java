@@ -474,6 +474,63 @@ public final class MessageType {
      */
     public static final String DOCUMENT_INVALIDATE = "document-invalidate";
 
+    // ── pointers channel (Live-WS multi-channel envelope) ──────────────
+    //
+    // Inner WebSocketEnvelope.type values used **only on**
+    // LiveEnvelope.channel == "pointers". Ephemeral live-cursor broadcast
+    // — pure fan-out, no roster, no persistence. See
+    // planning/pointers-channel.md §4.
+
+    /**
+     * Client → server: subscribe to the pointer stream of a document path.
+     * Payload: {@link PointerSubscribeRequest}. Idempotent. Enables both
+     * sending ({@link #POINTER_MOVE}) and receiving ({@link #POINTER})
+     * for that path. Unlike the {@code documents} channel there is no
+     * presence push on subscribe — participants only become visible once
+     * they move.
+     */
+    public static final String POINTER_SUBSCRIBE = "subscribe";
+
+    /**
+     * Client → server: drop a previously-registered pointer subscription.
+     * Payload: {@link PointerSubscribeRequest} (only {@code path} is used).
+     * Broadcasts a {@link #POINTER_LEAVE} for this connection to the
+     * remaining subscribers.
+     */
+    public static final String POINTER_UNSUBSCRIBE = "unsubscribe";
+
+    /**
+     * Client → server: drop all of this WebSocket's pointer subscriptions
+     * in one frame. Implicit on WS close anyway. No payload.
+     */
+    public static final String POINTER_UNSUBSCRIBE_ALL = "unsubscribe-all";
+
+    /**
+     * Client → server: "my pointer is now here". Payload:
+     * {@link PointerMoveRequest} (path + opaque {@code x}/{@code y} +
+     * optional app {@code data}). Coalesced client-side to ~30 Hz; the
+     * server fans it out to the other subscribers of the path and never
+     * persists it.
+     */
+    public static final String POINTER_MOVE = "pointer-move";
+
+    /**
+     * Server → client: another participant's pointer moved. Payload:
+     * {@link PointerNotification}. Sent only to subscribers of the path,
+     * with the sender's own connection filtered out via {@code editorId}.
+     * Cross-pod fan-out runs through Redis pub/sub on the {@code pointers}
+     * topic; without Redis the channel works pod-locally only.
+     */
+    public static final String POINTER = "pointer";
+
+    /**
+     * Server → client: a participant's pointer left the path. Payload:
+     * {@link PointerLeaveNotification}. Emitted on explicit unsubscribe,
+     * mouse-leave/blur, or WS disconnect. The client-side TTL fade is the
+     * robust primary cleanup; this frame is the fast path.
+     */
+    public static final String POINTER_LEAVE = "pointer-leave";
+
     private MessageType() {
     }
 }

@@ -1,4 +1,8 @@
-import type { DocumentChangedNotification } from '@vance/generated';
+import type {
+  DocumentChangedNotification,
+  PointerLeaveNotification,
+  PointerNotification,
+} from '@vance/generated';
 
 /**
  * Cross-bundle bridge for WebSocket subscriptions. Lets Module-Federation
@@ -46,6 +50,20 @@ export interface VanceWsApi {
   onDocumentPrefixReconnect(
     prefix: string,
     handler: (notification: DocumentChangedNotification) => void,
+  ): () => void;
+
+  // ── pointers channel (ephemeral live cursors) ──
+  /** Subscribe to the live-pointer stream for a path (enables send + receive). */
+  subscribePointers(path: string): Promise<void>;
+  unsubscribePointers(path: string): Promise<void>;
+  /** Send the local pointer position (opaque app-space coords). Fire-and-forget. */
+  sendPointerMove(path: string, x: number, y: number, data?: Record<string, unknown>): void;
+  /** Register a listener for {@code pointer} frames on a path. Returns an unsubscribe. */
+  onPointer(path: string, handler: (notification: PointerNotification) => void): () => void;
+  /** Register a listener for {@code pointer-leave} frames on a path. Returns an unsubscribe. */
+  onPointerLeave(
+    path: string,
+    handler: (notification: PointerLeaveNotification) => void,
   ): () => void;
 }
 

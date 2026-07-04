@@ -4,6 +4,8 @@ import type { CanvasbookPageView } from './generated/canvas/CanvasbookPageView';
 import type { CanvasbookRebuildResponse } from './generated/canvas/CanvasbookRebuildResponse';
 import type { CanvasbookCreatePageRequest } from './generated/canvas/CanvasbookCreatePageRequest';
 import type { CanvasGraphDto } from './generated/canvas/CanvasGraphDto';
+import type { CanvasDocSearchResponse } from './generated/canvas/CanvasDocSearchResponse';
+import type { CanvasDocItem } from './generated/canvas/CanvasDocItem';
 
 function qs(params: Record<string, string>): string {
   const u = new URLSearchParams();
@@ -38,6 +40,20 @@ export async function rebuildCanvasbook(
     'POST',
     `addon/canvas/rebuild?${qs({ projectId, folder })}`,
   );
+}
+
+export async function searchDocuments(
+  projectId: string,
+  query: string,
+): Promise<CanvasDocSearchResponse> {
+  return brainFetch<CanvasDocSearchResponse>(
+    'GET',
+    `addon/canvas/documents/search?${qs({ projectId, query, size: '40' })}`,
+  );
+}
+
+export async function resolveDocument(projectId: string, path: string): Promise<CanvasDocItem> {
+  return brainFetch<CanvasDocItem>('GET', `addon/canvas/document?${qs({ projectId, path })}`);
 }
 
 export async function getGraph(projectId: string, path: string): Promise<CanvasGraphDto> {

@@ -18,6 +18,7 @@ public record CanvasNodeDto(
         double h,
         @Nullable String color,
         @Nullable Integer z,
+        @Nullable String parent,
         @Nullable String text,
         @Nullable String ref,
         @Nullable String href,
@@ -25,4 +26,6 @@ public record CanvasNodeDto(
         @Nullable String label,
         @Nullable Boolean bold,
         @Nullable Boolean italic,
-        @Nullable String fontSize) {}
+        @Nullable String fontSize,
+        @Nullable String textColor,
+        @Nullable String author) {}

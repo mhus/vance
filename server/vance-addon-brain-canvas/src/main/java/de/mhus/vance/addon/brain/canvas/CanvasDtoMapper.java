@@ -31,17 +31,20 @@ public final class CanvasDtoMapper {
 
     private static CanvasNodeDto nodeToDto(CanvasNode n) {
         String text = null, ref = null, href = null, title = null, label = null, fontSize = null;
+        String textColor = null, author = null;
         Boolean bold = null, italic = null;
         switch (n) {
             case CanvasNode.Text t -> {
                 text = t.text(); bold = t.bold(); italic = t.italic(); fontSize = t.fontSize();
+                textColor = t.textColor(); author = t.author();
             }
             case CanvasNode.Doc d -> ref = d.ref();
             case CanvasNode.Link l -> { href = l.href(); title = l.title(); }
             case CanvasNode.Group g -> label = g.label();
         }
         return new CanvasNodeDto(n.id(), n.type(), n.x(), n.y(), n.w(), n.h(),
-                n.color(), n.z(), text, ref, href, title, label, bold, italic, fontSize);
+                n.color(), n.z(), n.parent(), text, ref, href, title, label, bold, italic, fontSize,
+                textColor, author);
     }
 
     private static CanvasEdgeDto edgeToDto(CanvasEdge e) {
@@ -77,6 +80,7 @@ public final class CanvasDtoMapper {
         m.put("h", n.h());
         putIf(m, "color", n.color());
         if (n.z() != null) m.put("z", n.z());
+        putIf(m, "parent", n.parent());
         putIf(m, "text", n.text());
         putIf(m, "ref", n.ref());
         putIf(m, "href", n.href());
@@ -85,6 +89,8 @@ public final class CanvasDtoMapper {
         putIf(m, "bold", n.bold());
         putIf(m, "italic", n.italic());
         putIf(m, "fontSize", n.fontSize());
+        putIf(m, "textColor", n.textColor());
+        putIf(m, "author", n.author());
         return m;
     }
 

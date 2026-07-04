@@ -7,10 +7,15 @@ import {
   onDocumentChanged,
   onDocumentChangedPrefix,
   onDocumentPrefixReconnect,
+  onPointer,
+  onPointerLeave,
+  sendPointerMove,
   subscribeDocument,
   subscribeDocumentPrefix,
+  subscribePointers,
   unsubscribeDocument,
   unsubscribeDocumentPrefix,
+  unsubscribePointers,
 } from '@/ws/wsConnectionStore';
 
 /**
@@ -64,6 +69,11 @@ configureVanceWs({
   unsubscribeDocumentPrefix,
   onDocumentChangedPrefix,
   onDocumentPrefixReconnect,
+  subscribePointers,
+  unsubscribePointers,
+  sendPointerMove,
+  onPointer,
+  onPointerLeave,
 });
 
 // Cookie-derived identity → prefsStore. Idempotent — runs every page

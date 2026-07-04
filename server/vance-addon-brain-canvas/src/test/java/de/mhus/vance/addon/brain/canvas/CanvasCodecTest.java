@@ -18,12 +18,12 @@ class CanvasCodecTest {
     private static final String JSON = "application/json";
 
     private static CanvasDocument sample() {
-        CanvasNode g = new CanvasNode.Group("g1", 0, 0, 600, 200, "2", null, "Cluster");
-        CanvasNode t = new CanvasNode.Text("n1", 120, 80, 240, 120, "1", null, "Kernidee",
-                true, null, "l");
-        CanvasNode d = new CanvasNode.Doc("n2", 420, 80, 320, 160, null, null,
+        CanvasNode g = new CanvasNode.Group("g1", 0, 0, 600, 200, "2", null, null, "Cluster");
+        CanvasNode t = new CanvasNode.Text("n1", 120, 80, 240, 120, "1", null, "g1", "Kernidee",
+                true, null, "l", "#dc2626", "alice");
+        CanvasNode d = new CanvasNode.Doc("n2", 420, 80, 320, 160, null, null, null,
                 "vance:/assets/x.png?kind=image");
-        CanvasNode l = new CanvasNode.Link("n3", 120, 300, 260, 90, null, 5,
+        CanvasNode l = new CanvasNode.Link("n3", 120, 300, 260, 90, null, 5, null,
                 "https://example.com", "Example");
         CanvasEdge e = new CanvasEdge("e1", "n1", "n2",
                 CanvasEdge.Side.RIGHT, CanvasEdge.Side.LEFT,
@@ -44,6 +44,12 @@ class CanvasCodecTest {
                 .containsExactly("group", "text", "doc", "link");
         assertThat(back.graph().edges()).hasSize(1);
         assertThat(back.graph().edges().get(0).toEnd()).isEqualTo(CanvasEdge.End.ARROW);
+
+        CanvasNode.Text text = (CanvasNode.Text) back.graph().nodes().get(1);
+        assertThat(text.textColor()).isEqualTo("#dc2626");
+        assertThat(text.author()).isEqualTo("alice");
+        assertThat(text.bold()).isTrue();
+        assertThat(text.parent()).isEqualTo("g1");
     }
 
     @Test
@@ -95,6 +101,17 @@ class CanvasCodecTest {
     void edgeFromMap_missingEndpoints_throws() {
         assertThatThrownBy(() -> CanvasCodec.edgeFromMap(Map.of("id", "e1", "from", "n1")))
                 .isInstanceOf(KindCodecException.class);
+    }
+
+    @Test
+    void dtoRoundTrip_preservesTextColorAndAuthor() {
+        CanvasNodeDto dto = new CanvasNodeDto("n1", "text", 10, 20, 200, 120,
+                null, null, null, "Hi", null, null, null, null, null, null, "m", "#2563eb", "bob");
+        CanvasGraphDto in = new CanvasGraphDto(null, null, List.of(dto), List.of());
+        CanvasGraphDto out = CanvasDtoMapper.toDto(CanvasDtoMapper.fromDto(in));
+        assertThat(out.nodes()).hasSize(1);
+        assertThat(out.nodes().get(0).author()).isEqualTo("bob");
+        assertThat(out.nodes().get(0).textColor()).isEqualTo("#2563eb");
     }
 
     @Test

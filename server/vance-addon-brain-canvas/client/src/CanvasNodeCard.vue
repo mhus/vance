@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import type { Component } from 'vue';
 import { Handle, Position } from '@vue-flow/core';
 import { NodeResizer } from '@vue-flow/node-resizer';
 import '@vue-flow/node-resizer/dist/style.css';
@@ -25,6 +26,7 @@ const props = defineProps<{
     node: CanvasNodeDto;
     editable?: boolean;
     projectId?: string;
+    embedComponent?: Component | null;
     onText?: (id: string, text: string) => void;
     onResize?: (id: string, w: number, h: number, x: number, y: number) => void;
     onPatch?: (id: string, patch: Partial<CanvasNodeDto>) => void;
@@ -91,6 +93,12 @@ function basename(uri: string): string {
 }
 
 // ── Embedded document (doc nodes) ─────────────────────────────
+// Host-provided kind renderer, threaded in via node data by CanvasEditor
+// (cortex `provide('vance:embed-component', …)`). When present it renders ANY
+// kind (records/mindmap/chart/…) via the original vance-face renderer;
+// otherwise we fall back to image/markdown/card below.
+const embedComponent = computed(() => props.data.embedComponent ?? null);
+
 const docMeta = ref<CanvasDocItem | null>(null);
 const imgSrc = ref<string | null>(null);
 const mdHtml = ref<string | null>(null);
@@ -111,19 +119,26 @@ async function loadDoc(): Promise<void> {
   const pid = props.data.projectId;
   const ref = node.value.ref;
   if (!pid || !ref) return;
+  const path = refToPath(ref);
   try {
-    const meta = await resolveDocument(pid, refToPath(ref));
+    const meta = await resolveDocument(pid, path);
     docMeta.value = meta;
+    // Priority: if the doc has a real `kind` and the host renderer is
+    // available, let it render (records/mindmap/chart/markdown-as-kind/…).
+    // Only when there is no usable kind do we fall back to mime/extension
+    // detection and render text/image ourselves.
+    if (meta.kind && meta.kind.trim() && embedComponent.value) return;
     const mime = meta.mimeType ?? '';
-    if (mime.startsWith('image/')) {
+    if (mime.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(path)) {
       imgSrc.value = documentContentUrl(meta.id);
-    } else if (mime === 'text/markdown' || mime === 'text/x-markdown') {
+    } else if (mime === 'text/markdown' || mime === 'text/x-markdown' || /\.(md|markdown)$/i.test(path)) {
       const txt = await brainFetchText('documents/' + meta.id + '/content');
       mdHtml.value = DOMPurify.sanitize(await marked.parse(txt ?? ''));
-    } else if (mime.startsWith('text/')) {
+    } else if (mime.startsWith('text/') || /\.(txt|log|csv|json|ya?ml|xml|ts|js|py|java|sql|sh)$/i.test(path)) {
       const txt = await brainFetchText('documents/' + meta.id + '/content');
       mdHtml.value = DOMPurify.sanitize(await marked.parse('```\n' + (txt ?? '') + '\n```'));
     }
+    // else: structured kind → rendered by the injected host renderer (below).
   } catch (e) {
     docError.value = e instanceof Error ? e.message : String(e);
   }
@@ -297,14 +312,19 @@ function onResizeEnd(e: { params: { x: number; y: number; width: number; height:
 
     <template v-else-if="kind === 'doc'">
       <button
-        v-if="docMeta"
+        v-if="docMeta && !(embedComponent && docMeta.kind)"
         class="canvas-embed-open nodrag"
         title="Im Cortex öffnen"
         @click.stop="openInCortex"
         @pointerdown.stop
         @dblclick.stop
       >↗</button>
-      <img v-if="imgSrc" :src="imgSrc" class="canvas-embed-img" alt="" />
+      <!-- Strukturierte Kinds zuerst: der injizierte Original-Renderer. -->
+      <div v-if="embedComponent && docMeta && docMeta.kind" class="canvas-embed-host nowheel">
+        <component :is="embedComponent" :uri="node.ref" />
+      </div>
+      <!-- Sonst (kein Kind): Bild/Markdown/Text selbst rendern. -->
+      <img v-else-if="imgSrc" :src="imgSrc" class="canvas-embed-img" alt="" />
       <div v-else-if="mdHtml" class="canvas-embed-md" v-html="mdHtml"></div>
       <template v-else>
         <div class="canvas-card-title">📄 {{ docMeta?.title || basename(node.ref ?? '') }}</div>
@@ -405,6 +425,10 @@ function onResizeEnd(e: { params: { x: number; y: number; width: number; height:
 }
 .canvas-embed-open:hover {
   background: #ffffff;
+}
+.canvas-embed-host {
+  height: 100%;
+  overflow: auto;
 }
 .canvas-embed-img {
   display: block;

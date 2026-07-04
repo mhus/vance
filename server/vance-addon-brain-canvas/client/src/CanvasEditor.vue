@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, inject, ref, watch } from 'vue';
+import type { Component } from 'vue';
 import { Panel, useVueFlow, VueFlow } from '@vue-flow/core';
 import type { Connection, Edge, EdgeChange, GraphNode, Node, NodeChange } from '@vue-flow/core';
 import '@vue-flow/core/dist/style.css';
 import '@vue-flow/core/dist/theme-default.css';
 import { getUsername } from '@vance/shared/auth';
-import { usePointers } from '@vance/shared';
+import { usePointers, brainFetch } from '@vance/shared';
 import { VButton } from '@vance/components';
 import CanvasNodeCard from './CanvasNodeCard.vue';
 import InputDialog from './InputDialog.vue';
@@ -29,6 +30,11 @@ const emit = defineEmits<{ (e: 'change', graph: CanvasGraphDto): void }>();
 const nodes = ref<CanvasNodeDto[]>([]);
 const edges = ref<CanvasEdgeDto[]>([]);
 const selectMode = ref(false);
+
+// Host-provided full kind renderer (cortex `provide('vance:embed-component')`).
+// Injected here in the editor (reliably in the provide chain) and threaded to
+// nodes via data — an inject inside the VueFlow node slot doesn't resolve.
+const embedComponent = inject<Component | null>('vance:embed-component', null);
 
 // ── Live cursors (pointers channel) ───────────────────────────
 // A stable VueFlow instance id lets us read the same viewport the board
@@ -107,6 +113,7 @@ const vfNodes = computed<Node[]>(() => {
       node: n,
       editable: isEditable.value,
       projectId: props.projectId,
+      embedComponent,
       onText: commitText,
       onResize,
       onPatch: patchNode,
@@ -322,6 +329,66 @@ async function onEdgeDoubleClick(e: { edge?: Edge }): Promise<void> {
   emitChange();
 }
 
+// ── File drag-and-drop import ─────────────────────────────────
+/** Upload any dropped file into `<board-folder>/assets/`, return a vance: URI.
+ *  The kind hint is left off — the doc node resolves the real kind/mime on
+ *  render, so images, markdown, records, etc. all display appropriately. */
+async function uploadFile(file: File): Promise<string | null> {
+  const p = props.path;
+  if (!p) return null;
+  const folder = p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '';
+  const assets = folder ? `${folder}/assets` : 'assets';
+  const safe = file.name.toLowerCase().replace(/[^a-z0-9._-]+/g, '_').replace(/^_+|_+$/g, '');
+  const path = `${assets}/${Date.now()}-${safe || 'file'}`;
+  const form = new FormData();
+  form.append('file', file);
+  form.append('projectId', props.projectId);
+  form.append('path', path);
+  if (file.type) form.append('mimeType', file.type);
+  try {
+    await brainFetch('POST', 'documents/upload', { body: form });
+    return `vance:/${encodeURI(path)}`;
+  } catch (e) {
+    console.error('[canvas] file upload failed', e);
+    return null;
+  }
+}
+
+function onDragOver(ev: DragEvent): void {
+  if (!isEditable.value) return;
+  if (ev.dataTransfer?.types?.includes('Files')) {
+    ev.preventDefault();
+    ev.dataTransfer.dropEffect = 'copy';
+  }
+}
+
+async function onDrop(ev: DragEvent): Promise<void> {
+  if (!isEditable.value) return;
+  const files = ev.dataTransfer?.files;
+  if (!files || !files.length) return;
+  ev.preventDefault();
+  const el = wrapper.value;
+  if (!el) return;
+  const rect = el.getBoundingClientRect();
+  const vp = viewport.value;
+  let x = (ev.clientX - rect.left - vp.x) / vp.zoom;
+  let y = (ev.clientY - rect.top - vp.y) / vp.zoom;
+  let added = false;
+  for (const file of Array.from(files)) {
+    const ref = await uploadFile(file);
+    if (!ref) continue;
+    const id = nextId('n', nodes.value.map((n) => n.id));
+    nodes.value = [
+      ...nodes.value,
+      { id, type: 'doc', x: Math.round(x), y: Math.round(y), w: 280, h: 200, ref },
+    ];
+    x += 24;
+    y += 24;
+    added = true;
+  }
+  if (added) emitChange();
+}
+
 // ── Toolbox: add nodes ────────────────────────────────────────
 function placement(): { x: number; y: number } {
   const c = nodes.value.length;
@@ -361,7 +428,13 @@ async function addNode(type: 'text' | 'doc' | 'link' | 'group'): Promise<void> {
 </script>
 
 <template>
-  <div ref="wrapper" class="relative h-full w-full" @pointermove="reportPointer">
+  <div
+    ref="wrapper"
+    class="relative h-full w-full"
+    @pointermove="reportPointer"
+    @dragover="onDragOver"
+    @drop="onDrop"
+  >
     <VueFlow
       :id="flowId"
       :nodes="vfNodes"

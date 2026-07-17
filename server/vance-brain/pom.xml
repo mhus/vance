@@ -139,6 +139,21 @@
             <artifactId>org.eclipse.jgit</artifactId>
         </dependency>
 
+        <!-- WebDAV server library (Apache 2.0 Community Edition). Powers the
+             /brain/{tenant}/webdav/{project}/… surface that exposes project
+             documents to macOS Finder and Obsidian. CE ships DAV level 1 +
+             all the level-2 building blocks (LockableResource, LockManager,
+             LockInfoSaxHandler, DAV:1,2 advertisement) except the LOCK/UNLOCK
+             method handlers — those we implement ourselves against the public
+             io.milton.http.Handler SPI (see de.mhus.vance.brain.webdav.lock).
+             The AGPL milton-server-ent is intentionally NOT pulled in. See
+             planning/webdav-support.md §1. milton-api rides in transitively. -->
+        <dependency>
+            <groupId>io.milton</groupId>
+            <artifactId>milton-server-ce</artifactId>
+            <version>4.0.5.2421</version>
+        </dependency>
+
         <!-- OpenAPI / Swagger spec parsing for REST-API tool packs. -->
         <dependency>
             <groupId>io.swagger.parser.v3</groupId>

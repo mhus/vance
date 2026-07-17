@@ -88,6 +88,17 @@ public class BrainAccessFilter extends AccessFilterBase {
     private static final Pattern OFFICE_EXTERNAL_PATH =
             Pattern.compile("^/brain/[^/]+/office/(download|callback)/[^/]+/?$");
 
+    /**
+     * WebDAV surface — {@code /brain/{tenant}/webdav/…}. WebDAV clients (macOS
+     * Finder, Obsidian) authenticate with HTTP Basic-Auth, not the bearer JWT
+     * this filter enforces. Authentication + tenant binding happen inside the
+     * milton stack ({@code VanceWebDavSecurityManager}); letting the path past
+     * this filter keeps the JWT requirement and tenant-mismatch check from
+     * rejecting it. See {@code planning/webdav-support.md} §3.
+     */
+    private static final Pattern WEBDAV_PATH =
+            Pattern.compile("^/brain/[^/]+/webdav(?:/.*)?$");
+
     private final ScriptRunAuthService scriptRunAuthService;
 
     public BrainAccessFilter(JwtService jwtService, ScriptRunAuthService scriptRunAuthService) {
@@ -130,6 +141,10 @@ public class BrainAccessFilter extends AccessFilterBase {
             // ONLYOFFICE / Collabora document server callbacks — the
             // OfficeController verifies its own JWT signed with the
             // per-tenant office.jwtSecret.
+            return false;
+        }
+        if (WEBDAV_PATH.matcher(requestUri).matches()) {
+            // WebDAV uses HTTP Basic-Auth handled inside the milton stack.
             return false;
         }
         return true;

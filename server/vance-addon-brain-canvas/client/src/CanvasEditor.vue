@@ -1,5 +1,14 @@
+<script lang="ts">
+import type { CanvasNodeDto as ClipNode } from './generated/canvas/CanvasNodeDto';
+import type { CanvasEdgeDto as ClipEdge } from './generated/canvas/CanvasEdgeDto';
+
+// Module-level clipboard — shared across board instances so copy on one page
+// and paste on another (within the session) works.
+let canvasClipboard: { nodes: ClipNode[]; edges: ClipEdge[] } | null = null;
+</script>
+
 <script setup lang="ts">
-import { computed, inject, ref, watch } from 'vue';
+import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { Component } from 'vue';
 import { Panel, useVueFlow, VueFlow } from '@vue-flow/core';
 import type { Connection, Edge, EdgeChange, GraphNode, Node, NodeChange } from '@vue-flow/core';
@@ -41,7 +50,8 @@ const embedComponent = inject<Component | null>('vance:embed-component', null);
 // A stable VueFlow instance id lets us read the same viewport the board
 // renders with, so remote cursors pan/zoom together with the canvas.
 const flowId = `canvas-${props.path ?? 'board'}`;
-const { viewport } = useVueFlow(flowId);
+const { viewport, getSelectedNodes } = useVueFlow(flowId);
+const active = ref(false);
 const wrapper = ref<HTMLElement | null>(null);
 const pointerPath = computed(() => props.path ?? null);
 const { pointers, report } = usePointers({ path: pointerPath });
@@ -224,6 +234,63 @@ function nextId(prefix: string, existing: string[]): string {
   }
   return prefix + (max + 1);
 }
+
+// ── Copy / paste ──────────────────────────────────────────────
+function copySelection(): void {
+  const ids = getSelectedNodes.value.map((n) => n.id);
+  if (!ids.length) return;
+  const sel = new Set(ids);
+  canvasClipboard = {
+    nodes: nodes.value.filter((n) => sel.has(n.id)).map((n) => ({ ...n })),
+    edges: edges.value.filter((e) => sel.has(e.from) && sel.has(e.to)).map((e) => ({ ...e })),
+  };
+}
+
+function paste(): void {
+  if (!isEditable.value || !canvasClipboard || !canvasClipboard.nodes.length) return;
+  const OFFSET = 32;
+  const usedNodeIds = nodes.value.map((n) => n.id);
+  const idMap = new Map<string, string>();
+  for (const n of canvasClipboard.nodes) {
+    const nid = nextId('n', usedNodeIds);
+    usedNodeIds.push(nid);
+    idMap.set(n.id, nid);
+  }
+  const newNodes = canvasClipboard.nodes.map((n) => ({
+    ...n,
+    id: idMap.get(n.id)!,
+    x: n.x + OFFSET,
+    y: n.y + OFFSET,
+    // Keep the group link only if the group was copied too; else drop to root.
+    parent: n.parent && idMap.has(n.parent) ? idMap.get(n.parent) : undefined,
+  }));
+  const usedEdgeIds = edges.value.map((e) => e.id);
+  const newEdges = canvasClipboard.edges.map((e) => {
+    const eid = nextId('e', usedEdgeIds);
+    usedEdgeIds.push(eid);
+    return { ...e, id: eid, from: idMap.get(e.from)!, to: idMap.get(e.to)! };
+  });
+  nodes.value = [...nodes.value, ...newNodes];
+  edges.value = [...edges.value, ...newEdges];
+  emitChange();
+}
+
+function onKeydown(ev: KeyboardEvent): void {
+  if (!active.value || !isEditable.value) return;
+  if (!(ev.metaKey || ev.ctrlKey)) return;
+  const t = ev.target as HTMLElement | null;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+  const k = ev.key.toLowerCase();
+  if (k === 'c') {
+    copySelection();
+  } else if (k === 'v') {
+    ev.preventDefault();
+    paste();
+  }
+}
+
+onMounted(() => window.addEventListener('keydown', onKeydown));
+onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
 
 // ── VueFlow events ────────────────────────────────────────────
 function onNodesChange(changes: NodeChange[]): void {
@@ -458,6 +525,8 @@ async function addNode(type: 'text' | 'doc' | 'link' | 'group'): Promise<void> {
   <div
     ref="wrapper"
     class="relative h-full w-full"
+    @pointerenter="active = true"
+    @pointerleave="active = false"
     @pointermove="reportPointer"
     @dragover="onDragOver"
     @drop="onDrop"

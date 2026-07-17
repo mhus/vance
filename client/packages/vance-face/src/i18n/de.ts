@@ -1734,6 +1734,10 @@ export default {
       chatLanguageDescription:
         'In welcher Sprache der Assistent antwortet und zuhört. Wird vom Projekt überschrieben, wenn dort etwas gesetzt ist.',
       chatLanguageSaved: 'Assistenten-Sprache aktualisiert.',
+      timezone: 'Zeitzone',
+      timezoneDescription:
+        'Deine lokale Zeitzone. Der Assistent zeigt Datum und Uhrzeit darin an, und von dir erstellte Zeitpläne feuern zu deiner lokalen Uhrzeit.',
+      timezoneSaved: 'Zeitzone aktualisiert.',
       theme: 'Farbschema',
       themeAuto: 'System (automatisch)',
       themeLight: 'Hell',

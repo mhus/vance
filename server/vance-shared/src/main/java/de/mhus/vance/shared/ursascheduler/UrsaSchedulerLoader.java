@@ -152,6 +152,40 @@ public class UrsaSchedulerLoader {
         }
     }
 
+    /**
+     * Returns {@code yaml} with a {@code timezone:} key added when the
+     * body doesn't already carry an explicit (non-blank) one. Used at
+     * scheduler <b>write</b> time so a scheduler is pinned to the
+     * author's display timezone once and stays DST-correct forever
+     * (Spring's {@code CronTrigger} interprets the cron in that zone;
+     * fire instants remain UTC). An explicit {@code timezone:} in the
+     * body always wins — this only fills the gap.
+     *
+     * <p>Implemented as a typed SnakeYAML map round-trip (parse → put →
+     * dump), not string surgery, so all other fields survive untouched.
+     * When {@code timezone} is {@code null}/blank (no user preference
+     * configured) or the YAML doesn't parse to a top-level map, the
+     * input is returned verbatim — the caller's normal validation then
+     * surfaces any real parse error.
+     */
+    public String applyDefaultTimezone(String yaml, @Nullable String timezone) {
+        if (yaml == null || timezone == null || timezone.isBlank()) return yaml;
+        Object parsed;
+        try {
+            parsed = new Yaml().load(yaml);
+        } catch (RuntimeException e) {
+            return yaml;
+        }
+        if (!(parsed instanceof Map<?, ?> rawMap)) return yaml;
+        @SuppressWarnings("unchecked")
+        Map<String, Object> spec = new LinkedHashMap<>((Map<String, Object>) rawMap);
+        Object existing = spec.get("timezone");
+        boolean hasExplicit = existing instanceof String s && !s.isBlank();
+        if (hasExplicit) return yaml;
+        spec.put("timezone", timezone.trim());
+        return new Yaml().dump(spec);
+    }
+
     private static LookupResult syntheticHit(String name, String yaml) {
         return new LookupResult(
                 SCHEDULER_PATH_PREFIX + name + SCHEDULER_PATH_SUFFIX,

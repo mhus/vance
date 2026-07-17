@@ -154,6 +154,7 @@ public class TrillianUserEngine implements ThinkEngine {
     private static final int MAX_TOOL_LOOP_ITERATIONS = 24;
 
     private final ThinkProcessService thinkProcessService;
+    private final de.mhus.vance.brain.context.PromptDateContextResolver promptDateContextResolver;
     private final EngineChatFactory engineChatFactory;
     private final LlmCallTracker llmCallTracker;
     private final StreamingProperties streamingProperties;
@@ -486,7 +487,7 @@ public class TrillianUserEngine implements ThinkEngine {
         // Current-date block (recipe-param promptDateGranularity:
         // auto/day/hour). DYNAMIC — date rollover stays behind the
         // cache marker. See PromptDateBlock.
-        de.mhus.vance.brain.prompt.PromptDateBlock.appendDynamicMessage(
+        promptDateContextResolver.appendDynamicMessage(
                 messages, process, modelInfo == null ? null : modelInfo.size());
         for (ChatMessageDocument msg : chatLog.activeHistory(
                 process.getTenantId(), process.getSessionId(), process.getId())) {

@@ -44,6 +44,7 @@ class LunkwillTodoBlockTest {
                 mock(SkillResolver.class),
                 mock(SkillPromptComposer.class),
                 mock(SessionService.class),
+                mock(de.mhus.vance.brain.context.PromptDateContextResolver.class),
                 mock(de.mhus.vance.brain.memory.MemoryContextLoader.class),
                 mock(de.mhus.vance.brain.ai.ModelCatalog.class),
                 mock(de.mhus.vance.brain.memory.MemoryCompactionService.class),

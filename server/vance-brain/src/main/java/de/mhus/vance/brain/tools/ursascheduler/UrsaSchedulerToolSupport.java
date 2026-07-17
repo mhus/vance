@@ -41,6 +41,20 @@ class UrsaSchedulerToolSupport {
     private final EventLogService eventLogService;
     private final UrsaSchedulerService schedulerService;
     private final RecipeResolver recipeResolver;
+    private final de.mhus.vance.shared.settings.TimezoneResolver timezoneResolver;
+
+    /**
+     * Pin the scheduler to the author's display timezone when the YAML
+     * body omits an explicit {@code timezone:}. Resolves the user →
+     * tenant timezone cascade and defers to
+     * {@link UrsaSchedulerLoader#applyDefaultTimezone}. When no timezone
+     * is configured anywhere the body is returned verbatim (the loader
+     * then defaults cron/at interpretation to UTC as before).
+     */
+    String applyDefaultTimezone(String tenantId, @Nullable String userId, String yaml) {
+        String tz = timezoneResolver.findTimezone(tenantId, userId);
+        return loader.applyDefaultTimezone(yaml, tz);
+    }
 
     static String normalizeName(String name) {
         if (name == null) {

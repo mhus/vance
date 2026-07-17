@@ -218,6 +218,7 @@ public class EddieEngine extends StructuredActionEngine {
     private final MemoryContextLoader memoryContextLoader;
     private final EddieActivityService activityService;
     private final de.mhus.vance.shared.session.SessionService sessionService;
+    private final de.mhus.vance.brain.context.PromptDateContextResolver promptDateContextResolver;
     private final EngineMessageRouter messageRouter;
     private final UserMemoryService userMemoryService;
     private final de.mhus.vance.brain.eddie.connection.EddieWorkerConnectionPool workerConnectionPool;
@@ -289,7 +290,8 @@ public class EddieEngine extends StructuredActionEngine {
             de.mhus.vance.brain.tools.client.CortexTurnSelectionHolder cortexTurnSelectionHolder,
             de.mhus.vance.brain.chat.CollabContextResolver collabContextResolver,
             de.mhus.vance.brain.applications.ActiveAppPromptResolver activeAppPromptResolver,
-            de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeService actionLoopJudgeService) {
+            de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeService actionLoopJudgeService,
+            de.mhus.vance.brain.context.PromptDateContextResolver promptDateContextResolver) {
         super(streamingProperties, llmCallTracker, objectMapper, composer);
         this.thinkProcessService = thinkProcessService;
         this.modelCatalog = modelCatalog;
@@ -316,6 +318,7 @@ public class EddieEngine extends StructuredActionEngine {
         this.activeAppPromptResolver = activeAppPromptResolver;
         this.objectMapper = objectMapper;
         this.actionLoopJudgeService = actionLoopJudgeService;
+        this.promptDateContextResolver = promptDateContextResolver;
     }
 
     // ──────────────────── Metadata ────────────────────
@@ -2526,7 +2529,7 @@ public class EddieEngine extends StructuredActionEngine {
         // Current-date block (recipe-param promptDateGranularity:
         // auto/day/hour, default none). DYNAMIC — date rollover stays
         // behind the cache marker. See PromptDateBlock.
-        de.mhus.vance.brain.prompt.PromptDateBlock.appendDynamicMessage(
+        promptDateContextResolver.appendDynamicMessage(
                 messages, process, modelInfo == null ? null : modelInfo.size());
 
         // ── DYNAMIC blocks — mutated by LEARN, ride outside cache ──

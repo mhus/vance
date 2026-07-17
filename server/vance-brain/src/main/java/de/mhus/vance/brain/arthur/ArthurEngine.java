@@ -200,6 +200,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     private static final String DEFAULT_PROMPT_PATH = "_vance/prompts/arthur-prompt.md";
 
     private final ThinkProcessService thinkProcessService;
+    private final de.mhus.vance.brain.context.PromptDateContextResolver promptDateContextResolver;
     private final ArthurProperties arthurProperties;
     private final RecipeLoader recipeLoader;
     private final ModelCatalog modelCatalog;
@@ -310,7 +311,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             de.mhus.vance.brain.tools.client.CortexTurnSelectionHolder cortexTurnSelectionHolder,
             de.mhus.vance.brain.chat.CollabContextResolver collabContextResolver,
             de.mhus.vance.brain.applications.ActiveAppPromptResolver activeAppPromptResolver,
-            de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeService actionLoopJudgeService) {
+            de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeService actionLoopJudgeService,
+            de.mhus.vance.brain.context.PromptDateContextResolver promptDateContextResolver) {
         super(streamingProperties, llmCallTracker, objectMapper, composer);
         this.thinkProcessService = thinkProcessService;
         this.arthurProperties = arthurProperties;
@@ -337,6 +339,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         this.activeAppPromptResolver = activeAppPromptResolver;
         this.objectMapper = objectMapper;
         this.actionLoopJudgeService = actionLoopJudgeService;
+        this.promptDateContextResolver = promptDateContextResolver;
     }
 
     // ──────────────────── Metadata ────────────────────
@@ -2477,7 +2480,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         // Current-date block (recipe-param promptDateGranularity:
         // auto/day/hour, default none). DYNAMIC — date rollover stays
         // behind the cache marker. See PromptDateBlock.
-        de.mhus.vance.brain.prompt.PromptDateBlock.appendDynamicMessage(
+        promptDateContextResolver.appendDynamicMessage(
                 messages, process, modelInfo == null ? null : modelInfo.size());
 
         // ── DYNAMIC blocks — change tenant/project/turn-to-turn ──

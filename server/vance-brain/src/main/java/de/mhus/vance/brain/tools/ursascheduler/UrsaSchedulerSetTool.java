@@ -38,9 +38,12 @@ public class UrsaSchedulerSetTool implements Tool {
                 "description", "Scheduler name — lowercase, alphanumeric + '_-', max 64 chars."));
         props.put("yaml", Map.of(
                 "type", "string",
-                "description", "Full YAML body. Must include 'description', 'cron', 'recipe'. "
+                "description", "Full YAML body. Must include 'description', a trigger "
+                        + "('cron' recurring or 'at' one-shot), and 'recipe'. "
                         + "Optional fields: timezone, enabled, params, initialMessage, "
-                        + "runAs, overlap, tags."));
+                        + "runAs, overlap, tags. If 'timezone' is omitted it defaults to "
+                        + "the user's configured display timezone (times you write are "
+                        + "interpreted in the user's local time, not UTC)."));
         SCHEMA = Map.of(
                 "type", "object",
                 "properties", props,
@@ -72,6 +75,13 @@ public class UrsaSchedulerSetTool implements Tool {
         }
         String name = UrsaSchedulerToolSupport.normalizeName(stringOrThrow(params, "name"));
         String yaml = stringOrThrow(params, "yaml");
+
+        // Pin the scheduler to the author's display timezone when the LLM
+        // didn't set one explicitly, so recurring crons fire at the user's
+        // local wall-clock time (DST-correct via the CronTrigger zone) and
+        // one-shot `at:` locals resolve against the right zone. Internal
+        // fire instants stay UTC. See specification/scheduler.md.
+        yaml = support.applyDefaultTimezone(ctx.tenantId(), ctx.userId(), yaml);
 
         // Refuse if a cascade-resolved entry with this name is locked —
         // creating a project-local override would otherwise shadow a

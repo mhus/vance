@@ -8,6 +8,7 @@ import de.mhus.vance.foot.connection.MessageHandler;
 import de.mhus.vance.foot.daemon.DaemonRegistrationService;
 import de.mhus.vance.foot.ide.IntellijMcpRegistrationService;
 import de.mhus.vance.foot.session.AutoBootstrapService;
+import de.mhus.vance.foot.session.TimezoneSeedService;
 import de.mhus.vance.foot.ui.ChatTerminal;
 import de.mhus.vance.foot.ui.Verbosity;
 import de.mhus.vance.foot.ui.WindowTitleService;
@@ -27,6 +28,7 @@ public class WelcomeHandler implements MessageHandler {
     private final ChatTerminal terminal;
     private final ConnectionService connection;
     private final AutoBootstrapService autoBootstrap;
+    private final TimezoneSeedService timezoneSeed;
     private final DaemonRegistrationService daemonRegistration;
     private final IntellijMcpRegistrationService intellijMcpRegistration;
     private final WindowTitleService windowTitle;
@@ -40,12 +42,14 @@ public class WelcomeHandler implements MessageHandler {
     public WelcomeHandler(ChatTerminal terminal,
                           @Lazy ConnectionService connection,
                           AutoBootstrapService autoBootstrap,
+                          TimezoneSeedService timezoneSeed,
                           DaemonRegistrationService daemonRegistration,
                           IntellijMcpRegistrationService intellijMcpRegistration,
                           WindowTitleService windowTitle) {
         this.terminal = terminal;
         this.connection = connection;
         this.autoBootstrap = autoBootstrap;
+        this.timezoneSeed = timezoneSeed;
         this.daemonRegistration = daemonRegistration;
         this.intellijMcpRegistration = intellijMcpRegistration;
         this.windowTitle = windowTitle;
@@ -77,6 +81,10 @@ public class WelcomeHandler implements MessageHandler {
         // below short-circuits because daemon connections don't bind a
         // session — the SKIP_PROPERTY is set by the -d CLI shortcut.
         daemonRegistration.triggerAfterWelcome();
+        // Seed the account's display.timezone from this machine when unset
+        // (only-if-absent, never overwrites an explicit choice). Runs on
+        // its own executor — independent of bootstrap.
+        timezoneSeed.triggerAfterWelcome();
         autoBootstrap.triggerAfterWelcome();
     }
 }

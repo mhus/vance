@@ -193,6 +193,7 @@ public class Ford implements ThinkEngine {
     private final SkillPromptComposer skillPromptComposer;
     private final de.mhus.vance.brain.skill.SkillTriggerMatcher skillTriggerMatcher;
     private final SessionService sessionService;
+    private final de.mhus.vance.brain.context.PromptDateContextResolver promptDateContextResolver;
     private final de.mhus.vance.shared.workspace.WorkspaceService workspaceService;
     private final de.mhus.vance.brain.prak.HistoryStrengthFilter historyStrengthFilter;
     private final de.mhus.vance.brain.tools.client.CortexPromptResolver cortexPromptResolver;
@@ -1193,7 +1194,7 @@ public class Ford implements ThinkEngine {
         // Current-date block (recipe-param promptDateGranularity:
         // auto/day/hour, default none). DYNAMIC — date rollover stays
         // behind the cache marker. See PromptDateBlock.
-        de.mhus.vance.brain.prompt.PromptDateBlock.appendDynamicMessage(
+        promptDateContextResolver.appendDynamicMessage(
                 messages, process, modelInfo == null ? null : modelInfo.size());
         for (MemoryDocument m : memoryService.activeByProcessAndKind(
                 process.getTenantId(), process.getId(), MemoryKind.ARCHIVED_CHAT)) {

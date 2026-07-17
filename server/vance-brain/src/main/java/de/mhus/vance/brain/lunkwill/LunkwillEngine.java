@@ -21,7 +21,6 @@ import de.mhus.vance.brain.memory.MemoryCompactionService;
 import de.mhus.vance.brain.memory.MemoryContextLoader;
 import de.mhus.vance.brain.progress.LlmCallTracker;
 import de.mhus.vance.brain.prompt.PromptContextBuilder;
-import de.mhus.vance.brain.prompt.PromptDateBlock;
 import de.mhus.vance.brain.skill.ResolvedSkill;
 import de.mhus.vance.brain.skill.SkillPromptComposer;
 import de.mhus.vance.brain.skill.SkillResolver;
@@ -206,6 +205,7 @@ public class LunkwillEngine implements ThinkEngine {
     private final SkillResolver skillResolver;
     private final SkillPromptComposer skillPromptComposer;
     private final SessionService sessionService;
+    private final de.mhus.vance.brain.context.PromptDateContextResolver promptDateContextResolver;
     private final MemoryContextLoader memoryContextLoader;
     private final ModelCatalog modelCatalog;
     private final MemoryCompactionService memoryCompactionService;
@@ -740,7 +740,7 @@ public class LunkwillEngine implements ThinkEngine {
         // Current-date block (recipe-param promptDateGranularity:
         // auto/day/hour). DYNAMIC so date rollover doesn't bust the
         // cached static prefix. See PromptDateBlock.
-        PromptDateBlock.appendDynamicMessage(
+        promptDateContextResolver.appendDynamicMessage(
                 messages, process, modelInfo == null ? null : modelInfo.size());
         // Reduced Plan-Mode TodoList (see §9.2). Marked DYNAMIC so the
         // Anthropic mapper places cache_control before this block —

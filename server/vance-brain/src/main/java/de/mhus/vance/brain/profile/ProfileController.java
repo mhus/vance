@@ -70,7 +70,8 @@ public class ProfileController {
      * to set without admin involvement.
      */
     static final Set<String> ALLOWED_EXTRA_KEYS = Set.of(
-            LanguageResolver.Keys.CHAT_LANGUAGE);
+            LanguageResolver.Keys.CHAT_LANGUAGE,
+            de.mhus.vance.shared.settings.TimezoneResolver.Keys.DISPLAY_TIMEZONE);
 
     private final UserService userService;
     private final SettingService settingService;

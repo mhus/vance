@@ -1725,6 +1725,10 @@ export default {
       chatLanguageDescription:
         'Which language the assistant replies and listens in. Projects can override this.',
       chatLanguageSaved: 'Assistant language updated.',
+      timezone: 'Timezone',
+      timezoneDescription:
+        'Your local timezone. The assistant shows dates and times in it, and schedules you create fire at your local wall-clock time.',
+      timezoneSaved: 'Timezone updated.',
       theme: 'Theme',
       themeAuto: 'System (auto)',
       themeLight: 'Light',

@@ -43,12 +43,38 @@ const themeSaved = ref<string | null>(null);
 const uiLevelSaved = ref<string | null>(null);
 const openDocsNewTabDraft = ref<boolean>(true);
 const openDocsNewTabSaved = ref<string | null>(null);
+const timezoneDraft = ref<string>('');
+const timezoneSaved = ref<string | null>(null);
+// Guards the one-time "seed the browser timezone when unset" write so
+// the watch (immediate + fires on every save) doesn't loop.
+let timezoneAutoSeeded = false;
 
 const LANGUAGE_KEY = 'webui.language';
 const CHAT_LANGUAGE_KEY = 'chat.language';
 const THEME_KEY = 'webui.theme';
 const UI_LEVEL_KEY = 'webui.uiLevel';
 const OPEN_DOCS_NEW_TAB_KEY = 'webui.document.openInNewTab';
+// display.timezone is not a webui.* key — it drives server-side prompt
+// date injection, the current_time tool default, and scheduler
+// timezone pinning (see TimezoneResolver). Cascade user → tenant → UTC.
+const TIMEZONE_KEY = 'display.timezone';
+
+// Small fallback for the rare browser without Intl.supportedValuesOf.
+const FALLBACK_TIMEZONES = [
+  'UTC', 'Europe/London', 'Europe/Berlin', 'Europe/Paris', 'Europe/Moscow',
+  'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
+  'America/Sao_Paulo', 'Asia/Kolkata', 'Asia/Dubai', 'Asia/Shanghai',
+  'Asia/Tokyo', 'Asia/Singapore', 'Australia/Sydney', 'Pacific/Auckland',
+];
+
+function browserTimezone(): string {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return tz && tz.length > 0 ? tz : 'UTC';
+  } catch {
+    return 'UTC';
+  }
+}
 const SPEECH_VOICE_KEY = 'webui.speech.voiceUri';
 const SPEECH_RATE_KEY = 'webui.speech.rate';
 const SPEECH_VOLUME_KEY = 'webui.speech.volume';
@@ -136,6 +162,25 @@ const uiLevelOptions = computed(() => [
   { value: 'admin', label: t('profile.preferences.uiLevelAdmin') },
 ]);
 
+// Full IANA zone list from the browser when available; keeps the
+// current value selectable even if the runtime doesn't enumerate it.
+const timezoneOptions = computed(() => {
+  const intlWithSupported = Intl as typeof Intl & {
+    supportedValuesOf?: (key: string) => string[];
+  };
+  let zones: string[] = [];
+  try {
+    zones = intlWithSupported.supportedValuesOf?.('timeZone') ?? [];
+  } catch {
+    zones = [];
+  }
+  if (zones.length === 0) zones = [...FALLBACK_TIMEZONES];
+  if (timezoneDraft.value && !zones.includes(timezoneDraft.value)) {
+    zones = [timezoneDraft.value, ...zones];
+  }
+  return zones.map((z) => ({ value: z, label: z }));
+});
+
 onMounted(() => {
   if (isSpeechSynthesisSupported()) {
     speechSupported.value = true;
@@ -166,6 +211,18 @@ watch(profile, (current) => {
   speechVoiceDraft.value = current.webUiSettings?.[SPEECH_VOICE_KEY] ?? '';
   speechRateDraft.value = parseSpeechRate(current.webUiSettings?.[SPEECH_RATE_KEY]);
   speechVolumeDraft.value = parseSpeechVolume(current.webUiSettings?.[SPEECH_VOLUME_KEY]);
+  const storedTimezone = current.webUiSettings?.[TIMEZONE_KEY] ?? '';
+  if (storedTimezone) {
+    timezoneDraft.value = storedTimezone;
+  } else if (!timezoneAutoSeeded) {
+    // First visit with nothing configured: persist the browser's zone so
+    // the server (prompt date block, current_time, scheduler) resolves a
+    // real timezone even for headless turns — not just server UTC.
+    timezoneAutoSeeded = true;
+    const detected = browserTimezone();
+    timezoneDraft.value = detected;
+    void saveSetting(TIMEZONE_KEY, detected).catch(() => undefined);
+  }
   // chat.language may have changed too — re-filter voice options.
   refreshVoiceOptions();
 }, { immediate: true });
@@ -254,6 +311,19 @@ async function onUiLevelChanged(value: string | null): Promise<void> {
     // the data cookie on its next mount, which the PUT response just
     // refreshed.
     uiLevelSaved.value = t('profile.preferences.uiLevelSaved');
+  }
+}
+
+async function onTimezoneChanged(value: string | null): Promise<void> {
+  timezoneSaved.value = null;
+  const next = value ?? '';
+  if (!next) return;
+  timezoneDraft.value = next;
+  // Always concrete — a blank timezone would drop headless turns back to
+  // server UTC, so there is no "unset" option here.
+  await saveSetting(TIMEZONE_KEY, next).catch(() => undefined);
+  if (!error.value) {
+    timezoneSaved.value = t('profile.preferences.timezoneSaved');
   }
 }
 
@@ -477,6 +547,19 @@ async function onSpeechVolumeInput(event: Event): Promise<void> {
             </p>
             <span v-if="chatLanguageSaved" class="text-success text-sm">
               {{ chatLanguageSaved }}
+            </span>
+            <VSelect
+              :model-value="timezoneDraft"
+              :options="timezoneOptions"
+              :label="$t('profile.preferences.timezone')"
+              :disabled="loading"
+              @update:model-value="onTimezoneChanged"
+            />
+            <p class="text-xs opacity-60 -mt-2">
+              {{ $t('profile.preferences.timezoneDescription') }}
+            </p>
+            <span v-if="timezoneSaved" class="text-success text-sm">
+              {{ timezoneSaved }}
             </span>
             <VSelect
               :model-value="themeDraft"

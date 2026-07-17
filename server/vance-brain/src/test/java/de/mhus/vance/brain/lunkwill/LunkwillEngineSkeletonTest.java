@@ -153,6 +153,7 @@ class LunkwillEngineSkeletonTest {
                 llmCallTracker, streaming, objectMapper,
                 enginePromptResolver, systemPromptComposer,
                 skillResolver, skillPromptComposer, sessionService,
+                mock(de.mhus.vance.brain.context.PromptDateContextResolver.class),
                 memoryContextLoader,
                 modelCatalog, memoryCompactionService,
                 hookHandler);

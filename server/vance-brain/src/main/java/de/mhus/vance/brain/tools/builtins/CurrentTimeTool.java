@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.tools.builtins;
 
+import de.mhus.vance.shared.settings.TimezoneResolver;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -10,6 +11,8 @@ import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
@@ -26,17 +29,24 @@ public class CurrentTimeTool implements Tool {
                             "type", "string",
                             "description",
                                     "IANA zone id (e.g. 'Europe/Berlin'). "
-                                            + "Defaults to UTC.")),
+                                            + "Defaults to the user's configured "
+                                            + "timezone (UTC if none is set).")),
             "required", java.util.List.of());
 
     private final Clock clock;
+    private final @Nullable TimezoneResolver timezoneResolver;
 
-    public CurrentTimeTool() {
-        this(Clock.systemUTC());
+    // @Autowired disambiguates: two constructors (this + the Clock test
+    // seam) mean Spring would otherwise fall back to a no-arg default,
+    // which no longer exists.
+    @Autowired
+    public CurrentTimeTool(TimezoneResolver timezoneResolver) {
+        this(Clock.systemUTC(), timezoneResolver);
     }
 
-    CurrentTimeTool(Clock clock) {
+    CurrentTimeTool(Clock clock, @Nullable TimezoneResolver timezoneResolver) {
         this.clock = clock;
+        this.timezoneResolver = timezoneResolver;
     }
 
     @Override
@@ -74,11 +84,18 @@ public class CurrentTimeTool implements Tool {
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         String zoneParam = params == null ? null : (String) params.get("zone");
         ZoneId zone;
-        try {
-            zone = (zoneParam == null || zoneParam.isBlank())
-                    ? ZoneId.of("UTC") : ZoneId.of(zoneParam);
-        } catch (RuntimeException e) {
-            throw new ToolException("Unknown zone: '" + zoneParam + "'");
+        if (zoneParam != null && !zoneParam.isBlank()) {
+            try {
+                zone = ZoneId.of(zoneParam);
+            } catch (RuntimeException e) {
+                throw new ToolException("Unknown zone: '" + zoneParam + "'");
+            }
+        } else {
+            // No explicit zone → the caller's configured display timezone
+            // (user → tenant cascade), defaulting to UTC.
+            zone = timezoneResolver == null
+                    ? ZoneId.of("UTC")
+                    : timezoneResolver.zoneId(ctx.tenantId(), ctx.userId());
         }
         Instant now = clock.instant();
         Map<String, Object> out = new LinkedHashMap<>();

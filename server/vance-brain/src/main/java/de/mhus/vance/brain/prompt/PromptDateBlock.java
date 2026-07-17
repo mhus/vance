@@ -5,6 +5,7 @@ import de.mhus.vance.brain.ai.VanceSystemMessage;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import dev.langchain4j.data.message.ChatMessage;
 import java.time.Clock;
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -78,12 +79,13 @@ public final class PromptDateBlock {
     }
 
     /**
-     * Production overload — reads the wall clock in the system default
-     * zone. Engines call this; the {@link #render(Granularity, Clock)}
-     * variant is for tests.
+     * Production overload — renders the current date in the given
+     * user-facing {@link ZoneId}. This is what engines get via
+     * {@link de.mhus.vance.brain.context.PromptDateContextResolver}, so a
+     * user in Asia/Kolkata sees their local date, not the pod's.
      */
-    public static String render(Granularity granularity) {
-        return render(granularity, Clock.systemDefaultZone());
+    public static String render(Granularity granularity, ZoneId zone) {
+        return render(granularity, Clock.system(zone));
     }
 
     /**
@@ -125,12 +127,29 @@ public final class PromptDateBlock {
             List<ChatMessage> messages,
             ThinkProcessDocument process,
             @Nullable ModelSize tier) {
+        appendDynamicMessage(messages, process, tier, ZoneId.systemDefault());
+    }
+
+    /**
+     * Zone-aware variant — renders the date in {@code zone} (the process
+     * owner's resolved display timezone). Callers that don't have a user
+     * context use the {@link #appendDynamicMessage(List,
+     * ThinkProcessDocument, ModelSize) system-default overload}. Prefer
+     * routing through
+     * {@link de.mhus.vance.brain.context.PromptDateContextResolver}
+     * which lifts the session→userId→zone resolution for you.
+     */
+    public static void appendDynamicMessage(
+            List<ChatMessage> messages,
+            ThinkProcessDocument process,
+            @Nullable ModelSize tier,
+            ZoneId zone) {
         Map<String, Object> params = process == null ? null : process.getEngineParams();
         Object raw = params == null ? null : params.get(RECIPE_PARAM);
         String paramValue = raw instanceof String s ? s : null;
         Granularity granularity = resolve(paramValue, tier);
         if (granularity == Granularity.NONE) return;
-        String body = render(granularity);
+        String body = render(granularity, zone);
         if (body.isBlank()) return;
         messages.add(VanceSystemMessage.dynamic(body));
     }

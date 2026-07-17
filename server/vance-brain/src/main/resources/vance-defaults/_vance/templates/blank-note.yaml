@@ -1,0 +1,9 @@
+title:       { de: "Leere Notiz",  en: "Blank note" }
+description: { de: "Eine leere Markdown-Notiz ohne Formular",
+               en: "An empty markdown note, no form" }
+icon: document
+tags: [note]
+
+name:
+  mode: free
+  default: "note-{{ date }}"

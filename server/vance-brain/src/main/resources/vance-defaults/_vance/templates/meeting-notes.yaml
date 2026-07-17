@@ -1,0 +1,20 @@
+title:       { de: "Meeting-Notiz",  en: "Meeting note" }
+description: { de: "Strukturierte Notiz für ein Meeting mit Teilnehmern und Action Items",
+               en: "Structured note for a meeting with attendees and action items" }
+icon: clipboard-document-list
+tags: [note, meeting]
+
+name:
+  mode: free
+  default: "meeting-{{ date }}"
+
+fields:
+  - name: topic
+    type: string
+    required: true
+    label: { de: "Thema",       en: "Topic" }
+  - name: attendees
+    type: textarea
+    rows: 3
+    label: { de: "Teilnehmer",  en: "Attendees" }
+    help:  { de: "Eine Person pro Zeile", en: "One person per line" }

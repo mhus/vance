@@ -12,6 +12,8 @@
 import { computed, ref, watch } from 'vue';
 import {
   CodeEditor,
+  FormFields,
+  type FormValue,
   VAlert,
   VButton,
   VFileInput,
@@ -20,6 +22,8 @@ import {
   VSelect,
 } from '@/components';
 import { useI18n } from 'vue-i18n';
+import { applyTemplate, getTemplate, listTemplates } from '@vance/shared';
+import type { TemplateDto, TemplateSummaryDto } from '@vance/generated';
 import { consumeDocumentDraft, type DocumentDraft } from '@/platform/documentDraft';
 
 interface Props {
@@ -57,6 +61,15 @@ export type CreateModalResult =
       targetFolder: string;
       title: string | undefined;
       tags: string[] | undefined;
+    }
+  | {
+      // The template was already applied server-side inside the modal
+      // (single mount, store-independent REST) so error handling — e.g.
+      // a 409 when the target exists — stays inline. The parent only
+      // has to reload its tree and open the created document.
+      kind: 'templateCreated';
+      path: string;
+      mimeType: string;
     };
 
 const emit = defineEmits<{
@@ -66,9 +79,9 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 
-type CreateMode = 'inline' | 'upload';
+type CreateMode = 'template' | 'inline' | 'upload';
 
-const createMode = ref<CreateMode>('inline');
+const createMode = ref<CreateMode>('template');
 const createPath = ref('');
 const createName = ref('');
 const createTitle = ref('');
@@ -79,6 +92,15 @@ const createKind = ref<string>('');
 const createFiles = ref<File[]>([]);
 const createError = ref<string | null>(null);
 const creating = ref(false);
+
+// ──────────────── Template mode ────────────────
+const templates = ref<TemplateSummaryDto[]>([]);
+const templatesLoading = ref(false);
+const templateTag = ref<string | null>(null);
+const selectedTemplate = ref<TemplateDto | null>(null);
+const templateLoading = ref(false);
+const templateName = ref('');
+const templateValues = ref<Record<string, FormValue>>({});
 
 let lastGeneratedStub = '';
 
@@ -93,7 +115,7 @@ watch(
     if (!open) return;
     const path = (props.initialPath ?? '').replace(/^\/+|\/+$/g, '');
     createPath.value = path ? `${path}/` : '';
-    createMode.value = 'inline';
+    createMode.value = 'template';
     createName.value = '';
     createTitle.value = '';
     createTagsRaw.value = '';
@@ -105,9 +127,19 @@ watch(
     creating.value = false;
     lastGeneratedStub = '';
     draftSource.value = null;
+    // Template mode is the default entry point; reset its picker state
+    // and kick off the listing.
+    templateTag.value = null;
+    selectedTemplate.value = null;
+    templateName.value = '';
+    templateValues.value = {};
+    void loadTemplates();
     if (props.consumeDraft) {
       const draft: DocumentDraft | null = consumeDocumentDraft();
       if (draft) {
+        // A prefilled draft means the user is turning existing content
+        // into a document — jump straight to the manual editor.
+        createMode.value = 'inline';
         if (draft.title) createTitle.value = draft.title;
         if (draft.mimeType) createMime.value = draft.mimeType;
         if (draft.content) {
@@ -318,6 +350,108 @@ watch(createMime, () => {
 function setCreateMode(mode: CreateMode): void {
   createMode.value = mode;
   createError.value = null;
+  if (mode === 'template' && templates.value.length === 0 && !templatesLoading.value) {
+    void loadTemplates();
+  }
+}
+
+// ──────────────── Template mode ────────────────
+
+async function loadTemplates(): Promise<void> {
+  if (!props.projectId) return;
+  templatesLoading.value = true;
+  try {
+    const resp = await listTemplates(props.projectId);
+    templates.value = resp.templates ?? [];
+  } catch (e) {
+    createError.value = e instanceof Error ? e.message : 'Failed to load templates';
+    templates.value = [];
+  } finally {
+    templatesLoading.value = false;
+  }
+}
+
+const availableTags = computed<string[]>(() => {
+  const set = new Set<string>();
+  for (const tmpl of templates.value) {
+    for (const tag of tmpl.tags ?? []) set.add(tag);
+  }
+  return Array.from(set).sort();
+});
+
+const filteredTemplates = computed<TemplateSummaryDto[]>(() => {
+  const tag = templateTag.value;
+  if (!tag) return templates.value;
+  return templates.value.filter((tmpl) => (tmpl.tags ?? []).includes(tag));
+});
+
+const templateNameFixed = computed(() => selectedTemplate.value?.nameMode === 'fixed');
+
+function setTemplateTag(tag: string | null): void {
+  templateTag.value = tag;
+}
+
+async function selectTemplate(summary: TemplateSummaryDto): Promise<void> {
+  createError.value = null;
+  templateLoading.value = true;
+  try {
+    const def = await getTemplate(summary.name, props.projectId ?? undefined);
+    selectedTemplate.value = def;
+    templateName.value = def.nameMode === 'fixed'
+      ? (def.nameValue ?? '')
+      : (def.nameDefault ?? '');
+    const seed: Record<string, FormValue> = {};
+    for (const f of def.fields ?? []) {
+      if (f.defaultValue != null) seed[f.name] = f.defaultValue;
+    }
+    templateValues.value = seed;
+  } catch (e) {
+    createError.value = e instanceof Error ? e.message : 'Failed to load template';
+  } finally {
+    templateLoading.value = false;
+  }
+}
+
+function clearSelectedTemplate(): void {
+  selectedTemplate.value = null;
+  templateName.value = '';
+  templateValues.value = {};
+  createError.value = null;
+}
+
+async function submitTemplate(): Promise<void> {
+  const def = selectedTemplate.value;
+  if (!def || !props.projectId) return;
+  if (def.nameMode !== 'fixed' && !templateName.value.trim()) {
+    createError.value = t('documents.create.nameRequired');
+    return;
+  }
+  creating.value = true;
+  createError.value = null;
+  try {
+    const folder = createPath.value.replace(/^\/+|\/+$/g, '');
+    const applied = await applyTemplate(
+      def.name,
+      {
+        folder,
+        name: def.nameMode === 'fixed' ? undefined : templateName.value.trim(),
+        values: templateValues.value,
+      },
+      props.projectId,
+    );
+    const result: CreateModalResult = {
+      kind: 'templateCreated',
+      path: applied.path,
+      mimeType: applied.mimeType,
+    };
+    await emit('confirm', result);
+  } catch (e) {
+    // Keep the modal open so the user can fix the name (e.g. on a 409
+    // "already exists") instead of losing the filled-in form.
+    createError.value = e instanceof Error ? e.message : 'Create failed';
+  } finally {
+    creating.value = false;
+  }
 }
 
 function close(): void {
@@ -325,6 +459,10 @@ function close(): void {
 }
 
 async function submit(): Promise<void> {
+  if (createMode.value === 'template') {
+    await submitTemplate();
+    return;
+  }
   if (!props.projectId) return;
   creating.value = true;
   createError.value = null;
@@ -384,6 +522,12 @@ async function submit(): Promise<void> {
   >
     <div class="flex gap-2 mb-4">
       <VButton
+        :variant="createMode === 'template' ? 'primary' : 'ghost'"
+        size="sm"
+        :disabled="creating"
+        @click="setCreateMode('template')"
+      >{{ $t('documents.create.fromTemplate') }}</VButton>
+      <VButton
         :variant="createMode === 'inline' ? 'primary' : 'ghost'"
         size="sm"
         :disabled="creating"
@@ -408,7 +552,89 @@ async function submit(): Promise<void> {
         Prefilled from: {{ draftSource }}
       </div>
 
-      <template v-if="createMode === 'inline'">
+      <template v-if="createMode === 'template'">
+        <!-- Picker: no template selected yet -->
+        <template v-if="!selectedTemplate">
+          <div v-if="templatesLoading" class="text-sm opacity-70 py-4 text-center">
+            {{ $t('documents.create.templateLoading') }}
+          </div>
+          <template v-else>
+            <div v-if="availableTags.length > 0" class="flex flex-wrap gap-1">
+              <VButton
+                :variant="templateTag === null ? 'primary' : 'ghost'"
+                size="sm"
+                @click="setTemplateTag(null)"
+              >{{ $t('documents.create.templateAllTags') }}</VButton>
+              <VButton
+                v-for="tag in availableTags"
+                :key="tag"
+                :variant="templateTag === tag ? 'primary' : 'ghost'"
+                size="sm"
+                @click="setTemplateTag(tag)"
+              >{{ tag }}</VButton>
+            </div>
+            <div
+              v-if="filteredTemplates.length === 0"
+              class="text-sm opacity-70 py-4 text-center"
+            >
+              {{ $t('documents.create.templateNone') }}
+            </div>
+            <ul v-else class="flex flex-col gap-2 max-h-72 overflow-y-auto">
+              <li v-for="tmpl in filteredTemplates" :key="tmpl.name">
+                <button
+                  type="button"
+                  class="w-full text-left rounded border border-base-300 hover:border-primary
+                         hover:bg-base-200 p-3 transition-colors"
+                  :disabled="templateLoading"
+                  @click="selectTemplate(tmpl)"
+                >
+                  <div class="font-medium">{{ tmpl.title }}</div>
+                  <div class="text-xs opacity-70">{{ tmpl.description }}</div>
+                  <div v-if="(tmpl.tags ?? []).length" class="mt-1 flex flex-wrap gap-1">
+                    <span
+                      v-for="tag in tmpl.tags"
+                      :key="tag"
+                      class="text-[10px] uppercase tracking-wide opacity-60"
+                    >#{{ tag }}</span>
+                  </div>
+                </button>
+              </li>
+            </ul>
+          </template>
+        </template>
+
+        <!-- Selected template: folder + name + form -->
+        <template v-else>
+          <div class="flex items-center gap-2">
+            <VButton type="button" variant="ghost" size="sm" @click="clearSelectedTemplate">
+              ← {{ $t('documents.create.templateBack') }}
+            </VButton>
+            <span class="font-medium">{{ selectedTemplate.title }}</span>
+          </div>
+          <VInput
+            v-model="createPath"
+            :label="$t('documents.create.pathLabel')"
+            placeholder="documents/"
+            :disabled="creating"
+          />
+          <VInput
+            v-model="templateName"
+            :label="$t('documents.create.nameLabel')"
+            :placeholder="$t('documents.create.namePlaceholder')"
+            :disabled="creating || templateNameFixed"
+            :help="templateNameFixed ? $t('documents.create.templateNameFixed') : undefined"
+            @keydown.enter.prevent="submit"
+          />
+          <FormFields
+            v-if="(selectedTemplate.fields ?? []).length > 0"
+            v-model="templateValues"
+            :fields="selectedTemplate.fields"
+            :disabled="creating"
+          />
+        </template>
+      </template>
+
+      <template v-else-if="createMode === 'inline'">
         <VInput
           v-model="createPath"
           :label="$t('documents.create.pathLabel')"
@@ -501,6 +727,7 @@ async function submit(): Promise<void> {
           @click="close"
         >Cancel</VButton>
         <VButton
+          v-if="createMode !== 'template' || selectedTemplate"
           type="submit"
           variant="primary"
           :loading="creating"

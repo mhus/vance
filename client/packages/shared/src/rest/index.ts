@@ -1,3 +1,4 @@
+export * from './documentTemplates';
 export * from './linkPreview';
 export * from './recipes';
 export * from './restClient';

@@ -326,3 +326,8 @@ export * from './ws/SessionResumeRequest';
 export * from './ws/SessionResumeResponse';
 export * from './ws/SessionSummary';
 export * from './ws/WelcomeData';
+export * from './template/TemplateSummaryDto';
+export * from './template/TemplateDto';
+export * from './template/TemplateListResponseDto';
+export * from './template/TemplateApplyRequestDto';
+export * from './template/TemplateApplyResponseDto';

@@ -745,6 +745,12 @@ async function onCreateConfirm(result: CreateModalResult): Promise<void> {
       mimeType: result.mimeType,
       inlineText: result.inlineText,
     });
+  } else if (result.kind === 'templateCreated') {
+    // The template was applied server-side; reload the tree and open
+    // the freshly created document by its path.
+    await store.loadList(projectId.value);
+    const created = store.files.find((f) => f.path === result.path);
+    if (created) await store.openFile(created.id);
   } else {
     for (const file of result.files) {
       await store.uploadExternalFile(file, result.targetFolder);

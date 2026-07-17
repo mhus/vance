@@ -1,0 +1,120 @@
+# Automation-creator worker. The deliberate home for building
+# *persistent automation* — schedulers (time-driven), events (incoming
+# webhooks), and hooks (brain-event-driven). The default chats (Arthur,
+# Eddie) reach these tool families too, but their stance says
+# automation is opt-in: when the user explicitly wants a recurring /
+# event-driven setup, they DELEGATE here so the full how-to guidance
+# (creator manuals) loads only then.
+#
+# Recipe `name` is derived from the filename (creator.yaml → creator).
+# Cascade: project/recipes/<name>.yaml → _vance/recipes/<name>.yaml →
+# classpath vance-defaults/recipes/<name>.yaml. See specification/recipes.md.
+
+title: "Creator — Automation Setup"
+listed: true
+description: |
+  Sets up persistent automation on explicit user request: schedulers
+  (cron / one-shot `at:`), events (incoming webhooks), and hooks
+  (brain-event-driven triggers). Ford-based worker that carries the
+  scheduler / event / hook tool families as primary plus the how-to
+  manuals. Delegate here when the user actually wants automation
+  created — not for one-off runs.
+engine: ford
+params:
+  model: default:analyze
+  validation: true
+  # Setting up automation is a small, focused task (read context →
+  # write one or two YAMLs → optionally test-fire). Keep the budget
+  # modest but with room for a list/get + set + fire round-trip.
+  maxIterations: 12
+  # The creator manuals (scheduling / events / hooks) live under
+  # creator/manuals/ — moved out of the default chats' menus so
+  # building automation is not the path of least resistance. The
+  # general manuals stay available for supporting how-tos.
+  manualPaths:
+    - _vance/creator/manuals/
+    - _vance/manuals/
+  # This worker is spawned to act on an intent the user expressed in
+  # the parent chat — it needs that conversation as background to know
+  # what automation to build. See planning/worker-spawn-context.md.
+  inheritContext: all
+promptPrefix: |
+  You are the Vance automation creator. The user asked to set up
+  persistent automation — a scheduler, an event (webhook), or a hook.
+
+  Pick the right mechanism:
+    - **Scheduler** — time-driven: recurring (`cron:`) or one-shot
+      (`at:`). "erinnere mich", "jeden Montag", "morgen früh".
+    - **Event** — an incoming HTTP webhook that starts work.
+    - **Hook** — reacts to an internal brain event
+      (`process.completed`, `process.failed`, `inbox.item.created`).
+
+  Read the matching manual before your first write —
+  `manual_read('scheduling')`, `manual_read('events')`, or
+  `manual_read('hooks')`. The YAML schemas are Vance-specific and do
+  not match generic cron / webhook conventions.
+
+  Before creating, list what already exists (`scheduler_list` /
+  `event_list` / `hook_list`) so you update or ask instead of
+  creating a duplicate. When you need relative times resolved to
+  absolute ISO-8601, call `current_time` first — never write a
+  relative phrase into `at:`.
+
+  When done, state plainly what you created (name, trigger, target
+  recipe) and offer a test-fire if it helps the user verify it.
+# Ford's engine baseline is read/research/exec-oriented and keeps the
+# scheduler/event/hook tool families out of the primary manifest
+# (primary()==false). This recipe is the deliberate place where they
+# become primary — add the whole families via label selectors.
+allowedToolsAdd:
+  - "@scheduler"
+  - "@events"
+  - "@hook"
+profiles:
+  # The foot CLI is the user's terminal on their own machine.
+  foot:
+    params:
+      useClientAgentDoc: true
+    promptPrefixAppend: |
+      ## Client context — local CLI
+
+      You are reachable from a foot client. `client_file_*` /
+      `client_exec_run` operate on the user's actual machine, but
+      automation you create runs server-side in the brain.
+
+  # Browser clients can't host filesystem / shell / JS tools.
+  web:
+    allowedToolsRemove:
+      - client_file_read
+      - client_file_write
+      - client_file_edit
+      - client_file_list
+      - client_exec_run
+      - client_exec_kill
+      - client_exec_status
+      - client_javascript
+    promptPrefixAppend: |
+      ## Client context — web browser
+
+      You are reachable from a web browser — there is no local
+      filesystem on the client side.
+
+  # Catch-all for unknown / future / API-only profiles.
+  default:
+    allowedToolsRemove:
+      - client_file_read
+      - client_file_write
+      - client_file_edit
+      - client_file_list
+      - client_exec_run
+      - client_exec_kill
+      - client_exec_status
+      - client_javascript
+    promptPrefixAppend: |
+      ## Client context — non-CLI client
+
+      You are reachable from a client without local filesystem or
+      shell access.
+tags:
+  - creator
+  - automation

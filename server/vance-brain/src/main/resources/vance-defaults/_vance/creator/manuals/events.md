@@ -1,7 +1,7 @@
 ---
-audience: eddie
-triggers: event_fire, event testen, event manuell auslösen, webhook testen, UrsaEvent, ursa event, lief der webhook, event log
-summary: How Eddie test-fires a configured UrsaEvent without the webhook bearer-token check, and how to read the resulting trigger log document.
+audience: creator
+triggers: event_set, event anlegen, event erstellen, event_fire, event testen, event manuell auslösen, webhook testen, UrsaEvent, ursa event, lief der webhook, event log
+summary: How to test-fire a configured UrsaEvent without the webhook bearer-token check, and how to read the resulting trigger log document.
 ---
 # Wie ich Events teste und ihr Log lese
 

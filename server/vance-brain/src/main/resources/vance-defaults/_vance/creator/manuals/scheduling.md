@@ -1,7 +1,7 @@
 ---
-audience: eddie
+audience: creator
 triggers: scheduler, scheduler_set, scheduler_list, scheduler_get, scheduler_delete, scheduler_fire, scheduler manuell auslösen, scheduler testen, scheduler log, lief der scheduler, cron, at:, erinnere mich, reminder, jeden Montag, morgen früh, recurring task, einmalig, daily briefing, locked scheduler, lockMode, runAs, timezone, Quartz cron, IANA
-summary: How Eddie creates and maintains schedulers, fires them manually for testing, and reads the per-run log documents — Quartz 6-field cron vs. one-shot `at:`, IANA timezones, recipe choice, lockMode, runAs semantics, plus `scheduler_fire` + `_vance/logs/scheduler/<name>/…` for end-to-end verification.
+summary: How to create and maintain schedulers, fire them manually for testing, and read the per-run log documents — Quartz 6-field cron vs. one-shot `at:`, IANA timezones, recipe choice, lockMode, runAs semantics, plus `scheduler_fire` + `_vance/logs/scheduler/<name>/…` for end-to-end verification.
 ---
 # Wie ich Scheduler anlege und pflege
 

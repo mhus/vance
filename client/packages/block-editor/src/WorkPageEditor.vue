@@ -188,13 +188,12 @@ const emit = defineEmits<{
   (e: 'save', body: string): void;
   (e: 'dirty', dirty: boolean): void;
   /**
-   * The text caret moved. Carries the ProseMirror head position — a
-   * logical document offset, NOT pixels. Consumers that share the caret
-   * (live cursors) send this integer and let the receiver resolve it back
-   * to screen coordinates via {@link caretRectAtPos} against its own
-   * layout, so browser width / reflow / scroll differences don't matter.
+   * The selection changed. A ping for live-awareness consumers — read the
+   * new active block via {@link getActiveBlockPos} in the handler. No
+   * payload: what's shared is a logical node anchor, resolved by each
+   * receiver against its own layout.
    */
-  (e: 'caret', pos: number): void;
+  (e: 'selection'): void;
 }>();
 
 const dirty = ref(false);
@@ -455,8 +454,8 @@ const editor = useEditor({
     }
     scheduleAutoSave();
   },
-  onSelectionUpdate: ({ editor: ed }) => {
-    emit('caret', ed.state.selection.head);
+  onSelectionUpdate: () => {
+    emit('selection');
   },
 });
 
@@ -811,30 +810,42 @@ function insertInput(data: string) {
     .run();
 }
 
-/** Current text-caret head position (logical ProseMirror offset). */
-function getCaretPos(): number | null {
-  return editor.value ? editor.value.state.selection.head : null;
+/**
+ * Start position of the top-level block that currently holds the caret —
+ * a logical document anchor for "which node is this user working on".
+ * Coarser and far more stable than a character caret; survives reflow and
+ * small edits, and reads as calm block-level awareness rather than a
+ * jittery per-keystroke cursor.
+ */
+function getActiveBlockPos(): number | null {
+  const ed = editor.value;
+  if (!ed) return null;
+  const $head = ed.state.selection.$head;
+  if ($head.depth < 1) return null;
+  return $head.before(1);
 }
 
 /**
- * Resolve a logical ProseMirror position to on-screen coordinates using
- * THIS editor's current layout (viewport-relative). Returns null when the
- * position is out of range for the local document. Consumers convert the
- * viewport rect into their own overlay space. This is what makes shared
- * carets reflow/width/scroll independent — each side maps the same logical
- * position through its own render.
+ * Resolve a top-level block position (from {@link getActiveBlockPos}) to
+ * the block element's on-screen rect using THIS editor's layout. Returns
+ * null when the position doesn't resolve to a block element locally. The
+ * receiver maps the viewport rect into its own overlay space — reflow /
+ * width / scroll independent, because the anchor is a logical node, not
+ * pixels.
  */
-function caretRectAtPos(pos: number): { left: number; top: number; height: number } | null {
+function blockRectAtPos(pos: number): { left: number; top: number; width: number; height: number } | null {
   const view = editor.value?.view;
   if (!view) return null;
-  const size = view.state.doc.content.size;
-  if (pos < 0 || pos > size) return null;
+  if (pos < 0 || pos >= view.state.doc.content.size) return null;
+  let dom: Node | null = null;
   try {
-    const c = view.coordsAtPos(pos);
-    return { left: c.left, top: c.top, height: Math.max(c.bottom - c.top, 12) };
+    dom = view.nodeDOM(pos);
   } catch {
     return null;
   }
+  if (!(dom instanceof HTMLElement)) return null;
+  const r = dom.getBoundingClientRect();
+  return { left: r.left, top: r.top, width: r.width, height: r.height };
 }
 
 /** The contentEditable root element (ProseMirror DOM) — for content-space anchoring. */
@@ -846,7 +857,7 @@ defineExpose({
   save, flush, insertImage, insertEmbed, insertForm, insertInput, updateHeader,
   applyLink, clearLink, currentLinkHref,
   getHeader: () => currentHeader.value,
-  getCaretPos, caretRectAtPos, getContentEl,
+  getActiveBlockPos, blockRectAtPos, getContentEl,
 });
 </script>
 

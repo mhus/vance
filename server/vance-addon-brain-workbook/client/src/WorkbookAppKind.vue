@@ -145,8 +145,8 @@ const editorRef = ref<{
   insertEmbed: (uri: string) => void;
   insertForm: (data: string) => void;
   insertInput: (data: string) => void;
-  getCaretPos: () => number | null;
-  caretRectAtPos: (pos: number) => { left: number; top: number; height: number } | null;
+  getActiveBlockPos: () => number | null;
+  blockRectAtPos: (pos: number) => { left: number; top: number; width: number; height: number } | null;
   getContentEl: () => HTMLElement | null;
 } | null>(null);
 
@@ -1161,12 +1161,13 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
 //    scrolling is handled for free — the rect moves with the content).
 //    Reflow across browser widths makes it slightly imprecise; that's
 //    acceptable for a mouse pointer.
-//  • Text caret — a LOGICAL ProseMirror position (`data.caret.pos`), never
-//    pixels. The receiver resolves it to screen coordinates via its OWN
-//    editor layout (`caretRectAtPos`), so different window widths / text
-//    reflow / scroll positions all resolve correctly. Pixels would be
-//    wrong here — the same x/y means a different character on a narrower
-//    screen.
+//  • Active node — the LOGICAL position of the block the peer's caret sits
+//    in (`data.node.pos`, from `getActiveBlockPos()`), never pixels. The
+//    receiver resolves it to the block element's rect via its OWN layout
+//    (`blockRectAtPos`) and highlights that block. Block-level awareness
+//    ("which node are they working on") is calmer and more stable than a
+//    per-keystroke character caret, and stays correct across window width /
+//    reflow / scroll.
 const mainRef = ref<HTMLElement | null>(null);
 const activePagePath = computed(() => activePageView.value?.path ?? null);
 const { pointers, report } = usePointers({ path: activePagePath });
@@ -1186,12 +1187,12 @@ const myColor = computed(() => colorFor(getUsername() ?? 'me'));
 const layoutTick = ref(0);
 function bumpLayout(): void { layoutTick.value++; }
 
-const lastCaretPos = ref<number | null>(null);
+const lastBlockPos = ref<number | null>(null);
 const lastMouse = ref<{ x: number; y: number } | null>(null);
 
 function buildData(): Record<string, unknown> {
   const d: Record<string, unknown> = { color: myColor.value };
-  if (lastCaretPos.value != null) d.caret = { pos: lastCaretPos.value };
+  if (lastBlockPos.value != null) d.node = { pos: lastBlockPos.value };
   return d;
 }
 
@@ -1206,10 +1207,10 @@ function reportPointer(ev: PointerEvent): void {
   report(x, y, buildData());
 }
 
-// Keyboard navigation moves the caret without a mouse event — re-report
-// (reusing the last mouse position) so peers see the caret jump.
-function onEditorCaret(pos: number): void {
-  lastCaretPos.value = pos;
+// Selection change (caret moved to another block, incl. via keyboard) —
+// refresh the active-block anchor and re-report using the last mouse pos.
+function onEditorSelection(): void {
+  lastBlockPos.value = editorRef.value?.getActiveBlockPos() ?? null;
   const m = lastMouse.value;
   if (m && activePagePath.value) report(m.x, m.y, buildData());
 }
@@ -1219,13 +1220,14 @@ function cursorColor(p: { data?: Record<string, unknown> }): string {
 }
 
 // Resolve each remote pointer to screen coordinates against the LOCAL
-// layout, so every viewer positions cursors/carets in their own render.
+// layout, so every viewer positions the cursor + node highlight in its
+// own render.
 interface Overlay {
   editorId: string;
   displayName: string;
   color: string;
   mouse: { left: number; top: number } | null;
-  caret: { left: number; top: number; height: number } | null;
+  node: { left: number; top: number; width: number; height: number } | null;
 }
 const overlays = computed<Overlay[]>(() => {
   void layoutTick.value; // reactive dep — recompute on scroll / resize
@@ -1243,13 +1245,20 @@ const overlays = computed<Overlay[]>(() => {
         top: contentRect.top - mainRect.top + p.y,
       };
     }
-    let caret: Overlay['caret'] = null;
-    const cp = p.data?.caret as { pos?: number } | undefined;
-    if (api?.caretRectAtPos && cp && typeof cp.pos === 'number') {
-      const r = api.caretRectAtPos(cp.pos);
-      if (r) caret = { left: r.left - mainRect.left, top: r.top - mainRect.top, height: r.height };
+    let node: Overlay['node'] = null;
+    const np = p.data?.node as { pos?: number } | undefined;
+    if (api?.blockRectAtPos && np && typeof np.pos === 'number') {
+      const r = api.blockRectAtPos(np.pos);
+      if (r) {
+        node = {
+          left: r.left - mainRect.left,
+          top: r.top - mainRect.top,
+          width: r.width,
+          height: r.height,
+        };
+      }
     }
-    return { editorId: p.editorId, displayName: p.displayName, color: cursorColor(p), mouse, caret };
+    return { editorId: p.editorId, displayName: p.displayName, color: cursorColor(p), mouse, node };
   });
 });
 
@@ -1449,23 +1458,24 @@ onBeforeUnmount(() => {
       class="workbook-app__main"
       @pointermove="reportPointer"
     >
-      <!-- Remote live cursors. Mouse pointer = content-space x/y resolved
-           against the local editor layout; text caret = logical position
-           resolved via caretRectAtPos (reflow/width/scroll independent).
-           Non-interactive overlay. -->
+      <!-- Remote live awareness. Mouse pointer = content-space x/y resolved
+           against the local editor layout; active-node highlight = logical
+           block position resolved via blockRectAtPos (reflow/width/scroll
+           independent). Non-interactive overlay. -->
       <div v-if="activePageId" class="workbook-cursors">
         <template v-for="o in overlays" :key="o.editorId">
           <div
-            v-if="o.caret"
-            class="workbook-caret"
+            v-if="o.node"
+            class="workbook-node"
             :style="{
-              left: o.caret.left + 'px',
-              top: o.caret.top + 'px',
-              height: o.caret.height + 'px',
+              left: o.node.left + 'px',
+              top: o.node.top + 'px',
+              width: o.node.width + 'px',
+              height: o.node.height + 'px',
               '--cursor-color': o.color,
             }"
           >
-            <span class="workbook-caret__label">{{ o.displayName }}</span>
+            <span class="workbook-node__label">{{ o.displayName }}</span>
           </div>
           <div
             v-if="o.mouse"
@@ -1583,7 +1593,7 @@ onBeforeUnmount(() => {
           :editable="editorEditable"
           @save="onEditorSave"
           @dirty="onEditorDirty"
-          @caret="onEditorCaret"
+          @selection="onEditorSelection"
         />
         <AssetPickerModal
           v-if="assetPickerOpen"
@@ -2119,21 +2129,23 @@ onBeforeUnmount(() => {
   border-radius: 6px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
 }
-.workbook-caret {
+/* Active-node highlight — a colored left accent bar + soft tint on the
+   block the peer is working in. Calmer than a per-keystroke caret. */
+.workbook-node {
   position: absolute;
-  width: 2px;
-  background: var(--cursor-color, #3b82f6);
-  opacity: 0.9;
-  will-change: left, top;
-  transition: left 0.08s linear, top 0.08s linear;
+  border-left: 3px solid var(--cursor-color, #3b82f6);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--cursor-color, #3b82f6) 8%, transparent);
+  will-change: left, top, height;
+  transition: left 0.1s linear, top 0.1s linear, height 0.1s linear;
 }
-.workbook-caret__label {
+.workbook-node__label {
   position: absolute;
-  left: 0;
-  top: -1.1em;
-  padding: 0 4px;
+  left: -3px;
+  top: -1.15em;
+  padding: 0 5px;
   font-size: 10px;
-  line-height: 1.4;
+  line-height: 1.5;
   white-space: nowrap;
   color: #ffffff;
   background: var(--cursor-color, #3b82f6);

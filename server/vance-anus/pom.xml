@@ -71,6 +71,16 @@
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
                     <mainClass>de.mhus.vance.anus.VanceAnusApplication</mainClass>
+                    <!-- ZIP layout swaps the default JarLauncher for
+                         PropertiesLauncher, which honours -Dloader.path
+                         (and the LOADER_PATH env var). The Docker entrypoint
+                         unpacks each .vab into /shared/addons/<id>/<ver>/ and
+                         points loader.path at every */anus/lib/*.jar, so an
+                         addon's shell commands join the classpath without
+                         being bundled inside this JAR. Symmetric with
+                         vance-brain (which loads */brain/lib/*.jar). See
+                         specification/addon-system.md §9. -->
+                    <layout>ZIP</layout>
                 </configuration>
             </plugin>
         </plugins>

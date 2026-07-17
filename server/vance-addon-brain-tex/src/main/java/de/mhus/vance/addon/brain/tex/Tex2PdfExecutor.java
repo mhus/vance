@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.tools.tex;
+package de.mhus.vance.addon.brain.tex;
 
 import java.nio.file.Path;
 import org.jspecify.annotations.Nullable;

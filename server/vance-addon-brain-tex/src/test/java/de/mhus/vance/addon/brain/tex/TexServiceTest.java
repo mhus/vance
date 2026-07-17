@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.tools.tex;
+package de.mhus.vance.addon.brain.tex;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;

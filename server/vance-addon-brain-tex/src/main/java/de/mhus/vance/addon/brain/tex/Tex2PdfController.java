@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.tools.tex;
+package de.mhus.vance.addon.brain.tex;
 
 import de.mhus.vance.toolpack.ToolException;
 import java.util.LinkedHashMap;

@@ -49,6 +49,11 @@
             <artifactId>vance-addon-brain-canvas</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <dependency>
+            <groupId>de.mhus.vance</groupId>
+            <artifactId>vance-addon-brain-tex</artifactId>
+            <version>${project.version}</version>
+        </dependency>
     </dependencies>
 
     <build>

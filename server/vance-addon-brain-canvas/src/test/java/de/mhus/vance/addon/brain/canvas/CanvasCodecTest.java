@@ -27,7 +27,7 @@ class CanvasCodecTest {
                 "https://example.com", "Example");
         CanvasEdge e = new CanvasEdge("e1", "n1", "n2",
                 CanvasEdge.Side.RIGHT, CanvasEdge.Side.LEFT,
-                CanvasEdge.End.NONE, CanvasEdge.End.ARROW, "belegt durch", null);
+                CanvasEdge.End.NONE, CanvasEdge.End.ARROW, "belegt durch", null, null, null);
         return new CanvasDocument("Skizze", "desc",
                 new CanvasGraph(List.of(g, t, d, l), List.of(e)));
     }
@@ -65,7 +65,7 @@ class CanvasCodecTest {
     @Test
     void serialize_omitsDefaultArrowEnds() {
         CanvasEdge dflt = new CanvasEdge("e1", "n1", "n2", null, null,
-                CanvasEdge.End.NONE, CanvasEdge.End.ARROW, null, null);
+                CanvasEdge.End.NONE, CanvasEdge.End.ARROW, null, null, null, null);
         Map<String, Object> m = CanvasCodec.edgeToMap(dflt);
         assertThat(m).doesNotContainKeys("fromEnd", "toEnd");
     }

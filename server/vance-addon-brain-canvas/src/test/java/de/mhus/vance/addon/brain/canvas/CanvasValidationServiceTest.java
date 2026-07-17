@@ -24,7 +24,7 @@ class CanvasValidationServiceTest {
 
     private static CanvasEdge edge(String id, String from, String to) {
         return new CanvasEdge(id, from, to, null, null,
-                CanvasEdge.End.NONE, CanvasEdge.End.ARROW, null, null);
+                CanvasEdge.End.NONE, CanvasEdge.End.ARROW, null, null, null, null);
     }
 
     private static CanvasDocument doc(List<CanvasNode> nodes, List<CanvasEdge> edges) {

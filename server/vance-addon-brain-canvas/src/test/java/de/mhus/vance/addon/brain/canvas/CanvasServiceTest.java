@@ -107,7 +107,7 @@ class CanvasServiceTest {
         CanvasNode n1 = new CanvasNode.Text("n1", 0, 0, 10, 10, null, null, null, "a", null, null, null, null, null);
         CanvasNode n2 = new CanvasNode.Text("n2", 20, 0, 10, 10, null, null, null, "b", null, null, null, null, null);
         CanvasEdge e1 = new CanvasEdge("e1", "n1", "n2", null, null,
-                CanvasEdge.End.NONE, CanvasEdge.End.ARROW, null, null);
+                CanvasEdge.End.NONE, CanvasEdge.End.ARROW, null, null, null, null);
         String body = CanvasCodec.serialize(
                 new CanvasDocument("T", null, new CanvasGraph(List.of(n1, n2), List.of(e1))), YAML);
         DocumentDocument doc = docWithBody(body);

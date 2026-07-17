@@ -206,7 +206,9 @@ public final class CanvasCodec {
                 CanvasEdge.End.parse(str(raw, "fromEnd"), CanvasEdge.End.NONE),
                 CanvasEdge.End.parse(str(raw, "toEnd"), CanvasEdge.End.ARROW),
                 str(raw, "label"),
-                str(raw, "color"));
+                str(raw, "color"),
+                boolOrNull(raw.get("dashed")),
+                dblOrNull(raw.get("width")));
     }
 
     public static Map<String, Object> edgeToMap(CanvasEdge e) {
@@ -222,6 +224,8 @@ public final class CanvasCodec {
         if (e.toEnd() != CanvasEdge.End.ARROW) m.put("toEnd", e.toEnd().wire());
         if (e.label() != null) m.put("label", e.label());
         if (e.color() != null) m.put("color", e.color());
+        if (Boolean.TRUE.equals(e.dashed())) m.put("dashed", true);
+        if (e.width() != null) m.put("width", e.width());
         return m;
     }
 
@@ -257,6 +261,18 @@ public final class CanvasCodec {
     private static @Nullable Boolean boolOrNull(@Nullable Object o) {
         if (o instanceof Boolean b) return b;
         if (o instanceof String s && !s.isBlank()) return Boolean.parseBoolean(s.trim());
+        return null;
+    }
+
+    private static @Nullable Double dblOrNull(@Nullable Object o) {
+        if (o instanceof Number n) return n.doubleValue();
+        if (o instanceof String s && !s.isBlank()) {
+            try {
+                return Double.parseDouble(s.trim());
+            } catch (NumberFormatException ignored) {
+                /* fall through */
+            }
+        }
         return null;
     }
 

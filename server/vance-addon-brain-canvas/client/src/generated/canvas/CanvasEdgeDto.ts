@@ -13,4 +13,6 @@ export interface CanvasEdgeDto {
   toEnd: string;
   label?: string;
   color?: string;
+  dashed?: boolean;
+  width?: number;
 }

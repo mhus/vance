@@ -11,6 +11,7 @@ import { VButton } from '@vance/components';
 import CanvasNodeCard from './CanvasNodeCard.vue';
 import InputDialog from './InputDialog.vue';
 import DocPicker from './DocPicker.vue';
+import EdgeDialog from './EdgeDialog.vue';
 import type { CanvasGraphDto } from './generated/canvas/CanvasGraphDto';
 import type { CanvasNodeDto } from './generated/canvas/CanvasNodeDto';
 import type { CanvasEdgeDto } from './generated/canvas/CanvasEdgeDto';
@@ -84,6 +85,10 @@ type DialogApi = {
 };
 const dialog = ref<DialogApi | null>(null);
 const docPicker = ref<{ open: (pid: string) => Promise<{ path: string; kind?: string } | null> } | null>(null);
+type EdgeStyleInit = {
+  label: string; color: string; fromArrow: boolean; toArrow: boolean; dashed: boolean; thick: boolean;
+};
+const edgeDialog = ref<{ open: (i: EdgeStyleInit) => Promise<EdgeStyleInit | null> } | null>(null);
 
 watch(
   () => props.graph,
@@ -148,7 +153,7 @@ const vfEdges = computed<Edge[]>(() => {
       type: 'default',
       markerEnd: e.toEnd === 'arrow' ? 'arrowclosed' : undefined,
       markerStart: e.fromEnd === 'arrow' ? 'arrowclosed' : undefined,
-      style: e.color ? { stroke: e.color } : undefined,
+      style: edgeStyle(e),
       updatable: false,
       selectable: isEditable.value,
     });
@@ -315,17 +320,39 @@ function handleSide(h: string | null | undefined): string | undefined {
   return h ? h.split('-')[1] : undefined;
 }
 
+function edgeStyle(e: CanvasEdgeDto): Record<string, string> | undefined {
+  const s: Record<string, string> = {};
+  if (e.color) s.stroke = e.color;
+  if (e.width) s.strokeWidth = String(e.width);
+  if (e.dashed) s.strokeDasharray = '6 4';
+  return Object.keys(s).length ? s : undefined;
+}
+
 async function onEdgeDoubleClick(e: { edge?: Edge }): Promise<void> {
   if (!isEditable.value || !e.edge) return;
   const id = e.edge.id;
   const cur = edges.value.find((x) => x.id === id);
   if (!cur) return;
-  const v = await dialog.value?.open('Kante beschriften', [
-    { key: 'label', label: 'Label', value: cur.label ?? '' },
-  ]);
+  const v = await edgeDialog.value?.open({
+    label: cur.label ?? '',
+    color: cur.color ?? '',
+    fromArrow: cur.fromEnd === 'arrow',
+    toArrow: cur.toEnd === 'arrow',
+    dashed: !!cur.dashed,
+    thick: (cur.width ?? 0) >= 3,
+  });
   if (!v) return;
-  const label = v.label.trim();
-  edges.value = edges.value.map((x) => (x.id === id ? { ...x, label: label || undefined } : x));
+  edges.value = edges.value.map((x) => (x.id === id
+    ? {
+        ...x,
+        label: v.label || undefined,
+        color: v.color || undefined,
+        fromEnd: v.fromArrow ? 'arrow' : 'none',
+        toEnd: v.toArrow ? 'arrow' : 'none',
+        dashed: v.dashed || undefined,
+        width: v.thick ? 3 : undefined,
+      }
+    : x));
   emitChange();
 }
 
@@ -494,6 +521,7 @@ async function addNode(type: 'text' | 'doc' | 'link' | 'group'): Promise<void> {
 
     <InputDialog ref="dialog" />
     <DocPicker ref="docPicker" />
+    <EdgeDialog ref="edgeDialog" />
   </div>
 </template>
 

@@ -14,4 +14,6 @@ public record CanvasEdgeDto(
         String fromEnd,
         String toEnd,
         @Nullable String label,
-        @Nullable String color) {}
+        @Nullable String color,
+        @Nullable Boolean dashed,
+        @Nullable Double width) {}

@@ -17,7 +17,9 @@ public record CanvasEdge(
         End fromEnd,
         End toEnd,
         @Nullable String label,
-        @Nullable String color) {
+        @Nullable String color,
+        @Nullable Boolean dashed,
+        @Nullable Double width) {
 
     /** Which side of a node an edge attaches to. */
     public enum Side {

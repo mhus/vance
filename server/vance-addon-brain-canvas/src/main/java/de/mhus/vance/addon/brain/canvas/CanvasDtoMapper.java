@@ -53,7 +53,7 @@ public final class CanvasDtoMapper {
                 e.fromSide() != null ? e.fromSide().wire() : null,
                 e.toSide() != null ? e.toSide().wire() : null,
                 e.fromEnd().wire(), e.toEnd().wire(),
-                e.label(), e.color());
+                e.label(), e.color(), e.dashed(), e.width());
     }
 
     // ── dto → model ───────────────────────────────────────────────
@@ -105,6 +105,8 @@ public final class CanvasDtoMapper {
         putIf(m, "toEnd", e.toEnd());
         putIf(m, "label", e.label());
         putIf(m, "color", e.color());
+        putIf(m, "dashed", e.dashed());
+        putIf(m, "width", e.width());
         return m;
     }
 

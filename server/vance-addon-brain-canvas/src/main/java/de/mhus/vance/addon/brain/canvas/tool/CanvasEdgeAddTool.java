@@ -32,12 +32,15 @@ public class CanvasEdgeAddTool implements Tool {
                 put("toEnd", Map.of("type", "string", "enum", List.of("none", "arrow"),
                         "description", "Arrow head at the target. Default: arrow (from → to)."));
                 put("color", Map.of("type", "string"));
+                put("dashed", Map.of("type", "boolean", "description", "Dashed line."));
+                put("width", Map.of("type", "number", "description", "Stroke width in px (e.g. 3 = bold)."));
                 put("projectId", Map.of("type", "string"));
             }},
             "required", List.of("path", "from", "to"));
 
     private static final List<String> EDGE_KEYS =
-            List.of("from", "to", "label", "fromSide", "toSide", "fromEnd", "toEnd", "color");
+            List.of("from", "to", "label", "fromSide", "toSide", "fromEnd", "toEnd",
+                    "color", "dashed", "width");
 
     private final EddieContext eddieContext;
     private final DocumentService documentService;

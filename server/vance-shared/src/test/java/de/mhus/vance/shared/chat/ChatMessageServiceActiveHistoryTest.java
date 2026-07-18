@@ -19,7 +19,7 @@ import org.springframework.data.mongodb.core.MongoTemplate;
  * Verifies the interim-filter contract on
  * {@link ChatMessageService#activeHistory} vs.
  * {@link ChatMessageService#activeHistoryWithInterim}: the LLM-replay
- * path must never see {@code meta.kind=interim} messages (Lunkwill's
+ * path must never see {@code meta.kind=interim} messages (Frankie's
  * live working-log), the UI-scrollback path must keep them.
  */
 class ChatMessageServiceActiveHistoryTest {

@@ -1,7 +1,7 @@
 /**
- * Lunkwill — the focused-worker think-engine (Pi-style loop).
+ * Frankie — the focused-worker think-engine (Pi-style loop).
  *
- * <p>Lunkwill is the generic executor: it runs a task in multiple
+ * <p>Frankie is the generic executor: it runs a task in multiple
  * turns until it's done. Stop conditions are hardcoded — natural stop
  * (LLM produces no tool calls), tool-driven terminate
  * ({@code _terminate: true} in a tool result), external interrupt
@@ -12,12 +12,12 @@
  *
  * <p>First validating recipe is {@code coding} (see
  * {@code planning/coding-recipe.md}). Later variants
- * ({@code lunkwill-fook-upstream}, {@code lunkwill-repair}, …) are
+ * ({@code frankie-fook-upstream}, {@code frankie-repair}, …) are
  * recipes on the same engine, not new engine code.
  *
- * <p>See {@code planning/lunkwill-engine.md} for the design.
+ * <p>See {@code planning/frankie-engine.md} for the design.
  */
 @NullMarked
-package de.mhus.vance.brain.lunkwill;
+package de.mhus.vance.brain.frankie;
 
 import org.jspecify.annotations.NullMarked;

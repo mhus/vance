@@ -6,7 +6,7 @@
  *
  * <p>Nature-0 is the architecture proof: every Trillian-Control
  * session pairs a chat-host process (Arthur-based, talks to the
- * human) with a Trillian-User process (Lunkwill-based, owned by a
+ * human) with a Trillian-User process (Frankie-based, owned by a
  * fresh {@code _trillian-0XXXX} service account, runs the
  * observe-think-act loop). {@link TrillianSessionBootstrapper}
  * creates the pairing on session-create.

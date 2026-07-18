@@ -1,12 +1,14 @@
 package de.mhus.vance.brain.recipe;
 
+import de.mhus.vance.brain.frankie.FrankieEngine;
+
 /**
- * When the Lunkwill post-completion hook fires.
+ * When the Frankie post-completion hook fires.
  *
- * <p>See {@code planning/lunkwill-post-completion-hook.md} for the
+ * <p>See {@code planning/frankie-post-completion-hook.md} for the
  * full design. The trigger is configured per-recipe via
  * {@code postCompletionHook.trigger} and consumed by
- * {@link de.mhus.vance.brain.lunkwill.LunkwillEngine}.
+ * {@link FrankieEngine}.
  */
 public enum PostCompletionHookTrigger {
 

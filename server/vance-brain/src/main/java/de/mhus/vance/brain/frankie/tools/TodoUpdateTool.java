@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.lunkwill.tools;
+package de.mhus.vance.brain.frankie.tools;
 
 import de.mhus.vance.api.thinkprocess.TodoItem;
 import de.mhus.vance.api.thinkprocess.TodoStatus;
@@ -28,7 +28,7 @@ import org.springframework.stereotype.Component;
  * status {@code COMPLETED}, the list is cleared entirely and a final
  * {@code todos-updated} carrying an empty list is emitted. Keeps the
  * per-turn prompt block from carrying a fully-done plan around forever
- * — see {@code specification/public/lunkwill-engine.md §9}.
+ * — see {@code specification/public/frankie-engine.md §9}.
  */
 @Component
 @RequiredArgsConstructor

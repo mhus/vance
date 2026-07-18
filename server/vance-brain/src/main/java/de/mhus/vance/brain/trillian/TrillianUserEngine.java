@@ -266,7 +266,7 @@ public class TrillianUserEngine implements ThinkEngine {
      * produces a natural-stop reply (text + no tool calls, or
      * empty). Then go IDLE and wait for the next inbox event.
      *
-     * <p>Unlike Lunkwill, there is no {@code _terminate} stop path
+     * <p>Unlike Frankie, there is no {@code _terminate} stop path
      * and no BLOCKED-on-empty quirk. Trillian-User stays alive for
      * its session's whole lifetime; quiet turns are normal.
      */
@@ -303,7 +303,7 @@ public class TrillianUserEngine implements ThinkEngine {
             List<ChatMessage> messages = buildPromptMessages(
                     process, chatLog, extras, nature, modelInfo);
 
-            // Turn-start compaction: identical hook to Arthur/Eddie/Ford/Lunkwill.
+            // Turn-start compaction: identical hook to Arthur/Eddie/Ford/Frankie.
             // Without this the Nature-0 user-loop accumulates chat
             // history unboundedly — the Trillian-User runs autonomously
             // for many turns under its `_trillian-0XXXX` service-account
@@ -477,7 +477,7 @@ public class TrillianUserEngine implements ThinkEngine {
         List<ChatMessage> messages = new ArrayList<>();
         // System prompt = engine-default + nature overlay + memory-context
         // (languages, agent-doc, ARCHIVED_CHAT summary, RAG auto-inject).
-        // Same shape Arthur/Eddie/Ford/Lunkwill build via MemoryContextLoader.
+        // Same shape Arthur/Eddie/Ford/Frankie build via MemoryContextLoader.
         String systemPrompt = composeSystemPrompt(process, nature, modelInfo);
         String memoryBlock = memoryContextLoader.composeBlock(process);
         if (memoryBlock != null && !memoryBlock.isBlank()) {

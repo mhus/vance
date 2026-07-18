@@ -1,10 +1,10 @@
-# Coding-Worker on the Lunkwill engine. Reads and edits files at the
+# Coding-Worker on the Frankie engine. Reads and edits files at the
 # active work target (the user's local working directory via Foot CLI
 # when one is connected, otherwise a Brain-server workspace RootDir),
 # runs build / test commands via exec_run, spawns Marvin for hard
 # plan decisions.
 #
-# Generic file_* / exec_* tools come for free via Lunkwill's
+# Generic file_* / exec_* tools come for free via Frankie's
 # engine-default set (BaseEngineTools.WORK_TARGET) — no allowedToolsAdd
 # needed for the file/exec surface. The recipe just picks the default
 # work target per profile.
@@ -20,13 +20,13 @@ description: |
   reviews with edits. Not for large architecture decisions — delegate
   those to Marvin.
 
-engine: lunkwill
+engine: frankie
 
 # Research surface — useful for "what does library X do", "best
-# practice for Y in language Z", etc. Lunkwill's engine baseline
+# practice for Y in language Z", etc. Frankie's engine baseline
 # does not include these (other recipes may not need them).
 #
-# Document-mutation tools — needed when the caller wants Lunkwill to
+# Document-mutation tools — needed when the caller wants Frankie to
 # refactor or rewrite a MongoDB-stored document (project notes, specs,
 # recipes, the user's docs in /documents/...). Without them the worker
 # falls back to file_*/work_file_* which look at the workspace
@@ -46,8 +46,8 @@ allowedToolsAdd:
   - doc_note_add
   - doc_note_update
   - doc_note_delete
-  # Plan-tracking (CRUD shape — see specification/public/lunkwill-engine.md §9).
-  # The three tools live in Lunkwill's ENGINE_DEFAULT_TOOLS baseline,
+  # Plan-tracking (CRUD shape — see specification/public/frankie-engine.md §9).
+  # The three tools live in Frankie's ENGINE_DEFAULT_TOOLS baseline,
   # but the per-process allowedToolsOverride is frozen at spawn time —
   # explicitly listing them here guarantees they ship in every turn
   # regardless of when the process was spawned.
@@ -92,7 +92,7 @@ allowedToolsDefer:
 params:
   model: default:code,default:fast
   manualPaths:
-    - _vance/lunkwill/manuals/   # engine-intrinsic + coding-specific manuals
+    - _vance/frankie/manuals/   # engine-intrinsic + coding-specific manuals
     - _vance/manuals/            # global Vance manuals as fallback
   # Default work-target when the LLM doesn't switch explicitly.
   # Default profile (web / API) targets the Brain-server workspace

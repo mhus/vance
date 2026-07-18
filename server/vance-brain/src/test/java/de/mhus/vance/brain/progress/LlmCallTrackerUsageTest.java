@@ -71,7 +71,7 @@ class LlmCallTrackerUsageTest {
         process.setProjectId("demo");
         process.setSessionId("sess-1");
         process.setRecipeName("coding");
-        process.setThinkEngine("lunkwill");
+        process.setThinkEngine("frankie");
     }
 
     @Test
@@ -91,7 +91,7 @@ class LlmCallTrackerUsageTest {
         assertThat(w.sessionId()).isEqualTo("sess-1");
         assertThat(w.processId()).isEqualTo("proc-1");
         assertThat(w.recipeName()).isEqualTo("coding");
-        assertThat(w.engineName()).isEqualTo("lunkwill");
+        assertThat(w.engineName()).isEqualTo("frankie");
         assertThat(w.providerInstance()).isEqualTo("openai");
         assertThat(w.providerModel()).isEqualTo("glm-5.2");
         assertThat(w.modelAlias()).isEqualTo("default:code");

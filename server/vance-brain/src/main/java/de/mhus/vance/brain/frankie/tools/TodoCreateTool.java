@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.lunkwill.tools;
+package de.mhus.vance.brain.frankie.tools;
 
 import de.mhus.vance.api.thinkprocess.TodoItem;
 import de.mhus.vance.brain.arthur.PlanModeEventEmitter;
@@ -26,7 +26,7 @@ import org.springframework.stereotype.Component;
  *
  * <p>Status is always {@code PENDING} on create; transitions go
  * through {@code todo_update}. CRUD-clean — see
- * {@code specification/public/lunkwill-engine.md §9}.
+ * {@code specification/public/frankie-engine.md §9}.
  */
 @Component
 @RequiredArgsConstructor
@@ -123,7 +123,7 @@ public class TodoCreateTool implements Tool {
             if (wasEmptyBefore) {
                 // First items in the list — drop the "plan exists now" hint
                 // so Foot / Web-UI can show the banner. planVersion stays
-                // at 1 since Lunkwill doesn't track revisions.
+                // at 1 since Frankie doesn't track revisions.
                 planModeEventEmitter.emitPlanProposed(
                         refreshed, /*summary*/ null, /*planVersion*/ 1);
             }

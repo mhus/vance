@@ -59,7 +59,7 @@ public class LlmCallTracker {
         // already hand one in (Arthur/Eddie/Ford/Trillian/Marvin/...)
         // still get context-window + pricing in their MetricsPayload
         // and in the usage ledger. Engines with a local ModelInfo
-        // (Lunkwill) keep the explicit 6-arg path.
+        // (Frankie) keep the explicit 6-arg path.
         ModelInfo resolved = resolveModelInfo(process, modelAlias);
         record(process, request, response, elapsedMs, modelAlias, resolved);
     }

@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.lunkwill;
+package de.mhus.vance.brain.frankie;
 
 import de.mhus.vance.api.action.TriggerAction;
 import de.mhus.vance.api.chat.ChatRole;
@@ -27,20 +27,20 @@ import org.springframework.stereotype.Component;
 
 /**
  * Decides whether to spawn a post-completion hook process for a
- * Lunkwill worker that just hit a stop signal, and dispatches the
+ * Frankie worker that just hit a stop signal, and dispatches the
  * spawn through the central {@link ActionExecutorRegistry}.
  *
- * <p>Lives outside {@link LunkwillEngine} so the spawn decision has a
+ * <p>Lives outside {@link FrankieEngine} so the spawn decision has a
  * narrow test surface (no LLM streaming, no compaction, no prompt
  * assembly). The engine calls {@link #maybeSpawn} after persisting the
  * worker's final reply and before transitioning to {@code IDLE}.
  *
- * <p>See {@code planning/lunkwill-post-completion-hook.md}.
+ * <p>See {@code planning/frankie-post-completion-hook.md}.
  */
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class LunkwillPostCompletionHookHandler {
+public class FrankiePostCompletionHookHandler {
 
     /** Suffix added to the worker name to form the hook process name. */
     private static final String HOOK_NAME_SUFFIX = "_hook_";
@@ -88,7 +88,7 @@ public class LunkwillPostCompletionHookHandler {
         }
         if (worker.getPostCompletionHookRounds() >= hookConfig.maxRounds()) {
             log.debug(
-                    "Lunkwill post-hook id='{}' round-cap reached ({} >= {}), skipping spawn",
+                    "Frankie post-hook id='{}' round-cap reached ({} >= {}), skipping spawn",
                     worker.getId(),
                     worker.getPostCompletionHookRounds(),
                     hookConfig.maxRounds());
@@ -96,7 +96,7 @@ public class LunkwillPostCompletionHookHandler {
         }
         if (hasHookOutcomeInInbox(drainedInbox)) {
             log.debug(
-                    "Lunkwill post-hook id='{}' inbox already carries a hook outcome, "
+                    "Frankie post-hook id='{}' inbox already carries a hook outcome, "
                             + "suppressing recursive spawn",
                     worker.getId());
             return false;
@@ -110,22 +110,22 @@ public class LunkwillPostCompletionHookHandler {
                 worker.getTenantId(), worker.getProjectId(), hookConfig.recipe());
         if (hookRecipeOpt.isEmpty()) {
             log.warn(
-                    "Lunkwill post-hook id='{}' recipe='{}' unknown — skipping spawn",
+                    "Frankie post-hook id='{}' recipe='{}' unknown — skipping spawn",
                     worker.getId(), hookConfig.recipe());
             return false;
         }
         ResolvedRecipe hookRecipe = hookRecipeOpt.get();
-        if (!LunkwillEngine.NAME.equalsIgnoreCase(hookRecipe.engine())) {
+        if (!FrankieEngine.NAME.equalsIgnoreCase(hookRecipe.engine())) {
             log.warn(
-                    "Lunkwill post-hook id='{}' recipe='{}' uses engine='{}' "
+                    "Frankie post-hook id='{}' recipe='{}' uses engine='{}' "
                             + "(must be '{}') — skipping spawn",
                     worker.getId(), hookConfig.recipe(),
-                    hookRecipe.engine(), LunkwillEngine.NAME);
+                    hookRecipe.engine(), FrankieEngine.NAME);
             return false;
         }
         if (hookRecipe.postCompletionHook() != null) {
             log.warn(
-                    "Lunkwill post-hook id='{}' recipe='{}' itself declares "
+                    "Frankie post-hook id='{}' recipe='{}' itself declares "
                             + "postCompletionHook — refusing transitive loop",
                     worker.getId(), hookConfig.recipe());
             return false;
@@ -143,7 +143,7 @@ public class LunkwillPostCompletionHookHandler {
                 worker.getId());
         if (newRoundCount < 0) {
             log.warn(
-                    "Lunkwill post-hook id='{}' counter increment failed (row gone?), skipping spawn",
+                    "Frankie post-hook id='{}' counter increment failed (row gone?), skipping spawn",
                     worker.getId());
             return false;
         }
@@ -163,7 +163,7 @@ public class LunkwillPostCompletionHookHandler {
                 worker.getProjectId(),
                 /*resolvedRunAs*/ null,
                 /*correlationId*/ null,
-                /*sourceTag*/ "engine:lunkwill:post-completion-hook",
+                /*sourceTag*/ "engine:frankie:post-completion-hook",
                 worker.getSessionId(),
                 worker.getId());
 
@@ -172,19 +172,19 @@ public class LunkwillPostCompletionHookHandler {
                     action, triggerCtx, TriggerKind.TOOL);
             if (result.outcome().isFailure()) {
                 log.warn(
-                        "Lunkwill post-hook id='{}' recipe='{}' executor returned {}: {}",
+                        "Frankie post-hook id='{}' recipe='{}' executor returned {}: {}",
                         worker.getId(), hookConfig.recipe(),
                         result.outcome(), result.output());
                 return false;
             }
             log.info(
-                    "Lunkwill post-hook id='{}' spawned recipe='{}' as '{}' (round {} of {})",
+                    "Frankie post-hook id='{}' spawned recipe='{}' as '{}' (round {} of {})",
                     worker.getId(), hookConfig.recipe(), hookProcessName,
                     newRoundCount, hookConfig.maxRounds());
             return true;
         } catch (RuntimeException e) {
             log.warn(
-                    "Lunkwill post-hook id='{}' recipe='{}' spawn threw: {}",
+                    "Frankie post-hook id='{}' recipe='{}' spawn threw: {}",
                     worker.getId(), hookConfig.recipe(), e.toString());
             return false;
         }
@@ -207,7 +207,7 @@ public class LunkwillPostCompletionHookHandler {
             return recipeOpt.map(ResolvedRecipe::postCompletionHook).orElse(null);
         } catch (RuntimeException e) {
             log.warn(
-                    "Lunkwill post-hook id='{}' recipe='{}' resolve failed: {}",
+                    "Frankie post-hook id='{}' recipe='{}' resolve failed: {}",
                     worker.getId(), recipeName, e.toString());
             return null;
         }
@@ -242,7 +242,7 @@ public class LunkwillPostCompletionHookHandler {
         vars.put("finalText", finalText == null ? "" : finalText);
         vars.put("originalGoal", firstUserInput(worker));
         vars.put("chatHistoryText", chatHistoryAsPlainText(worker));
-        vars.put("engine", LunkwillEngine.NAME);
+        vars.put("engine", FrankieEngine.NAME);
         vars.put("recipe", config.recipe());
         vars.put("roundIndex", roundIndex);
         vars.put("tenantId", worker.getTenantId());

@@ -37,7 +37,7 @@ import org.springframework.stereotype.Component;
  * thread (Spring's default {@code SimpleApplicationEventMulticaster}),
  * so a slow Prak run would block the engine's turn from terminating —
  * a live regression shipped {@code default:fast} stuck in a
- * {@code HttpTimeoutException} retry loop for 87 seconds, and Lunkwill
+ * {@code HttpTimeoutException} retry loop for 87 seconds, and Frankie
  * couldn't transition {@code RUNNING -> IDLE} until Prak finished. The
  * trigger itself does heavy lifting (LLM call, Mongo writes, memory
  * promotions) that has no business living on the lane critical path.

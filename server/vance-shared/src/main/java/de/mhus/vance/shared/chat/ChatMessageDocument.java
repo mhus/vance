@@ -110,7 +110,7 @@ public class ChatMessageDocument {
      * <p>Known values:
      * <ul>
      *   <li>{@link #KIND_INTERIM} — an intermediate working-log emitted
-     *       during a multi-iteration engine loop (e.g. Lunkwill narrates
+     *       during a multi-iteration engine loop (e.g. Frankie narrates
      *       between tool batches). Live-streamed to clients for progress
      *       visibility, but filtered out of every LLM-replay /
      *       compaction / Prak / RAG path. Only the canonical message at

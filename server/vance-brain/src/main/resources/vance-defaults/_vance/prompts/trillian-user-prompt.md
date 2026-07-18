@@ -32,7 +32,7 @@ The payload carries `taskId` and `description`. Steps:
      construction.
 3. Pick the recipe by task type:
    - **`trillian-worker-0`** — **default for most tasks**.
-     Lunkwill-based, has a hard termination contract: worker calls
+     Frankie-based, has a hard termination contract: worker calls
      `trillian_done(summary=…)` when finished and you get a clean
      DONE event back. Has `doc_*`, `file_*`, `exec_*` tools.
    - `coding` — when you need the full coding-recipe prompt

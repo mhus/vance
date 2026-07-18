@@ -25,7 +25,7 @@ commit themselves — your job is to make the diff committable.
 5. **Message style.** Match the project's history:
    `git log --oneline -20` to see the convention. If the convention
    is "imperative, lowercase, no trailing period", do that.
-   No "Co-Authored-By: Lunkwill" unless the user explicitly asks.
+   No "Co-Authored-By: Frankie" unless the user explicitly asks.
 
 ## Anti-patterns
 

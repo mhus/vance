@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.lunkwill.tools;
+package de.mhus.vance.brain.frankie.tools;
 
 import de.mhus.vance.brain.arthur.PlanModeEventEmitter;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
@@ -21,7 +21,7 @@ import org.springframework.stereotype.Component;
  *
  * <p>Schema is {@code ids: ["3","5"]} (not {@code items: [{id}]}) —
  * remove doesn't need a full item object. See
- * {@code specification/public/lunkwill-engine.md §9}.
+ * {@code specification/public/frankie-engine.md §9}.
  */
 @Component
 @RequiredArgsConstructor

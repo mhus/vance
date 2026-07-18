@@ -1,7 +1,7 @@
 package de.mhus.vance.brain.trillian.tools;
 
 import de.mhus.vance.api.chat.ChatRole;
-import de.mhus.vance.brain.lunkwill.LunkwillTermination;
+import de.mhus.vance.brain.frankie.FrankieTermination;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
@@ -23,21 +23,21 @@ import org.springframework.stereotype.Component;
  *
  * <p>A worker that was spawned by Trillian-User via
  * {@code cross_process_create} (typically with recipe
- * {@code trillian-worker} on the Lunkwill engine) calls this tool
+ * {@code trillian-worker} on the Frankie engine) calls this tool
  * exactly once when its task is finished. The tool returns
- * {@code "_terminate": true}, which Lunkwill recognises as the
+ * {@code "_terminate": true}, which Frankie recognises as the
  * tool-driven termination signal in worker mode — the process
  * closes with {@code DONE}, the standard
  * {@code ParentNotificationListener} fires a DONE
  * {@code ProcessEvent} carrying the summary to the parent
  * (Trillian-User), which wakes and reports back to Control.
  *
- * <p>Without this tool, a Lunkwill worker would natural-stop into
+ * <p>Without this tool, a Frankie worker would natural-stop into
  * {@code IDLE} after its final reply, never emitting a terminal
  * event — Trillian-User would never know the worker finished. The
  * tool is the explicit "task done forever" handshake.
  *
- * <p>Engine-role-agnostic — Lunkwill (or any engine that honours
+ * <p>Engine-role-agnostic — Frankie (or any engine that honours
  * the {@code _terminate} convention) consumes the result; Trillian
  * exposes it via the {@code trillian-worker} recipe's
  * {@code allowedToolsAdd}. Not added to any engine default.
@@ -105,7 +105,7 @@ public class TrillianDoneTool implements Tool {
         Object data = params == null ? null : params.get("data");
 
         // Persist the summary as an ASSISTANT chat message before
-        // Lunkwill terminates. Lunkwill at tool-terminate skips its
+        // Frankie terminates. Frankie at tool-terminate skips its
         // normal natural-stop persistAssistantReply path — without
         // this append the summary would only live in the langchain4j
         // tool-result history and ParentNotificationListener.
@@ -135,10 +135,10 @@ public class TrillianDoneTool implements Tool {
         }
 
         Map<String, Object> out = new LinkedHashMap<>();
-        // Lunkwill's tool-driven terminate convention. The engine
+        // Frankie's tool-driven terminate convention. The engine
         // checks for this key after every tool batch and exits with
         // CloseReason.DONE in worker mode.
-        out.put(LunkwillTermination.RESULT_TERMINATE_KEY, true);
+        out.put(FrankieTermination.RESULT_TERMINATE_KEY, true);
         out.put("summary", summary);
         if (data != null) {
             out.put("data", data);

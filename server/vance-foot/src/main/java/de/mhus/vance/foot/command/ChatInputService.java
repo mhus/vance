@@ -44,7 +44,7 @@ public class ChatInputService {
      * as "give up if nothing inbound arrives for this long" — not as an
      * absolute wall-clock cap on the turn. Streaming frames
      * ({@code CHAT_MESSAGE_APPENDED}, {@code PROCESS_PROGRESS}, tool-result
-     * pushes, PING heartbeats, …) reset the clock, so a Lunkwill / Marvin
+     * pushes, PING heartbeats, …) reset the clock, so a Frankie / Marvin
      * turn that keeps producing output happily runs for as long as it
      * needs. 10 min of <em>complete silence</em> from the brain is the
      * "something is genuinely wrong" threshold; below that, the user can
@@ -218,7 +218,7 @@ public class ChatInputService {
         }
         // Surface a positive confirmation. Previously this path was
         // silent on success, so when the brain dropped the PAUSE
-        // frame (or didn't pause Lunkwill for some other reason) the
+        // frame (or didn't pause Frankie for some other reason) the
         // user had no way to tell from the foot side whether the
         // intent had even left the building.
         chatTerminal.info("↳ pause requested (ESC)");
@@ -334,7 +334,7 @@ public class ChatInputService {
                     .voiceMode(voiceMode ? Boolean.TRUE : null)
                     .build();
             // Chat-steer uses the streaming variant: a single engine
-            // turn (Lunkwill, Marvin, …) can legitimately run for many
+            // turn (Frankie, Marvin, …) can legitimately run for many
             // minutes while the brain pushes progress / tool / chat
             // frames in between. Strict request() would false-positive
             // abort. requestStreaming resets the deadline on every

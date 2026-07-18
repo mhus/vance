@@ -58,7 +58,7 @@ public class ReplyPayload {
 
     /**
      * When {@code true} this is a live working-log entry, not the
-     * canonical turn reply — emitted by engines (Lunkwill) that narrate
+     * canonical turn reply — emitted by engines (Frankie) that narrate
      * between tool batches so the user can follow progress in real
      * time. Clients render interim replies visually dimmed and keep
      * scrolling; only the non-interim reply at turn-end carries the
@@ -66,7 +66,7 @@ public class ReplyPayload {
      *
      * <p>Interim replies are not routed to a parent's pending inbox —
      * only canonical replies cross the worker→parent boundary. See
-     * {@code specification/lunkwill-engine.md}.
+     * {@code specification/frankie-engine.md}.
      */
     private boolean interim;
 }

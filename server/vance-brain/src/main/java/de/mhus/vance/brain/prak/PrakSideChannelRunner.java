@@ -143,7 +143,7 @@ public class PrakSideChannelRunner {
                     process.getId(),
                     runId);
             // Union tool-emitted labels across every assistant message
-            // in the span (Lunkwill stamps META_PRAK_TOOL_LABELS with
+            // in the span (Frankie stamps META_PRAK_TOOL_LABELS with
             // the union of Tool.prakLabels() for the producing turn).
             // Pass them to promote() so the persisted insights get the
             // domain tags even when the analyser didn't think to add

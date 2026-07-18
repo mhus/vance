@@ -52,7 +52,7 @@ public final class ChatMentionParser {
             "ford",
             "hactar",
             "jeltz",
-            "lunkwill",
+            "frankie",
             "marvin",
             "slartibartfast",
             "trillian",

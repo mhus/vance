@@ -129,7 +129,7 @@ public class ThinkProcessDocument {
      * window.
      *
      * <p>Default {@code false} — every regular process is visible.
-     * Trillian's user-process is the first consumer (Lunkwill-side
+     * Trillian's user-process is the first consumer (Frankie-side
      * suppression, set by {@code TrillianSessionBootstrapper}).
      *
      * <p>Cosmetic / UX only. Persistence, tool-dispatch, and event
@@ -396,14 +396,14 @@ public class ThinkProcessDocument {
     private @Nullable Instant lastPrakAt;
 
     /**
-     * Number of post-completion hook rounds the Lunkwill engine has
+     * Number of post-completion hook rounds the Frankie engine has
      * already spawned for this process. Incremented atomically by
      * {@code ThinkProcessService.incrementPostCompletionHookRounds}
      * each time the engine spawns a hook-process after a natural
      * stop / tool-terminate. The engine compares this counter against
      * the recipe's {@code postCompletionHook.maxRounds} cap before
      * deciding to spawn — see
-     * {@code planning/lunkwill-post-completion-hook.md} §4 / §9.
+     * {@code planning/frankie-post-completion-hook.md} §4 / §9.
      *
      * <p>Engine-internal state, not recipe config. Survives process
      * restarts so the cap is respected even when the worker is

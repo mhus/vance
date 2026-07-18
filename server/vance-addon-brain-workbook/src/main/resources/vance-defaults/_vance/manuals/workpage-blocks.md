@@ -195,7 +195,7 @@ new content should always use `vance:` URIs.
   "headers": ["Engine", "Speed", "Use case"],
   "rows": [
     ["arthur",   "fast",   "Chat, reactive"],
-    ["lunkwill", "medium", "Focused workers"],
+    ["frankie", "medium", "Focused workers"],
     ["marvin",   "slow",   "Deep think trees"]
   ]
 }
@@ -205,7 +205,7 @@ new content should always use `vance:` URIs.
 | Engine | Speed | Use case |
 | --- | --- | --- |
 | arthur | fast | Chat, reactive |
-| lunkwill | medium | Focused workers |
+| frankie | medium | Focused workers |
 | marvin | slow | Deep think trees |
 ```
 

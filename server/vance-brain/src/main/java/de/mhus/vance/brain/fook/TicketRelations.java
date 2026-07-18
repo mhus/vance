@@ -7,7 +7,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Inter-ticket links surfaced both to the Fook triage LLM (as part
- * of a {@link TicketCandidate}) and to Lunkwill later. The single
+ * of a {@link TicketCandidate}) and to Frankie later. The single
  * scalar {@link #getDuplicateOf} lives in {@code $meta} so the
  * candidate-search query can filter on it cheaply; the list-valued
  * relations live in the YAML body under {@code relations:}.

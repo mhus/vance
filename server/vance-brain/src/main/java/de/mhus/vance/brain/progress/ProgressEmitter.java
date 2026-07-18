@@ -164,7 +164,7 @@ public class ProgressEmitter {
 
     /**
      * Emits an <em>interim</em> reply — a live working-log entry that
-     * lets the user follow a long-running engine loop (Lunkwill narrates
+     * lets the user follow a long-running engine loop (Frankie narrates
      * between tool batches) in real time. Differs from
      * {@link #emitReply} in two ways:
      *

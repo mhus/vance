@@ -5,7 +5,7 @@ summary: When to call task_complete vs ending naturally; tool _terminate convent
 
 # When and how to signal task-complete
 
-The Lunkwill loop ends naturally when you stop calling tools — your
+The Frankie loop ends naturally when you stop calling tools — your
 final message is taken as the answer. That works whenever you have
 something to say.
 
@@ -19,8 +19,8 @@ Per recipe:
 - **coding** — `task_complete(summary="…")` after the change set is
   applied and tests pass. Summary lists what changed and which files
   were touched.
-- **lunkwill-repair** — `repair_complete(component="…", status="…")`
-- **lunkwill-fook-upstream** — `ticket_handed_off(ticketId="…", action="…")`
+- **frankie-repair** — `repair_complete(component="…", status="…")`
+- **frankie-fook-upstream** — `ticket_handed_off(ticketId="…", action="…")`
 
 Don't call task-complete if you actually have a textual answer for
 the user — the natural stop is cleaner. Use task-complete when there

@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.lunkwill;
+package de.mhus.vance.brain.frankie;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -36,11 +36,11 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 /**
- * Focused unit tests for {@link LunkwillPostCompletionHookHandler}.
+ * Focused unit tests for {@link FrankiePostCompletionHookHandler}.
  * Drives the spawn decision through the gate matrix without booting
- * the LunkwillEngine — see {@code planning/lunkwill-post-completion-hook.md}.
+ * the FrankieEngine — see {@code planning/frankie-post-completion-hook.md}.
  */
-class LunkwillPostCompletionHookHandlerTest {
+class FrankiePostCompletionHookHandlerTest {
 
     private ThinkProcessService thinkProcessService;
     private RecipeResolver recipeResolver;
@@ -48,7 +48,7 @@ class LunkwillPostCompletionHookHandlerTest {
     private PromptTemplateRenderer templateRenderer;
     private ChatMessageService chatMessageService;
 
-    private LunkwillPostCompletionHookHandler handler;
+    private FrankiePostCompletionHookHandler handler;
 
     private ThinkProcessDocument worker;
 
@@ -60,7 +60,7 @@ class LunkwillPostCompletionHookHandlerTest {
         templateRenderer = mock(PromptTemplateRenderer.class);
         chatMessageService = mock(ChatMessageService.class);
 
-        handler = new LunkwillPostCompletionHookHandler(
+        handler = new FrankiePostCompletionHookHandler(
                 thinkProcessService, recipeResolver, actionRegistry,
                 templateRenderer, chatMessageService);
 
@@ -272,13 +272,13 @@ class LunkwillPostCompletionHookHandlerTest {
 
     private void givenWorkerRecipeWithHook(@Nullable PostCompletionHookConfig hookCfg) {
         when(recipeResolver.resolve(eq("tenant-x"), eq("proj-1"), eq("coding")))
-                .thenReturn(Optional.of(stubRecipe("coding", "lunkwill", hookCfg)));
+                .thenReturn(Optional.of(stubRecipe("coding", "frankie", hookCfg)));
     }
 
     private void givenHookRecipeExists(
             String hookRecipeName, @Nullable PostCompletionHookConfig nestedCfg) {
         lenient().when(recipeResolver.resolve(eq("tenant-x"), eq("proj-1"), eq(hookRecipeName)))
-                .thenReturn(Optional.of(stubRecipe(hookRecipeName, "lunkwill", nestedCfg)));
+                .thenReturn(Optional.of(stubRecipe(hookRecipeName, "frankie", nestedCfg)));
     }
 
     private static ResolvedRecipe stubRecipe(

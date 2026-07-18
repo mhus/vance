@@ -296,7 +296,7 @@ public class ConnectionService {
     /**
      * Streaming variant of {@link #request} — never throws on timeout.
      * Used by the chat-steer path so a long-running engine turn
-     * (Lunkwill, Marvin, Trillian, …) that keeps pushing progress
+     * (Frankie, Marvin, Trillian, …) that keeps pushing progress
      * frames doesn't false-positive into a timeout abort.
      *
      * <p>{@code idleTimeout} counts time since the <em>last inbound

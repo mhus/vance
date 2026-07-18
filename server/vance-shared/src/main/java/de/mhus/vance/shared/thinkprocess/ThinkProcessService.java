@@ -389,7 +389,7 @@ public class ThinkProcessService {
 
     /**
      * Marks a process as hidden from the session chat-panel. Engines
-     * that honour the flag (currently Lunkwill) suppress streaming
+     * that honour the flag (currently Frankie) suppress streaming
      * chunks + the final {@code emitReply} so the worker doesn't
      * pollute the human's chat. The process keeps running normally;
      * only the UI-emit channel is muted.
@@ -441,7 +441,7 @@ public class ThinkProcessService {
     /**
      * Atomically increments the post-completion hook round counter on
      * the given process and returns the new value. Used by
-     * {@code LunkwillEngine} before spawning a hook-process so the
+     * {@code FrankieEngine} before spawning a hook-process so the
      * Round-Cap check (against the recipe's
      * {@code postCompletionHook.maxRounds}) is race-free even when the
      * worker is concurrently resumed on a different pod.
@@ -969,8 +969,8 @@ public class ThinkProcessService {
      * references). Each input item must carry {@code content}; {@code
      * status} is forced to {@code PENDING}; {@code id} is ignored.
      *
-     * <p>Used by Lunkwill's {@code todo_create} tool (CRUD shape — see
-     * {@code specification/public/lunkwill-engine.md §9}).
+     * <p>Used by Frankie's {@code todo_create} tool (CRUD shape — see
+     * {@code specification/public/frankie-engine.md §9}).
      *
      * <p>Optimistic-lock retry pattern mirrors {@link #updateTodoStatuses}.
      *
@@ -1024,7 +1024,7 @@ public class ThinkProcessService {
      * existing value alone. Patches whose {@code id} doesn't match any
      * existing item are silently ignored.
      *
-     * <p>Used by Lunkwill's {@code todo_update} tool. Distinct from
+     * <p>Used by Frankie's {@code todo_update} tool. Distinct from
      * {@link #updateTodoStatuses}, which only touches status — kept
      * separate so Plan-Mode's narrower contract stays minimal.
      *
@@ -1103,7 +1103,7 @@ public class ThinkProcessService {
      * Removes TodoItems by id. Unknown IDs are silently skipped (no
      * error). Returns the number of items actually removed.
      *
-     * <p>Used by Lunkwill's {@code todo_remove} tool.
+     * <p>Used by Frankie's {@code todo_remove} tool.
      */
     public int removeTodos(String id, List<String> idsToRemove) {
         if (idsToRemove.isEmpty()) {

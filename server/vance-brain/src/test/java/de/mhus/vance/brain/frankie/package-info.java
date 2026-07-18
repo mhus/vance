@@ -1,4 +1,4 @@
 @NullMarked
-package de.mhus.vance.brain.lunkwill.tools;
+package de.mhus.vance.brain.frankie;
 
 import org.jspecify.annotations.NullMarked;

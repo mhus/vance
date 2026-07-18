@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.lunkwill;
+package de.mhus.vance.brain.frankie;
 
 import de.mhus.vance.api.chat.ChatMessageChunkData;
 import de.mhus.vance.api.chat.ChatRole;
@@ -57,7 +57,6 @@ import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -69,7 +68,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Lunkwill — focused-worker engine. Pi-style loop: drain inbox →
+ * Frankie — focused-worker engine. Pi-style loop: drain inbox →
  * LLM → execute tool calls → repeat until one of four stop paths
  * fires.
  *
@@ -86,28 +85,28 @@ import tools.jackson.databind.ObjectMapper;
  *       suspend cascade, lane-kill); the loop exits at the next
  *       turn boundary.</li>
  *   <li><b>Safety nets</b> — wallclock budget exceeded
- *       ({@code vance.lunkwill.maxWallclockMinutes}) or N
+ *       ({@code vance.frankie.maxWallclockMinutes}) or N
  *       consecutive identical tool-call batches detected
- *       ({@code vance.lunkwill.idleStuckThreshold}); process moves
+ *       ({@code vance.frankie.idleStuckThreshold}); process moves
  *       to {@code BLOCKED}.</li>
  * </ol>
  *
- * <p>No {@code maxIterations} cap — Lunkwill is endless-by-design.
+ * <p>No {@code maxIterations} cap — Frankie is endless-by-design.
  *
- * <p>See {@code planning/lunkwill-engine.md} and
+ * <p>See {@code planning/frankie-engine.md} and
  * {@code planning/agent-stop-conditions.md}.
  */
 @Component
-@EnableConfigurationProperties(LunkwillProperties.class)
+@EnableConfigurationProperties(FrankieProperties.class)
 @RequiredArgsConstructor
 @Slf4j
-public class LunkwillEngine implements ThinkEngine {
+public class FrankieEngine implements ThinkEngine {
 
-    public static final String NAME = "lunkwill";
+    public static final String NAME = "frankie";
     public static final String VERSION = "0.5.0";
 
     /**
-     * Engine-intrinsic tool baseline — the minimum every Lunkwill
+     * Engine-intrinsic tool baseline — the minimum every Frankie
      * recipe needs, regardless of domain. Domain-specific tools
      * ({@code client_file_*}, {@code client_exec_*}, GitHub-API for
      * fook-upstream, MCP-reconnect for repair, …) come from each
@@ -117,7 +116,7 @@ public class LunkwillEngine implements ThinkEngine {
      * de.mhus.vance.brain.recipe.RecipeResolver#computeAllowed} treats
      * it as the engine default: effective set =
      * {@code (engineDefault ∪ recipe.add) ∖ recipe.remove}. Without
-     * this override Lunkwill would default to "no engine-level
+     * this override Frankie would default to "no engine-level
      * restriction" and the LLM would see the full tenant tool buffet
      * (~130 schemas, ~35k input tokens) on every turn.
      */
@@ -132,7 +131,7 @@ public class LunkwillEngine implements ThinkEngine {
         base.add("manual_list");
         base.add("recipe_describe");
         base.add("tool_result_read");
-        // sub-worker spawn — Lunkwill's escape hatch when a task
+        // sub-worker spawn — Frankie's escape hatch when a task
         // needs strategic planning or different skill set
         base.add("process_create");
         base.add("process_status");
@@ -142,7 +141,7 @@ public class LunkwillEngine implements ThinkEngine {
         base.add("current_time");
         base.add("whoami");
         // Plan-tracking (reduced Plan-Mode variant — see
-        // specification/public/lunkwill-engine.md §9). CRUD over
+        // specification/public/frankie-engine.md §9). CRUD over
         // ThinkProcessDocument.todos: server-assigned IDs on create,
         // per-item partial mutate on update (auto-clears when every
         // item is COMPLETED), id-list on remove. All three emit
@@ -166,7 +165,7 @@ public class LunkwillEngine implements ThinkEngine {
      * recipe's {@code promptPrefix} is then overlaid by
      * {@link SystemPromptComposer}.
      */
-    private static final String DEFAULT_PROMPT_PATH = "_vance/prompts/lunkwill-prompt.md";
+    private static final String DEFAULT_PROMPT_PATH = "_vance/prompts/frankie-prompt.md";
 
     /**
      * Surfaced as the assistant message when the LLM returns neither
@@ -188,14 +187,14 @@ public class LunkwillEngine implements ThinkEngine {
      * (if generic) worker rather than an unprompted LLM.
      */
     private static final String ENGINE_FALLBACK_PROMPT =
-            "You are Lunkwill, a focused worker. Drive the task in multiple turns "
+            "You are Frankie, a focused worker. Drive the task in multiple turns "
                     + "using the available tools, then stop. When you have a final "
                     + "answer, reply with plain text and no tool call — that ends "
                     + "the loop. Use the recipe's task-complete tool (if any) for "
                     + "explicit structured completion.";
 
     private final ThinkProcessService thinkProcessService;
-    private final LunkwillProperties properties;
+    private final FrankieProperties properties;
     private final EngineChatFactory engineChatFactory;
     private final LlmCallTracker llmCallTracker;
     private final StreamingProperties streamingProperties;
@@ -209,7 +208,7 @@ public class LunkwillEngine implements ThinkEngine {
     private final MemoryContextLoader memoryContextLoader;
     private final ModelCatalog modelCatalog;
     private final MemoryCompactionService memoryCompactionService;
-    private final LunkwillPostCompletionHookHandler postCompletionHookHandler;
+    private final FrankiePostCompletionHookHandler postCompletionHookHandler;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -220,7 +219,7 @@ public class LunkwillEngine implements ThinkEngine {
 
     @Override
     public String title() {
-        return "Lunkwill (Focused Worker)";
+        return "Frankie (Focused Worker)";
     }
 
     @Override
@@ -243,20 +242,20 @@ public class LunkwillEngine implements ThinkEngine {
 
     @Override
     public void start(ThinkProcessDocument process, ThinkEngineContext ctx) {
-        log.info("Lunkwill.start tenant='{}' session='{}' id='{}'",
+        log.info("Frankie.start tenant='{}' session='{}' id='{}'",
                 process.getTenantId(), process.getSessionId(), process.getId());
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
     }
 
     @Override
     public void resume(ThinkProcessDocument process, ThinkEngineContext ctx) {
-        log.debug("Lunkwill.resume id='{}'", process.getId());
+        log.debug("Frankie.resume id='{}'", process.getId());
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
     }
 
     @Override
     public void suspend(ThinkProcessDocument process, ThinkEngineContext ctx) {
-        log.debug("Lunkwill.suspend id='{}'", process.getId());
+        log.debug("Frankie.suspend id='{}'", process.getId());
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.SUSPENDED);
     }
 
@@ -268,7 +267,7 @@ public class LunkwillEngine implements ThinkEngine {
 
     @Override
     public void stop(ThinkProcessDocument process, ThinkEngineContext ctx) {
-        log.info("Lunkwill.stop id='{}'", process.getId());
+        log.info("Frankie.stop id='{}'", process.getId());
         thinkProcessService.closeProcess(process.getId(), CloseReason.STOPPED);
     }
 
@@ -299,7 +298,7 @@ public class LunkwillEngine implements ThinkEngine {
         // Wallclock budget is per-turn, not per-process-lifetime. Resuming
         // a session that's been idle for a day must not trip the safety
         // net on its first re-steer just because the process was created
-        // long ago — the LunkwillEngine.runTurn invocation is the unit we
+        // long ago — the FrankieEngine.runTurn invocation is the unit we
         // want to bound.
         long startMs = System.currentTimeMillis();
         long deadlineMs = startMs + (long) properties.getMaxWallclockMinutes() * 60_000L;
@@ -355,7 +354,7 @@ public class LunkwillEngine implements ThinkEngine {
             CompactionResult cr0 = memoryCompactionService.compactIfNeeded(
                     process, bundle.primaryConfig(), messages, modelInfo);
             if (cr0.compacted()) {
-                log.info("Lunkwill.turn id='{}' compaction (turn-start) ok: {} msgs → {} chars (memory='{}')",
+                log.info("Frankie.turn id='{}' compaction (turn-start) ok: {} msgs → {} chars (memory='{}')",
                         process.getId(), cr0.messagesCompacted(),
                         cr0.summaryChars(), cr0.memoryId());
                 messages = buildPromptMessages(
@@ -363,7 +362,7 @@ public class LunkwillEngine implements ThinkEngine {
             }
             // Anchor = index where the persisted-history prefix ends. The
             // Pi-style loop appends AiMessage replies + tool results past
-            // this boundary in-memory only (Lunkwill persists only the
+            // this boundary in-memory only (Frankie persists only the
             // final assistant text on natural stop). Mid-loop compaction
             // rebuilds the anchored prefix from chatLog and re-attaches
             // the in-flight tail untouched, so open tool-call/result pairs
@@ -395,7 +394,7 @@ public class LunkwillEngine implements ThinkEngine {
                 if (current == ThinkProcessStatus.SUSPENDED
                         || current == ThinkProcessStatus.PAUSED
                         || current == ThinkProcessStatus.CLOSED) {
-                    log.info("Lunkwill id='{}' external interrupt (status={}) — exiting loop",
+                    log.info("Frankie id='{}' external interrupt (status={}) — exiting loop",
                             process.getId(), current);
                     exitStatus = null;
                     return;
@@ -409,7 +408,7 @@ public class LunkwillEngine implements ThinkEngine {
                 // ">=" closes that window without changing semantics in
                 // the normal non-zero-minute case.
                 if (System.currentTimeMillis() >= deadlineMs) {
-                    log.warn("Lunkwill id='{}' wallclock exceeded ({} min) — BLOCKED",
+                    log.warn("Frankie id='{}' wallclock exceeded ({} min) — BLOCKED",
                             process.getId(), properties.getMaxWallclockMinutes());
                     exitStatus = ThinkProcessStatus.BLOCKED;
                     return;
@@ -427,7 +426,7 @@ public class LunkwillEngine implements ThinkEngine {
                         memoryCompactionService.compactIfNeeded(
                                 process, bundle.primaryConfig(), messages, modelInfo);
                 if (cr.compacted()) {
-                    log.info("Lunkwill.turn id='{}' compaction (mid-loop) ok: {} msgs → {} chars (memory='{}')",
+                    log.info("Frankie.turn id='{}' compaction (mid-loop) ok: {} msgs → {} chars (memory='{}')",
                             process.getId(), cr.messagesCompacted(),
                             cr.summaryChars(), cr.memoryId());
                     List<ChatMessage> inflightTail =
@@ -466,7 +465,7 @@ public class LunkwillEngine implements ThinkEngine {
                     String finalText = reply.text() == null ? "" : reply.text();
                     if (finalText.isBlank()) {
                         log.warn(
-                                "Lunkwill id='{}' empty LLM response (no text, no tool calls) — BLOCKED",
+                                "Frankie id='{}' empty LLM response (no text, no tool calls) — BLOCKED",
                                 process.getId());
                         persistAssistantReply(process, chatLog, ctx,
                                 MODEL_COLLAPSE_MESSAGE, drained, tools, toolsThisTurn);
@@ -474,14 +473,14 @@ public class LunkwillEngine implements ThinkEngine {
                         return;
                     }
                     persistAssistantReply(process, chatLog, ctx, finalText, drained, tools, toolsThisTurn);
-                    log.info("Lunkwill id='{}' natural stop — awaiting follow-up ({} chars)",
+                    log.info("Frankie id='{}' natural stop — awaiting follow-up ({} chars)",
                             process.getId(), finalText.length());
                     // Post-completion hook: optionally spawn a follow-up
                     // process (review / summary / verify / …) before
                     // releasing the worker to IDLE. Gates: recipe-config
                     // present, trigger matches naturalStop, round-cap
                     // not yet reached, inbox not already carrying a
-                    // hook outcome. See planning/lunkwill-post-completion-hook.md.
+                    // hook outcome. See planning/frankie-post-completion-hook.md.
                     postCompletionHookHandler.maybeSpawn(
                             process, finalText, drained, /*naturalStop*/ true);
                     exitStatus = ThinkProcessStatus.IDLE;
@@ -491,7 +490,7 @@ public class LunkwillEngine implements ThinkEngine {
                 // Idle-stuck safety net (over consecutive batches).
                 String batchHash = hashToolCalls(reply.toolExecutionRequests());
                 if (isIdleStuck(recentToolHashes, batchHash)) {
-                    log.warn("Lunkwill id='{}' idle-stuck on '{}' — BLOCKED",
+                    log.warn("Frankie id='{}' idle-stuck on '{}' — BLOCKED",
                             process.getId(), batchHash);
                     exitStatus = ThinkProcessStatus.BLOCKED;
                     return;
@@ -536,7 +535,7 @@ public class LunkwillEngine implements ThinkEngine {
                     boolean hookSpawned = postCompletionHookHandler.maybeSpawn(
                             process, /*finalText*/ "", drained, /*naturalStop*/ false);
                     if (hookSpawned) {
-                        log.info("Lunkwill id='{}' tool-terminate — post-hook spawned, staying IDLE",
+                        log.info("Frankie id='{}' tool-terminate — post-hook spawned, staying IDLE",
                                 process.getId());
                         exitStatus = ThinkProcessStatus.IDLE;
                         return;
@@ -550,7 +549,7 @@ public class LunkwillEngine implements ThinkEngine {
                         // ParentNotificationListener.enrichWithLastReply
                         // attaches the last assistant message to the
                         // DONE event for the parent.
-                        log.info("Lunkwill id='{}' worker tool-terminate — CLOSED (DONE)",
+                        log.info("Frankie id='{}' worker tool-terminate — CLOSED (DONE)",
                                 process.getId());
                         thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
                         exitStatus = null;
@@ -559,7 +558,7 @@ public class LunkwillEngine implements ThinkEngine {
                         // tool signals "this task is finished" but the
                         // session keeps going — the user can ask the
                         // next thing. Stay IDLE.
-                        log.info("Lunkwill id='{}' session-primary tool-terminate — IDLE",
+                        log.info("Frankie id='{}' session-primary tool-terminate — IDLE",
                                 process.getId());
                         exitStatus = ThinkProcessStatus.IDLE;
                     }
@@ -569,7 +568,7 @@ public class LunkwillEngine implements ThinkEngine {
                 // Loop continues: next iteration's LLM call will see the tool results.
             }
         } catch (RuntimeException ex) {
-            log.warn("Lunkwill id='{}' turn aborted: {}", process.getId(), ex.toString());
+            log.warn("Frankie id='{}' turn aborted: {}", process.getId(), ex.toString());
             exitStatus = ThinkProcessStatus.BLOCKED;
             throw ex;
         } finally {
@@ -774,13 +773,13 @@ public class LunkwillEngine implements ThinkEngine {
      * <ul>
      *   <li><b>Empty list</b> — one-line hint that introduces
      *       {@code todo_create}. The LLM doesn't need anything else;
-     *       full semantics live in {@code manual_read('lunkwill-plan')}.</li>
+     *       full semantics live in {@code manual_read('frankie-plan')}.</li>
      *   <li><b>Non-empty list</b> — only non-{@code COMPLETED} items
      *       are rendered, each with its server-assigned id and
      *       status marker. One short trailing line points at
      *       {@code todo_update} / {@code todo_create} /
      *       {@code todo_remove}. Auto-clear in
-     *       {@link de.mhus.vance.brain.lunkwill.tools.TodoUpdateTool}
+     *       {@link de.mhus.vance.brain.frankie.tools.TodoUpdateTool}
      *       drops the list entirely once every item is COMPLETED,
      *       so the all-done case folds back into the empty-list
      *       shape rather than carrying a dead plan around.</li>
@@ -789,7 +788,7 @@ public class LunkwillEngine implements ThinkEngine {
      * <p>Status markers: {@code [ ]} PENDING, {@code [~]} IN_PROGRESS.
      * {@code COMPLETED} items are hidden — the plan shrinks visibly as
      * the worker progresses, which is the whole point of the reduced
-     * variant. See {@code specification/public/lunkwill-engine.md §9}.
+     * variant. See {@code specification/public/frankie-engine.md §9}.
      */
     String buildTodoListBlock(ThinkProcessDocument process) {
         List<TodoItem> todos = process.getTodos();
@@ -851,10 +850,10 @@ public class LunkwillEngine implements ThinkEngine {
             try {
                 skillResolver.resolve(scope, ref.getName())
                         .ifPresentOrElse(out::add, () -> log.warn(
-                                "Lunkwill id='{}' active skill '{}' no longer resolves — skipping",
+                                "Frankie id='{}' active skill '{}' no longer resolves — skipping",
                                 process.getId(), ref.getName()));
             } catch (UnknownSkillException e) {
-                log.warn("Lunkwill id='{}' active skill '{}' unknown — skipping",
+                log.warn("Frankie id='{}' active skill '{}' unknown — skipping",
                         process.getId(), ref.getName());
             }
         }
@@ -978,7 +977,7 @@ public class LunkwillEngine implements ThinkEngine {
                 try {
                     batcher.accept(partial);
                 } catch (RuntimeException e) {
-                    log.warn("Lunkwill chunk-publish threw: {}", e.toString());
+                    log.warn("Frankie chunk-publish threw: {}", e.toString());
                 }
             }
 
@@ -1004,10 +1003,10 @@ public class LunkwillEngine implements ThinkEngine {
             return response.aiMessage();
         } catch (ExecutionException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
-            throw new AiChatException("Lunkwill streaming failed: " + cause.getMessage(), cause);
+            throw new AiChatException("Frankie streaming failed: " + cause.getMessage(), cause);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new AiChatException("Lunkwill streaming interrupted", e);
+            throw new AiChatException("Frankie streaming interrupted", e);
         }
     }
 
@@ -1016,7 +1015,7 @@ public class LunkwillEngine implements ThinkEngine {
     /**
      * Executes every tool call in the batch. Returns {@code true} iff
      * at least one tool result carried
-     * {@link LunkwillTermination#RESULT_TERMINATE_KEY} = true — the
+     * {@link FrankieTermination#RESULT_TERMINATE_KEY} = true — the
      * caller treats this as a terminal signal and closes the process
      * with {@code DONE}.
      */
@@ -1044,20 +1043,20 @@ public class LunkwillEngine implements ThinkEngine {
         try {
             params = parseArgs(call.arguments());
         } catch (RuntimeException e) {
-            log.warn("Lunkwill id='{}' tool='{}' bad arguments: {}",
+            log.warn("Frankie id='{}' tool='{}' bad arguments: {}",
                     processId, call.name(), e.getMessage());
             return new ToolInvocationResult(errorJson("Invalid tool arguments: " + e.getMessage()), false);
         }
         try {
             Map<String, Object> result = tools.invoke(call.name(), params);
-            boolean terminate = isTruthy(result.get(LunkwillTermination.RESULT_TERMINATE_KEY));
+            boolean terminate = isTruthy(result.get(FrankieTermination.RESULT_TERMINATE_KEY));
             return new ToolInvocationResult(objectMapper.writeValueAsString(result), terminate);
         } catch (ToolException e) {
-            log.info("Lunkwill id='{}' tool='{}' returned error: {}",
+            log.info("Frankie id='{}' tool='{}' returned error: {}",
                     processId, call.name(), e.getMessage());
             return new ToolInvocationResult(errorJson(e.getMessage()), false);
         } catch (RuntimeException e) {
-            log.warn("Lunkwill id='{}' tool='{}' unexpected failure: {}",
+            log.warn("Frankie id='{}' tool='{}' unexpected failure: {}",
                     processId, call.name(), e.toString());
             return new ToolInvocationResult(errorJson("Tool failed: " + e.getMessage()), false);
         }

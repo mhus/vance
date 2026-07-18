@@ -1,19 +1,19 @@
-package de.mhus.vance.brain.lunkwill;
+package de.mhus.vance.brain.frankie;
 
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
- * {@code vance.lunkwill.*} — tunables for the Lunkwill focused-worker
- * engine. All values are safety-net thresholds. Lunkwill itself is
+ * {@code vance.frankie.*} — tunables for the Frankie focused-worker
+ * engine. All values are safety-net thresholds. Frankie itself is
  * endless-by-design — these only catch runaway loops and stuck models.
  */
 @Data
-@ConfigurationProperties(prefix = "vance.lunkwill")
-public class LunkwillProperties {
+@ConfigurationProperties(prefix = "vance.frankie")
+public class FrankieProperties {
 
     /**
-     * Wallclock budget per process, in minutes. When a Lunkwill
+     * Wallclock budget per process, in minutes. When a Frankie
      * process has been running longer than this, the loop blocks on
      * the next iteration. Counts wall time including suspends —
      * prevents Suspend-Resume gaming.

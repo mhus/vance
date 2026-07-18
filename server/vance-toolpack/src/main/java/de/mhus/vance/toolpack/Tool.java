@@ -260,7 +260,7 @@ public interface Tool {
      * <p>The set is intersected with the engine's role set at classify
      * time. Used for the Agrajag-specific audience gates
      * ({@code tool-prober}, {@code tool-health-writer},
-     * {@code tool-health-reader}); future service engines (Lunkwill,
+     * {@code tool-health-reader}); future service engines (Frankie,
      * Prak) reuse the same mechanism with their own role labels.
      */
     default Set<String> requiresEngineRoles() {

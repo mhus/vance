@@ -89,11 +89,11 @@ public record ResolvedRecipe(
         @Nullable String title,
         List<String> tags,
         /**
-         * Optional post-completion hook config. When set on a Lunkwill
+         * Optional post-completion hook config. When set on a Frankie
          * recipe, the engine spawns the configured follow-up process
          * after the worker reaches the configured stop signal — see
-         * {@code planning/lunkwill-post-completion-hook.md}. Ignored
-         * by non-Lunkwill engines.
+         * {@code planning/frankie-post-completion-hook.md}. Ignored
+         * by non-Frankie engines.
          */
         @Nullable PostCompletionHookConfig postCompletionHook,
         RecipeSource source) {

@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.lunkwill.tools;
+package de.mhus.vance.brain.frankie.tools;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -9,7 +9,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import de.mhus.vance.brain.lunkwill.LunkwillTermination;
+import de.mhus.vance.brain.frankie.FrankieTermination;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
@@ -53,7 +53,7 @@ class CodeReviewDecideToolTest {
                 Map.of("outcome", "approve", "summary", "Clean and idiomatic."),
                 ctx);
 
-        assertThat(out).containsEntry(LunkwillTermination.RESULT_TERMINATE_KEY, true);
+        assertThat(out).containsEntry(FrankieTermination.RESULT_TERMINATE_KEY, true);
         assertThat(out).containsEntry("outcome", "approve");
         assertThat(out).containsEntry("summary", "Clean and idiomatic.");
         assertThat(out).doesNotContainKeys("reason", "followUp");
@@ -73,7 +73,7 @@ class CodeReviewDecideToolTest {
                         "followUp", "Add a null-check before the trim()"),
                 ctx);
 
-        assertThat(out).containsEntry(LunkwillTermination.RESULT_TERMINATE_KEY, true);
+        assertThat(out).containsEntry(FrankieTermination.RESULT_TERMINATE_KEY, true);
         assertThat(out).containsEntry("outcome", "reopen");
         assertThat(out).containsEntry("reason", "NullPointer risk in UserService.validate");
         assertThat(out).containsEntry("followUp", "Add a null-check before the trim()");

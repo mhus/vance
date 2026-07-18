@@ -218,7 +218,7 @@ public class RecipeLoader {
      * worker turn that would have spawned the hook.
      *
      * <p>Cross-recipe checks (hook recipe exists, hook recipe uses
-     * Lunkwill engine, hook recipe has no transitive
+     * Frankie engine, hook recipe has no transitive
      * {@code postCompletionHook}) are deferred to engine spawn-time
      * because they need cascade resolution against a concrete tenant —
      * and the loader operates per-recipe without that scope.

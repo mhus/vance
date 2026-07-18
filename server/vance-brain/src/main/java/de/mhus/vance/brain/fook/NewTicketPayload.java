@@ -8,7 +8,7 @@ import org.jspecify.annotations.Nullable;
 /**
  * Input to {@link FookTicketService#createTicket}. The ticket's UUID
  * and timestamps are filled in by the service — callers don't supply
- * them. Status is implicitly {@code new} (Lunkwill owns the rest of
+ * them. Status is implicitly {@code new} (Frankie owns the rest of
  * the status lifecycle).
  */
 @Value

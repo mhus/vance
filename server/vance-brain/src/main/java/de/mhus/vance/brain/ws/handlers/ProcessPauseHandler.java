@@ -138,7 +138,7 @@ public class ProcessPauseHandler implements WsHandler {
         // The futures complete exceptionally with a ClientToolFailure;
         // the engine's tool-call site treats that as a normal tool
         // error and the next loop check picks up the PAUSED status
-        // (see LunkwillEngine.runTurn external-interrupt block).
+        // (see FrankieEngine.runTurn external-interrupt block).
         int cancelled = clientToolRegistry.cancelAllForSession(
                 sessionId, "process paused — invocation cancelled");
         if (cancelled > 0) {

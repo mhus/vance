@@ -40,7 +40,7 @@ public class FookSubmissionRequestDto {
 
     /** Optional project context — if the user filed the report
      *  from a project-bound editor, the UI passes the projectId
-     *  through so Lunkwill can correlate later. {@code null} when
+     *  through so Frankie can correlate later. {@code null} when
      *  the user is on a route with no project (the index page,
      *  most user-menu paths). */
     private @Nullable String projectId;

@@ -1,17 +1,17 @@
 ---
 triggers: plan, plan machen, planen, planung, plan first, todo, todolist, todo list, todo_create, todo_update, todo_remove, multi step, mehrere schritte, große aufgabe, refactor planen, structure work, break down task
-summary: When and how to use todo_create / todo_update / todo_remove to structure a multi-step task. Lunkwill's reduced Plan-Mode variant.
+summary: When and how to use todo_create / todo_update / todo_remove to structure a multi-step task. Frankie's reduced Plan-Mode variant.
 requires-tools: todo_create, todo_update, todo_remove
 ---
 
-# Making a plan in Lunkwill
+# Making a plan in Frankie
 
 For tasks that span more than 2-3 file edits or multiple logical
 phases, write a TodoList. The engine renders it back to you as a
 system block on every turn so it stays your anchor — and items
 shrink off the list as you complete them.
 
-This is Lunkwill's CRUD-style version of Plan-Mode — no Mode switch,
+This is Frankie's CRUD-style version of Plan-Mode — no Mode switch,
 no user approval, no read-only filter. You create items and start
 working immediately.
 
@@ -132,16 +132,16 @@ what is already in the prompt would waste a turn.
   plan?" — they see the TodoList live-update as you work. If they
   want to redirect, they steer you the normal way.
 - **Not Marvin.** Marvin spawns sub-processes per plan node and
-  aggregates. Lunkwill stays in one process and updates statuses.
+  aggregates. Frankie stays in one process and updates statuses.
   If your task needs branching, fan-out, or per-step delegation,
   call `process_create(recipe='marvin', goal='…')` instead and let
   Marvin plan.
 - **Not Arthur Plan-Mode.** Arthur switches modes (EXPLORING /
   PLANNING / EXECUTING) and filters tools to read-only during
-  exploration. Lunkwill has no modes and no filter — same
+  exploration. Frankie has no modes and no filter — same
   TodoList persistence layer, different state-machine.
 
-See `specification/public/lunkwill-engine.md §9` for the
+See `specification/public/frankie-engine.md §9` for the
 architectural detail and `specification/plan-mode.md` for
 Arthur's / Eddie's full Plan-Mode (which this is a deliberate
 reduction of).

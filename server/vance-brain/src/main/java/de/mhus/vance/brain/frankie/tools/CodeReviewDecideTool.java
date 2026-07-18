@@ -1,7 +1,7 @@
-package de.mhus.vance.brain.lunkwill.tools;
+package de.mhus.vance.brain.frankie.tools;
 
 import de.mhus.vance.api.chat.ChatRole;
-import de.mhus.vance.brain.lunkwill.LunkwillTermination;
+import de.mhus.vance.brain.frankie.FrankieTermination;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
@@ -20,15 +20,15 @@ import org.springframework.stereotype.Component;
 
 /**
  * Termination tool for the bundled {@code code-review} recipe — the
- * first concrete post-completion-hook application on Lunkwill.
+ * first concrete post-completion-hook application on Frankie.
  *
  * <p>The reviewer worker calls this tool exactly once when its review
- * is done. The result map carries {@code _terminate: true} so Lunkwill
+ * is done. The result map carries {@code _terminate: true} so Frankie
  * closes the reviewer-process cleanly, and the structured outcome
  * ({@code outcome}, {@code summary}/{@code reason},
  * {@code followUp}) is delivered to the parent worker via the
  * standard {@code ParentNotificationListener} path — see
- * {@code planning/lunkwill-post-completion-hook.md} §6.
+ * {@code planning/frankie-post-completion-hook.md} §6.
  *
  * <p>Not part of any engine default — only the {@code code-review}
  * recipe (or a tenant override of it) exposes the tool through
@@ -138,7 +138,7 @@ public class CodeReviewDecideTool implements Tool {
         // Persist the decision as an ASSISTANT chat message so
         // ParentNotificationListener.enrichWithLastReply can attach
         // it to the DONE event. Same dance as TrillianDoneTool —
-        // Lunkwill's tool-terminate path skips its natural-stop
+        // Frankie's tool-terminate path skips its natural-stop
         // persistAssistantReply, so we do it explicitly here.
         if (ctx.processId() != null) {
             try {
@@ -161,7 +161,7 @@ public class CodeReviewDecideTool implements Tool {
         }
 
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put(LunkwillTermination.RESULT_TERMINATE_KEY, true);
+        out.put(FrankieTermination.RESULT_TERMINATE_KEY, true);
         out.put("outcome", outcome);
         if (summary != null && !summary.isBlank()) {
             out.put("summary", summary);

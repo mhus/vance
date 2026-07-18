@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.lunkwill;
+package de.mhus.vance.brain.frankie;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -48,14 +48,14 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Loop-level tests for {@link LunkwillEngine}. Drives the engine with
+ * Loop-level tests for {@link FrankieEngine}. Drives the engine with
  * a scripted {@link StreamingChatModel} so the four stop paths
  * (natural stop, tool-driven terminate, external interrupt, safety
  * nets) can be pinned down without a real LLM.
  */
-class LunkwillEngineSkeletonTest {
+class FrankieEngineSkeletonTest {
 
-    private static final String PROC_ID = "proc-lunkwill-1";
+    private static final String PROC_ID = "proc-frankie-1";
 
     private ThinkProcessService thinkProcessService;
     private ChatMessageService chatMessageService;
@@ -71,8 +71,8 @@ class LunkwillEngineSkeletonTest {
     private SkillPromptComposer skillPromptComposer;
     private SessionService sessionService;
 
-    private LunkwillEngine engine;
-    private LunkwillProperties properties;
+    private FrankieEngine engine;
+    private FrankieProperties properties;
     private ThinkProcessDocument process;
     private ThinkEngineContext ctx;
 
@@ -85,7 +85,7 @@ class LunkwillEngineSkeletonTest {
         tools = mock(ContextToolsApi.class);
         tagSink = mock(BufferingHistoryTagSink.class);
         objectMapper = JsonMapper.builder().build();
-        properties = new LunkwillProperties();
+        properties = new FrankieProperties();
 
         StreamingProperties streaming = new StreamingProperties();
         chatModel = new ScriptedStreamingChatModel();
@@ -144,11 +144,11 @@ class LunkwillEngineSkeletonTest {
         lenient().when(memoryCompactionService.compactIfNeeded(any(), any(), any(), any()))
                 .thenReturn(de.mhus.vance.brain.memory.CompactionResult.noop("test"));
 
-        LunkwillPostCompletionHookHandler hookHandler =
-                mock(LunkwillPostCompletionHookHandler.class);
+        FrankiePostCompletionHookHandler hookHandler =
+                mock(FrankiePostCompletionHookHandler.class);
         lenient().when(hookHandler.maybeSpawn(any(), any(), any(), anyBoolean()))
                 .thenReturn(false);
-        engine = new LunkwillEngine(
+        engine = new FrankieEngine(
                 thinkProcessService, properties, engineChatFactory,
                 llmCallTracker, streaming, objectMapper,
                 enginePromptResolver, systemPromptComposer,
@@ -239,7 +239,7 @@ class LunkwillEngineSkeletonTest {
         when(tools.invoke(eq("task_complete"), any()))
                 .thenReturn(java.util.Map.of(
                         "summary", "all done",
-                        LunkwillTermination.RESULT_TERMINATE_KEY, true));
+                        FrankieTermination.RESULT_TERMINATE_KEY, true));
 
         engine.runTurn(process, ctx);
 
@@ -262,7 +262,7 @@ class LunkwillEngineSkeletonTest {
         when(tools.invoke(eq("task_complete"), any()))
                 .thenReturn(java.util.Map.of(
                         "summary", "all done",
-                        LunkwillTermination.RESULT_TERMINATE_KEY, true));
+                        FrankieTermination.RESULT_TERMINATE_KEY, true));
 
         engine.runTurn(process, ctx);
 
@@ -355,8 +355,8 @@ class LunkwillEngineSkeletonTest {
 
     @Test
     void metadata_returnsExpectedValues() {
-        assertThat(engine.name()).isEqualTo("lunkwill");
-        assertThat(engine.title()).contains("Lunkwill");
+        assertThat(engine.name()).isEqualTo("frankie");
+        assertThat(engine.title()).contains("Frankie");
         assertThat(engine.version()).isEqualTo("0.5.0");
         assertThat(engine.description()).isNotBlank();
     }
@@ -369,12 +369,12 @@ class LunkwillEngineSkeletonTest {
 
     @Test
     void terminationConventionKey_isStable() {
-        assertThat(LunkwillTermination.RESULT_TERMINATE_KEY).isEqualTo("_terminate");
+        assertThat(FrankieTermination.RESULT_TERMINATE_KEY).isEqualTo("_terminate");
     }
 
     @Test
     void allowedTools_engineBaselineSetExposed() {
-        // Lunkwill returns a non-empty engine-default set so the resolver
+        // Frankie returns a non-empty engine-default set so the resolver
         // can compute (engineDefault ∪ recipe.add) ∖ recipe.remove instead
         // of falling through to "no engine-level restriction" (which would
         // dump the full tenant tool buffet into every LLM call).
@@ -383,7 +383,7 @@ class LunkwillEngineSkeletonTest {
         // Discovery + intro essentials
         assertThat(set).contains("find_tools", "describe_tool", "how_do_i",
                 "manual_read", "tool_result_read");
-        // Sub-worker spawn — Lunkwill's escape hatch
+        // Sub-worker spawn — Frankie's escape hatch
         assertThat(set).contains("process_create");
         // User-facing signal
         assertThat(set).contains("vance_notify");

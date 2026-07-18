@@ -128,7 +128,7 @@ class LlmUsageServiceTest {
                 .sessionId("sess-1")
                 .processId("proc-1")
                 .recipeName("coding")
-                .engineName("lunkwill")
+                .engineName("frankie")
                 .providerInstance("openai")
                 .providerType("openai")
                 .providerModel("glm-5.2")

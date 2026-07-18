@@ -160,7 +160,7 @@ public interface ThinkEngineContext {
     /**
      * Engine emits an <em>interim</em> reply — a live working-log entry
      * that lets the user follow a long-running engine loop in real time
-     * (Lunkwill narrates between tool batches). Differs from
+     * (Frankie narrates between tool batches). Differs from
      * {@link #emitReply} in two ways: the message is flagged
      * {@code interim} so clients can render it visually dimmed, and
      * parent-inbox routing is skipped (interims are pure UI signal,

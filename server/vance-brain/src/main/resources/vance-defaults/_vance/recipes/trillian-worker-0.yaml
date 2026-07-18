@@ -1,28 +1,28 @@
-# Trillian-Worker — task-bounded Lunkwill worker for Trillian-User.
+# Trillian-Worker — task-bounded Frankie worker for Trillian-User.
 #
 # Spawned by Trillian-User via cross_process_create when a task needs
-# doing in another project. Lunkwill-based (Pi-style loop, file_*/
+# doing in another project. Frankie-based (Pi-style loop, file_*/
 # exec_*/doc_* tools), but with a hard termination contract:
 # the worker MUST call trillian_done(summary=…) when finished, which
 # fires DONE so the parent (Trillian-User) wakes and reports back to
 # Control.
 #
-# Without the trillian_done convention, a Lunkwill natural-stop just
+# Without the trillian_done convention, a Frankie natural-stop just
 # parks the worker in IDLE and Trillian-User would wait forever for
 # a terminal event.
 #
 # See planning/trillian-engine.md §9.
 
 description: |
-  Trillian-User worker. Lunkwill loop with a hard termination contract:
+  Trillian-User worker. Frankie loop with a hard termination contract:
   call trillian_done(summary=…) when the task is finished so the
   parent gets a clean DONE event. Otherwise behaves like a coding-
-  style worker (file_*/exec_*/doc_* via Lunkwill defaults).
+  style worker (file_*/exec_*/doc_* via Frankie defaults).
 
-engine: lunkwill
+engine: frankie
 
 # trillian_done is the termination handshake. Plus a full document
-# tool surface (read + write) because Lunkwill's baseline does NOT
+# tool surface (read + write) because Frankie's baseline does NOT
 # include doc_* — the worker needs both to enumerate the project
 # and to mutate it.
 allowedToolsAdd:
@@ -51,7 +51,7 @@ params:
   nature: '0'
   model: default:fast,default:analyze
   manualPaths:
-    - _vance/lunkwill/manuals/
+    - _vance/frankie/manuals/
     - _vance/manuals/
   workTarget:
     kind: WORK

@@ -1,4 +1,4 @@
-# Code-Review — bundled post-completion-hook application on Lunkwill.
+# Code-Review — bundled post-completion-hook application on Frankie.
 #
 # Spawned by a worker recipe (typically `coding`) that has a
 # `postCompletionHook.recipe: code-review` block. The reviewer reads
@@ -9,26 +9,26 @@
 # Tenants override by placing their own `code-review.yaml` under
 # `_vance/recipes/` in the project or `_tenant` document store — the
 # cascade picks it up automatically. See
-# `planning/lunkwill-post-completion-hook.md` §7 and
-# `specification/public/lunkwill-engine.md` §12.
+# `planning/frankie-post-completion-hook.md` §7 and
+# `specification/public/frankie-engine.md` §12.
 
 title: "Code Review"
 listed: false
 description: |
-  Read-only reviewer worker on Lunkwill. Looks at a sibling worker's
+  Read-only reviewer worker on Frankie. Looks at a sibling worker's
   final answer and either approves it or asks for a fix. Lightweight:
   no file edits, no shell execution.
 
-engine: lunkwill
+engine: frankie
 
-# Tools beyond the Lunkwill engine baseline. Reviewer needs:
+# Tools beyond the Frankie engine baseline. Reviewer needs:
 #  - read-only file inspection (no edits, no exec) to verify claims
 #    against the actual code state.
 #  - the decide-tool that terminates the review with a structured
 #    outcome.
 #
 # Note: file_read/file_grep/file_list come from BaseEngineTools.WORK_TARGET
-# (already in Lunkwill's engine default), so they don't need to be
+# (already in Frankie's engine default), so they don't need to be
 # listed here. We DO defer the *write* and *exec* wrappers explicitly
 # to keep the reviewer honest — the LLM can't accidentally call
 # file_edit / exec_run even if a previous turn re-activated them.
@@ -48,7 +48,7 @@ params:
   # output structure. Recipes can override per tenant.
   model: default:fast
   manualPaths:
-    - _vance/lunkwill/manuals/
+    - _vance/frankie/manuals/
     - _vance/manuals/
   # Inherit the worker's work-target so file_read sees the same files
   # the worker just edited. The default fall-through (WORK) is wrong

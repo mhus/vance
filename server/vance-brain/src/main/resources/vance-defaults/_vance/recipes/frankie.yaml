@@ -1,0 +1,30 @@
+# Frankie default — generic focused worker. Acts as a fallback when
+# a process is spawned with engine=frankie without a more specific
+# recipe (coding, frankie-repair, frankie-fook-upstream, …).
+#
+# Frankie itself is endless-by-design: no maxIterations cap. Stop
+# conditions are hardcoded in the engine (natural stop, tool-terminate
+# via _terminate key, external interrupt via STOPPED/SUSPENDED status,
+# wallclock + idle-stuck safety nets).
+
+title: "Frankie — Focused Worker"
+listed: true
+description: |
+  Generic Frankie worker — Pi-style loop, drains inbox, calls the LLM,
+  executes tools, repeats until natural stop or tool-driven terminate.
+  Specialise via coding / frankie-repair / frankie-fook-upstream.
+
+engine: frankie
+
+params:
+  model: default:fast
+  # Engine-intrinsic manuals first, global manuals as fallback.
+  # Recipe-specific manuals (coding-*, repair-*, …) live in
+  # frankie/manuals/ too — same folder, distinguishing prefix.
+  manualPaths:
+    - _vance/frankie/manuals/
+    - _vance/manuals/
+
+tags:
+  - worker
+  - engine-default

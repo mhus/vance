@@ -230,7 +230,7 @@ public class Ford implements ThinkEngine {
      * variants of the same operation interchangeably (see live tests
      * with the work-target wrappers).
      *
-     * <p>Ford now follows the Lunkwill pattern: a curated default
+     * <p>Ford now follows the Frankie pattern: a curated default
      * set plus the {@link de.mhus.vance.brain.tools.worktarget.BaseEngineTools#WORK_TARGET}
      * layer. Domain tools that a specific recipe needs
      * ({@code python_*}, {@code research_*}, mutating {@code doc_*})

@@ -29,7 +29,7 @@ class ChatMentionParserTest {
         assertThat(ChatMentionParser.isAddressedToAgent("@vance please help")).isTrue();
         assertThat(ChatMentionParser.isAddressedToAgent("@arthur over here")).isTrue();
         assertThat(ChatMentionParser.isAddressedToAgent("@eddie review this")).isTrue();
-        assertThat(ChatMentionParser.isAddressedToAgent("@lunkwill go")).isTrue();
+        assertThat(ChatMentionParser.isAddressedToAgent("@frankie go")).isTrue();
     }
 
     @Test

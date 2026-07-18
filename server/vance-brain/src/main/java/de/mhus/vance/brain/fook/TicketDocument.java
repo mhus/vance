@@ -8,7 +8,7 @@ import org.jspecify.annotations.Nullable;
 /**
  * Full read-projection of a persisted {@code fook-ticket} YAML
  * document. Used by callers that need more than a candidate card —
- * Lunkwill, admin UIs, debugging. {@link FookTicketService#readTicket}
+ * Frankie, admin UIs, debugging. {@link FookTicketService#readTicket}
  * returns this.
  */
 @Value

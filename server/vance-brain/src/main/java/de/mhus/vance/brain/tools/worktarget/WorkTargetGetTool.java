@@ -71,7 +71,7 @@ public class WorkTargetGetTool implements Tool {
 
     @Override
     public boolean deferred() {
-        // Hide from the classified-engine primary manifest (Lunkwill /
+        // Hide from the classified-engine primary manifest (Frankie /
         // Eddie / Marvin etc.). The recipe's promptPrefix already tells
         // the LLM which backend its file_*/exec_* calls hit, so shipping
         // this tool's schema every turn just baits an unnecessary

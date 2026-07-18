@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.lunkwill;
+package de.mhus.vance.brain.frankie;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -21,20 +21,20 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Renderer-only test for {@link LunkwillEngine#buildTodoListBlock}.
+ * Renderer-only test for {@link FrankieEngine#buildTodoListBlock}.
  * No streaming, no LLM, no tool dispatch — just the prompt-block
  * builder that injects the per-turn TodoList summary into the system
  * message stack.
  */
-class LunkwillTodoBlockTest {
+class FrankieTodoBlockTest {
 
-    private LunkwillEngine engine;
+    private FrankieEngine engine;
 
     @BeforeEach
     void setUp() {
-        engine = new LunkwillEngine(
+        engine = new FrankieEngine(
                 mock(ThinkProcessService.class),
-                new LunkwillProperties(),
+                new FrankieProperties(),
                 mock(EngineChatFactory.class),
                 mock(LlmCallTracker.class),
                 new StreamingProperties(),
@@ -48,7 +48,7 @@ class LunkwillTodoBlockTest {
                 mock(de.mhus.vance.brain.memory.MemoryContextLoader.class),
                 mock(de.mhus.vance.brain.ai.ModelCatalog.class),
                 mock(de.mhus.vance.brain.memory.MemoryCompactionService.class),
-                mock(LunkwillPostCompletionHookHandler.class));
+                mock(FrankiePostCompletionHookHandler.class));
     }
 
     @Test

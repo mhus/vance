@@ -40,7 +40,7 @@ import org.springframework.stereotype.Service;
  *
  * <p><b>Cross-pod sync:</b> none. Two pods that triage near-
  * simultaneous reports of the same problem can both decide
- * {@code new_ticket} and produce duplicates; Lunkwill is expected
+ * {@code new_ticket} and produce duplicates; Frankie is expected
  * to mop those up later. Documented as accepted in the planning
  * doc §1.
  *
@@ -294,7 +294,7 @@ public class FookService {
         // ideally create a fresh ticket and point it at the
         // existing one; here we instead skip the fresh ticket and
         // just record relatedTickets on the target. The exact
-        // semantics get tightened by Lunkwill — see §10 planning.
+        // semantics get tightened by Frankie — see §10 planning.
         switch (relation) {
             case "duplicateOf" -> patchBuilder = patchBuilder
                     .addRelatedTo(joinIds(sub, result));
@@ -528,7 +528,7 @@ public class FookService {
         // The triage LLM's relatedTickets list is the canonical set
         // of extra links to attach to the target ticket on a merge.
         // We don't auto-inject sub.id() because submissionIds and
-        // ticketIds are different namespaces — Lunkwill traces back
+        // ticketIds are different namespaces — Frankie traces back
         // through the inbox payload if it needs to.
         return result.getRelatedTickets() == null
                 ? List.of() : result.getRelatedTickets();

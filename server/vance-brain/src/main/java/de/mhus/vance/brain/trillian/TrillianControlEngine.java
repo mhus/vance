@@ -75,7 +75,7 @@ import tools.jackson.databind.ObjectMapper;
  * avoids fighting that schema. See {@code planning/trillian-engine.md}
  * §2 + §11.
  *
- * <p>Compared to Lunkwill (the user-loop), Trillian-Control:
+ * <p>Compared to Frankie (the user-loop), Trillian-Control:
  * <ul>
  *   <li>has no {@code _terminate} tool path — it never closes itself.
  *       Session-close is the only path that ends it.</li>
@@ -291,7 +291,7 @@ public class TrillianControlEngine implements ThinkEngine {
             List<ChatMessage> messages = buildPromptMessages(
                     process, chatLog, extras, nature, modelInfo);
 
-            // Turn-start compaction: identical hook to Arthur/Eddie/Ford/Lunkwill.
+            // Turn-start compaction: identical hook to Arthur/Eddie/Ford/Frankie.
             // The Trillian-Control loop pairs with a Trillian-User and can
             // run for many turns; without compaction the Control session
             // would also hit the context-window limit. See
@@ -487,7 +487,7 @@ public class TrillianControlEngine implements ThinkEngine {
         List<ChatMessage> messages = new ArrayList<>();
         // System prompt = engine-default + nature overlay + memory-context
         // (languages, agent-doc, ARCHIVED_CHAT summary, RAG auto-inject).
-        // Same shape Arthur/Eddie/Ford/Lunkwill build via MemoryContextLoader.
+        // Same shape Arthur/Eddie/Ford/Frankie build via MemoryContextLoader.
         String systemPrompt = composeSystemPrompt(process, nature, modelInfo);
         String memoryBlock = memoryContextLoader.composeBlock(process);
         if (memoryBlock != null && !memoryBlock.isBlank()) {

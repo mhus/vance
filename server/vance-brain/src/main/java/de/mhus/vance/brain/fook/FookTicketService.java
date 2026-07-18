@@ -32,7 +32,7 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
  * {@code _tenant} project, under path prefix
  * {@code _vance/fook/tickets/<uuid>.yaml}. Tickets are global by
  * design — every reporter's submission lands in the same pool so
- * Lunkwill can aggregate across tenants.
+ * Frankie can aggregate across tenants.
  *
  * <p>This service is rein internal (Java only) — no LLM tool
  * exposure. The Fook triage LLM only sees pre-loaded

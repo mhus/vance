@@ -1,15 +1,17 @@
 <script setup lang="ts">
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, provide, ref, watch, type Component } from 'vue';
 import {
+  brainBaseUrl,
   brainFetch,
   brainFetchText,
   brainSendRaw,
   documentContentUrl,
+  getTenantId,
   useDocumentPrefixReaction,
   usePointers,
 } from '@vance/shared';
 import { getUsername } from '@vance/shared/auth';
-import { WorkPageEditor, parseDocument } from '@vance/block-editor';
+import { WorkPageEditor, parseDocument, type ComposeRunResult } from '@vance/block-editor';
 import {
   scanWorkbook,
   rebuildWorkbook,
@@ -303,6 +305,48 @@ async function runButtonScript(scriptRef: string): Promise<void> {
     : (folder.value ? `${folder.value}/${ref}` : ref);
   const params = new URLSearchParams({ projectId: projectId.value, script: path });
   await brainFetch<void>('POST', `addon/workbook/script/run?${params}`, { body: {} });
+}
+
+/**
+ * Run a {@code vance-compose} block's inline YAML: POST the manifest to the
+ * Damogran compose runner, then resolve each produced output to an absolute
+ * workspace-file URL so the NodeView can render it directly (no tenant/REST
+ * knowledge in the block-editor).
+ */
+async function runCompose(yaml: string): Promise<ComposeRunResult> {
+  interface ServerOutput { path: string; uri: string; kind?: string; mime?: string; title?: string }
+  interface ServerTask { status: string; error?: string; log?: string; outputs?: ServerOutput[] }
+  interface ServerResponse { success: boolean; workspace?: string; error?: string; tasks?: ServerTask[] }
+
+  const server = await brainFetch<ServerResponse>('POST', 'compose/run', {
+    body: { projectId: projectId.value, composeYaml: yaml },
+  });
+  const tenant = getTenantId() ?? '';
+  const base = brainBaseUrl();
+  const hrefFor = (uri: string): string => {
+    const rel = uri.startsWith('vance-workspace:/')
+      ? uri.slice('vance-workspace:/'.length)
+      : uri;
+    const qs = new URLSearchParams({ path: rel });
+    return `${base}/brain/${encodeURIComponent(tenant)}`
+      + `/projects/${encodeURIComponent(projectId.value)}/workspace/file?${qs}`;
+  };
+  return {
+    success: server.success,
+    workspace: server.workspace,
+    error: server.error,
+    tasks: (server.tasks ?? []).map((t) => ({
+      status: t.status,
+      error: t.error,
+      log: t.log,
+      outputs: (t.outputs ?? []).map((o) => ({
+        path: o.path,
+        kind: o.kind,
+        title: o.title,
+        href: hrefFor(o.uri),
+      })),
+    })),
+  };
 }
 
 /**
@@ -1590,6 +1634,7 @@ onBeforeUnmount(() => {
           :save-input="saveInput"
           :open-input-picker="openInputPicker"
           :run-button-script="runButtonScript"
+          :run-compose="runCompose"
           :editable="editorEditable"
           @save="onEditorSave"
           @dirty="onEditorDirty"

@@ -121,6 +121,8 @@ function blockToNode(b: Block): JSONContent {
         type: 'vanceButton',
         attrs: { type: b.buttonType, script: b.script, title: b.title },
       };
+    case 'compose':
+      return { type: 'vanceCompose', attrs: { yaml: b.yaml } };
     case 'columns':
       return {
         type: 'vanceColumns',
@@ -273,6 +275,8 @@ function nodeToBlock(node: JSONContent): Block[] {
         script: (node.attrs?.script as string) ?? '',
         title: (node.attrs?.title as string) ?? '',
       }];
+    case 'vanceCompose':
+      return [{ kind: 'compose', yaml: (node.attrs?.yaml as string) ?? '' }];
     case 'vanceColumns': {
       const cols = (node.content ?? []).map((colNode) => ({
         blocks: contentToBlocks(colNode.content ?? []),

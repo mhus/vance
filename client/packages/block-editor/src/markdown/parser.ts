@@ -287,6 +287,11 @@ function parseFence(info: string, body: string): Block {
   if (info === 'vance-toc') {
     return { kind: 'toc' };
   }
+  // Compose cells carry a raw YAML manifest as their body — kept verbatim,
+  // not key/value-parsed (the body is itself the compose YAML).
+  if (info === 'vance-compose') {
+    return { kind: 'compose', yaml: body };
+  }
   if (info === 'vance-columns') {
     // Column separator uses an HTML-comment marker so it survives
     // Markdown rendering elsewhere and is extremely unlikely to be

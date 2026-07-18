@@ -34,6 +34,8 @@ import {
   VanceForm,
   VanceInput,
   VanceButton,
+  VanceCompose,
+  type ComposeRunResult,
   type EmbedDocMeta,
 } from './extensions';
 import { SlashCommands } from './SlashCommands';
@@ -180,6 +182,8 @@ const props = withDefaults(
     openInputPicker?: () => void;
     /** Run a `vance-button` block's script (by ref) — host resolves + POSTs. */
     runButtonScript?: (scriptRef: string) => Promise<void>;
+    /** Run a `vance-compose` block's inline YAML — host POSTs + resolves outputs. */
+    runCompose?: (yaml: string) => Promise<ComposeRunResult>;
   }>(),
   { autoSaveMs: 2000, editable: true },
 );
@@ -399,6 +403,15 @@ const editor = useEditor({
     VanceButton.configure({
       runScript: (scriptRef: string) =>
         props.runButtonScript?.(scriptRef) ?? Promise.resolve(),
+    }),
+    VanceCompose.configure({
+      runCompose: (yaml: string) =>
+        props.runCompose?.(yaml)
+        ?? Promise.resolve<ComposeRunResult>({
+          success: false,
+          tasks: [],
+          error: 'Compose run is not available in this context.',
+        }),
     }),
   ],
   content: initial.value.content,

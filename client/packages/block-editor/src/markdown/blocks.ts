@@ -10,6 +10,7 @@ export type Block =
   | { kind: 'todo'; items: TodoItem[] }
   | { kind: 'quote'; text: string }
   | { kind: 'code'; lang: string | null; code: string }
+  | { kind: 'compose'; yaml: string }
   | { kind: 'divider' }
   | { kind: 'image'; alt: string; src: string; width?: ImageWidth | null }
   | { kind: 'table'; headers: string[]; rows: string[][] }

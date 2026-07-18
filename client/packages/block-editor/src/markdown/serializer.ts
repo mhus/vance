@@ -100,6 +100,9 @@ function renderBlock(b: Block): string {
     }
     case 'toc':
       return '```vance-toc\n```\n';
+    case 'compose':
+      // Raw YAML body verbatim (not renderFence, which key/value-dumps).
+      return '```vance-compose\n' + (b.yaml.endsWith('\n') ? b.yaml : b.yaml + '\n') + '```\n';
     case 'embed':
       return renderFence('vance-embed', { uri: b.uri });
     case 'form': {

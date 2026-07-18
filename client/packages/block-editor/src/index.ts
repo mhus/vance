@@ -21,3 +21,9 @@ export {
   VanceDataview,
   VanceUnknownFence,
 } from './extensions';
+
+export {
+  type ComposeRunResult,
+  type ComposeTaskView,
+  type ComposeOutputView,
+} from './extensions';

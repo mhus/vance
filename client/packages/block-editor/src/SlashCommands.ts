@@ -219,6 +219,23 @@ const ITEMS: SlashItemDef[] = [
         .run(),
   },
   {
+    id: 'compose',
+    title: 'Compose',
+    hint: 'Run a Damogran compose task inline',
+    run: ({ editor, range }) =>
+      editor.chain().focus().deleteRange(range)
+        .insertContent({
+          type: 'vanceCompose',
+          attrs: {
+            yaml:
+              'workspace:\n  name: my-workspace\n  type: temp\n'
+              + 'tasks:\n  - type: exec\n    command: echo "hello from damogran" > out.txt\n'
+              + '    outputs:\n      - out.txt\n',
+          },
+        })
+        .run(),
+  },
+  {
     id: 'columns2',
     title: '2 columns',
     hint: 'Side-by-side layout',

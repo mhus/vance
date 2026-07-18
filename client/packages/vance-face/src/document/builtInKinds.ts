@@ -59,4 +59,20 @@ export function registerBuiltInKinds(): void {
       () => import('@/cortex/components/TexPreview.vue'),
     ),
   });
+
+  // ── Compose (Damogran): kind-registry view with a raw-YAML Edit tab ──
+  // A `compose` document is YAML, identified by *kind* (not mime), so it
+  // needs the kind-registry `view` path (kind-aware) rather than a
+  // mime-based codePreview. parse/serialize are identity(string): the
+  // shell's Edit toggle gives a raw YAML CodeEditor (edit + save), and the
+  // View tab (ComposeView) runs the compose and renders its outputs.
+  registerKind<string>({
+    id: 'compose',
+    matches: (kind) => (kind ?? '').toLowerCase() === 'compose',
+    parse: (body) => body,
+    serialize: (doc) => doc,
+    view: defineAsyncComponent(
+      () => import('@/cortex/components/ComposeView.vue'),
+    ),
+  });
 }

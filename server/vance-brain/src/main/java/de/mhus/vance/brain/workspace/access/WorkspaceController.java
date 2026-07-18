@@ -6,6 +6,7 @@ import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.location.LocationService;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
+import de.mhus.vance.brain.project.ProjectManagerService;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.workspace.WorkspaceException;
 import de.mhus.vance.shared.workspace.WorkspaceFileSizeExceededException;
@@ -69,6 +70,7 @@ public class WorkspaceController {
     private final WorkspaceRoutingCache routingCache;
     private final WorkspaceAccessProperties properties;
     private final LocationService locationService;
+    private final ProjectManagerService projectManager;
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
     private final RequestAuthority authority;
@@ -78,6 +80,7 @@ public class WorkspaceController {
                                WorkspaceRoutingCache routingCache,
                                WorkspaceAccessProperties properties,
                                LocationService locationService,
+                               ProjectManagerService projectManager,
                                ObjectMapper objectMapper,
                                RequestAuthority authority,
                                @Value("${vance.internal.token:}") String internalToken) {
@@ -85,6 +88,7 @@ public class WorkspaceController {
         this.routingCache = routingCache;
         this.properties = properties;
         this.locationService = locationService;
+        this.projectManager = projectManager;
         this.objectMapper = objectMapper;
         this.authority = authority;
         this.internalToken = internalToken == null ? "" : internalToken;
@@ -106,9 +110,12 @@ public class WorkspaceController {
         }
         ProjectPodKey key = new ProjectPodKey(tenant, project);
         if (routingCache.lookup(key).isEmpty()) {
-            // No pod owns this project right now — the workspace isn't
-            // materialized anywhere live. Return an empty root rather
-            // than 409 so the Insights/Workspace tab can render.
+            // No live pod owns this project (homeNode null or stale). Adopt it
+            // onto this pod and serve the workspace locally; only fall back to
+            // an empty root if a live pod genuinely holds it (adoption refused).
+            if (tryAdoptLocally(tenant, project)) {
+                return treeDirect(tenant, project, path, depth);
+            }
             return emptyRoot();
         }
         String body = proxyGet(key, buildInternalPath(tenant, project, "tree", path, depth));
@@ -135,10 +142,32 @@ public class WorkspaceController {
         }
         ProjectPodKey key = new ProjectPodKey(tenant, project);
         if (routingCache.lookup(key).isEmpty()) {
+            // No live pod owns this project (homeNode null or stale). Adopt it
+            // onto this pod and serve locally; 404 only if a live pod holds it.
+            if (tryAdoptLocally(tenant, project)) {
+                return fileDirect(tenant, project, path);
+            }
             throw new ResponseStatusException(HttpStatus.NOT_FOUND,
                     "Workspace file not found: '" + path + "'");
         }
         return proxyFile(key, buildInternalPath(tenant, project, "file", path, -1));
+    }
+
+    /**
+     * Adopt an unowned or stale-homed project onto this pod so its workspace
+     * can be served locally. {@code claimForLocalPod}'s CAS accepts a
+     * {@code null} or stale {@code homeNode} and refuses only a claim held by
+     * a <em>live</em> other pod — in which case we must not serve local.
+     * Podless projects never reach here (handled before the routing lookup).
+     */
+    private boolean tryAdoptLocally(String tenant, String project) {
+        try {
+            projectManager.claimForLocalPod(tenant, project);
+            return true;
+        } catch (ProjectManagerService.ClaimRejectedException e) {
+            log.debug("Workspace adopt refused for {}/{}: {}", tenant, project, e.getMessage());
+            return false;
+        }
     }
 
     // ------------------------------------------------------------------

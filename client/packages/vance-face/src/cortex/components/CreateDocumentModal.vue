@@ -238,6 +238,7 @@ const kindAllowed = computed(() => KIND_ALLOWED_MIMES.has(createMime.value));
 const KIND_CREATE_OPTIONS = [
   'list', 'checklist', 'tree', 'text', 'mindmap', 'graph', 'chart', 'sheet',
   'slides', 'diagram', 'calendar', 'application', 'data', 'records', 'schema',
+  'compose',
 ] as const;
 
 const kindCreateOptions = computed(() => [
@@ -311,6 +312,16 @@ function buildKindStub(kind: string, mime: string): string {
   if (kind === 'sheet') {
     if (isJson) return '{\n  "$meta": { "kind": "sheet" },\n  "schema": ["A", "B", "C"],\n  "rows": 5,\n  "cells": [\n    { "field": "A1", "data": "Item" },\n    { "field": "B1", "data": "Qty" },\n    { "field": "C1", "data": "Total" },\n    { "field": "A2", "data": "Apples" },\n    { "field": "B2", "data": "10" },\n    { "field": "C2", "data": "=B2*1.5" }\n  ]\n}\n';
     if (isYaml) return '$meta:\n  kind: sheet\nschema: [A, B, C]\nrows: 5\ncells:\n  - field: A1\n    data: Item\n  - field: B1\n    data: Qty\n  - field: C1\n    data: Total\n  - field: A2\n    data: Apples\n  - field: B2\n    data: "10"\n  - field: C2\n    data: "=B2*1.5"\n';
+  }
+  if (kind === 'compose') {
+    // Damogran compose (YAML). $meta.kind persists the kind; the compose
+    // runner ignores $meta and reads workspace/import/tasks/export.
+    if (isYaml) {
+      return '$meta:\n  kind: compose\n'
+        + 'workspace:\n  name: my-workspace\n  type: temp\n'
+        + 'tasks:\n  - type: exec\n    command: echo "hello from damogran" > out.txt\n'
+        + '    outputs:\n      - out.txt\n';
+    }
   }
   if (isMd) return `---\nkind: ${kind}\n---\n`;
   if (isJson) return `{\n  "$meta": { "kind": "${kind}" }\n}\n`;

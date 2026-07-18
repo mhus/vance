@@ -8,12 +8,8 @@ import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 /**
@@ -26,7 +22,6 @@ import org.springframework.stereotype.Component;
  * name, and per-task results (status + produced outputs + any error).
  */
 @Component
-@Slf4j
 public class ComposeRunTool implements Tool {
 
     private final DamogranComposeService composeService;
@@ -88,7 +83,7 @@ public class ComposeRunTool implements Tool {
         try {
             DamogranComposeResult result =
                     composeService.run(ctx.tenantId(), projectId, ctx.processId(), yaml);
-            return toResponse(result);
+            return DamogranResponse.toMap(result);
         } catch (DamogranException e) {
             throw new ToolException(e.getMessage());
         }
@@ -110,39 +105,6 @@ public class ComposeRunTool implements Tool {
         } catch (IOException e) {
             throw new ToolException("failed to read compose document " + composePath + ": " + e.getMessage());
         }
-    }
-
-    private Map<String, Object> toResponse(DamogranComposeResult result) {
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("success", result.isSuccess());
-        out.put("workspace", result.workspaceName());
-        if (result.error() != null) {
-            out.put("error", result.error());
-        }
-
-        List<Map<String, Object>> tasks = new ArrayList<>();
-        for (DamogranTaskResult tr : result.taskResults()) {
-            Map<String, Object> t = new LinkedHashMap<>();
-            t.put("status", tr.status().name().toLowerCase());
-            if (!tr.outputs().isEmpty()) {
-                List<Map<String, Object>> outs = new ArrayList<>();
-                for (OutputArtifact a : tr.outputs()) {
-                    Map<String, Object> o = new LinkedHashMap<>();
-                    o.put("path", a.path());
-                    if (a.kind() != null) {
-                        o.put("kind", a.kind());
-                    }
-                    outs.add(o);
-                }
-                t.put("outputs", outs);
-            }
-            if (tr.error() != null) {
-                t.put("error", tr.error());
-            }
-            tasks.add(t);
-        }
-        out.put("tasks", tasks);
-        return out;
     }
 
     private static String readString(Map<String, Object> params, String key) {

@@ -12,15 +12,18 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
+import org.springframework.stereotype.Component;
 import org.yaml.snakeyaml.Yaml;
 
 /**
  * Parses a Damogran compose manifest (YAML text) into a {@link DamogranManifest}.
  *
- * <p>Pure, stateless, fail-fast — no Spring dependency, so it is unit-testable
- * in isolation. Malformed input raises {@link DamogranException}. See
- * {@link DamogranManifest} for the YAML shape.
+ * <p>Pure, stateless, fail-fast. Registered as a bean so the runner can inject
+ * it, but has no dependencies of its own, so it stays unit-testable via
+ * {@code new DamogranManifestParser()}. Malformed input raises
+ * {@link DamogranException}. See {@link DamogranManifest} for the YAML shape.
  */
+@Component
 public class DamogranManifestParser {
 
     private static final Set<String> ALLOWED_TARGETS = Set.of("CLIENT", "WORK", "DAEMON");

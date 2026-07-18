@@ -33,6 +33,7 @@ public class BuiltInKindHandlers {
     @Bean public KindHandler schemaKindHandler() { return () -> "schema"; }
     @Bean public KindHandler diagramKindHandler() { return () -> "diagram"; }
     @Bean public KindHandler applicationKindHandler() { return () -> "application"; }
+    @Bean public KindHandler composeKindHandler() { return () -> "compose"; }
     // 'tex-compose' moved to the vance-addon-brain-tex addon
     // (TexComposeKindHandler) — see planning/tex-addon-extraction.md.
 }

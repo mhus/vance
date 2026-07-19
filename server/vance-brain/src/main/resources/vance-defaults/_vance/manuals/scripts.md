@@ -28,8 +28,39 @@ hits.results.length;
 ```
 
 `vance.tools.call(name, params)` goes through the same allow-filter
-your LLM tool calls use. If the recipe restricts the tool, the script
-hits the same wall.
+your LLM tool calls use. The available tools are **the running
+process's tools** — so what a script may call depends on where it
+runs (a coding process has `file_*`, a plain chat may not; a Damogran
+compose gets the workspace file tools). Discover at runtime instead of
+guessing:
+
+```js
+vance.tools.list();              // string[] — tool names you may call here
+vance.tools.has("file_write");   // boolean — single check
+```
+
+A `@allowTools a, b` header comment can *narrow* a script to a subset
+(it can only restrict, never widen the process's set).
+
+#### Files — `vance.files.*`
+
+Ergonomic, capability-guarded wrappers over the `file_*` work-target
+tools (they write to the process's active WorkTarget — e.g. a compose
+workspace). Check first; the methods throw if file tools aren't granted
+here (rather than silently doing nothing):
+
+```js
+if (vance.files.isEnabled()) {            // = vance.tools.has("file_read")
+  let text = vance.files.read("data.csv");   // → content string (null if absent)
+  let full = vance.files.readRaw("data.csv");// → { content, path, truncated, … }
+  vance.files.write("out.csv", sorted);      // create/overwrite
+  vance.files.list("sub");                   // → { entries: [...] }
+}
+```
+
+`vance.files` never bypasses the restriction — if the process grants no
+`file_*` tools, `isEnabled()` is false and the methods throw. Prefer it
+over raw `vance.tools.call("file_read", …)` for file work.
 
 ```js
 vance.context.tenantId;       // String

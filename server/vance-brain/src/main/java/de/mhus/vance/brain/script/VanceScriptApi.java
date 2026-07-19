@@ -398,8 +398,16 @@ public final class VanceScriptApi {
             return path;
         }
 
+        /** Read a text file and return its {@code content} string (null if absent). */
         @HostAccess.Export
-        public Map<String, Object> read(String path) {
+        public @Nullable String read(String path) {
+            Object content = readRaw(path).get("content");
+            return content == null ? null : content.toString();
+        }
+
+        /** Read a text file and return the full tool result (content + path/truncated/…). */
+        @HostAccess.Export
+        public Map<String, Object> readRaw(String path) {
             requireEnabled();
             return tools.call("file_read", Map.of("path", requirePath(path)));
         }

@@ -52,6 +52,17 @@ class VanceScriptApiToolsFilesTest {
     }
 
     @Test
+    void files_read_unwraps_content_and_readRaw_returns_full_map() {
+        ContextToolsApi tools = toolsWith(Set.of("file_read"));
+        when(tools.invoke(eq("file_read"), any()))
+                .thenReturn(Map.of("content", "hello", "path", "x.txt"));
+        VanceScriptApi api = new VanceScriptApi(tools, null, Set.of());
+
+        assertThat(api.files.read("x.txt")).isEqualTo("hello");
+        assertThat(api.files.readRaw("x.txt")).containsEntry("content", "hello").containsEntry("path", "x.txt");
+    }
+
+    @Test
     void files_write_delegatesTo_file_write_tool() {
         ContextToolsApi tools = toolsWith(Set.of("file_read", "file_write"));
         when(tools.invoke(eq("file_write"), any())).thenReturn(Map.of("ok", true));

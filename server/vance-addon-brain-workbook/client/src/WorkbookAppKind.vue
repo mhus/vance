@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, nextTick, onBeforeUnmount, onMounted, provide, ref, watch, type Component } from 'vue';
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, provide, ref, watch, type Component, type Ref } from 'vue';
 import {
   brainFetch,
   brainFetchText,
@@ -212,6 +212,10 @@ const embedComponent = inject<Component | null>('vance:embed-component', null);
 // null = not in a vance-face host → block-editor shows a fallback.
 const formComponent = inject<Component | null>('vance:form-component', null);
 const composeOutputComponent = inject<Component | null>('vance:compose-output-component', null);
+// Active cortex session (null when chatless). Passed to compose runs so they
+// bind to the session's primary chat process — sharing the WorkTarget with
+// the chat (variant a).
+const sessionId = inject<Ref<string | null>>('vance:session-id', ref(null));
 
 // Page mode (design vs work) — per app-instance, client-only, default
 // "work" (the user enters data). Switching to "design" lets embedded
@@ -323,6 +327,8 @@ async function runCompose(yaml: string): Promise<ComposeRunResult> {
       composeYaml: yaml,
       // Relative vance: paths resolve against the workpage's folder.
       composeBasePath: folder.value,
+      // Bind to the active chat session's primary process (shared WorkTarget).
+      sessionId: sessionId.value,
     },
   });
   // Pass outputs through with their vance-workspace: URIs — the injected

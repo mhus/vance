@@ -2,6 +2,8 @@ package de.mhus.vance.brain.damogran;
 
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.shared.session.SessionDocument;
+import de.mhus.vance.shared.session.SessionService;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -26,9 +28,12 @@ import org.springframework.web.server.ResponseStatusException;
  * {@code projectId}, delegates to {@link DamogranComposeService}, and returns
  * the per-task result with produced outputs (as {@code vance-workspace:} URIs).
  *
- * <p>Behind the regular Vance access filter (user JWT). Runs without a process
- * context, so the {@code spawn} task type is unavailable via this path (use the
- * {@code compose_run} tool from a chat process for spawns).
+ * <p>Behind the regular Vance access filter (user JWT). When the caller passes
+ * the active cortex {@code sessionId}, the run binds to that session's primary
+ * chat process — the compose sets <em>its</em> WorkTarget, so the workspace is
+ * shared with what the user does in the chat (variant a). Without a session (or
+ * a session that has no chat process yet), it runs process-less as before —
+ * {@code spawn} tasks then stay unavailable via this path.
  */
 @RestController
 @RequestMapping("/brain/{tenant}/compose")
@@ -37,10 +42,14 @@ public class ComposeController {
 
     private final DamogranComposeService composeService;
     private final DocumentService documentService;
+    private final SessionService sessionService;
 
-    public ComposeController(DamogranComposeService composeService, DocumentService documentService) {
+    public ComposeController(DamogranComposeService composeService,
+                             DocumentService documentService,
+                             SessionService sessionService) {
         this.composeService = composeService;
         this.documentService = documentService;
+        this.sessionService = sessionService;
     }
 
     @PostMapping("/run")
@@ -61,13 +70,32 @@ public class ComposeController {
                 : (body.composeBasePath() != null && !body.composeBasePath().isBlank()
                         ? body.composeBasePath().trim() : null);
 
+        String processId = resolveProcessId(tenant, projectId, body);
+
         try {
-            DamogranComposeResult result = composeService.run(tenant, projectId, null, yaml, baseDir);
+            DamogranComposeResult result = composeService.run(tenant, projectId, processId, yaml, baseDir);
             return DamogranResponse.toMap(result);
         } catch (DamogranException e) {
             log.debug("compose run failed for {}/{}: {}", tenant, projectId, e.getMessage());
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
+    }
+
+    /**
+     * Resolve the process the compose should run under. When a {@code sessionId}
+     * is given and the session belongs to this tenant/project, use its primary
+     * chat process (variant a — shared WorkTarget with the chat). Falls back to
+     * {@code null} (process-less run) when there is no session, it is foreign,
+     * or it has not bootstrapped a chat process yet.
+     */
+    private @Nullable String resolveProcessId(String tenant, String projectId, RunRequest body) {
+        if (body.sessionId() == null || body.sessionId().isBlank()) {
+            return null;
+        }
+        return sessionService.findBySessionId(body.sessionId().trim())
+                .filter(s -> tenant.equals(s.getTenantId()) && projectId.equals(s.getProjectId()))
+                .map(SessionDocument::getChatProcessId)
+                .orElse(null);
     }
 
     private String resolveYaml(String tenant, String projectId, RunRequest body) {
@@ -95,5 +123,6 @@ public class ComposeController {
             @Nullable String composePath,
             @Nullable String composeYaml,
             @Nullable String composeBasePath,
-            @Nullable String projectId) {}
+            @Nullable String projectId,
+            @Nullable String sessionId) {}
 }

@@ -10,7 +10,7 @@
  * {@link ComposeOutput}); persistent results come from the compose's own
  * `export` step.
  */
-import { computed, ref } from 'vue';
+import { computed, inject, ref, type Ref } from 'vue';
 import yaml from 'js-yaml';
 import {
   brainFetch,
@@ -33,6 +33,13 @@ const store = useCortexStore();
 
 /** Non-null project id — Cortex always has one open; '' only pre-selection. */
 const projectId = computed<string>(() => store.projectId ?? '');
+
+/**
+ * Active cortex session (provided by EditorApp; null when chatless). Passed to
+ * the run so it binds to the session's primary chat process — the compose's
+ * WorkTarget is then shared with the chat.
+ */
+const sessionId = inject<Ref<string | null>>('vance:session-id', ref(null));
 
 /**
  * Directory of the open compose document — relative `vance:` import/export
@@ -114,6 +121,7 @@ async function run(): Promise<void> {
         projectId: projectId.value,
         composeYaml: props.doc,
         composeBasePath: composeBasePath.value,
+        sessionId: sessionId.value,
       },
     });
     result.value = response;

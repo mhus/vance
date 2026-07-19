@@ -151,6 +151,10 @@ provide('vance:form-component', VanceFormView);
 // The workbook vance-compose block mounts this to render its outputs
 // (markdown/text/image/pdf/structured kinds) exactly like the Cortex view.
 provide('vance:compose-output-component', ComposeOutput);
+// Active cortex session (reactive ref, null when chatless). Compose runs
+// pass it so the run binds to the session's primary chat process — the
+// workspace/target is then shared with the chat (see ComposeController).
+provide('vance:session-id', sessionId);
 
 const { projects: tenantProjects, reload: loadTenantProjects } = useTenantProjects();
 

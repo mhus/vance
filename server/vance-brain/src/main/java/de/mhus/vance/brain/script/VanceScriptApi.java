@@ -69,6 +69,14 @@ public final class VanceScriptApi {
     @HostAccess.Export
     public final ScriptToolsApi tools;
 
+    /**
+     * Ergonomic file-access surface exposed as {@code vance.files} — thin,
+     * capability-guarded wrappers over the {@code file_*} work-target tools.
+     * {@code isEnabled()} probes whether the bound process grants file tools.
+     */
+    @HostAccess.Export
+    public final ScriptFilesApi files;
+
     @HostAccess.Export
     public final ScriptContextView context;
 
@@ -191,6 +199,7 @@ public final class VanceScriptApi {
                           @Nullable BiConsumer<String,
                                   @Nullable NotificationSeverity> notificationEmitter) {
         this.tools = new ScriptToolsApi(toolsApi, deniedToolNames);
+        this.files = new ScriptFilesApi(this.tools);
         this.context = new ScriptContextView(toolsApi.scope(), recipeName);
         this.log = new ScriptLog(toolsApi.scope());
         this.process = new ScriptProcessApi(this, progressEmitter, notificationEmitter);
@@ -280,6 +289,7 @@ public final class VanceScriptApi {
                           @Nullable SettingService settingService,
                           @Nullable String documentBasePath) {
         this.tools = new ScriptToolsApi(toolsApi, deniedToolNames);
+        this.files = new ScriptFilesApi(this.tools);
         this.context = new ScriptContextView(toolsApi.scope(), recipeName);
         this.log = new ScriptLog(toolsApi.scope());
         this.process = new ScriptProcessApi(this, progressEmitter, notificationEmitter);
@@ -324,6 +334,87 @@ public final class VanceScriptApi {
                 throw new ScriptHostException(
                         "Tool '" + name + "' failed: " + e.getMessage(), e);
             }
+        }
+
+        /**
+         * The tool names this script may call — the bound process's effective
+         * allow-set minus any trigger-scoped denials. Sorted for stable output.
+         * Empty for an unrestricted engine (then {@link #has} still answers
+         * per-tool via the dispatcher's own gating).
+         */
+        @HostAccess.Export
+        public java.util.List<String> list() {
+            java.util.List<String> names = new java.util.ArrayList<>();
+            for (String name : delegate.invocableToolNames()) {
+                if (!deniedToolNames.contains(name)) {
+                    names.add(name);
+                }
+            }
+            java.util.Collections.sort(names);
+            return names;
+        }
+
+        /** Whether {@code name} is callable in this context (allow-set + not denied). */
+        @HostAccess.Export
+        public boolean has(String name) {
+            return name != null && !deniedToolNames.contains(name) && delegate.isAllowed(name);
+        }
+    }
+
+    /**
+     * {@code vance.files} — capability-guarded convenience over the
+     * {@code file_*} work-target tools (which dispatch to the process's active
+     * WorkTarget). {@link #isEnabled()} reports whether the bound process grants
+     * file tools; every file method throws {@link ScriptHostException} when it
+     * does not, so a script fails loudly rather than silently no-op-ing. Return
+     * values are the raw tool results (e.g. {@code read(path).content}).
+     */
+    public static final class ScriptFilesApi {
+
+        private final ScriptToolsApi tools;
+
+        ScriptFilesApi(ScriptToolsApi tools) {
+            this.tools = tools;
+        }
+
+        /** True when the bound process grants file tools (probes {@code file_read}). */
+        @HostAccess.Export
+        public boolean isEnabled() {
+            return tools.has("file_read");
+        }
+
+        private void requireEnabled() {
+            if (!isEnabled()) {
+                throw new ScriptHostException(
+                        "vance.files: file tools are not available in this context — "
+                                + "the bound process/engine grants no file_* tools", null);
+            }
+        }
+
+        private static String requirePath(String path) {
+            if (path == null || path.isBlank()) {
+                throw new ScriptHostException("vance.files: 'path' must not be empty", null);
+            }
+            return path;
+        }
+
+        @HostAccess.Export
+        public Map<String, Object> read(String path) {
+            requireEnabled();
+            return tools.call("file_read", Map.of("path", requirePath(path)));
+        }
+
+        @HostAccess.Export
+        public Map<String, Object> write(String path, String content) {
+            requireEnabled();
+            return tools.call("file_write", Map.of(
+                    "path", requirePath(path), "content", content == null ? "" : content));
+        }
+
+        @HostAccess.Export
+        public Map<String, Object> list(@Nullable String path) {
+            requireEnabled();
+            return tools.call("file_list", Map.of("path", path == null ? "" : path));
         }
     }
 

@@ -91,8 +91,10 @@ export:
 - **`llm` braucht** eine deklarierte Output-Datei; die Antwort landet dort.
 - **`js`** ruft `vance.tools.call(...)` mit dem Tool-Set des **gebundenen
   Process** (bei aktiver Chat-Session dessen Tools; ob `file_*` dabei sind,
-  hängt vom Chat-Engine/Recipe ab — chatlos: kein Tool-Zugriff). Für garantierte
-  Datei-Erzeugung `python`/`exec` (schreiben direkt im Workspace-cwd).
+  hängt vom Chat-Engine/Recipe ab — chatlos: kein Tool-Zugriff). `vance.tools.list()`
+  / `has(name)` zeigen, was verfügbar ist; `vance.files` ist der ergonomische
+  Datei-Adapter (`isEnabled()` prüft, `read/write/list` werfen sonst). Für
+  garantierte Datei-Erzeugung `python`/`exec` (schreiben direkt im Workspace-cwd).
 - Fehler stehen im Task-Result (`status: failure`, `error`), nicht als Exception.
 - **Workspace löschen:** `workspace: { name: x, delete: true }` verwirft den
   benannten Workspace und stoppt (idempotent — fehlt er, ist es ein No-op).

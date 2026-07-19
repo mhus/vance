@@ -37,8 +37,8 @@ class DamogranComposeServiceTest {
         workTargetService = mock(WorkTargetService.class);
         taskExecutor = mock(DamogranTaskExecutor.class);
         transport = mock(DamogranTransport.class);
-        service = new DamogranComposeService(
-                new DamogranManifestParser(), workspaceService, workTargetService, taskExecutor, transport);
+        service = new DamogranComposeService(new DamogranManifestParser(), List.of(
+                new WorkspaceComposeRunner(workspaceService, workTargetService, taskExecutor, transport)));
     }
 
     private RootDirHandle handle(String label, String type) {
@@ -102,12 +102,13 @@ class DamogranComposeServiceTest {
     }
 
     @Test
-    void run_nonWorkTarget_throws() {
+    void run_targetWithoutRunner_throws() {
+        // Only the WORK runner is registered here — CLIENT has no runner.
         DamogranManifest m = manifest("CLIENT", List.of(), List.of(), List.of());
 
         assertThatThrownBy(() -> service.run("t", "p", "proc1", m))
                 .isInstanceOf(DamogranException.class)
-                .hasMessageContaining("WORK only");
+                .hasMessageContaining("not supported");
     }
 
     @Test

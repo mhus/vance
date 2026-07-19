@@ -40,6 +40,7 @@ import {
 } from './extensions';
 import { SlashCommands } from './SlashCommands';
 import { HeadingAnchors } from './extensions/HeadingAnchors';
+import { TrailingNode } from './extensions/TrailingNode';
 import { VueNodeViewRenderer } from '@tiptap/vue-3';
 import VanceImageNodeView from './extensions/VanceImageNodeView.vue';
 import 'tippy.js/dist/tippy.css';
@@ -375,6 +376,7 @@ const editor = useEditor({
     }),
     SlashCommands,
     HeadingAnchors,
+    TrailingNode,
     VanceCallout,
     VanceToggle,
     VanceLink,
@@ -742,6 +744,74 @@ function onTrashDrop(e: DragEvent) {
   trashOver.value = false;
 }
 
+// ── Block-handle popup: insert above / below / remove ─────────
+// The global-drag-handle's handle is a floating sibling of view.dom.
+// A plain click on it (no drag) opens a small menu anchored to the
+// block it points at. Desktop-only by nature — the handle is
+// hover-driven and never appears on touch devices.
+const blockMenu = ref<{ x: number; y: number; start: number; end: number } | null>(null);
+
+function onHandleClick(e: MouseEvent) {
+  const target = e.target as HTMLElement | null;
+  if (!target) return;
+  if (target.dataset?.dragHandle == null && !target.closest?.('[data-drag-handle]')) return;
+  const view = editor.value?.view;
+  if (!view || !editor.value?.isEditable) return;
+  const domRect = view.dom.getBoundingClientRect();
+  // Only react to this editor's handle (it aligns to a block inside it).
+  if (e.clientY < domRect.top - 4 || e.clientY > domRect.bottom + 4) return;
+
+  // Find the top-level block via its DOM element (a direct child of the
+  // .ProseMirror root) — same detection the drag-handle library uses.
+  // Robust for content-less / atom blocks (compose, input, button, embed,
+  // callout, …) where posAtCoords would resolve to the doc level.
+  const stack = document.elementsFromPoint(domRect.left + 40, e.clientY) as HTMLElement[];
+  const blockDom = stack.find((el) => el.parentElement === view.dom);
+  if (!blockDom) return;
+  const inside = view.posAtDOM(blockDom, 0);
+  const $pos = view.state.doc.resolve(Math.max(0, inside));
+  const start = $pos.depth >= 1 ? $pos.before(1) : inside;
+  const node = view.state.doc.resolve(start).nodeAfter;
+  if (!node) return;
+  const end = start + node.nodeSize;
+
+  e.preventDefault();
+  e.stopPropagation();
+  blockMenu.value = { x: e.clientX, y: e.clientY, start, end };
+}
+
+function closeBlockMenu() {
+  blockMenu.value = null;
+}
+
+function menuInsert(where: 'above' | 'below') {
+  const m = blockMenu.value;
+  const ed = editor.value;
+  if (!m || !ed) return;
+  const pos = where === 'above' ? m.start : m.end;
+  ed.chain().insertContentAt(pos, { type: 'paragraph' }).setTextSelection(pos + 1).focus().run();
+  closeBlockMenu();
+}
+
+function menuRemove() {
+  const m = blockMenu.value;
+  const ed = editor.value;
+  if (!m || !ed) return;
+  ed.chain().focus().deleteRange({ from: m.start, to: m.end }).run();
+  closeBlockMenu();
+}
+
+function onDocPointerDown(e: PointerEvent) {
+  if (!blockMenu.value) return;
+  const t = e.target as HTMLElement | null;
+  if (t && t.closest?.('.block-handle-menu')) return;
+  closeBlockMenu();
+}
+
+function onDocKeydown(e: KeyboardEvent) {
+  if (blockMenu.value && e.key === 'Escape') closeBlockMenu();
+}
+
 onMounted(() => {
   const dom = editor.value?.view.dom;
   if (!dom) return;
@@ -754,6 +824,10 @@ onMounted(() => {
   dom.addEventListener('vance:open-input-picker', onOpenInputPicker);
   document.addEventListener('dragstart', onGlobalDragStart, true);
   document.addEventListener('dragend', onGlobalDragEnd, true);
+  document.addEventListener('click', onHandleClick, true);
+  document.addEventListener('pointerdown', onDocPointerDown, true);
+  document.addEventListener('keydown', onDocKeydown, true);
+  window.addEventListener('scroll', closeBlockMenu, true);
 });
 
 onBeforeUnmount(() => {
@@ -771,6 +845,10 @@ onBeforeUnmount(() => {
   }
   document.removeEventListener('dragstart', onGlobalDragStart, true);
   document.removeEventListener('dragend', onGlobalDragEnd, true);
+  document.removeEventListener('click', onHandleClick, true);
+  document.removeEventListener('pointerdown', onDocPointerDown, true);
+  document.removeEventListener('keydown', onDocKeydown, true);
+  window.removeEventListener('scroll', closeBlockMenu, true);
   editor.value?.destroy();
 });
 
@@ -940,6 +1018,28 @@ defineExpose({
     </BubbleMenu>
 
     <EditorContent :editor="editor" class="canvas-editor__body" />
+
+    <Teleport to="body">
+      <div
+        v-if="blockMenu"
+        class="block-handle-menu"
+        :style="{ left: blockMenu.x + 'px', top: blockMenu.y + 'px' }"
+      >
+        <button type="button" class="block-handle-menu__item" @click="menuInsert('above')">
+          ↑ Oben einfügen
+        </button>
+        <button type="button" class="block-handle-menu__item" @click="menuInsert('below')">
+          ↓ Unten einfügen
+        </button>
+        <button
+          type="button"
+          class="block-handle-menu__item block-handle-menu__item--danger"
+          @click="menuRemove"
+        >
+          🗑 Löschen
+        </button>
+      </div>
+    </Teleport>
 
     <!-- Drag-to-delete drop-zone. Sticky on the left edge of the
          editor; only visible while a block is being dragged via the
@@ -1140,6 +1240,34 @@ defineExpose({
 .drag-handle.hide { display: none; }
 .canvas-editor:hover .drag-handle:not(.hide) { opacity: 1; }
 .drag-handle:active { cursor: grabbing; }
+
+.block-handle-menu {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+  padding: 4px;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
+.block-handle-menu__item {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  text-align: left;
+  font-size: 13px;
+  color: #1f2937;
+  cursor: pointer;
+}
+.block-handle-menu__item:hover { background: #f1f5f9; }
+.block-handle-menu__item--danger { color: #dc2626; }
+.block-handle-menu__item--danger:hover { background: #fee2e2; }
 
 /* Drop indicator while a block is being dragged. StarterKit's
    prosemirror-dropcursor draws this — we just make it loud enough

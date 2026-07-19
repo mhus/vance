@@ -1,7 +1,7 @@
 /**
  * Host-side runner registry facade.
  *
- * Built-in adapters (JS, Python, TeX) are registered at boot via
+ * Built-in adapters (JS, Python) are registered at boot via
  * {@code registerRunner()} from {@code @vance/runner-registry}. Addons
  * register their own runners from their {@code ./register} federation
  * expose. The host and addons share the same globalThis-backed Map.
@@ -34,8 +34,6 @@ export type {
 import { registerRunner } from '@vance/runner-registry';
 import { jsRunner } from './jsRunner';
 import { pythonRunner } from './pythonRunner';
-import { texRunner } from './texRunner';
 
 registerRunner(jsRunner);
 registerRunner(pythonRunner);
-registerRunner(texRunner);

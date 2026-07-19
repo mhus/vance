@@ -1,130 +1,63 @@
 # LaTeX Support
 
-Vance kann LaTeX-Dokumente (`.tex`) zu PDF kompilieren. Das Feature nutzt
-das `tex-compose` Document-Kind als Build-Manifest und das `tex2pdf`-Tool
-für die Kompilierung.
+Vance kompiliert LaTeX-Dokumente (`.tex`) zu PDF **als Damogran-Compose-Task**
+(`type: tex-task`). Es gibt kein eigenes `tex2pdf`-Tool und kein `tex-compose`-
+Kind mehr — LaTeX ist ein Task im Workspace-Compose (siehe das Manual
+`damogran-compose` und `specification/public/damogran-system.md`).
 
-## Überblick
+## Ablauf
 
-1. **Document-Kind `tex-compose`** — ein YAML-Manifest, das alle Dateien
-   für einen LaTeX-Build deklariert (analog zu `docker-compose.yml`)
-2. **`tex2pdf`-Tool** — liest das Manifest, transportiert alle Dateien in
-   einen temp Workspace, führt `latexmk` aus, importiert das fertige PDF
-   als Document
-3. **TeX Live** — im Docker-Image installiert (`texlive-latex-base`,
-   `texlive-latex-extra`, `latexmk`)
-
-## tex-compose.yaml
-
-Ein `tex-compose`-Document ist ein YAML-Manifest mit folgendem Aufbau:
+Ein Compose importiert die `.tex`-Quelle (+ `.bib`/`.sty`/Bilder) in den
+Workspace, führt den `tex-task` aus (kompiliert `main` mit `latexmk`) und
+exportiert das PDF:
 
 ```yaml
-# Minimal
-main: thesis.tex
-files:
-  - thesis.tex
-  - references.bib
-  - images/figure1.png
+workspace:
+  name: thesis
+  type: temp
+import:
+  - from: vance:thesis.tex
+    to: thesis.tex
+  - from: vance:references.bib
+    to: references.bib
+  - from: vance:images/figure1.png
+    to: images/figure1.png
+tasks:
+  - type: tex-task
+    main: thesis.tex          # Entry-Point (required)
+    engine: pdflatex          # pdflatex | xelatex | lualatex (default: pdflatex)
+    output: thesis.pdf        # PDF-Ziel im Workspace (default: <main-basename>.pdf)
+export:
+  - from: thesis.pdf
+    to: vance:thesis.pdf
 ```
 
-```yaml
-# Vollständig
-main: thesis.tex
-engine: pdflatex      # pdflatex | xelatex | lualatex (default: pdflatex)
-passes: auto           # auto = latexmk (default)
-output: thesis.pdf     # default: <main-basename>.pdf
-files:
-  - thesis.tex
-  - references.bib
-  - custom.sty
-  - images/figure1.png
-  - images/figure2.png
-```
+Der `tex-task` kompiliert den **bereits gefüllten** Workspace — Datei-Transport
+macht der `import`-Block, nicht der Task. Alle vom Build benötigten Dateien
+müssen also importiert sein (`.tex`, `.bib`, `.sty`, Bilder).
 
-### Felder
+## Executor
 
-| Feld | Pflicht | Default | Beschreibung |
-|---|---|---|---|
-| `main` | ja | — | Entry-Point `.tex`-Datei |
-| `files` | ja | — | Liste aller Dateien, die für den Build benötigt werden (inkl. `main`) |
-| `engine` | nein | `pdflatex` | TeX-Engine: `pdflatex`, `xelatex`, `lualatex` |
-| `passes` | nein | `auto` | `auto` = latexmk übernimmt Mehrfach-Pass-Logik |
-| `output` | nein | `<main>.pdf` | Name des Output-PDFs |
+`TexService.resolveExecutor` wählt die Compile-Strategie über die Einstellung
+`tex.executor` (Cascade Project → `_tenant`, Fallback Property
+`vance.tex.executor`, Default `local`):
 
-### Wichtig
+- **`local`** (`Tex2PdfLocalExecutor`) — `latexmk` via `ProcessBuilder` auf dem
+  Brain-Host (Dev/CI mit TeX Live / MacTeX).
+- **`rbehzadan`** (`Tex2PdfRbehzadanExecutor`) — zippt den Workspace und postet
+  an einen externen `rbehzadan/tex2pdf`-Docker-Service. Config über das
+  Setting-Form `tex-setup`.
 
-- **`files` muss alle Dateien enthalten**, die der Build braucht — `.tex`,
-  `.bib`, `.sty`, Bilder. Nur deklarierte Dateien werden transportiert.
-- **Bilder werden binär transportiert** — das Tool nutzt
-  `DocumentService.loadContent` (InputStream), funktioniert für alle
-  Dateitypen.
-- **Kein `packages`-Feld** — `tlmgr install` zur Runtime aus User-Daten
-  ist ein Sicherheitsrisiko. Alles was gebraucht wird muss im Docker-Image
-  sein.
+## TeX Live (local Executor)
 
-## Tool: `tex2pdf`
-
-```
-tex2pdf(composePath: string) → {
-  success: boolean,
-  pdfPath?: string,      // document path des erzeugten PDFs
-  markdownLink?: string,  // vance:/ link für Chat-Einbettung
-  error?: string,        // Fehlermeldung bei Misserfolg
-  logExcerpt?: string,   // LaTeX-Log-Auszug bei Misserfolg
-  elapsedMs: number
-}
-```
-
-### Ablauf
-
-1. Manifest lesen und parsen
-2. Temp Workspace RootDir anlegen (UUID-dirName, isoliert)
-3. Alle deklarierten Dateien aus Document-Storage → Workspace transportieren
-4. `latexmk -pdf -interaction=nonstopmode -halt-on-error -timeout=120 <main>`
-5. Bei Erfolg: PDF als `application/pdf` Document importieren
-6. Workspace aufräumen (immer, auch bei Fehlern)
-
-### Timeout
-
-- 120s latexmk-eigenes Timeout (`-timeout=120`)
-- 150s harter Process-Timeout (`Process.waitFor`)
-
-### Concurrency
-
-Jeder Build bekommt einen eigenen UUID-named RootDir. Parallele Builds
-sind vollständig isoliert.
-
-## Docker-Image
-
-TeX Live wird im Brain-Docker-Image installiert:
+Im Brain-Docker-Image installiert:
 
 ```dockerfile
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    texlive-latex-base \
-    texlive-latex-extra \
-    texlive-fonts-recommended \
-    texlive-fonts-extra \
-    latexmk \
+    texlive-latex-base texlive-latex-extra \
+    texlive-fonts-recommended texlive-fonts-extra latexmk \
     && rm -rf /var/lib/apt/lists/*
 ```
 
-~1-1.5 GB zusätzlich. Für die Addon-Phase wird ein separates
-TeX-Docker-Image angestrebt.
-
-## Beispiel
-
-1. `thesis.tex` als Document anlegen (`kind: text`)
-2. `references.bib` als Document anlegen
-3. `images/figure1.png` als Document anlegen (binary upload)
-4. `tex-compose.yaml` als Document anlegen (`kind: tex-compose`):
-
-```yaml
-main: thesis.tex
-files:
-  - thesis.tex
-  - references.bib
-  - images/figure1.png
-```
-
-5. Tool aufrufen: `tex2pdf(composePath: "thesis/tex-compose.yaml")`
-6. Ergebnis: PDF unter `thesis/thesis.pdf` als Document
+Kein `tlmgr install` zur Runtime (Sicherheitsrisiko) — alles Benötigte muss im
+Image (bzw. beim rbehzadan-Service) vorhanden sein.

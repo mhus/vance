@@ -22,12 +22,23 @@ export interface ComposeTaskView {
   outputs?: ComposeOutputView[];
 }
 
-/** Result of running a compose, as the host hands it back to the NodeView. */
+/**
+ * Result of a compose run/poll, as the host hands it back to the NodeView.
+ * Runs are async: {@code running} + {@code runId} means the host should be
+ * polled via {@code pollCompose(runId)}; a terminal result carries
+ * {@code tasks}. {@code tail}/{@code currentTask*} are live progress.
+ */
 export interface ComposeRunResult {
-  success: boolean;
+  success?: boolean;
   workspace?: string;
   error?: string;
-  tasks: ComposeTaskView[];
+  tasks?: ComposeTaskView[];
+  runId?: string;
+  running?: boolean;
+  status?: string;
+  currentTaskIndex?: number;
+  currentTaskType?: string;
+  tail?: string[];
 }
 
 /**
@@ -68,8 +79,10 @@ export const VanceCompose = Node.create({
 
   addOptions() {
     return {
-      /** Host-provided run: execute the inline compose YAML, resolve outputs. */
+      /** Host-provided run: start the compose (async); returns inline result or a runId. */
       runCompose: null as null | ((yaml: string) => Promise<ComposeRunResult>),
+      /** Host-provided poll: fetch an in-flight run's status/tail/result by id. */
+      pollCompose: null as null | ((runId: string) => Promise<ComposeRunResult>),
       /**
        * Host-injected renderer for a single output ({@code vance-face}'s
        * ComposeOutput, via provide/inject) — mounted per artifact so the block

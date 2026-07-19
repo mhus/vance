@@ -183,8 +183,10 @@ const props = withDefaults(
     openInputPicker?: () => void;
     /** Run a `vance-button` block's script (by ref) — host resolves + POSTs. */
     runButtonScript?: (scriptRef: string) => Promise<void>;
-    /** Run a `vance-compose` block's inline YAML — host POSTs + resolves outputs. */
+    /** Run a `vance-compose` block's inline YAML — host POSTs (async), resolves outputs. */
     runCompose?: (yaml: string) => Promise<ComposeRunResult>;
+    /** Poll an in-flight compose run by id — host GETs status/tail/result. */
+    pollCompose?: (runId: string) => Promise<ComposeRunResult>;
     /** Host renderer for a compose output (vance-face ComposeOutput). */
     composeOutputComponent?: import('vue').Component;
   }>(),
@@ -415,6 +417,14 @@ const editor = useEditor({
           success: false,
           tasks: [],
           error: 'Compose run is not available in this context.',
+        }),
+      pollCompose: (runId: string) =>
+        props.pollCompose?.(runId)
+        ?? Promise.resolve<ComposeRunResult>({
+          running: false,
+          success: false,
+          tasks: [],
+          error: 'Compose polling is not available in this context.',
         }),
       composeOutputComponent: () => props.composeOutputComponent ?? null,
       projectId: props.currentProjectId ?? '',

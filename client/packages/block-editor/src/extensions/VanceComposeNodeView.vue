@@ -18,10 +18,19 @@ import type { Editor } from '@tiptap/core';
 import type { Component } from 'vue';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import type { ComposeOutputView, ComposeRunResult } from './VanceCompose';
-import { readComposeOutputs, writeComposeOutputs } from './composeOutputs';
+import {
+  readComposeOutputs,
+  writeComposeOutputs,
+  readComposeRun,
+  writeComposeRun,
+  clearComposeManaged,
+} from './composeOutputs';
+
+const POLL_MS = 3000;
 
 interface ExtensionOptions {
   runCompose?: ((yaml: string) => Promise<ComposeRunResult>) | null;
+  pollCompose?: ((runId: string) => Promise<ComposeRunResult>) | null;
   composeOutputComponent?: (() => Component | null) | null;
   projectId?: string;
 }
@@ -60,53 +69,107 @@ const meta = computed<{ title?: string; description?: string }>(() => {
 
 const editable = ref(props.editor.isEditable);
 function syncEditable() { editable.value = props.editor.isEditable; }
-onMounted(() => {
-  props.editor.on('update', syncEditable);
-  props.editor.on('transaction', syncEditable);
-});
-onBeforeUnmount(() => {
-  props.editor.off('update', syncEditable);
-  props.editor.off('transaction', syncEditable);
-});
 
 const running = ref(false);
 const error = ref<string | null>(null);
 const result = ref<ComposeRunResult | null>(null);
+const progress = ref<ComposeRunResult | null>(null);
 
-/**
- * Outputs a prior run recorded in the fence's `$output:` block — read from the
- * block's own YAML, so produced files survive a reload. Shown when there is no
- * fresh run `result`.
- */
+let polling = false;
+let timer: ReturnType<typeof setTimeout> | undefined;
+
+/** Outputs a prior run recorded in `$output:` — shown when no fresh result. */
 const persisted = computed<ComposeOutputView[]>(() => readComposeOutputs(yaml.value));
 
 function onYaml(e: Event) {
   props.updateAttributes({ yaml: (e.target as HTMLTextAreaElement).value });
 }
 
+function stopTimer() {
+  polling = false;
+  if (timer) clearTimeout(timer);
+  timer = undefined;
+}
+
+function finishWith(res: ComposeRunResult) {
+  stopTimer();
+  running.value = false;
+  progress.value = null;
+  result.value = res;
+  const outputs = (res.tasks ?? []).flatMap((t) =>
+    (t.outputs ?? []).map((o) => ({ path: o.path, uri: o.uri, kind: o.kind, title: o.title })),
+  );
+  // Success → persist $output; failure → clear the parked $run marker.
+  props.updateAttributes({
+    yaml: res.success ? writeComposeOutputs(yaml.value, outputs) : clearComposeManaged(yaml.value),
+  });
+}
+
+function startPolling(runId: string) {
+  const poll = props.extension.options.pollCompose;
+  if (!poll) return; // no host poll surface — leave it running, nothing to do
+  polling = true;
+  const tick = async () => {
+    if (!polling) return;
+    try {
+      const res = await poll(runId);
+      if (res.running) {
+        progress.value = res;
+        timer = setTimeout(tick, POLL_MS);
+      } else {
+        finishWith(res);
+      }
+    } catch {
+      stopTimer();
+      running.value = false;
+      progress.value = null;
+      error.value = 'Lauf nicht mehr verfügbar (Pod-Neustart?) — bitte neu ausführen.';
+      props.updateAttributes({ yaml: clearComposeManaged(yaml.value) });
+    }
+  };
+  timer = setTimeout(tick, POLL_MS);
+}
+
 async function run() {
   const runner = props.extension.options.runCompose;
   if (!runner || running.value) return;
+  stopTimer();
   running.value = true;
   error.value = null;
   result.value = null;
+  progress.value = null;
   try {
     const res = await runner(yaml.value);
-    result.value = res;
-    // Record produced artifacts into the fence YAML → workpage auto-saves,
-    // so a reload re-shows them (only on success; a failure keeps last good).
-    if (res.success) {
-      const outputs = res.tasks.flatMap((t) =>
-        (t.outputs ?? []).map((o) => ({ path: o.path, uri: o.uri, kind: o.kind, title: o.title })),
-      );
-      props.updateAttributes({ yaml: writeComposeOutputs(yaml.value, outputs) });
+    if (res.running && res.runId) {
+      progress.value = res;
+      props.updateAttributes({
+        yaml: writeComposeRun(yaml.value, { id: res.runId, startedAt: new Date().toISOString() }),
+      });
+      startPolling(res.runId);
+    } else {
+      finishWith(res);
     }
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Compose run failed';
-  } finally {
     running.value = false;
+    error.value = e instanceof Error ? e.message : 'Compose run failed';
   }
 }
+
+onMounted(() => {
+  props.editor.on('update', syncEditable);
+  props.editor.on('transaction', syncEditable);
+  // Resume a run that was in flight before a reload.
+  const marker = readComposeRun(yaml.value);
+  if (marker) {
+    running.value = true;
+    startPolling(marker.id);
+  }
+});
+onBeforeUnmount(() => {
+  props.editor.off('update', syncEditable);
+  props.editor.off('transaction', syncEditable);
+  stopTimer();
+});
 
 </script>
 
@@ -140,6 +203,9 @@ async function run() {
         <span v-if="result" class="vance-compose__status">
           {{ result.workspace ? result.workspace + ' · ' : '' }}{{ result.success ? 'success' : 'failed' }}
         </span>
+        <span v-else-if="progress" class="vance-compose__status">
+          läuft… Task {{ (progress.currentTaskIndex ?? 0) + 1 }}{{ progress.currentTaskType ? ` (${progress.currentTaskType})` : '' }}
+        </span>
       </div>
 
       <div v-if="error" class="vance-compose__error">{{ error }}</div>
@@ -148,8 +214,13 @@ async function run() {
         class="vance-compose__error"
       >{{ result.error }}</div>
 
+      <pre
+        v-if="progress && progress.tail && progress.tail.length"
+        class="vance-compose__log"
+      >{{ progress.tail.join('\n') }}</pre>
+
       <div v-if="result" class="vance-compose__out">
-        <template v-for="(task, ti) in result.tasks" :key="ti">
+        <template v-for="(task, ti) in result.tasks ?? []" :key="ti">
           <div
             v-if="task.status !== 'success' && task.error"
             class="vance-compose__error"
@@ -173,7 +244,7 @@ async function run() {
         </template>
       </div>
 
-      <div v-else-if="persisted.length" class="vance-compose__out">
+      <div v-else-if="!progress && persisted.length" class="vance-compose__out">
         <template v-for="(o, oi) in persisted" :key="oi">
           <component
             :is="outputComponent"

@@ -5,6 +5,8 @@ import {
   brainFetchText,
   brainSendRaw,
   documentContentUrl,
+  postComposeRun,
+  pollComposeRun,
   useDocumentPrefixReaction,
   usePointers,
 } from '@vance/shared';
@@ -316,40 +318,21 @@ async function runButtonScript(scriptRef: string): Promise<void> {
  * workspace-file URL so the NodeView can render it directly (no tenant/REST
  * knowledge in the block-editor).
  */
-async function runCompose(yaml: string): Promise<ComposeRunResult> {
-  interface ServerOutput { path: string; uri: string; kind?: string; mime?: string; title?: string }
-  interface ServerTask { status: string; error?: string; log?: string; outputs?: ServerOutput[] }
-  interface ServerResponse { success: boolean; workspace?: string; error?: string; tasks?: ServerTask[] }
-
-  const server = await brainFetch<ServerResponse>('POST', 'compose/run', {
-    body: {
-      projectId: projectId.value,
-      composeYaml: yaml,
-      // Relative vance: paths resolve against the workpage's folder.
-      composeBasePath: folder.value,
-      // Bind to the active chat session's primary process (shared WorkTarget).
-      sessionId: sessionId.value,
-    },
+// Start an async compose run (bound to the active chat session's process;
+// relative vance: paths resolve against the workpage folder). The shared
+// response shape is structurally the block's ComposeRunResult; the injected
+// ComposeOutput renderer resolves content from projectId + vance-workspace: URI.
+function runCompose(yaml: string): Promise<ComposeRunResult> {
+  return postComposeRun(projectId.value, {
+    composeYaml: yaml,
+    composeBasePath: folder.value,
+    sessionId: sessionId.value,
   });
-  // Pass outputs through with their vance-workspace: URIs — the injected
-  // ComposeOutput renderer resolves content from projectId + uri itself.
-  return {
-    success: server.success,
-    workspace: server.workspace,
-    error: server.error,
-    tasks: (server.tasks ?? []).map((t) => ({
-      status: t.status,
-      error: t.error,
-      log: t.log,
-      outputs: (t.outputs ?? []).map((o) => ({
-        path: o.path,
-        uri: o.uri,
-        kind: o.kind,
-        mime: o.mime,
-        title: o.title,
-      })),
-    })),
-  };
+}
+
+/** Poll an in-flight compose run by id (status + tail + result). */
+function pollCompose(runId: string): Promise<ComposeRunResult> {
+  return pollComposeRun(projectId.value, runId);
 }
 
 /**
@@ -1638,6 +1621,7 @@ onBeforeUnmount(() => {
           :open-input-picker="openInputPicker"
           :run-button-script="runButtonScript"
           :run-compose="runCompose"
+          :poll-compose="pollCompose"
           :compose-output-component="composeOutputComponent ?? undefined"
           :editable="editorEditable"
           @save="onEditorSave"

@@ -1,22 +1,26 @@
 <script setup lang="ts">
 /**
- * Cortex View-tab for `kind: compose` (Damogran) documents — the notebook
- * face of a compose. The Edit tab is the raw YAML CodeEditor (provided by the
- * shell); this View tab runs the compose and renders its outputs below.
+ * Cortex View-tab for `kind: compose` (Damogran) documents. Runs the compose
+ * (async on the server) and renders progress + outputs.
  *
- * The run posts the *current* YAML text (the parsed `doc` model, which tracks
- * unsaved edits) as `composeYaml`, so the WIP loop — tweak, run, inspect — does
- * not require a save first. Outputs are transient and workspace-sourced (see
- * {@link ComposeOutput}); persistent results come from the compose's own
- * `export` step.
+ * Runs are async: a quick compose returns its result inline; a longer one
+ * returns a `runId` we poll (status + live tail) and park in a `$run:` block so
+ * a page refresh resumes polling. On completion the produced artifacts land in
+ * the `$output:` block (survive refresh); content is workspace-sourced (see
+ * {@link ComposeOutput}), persistent results come from the compose's `export`.
  */
-import { computed, inject, ref, type Ref } from 'vue';
+import { computed, inject, onMounted, onUnmounted, ref, type Ref } from 'vue';
 import yaml from 'js-yaml';
 import {
-  brainFetch,
+  postComposeRun,
+  pollComposeRun,
   readComposeOutputs,
   writeComposeOutputs,
+  writeComposeRun,
+  readComposeRun,
+  clearComposeManaged,
   type ComposeOutputView,
+  type ComposeRunResponse,
 } from '@vance/shared';
 import { VAlert, VButton, VCard } from '@/components';
 import { useCortexStore } from '@/cortex/stores/cortexStore';
@@ -27,25 +31,19 @@ interface Props {
   doc: string;
 }
 const props = defineProps<Props>();
-/** Write the manifest back (with a fresh `$output:` block) → shell auto-saves. */
+/** Write the manifest back (`$run:` / `$output:` block) → shell auto-saves. */
 const emit = defineEmits<{ (e: 'update:doc', doc: string): void }>();
 const store = useCortexStore();
+
+const POLL_MS = 3000;
 
 /** Non-null project id — Cortex always has one open; '' only pre-selection. */
 const projectId = computed<string>(() => store.projectId ?? '');
 
-/**
- * Active cortex session (provided by EditorApp; null when chatless). Passed to
- * the run so it binds to the session's primary chat process — the compose's
- * WorkTarget is then shared with the chat.
- */
+/** Active cortex session (provided by EditorApp; null when chatless). */
 const sessionId = inject<Ref<string | null>>('vance:session-id', ref(null));
 
-/**
- * Directory of the open compose document — relative `vance:` import/export
- * paths resolve against it (like the legacy tex-compose behaviour). Empty at
- * project root.
- */
+/** Directory of the open compose document — relative `vance:` paths resolve against it. */
 const composeBasePath = computed<string>(() => {
   const path = store.activeTab?.path ?? '';
   const slash = path.lastIndexOf('/');
@@ -69,73 +67,106 @@ const meta = computed<{ title?: string; description?: string }>(() => {
   return {};
 });
 
-interface OutputArtifact {
-  path: string;
-  uri: string;
-  kind?: string;
-  mime?: string;
-  title?: string;
-}
-interface TaskResult {
-  status: string;
-  outputs?: OutputArtifact[];
-  error?: string;
-  log?: string;
-}
-interface ComposeRunResponse {
-  success: boolean;
-  workspace: string;
-  error?: string;
-  tasks: TaskResult[];
-}
-
 const running = ref(false);
 const fetchError = ref<string | null>(null);
 const result = ref<ComposeRunResponse | null>(null);
+const progress = ref<ComposeRunResponse | null>(null);
 
-/**
- * Outputs a prior run recorded in the manifest's `$output:` block — so
- * produced files survive a page refresh (the in-memory `result` does not).
- * Shown only when there is no fresh run `result` to display.
- */
+let polling = false;
+let timer: ReturnType<typeof setTimeout> | undefined;
+
+/** Outputs a prior run recorded in `$output:` — shown when no fresh result. */
 const persisted = computed<ComposeOutputView[]>(() => readComposeOutputs(props.doc));
 
 function hasOutputs(r: ComposeRunResponse): boolean {
-  return r.tasks.some((t) => (t.outputs?.length ?? 0) > 0);
+  return (r.tasks ?? []).some((t) => (t.outputs?.length ?? 0) > 0);
 }
 
-/** Flatten a run's per-task outputs into the persistable artifact list. */
 function runOutputs(r: ComposeRunResponse): ComposeOutputView[] {
-  return r.tasks.flatMap((t) =>
+  return (r.tasks ?? []).flatMap((t) =>
     (t.outputs ?? []).map((o) => ({ path: o.path, uri: o.uri, kind: o.kind, title: o.title })),
   );
 }
 
+function stopTimer(): void {
+  polling = false;
+  if (timer) clearTimeout(timer);
+  timer = undefined;
+}
+
+/** A run reached a terminal state — render it, persist $output, clear polling. */
+function finishWith(resp: ComposeRunResponse): void {
+  stopTimer();
+  running.value = false;
+  progress.value = null;
+  result.value = resp;
+  if (resp.success) {
+    emit('update:doc', writeComposeOutputs(props.doc, runOutputs(resp)));
+  } else {
+    // Failure: clear the parked $run marker (no new outputs to keep).
+    emit('update:doc', clearComposeManaged(props.doc));
+  }
+}
+
+function startPolling(runId: string): void {
+  polling = true;
+  const tick = async (): Promise<void> => {
+    if (!polling) return;
+    try {
+      const resp = await pollComposeRun(projectId.value, runId);
+      if (resp.running) {
+        progress.value = resp;
+        timer = setTimeout(tick, POLL_MS);
+      } else {
+        finishWith(resp);
+      }
+    } catch {
+      // Run gone (pod restart?) or transient error — stop, surface, drop $run.
+      stopTimer();
+      running.value = false;
+      progress.value = null;
+      fetchError.value = 'Lauf nicht mehr verfügbar (Pod-Neustart?) — bitte neu ausführen.';
+      emit('update:doc', clearComposeManaged(props.doc));
+    }
+  };
+  timer = setTimeout(tick, POLL_MS);
+}
+
 async function run(): Promise<void> {
+  stopTimer();
   running.value = true;
   fetchError.value = null;
   result.value = null;
+  progress.value = null;
   try {
-    const response = await brainFetch<ComposeRunResponse>('POST', 'compose/run', {
-      body: {
-        projectId: projectId.value,
-        composeYaml: props.doc,
-        composeBasePath: composeBasePath.value,
-        sessionId: sessionId.value,
-      },
+    const resp = await postComposeRun(projectId.value, {
+      composeYaml: props.doc,
+      composeBasePath: composeBasePath.value,
+      sessionId: sessionId.value,
     });
-    result.value = response;
-    // Record the produced artifacts into the manifest so a refresh re-shows
-    // them (only on success — a failure keeps the last good `$output`).
-    if (response.success) {
-      emit('update:doc', writeComposeOutputs(props.doc, runOutputs(response)));
+    if (resp.running && resp.runId) {
+      // Long run: park the runId so a refresh resumes, then poll.
+      progress.value = resp;
+      emit('update:doc', writeComposeRun(props.doc, { id: resp.runId, startedAt: new Date().toISOString() }));
+      startPolling(resp.runId);
+    } else {
+      finishWith(resp);
     }
   } catch (e) {
-    fetchError.value = e instanceof Error ? e.message : 'Compose run failed.';
-  } finally {
     running.value = false;
+    fetchError.value = e instanceof Error ? e.message : 'Compose run failed.';
   }
 }
+
+onMounted(() => {
+  // Resume a run that was in flight before a refresh.
+  const marker = readComposeRun(props.doc);
+  if (marker) {
+    running.value = true;
+    startPolling(marker.id);
+  }
+});
+onUnmounted(stopTimer);
 </script>
 
 <template>
@@ -151,6 +182,9 @@ async function run(): Promise<void> {
       <span v-if="result" class="text-sm opacity-70">
         Workspace: {{ result.workspace }} · {{ result.success ? 'success' : 'failed' }}
       </span>
+      <span v-else-if="progress" class="text-sm opacity-70">
+        Läuft… Task {{ (progress.currentTaskIndex ?? 0) + 1 }}{{ progress.currentTaskType ? ` (${progress.currentTaskType})` : '' }}
+      </span>
     </div>
 
     <VAlert v-if="fetchError" variant="error">{{ fetchError }}</VAlert>
@@ -158,8 +192,13 @@ async function run(): Promise<void> {
       {{ result.error ?? 'Compose failed.' }}
     </VAlert>
 
+    <!-- Live progress (long run): tail of the current exec -->
+    <VCard v-if="progress && progress.tail && progress.tail.length">
+      <pre class="text-xs whitespace-pre-wrap overflow-auto max-h-64">{{ progress.tail.join('\n') }}</pre>
+    </VCard>
+
     <template v-if="result">
-      <div v-for="(task, ti) in result.tasks" :key="ti" class="flex flex-col gap-2">
+      <div v-for="(task, ti) in result.tasks ?? []" :key="ti" class="flex flex-col gap-2">
         <VAlert v-if="task.status !== 'success' && task.error" variant="error">
           Task {{ ti + 1 }}: {{ task.error }}
         </VAlert>
@@ -177,7 +216,7 @@ async function run(): Promise<void> {
         Run finished — no declared outputs.
       </p>
     </template>
-    <template v-else-if="persisted.length">
+    <template v-else-if="!progress && persisted.length">
       <ComposeOutput
         v-for="(out, oi) in persisted"
         :key="oi"
@@ -185,7 +224,7 @@ async function run(): Promise<void> {
         :output="out"
       />
     </template>
-    <p v-else-if="!running && !fetchError" class="text-sm opacity-60">
+    <p v-else-if="!running && !progress && !fetchError" class="text-sm opacity-60">
       Press “Run compose” to provision the workspace and run the tasks.
     </p>
   </div>

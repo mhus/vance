@@ -41,6 +41,7 @@ workspace:
   name: my-work            # benannter Workspace (überlebt Re-Runs in der Session)
   type: temp               # temp | git | node | python
   clear: false             # true = vorher leeren, dann leer neu anlegen
+  target: WORK             # WORK (default) | CLIENT (exec-only, auf dem Foot)
   options: { repoUrl: … }  # nur git: repoUrl/branch
 import:
   - from: vance:data.csv   # vance:<path> = Dokument; http(s):// = externe Quelle
@@ -97,6 +98,11 @@ export:
   Datei-Adapter (`isEnabled()` prüft, `read`/`readRaw`/`write`/`list` werfen
   sonst). Für garantierte Datei-Erzeugung immer `python`/`exec` (direktes cwd).
 - Fehler stehen im Task-Result (`status: failure`, `error`), nicht als Exception.
+- **`target: CLIENT`**: läuft gegen das Dateisystem des verbundenen **Foot**
+  (braucht eine Foot-Session). v1 **nur `exec`-Tasks** (kein managed Workspace,
+  kein `import`/`export`/`delete`, kein python/tex/js) — Dateien holt/schreibt man
+  in den Shell-Kommandos selbst (curl/git/cat). Nützlich für „mehrere Shell-
+  Schritte nacheinander auf dem lokalen Rechner". Default bleibt `WORK`.
 - **Workspace löschen:** `workspace: { name: x, delete: true }` verwirft den
   benannten Workspace und stoppt (idempotent — fehlt er, ist es ein No-op).
   `delete` ist **terminal**: nicht mit `clear`/`import`/`tasks`/`export`

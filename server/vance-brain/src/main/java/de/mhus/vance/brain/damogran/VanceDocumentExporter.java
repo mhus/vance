@@ -2,13 +2,13 @@ package de.mhus.vance.brain.damogran;
 
 import de.mhus.vance.brain.damogran.DamogranManifest.ExportEntry;
 import de.mhus.vance.shared.document.DocumentService;
-import de.mhus.vance.shared.workspace.WorkspaceService;
 import java.nio.charset.StandardCharsets;
 import java.util.Set;
 import org.springframework.stereotype.Component;
 
 /**
- * Exports a workspace file to a project document ({@code vance:<path>}).
+ * Exports a workspace file to a project document ({@code vance:<path>}). The
+ * source read goes through {@code ctx.fileIo()} (server RootDir or remote host).
  * Textual mime → editable text document; otherwise a binary document.
  */
 @Component
@@ -19,11 +19,9 @@ class VanceDocumentExporter implements DamogranExporter {
     private static final String CREATED_BY = "damogran";
 
     private final DocumentService documentService;
-    private final WorkspaceService workspaceService;
 
-    VanceDocumentExporter(DocumentService documentService, WorkspaceService workspaceService) {
+    VanceDocumentExporter(DocumentService documentService) {
         this.documentService = documentService;
-        this.workspaceService = workspaceService;
     }
 
     @Override
@@ -33,11 +31,10 @@ class VanceDocumentExporter implements DamogranExporter {
 
     @Override
     public void doExport(DamogranContext ctx, ExportEntry entry) {
-        DamogranWorkspaceIo.requireWorkRoot(ctx, "export");
         DamogranUri.VanceRef ref = DamogranUri.resolveVance(ctx.composeBaseDir(), entry.to());
         String project = ref.project() != null ? ref.project() : ctx.projectId();
         String docPath = ref.path();
-        byte[] bytes = DamogranWorkspaceIo.readBytes(workspaceService, ctx, entry.from(), MAX_EXPORT_BYTES);
+        byte[] bytes = ctx.requireFileIo("export").readBytes(entry.from(), MAX_EXPORT_BYTES);
         String mime = DamogranMime.mimeForPath(docPath);
 
         if (DamogranMime.isText(mime)) {

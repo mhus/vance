@@ -34,8 +34,8 @@ class DaemonComposeRunnerTest {
         workTargetService = mock(WorkTargetService.class);
         thinkProcessService = mock(ThinkProcessService.class);
         daemonRegistry = mock(DaemonRegistry.class);
-        runner = new DaemonComposeRunner(
-                workTargetService, thinkProcessService, mock(ToolDispatcher.class), daemonRegistry);
+        runner = new DaemonComposeRunner(workTargetService, thinkProcessService,
+                mock(ToolDispatcher.class), mock(DamogranTransport.class), daemonRegistry);
     }
 
     private DamogranManifest manifest(List<TaskSpec> tasks) {

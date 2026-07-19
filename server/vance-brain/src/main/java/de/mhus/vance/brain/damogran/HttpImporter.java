@@ -1,7 +1,6 @@
 package de.mhus.vance.brain.damogran;
 
 import de.mhus.vance.brain.damogran.DamogranManifest.ImportEntry;
-import de.mhus.vance.shared.workspace.WorkspaceService;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -12,16 +11,15 @@ import java.util.Set;
 import org.springframework.stereotype.Component;
 
 /**
- * Imports an external {@code http(s)://…} resource into the workspace.
+ * Imports an external {@code http(s)://…} resource into the workspace (WORK
+ * RootDir or remote host, via {@code ctx.fileIo()}).
  */
 @Component
 class HttpImporter implements DamogranImporter {
 
-    private final WorkspaceService workspaceService;
     private final HttpClient httpClient;
 
-    HttpImporter(WorkspaceService workspaceService) {
-        this.workspaceService = workspaceService;
+    HttpImporter() {
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(15))
                 .followRedirects(HttpClient.Redirect.NORMAL)
@@ -35,8 +33,7 @@ class HttpImporter implements DamogranImporter {
 
     @Override
     public void doImport(DamogranContext ctx, ImportEntry entry) {
-        DamogranWorkspaceIo.requireWorkRoot(ctx, "import");
-        DamogranWorkspaceIo.writeBytes(workspaceService, ctx, entry.to(), httpGet(entry.from()));
+        ctx.requireFileIo("import").writeBytes(entry.to(), httpGet(entry.from()));
     }
 
     private byte[] httpGet(String url) {

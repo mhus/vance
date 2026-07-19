@@ -23,8 +23,9 @@ public class DaemonComposeRunner extends RemoteExecComposeRunner {
     public DaemonComposeRunner(WorkTargetService workTargetService,
                                ThinkProcessService thinkProcessService,
                                @Lazy ToolDispatcher toolDispatcher,
+                               DamogranTransport transport,
                                DaemonRegistry daemonRegistry) {
-        super(workTargetService, thinkProcessService, toolDispatcher);
+        super(workTargetService, thinkProcessService, toolDispatcher, transport);
         this.daemonRegistry = daemonRegistry;
     }
 

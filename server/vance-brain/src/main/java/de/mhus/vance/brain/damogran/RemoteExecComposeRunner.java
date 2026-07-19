@@ -1,5 +1,7 @@
 package de.mhus.vance.brain.damogran;
 
+import de.mhus.vance.brain.damogran.DamogranManifest.ExportEntry;
+import de.mhus.vance.brain.damogran.DamogranManifest.ImportEntry;
 import de.mhus.vance.brain.damogran.DamogranManifest.TaskSpec;
 import de.mhus.vance.brain.damogran.DamogranManifest.WorkspaceSpec;
 import de.mhus.vance.brain.tools.ContextToolsApi;
@@ -40,13 +42,16 @@ abstract class RemoteExecComposeRunner implements ComposeRunner {
     private final WorkTargetService workTargetService;
     private final ThinkProcessService thinkProcessService;
     private final ToolDispatcher toolDispatcher;
+    private final DamogranTransport transport;
 
     protected RemoteExecComposeRunner(WorkTargetService workTargetService,
                                       ThinkProcessService thinkProcessService,
-                                      ToolDispatcher toolDispatcher) {
+                                      ToolDispatcher toolDispatcher,
+                                      DamogranTransport transport) {
         this.workTargetService = workTargetService;
         this.thinkProcessService = thinkProcessService;
         this.toolDispatcher = toolDispatcher;
+        this.transport = transport;
     }
 
     /** The WorkTarget to bind for this run (e.g. {@code WorkTarget.client()}). */
@@ -69,11 +74,6 @@ abstract class RemoteExecComposeRunner implements ComposeRunner {
             throw new DamogranException(target()
                     + " target has no managed workspace — 'delete'/'clear' not supported");
         }
-        if (!manifest.imports().isEmpty() || !manifest.exports().isEmpty()) {
-            throw new DamogranException(target()
-                    + " target does not support 'import'/'export' (v1) — move files with "
-                    + "shell commands (curl/git/…) inside exec tasks");
-        }
         if (processId == null) {
             throw new DamogranException(target()
                     + " target requires a session-bound process with a connected remote");
@@ -88,6 +88,15 @@ abstract class RemoteExecComposeRunner implements ComposeRunner {
         ToolInvocationContext scope = new ToolInvocationContext(
                 tenantId, projectId, process.getSessionId(), processId, null);
         ContextToolsApi tools = new ContextToolsApi(toolDispatcher, scope, BaseEngineTools.WORK_TARGET);
+        // Import/export write/read via the remote file tools (RemoteFileIo);
+        // the vance:/http: importers work unchanged. git:* stays WORK-only.
+        DamogranContext ctx = new DamogranContext(
+                tenantId, projectId, processId, ws.name(), ws.name(), null,
+                target(), null, baseDir, new RemoteFileIo(tools));
+
+        for (ImportEntry imp : manifest.imports()) {
+            transport.doImport(ctx, imp);
+        }
 
         List<DamogranTaskResult> results = new ArrayList<>();
         for (TaskSpec task : manifest.tasks()) {
@@ -99,6 +108,10 @@ abstract class RemoteExecComposeRunner implements ComposeRunner {
                 return new DamogranComposeResult(
                         DamogranStatus.FAILURE, ws.name(), List.copyOf(results), result.error());
             }
+        }
+
+        for (ExportEntry exp : manifest.exports()) {
+            transport.doExport(ctx, exp);
         }
         return new DamogranComposeResult(
                 DamogranStatus.SUCCESS, ws.name(), List.copyOf(results), null);

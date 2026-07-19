@@ -21,8 +21,9 @@ public class ClientComposeRunner extends RemoteExecComposeRunner {
 
     public ClientComposeRunner(WorkTargetService workTargetService,
                                ThinkProcessService thinkProcessService,
-                               @Lazy ToolDispatcher toolDispatcher) {
-        super(workTargetService, thinkProcessService, toolDispatcher);
+                               @Lazy ToolDispatcher toolDispatcher,
+                               DamogranTransport transport) {
+        super(workTargetService, thinkProcessService, toolDispatcher, transport);
         this.workTargetService = workTargetService;
     }
 

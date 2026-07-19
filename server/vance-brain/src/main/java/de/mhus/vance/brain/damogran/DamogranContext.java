@@ -38,7 +38,25 @@ public record DamogranContext(
         @Nullable Path workspacePath,
         String target,
         @Nullable String daemonName,
-        @Nullable String composeBaseDir) {
+        @Nullable String composeBaseDir,
+        @Nullable ComposeFileIo fileIo) {
+
+    /** Convenience for callers/tests that don't drive import/export (no file IO). */
+    public DamogranContext(
+            String tenantId, String projectId, @Nullable String processId,
+            String workspaceName, String workspaceDirName, @Nullable Path workspacePath,
+            String target, @Nullable String daemonName, @Nullable String composeBaseDir) {
+        this(tenantId, projectId, processId, workspaceName, workspaceDirName, workspacePath,
+                target, daemonName, composeBaseDir, null);
+    }
+
+    /** The run's file backend for import/export; throws if none was bound. */
+    public ComposeFileIo requireFileIo(String op) {
+        if (fileIo == null) {
+            throw new DamogranException(op + ": no file IO bound to this compose run");
+        }
+        return fileIo;
+    }
 
     public boolean isWork() {
         return "WORK".equals(target);

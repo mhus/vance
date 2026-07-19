@@ -23,13 +23,16 @@ class ClientComposeRunnerTest {
 
     private WorkTargetService workTargetService;
     private ThinkProcessService thinkProcessService;
+    private DamogranTransport transport;
     private ClientComposeRunner runner;
 
     @BeforeEach
     void setUp() {
         workTargetService = mock(WorkTargetService.class);
         thinkProcessService = mock(ThinkProcessService.class);
-        runner = new ClientComposeRunner(workTargetService, thinkProcessService, mock(ToolDispatcher.class));
+        transport = mock(DamogranTransport.class);
+        runner = new ClientComposeRunner(
+                workTargetService, thinkProcessService, mock(ToolDispatcher.class), transport);
     }
 
     private DamogranManifest manifest(
@@ -44,13 +47,22 @@ class ClientComposeRunnerTest {
     }
 
     @Test
-    void run_withImport_throws_unsupported() {
-        DamogranManifest m = manifest(List.of(exec("ls")),
+    void run_import_dispatchedToTransport() {
+        ThinkProcessDocument process = mock(ThinkProcessDocument.class);
+        when(process.getSessionId()).thenReturn("s1");
+        when(thinkProcessService.findById("proc")).thenReturn(Optional.of(process));
+        when(workTargetService.clientConnected("s1")).thenReturn(true);
+
+        // Import + no tasks: import flows to the transport (RemoteFileIo backend),
+        // then the run succeeds.
+        DamogranManifest m = manifest(List.of(),
                 List.of(new ImportEntry("vance:a.txt", "a.txt", Map.of())), List.of(), false);
 
-        assertThatThrownBy(() -> runner.run("t", "p", "proc", m, null))
-                .isInstanceOf(DamogranException.class)
-                .hasMessageContaining("import");
+        DamogranComposeResult result = runner.run("t", "p", "proc", m, null);
+
+        assertThat(result.isSuccess()).isTrue();
+        org.mockito.Mockito.verify(transport)
+                .doImport(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test

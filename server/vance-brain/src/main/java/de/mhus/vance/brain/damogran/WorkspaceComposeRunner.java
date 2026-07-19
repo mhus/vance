@@ -76,10 +76,12 @@ public class WorkspaceComposeRunner implements ComposeRunner {
         if (processId != null) {
             workTargetService.set(processId, WorkTarget.work(handle.getDirName()));
         }
+        ComposeFileIo io = new WorkspaceFileIo(
+                workspaceService, tenantId, projectId, handle.getDirName());
         DamogranContext ctx = new DamogranContext(
                 tenantId, projectId, processId,
                 ws.name(), handle.getDirName(), handle.getPath(),
-                ws.target(), null, baseDir);
+                ws.target(), null, baseDir, io);
 
         for (ImportEntry imp : manifest.imports()) {
             transport.doImport(ctx, imp);

@@ -101,10 +101,11 @@ export:
 - **`target: CLIENT` / `DAEMON`**: läuft gegen das Dateisystem eines Remote-
   Hosts — CLIENT = der verbundene **Foot** (Foot-Session nötig), DAEMON = ein
   benannter **Daemon** (`workspace.name` = Daemon-Name, muss im Projekt verbunden
-  sein). Beide v1 **nur `exec`-Tasks** (kein managed Workspace, kein
-  `import`/`export`/`delete`, kein python/tex/js) — Dateien holt/schreibt man in
-  den Shell-Kommandos selbst (curl/git/cat). Für „mehrere Shell-Schritte
-  nacheinander auf einem Remote-Rechner". Default bleibt `WORK`.
+  sein). Tasks: **nur `exec`** (kein managed Workspace, kein `delete`, kein
+  python/tex/js). **`import`/`export` gehen** — aber **text-basiert** und nur
+  `vance:`/`http:` (Import) bzw. `vance:` (Export); `git:*` und Binärdateien sind
+  WORK-only. Für „mehrere Shell-Schritte nacheinander auf einem Remote-Rechner".
+  Default bleibt `WORK`.
 - **Workspace löschen:** `workspace: { name: x, delete: true }` verwirft den
   benannten Workspace und stoppt (idempotent — fehlt er, ist es ein No-op).
   `delete` ist **terminal**: nicht mit `clear`/`import`/`tasks`/`export`

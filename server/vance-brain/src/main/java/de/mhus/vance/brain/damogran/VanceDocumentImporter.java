@@ -3,7 +3,6 @@ package de.mhus.vance.brain.damogran;
 import de.mhus.vance.brain.damogran.DamogranManifest.ImportEntry;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
-import de.mhus.vance.shared.workspace.WorkspaceService;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Optional;
@@ -11,17 +10,17 @@ import java.util.Set;
 import org.springframework.stereotype.Component;
 
 /**
- * Imports a project document ({@code vance:<path>}) into the workspace.
+ * Imports a project document ({@code vance:<path>}) into the workspace. The
+ * destination write goes through {@code ctx.fileIo()}, so it lands in the
+ * server RootDir (WORK) or on the remote host (CLIENT/DAEMON) transparently.
  */
 @Component
 class VanceDocumentImporter implements DamogranImporter {
 
     private final DocumentService documentService;
-    private final WorkspaceService workspaceService;
 
-    VanceDocumentImporter(DocumentService documentService, WorkspaceService workspaceService) {
+    VanceDocumentImporter(DocumentService documentService) {
         this.documentService = documentService;
-        this.workspaceService = workspaceService;
     }
 
     @Override
@@ -31,7 +30,6 @@ class VanceDocumentImporter implements DamogranImporter {
 
     @Override
     public void doImport(DamogranContext ctx, ImportEntry entry) {
-        DamogranWorkspaceIo.requireWorkRoot(ctx, "import");
         DamogranUri.VanceRef ref = DamogranUri.resolveVance(ctx.composeBaseDir(), entry.from());
         String project = ref.project() != null ? ref.project() : ctx.projectId();
         // Cross-project ACL is enforced by findByPath.
@@ -41,7 +39,7 @@ class VanceDocumentImporter implements DamogranImporter {
             throw new DamogranException("import source not found: " + entry.from());
         }
         try (InputStream in = documentService.loadContent(doc.get())) {
-            DamogranWorkspaceIo.writeBytes(workspaceService, ctx, entry.to(), in.readAllBytes());
+            ctx.requireFileIo("import").writeBytes(entry.to(), in.readAllBytes());
         } catch (IOException e) {
             throw new DamogranException("import failed reading " + entry.from() + ": " + e.getMessage(), e);
         }

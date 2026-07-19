@@ -48,7 +48,8 @@ public class DamogranManifestParser {
         List<TaskSpec> tasks = parseTasks(root.get("tasks"));
         List<ExportEntry> exports = parseExports(root.get("export"));
 
-        return new DamogranManifest(workspace, imports, tasks, exports);
+        return new DamogranManifest(workspace, imports, tasks, exports,
+                readString(root, "title"), readString(root, "description"));
     }
 
     // ──────────────────── workspace ────────────────────

@@ -52,7 +52,7 @@ class DamogranComposeServiceTest {
     private DamogranManifest manifest(String target, List<TaskSpec> tasks,
                                       List<ImportEntry> imports, List<ExportEntry> exports) {
         return new DamogranManifest(
-                new WorkspaceSpec("ws", "temp", false, Map.of(), target), imports, tasks, exports);
+                new WorkspaceSpec("ws", "temp", false, Map.of(), target), imports, tasks, exports, null, null);
     }
 
     private static TaskSpec task(String type) {

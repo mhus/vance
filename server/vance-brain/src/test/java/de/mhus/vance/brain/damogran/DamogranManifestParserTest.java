@@ -14,6 +14,8 @@ class DamogranManifestParserTest {
     void parse_fullManifest_mapsAllSections() {
         String yaml =
                 """
+                title: My Compose
+                description: Builds a thing
                 workspace:
                   name: my-workspace
                   type: node
@@ -40,6 +42,8 @@ class DamogranManifestParserTest {
 
         DamogranManifest m = parser.parse(yaml);
 
+        assertThat(m.title()).isEqualTo("My Compose");
+        assertThat(m.description()).isEqualTo("Builds a thing");
         assertThat(m.workspace().name()).isEqualTo("my-workspace");
         assertThat(m.workspace().type()).isEqualTo("node");
         assertThat(m.workspace().clear()).isTrue();

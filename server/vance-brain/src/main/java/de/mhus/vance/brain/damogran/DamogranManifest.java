@@ -47,7 +47,9 @@ public record DamogranManifest(
         WorkspaceSpec workspace,
         List<ImportEntry> imports,
         List<TaskSpec> tasks,
-        List<ExportEntry> exports) {
+        List<ExportEntry> exports,
+        @Nullable String title,
+        @Nullable String description) {
 
     /**
      * The workspace this compose operates on.

@@ -11,6 +11,7 @@
  * `export` step.
  */
 import { computed, ref } from 'vue';
+import yaml from 'js-yaml';
 import { brainFetch } from '@vance/shared';
 import { VAlert, VButton, VCard } from '@/components';
 import { useCortexStore } from '@/cortex/stores/cortexStore';
@@ -35,6 +36,23 @@ const composeBasePath = computed<string>(() => {
   const path = store.activeTab?.path ?? '';
   const slash = path.lastIndexOf('/');
   return slash > 0 ? path.slice(0, slash) : '';
+});
+
+/** Optional title/description from the manifest, shown above the Run button. */
+const meta = computed<{ title?: string; description?: string }>(() => {
+  try {
+    const parsed = yaml.load(props.doc);
+    if (parsed && typeof parsed === 'object') {
+      const p = parsed as Record<string, unknown>;
+      return {
+        title: typeof p.title === 'string' ? p.title : undefined,
+        description: typeof p.description === 'string' ? p.description : undefined,
+      };
+    }
+  } catch {
+    // Invalid YAML mid-edit — just show no meta.
+  }
+  return {};
 });
 
 interface OutputArtifact {
@@ -87,6 +105,10 @@ async function run(): Promise<void> {
 
 <template>
   <div class="flex flex-col gap-3 p-4">
+    <div v-if="meta.title || meta.description" class="flex flex-col gap-1">
+      <h3 v-if="meta.title" class="text-base font-semibold">{{ meta.title }}</h3>
+      <p v-if="meta.description" class="text-sm opacity-70 whitespace-pre-line">{{ meta.description }}</p>
+    </div>
     <div class="flex items-center gap-3">
       <VButton variant="primary" size="sm" :loading="running" @click="run">
         ▶ Run compose

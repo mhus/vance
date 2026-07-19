@@ -12,6 +12,7 @@
  * host resolves output content URLs, so this view needs no tenant/REST access.
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import jsyaml from 'js-yaml';
 import { NodeViewWrapper } from '@tiptap/vue-3';
 import type { Editor } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
@@ -29,6 +30,23 @@ const props = defineProps<{
 }>();
 
 const yaml = computed(() => (props.node.attrs?.yaml as string | null) ?? '');
+
+/** Optional title/description from the manifest, shown above the cell. */
+const meta = computed<{ title?: string; description?: string }>(() => {
+  try {
+    const parsed = jsyaml.load(yaml.value);
+    if (parsed && typeof parsed === 'object') {
+      const p = parsed as Record<string, unknown>;
+      return {
+        title: typeof p.title === 'string' ? p.title : undefined,
+        description: typeof p.description === 'string' ? p.description : undefined,
+      };
+    }
+  } catch {
+    // Invalid YAML mid-edit — no meta.
+  }
+  return {};
+});
 
 const editable = ref(props.editor.isEditable);
 function syncEditable() { editable.value = props.editor.isEditable; }
@@ -72,6 +90,10 @@ function isImage(o: ComposeOutputView): boolean {
 <template>
   <NodeViewWrapper as="aside" class="vance-compose">
     <div class="vance-compose__cell" contenteditable="false">
+      <div v-if="meta.title || meta.description" class="vance-compose__meta">
+        <div v-if="meta.title" class="vance-compose__title">{{ meta.title }}</div>
+        <div v-if="meta.description" class="vance-compose__desc">{{ meta.description }}</div>
+      </div>
       <textarea
         v-if="editable"
         class="vance-compose__src"
@@ -138,6 +160,17 @@ function isImage(o: ComposeOutputView): boolean {
   border-radius: 0.5rem;
   padding: 0.6rem 0.75rem;
   background: oklch(var(--bc) / 0.03);
+}
+.vance-compose__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.vance-compose__title { font-weight: 600; }
+.vance-compose__desc {
+  font-size: 0.82rem;
+  opacity: 0.7;
+  white-space: pre-line;
 }
 .vance-compose__src {
   width: 100%;

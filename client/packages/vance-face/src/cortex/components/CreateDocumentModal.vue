@@ -324,6 +324,8 @@ function buildKindStub(kind: string, mime: string): string {
     // runner ignores $meta and reads workspace/import/tasks/export.
     if (isYaml) {
       return '$meta:\n  kind: compose\n'
+        + 'title: My Compose\n'
+        + 'description: What this compose does.\n'
         + 'workspace:\n  name: my-workspace\n  type: temp\n'
         + 'tasks:\n  - type: exec\n    command: echo "hello from damogran" > out.txt\n'
         + '    outputs:\n      - out.txt\n';

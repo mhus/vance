@@ -35,6 +35,8 @@ Der Lauf ist **linear** und **hält beim ersten fehlgeschlagenen Task**.
 ## Manifest
 
 ```yaml
+title: Report bauen        # optional; im View über dem Run-Button gezeigt
+description: Sortiert + fasst zusammen   # optional
 workspace:
   name: my-work            # benannter Workspace (überlebt Re-Runs in der Session)
   type: temp               # temp | git | node | python

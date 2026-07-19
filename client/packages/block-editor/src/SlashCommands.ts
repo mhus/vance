@@ -228,7 +228,9 @@ const ITEMS: SlashItemDef[] = [
           type: 'vanceCompose',
           attrs: {
             yaml:
-              'workspace:\n  name: my-workspace\n  type: temp\n'
+              'title: My Compose\n'
+              + 'description: What this compose does.\n'
+              + 'workspace:\n  name: my-workspace\n  type: temp\n'
               + 'tasks:\n  - type: exec\n    command: echo "hello from damogran" > out.txt\n'
               + '    outputs:\n      - out.txt\n',
           },

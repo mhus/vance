@@ -35,7 +35,11 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@vance/generated": "workspace:*"
+    "@vance/generated": "workspace:*",
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9"
   },
   "peerDependencies": {
     "vue": "^3.5.0"

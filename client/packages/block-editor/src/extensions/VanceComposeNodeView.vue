@@ -17,7 +17,8 @@ import { NodeViewWrapper } from '@tiptap/vue-3';
 import type { Editor } from '@tiptap/core';
 import type { Component } from 'vue';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
-import type { ComposeRunResult } from './VanceCompose';
+import type { ComposeOutputView, ComposeRunResult } from './VanceCompose';
+import { readComposeOutputs, writeComposeOutputs } from './composeOutputs';
 
 interface ExtensionOptions {
   runCompose?: ((yaml: string) => Promise<ComposeRunResult>) | null;
@@ -72,6 +73,13 @@ const running = ref(false);
 const error = ref<string | null>(null);
 const result = ref<ComposeRunResult | null>(null);
 
+/**
+ * Outputs a prior run recorded in the fence's `$output:` block — read from the
+ * block's own YAML, so produced files survive a reload. Shown when there is no
+ * fresh run `result`.
+ */
+const persisted = computed<ComposeOutputView[]>(() => readComposeOutputs(yaml.value));
+
 function onYaml(e: Event) {
   props.updateAttributes({ yaml: (e.target as HTMLTextAreaElement).value });
 }
@@ -83,7 +91,16 @@ async function run() {
   error.value = null;
   result.value = null;
   try {
-    result.value = await runner(yaml.value);
+    const res = await runner(yaml.value);
+    result.value = res;
+    // Record produced artifacts into the fence YAML → workpage auto-saves,
+    // so a reload re-shows them (only on success; a failure keeps last good).
+    if (res.success) {
+      const outputs = res.tasks.flatMap((t) =>
+        (t.outputs ?? []).map((o) => ({ path: o.path, uri: o.uri, kind: o.kind, title: o.title })),
+      );
+      props.updateAttributes({ yaml: writeComposeOutputs(yaml.value, outputs) });
+    }
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Compose run failed';
   } finally {
@@ -153,6 +170,21 @@ async function run() {
             v-if="task.log && (task.outputs?.length ?? 0) === 0"
             class="vance-compose__log"
           >{{ task.log }}</pre>
+        </template>
+      </div>
+
+      <div v-else-if="persisted.length" class="vance-compose__out">
+        <template v-for="(o, oi) in persisted" :key="oi">
+          <component
+            :is="outputComponent"
+            v-if="outputComponent"
+            :project-id="projectId"
+            :output="o"
+          />
+          <div v-else class="vance-compose__art">
+            <div class="vance-compose__art-title">{{ o.title || o.path }}</div>
+            <div class="vance-compose__desc">{{ o.path }}</div>
+          </div>
         </template>
       </div>
     </div>

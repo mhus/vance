@@ -247,9 +247,16 @@ importers:
       '@vance/generated':
         specifier: workspace:*
         version: link:../generated
+      js-yaml:
+        specifier: ^4.1.0
+        version: 4.2.0
       vue:
         specifier: ^3.5.0
         version: 3.5.38(typescript@5.9.3)
+    devDependencies:
+      '@types/js-yaml':
+        specifier: ^4.0.9
+        version: 4.0.9
 
   client/packages/vance-face:
     dependencies:

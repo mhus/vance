@@ -12,7 +12,12 @@
  */
 import { computed, ref } from 'vue';
 import yaml from 'js-yaml';
-import { brainFetch } from '@vance/shared';
+import {
+  brainFetch,
+  readComposeOutputs,
+  writeComposeOutputs,
+  type ComposeOutputView,
+} from '@vance/shared';
 import { VAlert, VButton, VCard } from '@/components';
 import { useCortexStore } from '@/cortex/stores/cortexStore';
 import ComposeOutput from './ComposeOutput.vue';
@@ -22,6 +27,8 @@ interface Props {
   doc: string;
 }
 const props = defineProps<Props>();
+/** Write the manifest back (with a fresh `$output:` block) → shell auto-saves. */
+const emit = defineEmits<{ (e: 'update:doc', doc: string): void }>();
 const store = useCortexStore();
 
 /** Non-null project id — Cortex always has one open; '' only pre-selection. */
@@ -79,8 +86,22 @@ const running = ref(false);
 const fetchError = ref<string | null>(null);
 const result = ref<ComposeRunResponse | null>(null);
 
+/**
+ * Outputs a prior run recorded in the manifest's `$output:` block — so
+ * produced files survive a page refresh (the in-memory `result` does not).
+ * Shown only when there is no fresh run `result` to display.
+ */
+const persisted = computed<ComposeOutputView[]>(() => readComposeOutputs(props.doc));
+
 function hasOutputs(r: ComposeRunResponse): boolean {
   return r.tasks.some((t) => (t.outputs?.length ?? 0) > 0);
+}
+
+/** Flatten a run's per-task outputs into the persistable artifact list. */
+function runOutputs(r: ComposeRunResponse): ComposeOutputView[] {
+  return r.tasks.flatMap((t) =>
+    (t.outputs ?? []).map((o) => ({ path: o.path, uri: o.uri, kind: o.kind, title: o.title })),
+  );
 }
 
 async function run(): Promise<void> {
@@ -88,13 +109,19 @@ async function run(): Promise<void> {
   fetchError.value = null;
   result.value = null;
   try {
-    result.value = await brainFetch<ComposeRunResponse>('POST', 'compose/run', {
+    const response = await brainFetch<ComposeRunResponse>('POST', 'compose/run', {
       body: {
         projectId: projectId.value,
         composeYaml: props.doc,
         composeBasePath: composeBasePath.value,
       },
     });
+    result.value = response;
+    // Record the produced artifacts into the manifest so a refresh re-shows
+    // them (only on success — a failure keeps the last good `$output`).
+    if (response.success) {
+      emit('update:doc', writeComposeOutputs(props.doc, runOutputs(response)));
+    }
   } catch (e) {
     fetchError.value = e instanceof Error ? e.message : 'Compose run failed.';
   } finally {
@@ -141,6 +168,14 @@ async function run(): Promise<void> {
       <p v-if="result.success && !hasOutputs(result)" class="text-sm opacity-60">
         Run finished — no declared outputs.
       </p>
+    </template>
+    <template v-else-if="persisted.length">
+      <ComposeOutput
+        v-for="(out, oi) in persisted"
+        :key="oi"
+        :project-id="projectId"
+        :output="out"
+      />
     </template>
     <p v-else-if="!running && !fetchError" class="text-sm opacity-60">
       Press “Run compose” to provision the workspace and run the tasks.

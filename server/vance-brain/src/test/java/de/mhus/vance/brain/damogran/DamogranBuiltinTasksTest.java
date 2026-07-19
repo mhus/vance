@@ -23,11 +23,11 @@ import org.junit.jupiter.api.Test;
 class DamogranBuiltinTasksTest {
 
     private static DamogranContext workCtx() {
-        return new DamogranContext("t", "p", "proc1", "ws", "ws", Path.of("/tmp/ws"), "WORK", null);
+        return new DamogranContext("t", "p", "proc1", "ws", "ws", Path.of("/tmp/ws"), "WORK", null, null);
     }
 
     private static DamogranContext clientCtx() {
-        return new DamogranContext("t", "p", "proc1", "ws", "ws", null, "CLIENT", null);
+        return new DamogranContext("t", "p", "proc1", "ws", "ws", null, "CLIENT", null, null);
     }
 
     // ──────────────────── exec ────────────────────

@@ -26,6 +26,17 @@ const store = useCortexStore();
 /** Non-null project id — Cortex always has one open; '' only pre-selection. */
 const projectId = computed<string>(() => store.projectId ?? '');
 
+/**
+ * Directory of the open compose document — relative `vance:` import/export
+ * paths resolve against it (like the legacy tex-compose behaviour). Empty at
+ * project root.
+ */
+const composeBasePath = computed<string>(() => {
+  const path = store.activeTab?.path ?? '';
+  const slash = path.lastIndexOf('/');
+  return slash > 0 ? path.slice(0, slash) : '';
+});
+
 interface OutputArtifact {
   path: string;
   uri: string;
@@ -60,7 +71,11 @@ async function run(): Promise<void> {
   result.value = null;
   try {
     result.value = await brainFetch<ComposeRunResponse>('POST', 'compose/run', {
-      body: { projectId: projectId.value, composeYaml: props.doc },
+      body: {
+        projectId: projectId.value,
+        composeYaml: props.doc,
+        composeBasePath: composeBasePath.value,
+      },
     });
   } catch (e) {
     fetchError.value = e instanceof Error ? e.message : 'Compose run failed.';

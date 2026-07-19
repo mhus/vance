@@ -32,9 +32,11 @@ class VanceDocumentImporter implements DamogranImporter {
     @Override
     public void doImport(DamogranContext ctx, ImportEntry entry) {
         DamogranWorkspaceIo.requireWorkRoot(ctx, "import");
-        String path = DamogranUri.stripVance(entry.from());
+        DamogranUri.VanceRef ref = DamogranUri.resolveVance(ctx.composeBaseDir(), entry.from());
+        String project = ref.project() != null ? ref.project() : ctx.projectId();
+        // Cross-project ACL is enforced by findByPath.
         Optional<DocumentDocument> doc =
-                documentService.findByPath(ctx.tenantId(), ctx.projectId(), path);
+                documentService.findByPath(ctx.tenantId(), project, ref.path());
         if (doc.isEmpty()) {
             throw new DamogranException("import source not found: " + entry.from());
         }

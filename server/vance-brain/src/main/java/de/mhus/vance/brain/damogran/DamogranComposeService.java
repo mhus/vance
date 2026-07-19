@@ -62,12 +62,31 @@ public class DamogranComposeService {
     /** Parse and run a compose manifest given as YAML text. */
     public DamogranComposeResult run(
             String tenantId, String projectId, @Nullable String processId, String yaml) {
-        return run(tenantId, projectId, processId, parser.parse(yaml));
+        return run(tenantId, projectId, processId, yaml, null);
     }
 
-    /** Run a parsed compose manifest. */
+    /**
+     * Parse and run a compose YAML.
+     *
+     * @param baseDir directory of the compose document, for resolving relative
+     *                {@code vance:} import/export paths ({@code null} = root-relative)
+     */
+    public DamogranComposeResult run(
+            String tenantId, String projectId, @Nullable String processId,
+            String yaml, @Nullable String baseDir) {
+        return run(tenantId, projectId, processId, parser.parse(yaml), baseDir);
+    }
+
+    /** Run a parsed compose manifest (root-relative {@code vance:} paths). */
     public DamogranComposeResult run(
             String tenantId, String projectId, @Nullable String processId, DamogranManifest manifest) {
+        return run(tenantId, projectId, processId, manifest, null);
+    }
+
+    /** Run a parsed compose manifest, resolving relative {@code vance:} paths against {@code baseDir}. */
+    public DamogranComposeResult run(
+            String tenantId, String projectId, @Nullable String processId,
+            DamogranManifest manifest, @Nullable String baseDir) {
         WorkspaceSpec ws = manifest.workspace();
         if (!WorkspaceSpec.DEFAULT_TARGET.equals(ws.target())) {
             throw new DamogranException(
@@ -81,7 +100,7 @@ public class DamogranComposeService {
         DamogranContext ctx = new DamogranContext(
                 tenantId, projectId, processId,
                 ws.name(), handle.getDirName(), handle.getPath(),
-                ws.target(), null);
+                ws.target(), null, baseDir);
 
         for (ImportEntry imp : manifest.imports()) {
             transport.doImport(ctx, imp);

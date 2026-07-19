@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
 class DamogranTaskExecutorTest {
 
     private static DamogranContext ctx() {
-        return new DamogranContext("t", "p", "proc1", "ws", "ws", Path.of("/tmp/ws"), "WORK", null);
+        return new DamogranContext("t", "p", "proc1", "ws", "ws", Path.of("/tmp/ws"), "WORK", null, null);
     }
 
     private static TaskSpec task(String type) {

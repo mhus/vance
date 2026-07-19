@@ -78,11 +78,14 @@ public class ComposeRunTool implements Tool {
             throw new ToolException("compose_run requires a tenant scope");
         }
         String projectId = ctx.resolveLocalProjectId();
+        String composePath = readString(params, "composePath");
         String yaml = resolveYaml(params, ctx.tenantId(), projectId);
+        // Relative vance: paths resolve against the compose document's directory.
+        String baseDir = composePath != null ? DamogranUri.parentDir(composePath) : null;
 
         try {
             DamogranComposeResult result =
-                    composeService.run(ctx.tenantId(), projectId, ctx.processId(), yaml);
+                    composeService.run(ctx.tenantId(), projectId, ctx.processId(), yaml, baseDir);
             return DamogranResponse.toMap(result);
         } catch (DamogranException e) {
             throw new ToolException(e.getMessage());

@@ -319,7 +319,12 @@ async function runCompose(yaml: string): Promise<ComposeRunResult> {
   interface ServerResponse { success: boolean; workspace?: string; error?: string; tasks?: ServerTask[] }
 
   const server = await brainFetch<ServerResponse>('POST', 'compose/run', {
-    body: { projectId: projectId.value, composeYaml: yaml },
+    body: {
+      projectId: projectId.value,
+      composeYaml: yaml,
+      // Relative vance: paths resolve against the workpage's folder.
+      composeBasePath: folder.value,
+    },
   });
   const tenant = getTenantId() ?? '';
   const base = brainBaseUrl();

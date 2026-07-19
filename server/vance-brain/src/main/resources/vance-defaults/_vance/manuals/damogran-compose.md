@@ -78,6 +78,9 @@ export:
 - **`outputs:`/`output:`** deklariert, welche Workspace-Dateien als Ergebnis
   erscheinen (rendern in der UI-Output-Region). Kein Auto-Import — persistente
   Ergebnisse gehen über `export:`.
+- **`vance:`-Pfade**: `vance:hello.tex` ist relativ zum Ordner des compose-
+  Dokuments; `vance:/x` ist root-absolut (selbes Projekt); `vance://projekt/x`
+  ist cross-project.
 - **`import` zuerst, `export` zuletzt.** Ein Task liest, was `import` + frühere
   Tasks hinterlassen haben.
 - **`llm` braucht** eine deklarierte Output-Datei; die Antwort landet dort.

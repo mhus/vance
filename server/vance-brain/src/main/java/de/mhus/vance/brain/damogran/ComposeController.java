@@ -53,9 +53,16 @@ public class ComposeController {
         }
         String projectId = body.projectId().trim();
         String yaml = resolveYaml(tenant, projectId, body);
+        // Base dir for relative vance: paths: the compose document's directory
+        // when run by path, else an explicit composeBasePath (e.g. the Cortex
+        // editor / workbook block passes the doc/page folder for inline YAML).
+        String baseDir = body.composePath() != null && !body.composePath().isBlank()
+                ? DamogranUri.parentDir(body.composePath().trim())
+                : (body.composeBasePath() != null && !body.composeBasePath().isBlank()
+                        ? body.composeBasePath().trim() : null);
 
         try {
-            DamogranComposeResult result = composeService.run(tenant, projectId, null, yaml);
+            DamogranComposeResult result = composeService.run(tenant, projectId, null, yaml, baseDir);
             return DamogranResponse.toMap(result);
         } catch (DamogranException e) {
             log.debug("compose run failed for {}/{}: {}", tenant, projectId, e.getMessage());
@@ -87,5 +94,6 @@ public class ComposeController {
     public record RunRequest(
             @Nullable String composePath,
             @Nullable String composeYaml,
+            @Nullable String composeBasePath,
             @Nullable String projectId) {}
 }

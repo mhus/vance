@@ -25,6 +25,9 @@ import org.jspecify.annotations.Nullable;
  *                        target is {@code CLIENT} (no server-side path)
  * @param target          WorkTarget kind — {@code CLIENT}, {@code WORK} or {@code DAEMON}
  * @param daemonName      target daemon name, only set when {@code target=DAEMON}
+ * @param composeBaseDir  directory of the compose document, used to resolve
+ *                        relative {@code vance:} import/export paths ({@code null}
+ *                        for inline runs without a document context)
  */
 public record DamogranContext(
         String tenantId,
@@ -34,7 +37,8 @@ public record DamogranContext(
         String workspaceDirName,
         @Nullable Path workspacePath,
         String target,
-        @Nullable String daemonName) {
+        @Nullable String daemonName,
+        @Nullable String composeBaseDir) {
 
     public boolean isWork() {
         return "WORK".equals(target);

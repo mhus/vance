@@ -34,15 +34,17 @@ class VanceDocumentExporter implements DamogranExporter {
     @Override
     public void doExport(DamogranContext ctx, ExportEntry entry) {
         DamogranWorkspaceIo.requireWorkRoot(ctx, "export");
-        String docPath = DamogranUri.stripVance(entry.to());
+        DamogranUri.VanceRef ref = DamogranUri.resolveVance(ctx.composeBaseDir(), entry.to());
+        String project = ref.project() != null ? ref.project() : ctx.projectId();
+        String docPath = ref.path();
         byte[] bytes = DamogranWorkspaceIo.readBytes(workspaceService, ctx, entry.from(), MAX_EXPORT_BYTES);
         String mime = DamogranMime.mimeForPath(docPath);
 
         if (DamogranMime.isText(mime)) {
-            documentService.upsertText(ctx.tenantId(), ctx.projectId(), docPath,
+            documentService.upsertText(ctx.tenantId(), project, docPath,
                     null, null, new String(bytes, StandardCharsets.UTF_8), CREATED_BY);
         } else {
-            documentService.createOrReplaceBinary(ctx.tenantId(), ctx.projectId(), docPath,
+            documentService.createOrReplaceBinary(ctx.tenantId(), project, docPath,
                     bytes, mime, null, null, null, CREATED_BY);
         }
     }

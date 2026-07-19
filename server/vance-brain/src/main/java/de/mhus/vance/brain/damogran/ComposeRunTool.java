@@ -1,15 +1,25 @@
 package de.mhus.vance.brain.damogran;
 
+import de.mhus.vance.api.thinkprocess.ProcessEventType;
+import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
+import de.mhus.vance.shared.thinkprocess.PendingMessageType;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 /**
@@ -17,19 +27,29 @@ import org.springframework.stereotype.Component;
  * {@link DamogranComposeService}: provision the named workspace, import
  * documents, run the tasks linearly, export results.
  *
- * <p>Takes either {@code composePath} (a {@code compose} document to load) or
- * an inline {@code composeYaml}. Returns the overall status, the workspace
- * name, and per-task results (status + produced outputs + any error).
+ * <p>Runs are <b>async</b>: quick composes return their result inline within a
+ * short fast-path; a longer one returns {@code {runId, running:true}} and the
+ * calling process gets a {@link ProcessEventType#COMPOSE_FINISHED} event when it
+ * completes — so a model process can end its turn and sleep (hours if need be),
+ * resuming on the event. Takes {@code composePath} or inline {@code composeYaml}.
  */
 @Component
+@Slf4j
 public class ComposeRunTool implements Tool {
+
+    /** How long the tool blocks for a quick result before handing back a runId. */
+    private static final long FAST_PATH_WAIT_MS = 15_000;
 
     private final DamogranComposeService composeService;
     private final DocumentService documentService;
+    private final ObjectProvider<EngineMessageRouter> engineMessageRouterProvider;
 
-    public ComposeRunTool(DamogranComposeService composeService, DocumentService documentService) {
+    public ComposeRunTool(DamogranComposeService composeService,
+                          DocumentService documentService,
+                          ObjectProvider<EngineMessageRouter> engineMessageRouterProvider) {
         this.composeService = composeService;
         this.documentService = documentService;
+        this.engineMessageRouterProvider = engineMessageRouterProvider;
     }
 
     private static final Map<String, Object> SCHEMA = Map.of(
@@ -53,8 +73,11 @@ public class ComposeRunTool implements Tool {
                 + "import documents/URLs into it, run a linear list of tasks "
                 + "(exec / js / python / spawn / llm / addon tasks such as tex), "
                 + "and export results back to documents. Takes composePath (a "
-                + "compose document) or inline composeYaml. Returns per-task "
-                + "status and produced outputs; halts at the first failing task.";
+                + "compose document) or inline composeYaml. Runs async: a quick "
+                + "compose returns per-task status + outputs inline; a long one "
+                + "returns {runId, running:true} and you receive a COMPOSE_FINISHED "
+                + "event when it completes — end your turn and resume on the event "
+                + "rather than blocking. Halts at the first failing task.";
     }
 
     @Override
@@ -83,12 +106,66 @@ public class ComposeRunTool implements Tool {
         // Relative vance: paths resolve against the compose document's directory.
         String baseDir = composePath != null ? DamogranUri.parentDir(composePath) : null;
 
+        ComposeRun run;
         try {
-            DamogranComposeResult result =
-                    composeService.run(ctx.tenantId(), projectId, ctx.processId(), yaml, baseDir);
-            return DamogranResponse.toMap(result);
+            run = composeService.runAsync(ctx.tenantId(), projectId, ctx.processId(), yaml, baseDir);
         } catch (DamogranException e) {
             throw new ToolException(e.getMessage());
+        }
+        try {
+            run.awaitDone(FAST_PATH_WAIT_MS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        if (run.isTerminal() && run.result() != null) {
+            return DamogranResponse.toMap(run.result());
+        }
+        // Still running: notify this process on completion so it can sleep.
+        String ownerProcessId = ctx.processId();
+        if (ownerProcessId != null && !ownerProcessId.isBlank()) {
+            run.onDone(finished -> pushComposeFinished(finished, ownerProcessId));
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("runId", run.runId());
+        out.put("running", true);
+        out.put("status", "running");
+        out.put("workspace", run.workspaceName());
+        out.put("note", "Compose is running in the background; end your turn — you will "
+                + "receive a COMPOSE_FINISHED event with the result when it completes.");
+        return out;
+    }
+
+    private void pushComposeFinished(ComposeRun run, String ownerProcessId) {
+        try {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("runId", run.runId());
+            payload.put("status", run.status().name());
+            payload.put("workspace", run.workspaceName());
+            payload.put("projectId", run.projectId());
+            if (run.error() != null) {
+                payload.put("error", run.error());
+            }
+            if (run.result() != null) {
+                payload.put("result", DamogranResponse.toMap(run.result()));
+            }
+            String summary = "Compose " + run.runId() + " "
+                    + run.status().name().toLowerCase(Locale.ROOT);
+            PendingMessageDocument doc = PendingMessageDocument.builder()
+                    .type(PendingMessageType.PROCESS_EVENT)
+                    .at(Instant.now())
+                    .sourceProcessId(ownerProcessId)
+                    .eventType(ProcessEventType.COMPOSE_FINISHED)
+                    .content(summary)
+                    .payload(payload)
+                    .eventId(UUID.randomUUID().toString())
+                    .build();
+            boolean ok = engineMessageRouterProvider.getObject().dispatch(ownerProcessId, ownerProcessId, doc);
+            if (!ok) {
+                log.warn("COMPOSE_FINISHED dispatch dropped owner='{}' run='{}'", ownerProcessId, run.runId());
+            }
+        } catch (RuntimeException e) {
+            log.warn("COMPOSE_FINISHED dispatch failed owner='{}' run='{}': {}",
+                    ownerProcessId, run.runId(), e.toString());
         }
     }
 

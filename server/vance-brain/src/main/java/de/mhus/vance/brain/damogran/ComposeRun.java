@@ -6,6 +6,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -28,6 +29,7 @@ public final class ComposeRun implements ComposeProgress {
     private final Instant startedAt;
     private final CountDownLatch done = new CountDownLatch(1);
     private final List<DamogranTaskResult> doneTasks = Collections.synchronizedList(new ArrayList<>());
+    private final List<Consumer<ComposeRun>> onDone = Collections.synchronizedList(new ArrayList<>());
 
     private volatile Status status = Status.RUNNING;
     private volatile int currentTaskIndex = -1;
@@ -80,6 +82,30 @@ public final class ComposeRun implements ComposeProgress {
         this.currentExecJobId = null;
         this.finishedAt = Instant.now();
         done.countDown();
+        List<Consumer<ComposeRun>> callbacks;
+        synchronized (onDone) {
+            callbacks = List.copyOf(onDone);
+            onDone.clear();
+        }
+        callbacks.forEach(cb -> cb.accept(this));
+    }
+
+    /**
+     * Run {@code callback} when the run reaches a terminal state — or now, if it
+     * already has. Used by {@code compose_run} to push a COMPOSE_FINISHED
+     * ProcessEvent to the caller so it can sleep and resume on completion.
+     */
+    public void onDone(Consumer<ComposeRun> callback) {
+        boolean fireNow;
+        synchronized (onDone) {
+            fireNow = isTerminal();
+            if (!fireNow) {
+                onDone.add(callback);
+            }
+        }
+        if (fireNow) {
+            callback.accept(this);
+        }
     }
 
     // ──────────────────── ComposeProgress ────────────────────

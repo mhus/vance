@@ -29,8 +29,14 @@ compose_run(composeYaml="workspace:\n  name: …\ntasks:\n  - …")
 ```
 
 Genau eines von `composePath` (ein `compose`-Dokument) oder `composeYaml`
-(inline). Antwort: `{ success, workspace, tasks: [{status, outputs, error?}] }`.
-Der Lauf ist **linear** und **hält beim ersten fehlgeschlagenen Task**.
+(inline). Der Lauf ist **linear** und **hält beim ersten fehlgeschlagenen Task**.
+
+**Async:** kurze Composes antworten inline mit `{ success, workspace, tasks:
+[{status, outputs, error?}] }`. Ein **langer** Lauf (>15s) antwortet mit
+`{ runId, running: true }` — dann **beende deinen Turn und warte**; du bekommst
+ein `COMPOSE_FINISHED`-ProcessEvent (Payload: `runId`, `status`, `result`),
+sobald er fertig ist. Nicht pollen/blockieren. Für lange Läufe (z.B. Training)
+im Task `deadlineSeconds: 0` setzen (kein Hard-Kill, läuft bis zum Ende).
 
 ## Manifest
 

@@ -56,5 +56,13 @@ public enum ProcessEventType {
      * {@code jobId}/output as {@code EXEC_FINISHED} plus
      * {@code killedAfterSeconds}.
      */
-    EXEC_TIMEOUT
+    EXEC_TIMEOUT,
+
+    /**
+     * An async Damogran compose run (started via {@code compose_run}) reached a
+     * terminal state. Payload carries {@code runId}, {@code status}
+     * (success/failure), {@code workspace} and the per-task summary — so a
+     * process that kicked off a long compose can sleep and resume on completion.
+     */
+    COMPOSE_FINISHED
 }

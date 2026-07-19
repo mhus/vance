@@ -6,10 +6,13 @@ import de.mhus.vance.brain.script.ScriptExecutionException;
 import de.mhus.vance.brain.script.ScriptExecutor;
 import de.mhus.vance.brain.script.ScriptRequest;
 import de.mhus.vance.brain.script.ScriptResult;
+import de.mhus.vance.brain.thinkengine.ThinkEngineService;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.shared.workspace.WorkspaceException;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -24,6 +27,7 @@ import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 /**
@@ -57,24 +61,41 @@ public final class ScriptActionExecutor implements ActionExecutor<TriggerAction.
     private final DocumentService documentService;
     private final ToolDispatcher toolDispatcher;
     private final @Nullable WorkspaceService workspaceService;
+    // Resolve a process-scoped script's tool surface from its own process
+    // (§3.5.6). Lazy provider for ThinkEngineService breaks the bean cycle
+    // ScriptActionExecutor → ThinkEngineService → engine → ActionExecutorRegistry.
+    private final @Nullable ThinkProcessService thinkProcessService;
+    private final @Nullable ObjectProvider<ThinkEngineService> thinkEngineProvider;
 
     @org.springframework.beans.factory.annotation.Autowired
     public ScriptActionExecutor(ScriptExecutor scriptExecutor,
                                 DocumentService documentService,
                                 ToolDispatcher toolDispatcher,
                                 @org.springframework.beans.factory.annotation.Autowired(required = false)
-                                @Nullable WorkspaceService workspaceService) {
+                                @Nullable WorkspaceService workspaceService,
+                                ThinkProcessService thinkProcessService,
+                                ObjectProvider<ThinkEngineService> thinkEngineProvider) {
         this.scriptExecutor = scriptExecutor;
         this.documentService = documentService;
         this.toolDispatcher = toolDispatcher;
         this.workspaceService = workspaceService;
+        this.thinkProcessService = thinkProcessService;
+        this.thinkEngineProvider = thinkEngineProvider;
     }
 
-    /** Backwards-compat ctor used by tests — workspace source unavailable. */
+    /** Backwards-compat ctor used by tests — workspace + process surface unavailable. */
     public ScriptActionExecutor(ScriptExecutor scriptExecutor,
                                 DocumentService documentService,
                                 ToolDispatcher toolDispatcher) {
-        this(scriptExecutor, documentService, toolDispatcher, null);
+        this(scriptExecutor, documentService, toolDispatcher, null, null, null);
+    }
+
+    /** Test ctor with a workspace source but no process-scoped tool surface. */
+    public ScriptActionExecutor(ScriptExecutor scriptExecutor,
+                                DocumentService documentService,
+                                ToolDispatcher toolDispatcher,
+                                @Nullable WorkspaceService workspaceService) {
+        this(scriptExecutor, documentService, toolDispatcher, workspaceService, null, null);
     }
 
     @Override
@@ -173,14 +194,35 @@ public final class ScriptActionExecutor implements ActionExecutor<TriggerAction.
     // ──────────────────── Helpers ────────────────────
 
     private ContextToolsApi buildToolsSurface(TriggerContext ctx) {
+        // §3.5.6: a process-scoped script sees its process's effective tool
+        // surface (engine.allowedTools()/allowedToolsOverride ∩ recipe filter),
+        // resolved via the process's own ThinkEngineContext — so
+        // vance.tools.call(...) hits the same dispatcher (and WorkTarget
+        // routing) the process's engine uses. Falls back to an empty surface
+        // for trigger-scoped scripts (no bound process) or if resolution fails.
+        String processId = ctx.parentProcessId();
+        if (StringUtils.isNotBlank(processId)
+                && thinkProcessService != null && thinkEngineProvider != null) {
+            ThinkEngineService engines = thinkEngineProvider.getIfAvailable();
+            if (engines != null) {
+                try {
+                    Optional<ThinkProcessDocument> process = thinkProcessService.findById(processId);
+                    if (process.isPresent()) {
+                        return engines.newContext(process.get()).tools();
+                    }
+                    log.debug("ScriptActionExecutor: process '{}' not found — empty tool surface", processId);
+                } catch (RuntimeException e) {
+                    log.warn("ScriptActionExecutor: could not resolve tool surface for process '{}': {}"
+                            + " — falling back to empty surface", processId, e.toString());
+                }
+            }
+        }
         ToolInvocationContext inv = new ToolInvocationContext(
                 ctx.tenantId(),
                 ctx.projectId(),
                 ctx.parentSessionId(),
                 ctx.parentProcessId(),
                 ctx.resolvedRunAs());
-        // Empty allow-set for now — full tool surface comes with the
-        // ScopeLevel/SpawnTool pass (§8, Stufe 2f).
         return new ContextToolsApi(toolDispatcher, inv);
     }
 

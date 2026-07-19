@@ -14,15 +14,22 @@ import de.mhus.vance.brain.script.ScriptExecutionException;
 import de.mhus.vance.brain.script.ScriptExecutor;
 import de.mhus.vance.brain.script.ScriptRequest;
 import de.mhus.vance.brain.script.ScriptResult;
+import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
+import de.mhus.vance.brain.thinkengine.ThinkEngineService;
+import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.ObjectProvider;
 
 class ScriptActionExecutorTest {
 
@@ -261,6 +268,39 @@ class ScriptActionExecutorTest {
     @Test
     void actionType_returns_script_class() {
         assertThat(exec.actionType()).isEqualTo(TriggerAction.Script.class);
+    }
+
+    // ──────────────────── Process-scoped tool surface (§3.5.6) ────────────────────
+
+    @Test
+    void process_scoped_script_uses_the_bound_process_tool_surface() {
+        ThinkProcessService processes = mock(ThinkProcessService.class);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<ThinkEngineService> engineProvider = mock(ObjectProvider.class);
+        ThinkEngineService engines = mock(ThinkEngineService.class);
+        ThinkEngineContext engineCtx = mock(ThinkEngineContext.class);
+        ThinkProcessDocument process = mock(ThinkProcessDocument.class);
+        ContextToolsApi processTools = new ContextToolsApi(
+                toolDispatcher, new ToolInvocationContext("t1", "p1", null, "proc-42", "alice"));
+
+        when(engineProvider.getIfAvailable()).thenReturn(engines);
+        when(processes.findById("proc-42")).thenReturn(Optional.of(process));
+        when(engines.newContext(process)).thenReturn(engineCtx);
+        when(engineCtx.tools()).thenReturn(processTools);
+
+        ScriptActionExecutor boundExec = new ScriptActionExecutor(
+                scriptExecutor, documentService, toolDispatcher, null, processes, engineProvider);
+        stubDocument("scripts/x.js", "...");
+        stubExecutorReturns(null);
+
+        TriggerContext processCtx = TriggerContext.standalone(
+                "t1", "p1", "alice", "corr-1", "tool:compose", "proc-42");
+        boundExec.execute(new ActionInvocation<>(
+                documentScript("scripts/x.js", null), processCtx, TriggerKind.TOOL));
+
+        ArgumentCaptor<ScriptRequest> captor = ArgumentCaptor.forClass(ScriptRequest.class);
+        verify(scriptExecutor).run(captor.capture());
+        assertThat(captor.getValue().tools()).isSameAs(processTools);
     }
 
     // ──────────────────── Helpers ────────────────────

@@ -37,8 +37,6 @@ import org.jspecify.annotations.Nullable;
 @Slf4j
 abstract class RemoteExecComposeRunner implements ComposeRunner {
 
-    private static final int DEFAULT_DEADLINE_SECONDS = 120;
-
     private final WorkTargetService workTargetService;
     private final ThinkProcessService thinkProcessService;
     private final ToolDispatcher toolDispatcher;
@@ -126,11 +124,14 @@ abstract class RemoteExecComposeRunner implements ComposeRunner {
         if (command == null || command.toString().isBlank()) {
             return DamogranTaskResult.failure("exec task requires 'command'");
         }
+        int deadlineSeconds = DamogranTaskSupport.execDeadlineSeconds(task);
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("command", command.toString());
-        Object deadline = task.params().get("deadlineSeconds");
-        params.put("deadlineSeconds",
-                deadline instanceof Number n ? n.intValue() : DEFAULT_DEADLINE_SECONDS);
+        // Hard-kill deadline on the remote + block past it, so the run waits for
+        // the command to finish (or be killed) rather than returning while still
+        // RUNNING and racing the next task.
+        params.put("deadlineSeconds", deadlineSeconds);
+        params.put("waitMs", (deadlineSeconds + DamogranTaskSupport.EXEC_KILL_GRACE_SECONDS) * 1000L);
 
         Map<String, Object> out;
         try {

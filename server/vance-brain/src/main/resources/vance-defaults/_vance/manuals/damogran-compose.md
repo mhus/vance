@@ -69,8 +69,8 @@ export:
 
 | type | Feld(er) | tut |
 |---|---|---|
-| `exec` | `command` | Shell im Workspace |
-| `python` | `script` **oder** `code` | Python-Datei/Inline |
+| `exec` | `command`, opt. `deadlineSeconds` | Shell im Workspace |
+| `python` | `script` **oder** `code`, opt. `deadlineSeconds` | Python-Datei/Inline |
 | `js` | `script` **oder** `code` | Workspace-JS (nur Rückgabewert) |
 | `llm` | `recipe`, `prompt`, `output` | Single-Shot-LLM → Output-Datei |
 | `spawn` | `recipe`, `prompt` | Worker-Prozess (fire-and-forget) |
@@ -81,6 +81,11 @@ export:
 - **`outputs:`/`output:`** deklariert, welche Workspace-Dateien als Ergebnis
   erscheinen (rendern in der UI-Output-Region: Markdown/Text/Bild/PDF nach Typ).
   Kein Auto-Import — persistente Ergebnisse gehen über `export:`.
+- **Zeitlimit `exec`/`python`**: `deadlineSeconds` (Alias `timeoutSeconds`,
+  Default **600**) ist ein **Hard-Kill** — läuft der Befehl länger, wird er
+  beendet und der Task schlägt sauber fehl (`status=TIMED_OUT`, **kein**
+  verwaister Prozess). Der Compose wartet bis Ende oder Kill; ein schneller
+  Befehl kehrt sofort zurück (die Deadline ist nur die Obergrenze).
 - **Strukturierte Anzeige**: `outputs: [{ path: data.yaml, as: records }]`
   rendert kanonisch-formatierten Inhalt als Tabelle (`records`) / `tree` /
   `chart` etc. — nur mit explizitem `as:`; ohne bleibt es Text.

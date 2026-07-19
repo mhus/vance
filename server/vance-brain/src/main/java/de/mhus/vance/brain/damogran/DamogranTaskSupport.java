@@ -15,7 +15,30 @@ import org.jspecify.annotations.Nullable;
  */
 final class DamogranTaskSupport {
 
+    /**
+     * Hard-kill wall-clock for an exec task when neither {@code deadlineSeconds}
+     * nor {@code timeoutSeconds} is set. Generous (10 min) because a task only
+     * blocks until it actually finishes; this is the ceiling before the
+     * watchdog kills a hung/runaway command.
+     */
+    static final int DEFAULT_EXEC_DEADLINE_SECONDS = 600;
+
+    /**
+     * Grace added to the block window so the caller waits slightly past the
+     * kill deadline and observes the watchdog-killed terminal state (rather than
+     * a still-RUNNING snapshot).
+     */
+    static final int EXEC_KILL_GRACE_SECONDS = 5;
+
     private DamogranTaskSupport() {}
+
+    /**
+     * Hard-kill deadline (seconds) for an exec task: {@code deadlineSeconds},
+     * else the {@code timeoutSeconds} alias, else {@link #DEFAULT_EXEC_DEADLINE_SECONDS}.
+     */
+    static int execDeadlineSeconds(TaskSpec spec) {
+        return intOr(spec, "deadlineSeconds", intOr(spec, "timeoutSeconds", DEFAULT_EXEC_DEADLINE_SECONDS));
+    }
 
     static @Nullable String string(TaskSpec spec, String key) {
         Object raw = spec.params().get(key);

@@ -1,14 +1,17 @@
 package de.mhus.vance.brain.damogran;
 
+import static de.mhus.vance.brain.damogran.DamogranTaskSupport.EXEC_KILL_GRACE_SECONDS;
+import static de.mhus.vance.brain.damogran.DamogranTaskSupport.execDeadlineSeconds;
 import static de.mhus.vance.brain.damogran.DamogranTaskSupport.fromExec;
-import static de.mhus.vance.brain.damogran.DamogranTaskSupport.intOr;
 import static de.mhus.vance.brain.damogran.DamogranTaskSupport.resolveOutputs;
 import static de.mhus.vance.brain.damogran.DamogranTaskSupport.string;
 
 import de.mhus.vance.brain.damogran.DamogranManifest.TaskSpec;
 import de.mhus.vance.brain.tools.exec.ExecManager;
+import de.mhus.vance.brain.tools.exec.SubmitOptions;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import java.nio.file.Files;
+import java.time.Instant;
 import java.util.Map;
 import org.springframework.stereotype.Service;
 
@@ -24,7 +27,6 @@ import org.springframework.stereotype.Service;
 @Service
 class PythonDamogranTask implements DamogranTask {
 
-    private static final int DEFAULT_TIMEOUT_SECONDS = 300;
     private static final String INLINE_PATH = ".damogran/inline.py";
     private static final String VENV_PYTHON = ".venv/bin/python";
 
@@ -62,11 +64,13 @@ class PythonDamogranTask implements DamogranTask {
 
         String interpreter = pythonInterpreter(ctx);
         String command = interpreter + " " + shellQuote(scriptPath);
-        long waitMs = intOr(spec, "timeoutSeconds", DEFAULT_TIMEOUT_SECONDS) * 1000L;
+        int deadlineSeconds = execDeadlineSeconds(spec);
+        Instant deadline = Instant.now().plusSeconds(deadlineSeconds);
+        long waitMs = (deadlineSeconds + EXEC_KILL_GRACE_SECONDS) * 1000L;
 
         Map<String, Object> rendered = execManager.submitTrackedAndRender(
                 ctx.tenantId(), ctx.projectId(), null, ctx.processId(),
-                ctx.workspaceDirName(), command, waitMs);
+                ctx.workspaceDirName(), command, waitMs, SubmitOptions.withDeadline(deadline));
 
         return fromExec(rendered, command, resolveOutputs(spec));
     }

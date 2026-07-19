@@ -43,13 +43,16 @@ public class ComposeController {
     private final DamogranComposeService composeService;
     private final DocumentService documentService;
     private final SessionService sessionService;
+    private final DamogranProcessResolver processResolver;
 
     public ComposeController(DamogranComposeService composeService,
                              DocumentService documentService,
-                             SessionService sessionService) {
+                             SessionService sessionService,
+                             DamogranProcessResolver processResolver) {
         this.composeService = composeService;
         this.documentService = documentService;
         this.sessionService = sessionService;
+        this.processResolver = processResolver;
     }
 
     @PostMapping("/run")
@@ -84,18 +87,22 @@ public class ComposeController {
     /**
      * Resolve the process the compose should run under. When a {@code sessionId}
      * is given and the session belongs to this tenant/project, use its primary
-     * chat process (variant a — shared WorkTarget with the chat). Falls back to
-     * {@code null} (process-less run) when there is no session, it is foreign,
-     * or it has not bootstrapped a chat process yet.
+     * chat process (variant a — shared WorkTarget + tool surface with the chat).
+     * Otherwise (no session, foreign session, or no chat process yet) bind to the
+     * project's chatless carrier process, so scripts still reach the workspace
+     * via the file tools.
      */
-    private @Nullable String resolveProcessId(String tenant, String projectId, RunRequest body) {
-        if (body.sessionId() == null || body.sessionId().isBlank()) {
-            return null;
+    private String resolveProcessId(String tenant, String projectId, RunRequest body) {
+        if (body.sessionId() != null && !body.sessionId().isBlank()) {
+            String chatProcess = sessionService.findBySessionId(body.sessionId().trim())
+                    .filter(s -> tenant.equals(s.getTenantId()) && projectId.equals(s.getProjectId()))
+                    .map(SessionDocument::getChatProcessId)
+                    .orElse(null);
+            if (chatProcess != null && !chatProcess.isBlank()) {
+                return chatProcess;
+            }
         }
-        return sessionService.findBySessionId(body.sessionId().trim())
-                .filter(s -> tenant.equals(s.getTenantId()) && projectId.equals(s.getProjectId()))
-                .map(SessionDocument::getChatProcessId)
-                .orElse(null);
+        return processResolver.resolveProjectComposeProcess(tenant, projectId);
     }
 
     private String resolveYaml(String tenant, String projectId, RunRequest body) {

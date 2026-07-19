@@ -78,8 +78,11 @@ export:
 ## Regeln
 
 - **`outputs:`/`output:`** deklariert, welche Workspace-Dateien als Ergebnis
-  erscheinen (rendern in der UI-Output-Region). Kein Auto-Import — persistente
-  Ergebnisse gehen über `export:`.
+  erscheinen (rendern in der UI-Output-Region: Markdown/Text/Bild/PDF nach Typ).
+  Kein Auto-Import — persistente Ergebnisse gehen über `export:`.
+- **Strukturierte Anzeige**: `outputs: [{ path: data.yaml, as: records }]`
+  rendert kanonisch-formatierten Inhalt als Tabelle (`records`) / `tree` /
+  `chart` etc. — nur mit explizitem `as:`; ohne bleibt es Text.
 - **`vance:`-Pfade**: `vance:hello.tex` ist relativ zum Ordner des compose-
   Dokuments; `vance:/x` ist root-absolut (selbes Projekt); `vance://projekt/x`
   ist cross-project.

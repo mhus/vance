@@ -39,6 +39,7 @@ import {
 import { onDocumentChanged } from '@/ws/wsConnectionStore';
 import VanceEmbedView from '@/components/VanceEmbedView.vue';
 import VanceFormView from '@/components/VanceFormView.vue';
+import ComposeOutput from '@/cortex/components/ComposeOutput.vue';
 import { useDocumentRefStore } from '@/document/documentRefStore';
 import { isBinaryMime } from './stores/cortexStore';
 import { useCortexStore } from './stores/cortexStore';
@@ -147,6 +148,9 @@ provide('vance:embed-component', VanceEmbedView);
 // remote injects 'vance:form-component' and mounts it with the
 // bound data doc `data` URI as the only prop.
 provide('vance:form-component', VanceFormView);
+// The workbook vance-compose block mounts this to render its outputs
+// (markdown/text/image/pdf/structured kinds) exactly like the Cortex view.
+provide('vance:compose-output-component', ComposeOutput);
 
 const { projects: tenantProjects, reload: loadTenantProjects } = useTenantProjects();
 

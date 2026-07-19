@@ -1,12 +1,10 @@
 <script setup lang="ts">
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, provide, ref, watch, type Component } from 'vue';
 import {
-  brainBaseUrl,
   brainFetch,
   brainFetchText,
   brainSendRaw,
   documentContentUrl,
-  getTenantId,
   useDocumentPrefixReaction,
   usePointers,
 } from '@vance/shared';
@@ -213,6 +211,7 @@ const embedComponent = inject<Component | null>('vance:embed-component', null);
 // the shared form-engine. Injected by string key like embed-component;
 // null = not in a vance-face host → block-editor shows a fallback.
 const formComponent = inject<Component | null>('vance:form-component', null);
+const composeOutputComponent = inject<Component | null>('vance:compose-output-component', null);
 
 // Page mode (design vs work) — per app-instance, client-only, default
 // "work" (the user enters data). Switching to "design" lets embedded
@@ -326,16 +325,8 @@ async function runCompose(yaml: string): Promise<ComposeRunResult> {
       composeBasePath: folder.value,
     },
   });
-  const tenant = getTenantId() ?? '';
-  const base = brainBaseUrl();
-  const hrefFor = (uri: string): string => {
-    const rel = uri.startsWith('vance-workspace:/')
-      ? uri.slice('vance-workspace:/'.length)
-      : uri;
-    const qs = new URLSearchParams({ path: rel });
-    return `${base}/brain/${encodeURIComponent(tenant)}`
-      + `/projects/${encodeURIComponent(projectId.value)}/workspace/file?${qs}`;
-  };
+  // Pass outputs through with their vance-workspace: URIs — the injected
+  // ComposeOutput renderer resolves content from projectId + uri itself.
   return {
     success: server.success,
     workspace: server.workspace,
@@ -346,9 +337,10 @@ async function runCompose(yaml: string): Promise<ComposeRunResult> {
       log: t.log,
       outputs: (t.outputs ?? []).map((o) => ({
         path: o.path,
+        uri: o.uri,
         kind: o.kind,
+        mime: o.mime,
         title: o.title,
-        href: hrefFor(o.uri),
       })),
     })),
   };
@@ -1640,6 +1632,7 @@ onBeforeUnmount(() => {
           :open-input-picker="openInputPicker"
           :run-button-script="runButtonScript"
           :run-compose="runCompose"
+          :compose-output-component="composeOutputComponent ?? undefined"
           :editable="editorEditable"
           @save="onEditorSave"
           @dirty="onEditorDirty"

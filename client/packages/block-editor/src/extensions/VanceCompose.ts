@@ -8,10 +8,11 @@ import VanceComposeNodeView from './VanceComposeNodeView.vue';
  */
 export interface ComposeOutputView {
   path: string;
+  /** {@code vance-workspace:/<dir>/<rel>} URI; the host renderer resolves content. */
+  uri: string;
   kind?: string;
+  mime?: string;
   title?: string;
-  /** Absolute workspace-file URL, ready for {@code <img src>} / {@code <a href>}. */
-  href: string;
 }
 
 export interface ComposeTaskView {
@@ -69,6 +70,14 @@ export const VanceCompose = Node.create({
     return {
       /** Host-provided run: execute the inline compose YAML, resolve outputs. */
       runCompose: null as null | ((yaml: string) => Promise<ComposeRunResult>),
+      /**
+       * Host-injected renderer for a single output ({@code vance-face}'s
+       * ComposeOutput, via provide/inject) — mounted per artifact so the block
+       * previews outputs exactly like the Cortex view. Lazy accessor.
+       */
+      composeOutputComponent: null as null | (() => import('vue').Component | null),
+      /** Project id for the output renderer (workspace-file URL resolution). */
+      projectId: '' as string,
     };
   },
 

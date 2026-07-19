@@ -184,6 +184,8 @@ const props = withDefaults(
     runButtonScript?: (scriptRef: string) => Promise<void>;
     /** Run a `vance-compose` block's inline YAML — host POSTs + resolves outputs. */
     runCompose?: (yaml: string) => Promise<ComposeRunResult>;
+    /** Host renderer for a compose output (vance-face ComposeOutput). */
+    composeOutputComponent?: import('vue').Component;
   }>(),
   { autoSaveMs: 2000, editable: true },
 );
@@ -412,6 +414,8 @@ const editor = useEditor({
           tasks: [],
           error: 'Compose run is not available in this context.',
         }),
+      composeOutputComponent: () => props.composeOutputComponent ?? null,
+      projectId: props.currentProjectId ?? '',
     }),
   ],
   content: initial.value.content,

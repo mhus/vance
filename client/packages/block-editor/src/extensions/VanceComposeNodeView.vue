@@ -15,11 +15,14 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import jsyaml from 'js-yaml';
 import { NodeViewWrapper } from '@tiptap/vue-3';
 import type { Editor } from '@tiptap/core';
+import type { Component } from 'vue';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
-import type { ComposeOutputView, ComposeRunResult } from './VanceCompose';
+import type { ComposeRunResult } from './VanceCompose';
 
 interface ExtensionOptions {
   runCompose?: ((yaml: string) => Promise<ComposeRunResult>) | null;
+  composeOutputComponent?: (() => Component | null) | null;
+  projectId?: string;
 }
 
 const props = defineProps<{
@@ -28,6 +31,12 @@ const props = defineProps<{
   editor: Editor;
   extension: { options: ExtensionOptions };
 }>();
+
+/** Host-injected output renderer (vance-face ComposeOutput) + its project id. */
+const outputComponent = computed<Component | null>(
+  () => props.extension.options.composeOutputComponent?.() ?? null,
+);
+const projectId = computed<string>(() => props.extension.options.projectId ?? '');
 
 const yaml = computed(() => (props.node.attrs?.yaml as string | null) ?? '');
 
@@ -82,9 +91,6 @@ async function run() {
   }
 }
 
-function isImage(o: ComposeOutputView): boolean {
-  return o.kind === 'image' || o.kind === 'svg';
-}
 </script>
 
 <template>
@@ -131,13 +137,18 @@ function isImage(o: ComposeOutputView): boolean {
             v-if="task.status !== 'success' && task.error"
             class="vance-compose__error"
           >Task {{ ti + 1 }}: {{ task.error }}</div>
-          <div v-for="(o, oi) in (task.outputs ?? [])" :key="oi" class="vance-compose__art">
-            <div class="vance-compose__art-title">{{ o.title || o.path }}</div>
-            <img v-if="isImage(o)" :src="o.href" :alt="o.path" class="vance-compose__img" />
-            <a v-else :href="o.href" target="_blank" rel="noopener" class="vance-compose__link">
-              {{ o.path }}
-            </a>
-          </div>
+          <template v-for="(o, oi) in (task.outputs ?? [])" :key="oi">
+            <component
+              :is="outputComponent"
+              v-if="outputComponent"
+              :project-id="projectId"
+              :output="o"
+            />
+            <div v-else class="vance-compose__art">
+              <div class="vance-compose__art-title">{{ o.title || o.path }}</div>
+              <div class="vance-compose__desc">{{ o.path }}</div>
+            </div>
+          </template>
           <pre
             v-if="task.log && (task.outputs?.length ?? 0) === 0"
             class="vance-compose__log"

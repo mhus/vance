@@ -37,7 +37,6 @@ public final class DamogranMime {
             Map.entry("md", "markdown"),
             Map.entry("markdown", "markdown"),
             Map.entry("txt", "text"),
-            Map.entry("csv", "records"),
             Map.entry("json", "json"),
             Map.entry("yaml", "yaml"),
             Map.entry("yml", "yaml"),

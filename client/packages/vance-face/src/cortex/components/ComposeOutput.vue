@@ -6,14 +6,15 @@
  * workspace REST surface (never inlined into the document). This mirrors a
  * Jupyter cell output: workspace-sourced, flushed when the project unloads.
  *
- * v1 renders markdown / images / PDF / text; structured Vance kinds
- * (records/tree/chart/…) render as text for now (inline kind-renderer wiring is
- * a follow-up — feeding raw workspace text into those renderers needs
- * per-kind canonical formats).
+ * Renders markdown / images / PDF / text, plus structured Vance kinds
+ * (records → table, tree, chart, …) via the kind-renderer registry when the
+ * output explicitly declares a kind (`as: records`) — so only canonical-format
+ * outputs go through those renderers; a raw file stays text.
  */
 import { computed, onMounted } from 'vue';
 import { CodeEditor, MarkdownView, VAlert, VButton, VCard } from '@/components';
 import { useWorkspaceFile, workspaceFileUrl } from '@/composables/useWorkspaceFile';
+import { resolveRenderer } from '@/kindRenderers/registry';
 
 interface OutputArtifact {
   path: string;
@@ -41,6 +42,16 @@ onMounted(() => {
 const url = computed<string>(() => workspaceFileUrl(props.projectId, wsPath.value));
 const isPdf = computed<boolean>(() => props.output.path.toLowerCase().endsWith('.pdf'));
 const title = computed<string>(() => props.output.title ?? props.output.path);
+
+// Media / plain kinds are handled by the mode branches below; everything else
+// that the registry knows (records/tree/chart/list/graph/mindmap/…) renders
+// through its inline component with the raw file content as `content`.
+const MODE_KINDS = new Set(['image', 'svg', 'markdown', 'text', 'pdf']);
+const structuredRenderer = computed(() => {
+  const kind = props.output.kind;
+  if (!kind || MODE_KINDS.has(kind)) return null;
+  return resolveRenderer(kind, 'inline')?.inline ?? null;
+});
 </script>
 
 <template>
@@ -48,8 +59,15 @@ const title = computed<string>(() => props.output.title ?? props.output.path);
     <VAlert v-if="error" variant="error">{{ error }}</VAlert>
     <p v-else-if="loading" class="text-sm opacity-60">Loading…</p>
     <template v-else-if="result">
+      <component
+        :is="structuredRenderer"
+        v-if="structuredRenderer && result.text != null"
+        mode="inline"
+        :content="result.text"
+        :meta="{}"
+      />
       <iframe
-        v-if="isPdf"
+        v-else-if="isPdf"
         :src="url"
         :title="title"
         class="w-full h-96 border-0"

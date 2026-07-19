@@ -244,7 +244,24 @@ public class ExecManager {
             @Nullable String sessionId, @Nullable String processId,
             String dirName, String command, long waitMs,
             SubmitOptions options) {
+        return submitTrackedAndRender(tenantId, projectId, sessionId, processId,
+                dirName, command, waitMs, options, null);
+    }
+
+    /**
+     * As above, but {@code onJobId} is invoked with the freshly-created job's id
+     * right after submit (before the blocking wait) — lets a caller surface the
+     * job id for live progress (e.g. an async compose run's tail) while it runs.
+     */
+    public Map<String, Object> submitTrackedAndRender(
+            String tenantId, String projectId,
+            @Nullable String sessionId, @Nullable String processId,
+            String dirName, String command, long waitMs,
+            SubmitOptions options, @Nullable Consumer<String> onJobId) {
         ExecJob job = submit(tenantId, projectId, processId, dirName, command, options);
+        if (onJobId != null) {
+            onJobId.accept(job.id());
+        }
         registry.register(new de.mhus.vance.brain.execution.ExecutionRegistryEntry(
                 job.id(),
                 de.mhus.vance.brain.execution.ExecutionOwner.Brain.INSTANCE,

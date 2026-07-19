@@ -63,7 +63,7 @@ public class WorkspaceComposeRunner implements ComposeRunner {
     @Override
     public DamogranComposeResult run(
             String tenantId, String projectId, @Nullable String processId,
-            DamogranManifest manifest, @Nullable String baseDir) {
+            DamogranManifest manifest, @Nullable String baseDir, @Nullable ComposeRun run) {
         WorkspaceSpec ws = manifest.workspace();
 
         // Terminal delete: dispose the named workspace (if any) and stop. No
@@ -81,16 +81,24 @@ public class WorkspaceComposeRunner implements ComposeRunner {
         DamogranContext ctx = new DamogranContext(
                 tenantId, projectId, processId,
                 ws.name(), handle.getDirName(), handle.getPath(),
-                ws.target(), null, baseDir, io);
+                ws.target(), null, baseDir, io, run);
 
         for (ImportEntry imp : manifest.imports()) {
             transport.doImport(ctx, imp);
         }
 
         List<DamogranTaskResult> results = new ArrayList<>();
-        for (TaskSpec task : manifest.tasks()) {
+        List<TaskSpec> tasks = manifest.tasks();
+        for (int i = 0; i < tasks.size(); i++) {
+            TaskSpec task = tasks.get(i);
+            if (run != null) {
+                run.startTask(i, task.type());
+            }
             DamogranTaskResult result = taskExecutor.dispatch(ctx, task);
             results.add(result);
+            if (run != null) {
+                run.taskDone(result);
+            }
             if (!result.isSuccess()) {
                 log.debug("Damogran compose '{}' halted at task '{}': {}",
                         ws.name(), task.type(), result.error());

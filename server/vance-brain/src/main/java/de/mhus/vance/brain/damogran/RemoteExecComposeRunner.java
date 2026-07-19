@@ -65,7 +65,7 @@ abstract class RemoteExecComposeRunner implements ComposeRunner {
     @Override
     public final DamogranComposeResult run(
             String tenantId, String projectId, @Nullable String processId,
-            DamogranManifest manifest, @Nullable String baseDir) {
+            DamogranManifest manifest, @Nullable String baseDir, @Nullable ComposeRun run) {
         WorkspaceSpec ws = manifest.workspace();
 
         if (ws.delete() || ws.clear()) {
@@ -90,16 +90,24 @@ abstract class RemoteExecComposeRunner implements ComposeRunner {
         // the vance:/http: importers work unchanged. git:* stays WORK-only.
         DamogranContext ctx = new DamogranContext(
                 tenantId, projectId, processId, ws.name(), ws.name(), null,
-                target(), null, baseDir, new RemoteFileIo(tools));
+                target(), null, baseDir, new RemoteFileIo(tools), run);
 
         for (ImportEntry imp : manifest.imports()) {
             transport.doImport(ctx, imp);
         }
 
         List<DamogranTaskResult> results = new ArrayList<>();
-        for (TaskSpec task : manifest.tasks()) {
+        List<TaskSpec> tasks = manifest.tasks();
+        for (int i = 0; i < tasks.size(); i++) {
+            TaskSpec task = tasks.get(i);
+            if (run != null) {
+                run.startTask(i, task.type());
+            }
             DamogranTaskResult result = runExec(tools, task);
             results.add(result);
+            if (run != null) {
+                run.taskDone(result);
+            }
             if (!result.isSuccess()) {
                 log.debug("Damogran {} compose '{}' halted at task '{}': {}",
                         target(), ws.name(), task.type(), result.error());

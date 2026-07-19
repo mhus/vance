@@ -37,7 +37,7 @@ class DamogranComposeServiceTest {
         workTargetService = mock(WorkTargetService.class);
         taskExecutor = mock(DamogranTaskExecutor.class);
         transport = mock(DamogranTransport.class);
-        service = new DamogranComposeService(new DamogranManifestParser(), List.of(
+        service = new DamogranComposeService(new DamogranManifestParser(), new ComposeRunRegistry(), List.of(
                 new WorkspaceComposeRunner(workspaceService, workTargetService, taskExecutor, transport)));
     }
 
@@ -99,6 +99,22 @@ class DamogranComposeServiceTest {
         assertThat(result.error()).isEqualTo("boom");
         assertThat(result.taskResults()).hasSize(1); // halted after the first task
         verify(transport, never()).doExport(any(), any());
+    }
+
+    @Test
+    void runAsync_completesInBackground_withRegisteredRunId() throws Exception {
+        when(workspaceService.listRootDirs("t", "p")).thenReturn(List.of());
+        when(workspaceService.createRootDir(any())).thenReturn(handle("ws", "temp"));
+        when(taskExecutor.dispatch(any(), any())).thenReturn(DamogranTaskResult.success(List.of()));
+
+        DamogranManifest m = manifest("WORK", List.of(task("exec")), List.of(), List.of());
+        ComposeRun run = service.runAsync("t", "p", "proc1", m, null);
+
+        assertThat(run.runId()).startsWith("cr-");
+        assertThat(run.awaitDone(5000)).isTrue();
+        assertThat(run.status()).isEqualTo(ComposeRun.Status.SUCCESS);
+        assertThat(run.result()).isNotNull();
+        assertThat(run.result().isSuccess()).isTrue();
     }
 
     @Test

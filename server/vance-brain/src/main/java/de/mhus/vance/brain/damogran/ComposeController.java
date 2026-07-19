@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.damogran;
 
+import de.mhus.vance.brain.tools.exec.ExecManager;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.session.SessionDocument;
@@ -7,14 +8,18 @@ import de.mhus.vance.shared.session.SessionService;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -32,27 +37,41 @@ import org.springframework.web.server.ResponseStatusException;
  * the active cortex {@code sessionId}, the run binds to that session's primary
  * chat process — the compose sets <em>its</em> WorkTarget, so the workspace is
  * shared with what the user does in the chat (variant a). Without a session (or
- * a session that has no chat process yet), it runs process-less as before —
- * {@code spawn} tasks then stay unavailable via this path.
+ * a session that has no chat process yet), it binds to the project carrier.
+ *
+ * <p>Runs are async: {@code POST /run} starts a background run and waits a
+ * fast-path budget ({@value #FAST_PATH_WAIT_MS}ms) — quick composes return their
+ * result inline, longer ones come back with a {@code runId} that the client
+ * polls via {@code GET /run/{runId}} (status + live tail of the current exec).
  */
 @RestController
 @RequestMapping("/brain/{tenant}/compose")
 @Slf4j
 public class ComposeController {
 
+    /** Fast-path: how long POST blocks for a quick result before handing back a runId. */
+    private static final long FAST_PATH_WAIT_MS = 30_000;
+    private static final int TAIL_LINES = 40;
+
     private final DamogranComposeService composeService;
     private final DocumentService documentService;
     private final SessionService sessionService;
     private final DamogranProcessResolver processResolver;
+    private final ComposeRunRegistry runRegistry;
+    private final ExecManager execManager;
 
     public ComposeController(DamogranComposeService composeService,
                              DocumentService documentService,
                              SessionService sessionService,
-                             DamogranProcessResolver processResolver) {
+                             DamogranProcessResolver processResolver,
+                             ComposeRunRegistry runRegistry,
+                             ExecManager execManager) {
         this.composeService = composeService;
         this.documentService = documentService;
         this.sessionService = sessionService;
         this.processResolver = processResolver;
+        this.runRegistry = runRegistry;
+        this.execManager = execManager;
     }
 
     @PostMapping("/run")
@@ -75,12 +94,74 @@ public class ComposeController {
 
         String processId = resolveProcessId(tenant, projectId, body);
 
+        ComposeRun run;
         try {
-            DamogranComposeResult result = composeService.run(tenant, projectId, processId, yaml, baseDir);
-            return DamogranResponse.toMap(result);
+            run = composeService.runAsync(tenant, projectId, processId, yaml, baseDir);
         } catch (DamogranException e) {
-            log.debug("compose run failed for {}/{}: {}", tenant, projectId, e.getMessage());
+            // Synchronous failures (manifest parse) still surface as 400.
+            log.debug("compose run rejected for {}/{}: {}", tenant, projectId, e.getMessage());
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+        }
+        try {
+            run.awaitDone(FAST_PATH_WAIT_MS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        return renderRun(run, /*includeTail=*/ false);
+    }
+
+    /** Poll an async run's status (+ live tail of the current exec) by id. */
+    @GetMapping("/run/{runId}")
+    public Map<String, Object> runStatus(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("runId") String runId,
+            @RequestParam("projectId") String projectId) {
+        ComposeRun run = runRegistry.find(tenant, projectId, runId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "compose run not found: " + runId));
+        return renderRun(run, /*includeTail=*/ true);
+    }
+
+    /**
+     * Response for a run: the final result shape (tasks + outputs) when terminal,
+     * else {@code running} + current-task + (on poll) the live exec tail.
+     */
+    private Map<String, Object> renderRun(ComposeRun run, boolean includeTail) {
+        boolean running = run.status() == ComposeRun.Status.RUNNING;
+        Map<String, Object> out = (!running && run.result() != null)
+                ? new LinkedHashMap<>(DamogranResponse.toMap(run.result()))
+                : new LinkedHashMap<>();
+        out.put("runId", run.runId());
+        out.put("running", running);
+        out.put("status", run.status().name().toLowerCase(java.util.Locale.ROOT));
+        out.put("workspace", run.workspaceName());
+        if (running) {
+            out.put("currentTaskIndex", run.currentTaskIndex());
+            if (run.currentTaskType() != null) {
+                out.put("currentTaskType", run.currentTaskType());
+            }
+            if (includeTail) {
+                List<String> tail = currentTail(run);
+                if (!tail.isEmpty()) {
+                    out.put("tail", tail);
+                }
+            }
+        } else if (run.result() == null && run.error() != null) {
+            out.put("error", run.error());
+        }
+        return out;
+    }
+
+    private List<String> currentTail(ComposeRun run) {
+        String jobId = run.currentExecJobId();
+        if (jobId == null) {
+            return List.of();
+        }
+        try {
+            return execManager.tail(run.tenantId(), run.projectId(), jobId,
+                    TAIL_LINES, ExecManager.Stream.STDOUT);
+        } catch (RuntimeException e) {
+            return List.of();
         }
     }
 

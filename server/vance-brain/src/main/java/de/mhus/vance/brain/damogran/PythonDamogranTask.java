@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.damogran;
 
 import static de.mhus.vance.brain.damogran.DamogranTaskSupport.EXEC_KILL_GRACE_SECONDS;
+import static de.mhus.vance.brain.damogran.DamogranTaskSupport.NO_DEADLINE_WAIT_MS;
 import static de.mhus.vance.brain.damogran.DamogranTaskSupport.execDeadlineSeconds;
 import static de.mhus.vance.brain.damogran.DamogranTaskSupport.fromExec;
 import static de.mhus.vance.brain.damogran.DamogranTaskSupport.resolveOutputs;
@@ -13,6 +14,7 @@ import de.mhus.vance.shared.workspace.WorkspaceService;
 import java.nio.file.Files;
 import java.time.Instant;
 import java.util.Map;
+import java.util.function.Consumer;
 import org.springframework.stereotype.Service;
 
 /**
@@ -65,12 +67,21 @@ class PythonDamogranTask implements DamogranTask {
         String interpreter = pythonInterpreter(ctx);
         String command = interpreter + " " + shellQuote(scriptPath);
         int deadlineSeconds = execDeadlineSeconds(spec);
-        Instant deadline = Instant.now().plusSeconds(deadlineSeconds);
-        long waitMs = (deadlineSeconds + EXEC_KILL_GRACE_SECONDS) * 1000L;
+        SubmitOptions options;
+        long waitMs;
+        if (deadlineSeconds <= 0) {
+            options = SubmitOptions.defaults();       // no hard-kill — run to completion
+            waitMs = NO_DEADLINE_WAIT_MS;
+        } else {
+            options = SubmitOptions.withDeadline(Instant.now().plusSeconds(deadlineSeconds));
+            waitMs = (deadlineSeconds + EXEC_KILL_GRACE_SECONDS) * 1000L;
+        }
+        Consumer<String> onJobId = ctx.progress() == null
+                ? null : jobId -> ctx.progress().execJob(jobId);
 
         Map<String, Object> rendered = execManager.submitTrackedAndRender(
                 ctx.tenantId(), ctx.projectId(), null, ctx.processId(),
-                ctx.workspaceDirName(), command, waitMs, SubmitOptions.withDeadline(deadline));
+                ctx.workspaceDirName(), command, waitMs, options, onJobId);
 
         return fromExec(rendered, command, resolveOutputs(spec));
     }

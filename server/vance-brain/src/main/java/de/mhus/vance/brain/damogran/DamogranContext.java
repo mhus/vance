@@ -39,15 +39,16 @@ public record DamogranContext(
         String target,
         @Nullable String daemonName,
         @Nullable String composeBaseDir,
-        @Nullable ComposeFileIo fileIo) {
+        @Nullable ComposeFileIo fileIo,
+        @Nullable ComposeProgress progress) {
 
-    /** Convenience for callers/tests that don't drive import/export (no file IO). */
+    /** Convenience for callers/tests that don't drive import/export or progress. */
     public DamogranContext(
             String tenantId, String projectId, @Nullable String processId,
             String workspaceName, String workspaceDirName, @Nullable Path workspacePath,
             String target, @Nullable String daemonName, @Nullable String composeBaseDir) {
         this(tenantId, projectId, processId, workspaceName, workspaceDirName, workspacePath,
-                target, daemonName, composeBaseDir, null);
+                target, daemonName, composeBaseDir, null, null);
     }
 
     /** The run's file backend for import/export; throws if none was bound. */

@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.damogran;
 
 import static de.mhus.vance.brain.damogran.DamogranTaskSupport.EXEC_KILL_GRACE_SECONDS;
+import static de.mhus.vance.brain.damogran.DamogranTaskSupport.NO_DEADLINE_WAIT_MS;
 import static de.mhus.vance.brain.damogran.DamogranTaskSupport.execDeadlineSeconds;
 import static de.mhus.vance.brain.damogran.DamogranTaskSupport.fromExec;
 import static de.mhus.vance.brain.damogran.DamogranTaskSupport.requireString;
@@ -11,6 +12,7 @@ import de.mhus.vance.brain.tools.exec.ExecManager;
 import de.mhus.vance.brain.tools.exec.SubmitOptions;
 import java.time.Instant;
 import java.util.Map;
+import java.util.function.Consumer;
 import org.springframework.stereotype.Service;
 
 /**
@@ -42,14 +44,25 @@ class ExecDamogranTask implements DamogranTask {
         }
         String command = requireString(spec, "command");
         int deadlineSeconds = execDeadlineSeconds(spec);
-        Instant deadline = Instant.now().plusSeconds(deadlineSeconds);
-        // Block slightly past the kill deadline so we observe the terminated
-        // (killed) state rather than a still-RUNNING snapshot.
-        long waitMs = (deadlineSeconds + EXEC_KILL_GRACE_SECONDS) * 1000L;
+        SubmitOptions options;
+        long waitMs;
+        if (deadlineSeconds <= 0) {
+            // deadlineSeconds: 0 = no hard-kill — run to completion (async long job).
+            options = SubmitOptions.defaults();
+            waitMs = NO_DEADLINE_WAIT_MS;
+        } else {
+            // Block slightly past the kill deadline so we observe the terminated
+            // (killed) state rather than a still-RUNNING snapshot.
+            options = SubmitOptions.withDeadline(Instant.now().plusSeconds(deadlineSeconds));
+            waitMs = (deadlineSeconds + EXEC_KILL_GRACE_SECONDS) * 1000L;
+        }
+        // Surface the job id for the async run's live tail, if tracked.
+        Consumer<String> onJobId = ctx.progress() == null
+                ? null : jobId -> ctx.progress().execJob(jobId);
 
         Map<String, Object> rendered = execManager.submitTrackedAndRender(
                 ctx.tenantId(), ctx.projectId(), null, ctx.processId(),
-                ctx.workspaceDirName(), command, waitMs, SubmitOptions.withDeadline(deadline));
+                ctx.workspaceDirName(), command, waitMs, options, onJobId);
 
         return fromExec(rendered, command, resolveOutputs(spec));
     }

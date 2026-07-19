@@ -20,6 +20,12 @@ public interface ComposeRunner {
     /** The {@code workspace.target} this runner handles (e.g. {@code WORK}). */
     String target();
 
+    /** Synchronous run (no progress tracking). */
+    default DamogranComposeResult run(String tenantId, String projectId, @Nullable String processId,
+                                      DamogranManifest manifest, @Nullable String baseDir) {
+        return run(tenantId, projectId, processId, manifest, baseDir, null);
+    }
+
     /**
      * Execute {@code manifest} against this runner's target.
      *
@@ -27,7 +33,10 @@ public interface ComposeRunner {
      *                  or {@code null} for a process-less run
      * @param baseDir   directory of the compose document, for resolving relative
      *                  {@code vance:} import/export paths ({@code null} = root)
+     * @param run       async-run state for progress reporting, or {@code null}
+     *                  for a synchronous run
      */
     DamogranComposeResult run(String tenantId, String projectId, @Nullable String processId,
-                              DamogranManifest manifest, @Nullable String baseDir);
+                              DamogranManifest manifest, @Nullable String baseDir,
+                              @Nullable ComposeRun run);
 }

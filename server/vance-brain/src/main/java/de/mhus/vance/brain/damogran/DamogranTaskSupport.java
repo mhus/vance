@@ -30,6 +30,14 @@ final class DamogranTaskSupport {
      */
     static final int EXEC_KILL_GRACE_SECONDS = 5;
 
+    /**
+     * Block window for a {@code deadlineSeconds: 0} (no-kill) exec: effectively
+     * "until the command finishes". Large but finite (no {@code currentMillis +
+     * waitMs} overflow). Only sensible on an async run — a sync run would block
+     * the request; the controller's fast-path wait bounds that.
+     */
+    static final long NO_DEADLINE_WAIT_MS = Long.MAX_VALUE / 4;
+
     private DamogranTaskSupport() {}
 
     /**

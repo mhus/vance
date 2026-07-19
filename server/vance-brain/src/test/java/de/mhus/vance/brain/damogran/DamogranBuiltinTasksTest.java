@@ -35,7 +35,7 @@ class DamogranBuiltinTasksTest {
     @Test
     void exec_completedZeroExit_isSuccessWithStdoutLog() {
         ExecManager execManager = mock(ExecManager.class);
-        when(execManager.submitTrackedAndRender(any(), any(), any(), any(), any(), any(), anyLong(), any()))
+        when(execManager.submitTrackedAndRender(any(), any(), any(), any(), any(), any(), anyLong(), any(), any()))
                 .thenReturn(Map.of("status", "COMPLETED", "exitCode", 0, "stdout", "hi", "stderr", ""));
 
         DamogranTaskResult result = new ExecDamogranTask(execManager)
@@ -48,7 +48,7 @@ class DamogranBuiltinTasksTest {
     @Test
     void exec_nonZeroExit_isFailureWithDetail() {
         ExecManager execManager = mock(ExecManager.class);
-        when(execManager.submitTrackedAndRender(any(), any(), any(), any(), any(), any(), anyLong(), any()))
+        when(execManager.submitTrackedAndRender(any(), any(), any(), any(), any(), any(), anyLong(), any(), any()))
                 .thenReturn(Map.of("status", "COMPLETED", "exitCode", 1, "stdout", "", "stderr", "boom"));
 
         DamogranTaskResult result = new ExecDamogranTask(execManager)
@@ -67,7 +67,7 @@ class DamogranBuiltinTasksTest {
 
         assertThat(result.status()).isEqualTo(DamogranStatus.FAILURE);
         verify(execManager, never())
-                .submitTrackedAndRender(any(), any(), any(), any(), any(), any(), anyLong(), any());
+                .submitTrackedAndRender(any(), any(), any(), any(), any(), any(), anyLong(), any(), any());
     }
 
     // ──────────────────── llm ────────────────────
@@ -125,7 +125,7 @@ class DamogranBuiltinTasksTest {
     void python_inlineCode_writesFileAndRunsInterpreter() {
         ExecManager execManager = mock(ExecManager.class);
         WorkspaceService workspaceService = mock(WorkspaceService.class);
-        when(execManager.submitTrackedAndRender(any(), any(), any(), any(), any(), any(), anyLong(), any()))
+        when(execManager.submitTrackedAndRender(any(), any(), any(), any(), any(), any(), anyLong(), any(), any()))
                 .thenReturn(Map.of("status", "COMPLETED", "exitCode", 0, "stdout", "ok", "stderr", ""));
 
         DamogranTaskResult result = new PythonDamogranTask(execManager, workspaceService)

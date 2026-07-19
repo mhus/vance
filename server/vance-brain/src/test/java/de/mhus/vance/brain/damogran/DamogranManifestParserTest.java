@@ -146,6 +146,22 @@ class DamogranManifestParserTest {
     }
 
     @Test
+    void parse_deleteWorkspace_parsesTerminalFlag() {
+        DamogranManifest m = parser.parse("workspace:\n  name: x\n  delete: true\n");
+
+        assertThat(m.workspace().delete()).isTrue();
+        assertThat(m.tasks()).isEmpty();
+    }
+
+    @Test
+    void parse_deleteWithTasks_throws() {
+        assertThatThrownBy(() ->
+                parser.parse("workspace:\n  name: x\n  delete: true\ntasks:\n  - type: exec\n    command: ls\n"))
+                .isInstanceOf(DamogranException.class)
+                .hasMessageContaining("terminal");
+    }
+
+    @Test
     void parse_taskWithoutType_throws() {
         assertThatThrownBy(() -> parser.parse("workspace:\n  name: x\ntasks:\n  - command: ls\n"))
                 .isInstanceOf(DamogranException.class)

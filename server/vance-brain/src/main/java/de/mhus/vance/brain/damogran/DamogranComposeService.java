@@ -93,6 +93,12 @@ public class DamogranComposeService {
                     "compose runner v1 supports target WORK only (was: " + ws.target() + ")");
         }
 
+        // Terminal delete: dispose the named workspace (if any) and stop. No
+        // provisioning, no import/tasks/export (the parser rejects those).
+        if (ws.delete()) {
+            return deleteWorkspace(tenantId, projectId, ws);
+        }
+
         RootDirHandle handle = provision(tenantId, projectId, ws);
         if (processId != null) {
             workTargetService.set(processId, WorkTarget.work(handle.getDirName()));
@@ -128,6 +134,19 @@ public class DamogranComposeService {
     }
 
     // ──────────────────── workspace provisioning ────────────────────
+
+    /**
+     * Terminal disposal for {@code workspace.delete=true}: remove the named
+     * workspace (matched by descriptor label) if it exists. Idempotent — a
+     * missing workspace is a no-op success. Type is irrelevant when deleting.
+     */
+    private DamogranComposeResult deleteWorkspace(String tenantId, String projectId, WorkspaceSpec ws) {
+        workspaceService.listRootDirs(tenantId, projectId).stream()
+                .filter(h -> ws.name().equals(h.getDescriptor().getLabel()))
+                .findFirst()
+                .ifPresent(h -> workspaceService.disposeRootDir(tenantId, projectId, h.getDirName()));
+        return new DamogranComposeResult(DamogranStatus.SUCCESS, ws.name(), List.of(), null);
+    }
 
     /**
      * Finds the named workspace (by descriptor label) and reuses it, or creates

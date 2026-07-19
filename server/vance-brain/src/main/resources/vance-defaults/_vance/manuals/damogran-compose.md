@@ -40,7 +40,7 @@ description: Sortiert + fasst zusammen   # optional
 workspace:
   name: my-work            # benannter Workspace (überlebt Re-Runs in der Session)
   type: temp               # temp | git | node | python
-  clear: false             # true = vorher leeren
+  clear: false             # true = vorher leeren, dann leer neu anlegen
   options: { repoUrl: … }  # nur git: repoUrl/branch
 import:
   - from: vance:data.csv   # vance:<path> = Dokument; http(s):// = externe Quelle
@@ -92,6 +92,10 @@ export:
 - **`js`** kann (noch) keine Dateien schreiben und keine Tools rufen — für
   Datei-Erzeugung `python`/`exec` nutzen.
 - Fehler stehen im Task-Result (`status: failure`, `error`), nicht als Exception.
+- **Workspace löschen:** `workspace: { name: x, delete: true }` verwirft den
+  benannten Workspace und stoppt (idempotent — fehlt er, ist es ein No-op).
+  `delete` ist **terminal**: nicht mit `clear`/`import`/`tasks`/`export`
+  kombinierbar (sonst Fehler). `clear: true` dagegen leert + legt leer neu an.
 
 ## Beispiel (LaTeX)
 

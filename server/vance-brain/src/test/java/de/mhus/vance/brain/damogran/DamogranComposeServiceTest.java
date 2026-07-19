@@ -52,7 +52,13 @@ class DamogranComposeServiceTest {
     private DamogranManifest manifest(String target, List<TaskSpec> tasks,
                                       List<ImportEntry> imports, List<ExportEntry> exports) {
         return new DamogranManifest(
-                new WorkspaceSpec("ws", "temp", false, Map.of(), target), imports, tasks, exports, null, null);
+                new WorkspaceSpec("ws", "temp", false, false, Map.of(), target), imports, tasks, exports, null, null);
+    }
+
+    private DamogranManifest deleteManifest() {
+        return new DamogranManifest(
+                new WorkspaceSpec("ws", "temp", false, true, Map.of(), "WORK"),
+                List.of(), List.of(), List.of(), null, null);
     }
 
     private static TaskSpec task(String type) {
@@ -116,5 +122,29 @@ class DamogranComposeServiceTest {
         assertThat(result.isSuccess()).isTrue();
         verify(workspaceService, never()).createRootDir(any());
         verify(workTargetService, never()).set(any(), any()); // processId was null
+    }
+
+    @Test
+    void run_deleteExistingWorkspace_disposesAndSucceedsWithoutProvisioning() {
+        when(workspaceService.listRootDirs("t", "p")).thenReturn(List.of(handle("ws", "temp")));
+
+        DamogranComposeResult result = service.run("t", "p", "proc1", deleteManifest());
+
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(result.taskResults()).isEmpty();
+        verify(workspaceService).disposeRootDir("t", "p", "ws");
+        verify(workspaceService, never()).createRootDir(any());
+        verify(workTargetService, never()).set(any(), any());
+    }
+
+    @Test
+    void run_deleteMissingWorkspace_isNoOpSuccess() {
+        when(workspaceService.listRootDirs("t", "p")).thenReturn(List.of());
+
+        DamogranComposeResult result = service.run("t", "p", null, deleteManifest());
+
+        assertThat(result.isSuccess()).isTrue();
+        verify(workspaceService, never()).disposeRootDir(any(), any(), any());
+        verify(workspaceService, never()).createRootDir(any());
     }
 }

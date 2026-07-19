@@ -58,6 +58,8 @@ public record DamogranManifest(
      * @param type    provisioning recipe (temp/git/node/python/ephemeral/addon);
      *                a provisioning recipe, <em>not</em> a language lock
      * @param clear   wipe the workspace before provisioning
+     * @param delete  terminal: dispose the named workspace and stop — no
+     *                provisioning, no import/tasks/export (must be empty)
      * @param options type-specific provisioning options (git url, node modules…)
      * @param target  WorkTarget kind — {@code CLIENT}, {@code WORK} or
      *                {@code DAEMON} (default {@code WORK})
@@ -66,6 +68,7 @@ public record DamogranManifest(
             String name,
             String type,
             boolean clear,
+            boolean delete,
             Map<String, Object> options,
             String target) {
 

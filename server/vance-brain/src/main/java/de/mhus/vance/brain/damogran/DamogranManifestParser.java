@@ -48,6 +48,12 @@ public class DamogranManifestParser {
         List<TaskSpec> tasks = parseTasks(root.get("tasks"));
         List<ExportEntry> exports = parseExports(root.get("export"));
 
+        if (workspace.delete()
+                && (workspace.clear() || !imports.isEmpty() || !tasks.isEmpty() || !exports.isEmpty())) {
+            throw new DamogranException("compose manifest: 'workspace.delete' is terminal — it must "
+                    + "not be combined with 'clear', 'import', 'tasks' or 'export'");
+        }
+
         return new DamogranManifest(workspace, imports, tasks, exports,
                 readString(root, "title"), readString(root, "description"));
     }
@@ -72,6 +78,7 @@ public class DamogranManifestParser {
         }
 
         boolean clear = Boolean.TRUE.equals(w.get("clear"));
+        boolean delete = Boolean.TRUE.equals(w.get("delete"));
 
         Object optionsRaw = w.get("options");
         Map<String, Object> options;
@@ -94,7 +101,7 @@ public class DamogranManifestParser {
             }
         }
 
-        return new WorkspaceSpec(name, type, clear, options, target);
+        return new WorkspaceSpec(name, type, clear, delete, options, target);
     }
 
     // ──────────────────── import / export ────────────────────

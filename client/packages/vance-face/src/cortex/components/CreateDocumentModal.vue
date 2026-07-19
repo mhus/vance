@@ -241,9 +241,15 @@ const KIND_CREATE_OPTIONS = [
   'compose',
 ] as const;
 
+// Human-facing labels where the raw kind id would be unclear. The id stays
+// technical (e.g. `compose`); only the picker label is friendlier.
+const KIND_LABELS: Record<string, string> = {
+  compose: 'Workspace Compose',
+};
+
 const kindCreateOptions = computed(() => [
   { value: '', label: t('documents.create.kindNone') },
-  ...KIND_CREATE_OPTIONS.map((k) => ({ value: k, label: k })),
+  ...KIND_CREATE_OPTIONS.map((k) => ({ value: k, label: KIND_LABELS[k] ?? k })),
 ]);
 
 /**

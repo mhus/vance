@@ -254,12 +254,59 @@ public class ClientExecutorService {
         if (job == null || job.isTerminal()) return false;
         Process p = job.process();
         if (p == null) return false;
-        p.destroyForcibly();
         job.status(ClientExecJob.Status.KILLED);
         job.finishedAt(Instant.now());
+        terminateTree(p);
         cancelWatchdog(id);
         notifyEnded(job);
         return true;
+    }
+
+    /** SIGTERM/SIGKILL grace on the local machine (mirror of the Brain default). */
+    private static final long KILL_GRACE_MS = 10_000;
+
+    /**
+     * Graceful process-<b>tree</b> termination. A job runs as a shell command,
+     * so destroying only that shell would leave its children (build/train
+     * subprocesses) orphaned on the user's machine. Snapshot the process + all
+     * descendants, SIGTERM ({@link ProcessHandle#destroy}) each, then SIGKILL
+     * ({@link ProcessHandle#destroyForcibly}) survivors after {@link #KILL_GRACE_MS}.
+     * Non-blocking — escalation runs on the watchdog scheduler. Mirrors
+     * {@code ExecManager.terminateTree} (see work-target.md).
+     */
+    private void terminateTree(@Nullable Process p) {
+        if (p == null) {
+            return;
+        }
+        List<ProcessHandle> tree = new ArrayList<>();
+        p.descendants().forEach(tree::add);
+        tree.add(p.toHandle());
+        tree.forEach(ProcessHandle::destroy);
+        if (KILL_GRACE_MS <= 0) {
+            tree.forEach(ProcessHandle::destroyForcibly);
+            return;
+        }
+        watchdog.schedule(() -> {
+            for (ProcessHandle h : tree) {
+                if (h.isAlive()) {
+                    h.destroyForcibly();
+                }
+            }
+        }, KILL_GRACE_MS, TimeUnit.MILLISECONDS);
+    }
+
+    /**
+     * Immediate forcible tree kill (no grace) — for JVM shutdown, where a
+     * deferred escalation on the watchdog scheduler would not run.
+     */
+    private static void destroyTreeNow(@Nullable Process p) {
+        if (p == null) {
+            return;
+        }
+        List<ProcessHandle> tree = new ArrayList<>();
+        p.descendants().forEach(tree::add);
+        tree.add(p.toHandle());
+        tree.forEach(ProcessHandle::destroyForcibly);
     }
 
     // ──────────────────── Watchdog ────────────────────
@@ -287,11 +334,8 @@ public class ClientExecutorService {
             if (!job.attemptWatchdogKill()) {
                 return;
             }
-            Process p = job.process();
-            if (p != null) {
-                p.destroyForcibly();
-            }
-            log.info("Client watchdog killed job '{}' after deadline expired", job.id());
+            terminateTree(job.process());
+            log.info("Client watchdog killed job '{}' (tree) after deadline expired", job.id());
         } catch (RuntimeException e) {
             log.warn("Client watchdog fire for job '{}' threw: {}", job.id(), e.toString(), e);
         }
@@ -428,7 +472,7 @@ public class ClientExecutorService {
         synchronized (jobs) {
             for (ClientExecJob j : jobs.values()) {
                 if (!j.isTerminal() && j.process() != null) {
-                    j.process().destroyForcibly();
+                    destroyTreeNow(j.process());
                 }
             }
         }

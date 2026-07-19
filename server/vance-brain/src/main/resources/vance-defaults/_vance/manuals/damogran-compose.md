@@ -1,5 +1,5 @@
 ---
-triggers: compose, damogran, workspace, workspace ausführen, prepare files, exec im workspace, kompilieren, latex, tex nach pdf, python analyse, dateien importieren, batch
+triggers: compose, damogran, workspace, workspace ausführen, prepare files, exec im workspace, kompilieren, latex, tex nach pdf, python analyse, dateien importieren, git clone, git pull, git push, git commit, repo klonen, batch
 summary: Provision a named workspace, import documents, run a linear list of tasks (exec/js/python/llm/tex), export results — via compose_run.
 requires-tools: compose_run
 ---
@@ -42,7 +42,10 @@ workspace:
   options: { repoUrl: … }  # nur git: repoUrl/branch
 import:
   - from: vance:data.csv   # vance:<path> = Dokument; http(s):// = externe Quelle
-    to: data.csv           # workspace-relativ
+    to: data.csv           # workspace-relativ (import-Ziel ist IMMER lokal)
+  - from: git:https://github.com/acme/repo.git   # clone (pull bei Re-Run)
+    to: repo               # Ordner im Workspace
+    branch: main           # optional; credentialAlias optional
 tasks:
   - type: exec
     command: sort data.csv > sorted.csv
@@ -52,8 +55,11 @@ tasks:
     prompt: "Fasse sorted.csv zusammen"
     output: summary.md
 export:
-  - from: summary.md
+  - from: summary.md       # export-Quelle ist IMMER lokal (Workspace)
     to: vance:summary.md
+  - from: repo             # git-Working-Tree (via git-import geklont)
+    to: git:https://github.com/acme/repo.git
+    message: "Update from Damogran"   # branch/push/credentialAlias optional
 ```
 
 ## Task-Typen

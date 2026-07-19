@@ -116,9 +116,17 @@ public class DamogranManifestParser {
             if (to == null) {
                 throw new DamogranException("compose manifest: import entry requires 'to'");
             }
-            result.add(new ImportEntry(from, to));
+            result.add(new ImportEntry(from, to, options(map)));
         }
         return List.copyOf(result);
+    }
+
+    /** Scheme-specific extra fields (everything except {@code from}/{@code to}). */
+    private static Map<String, Object> options(Map<String, Object> entry) {
+        Map<String, Object> opts = new LinkedHashMap<>(entry);
+        opts.remove("from");
+        opts.remove("to");
+        return Map.copyOf(opts);
     }
 
     private List<ExportEntry> parseExports(@Nullable Object raw) {
@@ -139,7 +147,7 @@ public class DamogranManifestParser {
             if (to == null) {
                 throw new DamogranException("compose manifest: export entry requires 'to'");
             }
-            result.add(new ExportEntry(from, to));
+            result.add(new ExportEntry(from, to, options(map)));
         }
         return List.copyOf(result);
     }

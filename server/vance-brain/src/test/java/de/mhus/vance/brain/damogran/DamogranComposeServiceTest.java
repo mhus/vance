@@ -66,8 +66,8 @@ class DamogranComposeServiceTest {
         when(taskExecutor.dispatch(any(), any())).thenReturn(DamogranTaskResult.success(List.of()));
 
         DamogranManifest m = manifest("WORK", List.of(task("exec")),
-                List.of(new ImportEntry("vance:a.txt", "a.txt")),
-                List.of(new ExportEntry("out.txt", "vance:out.txt")));
+                List.of(new ImportEntry("vance:a.txt", "a.txt", java.util.Map.of())),
+                List.of(new ExportEntry("out.txt", "vance:out.txt", java.util.Map.of())));
 
         DamogranComposeResult result = service.run("t", "p", "proc1", m);
 
@@ -85,7 +85,7 @@ class DamogranComposeServiceTest {
         when(taskExecutor.dispatch(any(), any())).thenReturn(DamogranTaskResult.failure("boom"));
 
         DamogranManifest m = manifest("WORK", List.of(task("exec"), task("llm")),
-                List.of(), List.of(new ExportEntry("out.txt", "vance:out.txt")));
+                List.of(), List.of(new ExportEntry("out.txt", "vance:out.txt", java.util.Map.of())));
 
         DamogranComposeResult result = service.run("t", "p", "proc1", m);
 

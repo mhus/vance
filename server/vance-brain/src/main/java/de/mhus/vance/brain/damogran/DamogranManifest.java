@@ -78,16 +78,42 @@ public record DamogranManifest(
      *             {@code http(s)://…} URL for an external resource
      * @param to   workspace-relative destination path
      */
-    public record ImportEntry(String from, String to) {}
+    public record ImportEntry(String from, String to, Map<String, Object> options) {
+        public @Nullable String option(String key) {
+            return DamogranManifest.stringOption(options, key);
+        }
+    }
 
     /**
-     * An export step: push a workspace file back into the document store after
-     * tasks complete.
+     * An export step: push a workspace file back out after tasks complete. The
+     * source ({@code from}) is <em>always</em> workspace-local; {@code to}
+     * carries the target scheme (e.g. {@code vance:<path>} document, or
+     * {@code git:<url>} for commit/push). {@code options} holds scheme-specific
+     * fields (branch, message, push, credentialAlias, …).
      *
-     * @param from workspace-relative source path
-     * @param to   destination document URI ({@code vance:<path>})
+     * @param from    workspace-relative source path
+     * @param to      destination URI ({@code vance:<path>} / {@code git:<url>})
+     * @param options scheme-specific extra fields
      */
-    public record ExportEntry(String from, String to) {}
+    public record ExportEntry(String from, String to, Map<String, Object> options) {
+        public @Nullable String option(String key) {
+            return DamogranManifest.stringOption(options, key);
+        }
+
+        public boolean boolOption(String key, boolean fallback) {
+            Object raw = options.get(key);
+            return raw instanceof Boolean b ? b : fallback;
+        }
+    }
+
+    private static @Nullable String stringOption(Map<String, Object> options, String key) {
+        Object raw = options.get(key);
+        if (raw == null) {
+            return null;
+        }
+        String s = raw.toString().trim();
+        return s.isBlank() ? null : s;
+    }
 
     /**
      * A single task. {@code type} selects the {@link DamogranTask} bean;

@@ -161,4 +161,35 @@ class DamogranManifestParserTest {
                 .isInstanceOf(DamogranException.class)
                 .hasMessageContaining("'to'");
     }
+
+    @Test
+    void parse_importExportExtraKeys_capturedAsOptions() {
+        String yaml =
+                """
+                workspace:
+                  name: paper
+                import:
+                  - from: git:https://example.com/repo.git
+                    to: repo
+                    branch: main
+                    credentialAlias: gh
+                export:
+                  - from: repo
+                    to: git:https://example.com/repo.git
+                    message: Update from Damogran
+                    push: true
+                """;
+
+        DamogranManifest m = parser.parse(yaml);
+
+        DamogranManifest.ImportEntry imp = m.imports().get(0);
+        assertThat(imp.from()).isEqualTo("git:https://example.com/repo.git");
+        assertThat(imp.to()).isEqualTo("repo");
+        assertThat(imp.option("branch")).isEqualTo("main");
+        assertThat(imp.option("credentialAlias")).isEqualTo("gh");
+
+        DamogranManifest.ExportEntry exp = m.exports().get(0);
+        assertThat(exp.option("message")).isEqualTo("Update from Damogran");
+        assertThat(exp.boolOption("push", false)).isTrue();
+    }
 }

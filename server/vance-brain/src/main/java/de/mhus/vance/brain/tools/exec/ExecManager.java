@@ -430,9 +430,9 @@ public class ExecManager {
         if (job == null || job.isTerminal()) return false;
         Process p = job.process();
         if (p == null) return false;
-        p.destroyForcibly();
         job.status(ExecJob.Status.KILLED);
         job.finishedAt(Instant.now());
+        terminateTree(p);
         cancelWatchdog(jobId);
         notifyRegistry(job);
         return true;
@@ -449,9 +449,9 @@ public class ExecManager {
         synchronized (perProject) {
             for (ExecJob j : perProject.values()) {
                 if (!j.isTerminal() && j.process() != null) {
-                    j.process().destroyForcibly();
                     j.status(ExecJob.Status.KILLED);
                     j.finishedAt(Instant.now());
+                    terminateTree(j.process());
                     cancelWatchdog(j.id());
                     notifyRegistry(j);
                     killed++;
@@ -459,6 +459,39 @@ public class ExecManager {
             }
         }
         return killed;
+    }
+
+    /**
+     * Graceful process-<b>tree</b> termination. A job runs as {@code /bin/sh -c
+     * "<command>"}, so {@code destroyForcibly()} on that shell alone would leave
+     * its children (compiler, trainer, …) running orphaned. Instead: snapshot
+     * the process + all descendants, send SIGTERM ({@link ProcessHandle#destroy})
+     * to each so a clean shutdown / checkpoint can run, then SIGKILL
+     * ({@link ProcessHandle#destroyForcibly}) any survivor after
+     * {@code killGraceMs}. Snapshotting before signalling keeps reparented
+     * grandchildren targeted. Non-blocking — the escalation is scheduled on the
+     * watchdog executor.
+     */
+    private void terminateTree(@Nullable Process p) {
+        if (p == null) {
+            return;
+        }
+        List<ProcessHandle> tree = new ArrayList<>();
+        p.descendants().forEach(tree::add);
+        tree.add(p.toHandle());
+        tree.forEach(ProcessHandle::destroy);
+        long graceMs = properties.getKillGraceMs();
+        if (graceMs <= 0) {
+            tree.forEach(ProcessHandle::destroyForcibly);
+            return;
+        }
+        watchdog.schedule(() -> {
+            for (ProcessHandle h : tree) {
+                if (h.isAlive()) {
+                    h.destroyForcibly();
+                }
+            }
+        }, graceMs, TimeUnit.MILLISECONDS);
     }
 
     // ──────────────────── Runner ────────────────────
@@ -553,11 +586,8 @@ public class ExecManager {
             if (!job.attemptWatchdogKill()) {
                 return;
             }
-            Process p = job.process();
-            if (p != null) {
-                p.destroyForcibly();
-            }
-            log.info("Watchdog killed job '{}' after deadline expired", job.id());
+            terminateTree(job.process());
+            log.info("Watchdog killed job '{}' (tree) after deadline expired", job.id());
         } catch (RuntimeException e) {
             log.warn("Watchdog fire for job '{}' threw: {}", job.id(), e.toString(), e);
         }

@@ -20,6 +20,14 @@ public class ExecProperties {
     /** Milliseconds {@code work_exec_run} blocks before handing back the id. */
     private long defaultWaitMs = 15_000;
 
+    /**
+     * Grace between SIGTERM and SIGKILL when terminating a job's process tree.
+     * The process (and its descendants) get SIGTERM first for a clean shutdown
+     * (checkpoint, flush); survivors are SIGKILL'd after this. {@code 0} = kill
+     * immediately (no grace).
+     */
+    private long killGraceMs = 10_000;
+
     /** Inline stdout/stderr cap in characters. Files on disk stay complete. */
     private int inlineOutputCharCap = 8_000;
 

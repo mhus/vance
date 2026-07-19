@@ -1,0 +1,9 @@
+$meta:
+  kind: calendar
+events:
+  - title: "{{ title }}"
+    start: "{{ start }}"
+{% if end %}    end: "{{ end }}"{% endif %}
+{% if allDay %}    allDay: true{% endif %}
+{% if location %}    location: "{{ location }}"{% endif %}
+{% if notes %}    notes: "{{ notes }}"{% endif %}

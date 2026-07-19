@@ -1,0 +1,13 @@
+$meta:
+  kind: application
+  app: kanban
+title: "{{ title }}"
+{% if description %}description: "{{ description }}"{% endif %}
+kanban:
+  columns:
+    backlog: { title: "Backlog", order: 1 }
+    todo:    { title: "To Do", order: 2 }
+    doing:   { title: "In Progress", order: 3 }
+    done:    { title: "Done", order: 4 }
+  board:
+    outputPath: _board.md

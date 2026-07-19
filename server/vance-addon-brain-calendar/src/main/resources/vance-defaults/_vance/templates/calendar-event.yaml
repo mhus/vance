@@ -1,0 +1,33 @@
+title:       { de: "Termin",  en: "Appointment" }
+description: { de: "Ein einzelner Kalender-Termin (kind: calendar mit einem Event)",
+               en: "A single calendar entry (kind: calendar with one event)" }
+icon: calendar
+tags: [calendar, note]
+
+name:
+  mode: free
+  default: "termin-{{ date }}"
+
+fields:
+  - name: title
+    type: string
+    required: true
+    label: { de: "Titel",     en: "Title" }
+  - name: start
+    type: string
+    required: true
+    label: { de: "Start",     en: "Start" }
+    help:  { de: "YYYY-MM-DD oder YYYY-MM-DDTHH:MM:SS", en: "YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS" }
+  - name: end
+    type: string
+    label: { de: "Ende",      en: "End" }
+  - name: allDay
+    type: boolean
+    label: { de: "Ganztägig", en: "All day" }
+  - name: location
+    type: string
+    label: { de: "Ort",       en: "Location" }
+  - name: notes
+    type: textarea
+    rows: 3
+    label: { de: "Notizen",   en: "Notes" }

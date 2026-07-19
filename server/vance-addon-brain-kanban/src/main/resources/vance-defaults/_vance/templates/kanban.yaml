@@ -1,0 +1,19 @@
+title:       { de: "Kanban-Board",  en: "Kanban board" }
+description: { de: "Ein neues Kanban-Board mit Standard-Spalten (Backlog → Done)",
+               en: "A new kanban board with default columns (Backlog → Done)" }
+icon: view-columns
+tags: [app, kanban, planning]
+
+name:
+  mode: fixed
+  value: _app.yaml
+
+fields:
+  - name: title
+    type: string
+    required: true
+    label: { de: "Titel",        en: "Title" }
+  - name: description
+    type: textarea
+    rows: 2
+    label: { de: "Beschreibung", en: "Description" }

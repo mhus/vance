@@ -1,0 +1,19 @@
+title:       { de: "Workbook",  en: "Workbook" }
+description: { de: "Eine neue Workbook-App — Notizbuch aus mehreren WorkPages",
+               en: "A new workbook app — a notebook of multiple workpages" }
+icon: book-open
+tags: [app, workbook, note]
+
+name:
+  mode: fixed
+  value: _app.yaml
+
+fields:
+  - name: title
+    type: string
+    required: true
+    label: { de: "Titel",        en: "Title" }
+  - name: description
+    type: textarea
+    rows: 2
+    label: { de: "Beschreibung", en: "Description" }

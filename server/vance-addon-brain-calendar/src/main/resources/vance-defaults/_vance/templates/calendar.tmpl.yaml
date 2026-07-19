@@ -1,0 +1,8 @@
+$meta:
+  kind: application
+  app: calendar
+title: "{{ title }}"
+{% if description %}description: "{{ description }}"{% endif %}
+calendar:
+  gantt:
+    outputPath: _gantt.md

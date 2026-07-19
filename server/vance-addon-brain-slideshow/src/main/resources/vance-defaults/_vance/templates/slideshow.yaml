@@ -1,0 +1,19 @@
+title:       { de: "Slideshow",  en: "Slideshow" }
+description: { de: "Eine neue Slideshow-App — Präsentations-Deck aus Bildern/Seiten",
+               en: "A new slideshow app — a presentation deck from images/pages" }
+icon: presentation-chart-bar
+tags: [app, slideshow]
+
+name:
+  mode: fixed
+  value: _app.yaml
+
+fields:
+  - name: title
+    type: string
+    required: true
+    label: { de: "Titel",        en: "Title" }
+  - name: description
+    type: textarea
+    rows: 2
+    label: { de: "Beschreibung", en: "Description" }

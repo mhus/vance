@@ -1,0 +1,19 @@
+title:       { de: "Kalender-App",  en: "Calendar app" }
+description: { de: "Eine neue Calendar-App — Zeitplan aus mehreren Kalender-Dateien (Lanes)",
+               en: "A new calendar app — a schedule from multiple calendar files (lanes)" }
+icon: calendar-days
+tags: [app, calendar, planning]
+
+name:
+  mode: fixed
+  value: _app.yaml
+
+fields:
+  - name: title
+    type: string
+    required: true
+    label: { de: "Titel",        en: "Title" }
+  - name: description
+    type: textarea
+    rows: 2
+    label: { de: "Beschreibung", en: "Description" }

@@ -1,0 +1,22 @@
+title:       { de: "Canvas-App",  en: "Canvas app" }
+description: { de: "Eine neue Canvasbook-App — Sammlung räumlicher Canvas-Boards. Seiten fügst du danach im Editor hinzu.",
+               en: "A new canvasbook app — a collection of spatial canvas boards. Add boards afterwards in the editor." }
+icon: squares-2x2
+tags: [app, canvas]
+
+# Application templates write only the _app.yaml manifest; the folder is
+# chosen by the user. Pages (_index.md, *.canvas.yaml) are added by the
+# canvas editor / canvasbook_page_create afterwards.
+name:
+  mode: fixed
+  value: _app.yaml
+
+fields:
+  - name: title
+    type: string
+    required: true
+    label: { de: "Titel",        en: "Title" }
+  - name: description
+    type: textarea
+    rows: 2
+    label: { de: "Beschreibung", en: "Description" }

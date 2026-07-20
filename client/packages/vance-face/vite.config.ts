@@ -157,15 +157,14 @@ export default defineConfig({
         vue: { singleton: true, requiredVersion: '^3.5.0' },
         pinia: { singleton: true },
         'vue-i18n': { singleton: true },
-        // Tiptap npm packages shared as singletons so an addon-
-        // contributed block Node (block-extension-registry) is built
-        // against the SAME @tiptap/core the host editor uses — the
-        // ExtensionManager instanceof-checks otherwise reject a foreign
-        // Node. Safe to share (npm packages, like vue); the §5.3 TLA
-        // deadlock caveat applies only to @vance/* workspace packages.
-        '@tiptap/core': { singleton: true, requiredVersion: '^2.10.0' },
-        '@tiptap/pm': { singleton: true, requiredVersion: '^2.10.0' },
-        '@tiptap/vue-3': { singleton: true, requiredVersion: '^2.10.0' },
+        // NB: Tiptap / prosemirror are deliberately NOT shared here. The
+        // host (vance-face) does not bundle the block editor — it lives in
+        // the addons (workbook, kanban, …). Declaring a shared dep the host
+        // can't PROVIDE registers an empty factory in the shared scope; the
+        // first addon to loadShare it then crashes with "factory is not a
+        // function". The addons that DO bundle the editor declare the
+        // Tiptap/prosemirror singletons among themselves (see their
+        // vite.config.ts) and dedupe there. See addon-system.md §7d.
       },
     }),
     vanceAddonDevServe(),

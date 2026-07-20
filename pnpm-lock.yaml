@@ -595,6 +595,9 @@ importers:
 
   server/vance-addon-brain-kanban/client:
     dependencies:
+      '@vance/block-editor':
+        specifier: workspace:*
+        version: link:../../../client/packages/block-editor
       '@vance/components':
         specifier: workspace:*
         version: link:../../../client/packages/components
@@ -611,6 +614,15 @@ importers:
       '@module-federation/vite':
         specifier: 1.4.0
         version: 1.4.0(rollup@4.62.0)
+      '@tiptap/core':
+        specifier: ^2.10.4
+        version: 2.27.2(@tiptap/pm@2.27.2)
+      '@tiptap/pm':
+        specifier: ^2.10.4
+        version: 2.27.2
+      '@tiptap/vue-3':
+        specifier: ^2.10.4
+        version: 2.27.2(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))(@tiptap/pm@2.27.2)(vue@3.5.38(typescript@5.6.3))
       '@vitejs/plugin-vue':
         specifier: ^5.2.1
         version: 5.2.4(vite@5.4.21(@types/node@22.19.21)(lightningcss@1.32.0)(terser@5.48.0))(vue@3.5.38(typescript@5.6.3))

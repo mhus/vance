@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 
 interface Props {
   /** Two-way bound visibility flag. */
@@ -11,11 +11,33 @@ interface Props {
    * explicit cancel.
    */
   closeOnBackdrop?: boolean;
+  /**
+   * Max-width preset. Default `md` (max-w-2xl) for forms; use `lg`/`xl`
+   * for content-heavy modals like an embedded editor.
+   */
+  size?: 'md' | 'lg' | 'xl';
 }
 
 const props = withDefaults(defineProps<Props>(), {
   closeOnBackdrop: true,
+  size: 'md',
 });
+
+const sizeClass = computed(() => ({
+  md: 'max-w-2xl',
+  lg: 'max-w-4xl',
+  xl: 'max-w-6xl',
+}[props.size]));
+
+// DaisyUI's .modal-box carries a CSS transform (open animation) which
+// creates a containing block — that breaks `position: fixed` descendants
+// (e.g. the block-editor's drag handle renders offset by the modal's
+// position). Content modals (lg/xl), which may embed such editors, drop
+// the transform so fixed children resolve against the viewport again.
+// Form modals (md) keep the animation.
+const boxStyle = computed(() =>
+  props.size === 'md' ? undefined : { transform: 'none' },
+);
 
 const emit = defineEmits<{ (e: 'update:modelValue', open: boolean): void }>();
 
@@ -64,7 +86,7 @@ onUnmounted(() => {
     @close="onClose"
     @click="onBackdropClick"
   >
-    <div class="modal-box max-w-2xl">
+    <div class="modal-box" :class="sizeClass" :style="boxStyle">
       <header v-if="title || $slots.header" class="flex items-center justify-between mb-3">
         <h3 class="text-lg font-semibold">
           <slot name="header">{{ title }}</slot>

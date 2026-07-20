@@ -314,6 +314,7 @@ defineExpose({ reload: load });
       <KanbanCardDetail
         v-if="selectedCard"
         :card="selectedCard"
+        :project-id="projectId"
         class="w-96 flex-shrink-0 border-l border-base-300 bg-base-100 overflow-y-auto"
         @close="selectedCardPath = null"
         @update="(patch) => onCardUpdate(selectedCard!.path, patch)"

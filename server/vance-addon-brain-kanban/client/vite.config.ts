@@ -26,6 +26,10 @@ export default defineConfig({
       },
       shared: {
         vue: { singleton: true, requiredVersion: '^3.5.0' },
+        // Tiptap / prosemirror are NOT shared: @module-federation/vite can't
+        // share @tiptap/pm's subpath exports (broken loadShare factory), and
+        // the block registry is per-bundle anyway (blockRegistry.ts) so no
+        // Nodes cross bundle boundaries. This addon bundles its own copy.
       },
       dts: false,
     }),

@@ -319,7 +319,11 @@ export const SlashCommands = Extension.create({
               if (!suggestionProps.clientRect) return;
               popup = tippy('body', {
                 getReferenceClientRect: suggestionProps.clientRect as () => DOMRect,
-                appendTo: () => document.body,
+                // Append to the enclosing <dialog> when the editor is inside
+                // a modal — a showModal() dialog lives in the browser top
+                // layer, so a body-appended popup would render BEHIND it.
+                appendTo: () =>
+                  suggestionProps.editor.view.dom.closest('dialog') ?? document.body,
                 content: component.element as Element,
                 showOnCreate: true,
                 interactive: true,

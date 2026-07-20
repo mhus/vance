@@ -804,6 +804,10 @@ function onTrashDrop(e: DragEvent) {
 // block it points at. Desktop-only by nature — the handle is
 // hover-driven and never appears on touch devices.
 const blockMenu = ref<{ x: number; y: number; start: number; end: number } | null>(null);
+// Teleport target for the menu, resolved when it opens (below). Inside a
+// showModal() dialog, body-teleported content renders BEHIND the top-layer
+// dialog — so target the enclosing <dialog> when the editor sits in one.
+const menuTarget = ref<HTMLElement>(document.body);
 
 function onHandleClick(e: MouseEvent) {
   const target = e.target as HTMLElement | null;
@@ -831,6 +835,7 @@ function onHandleClick(e: MouseEvent) {
 
   e.preventDefault();
   e.stopPropagation();
+  menuTarget.value = (view.dom.closest('dialog') as HTMLElement | null) ?? document.body;
   blockMenu.value = { x: e.clientX, y: e.clientY, start, end };
 }
 
@@ -1002,6 +1007,17 @@ function getContentEl(): HTMLElement | null {
   return (editor.value?.view.dom as HTMLElement | undefined) ?? null;
 }
 
+/**
+ * tippy appendTo target for the floating menus: the enclosing <dialog>
+ * (browser top layer) when the editor is mounted inside a modal, else
+ * document.body. Without this, body-appended menus render BEHIND a
+ * showModal() dialog (e.g. the Kanban card-content modal).
+ */
+function menuAppendTo(): HTMLElement {
+  return (editor.value?.view.dom.closest('dialog') as HTMLElement | null) ?? document.body;
+}
+
+
 defineExpose({
   save, flush, insertImage, insertEmbed, insertForm, insertInput, updateHeader,
   applyLink, clearLink, currentLinkHref,
@@ -1015,7 +1031,7 @@ defineExpose({
     <BubbleMenu
       v-if="editor"
       :editor="editor"
-      :tippy-options="{ duration: 100, placement: 'top' }"
+      :tippy-options="{ duration: 100, placement: 'top', appendTo: menuAppendTo }"
       :should-show="() => editor?.isEditable === true && !suppressFloating"
       class="canvas-editor__bubble-menu"
     >
@@ -1054,7 +1070,7 @@ defineExpose({
     <BubbleMenu
       v-if="editor"
       :editor="editor"
-      :tippy-options="{ duration: 100, placement: 'top' }"
+      :tippy-options="{ duration: 100, placement: 'top', appendTo: menuAppendTo }"
       :should-show="() => editor?.isEditable === true && !suppressFloating && isImageSelected()"
       class="canvas-editor__bubble-menu canvas-editor__bubble-menu--image"
     >
@@ -1073,7 +1089,7 @@ defineExpose({
 
     <EditorContent :editor="editor" class="canvas-editor__body" />
 
-    <Teleport to="body">
+    <Teleport :to="menuTarget">
       <div
         v-if="blockMenu"
         class="block-handle-menu"

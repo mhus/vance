@@ -1,18 +1,21 @@
 // Runtime registry for addon-contributed block types.
 //
-// Mirrors the @vance/kind-registry + platform pattern: the backing Map
-// lives on globalThis (`__VANCE_BLOCK_REGISTRY__`) so that a block
-// registered from an addon's OWN bundled copy of @vance/block-editor is
-// visible to the host editor's copy. Module Federation does NOT share
-// workspace packages (see specification/public/addon-system.md §5.3 —
-// TLA deadlock), so every consumer bundles its own copy; only globalThis
-// bridges the bundle boundary.
+// PER-BUNDLE (module-scoped), deliberately NOT globalThis. Each Module-
+// Federation bundle (host, workbook addon, kanban addon, …) bundles its
+// own copy of @vance/block-editor, hence its own copy of this module and
+// its own registry Map. A block registered inside a bundle is visible to
+// that bundle's editor only.
 //
-// A registered block's Tiptap `node` must be built against the SHARED
-// @tiptap/core singleton (declared in each addon's + the host's
-// federation `shared` config) — otherwise the host Editor's
-// ExtensionManager instanceof-checks reject the foreign Node. That is
-// the exact property the block-extension-registry Phase-0 spike verifies.
+// Why not a globalThis registry (cross-bundle contribution): a Tiptap Node
+// built in bundle A carries bundle-A's prosemirror instance. Using it in
+// an editor built by bundle B mixes two prosemirror-state instances and
+// crashes ("Adding different instances of a keyed plugin"). The only fix
+// would be sharing @tiptap/pm across bundles — but @tiptap/pm exposes its
+// runtime via SUBPATHS (@tiptap/pm/state, …) and @module-federation/vite
+// cannot share those (the generated loadShare factory is broken —
+// "factory is not a function"). So cross-bundle Node sharing is a dead end
+// in this stack; blocks are scoped to the bundle that registers them.
+// An app therefore bundles its editor AND its blocks together.
 
 import type { Editor, Node, Range } from '@tiptap/core';
 import type { Component } from 'vue';
@@ -66,16 +69,11 @@ export interface BlockExtension {
   slash?: BlockExtensionSlashItem;
 }
 
-const KEY = '__VANCE_BLOCK_REGISTRY__';
+// Module-scoped: one Map per bundle's copy of this module (see header).
+const registry = new Map<string, BlockExtension>();
 
 function store(): Map<string, BlockExtension> {
-  const g = globalThis as unknown as Record<string, unknown>;
-  let map = g[KEY] as Map<string, BlockExtension> | undefined;
-  if (!map) {
-    map = new Map<string, BlockExtension>();
-    g[KEY] = map;
-  }
-  return map;
+  return registry;
 }
 
 /** Register (or replace) an addon block. Call from the addon's `register()`. */

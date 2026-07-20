@@ -1,18 +1,19 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import {
-  CodeEditor,
   VAlert,
   VButton,
   VCheckbox,
   VInput,
+  VModal,
   VSelect,
   VTagEditor,
 } from '@vance/components';
+import { WorkPageEditor } from '@vance/block-editor';
 import type { KanbanCardUpdateRequest } from './generated/kanban/KanbanCardUpdateRequest';
 import type { KanbanCardView } from './generated/kanban/KanbanCardView';
 
-const props = defineProps<{ card: KanbanCardView }>();
+const props = defineProps<{ card: KanbanCardView; projectId: string }>();
 const emit = defineEmits<{
   (e: 'close'): void;
   (e: 'update', patch: KanbanCardUpdateRequest): void;
@@ -29,7 +30,32 @@ const labels = ref<string[]>([...props.card.labels]);
 const dueDate = ref(props.card.dueDate ?? '');
 const estimate = ref<number | null>(props.card.estimate ?? null);
 const blocked = ref(props.card.blocked);
+
+// Card body, edited in the shared block editor (WorkPageEditor, bodyOnly).
+// ONE ref: it feeds :source AND captures the serialized markdown on @save
+// (fired on modal close via editorRef.save()). With autoSaveMs=0 the editor
+// never emits mid-edit, so `body` stays stable while typing (no reload /
+// cursor reset); reopening the modal shows the latest edits because
+// :source === body. `bodyDirty` mirrors the editor's live dirty state.
 const body = ref(props.card.body ?? '');
+const bodyDirty = ref(false);
+const editorRef = ref<{ save: () => void } | null>(null);
+const editorDocument = computed(() => ({
+  id: props.card.path,
+  path: props.card.path,
+  projectId: props.projectId,
+  mimeType: 'text/markdown',
+}));
+
+// Content opens in a roomy modal (the side panel is too narrow for the
+// block editor). The editor is lazy-mounted while the modal is open;
+// closing it flushes the latest markdown into editedBody before unmount,
+// so the panel's Save button persists it with the rest of the patch.
+const contentOpen = ref(false);
+function onContentModal(open: boolean): void {
+  if (!open) editorRef.value?.save();
+  contentOpen.value = open;
+}
 
 watch(
   () => props.card.path,
@@ -42,6 +68,7 @@ watch(
     estimate.value = props.card.estimate ?? null;
     blocked.value = props.card.blocked;
     body.value = props.card.body ?? '';
+    bodyDirty.value = false;
   },
 );
 
@@ -53,6 +80,7 @@ const dirty = computed<boolean>(() =>
   (dueDate.value || null) !== (props.card.dueDate ?? null) ||
   estimate.value !== (props.card.estimate ?? null) ||
   blocked.value !== props.card.blocked ||
+  bodyDirty.value ||
   body.value !== (props.card.body ?? ''),
 );
 
@@ -63,6 +91,9 @@ function arraysEqual(a: string[], b: string[]): boolean {
 }
 
 function save(): void {
+  // Flush the editor first (if the modal is open): save() emits @save
+  // synchronously, so `body` holds the latest markdown before we patch.
+  editorRef.value?.save();
   const patch: KanbanCardUpdateRequest = {};
   if (title.value !== props.card.title) patch.title = title.value;
   if (priority.value !== (props.card.priority ?? '')) patch.priority = priority.value;
@@ -125,17 +156,44 @@ function confirmDelete(): void {
       <VCheckbox v-model="blocked" label="Blocked" />
 
       <div class="flex flex-col gap-1">
-        <label class="text-sm font-medium">Body (Markdown)</label>
-        <CodeEditor v-model="body" mime-type="text/markdown" :rows="14" />
-        <div v-if="body" class="text-xs text-base-content/50">
-          GFM checkboxes feed the board's subtasks progress badge.
-        </div>
+        <label class="text-sm font-medium">Content</label>
+        <VButton variant="ghost" class="justify-start" @click="onContentModal(true)">
+          ✎ Content bearbeiten…
+        </VButton>
+        <div v-if="bodyDirty" class="text-xs text-warning">Ungespeicherte Content-Änderungen.</div>
       </div>
 
       <VAlert variant="info" class="text-xs">
         Path: {{ card.path }}
       </VAlert>
     </div>
+
+    <VModal
+      :model-value="contentOpen"
+      title="Card-Inhalt"
+      size="xl"
+      :close-on-backdrop="false"
+      @update:model-value="onContentModal"
+    >
+      <!-- px-8 gives the block drag-handle (⠿, sits ~20px left of each
+           block) a gutter so it doesn't get clipped by the scroll box. -->
+      <div class="min-h-[55vh] max-h-[72vh] overflow-y-auto px-8">
+        <WorkPageEditor
+          v-if="contentOpen"
+          ref="editorRef"
+          :document="editorDocument"
+          :source="body"
+          :auto-save-ms="0"
+          body-only
+          :current-project-id="projectId"
+          @save="(md: string) => body = md"
+          @dirty="(d: boolean) => bodyDirty = d"
+        />
+      </div>
+      <template #actions>
+        <VButton variant="primary" @click="onContentModal(false)">Fertig</VButton>
+      </template>
+    </VModal>
 
     <div class="flex items-center justify-between p-4 border-t border-base-300">
       <VButton variant="ghost" class="text-error" @click="confirmDelete">Delete</VButton>

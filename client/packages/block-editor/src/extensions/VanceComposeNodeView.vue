@@ -219,6 +219,19 @@ async function stop() {
   }
 }
 
+/**
+ * Run button has three states: ▶ idle → run; "…" busy (phase 1, the start
+ * REST is in flight, no runId yet — nothing to cancel) → disabled; ■ stop
+ * (phase 2, we have a runId and can cancel) → stop.
+ */
+const canStop = computed(() => running.value && runId.value != null);
+const runGlyph = computed(() => (!running.value ? '▶' : runId.value ? '■' : '…'));
+
+function onRunButton() {
+  if (!running.value) run();
+  else if (canStop.value) stop();
+}
+
 function toggleMenu() { menuOpen.value = !menuOpen.value; }
 function closeMenu() { menuOpen.value = false; }
 
@@ -384,11 +397,11 @@ onBeforeUnmount(() => {
         <button
           type="button"
           class="vance-compose__run"
-          :class="{ 'vance-compose__run--stop': running }"
-          :disabled="cancelling"
-          :title="running ? 'Stop' : 'Run compose'"
-          @click.stop="running ? stop() : run()"
-        >{{ running ? '■' : '▶' }}</button>
+          :class="{ 'vance-compose__run--stop': canStop }"
+          :disabled="cancelling || (running && !canStop)"
+          :title="!running ? 'Run compose' : (canStop ? 'Stop' : 'Läuft…')"
+          @click.stop="onRunButton"
+        >{{ runGlyph }}</button>
 
         <div class="vance-compose__menu-wrap">
           <button

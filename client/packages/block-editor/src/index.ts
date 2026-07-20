@@ -27,3 +27,17 @@ export {
   type ComposeTaskView,
   type ComposeOutputView,
 } from './extensions';
+
+export {
+  registerBlock,
+  registeredBlocks,
+  type BlockExtension,
+  type BlockExtensionSlashItem,
+} from './blockRegistry';
+
+// Register bundled built-in blocks (callout, …) through the block
+// registry on import, so every consumer of this package — editor, codec,
+// or read-only BlockView — sees them without extra wiring. Idempotent.
+import { registerBuiltInBlocks } from './builtins';
+export { registerBuiltInBlocks };
+registerBuiltInBlocks();

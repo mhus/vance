@@ -15,6 +15,10 @@
     "./WorkPageEditor.vue": {
       "types": "./dist/WorkPageEditor.vue.d.ts",
       "import": "./src/WorkPageEditor.vue"
+    },
+    "./blockRegistry": {
+      "types": "./dist/blockRegistry.d.ts",
+      "import": "./src/blockRegistry.ts"
     }
   },
   "files": ["src"],

@@ -14,6 +14,7 @@ import Suggestion, { type SuggestionOptions } from '@tiptap/suggestion';
 import { VueRenderer } from '@tiptap/vue-3';
 import tippy, { type Instance as TippyInstance } from 'tippy.js';
 import SlashCommandList, { type SlashCommandItem } from './SlashCommandList.vue';
+import { registeredBlocks } from './blockRegistry';
 
 interface CommandContext {
   editor: Editor;
@@ -94,21 +95,6 @@ const ITEMS: SlashItemDef[] = [
     hint: '---',
     run: ({ editor, range }) =>
       editor.chain().focus().deleteRange(range).setHorizontalRule().run(),
-  },
-  {
-    id: 'callout',
-    title: 'Callout',
-    hint: 'Info / Warn / Note',
-    run: ({ editor, range }) =>
-      editor
-        .chain()
-        .focus()
-        .deleteRange(range)
-        .insertContent({
-          type: 'vanceCallout',
-          attrs: { severity: 'info', title: 'Hinweis', body: '' },
-        })
-        .run(),
   },
   {
     id: 'toggle',
@@ -294,9 +280,21 @@ export const SlashCommands = Extension.create({
           props.run({ editor, range });
         },
         items: ({ query }: { query: string }): SlashItemDef[] => {
+          // Core items + addon-contributed slash items (block-extension-
+          // registry). Registry entries are read per-keystroke so an
+          // addon that registers after this module loaded still shows up.
+          const registryItems: SlashItemDef[] = registeredBlocks()
+            .filter((b) => b.slash)
+            .map((b) => ({
+              id: `ext:${b.fence}`,
+              title: b.slash!.title,
+              hint: b.slash!.hint,
+              run: (ctx) => b.slash!.insert(ctx),
+            }));
+          const all = [...ITEMS, ...registryItems];
           const q = query.toLowerCase();
-          if (!q) return ITEMS;
-          return ITEMS.filter(
+          if (!q) return all;
+          return all.filter(
             (item) =>
               item.title.toLowerCase().includes(q) ||
               item.id.toLowerCase().includes(q) ||

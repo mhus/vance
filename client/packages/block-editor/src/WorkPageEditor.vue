@@ -22,7 +22,6 @@ import { parseDocument } from './markdown/parser';
 import { serializeDocument } from './markdown/serializer';
 import { blocksToContent, contentToBlocks } from './markdown/proseMirror';
 import {
-  VanceCallout,
   VanceToggle,
   VanceLink,
   VanceDataview,
@@ -39,6 +38,8 @@ import {
   type EmbedDocMeta,
 } from './extensions';
 import { SlashCommands } from './SlashCommands';
+import { registeredBlocks } from './blockRegistry';
+import { registerBuiltInBlocks } from './builtins';
 import { HeadingAnchors } from './extensions/HeadingAnchors';
 import { TrailingNode } from './extensions/TrailingNode';
 import { VueNodeViewRenderer } from '@tiptap/vue-3';
@@ -278,6 +279,10 @@ async function insertUploadedImages(files: File[], dropPos: number | null) {
   }
 }
 
+// Register bundled built-in blocks (callout, …) through the registry
+// before the extensions array reads registeredBlocks() below.
+registerBuiltInBlocks();
+
 const editor = useEditor({
   editable: props.editable,
   extensions: [
@@ -381,7 +386,6 @@ const editor = useEditor({
     SlashCommands,
     HeadingAnchors,
     TrailingNode,
-    VanceCallout,
     VanceToggle,
     VanceLink,
     VanceDataview,
@@ -389,6 +393,11 @@ const editor = useEditor({
     VanceColumns,
     VanceColumn,
     VanceUnknownFence,
+    // Addon-contributed block nodes (block-extension-registry). Populated
+    // before mount by loadAddonRegistrations(); empty when no addon
+    // contributes a block. Their Tiptap Nodes rely on the shared
+    // @tiptap/core singleton to be accepted by this Editor's schema.
+    ...registeredBlocks().map((b) => b.node),
     VanceEmbed.configure({
       resolveDocumentMeta: (uri: string) =>
         props.resolveEmbedDoc?.(uri) ?? Promise.resolve(null),

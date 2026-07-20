@@ -6,6 +6,8 @@
 import type { JSONContent } from '@tiptap/core';
 import type { Block } from './blocks';
 import { parseInlineToProseMirror, serializeProseMirrorInline } from './inline';
+import { findBlockByFence, findBlockByNodeName } from '../blockRegistry';
+import { bodyFromAttrs } from './customBlock';
 
 export function blocksToContent(blocks: Block[]): JSONContent[] {
   return blocks.map(blockToNode);
@@ -82,11 +84,6 @@ function blockToNode(b: Block): JSONContent {
       }
       return { type: 'table', content: rows };
     }
-    case 'callout':
-      return {
-        type: 'vanceCallout',
-        attrs: { severity: b.severity, title: b.title, body: b.body },
-      };
     case 'toggle':
       return {
         type: 'vanceToggle',
@@ -135,6 +132,14 @@ function blockToNode(b: Block): JSONContent {
               : [{ type: 'paragraph' }],
         })),
       };
+    case 'custom': {
+      // Addon block → its Tiptap node type, attrs passed through. If the
+      // addon vanished since parse, degrade to the unknown-fence node so
+      // the content is preserved rather than dropped.
+      const ext = findBlockByFence(b.fence);
+      if (ext) return { type: ext.node.name, attrs: b.attrs };
+      return { type: 'vanceUnknownFence', attrs: { info: b.fence, body: b.rawBody } };
+    }
     case 'unknown-fence':
       return { type: 'vanceUnknownFence', attrs: { info: b.info, body: b.body } };
   }
@@ -218,15 +223,6 @@ function nodeToBlock(node: JSONContent): Block[] {
       }
       return [{ kind: 'table', headers, rows: dataRows }];
     }
-    case 'vanceCallout':
-      return [
-        {
-          kind: 'callout',
-          severity: (node.attrs?.severity as string) ?? 'info',
-          title: (node.attrs?.title as string | null) ?? null,
-          body: (node.attrs?.body as string) ?? '',
-        },
-      ];
     case 'vanceToggle':
       return [
         {
@@ -295,8 +291,17 @@ function nodeToBlock(node: JSONContent): Block[] {
           body: (node.attrs?.body as string) ?? '',
         },
       ];
-    default:
+    default: {
+      // Addon-contributed node type (block-extension-registry) → `custom`
+      // block. rawBody is derived from the node attrs so serialization
+      // reflects edits made in the editor.
+      const ext = node.type ? findBlockByNodeName(node.type) : undefined;
+      if (ext) {
+        const attrs = (node.attrs ?? {}) as Record<string, unknown>;
+        return [{ kind: 'custom', fence: ext.fence, attrs, rawBody: bodyFromAttrs(ext, attrs) }];
+      }
       return [];
+    }
   }
 }
 

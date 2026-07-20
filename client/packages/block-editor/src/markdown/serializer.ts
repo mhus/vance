@@ -2,6 +2,8 @@
 
 import yaml from 'js-yaml';
 import type { Block, WorkPageDocument } from './blocks';
+import { findBlockByFence } from '../blockRegistry';
+import { bodyFromAttrs } from './customBlock';
 
 /**
  * Render a full workpage document (front-matter + body).
@@ -82,12 +84,6 @@ function renderBlock(b: Block): string {
       const rows = b.rows.map((r) => '| ' + r.join(' | ') + ' |');
       return [head, div, ...rows].join('\n') + '\n';
     }
-    case 'callout': {
-      const body: Record<string, unknown> = { severity: b.severity };
-      if (b.title) body.title = b.title;
-      if (b.body) body.body = b.body;
-      return renderFence('vance-callout', body);
-    }
     case 'toggle':
       return renderFence('vance-toggle', { summary: b.summary, body: b.body });
     case 'dataview':
@@ -154,6 +150,16 @@ function renderBlock(b: Block): string {
       if (!out.endsWith('\n')) out += '\n';
       out += fence + '\n';
       return out;
+    }
+    case 'custom': {
+      // Attrs are the source of truth: with the extension present, derive
+      // the body from attrs (so open-save and edit-save are identical and
+      // byte-equal to the old core block). Without an extension (addon gone
+      // since parse), fall back to the preserved rawBody verbatim.
+      const ext = findBlockByFence(b.fence);
+      const body = ext ? bodyFromAttrs(ext, b.attrs) : b.rawBody;
+      if (!body) return '```' + b.fence + '\n```\n';
+      return '```' + b.fence + '\n' + body + (body.endsWith('\n') ? '' : '\n') + '```\n';
     }
     case 'unknown-fence':
       return '```' + b.info + '\n' + b.body + (b.body.endsWith('\n') ? '' : '\n') + '```\n';

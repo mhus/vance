@@ -5,6 +5,8 @@
 import yaml from 'js-yaml';
 import type { Block, WorkPageDocument, ImageWidth, TodoItem } from './blocks';
 import { IMAGE_WIDTHS } from './blocks';
+import { findBlockByFence } from '../blockRegistry';
+import { attrsFromBody } from './customBlock';
 
 const HEADING = /^(#{1,3})\s+(.+?)\s*$/;
 const BULLET = /^\s*[-*+]\s+(.+?)\s*$/;
@@ -323,16 +325,12 @@ function parseFence(info: string, body: string): Block {
       parsed = loaded as Record<string, unknown>;
     }
   } catch {
-    return { kind: 'unknown-fence', info, body };
+    // Malformed YAML — a registered block may own this fence with a
+    // non-YAML body; let its extension parse it. Otherwise preserve
+    // verbatim as an unknown fence.
+    return registeredCustom(info, body) ?? { kind: 'unknown-fence', info, body };
   }
   switch (info) {
-    case 'vance-callout':
-      return {
-        kind: 'callout',
-        severity: str(parsed, 'severity') ?? 'info',
-        title: str(parsed, 'title'),
-        body: str(parsed, 'body') ?? '',
-      };
     case 'vance-toggle':
       return {
         kind: 'toggle',
@@ -376,8 +374,20 @@ function parseFence(info: string, body: string): Block {
         title: str(parsed, 'title') ?? '',
       };
     default:
-      return { kind: 'unknown-fence', info, body };
+      // Not a core fence — an addon may own it (block-extension-registry).
+      // Core fences above are privileged and win over any registration.
+      return registeredCustom(info, body) ?? { kind: 'unknown-fence', info, body };
   }
+}
+
+/**
+ * If a BlockExtension is registered for {@code info}, produce a `custom`
+ * block; otherwise null (caller falls back to `unknown-fence`).
+ */
+function registeredCustom(info: string, body: string): Block | null {
+  const ext = findBlockByFence(info);
+  if (!ext) return null;
+  return { kind: 'custom', fence: info, attrs: attrsFromBody(ext, body), rawBody: body };
 }
 
 function parseImageAlt(raw: string): { alt: string; width: ImageWidth | null } {

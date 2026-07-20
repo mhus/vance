@@ -2,9 +2,22 @@
 import { computed } from 'vue';
 import hljs from 'highlight.js/lib/common';
 import 'highlight.js/styles/github.css';
+import type { Component } from 'vue';
 import type { Block } from './markdown/blocks';
 import { parse } from './markdown/parser';
 import InlineRender from './InlineRender.vue';
+import { findBlockByFence } from './blockRegistry';
+import { registerBuiltInBlocks } from './builtins';
+
+// Ensure bundled built-in blocks (callout, …) are registered before we
+// render — BlockView is often the first thing to touch a parsed document
+// (e.g. WorkPageKind's parseDocument in a render-time computed).
+registerBuiltInBlocks();
+
+/** Read-only Vue view for an addon/built-in `custom` block, or null. */
+function customView(fence: string): Component | null {
+  return findBlockByFence(fence)?.view ?? null;
+}
 
 function highlightCode(code: string, lang: string | null): string {
   // Vue interpolation auto-escapes, but the rendered hljs output is
@@ -129,15 +142,6 @@ function parseBody(body: string | undefined): Block[] {
   return parse(body);
 }
 
-// Map severity → CSS class suffix. Anything unknown falls back to info.
-function calloutClass(severity: string | undefined): string {
-  const s = (severity ?? 'info').toLowerCase();
-  if (['info', 'warn', 'error', 'success', 'note'].includes(s)) {
-    return `vance-callout--${s}`;
-  }
-  return 'vance-callout--info';
-}
-
 const items = computed(() => props.blocks ?? []);
 </script>
 
@@ -238,14 +242,15 @@ const items = computed(() => props.blocks ?? []);
         </tbody>
       </table>
 
-      <aside
-        v-else-if="block.kind === 'callout'"
-        class="vance-callout"
-        :class="calloutClass(block.severity)"
-      >
-        <div v-if="block.title" class="vance-callout__title">{{ block.title }}</div>
-        <div class="vance-callout__body">{{ block.body }}</div>
-      </aside>
+      <component
+        v-else-if="block.kind === 'custom' && customView(block.fence)"
+        :is="customView(block.fence)"
+        :attrs="block.attrs"
+      />
+      <pre
+        v-else-if="block.kind === 'custom'"
+        class="vance-unknown-fence"
+      ><div class="vance-unknown-fence__label">Block: {{ block.fence }}</div><code>{{ block.rawBody }}</code></pre>
 
       <details v-else-if="block.kind === 'toggle'" class="vance-toggle">
         <summary class="vance-toggle__summary">{{ block.summary }}</summary>

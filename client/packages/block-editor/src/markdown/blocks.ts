@@ -14,7 +14,6 @@ export type Block =
   | { kind: 'divider' }
   | { kind: 'image'; alt: string; src: string; width?: ImageWidth | null }
   | { kind: 'table'; headers: string[]; rows: string[][] }
-  | { kind: 'callout'; severity: string; title: string | null; body: string }
   | { kind: 'toggle'; summary: string; body: string }
   | { kind: 'dataview'; source: string }
   | { kind: 'link-card'; href: string; title: string | null; description: string | null }
@@ -77,6 +76,19 @@ export type Block =
        * to sum to 1; the renderer normalises by total.
        */
       columns: Array<{ blocks: Block[]; width: number | null }>;
+    }
+  | {
+      /**
+       * Addon-contributed block (block-extension-registry). Produced only
+       * when a BlockExtension is registered for {@code fence} — an unknown
+       * {@code vance-*} fence with no registration stays `unknown-fence`.
+       * `attrs` mirror the Tiptap node's attributes; `rawBody` is the
+       * verbatim fence body kept for lossless serialization.
+       */
+      kind: 'custom';
+      fence: string;
+      attrs: Record<string, unknown>;
+      rawBody: string;
     }
   | { kind: 'unknown-fence'; info: string; body: string };
 

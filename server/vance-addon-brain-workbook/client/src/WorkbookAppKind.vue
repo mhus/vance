@@ -411,11 +411,19 @@ function onOpenEmbedEvent(e: Event) {
   if (!detail?.uri) return;
   openVanceLink(detail.uri, detail.openInNewTab);
 }
+// The `vance-workbook-index` block (block-extension-registry) dispatches
+// this bubbling event on click; jump to the workbook's index page.
+function onGotoIndexEvent() {
+  const idxId = view.value?.indexPageId;
+  if (idxId) void selectPage(idxId, null);
+}
 onMounted(() => {
   workbookRootRef.value?.addEventListener('vance:open-embed', onOpenEmbedEvent);
+  workbookRootRef.value?.addEventListener('vance:workbook-goto-index', onGotoIndexEvent);
 });
 onBeforeUnmount(() => {
   workbookRootRef.value?.removeEventListener('vance:open-embed', onOpenEmbedEvent);
+  workbookRootRef.value?.removeEventListener('vance:workbook-goto-index', onGotoIndexEvent);
 });
 
 // Icon picker — modal with a searchable emoji grid (provided by

@@ -11,9 +11,12 @@
  */
 import { defineAsyncComponent } from 'vue';
 import { registerKind } from '@vance/kind-registry';
+import { registerBlock } from '@vance/block-editor/blockRegistry';
+import { WorkbookIndexBlock } from './WorkbookIndexBlock';
 
 const WorkPageKind = defineAsyncComponent(() => import('./WorkPageKind.vue'));
 const WorkbookAppKind = defineAsyncComponent(() => import('./WorkbookAppKind.vue'));
+const WorkbookIndexReadonlyView = defineAsyncComponent(() => import('./WorkbookIndexReadonlyView.vue'));
 
 export function register(): void {
   // eslint-disable-next-line no-console
@@ -36,5 +39,25 @@ export function register(): void {
     id: 'application:workbook',
     matches: () => false,
     view: WorkbookAppKind,
+  });
+
+  // First addon-owned block via the block-extension-registry: a
+  // `/workbook-index` slash block that jumps to the workbook index page
+  // (WorkbookAppKind catches the `vance:workbook-goto-index` DOM event).
+  registerBlock({
+    fence: 'vance-workbook-index',
+    node: WorkbookIndexBlock,
+    view: WorkbookIndexReadonlyView,
+    slash: {
+      title: 'Workbook Index',
+      hint: 'Link block that jumps to the workbook index',
+      insert: ({ editor, range }) =>
+        editor
+          .chain()
+          .focus()
+          .deleteRange(range)
+          .insertContent({ type: 'vanceWorkbookIndex' })
+          .run(),
+    },
   });
 }

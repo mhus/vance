@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch, onBeforeUnmount, onMounted } from 'vue';
+import { computed, ref, watch, onBeforeUnmount, onMounted, provide } from 'vue';
 import { useEditor, EditorContent, BubbleMenu } from '@tiptap/vue-3';
 import StarterKit from '@tiptap/starter-kit';
 import TaskList from '@tiptap/extension-task-list';
@@ -19,7 +19,7 @@ import 'highlight.js/styles/github.css';
 const lowlight = createLowlight(common);
 
 import { parseDocument } from './markdown/parser';
-import { serializeDocument } from './markdown/serializer';
+import { serialize, serializeDocument } from './markdown/serializer';
 import { blocksToContent, contentToBlocks } from './markdown/proseMirror';
 import {
   VanceToggle,
@@ -72,6 +72,14 @@ const props = withDefaults(
     };
     source?: string | null;
     autoSaveMs?: number;
+    /**
+     * Body-only mode: {@code source} and the {@code @save} payload are the
+     * bare block Markdown WITHOUT the `$meta: kind: workpage` front-matter.
+     * For hosts that embed the editor on a plain-Markdown field owned by a
+     * different kind (e.g. a Kanban card body, whose front-matter is the
+     * card's own). Default {@code false} (full workpage document I/O).
+     */
+    bodyOnly?: boolean;
     /**
      * Image-upload callback. Invoked when the user drops or pastes an
      * image file into the editor. Returns the URL to embed (typically
@@ -193,7 +201,7 @@ const props = withDefaults(
     /** Host renderer for a compose output (vance-face ComposeOutput). */
     composeOutputComponent?: import('vue').Component;
   }>(),
-  { autoSaveMs: 2000, editable: true },
+  { autoSaveMs: 2000, editable: true, bodyOnly: false },
 );
 
 const emit = defineEmits<{
@@ -282,6 +290,21 @@ async function insertUploadedImages(files: File[], dropPos: number | null) {
 // Register bundled built-in blocks (callout, …) through the registry
 // before the extensions array reads registeredBlocks() below.
 registerBuiltInBlocks();
+
+// Compose host surface for registry blocks that can't take per-instance
+// extension options (the vance-compose-<lang> script blocks) — they inject
+// 'vance:compose-host' instead of reading VanceCompose.configure(...).
+const composeUnavailable = (error: string): ComposeRunResult => ({ success: false, tasks: [], error });
+provide('vance:compose-host', {
+  runCompose: (yaml: string) =>
+    props.runCompose?.(yaml) ?? Promise.resolve(composeUnavailable('Compose run is not available in this context.')),
+  pollCompose: (runId: string) =>
+    props.pollCompose?.(runId) ?? Promise.resolve({ ...composeUnavailable('Compose polling is not available.'), running: false }),
+  cancelCompose: (runId: string) =>
+    props.cancelCompose?.(runId) ?? Promise.resolve({ ...composeUnavailable('Compose cancel is not available.'), running: false }),
+  composeOutputComponent: () => props.composeOutputComponent ?? null,
+  projectId: () => props.currentProjectId ?? '',
+});
 
 const editor = useEditor({
   editable: props.editable,
@@ -538,13 +561,15 @@ function save() {
   cancelAutoSave();
   const json = editor.value.getJSON();
   const blocks = contentToBlocks(json.content as never[]);
-  const md = serializeDocument({
-    title: currentHeader.value.title ?? props.document.title ?? null,
-    description: currentHeader.value.description,
-    icon: currentHeader.value.icon,
-    cover: currentHeader.value.cover,
-    blocks,
-  });
+  const md = props.bodyOnly
+    ? serialize(blocks)
+    : serializeDocument({
+        title: currentHeader.value.title ?? props.document.title ?? null,
+        description: currentHeader.value.description,
+        icon: currentHeader.value.icon,
+        cover: currentHeader.value.cover,
+        blocks,
+      });
   emit('save', md);
   dirty.value = false;
   emit('dirty', false);

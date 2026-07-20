@@ -420,10 +420,12 @@ function onGotoIndexEvent() {
 onMounted(() => {
   workbookRootRef.value?.addEventListener('vance:open-embed', onOpenEmbedEvent);
   workbookRootRef.value?.addEventListener('vance:workbook-goto-index', onGotoIndexEvent);
+  window.addEventListener('popstate', onWorkbookPopState);
 });
 onBeforeUnmount(() => {
   workbookRootRef.value?.removeEventListener('vance:open-embed', onOpenEmbedEvent);
   workbookRootRef.value?.removeEventListener('vance:workbook-goto-index', onGotoIndexEvent);
+  window.removeEventListener('popstate', onWorkbookPopState);
 });
 
 // Icon picker — modal with a searchable emoji grid (provided by
@@ -555,20 +557,65 @@ async function loadWorkbook() {
 function pickInitialPage() {
   const v = view.value;
   if (!v) return;
+  // Deep-link / restore: if the URL already names a page of this workbook,
+  // open it. `replace` mode — the initial selection shouldn't add a history
+  // entry on top of the tab the host just opened.
+  const urlPage = pageIdFromUrl();
+  if (urlPage) {
+    const page = v.pages.find((p) => p.id === urlPage) ?? null;
+    if (page || v.indexPageId === urlPage || v.landingPageId === urlPage) {
+      void selectPage(urlPage, page, 'replace');
+      return;
+    }
+  }
   if (v.landingPageId) {
-    void selectPage(v.landingPageId, null);
+    void selectPage(v.landingPageId, null, 'replace');
     return;
   }
   if (v.indexPageId) {
-    void selectPage(v.indexPageId, null);
+    void selectPage(v.indexPageId, null, 'replace');
     return;
   }
   if (v.pages.length > 0) {
-    void selectPage(v.pages[0].id, v.pages[0]);
+    void selectPage(v.pages[0].id, v.pages[0], 'replace');
   }
 }
 
-async function selectPage(id: string, page: WorkbookPageView | null) {
+// ── Per-page URL sync ─────────────────────────────────────────────
+// The host (cortex EditorApp) owns `?doc=<workbook-container-id>` at the
+// TAB level and drives it on popstate. The individual workpages are
+// SUB-navigation inside that one tab, so we carry the active page in our
+// own `?page=<pageId>` query param. This makes the browser URL reflect
+// the open page (so back/forward + deep-links work) without the host
+// ever needing to know about workbook internals — its own popstate
+// handler early-returns when `?doc` is unchanged. The value is the page's
+// document id (stable across title renames), not its filename.
+const URL_PAGE_PARAM = 'page';
+
+function pageIdFromUrl(): string | null {
+  return new URLSearchParams(window.location.search).get(URL_PAGE_PARAM);
+}
+
+function syncPageToUrl(id: string | null, mode: 'push' | 'replace') {
+  const params = new URLSearchParams(window.location.search);
+  if (id) params.set(URL_PAGE_PARAM, id);
+  else params.delete(URL_PAGE_PARAM);
+  const query = params.toString();
+  const next = `${window.location.pathname}${query ? `?${query}` : ''}`;
+  const current = `${window.location.pathname}${window.location.search}`;
+  if (next === current) return;
+  // Preserve the host's history state (`{ doc }`) so its popstate handler
+  // keeps working after a workbook-internal navigation.
+  const state = window.history.state;
+  if (mode === 'push') window.history.pushState(state, '', next);
+  else window.history.replaceState(state, '', next);
+}
+
+async function selectPage(
+  id: string,
+  page: WorkbookPageView | null,
+  history: 'push' | 'replace' | 'none' = 'push',
+) {
   if (id === activePageId.value) return;
   // Flush pending edits on the current page before switching.
   if (editorRef.value?.flush()) {
@@ -580,7 +627,25 @@ async function selectPage(id: string, page: WorkbookPageView | null) {
   saveStatus.value = 'idle';
   lastSaveError.value = null;
   headerCache.value = null;
+  if (history !== 'none') syncPageToUrl(id, history);
   await loadActivePageContent();
+}
+
+// Restore the active page from `?page=` on browser back/forward. The
+// host's popstate handler ignores this (its `?doc` is unchanged), so we
+// own the in-workbook restore. `history: 'none'` — don't re-push the
+// entry we're navigating back to.
+function onWorkbookPopState() {
+  const v = view.value;
+  if (!v) return;
+  const targetId =
+    pageIdFromUrl()
+    ?? v.landingPageId
+    ?? v.indexPageId
+    ?? v.pages[0]?.id
+    ?? null;
+  if (!targetId || targetId === activePageId.value) return;
+  void selectPage(targetId, findPageById(targetId), 'none');
 }
 
 function findPageById(id: string): WorkbookPageView | null {
@@ -746,6 +811,26 @@ function openVanceLink(href: string, openInNewTab: boolean): boolean {
     : projectId.value;
   const path = decodeURIComponent(parsed.pathname.replace(/^\//, ''));
   if (!path) return false;
+
+  // In-workbook navigation: if the link targets a page (or the generated
+  // index) of THIS workbook, switch the active page in-place — keeps the
+  // sidebar, updates `?page`, enables browser-back — instead of opening
+  // the raw workpage as a standalone cortex tab. This is what makes the
+  // generated `_index.md` links land on the right page. (The editor always
+  // passes openInNewTab=true for a plain click, so we can't gate on it —
+  // in-workbook links always resolve in-app.)
+  if (targetProject === projectId.value) {
+    const v = view.value;
+    const page = v?.pages.find((p) => p.path === path) ?? null;
+    if (page) {
+      void selectPage(page.id, page);
+      return true;
+    }
+    if (v?.indexPagePath === path && v.indexPageId) {
+      void selectPage(v.indexPageId, null);
+      return true;
+    }
+  }
 
   // Open the placeholder synchronously so the browser sees a direct
   // user-gesture. Without this, async-then-window.open gets popup-

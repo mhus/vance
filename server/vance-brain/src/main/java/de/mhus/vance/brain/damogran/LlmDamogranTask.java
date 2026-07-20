@@ -37,9 +37,6 @@ class LlmDamogranTask implements DamogranTask {
 
     @Override
     public DamogranTaskResult execute(DamogranContext ctx, TaskSpec spec) {
-        if (!ctx.isWork()) {
-            return DamogranTaskResult.failure("llm task requires target WORK (v1)");
-        }
         if (spec.declaredOutputs().isEmpty()) {
             return DamogranTaskResult.failure(
                     "llm task requires an output file (declare 'output:' or 'outputs:')");

@@ -4,7 +4,6 @@ import de.mhus.vance.brain.damogran.DamogranManifest.OutputSpec;
 import de.mhus.vance.brain.damogran.DamogranManifest.TaskSpec;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -83,29 +82,43 @@ final class DamogranTaskSupport {
     }
 
     /**
-     * Interprets an {@code ExecManager} rendered result map (keys
-     * {@code status}/{@code exitCode}/{@code stdout}/{@code stderr}) into a
-     * task result. Success = {@code COMPLETED} with exit code 0.
+     * The shared {@code exec} task: read {@code command}, run it on the run's
+     * {@link ComposeExec} backend (WORK or remote), and map the outcome. Used by
+     * {@link ExecDamogranTask} and the remote runner alike — one exec task, one
+     * result mapping, regardless of target.
      */
-    static DamogranTaskResult fromExec(
-            Map<String, Object> rendered, String command, List<OutputArtifact> outputs) {
-        String status = String.valueOf(rendered.get("status"));
-        Object exit = rendered.get("exitCode");
-        String stdout = text(rendered.get("stdout"));
-        String stderr = text(rendered.get("stderr"));
-        boolean ok = "COMPLETED".equals(status) && exit instanceof Number n && n.intValue() == 0;
+    static DamogranTaskResult runExecTask(DamogranContext ctx, TaskSpec spec) {
+        String command = requireString(spec, "command");
+        ComposeExec.Result result = ctx.requireExec("exec").run(command, execDeadlineSeconds(spec));
+        return toResult(result, command, outputsFor(ctx, spec));
+    }
+
+    /**
+     * Maps a {@link ComposeExec.Result} into a task result. Success =
+     * {@code COMPLETED} with exit code 0; otherwise the failure carries the
+     * status, exit code and (capped) stderr.
+     */
+    static DamogranTaskResult toResult(
+            ComposeExec.Result result, String command, List<OutputArtifact> outputs) {
+        String stdout = result.stdout();
+        String stderr = result.stderr();
         String log = stdout.isBlank() ? stderr
                 : (stderr.isBlank() ? stdout : stdout + "\n" + stderr);
-        if (ok) {
+        if (result.ok()) {
             return DamogranTaskResult.success(outputs, log);
         }
         String detail = stderr.isBlank() ? "" : ": " + cap(stderr);
         return DamogranTaskResult.failure(
-                "'" + command + "' status=" + status + " exit=" + exit + detail, log);
+                "'" + command + "' status=" + result.status() + " exit=" + result.exitCode() + detail, log);
     }
 
-    private static String text(@Nullable Object raw) {
-        return raw == null ? "" : raw.toString();
+    /**
+     * Declared outputs resolve to workspace artifacts only where a local
+     * workspace exists (WORK); CLIENT/DAEMON have no server-side path to source
+     * bytes from, so they surface no outputs.
+     */
+    static List<OutputArtifact> outputsFor(DamogranContext ctx, TaskSpec spec) {
+        return ctx.workspacePath() != null ? resolveOutputs(spec) : List.of();
     }
 
     private static String cap(String s) {

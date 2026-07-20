@@ -1,30 +1,25 @@
 package de.mhus.vance.brain.damogran;
 
-import static de.mhus.vance.brain.damogran.DamogranTaskSupport.EXEC_KILL_GRACE_SECONDS;
-import static de.mhus.vance.brain.damogran.DamogranTaskSupport.NO_DEADLINE_WAIT_MS;
 import static de.mhus.vance.brain.damogran.DamogranTaskSupport.execDeadlineSeconds;
-import static de.mhus.vance.brain.damogran.DamogranTaskSupport.fromExec;
-import static de.mhus.vance.brain.damogran.DamogranTaskSupport.resolveOutputs;
+import static de.mhus.vance.brain.damogran.DamogranTaskSupport.outputsFor;
 import static de.mhus.vance.brain.damogran.DamogranTaskSupport.string;
+import static de.mhus.vance.brain.damogran.DamogranTaskSupport.toResult;
 
 import de.mhus.vance.brain.damogran.DamogranManifest.TaskSpec;
-import de.mhus.vance.brain.tools.exec.ExecManager;
-import de.mhus.vance.brain.tools.exec.SubmitOptions;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import java.nio.file.Files;
-import java.time.Instant;
-import java.util.Map;
-import java.util.function.Consumer;
 import org.springframework.stereotype.Service;
 
 /**
- * Built-in {@code python} task: runs a Python script in the workspace via
- * {@link ExecManager} — either an existing {@code script} file (workspace-
- * relative) or inline {@code code} written to {@code .damogran/inline.py}.
+ * Built-in {@code python} task: runs a Python script in the workspace via the
+ * run's {@link ComposeExec} backend — either an existing {@code script} file
+ * (workspace-relative) or inline {@code code} written to {@code .damogran/inline.py}.
  *
  * <p>Interpreter follows the provisioning tier: a {@code python}-type workspace
- * has a {@code .venv} (used if present), otherwise system {@code python3}
- * (the degraded tier — no isolated deps). WORK target only in v1.
+ * has a {@code .venv} (used if present), otherwise system {@code python3} (the
+ * degraded tier — no isolated deps). Needs a server workspace to stage the
+ * inline file and detect the venv, so it only runs on WORK (the remote runner
+ * accepts {@code exec} only).
  */
 @Service
 class PythonDamogranTask implements DamogranTask {
@@ -32,11 +27,9 @@ class PythonDamogranTask implements DamogranTask {
     private static final String INLINE_PATH = ".damogran/inline.py";
     private static final String VENV_PYTHON = ".venv/bin/python";
 
-    private final ExecManager execManager;
     private final WorkspaceService workspaceService;
 
-    PythonDamogranTask(ExecManager execManager, WorkspaceService workspaceService) {
-        this.execManager = execManager;
+    PythonDamogranTask(WorkspaceService workspaceService) {
         this.workspaceService = workspaceService;
     }
 
@@ -47,10 +40,6 @@ class PythonDamogranTask implements DamogranTask {
 
     @Override
     public DamogranTaskResult execute(DamogranContext ctx, TaskSpec spec) {
-        if (!ctx.isWork()) {
-            return DamogranTaskResult.failure("python task requires target WORK (v1)");
-        }
-
         String scriptPath;
         String code = string(spec, "code");
         if (code != null) {
@@ -64,26 +53,9 @@ class PythonDamogranTask implements DamogranTask {
             }
         }
 
-        String interpreter = pythonInterpreter(ctx);
-        String command = interpreter + " " + shellQuote(scriptPath);
-        int deadlineSeconds = execDeadlineSeconds(spec);
-        SubmitOptions options;
-        long waitMs;
-        if (deadlineSeconds <= 0) {
-            options = SubmitOptions.defaults();       // no hard-kill — run to completion
-            waitMs = NO_DEADLINE_WAIT_MS;
-        } else {
-            options = SubmitOptions.withDeadline(Instant.now().plusSeconds(deadlineSeconds));
-            waitMs = (deadlineSeconds + EXEC_KILL_GRACE_SECONDS) * 1000L;
-        }
-        Consumer<String> onJobId = ctx.progress() == null
-                ? null : jobId -> ctx.progress().execJob(jobId);
-
-        Map<String, Object> rendered = execManager.submitTrackedAndRender(
-                ctx.tenantId(), ctx.projectId(), null, ctx.processId(),
-                ctx.workspaceDirName(), command, waitMs, options, onJobId);
-
-        return fromExec(rendered, command, resolveOutputs(spec));
+        String command = pythonInterpreter(ctx) + " " + shellQuote(scriptPath);
+        ComposeExec.Result result = ctx.requireExec("python").run(command, execDeadlineSeconds(spec));
+        return toResult(result, command, outputsFor(ctx, spec));
     }
 
     private String pythonInterpreter(DamogranContext ctx) {

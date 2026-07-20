@@ -48,8 +48,8 @@ public class TexDamogranTask implements DamogranTask {
     @Override
     public DamogranTaskResult execute(DamogranContext ctx, TaskSpec spec) {
         Path workspaceRoot = ctx.workspacePath();
-        if (!ctx.isWork() || workspaceRoot == null) {
-            return DamogranTaskResult.failure("tex-task requires target WORK");
+        if (workspaceRoot == null) {
+            return DamogranTaskResult.failure("tex-task requires a server workspace (WORK target)");
         }
         String main = str(spec, "main");
         if (main == null) {

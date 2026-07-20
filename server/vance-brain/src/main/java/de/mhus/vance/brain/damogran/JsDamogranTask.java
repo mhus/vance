@@ -48,10 +48,6 @@ class JsDamogranTask implements DamogranTask {
 
     @Override
     public DamogranTaskResult execute(DamogranContext ctx, TaskSpec spec) {
-        if (!ctx.isWork()) {
-            return DamogranTaskResult.failure("js task requires target WORK (v1)");
-        }
-
         String scriptPath;
         String code = string(spec, "code");
         if (code != null) {

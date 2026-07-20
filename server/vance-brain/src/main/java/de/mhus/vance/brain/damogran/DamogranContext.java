@@ -40,7 +40,9 @@ public record DamogranContext(
         @Nullable String daemonName,
         @Nullable String composeBaseDir,
         @Nullable ComposeFileIo fileIo,
-        @Nullable ComposeProgress progress) {
+        @Nullable ComposeProgress progress,
+        @Nullable ComposeExec exec,
+        @Nullable ComposeGit git) {
 
     /** Convenience for callers/tests that don't drive import/export or progress. */
     public DamogranContext(
@@ -48,7 +50,7 @@ public record DamogranContext(
             String workspaceName, String workspaceDirName, @Nullable Path workspacePath,
             String target, @Nullable String daemonName, @Nullable String composeBaseDir) {
         this(tenantId, projectId, processId, workspaceName, workspaceDirName, workspacePath,
-                target, daemonName, composeBaseDir, null, null);
+                target, daemonName, composeBaseDir, null, null, null, null);
     }
 
     /** The run's file backend for import/export; throws if none was bound. */
@@ -57,6 +59,22 @@ public record DamogranContext(
             throw new DamogranException(op + ": no file IO bound to this compose run");
         }
         return fileIo;
+    }
+
+    /** The run's shell-exec backend; throws if none was bound. */
+    public ComposeExec requireExec(String op) {
+        if (exec == null) {
+            throw new DamogranException(op + ": no exec backend bound to this compose run");
+        }
+        return exec;
+    }
+
+    /** The run's git backend for {@code git:*} import/export; throws if none was bound. */
+    public ComposeGit requireGit(String op) {
+        if (git == null) {
+            throw new DamogranException(op + ": no git backend bound to this compose run");
+        }
+        return git;
     }
 
     public boolean isWork() {

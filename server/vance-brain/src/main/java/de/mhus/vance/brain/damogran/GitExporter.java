@@ -1,8 +1,6 @@
 package de.mhus.vance.brain.damogran;
 
 import de.mhus.vance.brain.damogran.DamogranManifest.ExportEntry;
-import de.mhus.vance.shared.workspace.WorkspaceService;
-import java.nio.file.Path;
 import java.util.Set;
 import org.springframework.stereotype.Component;
 
@@ -11,7 +9,8 @@ import org.springframework.stereotype.Component;
  * {@code from: <workspace-dir>}, {@code to: git:<url>}. Stages all changes,
  * commits, and (unless {@code push: false}) pushes {@code HEAD} to
  * {@code branch}. Options: {@code branch}, {@code message}, {@code push}
- * (default {@code true}), {@code credentialAlias}.
+ * (default {@code true}), {@code credentialAlias}. Target-agnostic — delegates
+ * to the run's {@link ComposeGit} backend.
  *
  * <p>The source dir must be a git working tree — clone it first via a git
  * import (or use a {@code type: git} workspace).
@@ -21,14 +20,6 @@ class GitExporter implements DamogranExporter {
 
     private static final String DEFAULT_MESSAGE = "Update from Damogran";
 
-    private final WorkspaceService workspaceService;
-    private final GitService gitService;
-
-    GitExporter(WorkspaceService workspaceService, GitService gitService) {
-        this.workspaceService = workspaceService;
-        this.gitService = gitService;
-    }
-
     @Override
     public Set<String> schemes() {
         return Set.of("git");
@@ -36,13 +27,13 @@ class GitExporter implements DamogranExporter {
 
     @Override
     public void doExport(DamogranContext ctx, ExportEntry entry) {
-        DamogranWorkspaceIo.requireWorkRoot(ctx, "git export");
-        String url = DamogranUri.stripGit(entry.to());
-        Path dir = DamogranWorkspaceIo.resolve(workspaceService, ctx, entry.from());
+        if (entry.from() == null || entry.from().isBlank()) {
+            throw new DamogranException("git export requires a 'from' working-tree directory");
+        }
         String message = entry.option("message");
-        gitService.commitAndPush(dir, url, entry.option("branch"),
-                message != null ? message : DEFAULT_MESSAGE,
-                entry.boolOption("push", true),
-                ctx.tenantId(), ctx.projectId(), entry.option("credentialAlias"));
+        ctx.requireGit("git export").exportRepo(
+                entry.from(), DamogranUri.stripGit(entry.to()), entry.option("branch"),
+                message != null ? message : DEFAULT_MESSAGE, entry.boolOption("push", true),
+                entry.option("credentialAlias"));
     }
 }

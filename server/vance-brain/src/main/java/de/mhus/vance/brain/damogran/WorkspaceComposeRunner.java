@@ -4,6 +4,7 @@ import de.mhus.vance.brain.damogran.DamogranManifest.ExportEntry;
 import de.mhus.vance.brain.damogran.DamogranManifest.ImportEntry;
 import de.mhus.vance.brain.damogran.DamogranManifest.TaskSpec;
 import de.mhus.vance.brain.damogran.DamogranManifest.WorkspaceSpec;
+import de.mhus.vance.brain.tools.exec.ExecManager;
 import de.mhus.vance.brain.tools.worktarget.WorkTargetService;
 import de.mhus.vance.shared.workspace.RootDirHandle;
 import de.mhus.vance.shared.workspace.RootDirSpec;
@@ -43,16 +44,22 @@ public class WorkspaceComposeRunner implements ComposeRunner {
     private final WorkTargetService workTargetService;
     private final DamogranTaskExecutor taskExecutor;
     private final DamogranTransport transport;
+    private final ExecManager execManager;
+    private final GitService gitService;
 
     public WorkspaceComposeRunner(
             WorkspaceService workspaceService,
             WorkTargetService workTargetService,
             DamogranTaskExecutor taskExecutor,
-            DamogranTransport transport) {
+            DamogranTransport transport,
+            ExecManager execManager,
+            GitService gitService) {
         this.workspaceService = workspaceService;
         this.workTargetService = workTargetService;
         this.taskExecutor = taskExecutor;
         this.transport = transport;
+        this.execManager = execManager;
+        this.gitService = gitService;
     }
 
     @Override
@@ -78,10 +85,14 @@ public class WorkspaceComposeRunner implements ComposeRunner {
         }
         ComposeFileIo io = new WorkspaceFileIo(
                 workspaceService, tenantId, projectId, handle.getDirName());
+        ComposeExec exec = new WorkspaceComposeExec(
+                execManager, tenantId, projectId, handle.getDirName(), processId, run);
+        ComposeGit git = new WorkspaceComposeGit(
+                workspaceService, gitService, tenantId, projectId, handle.getDirName());
         DamogranContext ctx = new DamogranContext(
                 tenantId, projectId, processId,
                 ws.name(), handle.getDirName(), handle.getPath(),
-                ws.target(), null, baseDir, io, run);
+                ws.target(), null, baseDir, io, run, exec, git);
 
         for (ImportEntry imp : manifest.imports()) {
             transport.doImport(ctx, imp);

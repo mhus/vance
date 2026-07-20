@@ -13,6 +13,7 @@ import de.mhus.vance.brain.damogran.DamogranManifest.ExportEntry;
 import de.mhus.vance.brain.damogran.DamogranManifest.ImportEntry;
 import de.mhus.vance.brain.damogran.DamogranManifest.TaskSpec;
 import de.mhus.vance.brain.damogran.DamogranManifest.WorkspaceSpec;
+import de.mhus.vance.brain.tools.exec.ExecManager;
 import de.mhus.vance.brain.tools.worktarget.WorkTargetService;
 import de.mhus.vance.shared.workspace.RootDirHandle;
 import de.mhus.vance.shared.workspace.WorkspaceDescriptor;
@@ -38,7 +39,8 @@ class DamogranComposeServiceTest {
         taskExecutor = mock(DamogranTaskExecutor.class);
         transport = mock(DamogranTransport.class);
         service = new DamogranComposeService(new DamogranManifestParser(), new ComposeRunRegistry(), List.of(
-                new WorkspaceComposeRunner(workspaceService, workTargetService, taskExecutor, transport)));
+                new WorkspaceComposeRunner(workspaceService, workTargetService, taskExecutor, transport,
+                        mock(ExecManager.class), mock(GitService.class))));
     }
 
     private RootDirHandle handle(String label, String type) {

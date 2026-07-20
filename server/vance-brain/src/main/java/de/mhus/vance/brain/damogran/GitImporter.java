@@ -1,26 +1,17 @@
 package de.mhus.vance.brain.damogran;
 
 import de.mhus.vance.brain.damogran.DamogranManifest.ImportEntry;
-import de.mhus.vance.shared.workspace.WorkspaceService;
-import java.nio.file.Path;
 import java.util.Set;
 import org.springframework.stereotype.Component;
 
 /**
  * Imports a git repository into the workspace: {@code from: git:<url>},
- * {@code to: <workspace-dir>}. Clones on first use, pulls on re-run.
- * Options: {@code branch}, {@code credentialAlias}.
+ * {@code to: <workspace-dir>}. Clones on first use, pulls on re-run. Options:
+ * {@code branch}, {@code credentialAlias}. Target-agnostic — delegates to the
+ * run's {@link ComposeGit} backend (WORK jgit vs. remote host git via exec).
  */
 @Component
 class GitImporter implements DamogranImporter {
-
-    private final WorkspaceService workspaceService;
-    private final GitService gitService;
-
-    GitImporter(WorkspaceService workspaceService, GitService gitService) {
-        this.workspaceService = workspaceService;
-        this.gitService = gitService;
-    }
 
     @Override
     public Set<String> schemes() {
@@ -29,10 +20,11 @@ class GitImporter implements DamogranImporter {
 
     @Override
     public void doImport(DamogranContext ctx, ImportEntry entry) {
-        DamogranWorkspaceIo.requireWorkRoot(ctx, "git import");
-        String url = DamogranUri.stripGit(entry.from());
-        Path dir = DamogranWorkspaceIo.resolve(workspaceService, ctx, entry.to());
-        gitService.cloneOrPull(dir, url, entry.option("branch"),
-                ctx.tenantId(), ctx.projectId(), entry.option("credentialAlias"));
+        if (entry.to() == null || entry.to().isBlank()) {
+            throw new DamogranException("git import requires a 'to' target directory");
+        }
+        ctx.requireGit("git import").importRepo(
+                DamogranUri.stripGit(entry.from()), entry.to(),
+                entry.option("branch"), entry.option("credentialAlias"));
     }
 }

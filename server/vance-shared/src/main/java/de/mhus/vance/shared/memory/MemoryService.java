@@ -1,11 +1,17 @@
 package de.mhus.vance.shared.memory;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.mongodb.core.BulkOperations;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Service;
 
 /**
@@ -23,6 +29,7 @@ public class MemoryService {
     private static final Sort BY_CREATED = Sort.by(Sort.Direction.ASC, "createdAt");
 
     private final MemoryRepository repository;
+    private final MongoTemplate mongoTemplate;
 
     // ──────────────────── Writes ────────────────────
 
@@ -36,6 +43,38 @@ public class MemoryService {
                 saved.getTenantId(), saved.getProjectId(),
                 saved.getSessionId(), saved.getThinkProcessId(),
                 saved.getKind(), saved.getId());
+        return saved;
+    }
+
+    /**
+     * Bulk-inserts a list of memory copies (each with {@code id == null})
+     * in one round-trip, preserving input order so the caller can zip the
+     * returned ids back to the source entries for id remapping. Used by
+     * the session-duplicate path — deliberately side-effect free (no
+     * supersede chaining; the caller re-establishes those links).
+     */
+    public List<MemoryDocument> insertCopies(List<MemoryDocument> copies) {
+        if (copies.isEmpty()) return List.of();
+        // @CreatedDate auditing overwrites createdAt on insert; stash and
+        // restore the source timestamps so the copied compaction chain keeps
+        // its original chronology.
+        List<Instant> intended = new ArrayList<>(copies.size());
+        for (MemoryDocument c : copies) intended.add(c.getCreatedAt());
+        List<MemoryDocument> saved = repository.saveAll(copies);
+        BulkOperations bulk = mongoTemplate.bulkOps(
+                BulkOperations.BulkMode.UNORDERED, MemoryDocument.class);
+        boolean any = false;
+        for (int i = 0; i < saved.size(); i++) {
+            Instant ts = intended.get(i);
+            if (ts == null) continue;
+            bulk.updateOne(
+                    new Query(Criteria.where("_id").is(saved.get(i).getId())),
+                    new Update().set("createdAt", ts));
+            saved.get(i).setCreatedAt(ts);
+            any = true;
+        }
+        if (any) bulk.execute();
+        log.debug("Inserted {} memory copies", saved.size());
         return saved;
     }
 
@@ -112,6 +151,16 @@ public class MemoryService {
             String tenantId, String sessionId, MemoryKind kind) {
         return repository.findByTenantIdAndSessionIdAndKind(
                 tenantId, sessionId, kind, BY_CREATED);
+    }
+
+    /**
+     * Every memory carrying {@code sessionId} — of any kind, session-
+     * scoped and process-scoped alike (compaction memories set both
+     * {@code sessionId} and {@code thinkProcessId}). Used by the
+     * session-duplicate path to collect the conversation memory to copy.
+     */
+    public List<MemoryDocument> listBySession(String tenantId, String sessionId) {
+        return repository.findByTenantIdAndSessionId(tenantId, sessionId, BY_CREATED);
     }
 
     public List<MemoryDocument> listByProjectAndKind(

@@ -272,6 +272,10 @@ export default {
       tagsTooltip: 'Edit tags',
       tagsPlaceholder: 'Add tag…',
       moreActions: 'More actions',
+      duplicate: 'Duplicate',
+      duplicateTitlePrefix: 'Copy of {title}',
+      duplicateFallbackTitle: 'Copy',
+      duplicateError: 'Could not duplicate the session.',
     },
     picker: {
       projectsTitle: 'Projects',

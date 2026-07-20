@@ -245,6 +245,74 @@ public class ThinkProcessService {
         return out;
     }
 
+    /**
+     * Copies think-process {@code sourceProcessId} into
+     * {@code newSessionId} as part of the session-duplicate path. The
+     * copy receives a fresh Mongo id and is retargeted to the new
+     * session/project while preserving the process <em>configuration</em>
+     * (engine, recipe, params, prompt overrides, mode, todos, active
+     * skills, tool/skill overrides).
+     *
+     * <p>Volatile runtime state is reset to a clean, resumable baseline:
+     * {@code status=IDLE}, no {@code closeReason}, no {@code boundProfile},
+     * no delegation pointer, {@code haltRequested=false}, read-state and
+     * deferred-tool activations dropped, worker links cleared,
+     * post-completion-hook counter zeroed, optimistic-lock {@code version}
+     * reset. {@code parentProcessId} is cleared — a duplicated chat
+     * process is always top-level in its new session.
+     *
+     * @return the persisted copy, or empty when the source id resolves to
+     *         no process
+     */
+    public Optional<ThinkProcessDocument> duplicateProcessIntoSession(
+            String sourceProcessId, String newSessionId, String newProjectId) {
+        Optional<ThinkProcessDocument> srcOpt = repository.findById(sourceProcessId);
+        if (srcOpt.isEmpty()) return Optional.empty();
+        ThinkProcessDocument src = srcOpt.get();
+        ThinkProcessDocument copy = ThinkProcessDocument.builder()
+                .tenantId(src.getTenantId())
+                .projectId(newProjectId)
+                .sessionId(newSessionId)
+                .name(src.getName())
+                .title(src.getTitle())
+                .thinkEngine(src.getThinkEngine())
+                .thinkEngineVersion(src.getThinkEngineVersion())
+                .goal(src.getGoal())
+                .engineParams(new LinkedHashMap<>(src.getEngineParams()))
+                .recipeName(src.getRecipeName())
+                .connectionProfile(src.getConnectionProfile())
+                .hiddenFromUi(src.isHiddenFromUi())
+                .promptOverride(src.getPromptOverride())
+                .promptOverrideAppend(src.getPromptOverrideAppend())
+                .promptMode(src.getPromptMode())
+                .dataRelayCorrectionOverride(src.getDataRelayCorrectionOverride())
+                .activeDelegationWorkerId(null)
+                .allowedToolsOverride(src.getAllowedToolsOverride() == null
+                        ? null : new LinkedHashSet<>(src.getAllowedToolsOverride()))
+                .allowedSkillsOverride(src.getAllowedSkillsOverride() == null
+                        ? null : new LinkedHashSet<>(src.getAllowedSkillsOverride()))
+                .parentProcessId(null)
+                .activeSkills(new ArrayList<>(src.getActiveSkills()))
+                .status(ThinkProcessStatus.IDLE)
+                .mode(src.getMode())
+                .todos(new ArrayList<>(src.getTodos()))
+                .boundProfile(null)
+                .workerLinks(new ArrayList<>())
+                .workingProjectId(src.getWorkingProjectId())
+                .activatedDeferredTools(new LinkedHashMap<>())
+                .closeReason(null)
+                .readState(new ArrayList<>())
+                .shownOnce(new LinkedHashSet<>())
+                .haltRequested(false)
+                .lastPrakAt(null)
+                .postCompletionHookRounds(0)
+                .build();
+        ThinkProcessDocument saved = repository.save(copy);
+        log.info("Duplicated think-process source='{}' → copy='{}' session='{}'",
+                sourceProcessId, saved.getId(), newSessionId);
+        return Optional.of(saved);
+    }
+
     // ────────────────── Read ──────────────────
 
     public Optional<ThinkProcessDocument> findById(String id) {

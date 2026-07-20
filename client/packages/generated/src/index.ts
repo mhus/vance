@@ -260,6 +260,8 @@ export * from './session/DisconnectPolicy';
 export * from './session/IdlePolicy';
 export * from './session/SessionGroupAssignRequest';
 export * from './session/SessionGroupCreateRequest';
+export * from './session/SessionDuplicateRequest';
+export * from './session/SessionDuplicateResponse';
 export * from './session/SessionGroupDto';
 export * from './session/SessionGroupRenameRequest';
 export * from './session/SessionGroupReorderRequest';

@@ -1,6 +1,8 @@
 package de.mhus.vance.brain.session;
 
 import de.mhus.vance.api.common.AccentColor;
+import de.mhus.vance.api.session.SessionDuplicateRequest;
+import de.mhus.vance.api.session.SessionDuplicateResponse;
 import de.mhus.vance.api.session.SessionMetadataDto;
 import de.mhus.vance.api.session.SessionMetadataPatchRequest;
 import de.mhus.vance.api.session.SessionStatus;
@@ -16,6 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -48,6 +51,7 @@ public class SessionLifecycleController {
 
     private final SessionService sessionService;
     private final SessionLifecycleService lifecycleService;
+    private final SessionDuplicationService duplicationService;
     private final RequestAuthority authority;
     private final ProcessEventEmitter processEventEmitter;
 
@@ -122,6 +126,31 @@ public class SessionLifecycleController {
         }
         lifecycleService.reactivateFromArchive(sessionId);
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Duplicate a session together with its chat memory — the copy is a
+     * fresh, resumable session in the same project. Returns the new
+     * session's business id + resolved title. Owner-only. See
+     * {@code specification/public/session-duplicate.md}.
+     */
+    @PostMapping("/{sessionId}/duplicate")
+    public SessionDuplicateResponse duplicate(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("sessionId") String sessionId,
+            @RequestBody(required = false) @Nullable SessionDuplicateRequest body,
+            HttpServletRequest request) {
+        SessionDocument session = requireOwnedSession(tenant, sessionId, request);
+        authority.enforce(request,
+                new Resource.Session(tenant, session.getProjectId(), session.getSessionId()),
+                Action.EXECUTE);
+        String newTitle = body == null ? null : body.getTitle();
+        SessionDuplicationService.DuplicateResult result =
+                duplicationService.duplicate(sessionId, newTitle);
+        return SessionDuplicateResponse.builder()
+                .sessionId(result.newSessionId())
+                .title(result.title())
+                .build();
     }
 
     @DeleteMapping("/{sessionId}")

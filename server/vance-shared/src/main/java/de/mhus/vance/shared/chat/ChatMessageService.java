@@ -15,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.mongodb.core.BulkOperations;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.aggregation.Aggregation;
 import org.springframework.data.mongodb.core.aggregation.AggregationResults;
@@ -90,6 +91,43 @@ public class ChatMessageService {
                 saved.getCreatedAt());
         eventPublisher.publishEvent(new ChatMessageAppendedEvent(saved));
         return saved;
+    }
+
+    /**
+     * Bulk-inserts a list of chat-message copies (each with
+     * {@code id == null}) in one round-trip, preserving input order so
+     * the caller can zip the returned ids back to the source messages for
+     * id remapping. Used by the session-duplicate path — deliberately
+     * side-effect free (no preview touch, no append event, no auto-pin):
+     * the copies carry their source tags and roles verbatim.
+     */
+    public List<ChatMessageDocument> insertCopies(List<ChatMessageDocument> copies) {
+        if (copies.isEmpty()) return List.of();
+        // @CreatedDate auditing overwrites createdAt on insert; stash the
+        // intended (source) timestamps and restore them afterwards so the
+        // copied scrollback keeps its real chronology, not "all now".
+        List<Instant> intended = new ArrayList<>(copies.size());
+        for (ChatMessageDocument c : copies) intended.add(c.getCreatedAt());
+        List<ChatMessageDocument> saved = repository.saveAll(copies);
+        restoreCreatedAt(saved, intended);
+        log.debug("Inserted {} chat-message copies", saved.size());
+        return saved;
+    }
+
+    private void restoreCreatedAt(List<ChatMessageDocument> saved, List<Instant> intended) {
+        BulkOperations bulk = mongoTemplate.bulkOps(
+                BulkOperations.BulkMode.UNORDERED, ChatMessageDocument.class);
+        boolean any = false;
+        for (int i = 0; i < saved.size(); i++) {
+            Instant ts = intended.get(i);
+            if (ts == null) continue;
+            bulk.updateOne(
+                    new Query(Criteria.where("_id").is(saved.get(i).getId())),
+                    new Update().set("createdAt", ts));
+            saved.get(i).setCreatedAt(ts);
+            any = true;
+        }
+        if (any) bulk.execute();
     }
 
     /**

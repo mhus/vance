@@ -8,6 +8,7 @@ import {
 import {
   archiveSession,
   deleteSession,
+  duplicateSession,
   getUsername,
   patchSessionMetadata,
   reactivateSession,
@@ -27,6 +28,8 @@ export interface SessionActionCallbacks {
   onArchived?: () => void;
   onReactivated?: () => void;
   onDeleted?: () => void;
+  /** Fired after a successful duplicate with the new session's business id. */
+  onDuplicated?: (newSessionId: string) => void;
 }
 
 /**
@@ -157,6 +160,25 @@ export function useSessionActions(
     }
   }
 
+  /**
+   * Duplicates the session (chat memory included) into a fresh copy. Works
+   * regardless of archived state — the copy is created active. {@code title}
+   * is the label for the copy (the caller localizes "Copy of …").
+   */
+  async function duplicate(title?: string): Promise<void> {
+    if (!session.value) return;
+    saving.value = true;
+    error.value = null;
+    try {
+      const result = await duplicateSession(session.value.sessionId, title);
+      callbacks.onDuplicated?.(result.sessionId);
+    } catch (e) {
+      error.value = (e as Error).message;
+    } finally {
+      saving.value = false;
+    }
+  }
+
   return {
     saving,
     error,
@@ -172,5 +194,6 @@ export function useSessionActions(
     archive,
     reactivate,
     remove,
+    duplicate,
   };
 }

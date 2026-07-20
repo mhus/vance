@@ -907,6 +907,7 @@ onBeforeUnmount(stopAutoScroll);
                   @archived="refreshSessions"
                   @reactivated="refreshSessions"
                   @deleted="refreshSessions"
+                  @duplicated="refreshSessions"
                 />
               </div>
             </div>

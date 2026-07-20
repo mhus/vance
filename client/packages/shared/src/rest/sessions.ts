@@ -1,5 +1,6 @@
 import type {
   ChatMessageDto,
+  SessionDuplicateResponse,
   SessionMetadataDto,
   SessionMetadataPatchRequest,
   SessionSearchHitDto,
@@ -100,6 +101,23 @@ export async function reactivateSession(sessionId: string): Promise<void> {
 /** DELETE /brain/{tenant}/sessions/{id} — hard delete, no undo. */
 export async function deleteSession(sessionId: string): Promise<void> {
   await brainFetch<void>('DELETE', `sessions/${encodeURIComponent(sessionId)}`);
+}
+
+/**
+ * POST /brain/{tenant}/sessions/{id}/duplicate — duplicates the session
+ * together with its chat memory (chat process + history + memories) into
+ * a fresh, resumable copy in the same project. Returns the new session's
+ * business id + resolved title. Owner-only.
+ */
+export async function duplicateSession(
+  sessionId: string,
+  title?: string,
+): Promise<SessionDuplicateResponse> {
+  return brainFetch<SessionDuplicateResponse>(
+    'POST',
+    `sessions/${encodeURIComponent(sessionId)}/duplicate`,
+    { body: title != null ? { title } : {} },
+  );
 }
 
 /**

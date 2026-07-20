@@ -29,6 +29,8 @@ const emit = defineEmits<{
   (e: 'archived'): void;
   (e: 'reactivated'): void;
   (e: 'deleted'): void;
+  /** A duplicate was created; payload is the new session's business id. */
+  (e: 'duplicated', newSessionId: string): void;
 }>();
 
 const { t } = useI18n();
@@ -48,6 +50,7 @@ const {
   archive: archiveAction,
   reactivate: reactivateAction,
   remove: removeAction,
+  duplicate: duplicateAction,
 } = useSessionActions(sessionRef, {
   onPatched: (updated) => {
     sessionRef.value = updated;
@@ -56,6 +59,7 @@ const {
   onArchived: () => emit('archived'),
   onReactivated: () => emit('reactivated'),
   onDeleted: () => emit('deleted'),
+  onDuplicated: (newSessionId) => emit('duplicated', newSessionId),
 });
 
 const menuOpen = ref(false);
@@ -133,6 +137,26 @@ async function onColor(value: AccentColor | null): Promise<void> {
   closeMenu();
 }
 
+async function onDuplicate(): Promise<void> {
+  closeMenu();
+  const s = props.session;
+  // Mirror the list's display-title fallback (title → firstUserMessage →
+  // fallback) so the copy is named after what the user actually sees, not
+  // after an empty explicit title.
+  let base: string;
+  if (s.title && s.title.trim().length > 0) {
+    base = s.title.trim();
+  } else if (s.firstUserMessage && s.firstUserMessage.trim().length > 0) {
+    base = s.firstUserMessage.trim();
+  } else {
+    base = t('chat.sessionHeader.duplicateFallbackTitle');
+  }
+  // Keep the label sane if the source falls back to a long first message.
+  if (base.length > 80) base = base.slice(0, 80).trimEnd() + '…';
+  const title = t('chat.sessionHeader.duplicateTitlePrefix', { title: base });
+  await duplicateAction(title);
+}
+
 async function onArchive(): Promise<void> {
   if (!window.confirm(t('chat.sessionHeader.archiveConfirm'))) return;
   closeMenu();
@@ -177,6 +201,20 @@ async function onDelete(): Promise<void> {
       role="menu"
       @click.stop
     >
+      <!-- Duplicate — available in any state; the copy is created active -->
+      <button
+        type="button"
+        class="flex items-center gap-3 w-full px-3 py-2 text-sm hover:bg-base-200 disabled:opacity-50"
+        :disabled="saving"
+        role="menuitem"
+        @click.stop="onDuplicate"
+      >
+        <span class="w-5 text-center">⧉</span>
+        <span class="flex-1 text-left">{{ t('chat.sessionHeader.duplicate') }}</span>
+      </button>
+
+      <div class="border-t border-base-300"></div>
+
       <!-- Pin toggle -->
       <button
         v-if="!isArchived"

@@ -26,6 +26,12 @@ interface MemoryRepository extends MongoRepository<MemoryDocument, String> {
     List<MemoryDocument> findByTenantIdAndSessionIdAndKind(
             String tenantId, String sessionId, MemoryKind kind, Sort sort);
 
+    /** Every memory carrying {@code sessionId} — session-scoped and
+     *  process-scoped alike (compaction memories set both). Used by the
+     *  session-duplicate path. */
+    List<MemoryDocument> findByTenantIdAndSessionId(
+            String tenantId, String sessionId, Sort sort);
+
     List<MemoryDocument> findByTenantIdAndProjectIdAndKind(
             String tenantId, String projectId, MemoryKind kind, Sort sort);
 

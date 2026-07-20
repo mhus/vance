@@ -16,6 +16,7 @@ export type { VanceLinkHandler, VanceLinkInterception } from './MarkdownView.vue
 export { default as ProjectListSidebar } from './ProjectListSidebar.vue';
 export type { PickerNode } from './ProjectListSidebar.vue';
 export { default as SessionHeader } from './SessionHeader.vue';
+export { default as SessionActionsMenu } from './SessionActionsMenu.vue';
 export { default as FormFields } from './FormFields.vue';
 export type { FormValue, FormValueObject } from './FormFields.vue';
 export { default as SettingFormView } from './SettingFormView.vue';

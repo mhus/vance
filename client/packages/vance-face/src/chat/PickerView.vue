@@ -22,6 +22,7 @@ import { useSessionGroups } from '@composables/useSessionGroups';
 import { useSessionGroupCollapse } from '@composables/useSessionGroupCollapse';
 import {
   ProjectListSidebar,
+  SessionActionsMenu,
   VAlert,
   VButton,
   VCheckbox,
@@ -406,6 +407,16 @@ function pickSession(session: SessionSummaryRichDto): void {
     if (!window.confirm(t('chat.picker.hijackConfirm'))) return;
   }
   emit('session-picked', session.sessionId);
+}
+
+/**
+ * Re-fetch the current project's sessions after a list-menu action
+ * (pin/color/multi-user/archive/delete via {@link SessionActionsMenu}).
+ * A round-trip keeps the server's pinned+lastActivity ordering authoritative
+ * rather than reshuffling locally.
+ */
+async function refreshSessions(): Promise<void> {
+  if (selectedProjectName.value) await loadSessions(selectedProjectName.value);
 }
 
 async function reactivateAndOpen(session: SessionSummaryRichDto): Promise<void> {
@@ -890,6 +901,13 @@ onBeforeUnmount(stopAutoScroll);
                 >
                   {{ $t('chat.sessionHeader.reactivate') }}
                 </VButton>
+                <SessionActionsMenu
+                  :session="session"
+                  @changed="refreshSessions"
+                  @archived="refreshSessions"
+                  @reactivated="refreshSessions"
+                  @deleted="refreshSessions"
+                />
               </div>
             </div>
               </li>

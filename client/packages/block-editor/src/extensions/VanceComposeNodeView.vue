@@ -22,6 +22,7 @@ import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import type { ComposeOutputView, ComposeRunResult } from './VanceCompose';
 import {
   readComposeOutputs,
+  readFixedOutputs,
   writeComposeOutputs,
   readComposeRun,
   writeComposeRun,
@@ -99,6 +100,8 @@ let timer: ReturnType<typeof setTimeout> | undefined;
 
 /** Outputs a prior run recorded in `$output:` — shown when no fresh result. */
 const persisted = computed<ComposeOutputView[]>(() => readComposeOutputs(yaml.value));
+/** User-pinned `output:` override — wins over run/`$output` outputs. */
+const fixedOutputs = computed<ComposeOutputView[]>(() => readFixedOutputs(yaml.value));
 
 /** The edit-mode textarea, auto-grown to fit its content (no inner scroller). */
 const srcEl = ref<HTMLTextAreaElement | null>(null);
@@ -136,9 +139,11 @@ function finishWith(res: ComposeRunResult) {
   const outputs = (res.tasks ?? []).flatMap((t) =>
     (t.outputs ?? []).map((o) => ({ path: o.path, uri: o.uri, kind: o.kind, title: o.title })),
   );
-  // Success → persist $output; failure → clear the parked $run marker.
+  // A user-pinned `output:` wins → don't write $output (just drop $run).
+  // Otherwise: success → persist $output; failure → clear the $run marker.
+  const pinned = readFixedOutputs(yaml.value).length > 0;
   props.updateAttributes({
-    yaml: res.success ? writeComposeOutputs(yaml.value, outputs) : clearComposeManaged(yaml.value),
+    yaml: res.success && !pinned ? writeComposeOutputs(yaml.value, outputs) : clearComposeManaged(yaml.value),
   });
 }
 
@@ -476,7 +481,23 @@ onBeforeUnmount(() => {
         class="vance-compose__log"
       >{{ progress.tail && progress.tail.length ? progress.tail.join('\n') : '… läuft, warte auf Ausgabe' }}</pre>
 
-      <div v-if="result" class="vance-compose__out">
+      <!-- Fixed `output:` override wins over run/persisted outputs. -->
+      <div v-if="fixedOutputs.length" class="vance-compose__out">
+        <template v-for="(o, oi) in fixedOutputs" :key="oi">
+          <component
+            :is="outputComponent"
+            v-if="outputComponent"
+            :project-id="projectId"
+            :output="o"
+          />
+          <div v-else class="vance-compose__art">
+            <div class="vance-compose__art-title">{{ o.title || o.path }}</div>
+            <div class="vance-compose__desc">{{ o.path }}</div>
+          </div>
+        </template>
+      </div>
+
+      <div v-else-if="result" class="vance-compose__out">
         <template v-for="(task, ti) in result.tasks ?? []" :key="ti">
           <div
             v-if="task.status !== 'success' && task.error"

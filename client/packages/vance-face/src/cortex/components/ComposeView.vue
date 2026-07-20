@@ -16,6 +16,7 @@ import {
   pollComposeRun,
   cancelComposeRun,
   readComposeOutputs,
+  readFixedOutputs,
   writeComposeOutputs,
   writeComposeRun,
   readComposeRun,
@@ -89,6 +90,8 @@ let timer: ReturnType<typeof setTimeout> | undefined;
 
 /** Outputs a prior run recorded in `$output:` — shown when no fresh result. */
 const persisted = computed<ComposeOutputView[]>(() => readComposeOutputs(props.doc));
+/** User-pinned `output:` override — wins over run/`$output` outputs. */
+const fixedOutputs = computed<ComposeOutputView[]>(() => readFixedOutputs(props.doc));
 
 function hasOutputs(r: ComposeRunResponse): boolean {
   return (r.tasks ?? []).some((t) => (t.outputs?.length ?? 0) > 0);
@@ -114,10 +117,12 @@ function finishWith(resp: ComposeRunResponse): void {
   runId.value = null;
   progress.value = null;
   result.value = resp;
-  if (resp.success) {
+  // A user-pinned `output:` wins → don't write $output (just drop $run).
+  const pinned = readFixedOutputs(props.doc).length > 0;
+  if (resp.success && !pinned) {
     emit('update:doc', writeComposeOutputs(props.doc, runOutputs(resp)));
   } else {
-    // Failure: clear the parked $run marker (no new outputs to keep).
+    // Failure or pinned output: clear the parked $run marker (no $output to keep).
     emit('update:doc', clearComposeManaged(props.doc));
   }
 }
@@ -251,7 +256,17 @@ onUnmounted(stopTimer);
       <pre class="text-xs whitespace-pre-wrap overflow-auto max-h-64">{{ progress.tail && progress.tail.length ? progress.tail.join('\n') : '… läuft, warte auf Ausgabe' }}</pre>
     </VCard>
 
-    <template v-if="result">
+    <!-- Fixed `output:` override wins over run/persisted outputs. -->
+    <template v-if="fixedOutputs.length">
+      <ComposeOutput
+        v-for="(out, oi) in fixedOutputs"
+        :key="oi"
+        :project-id="projectId"
+        :output="out"
+      />
+    </template>
+
+    <template v-else-if="result">
       <div v-for="(task, ti) in result.tasks ?? []" :key="ti" class="flex flex-col gap-2">
         <VAlert v-if="task.status !== 'success' && task.error" variant="error">
           Task {{ ti + 1 }}: {{ task.error }}

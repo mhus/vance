@@ -195,7 +195,18 @@ onBeforeUnmount(() => {
         class="vance-compose__log"
       >{{ rc.progress.value.tail && rc.progress.value.tail.length ? rc.progress.value.tail.join('\n') : '… läuft, warte auf Ausgabe' }}</pre>
 
-      <div v-if="rc.result.value" class="vance-compose__out">
+      <!-- Fixed `output:` override wins over run/persisted outputs. -->
+      <div v-if="rc.fixedOutputs.value.length" class="vance-compose__out">
+        <template v-for="(o, oi) in rc.fixedOutputs.value" :key="oi">
+          <component :is="outputComponent" v-if="outputComponent" :project-id="projectId" :output="o" />
+          <div v-else class="vance-compose__art">
+            <div class="vance-compose__art-title">{{ o.title || o.path }}</div>
+            <div class="vance-compose__desc">{{ o.path }}</div>
+          </div>
+        </template>
+      </div>
+
+      <div v-else-if="rc.result.value" class="vance-compose__out">
         <template v-for="(task, ti) in rc.result.value.tasks ?? []" :key="ti">
           <div v-if="task.status !== 'success' && task.error" class="vance-compose__error">
             Task {{ ti + 1 }}: {{ task.error }}

@@ -37,9 +37,7 @@ function parseRoot(doc: string): Record<string, unknown> | null {
   }
 }
 
-/** Read the `$output:` block a prior run wrote into the manifest. */
-export function readComposeOutputs(doc: string): ComposeOutputView[] {
-  const raw = parseRoot(doc)?.[OUTPUT_KEY];
+function mapOutputList(raw: unknown): ComposeOutputView[] {
   if (!Array.isArray(raw)) return [];
   const outputs: ComposeOutputView[] = [];
   for (const item of raw) {
@@ -51,6 +49,21 @@ export function readComposeOutputs(doc: string): ComposeOutputView[] {
     outputs.push({ path, uri, kind: asString(o.kind), title: asString(o.title) });
   }
   return outputs;
+}
+
+/** Read the `$output:` block a prior run wrote into the manifest. */
+export function readComposeOutputs(doc: string): ComposeOutputView[] {
+  return mapOutputList(parseRoot(doc)?.[OUTPUT_KEY]);
+}
+
+/**
+ * A user-authored fixed `output:` list (top-level, no `$`) — a manual override
+ * for when the run reports the wrong outputs or none. When present the run does
+ * NOT write a `$output:` block; the UI shows this list instead. Runner ignores
+ * the key (UI-only, like `showSource`/`autoRun`).
+ */
+export function readFixedOutputs(doc: string): ComposeOutputView[] {
+  return mapOutputList(parseRoot(doc)?.output);
 }
 
 /** Replace the managed block with the `$output:` list (drops a pending `$run:`). */

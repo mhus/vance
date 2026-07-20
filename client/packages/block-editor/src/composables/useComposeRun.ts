@@ -2,6 +2,7 @@ import { computed, ref } from 'vue';
 import type { ComposeOutputView, ComposeRunResult } from '../extensions/VanceCompose';
 import {
   readComposeOutputs,
+  readFixedOutputs,
   writeComposeOutputs,
   readComposeRun,
   writeComposeRun,
@@ -48,6 +49,8 @@ export function useComposeRun(opts: UseComposeRunOptions) {
 
   /** Outputs recorded by a prior successful run (`$output:`). */
   const persisted = computed<ComposeOutputView[]>(() => readComposeOutputs(opts.yaml()));
+  /** User-pinned `output:` override (takes precedence over run/`$output`). */
+  const fixedOutputs = computed<ComposeOutputView[]>(() => readFixedOutputs(opts.yaml()));
   /** Stop is only meaningful in phase 2 (a runId exists to cancel). */
   const canStop = computed(() => running.value && runId.value != null);
   const runGlyph = computed(() => (!running.value ? '▶' : runId.value ? '■' : '…'));
@@ -68,7 +71,10 @@ export function useComposeRun(opts: UseComposeRunOptions) {
     const outputs = (res.tasks ?? []).flatMap((t) =>
       (t.outputs ?? []).map((o) => ({ path: o.path, uri: o.uri, kind: o.kind, title: o.title })),
     );
-    opts.setYaml(res.success ? writeComposeOutputs(opts.yaml(), outputs) : clearComposeManaged(opts.yaml()));
+    // A user-pinned `output:` wins: don't persist a `$output:` block — just
+    // strip the $run marker. Otherwise record the run's outputs.
+    const pinned = readFixedOutputs(opts.yaml()).length > 0;
+    opts.setYaml(res.success && !pinned ? writeComposeOutputs(opts.yaml(), outputs) : clearComposeManaged(opts.yaml()));
   }
 
   function startPolling(id: string) {
@@ -173,6 +179,7 @@ export function useComposeRun(opts: UseComposeRunOptions) {
     runId,
     cancelling,
     persisted,
+    fixedOutputs,
     canStop,
     runGlyph,
     run,

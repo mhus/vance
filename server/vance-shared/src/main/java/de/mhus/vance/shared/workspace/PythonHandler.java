@@ -5,8 +5,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import lombok.RequiredArgsConstructor;
@@ -36,6 +38,11 @@ import org.springframework.stereotype.Component;
  * <p>Metadata schema:
  * <ul>
  *   <li>{@code pythonPath} — interpreter used at last venv build (informational, default {@code python3})</li>
+ *   <li>{@code packages} — list of pip requirement specs (e.g. {@code numpy},
+ *       {@code pandas==2.0}) installed into the venv at init. Declarative
+ *       alternative to shipping a {@code requirements.txt} — the file arrives
+ *       via a later import, so it is not present at provision time. Installed
+ *       once on create/clear; a reused workspace keeps them.</li>
  *   <li>{@code repoUrl}, {@code branch}, {@code commit}, {@code credentialAlias},
  *       {@code suspendBranch}, {@code suspendCommit} — same keys as {@link GitHandler}</li>
  * </ul>
@@ -48,6 +55,7 @@ public class PythonHandler implements WorkspaceContentHandler {
     public static final String TYPE = "python";
 
     public static final String META_PYTHON_PATH = "pythonPath";
+    public static final String META_PACKAGES = "packages";
     public static final String DEFAULT_PYTHON_PATH = "python3";
     public static final String VENV_DIR = ".venv";
     public static final String REQUIREMENTS_FILE = "requirements.txt";
@@ -98,12 +106,20 @@ public class PythonHandler implements WorkspaceContentHandler {
             pipInstallRequirements(handle.getPath(), pythonPath);
         }
 
+        // Declarative package list from workspace options — installed once at
+        // init (the reused-workspace path skips init and keeps them).
+        List<String> packages = packageList(meta, META_PACKAGES);
+        if (!packages.isEmpty()) {
+            pipInstallPackages(handle.getPath(), pythonPath, packages);
+        }
+
         meta.put(META_PYTHON_PATH, pythonPath);
         handle.getDescriptor().setMetadata(meta);
-        log.info("python init: {} (pythonPath={}, repoUrl={}, requirements={})",
+        log.info("python init: {} (pythonPath={}, repoUrl={}, requirements={}, packages={})",
                 handle.getDirName(), pythonPath,
                 repoUrl == null ? "none" : repoUrl,
-                Files.isRegularFile(requirements) ? "installed" : "absent");
+                Files.isRegularFile(requirements) ? "installed" : "absent",
+                packages.size());
     }
 
     @Override
@@ -162,6 +178,10 @@ public class PythonHandler implements WorkspaceContentHandler {
             pipInstallRequirements(rootDirPath, pythonPath);
         }
         Map<String, Object> meta = mutableMetadata(handle.getDescriptor());
+        List<String> packages = packageList(meta, META_PACKAGES);
+        if (!packages.isEmpty()) {
+            pipInstallPackages(rootDirPath, pythonPath, packages);
+        }
         meta.put(META_PYTHON_PATH, pythonPath);
         handle.getDescriptor().setMetadata(meta);
     }
@@ -199,6 +219,53 @@ public class PythonHandler implements WorkspaceContentHandler {
                 new String[]{pythonBinary, "-m", "pip", "install", "-r", REQUIREMENTS_FILE},
                 PIP_INSTALL_TIMEOUT_SECONDS,
                 "pip install -r " + REQUIREMENTS_FILE);
+    }
+
+    private void pipInstallPackages(Path rootDirPath, String pythonPath, List<String> packages) {
+        Path venvPython = rootDirPath.resolve(VENV_DIR).resolve("bin").resolve("python");
+        String pythonBinary = Files.isExecutable(venvPython)
+                ? venvPython.toString()
+                : pythonPath;
+        String[] command = new String[4 + packages.size()];
+        command[0] = pythonBinary;
+        command[1] = "-m";
+        command[2] = "pip";
+        command[3] = "install";
+        for (int i = 0; i < packages.size(); i++) {
+            command[4 + i] = packages.get(i);
+        }
+        runProcess(rootDirPath, command, PIP_INSTALL_TIMEOUT_SECONDS,
+                "pip install " + String.join(" ", packages));
+    }
+
+    /**
+     * Read a package list from metadata. Each entry is a plain requirement
+     * spec passed straight to the installer as a separate argv token (no
+     * shell). A leading {@code -} is rejected so a list entry cannot smuggle
+     * an installer flag (e.g. {@code --index-url} or {@code -r}).
+     */
+    private static List<String> packageList(Map<String, Object> meta, String key) {
+        Object raw = meta.get(key);
+        if (!(raw instanceof List<?> list)) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>();
+        for (Object o : list) {
+            if (o == null) {
+                continue;
+            }
+            String s = o.toString().trim();
+            if (s.isEmpty()) {
+                continue;
+            }
+            if (s.startsWith("-")) {
+                throw new WorkspaceException(
+                        "invalid package spec '" + s + "' in workspace options."
+                                + key + " — must not start with '-' (option injection)");
+            }
+            out.add(s);
+        }
+        return out;
     }
 
     private static void runProcess(Path cwd, String[] command, long timeoutSeconds, String label) {

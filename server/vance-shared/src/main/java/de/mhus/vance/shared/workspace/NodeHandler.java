@@ -6,8 +6,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import jakarta.annotation.PostConstruct;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import lombok.RequiredArgsConstructor;
@@ -47,6 +49,11 @@ import org.springframework.stereotype.Component;
  * <ul>
  *   <li>{@code npmPath} — npm binary used at last install (informational, default {@code npm})</li>
  *   <li>{@code nodePath} — node binary (informational, default {@code node})</li>
+ *   <li>{@code packages} — list of npm package specs (e.g. {@code lodash},
+ *       {@code axios@1.6}) installed into {@code node_modules} at init.
+ *       Declarative alternative to shipping a {@code package.json} +
+ *       lockfile, which for a compose arrive via a later import. Installed
+ *       once on create/clear; a reused workspace keeps them.</li>
  *   <li>{@code repoUrl}, {@code branch}, {@code commit}, {@code credentialAlias},
  *       {@code suspendBranch}, {@code suspendCommit} — same keys as {@link GitHandler}</li>
  * </ul>
@@ -59,6 +66,7 @@ public class NodeHandler implements WorkspaceContentHandler {
     public static final String TYPE = "node";
 
     public static final String META_NPM_PATH = "npmPath";
+    public static final String META_PACKAGES = "packages";
     public static final String DEFAULT_NPM_PATH = "npm";
     public static final String META_NODE_PATH = "nodePath";
     public static final String DEFAULT_NODE_PATH = "node";
@@ -159,12 +167,20 @@ public class NodeHandler implements WorkspaceContentHandler {
             npmCi(handle.getPath(), npmPath);
         }
 
+        // Declarative package list from workspace options — installed once at
+        // init (the reused-workspace path skips init and keeps them).
+        List<String> packages = packageList(meta, META_PACKAGES);
+        if (!packages.isEmpty()) {
+            npmInstallPackages(handle.getPath(), npmPath, packages);
+        }
+
         meta.put(META_NPM_PATH, npmPath);
         handle.getDescriptor().setMetadata(meta);
-        log.info("node init: {} (npmPath={}, repoUrl={}, lockfile={})",
+        log.info("node init: {} (npmPath={}, repoUrl={}, lockfile={}, packages={})",
                 handle.getDirName(), npmPath,
                 repoUrl == null ? "none" : repoUrl,
-                Files.isRegularFile(lockfile) ? "ci'd" : "absent");
+                Files.isRegularFile(lockfile) ? "ci'd" : "absent",
+                packages.size());
     }
 
     @Override
@@ -268,6 +284,46 @@ public class NodeHandler implements WorkspaceContentHandler {
                         "--ignore-scripts", "--no-audit", "--no-fund"},
                 NPM_INSTALL_TIMEOUT_SECONDS,
                 "npm ci (" + npmPath + ")");
+    }
+
+    private void npmInstallPackages(Path cwd, String npmPath, List<String> packages) {
+        String[] fixed = {npmPath, "install", "--save", "--ignore-scripts", "--no-audit", "--no-fund"};
+        String[] command = new String[fixed.length + packages.size()];
+        System.arraycopy(fixed, 0, command, 0, fixed.length);
+        for (int i = 0; i < packages.size(); i++) {
+            command[fixed.length + i] = packages.get(i);
+        }
+        runProcess(cwd, command, NPM_INSTALL_TIMEOUT_SECONDS,
+                "npm install " + String.join(" ", packages));
+    }
+
+    /**
+     * Read a package list from metadata. Each entry is a plain package spec
+     * passed straight to npm as a separate argv token (no shell). A leading
+     * {@code -} is rejected so a list entry cannot smuggle an npm flag.
+     */
+    private static List<String> packageList(Map<String, Object> meta, String key) {
+        Object raw = meta.get(key);
+        if (!(raw instanceof List<?> list)) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>();
+        for (Object o : list) {
+            if (o == null) {
+                continue;
+            }
+            String s = o.toString().trim();
+            if (s.isEmpty()) {
+                continue;
+            }
+            if (s.startsWith("-")) {
+                throw new WorkspaceException(
+                        "invalid package spec '" + s + "' in workspace options."
+                                + key + " — must not start with '-' (option injection)");
+            }
+            out.add(s);
+        }
+        return out;
     }
 
     private static void runProcess(Path cwd, String[] command,

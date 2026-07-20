@@ -211,6 +211,35 @@ class PythonHandlerTest {
         assertThat(rootDir.resolve(".venv/bin/python")).exists();
     }
 
+    @Test
+    void init_withPackagesOption_pipInstallsThem() {
+        assumePython3Available();
+        Path rootDir = createRootDirFolder("pkgs");
+        Map<String, Object> meta = new LinkedHashMap<>();
+        // pip is already inside the fresh venv — installs without network.
+        meta.put(PythonHandler.META_PACKAGES, java.util.List.of("pip"));
+        WorkspaceDescriptor descriptor = descriptor("pkgs", meta);
+        RootDirHandle handle = handle(rootDir, descriptor);
+
+        handler.init(handle, spec("pkgs"));
+
+        assertThat(rootDir.resolve(".venv/bin/python")).exists();
+    }
+
+    @Test
+    void init_withPackageSpecStartingWithDash_throwsOptionInjection() {
+        assumePython3Available();
+        Path rootDir = createRootDirFolder("inject");
+        Map<String, Object> meta = new LinkedHashMap<>();
+        meta.put(PythonHandler.META_PACKAGES, java.util.List.of("--index-url=http://evil"));
+        WorkspaceDescriptor descriptor = descriptor("inject", meta);
+        RootDirHandle handle = handle(rootDir, descriptor);
+
+        assertThatThrownBy(() -> handler.init(handle, spec("inject")))
+                .isInstanceOf(WorkspaceException.class)
+                .hasMessageContaining("option injection");
+    }
+
     // ---------------------------------------------------------------------
     // Helpers
     // ---------------------------------------------------------------------

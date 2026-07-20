@@ -48,7 +48,7 @@ workspace:
   type: temp               # temp | git | node | python
   clear: false             # true = vorher leeren, dann leer neu anlegen
   target: WORK             # WORK (default) | CLIENT (exec-only, Foot) | DAEMON (exec-only)
-  options: { repoUrl: … }  # nur git: repoUrl/branch
+  options: { repoUrl: … }  # git: repoUrl/branch — node/python: packages: [numpy, pandas==2.0]
 import:
   - from: vance:data.csv   # vance:<path> = Dokument; http(s):// = externe Quelle
     to: data.csv           # workspace-relativ (import-Ziel ist IMMER lokal)
@@ -117,6 +117,10 @@ export:
   `vance:`/`http:` (Import) bzw. `vance:` (Export); `git:*` und Binärdateien sind
   WORK-only. Für „mehrere Shell-Schritte nacheinander auf einem Remote-Rechner".
   Default bleibt `WORK`.
+- **Deps (`node`/`python`):** `workspace.options.packages: [numpy, pandas==2.0]`
+  (bzw. npm-Specs) installiert die Liste beim Provisioning (pip/npm) — statt erst
+  `requirements.txt`/`package.json` importieren zu müssen. Einmalig bei
+  Neu-Anlage; ein wiederverwendeter Workspace behält sie (Änderung → `clear: true`).
 - **Workspace löschen:** `workspace: { name: x, delete: true }` verwirft den
   benannten Workspace und stoppt (idempotent — fehlt er, ist es ein No-op).
   `delete` ist **terminal**: nicht mit `clear`/`import`/`tasks`/`export`

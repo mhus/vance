@@ -13,7 +13,7 @@
  * returned per-task outputs (images inline, everything else as a link). The
  * host resolves output content URLs, so this view needs no tenant/REST access.
  */
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import jsyaml from 'js-yaml';
 import { NodeViewWrapper } from '@tiptap/vue-3';
 import type { Editor } from '@tiptap/core';
@@ -90,9 +90,25 @@ let timer: ReturnType<typeof setTimeout> | undefined;
 /** Outputs a prior run recorded in `$output:` — shown when no fresh result. */
 const persisted = computed<ComposeOutputView[]>(() => readComposeOutputs(yaml.value));
 
+/** The edit-mode textarea, auto-grown to fit its content (no inner scroller). */
+const srcEl = ref<HTMLTextAreaElement | null>(null);
+
+/** Resize the textarea to its content height so the cell grows downward. */
+function autoGrow() {
+  const el = srcEl.value;
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = `${el.scrollHeight}px`;
+}
+
 function onYaml(e: Event) {
   props.updateAttributes({ yaml: (e.target as HTMLTextAreaElement).value });
+  autoGrow();
 }
+
+// Re-fit when the source changes externally or the textarea (re)appears
+// (e.g. switching into design mode) — after the DOM has updated.
+watch([yaml, editable], () => nextTick(autoGrow));
 
 function stopTimer() {
   polling = false;
@@ -167,6 +183,7 @@ async function run() {
 onMounted(() => {
   props.editor.on('update', syncEditable);
   props.editor.on('transaction', syncEditable);
+  nextTick(autoGrow);
   // Resume a run that was in flight before a reload.
   const marker = readComposeRun(yaml.value);
   if (marker) {
@@ -191,9 +208,10 @@ onBeforeUnmount(() => {
       </div>
       <textarea
         v-if="editable"
+        ref="srcEl"
         class="vance-compose__src"
         :value="yaml"
-        rows="8"
+        rows="1"
         spellcheck="false"
         placeholder="workspace: { name: my-workspace, type: temp }  ·  tasks: [ … ]"
         @input="onYaml"
@@ -306,9 +324,13 @@ onBeforeUnmount(() => {
   padding: 0.5rem 0.6rem;
   background: oklch(var(--b1));
   color: inherit;
-  resize: vertical;
+  resize: none;
   white-space: pre;
-  overflow: auto;
+  /* Height is driven by autoGrow() to fit the content — no vertical scroller;
+     long lines still scroll horizontally. */
+  overflow-x: auto;
+  overflow-y: hidden;
+  min-height: 2.5rem;
 }
 .vance-compose__src--ro {
   margin: 0;

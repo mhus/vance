@@ -247,6 +247,31 @@ function clearOutput() {
   props.updateAttributes({ yaml: clearComposeManaged(yaml.value) });
 }
 
+/** Drop the outputs of every compose block on the page (mirror of Run All Until). */
+function clearAllOutput() {
+  closeMenu();
+  stopTimer();
+  running.value = false;
+  progress.value = null;
+  result.value = null;
+  error.value = null;
+  runId.value = null;
+  const positions: number[] = [];
+  props.editor.state.doc.descendants((n, pos) => {
+    if (n.type.name === 'vanceCompose') positions.push(pos);
+    return true;
+  });
+  // Attr-only edits don't shift positions, so one command clears them all.
+  props.editor.commands.command(({ tr }) => {
+    for (const pos of positions) {
+      const node = tr.doc.nodeAt(pos);
+      if (!node) continue;
+      tr.setNodeAttribute(pos, 'yaml', clearComposeManaged((node.attrs?.yaml as string) ?? ''));
+    }
+    return true;
+  });
+}
+
 /** UI-only manifest flag `autoRun: false` opts a block out of "Run All Until". */
 function isAutoRunDisabled(src: string): boolean {
   try {
@@ -422,6 +447,11 @@ onBeforeUnmount(() => {
               class="vance-compose__menu-item"
               @click="clearOutput"
             >Clear Output</button>
+            <button
+              type="button"
+              class="vance-compose__menu-item"
+              @click="clearAllOutput"
+            >Clear All Output</button>
           </div>
         </div>
 

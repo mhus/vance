@@ -277,6 +277,12 @@ export default {
       duplicateFallbackTitle: 'Copy',
       duplicateError: 'Could not duplicate the session.',
       crop: 'Crop',
+      compact: 'Compact',
+      compactConnectedConfirm: 'This session is currently connected — someone may be working on it. Compact its memory now anyway? Compaction runs safely between turns.',
+      compactDone: 'Compacted: {n} message(s) folded into a summary.',
+      compactNothing: 'Nothing to compact — the memory is already compact.',
+      compactDeferred: 'Compaction queued — it will run after the current turn.',
+      compactError: 'Compaction failed.',
     },
     crop: {
       title: 'Crop session',

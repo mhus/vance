@@ -1,21 +1,30 @@
 package de.mhus.vance.brain.session;
 
 import de.mhus.vance.api.common.AccentColor;
+import de.mhus.vance.api.session.SessionCompactResponse;
 import de.mhus.vance.api.session.SessionDuplicateRequest;
 import de.mhus.vance.api.session.SessionDuplicateResponse;
 import de.mhus.vance.api.session.SessionMetadataDto;
 import de.mhus.vance.api.session.SessionMetadataPatchRequest;
 import de.mhus.vance.api.session.SessionStatus;
+import de.mhus.vance.brain.memory.CompactionResult;
+import de.mhus.vance.brain.memory.MemoryCompactionService;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -52,8 +61,19 @@ public class SessionLifecycleController {
     private final SessionService sessionService;
     private final SessionLifecycleService lifecycleService;
     private final SessionDuplicationService duplicationService;
+    private final ThinkProcessService thinkProcessService;
+    private final MemoryCompactionService compactionService;
+    private final LaneScheduler laneScheduler;
     private final RequestAuthority authority;
     private final ProcessEventEmitter processEventEmitter;
+
+    /**
+     * How long the HTTP call waits for the lane-scheduled compaction
+     * before returning a {@code deferred} response. The compaction keeps
+     * running on the lane; the client just doesn't learn the concrete
+     * result within this window (a turn ahead of it may be long).
+     */
+    private static final long COMPACT_TIMEOUT_MS = 60_000L;
 
     @PostMapping("/{sessionId}/archive")
     public ResponseEntity<Void> archive(
@@ -151,6 +171,63 @@ public class SessionLifecycleController {
                 .sessionId(result.newSessionId())
                 .title(result.title())
                 .build();
+    }
+
+    /**
+     * Manually compact the session's chat memory now — the same
+     * sliding-window compaction the engine runs on its automatic
+     * threshold, folding older turns into an ARCHIVED_CHAT summary. Runs
+     * on the chat process's lane so it serializes with turns and can never
+     * corrupt an in-flight prompt. A no-op (nothing left to compact) is a
+     * normal outcome carried in the response {@code reason}, not an error.
+     * Owner-only. See {@code specification/public/session-compact.md}.
+     */
+    @PostMapping("/{sessionId}/compact")
+    public SessionCompactResponse compact(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("sessionId") String sessionId,
+            HttpServletRequest request) {
+        SessionDocument session = requireOwnedSession(tenant, sessionId, request);
+        authority.enforce(request,
+                new Resource.Session(tenant, session.getProjectId(), session.getSessionId()),
+                Action.EXECUTE);
+
+        String chatProcessId = session.getChatProcessId();
+        if (chatProcessId == null || chatProcessId.isBlank()) {
+            return SessionCompactResponse.builder()
+                    .compacted(false).reason("no chat process").build();
+        }
+        ThinkProcessDocument process = thinkProcessService.findById(chatProcessId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Chat process not found for session '" + sessionId + "'"));
+
+        try {
+            CompactionResult r = laneScheduler
+                    .submit(chatProcessId, () -> compactionService.compact(process))
+                    .get(COMPACT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+            return SessionCompactResponse.builder()
+                    .compacted(r.compacted())
+                    .messagesCompacted(r.messagesCompacted())
+                    .summaryChars(r.summaryChars())
+                    .memoryId(r.memoryId())
+                    .reason(r.reason())
+                    .deferred(false)
+                    .build();
+        } catch (TimeoutException e) {
+            // Still queued on the lane (a turn was running); it will complete
+            // between turns. The client just doesn't get the result now.
+            return SessionCompactResponse.builder()
+                    .compacted(false).deferred(true).reason("deferred").build();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Interrupted while compacting");
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
+            log.warn("Manual compaction failed session='{}'", sessionId, cause);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Compaction failed: " + cause.getMessage());
+        }
     }
 
     @DeleteMapping("/{sessionId}")

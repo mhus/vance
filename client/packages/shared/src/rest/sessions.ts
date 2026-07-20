@@ -1,5 +1,6 @@
 import type {
   ChatMessageDto,
+  SessionCompactResponse,
   SessionDuplicateResponse,
   SessionMetadataDto,
   SessionMetadataPatchRequest,
@@ -101,6 +102,21 @@ export async function reactivateSession(sessionId: string): Promise<void> {
 /** DELETE /brain/{tenant}/sessions/{id} — hard delete, no undo. */
 export async function deleteSession(sessionId: string): Promise<void> {
   await brainFetch<void>('DELETE', `sessions/${encodeURIComponent(sessionId)}`);
+}
+
+/**
+ * POST /brain/{tenant}/sessions/{id}/compact — manually compact the
+ * session's chat memory now (fold older turns into a summary). Owner-only.
+ * A no-op (nothing to compact) is a normal result carried in {@code reason},
+ * not an error; {@code deferred} means it was queued behind a running turn.
+ */
+export async function compactSession(
+  sessionId: string,
+): Promise<SessionCompactResponse> {
+  return brainFetch<SessionCompactResponse>(
+    'POST',
+    `sessions/${encodeURIComponent(sessionId)}/compact`,
+  );
 }
 
 /**

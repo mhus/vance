@@ -33,6 +33,8 @@ const emit = defineEmits<{
   (e: 'duplicated', newSessionId: string): void;
   /** User picked "Crop" — host opens the crop modal for this session. */
   (e: 'crop', sessionId: string): void;
+  /** A compaction attempt finished; payload is a localized user message. */
+  (e: 'compacted', message: string): void;
 }>();
 
 const { t } = useI18n();
@@ -53,6 +55,7 @@ const {
   reactivate: reactivateAction,
   remove: removeAction,
   duplicate: duplicateAction,
+  compact: compactAction,
 } = useSessionActions(sessionRef, {
   onPatched: (updated) => {
     sessionRef.value = updated;
@@ -62,6 +65,14 @@ const {
   onReactivated: () => emit('reactivated'),
   onDeleted: () => emit('deleted'),
   onDuplicated: (newSessionId) => emit('duplicated', newSessionId),
+  onCompacted: (result) => {
+    let msg: string;
+    if (result.deferred) msg = t('chat.sessionHeader.compactDeferred');
+    else if (result.compacted) {
+      msg = t('chat.sessionHeader.compactDone', { n: result.messagesCompacted });
+    } else msg = t('chat.sessionHeader.compactNothing');
+    emit('compacted', msg);
+  },
 });
 
 const menuOpen = ref(false);
@@ -142,6 +153,17 @@ async function onColor(value: AccentColor | null): Promise<void> {
 function onCrop(): void {
   closeMenu();
   emit('crop', props.session.sessionId);
+}
+
+async function onCompact(): Promise<void> {
+  closeMenu();
+  // Warn when a client is connected (someone may be working on it) — the
+  // compaction itself still runs safely on the lane between turns.
+  if (props.session.bound
+      && !window.confirm(t('chat.sessionHeader.compactConnectedConfirm'))) {
+    return;
+  }
+  await compactAction();
 }
 
 async function onDuplicate(): Promise<void> {
@@ -230,6 +252,18 @@ async function onDelete(): Promise<void> {
       >
         <span class="w-5 text-center">✂</span>
         <span class="flex-1 text-left">{{ t('chat.sessionHeader.crop') }}</span>
+      </button>
+
+      <!-- Compact — fold older turns into a summary; runs on the lane -->
+      <button
+        type="button"
+        class="flex items-center gap-3 w-full px-3 py-2 text-sm hover:bg-base-200 disabled:opacity-50"
+        :disabled="saving"
+        role="menuitem"
+        @click.stop="onCompact"
+      >
+        <span class="w-5 text-center">🗜</span>
+        <span class="flex-1 text-left">{{ t('chat.sessionHeader.compact') }}</span>
       </button>
 
       <div class="border-t border-base-300"></div>

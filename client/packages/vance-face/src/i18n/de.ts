@@ -272,6 +272,12 @@ export default {
       duplicateFallbackTitle: 'Kopie',
       duplicateError: 'Session konnte nicht dupliziert werden.',
       crop: 'Zuschneiden',
+      compact: 'Verdichten',
+      compactConnectedConfirm: 'Diese Session ist gerade verbunden — jemand arbeitet möglicherweise daran. Erinnerung trotzdem jetzt verdichten? Die Verdichtung läuft sicher zwischen den Turns.',
+      compactDone: 'Verdichtet: {n} Nachricht(en) zusammengefasst.',
+      compactNothing: 'Nichts zu verdichten — die Erinnerung ist bereits kompakt.',
+      compactDeferred: 'Verdichtung eingereiht — sie läuft nach dem aktuellen Turn.',
+      compactError: 'Verdichtung fehlgeschlagen.',
     },
     crop: {
       title: 'Session zuschneiden',

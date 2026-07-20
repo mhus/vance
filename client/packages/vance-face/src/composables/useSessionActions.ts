@@ -2,11 +2,13 @@ import { computed, ref, type Ref } from 'vue';
 import {
   AccentColor,
   SessionStatus,
+  type SessionCompactResponse,
   type SessionMetadataPatchRequest,
   type SessionSummaryRichDto,
 } from '@vance/generated';
 import {
   archiveSession,
+  compactSession,
   deleteSession,
   duplicateSession,
   getUsername,
@@ -30,6 +32,8 @@ export interface SessionActionCallbacks {
   onDeleted?: () => void;
   /** Fired after a successful duplicate with the new session's business id. */
   onDuplicated?: (newSessionId: string) => void;
+  /** Fired after a compaction attempt with the outcome (compacted or no-op). */
+  onCompacted?: (result: SessionCompactResponse) => void;
 }
 
 /**
@@ -179,6 +183,24 @@ export function useSessionActions(
     }
   }
 
+  /**
+   * Manually compact the session's chat memory now. A no-op (nothing left
+   * to compact) is reported through {@code onCompacted}, not as an error.
+   */
+  async function compact(): Promise<void> {
+    if (!session.value) return;
+    saving.value = true;
+    error.value = null;
+    try {
+      const result = await compactSession(session.value.sessionId);
+      callbacks.onCompacted?.(result);
+    } catch (e) {
+      error.value = (e as Error).message;
+    } finally {
+      saving.value = false;
+    }
+  }
+
   return {
     saving,
     error,
@@ -195,5 +217,6 @@ export function useSessionActions(
     reactivate,
     remove,
     duplicate,
+    compact,
   };
 }

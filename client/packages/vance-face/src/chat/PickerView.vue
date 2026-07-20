@@ -429,6 +429,16 @@ async function refreshSessions(): Promise<void> {
   if (selectedProjectName.value) await loadSessions(selectedProjectName.value);
 }
 
+/** Transient info banner (e.g. compaction outcome). Auto-clears. */
+const sessionNotice = ref<string | null>(null);
+let noticeTimer: ReturnType<typeof setTimeout> | null = null;
+
+function showNotice(message: string): void {
+  sessionNotice.value = message;
+  if (noticeTimer) clearTimeout(noticeTimer);
+  noticeTimer = setTimeout(() => { sessionNotice.value = null; }, 6000);
+}
+
 async function reactivateAndOpen(session: SessionSummaryRichDto): Promise<void> {
   if (!window.confirm(t('chat.sessionHeader.reactivateConfirm'))) return;
   reactivating.value = session.sessionId;
@@ -734,6 +744,7 @@ onBeforeUnmount(stopAutoScroll);
         <div class="max-w-3xl mx-auto flex flex-col gap-4">
         <VAlert v-if="bootstrapError" variant="error">{{ bootstrapError }}</VAlert>
         <VAlert v-if="sessionsError" variant="error">{{ sessionsError }}</VAlert>
+        <VAlert v-if="sessionNotice" variant="info">{{ sessionNotice }}</VAlert>
         <VAlert v-if="sessionGroupsState.error.value" variant="error">
           {{ sessionGroupsState.error.value }}
         </VAlert>
@@ -919,6 +930,7 @@ onBeforeUnmount(stopAutoScroll);
                   @deleted="refreshSessions"
                   @duplicated="refreshSessions"
                   @crop="openCrop"
+                  @compacted="showNotice"
                 />
               </div>
             </div>

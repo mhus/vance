@@ -7,6 +7,7 @@ import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.brain.memory.CompactionResult;
 import de.mhus.vance.brain.memory.MemoryCompactionService;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.brain.ws.WsHandler;
@@ -16,6 +17,9 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.io.IOException;
 import java.util.Optional;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -41,7 +45,12 @@ public class ProcessCompactHandler implements WsHandler {
     private final WebSocketSender sender;
     private final ThinkProcessService thinkProcessService;
     private final MemoryCompactionService compactionService;
+    private final LaneScheduler laneScheduler;
     private final RequestAuthority authority;
+
+    /** Bound wait for the lane-scheduled compaction — matches foot's 60s
+     *  request timeout. On timeout the compaction stays queued on the lane. */
+    private static final long COMPACT_TIMEOUT_MS = 60_000L;
 
     @Override
     public String type() {
@@ -85,14 +94,27 @@ public class ProcessCompactHandler implements WsHandler {
                         process.getSessionId(), process.getId() == null ? "" : process.getId()),
                 Action.EXECUTE);
 
+        // Run on the process lane so compaction serializes with turns and
+        // can never mutate the chat history out from under an in-flight
+        // prompt/anchor. On timeout it stays queued and completes between
+        // turns; we reply with a deferred no-op.
         CompactionResult result;
         try {
-            result = compactionService.compact(process);
-        } catch (RuntimeException e) {
+            result = laneScheduler
+                    .submit(process.getId(), () -> compactionService.compact(process))
+                    .get(COMPACT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException e) {
+            result = CompactionResult.noop("deferred");
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            sender.sendError(wsSession, envelope, 500, "Interrupted while compacting");
+            return;
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
             log.warn("process-compact failed for tenant='{}' session='{}' process='{}'",
-                    tenantId, sessionId, request.getProcessName(), e);
+                    tenantId, sessionId, request.getProcessName(), cause);
             sender.sendError(wsSession, envelope, 500,
-                    "Compaction failed: " + e.getMessage());
+                    "Compaction failed: " + cause.getMessage());
             return;
         }
 

@@ -202,6 +202,10 @@ public class SessionCreateHandler implements WsHandler {
         List<ChatMessageDocument> full = chatMessageService.history(
                 process.getTenantId(), process.getSessionId(), process.getId());
         for (ChatMessageDocument appended : full) {
+            // User-removed messages (Modify/Crop) are gone from the
+            // scrollback — don't re-emit them on reconnect. Matches the
+            // REST history path.
+            if (appended.isRemoved()) continue;
             sender.sendNotification(wsSession, MessageType.CHAT_MESSAGE_APPENDED,
                     ChatMessageAppendedData.builder()
                             .chatMessageId(appended.getId())

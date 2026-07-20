@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.chat;
 
 import de.mhus.vance.api.chat.ChatMessageDto;
+import de.mhus.vance.api.chat.SessionCropRequest;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
@@ -16,7 +17,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -61,6 +64,8 @@ public class ChatHistoryController {
             @PathVariable("tenant") String tenant,
             @PathVariable("sessionId") String sessionId,
             @RequestParam(value = "limit", required = false) @Nullable Integer limit,
+            @RequestParam(value = "includeRemoved", required = false, defaultValue = "false")
+                    boolean includeRemoved,
             HttpServletRequest request) {
 
         String currentUser = currentUser(request);
@@ -74,7 +79,12 @@ public class ChatHistoryController {
         // shared sessions expose their chat history to any
         // authenticated user in the same tenant — the owner opted in
         // via allowMultipleClients. Private sessions stay owner-only.
+        // The crop view (includeRemoved) is owner-only regardless.
         boolean isOwner = currentUser.equals(session.getUserId());
+        if (includeRemoved && !isOwner) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Crop view is owner-only");
+        }
         if (!isOwner && !session.isAllowMultipleClients()) {
             log.debug("Chat history access denied: session='{}' owner='{}' caller='{}'",
                     sessionId, session.getUserId(), currentUser);
@@ -93,12 +103,13 @@ public class ChatHistoryController {
             return List.of();
         }
 
-        // Scrollback path — keep interim working-log messages so the
-        // web/foot chat panel can render them (visually dimmed) between
-        // the worker's tool batches. Every other consumer goes through
-        // activeHistory(...) and never sees interims.
-        List<ChatMessageDocument> messages = chatMessageService.activeHistoryWithInterim(
-                tenant, sessionId, chatProcessId);
+        // Crop editor (includeRemoved): the logical conversation incl.
+        // already-removed messages (so they can be restored), minus interim
+        // noise. Otherwise the normal scrollback: keep interim (dimmed),
+        // drop removed.
+        List<ChatMessageDocument> messages = includeRemoved
+                ? chatMessageService.historyForCrop(tenant, sessionId, chatProcessId)
+                : chatMessageService.activeHistoryWithInterim(tenant, sessionId, chatProcessId);
 
         int cap = (limit != null && limit > 0) ? limit : DEFAULT_LIMIT;
         if (messages.size() > cap) {
@@ -106,6 +117,49 @@ public class ChatHistoryController {
         }
 
         return messages.stream()
+                .map(ChatHistoryController::toDto)
+                .toList();
+    }
+
+    /**
+     * Modify/Crop the session's chat memory: remove and/or restore
+     * messages. Owner-only. Returns the fresh crop list (all non-archived,
+     * non-interim messages incl. removed) so the modal can re-render in one
+     * round-trip. See {@code specification/public/session-crop.md}.
+     */
+    @PatchMapping("/{sessionId}/messages/crop")
+    public List<ChatMessageDto> crop(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("sessionId") String sessionId,
+            @RequestBody SessionCropRequest body,
+            HttpServletRequest request) {
+
+        String currentUser = currentUser(request);
+        SessionDocument session = sessionService.findBySessionId(sessionId)
+                .filter(s -> tenant.equals(s.getTenantId()))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Session '" + sessionId + "' not found"));
+        if (!currentUser.equals(session.getUserId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Session '" + sessionId + "' belongs to another user");
+        }
+        authority.enforce(request,
+                new Resource.Session(tenant, session.getProjectId(), session.getSessionId()),
+                Action.WRITE);
+
+        String chatProcessId = session.getChatProcessId();
+        if (chatProcessId == null || chatProcessId.isBlank()) {
+            return List.of();
+        }
+
+        if (body.getRemove() != null && !body.getRemove().isEmpty()) {
+            chatMessageService.markRemoved(tenant, sessionId, body.getRemove());
+        }
+        if (body.getRestore() != null && !body.getRestore().isEmpty()) {
+            chatMessageService.unmarkRemoved(tenant, sessionId, body.getRestore());
+        }
+
+        return chatMessageService.historyForCrop(tenant, sessionId, chatProcessId).stream()
                 .map(ChatHistoryController::toDto)
                 .toList();
     }

@@ -159,7 +159,7 @@ public class ChatMessageService {
                         tenantId, sessionId, thinkProcessId, BY_CREATED);
         List<ChatMessageDocument> filtered = new ArrayList<>(raw.size());
         for (ChatMessageDocument m : raw) {
-            if (!m.isInterim()) filtered.add(m);
+            if (!m.isInterim() && !m.isRemoved()) filtered.add(m);
         }
         return filtered;
     }
@@ -173,8 +173,36 @@ public class ChatMessageService {
      */
     public List<ChatMessageDocument> activeHistoryWithInterim(
             String tenantId, String sessionId, String thinkProcessId) {
-        return repository.findByTenantIdAndSessionIdAndThinkProcessIdAndArchivedInMemoryIdIsNull(
-                tenantId, sessionId, thinkProcessId, BY_CREATED);
+        List<ChatMessageDocument> raw =
+                repository.findByTenantIdAndSessionIdAndThinkProcessIdAndArchivedInMemoryIdIsNull(
+                        tenantId, sessionId, thinkProcessId, BY_CREATED);
+        List<ChatMessageDocument> filtered = new ArrayList<>(raw.size());
+        for (ChatMessageDocument m : raw) {
+            // Interim stays (UI dims it); user-removed messages are gone
+            // from the scrollback — the crop modal is where they resurface.
+            if (!m.isRemoved()) filtered.add(m);
+        }
+        return filtered;
+    }
+
+    /**
+     * The message list for the Modify/Crop editor: every non-archived
+     * message of the process <em>including</em> those already removed (so
+     * the user can see and restore them), but <em>excluding</em> interim
+     * working-log noise the user shouldn't manage. Removed messages carry
+     * {@code meta.kind=removed}, which the DTO exposes so the UI can render
+     * their state. See {@code specification/public/session-crop.md}.
+     */
+    public List<ChatMessageDocument> historyForCrop(
+            String tenantId, String sessionId, String thinkProcessId) {
+        List<ChatMessageDocument> raw =
+                repository.findByTenantIdAndSessionIdAndThinkProcessIdAndArchivedInMemoryIdIsNull(
+                        tenantId, sessionId, thinkProcessId, BY_CREATED);
+        List<ChatMessageDocument> filtered = new ArrayList<>(raw.size());
+        for (ChatMessageDocument m : raw) {
+            if (!m.isInterim()) filtered.add(m);
+        }
+        return filtered;
     }
 
     /**
@@ -193,6 +221,53 @@ public class ChatMessageService {
         if (n > 0) {
             log.debug("Archived {} chat message(s) into memory '{}'", n, memoryId);
         }
+        return n;
+    }
+
+    /**
+     * Marks a set of chat messages as user-removed (Modify/Crop) by
+     * setting {@code meta.kind = removed}. Scoped to {@code tenantId} +
+     * {@code sessionId} so a caller can never flip a message outside the
+     * session it owns. The content is untouched — the message stays
+     * audit-readable via {@link #history} but disappears from every
+     * replay / scrollback / search path. Idempotent; returns the number
+     * of rows actually modified.
+     *
+     * <p>See {@code specification/public/session-crop.md}.
+     */
+    public long markRemoved(
+            String tenantId, String sessionId, Collection<String> messageIds) {
+        if (messageIds == null || messageIds.isEmpty()) return 0;
+        Query query = new Query(Criteria.where("_id").in(messageIds)
+                .and("tenantId").is(tenantId)
+                .and("sessionId").is(sessionId));
+        Update update = new Update().set(
+                "meta." + ChatMessageDocument.META_KIND, ChatMessageDocument.KIND_REMOVED);
+        long n = mongoTemplate.updateMulti(query, update, ChatMessageDocument.class)
+                .getModifiedCount();
+        if (n > 0) log.debug("Removed {} chat message(s) from memory session='{}'", n, sessionId);
+        return n;
+    }
+
+    /**
+     * Restores previously {@link #markRemoved removed} messages by
+     * clearing the {@code meta.kind=removed} marker. Only touches rows
+     * currently marked removed (guards the {@code $unset} so it can't
+     * strip an {@code interim} marker), scoped to tenant + session.
+     * Returns the number of rows restored.
+     */
+    public long unmarkRemoved(
+            String tenantId, String sessionId, Collection<String> messageIds) {
+        if (messageIds == null || messageIds.isEmpty()) return 0;
+        Query query = new Query(Criteria.where("_id").in(messageIds)
+                .and("tenantId").is(tenantId)
+                .and("sessionId").is(sessionId)
+                .and("meta." + ChatMessageDocument.META_KIND)
+                .is(ChatMessageDocument.KIND_REMOVED));
+        Update update = new Update().unset("meta." + ChatMessageDocument.META_KIND);
+        long n = mongoTemplate.updateMulti(query, update, ChatMessageDocument.class)
+                .getModifiedCount();
+        if (n > 0) log.debug("Restored {} chat message(s) to memory session='{}'", n, sessionId);
         return n;
     }
 
@@ -283,7 +358,9 @@ public class ChatMessageService {
             return List.of();
         }
         Criteria c = Criteria.where("tenantId").is(q.tenantId())
-                .and("thinkProcessId").in(allowedProcessIds);
+                .and("thinkProcessId").in(allowedProcessIds)
+                // history_search must not resurface user-removed messages
+                .and("meta.kind").ne(ChatMessageDocument.KIND_REMOVED);
         if (!q.tags().isEmpty()) {
             c = c.and("tags").all(q.tags());
         }
@@ -398,7 +475,9 @@ public class ChatMessageService {
         }
         Criteria c = Criteria.where("tenantId").is(tenantId)
                 .and("thinkProcessId").is(thinkProcessId)
-                .and("archivedInMemoryId").isNull();
+                .and("archivedInMemoryId").isNull()
+                // user-removed messages are out of memory — never recompact them
+                .and("meta.kind").ne(ChatMessageDocument.KIND_REMOVED);
         if (fromCreatedAtInclusive != null && toCreatedAtInclusive != null) {
             c = c.and("createdAt").gte(fromCreatedAtInclusive).lte(toCreatedAtInclusive);
         } else if (fromCreatedAtInclusive != null) {

@@ -31,6 +31,7 @@ import {
   VModal,
 } from '@components/index';
 import SessionSearchModal from './SessionSearchModal.vue';
+import SessionCropModal from './SessionCropModal.vue';
 
 const { t } = useI18n();
 
@@ -86,6 +87,15 @@ const bootstrapError = ref<string | null>(null);
 const showArchived = ref(false);
 const reactivating = ref<string | null>(null);
 const searchOpen = ref(false);
+
+/** Modify/Crop modal — holds the session id whose memory is being edited. */
+const cropOpen = ref(false);
+const cropSessionId = ref<string | null>(null);
+
+function openCrop(sessionId: string): void {
+  cropSessionId.value = sessionId;
+  cropOpen.value = true;
+}
 
 /**
  * Recipe picker — opens on the "+" button. {@code null} entry is the
@@ -908,6 +918,7 @@ onBeforeUnmount(stopAutoScroll);
                   @reactivated="refreshSessions"
                   @deleted="refreshSessions"
                   @duplicated="refreshSessions"
+                  @crop="openCrop"
                 />
               </div>
             </div>
@@ -927,6 +938,11 @@ onBeforeUnmount(stopAutoScroll);
       v-if="searchOpen"
       @close="searchOpen = false"
       @pick="onSearchPick"
+    />
+
+    <SessionCropModal
+      v-model="cropOpen"
+      :session-id="cropSessionId"
     />
 
     <VModal

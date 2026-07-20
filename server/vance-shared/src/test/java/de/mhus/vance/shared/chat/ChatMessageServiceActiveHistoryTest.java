@@ -84,6 +84,67 @@ class ChatMessageServiceActiveHistoryTest {
         assertThat(marked.isInterim()).isTrue();
     }
 
+    @Test
+    void activeHistory_dropsRemovedMessages() {
+        ChatMessageDocument user = canonical("u1", ChatRole.USER, "hi");
+        ChatMessageDocument removed = removed("r1", ChatRole.ASSISTANT, "gone");
+        ChatMessageDocument keep = canonical("a1", ChatRole.ASSISTANT, "kept");
+        when(repository.findByTenantIdAndSessionIdAndThinkProcessIdAndArchivedInMemoryIdIsNull(
+                anyString(), anyString(), anyString(), any(Sort.class)))
+                .thenReturn(List.of(user, removed, keep));
+
+        List<ChatMessageDocument> out = service.activeHistory("t", "s", "p");
+
+        assertThat(out).extracting(ChatMessageDocument::getId).containsExactly("u1", "a1");
+    }
+
+    @Test
+    void activeHistoryWithInterim_dropsRemoved_keepsInterim() {
+        ChatMessageDocument user = canonical("u1", ChatRole.USER, "hi");
+        ChatMessageDocument interim = interim("i1", "working...");
+        ChatMessageDocument removed = removed("r1", ChatRole.ASSISTANT, "gone");
+        when(repository.findByTenantIdAndSessionIdAndThinkProcessIdAndArchivedInMemoryIdIsNull(
+                anyString(), anyString(), anyString(), any(Sort.class)))
+                .thenReturn(List.of(user, interim, removed));
+
+        List<ChatMessageDocument> out = service.activeHistoryWithInterim("t", "s", "p");
+
+        assertThat(out).extracting(ChatMessageDocument::getId).containsExactly("u1", "i1");
+    }
+
+    @Test
+    void historyForCrop_keepsRemoved_dropsInterim() {
+        ChatMessageDocument user = canonical("u1", ChatRole.USER, "hi");
+        ChatMessageDocument interim = interim("i1", "working...");
+        ChatMessageDocument removed = removed("r1", ChatRole.ASSISTANT, "gone");
+        ChatMessageDocument keep = canonical("a1", ChatRole.ASSISTANT, "kept");
+        when(repository.findByTenantIdAndSessionIdAndThinkProcessIdAndArchivedInMemoryIdIsNull(
+                anyString(), anyString(), anyString(), any(Sort.class)))
+                .thenReturn(List.of(user, interim, removed, keep));
+
+        List<ChatMessageDocument> out = service.historyForCrop("t", "s", "p");
+
+        assertThat(out).extracting(ChatMessageDocument::getId)
+                .containsExactly("u1", "r1", "a1");
+    }
+
+    @Test
+    void chatMessageDocument_isRemoved_reflectsMetaKind() {
+        assertThat(canonical("x", ChatRole.USER, "").isRemoved()).isFalse();
+        assertThat(interim("y", "").isRemoved()).isFalse();
+        assertThat(removed("z", ChatRole.USER, "").isRemoved()).isTrue();
+    }
+
+    private static ChatMessageDocument removed(String id, ChatRole role, String content) {
+        ChatMessageDocument doc = ChatMessageDocument.builder()
+                .role(role)
+                .content(content)
+                .build();
+        doc.setId(id);
+        doc.getMeta().put(ChatMessageDocument.META_KIND, ChatMessageDocument.KIND_REMOVED);
+        return doc;
+    }
+
     private static ChatMessageDocument canonical(String id, ChatRole role, String content) {
         ChatMessageDocument doc = ChatMessageDocument.builder()
                 .role(role)

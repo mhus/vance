@@ -68,6 +68,7 @@ export * from './chat/ChatMessageAppendedData';
 export * from './chat/ChatMessageChunkData';
 export * from './chat/ChatMessageDto';
 export * from './chat/ChatRole';
+export * from './chat/SessionCropRequest';
 
 export * from './inbox/AnswerOutcome';
 export * from './inbox/AnswerPayload';

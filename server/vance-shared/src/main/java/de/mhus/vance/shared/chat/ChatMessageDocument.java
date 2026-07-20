@@ -125,12 +125,31 @@ public class ChatMessageDocument {
     public static final String KIND_INTERIM = "interim";
 
     /**
+     * {@link #META_KIND} value for a message the user explicitly removed
+     * from the session's memory via Modify/Crop. The message stays in the
+     * database (audit-readable via {@code history()}), but is excluded from
+     * every LLM-replay / compaction / recompaction / history-search path
+     * and from the chat scrollback — as if it had never been said, without
+     * destroying it. Reversible: clearing the marker restores the message.
+     * See {@code specification/public/session-crop.md}.
+     */
+    public static final String KIND_REMOVED = "removed";
+
+    /**
      * Convenience: returns {@code true} when {@link #meta} marks this
      * message as an intermediate working-log (see {@link #KIND_INTERIM}).
      * Centralised so callers don't repeat the key/value check.
      */
     public boolean isInterim() {
         return KIND_INTERIM.equals(meta.get(META_KIND));
+    }
+
+    /**
+     * Convenience: returns {@code true} when the user removed this message
+     * from memory via Modify/Crop (see {@link #KIND_REMOVED}).
+     */
+    public boolean isRemoved() {
+        return KIND_REMOVED.equals(meta.get(META_KIND));
     }
 
     @Id

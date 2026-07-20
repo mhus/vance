@@ -31,6 +31,8 @@ const emit = defineEmits<{
   (e: 'deleted'): void;
   /** A duplicate was created; payload is the new session's business id. */
   (e: 'duplicated', newSessionId: string): void;
+  /** User picked "Crop" — host opens the crop modal for this session. */
+  (e: 'crop', sessionId: string): void;
 }>();
 
 const { t } = useI18n();
@@ -137,6 +139,11 @@ async function onColor(value: AccentColor | null): Promise<void> {
   closeMenu();
 }
 
+function onCrop(): void {
+  closeMenu();
+  emit('crop', props.session.sessionId);
+}
+
 async function onDuplicate(): Promise<void> {
   closeMenu();
   const s = props.session;
@@ -211,6 +218,18 @@ async function onDelete(): Promise<void> {
       >
         <span class="w-5 text-center">⧉</span>
         <span class="flex-1 text-left">{{ t('chat.sessionHeader.duplicate') }}</span>
+      </button>
+
+      <!-- Crop — remove messages from memory; available in any state -->
+      <button
+        type="button"
+        class="flex items-center gap-3 w-full px-3 py-2 text-sm hover:bg-base-200 disabled:opacity-50"
+        :disabled="saving"
+        role="menuitem"
+        @click.stop="onCrop"
+      >
+        <span class="w-5 text-center">✂</span>
+        <span class="flex-1 text-left">{{ t('chat.sessionHeader.crop') }}</span>
       </button>
 
       <div class="border-t border-base-300"></div>

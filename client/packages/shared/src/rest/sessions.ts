@@ -135,3 +135,34 @@ export async function getSessionMessages(
     `sessions/${encodeURIComponent(sessionId)}/messages${qs}`,
   );
 }
+
+/**
+ * GET .../messages?includeRemoved=true — the Modify/Crop view: the logical
+ * conversation including already-removed messages (so they can be restored),
+ * minus interim working-log noise. Owner-only. Removed messages carry
+ * {@code meta.kind === 'removed'}.
+ */
+export async function getCropMessages(
+  sessionId: string,
+): Promise<ChatMessageDto[]> {
+  return brainFetch<ChatMessageDto[]>(
+    'GET',
+    `sessions/${encodeURIComponent(sessionId)}/messages?includeRemoved=true`,
+  );
+}
+
+/**
+ * PATCH .../messages/crop — remove and/or restore messages from the
+ * session's chat memory. Returns the fresh crop list (same shape as
+ * {@link getCropMessages}). Owner-only.
+ */
+export async function cropSession(
+  sessionId: string,
+  change: { remove?: string[]; restore?: string[] },
+): Promise<ChatMessageDto[]> {
+  return brainFetch<ChatMessageDto[]>(
+    'PATCH',
+    `sessions/${encodeURIComponent(sessionId)}/messages/crop`,
+    { body: { remove: change.remove ?? [], restore: change.restore ?? [] } },
+  );
+}

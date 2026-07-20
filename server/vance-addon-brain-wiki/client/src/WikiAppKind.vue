@@ -174,11 +174,11 @@ async function loadWiki(): Promise<void> {
 function pickInitialPage(): void {
   const v = view.value;
   if (!v) return;
-  const urlPage = pageIdFromUrl();
-  if (urlPage) {
-    const page = findPageById(urlPage);
-    if (page || indexIds.value.has(urlPage)) {
-      void selectPage(urlPage, page, 'replace');
+  const urlRef = pageRefFromUrl();
+  if (urlRef) {
+    const hit = findByRef(urlRef);
+    if (hit) {
+      void selectPage(hit.id, hit.page, 'replace');
       return;
     }
   }
@@ -186,13 +186,9 @@ function pickInitialPage(): void {
     void selectPage(v.mainPageId, findPageById(v.mainPageId), 'replace');
     return;
   }
-  if (v.indexPageId) {
-    void selectPage(v.indexPageId, null, 'replace');
-    return;
-  }
-  if (v.pages.length > 0) {
-    void selectPage(v.pages[0].id, v.pages[0], 'replace');
-  }
+  // No curated home yet — don't silently open some other page. Leave the view
+  // unselected so the "create the main page" prompt shows (see template).
+  // Users still reach the index / other pages via the top-nav.
 }
 
 function findPageById(id: string): WikiPageView | null {
@@ -225,13 +221,41 @@ function indexView(id: string, path: string, space: string): WikiPageView {
 }
 
 // ── Page selection + URL sync ──────────────────────────────────────
+// The URL carries the page by its space-qualified SLUG (`page=main`,
+// `page=ops/deploys`), not its Mongo id — human-readable, deep-linkable and
+// matching the `[[Wikilink]]` notation. Generated indexes use the `_index`
+// slug (`page=_index`, `page=ops/_index`). The host owns `?doc=<container>`
+// at the tab level; `?page` is the wiki's own sub-navigation.
 const URL_PAGE_PARAM = 'page';
-function pageIdFromUrl(): string | null {
+
+/** Space-qualified slug of a page/index view — the value used in `?page=`. */
+function refFor(p: { space: string; slug: string } | null): string | null {
+  if (!p) return null;
+  return p.space ? `${p.space}/${p.slug}` : p.slug;
+}
+
+function pageRefFromUrl(): string | null {
   return new URLSearchParams(window.location.search).get(URL_PAGE_PARAM);
 }
-function syncPageToUrl(id: string | null, mode: 'push' | 'replace'): void {
+
+/** Resolve a `?page=` ref to a selectable page id (+ view when known). */
+function findByRef(ref: string): { id: string; page: WikiPageView | null } | null {
+  const v = view.value;
+  if (!v) return null;
+  const p = v.pages.find((q) => refFor(q) === ref);
+  if (p) return { id: p.id, page: p };
+  if (ref === '_index' && v.indexPageId) return { id: v.indexPageId, page: null };
+  for (const sp of v.spaces) {
+    if (sp.indexId && ref === (sp.name ? `${sp.name}/_index` : '_index')) {
+      return { id: sp.indexId, page: null };
+    }
+  }
+  return null;
+}
+
+function syncPageToUrl(ref: string | null, mode: 'push' | 'replace'): void {
   const params = new URLSearchParams(window.location.search);
-  if (id) params.set(URL_PAGE_PARAM, id);
+  if (ref) params.set(URL_PAGE_PARAM, ref);
   else params.delete(URL_PAGE_PARAM);
   const query = params.toString();
   const next = `${window.location.pathname}${query ? `?${query}` : ''}`;
@@ -255,17 +279,18 @@ async function selectPage(
   if (resolved) currentSpace.value = resolved.space;
   saveStatus.value = 'idle';
   lastSaveError.value = null;
-  if (history !== 'none') syncPageToUrl(id, history);
+  if (history !== 'none') syncPageToUrl(refFor(resolved), history);
   await loadActivePageContent();
 }
 
 function onWikiPopState(): void {
   const v = view.value;
   if (!v) return;
-  const targetId =
-    pageIdFromUrl() ?? v.mainPageId ?? v.indexPageId ?? v.pages[0]?.id ?? null;
+  const ref = pageRefFromUrl();
+  const hit = ref ? findByRef(ref) : null;
+  const targetId = hit?.id ?? v.mainPageId ?? null;
   if (!targetId || targetId === activePageId.value) return;
-  void selectPage(targetId, findPageById(targetId), 'none');
+  void selectPage(targetId, hit?.page ?? findPageById(targetId), 'none');
 }
 
 async function loadActivePageContent(options: { force?: boolean } = {}): Promise<void> {
@@ -491,6 +516,37 @@ function openSpace(name: string): void {
   if (target) void selectPage(target, findPageById(target));
 }
 
+/** Jump to the wiki's curated home (root `main`). */
+function openHome(): void {
+  const id = view.value?.mainPageId ?? null;
+  if (id) { void selectPage(id, findPageById(id)); return; }
+  // No curated main yet — clear the selection so the "create main" prompt
+  // shows instead of navigating to some other page.
+  activePageId.value = null;
+  activePageView.value = null;
+  activeMarkdown.value = null;
+  syncPageToUrl(null, 'push');
+}
+
+/**
+ * Create the wiki's home page (`main.md`). The slug must be exactly `main`
+ * for the folder-reader to recognise it as the home, so the title is "Main"
+ * (slugifies to `main`); the heading is editable afterwards. Opens it.
+ */
+async function createMain(): Promise<void> {
+  creating.value = true;
+  error.value = null;
+  try {
+    const page = await createWikiPage(projectId.value, folder.value, { title: 'Main' });
+    await loadWiki();
+    await selectPage(page.id, page);
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Could not create the main page.';
+  } finally {
+    creating.value = false;
+  }
+}
+
 function openCurrentIndex(): void {
   const id = currentSpaceView.value?.indexId ?? view.value?.indexPageId ?? null;
   if (id) void selectPage(id, null);
@@ -591,6 +647,38 @@ function pickSearchResult(item: WikiDocumentItem): void {
   openVanceLink(`vance:/${encodeURI(item.path)}`, false);
 }
 
+// Wiki red-link-from-search: when the typed name matches no existing page
+// slug, offer to create it — the "page doesn't exist yet, create it now"
+// affordance every wiki has. Creates in the current space and opens it.
+const searchCreateName = computed(() => searchQuery.value.trim());
+const searchCanCreate = computed(
+  () =>
+    searchOpen.value
+    && searchCreateName.value.length > 0
+    && !knownSlugs.value.has(slugify(searchCreateName.value)),
+);
+
+async function createFromSearch(): Promise<void> {
+  const t = searchCreateName.value;
+  if (!t) return;
+  creating.value = true;
+  try {
+    const page = await createWikiPage(projectId.value, folder.value, {
+      title: t,
+      ...(currentSpace.value ? { space: currentSpace.value } : {}),
+    });
+    searchOpen.value = false;
+    searchQuery.value = '';
+    searchResults.value = [];
+    await loadWiki();
+    await selectPage(page.id, page);
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Could not create page.';
+  } finally {
+    creating.value = false;
+  }
+}
+
 // ── Right panel ────────────────────────────────────────────────────
 type RightTab = 'notes' | 'versions' | 'backlinks';
 const rightOpen = ref(false);
@@ -677,19 +765,28 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
           @keydown.escape="searchOpen = false"
         />
         <button class="wiki-app__btn" :disabled="searching" @click="runSearch">🔍</button>
-        <ul v-if="searchOpen && searchResults.length" class="wiki-app__search-results">
-          <li
-            v-for="r in searchResults"
-            :key="r.id"
-            class="wiki-app__search-row"
-            @click="pickSearchResult(r)"
+        <div v-if="searchOpen" class="wiki-app__search-results">
+          <ul v-if="searchResults.length" class="wiki-app__search-list">
+            <li
+              v-for="r in searchResults"
+              :key="r.id"
+              class="wiki-app__search-row"
+              @click="pickSearchResult(r)"
+            >
+              <span class="wiki-app__search-title">{{ r.title || r.path }}</span>
+              <span class="wiki-app__search-path">{{ r.path }}</span>
+            </li>
+          </ul>
+          <div v-else class="wiki-app__search-empty">No matching page.</div>
+          <button
+            v-if="searchCanCreate"
+            type="button"
+            class="wiki-app__search-create"
+            :disabled="creating"
+            @click="createFromSearch"
           >
-            <span class="wiki-app__search-title">{{ r.title || r.path }}</span>
-            <span class="wiki-app__search-path">{{ r.path }}</span>
-          </li>
-        </ul>
-        <div v-else-if="searchOpen" class="wiki-app__search-results wiki-app__search-empty">
-          No matches
+            ＋ Create page “{{ searchCreateName }}”{{ currentSpace ? ` in ${currentSpace}` : '' }}
+          </button>
         </div>
       </div>
 
@@ -700,7 +797,8 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
       </span>
 
       <button class="wiki-app__btn" title="New page" :disabled="creating" @click="openNewPage">＋ New</button>
-      <button class="wiki-app__btn" title="Show generated index" @click="openCurrentIndex">📄 Index</button>
+      <button class="wiki-app__btn" title="Home — main page" @click="openHome">🏠</button>
+      <button class="wiki-app__btn" title="Index — generated page list" @click="openCurrentIndex">📄</button>
       <button
         class="wiki-app__btn"
         :disabled="rebuilding"
@@ -751,6 +849,19 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
     <div class="wiki-app__body">
       <main class="wiki-app__main">
         <div v-if="loading" class="wiki-app__hint">Loading wiki…</div>
+        <div v-else-if="!activePageId && view && !view.mainPageId" class="wiki-app__missing">
+          <div class="wiki-app__missing-title">The home page “main” doesn’t exist yet.</div>
+          <p class="wiki-app__missing-text">
+            A wiki opens on its <code>main</code> page. Create it now — or open the
+            <button type="button" class="wiki-app__linkbtn" @click="openCurrentIndex">index</button>.
+          </p>
+          <button
+            type="button"
+            class="wiki-app__btn wiki-app__btn--primary"
+            :disabled="creating"
+            @click="createMain"
+          >{{ creating ? 'Creating…' : '＋ Create “main” page' }}</button>
+        </div>
         <div v-else-if="!activePageId" class="wiki-app__hint">
           No page selected. Create one with ＋ New.
         </div>
@@ -888,7 +999,23 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
   z-index: 50;
 }
+.wiki-app__search-list { list-style: none; margin: 0; padding: 0; }
 .wiki-app__search-empty { padding: 0.6rem; font-size: 0.8rem; opacity: 0.6; }
+.wiki-app__search-create {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin-top: 0.25rem;
+  padding: 0.45rem 0.5rem;
+  border: none;
+  border-top: 1px solid hsl(var(--bc) / 0.12);
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.82rem;
+  color: hsl(var(--p));
+}
+.wiki-app__search-create:hover:not(:disabled) { background: hsl(var(--bc) / 0.08); }
+.wiki-app__search-create:disabled { opacity: 0.5; cursor: default; }
 .wiki-app__search-row {
   display: flex;
   flex-direction: column;
@@ -943,6 +1070,25 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
   text-align: center;
   opacity: 0.6;
   font-size: 0.85rem;
+}
+.wiki-app__missing {
+  max-width: 32rem;
+  margin: 3rem auto;
+  padding: 1.5rem;
+  text-align: center;
+  border: 1px dashed hsl(var(--bc) / 0.25);
+  border-radius: 10px;
+}
+.wiki-app__missing-title { font-size: 1.05rem; font-weight: 600; margin-bottom: 0.5rem; }
+.wiki-app__missing-text { font-size: 0.85rem; opacity: 0.75; margin-bottom: 1rem; }
+.wiki-app__linkbtn {
+  border: none;
+  background: none;
+  padding: 0;
+  color: hsl(var(--p));
+  cursor: pointer;
+  text-decoration: underline;
+  font: inherit;
 }
 .wiki-app__body {
   flex: 1;

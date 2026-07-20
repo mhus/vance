@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 
 /**
@@ -123,19 +124,8 @@ public class WikiApplication implements VanceApplication {
         }
 
         // Seed the curated root home page if absent.
-        String mainPath = folder + "/" + WikiFolderReader.MAIN_PAGE + WikiFolderReader.PAGE_EXTENSION;
-        if (documentService.findByPath(ctx.tenantId(), ctx.projectName(), mainPath).isEmpty()) {
-            String homeBody = WikiService.workpageStub(title != null ? title : "Home");
-            try (InputStream in = new ByteArrayInputStream(homeBody.getBytes(StandardCharsets.UTF_8))) {
-                documentService.create(
-                        ctx.tenantId(), ctx.projectName(), mainPath,
-                        title != null ? title : "Home",
-                        List.of("wiki", "workpage"), MD_MIME, in, ctx.userId());
-            } catch (IOException e) {
-                throw new ToolException(
-                        "Could not seed home page '" + mainPath + "': " + e.getMessage());
-            }
-        }
+        seedMainIfAbsent(ctx.tenantId(), ctx.projectName(), folder,
+                title != null ? title : "Home", ctx.userId());
 
         RefreshContext rc = new RefreshContext(
                 ctx.tenantId(), ctx.projectName(), folder, ctx.userId(), ctx.processId());
@@ -168,6 +158,15 @@ public class WikiApplication implements VanceApplication {
 
         String title = scan.config().title();
         if (title == null || title.isBlank()) title = leafFolderName(folder);
+
+        // Ensure the curated root home exists. Wikis created via the
+        // document-template path (only _app.yaml) have no `main` yet — seed
+        // it so every wiki has a home and the default landing is `main`, not
+        // the generated `_index`. Never overwrites an existing main; re-scan
+        // so the fresh page is included in the generated indexes.
+        if (seedMainIfAbsent(ctx.tenantId(), ctx.projectName(), folder, title, ctx.userId())) {
+            scan = folderReader.scan(ctx.tenantId(), ctx.projectName(), folder);
+        }
 
         List<ArtefactResult> artefacts = new ArrayList<>();
 
@@ -208,6 +207,27 @@ public class WikiApplication implements VanceApplication {
                 ctx.tenantId(), folder, scan.spaces().size(), scan.pages().size(), graph.size());
 
         return new RefreshResult(APP_NAME, folder, artefacts);
+    }
+
+    /**
+     * Seed the curated root {@code main.md} home page when it doesn't exist.
+     * Returns {@code true} when a page was created (caller should re-scan).
+     * Never overwrites — {@code main} is user-curated.
+     */
+    private boolean seedMainIfAbsent(String tenant, String project, String folder,
+                                     String title, @Nullable String userId) {
+        String mainPath = folder + "/" + WikiFolderReader.MAIN_PAGE + WikiFolderReader.PAGE_EXTENSION;
+        if (documentService.findByPath(tenant, project, mainPath).isPresent()) return false;
+        String homeBody = WikiService.workpageStub(title);
+        try (InputStream in = new ByteArrayInputStream(homeBody.getBytes(StandardCharsets.UTF_8))) {
+            documentService.create(tenant, project, mainPath, title,
+                    List.of("wiki", "workpage"), MD_MIME, in, userId);
+            log.info("WikiApplication.seedMain tenant='{}' path='{}'", tenant, mainPath);
+            return true;
+        } catch (IOException e) {
+            throw new ToolException(
+                    "Could not seed home page '" + mainPath + "': " + e.getMessage());
+        }
     }
 
     private DocumentDocument writeArtefact(RefreshContext ctx, String outputPath,

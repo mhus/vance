@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 /**
@@ -44,12 +45,19 @@ public class DesktopStatusService {
     private static final String FALLBACK_ICON = "📦";
 
     private final DocumentService documentService;
-    private final VanceApplicationRegistry registry;
+    /**
+     * Lazy: the registry aggregates every {@link VanceApplication} bean —
+     * including {@link DesktopApplication}, which needs this service — so a
+     * direct injection would form a construction-time cycle. The registry is
+     * only consulted at request time ({@link #aggregate}), so an
+     * {@link ObjectProvider} resolves it on demand and breaks the cycle.
+     */
+    private final ObjectProvider<VanceApplicationRegistry> registryProvider;
 
     public DesktopStatusService(DocumentService documentService,
-                                VanceApplicationRegistry registry) {
+                                ObjectProvider<VanceApplicationRegistry> registryProvider) {
         this.documentService = documentService;
-        this.registry = registry;
+        this.registryProvider = registryProvider;
     }
 
     /**
@@ -104,7 +112,7 @@ public class DesktopStatusService {
         String openLink = null;
         DesktopStatusView status = null;
 
-        Optional<VanceApplication> appOpt = registry.find(appType);
+        Optional<VanceApplication> appOpt = registryProvider.getObject().find(appType);
         if (appOpt.isPresent()) {
             VanceApplication app = appOpt.get();
             try {

@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 
 /** Unit tests for {@link DesktopStatusService} aggregation. */
 class DesktopStatusServiceTest {
@@ -36,8 +37,11 @@ class DesktopStatusServiceTest {
     private DesktopStatusService service;
 
     @BeforeEach
+    @SuppressWarnings("unchecked")
     void setUp() {
-        service = new DesktopStatusService(documentService, registry);
+        ObjectProvider<VanceApplicationRegistry> registryProvider = mock(ObjectProvider.class);
+        lenient().when(registryProvider.getObject()).thenReturn(registry);
+        service = new DesktopStatusService(documentService, registryProvider);
         lenient().when(registry.find(any())).thenReturn(Optional.empty());
         // Central content lookup keyed by path — keeps the appDoc()
         // helpers free of nested when() (which would break Mockito when

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch, onBeforeUnmount, onMounted, provide } from 'vue';
-import { blockClipboard } from './blockClipboard';
+import { blockClipboard, setBlockClipboard } from './blockClipboard';
 import { useEditor, EditorContent, BubbleMenu } from '@tiptap/vue-3';
 import StarterKit from '@tiptap/starter-kit';
 import TaskList from '@tiptap/extension-task-list';
@@ -879,7 +879,7 @@ function menuCopy() {
   const ed = editor.value;
   if (!m || !ed) return;
   const node = ed.state.doc.resolve(m.start).nodeAfter;
-  if (node) blockClipboard.value = node.toJSON();
+  if (node) setBlockClipboard(node.toJSON());
   closeBlockMenu();
 }
 

@@ -1,0 +1,7 @@
+$meta:
+  kind: application
+  app: common-desktop
+title: "{{ title }}"
+{% if description %}description: "{{ description }}"{% endif %}
+common-desktop:
+  recurse: false

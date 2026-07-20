@@ -82,6 +82,78 @@ public class KanbanApplication implements VanceApplication {
     }
 
     /**
+     * Board icon for the Common Desktop card. Cheap — no folder scan.
+     * Kanban has no manifest-level "disabled" flag, so the icon is
+     * static; apps that do carry such a flag can vary the icon here.
+     */
+    @Override
+    public AppCard describe(DescribeContext ctx) {
+        return new AppCard("📋", null);
+    }
+
+    /**
+     * Contributes "{@code <n> in <column>}" plus the column's cards to
+     * the Common Desktop dashboard. The reported column comes from
+     * {@code config.kanban.status.column} (default: a column named
+     * {@code doing} when present). Read-only — scans the folder but
+     * writes nothing.
+     */
+    @Override
+    public Optional<AppStatus> status(StatusContext ctx) {
+        KanbanFolderReader.Scan scan = folderReader.scan(
+                ctx.tenantId(), ctx.projectName(), ctx.folder());
+        KanbanAppConfig config = scan.kanbanConfig();
+        KanbanAppConfig.DesktopStatus statusCfg = config.desktopStatus();
+
+        String column = resolveStatusColumn(config, statusCfg);
+        if (column == null) return Optional.empty();
+
+        KanbanAppConfig.Column colCfg = config.columns().get(column);
+        String colTitle = (colCfg != null && colCfg.title() != null)
+                ? colCfg.title() : column;
+
+        List<StatusItem> items = new ArrayList<>();
+        int count = 0;
+        boolean anyBlocked = false;
+        for (KanbanFolderReader.CardFile cf : scan.cards()) {
+            if (!column.equals(cf.column())) continue;
+            count++;
+            boolean blocked = cf.card().blocked();
+            if (blocked) anyBlocked = true;
+            if (items.size() < statusCfg.max()) {
+                items.add(new StatusItem(
+                        cf.card().title(),
+                        cf.card().assignee(),
+                        blocked ? StatusSeverity.BLOCKED : null,
+                        null));
+            }
+        }
+
+        StatusSeverity severity = StatusSeverity.OK;
+        Integer wipLimit = colCfg != null ? colCfg.wipLimit() : null;
+        if (wipLimit != null && count > wipLimit) {
+            severity = StatusSeverity.BLOCKED;
+        } else if (anyBlocked) {
+            severity = StatusSeverity.ATTENTION;
+        }
+
+        String headline = count + " in " + colTitle;
+        List<StatusMetric> metrics = List.of(
+                new StatusMetric(colTitle, Integer.toString(count)));
+        return Optional.of(new AppStatus(headline, severity, metrics, items, null));
+    }
+
+    /** Resolve the status column: explicit config, else {@code doing}
+     *  when present, else none (app has no meaningful desktop status). */
+    private static @Nullable String resolveStatusColumn(
+            KanbanAppConfig config, KanbanAppConfig.DesktopStatus statusCfg) {
+        if (statusCfg.column() != null && !statusCfg.column().isBlank()) {
+            return statusCfg.column().trim();
+        }
+        return config.columns().containsKey("doing") ? "doing" : null;
+    }
+
+    /**
      * One-shot bootstrap for a new kanban suite.
      *
      * <p>Writes the {@code _app.yaml} manifest with the correct schema.

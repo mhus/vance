@@ -1,0 +1,19 @@
+title:       { de: "Common Desktop", en: "Common Desktop" }
+description: { de: "Ein Desktop, der die Apps in diesem Ordner als Launcher + Statusboard zeigt",
+               en: "A desktop showing the apps in this folder as a launcher + status board" }
+icon: squares-2x2
+tags: [app, common-desktop, dashboard]
+
+name:
+  mode: fixed
+  value: _app.yaml
+
+fields:
+  - name: title
+    type: string
+    required: true
+    label: { de: "Titel",        en: "Title" }
+  - name: description
+    type: textarea
+    rows: 2
+    label: { de: "Beschreibung", en: "Description" }

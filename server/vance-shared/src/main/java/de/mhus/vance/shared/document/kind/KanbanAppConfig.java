@@ -92,23 +92,42 @@ public final class KanbanAppConfig {
         }
     }
 
+    /**
+     * {@code config.kanban.status} — controls what the board contributes
+     * to the Common Desktop dashboard. {@code column} names the column
+     * whose cards feed the status body (falls back to a column named
+     * {@code doing}); {@code max} caps the item list.
+     */
+    public record DesktopStatus(
+            @Nullable String column,
+            int max) {
+
+        public static DesktopStatus defaults() {
+            return new DesktopStatus(null, 10);
+        }
+    }
+
     private final Map<String, Column> columns;
     private final BoardConfig board;
     private final StatsConfig stats;
     private final WipEnforce wipEnforce;
+    private final DesktopStatus desktopStatus;
 
     private KanbanAppConfig(Map<String, Column> columns, BoardConfig board,
-                            StatsConfig stats, WipEnforce wipEnforce) {
+                            StatsConfig stats, WipEnforce wipEnforce,
+                            DesktopStatus desktopStatus) {
         this.columns = columns;
         this.board = board;
         this.stats = stats;
         this.wipEnforce = wipEnforce;
+        this.desktopStatus = desktopStatus;
     }
 
     public Map<String, Column> columns() { return columns; }
     public BoardConfig board() { return board; }
     public StatsConfig stats() { return stats; }
     public WipEnforce wipEnforce() { return wipEnforce; }
+    public DesktopStatus desktopStatus() { return desktopStatus; }
 
     /** Look up a column config; falls back to a name-only default. */
     public Column columnOrDefault(String name) {
@@ -135,7 +154,8 @@ public final class KanbanAppConfig {
                 new LinkedHashMap<>(),
                 BoardConfig.defaults(),
                 StatsConfig.defaults(),
-                WipEnforce.SOFT);
+                WipEnforce.SOFT,
+                DesktopStatus.defaults());
     }
 
     public static KanbanAppConfig from(Map<String, Object> block) {
@@ -143,7 +163,8 @@ public final class KanbanAppConfig {
         BoardConfig board = readBoard(block.get("board"));
         StatsConfig stats = readStats(block.get("stats"));
         WipEnforce wipEnforce = WipEnforce.fromWire(stringOrNull(block.get("wipEnforce")));
-        return new KanbanAppConfig(columns, board, stats, wipEnforce);
+        DesktopStatus desktopStatus = readDesktopStatus(block.get("status"));
+        return new KanbanAppConfig(columns, board, stats, wipEnforce, desktopStatus);
     }
 
     // ── Readers ───────────────────────────────────────────────────
@@ -189,6 +210,15 @@ public final class KanbanAppConfig {
         int stale = (map.get("staleThresholdDays") instanceof Number n)
                 ? Math.max(0, n.intValue()) : d.staleThresholdDays();
         return new StatsConfig(outputPath, blockedLabel, stale);
+    }
+
+    private static DesktopStatus readDesktopStatus(@Nullable Object raw) {
+        DesktopStatus d = DesktopStatus.defaults();
+        if (!(raw instanceof Map<?, ?> map)) return d;
+        String column = stringOrNull(map.get("column"));
+        int max = (map.get("max") instanceof Number n)
+                ? Math.max(1, n.intValue()) : d.max();
+        return new DesktopStatus(column, max);
     }
 
     // ── Helpers ───────────────────────────────────────────────────

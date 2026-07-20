@@ -1,8 +1,10 @@
 package de.mhus.vance.brain.applications;
 
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -98,6 +100,38 @@ public interface VanceApplication {
         return null;
     }
 
+    /**
+     * Cheap identity of this app instance for the Common Desktop card:
+     * icon + open target. ALWAYS called by the desktop; keep it cheap
+     * (manifest-level reads only — do NOT scan the folder). The icon
+     * MAY reflect instance state (e.g. a "disabled" variant) when that
+     * state is readable from the manifest.
+     *
+     * <p>Default returns a generic launcher card, so brand-new app
+     * types show up on the desktop without opting in. The desktop and
+     * the frontend never branch per app type — the icon string is
+     * passed through verbatim (there is no fixed app set).
+     */
+    default AppCard describe(DescribeContext ctx) {
+        return AppCard.defaults();
+    }
+
+    /**
+     * Read-only snapshot of this app's dynamic state, for the Common
+     * Desktop dashboard body (headline / metrics / items). MUST NOT
+     * write documents or trigger side effects — unlike {@link #refresh}.
+     *
+     * <p>Return {@link Optional#empty()} when the app has no dynamic
+     * body; the launcher card from {@link #describe} still renders.
+     * The desktop guards this call (per-app try/catch + timeout), so a
+     * slow or failing status only drops the body, never the card.
+     *
+     * <p>Default returns empty — apps opt in by overriding.
+     */
+    default Optional<AppStatus> status(StatusContext ctx) {
+        return Optional.empty();
+    }
+
     // ── Records ───────────────────────────────────────────────────
 
     /**
@@ -166,6 +200,105 @@ public interface VanceApplication {
             for (ArtefactResult a : artefacts) list.add(a.toMap());
             m.put("artefacts", list);
             return m;
+        }
+    }
+
+    // ── Desktop status (Common Desktop dashboard) ─────────────────
+
+    /**
+     * Plumbing for {@link #describe}. Carries the scope plus the
+     * pre-parsed {@code config.<app>} block so the implementation can
+     * decide icon / open-link without re-reading the manifest.
+     */
+    record DescribeContext(
+            String tenantId,
+            String projectName,
+            String folder,
+            @Nullable String userId,
+            Map<String, Object> config) { }
+
+    /**
+     * Card identity for the Common Desktop. {@code icon} is a string the
+     * frontend resolves generically — an emoji, a named token from the
+     * shared icon set, or a {@code vance:}/{@code http} image link. The
+     * app owns it; the desktop never maps icons per app type. A
+     * {@code null} {@code openLink} lets the desktop build a default
+     * deep-link from folder + app.
+     */
+    record AppCard(
+            String icon,
+            @Nullable String openLink) {
+
+        /** Generic launcher icon for apps that don't override describe(). */
+        public static AppCard defaults() {
+            return new AppCard("📦", null);
+        }
+    }
+
+    /**
+     * Plumbing for {@link #status}. Same scope as {@link DescribeContext}
+     * plus the originating think-process for telemetry.
+     */
+    record StatusContext(
+            String tenantId,
+            String projectName,
+            String folder,
+            @Nullable String userId,
+            @Nullable String processId,
+            Map<String, Object> config) { }
+
+    /** Severity of an app status or item — drives the desktop card accent. */
+    enum StatusSeverity {
+        OK, ATTENTION, BLOCKED;
+
+        public String wireName() {
+            return name().toLowerCase(java.util.Locale.ROOT);
+        }
+    }
+
+    /** A small KPI chip on the desktop card. */
+    record StatusMetric(String label, String value) {
+
+        public Map<String, Object> toMap() {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("label", label);
+            m.put("value", value);
+            return m;
+        }
+    }
+
+    /**
+     * One entry in the status body (a kanban card, a GTD task, …).
+     * {@code deepLink} is an optional {@code vance:}-URI that jumps
+     * into the app at this entry.
+     */
+    record StatusItem(
+            String title,
+            @Nullable String subtitle,
+            @Nullable StatusSeverity severity,
+            @Nullable String deepLink) {
+
+        public static StatusItem of(String title) {
+            return new StatusItem(title, null, null, null);
+        }
+    }
+
+    /**
+     * The dynamic body an app contributes to its desktop card.
+     * {@code headline} is a one-liner ("3 in Doing"); {@code metrics}
+     * are KPI chips; {@code items} are the actual entries.
+     */
+    record AppStatus(
+            @Nullable String headline,
+            StatusSeverity severity,
+            List<StatusMetric> metrics,
+            List<StatusItem> items,
+            @Nullable Instant updatedAt) {
+
+        public static AppStatus of(@Nullable String headline,
+                                   StatusSeverity severity,
+                                   List<StatusItem> items) {
+            return new AppStatus(headline, severity, List.of(), items, null);
         }
     }
 

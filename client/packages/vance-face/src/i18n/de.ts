@@ -282,6 +282,7 @@ export default {
     crop: {
       title: 'Session zuschneiden',
       description: 'Nachrichten aus der Erinnerung entfernen. Entfernte Nachrichten bleiben in der Datenbank erhalten, sind für die KI aber unsichtbar — jederzeit wieder herstellbar.',
+      connectedConfirm: 'Diese Session ist gerade verbunden — jemand arbeitet möglicherweise daran. Die Erinnerung trotzdem zuschneiden?',
       loading: 'Nachrichten werden geladen…',
       empty: 'Keine Nachrichten in dieser Session.',
       loadError: 'Nachrichten konnten nicht geladen werden.',

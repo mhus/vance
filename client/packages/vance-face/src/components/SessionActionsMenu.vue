@@ -152,6 +152,13 @@ async function onColor(value: AccentColor | null): Promise<void> {
 
 function onCrop(): void {
   closeMenu();
+  // Warn when a client is connected (someone may be working on it) —
+  // cropping removes messages from the shared memory. Consistent with the
+  // Compact action.
+  if (props.session.bound
+      && !window.confirm(t('chat.crop.connectedConfirm'))) {
+    return;
+  }
   emit('crop', props.session.sessionId);
 }
 

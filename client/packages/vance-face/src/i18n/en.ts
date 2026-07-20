@@ -287,6 +287,7 @@ export default {
     crop: {
       title: 'Crop session',
       description: 'Remove messages from memory. Removed messages stay in the database but are invisible to the AI — restorable at any time.',
+      connectedConfirm: 'This session is currently connected — someone may be working on it. Crop its memory anyway?',
       loading: 'Loading messages…',
       empty: 'No messages in this session.',
       loadError: 'Could not load messages.',

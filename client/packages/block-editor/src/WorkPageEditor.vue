@@ -42,6 +42,7 @@ import { registeredBlocks } from './blockRegistry';
 import { registerBuiltInBlocks } from './builtins';
 import { HeadingAnchors } from './extensions/HeadingAnchors';
 import { TrailingNode } from './extensions/TrailingNode';
+import { VanceWikiLink } from './extensions/VanceWikiLink';
 import { VueNodeViewRenderer } from '@tiptap/vue-3';
 import VanceImageNodeView from './extensions/VanceImageNodeView.vue';
 import 'tippy.js/dist/tippy.css';
@@ -136,6 +137,14 @@ const props = withDefaults(
      * return lets the editor fall back to {@code window.open}.
      */
     openLink?: (href: string, openInNewTab: boolean) => boolean | void;
+    /**
+     * Wiki-link support (planning/app-wiki.md §3). `resolveWikiLink` is a
+     * sync existence check for red-link styling; `openWikiLink` navigates to
+     * or creates the target. Host-injected by the wiki app; omitted elsewhere
+     * (then `[[links]]` render as neutral, click is a no-op).
+     */
+    resolveWikiLink?: (target: string) => boolean;
+    openWikiLink?: (target: string) => void;
     /**
      * Resolver for the embed NodeView. Takes a {@code vance:} URI
      * and returns {@code id / path / kind / title / mimeType} for
@@ -416,10 +425,13 @@ const editor = useEditor({
     VanceColumns,
     VanceColumn,
     VanceUnknownFence,
+    VanceWikiLink.configure({
+      resolveWikiLink: (t: string) => props.resolveWikiLink?.(t) ?? true,
+      openWikiLink: (t: string) => props.openWikiLink?.(t),
+    }),
     // Addon-contributed block nodes (block-extension-registry). Populated
     // before mount by loadAddonRegistrations(); empty when no addon
-    // contributes a block. Their Tiptap Nodes rely on the shared
-    // @tiptap/core singleton to be accepted by this Editor's schema.
+    // contributes a block.
     ...registeredBlocks().map((b) => b.node),
     VanceEmbed.configure({
       resolveDocumentMeta: (uri: string) =>

@@ -1,0 +1,11 @@
+$meta:
+  kind: application
+  app: wiki
+title: "{{ title }}"
+{% if description %}description: "{{ description }}"{% endif %}
+wiki:
+  index:
+    outputPath: _index.md
+    showDescriptions: true
+  recentLimit: 10
+  defaultPageKind: workpage

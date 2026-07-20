@@ -1,0 +1,4 @@
+.__mf__temp/
+dist/
+node_modules/
+*.tsbuildinfo

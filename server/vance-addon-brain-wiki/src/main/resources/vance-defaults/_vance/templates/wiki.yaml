@@ -1,0 +1,19 @@
+title:       { de: "Wiki",  en: "Wiki" }
+description: { de: "Ein neues Wiki — namens-verlinkte Seiten mit [[Wikilinks]], Backlinks und Spaces",
+               en: "A new wiki — name-linked pages with [[Wikilinks]], backlinks and spaces" }
+icon: link
+tags: [app, wiki, note, knowledge-base]
+
+name:
+  mode: fixed
+  value: _app.yaml
+
+fields:
+  - name: title
+    type: string
+    required: true
+    label: { de: "Titel",        en: "Title" }
+  - name: description
+    type: textarea
+    rows: 2
+    label: { de: "Beschreibung", en: "Description" }

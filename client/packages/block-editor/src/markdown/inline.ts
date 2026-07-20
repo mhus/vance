@@ -23,12 +23,24 @@ export interface InlineMark {
 export interface InlineSegment {
   text: string;
   marks: InlineMark[];
+  /**
+   * Wiki-link segment (`[[target]]` / `[[target|label]]`). When set, this
+   * segment becomes an inline atom node `wikiLink` (not a marked text run);
+   * `text` holds the display label. See specification / planning/app-wiki.md.
+   */
+  wikiLink?: { target: string; label: string };
 }
 
 /** Markdown inline string → ProseMirror inline-node JSON array. */
 export function parseInlineToProseMirror(text: string): JSONContent[] {
   const segments = parseInline(text);
   return segments.map((seg) => {
+    if (seg.wikiLink) {
+      return {
+        type: 'wikiLink',
+        attrs: { target: seg.wikiLink.target, label: seg.wikiLink.label },
+      };
+    }
     const node: JSONContent = { type: 'text', text: seg.text };
     if (seg.marks.length > 0) node.marks = seg.marks as JSONContent['marks'];
     return node;
@@ -45,6 +57,12 @@ export function serializeProseMirrorInline(nodes: JSONContent[] | undefined): st
   if (!nodes) return '';
   return nodes
     .map((n) => {
+      if (n.type === 'wikiLink') {
+        const target = String(n.attrs?.target ?? '');
+        const label = String(n.attrs?.label ?? '');
+        if (!target) return '';
+        return !label || label === target ? `[[${target}]]` : `[[${target}|${label}]]`;
+      }
       if (n.type !== 'text' || typeof n.text !== 'string') return '';
       let s = n.text;
       const marks = (n.marks ?? []) as Array<{ type?: string; attrs?: Record<string, unknown> }>;
@@ -85,6 +103,11 @@ export function parseInline(text: string): InlineSegment[] {
     segments.push({ text: s, marks });
   }
 
+  function pushWikiLink(target: string, label: string) {
+    flushPlain();
+    segments.push({ text: label, marks: [], wikiLink: { target, label } });
+  }
+
   let i = 0;
   while (i < text.length) {
     // Escaped char — emit literally, skip the backslash.
@@ -92,6 +115,23 @@ export function parseInline(text: string): InlineSegment[] {
       plain += text[i + 1];
       i += 2;
       continue;
+    }
+
+    // 0. Wiki-link [[target]] / [[target|label]] — before the single-`[`
+    //    link check, since `[[` starts with `[`.
+    if (text[i] === '[' && text[i + 1] === '[') {
+      const close = text.indexOf(']]', i + 2);
+      if (close > i + 1) {
+        const inner = text.substring(i + 2, close);
+        const pipe = inner.indexOf('|');
+        const target = (pipe >= 0 ? inner.slice(0, pipe) : inner).trim();
+        const label = (pipe >= 0 ? inner.slice(pipe + 1) : inner).trim();
+        if (target) {
+          pushWikiLink(target, label || target);
+          i = close + 2;
+          continue;
+        }
+      }
     }
 
     // 1. Link [text](url) — try first because `[` can otherwise be
@@ -167,6 +207,10 @@ export function parseInline(text: string): InlineSegment[] {
 export function serializeInline(segments: InlineSegment[]): string {
   return segments
     .map((seg) => {
+      if (seg.wikiLink) {
+        const { target, label } = seg.wikiLink;
+        return !label || label === target ? `[[${target}]]` : `[[${target}|${label}]]`;
+      }
       let s = seg.text;
       const has = (t: InlineMark['type']) => seg.marks.find((m) => m.type === t);
       if (has('code')) s = '`' + s + '`';

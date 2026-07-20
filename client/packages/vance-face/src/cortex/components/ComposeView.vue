@@ -14,6 +14,7 @@ import yaml from 'js-yaml';
 import {
   postComposeRun,
   pollComposeRun,
+  cancelComposeRun,
   readComposeOutputs,
   writeComposeOutputs,
   writeComposeRun,
@@ -71,6 +72,17 @@ const running = ref(false);
 const fetchError = ref<string | null>(null);
 const result = ref<ComposeRunResponse | null>(null);
 const progress = ref<ComposeRunResponse | null>(null);
+/** Server runId of the in-flight run — set in phase 2 (polling); enables Stop. */
+const runId = ref<string | null>(null);
+const cancelling = ref(false);
+
+/**
+ * Run button states: ▶ idle → run; "…" busy while the start REST is in flight
+ * (phase 1, no runId — nothing to cancel); ■ stop once a runId is known
+ * (phase 2, polling) → server-side cancel.
+ */
+const canStop = computed(() => running.value && runId.value != null);
+const runGlyph = computed(() => (!running.value ? '▶ Run compose' : runId.value ? '■ Stop' : '…'));
 
 let polling = false;
 let timer: ReturnType<typeof setTimeout> | undefined;
@@ -98,6 +110,8 @@ function stopTimer(): void {
 function finishWith(resp: ComposeRunResponse): void {
   stopTimer();
   running.value = false;
+  cancelling.value = false;
+  runId.value = null;
   progress.value = null;
   result.value = resp;
   if (resp.success) {
@@ -146,6 +160,7 @@ async function run(): Promise<void> {
     });
     if (resp.running && resp.runId) {
       // Long run: park the runId so a refresh resumes, then poll.
+      runId.value = resp.runId;
       progress.value = resp;
       emit('update:doc', writeComposeRun(props.doc, { id: resp.runId, startedAt: new Date().toISOString() }));
       startPolling(resp.runId);
@@ -158,11 +173,43 @@ async function run(): Promise<void> {
   }
 }
 
+/** ■ Stop (phase 2): cancel the in-flight run on the server. */
+async function stop(): Promise<void> {
+  const rid = runId.value;
+  if (!rid) return;
+  cancelling.value = true;
+  try {
+    const resp = await cancelComposeRun(projectId.value, rid);
+    if (!resp.running) finishWith(resp); // else the poll loop observes it shortly
+  } catch {
+    // Best-effort — the poll loop still winds things down.
+  } finally {
+    cancelling.value = false;
+  }
+}
+
+/** Drop the shown outputs (managed `$output:`/`$run:` block) and reset state. */
+function clearOutput(): void {
+  stopTimer();
+  running.value = false;
+  progress.value = null;
+  result.value = null;
+  fetchError.value = null;
+  runId.value = null;
+  emit('update:doc', clearComposeManaged(props.doc));
+}
+
+function onRunButton(): void {
+  if (!running.value) run();
+  else if (canStop.value) stop();
+}
+
 onMounted(() => {
   // Resume a run that was in flight before a refresh.
   const marker = readComposeRun(props.doc);
   if (marker) {
     running.value = true;
+    runId.value = marker.id;
     startPolling(marker.id);
   }
 });
@@ -175,11 +222,18 @@ onUnmounted(stopTimer);
       <h3 v-if="meta.title" class="text-base font-semibold">{{ meta.title }}</h3>
       <p v-if="meta.description" class="text-sm opacity-70 whitespace-pre-line">{{ meta.description }}</p>
     </div>
-    <div class="flex items-center gap-3">
-      <VButton variant="primary" size="sm" :loading="running" @click="run">
-        ▶ Run compose
+    <div class="flex items-center gap-2">
+      <VButton
+        :variant="canStop ? 'danger' : 'primary'"
+        size="sm"
+        :disabled="cancelling || (running && !canStop)"
+        @click="onRunButton"
+      >{{ runGlyph }}</VButton>
+      <VButton variant="ghost" size="sm" :disabled="running" @click="clearOutput">
+        Clear Output
       </VButton>
-      <span v-if="result" class="text-sm opacity-70">
+      <span v-if="cancelling" class="text-sm opacity-70">stoppe…</span>
+      <span v-else-if="result" class="text-sm opacity-70">
         Workspace: {{ result.workspace }} · {{ result.success ? 'success' : 'failed' }}
       </span>
       <span v-else-if="progress" class="text-sm opacity-70">
@@ -193,8 +247,8 @@ onUnmounted(stopTimer);
     </VAlert>
 
     <!-- Live progress (long run): tail of the current exec -->
-    <VCard v-if="progress && progress.tail && progress.tail.length">
-      <pre class="text-xs whitespace-pre-wrap overflow-auto max-h-64">{{ progress.tail.join('\n') }}</pre>
+    <VCard v-if="progress">
+      <pre class="text-xs whitespace-pre-wrap overflow-auto max-h-64">{{ progress.tail && progress.tail.length ? progress.tail.join('\n') : '… läuft, warte auf Ausgabe' }}</pre>
     </VCard>
 
     <template v-if="result">

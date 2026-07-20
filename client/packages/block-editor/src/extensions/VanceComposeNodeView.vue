@@ -442,9 +442,9 @@ onBeforeUnmount(() => {
       >{{ result.error }}</div>
 
       <pre
-        v-if="progress && progress.tail && progress.tail.length"
+        v-if="progress"
         class="vance-compose__log"
-      >{{ progress.tail.join('\n') }}</pre>
+      >{{ progress.tail && progress.tail.length ? progress.tail.join('\n') : '… läuft, warte auf Ausgabe' }}</pre>
 
       <div v-if="result" class="vance-compose__out">
         <template v-for="(task, ti) in result.tasks ?? []" :key="ti">

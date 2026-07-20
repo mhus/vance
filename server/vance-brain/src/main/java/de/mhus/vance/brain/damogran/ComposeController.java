@@ -10,6 +10,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -177,14 +178,30 @@ public class ComposeController {
         return out;
     }
 
+    /**
+     * Live tail of the current exec job, merging stdout <em>and</em> stderr — many
+     * long-running tools (training, builds) emit their progress on stderr, so a
+     * stdout-only tail would show nothing. Capped to the last {@value #TAIL_LINES}
+     * lines across both.
+     */
     private List<String> currentTail(ComposeRun run) {
         String jobId = run.currentExecJobId();
         if (jobId == null) {
             return List.of();
         }
         try {
-            return execManager.tail(run.tenantId(), run.projectId(), jobId,
-                    TAIL_LINES, ExecManager.Stream.STDOUT);
+            List<String> out = execManager.tail(
+                    run.tenantId(), run.projectId(), jobId, TAIL_LINES, ExecManager.Stream.STDOUT);
+            List<String> err = execManager.tail(
+                    run.tenantId(), run.projectId(), jobId, TAIL_LINES, ExecManager.Stream.STDERR);
+            if (err.isEmpty()) return out;
+            if (out.isEmpty()) return err;
+            List<String> both = new ArrayList<>(out.size() + err.size());
+            both.addAll(out);
+            both.addAll(err);
+            return both.size() <= TAIL_LINES
+                    ? both
+                    : both.subList(both.size() - TAIL_LINES, both.size());
         } catch (RuntimeException e) {
             return List.of();
         }

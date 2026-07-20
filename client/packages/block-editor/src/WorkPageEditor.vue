@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch, onBeforeUnmount, onMounted, provide } from 'vue';
+import { blockClipboard } from './blockClipboard';
 import { useEditor, EditorContent, BubbleMenu } from '@tiptap/vue-3';
 import StarterKit from '@tiptap/starter-kit';
 import TaskList from '@tiptap/extension-task-list';
@@ -872,6 +873,25 @@ function menuRemove() {
   closeBlockMenu();
 }
 
+/** Copy the pointed-at block into the module clipboard (attrs + content). */
+function menuCopy() {
+  const m = blockMenu.value;
+  const ed = editor.value;
+  if (!m || !ed) return;
+  const node = ed.state.doc.resolve(m.start).nodeAfter;
+  if (node) blockClipboard.value = node.toJSON();
+  closeBlockMenu();
+}
+
+/** Paste the clipboard block directly BELOW the pointed-at block. */
+function menuPaste() {
+  const m = blockMenu.value;
+  const ed = editor.value;
+  if (!m || !ed || !blockClipboard.value) return;
+  ed.chain().insertContentAt(m.end, blockClipboard.value).focus().run();
+  closeBlockMenu();
+}
+
 function onDocPointerDown(e: PointerEvent) {
   if (!blockMenu.value) return;
   const t = e.target as HTMLElement | null;
@@ -1113,6 +1133,17 @@ defineExpose({
         <button type="button" class="block-handle-menu__item" @click="menuInsert('below')">
           ↓ Unten einfügen
         </button>
+        <button type="button" class="block-handle-menu__item" @click="menuCopy">
+          ⧉ Kopieren
+        </button>
+        <button
+          type="button"
+          class="block-handle-menu__item"
+          :disabled="!blockClipboard"
+          @click="menuPaste"
+        >
+          📋 Einfügen (darunter)
+        </button>
         <button
           type="button"
           class="block-handle-menu__item block-handle-menu__item--danger"
@@ -1347,7 +1378,8 @@ defineExpose({
   color: #1f2937;
   cursor: pointer;
 }
-.block-handle-menu__item:hover { background: #f1f5f9; }
+.block-handle-menu__item:hover:not(:disabled) { background: #f1f5f9; }
+.block-handle-menu__item:disabled { opacity: 0.45; cursor: default; }
 .block-handle-menu__item--danger { color: #dc2626; }
 .block-handle-menu__item--danger:hover { background: #fee2e2; }
 

@@ -1,5 +1,7 @@
 package de.mhus.vance.addon.brain.workbook;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -10,6 +12,14 @@ import org.springframework.stereotype.Component;
  * {@code kind: workpage} document — when opened in the editor it shows up
  * with the same Tiptap rendering as a hand-written workpage. Idempotent
  * by construction: same scan → same output.
+ *
+ * <p>Page links are emitted as {@code vance:}-URIs
+ * ({@code vance:/<project-path>?kind=workpage}), the same scheme the link
+ * picker produces for hand-authored document links. A bare relative path
+ * ({@code teee.workpage.md}) would be resolved by the browser against the
+ * current origin ({@code http://host/teee.workpage.md}) — dead. The
+ * {@code vance:} scheme routes through the app's in-editor link handler,
+ * which switches the active page in-place.
  */
 @Component
 public class WorkbookIndexRenderer {
@@ -33,7 +43,7 @@ public class WorkbookIndexRenderer {
         }
 
         if (!scan.config().index().groupBySection()) {
-            renderFlat(scan.pages(), scan.folder(), sb, scan.config().index().showDescriptions());
+            renderFlat(scan.pages(), sb, scan.config().index().showDescriptions());
             return sb.toString();
         }
 
@@ -46,35 +56,54 @@ public class WorkbookIndexRenderer {
         List<WorkbookPage> topLevel = bySection.remove("");
         if (topLevel != null && !topLevel.isEmpty()) {
             sb.append("## Pages\n\n");
-            renderList(topLevel, scan.folder(), sb, scan.config().index().showDescriptions());
+            renderList(topLevel, sb, scan.config().index().showDescriptions());
             sb.append("\n");
         }
         List<String> sectionKeys = new java.util.ArrayList<>(bySection.keySet());
         java.util.Collections.sort(sectionKeys);
         for (String section : sectionKeys) {
             sb.append("## ").append(humanise(section)).append("\n\n");
-            renderList(bySection.get(section), scan.folder(), sb, scan.config().index().showDescriptions());
+            renderList(bySection.get(section), sb, scan.config().index().showDescriptions());
             sb.append("\n");
         }
         return sb.toString();
     }
 
-    private void renderFlat(List<WorkbookPage> pages, String folder, StringBuilder sb,
-                            boolean showDescriptions) {
+    private void renderFlat(List<WorkbookPage> pages, StringBuilder sb, boolean showDescriptions) {
         sb.append("## Pages\n\n");
-        renderList(pages, folder, sb, showDescriptions);
+        renderList(pages, sb, showDescriptions);
     }
 
-    private void renderList(List<WorkbookPage> pages, String folder, StringBuilder sb,
-                            boolean showDescriptions) {
+    private void renderList(List<WorkbookPage> pages, StringBuilder sb, boolean showDescriptions) {
         for (WorkbookPage p : pages) {
             sb.append("- [").append(escape(p.title())).append("](")
-                    .append(p.relativePath()).append(")");
+                    .append(pageLink(p)).append(")");
             if (showDescriptions && p.description() != null && !p.description().isBlank()) {
                 sb.append(" — ").append(p.description());
             }
             sb.append("\n");
         }
+    }
+
+    /**
+     * Build the {@code vance:} link for a page. Uses the page's full
+     * project-relative path (matching {@code WorkbookPageView.path}) so the
+     * client can route the click to the corresponding page. The path is
+     * percent-encoded per segment ({@code encodeURI} semantics — slashes
+     * preserved), which the client reverses via {@code decodeURIComponent}.
+     */
+    private static String pageLink(WorkbookPage p) {
+        return "vance:/" + encodePath(p.doc().getPath()) + "?kind=workpage";
+    }
+
+    private static String encodePath(String path) {
+        StringBuilder out = new StringBuilder();
+        String[] segments = path.split("/", -1);
+        for (int i = 0; i < segments.length; i++) {
+            if (i > 0) out.append('/');
+            out.append(URLEncoder.encode(segments[i], StandardCharsets.UTF_8).replace("+", "%20"));
+        }
+        return out.toString();
     }
 
     private static String humanise(String section) {

@@ -83,6 +83,8 @@ export const VanceCompose = Node.create({
       runCompose: null as null | ((yaml: string) => Promise<ComposeRunResult>),
       /** Host-provided poll: fetch an in-flight run's status/tail/result by id. */
       pollCompose: null as null | ((runId: string) => Promise<ComposeRunResult>),
+      /** Host-provided cancel: stop an in-flight run (kills the current exec). */
+      cancelCompose: null as null | ((runId: string) => Promise<ComposeRunResult>),
       /**
        * Host-injected renderer for a single output ({@code vance-face}'s
        * ComposeOutput, via provide/inject) — mounted per artifact so the block

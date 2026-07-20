@@ -38,6 +38,7 @@ public final class ComposeRun implements ComposeProgress {
     private volatile @Nullable DamogranComposeResult result;
     private volatile @Nullable String error;
     private volatile @Nullable Instant finishedAt;
+    private volatile boolean cancelRequested;
 
     public ComposeRun(String runId, String tenantId, String projectId,
                       String workspaceName, Instant startedAt) {
@@ -124,6 +125,19 @@ public final class ComposeRun implements ComposeProgress {
 
     public boolean isTerminal() {
         return status != Status.RUNNING;
+    }
+
+    /**
+     * Request cancellation: the runner halts before the next task, and the
+     * controller kills the currently-running exec job (if any). Advisory —
+     * a task already mid-flight ends when its exec is killed or completes.
+     */
+    public void requestCancel() {
+        this.cancelRequested = true;
+    }
+
+    public boolean isCancelRequested() {
+        return cancelRequested;
     }
 
     public String runId() { return runId; }

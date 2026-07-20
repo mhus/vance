@@ -126,6 +126,28 @@ public class ComposeController {
     }
 
     /**
+     * Cancel an in-flight run: flag it (the runner halts before the next task)
+     * and kill the currently-running exec job so a long-running command stops
+     * now rather than running to its deadline. Idempotent — a terminal run just
+     * returns its final state.
+     */
+    @PostMapping("/run/{runId}/cancel")
+    public Map<String, Object> cancelRun(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("runId") String runId,
+            @RequestParam("projectId") String projectId) {
+        ComposeRun run = runRegistry.find(tenant, projectId, runId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "compose run not found: " + runId));
+        run.requestCancel();
+        String jobId = run.currentExecJobId();
+        if (jobId != null) {
+            execManager.kill(tenant, projectId, jobId);
+        }
+        return renderRun(run, /*includeTail=*/ true);
+    }
+
+    /**
      * Response for a run: the final result shape (tasks + outputs) when terminal,
      * else {@code running} + current-task + (on poll) the live exec tail.
      */

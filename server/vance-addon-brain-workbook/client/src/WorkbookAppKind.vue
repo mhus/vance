@@ -7,6 +7,7 @@ import {
   documentContentUrl,
   postComposeRun,
   pollComposeRun,
+  cancelComposeRun,
   useDocumentPrefixReaction,
   usePointers,
 } from '@vance/shared';
@@ -335,6 +336,11 @@ function runCompose(yaml: string): Promise<ComposeRunResult> {
 /** Poll an in-flight compose run by id (status + tail + result). */
 function pollCompose(runId: string): Promise<ComposeRunResult> {
   return pollComposeRun(projectId.value, runId);
+}
+
+/** Cancel an in-flight compose run (kills the current exec + halts). */
+function cancelCompose(runId: string): Promise<ComposeRunResult> {
+  return cancelComposeRun(projectId.value, runId);
 }
 
 /**
@@ -1624,6 +1630,7 @@ onBeforeUnmount(() => {
           :run-button-script="runButtonScript"
           :run-compose="runCompose"
           :poll-compose="pollCompose"
+          :cancel-compose="cancelCompose"
           :compose-output-component="composeOutputComponent ?? undefined"
           :editable="editorEditable"
           @save="onEditorSave"

@@ -187,6 +187,8 @@ const props = withDefaults(
     runCompose?: (yaml: string) => Promise<ComposeRunResult>;
     /** Poll an in-flight compose run by id — host GETs status/tail/result. */
     pollCompose?: (runId: string) => Promise<ComposeRunResult>;
+    /** Cancel an in-flight compose run by id — host POSTs cancel. */
+    cancelCompose?: (runId: string) => Promise<ComposeRunResult>;
     /** Host renderer for a compose output (vance-face ComposeOutput). */
     composeOutputComponent?: import('vue').Component;
   }>(),
@@ -425,6 +427,14 @@ const editor = useEditor({
           success: false,
           tasks: [],
           error: 'Compose polling is not available in this context.',
+        }),
+      cancelCompose: (runId: string) =>
+        props.cancelCompose?.(runId)
+        ?? Promise.resolve<ComposeRunResult>({
+          running: false,
+          success: false,
+          tasks: [],
+          error: 'Compose cancel is not available in this context.',
         }),
       composeOutputComponent: () => props.composeOutputComponent ?? null,
       projectId: props.currentProjectId ?? '',

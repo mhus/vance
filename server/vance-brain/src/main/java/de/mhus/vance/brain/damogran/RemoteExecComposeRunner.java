@@ -108,6 +108,10 @@ abstract class RemoteExecComposeRunner implements ComposeRunner {
         List<TaskSpec> tasks = manifest.tasks();
         for (int i = 0; i < tasks.size(); i++) {
             TaskSpec task = tasks.get(i);
+            if (run != null && run.isCancelRequested()) {
+                return new DamogranComposeResult(
+                        DamogranStatus.FAILURE, ws.name(), List.copyOf(results), "cancelled by user");
+            }
             if (run != null) {
                 run.startTask(i, task.type());
             }

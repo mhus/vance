@@ -46,6 +46,8 @@ description: Sortiert + fasst zusammen   # optional
 showSource: false          # optional, nur UI (Runner ignoriert): true = YAML
                            #   auch in der gerenderten Workbook-Seite zeigen
                            #   (Default: nur Titel/Beschreibung + Run + Outputs)
+autoRun: true              # optional, nur UI: false = beim „Run All Until"
+                           #   überspringen (per ▶ manuell weiter ausführbar)
 workspace:
   name: my-work            # benannter Workspace (überlebt Re-Runs in der Session)
   type: temp               # temp | git | node | python

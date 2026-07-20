@@ -33,6 +33,7 @@ const POLL_MS = 3000;
 interface ExtensionOptions {
   runCompose?: ((yaml: string) => Promise<ComposeRunResult>) | null;
   pollCompose?: ((runId: string) => Promise<ComposeRunResult>) | null;
+  cancelCompose?: ((runId: string) => Promise<ComposeRunResult>) | null;
   composeOutputComponent?: (() => Component | null) | null;
   projectId?: string;
 }
@@ -40,6 +41,7 @@ interface ExtensionOptions {
 const props = defineProps<{
   node: ProseMirrorNode;
   updateAttributes: (attrs: Record<string, unknown>) => void;
+  getPos: () => number | undefined;
   editor: Editor;
   extension: { options: ExtensionOptions };
 }>();
@@ -83,6 +85,14 @@ const running = ref(false);
 const error = ref<string | null>(null);
 const result = ref<ComposeRunResult | null>(null);
 const progress = ref<ComposeRunResult | null>(null);
+/** Server runId of the in-flight run (single or current batch step) — for cancel. */
+const runId = ref<string | null>(null);
+const cancelling = ref(false);
+/** Batch abort flag (Run All Until) — checked between steps. */
+const aborted = ref(false);
+const menuOpen = ref(false);
+/** Non-null while "Run All Until" iterates — its "(i/n)" progress label. */
+const batchStatus = ref<string | null>(null);
 
 let polling = false;
 let timer: ReturnType<typeof setTimeout> | undefined;
@@ -119,6 +129,8 @@ function stopTimer() {
 function finishWith(res: ComposeRunResult) {
   stopTimer();
   running.value = false;
+  cancelling.value = false;
+  runId.value = null;
   progress.value = null;
   result.value = res;
   const outputs = (res.tasks ?? []).flatMap((t) =>
@@ -166,6 +178,7 @@ async function run() {
   try {
     const res = await runner(yaml.value);
     if (res.running && res.runId) {
+      runId.value = res.runId;
       progress.value = res;
       props.updateAttributes({
         yaml: writeComposeRun(yaml.value, { id: res.runId, startedAt: new Date().toISOString() }),
@@ -180,20 +193,167 @@ async function run() {
   }
 }
 
+/** ■ Stop: cancel the in-flight run on the server (or abort a batch). */
+async function stop() {
+  aborted.value = true; // breaks the Run-All-Until loop between steps
+  const rid = runId.value;
+  const cancel = props.extension.options.cancelCompose;
+  if (rid && cancel) {
+    cancelling.value = true;
+    try {
+      const res = await cancel(rid);
+      if (!res.running) finishWith(res); // else the poll loop observes it shortly
+    } catch {
+      // Best-effort — the poll loop / batch guard still winds things down.
+    } finally {
+      cancelling.value = false;
+    }
+    return;
+  }
+  // No server run to cancel (e.g. still starting) — detach the UI and drop $run.
+  if (!batchStatus.value) {
+    stopTimer();
+    running.value = false;
+    progress.value = null;
+    props.updateAttributes({ yaml: clearComposeManaged(yaml.value) });
+  }
+}
+
+function toggleMenu() { menuOpen.value = !menuOpen.value; }
+function closeMenu() { menuOpen.value = false; }
+
+/** Drop the shown outputs (managed `$output:`/`$run:` block) and reset state. */
+function clearOutput() {
+  closeMenu();
+  stopTimer();
+  running.value = false;
+  progress.value = null;
+  result.value = null;
+  error.value = null;
+  runId.value = null;
+  props.updateAttributes({ yaml: clearComposeManaged(yaml.value) });
+}
+
+/** UI-only manifest flag `autoRun: false` opts a block out of "Run All Until". */
+function isAutoRunDisabled(src: string): boolean {
+  try {
+    const parsed = jsyaml.load(src);
+    return !!parsed && typeof parsed === 'object'
+      && (parsed as Record<string, unknown>).autoRun === false;
+  } catch {
+    return false;
+  }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Poll a run to a terminal state (used by the batch, which awaits each step). */
+async function pollUntilDone(rid: string): Promise<ComposeRunResult> {
+  const poll = props.extension.options.pollCompose;
+  if (!poll) return { running: false, success: false, error: 'no poll surface' };
+  for (;;) {
+    if (aborted.value) return { running: false, success: false, error: 'cancelled' };
+    await delay(POLL_MS);
+    const res = await poll(rid);
+    if (!res.running) return res;
+  }
+}
+
+/** Run one block's YAML to completion (awaits async runs), tracking its runId. */
+async function executeToCompletion(
+  runner: (yaml: string) => Promise<ComposeRunResult>,
+  src: string,
+): Promise<ComposeRunResult> {
+  const res = await runner(src);
+  if (res.running && res.runId) {
+    runId.value = res.runId;
+    const done = await pollUntilDone(res.runId);
+    runId.value = null;
+    return done;
+  }
+  return res;
+}
+
+/** Write a completed run's outputs back into the block at `pos`. */
+function persistBlockResult(pos: number, src: string, res: ComposeRunResult) {
+  const outputs = (res.tasks ?? []).flatMap((t) =>
+    (t.outputs ?? []).map((o) => ({ path: o.path, uri: o.uri, kind: o.kind, title: o.title })),
+  );
+  const newYaml = res.success ? writeComposeOutputs(src, outputs) : clearComposeManaged(src);
+  if (pos === props.getPos()) {
+    props.updateAttributes({ yaml: newYaml });
+  } else {
+    props.editor.commands.command(({ tr }) => {
+      tr.setNodeAttribute(pos, 'yaml', newYaml);
+      return true;
+    });
+  }
+}
+
+/**
+ * "Run All Until": run every compose block on the page from the top through
+ * this one, in document order, sequentially (each awaits the previous). Blocks
+ * with `autoRun: false` are skipped; the chain halts on the first failure.
+ */
+async function runAllUntil() {
+  closeMenu();
+  const runner = props.extension.options.runCompose;
+  const here = props.getPos();
+  if (!runner || running.value || here === undefined) return;
+
+  const blocks: { pos: number; yaml: string }[] = [];
+  props.editor.state.doc.descendants((n, pos) => {
+    if (n.type.name === 'vanceCompose' && pos <= here) {
+      const src = (n.attrs?.yaml as string | undefined) ?? '';
+      if (!isAutoRunDisabled(src)) blocks.push({ pos, yaml: src });
+    }
+    return true;
+  });
+  if (!blocks.length) return;
+
+  aborted.value = false;
+  running.value = true;
+  error.value = null;
+  result.value = null;
+  progress.value = null;
+  try {
+    for (let i = 0; i < blocks.length; i++) {
+      if (aborted.value) break;
+      batchStatus.value = `Run All Until… (${i + 1}/${blocks.length})`;
+      const b = blocks[i];
+      const res = await executeToCompletion(runner, b.yaml);
+      persistBlockResult(b.pos, b.yaml, res);
+      if (!res.success) {
+        error.value = res.error ?? `Block bei ${b.pos} fehlgeschlagen`;
+        break;
+      }
+    }
+  } finally {
+    running.value = false;
+    batchStatus.value = null;
+    runId.value = null;
+  }
+}
+
 onMounted(() => {
   props.editor.on('update', syncEditable);
   props.editor.on('transaction', syncEditable);
   nextTick(autoGrow);
+  window.addEventListener('click', closeMenu);
   // Resume a run that was in flight before a reload.
   const marker = readComposeRun(yaml.value);
   if (marker) {
     running.value = true;
+    runId.value = marker.id;
     startPolling(marker.id);
   }
 });
 onBeforeUnmount(() => {
   props.editor.off('update', syncEditable);
   props.editor.off('transaction', syncEditable);
+  window.removeEventListener('click', closeMenu);
   stopTimer();
 });
 
@@ -223,11 +383,38 @@ onBeforeUnmount(() => {
       <div class="vance-compose__bar">
         <button
           type="button"
-          class="vance-compose__btn"
-          :disabled="running"
-          @click="run"
-        >{{ running ? '…' : '▶ Run compose' }}</button>
-        <span v-if="result" class="vance-compose__status">
+          class="vance-compose__run"
+          :class="{ 'vance-compose__run--stop': running }"
+          :disabled="cancelling"
+          :title="running ? 'Stop' : 'Run compose'"
+          @click.stop="running ? stop() : run()"
+        >{{ running ? '■' : '▶' }}</button>
+
+        <div class="vance-compose__menu-wrap">
+          <button
+            type="button"
+            class="vance-compose__menu-btn"
+            title="Weitere Aktionen"
+            @click.stop="toggleMenu"
+          >…</button>
+          <div v-if="menuOpen" class="vance-compose__menu" @click.stop>
+            <button
+              type="button"
+              class="vance-compose__menu-item"
+              :disabled="running"
+              @click="runAllUntil"
+            >Run All Until</button>
+            <button
+              type="button"
+              class="vance-compose__menu-item"
+              @click="clearOutput"
+            >Clear Output</button>
+          </div>
+        </div>
+
+        <span v-if="batchStatus" class="vance-compose__status">{{ batchStatus }}</span>
+        <span v-else-if="cancelling" class="vance-compose__status">stoppe…</span>
+        <span v-else-if="result" class="vance-compose__status">
           {{ result.workspace ? result.workspace + ' · ' : '' }}{{ result.success ? 'success' : 'failed' }}
         </span>
         <span v-else-if="progress" class="vance-compose__status">
@@ -338,19 +525,70 @@ onBeforeUnmount(() => {
 .vance-compose__bar {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.4rem;
 }
-.vance-compose__btn {
+.vance-compose__run {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
   border: 1px solid oklch(var(--p));
   background: oklch(var(--p));
   color: oklch(var(--pc));
   border-radius: 0.35rem;
-  padding: 0.35rem 0.9rem;
-  font-size: 0.88rem;
-  font-weight: 500;
+  font-size: 0.9rem;
+  line-height: 1;
   cursor: pointer;
 }
-.vance-compose__btn:disabled { opacity: 0.55; cursor: default; }
+.vance-compose__run--stop {
+  border-color: oklch(var(--er));
+  background: oklch(var(--er));
+  color: oklch(var(--erc, var(--pc)));
+}
+.vance-compose__run:disabled { opacity: 0.55; cursor: default; }
+.vance-compose__menu-wrap { position: relative; }
+.vance-compose__menu-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid oklch(var(--bc) / 0.25);
+  background: transparent;
+  color: inherit;
+  border-radius: 0.35rem;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.vance-compose__menu-btn:hover { background: oklch(var(--bc) / 0.08); }
+.vance-compose__menu {
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 11rem;
+  padding: 0.25rem;
+  border: 1px solid oklch(var(--bc) / 0.2);
+  border-radius: 0.4rem;
+  background: oklch(var(--b1));
+  box-shadow: 0 6px 20px oklch(0% 0 0 / 0.18);
+}
+.vance-compose__menu-item {
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: inherit;
+  border-radius: 0.3rem;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.vance-compose__menu-item:hover:not(:disabled) { background: oklch(var(--bc) / 0.1); }
+.vance-compose__menu-item:disabled { opacity: 0.45; cursor: default; }
 .vance-compose__status { font-size: 0.8rem; opacity: 0.7; }
 .vance-compose__out {
   display: flex;

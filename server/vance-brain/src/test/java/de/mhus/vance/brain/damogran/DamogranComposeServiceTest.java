@@ -87,6 +87,24 @@ class DamogranComposeServiceTest {
     }
 
     @Test
+    void run_cancelRequested_haltsBeforeTaskWithoutDispatch() {
+        when(workspaceService.listRootDirs("t", "p")).thenReturn(List.of());
+        when(workspaceService.createRootDir(any())).thenReturn(handle("ws", "temp"));
+        WorkspaceComposeRunner runner = new WorkspaceComposeRunner(
+                workspaceService, workTargetService, taskExecutor, transport,
+                mock(ExecManager.class), mock(GitService.class));
+        ComposeRun run = new ComposeRun("cr-x", "t", "p", "ws", java.time.Instant.EPOCH);
+        run.requestCancel();
+
+        DamogranManifest m = manifest("WORK", List.of(task("exec")), List.of(), List.of());
+        DamogranComposeResult result = runner.run("t", "p", "proc1", m, null, run);
+
+        assertThat(result.status()).isEqualTo(DamogranStatus.FAILURE);
+        assertThat(result.error()).contains("cancelled");
+        verify(taskExecutor, never()).dispatch(any(), any());
+    }
+
+    @Test
     void run_taskFails_haltsAndSkipsExport() {
         when(workspaceService.listRootDirs("t", "p")).thenReturn(List.of());
         when(workspaceService.createRootDir(any())).thenReturn(handle("ws", "temp"));

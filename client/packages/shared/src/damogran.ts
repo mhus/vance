@@ -84,6 +84,12 @@ export function pollComposeRun(projectId: string, runId: string): Promise<Compos
   return brainFetch<ComposeRunResponse>('GET', `compose/run/${encodeURIComponent(runId)}?${query}`);
 }
 
+/** Cancel an in-flight run (kills the current exec + halts before the next task). */
+export function cancelComposeRun(projectId: string, runId: string): Promise<ComposeRunResponse> {
+  const query = new URLSearchParams({ projectId });
+  return brainFetch<ComposeRunResponse>('POST', `compose/run/${encodeURIComponent(runId)}/cancel?${query}`);
+}
+
 // ──────────────────── $output ────────────────────
 
 /** Read the `$output:` block a prior successful run wrote into the manifest. */

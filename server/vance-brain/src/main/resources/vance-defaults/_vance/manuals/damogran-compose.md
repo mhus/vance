@@ -43,6 +43,9 @@ im Task `deadlineSeconds: 0` setzen (kein Hard-Kill, läuft bis zum Ende).
 ```yaml
 title: Report bauen        # optional; im View über dem Run-Button gezeigt
 description: Sortiert + fasst zusammen   # optional
+showSource: false          # optional, nur UI (Runner ignoriert): true = YAML
+                           #   auch in der gerenderten Workbook-Seite zeigen
+                           #   (Default: nur Titel/Beschreibung + Run + Outputs)
 workspace:
   name: my-work            # benannter Workspace (überlebt Re-Runs in der Session)
   type: temp               # temp | git | node | python

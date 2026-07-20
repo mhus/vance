@@ -5,7 +5,9 @@
  *
  * - **design mode**: an editable YAML textarea (the compose manifest) plus a
  *   "Run compose" button; edits are written back to the block's `yaml` attr.
- * - **work mode** (read-only page): the YAML shown read-only + the run button.
+ * - **work mode** (read-only page): a clean card — title/description + run
+ *   button + outputs, *without* the YAML. Set `showSource: true` in the
+ *   manifest (a UI-only flag the runner ignores) to reveal the source here too.
  *
  * Running calls the host `runCompose` with the current YAML and renders the
  * returned per-task outputs (images inline, everything else as a link). The
@@ -50,8 +52,14 @@ const projectId = computed<string>(() => props.extension.options.projectId ?? ''
 
 const yaml = computed(() => (props.node.attrs?.yaml as string | null) ?? '');
 
-/** Optional title/description from the manifest, shown above the cell. */
-const meta = computed<{ title?: string; description?: string }>(() => {
+/**
+ * Manifest-derived UI hints: title/description shown above the cell, and
+ * `showSource` — a UI-only flag (ignored by the runner) that opts the
+ * read-only page view into showing the raw YAML. Default is a clean card
+ * (title/description + Run + outputs); set `showSource: true` in the manifest
+ * to reveal the source in the rendered page as well.
+ */
+const meta = computed<{ title?: string; description?: string; showSource: boolean }>(() => {
   try {
     const parsed = jsyaml.load(yaml.value);
     if (parsed && typeof parsed === 'object') {
@@ -59,12 +67,13 @@ const meta = computed<{ title?: string; description?: string }>(() => {
       return {
         title: typeof p.title === 'string' ? p.title : undefined,
         description: typeof p.description === 'string' ? p.description : undefined,
+        showSource: p.showSource === true,
       };
     }
   } catch {
     // Invalid YAML mid-edit — no meta.
   }
-  return {};
+  return { showSource: false };
 });
 
 const editable = ref(props.editor.isEditable);
@@ -191,7 +200,7 @@ onBeforeUnmount(() => {
         @mousedown.stop
         @keydown.stop
       ></textarea>
-      <pre v-else class="vance-compose__src vance-compose__src--ro">{{ yaml }}</pre>
+      <pre v-else-if="meta.showSource" class="vance-compose__src vance-compose__src--ro">{{ yaml }}</pre>
 
       <div class="vance-compose__bar">
         <button

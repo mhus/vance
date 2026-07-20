@@ -57,6 +57,9 @@ export interface ComposeRunRequest {
   composePath?: string;
   composeBasePath?: string;
   sessionId?: string | null;
+  /** Workbook app identity → per-app chatless carrier; omit for a standalone
+   *  compose file (server falls back to a per-user carrier). */
+  appKey?: string;
 }
 
 const OUTPUT_KEY = '$output';

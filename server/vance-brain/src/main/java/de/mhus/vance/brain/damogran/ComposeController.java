@@ -1,10 +1,12 @@
 package de.mhus.vance.brain.damogran;
 
 import de.mhus.vance.brain.tools.exec.ExecManager;
+import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
+import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -77,7 +79,8 @@ public class ComposeController {
     @PostMapping("/run")
     public Map<String, Object> run(
             @PathVariable("tenant") String tenant,
-            @RequestBody RunRequest body) {
+            @RequestBody RunRequest body,
+            HttpServletRequest httpRequest) {
 
         if (body.projectId() == null || body.projectId().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "'projectId' is required");
@@ -92,7 +95,7 @@ public class ComposeController {
                 : (body.composeBasePath() != null && !body.composeBasePath().isBlank()
                         ? body.composeBasePath().trim() : null);
 
-        String processId = resolveProcessId(tenant, projectId, body);
+        String processId = resolveProcessId(tenant, projectId, body, httpRequest);
 
         ComposeRun run;
         try {
@@ -169,11 +172,15 @@ public class ComposeController {
      * Resolve the process the compose should run under. When a {@code sessionId}
      * is given and the session belongs to this tenant/project, use its primary
      * chat process (variant a — shared WorkTarget + tool surface with the chat).
-     * Otherwise (no session, foreign session, or no chat process yet) bind to the
-     * project's chatless carrier process, so scripts still reach the workspace
-     * via the file tools.
+     * Otherwise (no session, foreign session, or no chat process yet) bind to a
+     * chatless carrier process so scripts still reach the workspace via the file
+     * tools. Carrier scope: <b>per app</b> when the caller passes an
+     * {@code appKey} (a Workbook app — collaborative, shared workspace), else
+     * <b>per (project, user)</b> for a standalone compose file — a user running
+     * several compose files in sequence shares one carrier, distinct per user.
      */
-    private String resolveProcessId(String tenant, String projectId, RunRequest body) {
+    private String resolveProcessId(
+            String tenant, String projectId, RunRequest body, HttpServletRequest httpRequest) {
         if (body.sessionId() != null && !body.sessionId().isBlank()) {
             String chatProcess = sessionService.findBySessionId(body.sessionId().trim())
                     .filter(s -> tenant.equals(s.getTenantId()) && projectId.equals(s.getProjectId()))
@@ -183,7 +190,18 @@ public class ComposeController {
                 return chatProcess;
             }
         }
-        return processResolver.resolveProjectComposeProcess(tenant, projectId);
+        String carrierKey = body.appKey() != null && !body.appKey().isBlank()
+                ? "app:" + body.appKey().trim()
+                : "user:" + currentUser(httpRequest);
+        return processResolver.resolveComposeCarrier(tenant, projectId, carrierKey);
+    }
+
+    private static String currentUser(HttpServletRequest req) {
+        Object u = req.getAttribute(AccessFilterBase.ATTR_USERNAME);
+        if (u instanceof String s && !s.isBlank()) {
+            return s;
+        }
+        throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "No authenticated user");
     }
 
     private String resolveYaml(String tenant, String projectId, RunRequest body) {
@@ -212,5 +230,7 @@ public class ComposeController {
             @Nullable String composeYaml,
             @Nullable String composeBasePath,
             @Nullable String projectId,
-            @Nullable String sessionId) {}
+            @Nullable String sessionId,
+            /** App identity (Workbook app folder) → per-app chatless carrier; null = per-user. */
+            @Nullable String appKey) {}
 }

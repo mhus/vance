@@ -41,7 +41,7 @@ class DamogranProcessResolverTest {
         when(sessionService.findSystemSession("t", "p", "_damogran")).thenReturn(Optional.of(session));
         when(thinkProcessService.findByName("t", "sys-1", "_damogran")).thenReturn(Optional.of(process));
 
-        assertThat(resolver.resolveProjectComposeProcess("t", "p")).isEqualTo("proc-1");
+        assertThat(resolver.resolveComposeCarrier("t", "p", null)).isEqualTo("proc-1");
 
         verify(sessionService, never())
                 .create(any(), any(), any(), any(), any(), any(), any(), anyBoolean());
@@ -64,7 +64,7 @@ class DamogranProcessResolverTest {
                 any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(process);
 
-        assertThat(resolver.resolveProjectComposeProcess("t", "p")).isEqualTo("proc-9");
+        assertThat(resolver.resolveComposeCarrier("t", "p", null)).isEqualTo("proc-9");
 
         verify(sessionService).markBootstrapped("sys-9");
         ArgumentCaptor<Set<String>> override = ArgumentCaptor.forClass(Set.class);
@@ -72,5 +72,20 @@ class DamogranProcessResolverTest {
                 any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
                 override.capture());
         assertThat(override.getValue()).contains("file_read", "file_write");
+    }
+
+    @Test
+    void appKey_scopesCarrierPerApp_sanitizedName() {
+        SessionDocument session = new SessionDocument();
+        session.setSessionId("sys-app");
+        ThinkProcessDocument process = mock(ThinkProcessDocument.class);
+        when(process.getId()).thenReturn("proc-app");
+        // "app:notes/build" → sanitized "_damogran_app_notes_build"
+        when(sessionService.findSystemSession("t", "p", "_damogran_app_notes_build"))
+                .thenReturn(Optional.of(session));
+        when(thinkProcessService.findByName("t", "sys-app", "_damogran_app_notes_build"))
+                .thenReturn(Optional.of(process));
+
+        assertThat(resolver.resolveComposeCarrier("t", "p", "app:notes/build")).isEqualTo("proc-app");
     }
 }

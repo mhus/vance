@@ -327,6 +327,8 @@ function runCompose(yaml: string): Promise<ComposeRunResult> {
     composeYaml: yaml,
     composeBasePath: folder.value,
     sessionId: sessionId.value,
+    // Per-app chatless carrier (shared workspace, collaborative) — the app folder.
+    appKey: folder.value,
   });
 }
 

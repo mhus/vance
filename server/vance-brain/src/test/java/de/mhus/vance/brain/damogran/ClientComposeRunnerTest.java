@@ -66,6 +66,27 @@ class ClientComposeRunnerTest {
     }
 
     @Test
+    void run_gitImport_withCredentialAlias_rejectedAsWorkOnly_andNotSentToTransport() {
+        ThinkProcessDocument process = mock(ThinkProcessDocument.class);
+        when(process.getSessionId()).thenReturn("s1");
+        when(thinkProcessService.findById("proc")).thenReturn(Optional.of(process));
+        when(workTargetService.clientConnected("s1")).thenReturn(true);
+
+        // git:* is handled via remote exec, not the transport — a vault-backed
+        // credentialAlias has no meaning there and must be rejected clearly.
+        DamogranManifest m = manifest(List.of(),
+                List.of(new ImportEntry("git:https://example.com/r.git", "repo",
+                        Map.of("credentialAlias", "gh"))),
+                List.of(), false);
+
+        assertThatThrownBy(() -> runner.run("t", "p", "proc", m, null))
+                .isInstanceOf(DamogranException.class)
+                .hasMessageContaining("credentialAlias");
+        org.mockito.Mockito.verify(transport, org.mockito.Mockito.never())
+                .doImport(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
     void run_withDelete_throws_noManagedWorkspace() {
         DamogranManifest m = manifest(List.of(), List.of(), List.of(), true);
 

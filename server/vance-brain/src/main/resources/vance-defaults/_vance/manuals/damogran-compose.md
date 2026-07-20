@@ -113,10 +113,13 @@ export:
   Hosts — CLIENT = der verbundene **Foot** (Foot-Session nötig), DAEMON = ein
   benannter **Daemon** (`workspace.name` = Daemon-Name, muss im Projekt verbunden
   sein). Tasks: **nur `exec`** (kein managed Workspace, kein `delete`, kein
-  python/tex/js). **`import`/`export` gehen** — aber **text-basiert** und nur
-  `vance:`/`http:` (Import) bzw. `vance:` (Export); `git:*` und Binärdateien sind
-  WORK-only. Für „mehrere Shell-Schritte nacheinander auf einem Remote-Rechner".
-  Default bleibt `WORK`.
+  python/tex/js). **`import`/`export` gehen**: `vance:`/`http:` **text-basiert**
+  (Import) bzw. `vance:` (Export), und **`git:*`** über das `git` des
+  Remote-Hosts per exec (Import = clone/pull, Export = commit/push; fehlt `git`
+  dort → Fehler). Nur **binäre** Kopie ist WORK-only, und `credentialAlias`
+  (Vault) gilt nicht remote — dort zählen die git-Credentials des Hosts (ssh-Key
+  / credential helper). Für „mehrere Shell-Schritte nacheinander auf einem
+  Remote-Rechner". Default bleibt `WORK`.
 - **Deps (`node`/`python`):** `workspace.options.packages: [numpy, pandas==2.0]`
   (bzw. npm-Specs) installiert die Liste beim Provisioning (pip/npm) — statt erst
   `requirements.txt`/`package.json` importieren zu müssen. Einmalig bei

@@ -39,7 +39,7 @@ class ClientComposeRunnerTest {
             List<TaskSpec> tasks, List<ImportEntry> imports, List<ExportEntry> exports, boolean delete) {
         return new DamogranManifest(
                 new WorkspaceSpec("job", "temp", false, delete, Map.of(), "CLIENT"),
-                imports, tasks, exports, null, null);
+                imports, tasks, exports, null, null, DamogranManifest.SessionSpec.DISABLED);
     }
 
     private static TaskSpec exec(String command) {

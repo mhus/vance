@@ -22,17 +22,27 @@ const parsed = computed<Record<string, unknown>>(() => {
   }
 });
 
-const script = computed<string>(() => extractScript(yaml.value, 'code'));
+const taskType = computed<string | undefined>(() => {
+  const tasks = parsed.value.tasks;
+  return Array.isArray(tasks) && tasks[0] && typeof tasks[0] === 'object'
+    ? ((tasks[0] as Record<string, unknown>).type as string | undefined)
+    : undefined;
+});
+
+const script = computed<string>(() => {
+  const field = taskType.value === 'exec' ? 'command'
+    : taskType.value === 'spawn' ? 'prompt'
+      : 'code';
+  return extractScript(yaml.value, field);
+});
 
 const label = computed<string>(() => {
-  const tasks = parsed.value.tasks;
-  const type = Array.isArray(tasks) && tasks[0] && typeof tasks[0] === 'object'
-    ? (tasks[0] as Record<string, unknown>).type
-    : undefined;
+  const type = taskType.value;
   return type === 'js' ? 'Compose JS'
     : type === 'python' ? 'Compose Python'
       : type === 'exec' ? 'Compose Bash'
-        : 'Compose';
+        : type === 'spawn' ? 'Compose Agent'
+          : 'Compose';
 });
 
 const title = computed<string | undefined>(() =>

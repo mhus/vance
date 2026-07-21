@@ -49,7 +49,10 @@ final class DamogranResponse {
         for (OutputArtifact a : artifacts) {
             Map<String, Object> o = new LinkedHashMap<>();
             o.put("path", a.path());
-            o.put("uri", "vance-workspace:/" + workspaceName + "/" + a.path());
+            // Explicit uri (e.g. vance-process:<id>) wins; else build the workspace-file uri.
+            o.put("uri", a.uri() != null
+                    ? a.uri()
+                    : "vance-workspace:/" + workspaceName + "/" + a.path());
             if (a.kind() != null) {
                 o.put("kind", a.kind());
             }

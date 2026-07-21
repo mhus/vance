@@ -41,7 +41,7 @@ class DaemonComposeRunnerTest {
     private DamogranManifest manifest(List<TaskSpec> tasks) {
         return new DamogranManifest(
                 new WorkspaceSpec("build-box", "temp", false, false, Map.of(), "DAEMON"),
-                List.of(), tasks, List.of(), null, null);
+                List.of(), tasks, List.of(), null, null, DamogranManifest.SessionSpec.DISABLED);
     }
 
     private ThinkProcessDocument process(String sessionId) {

@@ -55,12 +55,12 @@ const script = computed<string>(() => (kind.value ? extractScript(yaml.value, ki
 function onScript(e: Event) {
   const k = kind.value;
   if (!k) return;
-  setYaml(applyScript(yaml.value, k.taskType, k.scriptField, (e.target as HTMLTextAreaElement).value));
+  setYaml(applyScript(yaml.value, k, (e.target as HTMLTextAreaElement).value));
 }
 function onYaml(e: Event) { setYaml((e.target as HTMLTextAreaElement).value); }
 function onYamlBlur() {
   const k = kind.value;
-  if (k) setYaml(normalizeManifest(yaml.value, k.taskType, k.scriptField));
+  if (k) setYaml(normalizeManifest(yaml.value, k));
 }
 
 const meta = computed<{ title?: string; description?: string }>(() => {

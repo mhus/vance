@@ -10,6 +10,11 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>YAML shape:
  * <pre>{@code
+ * session:                   # optional mapping (see SessionSpec); absent = no session
+ *   enabled: true            #   default true when the section is present
+ *   name: my-agent           #   stable process identity (re-run continues it)
+ *   recipe: arthur           #   makes the session process a conversational agent
+ *   clean: false             #   true = reset the session process before the run
  * workspace:
  *   name: my-workspace        # named, re-findable workspace (session-scoped)
  *   type: node                # temp | git | node | python | ephemeral | <addon>
@@ -42,6 +47,17 @@ import org.jspecify.annotations.Nullable;
  * <p>Task items carry a {@code type} discriminator resolved to a
  * {@link DamogranTask} bean; the remaining fields are task-type specific and
  * are handed to the bean as {@link TaskSpec#params()}.
+ *
+ * @param session governs whether the REST run path provisions a session
+ *                process (session + think-process) so {@code spawn} tasks and
+ *                other process-scoped tooling have a process context. Disabled
+ *                by default: the compose runs process-less — {@code exec}/
+ *                {@code js}/{@code llm}, import and export all work, but a
+ *                {@code spawn} task fails cleanly. Skipping the process avoids
+ *                leaving an idle one that would be woken by {@code EXEC_FINISHED}
+ *                events and burn LLM turns for nothing. Ignored when the run
+ *                already binds to a real chat process (an active session's
+ *                primary process is reused as-is). See {@link SessionSpec}.
  */
 public record DamogranManifest(
         WorkspaceSpec workspace,
@@ -49,7 +65,34 @@ public record DamogranManifest(
         List<TaskSpec> tasks,
         List<ExportEntry> exports,
         @Nullable String title,
-        @Nullable String description) {
+        @Nullable String description,
+        SessionSpec session) {
+
+    /**
+     * The session process this compose binds to on the REST run path (the Web-UI
+     * "Run" button / chatless surfaces). Written in YAML as a mapping under
+     * {@code session:}; an absent section means no session process.
+     *
+     * @param enabled provision a session process at all — a present
+     *                {@code session:} mapping defaults {@code enabled} to true
+     *                unless {@code enabled: false} is set explicitly
+     * @param name    stable process identity — re-running with the same name
+     *                reuses the same process (memory continuity across runs). A
+     *                {@code null} name falls back to a per-app / per-user scope.
+     * @param recipe  when set, the session process is created as a conversational
+     *                <em>agent</em> from this recipe (engine + prompt + tools);
+     *                an {@code agent} task then delivers its prompt as a turn.
+     *                {@code null} keeps the process a plain WORK-target holder
+     *                (file/exec tools only, inert), the pre-agent behaviour.
+     * @param clean   reset the session process before the run (drop its prior
+     *                conversation) — a fresh start on an otherwise stable name
+     */
+    public record SessionSpec(
+            boolean enabled, @Nullable String name, @Nullable String recipe, boolean clean) {
+
+        /** No session process — the compose runs process-less. */
+        public static final SessionSpec DISABLED = new SessionSpec(false, null, null, false);
+    }
 
     /**
      * The workspace this compose operates on.

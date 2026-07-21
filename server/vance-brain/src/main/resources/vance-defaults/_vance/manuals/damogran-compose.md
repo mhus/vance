@@ -48,6 +48,11 @@ showSource: false          # optional, nur UI (Runner ignoriert): true = YAML
                            #   (Default: nur Titel/Beschreibung + Run + Outputs)
 autoRun: true              # optional, nur UI: false = beim „Run All Until"
                            #   überspringen (per ▶ manuell weiter ausführbar)
+session:                   # optional: Session-Prozess bereitstellen (für `agent`,
+  enabled: true            #   `spawn` oder tool-nutzendes `js` beim CHATLOSEN Button-Run).
+  name: my-agent           #   optional: stabile Identität → Re-Run setzt fort (Kontinuität)
+  recipe: arthur           #   optional: macht den Prozess zum Agenten (für `agent`-Task)
+  clean: false             #   true = Prozess vor dem Run zurücksetzen (frischer Start)
 workspace:
   name: my-work            # benannter Workspace (überlebt Re-Runs in der Session)
   type: temp               # temp | git | node | python
@@ -84,7 +89,8 @@ export:
 | `python` | `script` **oder** `code`, opt. `deadlineSeconds` | Python-Datei/Inline |
 | `js` | `script` **oder** `code` | Workspace-JS (nur Rückgabewert) |
 | `llm` | `recipe`, `prompt`, `output` | Single-Shot-LLM → Output-Datei |
-| `spawn` | `recipe`, `prompt` | Worker-Prozess (fire-and-forget) |
+| `spawn` | `recipe`, `prompt` | Worker-Prozess (fire-and-forget, neuer Prozess je Run) |
+| `agent` | `prompt` (Recipe via `session.recipe`) | Prompt als Turn an den Session-Prozess, blockiert bis Antwort; Output `vance-process:<pid>/<msgId>` |
 | `tex-task` | `main` (`.tex`), opt. `engine` | LaTeX → PDF |
 
 ## Regeln
@@ -108,11 +114,24 @@ export:
 - **`llm` braucht** eine deklarierte Output-Datei; die Antwort landet dort.
 - **`js`** ruft `vance.tools.call(...)` mit dem Tool-Set des **gebundenen
   Process**: bei aktiver Chat-Session dessen Tools (ob `file_*` dabei sind, hängt
-  vom Chat-Engine/Recipe ab); **chatlos** ein projekt-scoped Carrier-Process mit
-  den `file_*`/`exec_*`-WorkTarget-Tools (schreibt in den Compose-Workspace).
+  vom Chat-Engine/Recipe ab); beim eigenen LLM-`compose_run` dein Process. **Läuft
+  der Compose chatlos per Button** (Web-UI, keine Chat-Session), braucht `js` mit
+  Tool-Nutzung eine aktive `session:`-Sektion — sonst ist das Tool-Surface **leer**
+  (`vance.files.isEnabled()` → false; der Skript-Rückgabewert läuft trotzdem).
   `vance.tools.list()`/`has(name)` zeigen Verfügbares; `vance.files` ist der
   Datei-Adapter (`isEnabled()` prüft, `read`/`readRaw`/`write`/`list` werfen
   sonst). Für garantierte Datei-Erzeugung immer `python`/`exec` (direktes cwd).
+- **`spawn`** braucht einen Owner-Process. Beim eigenen `compose_run` hast du
+  ihn immer; ein **chatloser Button-Run** braucht eine aktive `session:`-Sektion,
+  sonst failt der Task sauber mit *„spawn task requires a process context"*.
+  `spawn` erzeugt **je Run einen neuen Prozess** (amnesisch).
+- **`agent`** schickt `prompt` als **Turn** an den Session-Prozess (`session.recipe`
+  = welcher Agent, z.B. `arthur`). Weil `session.name` **stabil** ist, setzt jeder
+  Run **dieselbe** Konversation fort (Kontinuität; `session.clean: true` = frisch).
+  Der Task **blockiert bis die Antwort da ist** (Obergrenze `deadlineSeconds`,
+  Default 300) und gibt die konkrete Antwort-Message als
+  **`vance-process:<pid>/<msgId>`-Output** zurück. Für aufeinander aufbauende
+  Agenten-Läufe `agent` statt `spawn` nehmen.
 - Fehler stehen im Task-Result (`status: failure`, `error`), nicht als Exception.
 - **`target: CLIENT` / `DAEMON`**: läuft gegen das Dateisystem eines Remote-
   Hosts — CLIENT = der verbundene **Foot** (Foot-Session nötig), DAEMON = ein

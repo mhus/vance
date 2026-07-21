@@ -88,6 +88,67 @@ class DamogranManifestParserTest {
         assertThat(m.imports()).isEmpty();
         assertThat(m.tasks()).isEmpty();
         assertThat(m.exports()).isEmpty();
+        assertThat(m.session().enabled()).isFalse();
+    }
+
+    @Test
+    void parse_sessionSection_mapsFields() {
+        String yaml =
+                """
+                session:
+                  enabled: true
+                  name: my-agent
+                  recipe: arthur
+                  clean: true
+                workspace:
+                  name: scratch
+                """;
+
+        DamogranManifest.SessionSpec s = parser.parse(yaml).session();
+        assertThat(s.enabled()).isTrue();
+        assertThat(s.name()).isEqualTo("my-agent");
+        assertThat(s.recipe()).isEqualTo("arthur");
+        assertThat(s.clean()).isTrue();
+    }
+
+    @Test
+    void parse_sessionSection_defaultsEnabledTrueWhenPresent() {
+        String yaml =
+                """
+                session:
+                  name: my-agent
+                workspace:
+                  name: scratch
+                """;
+
+        assertThat(parser.parse(yaml).session().enabled()).isTrue();
+    }
+
+    @Test
+    void parse_sessionSection_enabledFalseDisables() {
+        String yaml =
+                """
+                session:
+                  enabled: false
+                workspace:
+                  name: scratch
+                """;
+
+        assertThat(parser.parse(yaml).session().enabled()).isFalse();
+    }
+
+    @Test
+    void parse_sessionScalar_isRejected() {
+        String yaml =
+                """
+                session: true
+                workspace:
+                  name: scratch
+                """;
+
+        assertThatThrownBy(() -> parser.parse(yaml))
+                .isInstanceOf(DamogranException.class)
+                .hasMessageContaining("'session' must be a mapping");
     }
 
     @Test

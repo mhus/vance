@@ -54,13 +54,14 @@ class DamogranComposeServiceTest {
     private DamogranManifest manifest(String target, List<TaskSpec> tasks,
                                       List<ImportEntry> imports, List<ExportEntry> exports) {
         return new DamogranManifest(
-                new WorkspaceSpec("ws", "temp", false, false, Map.of(), target), imports, tasks, exports, null, null);
+                new WorkspaceSpec("ws", "temp", false, false, Map.of(), target), imports, tasks, exports, null, null,
+                DamogranManifest.SessionSpec.DISABLED);
     }
 
     private DamogranManifest deleteManifest() {
         return new DamogranManifest(
                 new WorkspaceSpec("ws", "temp", false, true, Map.of(), "WORK"),
-                List.of(), List.of(), List.of(), null, null);
+                List.of(), List.of(), List.of(), null, null, DamogranManifest.SessionSpec.DISABLED);
     }
 
     private static TaskSpec task(String type) {

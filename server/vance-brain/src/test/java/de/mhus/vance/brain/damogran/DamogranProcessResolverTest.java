@@ -9,6 +9,10 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.brain.action.ActionExecutorRegistry;
+import de.mhus.vance.brain.action.ActionResult;
+import de.mhus.vance.brain.action.TriggerKind;
+import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
@@ -18,22 +22,31 @@ import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.ObjectProvider;
 
 class DamogranProcessResolverTest {
 
     private SessionService sessionService;
     private ThinkProcessService thinkProcessService;
+    private ChatMessageService chatMessageService;
+    private ActionExecutorRegistry actionRegistry;
     private DamogranProcessResolver resolver;
 
     @BeforeEach
+    @SuppressWarnings("unchecked")
     void setUp() {
         sessionService = mock(SessionService.class);
         thinkProcessService = mock(ThinkProcessService.class);
-        resolver = new DamogranProcessResolver(sessionService, thinkProcessService);
+        chatMessageService = mock(ChatMessageService.class);
+        actionRegistry = mock(ActionExecutorRegistry.class);
+        ObjectProvider<ActionExecutorRegistry> provider = mock(ObjectProvider.class);
+        when(provider.getObject()).thenReturn(actionRegistry);
+        resolver = new DamogranProcessResolver(
+                sessionService, thinkProcessService, chatMessageService, provider);
     }
 
     @Test
-    void reuses_existing_carrier_without_creating() {
+    void reuses_existing_process_without_creating() {
         SessionDocument session = new SessionDocument();
         session.setSessionId("sys-1");
         ThinkProcessDocument process = mock(ThinkProcessDocument.class);
@@ -41,7 +54,7 @@ class DamogranProcessResolverTest {
         when(sessionService.findSystemSession("t", "p", "_damogran")).thenReturn(Optional.of(session));
         when(thinkProcessService.findByName("t", "sys-1", "_damogran")).thenReturn(Optional.of(process));
 
-        assertThat(resolver.resolveComposeCarrier("t", "p", null)).isEqualTo("proc-1");
+        assertThat(resolver.resolveComposeSession("t", "p", null, null, false)).isEqualTo("proc-1");
 
         verify(sessionService, never())
                 .create(any(), any(), any(), any(), any(), any(), any(), anyBoolean());
@@ -51,7 +64,7 @@ class DamogranProcessResolverTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    void creates_carrier_with_worktarget_override_when_absent() {
+    void creates_process_with_worktarget_override_when_absent() {
         when(sessionService.findSystemSession("t", "p", "_damogran")).thenReturn(Optional.empty());
         SessionDocument created = new SessionDocument();
         created.setSessionId("sys-9");
@@ -64,7 +77,7 @@ class DamogranProcessResolverTest {
                 any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(process);
 
-        assertThat(resolver.resolveComposeCarrier("t", "p", null)).isEqualTo("proc-9");
+        assertThat(resolver.resolveComposeSession("t", "p", null, null, false)).isEqualTo("proc-9");
 
         verify(sessionService).markBootstrapped("sys-9");
         ArgumentCaptor<Set<String>> override = ArgumentCaptor.forClass(Set.class);
@@ -75,7 +88,7 @@ class DamogranProcessResolverTest {
     }
 
     @Test
-    void appKey_scopesCarrierPerApp_sanitizedName() {
+    void name_scopesProcess_sanitizedName() {
         SessionDocument session = new SessionDocument();
         session.setSessionId("sys-app");
         ThinkProcessDocument process = mock(ThinkProcessDocument.class);
@@ -86,6 +99,42 @@ class DamogranProcessResolverTest {
         when(thinkProcessService.findByName("t", "sys-app", "_damogran_app_notes_build"))
                 .thenReturn(Optional.of(process));
 
-        assertThat(resolver.resolveComposeCarrier("t", "p", "app:notes/build")).isEqualTo("proc-app");
+        assertThat(resolver.resolveComposeSession("t", "p", "app:notes/build", null, false)).isEqualTo("proc-app");
+    }
+
+    @Test
+    void clean_dropsExistingProcessAndMessagesBeforeReuse() {
+        SessionDocument session = new SessionDocument();
+        session.setSessionId("sys-1");
+        ThinkProcessDocument stale = mock(ThinkProcessDocument.class);
+        when(stale.getId()).thenReturn("old-proc");
+        ThinkProcessDocument fresh = mock(ThinkProcessDocument.class);
+        when(fresh.getId()).thenReturn("new-proc");
+        when(sessionService.findSystemSession("t", "p", "_damogran")).thenReturn(Optional.of(session));
+        // First lookup (reset) sees the stale process; second (reuse-or-create) sees the fresh one.
+        when(thinkProcessService.findByName("t", "sys-1", "_damogran"))
+                .thenReturn(Optional.of(stale))
+                .thenReturn(Optional.of(fresh));
+
+        assertThat(resolver.resolveComposeSession("t", "p", null, null, true)).isEqualTo("new-proc");
+
+        verify(chatMessageService).deleteByProcess("t", "sys-1", "old-proc");
+        verify(thinkProcessService).delete("old-proc");
+    }
+
+    @Test
+    void recipe_createsAgentViaActionRegistry_returningSpawnedId() {
+        SessionDocument session = new SessionDocument();
+        session.setSessionId("sys-1");
+        when(sessionService.findSystemSession("t", "p", "_damogran")).thenReturn(Optional.of(session));
+        when(thinkProcessService.findByName("t", "sys-1", "_damogran")).thenReturn(Optional.empty());
+        when(actionRegistry.execute(any(), any(), eq(TriggerKind.TOOL)))
+                .thenReturn(ActionResult.scheduled("agent-42"));
+
+        assertThat(resolver.resolveComposeSession("t", "p", null, "arthur", false)).isEqualTo("agent-42");
+
+        // Recipe path spawns via the registry — no plain eddie holder created.
+        verify(thinkProcessService, never()).create(
+                any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 }

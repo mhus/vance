@@ -1,14 +1,22 @@
 package de.mhus.vance.brain.damogran;
 
+import de.mhus.vance.api.action.TriggerAction;
 import de.mhus.vance.api.ws.Profiles;
+import de.mhus.vance.brain.action.ActionExecutorRegistry;
+import de.mhus.vance.brain.action.ActionResult;
+import de.mhus.vance.brain.action.TriggerContext;
+import de.mhus.vance.brain.action.TriggerKind;
 import de.mhus.vance.brain.eddie.EddieEngine;
 import de.mhus.vance.brain.tools.worktarget.BaseEngineTools;
+import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 /**
@@ -40,23 +48,37 @@ public class DamogranProcessResolver {
 
     private final SessionService sessionService;
     private final ThinkProcessService thinkProcessService;
+    private final ChatMessageService chatMessageService;
+    private final ObjectProvider<ActionExecutorRegistry> actionRegistryProvider;
 
     public DamogranProcessResolver(SessionService sessionService,
-                                   ThinkProcessService thinkProcessService) {
+                                   ThinkProcessService thinkProcessService,
+                                   ChatMessageService chatMessageService,
+                                   ObjectProvider<ActionExecutorRegistry> actionRegistryProvider) {
         this.sessionService = sessionService;
         this.thinkProcessService = thinkProcessService;
+        this.chatMessageService = chatMessageService;
+        this.actionRegistryProvider = actionRegistryProvider;
     }
 
     /**
-     * Reuse-or-create the chatless compose carrier process, scoped by
-     * {@code appKey} (the compose's app/document identity — the Workbook app
-     * folder or the Cortex compose doc path). Same app ⇒ same carrier (same
-     * workspace, collaborative — as the UI's presence shows); different apps get
-     * separate carriers so their WorkTargets don't collide. {@code null} appKey
-     * falls back to a single project-wide carrier.
+     * Reuse-or-create the chatless compose session process, scoped by
+     * {@code key} (the compose's session identity — an explicit
+     * {@code session.name}, else the Workbook app folder / per-user fallback).
+     * Same key ⇒ same process (memory continuity across runs); different keys
+     * get separate processes so their WorkTargets don't collide.
+     *
+     * <p>When {@code recipe} is set, a freshly created process is a conversational
+     * <b>agent</b> spawned from that recipe (via {@link ActionExecutorRegistry} —
+     * the single spawn surface, so recipe resolution / engine start stay DRY);
+     * otherwise it is a plain {@link BaseEngineTools#WORK_TARGET} holder (eddie,
+     * inert). {@code clean} drops an existing process (and its conversation)
+     * first, so the run starts fresh on the same stable name.
      */
-    public String resolveComposeCarrier(String tenantId, String projectId, @Nullable String appKey) {
-        String name = carrierName(appKey);
+    public String resolveComposeSession(
+            String tenantId, String projectId, @Nullable String key,
+            @Nullable String recipe, boolean clean) {
+        String name = sessionName(key);
         String sessionId = sessionService.findSystemSession(tenantId, projectId, name)
                 .map(SessionDocument::getSessionId)
                 .orElseGet(() -> {
@@ -64,25 +86,69 @@ public class DamogranProcessResolver {
                             tenantId, SYSTEM_NAME, projectId, name,
                             Profiles.DAEMON, "damogran", null, /*system*/ true);
                     sessionService.markBootstrapped(created.getSessionId());
-                    log.debug("Damogran: created chatless carrier '{}' for {}/{}", name, tenantId, projectId);
+                    log.debug("Damogran: created session process '{}' for {}/{}", name, tenantId, projectId);
                     return created.getSessionId();
                 });
 
-        return thinkProcessService.findByName(tenantId, sessionId, name)
-                .map(ThinkProcessDocument::getId)
-                .orElseGet(() -> thinkProcessService.create(
-                        tenantId, projectId, sessionId, name, EddieEngine.NAME,
-                        /*version*/ null, /*title*/ "Damogran compose", /*goal*/ null,
-                        /*parentProcessId*/ null, /*engineParams*/ null,
-                        /*recipeName*/ null, /*promptOverride*/ null, /*promptMode*/ null,
-                        /*allowedToolsOverride*/ BaseEngineTools.WORK_TARGET).getId());
+        if (clean) {
+            resetExisting(tenantId, sessionId, name);
+        }
+
+        ThinkProcessDocument existing = thinkProcessService.findByName(tenantId, sessionId, name).orElse(null);
+        if (existing != null) {
+            return existing.getId();
+        }
+        if (recipe != null && !recipe.isBlank()) {
+            return createAgent(tenantId, projectId, sessionId, name, recipe);
+        }
+        return thinkProcessService.create(
+                tenantId, projectId, sessionId, name, EddieEngine.NAME,
+                /*version*/ null, /*title*/ "Damogran compose", /*goal*/ null,
+                /*parentProcessId*/ null, /*engineParams*/ null,
+                /*recipeName*/ null, /*promptOverride*/ null, /*promptMode*/ null,
+                /*allowedToolsOverride*/ BaseEngineTools.WORK_TARGET).getId();
     }
 
-    /** {@code _damogran} (project-wide) or {@code _damogran_<sanitized-appKey>} (per app). */
-    private static String carrierName(@Nullable String appKey) {
-        if (appKey == null || appKey.isBlank()) {
+    /**
+     * Create the session process as a conversational agent from {@code recipe}
+     * via the shared spawn surface — a <b>primary</b> process (no parent) in the
+     * system session, created + engine-started. Reuses {@code SpawnActionExecutor}
+     * so recipe resolution, tool-set and lifecycle match every other spawn path.
+     */
+    private String createAgent(
+            String tenantId, String projectId, String sessionId, String name, String recipe) {
+        TriggerAction.Recipe action = new TriggerAction.Recipe(
+                recipe, /*processName*/ name, /*title*/ "Damogran agent", /*goal*/ null,
+                /*inheritContextLevel*/ null, /*connectionProfile*/ null,
+                /*initialMessage*/ null, /*params*/ Map.of(), /*runAs*/ null);
+        TriggerContext ctx = TriggerContext.sessioned(
+                tenantId, projectId, /*resolvedRunAs*/ null, /*correlationId*/ null,
+                "damogran:session", sessionId, /*parentProcessId*/ null);
+        ActionResult result = actionRegistryProvider.getObject().execute(action, ctx, TriggerKind.TOOL);
+        if (result.outcome().isFailure() || result.spawnedId() == null) {
+            throw new DamogranException("could not create agent session process '" + name
+                    + "' from recipe '" + recipe + "': "
+                    + (result.errorMessage() != null ? result.errorMessage() : result.outcome()));
+        }
+        log.debug("Damogran: created agent session process '{}' (recipe='{}') id='{}'",
+                name, recipe, result.spawnedId());
+        return result.spawnedId();
+    }
+
+    /** Drop the existing session process + its conversation so the run starts fresh. */
+    private void resetExisting(String tenantId, String sessionId, String name) {
+        thinkProcessService.findByName(tenantId, sessionId, name).ifPresent(existing -> {
+            chatMessageService.deleteByProcess(tenantId, sessionId, existing.getId());
+            thinkProcessService.delete(existing.getId());
+            log.debug("Damogran: reset session process '{}' (clean) for tenant='{}'", name, tenantId);
+        });
+    }
+
+    /** {@code _damogran} (project-wide) or {@code _damogran_<sanitized-key>} (per key). */
+    private static String sessionName(@Nullable String key) {
+        if (key == null || key.isBlank()) {
             return SYSTEM_NAME;
         }
-        return SYSTEM_NAME + "_" + appKey.replaceAll("[^a-zA-Z0-9._-]", "_");
+        return SYSTEM_NAME + "_" + key.replaceAll("[^a-zA-Z0-9._-]", "_");
     }
 }

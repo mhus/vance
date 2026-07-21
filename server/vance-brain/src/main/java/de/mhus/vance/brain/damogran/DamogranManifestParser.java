@@ -3,6 +3,7 @@ package de.mhus.vance.brain.damogran;
 import de.mhus.vance.brain.damogran.DamogranManifest.ExportEntry;
 import de.mhus.vance.brain.damogran.DamogranManifest.ImportEntry;
 import de.mhus.vance.brain.damogran.DamogranManifest.OutputSpec;
+import de.mhus.vance.brain.damogran.DamogranManifest.SessionSpec;
 import de.mhus.vance.brain.damogran.DamogranManifest.TaskSpec;
 import de.mhus.vance.brain.damogran.DamogranManifest.WorkspaceSpec;
 import java.util.ArrayList;
@@ -54,8 +55,10 @@ public class DamogranManifestParser {
                     + "not be combined with 'clear', 'import', 'tasks' or 'export'");
         }
 
+        SessionSpec session = parseSession(root.get("session"));
+
         return new DamogranManifest(workspace, imports, tasks, exports,
-                readString(root, "title"), readString(root, "description"));
+                readString(root, "title"), readString(root, "description"), session);
     }
 
     // ──────────────────── workspace ────────────────────
@@ -102,6 +105,26 @@ public class DamogranManifestParser {
         }
 
         return new WorkspaceSpec(name, type, clear, delete, options, target);
+    }
+
+    // ──────────────────── session ────────────────────
+
+    @SuppressWarnings("unchecked")
+    private SessionSpec parseSession(@Nullable Object raw) {
+        if (raw == null) {
+            return SessionSpec.DISABLED;
+        }
+        if (!(raw instanceof Map<?, ?> map)) {
+            throw new DamogranException(
+                    "compose manifest: 'session' must be a mapping (e.g. 'session:\\n  enabled: true')");
+        }
+        Map<String, Object> s = (Map<String, Object>) map;
+        // A present section is enabled unless explicitly turned off.
+        boolean enabled = !Boolean.FALSE.equals(s.get("enabled"));
+        String name = readString(s, "name");
+        String recipe = readString(s, "recipe");
+        boolean clean = Boolean.TRUE.equals(s.get("clean"));
+        return new SessionSpec(enabled, name, recipe, clean);
     }
 
     // ──────────────────── import / export ────────────────────

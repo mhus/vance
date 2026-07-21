@@ -57,6 +57,7 @@ public class ComposeController {
     private static final int TAIL_LINES = 40;
 
     private final DamogranComposeService composeService;
+    private final DamogranManifestParser manifestParser;
     private final DocumentService documentService;
     private final SessionService sessionService;
     private final DamogranProcessResolver processResolver;
@@ -64,12 +65,14 @@ public class ComposeController {
     private final ExecManager execManager;
 
     public ComposeController(DamogranComposeService composeService,
+                             DamogranManifestParser manifestParser,
                              DocumentService documentService,
                              SessionService sessionService,
                              DamogranProcessResolver processResolver,
                              ComposeRunRegistry runRegistry,
                              ExecManager execManager) {
         this.composeService = composeService;
+        this.manifestParser = manifestParser;
         this.documentService = documentService;
         this.sessionService = sessionService;
         this.processResolver = processResolver;
@@ -96,16 +99,22 @@ public class ComposeController {
                 : (body.composeBasePath() != null && !body.composeBasePath().isBlank()
                         ? body.composeBasePath().trim() : null);
 
-        String processId = resolveProcessId(tenant, projectId, body, httpRequest);
-
-        ComposeRun run;
+        DamogranManifest manifest;
+        String processId;
         try {
-            run = composeService.runAsync(tenant, projectId, processId, yaml, baseDir);
+            manifest = manifestParser.parse(yaml);
+            processId = resolveProcessId(tenant, projectId, manifest, body, httpRequest);
         } catch (DamogranException e) {
-            // Synchronous failures (manifest parse) still surface as 400.
+            // A malformed manifest (or an un-resolvable agent recipe) is user-authored
+            // content, not a protocol error: ride it back in the result envelope so the
+            // compose output region renders the reason inline — a bare 400 reaches the
+            // client as an opaque "{status:400,error:Bad Request}" blob (Spring drops the
+            // ResponseStatusException reason from the body by default).
             log.debug("compose run rejected for {}/{}: {}", tenant, projectId, e.getMessage());
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+            return errorResult(e.getMessage());
         }
+
+        ComposeRun run = composeService.runAsync(tenant, projectId, processId, manifest, baseDir);
         try {
             run.awaitDone(FAST_PATH_WAIT_MS);
         } catch (InterruptedException e) {
@@ -146,6 +155,22 @@ public class ComposeController {
             execManager.kill(tenant, projectId, jobId);
         }
         return renderRun(run, /*includeTail=*/ true);
+    }
+
+    /**
+     * Terminal error envelope for a run that never started (bad manifest /
+     * un-resolvable agent recipe) — the same {@code success/error/tasks} shape a
+     * failed run returns, at HTTP 200, so the client renders the reason inline
+     * rather than as an opaque 4xx body.
+     */
+    private static Map<String, Object> errorResult(@Nullable String message) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("running", false);
+        out.put("success", false);
+        out.put("status", "failure");
+        out.put("error", message != null ? message : "invalid compose manifest");
+        out.put("tasks", List.of());
+        return out;
     }
 
     /**
@@ -210,16 +235,24 @@ public class ComposeController {
     /**
      * Resolve the process the compose should run under. When a {@code sessionId}
      * is given and the session belongs to this tenant/project, use its primary
-     * chat process (variant a — shared WorkTarget + tool surface with the chat).
-     * Otherwise (no session, foreign session, or no chat process yet) bind to a
-     * chatless carrier process so scripts still reach the workspace via the file
-     * tools. Carrier scope: <b>per app</b> when the caller passes an
-     * {@code appKey} (a Workbook app — collaborative, shared workspace), else
-     * <b>per (project, user)</b> for a standalone compose file — a user running
-     * several compose files in sequence shares one carrier, distinct per user.
+     * chat process (variant a — shared WorkTarget + tool surface with the chat;
+     * that process already exists, so no waste).
+     *
+     * <p>Without a usable chat process the session process is created <b>on
+     * demand only</b>: a compose provisions one solely when its {@code session:}
+     * section is enabled (it uses {@code spawn} or other process-scoped tooling).
+     * The common case — {@code exec}/{@code js}/{@code llm} plus import/export —
+     * runs process-less ({@code null}), which keeps the WorkspaceComposeRunner
+     * from registering an exec owner and thus avoids waking an idle process with
+     * {@code EXEC_FINISHED} events (a wasted LLM turn). Identity: an explicit
+     * {@code session.name} (stable across runs — memory continuity), else
+     * <b>per app</b> when the caller passes an {@code appKey} (a Workbook app —
+     * collaborative, shared workspace), else <b>per (project, user)</b> for a
+     * standalone compose file. {@code session.clean} resets it before the run.
      */
-    private String resolveProcessId(
-            String tenant, String projectId, RunRequest body, HttpServletRequest httpRequest) {
+    private @Nullable String resolveProcessId(
+            String tenant, String projectId, DamogranManifest manifest,
+            RunRequest body, HttpServletRequest httpRequest) {
         if (body.sessionId() != null && !body.sessionId().isBlank()) {
             String chatProcess = sessionService.findBySessionId(body.sessionId().trim())
                     .filter(s -> tenant.equals(s.getTenantId()) && projectId.equals(s.getProjectId()))
@@ -229,10 +262,17 @@ public class ComposeController {
                 return chatProcess;
             }
         }
-        String carrierKey = body.appKey() != null && !body.appKey().isBlank()
-                ? "app:" + body.appKey().trim()
-                : "user:" + currentUser(httpRequest);
-        return processResolver.resolveComposeCarrier(tenant, projectId, carrierKey);
+        DamogranManifest.SessionSpec session = manifest.session();
+        if (!session.enabled()) {
+            return null;
+        }
+        String sessionKey = session.name() != null && !session.name().isBlank()
+                ? "name:" + session.name().trim()
+                : body.appKey() != null && !body.appKey().isBlank()
+                        ? "app:" + body.appKey().trim()
+                        : "user:" + currentUser(httpRequest);
+        return processResolver.resolveComposeSession(
+                tenant, projectId, sessionKey, session.recipe(), session.clean());
     }
 
     private static String currentUser(HttpServletRequest req) {

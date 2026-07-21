@@ -15,6 +15,7 @@ import { computed, onMounted } from 'vue';
 import { CodeEditor, MarkdownView, VAlert, VButton, VCard } from '@/components';
 import { useWorkspaceFile, workspaceFileUrl } from '@/composables/useWorkspaceFile';
 import { resolveRenderer } from '@/kindRenderers/registry';
+import ComposeProcessOutput from './ComposeProcessOutput.vue';
 
 interface OutputArtifact {
   path: string;
@@ -26,6 +27,10 @@ interface OutputArtifact {
 const props = defineProps<{ projectId: string; output: OutputArtifact }>();
 
 const WORKSPACE_PREFIX = 'vance-workspace:/';
+const PROCESS_PREFIX = 'vance-process:';
+
+/** An `agent`-task output points at a session process, not a workspace file. */
+const isProcess = computed<boolean>(() => props.output.uri.startsWith(PROCESS_PREFIX));
 
 /** `vance-workspace:/<dir>/<rel>` → `<dir>/<rel>` (the workspace REST path). */
 const wsPath = computed<string>(() =>
@@ -36,7 +41,7 @@ const wsPath = computed<string>(() =>
 
 const { result, loading, error, load } = useWorkspaceFile();
 onMounted(() => {
-  void load(props.projectId, wsPath.value, props.output.path);
+  if (!isProcess.value) void load(props.projectId, wsPath.value, props.output.path);
 });
 
 const url = computed<string>(() => workspaceFileUrl(props.projectId, wsPath.value));
@@ -55,7 +60,8 @@ const structuredRenderer = computed(() => {
 </script>
 
 <template>
-  <VCard :title="title">
+  <ComposeProcessOutput v-if="isProcess" :project-id="projectId" :output="output" />
+  <VCard v-else :title="title">
     <VAlert v-if="error" variant="error">{{ error }}</VAlert>
     <p v-else-if="loading" class="text-sm opacity-60">Loading…</p>
     <template v-else-if="result">

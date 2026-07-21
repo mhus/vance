@@ -20,6 +20,8 @@
   "scripts": {
     "build": "vue-tsc -b && vite build",
     "dev": "vite",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
@@ -38,6 +40,7 @@
     "@tiptap/vue-3": "^2.10.4",
     "@vitejs/plugin-vue": "^5.2.1",
     "vite": "^5.4.11",
+    "vitest": "^2.1.9",
     "vue": "^3.5.13",
     "vue-tsc": "^2.1.10"
   }

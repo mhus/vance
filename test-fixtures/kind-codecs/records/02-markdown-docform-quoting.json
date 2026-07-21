@@ -1,0 +1,24 @@
+{
+  "description": "markdown doc-form with CSV-light quoting: embedded comma + doubled quotes",
+  "mime": "text/markdown",
+  "input": "---\nkind: records\nschema: name, note\n---\n- \"Smith, John\", \"hello \"\"world\"\"\"\n- Doe, plain\n",
+  "expected": {
+    "$meta": {
+      "kind": "records"
+    },
+    "schema": [
+      "name",
+      "note"
+    ],
+    "items": [
+      {
+        "name": "Smith, John",
+        "note": "hello \"world\""
+      },
+      {
+        "name": "Doe",
+        "note": "plain"
+      }
+    ]
+  }
+}

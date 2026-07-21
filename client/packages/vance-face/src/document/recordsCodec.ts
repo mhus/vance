@@ -14,6 +14,13 @@
 // fences. Header row becomes the schema (unless an explicit front-
 // matter `schema:` is present), the alignment-divider row is skipped,
 // and remaining pipe-rows become items.
+//
+// Parity harness: this codec and its Java twin
+// `server/vance-shared/.../document/kind/RecordsCodec.java` must agree
+// on the wire format. A shared fixture corpus at
+// `test-fixtures/kind-codecs/records/` pins that agreement; it is read
+// by both `recordsCodec.parity.test.ts` (TS) and
+// `RecordsCodecParityTest.java` (Java). Edit the codec + corpus together.
 
 import {
   dumpYamlBody,

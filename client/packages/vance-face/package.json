@@ -11,6 +11,8 @@
     "dev:2": "FACE_PORT=9902 BRAIN_PORT=9992 vite",
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
@@ -67,6 +69,7 @@
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
     "vite": "^5.4.11",
+    "vitest": "^2.1.9",
     "vue-tsc": "^2.1.10"
   }
 }

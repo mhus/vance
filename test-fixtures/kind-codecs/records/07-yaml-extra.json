@@ -1,0 +1,22 @@
+{
+  "description": "application/yaml with per-item extra key + numeric top-level extra",
+  "mime": "application/yaml",
+  "input": "$meta:\n  kind: records\nschema:\n  - task\n  - done\nitems:\n  - task: Write tests\n    done: \"true\"\n    priority: high\nversion: 2\n",
+  "expected": {
+    "$meta": {
+      "kind": "records"
+    },
+    "schema": [
+      "task",
+      "done"
+    ],
+    "items": [
+      {
+        "task": "Write tests",
+        "done": "true",
+        "priority": "high"
+      }
+    ],
+    "version": 2
+  }
+}

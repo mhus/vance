@@ -1,0 +1,22 @@
+{
+  "description": "application/json with numeric coercion, per-item extra key, top-level extra key",
+  "mime": "application/json",
+  "input": "{\n  \"$meta\": { \"kind\": \"records\" },\n  \"schema\": [\"name\", \"age\"],\n  \"items\": [\n    { \"name\": \"Alice\", \"age\": 30, \"note\": \"vip\" }\n  ],\n  \"source\": \"import\"\n}\n",
+  "expected": {
+    "$meta": {
+      "kind": "records"
+    },
+    "schema": [
+      "name",
+      "age"
+    ],
+    "items": [
+      {
+        "name": "Alice",
+        "age": "30",
+        "note": "vip"
+      }
+    ],
+    "source": "import"
+  }
+}

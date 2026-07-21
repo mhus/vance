@@ -1,0 +1,26 @@
+{
+  "description": "markdown TABLE form (header row → schema), no front-matter",
+  "mime": "text/markdown",
+  "input": "| name | age |\n| --- | --- |\n| Alice | 30 |\n| Bob | 25 |\n",
+  "expected": {
+    "$meta": {
+      "kind": "records"
+    },
+    "schema": [
+      "name",
+      "age"
+    ],
+    "items": [
+      {
+        "name": "Alice",
+        "age": "30"
+      },
+      {
+        "name": "Bob",
+        "age": "25"
+      }
+    ]
+  },
+  "knownJavaDrift": true,
+  "driftNote": "TS codec parses the Markdown-table form (parseTableBody). Java RecordsCodec.parseMarkdown has no table support: it throws \"Missing or empty schema in front-matter\" because there is no front-matter schema line."
+}

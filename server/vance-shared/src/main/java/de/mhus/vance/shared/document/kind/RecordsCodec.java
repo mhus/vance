@@ -19,6 +19,14 @@ import tools.jackson.databind.ObjectMapper;
  * runs) and the schema-required rule.
  *
  * <p>Stateless utility — all methods static.
+ *
+ * <p><b>Parity harness.</b> This codec and its TS twin
+ * {@code client/packages/vance-face/src/document/recordsCodec.ts} must
+ * agree on the wire format. A shared fixture corpus at
+ * {@code test-fixtures/kind-codecs/records/} pins that agreement; it is
+ * read by both {@code RecordsCodecParityTest} (Java) and
+ * {@code recordsCodec.parity.test.ts} (TS). Edit the codec and the
+ * corpus together.
  */
 public final class RecordsCodec {
 

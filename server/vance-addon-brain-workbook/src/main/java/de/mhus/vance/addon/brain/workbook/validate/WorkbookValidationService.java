@@ -6,6 +6,8 @@ import de.mhus.vance.addon.brain.workpage.Block;
 import de.mhus.vance.addon.brain.workpage.WorkPageParser;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.shared.document.kind.validate.DocRefs;
+import de.mhus.vance.shared.document.kind.validate.Finding;
 import de.mhus.vance.toolpack.ToolException;
 import java.io.IOException;
 import java.io.InputStream;

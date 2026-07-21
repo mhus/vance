@@ -1,5 +1,6 @@
 package de.mhus.vance.addon.brain.workbook.validate;
 
+import de.mhus.vance.shared.document.kind.validate.DocRefs;
 import org.jspecify.annotations.Nullable;
 
 /**

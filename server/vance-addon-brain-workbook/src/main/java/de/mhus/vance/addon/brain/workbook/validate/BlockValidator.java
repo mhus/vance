@@ -1,6 +1,7 @@
 package de.mhus.vance.addon.brain.workbook.validate;
 
 import de.mhus.vance.addon.brain.workpage.Block;
+import de.mhus.vance.shared.document.kind.validate.Finding;
 import java.util.List;
 
 /**

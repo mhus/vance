@@ -1,7 +1,7 @@
 package de.mhus.vance.addon.brain.workbook;
 
-import de.mhus.vance.addon.brain.workbook.validate.Finding;
 import de.mhus.vance.addon.brain.workbook.validate.WorkbookValidationService;
+import de.mhus.vance.shared.document.kind.validate.Finding;
 import java.util.List;
 
 /**

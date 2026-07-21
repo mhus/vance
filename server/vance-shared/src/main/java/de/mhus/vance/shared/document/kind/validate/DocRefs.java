@@ -1,4 +1,4 @@
-package de.mhus.vance.addon.brain.workbook.validate;
+package de.mhus.vance.shared.document.kind.validate;
 
 import java.util.Map;
 import org.jspecify.annotations.Nullable;

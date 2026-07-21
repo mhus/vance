@@ -3,6 +3,8 @@ package de.mhus.vance.addon.brain.workbook.validate;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import de.mhus.vance.addon.brain.workpage.Block;
+import de.mhus.vance.shared.document.kind.validate.DocRefs;
+import de.mhus.vance.shared.document.kind.validate.Finding;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;

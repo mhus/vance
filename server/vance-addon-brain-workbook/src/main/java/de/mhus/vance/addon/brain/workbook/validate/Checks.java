@@ -1,5 +1,6 @@
 package de.mhus.vance.addon.brain.workbook.validate;
 
+import de.mhus.vance.shared.document.kind.validate.Finding;
 import java.util.List;
 import java.util.Locale;
 import org.jspecify.annotations.Nullable;

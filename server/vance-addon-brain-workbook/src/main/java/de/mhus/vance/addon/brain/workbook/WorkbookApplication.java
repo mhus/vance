@@ -55,13 +55,16 @@ public class WorkbookApplication implements VanceApplication {
 
     @Override
     public String promptInject(PromptInjectContext ctx) {
-        return "You are in a workbook at `" + ctx.folder() + "`. "
-                + "Pages live as `*.workpage.md` files inside this folder. "
-                + "Use `workpage_create(path=\"" + ctx.folder() + "/<slug>\", ...)` "
-                + "to add a page, `workpage_block_append/_insert/_update` to "
-                + "write content, and `app_rebuild('" + ctx.folder() + "')` "
-                + "to refresh `_index.md` after structural changes. "
-                + "Read `manual_read('workpage-blocks')` for the full block grammar.";
+        return "You are in a workbook at `" + ctx.folder() + "` — a folder of "
+                + "`*.workpage.md` pages. The document bound to this chat is the page the "
+                + "user currently has open: when they say \"this page\", \"this part\" or "
+                + "refer to a selection, they mean that file — read it with the document "
+                + "tools (or `doc_get_selection` for the selected part) and edit it in "
+                + "place. It is a workpage, NOT a standalone Markdown file: use "
+                + "`workpage_block_append/_insert/_update` for structured edits (block "
+                + "grammar: `manual_read('workpage-blocks')`). Add pages with "
+                + "`workpage_create(path=\"" + ctx.folder() + "/<slug>\", ...)` and "
+                + "`app_rebuild('" + ctx.folder() + "')` after structural changes.";
     }
 
     @Override

@@ -48,6 +48,14 @@ public class KanbanCardView {
 
     private boolean blocked;
 
+    /**
+     * Document-level accent color as the {@code AccentColor} enum name
+     * (e.g. {@code "RED"}); {@code null} = neutral. Carried as a string on
+     * the wire — the enum lives in {@code vance-api} and the addon's TS
+     * generator doesn't emit cross-package imports.
+     */
+    private @Nullable String color;
+
     private @Nullable String body;
 
     private int subtaskTotal;

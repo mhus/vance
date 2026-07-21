@@ -3,11 +3,13 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import {
   VButton,
   VCheckbox,
+  VColorPicker,
   VInput,
   VModal,
   VSelect,
   VTagEditor,
 } from '@vance/components';
+import { AccentColor } from '@vance/generated';
 import { WorkPageEditor } from '@vance/block-editor';
 import { updateKanbanCard } from './api';
 import type { KanbanCardUpdateRequest } from './generated/kanban/KanbanCardUpdateRequest';
@@ -59,6 +61,9 @@ const labels = ref<string[]>([...props.card.labels]);
 const dueDate = ref(props.card.dueDate ?? '');
 const estimate = ref<number | null>(props.card.estimate ?? null);
 const blocked = ref(props.card.blocked);
+// Document-level accent color; the wire value is the AccentColor enum name
+// (a string enum, so the cast is a no-op at runtime).
+const color = ref<AccentColor | null>((props.card.color as AccentColor | null) ?? null);
 
 // Editor source — only reseeded on card switch / remote edit, never on
 // our own save, so typing doesn't rebuild the ProseMirror doc (cursor
@@ -119,6 +124,7 @@ function reseed(): void {
   dueDate.value = props.card.dueDate ?? '';
   estimate.value = props.card.estimate ?? null;
   blocked.value = props.card.blocked;
+  color.value = (props.card.color as AccentColor | null) ?? null;
   body.value = props.card.body ?? '';
   latestBody = props.card.body ?? '';
   bodyDirty.value = false;
@@ -135,7 +141,7 @@ watch(() => props.card.path, reseed);
 watch(() => props.remoteRevision, reseed);
 
 watch(
-  [title, priority, assignee, labels, dueDate, estimate, blocked],
+  [title, priority, assignee, labels, dueDate, estimate, blocked, color],
   schedule,
   { deep: true },
 );
@@ -161,6 +167,11 @@ function buildPatch(): KanbanCardUpdateRequest {
     p.estimate = estimate.value;
   }
   if (blocked.value !== props.card.blocked) p.blocked = blocked.value;
+  const cardColor = (props.card.color as AccentColor | null) ?? null;
+  if (color.value !== cardColor) {
+    if (color.value === null) p.clearColor = true;
+    else p.color = color.value;
+  }
   // Only send the body when the user actually edited it (see bodyDirty).
   if (bodyDirty.value && latestBody !== (props.card.body ?? '')) p.body = latestBody;
   return p;
@@ -313,6 +324,12 @@ onBeforeUnmount(() => {
       <VTagEditor v-model="labels" label="Labels" />
 
       <VCheckbox v-model="blocked" label="Blocked" />
+
+      <VColorPicker
+        :model-value="color"
+        label="Color"
+        @update:model-value="(v) => color = v"
+      />
 
       <div class="flex flex-col gap-1">
         <VButton variant="ghost" class="justify-start" @click="onContentModal(true)">

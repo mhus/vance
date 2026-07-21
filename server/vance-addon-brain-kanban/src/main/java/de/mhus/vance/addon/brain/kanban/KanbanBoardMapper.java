@@ -139,6 +139,7 @@ public final class KanbanBoardMapper {
                     .dueDate(cf.card().dueDate())
                     .estimate(cf.card().estimate())
                     .blocked(cf.card().blocked())
+                    .color(cf.doc().getColor() != null ? cf.doc().getColor().name() : null)
                     .body(cf.card().body().isEmpty() ? null : cf.card().body())
                     .subtaskTotal(cb[0])
                     .subtaskDone(cb[1])

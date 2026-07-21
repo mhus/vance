@@ -13,6 +13,7 @@ export interface KanbanCardView {
   dueDate?: string;
   estimate?: number;
   blocked: boolean;
+  color?: string;
   body?: string;
   subtaskTotal: number;
   subtaskDone: number;

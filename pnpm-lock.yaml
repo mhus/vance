@@ -604,6 +604,9 @@ importers:
       '@vance/components':
         specifier: workspace:*
         version: link:../../../client/packages/components
+      '@vance/generated':
+        specifier: workspace:*
+        version: link:../../../client/packages/generated
       '@vance/kind-registry':
         specifier: workspace:*
         version: link:../../../client/packages/kind-registry

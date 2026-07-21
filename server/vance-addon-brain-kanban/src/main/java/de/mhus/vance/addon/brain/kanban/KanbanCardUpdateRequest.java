@@ -39,5 +39,15 @@ public class KanbanCardUpdateRequest {
 
     private @Nullable Boolean blocked;
 
+    /**
+     * Document-level accent color as the {@code AccentColor} enum name
+     * (e.g. {@code "RED"}). {@code null} = leave untouched; clearing goes
+     * through {@link #clearColor} since the name can't signal "clear".
+     */
+    private @Nullable String color;
+
+    /** When {@code true}, clears the accent color back to neutral. */
+    private @Nullable Boolean clearColor;
+
     private @Nullable String body;
 }

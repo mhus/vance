@@ -7,6 +7,7 @@ import de.mhus.vance.brain.applications.VanceApplication.CreateResult;
 import de.mhus.vance.brain.applications.VanceApplication.RefreshContext;
 import de.mhus.vance.brain.applications.VanceApplication.RefreshResult;
 
+import de.mhus.vance.api.common.AccentColor;
 import de.mhus.vance.brain.applications.VanceApplication;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.access.AccessFilterBase;
@@ -169,47 +170,81 @@ public class KanbanBoardController {
         authority.enforce(httpRequest,
                 new Resource.Document(tenant, projectId, path), Action.WRITE);
 
-        // Read-modify-write under optimistic locking: another writer (a
-        // concurrent LLM turn, a sibling browser) may bump the document
-        // version between our read and save. Re-read + re-merge the patch on
-        // conflict rather than surfacing a 500 — the patch carries only the
-        // fields the caller changed, so re-applying on the latest card is
-        // the correct resolution.
-        DocumentDocument updated = null;
-        CardDocument merged = null;
-        for (int attempt = 1; ; attempt++) {
-            DocumentDocument doc = documentService.findByPath(tenant, projectId, path)
+        DocumentDocument doc0 = documentService.findByPath(tenant, projectId, path)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Card not found: " + path));
+        if (!CARD_KIND.equalsIgnoreCase(doc0.getKind())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Document at '" + path + "' is not a card (kind="
+                            + doc0.getKind() + ").");
+        }
+
+        // Accent color is a document-level field, not part of the card
+        // front-matter. Apply it atomically (single-field $set/$unset) BEFORE
+        // the content merge so the merge's versioned save preserves it.
+        if (Boolean.TRUE.equals(request.getClearColor())) {
+            documentService.clearColor(doc0.getId());
+        } else if (request.getColor() != null) {
+            AccentColor accent;
+            try {
+                accent = AccentColor.valueOf(request.getColor());
+            } catch (IllegalArgumentException e) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Unknown accent color '" + request.getColor() + "'.");
+            }
+            documentService.setColor(doc0.getId(), accent);
+        }
+
+        DocumentDocument updated;
+        CardDocument merged;
+        if (hasCardFieldChange(request)) {
+            // Read-modify-write under optimistic locking: another writer (a
+            // concurrent LLM turn, a sibling browser) may bump the document
+            // version between our read and save. Re-read + re-merge the patch
+            // on conflict rather than surfacing a 500 — the patch carries only
+            // the fields the caller changed, so re-applying on the latest card
+            // is the correct resolution.
+            DocumentDocument saved = null;
+            CardDocument mergedCard = null;
+            for (int attempt = 1; ; attempt++) {
+                DocumentDocument doc = documentService.findByPath(tenant, projectId, path)
+                        .orElseThrow(() -> new ResponseStatusException(
+                                HttpStatus.NOT_FOUND, "Card not found: " + path));
+                CardDocument existing;
+                try {
+                    existing = CardCodec.parse(loadAsText(doc), doc.getMimeType());
+                } catch (Exception e) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "Could not parse card '" + path + "': " + e.getMessage());
+                }
+                mergedCard = mergePatch(existing, request);
+                String mergedBody = CardCodec.serialize(mergedCard, MD_MIME);
+                try {
+                    saved = documentService.update(
+                            doc.getId(), mergedCard.title(), List.of(CARD_KIND),
+                            mergedBody, null, null, null, null, MD_MIME);
+                    break;
+                } catch (OptimisticLockingFailureException e) {
+                    if (attempt >= UPDATE_MAX_ATTEMPTS) {
+                        throw e;
+                    }
+                    log.trace("KanbanBoardController.updateCard optimistic-lock retry {} for '{}'",
+                            attempt, path);
+                }
+            }
+            updated = saved;
+            merged = mergedCard;
+        } else {
+            // Color-only patch: nothing to merge. Re-read the (now recolored)
+            // document and parse it for the response view.
+            updated = documentService.findByPath(tenant, projectId, path)
                     .orElseThrow(() -> new ResponseStatusException(
                             HttpStatus.NOT_FOUND, "Card not found: " + path));
-            if (!CARD_KIND.equalsIgnoreCase(doc.getKind())) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Document at '" + path + "' is not a card (kind="
-                                + doc.getKind() + ").");
-            }
-
-            // Parse existing, merge with patch payload, re-serialise.
-            String existingBody = loadAsText(doc);
-            CardDocument existing;
             try {
-                existing = CardCodec.parse(existingBody, doc.getMimeType());
+                merged = CardCodec.parse(loadAsText(updated), updated.getMimeType());
             } catch (Exception e) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "Could not parse card '" + path + "': " + e.getMessage());
-            }
-
-            merged = mergePatch(existing, request);
-            String mergedBody = CardCodec.serialize(merged, MD_MIME);
-            try {
-                updated = documentService.update(
-                        doc.getId(), merged.title(), List.of(CARD_KIND),
-                        mergedBody, null, null, null, null, MD_MIME);
-                break;
-            } catch (OptimisticLockingFailureException e) {
-                if (attempt >= UPDATE_MAX_ATTEMPTS) {
-                    throw e;
-                }
-                log.trace("KanbanBoardController.updateCard optimistic-lock retry {} for '{}'",
-                        attempt, path);
             }
         }
 
@@ -273,6 +308,18 @@ public class KanbanBoardController {
 
     // ── Helpers ───────────────────────────────────────────────────
 
+    /** True when the patch touches any card front-matter / body field (color is document-level). */
+    private static boolean hasCardFieldChange(KanbanCardUpdateRequest p) {
+        return p.getTitle() != null
+                || p.getPriority() != null
+                || p.getAssignee() != null
+                || p.getLabels() != null
+                || p.getDueDate() != null
+                || p.getEstimate() != null
+                || p.getBlocked() != null
+                || p.getBody() != null;
+    }
+
     private static CardDocument mergePatch(CardDocument existing, KanbanCardUpdateRequest p) {
         String title = p.getTitle() != null ? p.getTitle() : existing.title();
         String priority = p.getPriority() != null
@@ -330,6 +377,7 @@ public class KanbanBoardController {
                 .dueDate(card.dueDate())
                 .estimate(card.estimate())
                 .blocked(card.blocked())
+                .color(doc.getColor() != null ? doc.getColor().name() : null)
                 .body(card.body().isEmpty() ? null : card.body())
                 .subtaskTotal(cb[0])
                 .subtaskDone(cb[1])

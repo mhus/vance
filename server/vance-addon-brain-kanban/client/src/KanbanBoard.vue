@@ -221,6 +221,29 @@ async function submitCreate(): Promise<void> {
   }
 }
 
+// Subtle full-tile tint from the card's document accent color. Literal
+// class strings so the host Tailwind (which scans the addon source) emits
+// them; a dynamic `bg-${c}-500/10` would be purged. Falls back to the
+// neutral card surface when no color is set.
+const CARD_TINT: Record<string, string> = {
+  SLATE: 'bg-slate-500/10',
+  RED: 'bg-red-500/10',
+  ORANGE: 'bg-orange-500/10',
+  AMBER: 'bg-amber-500/10',
+  GREEN: 'bg-green-500/10',
+  TEAL: 'bg-teal-500/10',
+  CYAN: 'bg-cyan-500/10',
+  BLUE: 'bg-blue-500/10',
+  INDIGO: 'bg-indigo-500/10',
+  PURPLE: 'bg-purple-500/10',
+  PINK: 'bg-pink-500/10',
+  ROSE: 'bg-rose-500/10',
+};
+
+function cardTintClass(color?: string | null): string {
+  return (color && CARD_TINT[color]) || 'bg-base-100';
+}
+
 function priorityClass(priority?: string | null): string {
   switch ((priority ?? '').toLowerCase()) {
     case 'critical': return 'border-l-4 border-error';
@@ -331,8 +354,8 @@ defineExpose({ reload });
             <div
               v-for="card in cardsByColumn[col.name]"
               :key="card.path"
-              class="bg-base-100 rounded p-2 cursor-grab active:cursor-grabbing shadow-sm hover:shadow-md transition-shadow"
-              :class="priorityClass(card.priority)"
+              class="rounded p-2 cursor-grab active:cursor-grabbing shadow-sm hover:shadow-md transition-shadow"
+              :class="[priorityClass(card.priority), cardTintClass(card.color)]"
               @click="selectCard(card.path)"
             >
               <div class="font-medium text-sm">{{ card.title }}</div>

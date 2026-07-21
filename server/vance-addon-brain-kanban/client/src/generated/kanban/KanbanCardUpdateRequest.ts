@@ -11,5 +11,7 @@ export interface KanbanCardUpdateRequest {
   dueDate?: string;
   estimate?: number;
   blocked?: boolean;
+  color?: string;
+  clearColor?: boolean;
   body?: string;
 }

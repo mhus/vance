@@ -19,22 +19,16 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class BuiltInKindHandlers {
 
+    // Name-only kinds with no codec — nothing to parse-validate.
     @Bean public KindHandler textKindHandler() { return () -> "text"; }
-    @Bean public KindHandler listKindHandler() { return () -> "list"; }
-    @Bean public KindHandler checklistKindHandler() { return () -> "checklist"; }
-    @Bean public KindHandler treeKindHandler() { return () -> "tree"; }
-    @Bean public KindHandler mindmapKindHandler() { return () -> "mindmap"; }
-    // 'records' extracted to its own de.mhus.vance.shared.document.kind.RecordsKindHandler
-    // (@Service) — first kind with real validate() logic (kind-handler Phase 3).
-    @Bean public KindHandler sheetKindHandler() { return () -> "sheet"; }
-    @Bean public KindHandler graphKindHandler() { return () -> "graph"; }
-    @Bean public KindHandler chartKindHandler() { return () -> "chart"; }
     @Bean public KindHandler slidesKindHandler() { return () -> "slides"; }
-    @Bean public KindHandler dataKindHandler() { return () -> "data"; }
     @Bean public KindHandler schemaKindHandler() { return () -> "schema"; }
-    @Bean public KindHandler diagramKindHandler() { return () -> "diagram"; }
     @Bean public KindHandler applicationKindHandler() { return () -> "application"; }
     @Bean public KindHandler composeKindHandler() { return () -> "compose"; }
-    // 'tex-compose' moved to the vance-addon-brain-tex addon
-    // (TexComposeKindHandler) — see planning/tex-addon-extraction.md.
+
+    // Codec-backed kinds (sheet, chart, graph, diagram, tree, list, checklist,
+    // mindmap, data) now register in CodecKindHandlers with a parse-validate().
+    // 'records' → RecordsKindHandler (@Service, Phase 3); 'canvas' →
+    // CanvasKindHandler (canvas addon, Phase 4); both do semantic checks.
+    // 'tex-compose' → vance-addon-brain-tex (TexComposeKindHandler).
 }

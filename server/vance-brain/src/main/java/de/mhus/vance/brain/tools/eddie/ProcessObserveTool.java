@@ -149,7 +149,7 @@ public class ProcessObserveTool implements Tool {
                     "Worker project '" + workerProject.getName()
                             + "' has no claimed home pod yet — cannot observe");
         }
-        String podAddress = clusterService.resolveEndpoint(homeNode)
+        String podAddress = clusterService.resolveLiveEndpoint(homeNode)
                 .orElseThrow(() -> new ToolException(
                         "Worker project '" + workerProject.getName()
                                 + "' home cluster '" + homeNode

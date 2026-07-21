@@ -155,6 +155,36 @@ public class BrainPodService {
     }
 
     /**
+     * Routing-grade resolve: like {@link #resolveEndpoint} but returns an
+     * endpoint <em>only</em> when the target node is backed by a live pod
+     * (not {@link PodStatus#STOPPED} and heartbeat within {@code staleAfter}).
+     *
+     * <p>This is the primitive every cross-pod router must use. Plain
+     * {@link #resolveEndpoint} only checks that the {@code brain_pods} row
+     * exists — a crashed pod's row lingers at {@code RUNNING} and a cleanly
+     * stopped one at {@code STOPPED}, both keeping their old {@code endpoint}.
+     * Routing to those produces connect timeouts (observed repeatedly for the
+     * workspace file proxy). Filtering staleness here lets callers treat an
+     * empty result as "no live owner — adopt/serve locally or surface 409".
+     *
+     * <p>A raw {@code host:port} home (colon form — legacy / external) can't
+     * be liveness-checked by node-name, so it is trusted as-is; only the
+     * node-name form is gated against status + heartbeat.
+     */
+    public Optional<String> resolveLiveEndpoint(String clusterId, String nodeNameOrEndpoint,
+                                                Duration staleAfter) {
+        if (nodeNameOrEndpoint == null || nodeNameOrEndpoint.isBlank()) return Optional.empty();
+        if (nodeNameOrEndpoint.contains(":")) {
+            return Optional.of(nodeNameOrEndpoint);
+        }
+        Instant now = Instant.now();
+        return findByNodeName(clusterId, nodeNameOrEndpoint)
+                .filter(doc -> doc.getStatus() != PodStatus.STOPPED)
+                .filter(doc -> !isStale(doc, now, staleAfter))
+                .map(BrainPodDocument::getEndpoint);
+    }
+
+    /**
      * Thrown when {@link #register(BrainPodDocument)} hits a name collision
      * on the {@code (clusterId, nodeName)} unique index. Callers (i.e.
      * {@code ClusterService}) should re-roll a fresh name and retry.

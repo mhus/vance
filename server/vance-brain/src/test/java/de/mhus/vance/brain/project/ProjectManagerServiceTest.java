@@ -1,7 +1,6 @@
 package de.mhus.vance.brain.project;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -9,14 +8,16 @@ import de.mhus.vance.brain.cluster.ClusterService;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
 import java.util.Optional;
-import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
  * {@link ProjectManagerService#findProjectEndpoint} must not route to a
  * home pod that has gone stale — otherwise a session whose home crashed
  * (or moved host IP) stays permanently unreachable, every resume tunnelled
- * to a dead endpoint (observed 2026-07-01).
+ * to a dead endpoint (observed 2026-07-01). The staleness filter itself
+ * lives in {@code ClusterService.resolveLiveEndpoint} (unit-tested in
+ * {@code BrainPodServiceTest}); here we assert findProjectEndpoint routes
+ * exclusively through it — never the unfiltered {@code resolveEndpoint}.
  */
 class ProjectManagerServiceTest {
 
@@ -34,8 +35,8 @@ class ProjectManagerServiceTest {
     @Test
     void liveHomeNode_resolvesToEndpoint() {
         givenProjectHome("naga-vorlon");
-        when(clusterService.liveClusterNodeNames()).thenReturn(Set.of("naga-vorlon"));
-        when(clusterService.resolveEndpoint("naga-vorlon")).thenReturn(Optional.of("192.168.1.113:9991"));
+        when(clusterService.resolveLiveEndpoint("naga-vorlon"))
+                .thenReturn(Optional.of("192.168.1.113:9991"));
 
         assertThat(manager.findProjectEndpoint("acme", "test1")).contains("192.168.1.113:9991");
     }
@@ -43,10 +44,10 @@ class ProjectManagerServiceTest {
     @Test
     void staleHomeNode_returnsEmptySoTheWsFallsBackToLocal() {
         givenProjectHome("dead-node");
-        // dead-node exists in brain_pods (resolveEndpoint would still return it)
-        // but is NOT in the live set — the whole point of the fix.
-        when(clusterService.liveClusterNodeNames()).thenReturn(Set.of("naga-vorlon"));
-        lenient().when(clusterService.resolveEndpoint("dead-node")).thenReturn(Optional.of("10.5.30.87:9991"));
+        // resolveLiveEndpoint filters status + heartbeat — a crashed/stopped
+        // node's row still exists but resolves to empty. That empty is what
+        // lets the WS-receiving pod serve the session locally.
+        when(clusterService.resolveLiveEndpoint("dead-node")).thenReturn(Optional.empty());
 
         assertThat(manager.findProjectEndpoint("acme", "test1")).isEmpty();
     }
@@ -54,7 +55,8 @@ class ProjectManagerServiceTest {
     @Test
     void rawEndpointHome_isTrustedWithoutNodeNameLivenessCheck() {
         givenProjectHome("10.9.9.9:9991");
-        when(clusterService.resolveEndpoint("10.9.9.9:9991")).thenReturn(Optional.of("10.9.9.9:9991"));
+        when(clusterService.resolveLiveEndpoint("10.9.9.9:9991"))
+                .thenReturn(Optional.of("10.9.9.9:9991"));
 
         assertThat(manager.findProjectEndpoint("acme", "test1")).contains("10.9.9.9:9991");
     }

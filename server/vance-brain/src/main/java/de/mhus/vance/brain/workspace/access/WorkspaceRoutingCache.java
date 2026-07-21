@@ -15,9 +15,10 @@ import org.springframework.stereotype.Component;
  * In-memory cache that maps {@code (tenant, project)} to the owner pod's
  * endpoint ({@code host:port}). Populated lazily — the project document
  * stores a cluster node name; this cache resolves it once through
- * {@link ClusterService#resolveEndpoint(String)} and remembers the
+ * {@link ClusterService#resolveLiveEndpoint(String)} and remembers the
  * result until the entry expires or is invalidated. A pod that loses
- * its claim is forgotten on the next miss. See
+ * its claim — or whose row went stale/stopped — resolves to empty and is
+ * forgotten on the next miss, so the caller adopts the project locally. See
  * {@code specification/workspace-access.md} §4.
  */
 @Component
@@ -89,9 +90,10 @@ public class WorkspaceRoutingCache {
                     key.tenantId(), key.projectName());
             return Optional.empty();
         }
-        Optional<String> endpoint = clusterService.resolveEndpoint(homeNode);
+        Optional<String> endpoint = clusterService.resolveLiveEndpoint(homeNode);
         if (endpoint.isEmpty()) {
-            log.debug("Project {}/{} homeNode='{}' — no live endpoint in the cluster registry",
+            log.debug("Project {}/{} homeNode='{}' — no live endpoint in the cluster registry "
+                            + "(node gone or stale); caller adopts locally",
                     key.tenantId(), key.projectName(), homeNode);
         }
         return endpoint;

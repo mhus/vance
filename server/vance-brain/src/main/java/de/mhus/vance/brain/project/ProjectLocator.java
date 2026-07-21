@@ -147,8 +147,7 @@ public class ProjectLocator {
     private Optional<String> liveEndpointOf(ProjectDocument project) {
         String homeNode = project.getHomeNode();
         if (homeNode == null || homeNode.isBlank()) return Optional.empty();
-        if (!clusterService.liveClusterNodeNames().contains(homeNode)) return Optional.empty();
-        return clusterService.resolveEndpoint(homeNode);
+        return clusterService.resolveLiveEndpoint(homeNode);
     }
 
     private boolean haveLocalRoom(ProjectDocument project) {

@@ -155,12 +155,28 @@ public class ClusterService {
     }
 
     /**
-     * Resolves a node-name (or raw {@code host:port}) to the live
-     * endpoint. Returns empty if the name is unknown — callers use
-     * this for admin commands like "start project on 'maya-prosser'".
+     * Resolves a node-name (or raw {@code host:port}) to its registered
+     * endpoint, <em>without</em> a liveness check. Returns empty only if
+     * the name is unknown. Use this for admin/display and self-identity
+     * comparisons — for cross-pod <em>routing</em> use
+     * {@link #resolveLiveEndpoint} so a dead pod's stale endpoint is never
+     * dialled.
      */
     public Optional<String> resolveEndpoint(String nodeNameOrEndpoint) {
         return brainPodService.resolveEndpoint(properties.getId(), nodeNameOrEndpoint);
+    }
+
+    /**
+     * Routing-grade resolve: returns the endpoint only when the target
+     * node is backed by a live (non-stale, non-stopped) pod. Empty means
+     * "no live owner" — the caller should adopt the project locally,
+     * rebuild its cache on the next claim, or surface a {@code 409}.
+     * This is the primitive every cross-pod router must call. See
+     * {@link de.mhus.vance.shared.cluster.BrainPodService#resolveLiveEndpoint}.
+     */
+    public Optional<String> resolveLiveEndpoint(String nodeNameOrEndpoint) {
+        return brainPodService.resolveLiveEndpoint(
+                properties.getId(), nodeNameOrEndpoint, properties.getStaleAfter());
     }
 
     /**

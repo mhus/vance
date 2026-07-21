@@ -231,21 +231,7 @@ public class ProjectManagerService {
         return projectService.findByTenantAndName(tenantId, projectName)
                 .map(ProjectDocument::getHomeNode)
                 .filter(c -> c != null && !c.isBlank())
-                .filter(this::isHomeNodeLive)
-                .flatMap(clusterService::resolveEndpoint);
-    }
-
-    /**
-     * {@code true} when {@code homeNode} is backed by a live (non-stale,
-     * non-stopped) pod. A raw {@code host:port} home (colon form, legacy /
-     * external) can't be liveness-checked by node-name, so it is trusted
-     * as-is — only the node-name form is gated against the live set.
-     */
-    private boolean isHomeNodeLive(String homeNode) {
-        if (homeNode.contains(":")) {
-            return true;
-        }
-        return clusterService.liveClusterNodeNames().contains(homeNode);
+                .flatMap(clusterService::resolveLiveEndpoint);
     }
 
     /**
@@ -308,11 +294,11 @@ public class ProjectManagerService {
                     "Project '" + tenantId + "/" + projectName
                             + "' claim rejected but home cluster is empty; concurrent state change");
         }
-        String endpoint = clusterService.resolveEndpoint(holder)
+        String endpoint = clusterService.resolveLiveEndpoint(holder)
                 .orElseThrow(() -> new ClaimRejectedException(
                         "Project '" + tenantId + "/" + projectName
                                 + "' is owned by cluster '" + holder
-                                + "' but the cluster registry has no endpoint for it"));
+                                + "' but the cluster registry has no live endpoint for it"));
         return new ClaimResult.Redirect(endpoint);
     }
 

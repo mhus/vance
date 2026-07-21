@@ -135,9 +135,10 @@ public class DocumentChangeRouter {
             return Classification.selfOnly();
         }
 
-        // Remote home pod: resolve endpoint. If the pod is gone the resolve
-        // returns empty — the cache will be rebuilt on the next claim.
-        Optional<String> endpoint = clusterService.resolveEndpoint(homeNode);
+        // Remote home pod: resolve endpoint. If the pod is gone or its row
+        // went stale/stopped the resolve returns empty — the cache is rebuilt
+        // on the new owner's next claim.
+        Optional<String> endpoint = clusterService.resolveLiveEndpoint(homeNode);
         if (endpoint.isEmpty()) {
             log.warn("DocumentChangeRouter: homeNode '{}' for '{}/{}' has no live endpoint — "
                             + "drop refresh, next bootstrap on the new owner loads fresh",

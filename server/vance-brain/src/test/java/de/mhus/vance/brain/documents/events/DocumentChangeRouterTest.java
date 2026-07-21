@@ -123,7 +123,7 @@ class DocumentChangeRouterTest {
     void regularProject_homeNode_remote_live_fires_remote_only() {
         when(projectService.findByTenantAndName(TENANT, "mail-assistant"))
                 .thenReturn(Optional.of(project("mail-assistant", OTHER_NODE)));
-        when(clusterService.resolveEndpoint(OTHER_NODE))
+        when(clusterService.resolveLiveEndpoint(OTHER_NODE))
                 .thenReturn(Optional.of(OTHER_ENDPOINT));
 
         DocumentChangeRouter.Classification c = router.classify(upserted("mail-assistant",
@@ -138,7 +138,7 @@ class DocumentChangeRouterTest {
     void regularProject_homeNode_unresolvable_emits_no_event() {
         when(projectService.findByTenantAndName(TENANT, "mail-assistant"))
                 .thenReturn(Optional.of(project("mail-assistant", OTHER_NODE)));
-        when(clusterService.resolveEndpoint(OTHER_NODE)).thenReturn(Optional.empty());
+        when(clusterService.resolveLiveEndpoint(OTHER_NODE)).thenReturn(Optional.empty());
 
         DocumentChangeRouter.Classification c = router.classify(upserted("mail-assistant",
                 "documents/mail-triage.js"));
@@ -185,7 +185,7 @@ class DocumentChangeRouterTest {
     void onDocumentChanged_remote_target_enqueues_and_does_not_publish_local() {
         when(projectService.findByTenantAndName(TENANT, "mail-assistant"))
                 .thenReturn(Optional.of(project("mail-assistant", OTHER_NODE)));
-        when(clusterService.resolveEndpoint(OTHER_NODE))
+        when(clusterService.resolveLiveEndpoint(OTHER_NODE))
                 .thenReturn(Optional.of(OTHER_ENDPOINT));
 
         router.onDocumentChanged(upserted("mail-assistant", "documents/mail-triage.js"));

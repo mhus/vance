@@ -20,7 +20,5 @@
         "age": "25"
       }
     ]
-  },
-  "knownJavaDrift": true,
-  "driftNote": "TS codec parses the Markdown-table form (parseTableBody). Java RecordsCodec.parseMarkdown has no table support: it throws \"Missing or empty schema in front-matter\" because there is no front-matter schema line."
+  }
 }

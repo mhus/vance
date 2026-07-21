@@ -101,21 +101,116 @@ public final class RecordsCodec {
         }
 
         List<String> schema = parseSchemaCsv(schemaRaw);
-        if (schema.isEmpty()) {
-            throw new KindCodecException(
-                    "Missing or empty schema in front-matter — `kind: records` requires `schema: field1, field2, ...`");
+
+        // Pick the body shape from the first non-blank content line. A pipe line
+        // → Markdown table (the inline-fence form the embed-fences manual teaches
+        // the LLM: the header row supplies the schema when front-matter has none);
+        // otherwise the classic bullet document form.
+        int bodyStart = cursor;
+        while (bodyStart < lines.length && lines[bodyStart].trim().isEmpty()) bodyStart++;
+        String firstBodyLine = bodyStart < lines.length ? lines[bodyStart].trim() : "";
+
+        List<RecordsItem> items;
+        if (firstBodyLine.startsWith("|")) {
+            if (schema.isEmpty()) schema = dedupeFields(splitTableRow(lines[bodyStart]));
+            items = parseTableItems(lines, bodyStart, schema);
+        } else {
+            items = parseBulletBody(lines, cursor, schema);
         }
 
+        if (schema.isEmpty()) {
+            throw new KindCodecException(
+                    "Missing or empty schema — `kind: records` requires either a front-matter "
+                            + "`schema: field1, field2, ...` line or a Markdown-table header row.");
+        }
+
+        return new RecordsDocument(kind.isEmpty() ? "records" : kind, schema, items, extra);
+    }
+
+    private static List<RecordsItem> parseBulletBody(String[] lines, int start, List<String> schema) {
         List<RecordsItem> items = new ArrayList<>();
-        for (int i = cursor; i < lines.length; i++) {
+        for (int i = start; i < lines.length; i++) {
             String raw = lines[i];
             if (raw.trim().isEmpty()) continue;
             BulletMatch bullet = matchBullet(raw);
             if (bullet == null) continue;
             items.add(rowFromCsvValues(parseCsvLine(bullet.body), schema));
         }
+        return items;
+    }
 
-        return new RecordsDocument(kind.isEmpty() ? "records" : kind, schema, items, extra);
+    /**
+     * Item rows of a Markdown table whose header line is at {@code start}: skip
+     * the header + an optional alignment-divider row, then each pipe row → item
+     * (cells trimmed). A non-pipe line ends the table (trailing prose is left
+     * out). Mirrors {@code parseTableBody} in {@code recordsCodec.ts}.
+     */
+    private static List<RecordsItem> parseTableItems(String[] lines, int start, List<String> schema) {
+        int i = start + 1;
+        if (i < lines.length && isAlignmentDivider(lines[i])) i++;
+        List<RecordsItem> items = new ArrayList<>();
+        for (; i < lines.length; i++) {
+            String raw = lines[i];
+            if (raw.trim().isEmpty()) continue;
+            if (!raw.trim().startsWith("|")) break;
+            if (isAlignmentDivider(raw)) continue;
+            List<String> cells = new ArrayList<>();
+            for (String c : splitTableRow(raw)) cells.add(c.trim());
+            items.add(rowFromCsvValues(cells, schema));
+        }
+        return items;
+    }
+
+    /**
+     * Split a Markdown table row on unescaped {@code |}, stripping the outer
+     * pipes; {@code \|} inside a cell becomes a literal {@code |}. Cells are
+     * returned untrimmed. Mirrors {@code splitTableRow} in {@code recordsCodec.ts}.
+     */
+    private static List<String> splitTableRow(String line) {
+        String s = line.trim();
+        if (s.startsWith("|")) s = s.substring(1);
+        if (s.endsWith("|")) s = s.substring(0, s.length() - 1);
+        List<String> cells = new ArrayList<>();
+        StringBuilder buf = new StringBuilder();
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == '\\' && i + 1 < s.length() && s.charAt(i + 1) == '|') {
+                buf.append('|');
+                i++;
+                continue;
+            }
+            if (c == '|') {
+                cells.add(buf.toString());
+                buf.setLength(0);
+                continue;
+            }
+            buf.append(c);
+        }
+        cells.add(buf.toString());
+        return cells;
+    }
+
+    /** Alignment-divider row: every cell matches {@code :?-+:?} (---, :---, ---:, :---:). */
+    private static boolean isAlignmentDivider(String line) {
+        String trimmed = line.trim();
+        if (!trimmed.contains("|")) return false;
+        List<String> cells = splitTableRow(trimmed);
+        if (cells.isEmpty()) return false;
+        for (String c : cells) {
+            if (!c.trim().matches(":?-+:?")) return false;
+        }
+        return true;
+    }
+
+    private static List<String> dedupeFields(List<String> fields) {
+        List<String> out = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
+        for (String f : fields) {
+            String t = f.trim();
+            if (t.isEmpty() || !seen.add(t)) continue;
+            out.add(t);
+        }
+        return out;
     }
 
     private record BulletMatch(String body) {}

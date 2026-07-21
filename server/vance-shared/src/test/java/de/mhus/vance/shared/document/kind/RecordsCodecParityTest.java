@@ -27,9 +27,11 @@ import tools.jackson.databind.ObjectMapper;
  * and whitespace are irrelevant.
  *
  * <p>{@code expected} was authored from the TS codec; the Java side must
- * match it. This is a <b>drift-detection</b> harness: a fixture flagged
- * {@code knownJavaDrift: true} documents an open Java↔TS divergence and
- * is skipped here (never silently made to pass). See the corpus README.
+ * match it. This is a <b>drift-detection</b> harness: an unflagged fixture
+ * that diverges fails here (never silently made to pass). A newly-found,
+ * not-yet-fixed divergence may be recorded — not hidden — by flagging the
+ * fixture {@code knownJavaDrift: true} (skipped with the reason in
+ * {@code driftNote}); none is flagged today. See the corpus README.
  */
 class RecordsCodecParityTest {
 
@@ -63,6 +65,10 @@ class RecordsCodecParityTest {
     }
 
     private void runFixture(JsonNode fixture) {
+        // Escape hatch for a newly-found, not-yet-fixed divergence: flag the
+        // fixture `knownJavaDrift: true` (+ driftNote) to record it in the
+        // corpus without breaking the build. No fixture is flagged today —
+        // the markdown-table form was ported to Java (RecordsCodec Phase-A).
         boolean knownDrift = fixture.path("knownJavaDrift").asBoolean(false);
         Assumptions.assumeFalse(
                 knownDrift,

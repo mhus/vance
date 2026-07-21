@@ -39,6 +39,13 @@ interface Props {
    * carries it as per-turn LLM context.
    */
   boundDocumentId?: string | null;
+  /**
+   * An app-owned structured selection ({@code appDocId} = the app tab's doc
+   * id, {@code selection} = a freeform hint like a canvas board's selected
+   * node ids). Folded into the `activeApp` context when it belongs to the
+   * active app tab — the char-range `boundDocSelection` can't express it.
+   */
+  appSelection?: { appDocId: string; selection: string } | null;
 }
 
 const props = defineProps<Props>();
@@ -100,7 +107,12 @@ const activeApp = computed<ActiveAppContext | null>(() => {
   if (!app || typeof app !== 'string' || app.trim() === '') return null;
   const folder = tab.path.replace(/\/_app\.yaml$/, '');
   if (!folder) return null;
-  return { folder, app };
+  // An app-owned selection (e.g. canvas node ids) rides along when it belongs
+  // to this app tab — carried on activeApp.selection (not boundDocSelection).
+  const selection = props.appSelection && props.appSelection.appDocId === tab.id
+    ? props.appSelection.selection
+    : undefined;
+  return { folder, app, selection };
 });
 
 // The chat-process name is fixed by {@code SessionChatBootstrapper} to

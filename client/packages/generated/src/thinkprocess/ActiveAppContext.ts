@@ -6,4 +6,5 @@
 export interface ActiveAppContext {
   folder: string;
   app: string;
+  selection?: string;
 }

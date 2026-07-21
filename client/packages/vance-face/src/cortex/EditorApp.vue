@@ -185,6 +185,15 @@ provide('vance:report-active-selection',
     store.setSelection(sel);
   });
 
+// A structured selection an app owns that isn't a char range (phase 4b):
+// a freeform hint (e.g. a canvas board's selected node ids). Scoped by
+// appDocId; forwarded into the chat's activeApp context by CortexChatPanel.
+const activeAppSelection = ref<{ appDocId: string; selection: string } | null>(null);
+provide('vance:report-app-selection',
+  (sel: { appDocId: string; selection: string } | null) => {
+    activeAppSelection.value = sel;
+  });
+
 const { projects: tenantProjects, reload: loadTenantProjects } = useTenantProjects();
 
 const bootError = ref<string | null>(null);
@@ -1279,6 +1288,7 @@ const toggleTooltip = computed<string>(() => {
         :tool-service="clientToolService"
         :active-document="activeTab"
         :bound-document-id="chatBoundDocumentId"
+        :app-selection="activeAppSelection"
       />
       <div
         v-else-if="hasSession"

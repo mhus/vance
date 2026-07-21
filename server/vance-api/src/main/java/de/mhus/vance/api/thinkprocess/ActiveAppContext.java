@@ -7,6 +7,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Per-message hint that the user is currently viewing a folder-level
@@ -49,4 +50,14 @@ public class ActiveAppContext {
      */
     @NotBlank
     private String app;
+
+    /**
+     * Optional, app-computed selection hint for the current turn — a short
+     * freeform string the app's UI produces to say what the user has selected
+     * (e.g. a canvas board's selected node ids). The brain hands it to the
+     * app's {@code VanceApplication.promptInject(...)}, which decides how to
+     * phrase it for the model. {@code null} = nothing selected.
+     */
+    @Nullable
+    private String selection;
 }

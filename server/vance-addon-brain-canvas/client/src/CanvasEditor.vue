@@ -35,7 +35,10 @@ const props = withDefaults(
   }>(),
   { editable: false, projectId: '', path: null },
 );
-const emit = defineEmits<{ (e: 'change', graph: CanvasGraphDto): void }>();
+const emit = defineEmits<{
+  (e: 'change', graph: CanvasGraphDto): void;
+  (e: 'selection', nodeIds: string[]): void;
+}>();
 
 const nodes = ref<CanvasNodeDto[]>([]);
 const edges = ref<CanvasEdgeDto[]>([]);
@@ -51,6 +54,19 @@ const embedComponent = inject<Component | null>('vance:embed-component', null);
 // renders with, so remote cursors pan/zoom together with the canvas.
 const flowId = `canvas-${props.path ?? 'board'}`;
 const { viewport, getSelectedNodes } = useVueFlow(flowId);
+
+// Surface the current node selection to the host (→ chat active-app hint).
+// De-dupe: getSelectedNodes recomputes on any node change (incl. drags), but
+// we only care when the selected id set changes.
+let lastSelIds = '';
+watch(getSelectedNodes, (nodes) => {
+  const ids = nodes.map((n) => n.id);
+  const key = ids.join(',');
+  if (key === lastSelIds) return;
+  lastSelIds = key;
+  emit('selection', ids);
+});
+
 const active = ref(false);
 const wrapper = ref<HTMLElement | null>(null);
 const pointerPath = computed(() => props.path ?? null);

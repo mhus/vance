@@ -51,7 +51,14 @@ const activeTitle = computed(
 const reportActiveSubDoc = inject<
   ((sub: { appDocId: string; documentId: string; path: string } | null) => void) | null
 >('vance:report-active-subdoc', null);
+// Node selection → chat active-app hint (phase 4b). Freeform string the
+// canvas app owns; the brain's canvasbook promptInject phrases it.
+const reportAppSelection = inject<
+  ((sel: { appDocId: string; selection: string } | null) => void) | null
+>('vance:report-app-selection', null);
+
 watch(activePath, (path) => {
+  reportAppSelection?.(null); // a board switch invalidates any node selection
   if (!reportActiveSubDoc) return;
   const appId = props.document.id;
   const pageId = path ? pages.value.find((p) => p.path === path)?.id : undefined;
@@ -61,6 +68,17 @@ watch(activePath, (path) => {
   }
   reportActiveSubDoc({ appDocId: appId, documentId: pageId, path });
 }, { immediate: true });
+
+/** Forward the board's selected node id(s) as the chat's active-app selection. */
+function onCanvasSelection(nodeIds: string[]): void {
+  if (!reportAppSelection) return;
+  const appId = props.document.id;
+  if (!appId || nodeIds.length === 0) {
+    reportAppSelection(null);
+    return;
+  }
+  reportAppSelection({ appDocId: appId, selection: nodeIds.join(', ') });
+}
 
 async function refreshScan(select?: string): Promise<void> {
   error.value = null;
@@ -167,6 +185,7 @@ onMounted(() => refreshScan());
 onBeforeUnmount(() => {
   flushPending();
   reportActiveSubDoc?.(null);
+  reportAppSelection?.(null);
 });
 </script>
 
@@ -223,6 +242,7 @@ onBeforeUnmount(() => {
         :project-id="document.projectId"
         :path="activePath"
         @change="onEditorChange"
+        @selection="onCanvasSelection"
       />
       <div v-else class="p-4 text-sm opacity-60">
         {{ pages.length === 0 ? 'Leeres Canvasbook — „+ Canvas" anlegen.' : 'Wähle eine Canvas.' }}

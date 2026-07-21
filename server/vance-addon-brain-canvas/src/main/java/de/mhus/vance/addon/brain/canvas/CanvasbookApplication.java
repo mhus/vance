@@ -54,7 +54,7 @@ public class CanvasbookApplication implements VanceApplication {
 
     @Override
     public String promptInject(PromptInjectContext ctx) {
-        return "You are in a canvasbook at `" + ctx.folder() + "` — a container of "
+        String base = "You are in a canvasbook at `" + ctx.folder() + "` — a container of "
                 + "spatial `kind: canvas` boards. The document bound to this chat is the "
                 + "board the user currently has open: when they say \"this canvas\", "
                 + "\"this node\" or refer to a selection, they mean that file. It is a canvas "
@@ -64,6 +64,13 @@ public class CanvasbookApplication implements VanceApplication {
                 + "`canvasbook_page_create(folder=\"" + ctx.folder() + "\", title=\"...\")` and "
                 + "`app_rebuild('" + ctx.folder() + "')` after structural changes. Node/edge "
                 + "grammar: `manual_read('canvas')`.";
+        String selection = ctx.selection();
+        if (selection != null && !selection.isBlank()) {
+            base += " The user has selected node(s): " + selection.trim()
+                    + " — that is what \"this node\"/\"the selection\" refers to; read them "
+                    + "with `canvas_query` and change them with `canvas_node_update` by id.";
+        }
+        return base;
     }
 
     @Override

@@ -60,7 +60,8 @@ public class ActiveAppPromptResolver {
                     process.getProjectId(),
                     folder,
                     process.getSessionId(),
-                    process.getId()));
+                    process.getId(),
+                    active.getSelection()));
         } catch (RuntimeException e) {
             log.warn("activeApp inject for '{}' at '{}' threw: {}",
                     appName, folder, e.toString());

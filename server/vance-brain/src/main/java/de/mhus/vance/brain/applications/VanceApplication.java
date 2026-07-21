@@ -160,7 +160,8 @@ public interface VanceApplication {
             String projectName,
             String folder,
             @Nullable String sessionId,
-            @Nullable String processId) { }
+            @Nullable String processId,
+            @Nullable String selection) { }
 
     /**
      * Per-artefact outcome of a refresh. {@code path} is the

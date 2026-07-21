@@ -1,0 +1,19 @@
+{
+  "description": "application/json — a scalar $meta extra beyond kind is merged to the top level (unwrapJsonMeta scalar-merge)",
+  "mime": "application/json",
+  "input": "{\n  \"$meta\": { \"kind\": \"records\", \"source\": \"import\" },\n  \"schema\": [\"name\"],\n  \"items\": [ { \"name\": \"Alice\" } ]\n}\n",
+  "expected": {
+    "$meta": {
+      "kind": "records"
+    },
+    "schema": [
+      "name"
+    ],
+    "items": [
+      {
+        "name": "Alice"
+      }
+    ],
+    "source": "import"
+  }
+}

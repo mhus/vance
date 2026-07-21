@@ -1,0 +1,18 @@
+{
+  "description": "application/json — a non-scalar $meta value (array) is dropped, not merged (unwrapJsonMeta drops non-scalars)",
+  "mime": "application/json",
+  "input": "{\n  \"$meta\": { \"kind\": \"records\", \"tags\": [\"a\", \"b\"] },\n  \"schema\": [\"name\"],\n  \"items\": [ { \"name\": \"Bob\" } ]\n}\n",
+  "expected": {
+    "$meta": {
+      "kind": "records"
+    },
+    "schema": [
+      "name"
+    ],
+    "items": [
+      {
+        "name": "Bob"
+      }
+    ]
+  }
+}

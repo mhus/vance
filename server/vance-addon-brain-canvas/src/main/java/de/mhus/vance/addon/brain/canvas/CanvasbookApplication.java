@@ -55,11 +55,15 @@ public class CanvasbookApplication implements VanceApplication {
     @Override
     public String promptInject(PromptInjectContext ctx) {
         return "You are in a canvasbook at `" + ctx.folder() + "` — a container of "
-                + "spatial `kind: canvas` boards. Add a board with "
-                + "`canvasbook_page_create(folder=\"" + ctx.folder() + "\", title=\"...\")`, "
-                + "then place nodes with `canvas_node_add` and connect them with "
-                + "`canvas_edge_add`. Run `app_rebuild('" + ctx.folder() + "')` after "
-                + "structural changes. Read `manual_read('canvas')` for the node/edge grammar.";
+                + "spatial `kind: canvas` boards. The document bound to this chat is the "
+                + "board the user currently has open: when they say \"this canvas\", "
+                + "\"this node\" or refer to a selection, they mean that file. It is a canvas "
+                + "board, NOT a Markdown file — inspect it with `canvas_query` (nodes/edges by "
+                + "id) and edit in place with `canvas_node_add/_update/_delete` and "
+                + "`canvas_edge_add/_delete`. Add boards with "
+                + "`canvasbook_page_create(folder=\"" + ctx.folder() + "\", title=\"...\")` and "
+                + "`app_rebuild('" + ctx.folder() + "')` after structural changes. Node/edge "
+                + "grammar: `manual_read('canvas')`.";
     }
 
     @Override

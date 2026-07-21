@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { VAlert, VButton } from '@vance/components';
 import { useDocumentPrefixReaction } from '@vance/shared';
 import CanvasEditor from './CanvasEditor.vue';
@@ -44,6 +44,23 @@ const dialog = ref<DialogApi | null>(null);
 const activeTitle = computed(
   () => pages.value.find((p) => p.path === activePath.value)?.title ?? '—',
 );
+
+// Bind the chat to the open canvas board instead of the app manifest
+// (planning/app-chat-context.md, phase 4). appDocId = this app tab's own doc
+// id, so the host scopes the report to the active app tab.
+const reportActiveSubDoc = inject<
+  ((sub: { appDocId: string; documentId: string; path: string } | null) => void) | null
+>('vance:report-active-subdoc', null);
+watch(activePath, (path) => {
+  if (!reportActiveSubDoc) return;
+  const appId = props.document.id;
+  const pageId = path ? pages.value.find((p) => p.path === path)?.id : undefined;
+  if (!appId || !path || !pageId) {
+    reportActiveSubDoc(null);
+    return;
+  }
+  reportActiveSubDoc({ appDocId: appId, documentId: pageId, path });
+}, { immediate: true });
 
 async function refreshScan(select?: string): Promise<void> {
   error.value = null;
@@ -147,7 +164,10 @@ useDocumentPrefixReaction({
 });
 
 onMounted(() => refreshScan());
-onBeforeUnmount(flushPending);
+onBeforeUnmount(() => {
+  flushPending();
+  reportActiveSubDoc?.(null);
+});
 </script>
 
 <template>

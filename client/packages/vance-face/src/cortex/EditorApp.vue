@@ -176,6 +176,15 @@ provide('vance:report-active-subdoc',
     activeSubDoc.value = sub;
   });
 
+// An app remote reports its editor's selection as a char range in the
+// sub-document (phase 2). It lands in the same store slot DocumentTabShell
+// uses for plain docs — CortexChatPanel then sends it as boundDocSelection
+// (docId-gated to the bound doc), so nothing downstream changes.
+provide('vance:report-active-selection',
+  (sel: { docId: string; docPath: string; from: number; to: number; text: string } | null) => {
+    store.setSelection(sel);
+  });
+
 const { projects: tenantProjects, reload: loadTenantProjects } = useTenantProjects();
 
 const bootError = ref<string | null>(null);

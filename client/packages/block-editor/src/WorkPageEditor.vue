@@ -20,7 +20,7 @@ import 'highlight.js/styles/github.css';
 const lowlight = createLowlight(common);
 
 import { parseDocument } from './markdown/parser';
-import { serialize, serializeDocument } from './markdown/serializer';
+import { serialize, serializeDocument, documentHeader, serializeWithBlockRanges } from './markdown/serializer';
 import { blocksToContent, contentToBlocks } from './markdown/proseMirror';
 import {
   VanceToggle,
@@ -218,12 +218,12 @@ const emit = defineEmits<{
   (e: 'save', body: string): void;
   (e: 'dirty', dirty: boolean): void;
   /**
-   * The selection changed. A ping for live-awareness consumers — read the
-   * new active block via {@link getActiveBlockPos} in the handler. No
-   * payload: what's shared is a logical node anchor, resolved by each
-   * receiver against its own layout.
+   * The selection changed. Carries the selected blocks' char range in the
+   * serialized document (front-matter included, matching stored content) so a
+   * host can bind it as the chat's `boundDocSelection`; `null` when nothing is
+   * selected. Block-level granularity (the touched top-level blocks).
    */
-  (e: 'selection'): void;
+  (e: 'selection', range: { from: number; to: number; text: string } | null): void;
 }>();
 
 const dirty = ref(false);
@@ -539,7 +539,7 @@ const editor = useEditor({
     scheduleAutoSave();
   },
   onSelectionUpdate: () => {
-    emit('selection');
+    emit('selection', currentSelectionRange());
   },
 });
 
@@ -586,6 +586,44 @@ function save() {
   emit('save', md);
   dirty.value = false;
   emit('dirty', false);
+}
+
+/**
+ * Map the current editor selection to a `{from,to}` char range in the
+ * serialized document (front-matter included — matches the stored content the
+ * server's `doc_get_selection` substrings), block-level: the range spans every
+ * top-level block the selection touches. `null` when nothing is selected.
+ */
+function currentSelectionRange(): { from: number; to: number; text: string } | null {
+  const ed = editor.value;
+  if (!ed) return null;
+  const sel = ed.state.selection;
+  if (sel.empty) return null;
+  const doc = ed.state.doc;
+  const ci = doc.resolve(sel.from).index(0);
+  const cj = doc.resolve(Math.max(sel.from, sel.to - 1)).index(0);
+  const children = (ed.getJSON().content ?? []) as never[];
+  // Block index range — contentToBlocks() is children.flatMap(nodeToBlock),
+  // so a top-level child can yield >1 block; count per child.
+  let firstBlock = 0;
+  for (let k = 0; k < ci; k++) firstBlock += contentToBlocks([children[k]]).length;
+  let afterLast = firstBlock;
+  for (let k = ci; k <= cj; k++) afterLast += contentToBlocks([children[k]]).length;
+  const allBlocks = contentToBlocks(children);
+  if (firstBlock >= allBlocks.length || afterLast <= firstBlock) return null;
+  const { md, ranges } = serializeWithBlockRanges(allBlocks);
+  const first = ranges[firstBlock];
+  const last = ranges[Math.min(afterLast, ranges.length) - 1];
+  const base = props.bodyOnly
+    ? 0
+    : documentHeader({
+        title: currentHeader.value.title ?? props.document.title ?? null,
+        description: currentHeader.value.description,
+        icon: currentHeader.value.icon,
+        cover: currentHeader.value.cover,
+        blocks: [],
+      }).length;
+  return { from: base + first.start, to: base + last.end, text: md.slice(first.start, last.end) };
 }
 
 /**

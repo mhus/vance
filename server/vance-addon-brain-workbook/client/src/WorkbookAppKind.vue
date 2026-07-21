@@ -226,15 +226,35 @@ const sessionId = inject<Ref<string | null>>('vance:session-id', ref(null));
 const reportActiveSubDoc = inject<
   ((sub: { appDocId: string; documentId: string; path: string } | null) => void) | null
 >('vance:report-active-subdoc', null);
+const reportActiveSelection = inject<
+  ((sel: { docId: string; docPath: string; from: number; to: number; text: string } | null) => void) | null
+>('vance:report-active-selection', null);
+
+function pagePath(id: string): string {
+  return view.value?.pages.find((p) => p.id === id)?.path ?? '';
+}
+
 watch(activePageId, (id) => {
+  // A page switch invalidates any prior selection.
+  reportActiveSelection?.(null);
   if (!reportActiveSubDoc) return;
   if (!id) {
     reportActiveSubDoc(null);
     return;
   }
-  const path = view.value?.pages.find((p) => p.id === id)?.path ?? '';
-  reportActiveSubDoc({ appDocId: props.document.id, documentId: id, path });
+  reportActiveSubDoc({ appDocId: props.document.id, documentId: id, path: pagePath(id) });
 }, { immediate: true });
+
+/** Forward the open page's editor selection (char range) as the chat's bound selection. */
+function onWorkpageSelection(range: { from: number; to: number; text: string } | null) {
+  if (!reportActiveSelection) return;
+  const id = activePageId.value;
+  if (!id || !range) {
+    reportActiveSelection(null);
+    return;
+  }
+  reportActiveSelection({ docId: id, docPath: pagePath(id), from: range.from, to: range.to, text: range.text });
+}
 
 // Page mode (design vs work) — per app-instance, client-only, default
 // "work" (the user enters data). Switching to "design" lets embedded
@@ -443,6 +463,7 @@ onBeforeUnmount(() => {
   workbookRootRef.value?.removeEventListener('vance:workbook-goto-index', onGotoIndexEvent);
   window.removeEventListener('popstate', onWorkbookPopState);
   reportActiveSubDoc?.(null);
+  reportActiveSelection?.(null);
 });
 
 // Icon picker — modal with a searchable emoji grid (provided by
@@ -1357,10 +1378,11 @@ function reportPointer(ev: PointerEvent): void {
 
 // Selection change (caret moved to another block, incl. via keyboard) —
 // refresh the active-block anchor and re-report using the last mouse pos.
-function onEditorSelection(): void {
+function onEditorSelection(range: { from: number; to: number; text: string } | null): void {
   lastBlockPos.value = editorRef.value?.getActiveBlockPos() ?? null;
   const m = lastMouse.value;
   if (m && activePagePath.value) report(m.x, m.y, buildData());
+  onWorkpageSelection(range);
 }
 
 function cursorColor(p: { data?: Record<string, unknown> }): string {

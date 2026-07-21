@@ -6,9 +6,12 @@ import { findBlockByFence } from '../blockRegistry';
 import { bodyFromAttrs } from './customBlock';
 
 /**
- * Render a full workpage document (front-matter + body).
+ * The document front-matter (everything serializeDocument emits before the
+ * body). Split out so callers can measure its length — the body char offsets
+ * a selection maps to (see {@link serializeWithBlockRanges}) are relative to
+ * the FULL document, i.e. shifted by this header.
  */
-export function serializeDocument(doc: WorkPageDocument): string {
+export function documentHeader(doc: WorkPageDocument): string {
   let out = '---\n$meta:\n  kind: workpage\n';
   if (doc.title && doc.title.trim().length > 0) {
     out += `title: ${escapeYaml(doc.title)}\n`;
@@ -23,8 +26,14 @@ export function serializeDocument(doc: WorkPageDocument): string {
     out += `cover: ${escapeYaml(doc.cover)}\n`;
   }
   out += '---\n';
-  out += serialize(doc.blocks);
   return out;
+}
+
+/**
+ * Render a full workpage document (front-matter + body).
+ */
+export function serializeDocument(doc: WorkPageDocument): string {
+  return documentHeader(doc) + serialize(doc.blocks);
 }
 
 /** Render a block list (no front-matter). */
@@ -35,6 +44,28 @@ export function serialize(blocks: Block[]): string {
     parts.push(renderBlock(blocks[i]).trimEnd());
   }
   return parts.join('\n') + '\n';
+}
+
+/**
+ * Like {@link serialize}, but also returns each block's `{start,end}` char
+ * range in the produced markdown. Mirrors {@link serialize}'s join exactly
+ * (blocks separated by a blank line, trailing newline) — used to map an
+ * editor selection to a body char range. `md` is byte-identical to
+ * `serialize(blocks)`.
+ */
+export function serializeWithBlockRanges(
+  blocks: Block[],
+): { md: string; ranges: Array<{ start: number; end: number }> } {
+  const ranges: Array<{ start: number; end: number }> = [];
+  let md = '';
+  for (let i = 0; i < blocks.length; i++) {
+    if (i > 0) md += '\n\n';
+    const start = md.length;
+    md += renderBlock(blocks[i]).trimEnd();
+    ranges.push({ start, end: md.length });
+  }
+  md += '\n';
+  return { md, ranges };
 }
 
 function renderBlock(b: Block): string {

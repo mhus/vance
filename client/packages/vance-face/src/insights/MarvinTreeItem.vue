@@ -30,7 +30,7 @@ const emit = defineEmits<{ (e: 'select-process', id: string): void }>();
       <li v-for="child in node.children" :key="child.doc.id">
         <MarvinTreeItem
           :node="child"
-          @select-process="(id) => emit('select-process', id)"
+          @select-process="(id: string) => emit('select-process', id)"
         />
       </li>
     </ul>

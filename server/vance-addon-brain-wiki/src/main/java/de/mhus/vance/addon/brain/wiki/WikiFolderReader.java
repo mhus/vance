@@ -192,6 +192,12 @@ public class WikiFolderReader {
     /**
      * Slugify a raw name to the wiki file-name convention: lower-case,
      * only {@code a-z 0-9 _ -}, other runs collapse to a single {@code -}.
+     *
+     * <p><b>Mirrored client-side</b> — byte-for-byte — in {@code slug.ts} of the
+     * wiki addon's client, with a parity case-table in {@code slug.test.ts}. If
+     * this algorithm changes, update both in the same PR; otherwise the client's
+     * synchronous red-link check silently drifts from the filenames the server
+     * generates here.
      */
     public static String slugify(@Nullable String raw) {
         if (raw == null) return "";

@@ -1,8 +1,10 @@
 /**
  * Client-side mirror of the Java {@code WikiFolderReader.slugify}
- * (see server module). Kept byte-for-byte compatible so the synchronous
- * red-link check in {@code WorkPageEditor.resolveWikiLink} matches what
- * the server would generate for a page filename.
+ * (`vance-addon-brain-wiki` server module). Kept byte-for-byte compatible so
+ * the synchronous red-link check in {@code WorkPageEditor.resolveWikiLink}
+ * matches what the server would generate for a page filename. Parity is
+ * guarded by the case-table in `slug.test.ts` — change both (and the Java
+ * side) together.
  *
  * Rule: lower-case; keep {@code a-z 0-9 _}; collapse any run of other
  * characters (incl. {@code - / . space}) to a single {@code -}; trim

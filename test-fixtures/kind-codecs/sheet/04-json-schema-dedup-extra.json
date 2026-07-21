@@ -1,0 +1,22 @@
+{
+  "description": "schema deduped/uppercased/filtered + unknown top-level field, rows omitted",
+  "mime": "application/json",
+  "input": "{\n  \"$meta\": { \"kind\": \"sheet\" },\n  \"schema\": [\"a\", \"A\", \"b\", \"1x\", \"C\"],\n  \"cells\": [ { \"field\": \"A1\", \"data\": \"x\" } ],\n  \"title\": \"My Sheet\"\n}\n",
+  "expected": {
+    "$meta": {
+      "kind": "sheet"
+    },
+    "schema": [
+      "A",
+      "B",
+      "C"
+    ],
+    "cells": [
+      {
+        "field": "A1",
+        "data": "x"
+      }
+    ],
+    "title": "My Sheet"
+  }
+}

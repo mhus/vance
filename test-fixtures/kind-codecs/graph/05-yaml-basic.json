@@ -1,0 +1,29 @@
+{
+  "description": "application/yaml, nodes + edges",
+  "mime": "application/yaml",
+  "input": "$meta:\n  kind: graph\nnodes:\n  - id: n1\n    label: Start\n  - id: n2\n    label: End\nedges:\n  - source: n1\n    target: n2\n",
+  "expected": {
+    "$meta": {
+      "kind": "graph"
+    },
+    "graph": {
+      "directed": true
+    },
+    "nodes": [
+      {
+        "id": "n1",
+        "label": "Start"
+      },
+      {
+        "id": "n2",
+        "label": "End"
+      }
+    ],
+    "edges": [
+      {
+        "source": "n1",
+        "target": "n2"
+      }
+    ]
+  }
+}

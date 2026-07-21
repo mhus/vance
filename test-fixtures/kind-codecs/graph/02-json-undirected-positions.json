@@ -1,0 +1,39 @@
+{
+  "description": "directed=false, nodes with position + color, node extra preserved",
+  "mime": "application/json",
+  "input": "{\n  \"$meta\": { \"kind\": \"graph\" },\n  \"graph\": { \"directed\": false },\n  \"nodes\": [\n    { \"id\": \"a\", \"position\": { \"x\": 10, \"y\": 20 }, \"color\": \"#f00\", \"weight\": 3 },\n    { \"id\": \"b\", \"position\": { \"x\": 30, \"y\": 40 } }\n  ],\n  \"edges\": [ { \"source\": \"a\", \"target\": \"b\" } ]\n}\n",
+  "expected": {
+    "$meta": {
+      "kind": "graph"
+    },
+    "graph": {
+      "directed": false
+    },
+    "nodes": [
+      {
+        "id": "a",
+        "color": "#f00",
+        "position": {
+          "x": 10,
+          "y": 20
+        },
+        "weight": 3
+      },
+      {
+        "id": "b",
+        "position": {
+          "x": 30,
+          "y": 40
+        }
+      }
+    ],
+    "edges": [
+      {
+        "source": "a",
+        "target": "b"
+      }
+    ]
+  },
+  "knownJavaDrift": true,
+  "driftNote": "Number representation: GraphPosition is a Java record of double x/y, so integer coordinates serialize as 10.0/20.0; the TS codec emits 10/20. Whole-number float vs int on disk. Decide: emit integral doubles without the .0, or accept the representation gap."
+}

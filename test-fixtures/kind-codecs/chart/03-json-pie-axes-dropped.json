@@ -1,0 +1,28 @@
+{
+  "description": "pie chart {name,value}: xAxis/yAxis dropped (null → not emitted)",
+  "mime": "application/json",
+  "input": "{\n  \"$meta\": { \"kind\": \"chart\" },\n  \"chart\": { \"chartType\": \"pie\" },\n  \"xAxis\": { \"type\": \"category\" },\n  \"series\": [\n    { \"name\": \"Share\", \"data\": [ { \"name\": \"A\", \"value\": 30 }, { \"name\": \"B\", \"value\": 70 } ] }\n  ]\n}\n",
+  "expected": {
+    "$meta": {
+      "kind": "chart"
+    },
+    "chart": {
+      "chartType": "pie"
+    },
+    "series": [
+      {
+        "name": "Share",
+        "data": [
+          {
+            "name": "A",
+            "value": 30
+          },
+          {
+            "name": "B",
+            "value": 70
+          }
+        ]
+      }
+    ]
+  }
+}

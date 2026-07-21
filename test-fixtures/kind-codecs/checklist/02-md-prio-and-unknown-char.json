@@ -1,0 +1,25 @@
+{
+  "description": "markdown #prio tag + unknown status char round-trips via _statusChar",
+  "mime": "text/markdown",
+  "input": "---\nkind: checklist\n---\n- [ ] important #prio:high\n- [%] weird char\n- [x] low one #prio:low\n",
+  "expected": {
+    "$meta": {
+      "kind": "checklist"
+    },
+    "items": [
+      {
+        "text": "important",
+        "priority": "high"
+      },
+      {
+        "text": "weird char",
+        "_statusChar": "%"
+      },
+      {
+        "text": "low one",
+        "status": "done",
+        "priority": "low"
+      }
+    ]
+  }
+}

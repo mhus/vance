@@ -10,6 +10,13 @@
 // extra fields (see `parseListMarkdown` notes).
 //
 // See `specification/doc-kind-items.md` for the schema.
+//
+// Parity harness: this codec and its Java twin
+// `server/vance-shared/src/main/java/de/mhus/vance/shared/document/kind/ListCodec.java` must agree on the
+// wire format. A shared fixture corpus at
+// `test-fixtures/kind-codecs/list/` pins that agreement; it is read
+// by both `listItemsCodec.parity.test.ts` (TS) and
+// `ListCodecParityTest.java` (Java). Edit the codec + corpus together.
 
 import {
   dumpYamlBody,

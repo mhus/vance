@@ -1,0 +1,27 @@
+{
+  "description": "formula cell (=), color/background + unknown per-cell field",
+  "mime": "application/json",
+  "input": "{\n  \"$meta\": { \"kind\": \"sheet\" },\n  \"cells\": [\n    { \"field\": \"A1\", \"data\": \"10\" },\n    { \"field\": \"A2\", \"data\": \"20\" },\n    { \"field\": \"A3\", \"data\": \"=A1+A2\", \"color\": \"#ff0000\", \"background\": \"#eeeeee\", \"note\": \"sum\" }\n  ]\n}\n",
+  "expected": {
+    "$meta": {
+      "kind": "sheet"
+    },
+    "cells": [
+      {
+        "field": "A1",
+        "data": "10"
+      },
+      {
+        "field": "A2",
+        "data": "20"
+      },
+      {
+        "field": "A3",
+        "data": "=A1+A2",
+        "color": "#ff0000",
+        "background": "#eeeeee",
+        "note": "sum"
+      }
+    ]
+  }
+}

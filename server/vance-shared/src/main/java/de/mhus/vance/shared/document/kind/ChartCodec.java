@@ -23,6 +23,14 @@ import tools.jackson.databind.ObjectMapper;
  * an object-form point ({@code {x: …, y: …}}) is re-emitted as an
  * object, a tuple-form point ({@code [x, y]}) as a tuple. The codec
  * does not normalise between the two.
+ *
+ * <p><b>Parity harness.</b> This codec and its TS twin
+ * {@code client/packages/vance-face/src/document/chartCodec.ts} must agree on the wire
+ * format. A shared fixture corpus at
+ * {@code test-fixtures/kind-codecs/chart/} pins that agreement; it
+ * is read by both {@code ChartCodecParityTest} (Java) and
+ * {@code chartCodec.parity.test.ts} (TS). Edit the codec and the
+ * corpus together.
  */
 public final class ChartCodec {
 

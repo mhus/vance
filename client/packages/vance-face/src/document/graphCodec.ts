@@ -8,6 +8,13 @@
 // convention used by Cytoscape, GraphML/GEXF, vue-flow internally,
 // and the JSON Graph Spec. Edges that point to unknown ids are
 // preserved across round-trip but the renderer skips them.
+//
+// Parity harness: this codec and its Java twin
+// `server/vance-shared/src/main/java/de/mhus/vance/shared/document/kind/GraphCodec.java` must agree on the
+// wire format. A shared fixture corpus at
+// `test-fixtures/kind-codecs/graph/` pins that agreement; it is read
+// by both `graphCodec.parity.test.ts` (TS) and
+// `GraphCodecParityTest.java` (Java). Edit the codec + corpus together.
 
 import {
   dumpYamlBody,

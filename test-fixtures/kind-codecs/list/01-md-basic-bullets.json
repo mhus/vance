@@ -1,0 +1,21 @@
+{
+  "description": "markdown flat bullet list with front-matter",
+  "mime": "text/markdown",
+  "input": "---\nkind: list\n---\n- First\n- Second\n- Third\n",
+  "expected": {
+    "$meta": {
+      "kind": "list"
+    },
+    "items": [
+      {
+        "text": "First"
+      },
+      {
+        "text": "Second"
+      },
+      {
+        "text": "Third"
+      }
+    ]
+  }
+}

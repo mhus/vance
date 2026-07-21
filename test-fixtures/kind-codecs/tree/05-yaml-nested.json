@@ -1,0 +1,21 @@
+{
+  "description": "application/yaml, nested children",
+  "mime": "application/yaml",
+  "input": "$meta:\n  kind: tree\nitems:\n  - text: Parent\n    children:\n      - text: Kid\n        children: []\n",
+  "expected": {
+    "$meta": {
+      "kind": "tree"
+    },
+    "items": [
+      {
+        "text": "Parent",
+        "children": [
+          {
+            "text": "Kid",
+            "children": []
+          }
+        ]
+      }
+    ]
+  }
+}

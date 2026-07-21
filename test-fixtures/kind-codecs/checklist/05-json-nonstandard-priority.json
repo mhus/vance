@@ -1,0 +1,16 @@
+{
+  "description": "non-standard priority string preserved in extra",
+  "mime": "application/json",
+  "input": "{\n  \"$meta\": { \"kind\": \"checklist\" },\n  \"items\": [\n    { \"text\": \"X\", \"status\": \"open\", \"priority\": \"urgent\" }\n  ]\n}\n",
+  "expected": {
+    "$meta": {
+      "kind": "checklist"
+    },
+    "items": [
+      {
+        "text": "X",
+        "priority": "urgent"
+      }
+    ]
+  }
+}

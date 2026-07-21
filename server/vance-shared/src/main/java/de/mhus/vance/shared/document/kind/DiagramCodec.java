@@ -34,6 +34,14 @@ import tools.jackson.databind.ObjectMapper;
  * pass-through values, which is harmless.
  *
  * <p>Spec: {@code specification/doc-kind-diagram.md}.
+ *
+ * <p><b>Parity harness.</b> This codec and its TS twin
+ * {@code client/packages/vance-face/src/document/diagramCodec.ts} must agree on the wire
+ * format. A shared fixture corpus at
+ * {@code test-fixtures/kind-codecs/diagram/} pins that agreement; it
+ * is read by both {@code DiagramCodecParityTest} (Java) and
+ * {@code diagramCodec.parity.test.ts} (TS). Edit the codec and the
+ * corpus together.
  */
 public final class DiagramCodec {
 

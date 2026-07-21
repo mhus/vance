@@ -1,0 +1,26 @@
+{
+  "description": "application/json, recursive children + per-item extra field",
+  "mime": "application/json",
+  "input": "{\n  \"$meta\": { \"kind\": \"tree\" },\n  \"items\": [\n    { \"text\": \"A\", \"children\": [ { \"text\": \"A1\", \"children\": [], \"note\": \"leaf\" } ] },\n    { \"text\": \"B\", \"children\": [] }\n  ]\n}\n",
+  "expected": {
+    "$meta": {
+      "kind": "tree"
+    },
+    "items": [
+      {
+        "text": "A",
+        "children": [
+          {
+            "text": "A1",
+            "children": [],
+            "note": "leaf"
+          }
+        ]
+      },
+      {
+        "text": "B",
+        "children": []
+      }
+    ]
+  }
+}

@@ -31,6 +31,14 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <p>Stateless utility — all methods are static, no instance state,
  * no Spring bean.
+ *
+ * <p><b>Parity harness.</b> This codec and its TS twin
+ * {@code client/packages/vance-face/src/document/listItemsCodec.ts} must agree on the wire
+ * format. A shared fixture corpus at
+ * {@code test-fixtures/kind-codecs/list/} pins that agreement; it
+ * is read by both {@code ListCodecParityTest} (Java) and
+ * {@code listItemsCodec.parity.test.ts} (TS). Edit the codec and the
+ * corpus together.
  */
 public final class ListCodec {
 

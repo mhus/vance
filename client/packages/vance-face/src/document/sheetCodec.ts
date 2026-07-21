@@ -6,6 +6,13 @@
 // formatting appear on disk. Formulas live as plain strings (lead
 // with `=`) and round-trip stably; v1 does not evaluate them, see
 // spec §6.1 for v2 client-eval and §6.2 for v3 server-eval.
+//
+// Parity harness: this codec and its Java twin
+// `server/vance-shared/src/main/java/de/mhus/vance/shared/document/kind/SheetCodec.java` must agree on the
+// wire format. A shared fixture corpus at
+// `test-fixtures/kind-codecs/sheet/` pins that agreement; it is read
+// by both `sheetCodec.parity.test.ts` (TS) and
+// `SheetCodecParityTest.java` (Java). Edit the codec + corpus together.
 
 import {
   dumpYamlBody,

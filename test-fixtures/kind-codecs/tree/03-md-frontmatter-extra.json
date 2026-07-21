@@ -1,0 +1,17 @@
+{
+  "description": "markdown front-matter extra key preserved on top-level extra",
+  "mime": "text/markdown",
+  "input": "---\nkind: tree\ntitle: My Tree\n---\n- Only\n",
+  "expected": {
+    "$meta": {
+      "kind": "tree"
+    },
+    "items": [
+      {
+        "text": "Only",
+        "children": []
+      }
+    ],
+    "title": "My Tree"
+  }
+}

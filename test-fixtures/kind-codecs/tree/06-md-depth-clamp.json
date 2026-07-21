@@ -1,0 +1,21 @@
+{
+  "description": "markdown skip-level indent clamped to lastDepth+1 (no skip nodes)",
+  "mime": "text/markdown",
+  "input": "---\nkind: tree\n---\n- One\n      - Deep jump\n",
+  "expected": {
+    "$meta": {
+      "kind": "tree"
+    },
+    "items": [
+      {
+        "text": "One",
+        "children": [
+          {
+            "text": "Deep jump",
+            "children": []
+          }
+        ]
+      }
+    ]
+  }
+}

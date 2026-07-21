@@ -40,6 +40,14 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <p>Stateless utility — all methods are static, no instance state,
  * no Spring bean.
+ *
+ * <p><b>Parity harness.</b> This codec and its TS twin
+ * {@code client/packages/vance-face/src/document/checklistCodec.ts} must agree on the wire
+ * format. A shared fixture corpus at
+ * {@code test-fixtures/kind-codecs/checklist/} pins that agreement; it
+ * is read by both {@code ChecklistCodecParityTest} (Java) and
+ * {@code checklistCodec.parity.test.ts} (TS). Edit the codec and the
+ * corpus together.
  */
 public final class ChecklistCodec {
 

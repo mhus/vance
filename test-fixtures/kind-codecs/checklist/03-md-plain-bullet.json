@@ -1,0 +1,18 @@
+{
+  "description": "markdown plain bullet (no checkbox) defaults to open",
+  "mime": "text/markdown",
+  "input": "---\nkind: checklist\n---\n- plain one\n- plain two\n",
+  "expected": {
+    "$meta": {
+      "kind": "checklist"
+    },
+    "items": [
+      {
+        "text": "plain one"
+      },
+      {
+        "text": "plain two"
+      }
+    ]
+  }
+}

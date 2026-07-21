@@ -1,0 +1,20 @@
+{
+  "description": "application/yaml, status + extra per-item field",
+  "mime": "application/yaml",
+  "input": "$meta:\n  kind: checklist\nitems:\n  - text: task one\n    status: in_progress\n    owner: alice\n  - text: task two\n    status: open\n",
+  "expected": {
+    "$meta": {
+      "kind": "checklist"
+    },
+    "items": [
+      {
+        "text": "task one",
+        "status": "in_progress",
+        "owner": "alice"
+      },
+      {
+        "text": "task two"
+      }
+    ]
+  }
+}

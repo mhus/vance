@@ -1,0 +1,34 @@
+{
+  "description": "yaml line chart with no axis blocks → default category/value axes materialized",
+  "mime": "application/yaml",
+  "input": "$meta:\n  kind: chart\nchart:\n  chartType: line\nseries:\n  - name: temp\n    data:\n      - { x: Mon, y: 12 }\n      - { x: Tue, y: 15 }\n",
+  "expected": {
+    "$meta": {
+      "kind": "chart"
+    },
+    "chart": {
+      "chartType": "line"
+    },
+    "xAxis": {
+      "type": "category"
+    },
+    "yAxis": {
+      "type": "value"
+    },
+    "series": [
+      {
+        "name": "temp",
+        "data": [
+          {
+            "x": "Mon",
+            "y": 12
+          },
+          {
+            "x": "Tue",
+            "y": 15
+          }
+        ]
+      }
+    ]
+  }
+}

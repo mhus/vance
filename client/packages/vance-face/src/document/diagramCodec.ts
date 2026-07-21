@@ -10,6 +10,13 @@
 //
 // See `specification/doc-kind-diagram.md` for the schema. Mirrors the
 // server-side `DiagramCodec` in `vance-shared`.
+//
+// Parity harness: this codec and its Java twin
+// `server/vance-shared/src/main/java/de/mhus/vance/shared/document/kind/DiagramCodec.java` must agree on the
+// wire format. A shared fixture corpus at
+// `test-fixtures/kind-codecs/diagram/` pins that agreement; it is read
+// by both `diagramCodec.parity.test.ts` (TS) and
+// `DiagramCodecParityTest.java` (Java). Edit the codec + corpus together.
 
 import yaml from 'js-yaml';
 import {

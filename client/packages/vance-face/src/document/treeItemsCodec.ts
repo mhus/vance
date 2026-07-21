@@ -5,6 +5,13 @@
 //
 // See `specification/doc-kind-tree.md` for the schema and the
 // markdown indent-nesting rules.
+//
+// Parity harness: this codec and its Java twin
+// `server/vance-shared/src/main/java/de/mhus/vance/shared/document/kind/TreeCodec.java` must agree on the
+// wire format. A shared fixture corpus at
+// `test-fixtures/kind-codecs/tree/` pins that agreement; it is read
+// by both `treeItemsCodec.parity.test.ts` (TS) and
+// `TreeCodecParityTest.java` (Java). Edit the codec + corpus together.
 
 import {
   dumpYamlBody,

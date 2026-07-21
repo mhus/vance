@@ -1,0 +1,39 @@
+{
+  "description": "scatter + echartsOptionOverride + top-level extra + unknown per-series field",
+  "mime": "application/json",
+  "input": "{\n  \"$meta\": { \"kind\": \"chart\" },\n  \"chart\": { \"chartType\": \"scatter\", \"subtitle\": \"cloud\", \"smooth\": true },\n  \"series\": [\n    { \"name\": \"pts\", \"data\": [ { \"x\": 1, \"y\": 2 } ], \"symbolSize\": 12 }\n  ],\n  \"echartsOptionOverride\": { \"grid\": { \"left\": 40 } },\n  \"caption\": \"hello\"\n}\n",
+  "expected": {
+    "$meta": {
+      "kind": "chart"
+    },
+    "chart": {
+      "chartType": "scatter",
+      "subtitle": "cloud",
+      "smooth": true
+    },
+    "xAxis": {
+      "type": "category"
+    },
+    "yAxis": {
+      "type": "value"
+    },
+    "series": [
+      {
+        "name": "pts",
+        "data": [
+          {
+            "x": 1,
+            "y": 2
+          }
+        ],
+        "symbolSize": 12
+      }
+    ],
+    "echartsOptionOverride": {
+      "grid": {
+        "left": 40
+      }
+    },
+    "caption": "hello"
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "description": "yaml candlestick, object-form OHLC points",
+  "mime": "application/yaml",
+  "input": "$meta:\n  kind: chart\nchart:\n  chartType: candlestick\n  title: OHLC\nseries:\n  - name: ACME\n    data:\n      - { t: \"2024-01-01\", o: 1, h: 2, l: 0.5, c: 1.5 }\n      - { t: \"2024-01-02\", o: 1.5, h: 2.2, l: 1.1, c: 2.0 }\n",
+  "expected": {
+    "$meta": {
+      "kind": "chart"
+    },
+    "chart": {
+      "chartType": "candlestick",
+      "title": "OHLC"
+    },
+    "xAxis": {
+      "type": "category"
+    },
+    "yAxis": {
+      "type": "value"
+    },
+    "series": [
+      {
+        "name": "ACME",
+        "data": [
+          {
+            "t": "2024-01-01",
+            "o": 1,
+            "h": 2,
+            "l": 0.5,
+            "c": 1.5
+          },
+          {
+            "t": "2024-01-02",
+            "o": 1.5,
+            "h": 2.2,
+            "l": 1.1,
+            "c": 2
+          }
+        ]
+      }
+    ]
+  },
+  "knownJavaDrift": true,
+  "driftNote": "Number representation in pass-through series data: a YAML/JSON literal with an explicit decimal point (c: 2.0) is preserved by Jackson as 2.0, while the TS codec (JS number) collapses it to 2. Affects verbatim-preserved chart data points that carry whole-valued decimals."
+}

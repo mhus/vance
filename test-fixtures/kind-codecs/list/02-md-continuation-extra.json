@@ -1,0 +1,19 @@
+{
+  "description": "markdown continuation line appended + front-matter extra key",
+  "mime": "text/markdown",
+  "input": "---\nkind: list\ntitle: Notes\n---\n- Line one\n  continued\n- Line two\n",
+  "expected": {
+    "$meta": {
+      "kind": "list"
+    },
+    "items": [
+      {
+        "text": "Line one\ncontinued"
+      },
+      {
+        "text": "Line two"
+      }
+    ],
+    "title": "Notes"
+  }
+}

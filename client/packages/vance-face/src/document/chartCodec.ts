@@ -11,6 +11,13 @@
 // object-form point ({x, y}) is re-emitted as an object, a tuple-form
 // point ([x, y]) as a tuple. The codec does not normalise between the
 // two.
+//
+// Parity harness: this codec and its Java twin
+// `server/vance-shared/src/main/java/de/mhus/vance/shared/document/kind/ChartCodec.java` must agree on the
+// wire format. A shared fixture corpus at
+// `test-fixtures/kind-codecs/chart/` pins that agreement; it is read
+// by both `chartCodec.parity.test.ts` (TS) and
+// `ChartCodecParityTest.java` (Java). Edit the codec + corpus together.
 
 import {
   dumpYamlBody,

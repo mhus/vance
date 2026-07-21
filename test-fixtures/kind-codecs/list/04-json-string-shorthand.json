@@ -1,0 +1,21 @@
+{
+  "description": "application/json, string-shorthand array items",
+  "mime": "application/json",
+  "input": "{\n  \"$meta\": { \"kind\": \"list\" },\n  \"items\": [ \"alpha\", \"beta\", \"gamma\" ]\n}\n",
+  "expected": {
+    "$meta": {
+      "kind": "list"
+    },
+    "items": [
+      {
+        "text": "alpha"
+      },
+      {
+        "text": "beta"
+      },
+      {
+        "text": "gamma"
+      }
+    ]
+  }
+}

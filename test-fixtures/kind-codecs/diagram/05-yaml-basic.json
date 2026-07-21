@@ -1,0 +1,11 @@
+{
+  "description": "application/yaml, source only (default header)",
+  "mime": "application/yaml",
+  "input": "$meta:\n  kind: diagram\nsource: |-\n  graph TD\n    Start --> Stop\n",
+  "expected": {
+    "$meta": {
+      "kind": "diagram"
+    },
+    "source": "graph TD\n  Start --> Stop"
+  }
+}

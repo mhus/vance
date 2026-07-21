@@ -1,0 +1,20 @@
+{
+  "description": "application/json, object items with unknown per-item fields preserved",
+  "mime": "application/json",
+  "input": "{\n  \"$meta\": { \"kind\": \"list\" },\n  \"items\": [\n    { \"text\": \"Buy milk\", \"done\": true },\n    { \"text\": \"Call Bob\", \"priority\": \"high\" }\n  ]\n}\n",
+  "expected": {
+    "$meta": {
+      "kind": "list"
+    },
+    "items": [
+      {
+        "text": "Buy milk",
+        "done": true
+      },
+      {
+        "text": "Call Bob",
+        "priority": "high"
+      }
+    ]
+  }
+}

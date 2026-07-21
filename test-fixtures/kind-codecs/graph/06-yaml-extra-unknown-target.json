@@ -1,0 +1,25 @@
+{
+  "description": "yaml top-level extra + edge to unknown node id preserved",
+  "mime": "application/yaml",
+  "input": "$meta:\n  kind: graph\nnodes:\n  - id: a\nedges:\n  - source: a\n    target: ghost\nlayout: dagre\n",
+  "expected": {
+    "$meta": {
+      "kind": "graph"
+    },
+    "graph": {
+      "directed": true
+    },
+    "nodes": [
+      {
+        "id": "a"
+      }
+    ],
+    "edges": [
+      {
+        "source": "a",
+        "target": "ghost"
+      }
+    ],
+    "layout": "dagre"
+  }
+}

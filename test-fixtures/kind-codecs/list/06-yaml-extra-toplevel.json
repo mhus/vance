@@ -1,0 +1,16 @@
+{
+  "description": "yaml unknown top-level field preserved",
+  "mime": "application/yaml",
+  "input": "$meta:\n  kind: list\nitems:\n  - text: only\ncolor: blue\n",
+  "expected": {
+    "$meta": {
+      "kind": "list"
+    },
+    "items": [
+      {
+        "text": "only"
+      }
+    ],
+    "color": "blue"
+  }
+}

@@ -20,6 +20,14 @@ import tools.jackson.databind.ObjectMapper;
  * legacy {@code node.edges: string[]} form (which gets lifted on
  * read; {@code mergeEdges} prefers explicit top-level entries on
  * collision). Writes only the canonical form.
+ *
+ * <p><b>Parity harness.</b> This codec and its TS twin
+ * {@code client/packages/vance-face/src/document/graphCodec.ts} must agree on the wire
+ * format. A shared fixture corpus at
+ * {@code test-fixtures/kind-codecs/graph/} pins that agreement; it
+ * is read by both {@code GraphCodecParityTest} (Java) and
+ * {@code graphCodec.parity.test.ts} (TS). Edit the codec and the
+ * corpus together.
  */
 public final class GraphCodec {
 

@@ -1,0 +1,34 @@
+{
+  "description": "legacy node.edges string-list migrated to top-level edges",
+  "mime": "application/json",
+  "input": "{\n  \"$meta\": { \"kind\": \"graph\" },\n  \"nodes\": [\n    { \"id\": \"a\", \"edges\": [\"b\", \"c\"] },\n    { \"id\": \"b\" },\n    { \"id\": \"c\" }\n  ]\n}\n",
+  "expected": {
+    "$meta": {
+      "kind": "graph"
+    },
+    "graph": {
+      "directed": true
+    },
+    "nodes": [
+      {
+        "id": "a"
+      },
+      {
+        "id": "b"
+      },
+      {
+        "id": "c"
+      }
+    ],
+    "edges": [
+      {
+        "source": "a",
+        "target": "b"
+      },
+      {
+        "source": "a",
+        "target": "c"
+      }
+    ]
+  }
+}

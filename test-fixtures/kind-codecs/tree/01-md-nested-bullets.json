@@ -1,0 +1,34 @@
+{
+  "description": "markdown nested bullets (2 spaces per level)",
+  "mime": "text/markdown",
+  "input": "---\nkind: tree\n---\n- Root A\n  - Child A1\n  - Child A2\n- Root B\n  - Child B1\n",
+  "expected": {
+    "$meta": {
+      "kind": "tree"
+    },
+    "items": [
+      {
+        "text": "Root A",
+        "children": [
+          {
+            "text": "Child A1",
+            "children": []
+          },
+          {
+            "text": "Child A2",
+            "children": []
+          }
+        ]
+      },
+      {
+        "text": "Root B",
+        "children": [
+          {
+            "text": "Child B1",
+            "children": []
+          }
+        ]
+      }
+    ]
+  }
+}

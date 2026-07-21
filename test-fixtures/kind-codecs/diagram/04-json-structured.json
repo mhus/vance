@@ -1,0 +1,14 @@
+{
+  "description": "application/json, structured body: dialect + header + source",
+  "mime": "application/json",
+  "input": "{\n  \"$meta\": { \"kind\": \"diagram\" },\n  \"dialect\": \"mermaid\",\n  \"diagram\": { \"theme\": \"forest\" },\n  \"source\": \"graph LR\\n  A --> B\"\n}\n",
+  "expected": {
+    "$meta": {
+      "kind": "diagram"
+    },
+    "diagram": {
+      "theme": "forest"
+    },
+    "source": "graph LR\n  A --> B"
+  }
+}

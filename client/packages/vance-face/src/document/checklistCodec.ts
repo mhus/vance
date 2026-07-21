@@ -8,6 +8,13 @@
 // `priority` field in JSON/YAML.
 //
 // See `specification/doc-kind-checklist.md` for the schema.
+//
+// Parity harness: this codec and its Java twin
+// `server/vance-shared/src/main/java/de/mhus/vance/shared/document/kind/ChecklistCodec.java` must agree on the
+// wire format. A shared fixture corpus at
+// `test-fixtures/kind-codecs/checklist/` pins that agreement; it is read
+// by both `checklistCodec.parity.test.ts` (TS) and
+// `ChecklistCodecParityTest.java` (Java). Edit the codec + corpus together.
 
 import {
   dumpYamlBody,

@@ -1,0 +1,25 @@
+{
+  "description": "application/yaml, schema + rows + cells",
+  "mime": "application/yaml",
+  "input": "$meta:\n  kind: sheet\nschema:\n  - A\n  - B\nrows: 2\ncells:\n  - field: A1\n    data: Hello\n  - field: B1\n    data: World\n",
+  "expected": {
+    "$meta": {
+      "kind": "sheet"
+    },
+    "schema": [
+      "A",
+      "B"
+    ],
+    "rows": 2,
+    "cells": [
+      {
+        "field": "A1",
+        "data": "Hello"
+      },
+      {
+        "field": "B1",
+        "data": "World"
+      }
+    ]
+  }
+}

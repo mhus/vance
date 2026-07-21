@@ -1,0 +1,17 @@
+{
+  "description": "markdown diagram header (theme/look) + preamble + postamble",
+  "mime": "text/markdown",
+  "input": "---\nkind: diagram\ndiagram:\n  theme: dark\n  look: handDrawn\n---\n\nIntro text.\n\n```mermaid\nflowchart LR\n  X --> Y\n```\n\nTrailing note.\n",
+  "expected": {
+    "$meta": {
+      "kind": "diagram"
+    },
+    "diagram": {
+      "theme": "dark",
+      "look": "handDrawn"
+    },
+    "source": "flowchart LR\n  X --> Y",
+    "_preamble": "Intro text.",
+    "_postamble": "Trailing note."
+  }
+}

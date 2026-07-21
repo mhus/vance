@@ -1,0 +1,31 @@
+{
+  "description": "markdown status chars: open/done/in_progress/review/blocked",
+  "mime": "text/markdown",
+  "input": "---\nkind: checklist\n---\n- [ ] todo\n- [x] finished\n- [~] doing\n- [/] in review\n- [!] blocked\n",
+  "expected": {
+    "$meta": {
+      "kind": "checklist"
+    },
+    "items": [
+      {
+        "text": "todo"
+      },
+      {
+        "text": "finished",
+        "status": "done"
+      },
+      {
+        "text": "doing",
+        "status": "in_progress"
+      },
+      {
+        "text": "in review",
+        "status": "review"
+      },
+      {
+        "text": "blocked",
+        "status": "blocked"
+      }
+    ]
+  }
+}

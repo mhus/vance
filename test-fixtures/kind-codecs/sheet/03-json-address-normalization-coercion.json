@@ -1,0 +1,24 @@
+{
+  "description": "lowercase address uppercased, number/bool data coerced, invalid address dropped",
+  "mime": "application/json",
+  "input": "{\n  \"$meta\": { \"kind\": \"sheet\" },\n  \"cells\": [\n    { \"field\": \"a1\", \"data\": 5 },\n    { \"field\": \"b2\", \"data\": true },\n    { \"field\": \"notAnAddress\", \"data\": \"x\" },\n    { \"field\": \"C3\", \"data\": \"ok\" }\n  ]\n}\n",
+  "expected": {
+    "$meta": {
+      "kind": "sheet"
+    },
+    "cells": [
+      {
+        "field": "A1",
+        "data": "5"
+      },
+      {
+        "field": "B2",
+        "data": "true"
+      },
+      {
+        "field": "C3",
+        "data": "ok"
+      }
+    ]
+  }
+}

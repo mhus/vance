@@ -1,0 +1,11 @@
+{
+  "description": "markdown fence with empty info string accepted as source",
+  "mime": "text/markdown",
+  "input": "---\nkind: diagram\n---\n\n```\nsequenceDiagram\n  Alice->>Bob: Hi\n```\n",
+  "expected": {
+    "$meta": {
+      "kind": "diagram"
+    },
+    "source": "sequenceDiagram\n  Alice->>Bob: Hi"
+  }
+}

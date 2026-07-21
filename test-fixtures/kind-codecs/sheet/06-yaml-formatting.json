@@ -1,0 +1,22 @@
+{
+  "description": "yaml cells with color/background + top-level extra",
+  "mime": "application/yaml",
+  "input": "$meta:\n  kind: sheet\ncells:\n  - field: A1\n    data: Total\n  - field: B1\n    data: \"=SUM(B2:B9)\"\n    background: \"#f0f0f0\"\nfrozenRows: 1\n",
+  "expected": {
+    "$meta": {
+      "kind": "sheet"
+    },
+    "cells": [
+      {
+        "field": "A1",
+        "data": "Total"
+      },
+      {
+        "field": "B1",
+        "data": "=SUM(B2:B9)",
+        "background": "#f0f0f0"
+      }
+    ],
+    "frozenRows": 1
+  }
+}

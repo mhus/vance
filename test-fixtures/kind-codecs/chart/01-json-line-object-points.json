@@ -1,0 +1,41 @@
+{
+  "description": "line chart, object-form {x,y} points, axes + title; one malformed point dropped",
+  "mime": "application/json",
+  "input": "{\n  \"$meta\": { \"kind\": \"chart\" },\n  \"chart\": { \"chartType\": \"line\", \"title\": \"Sales\" },\n  \"xAxis\": { \"type\": \"category\", \"categories\": [\"Q1\", \"Q2\", \"Q3\"] },\n  \"yAxis\": { \"type\": \"value\", \"label\": \"USD\" },\n  \"series\": [\n    { \"name\": \"2024\", \"data\": [ { \"x\": \"Q1\", \"y\": 10 }, { \"x\": \"Q2\", \"y\": 20 }, { \"x\": \"Q3\" } ] }\n  ]\n}\n",
+  "expected": {
+    "$meta": {
+      "kind": "chart"
+    },
+    "chart": {
+      "chartType": "line",
+      "title": "Sales"
+    },
+    "xAxis": {
+      "type": "category",
+      "categories": [
+        "Q1",
+        "Q2",
+        "Q3"
+      ]
+    },
+    "yAxis": {
+      "type": "value",
+      "label": "USD"
+    },
+    "series": [
+      {
+        "name": "2024",
+        "data": [
+          {
+            "x": "Q1",
+            "y": 10
+          },
+          {
+            "x": "Q2",
+            "y": 20
+          }
+        ]
+      }
+    ]
+  }
+}

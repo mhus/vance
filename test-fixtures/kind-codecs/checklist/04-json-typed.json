@@ -1,0 +1,24 @@
+{
+  "description": "application/json, typed status + priority",
+  "mime": "application/json",
+  "input": "{\n  \"$meta\": { \"kind\": \"checklist\" },\n  \"items\": [\n    { \"text\": \"A\", \"status\": \"done\" },\n    { \"text\": \"B\", \"status\": \"blocked\", \"priority\": \"high\" },\n    { \"text\": \"C\" }\n  ]\n}\n",
+  "expected": {
+    "$meta": {
+      "kind": "checklist"
+    },
+    "items": [
+      {
+        "text": "A",
+        "status": "done"
+      },
+      {
+        "text": "B",
+        "status": "blocked",
+        "priority": "high"
+      },
+      {
+        "text": "C"
+      }
+    ]
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "description": "application/yaml, object items",
+  "mime": "application/yaml",
+  "input": "$meta:\n  kind: list\nitems:\n  - text: one\n  - text: two\n",
+  "expected": {
+    "$meta": {
+      "kind": "list"
+    },
+    "items": [
+      {
+        "text": "one"
+      },
+      {
+        "text": "two"
+      }
+    ]
+  }
+}

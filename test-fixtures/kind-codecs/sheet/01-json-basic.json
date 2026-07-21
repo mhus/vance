@@ -1,0 +1,33 @@
+{
+  "description": "application/json, schema + rows + populated cells",
+  "mime": "application/json",
+  "input": "{\n  \"$meta\": { \"kind\": \"sheet\" },\n  \"schema\": [\"A\", \"B\"],\n  \"rows\": 3,\n  \"cells\": [\n    { \"field\": \"A1\", \"data\": \"Name\" },\n    { \"field\": \"B1\", \"data\": \"Score\" },\n    { \"field\": \"A2\", \"data\": \"Alice\" },\n    { \"field\": \"B2\", \"data\": \"42\" }\n  ]\n}\n",
+  "expected": {
+    "$meta": {
+      "kind": "sheet"
+    },
+    "schema": [
+      "A",
+      "B"
+    ],
+    "rows": 3,
+    "cells": [
+      {
+        "field": "A1",
+        "data": "Name"
+      },
+      {
+        "field": "B1",
+        "data": "Score"
+      },
+      {
+        "field": "A2",
+        "data": "Alice"
+      },
+      {
+        "field": "B2",
+        "data": "42"
+      }
+    ]
+  }
+}

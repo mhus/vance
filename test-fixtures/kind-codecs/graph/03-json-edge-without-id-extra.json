@@ -1,0 +1,29 @@
+{
+  "description": "edge without id (id not emitted) + unknown per-edge field preserved",
+  "mime": "application/json",
+  "input": "{\n  \"$meta\": { \"kind\": \"graph\" },\n  \"nodes\": [ { \"id\": \"a\" }, { \"id\": \"b\" } ],\n  \"edges\": [ { \"source\": \"a\", \"target\": \"b\", \"color\": \"#00f\", \"weight\": 5 } ]\n}\n",
+  "expected": {
+    "$meta": {
+      "kind": "graph"
+    },
+    "graph": {
+      "directed": true
+    },
+    "nodes": [
+      {
+        "id": "a"
+      },
+      {
+        "id": "b"
+      }
+    ],
+    "edges": [
+      {
+        "source": "a",
+        "target": "b",
+        "color": "#00f",
+        "weight": 5
+      }
+    ]
+  }
+}

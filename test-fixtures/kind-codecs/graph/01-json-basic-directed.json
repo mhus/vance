@@ -1,0 +1,31 @@
+{
+  "description": "application/json, two nodes + one edge with id, directed default true",
+  "mime": "application/json",
+  "input": "{\n  \"$meta\": { \"kind\": \"graph\" },\n  \"nodes\": [ { \"id\": \"a\", \"label\": \"A\" }, { \"id\": \"b\", \"label\": \"B\" } ],\n  \"edges\": [ { \"id\": \"e1\", \"source\": \"a\", \"target\": \"b\", \"label\": \"to\" } ]\n}\n",
+  "expected": {
+    "$meta": {
+      "kind": "graph"
+    },
+    "graph": {
+      "directed": true
+    },
+    "nodes": [
+      {
+        "id": "a",
+        "label": "A"
+      },
+      {
+        "id": "b",
+        "label": "B"
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1",
+        "source": "a",
+        "target": "b",
+        "label": "to"
+      }
+    ]
+  }
+}

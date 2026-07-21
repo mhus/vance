@@ -1,0 +1,37 @@
+{
+  "description": "bar chart, tuple-form points preserved as tuples, stacked=true legend=false",
+  "mime": "application/json",
+  "input": "{\n  \"$meta\": { \"kind\": \"chart\" },\n  \"chart\": { \"chartType\": \"bar\", \"stacked\": true, \"legend\": false },\n  \"series\": [\n    { \"name\": \"A\", \"color\": \"#123456\", \"data\": [ [\"Jan\", 5], [\"Feb\", 8] ] }\n  ]\n}\n",
+  "expected": {
+    "$meta": {
+      "kind": "chart"
+    },
+    "chart": {
+      "chartType": "bar",
+      "legend": false,
+      "stacked": true
+    },
+    "xAxis": {
+      "type": "category"
+    },
+    "yAxis": {
+      "type": "value"
+    },
+    "series": [
+      {
+        "name": "A",
+        "color": "#123456",
+        "data": [
+          [
+            "Jan",
+            5
+          ],
+          [
+            "Feb",
+            8
+          ]
+        ]
+      }
+    ]
+  }
+}

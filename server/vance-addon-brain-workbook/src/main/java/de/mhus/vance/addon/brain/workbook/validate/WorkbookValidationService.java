@@ -111,6 +111,20 @@ public class WorkbookValidationService {
                         + "kind: workpage document.");
     }
 
+    /**
+     * Content-based core for a single workpage. Parses {@code content} with the
+     * canonical parser and dispatches its blocks to the {@link BlockValidator}s
+     * — no document load, so the {@code workpage} {@code KindHandler} can reuse
+     * it for a pre-write (unsaved content) self-check. {@code docPath} is the
+     * page's path used to resolve {@code vance:} references, {@code docs} the
+     * reference facade for cross-document checks.
+     */
+    public Result validate(String content, String docPath, DocRefs docs) {
+        List<Finding> findings = new ArrayList<>();
+        int blocks = walkContent(content, docPath, docs, findings);
+        return new Result(docPath, findings, 1, blocks);
+    }
+
     private Result validateFolder(String tenantId, String projectId, String folder, DocRefs docs) {
         WorkbookFolderReader.Scan scan = folderReader.scan(tenantId, projectId, folder);
         List<Finding> findings = new ArrayList<>(structureValidator.validate(scan, docs));
@@ -122,8 +136,12 @@ public class WorkbookValidationService {
     }
 
     private int validatePage(DocumentDocument doc, DocRefs docs, List<Finding> findings) {
-        List<Block> blocks = workPageParser.parseDocument(read(doc)).blocks();
-        return walk(blocks, doc.getPath(), docs, findings, new int[]{0});
+        return walkContent(read(doc), doc.getPath(), docs, findings);
+    }
+
+    private int walkContent(String content, String docPath, DocRefs docs, List<Finding> findings) {
+        List<Block> blocks = workPageParser.parseDocument(content).blocks();
+        return walk(blocks, docPath, docs, findings, new int[]{0});
     }
 
     /** Depth-first walk (descends into columns); returns count of checked fences. */

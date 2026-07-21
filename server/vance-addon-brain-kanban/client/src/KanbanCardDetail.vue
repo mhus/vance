@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, inject, nextTick, onBeforeUnmount, ref, watch, type Component, type Ref } from 'vue';
 import {
   VButton,
   VCheckbox,
@@ -10,7 +10,8 @@ import {
   VTagEditor,
 } from '@vance/components';
 import { AccentColor } from '@vance/generated';
-import { WorkPageEditor } from '@vance/block-editor';
+import { postComposeRun, pollComposeRun, cancelComposeRun } from '@vance/shared';
+import { WorkPageEditor, type ComposeRunResult } from '@vance/block-editor';
 import { updateKanbanCard } from './api';
 import type { KanbanCardUpdateRequest } from './generated/kanban/KanbanCardUpdateRequest';
 import type { KanbanCardView } from './generated/kanban/KanbanCardView';
@@ -87,6 +88,30 @@ const editorDocument = computed(() => ({
 }));
 
 const contentOpen = ref(false);
+
+// ── Compose (/compose block) ──────────────────────────────────────
+// Wire the block-editor's compose callbacks the same way the workbook
+// does, so `/compose` works inside the card content. Without these the
+// editor reports "Compose run is not available in this context."
+// Relative vance: paths resolve against the card's app folder; the run
+// binds to the active cortex session (if any) via the injected id.
+const sessionId = inject<Ref<string | null>>('vance:session-id', ref(null));
+const composeOutputComponent = inject<Component | null>('vance:compose-output-component', null);
+
+function runCompose(yaml: string): Promise<ComposeRunResult> {
+  return postComposeRun(props.projectId, {
+    composeYaml: yaml,
+    composeBasePath: props.folder,
+    sessionId: sessionId.value,
+    appKey: props.folder,
+  });
+}
+function pollCompose(runId: string): Promise<ComposeRunResult> {
+  return pollComposeRun(props.projectId, runId);
+}
+function cancelCompose(runId: string): Promise<ComposeRunResult> {
+  return cancelComposeRun(props.projectId, runId);
+}
 
 // ── Save status ───────────────────────────────────────────────────
 type SaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
@@ -356,6 +381,10 @@ onBeforeUnmount(() => {
           :auto-save-ms="0"
           body-only
           :current-project-id="projectId"
+          :run-compose="runCompose"
+          :poll-compose="pollCompose"
+          :cancel-compose="cancelCompose"
+          :compose-output-component="composeOutputComponent ?? undefined"
           @save="onBodySave"
           @dirty="onBodyDirty"
         />

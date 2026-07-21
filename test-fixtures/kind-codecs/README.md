@@ -58,21 +58,21 @@ test (with the reason in `driftNote`) and asserted normally by the TS
 test; their existence documents an open divergence for a human to
 resolve.
 
-### Currently recorded drifts (skipped on the Java side)
+### Currently recorded drifts
 
-- **records** `03-markdown-table-form` — Java `RecordsCodec` originally
-  had no markdown-table parsing; **since resolved** (ported to Java), so
-  this fixture is no longer flagged.
-- **tree** `02-md-indented-mindmap` — Java `TreeCodec` markdown parse
-  supports only the bullet-list form, not the bullet-less indented /
-  Mermaid-mindmap form (`root((X))` stripping). TS accepts it, Java
-  yields zero items.
-- **graph** `02-json-undirected-positions` — `GraphPosition` is a Java
-  record of `double x/y`, so integer coordinates serialize as `10.0`;
-  the TS codec emits `10`. Whole-number float vs int on disk.
-- **chart** `06-yaml-candlestick` — a numeric literal with an explicit
-  decimal point (`c: 2.0`) is preserved by Jackson as `2.0` in
-  pass-through series data, while the TS/JS codec collapses it to `2`.
+**None** — the harness is fully green on both sides. The drifts the rollout
+originally surfaced have all been resolved:
+
+- **records** `03-markdown-table-form` and **tree** `02-md-indented-mindmap`
+  were structural gaps (a Markdown form the TS editor/LLM accepts that Java
+  couldn't parse). **Resolved** by porting the parser to Java
+  (`RecordsCodec` markdown-table, `TreeCodec` bullet-less indented /
+  `root((X))`).
+- **graph** `02` and **chart** `06` were cosmetic number-representation
+  differences (Java `double` → `10.0` vs JS `10`, both the same number).
+  **Resolved** by comparing numbers *by value* in the harness
+  (`ParityJson.equivalent`: `10.0 ≡ 10`, but `"10" ≠ 10`), so an int-vs-double
+  of the same value is not a drift while a type change still is.
 
 ## When you edit either codec
 

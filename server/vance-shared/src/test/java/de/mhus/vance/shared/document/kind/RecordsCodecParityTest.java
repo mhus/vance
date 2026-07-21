@@ -82,6 +82,6 @@ class RecordsCodecParityTest {
         String json = RecordsCodec.serialize(doc, "application/json");
         JsonNode actual = MAPPER.readTree(json);
 
-        assertThat(actual).isEqualTo(expected);
+        assertThat(ParityJson.equivalent(actual, expected)).as("JSON parity mismatch: expected=" + expected + " actual=" + actual).isTrue();
     }
 }

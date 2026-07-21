@@ -26,7 +26,5 @@
         ]
       }
     ]
-  },
-  "knownJavaDrift": true,
-  "driftNote": "Java TreeCodec.parse (markdown) only supports the bullet list form; it has no bullet-less indented/Mermaid-mindmap fallback (root((X)) stripping), so this body parses to zero items. recordsCodec-style drift: the TS editor accepts a form Java does not. Decide: port the indented-tree path to Java, or declare it TS-editor-only."
+  }
 }

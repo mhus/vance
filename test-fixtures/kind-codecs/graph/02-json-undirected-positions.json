@@ -33,7 +33,5 @@
         "target": "b"
       }
     ]
-  },
-  "knownJavaDrift": true,
-  "driftNote": "Number representation: GraphPosition is a Java record of double x/y, so integer coordinates serialize as 10.0/20.0; the TS codec emits 10/20. Whole-number float vs int on disk. Decide: emit integral doubles without the .0, or accept the representation gap."
+  }
 }

@@ -37,7 +37,5 @@
         ]
       }
     ]
-  },
-  "knownJavaDrift": true,
-  "driftNote": "Number representation in pass-through series data: a YAML/JSON literal with an explicit decimal point (c: 2.0) is preserved by Jackson as 2.0, while the TS codec (JS number) collapses it to 2. Affects verbatim-preserved chart data points that carry whole-valued decimals."
+  }
 }

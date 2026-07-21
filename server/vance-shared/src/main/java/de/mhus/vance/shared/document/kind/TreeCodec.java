@@ -113,6 +113,22 @@ public final class TreeCodec {
             if (cursor < lines.length && MD_FENCE.equals(lines[cursor].trim())) cursor++;
         }
 
+        // Bullet-less indented / Mermaid-mindmap body: LLMs sometimes drop the
+        // bullet markers and use pure indentation (incl. `root((X))` wrappers).
+        // No bullet anywhere → indent-only path. Mirrors the hasBullet branch in
+        // treeItemsCodec.ts.
+        boolean hasBullet = false;
+        for (int i = cursor; i < lines.length; i++) {
+            if (matchBullet(lines[i]) != null) {
+                hasBullet = true;
+                break;
+            }
+        }
+        if (!hasBullet) {
+            return new TreeDocument(kind.isEmpty() ? defaultKind : kind,
+                    parseIndentedBody(lines, cursor), extra);
+        }
+
         // Open-levels stack — root list is depth -1; bullets resolve
         // their depth and pop until they land at parent level.
         List<TreeItem> root = new ArrayList<>();
@@ -184,6 +200,57 @@ public final class TreeCodec {
         char marker = raw.charAt(i);
         if ((marker != '-' && marker != '*') || raw.charAt(i + 1) != ' ') return null;
         return new BulletMatch(indent, raw.substring(i + 2));
+    }
+
+    /**
+     * Bullet-less indented body (Mermaid-mindmap style): every non-blank line
+     * is a node, depth from indent (2 spaces = one level, tabs = 4 spaces),
+     * deeper items clamped to {@code lastDepth + 1}. Depth-0 lines get their
+     * {@code root((X))} / {@code root[X]} / {@code root(X)} wrapper stripped.
+     * Mirrors {@code parseIndentedBody} in {@code treeItemsCodec.ts}.
+     */
+    private static List<TreeItem> parseIndentedBody(String[] lines, int start) {
+        List<TreeItem> root = new ArrayList<>();
+        record OpenLevel(int depth, List<TreeItem> list) {}
+        List<OpenLevel> open = new ArrayList<>();
+        open.add(new OpenLevel(-1, root));
+        int lastDepth = -1;
+
+        for (int i = start; i < lines.length; i++) {
+            String raw = lines[i];
+            if (raw.trim().isEmpty()) continue;
+            String prefix = leadingWhitespace(raw);
+            int depth = countIndent(prefix) / 2;
+            if (depth > lastDepth + 1) depth = lastDepth + 1;
+            if (depth < 0) depth = 0;
+
+            String text = raw.substring(prefix.length()).stripTrailing();
+            if (depth == 0) text = stripMermaidRoot(text);
+            if (text.isEmpty()) continue;
+
+            while (open.size() > 1 && open.get(open.size() - 1).depth() >= depth) {
+                open.remove(open.size() - 1);
+            }
+            List<TreeItem> parentList = open.get(open.size() - 1).list();
+            TreeItem item = new TreeItem(text, new ArrayList<>(), new LinkedHashMap<>());
+            parentList.add(item);
+            open.add(new OpenLevel(depth, item.children()));
+            lastDepth = depth;
+        }
+        return root;
+    }
+
+    /** Strip a Mermaid mindmap root wrapper: {@code root((X))} / {@code root[X]}
+     *  / {@code root(X)} → {@code X}. Mirrors {@code stripMermaidRoot} in the TS codec. */
+    private static String stripMermaidRoot(String text) {
+        for (String re : new String[]{
+                "^root\\s*\\(\\((.+)\\)\\)\\s*$",
+                "^root\\s*\\[(.+)\\]\\s*$",
+                "^root\\s*\\((.+)\\)\\s*$"}) {
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile(re).matcher(text);
+            if (m.matches()) return m.group(1).trim();
+        }
+        return text;
     }
 
     private static String leadingWhitespace(String raw) {

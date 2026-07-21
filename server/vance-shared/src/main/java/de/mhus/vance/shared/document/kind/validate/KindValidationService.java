@@ -74,7 +74,7 @@ public class KindValidationService {
         DocumentDocument doc = found.get();
         String content = read(doc);
         KindValidationContext ctx = new KindValidationContext(
-                tenantId, projectId, path,
+                tenantId, projectId, path, doc.getMimeType(),
                 new DocumentServiceDocRefs(documentService, tenantId, projectId));
         return validateCore(doc.getKind(), content, ctx, target);
     }
@@ -97,7 +97,7 @@ public class KindValidationService {
                 ? docPath
                 : (StringUtils.isBlank(resolvedKind) ? "content" : resolvedKind);
         KindValidationContext ctx = new KindValidationContext(
-                tenantId, projectId, docPath == null ? "" : docPath,
+                tenantId, projectId, docPath == null ? "" : docPath, null,
                 new DocumentServiceDocRefs(documentService, tenantId, projectId));
         return validateCore(resolvedKind, content, ctx, target);
     }

@@ -24,7 +24,8 @@ public class BuiltInKindHandlers {
     @Bean public KindHandler checklistKindHandler() { return () -> "checklist"; }
     @Bean public KindHandler treeKindHandler() { return () -> "tree"; }
     @Bean public KindHandler mindmapKindHandler() { return () -> "mindmap"; }
-    @Bean public KindHandler recordsKindHandler() { return () -> "records"; }
+    // 'records' extracted to its own de.mhus.vance.shared.document.kind.RecordsKindHandler
+    // (@Service) — first kind with real validate() logic (kind-handler Phase 3).
     @Bean public KindHandler sheetKindHandler() { return () -> "sheet"; }
     @Bean public KindHandler graphKindHandler() { return () -> "graph"; }
     @Bean public KindHandler chartKindHandler() { return () -> "chart"; }

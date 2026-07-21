@@ -220,6 +220,22 @@ const composeOutputComponent = inject<Component | null>('vance:compose-output-co
 // the chat (variant a).
 const sessionId = inject<Ref<string | null>>('vance:session-id', ref(null));
 
+// Report the open page as the chat's "active sub-document" so the chat binds to
+// it instead of the app manifest (planning/app-chat-context.md). appDocId (this
+// app tab's own doc id) lets the host scope the report to the active app tab.
+const reportActiveSubDoc = inject<
+  ((sub: { appDocId: string; documentId: string; path: string } | null) => void) | null
+>('vance:report-active-subdoc', null);
+watch(activePageId, (id) => {
+  if (!reportActiveSubDoc) return;
+  if (!id) {
+    reportActiveSubDoc(null);
+    return;
+  }
+  const path = view.value?.pages.find((p) => p.id === id)?.path ?? '';
+  reportActiveSubDoc({ appDocId: props.document.id, documentId: id, path });
+}, { immediate: true });
+
 // Page mode (design vs work) — per app-instance, client-only, default
 // "work" (the user enters data). Switching to "design" lets embedded
 // forms edit their own field schema. Provided down the component tree
@@ -426,6 +442,7 @@ onBeforeUnmount(() => {
   workbookRootRef.value?.removeEventListener('vance:open-embed', onOpenEmbedEvent);
   workbookRootRef.value?.removeEventListener('vance:workbook-goto-index', onGotoIndexEvent);
   window.removeEventListener('popstate', onWorkbookPopState);
+  reportActiveSubDoc?.(null);
 });
 
 // Icon picker — modal with a searchable emoji grid (provided by

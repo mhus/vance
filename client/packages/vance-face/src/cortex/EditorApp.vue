@@ -107,8 +107,18 @@ const store = useCortexStore();
 const chatBoundDocumentId = computed<string | null>(() => {
   if (!hasSession.value) return null;
   switch (chatBindMode.value) {
-    case 'auto':
-      return store.activeTab?.id ?? null;
+    case 'auto': {
+      // An app (Workbook, …) can report the sub-document actually being
+      // edited (the open page). Bind the chat to THAT rather than the app
+      // manifest — but only when the report belongs to the active app tab
+      // (appDocId === activeTabId), so a stale report from another app tab
+      // or a cached tab is ignored.
+      const tab = store.activeTab;
+      if (activeSubDoc.value && tab && activeSubDoc.value.appDocId === tab.id) {
+        return activeSubDoc.value.documentId;
+      }
+      return tab?.id ?? null;
+    }
     case 'pinned':
       return pinnedDocumentId.value
         && store.openTabs.some((t) => t.id === pinnedDocumentId.value)
@@ -155,6 +165,16 @@ provide('vance:compose-output-component', ComposeOutput);
 // pass it so the run binds to the session's primary chat process — the
 // workspace/target is then shared with the chat (see ComposeController).
 provide('vance:session-id', sessionId);
+
+// An app remote (Workbook, …) reports the sub-document its editor currently
+// has open, so the chat binds to that instead of the app manifest (see
+// planning/app-chat-context.md). `appDocId` = the app tab's own doc id, used to
+// scope the report to the active app tab. null = no sub-doc (fall back to tab).
+const activeSubDoc = ref<{ appDocId: string; documentId: string; path: string } | null>(null);
+provide('vance:report-active-subdoc',
+  (sub: { appDocId: string; documentId: string; path: string } | null) => {
+    activeSubDoc.value = sub;
+  });
 
 const { projects: tenantProjects, reload: loadTenantProjects } = useTenantProjects();
 

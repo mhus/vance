@@ -238,6 +238,10 @@ importers:
       vue:
         specifier: ^3.5.0
         version: 3.5.38(typescript@5.9.3)
+    devDependencies:
+      vitest:
+        specifier: ^2.1.9
+        version: 2.1.9(@types/node@22.19.21)(lightningcss@1.32.0)(terser@5.48.0)
 
   client/packages/runner-registry:
     dependencies:

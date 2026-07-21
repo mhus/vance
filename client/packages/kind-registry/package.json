@@ -11,7 +11,14 @@
     ".": "./src/index.ts"
   },
   "files": ["src"],
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
   "peerDependencies": {
     "vue": "^3.5.0"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.9"
   }
 }

@@ -16,11 +16,9 @@ import {
   getKanbanBoard,
   moveKanbanCard,
   rebuildKanbanBoard,
-  updateKanbanCard,
 } from './api';
 import type { KanbanBoardView } from './generated/kanban/KanbanBoardView';
 import type { KanbanCardCreateRequest } from './generated/kanban/KanbanCardCreateRequest';
-import type { KanbanCardUpdateRequest } from './generated/kanban/KanbanCardUpdateRequest';
 import type { KanbanCardView } from './generated/kanban/KanbanCardView';
 
 const props = defineProps<{
@@ -34,6 +32,25 @@ const loading = ref(true);
 const error = ref<string | null>(null);
 const warnings = ref<string[]>([]);
 const selectedCardPath = ref<string | null>(null);
+const detailRef = ref<{ flushNow: () => void; openContent: () => void } | null>(null);
+
+// Bumped only when a remote edit to the OPEN card lands (outside our
+// self-write window) — signals the detail panel to re-seed from the fresh
+// card. Our own saves never bump it, so the cursor stays put while typing.
+const remoteRevision = ref(0);
+
+// Self-write quiet window per card path. A save's WS echo arrives after
+// the PATCH response; suppressing the detail-refresh for a few seconds
+// keeps our own write from resetting the editor.
+const SELF_WRITE_QUIET_MS = 3000;
+const selfWriteAt = new Map<string, number>();
+function markSelfWrite(path: string): void {
+  selfWriteAt.set(path, Date.now());
+}
+function withinSelfWrite(path: string): boolean {
+  const t = selfWriteAt.get(path);
+  return t != null && Date.now() - t < SELF_WRITE_QUIET_MS;
+}
 const showCreateModal = ref(false);
 const newCardForm = ref<KanbanCardCreateRequest>({
   title: '',
@@ -84,14 +101,19 @@ function priorityWeight(priority?: string | null): number {
 }
 
 async function load(): Promise<void> {
-  loading.value = true;
+  // Only show the full-pane spinner on the FIRST load. A refresh (WS echo,
+  // manual reload, rebuild) swaps board.value in place — flipping `loading`
+  // would tear the `v-else` subtree (detail panel + open content modal) out
+  // of the DOM and unmount it mid-edit.
+  const first = board.value == null;
+  if (first) loading.value = true;
   error.value = null;
   try {
     board.value = await getKanbanBoard(props.projectId, props.folder);
   } catch (e) {
     error.value = `Could not load board: ${(e as Error).message}`;
   } finally {
-    loading.value = false;
+    if (first) loading.value = false;
   }
 }
 
@@ -127,16 +149,38 @@ async function onCardDropped(toColumn: string, card: KanbanCardView): Promise<vo
   }
 }
 
-async function onCardUpdate(path: string, patch: KanbanCardUpdateRequest): Promise<void> {
-  try {
-    const updated = await updateKanbanCard(props.projectId, props.folder, path, patch);
-    if (!board.value) return;
-    const idx = board.value.cards.findIndex((c) => c.path === path);
-    if (idx >= 0) board.value.cards[idx] = updated;
-    selectedCardPath.value = updated.path;
-  } catch (e) {
-    error.value = `Update failed: ${(e as Error).message}`;
+// The detail panel owns the debounced PATCH; it emits `dirty` when a save
+// cycle begins and `saved` with the authoritative card once the PATCH
+// returns. The board only tracks the self-write window + mirrors the
+// updated card into its array.
+function onCardDirty(): void {
+  if (selectedCardPath.value) markSelfWrite(selectedCardPath.value);
+}
+
+function onCardSaved(updated: KanbanCardView): void {
+  markSelfWrite(updated.path);
+  if (!board.value) return;
+  // Path is stable across updates (the controller never renames on patch),
+  // so just mirror the fresh card in — never touch the selection, which may
+  // already point elsewhere if the user switched cards mid-save.
+  const idx = board.value.cards.findIndex((c) => c.path === updated.path);
+  if (idx >= 0) board.value.cards[idx] = updated;
+}
+
+function selectCard(path: string): void {
+  // Progressive disclosure: first click opens the attribute panel; a
+  // repeat click on the already-open card opens its content dialog.
+  if (path === selectedCardPath.value) {
+    detailRef.value?.openContent();
+    return;
   }
+  detailRef.value?.flushNow();
+  selectedCardPath.value = path;
+}
+
+function closeDetail(): void {
+  detailRef.value?.flushNow();
+  selectedCardPath.value = null;
 }
 
 async function onCardDelete(path: string): Promise<void> {
@@ -190,10 +234,29 @@ function priorityClass(priority?: string | null): string {
 
 onMounted(load);
 
-// Exposed so the KanbanAppKind wrapper can drive reloads in response
-// to documents.changed pushes. WS subscription lives in the wrapper;
-// the Board itself stays WS-free.
-defineExpose({ reload: load });
+// Reload driven by the KanbanAppKind wrapper on documents.changed pushes
+// (WS subscription lives there; the Board stays WS-free). `changedPaths`
+// is the set of card paths that changed — omitted for a manual reload,
+// which force-refreshes the open card. The open card is only re-seeded
+// from the server when it actually changed remotely AND we're outside its
+// self-write window, so our own write-echoes never reset the editor.
+async function reload(changedPaths?: string[]): Promise<void> {
+  const openPath = selectedCardPath.value;
+  await load();
+  if (!openPath || !board.value) return;
+  const stillOpen = board.value.cards.some((c) => c.path === openPath);
+  if (!stillOpen) {
+    // Card was deleted / moved away remotely — drop the stale selection.
+    selectedCardPath.value = null;
+    return;
+  }
+  const changed = changedPaths == null || changedPaths.includes(openPath);
+  if (changed && !withinSelfWrite(openPath)) {
+    remoteRevision.value++;
+  }
+}
+
+defineExpose({ reload });
 </script>
 
 <template>
@@ -207,7 +270,7 @@ defineExpose({ reload: load });
         <span v-if="board" class="text-sm text-base-content/60">
           {{ board.cards.length }} cards · {{ board.columns.length }} columns
         </span>
-        <VButton size="sm" variant="ghost" @click="load">Reload</VButton>
+        <VButton size="sm" variant="ghost" @click="reload()">Reload</VButton>
         <VButton size="sm" variant="ghost" @click="refresh">Rebuild artefacts</VButton>
       </div>
     </div>
@@ -270,7 +333,7 @@ defineExpose({ reload: load });
               :key="card.path"
               class="bg-base-100 rounded p-2 cursor-grab active:cursor-grabbing shadow-sm hover:shadow-md transition-shadow"
               :class="priorityClass(card.priority)"
-              @click="selectedCardPath = card.path"
+              @click="selectCard(card.path)"
             >
               <div class="font-medium text-sm">{{ card.title }}</div>
               <div class="flex flex-wrap items-center gap-1 mt-1 text-xs text-base-content/70">
@@ -313,11 +376,15 @@ defineExpose({ reload: load });
       <!-- Right panel: card detail -->
       <KanbanCardDetail
         v-if="selectedCard"
+        ref="detailRef"
         :card="selectedCard"
         :project-id="projectId"
+        :folder="folder"
+        :remote-revision="remoteRevision"
         class="w-96 flex-shrink-0 border-l border-base-300 bg-base-100 overflow-y-auto"
-        @close="selectedCardPath = null"
-        @update="(patch) => onCardUpdate(selectedCard!.path, patch)"
+        @close="closeDetail"
+        @dirty="onCardDirty"
+        @saved="onCardSaved"
         @delete="onCardDelete(selectedCard!.path)"
       />
     </div>

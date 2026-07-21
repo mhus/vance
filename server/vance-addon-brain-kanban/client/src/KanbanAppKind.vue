@@ -25,8 +25,10 @@ const boardRef = ref<InstanceType<typeof KanbanBoard> | null>(null);
 useDocumentPrefixReaction({
   prefix: computed(() => `${folder.value}/`),
   debounceMs: 120,
-  onRemoteChange: async () => {
-    await boardRef.value?.reload();
+  onRemoteChange: async (paths) => {
+    // Pass the changed paths so the board only re-seeds the open card when
+    // that card actually changed (and it isn't our own write-echo).
+    await boardRef.value?.reload(paths);
   },
 });
 </script>

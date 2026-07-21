@@ -29,6 +29,7 @@ import java.util.Locale;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -60,6 +61,8 @@ public class KanbanBoardController {
 
     private static final String MD_MIME = "text/markdown";
     private static final String CARD_KIND = "card";
+    /** Re-read + re-merge attempts before surfacing an optimistic-lock conflict. */
+    private static final int UPDATE_MAX_ATTEMPTS = 3;
 
     private final KanbanApplication kanbanApplication;
     private final KanbanFolderReader folderReader;
@@ -166,30 +169,49 @@ public class KanbanBoardController {
         authority.enforce(httpRequest,
                 new Resource.Document(tenant, projectId, path), Action.WRITE);
 
-        DocumentDocument doc = documentService.findByPath(tenant, projectId, path)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "Card not found: " + path));
-        if (!CARD_KIND.equalsIgnoreCase(doc.getKind())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Document at '" + path + "' is not a card (kind="
-                            + doc.getKind() + ").");
-        }
+        // Read-modify-write under optimistic locking: another writer (a
+        // concurrent LLM turn, a sibling browser) may bump the document
+        // version between our read and save. Re-read + re-merge the patch on
+        // conflict rather than surfacing a 500 — the patch carries only the
+        // fields the caller changed, so re-applying on the latest card is
+        // the correct resolution.
+        DocumentDocument updated = null;
+        CardDocument merged = null;
+        for (int attempt = 1; ; attempt++) {
+            DocumentDocument doc = documentService.findByPath(tenant, projectId, path)
+                    .orElseThrow(() -> new ResponseStatusException(
+                            HttpStatus.NOT_FOUND, "Card not found: " + path));
+            if (!CARD_KIND.equalsIgnoreCase(doc.getKind())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Document at '" + path + "' is not a card (kind="
+                                + doc.getKind() + ").");
+            }
 
-        // Parse existing, merge with patch payload, re-serialise.
-        String existingBody = loadAsText(doc);
-        CardDocument existing;
-        try {
-            existing = CardCodec.parse(existingBody, doc.getMimeType());
-        } catch (Exception e) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Could not parse card '" + path + "': " + e.getMessage());
-        }
+            // Parse existing, merge with patch payload, re-serialise.
+            String existingBody = loadAsText(doc);
+            CardDocument existing;
+            try {
+                existing = CardCodec.parse(existingBody, doc.getMimeType());
+            } catch (Exception e) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Could not parse card '" + path + "': " + e.getMessage());
+            }
 
-        CardDocument merged = mergePatch(existing, request);
-        String mergedBody = CardCodec.serialize(merged, MD_MIME);
-        DocumentDocument updated = documentService.update(
-                doc.getId(), merged.title(), List.of(CARD_KIND),
-                mergedBody, null, null, null, null, MD_MIME);
+            merged = mergePatch(existing, request);
+            String mergedBody = CardCodec.serialize(merged, MD_MIME);
+            try {
+                updated = documentService.update(
+                        doc.getId(), merged.title(), List.of(CARD_KIND),
+                        mergedBody, null, null, null, null, MD_MIME);
+                break;
+            } catch (OptimisticLockingFailureException e) {
+                if (attempt >= UPDATE_MAX_ATTEMPTS) {
+                    throw e;
+                }
+                log.trace("KanbanBoardController.updateCard optimistic-lock retry {} for '{}'",
+                        attempt, path);
+            }
+        }
 
         log.info("KanbanBoardController.updateCard tenant='{}' folder='{}' path='{}'",
                 tenant, folder, updated.getPath());

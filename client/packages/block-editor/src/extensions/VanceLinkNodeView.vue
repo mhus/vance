@@ -11,6 +11,7 @@
  */
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { NodeViewWrapper } from '@tiptap/vue-3';
+import { safeHref } from '../safeHref';
 import type { Editor } from '@tiptap/core';
 
 const props = defineProps<{
@@ -92,7 +93,7 @@ function onHref(e: Event) {
     <a
       v-else
       class="vance-link-card__link"
-      :href="node.attrs.href"
+      :href="safeHref(node.attrs.href)"
       :title="node.attrs.href"
       contenteditable="false"
     >

@@ -9,6 +9,8 @@ export { default as BlockView } from './BlockView.vue';
 export { default as InlineRender } from './InlineRender.vue';
 export { default as SlashMenu } from './SlashMenu.vue';
 
+export { safeHref } from './safeHref';
+
 export { parse, parseDocument } from './markdown/parser';
 export { serialize, serializeDocument } from './markdown/serializer';
 export { blocksToContent, contentToBlocks } from './markdown/proseMirror';

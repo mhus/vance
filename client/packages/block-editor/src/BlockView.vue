@@ -6,6 +6,7 @@ import type { Component } from 'vue';
 import type { Block } from './markdown/blocks';
 import { parse } from './markdown/parser';
 import InlineRender from './InlineRender.vue';
+import { safeHref } from './safeHref';
 import { findBlockByFence } from './blockRegistry';
 import { registerBuiltInBlocks } from './builtins';
 
@@ -261,7 +262,7 @@ const items = computed(() => props.blocks ?? []);
 
       <a
         v-else-if="block.kind === 'link-card'"
-        :href="block.href"
+        :href="safeHref(block.href)"
         target="_blank"
         rel="noopener noreferrer"
         class="vance-link-card"

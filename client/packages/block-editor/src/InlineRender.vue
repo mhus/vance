@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { parseInline, type InlineSegment } from './markdown/inline';
+import { safeHref } from './safeHref';
 
 /**
  * Renders a Markdown inline string with bold/italic/code/strike/link
  * marks. Used by BlockView (read-only) for the textual content of
- * paragraphs, headings, list items, etc. — keeps the renderer XSS-safe
- * because Vue auto-escapes every interpolated value; no v-html, no
- * external Markdown lib.
+ * paragraphs, headings, list items, etc. Text is XSS-safe via Vue's
+ * auto-escaping (no v-html, no external Markdown lib); link hrefs are
+ * scheme-filtered through {@link safeHref} because Vue does NOT escape
+ * the scheme of a :href binding (a `javascript:` URL would otherwise
+ * execute on click — code-review B6).
  */
 const props = defineProps<{
   text: string;
@@ -21,7 +24,7 @@ function hasMark(seg: InlineSegment, type: string): boolean {
 
 function linkHref(seg: InlineSegment): string {
   const link = seg.marks.find((m) => m.type === 'link');
-  return (link?.attrs?.href as string | undefined) ?? '';
+  return safeHref(link?.attrs?.href as string | undefined);
 }
 </script>
 

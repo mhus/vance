@@ -43,7 +43,7 @@ import { registeredBlocks } from './blockRegistry';
 import { registerBuiltInBlocks } from './builtins';
 import { HeadingAnchors } from './extensions/HeadingAnchors';
 import { TrailingNode } from './extensions/TrailingNode';
-import { ActiveBlock } from './extensions/ActiveBlock';
+import { ActiveBlock, activeBlockKey } from './extensions/ActiveBlock';
 import { VanceWikiLink } from './extensions/VanceWikiLink';
 import { VueNodeViewRenderer } from '@tiptap/vue-3';
 import VanceImageNodeView from './extensions/VanceImageNodeView.vue';
@@ -317,6 +317,11 @@ provide('vance:compose-host', {
   projectId: () => props.currentProjectId ?? '',
 });
 
+// The active-block position last reported as the chat selection — de-dupes the
+// two emit paths (selection change vs. focusin). Declared before useEditor so
+// the transaction callback can't hit it in a temporal dead zone on creation.
+let lastActivePos = -1;
+
 const editor = useEditor({
   editable: props.editable,
   extensions: [
@@ -541,9 +546,26 @@ const editor = useEditor({
     scheduleAutoSave();
   },
   onSelectionUpdate: () => {
-    emit('selection', currentSelectionRange());
+    emitActiveSelection();
+  },
+  // Also fire when the active block changed WITHOUT a selection change — i.e.
+  // focus moved into a custom NodeView (compose/form/…), whose focusin the
+  // ActiveBlock plugin turns into a meta transaction (not a selection update).
+  onTransaction: ({ transaction }) => {
+    if (transaction.selectionSet) return; // covered by onSelectionUpdate
+    const st = activeBlockKey.getState(editor.value!.state);
+    const pos = st ? st.pos : -1;
+    if (pos !== lastActivePos) emitActiveSelection();
   },
 });
+
+function emitActiveSelection(): void {
+  const ed = editor.value;
+  if (!ed) return;
+  const st = activeBlockKey.getState(ed.state);
+  lastActivePos = st ? st.pos : -1;
+  emit('selection', currentSelectionRange());
+}
 
 watch(
   () => props.editable,
@@ -591,31 +613,36 @@ function save() {
 }
 
 /**
- * Map the current editor selection to a `{from,to}` char range in the
- * serialized document (front-matter included — matches the stored content the
- * server's `doc_get_selection` substrings), block-level: the range spans every
- * top-level block the selection touches. `null` when nothing is selected.
+ * Range of the currently ACTIVE block — the one the `ActiveBlock` extension
+ * rings (caret's block, or a NodeView the user focused, e.g. a compose block).
+ * Returned as a `{from,to}` char range in the serialized document (front-matter
+ * included — matches the stored content the server's `doc_get_selection`
+ * substrings). Block-level: the whole active block, so "this block" works even
+ * with just a caret / a focused widget (no text highlight needed). `null` when
+ * there is no active block.
  */
 function currentSelectionRange(): { from: number; to: number; text: string } | null {
   const ed = editor.value;
   if (!ed) return null;
-  const sel = ed.state.selection;
-  if (sel.empty) return null;
+  const st = activeBlockKey.getState(ed.state);
+  const pos = st ? st.pos : -1;
+  if (pos < 0) return null;
   const doc = ed.state.doc;
-  const ci = doc.resolve(sel.from).index(0);
-  const cj = doc.resolve(Math.max(sel.from, sel.to - 1)).index(0);
+  const activeNode = doc.nodeAt(pos);
+  if (!activeNode || activeNode.isText) return null;
+  const ci = doc.resolve(pos).index(0);
   const children = (ed.getJSON().content ?? []) as never[];
-  // Block index range — contentToBlocks() is children.flatMap(nodeToBlock),
-  // so a top-level child can yield >1 block; count per child.
+  if (ci < 0 || ci >= children.length) return null;
+  // contentToBlocks() is children.flatMap(nodeToBlock): a top-level child can
+  // yield >1 block, so count per child to find the active block's index span.
   let firstBlock = 0;
   for (let k = 0; k < ci; k++) firstBlock += contentToBlocks([children[k]]).length;
-  let afterLast = firstBlock;
-  for (let k = ci; k <= cj; k++) afterLast += contentToBlocks([children[k]]).length;
+  const blockCount = contentToBlocks([children[ci]]).length;
   const allBlocks = contentToBlocks(children);
-  if (firstBlock >= allBlocks.length || afterLast <= firstBlock) return null;
+  if (blockCount <= 0 || firstBlock >= allBlocks.length) return null;
   const { md, ranges } = serializeWithBlockRanges(allBlocks);
   const first = ranges[firstBlock];
-  const last = ranges[Math.min(afterLast, ranges.length) - 1];
+  const last = ranges[Math.min(firstBlock + blockCount, ranges.length) - 1];
   const base = props.bodyOnly
     ? 0
     : documentHeader({

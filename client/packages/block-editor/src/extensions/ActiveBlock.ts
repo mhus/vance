@@ -19,7 +19,10 @@ import type { EditorState } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
-const key = new PluginKey<{ pos: number }>('activeBlock');
+/** Plugin key — exposes `{ pos }` (the active top-level block's start position)
+ *  so the host can report the active block as the chat's bound selection. */
+export const activeBlockKey = new PluginKey<{ pos: number }>('activeBlock');
+const key = activeBlockKey;
 
 /** Start position of the top-level block holding the current selection. */
 function selectionBlockStart(state: EditorState): number {

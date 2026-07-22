@@ -1,7 +1,7 @@
 ---
 triggers: compose, damogran, workspace, workspace ausführen, prepare files, exec im workspace, kompilieren, latex, tex nach pdf, python analyse, dateien importieren, git clone, git pull, git push, git commit, repo klonen, batch
-summary: Provision a named workspace, import documents, run a linear list of tasks (exec/js/python/llm/tex), export results — via compose_run.
-requires-tools: compose_run
+summary: Provision a named workspace, import documents, run a linear list of tasks (exec/js/python/llm/tex), export results — via compose_run. Run/clear a compose block held by a document via compose_block_run / compose_block_clear_output.
+requires-tools: compose_run, compose_block_run, compose_block_clear_output
 ---
 
 # Damogran — Workspace Compose
@@ -37,6 +37,25 @@ Genau eines von `composePath` (ein `compose`-Dokument) oder `composeYaml`
 ein `COMPOSE_FINISHED`-ProcessEvent (Payload: `runId`, `status`, `result`),
 sobald er fertig ist. Nicht pollen/blockieren. Für lange Läufe (z.B. Training)
 im Task `deadlineSeconds: 0` setzen (kein Hard-Kill, läuft bis zum Ende).
+
+### Einen Compose-Block ausführen, an dem der Nutzer arbeitet
+
+Wenn der Nutzer ein `compose`-Dokument offen hat und du es **erledigen** (nicht
+nur editieren) sollst — ausführen und das Ergebnis sichtbar in den Block
+schreiben:
+
+```
+compose_block_run(id="<documentId>")        # oder path="…"
+compose_block_clear_output(id="<documentId>")
+```
+
+`compose_block_run` liest das Manifest aus dem **gespeicherten** Dokument (deine
+`doc_edit`s aus diesem Turn sind also drin — kein Race), führt es aus und
+schreibt die Artefakte in den managed `$output:`-Block zurück; ein offener Editor
+zeigt sie **live** (genau wie der Run-Button). Gleiche Async-Semantik wie
+`compose_run` (inline oder `COMPOSE_FINISHED`). `compose_block_clear_output`
+entfernt `$output:`/`$run:` wieder (Manifest bleibt). Nutze diese beiden, wenn
+das Ziel ein Dokument-Block ist; `compose_run` dagegen für ad-hoc/`composePath`.
 
 ## Manifest
 

@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.damogran;
 
+import de.mhus.vance.shared.compose.ComposeManagedOutput;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -42,6 +43,25 @@ final class DamogranResponse {
         }
         out.put("tasks", tasks);
         return out;
+    }
+
+    /**
+     * Flatten every task's outputs into the {@code $output:} managed-block shape
+     * (path/uri/kind/title), applying the same {@code vance-workspace:} URI rule
+     * as {@link #outputs}. Used when the brain writes results back into a compose
+     * block itself (see {@code ComposeBlockRunTool}).
+     */
+    static List<ComposeManagedOutput> managedOutputs(DamogranComposeResult result) {
+        List<ComposeManagedOutput> list = new ArrayList<>();
+        for (DamogranTaskResult tr : result.taskResults()) {
+            for (OutputArtifact a : tr.outputs()) {
+                String uri = a.uri() != null
+                        ? a.uri()
+                        : "vance-workspace:/" + result.workspaceName() + "/" + a.path();
+                list.add(new ComposeManagedOutput(a.path(), uri, a.kind(), a.title()));
+            }
+        }
+        return list;
     }
 
     private static List<Map<String, Object>> outputs(String workspaceName, List<OutputArtifact> artifacts) {

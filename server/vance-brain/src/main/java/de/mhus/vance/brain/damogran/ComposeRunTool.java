@@ -1,25 +1,17 @@
 package de.mhus.vance.brain.damogran;
 
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
-import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
-import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
-import de.mhus.vance.shared.thinkprocess.PendingMessageType;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.time.Instant;
 import java.util.LinkedHashMap;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 /**
@@ -34,7 +26,6 @@ import org.springframework.stereotype.Component;
  * resuming on the event. Takes {@code composePath} or inline {@code composeYaml}.
  */
 @Component
-@Slf4j
 public class ComposeRunTool implements Tool {
 
     /** How long the tool blocks for a quick result before handing back a runId. */
@@ -42,14 +33,14 @@ public class ComposeRunTool implements Tool {
 
     private final DamogranComposeService composeService;
     private final DocumentService documentService;
-    private final ObjectProvider<EngineMessageRouter> engineMessageRouterProvider;
+    private final ComposeFinishedNotifier finishedNotifier;
 
     public ComposeRunTool(DamogranComposeService composeService,
                           DocumentService documentService,
-                          ObjectProvider<EngineMessageRouter> engineMessageRouterProvider) {
+                          ComposeFinishedNotifier finishedNotifier) {
         this.composeService = composeService;
         this.documentService = documentService;
-        this.engineMessageRouterProvider = engineMessageRouterProvider;
+        this.finishedNotifier = finishedNotifier;
     }
 
     private static final Map<String, Object> SCHEMA = Map.of(
@@ -123,7 +114,7 @@ public class ComposeRunTool implements Tool {
         // Still running: notify this process on completion so it can sleep.
         String ownerProcessId = ctx.processId();
         if (ownerProcessId != null && !ownerProcessId.isBlank()) {
-            run.onDone(finished -> pushComposeFinished(finished, ownerProcessId));
+            run.onDone(finished -> finishedNotifier.notifyFinished(finished, ownerProcessId));
         }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("runId", run.runId());
@@ -133,40 +124,6 @@ public class ComposeRunTool implements Tool {
         out.put("note", "Compose is running in the background; end your turn — you will "
                 + "receive a COMPOSE_FINISHED event with the result when it completes.");
         return out;
-    }
-
-    private void pushComposeFinished(ComposeRun run, String ownerProcessId) {
-        try {
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("runId", run.runId());
-            payload.put("status", run.status().name());
-            payload.put("workspace", run.workspaceName());
-            payload.put("projectId", run.projectId());
-            if (run.error() != null) {
-                payload.put("error", run.error());
-            }
-            if (run.result() != null) {
-                payload.put("result", DamogranResponse.toMap(run.result()));
-            }
-            String summary = "Compose " + run.runId() + " "
-                    + run.status().name().toLowerCase(Locale.ROOT);
-            PendingMessageDocument doc = PendingMessageDocument.builder()
-                    .type(PendingMessageType.PROCESS_EVENT)
-                    .at(Instant.now())
-                    .sourceProcessId(ownerProcessId)
-                    .eventType(ProcessEventType.COMPOSE_FINISHED)
-                    .content(summary)
-                    .payload(payload)
-                    .eventId(UUID.randomUUID().toString())
-                    .build();
-            boolean ok = engineMessageRouterProvider.getObject().dispatch(ownerProcessId, ownerProcessId, doc);
-            if (!ok) {
-                log.warn("COMPOSE_FINISHED dispatch dropped owner='{}' run='{}'", ownerProcessId, run.runId());
-            }
-        } catch (RuntimeException e) {
-            log.warn("COMPOSE_FINISHED dispatch failed owner='{}' run='{}': {}",
-                    ownerProcessId, run.runId(), e.toString());
-        }
     }
 
     private String resolveYaml(Map<String, Object> params, String tenantId, String projectId) {

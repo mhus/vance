@@ -1133,9 +1133,29 @@ public class DocumentService {
             @Nullable String newMimeType,
             byte[] bytes,
             @Nullable String updatedBy) {
+        // Default binary writers (image tools, Fenchurch, Damogran export)
+        // are tool-driven → gate as AI (code-review F6).
+        return replaceBinaryContent(id, newMimeType, bytes, updatedBy, TOOL_IDENTITY);
+    }
+
+    /**
+     * Binary content replace that honours the soft document-lock
+     * (code-review F6). The text paths ({@link #replaceContent},
+     * {@link #update}, {@link #delete}, {@link #trash}) already gate on
+     * {@link #requireWriteAllowed}; the binary path did not, so an
+     * AI/USER/KIT-locked image or office document could be overwritten
+     * through {@code image_*}, Fenchurch, or the OnlyOffice save callback.
+     */
+    public DocumentDocument replaceBinaryContent(
+            String id,
+            @Nullable String newMimeType,
+            byte[] bytes,
+            @Nullable String updatedBy,
+            WriterIdentity identity) {
         DocumentDocument doc = repository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Unknown document id='" + id + "'"));
+        requireWriteAllowed(doc, identity);
         if (bytes == null) {
             throw new IllegalArgumentException(
                     "bytes must not be null for binary replace");
@@ -1219,6 +1239,27 @@ public class DocumentService {
             @Nullable List<String> tags,
             @Nullable Map<String, String> headers,
             @Nullable String createdBy) {
+        // Default binary writers are tool-driven → gate as AI (F6).
+        return createOrReplaceBinary(tenantId, projectId, path, bytes, mimeType,
+                title, tags, headers, createdBy, TOOL_IDENTITY);
+    }
+
+    /**
+     * Create-or-replace variant that honours the soft document-lock via
+     * {@code identity} on the replace branch (code-review F6). A fresh
+     * create has no lock to honour.
+     */
+    public DocumentDocument createOrReplaceBinary(
+            String tenantId,
+            String projectId,
+            String path,
+            byte[] bytes,
+            String mimeType,
+            @Nullable String title,
+            @Nullable List<String> tags,
+            @Nullable Map<String, String> headers,
+            @Nullable String createdBy,
+            WriterIdentity identity) {
         if (bytes == null) {
             throw new IllegalArgumentException(
                     "bytes must not be null for binary write");
@@ -1230,7 +1271,7 @@ public class DocumentService {
         Optional<DocumentDocument> existing = findByPath(tenantId, projectId, path);
         if (existing.isPresent()) {
             DocumentDocument doc = replaceBinaryContent(
-                    existing.get().getId(), mimeType, bytes, createdBy);
+                    existing.get().getId(), mimeType, bytes, createdBy, identity);
             boolean changed = false;
             if (title != null) {
                 doc.setTitle(title);

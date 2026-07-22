@@ -264,8 +264,13 @@ public class OfficeController {
                 String mime = doc.getMimeType() != null
                         ? doc.getMimeType()
                         : MediaType.APPLICATION_OCTET_STREAM_VALUE;
+                // OnlyOffice save = a user edit → gate the soft lock as USER
+                // (code-review F6). The editing user's subject is a real,
+                // non-sentinel editorId, so writerRoleOf maps it to USER.
+                String editorSub = asString(claims.get("sub"));
                 documentService.replaceBinaryContent(doc.getId(), mime, bytes,
-                        asString(claims.get("sub")));
+                        editorSub,
+                        DocumentService.WriterIdentity.of(editorSub, editorSub, null));
                 log.info("OfficeController: saved docId={} bytes={} status={}",
                         docId, bytes.length, status);
             } catch (Exception e) {

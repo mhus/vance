@@ -242,4 +242,24 @@ public class VanceRedisMessagingService {
     public static String globalTopicOf(String channel) {
         return "vance:" + GLOBAL + ":" + channel;
     }
+
+    /**
+     * Extracts the tenant segment from a {@code vance:{tenant}:{channel}}
+     * topic — the form delivered to {@link #subscribeAcrossTenants}
+     * handlers. The channel itself may contain colons (e.g.
+     * {@code documents:presence}), so only the segment between the first
+     * two colons is the tenant. Returns {@code ""} for a malformed topic.
+     *
+     * <p>Cross-pod fan-out handlers MUST scope delivery to this tenant:
+     * path strings collide across tenants, so an unscoped local fan-out
+     * leaks presence/content across tenant boundaries (code-review B2).
+     */
+    public static String tenantFromTopic(@org.jspecify.annotations.Nullable String topic) {
+        if (topic == null) return "";
+        int first = topic.indexOf(':');
+        if (first < 0) return "";
+        int second = topic.indexOf(':', first + 1);
+        if (second < 0) return "";
+        return topic.substring(first + 1, second);
+    }
 }

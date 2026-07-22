@@ -90,7 +90,7 @@ public class DocumentNotesBroadcaster {
             log.warn("documents.notes[local] redis publish failed for '{}/{}': {}",
                     tenant, path, ex.toString());
         }
-        broadcastLocal(path, kind, event.noteId(), event.note(), event.editorId(), "local");
+        broadcastLocal(tenant, path, kind, event.noteId(), event.note(), event.editorId(), "local");
     }
 
     private void onRemoteChanged(String topic, String body) {
@@ -129,10 +129,11 @@ public class DocumentNotesBroadcaster {
         String editorId = parts.length >= 6 && !parts[5].isEmpty() ? parts[5] : null;
         log.trace("documents.notes[remote] from pod={} path={} kind={} noteId={} editorId={}",
                 senderPodId, path, kind, noteId, editorId);
-        broadcastLocal(path, kind, noteId, note, editorId, "remote");
+        broadcastLocal(VanceRedisMessagingService.tenantFromTopic(topic), path, kind, noteId, note, editorId, "remote");
     }
 
     private void broadcastLocal(
+            String tenantId,
             String path,
             String kind,
             String noteId,
@@ -154,7 +155,7 @@ public class DocumentNotesBroadcaster {
 
         int[] sent = {0};
         int[] skipped = {0};
-        registry.forEachLocalSubscriber(path, (wsSession, ctx) -> {
+        registry.forEachLocalSubscriber(tenantId, path, (wsSession, ctx) -> {
             if (writerEditorId != null
                     && Objects.equals(ctx.getEditorId(), writerEditorId)) {
                 skipped[0]++;

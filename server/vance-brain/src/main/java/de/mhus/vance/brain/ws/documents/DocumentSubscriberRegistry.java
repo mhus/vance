@@ -300,13 +300,17 @@ public class DocumentSubscriberRegistry {
      * the same audience as the presence broadcasts. Returns immediately
      * when nobody on this pod listens to the path.
      */
-    public void forEachLocalSubscriber(String path,
+    public void forEachLocalSubscriber(String tenantId, String path,
             java.util.function.BiConsumer<WebSocketSession, ConnectionContext> action) {
         Set<String> wsIds = localSubsByPath.get(path);
         if (wsIds == null || wsIds.isEmpty()) return;
         for (String wsId : wsIds) {
             LocalSubscriber sub = bySessionInfo.get(wsId);
             if (sub == null) continue;
+            // Path strings collide across tenants → scope the fan-out to
+            // the event's tenant, else presence/content leaks across
+            // tenant boundaries (code-review B2).
+            if (!Objects.equals(sub.context().getTenantId(), tenantId)) continue;
             action.accept(sub.wsSession(), sub.context());
         }
     }
@@ -333,7 +337,7 @@ public class DocumentSubscriberRegistry {
      * {@link DocumentChangedBroadcaster} so a single doc-change fan-out
      * reaches both path-subs and prefix-subs without double-pushing.
      */
-    public void forEachLocalPrefixSubscriber(String path,
+    public void forEachLocalPrefixSubscriber(String tenantId, String path,
             java.util.function.BiConsumer<WebSocketSession, ConnectionContext> action) {
         if (localPrefixSubs.isEmpty()) return;
         for (Map.Entry<String, Set<String>> entry : localPrefixSubs.entrySet()) {
@@ -341,6 +345,8 @@ public class DocumentSubscriberRegistry {
             for (String wsId : entry.getValue()) {
                 LocalSubscriber sub = bySessionInfo.get(wsId);
                 if (sub == null) continue;
+                // Tenant-scope the fan-out (code-review B2).
+                if (!Objects.equals(sub.context().getTenantId(), tenantId)) continue;
                 action.accept(sub.wsSession(), sub.context());
             }
         }
@@ -425,6 +431,9 @@ public class DocumentSubscriberRegistry {
         for (String wsId : localIds) {
             LocalSubscriber recipient = bySessionInfo.get(wsId);
             if (recipient == null) continue;
+            // Tenant-scope the fan-out — path strings collide across
+            // tenants (code-review B2).
+            if (!Objects.equals(recipient.context().getTenantId(), tenantId)) continue;
             String selfEditorId = recipient.context().getEditorId();
             List<DocumentViewer> filtered = new ArrayList<>(allViewers.size());
             for (DocumentViewer v : allViewers) {

@@ -102,7 +102,7 @@ public class DocumentChangedBroadcaster {
             log.warn("documents.changed[local] redis publish failed for '{}/{}': {}",
                     tenant, path, ex.toString());
         }
-        broadcastLocal(path, kind, writer, "local");
+        broadcastLocal(tenant, path, kind, writer, "local");
     }
 
     private void onRemoteChanged(String topic, String body) {
@@ -133,10 +133,10 @@ public class DocumentChangedBroadcaster {
         WriterMeta writer = new WriterMeta(editorId, userId, displayName);
         log.trace("documents.changed[remote] from pod={} on topic={} path={} kind={} writer={}",
                 senderPodId, topic, path, kind, writer);
-        broadcastLocal(path, kind, writer, "remote");
+        broadcastLocal(VanceRedisMessagingService.tenantFromTopic(topic), path, kind, writer, "remote");
     }
 
-    private void broadcastLocal(String path, String kind, WriterMeta writer,
+    private void broadcastLocal(String tenantId, String path, String kind, WriterMeta writer,
             String source) {
         if (!registry.hasLocalSubscribers(path)) {
             log.debug("documents.changed[{}] no local subscribers for path={} → drop", source, path);
@@ -180,8 +180,8 @@ public class DocumentChangedBroadcaster {
                         source, wsSession.getId(), path, e.toString());
             }
         };
-        registry.forEachLocalSubscriber(path, deliver);
-        registry.forEachLocalPrefixSubscriber(path, deliver);
+        registry.forEachLocalSubscriber(tenantId, path, deliver);
+        registry.forEachLocalPrefixSubscriber(tenantId, path, deliver);
         log.trace("documents.changed[{}] fanOut path={} kind={} recipients={} skippedWriter={}",
                 source, path, kind, sent[0], skipped[0]);
     }

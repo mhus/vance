@@ -161,7 +161,7 @@ public class PointerBroadcaster {
                 .y(y)
                 .data(data)
                 .build();
-        broadcastMoveLocal(path, ctx.getEditorId(), payload);
+        broadcastMoveLocal(ctx.getTenantId(), path, ctx.getEditorId(), payload);
         try {
             redis.publish(ctx.getTenantId(), CHANNEL_MOVE,
                     encodeMove(path, ctx.getEditorId(), ctx.getUserId(), displayName, x, y, data));
@@ -172,7 +172,7 @@ public class PointerBroadcaster {
     }
 
     private void emitLeave(@Nullable String tenantId, String path, String editorId) {
-        broadcastLeaveLocal(path, editorId);
+        broadcastLeaveLocal(tenantId, path, editorId);
         if (tenantId != null) {
             try {
                 redis.publish(tenantId, CHANNEL_LEAVE, encodeLeave(path, editorId));
@@ -183,14 +183,17 @@ public class PointerBroadcaster {
         }
     }
 
-    private void broadcastMoveLocal(String path, @Nullable String senderEditorId,
-            PointerNotification payload) {
+    private void broadcastMoveLocal(String tenantId, String path,
+            @Nullable String senderEditorId, PointerNotification payload) {
         Set<String> wsIds = localSubsByPath.get(path);
         if (wsIds == null || wsIds.isEmpty()) return;
         WebSocketEnvelope envelope = WebSocketEnvelope.notification(MessageType.POINTER, payload);
         for (String wsId : wsIds) {
             LocalSubscriber recipient = bySessionInfo.get(wsId);
             if (recipient == null) continue;
+            // Path strings collide across tenants → only deliver to the
+            // matching tenant (code-review B2).
+            if (!Objects.equals(recipient.context().getTenantId(), tenantId)) continue;
             // Skip the sender's own connection — never echo a pointer back.
             if (senderEditorId != null
                     && Objects.equals(recipient.context().getEditorId(), senderEditorId)) {
@@ -200,7 +203,7 @@ public class PointerBroadcaster {
         }
     }
 
-    private void broadcastLeaveLocal(String path, String editorId) {
+    private void broadcastLeaveLocal(@Nullable String tenantId, String path, String editorId) {
         Set<String> wsIds = localSubsByPath.get(path);
         if (wsIds == null || wsIds.isEmpty()) return;
         PointerLeaveNotification payload = PointerLeaveNotification.builder()
@@ -211,6 +214,8 @@ public class PointerBroadcaster {
         for (String wsId : wsIds) {
             LocalSubscriber recipient = bySessionInfo.get(wsId);
             if (recipient == null) continue;
+            // Tenant-scope the fan-out (code-review B2).
+            if (!Objects.equals(recipient.context().getTenantId(), tenantId)) continue;
             // The leaver may already be gone from the map; skip it defensively.
             if (Objects.equals(recipient.context().getEditorId(), editorId)) continue;
             trySend(recipient.wsSession(), envelope, path);
@@ -258,7 +263,7 @@ public class PointerBroadcaster {
                 .y(y)
                 .data(data)
                 .build();
-        broadcastMoveLocal(path, editorId, payload);
+        broadcastMoveLocal(VanceRedisMessagingService.tenantFromTopic(topic), path, editorId, payload);
     }
 
     private void onRemoteLeave(String topic, String body) {
@@ -269,7 +274,7 @@ public class PointerBroadcaster {
         String path = decode(parts[1]);
         if (path == null) return;
         if (localSubsByPath.get(path) == null) return;
-        broadcastLeaveLocal(path, parts[2]);
+        broadcastLeaveLocal(VanceRedisMessagingService.tenantFromTopic(topic), path, parts[2]);
     }
 
     // ─── wire helpers ───────────────────────────────────────────────────

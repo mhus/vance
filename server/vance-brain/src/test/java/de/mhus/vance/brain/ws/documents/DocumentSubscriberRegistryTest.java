@@ -321,12 +321,32 @@ class DocumentSubscriberRegistryTest {
     }
 
     @Test
+    void forEachLocalSubscriber_isTenantScoped_doesNotLeakAcrossTenants() {
+        // Same path string, two tenants → the fan-out must only reach the
+        // event's tenant, else presence/content leaks across tenants
+        // (code-review B2). documents.changed + documents.notes both route
+        // their fan-out through this primitive.
+        registry.subscribe(wsSession("ws-acme"),
+                contextFor("ed-a", "alice", "Alice"), "notes.md");
+        registry.subscribe(wsSession("ws-other"),
+                new ConnectionContext("other", "bob", "Bob", "web", "1.0", null,
+                        "ed-b", "10.0.0.2"),
+                "notes.md");
+
+        java.util.List<String> hitTenants = new java.util.ArrayList<>();
+        registry.forEachLocalSubscriber("acme", "notes.md",
+                (s, c) -> hitTenants.add(c.getTenantId()));
+
+        assertThat(hitTenants).containsExactly("acme");
+    }
+
+    @Test
     void forEachLocalPrefixSubscriber_invokesActionForMatchingPath() {
         WebSocketSession ws = wsSession("ws-1");
         ConnectionContext ctx = contextFor("ed-1", "alice", "Alice");
         registry.subscribePrefix(ws, ctx, "calendars/q3/");
         java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
-        registry.forEachLocalPrefixSubscriber("calendars/q3/lane-design/work.yaml",
+        registry.forEachLocalPrefixSubscriber("acme", "calendars/q3/lane-design/work.yaml",
                 (s, c) -> calls.incrementAndGet());
         assertThat(calls.get()).isEqualTo(1);
     }
@@ -336,7 +356,7 @@ class DocumentSubscriberRegistryTest {
         WebSocketSession ws = wsSession("ws-1");
         registry.subscribePrefix(ws, contextFor("ed-1", "alice", "Alice"), "calendars/q3/");
         java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
-        registry.forEachLocalPrefixSubscriber("calendars/q4/work.yaml",
+        registry.forEachLocalPrefixSubscriber("acme", "calendars/q4/work.yaml",
                 (s, c) -> calls.incrementAndGet());
         assertThat(calls.get()).isZero();
     }
@@ -356,7 +376,7 @@ class DocumentSubscriberRegistryTest {
         registry.unsubscribePrefix(ws, "calendars/q3/");
         assertThat(registry.prefixesOf(ws)).isEmpty();
         java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
-        registry.forEachLocalPrefixSubscriber("calendars/q3/lane/work.yaml",
+        registry.forEachLocalPrefixSubscriber("acme", "calendars/q3/lane/work.yaml",
                 (s, c) -> calls.incrementAndGet());
         assertThat(calls.get()).isZero();
     }

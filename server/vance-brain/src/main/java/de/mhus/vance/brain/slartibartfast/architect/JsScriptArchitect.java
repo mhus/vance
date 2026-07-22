@@ -239,6 +239,11 @@ public class JsScriptArchitect implements SchemaArchitect {
     }
 
     @Override
+    public String artefactNoun() {
+        return "script";
+    }
+
+    @Override
     public boolean wantsPathPersistenceCheck() {
         // Scripts persist their own outputs via host-API tool calls
         // (vance.tools.call('doc_create', ...)) at runtime — not

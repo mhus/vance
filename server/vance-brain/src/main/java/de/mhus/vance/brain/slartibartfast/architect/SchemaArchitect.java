@@ -170,6 +170,35 @@ public interface SchemaArchitect {
         return ".yaml";
     }
 
+    /** Persist the artefact at a flat, directly-usable path
+     *  {@code _vance/<segment>/<draft-name><ext>} using the draft
+     *  name — bypassing both the {@code _slart/<runId>/} sandbox
+     *  bucket and the {@code _user/<name>/} named-CREATE bucket.
+     *
+     *  <p>Defaults to {@code false} — recipe architects
+     *  (Vogon/Marvin/Zaphod) throwaway their output into the sandbox
+     *  and run it immediately in EXECUTING; scripts likewise land in
+     *  the sandbox. {@link MagratheaArchitect} overrides to
+     *  {@code true}: a Magrathea workflow is a reusable named
+     *  document the loader resolves at {@code _vance/workflows/
+     *  <name>.yaml}, so the run's deliverable must land there
+     *  directly to be startable via {@code workflow_start}. An
+     *  existing document at that path is overwritten (the document
+     *  version layer preserves history). */
+    default boolean persistsAtFlatPath() {
+        return false;
+    }
+
+    /** Human noun for the produced artefact, used in PERSISTING's
+     *  document descriptions and audit/log messages. Defaults to
+     *  {@code "recipe"} for recipe architects and {@code "artefact"}
+     *  for non-recipe ones. {@link JsScriptArchitect} overrides to
+     *  {@code "script"}, {@link MagratheaArchitect} to
+     *  {@code "workflow"}. */
+    default String artefactNoun() {
+        return isRecipeOutput() ? "recipe" : "artefact";
+    }
+
     /** Does Slart's {@code EXECUTION_VALIDATING} phase apply to
      *  this schema? Defaults to {@code true} — recipe architects
      *  produce file artefacts ({@code .md} / {@code .json} / etc.)

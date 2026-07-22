@@ -122,9 +122,10 @@ public class PersistingPhase {
         // in Phase 2a. UPDATE-mode for scripts (Phase 2b) will reuse
         // the slart bucket — different runId per call, no in-place
         // overwrite (planning §5.1 + Slart §8 garantie).
+        String artefactNoun = architect.artefactNoun();
         String recipePath;
         String auditPath;
-        boolean isUserNamespace;
+        String writeDescription;
         boolean recipeMode = architect.isRecipeOutput();
         if (recipeMode
                 && state.getMode() == de.mhus.vance.api.slartibartfast.ArchitectMode.EDIT) {
@@ -136,14 +137,16 @@ public class PersistingPhase {
             }
             recipePath = userPrefix + name + extension;
             auditPath = userPrefix + name + ".audit.json";
-            isUserNamespace = true;
+            writeDescription = "Slartibartfast user-namespace "
+                    + artefactNoun + " '" + name + "'";
         } else if (recipeMode
                 && state.getRecipeName() != null
                 && !state.getRecipeName().isBlank()) {
             String name = state.getRecipeName();
             recipePath = userPrefix + name + extension;
             auditPath = userPrefix + name + ".audit.json";
-            isUserNamespace = true;
+            writeDescription = "Slartibartfast user-namespace "
+                    + artefactNoun + " '" + name + "'";
             // Named CREATE upserts — when "speicher unter 'X'"
             // hits an existing X, we treat the new run as the
             // canonical version and overwrite. The previous
@@ -158,25 +161,33 @@ public class PersistingPhase {
                                 + "existing recipe at '{}' (named CREATE)",
                         process.getId(), recipePath);
             }
+        } else if (architect.persistsAtFlatPath()) {
+            // Flat, directly-usable path: _vance/<segment>/<name><ext>.
+            // Magrathea workflows are reusable named documents the
+            // loader resolves at _vance/workflows/<name>.yaml — the
+            // run's deliverable must land there directly, not in the
+            // _slart sandbox. The draft name is the workflow name.
+            String name = draft.getName();
+            recipePath = "_vance/" + segment + "/" + name + extension;
+            auditPath = "_vance/" + segment + "/" + name + ".audit.json";
+            writeDescription = "Slartibartfast-generated "
+                    + artefactNoun + " '" + name + "'";
+            if (documentService.findByPath(
+                    process.getTenantId(), process.getProjectId(), recipePath)
+                    .isPresent()) {
+                log.info("Slartibartfast id='{}' PERSISTING — overwriting "
+                                + "existing {} at '{}' (flat CREATE)",
+                        process.getId(), artefactNoun, recipePath);
+            }
         } else {
             recipePath = slartPrefix + runId + "/" + draft.getName() + extension;
             auditPath = slartPrefix + runId + "/audit.json";
-            isUserNamespace = false;
+            writeDescription = "Slartibartfast-generated "
+                    + artefactNoun + " for run " + runId;
         }
 
-        String artefactNoun = recipeMode ? "recipe" : "script";
         try {
-            writeOrUpdate(process, recipePath, draft.getYaml(),
-                    isUserNamespace
-                            ? "Slartibartfast user-namespace "
-                                    + artefactNoun + " '"
-                                    + (state.getMode()
-                                            == de.mhus.vance.api.slartibartfast.ArchitectMode.EDIT
-                                            ? state.getTargetRecipeName()
-                                            : state.getRecipeName())
-                                    + "'"
-                            : "Slartibartfast-generated "
-                                    + artefactNoun + " for run " + runId);
+            writeOrUpdate(process, recipePath, draft.getYaml(), writeDescription);
         } catch (RuntimeException e) {
             state.setFailureReason("PERSISTING failed writing "
                     + artefactNoun + " " + recipePath

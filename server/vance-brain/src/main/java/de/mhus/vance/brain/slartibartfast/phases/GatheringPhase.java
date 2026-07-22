@@ -196,6 +196,7 @@ public class GatheringPhase {
             case MARVIN_RECIPE -> "marvin-architect";
             case ZAPHOD_RECIPE -> "zaphod-architect";
             case SCRIPT_JS -> "js-script-architect";
+            case MAGRATHEA_WORKFLOW -> "magrathea-architect";
         };
     }
 

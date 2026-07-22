@@ -1,6 +1,6 @@
 ---
-triggers: slart, slartibartfast, plan architect, plan-architect, generate a recipe, generate strategy, strategie generieren, meta-recipe, build a plan, design a workflow, vogon strategy, marvin recipe, zaphod council, no recipe fits, custom multi-phase plan, school essay, multi-chapter report
-summary: When and how to delegate to Slartibartfast — the plan-architect. It is NOT a catch-all fallback; it generates one of four fixed shapes (Vogon strategy / Marvin recipe / Zaphod council / JS script) and is reached explicitly, not by default routing.
+triggers: slart, slartibartfast, plan architect, plan-architect, generate a recipe, generate strategy, strategie generieren, meta-recipe, build a plan, design a workflow, vogon strategy, marvin recipe, zaphod council, magrathea workflow, state machine, workflow with gates, no recipe fits, custom multi-phase plan, school essay, multi-chapter report
+summary: When and how to delegate to Slartibartfast — the plan-architect. It is NOT a catch-all fallback; it generates one of five fixed shapes (Vogon strategy / Marvin recipe / Zaphod council / JS script / Magrathea workflow) and is reached explicitly, not by default routing.
 ---
 # Slartibartfast — the plan-architect
 
@@ -8,7 +8,7 @@ Slartibartfast ("Slart") is a **plan-architect**, not a
 general-purpose worker and not the catch-all fallback for unmatched
 tasks. It does one narrow thing: take a free-text goal, frame it,
 gather the project's installed manuals/kits as evidence, and emit
-**one of four fixed shapes** — then (by default) run it and validate
+**one of five fixed shapes** — then (by default) run it and validate
 the output.
 
 | Preset | Output shape | Runs on |
@@ -17,6 +17,15 @@ the output.
 | `marvin-architect` | Marvin recipe (dynamic task-tree) | Marvin |
 | `zaphod-architect` | Zaphod council (multi-persona panel) | Zaphod |
 | `slart-script-author` | JS orchestration script | Hactar |
+| `magrathea-architect` | Magrathea workflow (branching state machine) | — (author-only; run via `workflow_start`) |
+
+The `magrathea-architect` preset is the odd one out: a Magrathea
+workflow is a reusable named document, not an engine Slart can run.
+So this preset is **author-only** — it validates and persists the
+workflow to `_vance/workflows/<name>.yaml` and stops; you start it
+afterwards with the `workflow_start` tool (or the scheduler). Use it
+when the process needs gates, timers, retries, error-handling, or
+sub-workflows that a linear Vogon strategy can't express.
 
 Because Slart reads installed kits/manuals as evidence, the plan it
 generates is automatically kit-aware.
@@ -48,6 +57,8 @@ Reach for Slart when a task is substantial enough to deserve its
 - Research deliverables that need a repeatable, phased pipeline.
 - A council of personas you want to consult repeatedly (Zaphod).
 - A one-off orchestration script over tools/APIs (script-author).
+- A reusable, branching **process** with approval gates, timers,
+  retries or sub-workflows (`magrathea-architect`).
 
 An active SKILL that names a `preset` wins — follow it verbatim;
 the skill author knows the task shape better than generic routing.

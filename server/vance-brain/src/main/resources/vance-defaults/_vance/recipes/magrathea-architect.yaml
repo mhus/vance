@@ -1,0 +1,51 @@
+description: |
+  Slartibartfast variant that generates a Magrathea WORKFLOW (a named
+  state-machine document under _vance/workflows/, NOT a recipe) from a
+  free-text request. Same Slart lifecycle for the authoring part
+  (FRAMING → … → VALIDATING → PERSISTING), only PROPOSING and
+  VALIDATING produce/check a workflow state-graph instead of a Vogon
+  strategy.
+
+  Author-only: the run persists the workflow directly at
+  _vance/workflows/<name>.yaml and ends at DONE (planOnly=true). It
+  does NOT run the workflow — Magrathea is a workflow-orchestration
+  subsystem, not an engine Slart can spawn. Start the generated
+  workflow afterwards with the workflow_start tool, the scheduler, or
+  the REST endpoint.
+
+  Use this when the user wants a reusable, branching PROCESS with
+  gates, timers, retries, error-handling and sub-workflows —
+  "build a workflow that …", "set up a state machine for …",
+  "automate this multi-step process with approval steps". For a
+  one-shot linear pipeline use plain `slartibartfast` (vogon-strategy);
+  for deep recursive decomposition use `marvin-architect`.
+engine: slartibartfast
+params:
+  outputSchemaType: magrathea-workflow
+  # Author-only — persist the workflow and stop at DONE. Magrathea
+  # is not a ThinkEngine, so there is no execution child to spawn.
+  planOnly: true
+  # Workflow authoring benefits from a larger context — Slart reads
+  # the project's recipes (for agent_task references) and manuals in
+  # one go while composing the state graph.
+  model: default:magrathea-architect,default:analyze
+tags:
+  - architect
+  - workflow
+  - engine-default
+# Trigger keywords for the deterministic recipe-router pre-check
+# (see specification/recipe-routing.md §5). Claims workflow / state-
+# machine shaped intents.
+triggers:
+  keywords:
+    - workflow
+    - workflows
+    - magrathea
+    - magrathea-workflow
+    - state-machine
+    - statemachine
+    - zustandsautomat
+    - ablauf
+    - prozess-automatisierung
+    - approval-flow
+    - gate

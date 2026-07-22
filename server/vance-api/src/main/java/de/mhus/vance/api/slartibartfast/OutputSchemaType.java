@@ -35,4 +35,17 @@ public enum OutputSchemaType {
      *  allowlist). The persisted script is executed at runtime by
      *  Hactar (Phase 3 of the architect/executor split). */
     SCRIPT_JS,
+
+    /** Magrathea workflow YAML — a named state-machine document
+     *  ({@code start} + {@code states:} with agent/tool/shell/script/
+     *  gate/timer/condition/workflow/terminal tasks). NOT a recipe:
+     *  it has no top-level {@code engine:} field and Magrathea is a
+     *  workflow-orchestration subsystem, not a {@code ThinkEngine}.
+     *  Validated by {@code MagratheaArchitect} via
+     *  {@code MagratheaWorkflowLoader.validateYaml(...)}. Author-only —
+     *  the Slart run persists the workflow to {@code _vance/workflows/
+     *  <name>.yaml} (directly usable by {@code workflow_start}) and
+     *  ends at DONE via the {@code planOnly} path; the workflow is run
+     *  later through the Magrathea subsystem. */
+    MAGRATHEA_WORKFLOW,
 }

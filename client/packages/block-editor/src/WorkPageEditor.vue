@@ -43,6 +43,7 @@ import { registeredBlocks } from './blockRegistry';
 import { registerBuiltInBlocks } from './builtins';
 import { HeadingAnchors } from './extensions/HeadingAnchors';
 import { TrailingNode } from './extensions/TrailingNode';
+import { ActiveBlock } from './extensions/ActiveBlock';
 import { VanceWikiLink } from './extensions/VanceWikiLink';
 import { VueNodeViewRenderer } from '@tiptap/vue-3';
 import VanceImageNodeView from './extensions/VanceImageNodeView.vue';
@@ -419,6 +420,7 @@ const editor = useEditor({
     SlashCommands,
     HeadingAnchors,
     TrailingNode,
+    ActiveBlock,
     VanceToggle,
     VanceLink,
     VanceDataview,
@@ -1210,6 +1212,14 @@ defineExpose({
 </template>
 
 <style>
+/* Active-block highlight (ActiveBlock extension): the top-level block the
+   caret/selection is in — so the user sees which block is "active". Accent
+   ring offset outside the block; matches the canvas active-node marker. */
+.ProseMirror .is-active-block {
+  outline: 2px solid #2563eb;
+  outline-offset: 4px;
+  border-radius: 4px;
+}
 .canvas-editor {
   display: flex;
   flex-direction: column;

@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.tools.web;
 
 import de.mhus.vance.api.web.LinkPreviewDto;
+import de.mhus.vance.shared.net.SsrfGuard;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.web.LinkPreviewCacheDocument;
 import de.mhus.vance.shared.web.LinkPreviewCacheRepository;
@@ -397,8 +398,8 @@ public class LinkPreviewService {
 
     static final class JdkPreviewHttp implements PreviewHttp {
 
-        private final HttpClient http = HttpClient.newBuilder()
-                .followRedirects(HttpClient.Redirect.NORMAL)
+        // Redirect.NEVER so SsrfGuard.sendGuarded re-checks every hop (F2).
+        private final HttpClient http = SsrfGuard.guardedClientBuilder()
                 .connectTimeout(Duration.ofSeconds(4))
                 .build();
 
@@ -418,7 +419,8 @@ public class LinkPreviewService {
                     // partial-response edge cases.
                     .timeout(timeout)
                     .build();
-            HttpResponse<byte[]> response = http.send(request, HttpResponse.BodyHandlers.ofByteArray());
+            HttpResponse<byte[]> response =
+                    SsrfGuard.sendGuarded(http, request, HttpResponse.BodyHandlers.ofByteArray());
             byte[] raw = response.body();
             if (raw != null && raw.length > maxBodyBytes) {
                 byte[] capped = new byte[maxBodyBytes];

@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.tools.web;
 
+import de.mhus.vance.shared.net.SsrfGuard;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -105,8 +106,9 @@ public class WebFetchTool implements Tool {
                                     + "HTML pages). Unknown tokens are ignored.")),
             "required", List.of("url"));
 
-    private final HttpClient http = HttpClient.newBuilder()
-            .followRedirects(HttpClient.Redirect.NORMAL)
+    // Redirect.NEVER so SsrfGuard.sendGuarded — not the JDK — follows
+    // redirects and re-checks every hop against the egress policy (F2).
+    private final HttpClient http = SsrfGuard.guardedClientBuilder()
             .connectTimeout(REQUEST_TIMEOUT)
             .build();
 
@@ -216,8 +218,13 @@ public class WebFetchTool implements Tool {
                 log.warn("WebFetchTool tenant='{}' url='{}' — TLS verification disabled (insecure flag)",
                         ctx.tenantId(), truncate(rawUrl, 120));
             }
-            HttpResponse<String> response = client.send(
-                    request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response;
+            try {
+                response = SsrfGuard.sendGuarded(
+                        client, request, HttpResponse.BodyHandlers.ofString());
+            } catch (SsrfGuard.SsrfException e) {
+                throw new ToolException(e.getMessage());
+            }
 
             String body = response.body() == null ? "" : response.body();
             String contentType = response.headers()

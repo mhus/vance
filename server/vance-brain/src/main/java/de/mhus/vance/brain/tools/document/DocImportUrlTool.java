@@ -2,6 +2,7 @@ package de.mhus.vance.brain.tools.document;
 
 import de.mhus.vance.brain.tools.eddie.EddieContext;
 import de.mhus.vance.brain.tools.web.InsecureHttpClientFactory;
+import de.mhus.vance.shared.net.SsrfGuard;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -114,8 +115,8 @@ public class DocImportUrlTool implements Tool {
 
     private static final Set<String> VALID_IF_EXISTS = Set.of("reuse", "update", "error");
 
-    private final HttpClient http = HttpClient.newBuilder()
-            .followRedirects(HttpClient.Redirect.NORMAL)
+    // Redirect.NEVER so SsrfGuard.sendGuarded re-checks every hop (F2).
+    private final HttpClient http = SsrfGuard.guardedClientBuilder()
             .connectTimeout(REQUEST_TIMEOUT)
             .build();
 
@@ -238,8 +239,13 @@ public class DocImportUrlTool implements Tool {
                 log.warn("DocImportUrlTool tenant='{}' url='{}' — TLS verification disabled (insecure=true)",
                         ctx.tenantId(), rawUrl);
             }
-            HttpResponse<byte[]> response = client.send(
-                    request, HttpResponse.BodyHandlers.ofByteArray());
+            HttpResponse<byte[]> response;
+            try {
+                response = SsrfGuard.sendGuarded(
+                        client, request, HttpResponse.BodyHandlers.ofByteArray());
+            } catch (SsrfGuard.SsrfException e) {
+                throw new ToolException(e.getMessage());
+            }
             status = response.statusCode();
             if (status < 200 || status >= 300) {
                 throw new ToolException(

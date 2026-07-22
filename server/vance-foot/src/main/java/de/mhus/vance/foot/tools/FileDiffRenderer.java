@@ -3,6 +3,7 @@ package de.mhus.vance.foot.tools;
 import de.mhus.vance.foot.config.FootConfig;
 import de.mhus.vance.foot.ui.ChatTerminal;
 import de.mhus.vance.foot.ui.StyleParser;
+import de.mhus.vance.foot.ui.TerminalSanitizer;
 import de.mhus.vance.foot.ui.Verbosity;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -208,18 +209,21 @@ public final class FileDiffRenderer {
     private void emitOp(DiffOp op, int lineNum) {
         AttributedStringBuilder sb = new AttributedStringBuilder();
         String num = formatLineNum(lineNum);
+        // File content is server-/LLM-supplied — strip terminal control
+        // chars so a diffed line cannot inject ANSI (code-review F3).
+        String content = TerminalSanitizer.sanitizeContent(op.line);
         switch (op.type) {
             case ADD -> {
                 if (addStyle != null) sb.style(addStyle);
-                sb.append(num).append(" + ").append(op.line);
+                sb.append(num).append(" + ").append(content);
             }
             case REMOVE -> {
                 if (removeStyle != null) sb.style(removeStyle);
-                sb.append(num).append(" - ").append(op.line);
+                sb.append(num).append(" - ").append(content);
             }
             case CONTEXT -> {
                 if (contextStyle != null) sb.style(contextStyle);
-                sb.append(num).append("   ").append(op.line);
+                sb.append(num).append("   ").append(content);
             }
         }
         terminal.printlnStyled(Verbosity.INFO, sb.toAttributedString());

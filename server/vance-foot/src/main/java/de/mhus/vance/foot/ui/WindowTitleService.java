@@ -195,14 +195,7 @@ public class WindowTitleService {
      * scrollback.
      */
     private static String sanitize(String s) {
-        StringBuilder out = new StringBuilder(s.length());
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            if (c >= 0x20 && c != 0x7F) {
-                out.append(c);
-            }
-        }
-        return out.toString();
+        return TerminalSanitizer.sanitizeStrict(s);
     }
 
     private static void writeToStdout(String escape) {

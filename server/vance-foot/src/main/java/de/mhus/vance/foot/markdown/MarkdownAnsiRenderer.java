@@ -2,6 +2,7 @@ package de.mhus.vance.foot.markdown;
 
 import de.mhus.vance.foot.config.FootConfig;
 import de.mhus.vance.foot.ui.StyleParser;
+import de.mhus.vance.foot.ui.TerminalSanitizer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -91,6 +92,11 @@ public class MarkdownAnsiRenderer {
     public List<AttributedString> render(String markdown, int terminalWidth) {
         List<AttributedString> out = new ArrayList<>();
         if (markdown == null || markdown.isEmpty()) return out;
+        // The rendered content is server-/LLM-supplied and its ESC bytes
+        // would survive AttributedStringBuilder.append into the terminal.
+        // Strip control chars up front (keeping \n/\t) so only JLine's own
+        // style escapes reach the screen (code-review F3).
+        markdown = TerminalSanitizer.sanitizeContent(markdown);
         String[] raw = markdown.split("\n", -1);
         int i = 0;
         while (i < raw.length) {

@@ -344,6 +344,9 @@ public class ChatTerminal {
      */
     public void streamRaw(String text) {
         if (text == null || text.isEmpty()) return;
+        // Server-/LLM-supplied stream: strip terminal control chars so
+        // embedded ANSI/OSC cannot spoof the screen (code-review F3).
+        text = TerminalSanitizer.sanitizeContent(text);
         if (!liveRegion.isAttached()) {
             PrintWriter w = writer();
             w.print(text);

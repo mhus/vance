@@ -57,6 +57,13 @@ zeigt sie **live** (genau wie der Run-Button). Gleiche Async-Semantik wie
 entfernt `$output:`/`$run:` wieder (Manifest bleibt). Nutze diese beiden, wenn
 das Ziel ein Dokument-Block ist; `compose_run` dagegen für ad-hoc/`composePath`.
 
+Funktioniert für ein **Top-Level-`kind: compose`-Dokument** *und* für einen
+**inline `vance-compose`-Block in einem Workpage**: bei einem Workpage wird der
+Block ausgeführt, den der Nutzer **selektiert** hat (der „diesen Teil"-Kontext) —
+oder der einzige, falls es nur einen gibt. Bei mehreren Blöcken ohne Selektion
+fragt das Tool nach Auswahl. Nur dieser eine Block wird verändert, der Rest der
+Seite bleibt unangetastet.
+
 ## Manifest
 
 ```yaml

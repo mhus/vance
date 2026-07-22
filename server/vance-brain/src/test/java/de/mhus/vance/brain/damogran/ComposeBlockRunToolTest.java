@@ -9,9 +9,13 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import de.mhus.vance.brain.tools.client.CortexTurnSelectionHolder;
 import de.mhus.vance.brain.tools.kinds.KindToolSupport;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.List;
 import java.util.Map;
@@ -31,6 +35,7 @@ class ComposeBlockRunToolTest {
     private DamogranComposeService composeService;
     private DocumentService documentService;
     private KindToolSupport support;
+    private CortexTurnSelectionHolder selectionHolder;
     private ComposeBlockRunTool tool;
     private DocumentDocument doc;
     private ToolInvocationContext ctx;
@@ -40,8 +45,9 @@ class ComposeBlockRunToolTest {
         composeService = mock(DamogranComposeService.class);
         documentService = mock(DocumentService.class);
         support = mock(KindToolSupport.class);
+        selectionHolder = mock(CortexTurnSelectionHolder.class);
         ComposeFinishedNotifier notifier = mock(ComposeFinishedNotifier.class);
-        tool = new ComposeBlockRunTool(composeService, documentService, support, notifier);
+        tool = new ComposeBlockRunTool(composeService, documentService, support, notifier, selectionHolder);
 
         doc = mock(DocumentDocument.class);
         ctx = mock(ToolInvocationContext.class);
@@ -136,5 +142,62 @@ class ComposeBlockRunToolTest {
         tool.invoke(Map.of(), ctx);
 
         verify(support, never()).writeBody(any(), any(), any());
+    }
+
+    // ──────────────────── inline workpage fences ────────────────────
+
+    private static final String TWO_FENCES =
+            "# Page\n\n```vance-compose\nname: first\n```\n\n```vance-compose\nname: second\n```\n";
+
+    private DamogranComposeResult successWith(String path) {
+        return new DamogranComposeResult(
+                DamogranStatus.SUCCESS, "ws",
+                List.of(DamogranTaskResult.success(List.of(new OutputArtifact(path, null, null, null)))),
+                null);
+    }
+
+    @Test
+    void inlineSelectedFence_splicesOutputIntoThatBlockOnly() {
+        terminalRun(successWith("out/a.txt"));
+        when(support.readBody(doc, ctx)).thenReturn(TWO_FENCES);
+        when(documentService.readContent(doc)).thenReturn(TWO_FENCES);
+        // Selection sits inside the SECOND fence.
+        when(selectionHolder.get("proc-1")).thenReturn(new CortexTurnSelectionHolder.Selection(
+                "doc-1", TWO_FENCES.indexOf("name: second"), TWO_FENCES.indexOf("name: second") + 4));
+
+        tool.invoke(Map.of(), ctx);
+
+        ArgumentCaptor<String> written = ArgumentCaptor.forClass(String.class);
+        verify(support).writeBody(any(), written.capture(), any());
+        String out = written.getValue();
+        // Second fence got the $output; first fence is untouched.
+        assertThat(out).contains("name: second\n\n# generated — compose run state (do not edit)\n"
+                + "$output:\n  - path: out/a.txt\n    uri: vance-workspace:/ws/out/a.txt\n");
+        assertThat(out).contains("```vance-compose\nname: first\n```");
+    }
+
+    @Test
+    void inlineSingleFence_noSelection_usesTheOnlyBlock() {
+        String oneFence = "# Page\n\n```vance-compose\nname: only\n```\n";
+        terminalRun(successWith("r.md"));
+        when(support.readBody(doc, ctx)).thenReturn(oneFence);
+        when(documentService.readContent(doc)).thenReturn(oneFence);
+        when(selectionHolder.get("proc-1")).thenReturn(null);
+
+        tool.invoke(Map.of(), ctx);
+
+        ArgumentCaptor<String> written = ArgumentCaptor.forClass(String.class);
+        verify(support).writeBody(any(), written.capture(), any());
+        assertThat(written.getValue()).contains("name: only\n\n# generated");
+    }
+
+    @Test
+    void inlineMultipleFences_noSelection_errors() {
+        when(support.readBody(doc, ctx)).thenReturn(TWO_FENCES);
+        when(selectionHolder.get("proc-1")).thenReturn(null);
+
+        assertThatThrownBy(() -> tool.invoke(Map.of(), ctx))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("multiple compose blocks");
     }
 }

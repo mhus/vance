@@ -3,19 +3,16 @@ package de.mhus.vance.brain.kit;
 import de.mhus.vance.api.kit.KitDescriptorDto;
 import de.mhus.vance.api.kit.KitInheritDto;
 import java.io.IOException;
-import java.nio.file.FileVisitOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -193,13 +190,9 @@ public class KitResolver {
     private static List<String> scanDocuments(Path docsRoot) {
         List<String> out = new ArrayList<>();
         if (!Files.isDirectory(docsRoot)) return out;
-        try (Stream<Path> stream = Files.walk(docsRoot, FileVisitOption.FOLLOW_LINKS)) {
-            stream.filter(Files::isRegularFile).forEach(file -> {
-                String rel = docsRoot.relativize(file).toString().replace('\\', '/');
-                out.add(rel);
-            });
-        } catch (IOException e) {
-            throw new KitException("failed to walk " + docsRoot, e);
+        for (Path file : KitTree.walkNoSymlinks(docsRoot)) {
+            if (!Files.isRegularFile(file)) continue;
+            out.add(docsRoot.relativize(file).toString().replace('\\', '/'));
         }
         return out;
     }
@@ -207,15 +200,12 @@ public class KitResolver {
     private static List<String> scanSettings(Path settingsRoot) {
         List<String> out = new ArrayList<>();
         if (!Files.isDirectory(settingsRoot)) return out;
-        try (Stream<Path> stream = Files.list(settingsRoot)) {
-            stream.filter(Files::isRegularFile).forEach(file -> {
-                String filename = file.getFileName().toString();
-                if (!filename.endsWith(KitInstaller.SETTING_FILE_SUFFIX)) return;
-                out.add(filename.substring(
-                        0, filename.length() - KitInstaller.SETTING_FILE_SUFFIX.length()));
-            });
-        } catch (IOException e) {
-            throw new KitException("failed to list " + settingsRoot, e);
+        for (Path file : KitTree.listNoSymlinks(settingsRoot)) {
+            if (!Files.isRegularFile(file)) continue;
+            String filename = file.getFileName().toString();
+            if (!filename.endsWith(KitInstaller.SETTING_FILE_SUFFIX)) continue;
+            out.add(filename.substring(
+                    0, filename.length() - KitInstaller.SETTING_FILE_SUFFIX.length()));
         }
         return out;
     }
@@ -272,25 +262,21 @@ public class KitResolver {
     }
 
     private static void mergeLayer(Path layerRoot, Path buildRoot) {
-        try (Stream<Path> stream = Files.walk(layerRoot, FileVisitOption.FOLLOW_LINKS)) {
-            stream.sorted(Comparator.naturalOrder()).forEach(src -> {
-                Path rel = layerRoot.relativize(src);
-                if (rel.toString().isEmpty()) return; // root itself
-                Path dst = buildRoot.resolve(rel.toString());
-                try {
-                    if (Files.isDirectory(src)) {
-                        Files.createDirectories(dst);
-                    } else {
-                        Path parent = dst.getParent();
-                        if (parent != null) Files.createDirectories(parent);
-                        Files.copy(src, dst, StandardCopyOption.REPLACE_EXISTING);
-                    }
-                } catch (IOException e) {
-                    throw new KitException("failed to merge " + src + " → " + dst, e);
+        for (Path src : KitTree.walkNoSymlinks(layerRoot)) {
+            Path rel = layerRoot.relativize(src);
+            if (rel.toString().isEmpty()) continue; // root itself
+            Path dst = buildRoot.resolve(rel.toString());
+            try {
+                if (Files.isDirectory(src)) {
+                    Files.createDirectories(dst);
+                } else {
+                    Path parent = dst.getParent();
+                    if (parent != null) Files.createDirectories(parent);
+                    Files.copy(src, dst, StandardCopyOption.REPLACE_EXISTING);
                 }
-            });
-        } catch (IOException e) {
-            throw new KitException("failed to walk layer " + layerRoot, e);
+            } catch (IOException e) {
+                throw new KitException("failed to merge " + src + " → " + dst, e);
+            }
         }
     }
 }

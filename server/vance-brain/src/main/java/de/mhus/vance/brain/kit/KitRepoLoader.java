@@ -7,7 +7,6 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.Comparator;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.errors.GitAPIException;
@@ -180,26 +179,20 @@ public class KitRepoLoader {
     }
 
     private static void copyTree(Path source, Path target) {
-        try {
-            Files.walk(source)
-                    .sorted(Comparator.naturalOrder())
-                    .forEach(src -> {
-                        Path rel = source.relativize(src);
-                        Path dst = target.resolve(rel.toString());
-                        try {
-                            if (Files.isDirectory(src)) {
-                                Files.createDirectories(dst);
-                            } else {
-                                Path parent = dst.getParent();
-                                if (parent != null) Files.createDirectories(parent);
-                                Files.copy(src, dst, StandardCopyOption.REPLACE_EXISTING);
-                            }
-                        } catch (IOException e) {
-                            throw new KitException("failed to copy " + src + " → " + dst, e);
-                        }
-                    });
-        } catch (IOException e) {
-            throw new KitException("failed to walk " + source, e);
+        for (Path src : KitTree.walkNoSymlinks(source)) {
+            Path rel = source.relativize(src);
+            Path dst = target.resolve(rel.toString());
+            try {
+                if (Files.isDirectory(src)) {
+                    Files.createDirectories(dst);
+                } else {
+                    Path parent = dst.getParent();
+                    if (parent != null) Files.createDirectories(parent);
+                    Files.copy(src, dst, StandardCopyOption.REPLACE_EXISTING);
+                }
+            } catch (IOException e) {
+                throw new KitException("failed to copy " + src + " → " + dst, e);
+            }
         }
     }
 }

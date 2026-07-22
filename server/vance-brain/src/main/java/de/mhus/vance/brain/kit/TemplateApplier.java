@@ -19,7 +19,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -433,21 +432,18 @@ public class TemplateApplier {
     private static void substituteBuildTree(Path buildRoot, Map<String, String> vars) {
         Path docsRoot = buildRoot.resolve(KitInstaller.DOCUMENTS_DIR);
         if (!Files.isDirectory(docsRoot)) return;
-        try (Stream<Path> stream = Files.walk(docsRoot)) {
-            stream.filter(Files::isRegularFile).forEach(file -> {
-                try {
-                    String content = Files.readString(file, StandardCharsets.UTF_8);
-                    String substituted = substitute(content, vars,
-                            buildRoot.relativize(file).toString());
-                    if (!substituted.equals(content)) {
-                        Files.writeString(file, substituted, StandardCharsets.UTF_8);
-                    }
-                } catch (IOException e) {
-                    throw new KitException("failed to rewrite " + file, e);
+        for (Path file : KitTree.walkNoSymlinks(docsRoot)) {
+            if (!Files.isRegularFile(file)) continue;
+            try {
+                String content = Files.readString(file, StandardCharsets.UTF_8);
+                String substituted = substitute(content, vars,
+                        buildRoot.relativize(file).toString());
+                if (!substituted.equals(content)) {
+                    Files.writeString(file, substituted, StandardCharsets.UTF_8);
                 }
-            });
-        } catch (IOException e) {
-            throw new KitException("failed to walk " + docsRoot, e);
+            } catch (IOException e) {
+                throw new KitException("failed to rewrite " + file, e);
+            }
         }
     }
 

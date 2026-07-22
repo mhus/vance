@@ -399,7 +399,9 @@ public class FookUpstreamService {
                 SettingService.SCOPE_PROJECT,
                 de.mhus.vance.shared.home.HomeBootstrapService.TENANT_PROJECT_NAME,
                 key, generated, SettingType.STRING, description);
-        log.info("Fook upstream: generated and persisted {} = '{}'", key, generated);
+        // Never log the value — SETTING_INSTANCE_SECRET is the salt that
+        // protects reporter-identity hashes from reversal (code-review F4).
+        log.info("Fook upstream: generated and persisted {}", key);
         return generated;
     }
 

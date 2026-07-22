@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.zarniwoop;
 
 import de.mhus.vance.brain.ai.light.LightLlmRequest;
+import de.mhus.vance.brain.prompt.UntrustedContent;
 import de.mhus.vance.brain.ai.light.LightLlmService;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.research.DroppedHit;
@@ -324,12 +325,19 @@ public class ZarniwoopResearchService {
             HitWithKey row = e.getValue();
             Map<String, Object> r = new LinkedHashMap<>();
             r.put("hitId", e.getKey());
-            r.put("title", row.hit().title());
+            // Hit title/snippet/source are untrusted external content rendered
+            // into a Markdown-templated prompt — collapse newlines so they
+            // cannot inject headings/rules at a line start (code-review F3).
+            r.put("title", UntrustedContent.collapseWhitespace(row.hit().title()));
             r.put("url", row.hit().url());
             r.put("modality", row.hit().modality().name().toLowerCase(Locale.ROOT));
             r.put("providerInstanceId", row.providerInstanceId());
-            if (!StringUtils.isBlank(row.hit().snippet())) r.put("snippet", row.hit().snippet());
-            if (!StringUtils.isBlank(row.hit().source())) r.put("source", row.hit().source());
+            if (!StringUtils.isBlank(row.hit().snippet())) {
+                r.put("snippet", UntrustedContent.collapseWhitespace(row.hit().snippet()));
+            }
+            if (!StringUtils.isBlank(row.hit().source())) {
+                r.put("source", UntrustedContent.collapseWhitespace(row.hit().source()));
+            }
             hitRows.add(r);
         }
         Map<String, Object> pebbleVars = Map.of(

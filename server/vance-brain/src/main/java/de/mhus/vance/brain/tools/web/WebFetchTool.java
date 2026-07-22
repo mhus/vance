@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.tools.web;
 
+import de.mhus.vance.brain.prompt.UntrustedContent;
 import de.mhus.vance.shared.net.SsrfGuard;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
@@ -263,7 +264,10 @@ public class WebFetchTool implements Tool {
             if (transformedFromHtml) {
                 out.put("transformedFromHtml", true);
             }
-            out.put("content", content);
+            // Fetched page content is untrusted (prompt-injection vector) —
+            // label it as data so the model does not act on embedded
+            // instructions (code-review F3).
+            out.put("content", UntrustedContent.wrap("untrusted-fetched-content", content));
 
             if (!flags.contains(FLAG_NO_LLMS)) {
                 Optional<String> overview = llmsTxtProbe.probe(uri, ctx);

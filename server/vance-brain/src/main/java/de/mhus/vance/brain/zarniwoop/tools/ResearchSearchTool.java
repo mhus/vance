@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.zarniwoop.tools;
 
+import de.mhus.vance.brain.prompt.UntrustedContent;
 import de.mhus.vance.brain.zarniwoop.ZarniwoopException;
 import de.mhus.vance.brain.zarniwoop.ZarniwoopService;
 import de.mhus.vance.toolpack.Tool;
@@ -186,10 +187,17 @@ public class ResearchSearchTool implements Tool {
 
     private static Map<String, Object> shapeHit(SearchHit hit) {
         Map<String, Object> row = new LinkedHashMap<>();
-        row.put("title", hit.title());
+        // Title/snippet/source are untrusted external content — collapse
+        // newlines so they cannot inject structure when an engine renders
+        // the hit into a templated prompt (code-review F3).
+        row.put("title", UntrustedContent.collapseWhitespace(hit.title()));
         row.put("url", hit.url());
-        if (!StringUtils.isBlank(hit.snippet())) row.put("snippet", hit.snippet());
-        if (!StringUtils.isBlank(hit.source())) row.put("source", hit.source());
+        if (!StringUtils.isBlank(hit.snippet())) {
+            row.put("snippet", UntrustedContent.collapseWhitespace(hit.snippet()));
+        }
+        if (!StringUtils.isBlank(hit.source())) {
+            row.put("source", UntrustedContent.collapseWhitespace(hit.source()));
+        }
         if (hit.extras() != null && !hit.extras().isEmpty()) {
             // Inline well-known extras directly; never wrap them in a sub-map
             // so the LLM sees them as first-class fields per modality.

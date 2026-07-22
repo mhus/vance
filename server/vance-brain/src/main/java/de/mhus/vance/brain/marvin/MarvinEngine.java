@@ -579,7 +579,8 @@ public class MarvinEngine implements ThinkEngine {
 
         MarvinNodeStateMachine.Caps caps = readCaps(process);
         MarvinNodeStateMachine.Counters counters = new MarvinNodeStateMachine.Counters(
-                node.getReflectIter(), node.getValidateIter(), node.getConcludeRetries());
+                node.getReflectIter(), node.getValidateIter(), node.getConcludeRetries(),
+                node.getNeedMoreDataIter());
 
         try {
             // Loop drives the worker through as many synchronous
@@ -716,6 +717,7 @@ public class MarvinEngine implements ThinkEngine {
         node.setReflectIter(c.reflectIter());
         node.setValidateIter(c.validateIter());
         node.setConcludeRetries(c.concludeRetries());
+        node.setNeedMoreDataIter(c.needMoreDataIter());
         nodeService.save(node);
     }
 
@@ -728,8 +730,10 @@ public class MarvinEngine implements ThinkEngine {
                 properties.getConcludeMaxRetries());
         int treeDepth = paramInt(process, "maxTreeDepth",
                 properties.getMaxTreeDepth());
+        int needMoreDataMax = paramInt(process, "needMoreDataMaxIterations",
+                properties.getNeedMoreDataMaxIterations());
         return new MarvinNodeStateMachine.Caps(
-                reflectMax, validateMax, concludeRetries, treeDepth);
+                reflectMax, validateMax, concludeRetries, treeDepth, needMoreDataMax);
     }
 
     /**

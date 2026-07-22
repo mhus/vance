@@ -126,6 +126,11 @@ public class MarvinNodeDocument {
      *  RETRY_CONCLUDE / cap-forced hits (0..2). */
     private int concludeRetries;
 
+    /** Iteration counter for the VALIDATE(NEED_MORE_DATA) → REFLECT loop,
+     *  bounded independently of reflectIter/validateIter to prevent an
+     *  infinite phase cycle (code-review B3). */
+    private int needMoreDataIter;
+
     /** {@code true} while children spawned via NEEDS_SUBTASKS are
      *  still in flight. Once they all terminate, the engine wakes
      *  this node in POST_CHILDREN phase. */

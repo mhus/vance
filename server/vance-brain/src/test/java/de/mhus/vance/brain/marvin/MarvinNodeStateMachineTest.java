@@ -86,7 +86,7 @@ class MarvinNodeStateMachineTest {
 
     @Test
     void reflect_callRecipe_atCap_forcedConclude() {
-        var counters = new MarvinNodeStateMachine.Counters(3, 0, 0);
+        var counters = new MarvinNodeStateMachine.Counters(3, 0, 0, 0);
         ReflectOutput out = new ReflectOutput(
                 ReflectAction.CALL_RECIPE,
                 new RecipeCall("web-research", "x"),
@@ -127,13 +127,16 @@ class MarvinNodeStateMachineTest {
     @Test
     void conclude_alwaysGoesToValidate_resetsValidateIter() {
         ConcludeOutput out = new ConcludeOutput("# answer", null, "ok");
-        var c = new MarvinNodeStateMachine.Counters(2, 1, 1);
+        var c = new MarvinNodeStateMachine.Counters(2, 1, 1, 3);
         var t = MarvinNodeStateMachine.afterConclude(out, c);
         assertThat(t).isInstanceOf(MarvinNodeStateMachine.ContinueWithPhase.class);
         var cwp = (MarvinNodeStateMachine.ContinueWithPhase) t;
         assertThat(cwp.nextPhase()).isEqualTo(WorkerPhase.VALIDATE);
         assertThat(cwp.newCounters().validateIter()).isZero();
         assertThat(cwp.newCounters().concludeRetries()).isEqualTo(1);
+        // afterConclude must preserve needMoreDataIter, else the cycle
+        // bound resets on every CONCLUDE and can never fire (B3).
+        assertThat(cwp.newCounters().needMoreDataIter()).isEqualTo(3);
     }
 
     // ─── VALIDATE ───
@@ -173,7 +176,7 @@ class MarvinNodeStateMachineTest {
 
     @Test
     void validate_retryConclude_atCap_forcedDone() {
-        var counters = new MarvinNodeStateMachine.Counters(0, 0, 2);
+        var counters = new MarvinNodeStateMachine.Counters(0, 0, 2, 0);
         ValidateOutput out = new ValidateOutput(
                 ValidateVerdict.RETRY_CONCLUDE, null, "redo", "x");
         var t = MarvinNodeStateMachine.afterValidate(
@@ -184,8 +187,10 @@ class MarvinNodeStateMachineTest {
     }
 
     @Test
-    void validate_needMoreData_atReflectCap_forcedDone() {
-        var counters = new MarvinNodeStateMachine.Counters(3, 0, 0);
+    void validate_needMoreData_atNeedMoreDataCap_forcedDone() {
+        // needMoreDataIter at cap (4) → accept last candidate. Note the
+        // bound is the dedicated needMoreDataIter, NOT reflectIter (B3).
+        var counters = new MarvinNodeStateMachine.Counters(0, 0, 0, 4);
         ValidateOutput out = new ValidateOutput(
                 ValidateVerdict.NEED_MORE_DATA, null, "get more", "x");
         var t = MarvinNodeStateMachine.afterValidate(
@@ -196,14 +201,19 @@ class MarvinNodeStateMachineTest {
     }
 
     @Test
-    void validate_needMoreData_belowReflectCap_goesBackToReflect() {
+    void validate_needMoreData_belowCap_goesBackToReflect_andIncrements() {
+        // reflectIter high but needMoreDataIter below cap → must still
+        // loop back (regression guard for B3: reflectIter must NOT gate
+        // the NEED_MORE_DATA cycle) and increment needMoreDataIter.
+        var counters = new MarvinNodeStateMachine.Counters(3, 0, 0, 1);
         ValidateOutput out = new ValidateOutput(
                 ValidateVerdict.NEED_MORE_DATA, null, "more", "x");
         var t = MarvinNodeStateMachine.afterValidate(
-                out, ZERO, CAPS, "cand", null);
+                out, counters, CAPS, "cand", null);
         assertThat(t).isInstanceOf(MarvinNodeStateMachine.ContinueWithPhase.class);
-        assertThat(((MarvinNodeStateMachine.ContinueWithPhase) t).nextPhase())
-                .isEqualTo(WorkerPhase.REFLECT);
+        var cwp = (MarvinNodeStateMachine.ContinueWithPhase) t;
+        assertThat(cwp.nextPhase()).isEqualTo(WorkerPhase.REFLECT);
+        assertThat(cwp.newCounters().needMoreDataIter()).isEqualTo(2);
     }
 
     @Test

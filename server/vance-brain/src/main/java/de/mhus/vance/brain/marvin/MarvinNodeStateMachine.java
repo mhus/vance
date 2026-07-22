@@ -33,38 +33,53 @@ public final class MarvinNodeStateMachine {
     public static final int DEFAULT_VALIDATE_MAX = 2;
     /** Default CONCLUDE retry cap (recipe-overridable). */
     public static final int DEFAULT_CONCLUDE_RETRIES = 2;
+    /** Default NEED_MORE_DATA → REFLECT loop cap (recipe-overridable). */
+    public static final int DEFAULT_NEED_MORE_DATA_MAX = 4;
 
     /** Caps for a particular Marvin process / recipe. */
     public record Caps(
             int reflectMax, int validateMax, int concludeRetries,
-            int maxTreeDepth) {
+            int maxTreeDepth, int needMoreDataMax) {
         public static Caps defaults() {
             return new Caps(
                     DEFAULT_REFLECT_MAX,
                     DEFAULT_VALIDATE_MAX,
                     DEFAULT_CONCLUDE_RETRIES,
-                    5);
+                    5,
+                    DEFAULT_NEED_MORE_DATA_MAX);
         }
     }
 
     /** Mutable counters per-node — engine reads/writes these in
      *  the {@code MarvinNodeDocument}, transitions snapshot them
-     *  here for testability. */
+     *  here for testability.
+     *
+     *  <p>{@code needMoreDataIter} bounds the VALIDATE(NEED_MORE_DATA)
+     *  → REFLECT → CONCLUDE → VALIDATE cycle. It has its own counter
+     *  because that cycle does not increment {@code reflectIter} (REFLECT
+     *  only bumps it when it emits a recipe call, not on
+     *  PROCEED_TO_CONCLUDE) and {@code afterConclude} resets
+     *  {@code validateIter} — without a dedicated bound the cycle can
+     *  spin forever (code-review B3). */
     public record Counters(
             int reflectIter,
             int validateIter,
-            int concludeRetries) {
+            int concludeRetries,
+            int needMoreDataIter) {
         public Counters incReflect() {
-            return new Counters(reflectIter + 1, validateIter, concludeRetries);
+            return new Counters(reflectIter + 1, validateIter, concludeRetries, needMoreDataIter);
         }
         public Counters incValidate() {
-            return new Counters(reflectIter, validateIter + 1, concludeRetries);
+            return new Counters(reflectIter, validateIter + 1, concludeRetries, needMoreDataIter);
         }
         public Counters incConclude() {
-            return new Counters(reflectIter, validateIter, concludeRetries + 1);
+            return new Counters(reflectIter, validateIter, concludeRetries + 1, needMoreDataIter);
+        }
+        public Counters incNeedMoreData() {
+            return new Counters(reflectIter, validateIter, concludeRetries, needMoreDataIter + 1);
         }
         public static Counters initial() {
-            return new Counters(0, 0, 0);
+            return new Counters(0, 0, 0, 0);
         }
     }
 
@@ -226,7 +241,8 @@ public final class MarvinNodeStateMachine {
         // from a fresh CONCLUDE — i.e. on CONCLUDE retry we start
         // VALIDATE counting at 0 again. concludeRetries tracks the
         // CONCLUDE-loop bound separately.
-        Counters next = new Counters(c.reflectIter(), 0, c.concludeRetries());
+        Counters next = new Counters(
+                c.reflectIter(), 0, c.concludeRetries(), c.needMoreDataIter());
         return new ContinueWithPhase(WorkerPhase.VALIDATE,
                 /* result is in out.result(); engine carries it */
                 null, next);
@@ -253,14 +269,19 @@ public final class MarvinNodeStateMachine {
                         c.incConclude());
             }
             case NEED_MORE_DATA -> {
-                if (c.reflectIter() >= caps.reflectMax()) {
+                // Dedicated NEED_MORE_DATA bound: this cycle does not
+                // increment reflectIter (REFLECT proceeds to CONCLUDE
+                // without a recipe call) and afterConclude resets
+                // validateIter, so reflectMax/validateMax never fire here
+                // — without needMoreDataMax the loop spins forever (B3).
+                if (c.needMoreDataIter() >= caps.needMoreDataMax()) {
                     // Cap exhausted — accept the last candidate.
                     yield new FinishDone(candidateResult, postActions, true);
                 }
                 yield new ContinueWithPhase(
                         WorkerPhase.REFLECT,
                         out.hint(),
-                        c);
+                        c.incNeedMoreData());
             }
         };
     }

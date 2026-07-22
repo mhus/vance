@@ -31,6 +31,11 @@ public class MarvinProperties {
     /** Default CONCLUDE retry cap (RETRY_CONCLUDE loops). */
     private int concludeMaxRetries = 2;
 
+    /** Default cap on the VALIDATE(NEED_MORE_DATA) → REFLECT loop
+     *  (code-review B3 — prevents an unbounded synchronous phase cycle,
+     *  e.g. with the empty-availableRecipes default). */
+    private int needMoreDataMaxIterations = 4;
+
     /** Hard cap on chars of a CALL_RECIPE reply pasted into the
      *  worker's memory. Longer replies get truncated with a marker;
      *  the full reply stays in the sub-process's persistent chat

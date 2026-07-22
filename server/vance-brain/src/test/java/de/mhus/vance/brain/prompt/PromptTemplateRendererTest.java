@@ -195,4 +195,51 @@ class PromptTemplateRendererTest {
                 Map.of("activeApp", Map.of("app", "calendar"))))
                 .isInstanceOf(PromptTemplateException.class);
     }
+
+    // ── security contract: templates are untrusted, no method access (F5) ──
+
+    @Test
+    void render_reflectionEscapeIsBlocked() {
+        // The classic SSTI→RCE entrypoint fails closed: getClass() access is
+        // denied and the render throws rather than exposing the Class.
+        assertThatThrownBy(() -> renderer.render("{{ s.getClass() }}", Map.of("s", "x")))
+                .isInstanceOf(PromptTemplateException.class)
+                .hasMessageContaining("denied");
+    }
+
+    @Test
+    void render_deniesArbitraryBeanGetter() {
+        // Deny-all method access: the getter getSecret() may not be invoked,
+        // so a reachable bean cannot leak its state — fail closed.
+        assertThatThrownBy(() -> renderer.render(
+                "{{ probe.secret }}", Map.of("probe", new Probe())))
+                .isInstanceOf(PromptTemplateException.class)
+                .hasMessageContaining("denied");
+    }
+
+    @Test
+    void render_deniesExplicitBeanMethodCall() {
+        assertThatThrownBy(() -> renderer.render(
+                "{{ probe.compute() }}", Map.of("probe", new Probe())))
+                .isInstanceOf(PromptTemplateException.class)
+                .hasMessageContaining("denied");
+    }
+
+    @Test
+    void render_treatsVariableValuesAsDataNotTemplate() {
+        // A value that looks like a template must NOT be re-evaluated.
+        assertThat(renderer.render("{{ v }}", Map.of("v", "{{ 7 * 7 }}")))
+                .isEqualTo("{{ 7 * 7 }}");
+    }
+
+    /** Public bean used to prove getter/method access is denied. */
+    public static final class Probe {
+        public String getSecret() {
+            return "leaked";
+        }
+
+        public String compute() {
+            return "computed";
+        }
+    }
 }

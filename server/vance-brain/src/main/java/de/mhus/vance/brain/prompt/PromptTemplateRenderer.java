@@ -50,6 +50,13 @@ public class PromptTemplateRenderer {
                 .loader(new StringLoader())
                 .strictVariables(false)
                 .autoEscaping(false)
+                // Template bodies are effectively untrusted (any DB document
+                // author can supply them). Deny ALL method access so a
+                // {{ x.getClass()… }} reflection escape or any getter/method
+                // call on a context object is impossible, regardless of what
+                // the render context holds (code-review F5). Map/List access
+                // and filters resolve through separate paths and keep working.
+                .methodAccessValidator(new DenyMethodAccessValidator())
                 .extension(new JinjaCompatExtension())
                 .build();
     }

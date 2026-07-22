@@ -18,8 +18,9 @@ spring:
 
 vance:
   encryption:
-    # Anus shares the same key store as Brain. Override via env in prod.
-    password: ${VANCE_ENCRYPTION_PASSWORD:changeit}
+    # Anus shares the same key store as Brain. No insecure default — a
+    # missing VANCE_ENCRYPTION_PASSWORD must fail the boot (F4).
+    password: ${VANCE_ENCRYPTION_PASSWORD}
   anus:
     access:
       # BCrypt hash of the login password. Required at boot — no default.

@@ -69,7 +69,9 @@ vance:
     pingIntervalSeconds: 30
     capabilities: []
   encryption:
-    password: ${VANCE_ENCRYPTION_PASSWORD:changeit}
+    # No insecure default — a missing VANCE_ENCRYPTION_PASSWORD must fail
+    # the boot rather than encrypt every secret under a known key (F4).
+    password: ${VANCE_ENCRYPTION_PASSWORD}
   web:
     # Browser-reachable base URL for callbacks (e.g. OAuth redirect_uri).
     # Dev default = Vite dev server (proxies /brain/* to this Spring app).

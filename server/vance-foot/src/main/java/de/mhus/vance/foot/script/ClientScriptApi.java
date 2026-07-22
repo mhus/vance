@@ -1,6 +1,5 @@
 package de.mhus.vance.foot.script;
 
-import de.mhus.vance.foot.tools.ClientTool;
 import java.util.Map;
 import org.graalvm.polyglot.HostAccess;
 import org.jspecify.annotations.Nullable;
@@ -26,35 +25,38 @@ public final class ClientScriptApi {
     @HostAccess.Export
     public final ScriptLog log;
 
-    public ClientScriptApi(ClientScriptApi.ToolLookup tools, ClientExecutionContext ctx) {
+    public ClientScriptApi(ClientScriptApi.GatedToolInvoker tools, ClientExecutionContext ctx) {
         this.tools = new ScriptToolsApi(tools);
         this.context = new ScriptContextView(ctx);
         this.log = new ScriptLog(ctx);
     }
 
-    /** Lookup callback the executor passes in — wraps {@code ClientToolService}. */
+    /**
+     * Gated invocation callback the executor passes in — wraps
+     * {@code ClientToolService.invokeFromScript}, which enforces the
+     * {@code ClientSecurityService} permission gate. The script bridge is
+     * deliberately given only this gated entry point, never a raw
+     * {@code ClientTool} bean, so {@code client.tools.call(...)} cannot
+     * run client tools around the sandbox (code-review B5).
+     */
     @FunctionalInterface
-    public interface ToolLookup {
-        @Nullable ClientTool find(String name);
+    public interface GatedToolInvoker {
+        Map<String, Object> invoke(String name, @Nullable Map<String, Object> params);
     }
 
     /** Tool-dispatch surface exposed as {@code client.tools}. */
     public static final class ScriptToolsApi {
 
-        private final ToolLookup lookup;
+        private final GatedToolInvoker invoker;
 
-        ScriptToolsApi(ToolLookup lookup) {
-            this.lookup = lookup;
+        ScriptToolsApi(GatedToolInvoker invoker) {
+            this.invoker = invoker;
         }
 
         @HostAccess.Export
         public Map<String, Object> call(String name, @Nullable Map<String, Object> params) {
-            ClientTool tool = lookup.find(name);
-            if (tool == null) {
-                throw new ScriptHostException("Unknown client tool: " + name, null);
-            }
             try {
-                Map<String, Object> result = tool.invoke(params == null ? Map.of() : params);
+                Map<String, Object> result = invoker.invoke(name, params);
                 return result == null ? Map.of() : result;
             } catch (RuntimeException e) {
                 throw new ScriptHostException(

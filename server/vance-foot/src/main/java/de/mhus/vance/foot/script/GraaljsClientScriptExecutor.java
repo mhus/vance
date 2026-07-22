@@ -68,7 +68,7 @@ public class GraaljsClientScriptExecutor implements ClientScriptExecutor {
     public ClientScriptResult run(ClientScriptRequest request) {
         Instant start = Instant.now();
         ClientScriptApi api = new ClientScriptApi(
-                toolService::findBean,
+                toolService::invokeFromScript,
                 request.executionContext());
         ResourceLimits limits = ResourceLimits.newBuilder()
                 .statementLimit(statementLimit, null)

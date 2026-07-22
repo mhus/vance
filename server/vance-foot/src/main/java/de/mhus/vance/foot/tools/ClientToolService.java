@@ -145,6 +145,40 @@ public class ClientToolService {
     }
 
     /**
+     * Gated in-JVM invocation for the client-side script bridge
+     * ({@code client.tools.call(...)} in GraalJS). Applies the <b>same</b>
+     * {@link ClientSecurityService} gate — and the {@code --no-tools}
+     * kill-switch — as {@link #dispatch}, then runs the bean tool.
+     *
+     * <p>Security (code-review B5): the script bridge previously received
+     * a raw {@link ClientTool} bean and invoked it directly, so
+     * {@code client.tools.call('client_exec_run', …)} ran arbitrary local
+     * commands around the Foot sandbox. All script-driven client-tool
+     * calls must pass through here so the permission policy (deny/allow/ask
+     * incl. the default-deny floor) is enforced exactly as for
+     * brain-driven calls.
+     *
+     * @throws SecurityException if the tool is unknown, tools are
+     *         suppressed, or the invocation is denied by the policy.
+     */
+    public Map<String, Object> invokeFromScript(
+            String name, @org.jspecify.annotations.Nullable Map<String, Object> params) {
+        if (suppressed.get()) {
+            throw new SecurityException(
+                    "Client tools are disabled on this foot (--no-tools / web profile)");
+        }
+        Map<String, Object> safeParams = params == null ? Map.of() : params;
+        ClientTool tool = findBean(name);
+        if (tool == null) {
+            throw new SecurityException("Unknown client tool: " + name);
+        }
+        if (!security.permit(name, safeParams)) {
+            throw new SecurityException(security.denyReason(name, safeParams));
+        }
+        return tool.invoke(safeParams);
+    }
+
+    /**
      * Replaces the pack-scope tool list. Called by
      * {@code FootToolPackRegistry} after re-reading JSON pack files.
      * The previous pack list is dropped — callers that own life-cycle

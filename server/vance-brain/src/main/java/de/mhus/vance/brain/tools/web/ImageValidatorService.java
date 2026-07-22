@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.tools.web;
 
+import de.mhus.vance.shared.net.SsrfGuard;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.web.ImageUrlCacheDocument;
 import de.mhus.vance.shared.web.ImageUrlCacheRepository;
@@ -447,8 +448,10 @@ public class ImageValidatorService {
     /** Production HTTP implementation. */
     static final class JdkImageValidatorHttp implements ImageValidatorHttp {
 
-        private final HttpClient http = HttpClient.newBuilder()
-                .followRedirects(HttpClient.Redirect.NORMAL)
+        // Redirect.NEVER so SsrfGuard.sendGuarded re-checks every hop — the
+        // probed image URL is LLM-/search-supplied (untrusted), so a
+        // redirect into the internal network must be blocked (code-review F2).
+        private final HttpClient http = SsrfGuard.guardedClientBuilder()
                 .connectTimeout(Duration.ofSeconds(2))
                 .build();
 
@@ -461,7 +464,7 @@ public class ImageValidatorService {
                     .header("Accept", "image/*,*/*;q=0.8")
                     .timeout(timeout)
                     .build();
-            HttpResponse<Void> response = http.send(request, HttpResponse.BodyHandlers.discarding());
+            HttpResponse<Void> response = SsrfGuard.sendGuarded(http, request, HttpResponse.BodyHandlers.discarding());
             return ProbeResponse.builder()
                     .status(response.statusCode())
                     .finalUri(response.uri())
@@ -480,7 +483,7 @@ public class ImageValidatorService {
                     .header("Range", "bytes=0-1023")
                     .timeout(timeout)
                     .build();
-            HttpResponse<byte[]> response = http.send(request, HttpResponse.BodyHandlers.ofByteArray());
+            HttpResponse<byte[]> response = SsrfGuard.sendGuarded(http, request, HttpResponse.BodyHandlers.ofByteArray());
             return ProbeResponse.builder()
                     .status(response.statusCode())
                     .finalUri(response.uri())

@@ -121,9 +121,10 @@ public final class SsrfGuard {
      * Sends {@code request} through {@code client}, guarding the initial
      * URL and every redirect hop. {@code client} MUST be configured with
      * {@link HttpClient.Redirect#NEVER} so this method — not the JDK — is
-     * the one that follows (and re-checks) redirects. Only {@code GET}
-     * redirects are followed; a redirect on a non-GET request stops at the
-     * 3xx response for the caller to handle.
+     * the one that follows (and re-checks) redirects. Only {@code GET} and
+     * {@code HEAD} redirects are followed (both idempotent and bodyless, so
+     * re-issuing them at the new location is safe); a redirect on any other
+     * method stops at the 3xx response for the caller to handle.
      */
     public static <T> HttpResponse<T> sendGuarded(
             HttpClient client, HttpRequest request, HttpResponse.BodyHandler<T> handler,
@@ -133,7 +134,7 @@ public final class SsrfGuard {
         int hops = 0;
         while (isRedirect(response.statusCode())
                 && hops++ < maxRedirects
-                && "GET".equalsIgnoreCase(request.method())) {
+                && isRedirectableMethod(request.method())) {
             Optional<String> location = response.headers().firstValue("location");
             if (location.isEmpty()) break;
             URI next = response.uri().resolve(location.get());
@@ -153,6 +154,10 @@ public final class SsrfGuard {
     private static boolean isRedirect(int status) {
         return status == 301 || status == 302 || status == 303
                 || status == 307 || status == 308;
+    }
+
+    private static boolean isRedirectableMethod(String method) {
+        return "GET".equalsIgnoreCase(method) || "HEAD".equalsIgnoreCase(method);
     }
 
     /** Convenience: a redirect-disabled client suitable for {@link #sendGuarded}. */

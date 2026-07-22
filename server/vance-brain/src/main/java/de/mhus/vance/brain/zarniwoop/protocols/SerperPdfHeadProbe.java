@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.zarniwoop.protocols;
 
+import de.mhus.vance.shared.net.SsrfGuard;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -41,8 +42,10 @@ public interface SerperPdfHeadProbe {
     /** Production wiring using the JDK HttpClient. */
     final class JdkPdfHeadProbe implements SerperPdfHeadProbe {
 
-        private final HttpClient http = HttpClient.newBuilder()
-                .followRedirects(HttpClient.Redirect.NORMAL)
+        // Redirect.NEVER so SsrfGuard.sendGuarded re-checks every hop — the
+        // probed URL comes from search results (untrusted), so a redirect
+        // into the internal network must be blocked (code-review F2).
+        private final HttpClient http = SsrfGuard.guardedClientBuilder()
                 .connectTimeout(Duration.ofSeconds(2))
                 .build();
 
@@ -55,8 +58,8 @@ public interface SerperPdfHeadProbe {
                     .header("Accept", "application/pdf,*/*;q=0.5")
                     .timeout(timeout)
                     .build();
-            HttpResponse<Void> response = http.send(
-                    request, HttpResponse.BodyHandlers.discarding());
+            HttpResponse<Void> response = SsrfGuard.sendGuarded(
+                    http, request, HttpResponse.BodyHandlers.discarding());
             int status = response.statusCode();
             if (status >= 400) {
                 return Verdict.fail("status_" + status);

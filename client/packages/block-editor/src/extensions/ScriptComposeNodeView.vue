@@ -20,11 +20,13 @@ import type { Editor } from '@tiptap/core';
 import type { Component } from 'vue';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { useComposeRun, type ComposeHost } from '../composables/useComposeRun';
+import { useComposeBatch } from '../composables/useComposeBatch';
 import { kindByNodeName, extractScript, applyScript, normalizeManifest } from '../builtins/scriptComposeCodec';
 
 const props = defineProps<{
   node: ProseMirrorNode;
   updateAttributes: (attrs: Record<string, unknown>) => void;
+  getPos: () => number | undefined;
   editor: Editor;
 }>();
 
@@ -48,6 +50,37 @@ const outputComponent = computed<Component | null>(() => host?.composeOutputComp
 const projectId = computed<string>(() => host?.projectId?.() ?? '');
 
 const rc = useComposeRun({ yaml: () => yaml.value, setYaml, host: composeHost });
+
+// Page-level batch shared across all compose-family blocks (see useComposeBatch).
+// When this block is the active "Run All Until" step it lights up (batchHere),
+// overriding the solo run indicators; the others wait.
+const batch = useComposeBatch(props.editor, composeHost);
+const batchHere = computed(() => batch.state.active && batch.state.currentPos === props.getPos());
+const batchFailedHere = computed(() => batch.state.failedPos === props.getPos());
+const busy = computed(() => rc.running.value || batchHere.value);
+const displayCanStop = computed(() =>
+  batchHere.value ? batch.state.currentRunId != null : rc.canStop.value);
+const displayGlyph = computed(() =>
+  batchHere.value ? (batch.state.currentRunId ? '■' : '…') : rc.runGlyph.value);
+const runDisabled = computed(() =>
+  (batch.state.active && !batchHere.value) || rc.cancelling.value || (busy.value && !displayCanStop.value));
+/** Live progress (tail + current task) — the batch step's when this block is it. */
+const progressResult = computed(() =>
+  batchHere.value ? batch.state.progress : rc.progress.value);
+
+function onRun() {
+  if (batchHere.value) { void batch.abort(); return; }
+  rc.onRunButton();
+}
+function runAllUntil() {
+  closeMenu();
+  const here = props.getPos();
+  if (here !== undefined) void batch.runAllUntil(here);
+}
+function clearAllOutput() {
+  closeMenu();
+  batch.clearAllOutput();
+}
 
 /** The single task's script (derived from the manifest). */
 const script = computed<string>(() => (kind.value ? extractScript(yaml.value, kind.value.scriptField) : ''));
@@ -157,11 +190,11 @@ onBeforeUnmount(() => {
         <button
           type="button"
           class="vance-compose__run"
-          :class="{ 'vance-compose__run--stop': rc.canStop.value }"
-          :disabled="rc.cancelling.value || (rc.running.value && !rc.canStop.value)"
-          :title="!rc.running.value ? 'Run' : (rc.canStop.value ? 'Stop' : 'Läuft…')"
-          @click.stop="rc.onRunButton()"
-        >{{ rc.runGlyph.value }}</button>
+          :class="{ 'vance-compose__run--stop': displayCanStop }"
+          :disabled="runDisabled"
+          :title="!busy ? 'Run' : (displayCanStop ? 'Stop' : 'Läuft…')"
+          @click.stop="onRun()"
+        >{{ displayGlyph }}</button>
 
         <div class="vance-compose__menu-wrap">
           <button
@@ -171,29 +204,36 @@ onBeforeUnmount(() => {
             @click.stop="toggleMenu"
           >…</button>
           <div v-if="menuOpen" class="vance-compose__menu" @click.stop>
+            <button type="button" class="vance-compose__menu-item" :disabled="batch.state.active" @click="runAllUntil">Run All Until</button>
             <button type="button" class="vance-compose__menu-item" @click="doClearOutput">Clear Output</button>
+            <button type="button" class="vance-compose__menu-item" :disabled="batch.state.active" @click="clearAllOutput">Clear All Output</button>
           </div>
         </div>
 
-        <span v-if="rc.cancelling.value" class="vance-compose__status">stoppe…</span>
+        <span v-if="batchHere && batch.state.label" class="vance-compose__status">{{ batch.state.label }}</span>
+        <span v-else-if="rc.cancelling.value" class="vance-compose__status">stoppe…</span>
         <span v-else-if="rc.result.value" class="vance-compose__status">
           {{ rc.result.value.workspace ? rc.result.value.workspace + ' · ' : '' }}{{ rc.result.value.success ? 'success' : 'failed' }}
         </span>
-        <span v-else-if="rc.progress.value" class="vance-compose__status">
-          läuft… Task {{ (rc.progress.value.currentTaskIndex ?? 0) + 1 }}
+        <span v-else-if="progressResult" class="vance-compose__status">
+          läuft… Task {{ (progressResult.currentTaskIndex ?? 0) + 1 }}
         </span>
       </div>
 
       <div v-if="rc.error.value" class="vance-compose__error">{{ rc.error.value }}</div>
+      <div
+        v-else-if="batchFailedHere && batch.state.error"
+        class="vance-compose__error"
+      >{{ batch.state.error }}</div>
       <div
         v-else-if="rc.result.value && !rc.result.value.success && rc.result.value.error"
         class="vance-compose__error"
       >{{ rc.result.value.error }}</div>
 
       <pre
-        v-if="rc.progress.value"
+        v-if="progressResult"
         class="vance-compose__log"
-      >{{ rc.progress.value.tail && rc.progress.value.tail.length ? rc.progress.value.tail.join('\n') : '… läuft, warte auf Ausgabe' }}</pre>
+      >{{ progressResult.tail && progressResult.tail.length ? progressResult.tail.join('\n') : '… läuft, warte auf Ausgabe' }}</pre>
 
       <!-- Fixed `output:` override wins over run/persisted outputs. -->
       <div v-if="rc.fixedOutputs.value.length" class="vance-compose__out">

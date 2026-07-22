@@ -28,6 +28,7 @@ import {
   writeComposeRun,
   clearComposeManaged,
 } from './composeOutputs';
+import { useComposeBatch, type ComposeBatchHost } from '../composables/useComposeBatch';
 
 const POLL_MS = 3000;
 
@@ -54,6 +55,20 @@ const outputComponent = computed<Component | null>(
 const projectId = computed<string>(() => props.extension.options.projectId ?? '');
 
 const yaml = computed(() => (props.node.attrs?.yaml as string | null) ?? '');
+
+// Page-level batch ("Run All Until" / "Clear All Output") shared across every
+// compose-family block on the editor — see useComposeBatch. The one running
+// lights up (batchHere), the rest wait.
+const batchHost: ComposeBatchHost = {
+  runCompose: props.extension.options.runCompose
+    ?? (async () => ({ running: false, success: false, error: 'no run surface' })),
+  pollCompose: props.extension.options.pollCompose
+    ?? (async () => ({ running: false, success: false, error: 'no poll surface' })),
+  cancelCompose: props.extension.options.cancelCompose ?? undefined,
+};
+const batch = useComposeBatch(props.editor, batchHost);
+const batchHere = computed(() => batch.state.active && batch.state.currentPos === props.getPos());
+const batchFailedHere = computed(() => batch.state.failedPos === props.getPos());
 
 /**
  * Manifest-derived UI hints: title/description shown above the cell, and
@@ -86,14 +101,10 @@ const running = ref(false);
 const error = ref<string | null>(null);
 const result = ref<ComposeRunResult | null>(null);
 const progress = ref<ComposeRunResult | null>(null);
-/** Server runId of the in-flight run (single or current batch step) — for cancel. */
+/** Server runId of the in-flight solo run — for cancel. */
 const runId = ref<string | null>(null);
 const cancelling = ref(false);
-/** Batch abort flag (Run All Until) — checked between steps. */
-const aborted = ref(false);
 const menuOpen = ref(false);
-/** Non-null while "Run All Until" iterates — its "(i/n)" progress label. */
-const batchStatus = ref<string | null>(null);
 
 let polling = false;
 let timer: ReturnType<typeof setTimeout> | undefined;
@@ -198,9 +209,8 @@ async function run() {
   }
 }
 
-/** ■ Stop: cancel the in-flight run on the server (or abort a batch). */
+/** ■ Stop: cancel the in-flight solo run on the server. */
 async function stop() {
-  aborted.value = true; // breaks the Run-All-Until loop between steps
   const rid = runId.value;
   const cancel = props.extension.options.cancelCompose;
   if (rid && cancel) {
@@ -209,30 +219,42 @@ async function stop() {
       const res = await cancel(rid);
       if (!res.running) finishWith(res); // else the poll loop observes it shortly
     } catch {
-      // Best-effort — the poll loop / batch guard still winds things down.
+      // Best-effort — the poll loop still winds things down.
     } finally {
       cancelling.value = false;
     }
     return;
   }
   // No server run to cancel (e.g. still starting) — detach the UI and drop $run.
-  if (!batchStatus.value) {
-    stopTimer();
-    running.value = false;
-    progress.value = null;
-    props.updateAttributes({ yaml: clearComposeManaged(yaml.value) });
-  }
+  stopTimer();
+  running.value = false;
+  progress.value = null;
+  props.updateAttributes({ yaml: clearComposeManaged(yaml.value) });
 }
 
 /**
  * Run button has three states: ▶ idle → run; "…" busy (phase 1, the start
  * REST is in flight, no runId yet — nothing to cancel) → disabled; ■ stop
- * (phase 2, we have a runId and can cancel) → stop.
+ * (phase 2, we have a runId and can cancel) → stop. While this block is the
+ * active "Run All Until" step, the button mirrors the batch (■ to abort, else
+ * busy) instead of the solo run state.
  */
 const canStop = computed(() => running.value && runId.value != null);
-const runGlyph = computed(() => (!running.value ? '▶' : runId.value ? '■' : '…'));
+const displayCanStop = computed(() =>
+  batchHere.value ? batch.state.currentRunId != null : canStop.value);
+const busy = computed(() => running.value || batchHere.value);
+const runGlyph = computed(() => {
+  if (batchHere.value) return batch.state.currentRunId ? '■' : '…';
+  return !running.value ? '▶' : runId.value ? '■' : '…';
+});
+/** Disabled on non-active blocks while a batch runs; and in the "…" start phase. */
+const runDisabled = computed(() =>
+  (batch.state.active && !batchHere.value) || cancelling.value || (busy.value && !displayCanStop.value));
+/** Live progress (tail / current task) — the batch step's when this block is it. */
+const progressView = computed(() => (batchHere.value ? batch.state.progress : progress.value));
 
 function onRunButton() {
+  if (batchHere.value) { void batch.abort(); return; }
   if (!running.value) run();
   else if (canStop.value) stop();
 }
@@ -252,132 +274,22 @@ function clearOutput() {
   props.updateAttributes({ yaml: clearComposeManaged(yaml.value) });
 }
 
-/** Drop the outputs of every compose block on the page (mirror of Run All Until). */
+/**
+ * "Run All Until": run every compose-family block from the top through this one,
+ * sequentially, via the shared page batch (useComposeBatch) — so each block
+ * lights up as it runs and outputs land in the right block.
+ */
+function runAllUntil() {
+  closeMenu();
+  const here = props.getPos();
+  if (here === undefined) return;
+  void batch.runAllUntil(here);
+}
+
+/** Drop the managed outputs of every compose-family block on the page. */
 function clearAllOutput() {
   closeMenu();
-  stopTimer();
-  running.value = false;
-  progress.value = null;
-  result.value = null;
-  error.value = null;
-  runId.value = null;
-  const positions: number[] = [];
-  props.editor.state.doc.descendants((n, pos) => {
-    if (n.type.name === 'vanceCompose') positions.push(pos);
-    return true;
-  });
-  // Attr-only edits don't shift positions, so one command clears them all.
-  props.editor.commands.command(({ tr }) => {
-    for (const pos of positions) {
-      const node = tr.doc.nodeAt(pos);
-      if (!node) continue;
-      tr.setNodeAttribute(pos, 'yaml', clearComposeManaged((node.attrs?.yaml as string) ?? ''));
-    }
-    return true;
-  });
-}
-
-/** UI-only manifest flag `autoRun: false` opts a block out of "Run All Until". */
-function isAutoRunDisabled(src: string): boolean {
-  try {
-    const parsed = jsyaml.load(src);
-    return !!parsed && typeof parsed === 'object'
-      && (parsed as Record<string, unknown>).autoRun === false;
-  } catch {
-    return false;
-  }
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/** Poll a run to a terminal state (used by the batch, which awaits each step). */
-async function pollUntilDone(rid: string): Promise<ComposeRunResult> {
-  const poll = props.extension.options.pollCompose;
-  if (!poll) return { running: false, success: false, error: 'no poll surface' };
-  for (;;) {
-    if (aborted.value) return { running: false, success: false, error: 'cancelled' };
-    await delay(POLL_MS);
-    const res = await poll(rid);
-    if (!res.running) return res;
-  }
-}
-
-/** Run one block's YAML to completion (awaits async runs), tracking its runId. */
-async function executeToCompletion(
-  runner: (yaml: string) => Promise<ComposeRunResult>,
-  src: string,
-): Promise<ComposeRunResult> {
-  const res = await runner(src);
-  if (res.running && res.runId) {
-    runId.value = res.runId;
-    const done = await pollUntilDone(res.runId);
-    runId.value = null;
-    return done;
-  }
-  return res;
-}
-
-/** Write a completed run's outputs back into the block at `pos`. */
-function persistBlockResult(pos: number, src: string, res: ComposeRunResult) {
-  const outputs = (res.tasks ?? []).flatMap((t) =>
-    (t.outputs ?? []).map((o) => ({ path: o.path, uri: o.uri, kind: o.kind, title: o.title })),
-  );
-  const newYaml = res.success ? writeComposeOutputs(src, outputs) : clearComposeManaged(src);
-  if (pos === props.getPos()) {
-    props.updateAttributes({ yaml: newYaml });
-  } else {
-    props.editor.commands.command(({ tr }) => {
-      tr.setNodeAttribute(pos, 'yaml', newYaml);
-      return true;
-    });
-  }
-}
-
-/**
- * "Run All Until": run every compose block on the page from the top through
- * this one, in document order, sequentially (each awaits the previous). Blocks
- * with `autoRun: false` are skipped; the chain halts on the first failure.
- */
-async function runAllUntil() {
-  closeMenu();
-  const runner = props.extension.options.runCompose;
-  const here = props.getPos();
-  if (!runner || running.value || here === undefined) return;
-
-  const blocks: { pos: number; yaml: string }[] = [];
-  props.editor.state.doc.descendants((n, pos) => {
-    if (n.type.name === 'vanceCompose' && pos <= here) {
-      const src = (n.attrs?.yaml as string | undefined) ?? '';
-      if (!isAutoRunDisabled(src)) blocks.push({ pos, yaml: src });
-    }
-    return true;
-  });
-  if (!blocks.length) return;
-
-  aborted.value = false;
-  running.value = true;
-  error.value = null;
-  result.value = null;
-  progress.value = null;
-  try {
-    for (let i = 0; i < blocks.length; i++) {
-      if (aborted.value) break;
-      batchStatus.value = `Run All Until… (${i + 1}/${blocks.length})`;
-      const b = blocks[i];
-      const res = await executeToCompletion(runner, b.yaml);
-      persistBlockResult(b.pos, b.yaml, res);
-      if (!res.success) {
-        error.value = res.error ?? `Block bei ${b.pos} fehlgeschlagen`;
-        break;
-      }
-    }
-  } finally {
-    running.value = false;
-    batchStatus.value = null;
-    runId.value = null;
-  }
+  batch.clearAllOutput();
 }
 
 onMounted(() => {
@@ -427,9 +339,9 @@ onBeforeUnmount(() => {
         <button
           type="button"
           class="vance-compose__run"
-          :class="{ 'vance-compose__run--stop': canStop }"
-          :disabled="cancelling || (running && !canStop)"
-          :title="!running ? 'Run compose' : (canStop ? 'Stop' : 'Läuft…')"
+          :class="{ 'vance-compose__run--stop': displayCanStop }"
+          :disabled="runDisabled"
+          :title="!busy ? 'Run compose' : (displayCanStop ? 'Stop' : 'Läuft…')"
           @click.stop="onRunButton"
         >{{ runGlyph }}</button>
 
@@ -444,7 +356,7 @@ onBeforeUnmount(() => {
             <button
               type="button"
               class="vance-compose__menu-item"
-              :disabled="running"
+              :disabled="batch.state.active"
               @click="runAllUntil"
             >Run All Until</button>
             <button
@@ -455,31 +367,36 @@ onBeforeUnmount(() => {
             <button
               type="button"
               class="vance-compose__menu-item"
+              :disabled="batch.state.active"
               @click="clearAllOutput"
             >Clear All Output</button>
           </div>
         </div>
 
-        <span v-if="batchStatus" class="vance-compose__status">{{ batchStatus }}</span>
+        <span v-if="batchHere && batch.state.label" class="vance-compose__status">{{ batch.state.label }}</span>
         <span v-else-if="cancelling" class="vance-compose__status">stoppe…</span>
         <span v-else-if="result" class="vance-compose__status">
           {{ result.workspace ? result.workspace + ' · ' : '' }}{{ result.success ? 'success' : 'failed' }}
         </span>
-        <span v-else-if="progress" class="vance-compose__status">
-          läuft… Task {{ (progress.currentTaskIndex ?? 0) + 1 }}{{ progress.currentTaskType ? ` (${progress.currentTaskType})` : '' }}
+        <span v-else-if="progressView" class="vance-compose__status">
+          läuft… Task {{ (progressView.currentTaskIndex ?? 0) + 1 }}{{ progressView.currentTaskType ? ` (${progressView.currentTaskType})` : '' }}
         </span>
       </div>
 
       <div v-if="error" class="vance-compose__error">{{ error }}</div>
+      <div
+        v-else-if="batchFailedHere && batch.state.error"
+        class="vance-compose__error"
+      >{{ batch.state.error }}</div>
       <div
         v-else-if="result && !result.success && result.error"
         class="vance-compose__error"
       >{{ result.error }}</div>
 
       <pre
-        v-if="progress"
+        v-if="progressView"
         class="vance-compose__log"
-      >{{ progress.tail && progress.tail.length ? progress.tail.join('\n') : '… läuft, warte auf Ausgabe' }}</pre>
+      >{{ progressView.tail && progressView.tail.length ? progressView.tail.join('\n') : '… läuft, warte auf Ausgabe' }}</pre>
 
       <!-- Fixed `output:` override wins over run/persisted outputs. -->
       <div v-if="fixedOutputs.length" class="vance-compose__out">

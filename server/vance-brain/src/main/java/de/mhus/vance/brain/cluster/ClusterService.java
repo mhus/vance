@@ -100,6 +100,7 @@ public class ClusterService {
             registerWithRetry(doc);
             // Two-phase write: STARTING is now persisted; flip to RUNNING.
             brainPodService.heartbeat(podId, Instant.now(), PodStatus.RUNNING,
+                    doc.getEndpoint(),
                     snapshotActiveProjects(),
                     snapshotCurrentScore(),
                     properties.getResources().getStartupScore(),
@@ -121,7 +122,12 @@ public class ClusterService {
             return;
         }
         try {
+            // Re-validate our advertised address first: if the host's network
+            // changed under a live process, republish the current endpoint so
+            // routing (and our own workspace self-proxy) stops hitting a dead
+            // address. No-op when the address is still valid.
             brainPodService.heartbeat(podId, Instant.now(), PodStatus.RUNNING,
+                    locationService.refreshPodAddress(),
                     snapshotActiveProjects(),
                     snapshotCurrentScore(),
                     properties.getResources().getStartupScore(),

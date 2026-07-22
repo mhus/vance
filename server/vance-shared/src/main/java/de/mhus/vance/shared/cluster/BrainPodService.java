@@ -49,11 +49,17 @@ public class BrainPodService {
      * {@code resourcesMaxScore}) reaches the registry without needing a
      * separate update path, and the derived {@code resourcesCurrentScore}
      * reflects the pod's current owned-projects load.
+     *
+     * <p>The {@code endpoint} is re-written on every beat too: a running
+     * process whose host address changed underneath it (laptop sleep/resume,
+     * DHCP lease change) must re-advertise its current {@code host:port} so
+     * peers — and its own workspace self-proxy — stop dialling a dead address.
      */
     public BrainPodDocument heartbeat(
             String podId,
             Instant now,
             PodStatus status,
+            String endpoint,
             List<String> activeProjects,
             int currentScore,
             int startupScore,
@@ -63,6 +69,7 @@ public class BrainPodService {
                         "Brain pod row missing for podId='" + podId + "' — was it purged?"));
         doc.setLastHeartbeatAt(now);
         doc.setStatus(status);
+        doc.setEndpoint(endpoint);
         doc.setActiveProjects(List.copyOf(activeProjects));
         doc.setResourcesCurrentScore(currentScore);
         doc.setResourcesStartupScore(startupScore);

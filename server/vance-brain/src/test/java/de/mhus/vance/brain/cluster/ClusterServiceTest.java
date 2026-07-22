@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
@@ -52,6 +53,7 @@ class ClusterServiceTest {
         properties.setRegistrationMaxRetries(5);
 
         when(locationService.getPodAddress()).thenReturn(ENDPOINT);
+        when(locationService.refreshPodAddress()).thenReturn(ENDPOINT);
         when(projectService.findByHomeNode(NODE_NAME)).thenReturn(List.of());
         when(nameGenerator.generate()).thenReturn(NODE_NAME);
 
@@ -67,7 +69,7 @@ class ClusterServiceTest {
         verify(brainPodService, times(1)).register(any(BrainPodDocument.class));
         verify(brainPodService, times(1))
                 .heartbeat(eq(service.selfPodId()), any(Instant.class),
-                        eq(PodStatus.RUNNING), anyList(), anyInt(), anyInt(), anyInt());
+                        eq(PodStatus.RUNNING), eq(ENDPOINT), anyList(), anyInt(), anyInt(), anyInt());
         assertThat(service.selfNodeName()).isEqualTo("maya-prosser");
         assertThat(service.selfClusterId()).isEqualTo(CLUSTER);
     }
@@ -107,7 +109,7 @@ class ClusterServiceTest {
         // Registered flag stays off → next heartbeat is a no-op.
         service.heartbeat();
         verify(brainPodService, never())
-                .heartbeat(any(), any(), eq(PodStatus.RUNNING), anyList(),
+                .heartbeat(any(), any(), eq(PodStatus.RUNNING), anyString(), anyList(),
                         anyInt(), anyInt(), anyInt());
     }
 
@@ -115,7 +117,7 @@ class ClusterServiceTest {
     void heartbeat_skippedWhenNotYetRegistered() {
         service.heartbeat();
         verify(brainPodService, never())
-                .heartbeat(any(), any(), any(), anyList(), anyInt(), anyInt(), anyInt());
+                .heartbeat(any(), any(), any(), any(), anyList(), anyInt(), anyInt(), anyInt());
     }
 
     @Test
@@ -132,7 +134,7 @@ class ClusterServiceTest {
 
         verify(brainPodService, atLeastOnce())
                 .heartbeat(eq(service.selfPodId()), any(Instant.class),
-                        eq(PodStatus.RUNNING),
+                        eq(PodStatus.RUNNING), eq(ENDPOINT),
                         eq(List.of("acme/instant-hole", "acme/rocket-skates")),
                         anyInt(), anyInt(), anyInt());
     }
@@ -140,7 +142,7 @@ class ClusterServiceTest {
     @Test
     void heartbeat_recoversWhenRowMissing() {
         service.onApplicationReady();
-        when(brainPodService.heartbeat(any(), any(), any(), anyList(), anyInt(), anyInt(), anyInt()))
+        when(brainPodService.heartbeat(any(), any(), any(), any(), anyList(), anyInt(), anyInt(), anyInt()))
                 .thenThrow(new IllegalStateException("row missing"))
                 .thenAnswer(inv -> null);
 

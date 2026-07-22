@@ -84,6 +84,27 @@ public class ToolTaskExecutor implements MagratheaTypeExecutor {
                 /* processId */ null,
                 context.startedBy());
 
+        // A workflow tool_task runs the raw dispatcher without an engine
+        // identity (no processId → no ContextToolsApi gate). Engine-role-
+        // privileged tools (cross_process_create, user_*, tool_health_*,
+        // tool_probe_*) are gated to specific engines; invoking them from a
+        // generic workflow step would bypass that role gate (code-review
+        // F1). None of them is a legitimate workflow tool, so refuse.
+        Optional<ToolDispatcher.Resolved> resolvedTool =
+                toolDispatcher.resolve(toolName, invocationCtx);
+        if (resolvedTool.isPresent()
+                && !resolvedTool.get().tool().requiresEngineRoles().isEmpty()) {
+            log.warn("Magrathea tool_task '{}' refused engine-role-privileged tool "
+                            + "'{}' (requiresEngineRoles={})",
+                    state.name(), toolName, resolvedTool.get().tool().requiresEngineRoles());
+            return Optional.of(new TaskOutcome(
+                    errorKindName(MagratheaErrorKind.PERMISSION_ERROR),
+                    null,
+                    "tool '" + toolName + "' is engine-role-privileged and cannot be "
+                            + "invoked from a workflow tool_task",
+                    null));
+        }
+
         Map<String, Object> result;
         try {
             result = toolDispatcher.invoke(toolName, toolParams, invocationCtx);

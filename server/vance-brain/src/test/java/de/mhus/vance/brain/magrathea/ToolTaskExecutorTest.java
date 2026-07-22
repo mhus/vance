@@ -98,6 +98,24 @@ class ToolTaskExecutorTest {
     }
 
     @Test
+    void engineRolePrivilegedTool_isRefused_withoutInvoking() {
+        // A workflow tool_task must not reach an engine-role-privileged tool
+        // (cross_process_create, user_*, tool_health_*, …) — that would
+        // bypass the role gate (code-review F1).
+        de.mhus.vance.toolpack.Tool gated = mock(de.mhus.vance.toolpack.Tool.class);
+        when(gated.requiresEngineRoles()).thenReturn(java.util.Set.of("trillian-user"));
+        when(dispatcher.resolve(eq("cross_process_create"), any(ToolInvocationContext.class)))
+                .thenReturn(Optional.of(new ToolDispatcher.Resolved(gated, null)));
+
+        Optional<TaskOutcome> outcome = executor.execute(
+                ctx(toolState("cross_process_create", Map.of())));
+
+        assertThat(outcome.get().outcome()).isEqualTo("permission_error");
+        org.mockito.Mockito.verify(dispatcher, org.mockito.Mockito.never())
+                .invoke(any(), any(), any(ToolInvocationContext.class));
+    }
+
+    @Test
     void ToolException_yields_technical_error() {
         when(dispatcher.invoke(any(), any(), any(ToolInvocationContext.class)))
                 .thenThrow(new ToolException("upstream timeout"));

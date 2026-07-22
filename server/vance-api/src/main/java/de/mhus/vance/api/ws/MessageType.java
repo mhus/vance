@@ -531,6 +531,33 @@ public final class MessageType {
      */
     public static final String POINTER_LEAVE = "pointer-leave";
 
+    // ─── signals channel ────────────────────────────────────────────────
+    // A generic ephemeral, document-scoped, fire-and-forget signal channel
+    // ("signals"): subscription by path + cross-pod Redis fan-out, no roster,
+    // no history, no persistence. The single frame type SIGNAL carries a
+    // {@code signal} discriminator + free-form {@code data}, so new signal
+    // kinds (compose-run status, run-kill, …) ride the same transport without
+    // new wire types. See {@link SignalFrame}.
+
+    /** Client → Brain: subscribe to the signal stream for a path. Payload:
+     *  {@link SignalSubscribeRequest}. */
+    public static final String SIGNAL_SUBSCRIBE = "subscribe";
+
+    /** Client → Brain: unsubscribe a path. Payload: {@link SignalSubscribeRequest}. */
+    public static final String SIGNAL_UNSUBSCRIBE = "unsubscribe";
+
+    /** Client → Brain: drop all signal subscriptions for this connection. */
+    public static final String SIGNAL_UNSUBSCRIBE_ALL = "unsubscribe-all";
+
+    /**
+     * Server → client: a document-scoped ephemeral signal fired. Payload:
+     * {@link SignalFrame} ({@code path}, {@code signal} discriminator,
+     * free-form {@code data}). Sent only to subscribers of the path;
+     * cross-pod fan-out via Redis on the {@code signals} topic (pod-local
+     * without Redis).
+     */
+    public static final String SIGNAL = "signal";
+
     private MessageType() {
     }
 }

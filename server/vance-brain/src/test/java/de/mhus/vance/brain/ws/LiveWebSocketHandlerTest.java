@@ -56,6 +56,10 @@ class LiveWebSocketHandlerTest {
                 mock(de.mhus.vance.brain.ws.pointers.PointerChannelHandler.class);
         de.mhus.vance.brain.ws.pointers.PointerBroadcaster pointerBroadcaster =
                 mock(de.mhus.vance.brain.ws.pointers.PointerBroadcaster.class);
+        de.mhus.vance.brain.ws.signals.SignalChannelHandler signalChannelHandler =
+                mock(de.mhus.vance.brain.ws.signals.SignalChannelHandler.class);
+        de.mhus.vance.brain.ws.signals.SignalBroadcaster signalBroadcaster =
+                mock(de.mhus.vance.brain.ws.signals.SignalBroadcaster.class);
         // Default: every lookup resolves to LOCAL so the routing test stays
         // focused on the envelope-demux behaviour. Cross-pod routing has its
         // own dedicated tests.
@@ -63,7 +67,8 @@ class LiveWebSocketHandlerTest {
         handler = new LiveWebSocketHandler(
                 chatHandler, objectMapper, sender, homePodLookup, tunnelRegistry,
                 documentChannelHandler, documentSubscriberRegistry,
-                pointerChannelHandler, pointerBroadcaster);
+                pointerChannelHandler, pointerBroadcaster,
+                signalChannelHandler, signalBroadcaster);
 
         wsSession = mock(WebSocketSession.class);
         ctx = new ConnectionContext(

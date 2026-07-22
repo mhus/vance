@@ -47,7 +47,9 @@ class ComposeBlockRunToolTest {
         support = mock(KindToolSupport.class);
         selectionHolder = mock(CortexTurnSelectionHolder.class);
         ComposeFinishedNotifier notifier = mock(ComposeFinishedNotifier.class);
-        tool = new ComposeBlockRunTool(composeService, documentService, support, notifier, selectionHolder);
+        de.mhus.vance.brain.ws.signals.SignalBroadcaster signals =
+                mock(de.mhus.vance.brain.ws.signals.SignalBroadcaster.class);
+        tool = new ComposeBlockRunTool(composeService, documentService, support, notifier, selectionHolder, signals);
 
         doc = mock(DocumentDocument.class);
         ctx = mock(ToolInvocationContext.class);

@@ -1,7 +1,9 @@
 package de.mhus.vance.brain.damogran;
 
+import de.mhus.vance.api.ws.SignalFrame;
 import de.mhus.vance.brain.tools.client.CortexTurnSelectionHolder;
 import de.mhus.vance.brain.tools.kinds.KindToolSupport;
+import de.mhus.vance.brain.ws.signals.SignalBroadcaster;
 import de.mhus.vance.shared.compose.ComposeBlockCodec;
 import de.mhus.vance.shared.compose.ComposeFenceLocator;
 import de.mhus.vance.shared.compose.ComposeRunMarker;
@@ -51,17 +53,20 @@ public class ComposeBlockRunTool implements Tool {
     private final KindToolSupport support;
     private final ComposeFinishedNotifier finishedNotifier;
     private final CortexTurnSelectionHolder selectionHolder;
+    private final SignalBroadcaster signalBroadcaster;
 
     public ComposeBlockRunTool(DamogranComposeService composeService,
                                DocumentService documentService,
                                KindToolSupport support,
                                ComposeFinishedNotifier finishedNotifier,
-                               CortexTurnSelectionHolder selectionHolder) {
+                               CortexTurnSelectionHolder selectionHolder,
+                               SignalBroadcaster signalBroadcaster) {
         this.composeService = composeService;
         this.documentService = documentService;
         this.support = support;
         this.finishedNotifier = finishedNotifier;
         this.selectionHolder = selectionHolder;
+        this.signalBroadcaster = signalBroadcaster;
     }
 
     private static final Map<String, Object> SCHEMA = Map.of(
@@ -113,11 +118,12 @@ public class ComposeBlockRunTool implements Tool {
         }
         DocumentDocument doc = support.loadDocument(params, ctx);
         String docId = doc.getId();
+        String path = doc.getPath();
         String body = support.readBody(doc, ctx);
         Target target = resolveTarget(body, docId, ctx);
         String projectId = ctx.resolveLocalProjectId();
         // Relative vance: imports resolve against the compose document's directory.
-        String baseDir = DamogranUri.parentDir(doc.getPath());
+        String baseDir = DamogranUri.parentDir(path);
 
         ComposeRun run;
         try {
@@ -125,6 +131,10 @@ public class ComposeBlockRunTool implements Tool {
         } catch (DamogranException e) {
             throw new ToolException(e.getMessage());
         }
+        String tenantId = ctx.tenantId();
+        // Ephemeral "running" signal so an open editor reflects it immediately —
+        // no document write (see planning/agent-compose-run.md §5).
+        emitSignal(tenantId, path, run.runId(), "running", run.workspaceName());
         try {
             run.awaitDone(FAST_PATH_WAIT_MS);
         } catch (InterruptedException e) {
@@ -132,6 +142,7 @@ public class ComposeBlockRunTool implements Tool {
         }
         if (run.isTerminal() && run.result() != null) {
             writeResultBack(docId, target, run.result(), ctx);
+            emitSignal(tenantId, path, run.runId(), statusOf(run.result()), run.workspaceName());
             return DamogranResponse.toMap(run.result());
         }
         // Still running: park the $run marker (an open editor reflects it / a
@@ -147,6 +158,9 @@ public class ComposeBlockRunTool implements Tool {
             if (finished.result() != null) {
                 writeResultBack(docId, target, finished.result(), ctx);
             }
+            emitSignal(tenantId, path, finished.runId(),
+                    finished.result() != null ? statusOf(finished.result()) : "failed",
+                    finished.workspaceName());
             if (ownerProcessId != null && !ownerProcessId.isBlank()) {
                 finishedNotifier.notifyFinished(finished, ownerProcessId);
             }
@@ -164,6 +178,23 @@ public class ComposeBlockRunTool implements Tool {
 
     private static ComposeRunMarker marker(ComposeRun run) {
         return new ComposeRunMarker(run.runId(), Instant.now().toString());
+    }
+
+    private static String statusOf(DamogranComposeResult result) {
+        return result.isSuccess() ? "done" : "failed";
+    }
+
+    /** Fire an ephemeral {@code compose-run} signal on the doc's path (no DB write). */
+    private void emitSignal(String tenantId, String path, String runId, String status,
+                            @Nullable String workspace) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("runId", runId);
+        data.put("status", status);
+        if (workspace != null) {
+            data.put("workspace", workspace);
+        }
+        signalBroadcaster.broadcast(tenantId,
+                SignalFrame.builder().path(path).signal("compose-run").data(data).build());
     }
 
     /**

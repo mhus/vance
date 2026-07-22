@@ -18,6 +18,8 @@ import type {
   PointerSubscribeRequest,
   SessionResumeRequest,
   SessionResumeResponse,
+  SignalFrame,
+  SignalSubscribeRequest,
 } from '@vance/generated';
 
 /**
@@ -173,6 +175,16 @@ const pointerLeaveListeners = new Map<string, Set<PointerLeaveHandler>>();
 
 let pointersUnsubscribe: (() => void) | null = null;
 let pointersSocketWatchStopped = false;
+
+/** Desired-state of {@code signals}-channel subscriptions (reconnect-replayed). */
+const desiredSignalSubscriptions: Set<string> = new Set();
+
+/** Per-path callbacks for the {@code signals} channel {@code signal} frame. */
+type SignalHandler = (frame: SignalFrame) => void;
+const signalListeners = new Map<string, Set<SignalHandler>>();
+
+let signalsUnsubscribe: (() => void) | null = null;
+let signalsSocketWatchStopped = false;
 
 let releaseTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -936,6 +948,89 @@ function wirePointersSocketWatch(): void {
 }
 
 wirePointersSocketWatch();
+
+// ─── signals-channel (generic ephemeral per-doc signals) ─────
+
+/**
+ * Subscribe to the ephemeral signal stream for {@code path} (compose-run
+ * status, …). Adds to the desired-set so Reconnect-Resubscribe replays it.
+ * Idempotent on the wire.
+ */
+export async function subscribeSignals(path: string): Promise<void> {
+  desiredSignalSubscriptions.add(path);
+  const sock = await ensureConnected();
+  sock.sendOnChannel('signals', 'subscribe', { path } as SignalSubscribeRequest);
+}
+
+/** Drop a signals-channel subscription. */
+export async function unsubscribeSignals(path: string): Promise<void> {
+  desiredSignalSubscriptions.delete(path);
+  if (socket.value && !socket.value.closed()) {
+    socket.value.sendOnChannel('signals', 'unsubscribe', { path } as SignalSubscribeRequest);
+  }
+}
+
+/** Register a callback for {@code signal} frames on {@code path}. Returns an unsubscribe. */
+export function onSignal(path: string, handler: SignalHandler): () => void {
+  let set = signalListeners.get(path);
+  if (!set) {
+    set = new Set();
+    signalListeners.set(path, set);
+  }
+  set.add(handler);
+  return () => {
+    const current = signalListeners.get(path);
+    if (!current) return;
+    current.delete(handler);
+    if (current.size === 0) signalListeners.delete(path);
+  };
+}
+
+function attachSignalsListener(sock: BrainWebSocket): void {
+  detachSignalsListener();
+  const off = sock.onChannel<SignalFrame>('signals', 'signal', (data) => {
+    if (!data || !data.path) return;
+    const listeners = signalListeners.get(data.path);
+    if (!listeners || listeners.size === 0) return;
+    for (const handler of Array.from(listeners)) {
+      try {
+        handler(data);
+      } catch (e) {
+        console.warn(`[wsStore] signal handler for '${data.path}' threw:`, e);
+      }
+    }
+  });
+  signalsUnsubscribe = () => {
+    try { off(); } catch { /* ignore */ }
+  };
+}
+
+function detachSignalsListener(): void {
+  if (signalsUnsubscribe) {
+    try { signalsUnsubscribe(); } catch { /* ignore */ }
+    signalsUnsubscribe = null;
+  }
+}
+
+function wireSignalsSocketWatch(): void {
+  if (signalsSocketWatchStopped) return;
+  signalsSocketWatchStopped = true;
+  watch(socket, (next) => {
+    detachSignalsListener();
+    if (next) {
+      attachSignalsListener(next);
+      for (const path of desiredSignalSubscriptions) {
+        try {
+          next.sendOnChannel('signals', 'subscribe', { path } as SignalSubscribeRequest);
+        } catch (e) {
+          console.warn(`[wsStore] signals reconnect-resubscribe failed for path='${path}':`, e);
+        }
+      }
+    }
+  }, { immediate: true });
+}
+
+wireSignalsSocketWatch();
 
 /**
  * Inform the store that the server-side binding is already in place

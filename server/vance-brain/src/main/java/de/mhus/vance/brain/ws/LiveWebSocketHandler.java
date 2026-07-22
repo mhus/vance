@@ -6,6 +6,8 @@ import de.mhus.vance.brain.ws.documents.DocumentChannelHandler;
 import de.mhus.vance.brain.ws.documents.DocumentSubscriberRegistry;
 import de.mhus.vance.brain.ws.pointers.PointerBroadcaster;
 import de.mhus.vance.brain.ws.pointers.PointerChannelHandler;
+import de.mhus.vance.brain.ws.signals.SignalBroadcaster;
+import de.mhus.vance.brain.ws.signals.SignalChannelHandler;
 import de.mhus.vance.brain.ws.live.HomePodLookupService;
 import de.mhus.vance.brain.ws.live.HomePodTarget;
 import de.mhus.vance.brain.ws.live.LiveChatTunnel;
@@ -54,6 +56,7 @@ public class LiveWebSocketHandler extends TextWebSocketHandler {
     private static final String CHANNEL_SESSION = "session";
     private static final String CHANNEL_DOCUMENTS = "documents";
     private static final String CHANNEL_POINTERS = "pointers";
+    private static final String CHANNEL_SIGNALS = "signals";
 
     private final VanceWebSocketHandler chatHandler;
     private final ObjectMapper objectMapper;
@@ -64,6 +67,8 @@ public class LiveWebSocketHandler extends TextWebSocketHandler {
     private final DocumentSubscriberRegistry documentSubscriberRegistry;
     private final PointerChannelHandler pointerChannelHandler;
     private final PointerBroadcaster pointerBroadcaster;
+    private final SignalChannelHandler signalChannelHandler;
+    private final SignalBroadcaster signalBroadcaster;
 
     @Override
     public void afterConnectionEstablished(WebSocketSession wsSession) throws Exception {
@@ -101,6 +106,7 @@ public class LiveWebSocketHandler extends TextWebSocketHandler {
             case CHANNEL_SESSION -> handleSessionChannel(wsSession, ctx, live);
             case CHANNEL_DOCUMENTS -> documentChannelHandler.handle(wsSession, ctx, live);
             case CHANNEL_POINTERS -> pointerChannelHandler.handle(wsSession, ctx, live);
+            case CHANNEL_SIGNALS -> signalChannelHandler.handle(wsSession, ctx, live);
             default -> sender.sendError(wsSession, null, 400,
                     "Channel not supported in v1: '" + channel + "'");
         }
@@ -159,6 +165,12 @@ public class LiveWebSocketHandler extends TextWebSocketHandler {
             pointerChannelHandler.forgetConnection(wsSession);
         } catch (RuntimeException e) {
             log.warn("pointers.unsubscribeAll for external='{}' failed: {}",
+                    wsSession.getId(), e.toString());
+        }
+        try {
+            signalBroadcaster.unsubscribeAll(wsSession);
+        } catch (RuntimeException e) {
+            log.warn("signals.unsubscribeAll for external='{}' failed: {}",
                     wsSession.getId(), e.toString());
         }
         chatHandler.afterConnectionClosed(wsSession, status);

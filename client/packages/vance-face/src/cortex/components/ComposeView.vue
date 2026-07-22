@@ -9,7 +9,7 @@
  * the `$output:` block (survive refresh); content is workspace-sourced (see
  * {@link ComposeOutput}), persistent results come from the compose's `export`.
  */
-import { computed, inject, onMounted, onUnmounted, ref, type Ref } from 'vue';
+import { computed, inject, onMounted, onUnmounted, ref, watch, type Ref } from 'vue';
 import yaml from 'js-yaml';
 import {
   postComposeRun,
@@ -24,8 +24,10 @@ import {
   type ComposeOutputView,
   type ComposeRunResponse,
 } from '@vance/shared';
+import type { SignalFrame } from '@vance/generated';
 import { VAlert, VButton, VCard } from '@/components';
 import { useCortexStore } from '@/cortex/stores/cortexStore';
+import { subscribeSignals, unsubscribeSignals, onSignal } from '@/ws/wsConnectionStore';
 import ComposeOutput from './ComposeOutput.vue';
 
 interface Props {
@@ -109,14 +111,21 @@ function stopTimer(): void {
   timer = undefined;
 }
 
-/** A run reached a terminal state — render it, persist $output, clear polling. */
-function finishWith(resp: ComposeRunResponse): void {
+/**
+ * A run reached a terminal state — render it, clear polling. For our own
+ * (button-started) runs we also persist `$output` into the doc; for an
+ * `external` run (agent-started, tracked via the signals channel) the SERVER
+ * already wrote `$output` — so we skip the write and just let the
+ * documents.changed reload show it.
+ */
+function finishWith(resp: ComposeRunResponse, external = false): void {
   stopTimer();
   running.value = false;
   cancelling.value = false;
   runId.value = null;
   progress.value = null;
   result.value = resp;
+  if (external) return; // server owns the $output write
   // A user-pinned `output:` wins → don't write $output (just drop $run).
   const pinned = readFixedOutputs(props.doc).length > 0;
   if (resp.success && !pinned) {
@@ -127,7 +136,7 @@ function finishWith(resp: ComposeRunResponse): void {
   }
 }
 
-function startPolling(runId: string): void {
+function startPolling(runId: string, external = false): void {
   polling = true;
   const tick = async (): Promise<void> => {
     if (!polling) return;
@@ -137,15 +146,16 @@ function startPolling(runId: string): void {
         progress.value = resp;
         timer = setTimeout(tick, POLL_MS);
       } else {
-        finishWith(resp);
+        finishWith(resp, external);
       }
     } catch {
-      // Run gone (pod restart?) or transient error — stop, surface, drop $run.
+      // Run gone (pod restart?) or transient error — stop, surface. Only drop
+      // the parked $run for our own runs; the server owns an external run's doc.
       stopTimer();
       running.value = false;
       progress.value = null;
       fetchError.value = 'Lauf nicht mehr verfügbar (Pod-Neustart?) — bitte neu ausführen.';
-      emit('update:doc', clearComposeManaged(props.doc));
+      if (!external) emit('update:doc', clearComposeManaged(props.doc));
     }
   };
   timer = setTimeout(tick, POLL_MS);
@@ -209,7 +219,45 @@ function onRunButton(): void {
   else if (canStop.value) stop();
 }
 
+// ─── live "running" via the signals channel (agent-started runs) ───
+// The path of the open compose document — subscription key for the signal.
+const docPath = computed<string>(() => store.activeTab?.path ?? '');
+let signalOff: (() => void) | null = null;
+let subscribedPath = '';
+
+/** An agent started/finished a run on this document — reflect it live. */
+function handleSignal(frame: SignalFrame): void {
+  if (frame.signal !== 'compose-run') return;
+  const d = (frame.data ?? {}) as Record<string, unknown>;
+  const status = typeof d.status === 'string' ? d.status : '';
+  const rid = typeof d.runId === 'string' ? d.runId : null;
+  if (status === 'running' && rid) {
+    if (running.value && runId.value === rid) return; // already tracking
+    fetchError.value = null;
+    result.value = null;
+    running.value = true;
+    runId.value = rid;
+    startPolling(rid, /* external */ true); // server owns the $output write
+  }
+  // 'done'/'failed': the external poll observes the terminal state and clears
+  // running; the final $output arrives via the documents.changed doc reload.
+}
+
+function bindSignals(path: string): void {
+  if (!path || path === subscribedPath) return;
+  unbindSignals();
+  subscribedPath = path;
+  signalOff = onSignal(path, handleSignal);
+  void subscribeSignals(path);
+}
+
+function unbindSignals(): void {
+  if (signalOff) { signalOff(); signalOff = null; }
+  if (subscribedPath) { void unsubscribeSignals(subscribedPath); subscribedPath = ''; }
+}
+
 onMounted(() => {
+  bindSignals(docPath.value);
   // Resume a run that was in flight before a refresh.
   const marker = readComposeRun(props.doc);
   if (marker) {
@@ -218,7 +266,11 @@ onMounted(() => {
     startPolling(marker.id);
   }
 });
-onUnmounted(stopTimer);
+watch(docPath, (path) => bindSignals(path));
+onUnmounted(() => {
+  unbindSignals();
+  stopTimer();
+});
 </script>
 
 <template>

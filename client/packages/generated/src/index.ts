@@ -315,6 +315,8 @@ export * from './ws/PointerSubscribeRequest';
 export * from './ws/PointerMoveRequest';
 export * from './ws/PointerNotification';
 export * from './ws/PointerLeaveNotification';
+export * from './ws/SignalFrame';
+export * from './ws/SignalSubscribeRequest';
 export * from './ws/ProjectGroupSummary';
 export * from './ws/ProjectListRequest';
 export * from './ws/ProjectListResponse';

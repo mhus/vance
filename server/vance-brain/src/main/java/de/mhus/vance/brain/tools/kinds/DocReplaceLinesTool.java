@@ -21,6 +21,15 @@ import org.springframework.stereotype.Component;
  * Set {@code toLine = fromLine - 1} to <em>insert</em> before
  * {@code fromLine} without replacing anything (e.g. fromLine=10,
  * toLine=9 inserts above line 10).
+ *
+ * <p><b>Line numbers can go stale.</b> On a live document (auto-saving
+ * editor, managed blocks that rewrite themselves) the content — and thus
+ * the line numbers — may shift between the read that produced the range
+ * and this call. Two guards protect against silently patching the wrong
+ * lines: an out-of-range {@code toLine} errors (never clamps), and the
+ * optional {@code expectedFirstLine}/{@code expectedLastLine} anchors are
+ * verified before patching. For structured, frequently-rewritten kinds
+ * (e.g. workpages) prefer {@link DocEditTool doc_edit}'s content match.
  */
 @Component
 @RequiredArgsConstructor
@@ -40,6 +49,16 @@ public class DocReplaceLinesTool implements Tool {
                         + "Set toLine = fromLine - 1 to insert above fromLine without replacing."));
         p.put("newContent", Map.of("type", "string",
                 "description", "Replacement text. Trailing newlines are normalised."));
+        p.put("expectedFirstLine", Map.of("type", "string",
+                "description", "Optional guard: the expected text of the FIRST line in the "
+                        + "range (line `fromLine`). If it doesn't match the document, the call "
+                        + "errors instead of patching the wrong lines — line numbers can go "
+                        + "stale when a document changes between your read and this write. "
+                        + "Compared whitespace-insensitively. Strongly recommended."));
+        p.put("expectedLastLine", Map.of("type", "string",
+                "description", "Optional guard: expected text of the LAST line in the range "
+                        + "(line `toLine`). Same purpose as expectedFirstLine; ignored for a "
+                        + "pure insert (toLine = fromLine - 1)."));
         return p;
     }
 
@@ -64,6 +83,8 @@ public class DocReplaceLinesTool implements Tool {
         int fromLine = KindToolSupport.requireInt(params, "fromLine");
         int toLine = KindToolSupport.requireInt(params, "toLine");
         String newContent = KindToolSupport.requireRawString(params, "newContent");
+        String expectedFirst = KindToolSupport.paramString(params, "expectedFirstLine");
+        String expectedLast = KindToolSupport.paramString(params, "expectedLastLine");
 
         String[] lines = support.readBody(doc, ctx).split("\\R", -1);
         int total = lines.length;
@@ -77,7 +98,27 @@ public class DocReplaceLinesTool implements Tool {
             throw new ToolException("toLine " + toLine + " must be >= fromLine " + fromLine
                     + " (or fromLine - 1 for pure insert)");
         }
-        if (toLine > total) toLine = total; // resilient: clamp instead of error
+        // Härtung (1): fail loud instead of silently clamping. An out-of-range
+        // toLine almost always means the line numbers are stale (the document
+        // changed since the read). Clamping would then patch the wrong range.
+        if (toLine > total) {
+            throw new ToolException("toLine " + toLine + " exceeds document length " + total
+                    + " — the line numbers are likely stale (the document changed since you read"
+                    + " it). Re-read with doc_read_lines, or use doc_edit with an exact snippet.");
+        }
+        // Härtung (2): verify the range anchors before patching. A mismatch means
+        // the line numbers point at the wrong content — error instead of clobbering.
+        if (expectedFirst != null && !expectedFirst.isEmpty()) {
+            if (fromLine - 1 >= total) {
+                throw new ToolException("expectedFirstLine given but line " + fromLine
+                        + " is past the document end (" + total + " lines) — stale line numbers."
+                        + " Re-read with doc_read_lines, or use doc_edit.");
+            }
+            requireAnchor("expectedFirstLine", fromLine, lines[fromLine - 1], expectedFirst);
+        }
+        if (expectedLast != null && !expectedLast.isEmpty() && !insertOnly) {
+            requireAnchor("expectedLastLine", toLine, lines[toLine - 1], expectedLast);
+        }
 
         StringBuilder out = new StringBuilder();
         // Lines before the replacement window (1..fromLine-1)
@@ -110,6 +151,22 @@ public class DocReplaceLinesTool implements Tool {
         result.put("inserted", insertOnly);
         result.put("newLineCount", countLines(newContent));
         return result;
+    }
+
+    /** Verify a range anchor: the actual line must equal the expected text
+     *  (whitespace-insensitive). Throws with both values on mismatch so the
+     *  LLM can see the drift and re-read or fall back to doc_edit. */
+    private static void requireAnchor(String param, int line, String actual, String expected) {
+        if (actual.trim().equals(expected.trim())) return;
+        throw new ToolException(param + " mismatch at line " + line + ": document has \""
+                + cap(actual) + "\" but you expected \"" + cap(expected) + "\". The line numbers"
+                + " are likely stale — re-read with doc_read_lines, or use doc_edit.");
+    }
+
+    /** Truncate a line for readable error messages. */
+    private static String cap(String s) {
+        String t = s.length() > 80 ? s.substring(0, 80) + "…" : s;
+        return t.replace("\n", "\\n");
     }
 
     private static int countLines(String s) {

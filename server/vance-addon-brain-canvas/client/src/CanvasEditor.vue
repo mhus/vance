@@ -55,6 +55,11 @@ const embedComponent = inject<Component | null>('vance:embed-component', null);
 const flowId = `canvas-${props.path ?? 'board'}`;
 const { viewport, getSelectedNodes } = useVueFlow(flowId);
 
+// Authoritative selected-id set (VueFlow's selection). Drives the visible
+// "active" marker per node — bound explicitly so it never depends on whether
+// the per-node slot exposes `selected`.
+const selectedIds = computed(() => new Set(getSelectedNodes.value.map((n) => n.id)));
+
 // Surface the current node selection to the host (→ chat active-app hint).
 // De-dupe: getSelectedNodes recomputes on any node change (incl. drags), but
 // we only care when the selected id set changes.
@@ -582,10 +587,10 @@ async function addNode(type: 'text' | 'doc' | 'link' | 'group'): Promise<void> {
         </div>
       </Panel>
 
-      <template #node-text="p"><CanvasNodeCard v-bind="p" /></template>
-      <template #node-doc="p"><CanvasNodeCard v-bind="p" /></template>
-      <template #node-link="p"><CanvasNodeCard v-bind="p" /></template>
-      <template #node-group="p"><CanvasNodeCard v-bind="p" /></template>
+      <template #node-text="p"><CanvasNodeCard v-bind="p" :selected="selectedIds.has(p.id)" /></template>
+      <template #node-doc="p"><CanvasNodeCard v-bind="p" :selected="selectedIds.has(p.id)" /></template>
+      <template #node-link="p"><CanvasNodeCard v-bind="p" :selected="selectedIds.has(p.id)" /></template>
+      <template #node-group="p"><CanvasNodeCard v-bind="p" :selected="selectedIds.has(p.id)" /></template>
     </VueFlow>
 
     <!-- Remote live cursors — positioned in screen space from the flow

@@ -354,8 +354,11 @@ function onResizeEnd(e: { params: { x: number; y: number; width: number; height:
   color: #1f2937;
 }
 .canvas-node--selected {
-  outline: 2px solid #111827;
-  outline-offset: 1px;
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+  /* box-shadow ring renders reliably regardless of node overflow/clipping,
+     so the active node is always clearly visible. */
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.22);
 }
 /* Recolour VueFlow's default (blue) resize border/handles to black. */
 :deep(.vue-flow__resize-control.line) {

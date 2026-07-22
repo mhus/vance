@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Test;
  * <p>{@code process_run} is mocked to return a deterministic stub
  * body per chapter ("CHAPTER-BODY-FOR-<NAME>"), which is what the
  * harness records as the would-be ASSISTANT reply. That lets us
- * assert the {@code doc_write_text} payloads and the chapter-recap
+ * assert the {@code doc_create} payloads and the chapter-recap
  * propagation without spinning up real LLM turns.
  */
 class SchoolEssayLoopScriptUnitTest {
@@ -42,7 +42,7 @@ class SchoolEssayLoopScriptUnitTest {
         ScriptHarness harness = ScriptHarness.builder()
                 .scriptFile(WRITE_JS)
                 .args(samplePayload("Sollten Schulnoten abgeschafft werden?"))
-                .mockTool("doc_write_text",
+                .mockTool("doc_create",
                         p -> Map.of("path", p.get("path"), "size", 0))
                 .mockTool("process_run", processRunStub())
                 .build();
@@ -73,7 +73,7 @@ class SchoolEssayLoopScriptUnitTest {
         ScriptHarness harness = ScriptHarness.builder()
                 .scriptFile(WRITE_JS)
                 .args(samplePayload("Hausaufgaben — pro oder contra?"))
-                .mockTool("doc_write_text", p -> Map.of())
+                .mockTool("doc_create", p -> Map.of())
                 .mockTool("process_run", processRunStub())
                 .build();
 
@@ -100,7 +100,7 @@ class SchoolEssayLoopScriptUnitTest {
         ScriptHarness harness = ScriptHarness.builder()
                 .scriptFile(WRITE_JS)
                 .args(samplePayload("Topic"))
-                .mockTool("doc_write_text", p -> Map.of())
+                .mockTool("doc_create", p -> Map.of())
                 .mockTool("process_run", processRunStub())
                 .build();
 
@@ -142,7 +142,7 @@ class SchoolEssayLoopScriptUnitTest {
         ScriptHarness harness = ScriptHarness.builder()
                 .scriptFile(WRITE_JS)
                 .args(samplePayload("Topic"))
-                .mockTool("doc_write_text", p -> Map.of())
+                .mockTool("doc_create", p -> Map.of())
                 .mockTool("process_run", processRunStub())
                 .build();
 
@@ -161,12 +161,12 @@ class SchoolEssayLoopScriptUnitTest {
                 "essay/chapters/05-fazit.md",
                 "essay/final-essay.md");
 
-        // doc_write_text calls happen up-front for the meta-files,
+        // doc_create calls happen up-front for the meta-files,
         // inline for each chapter, then once for the final assembly.
         // Total 8 — same count as the simpler kit, just interleaved
         // with the process_run calls.
         long writes = harness.toolCalls().stream()
-                .filter(t -> t.name().equals("doc_write_text"))
+                .filter(t -> t.name().equals("doc_create"))
                 .count();
         assertThat(writes).isEqualTo(8);
     }
@@ -178,14 +178,14 @@ class SchoolEssayLoopScriptUnitTest {
         ScriptHarness harness = ScriptHarness.builder()
                 .scriptFile(WRITE_JS)
                 .args(samplePayload("Topic"))
-                .mockTool("doc_write_text", p -> Map.of())
+                .mockTool("doc_create", p -> Map.of())
                 .mockTool("process_run", processRunStub())
                 .build();
 
         harness.run();
 
         ToolCall finalCall = harness.toolCalls().stream()
-                .filter(t -> t.name().equals("doc_write_text")
+                .filter(t -> t.name().equals("doc_create")
                         && "essay/final-essay.md".equals(t.params().get("path")))
                 .findFirst().orElseThrow();
         String finalBody = (String) finalCall.params().get("content");
@@ -202,7 +202,7 @@ class SchoolEssayLoopScriptUnitTest {
         ScriptHarness harness = ScriptHarness.builder()
                 .scriptFile(WRITE_JS)
                 .args(samplePayload("Topic"))
-                .mockTool("doc_write_text", p -> Map.of())
+                .mockTool("doc_create", p -> Map.of())
                 // Empty reply on chapter "contra" — third in the order.
                 .mockTool("process_run", params -> {
                     String name = String.valueOf(params.get("name"));
@@ -226,13 +226,13 @@ class SchoolEssayLoopScriptUnitTest {
         ScriptHarness harness = ScriptHarness.builder()
                 .scriptFile(WRITE_JS)
                 .args(noPros)
-                .mockTool("doc_write_text", p -> Map.of())
+                .mockTool("doc_create", p -> Map.of())
                 .mockTool("process_run", processRunStub())
                 .build();
 
         assertThatThrownBy(harness::run)
                 .hasMessageContaining("pros and contras");
-        // No process_run + no doc_write_text should fire — the
+        // No process_run + no doc_create should fire — the
         // validator trips before the loop.
         assertThat(harness.toolCalls()).isEmpty();
     }

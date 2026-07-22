@@ -35,7 +35,7 @@ class SchoolEssayAssembleScriptUnitTest {
         ScriptHarness harness = ScriptHarness.builder()
                 .scriptFile(ASSEMBLE_JS)
                 .args(samplePayload("Sollten Schulnoten abgeschafft werden?"))
-                .mockTool("doc_write_text",
+                .mockTool("doc_create",
                         params -> Map.of("path", params.get("path"),
                                 "size", ((String) params.get("content")).length()))
                 .build();
@@ -59,11 +59,11 @@ class SchoolEssayAssembleScriptUnitTest {
                 "essay/chapters/05-fazit.md",
                 "essay/final-essay.md");
 
-        // Same number of doc_write_text calls, same paths, same order.
+        // Same number of doc_create calls, same paths, same order.
         List<ToolCall> calls = harness.toolCalls();
         assertThat(calls).hasSize(8);
         assertThat(calls).extracting(ToolCall::name)
-                .containsOnly("doc_write_text");
+                .containsOnly("doc_create");
         assertThat(calls).extracting(c -> (String) c.params().get("path"))
                 .containsExactlyElementsOf(filesWritten);
     }
@@ -73,7 +73,7 @@ class SchoolEssayAssembleScriptUnitTest {
         ScriptHarness harness = ScriptHarness.builder()
                 .scriptFile(ASSEMBLE_JS)
                 .args(samplePayload("Sind Hausaufgaben heute noch sinnvoll?"))
-                .mockTool("doc_write_text", p -> Map.of())
+                .mockTool("doc_create", p -> Map.of())
                 .build();
 
         harness.run();
@@ -96,7 +96,7 @@ class SchoolEssayAssembleScriptUnitTest {
         ScriptHarness harness = ScriptHarness.builder()
                 .scriptFile(ASSEMBLE_JS)
                 .args(payload)
-                .mockTool("doc_write_text", p -> Map.of())
+                .mockTool("doc_create", p -> Map.of())
                 .build();
 
         harness.run();
@@ -122,7 +122,7 @@ class SchoolEssayAssembleScriptUnitTest {
         ScriptHarness harness = ScriptHarness.builder()
                 .scriptFile(ASSEMBLE_JS)
                 .args(payload)
-                .mockTool("doc_write_text", p -> Map.of())
+                .mockTool("doc_create", p -> Map.of())
                 .build();
 
         harness.run();
@@ -152,7 +152,7 @@ class SchoolEssayAssembleScriptUnitTest {
         ScriptHarness harness = ScriptHarness.builder()
                 .scriptFile(ASSEMBLE_JS)
                 .args(samplePayload("Topic"))
-                .mockTool("doc_write_text", p -> Map.of())
+                .mockTool("doc_create", p -> Map.of())
                 .build();
 
         harness.run();
@@ -171,13 +171,13 @@ class SchoolEssayAssembleScriptUnitTest {
         ScriptHarness harness = ScriptHarness.builder()
                 .scriptFile(ASSEMBLE_JS)
                 .args(Map.of("sources", List.of(), "chapters", fullChapters()))
-                .mockTool("doc_write_text", p -> Map.of())
+                .mockTool("doc_create", p -> Map.of())
                 .build();
 
         assertThatThrownBy(harness::run)
                 .hasMessageContaining("topic is required");
         assertThat(harness.toolCalls())
-                .as("script must fail before any doc_write_text call")
+                .as("script must fail before any doc_create call")
                 .isEmpty();
     }
 
@@ -185,7 +185,7 @@ class SchoolEssayAssembleScriptUnitTest {
     void assemble_short_chapter_body_fails_fast() throws Exception {
         Map<String, Object> chapters = fullChapters();
         // Truncate one chapter below the 50-char floor so the
-        // validator trips. None of the doc_write_text calls should
+        // validator trips. None of the doc_create calls should
         // fire — fail-fast contract.
         chapters.put("pro", "too short");
         Map<String, Object> payload = samplePayload("Topic");
@@ -194,7 +194,7 @@ class SchoolEssayAssembleScriptUnitTest {
         ScriptHarness harness = ScriptHarness.builder()
                 .scriptFile(ASSEMBLE_JS)
                 .args(payload)
-                .mockTool("doc_write_text", p -> Map.of())
+                .mockTool("doc_create", p -> Map.of())
                 .build();
 
         assertThatThrownBy(harness::run)

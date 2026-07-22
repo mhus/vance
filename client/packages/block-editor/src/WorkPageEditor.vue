@@ -1216,7 +1216,9 @@ defineExpose({
    caret/selection is in — so the user sees which block is "active". Accent
    ring offset outside the block; matches the canvas active-node marker. */
 .ProseMirror .is-active-block {
-  outline: 2px solid #2563eb;
+  /* Theme-aware neutral: base-content is dark on light themes, light on dark
+     → dark-grey ring in light mode, light-grey in dark mode. */
+  outline: 2px solid oklch(var(--bc) / 0.5);
   outline-offset: 4px;
   border-radius: 4px;
 }

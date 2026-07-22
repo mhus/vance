@@ -1,0 +1,15 @@
+# Committed local-development profile for the Anus shell.
+#
+# Activate with --spring.profiles.active=dev (or in your IDE run config).
+# Unlike application-default.yml (which is .gitignore'd per developer),
+# this file is checked in so a fresh clone can boot Anus locally without
+# extra setup.
+
+vance:
+  encryption:
+    # Local dev default so Anus boots without VANCE_ENCRYPTION_PASSWORD.
+    # Deliberately NOT "changeit" (the crypto service rejects that known
+    # key); production application.yml carries no default and fails fast
+    # if the env var is unset (code-review F4). Matches the brain dev
+    # profiles so both share the same local key store.
+    password: ${VANCE_ENCRYPTION_PASSWORD:vance-local-dev}

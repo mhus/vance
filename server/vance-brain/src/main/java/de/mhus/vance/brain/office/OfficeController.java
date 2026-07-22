@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.office;
 
 import de.mhus.vance.shared.access.AccessFilterBase;
+import de.mhus.vance.shared.net.SsrfGuard;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import io.jsonwebtoken.Claims;
@@ -327,8 +328,15 @@ public class OfficeController {
                 .timeout(FETCH_TIMEOUT)
                 .GET()
                 .build();
-        HttpResponse<byte[]> res = httpClient.send(
-                req, HttpResponse.BodyHandlers.ofByteArray());
+        HttpResponse<byte[]> res;
+        try {
+            // SsrfGuard: the callback url is client-supplied — block fetches
+            // aimed at internal/metadata addresses (F2). Client already
+            // defaults to Redirect.NEVER, so sendGuarded owns redirects.
+            res = SsrfGuard.sendGuarded(httpClient, req, HttpResponse.BodyHandlers.ofByteArray());
+        } catch (SsrfGuard.SsrfException e) {
+            throw new IOException("doc-server url rejected: " + e.getMessage(), e);
+        }
         if (res.statusCode() / 100 != 2) {
             throw new IOException("doc-server returned HTTP " + res.statusCode());
         }

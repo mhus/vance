@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.damogran;
 
 import de.mhus.vance.brain.damogran.DamogranManifest.ImportEntry;
+import de.mhus.vance.shared.net.SsrfGuard;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -20,9 +21,9 @@ class HttpImporter implements DamogranImporter {
     private final HttpClient httpClient;
 
     HttpImporter() {
-        this.httpClient = HttpClient.newBuilder()
+        // Redirect.NEVER so SsrfGuard.sendGuarded re-checks every hop (F2).
+        this.httpClient = SsrfGuard.guardedClientBuilder()
                 .connectTimeout(Duration.ofSeconds(15))
-                .followRedirects(HttpClient.Redirect.NORMAL)
                 .build();
     }
 
@@ -43,11 +44,13 @@ class HttpImporter implements DamogranImporter {
                     .GET()
                     .build();
             HttpResponse<byte[]> response =
-                    httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
+                    SsrfGuard.sendGuarded(httpClient, request, HttpResponse.BodyHandlers.ofByteArray());
             if (response.statusCode() / 100 != 2) {
                 throw new DamogranException("import HTTP " + response.statusCode() + " for " + url);
             }
             return response.body();
+        } catch (SsrfGuard.SsrfException e) {
+            throw new DamogranException("import blocked for " + url + ": " + e.getMessage(), e);
         } catch (IOException e) {
             throw new DamogranException("import fetch failed for " + url + ": " + e.getMessage(), e);
         } catch (InterruptedException e) {

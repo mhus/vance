@@ -319,25 +319,46 @@ public class OAuthController {
             Map<String, String> nonScope = new LinkedHashMap<>(tokens.extraClaims());
             nonScope.remove("scope");
             if (!nonScope.isEmpty()) {
-                try {
-                    settingService.set(tenant, SettingService.SCOPE_PROJECT, userRef,
-                            base + KEY_EXTRA,
-                            json.writeValueAsString(nonScope),
-                            SettingType.STRING, null);
-                } catch (RuntimeException ex) {
-                    log.warn("OAuth: failed to serialise extra claims for '{}': {}",
-                            providerId, ex.toString());
+                // The JSON blob is STRING (unencrypted) — keep secret-bearing
+                // claims (bot_access_token, id_token, …) out of it; they are
+                // stored encrypted via the flat projection below (F4).
+                Map<String, String> nonSecret = new LinkedHashMap<>();
+                for (Map.Entry<String, String> e : nonScope.entrySet()) {
+                    if (!OAuthTokenSet.isSecretClaimKey(e.getKey())) {
+                        nonSecret.put(e.getKey(), e.getValue());
+                    }
+                }
+                if (nonSecret.isEmpty()) {
+                    settingService.delete(tenant, SettingService.SCOPE_PROJECT, userRef,
+                            base + KEY_EXTRA);
+                } else {
+                    try {
+                        settingService.set(tenant, SettingService.SCOPE_PROJECT, userRef,
+                                base + KEY_EXTRA,
+                                json.writeValueAsString(nonSecret),
+                                SettingType.STRING, null);
+                    } catch (RuntimeException ex) {
+                        log.warn("OAuth: failed to serialise extra claims for '{}': {}",
+                                providerId, ex.toString());
+                    }
                 }
                 // Also publish each scalar extra as a flat user-setting so
                 // tool templates can reference {{secret:user:oauth.<provider>.<extraKey>}}
                 // without parsing the JSON blob (cloud_id, site_url, …).
-                // JSON-valued strings (e.g. accessible_resources) stay in
-                // the blob — skip them here to avoid bloating the cache.
+                // Secret-bearing claims go in as PASSWORD (encrypted at rest);
+                // the secret resolver reads PASSWORD first, STRING as fallback.
+                // JSON-valued non-secret strings (e.g. accessible_resources)
+                // stay in the blob — skip them here to avoid bloating the cache.
                 for (Map.Entry<String, String> e : nonScope.entrySet()) {
                     String v = e.getValue();
-                    if (v == null || v.isEmpty() || looksLikeJsonContainer(v)) continue;
-                    settingService.set(tenant, SettingService.SCOPE_PROJECT, userRef,
-                            base + "." + e.getKey(), v, SettingType.STRING, null);
+                    if (v == null || v.isEmpty()) continue;
+                    if (OAuthTokenSet.isSecretClaimKey(e.getKey())) {
+                        settingService.setEncryptedPassword(tenant, SettingService.SCOPE_PROJECT,
+                                userRef, base + "." + e.getKey(), v);
+                    } else if (!looksLikeJsonContainer(v)) {
+                        settingService.set(tenant, SettingService.SCOPE_PROJECT, userRef,
+                                base + "." + e.getKey(), v, SettingType.STRING, null);
+                    }
                 }
             }
         }

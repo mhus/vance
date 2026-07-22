@@ -1,7 +1,9 @@
 package de.mhus.vance.brain.oauth;
 
 import java.time.Instant;
+import java.util.Locale;
 import java.util.Map;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -29,12 +31,40 @@ public record OAuthTokenSet(
 
     @Override
     public String toString() {
-        // Excludes the tokens themselves so logs never carry them.
+        // Excludes the tokens themselves so logs never carry them — including
+        // secret-bearing extra claims (bot_access_token, id_token, …) which
+        // are masked to their key names only (code-review F4).
+        String claims = extraClaims.entrySet().stream()
+                .map(e -> e.getKey() + "="
+                        + (isSecretClaimKey(e.getKey()) ? "***" : e.getValue()))
+                .collect(Collectors.joining(", ", "{", "}"));
         return "OAuthTokenSet{"
                 + "accessToken=***"
                 + ", refreshToken=" + (refreshToken == null ? "null" : "***")
                 + ", expiresAt=" + expiresAt
-                + ", extraClaims=" + extraClaims
+                + ", extraClaims=" + claims
                 + '}';
+    }
+
+    /**
+     * Whether an extra-claim key carries a secret and must be stored
+     * encrypted (PASSWORD), not as a plaintext STRING setting. Matches the
+     * bearer-token family ({@code access_token}, {@code refresh_token},
+     * {@code id_token}, any {@code *_token}, {@code secret}/{@code password})
+     * while excluding non-secret metadata such as {@code token_type},
+     * {@code scope} and {@code expires_in} (code-review F4).
+     */
+    public static boolean isSecretClaimKey(String key) {
+        String k = key.toLowerCase(Locale.ROOT);
+        if (k.equals("token_type") || k.equals("scope") || k.equals("expires_in")) {
+            return false;
+        }
+        return k.endsWith("access_token")
+                || k.endsWith("refresh_token")
+                || k.endsWith("id_token")
+                || k.endsWith("_token")
+                || k.equals("token")
+                || k.contains("secret")
+                || k.contains("password");
     }
 }

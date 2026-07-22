@@ -105,6 +105,24 @@ public class SettingService {
             @Nullable String value,
             SettingType type,
             @Nullable String description) {
+        if (type == SettingType.PASSWORD) {
+            // PASSWORD values must be encrypted at rest — route through
+            // setEncryptedPassword so nothing can persist a plaintext secret
+            // via the generic setter (code-review F4).
+            throw new IllegalArgumentException(
+                    "PASSWORD settings must be written via setEncryptedPassword(), not set()");
+        }
+        return setInternal(tenantId, referenceType, referenceId, key, value, type, description);
+    }
+
+    private SettingDocument setInternal(
+            String tenantId,
+            String referenceType,
+            String referenceId,
+            String key,
+            @Nullable String value,
+            SettingType type,
+            @Nullable String description) {
         SettingDocument doc = repository
                 .findByTenantIdAndReferenceTypeAndReferenceIdAndKey(
                         tenantId, referenceType, referenceId, key)
@@ -527,7 +545,8 @@ public class SettingService {
             String tenantId, String referenceType, String referenceId, String key,
             @Nullable String plaintext) {
         String ciphertext = encryption.encrypt(plaintext);
-        return set(tenantId, referenceType, referenceId, key, ciphertext, SettingType.PASSWORD, null);
+        return setInternal(
+                tenantId, referenceType, referenceId, key, ciphertext, SettingType.PASSWORD, null);
     }
 
     /**

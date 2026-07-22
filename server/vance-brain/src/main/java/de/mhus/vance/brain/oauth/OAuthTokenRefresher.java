@@ -190,24 +190,42 @@ public class OAuthTokenRefresher {
                         oauthKey(providerId, "scopes"), scopes, SettingType.STRING, null);
             }
             if (!nonScope.isEmpty()) {
-                try {
-                    settingService.set(tenantId, SettingService.SCOPE_PROJECT, userRef,
-                            oauthKey(providerId, "extra"),
-                            json.writeValueAsString(nonScope),
-                            SettingType.STRING, null);
-                } catch (RuntimeException ex) {
-                    log.warn("OAuthTokenRefresher: failed to serialise extra claims for '{}': {}",
-                            providerId, ex.toString());
+                // Secret-bearing claims stay out of the plaintext STRING blob
+                // and are stored encrypted via the flat projection below (F4).
+                Map<String, String> nonSecret = new LinkedHashMap<>();
+                for (Map.Entry<String, String> e : nonScope.entrySet()) {
+                    if (!OAuthTokenSet.isSecretClaimKey(e.getKey())) {
+                        nonSecret.put(e.getKey(), e.getValue());
+                    }
+                }
+                if (nonSecret.isEmpty()) {
+                    settingService.delete(tenantId, SettingService.SCOPE_PROJECT, userRef,
+                            oauthKey(providerId, "extra"));
+                } else {
+                    try {
+                        settingService.set(tenantId, SettingService.SCOPE_PROJECT, userRef,
+                                oauthKey(providerId, "extra"),
+                                json.writeValueAsString(nonSecret),
+                                SettingType.STRING, null);
+                    } catch (RuntimeException ex) {
+                        log.warn("OAuthTokenRefresher: failed to serialise extra claims for '{}': {}",
+                                providerId, ex.toString());
+                    }
                 }
                 // Same flat-projection as on the connect path so tool
                 // templates can keep using {{secret:user:oauth.<p>.<extra>}}
                 // after a refresh writes new metadata (rare but possible).
                 for (Map.Entry<String, String> e : nonScope.entrySet()) {
                     String v = e.getValue();
-                    if (v == null || v.isEmpty() || looksLikeJsonContainer(v)) continue;
-                    settingService.set(tenantId, SettingService.SCOPE_PROJECT, userRef,
-                            oauthKey(providerId, e.getKey()),
-                            v, SettingType.STRING, null);
+                    if (v == null || v.isEmpty()) continue;
+                    if (OAuthTokenSet.isSecretClaimKey(e.getKey())) {
+                        settingService.setEncryptedPassword(tenantId, SettingService.SCOPE_PROJECT,
+                                userRef, oauthKey(providerId, e.getKey()), v);
+                    } else if (!looksLikeJsonContainer(v)) {
+                        settingService.set(tenantId, SettingService.SCOPE_PROJECT, userRef,
+                                oauthKey(providerId, e.getKey()),
+                                v, SettingType.STRING, null);
+                    }
                 }
             }
         }

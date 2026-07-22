@@ -9,6 +9,12 @@ server:
 # `vance.redis.enabled` default (false) — Live-features just stay
 # pod-local then.
 vance:
+  encryption:
+    # Local IDE/dev default so this profile boots without setting
+    # VANCE_ENCRYPTION_PASSWORD. Deliberately NOT "changeit" (the service
+    # rejects that publicly-known key); production application.yml carries
+    # no default and fails fast if the env var is unset (code-review F4).
+    password: ${VANCE_ENCRYPTION_PASSWORD:vance-local-dev}
   redis:
     enabled: true
     host: localhost

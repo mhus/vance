@@ -55,6 +55,17 @@ public class OAuthAdminController {
     private final SettingService settingService;
     private final RequestAuthority authority;
 
+    /**
+     * Actor for this admin surface: a deliberate write of a {@code _vance/oauth/}
+     * system resource on behalf of the request user. The surface has already run
+     * its Tenant ADMIN check; WriteReason.SYSTEM is the hint that lets the
+     * resolver allow the reserved-path write, real user kept for audit. (F1)
+     */
+    private de.mhus.vance.shared.permission.WriteActor systemActor(
+            jakarta.servlet.http.HttpServletRequest request) {
+        return de.mhus.vance.shared.permission.WriteActor.system(authority.contextOf(request));
+    }
+
     // ──────────────────── List ────────────────────
 
     @GetMapping("/providers")
@@ -109,11 +120,13 @@ public class OAuthAdminController {
                 tenant, HomeBootstrapService.TENANT_PROJECT_NAME, path);
         boolean created = existing.isEmpty();
         if (existing.isPresent()) {
-            documentService.update(existing.get().getId(), null, null, body.getYaml(), null);
+            documentService.update(existing.get().getId(), null, null, body.getYaml(), null,
+                    systemActor(httpRequest));
         } else {
             documentService.createText(
                     tenant, HomeBootstrapService.TENANT_PROJECT_NAME, path,
-                    "OAuth provider: " + norm, null, body.getYaml(), createdBy);
+                    "OAuth provider: " + norm, null, body.getYaml(), createdBy,
+                    systemActor(httpRequest));
         }
 
         // clientSecret handling: null = leave alone; empty = explicit
@@ -158,7 +171,7 @@ public class OAuthAdminController {
         if (existing.isEmpty()) {
             return ResponseEntity.notFound().build();
         }
-        documentService.delete(existing.get().getId());
+        documentService.delete(existing.get().getId(), systemActor(httpRequest));
         settingService.delete(tenant, SettingService.SCOPE_PROJECT,
                 HomeBootstrapService.TENANT_PROJECT_NAME,
                 OAuthProviderLoader.clientSecretKey(norm));

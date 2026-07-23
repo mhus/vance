@@ -198,7 +198,8 @@ public class WebToolLogService {
         try {
             documentService.upsertEphemeralText(
                     tenantId, projectId, path, title, tags, body,
-                    /*createdBy*/ "web-tool", expiresAt);
+                    /*createdBy*/ "web-tool", expiresAt,
+                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
         } catch (RuntimeException ex) {
             // Diagnostics writes must never break the calling tool —
             // the engine already has its result; the document is just

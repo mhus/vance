@@ -92,7 +92,8 @@ public class ProjectKitsCatalogService {
                 tenantId, HomeBootstrapService.TENANT_PROJECT_NAME, CATALOG_PATH);
         if (existing.isPresent()) {
             documentService.update(
-                    existing.get().getId(), null, null, yamlText, null);
+                    existing.get().getId(), null, null, yamlText, null,
+                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
             log.info("Updated project-kits catalog tenantId='{}' kits={}",
                     tenantId, catalog.getKits().size());
         } else {
@@ -103,7 +104,8 @@ public class ProjectKitsCatalogService {
                     "Project Kits",
                     null,
                     yamlText,
-                    null);
+                    null,
+                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
             log.info("Created project-kits catalog tenantId='{}' kits={}",
                     tenantId, catalog.getKits().size());
         }
@@ -152,7 +154,8 @@ public class ProjectKitsCatalogService {
                     "Project Kits",
                     null,
                     yamlText,
-                    null);
+                    null,
+                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
             log.info("Seeded project-kits catalog into tenantId='{}' from system tenant",
                     targetTenantId);
         } catch (RuntimeException e) {

@@ -264,7 +264,8 @@ public class ModelDiscoveryService {
                 /* title */ instance + "/" + wireName,
                 /* tags  */ List.of("ai-model", "discovery"),
                 yaml.toString(),
-                DOC_AUTHOR);
+                DOC_AUTHOR,
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
     }
 
     /**

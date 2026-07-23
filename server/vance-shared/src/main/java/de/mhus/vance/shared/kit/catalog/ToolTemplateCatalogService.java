@@ -93,7 +93,8 @@ public class ToolTemplateCatalogService {
                 tenantId, HomeBootstrapService.TENANT_PROJECT_NAME, CATALOG_PATH);
         if (existing.isPresent()) {
             documentService.update(
-                    existing.get().getId(), null, null, yamlText, null);
+                    existing.get().getId(), null, null, yamlText, null,
+                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
             log.info("Updated tool-templates catalog tenantId='{}' templates={}",
                     tenantId, catalog.getTemplates().size());
         } else {
@@ -104,7 +105,8 @@ public class ToolTemplateCatalogService {
                     "Tool Templates",
                     null,
                     yamlText,
-                    null);
+                    null,
+                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
             log.info("Created tool-templates catalog tenantId='{}' templates={}",
                     tenantId, catalog.getTemplates().size());
         }

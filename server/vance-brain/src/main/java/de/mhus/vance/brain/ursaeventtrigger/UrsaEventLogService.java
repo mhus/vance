@@ -193,7 +193,8 @@ public class UrsaEventLogService {
                     List.of("event-log", out.eventName(), out.outcome()),
                     body,
                     "ursaeventtrigger",
-                    expiresAt);
+                    expiresAt,
+                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
         } catch (RuntimeException ex) {
             log.warn("UrsaEventLogService upsert failed for '{}/{}/{}' correlationId={}: {}",
                     out.tenantId(), out.projectId(), out.eventName(), correlationId, ex.toString());

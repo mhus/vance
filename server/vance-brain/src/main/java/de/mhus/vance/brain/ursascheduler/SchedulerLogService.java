@@ -318,7 +318,8 @@ public class SchedulerLogService {
                     List.of("scheduler-log", state.schedulerName),
                     body,
                     /*createdBy*/ "ursascheduler",
-                    expiresAt);
+                    expiresAt,
+                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
         } catch (RuntimeException ex) {
             // Log upsert never blocks the scheduler — diagnostics shouldn't
             // jeopardise the run itself. The event log retains the

@@ -210,7 +210,8 @@ public class BootstrapBrainService {
                 "Agrajag error patterns",
                 List.of("agrajag", "tools", "config"),
                 body,
-                "bootstrap");
+                "bootstrap",
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
         log.info("Bootstrap: seeded agrajag error-patterns document '{}'", docPath);
     }
 
@@ -246,7 +247,8 @@ public class BootstrapBrainService {
                     "Mock OAuth (local)",
                     List.of("oauth", "dev"),
                     MOCK_OAUTH_PROVIDER_YAML,
-                    "bootstrap");
+                    "bootstrap",
+                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
             log.info("Bootstrap: seeded mock OAuth provider document '{}'", docPath);
         }
 
@@ -375,6 +377,7 @@ public class BootstrapBrainService {
                 tags,
                 mimeType,
                 new java.io.ByteArrayInputStream(bytes),
-                createdBy);
+                createdBy,
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
     }
 }

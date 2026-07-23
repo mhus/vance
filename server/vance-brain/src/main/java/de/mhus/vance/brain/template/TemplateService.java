@@ -81,7 +81,8 @@ public class TemplateService {
                 tenantId, project, targetPath,
                 /*title*/ null, /*tags*/ null, mime,
                 new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8)),
-                /*createdBy*/ userId);
+                /*createdBy*/ userId,
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
 
         log.info("Template '{}' applied tenant='{}' project='{}' path='{}'",
                 template.name(), tenantId, project, doc.getPath());

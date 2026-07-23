@@ -30,8 +30,8 @@ public class PermissionService {
     public PermissionService(List<PermissionResolver> providers) {
         if (providers.size() != 1) {
             String detail = providers.isEmpty()
-                    ? "none — load a permission-provider addon (e.g. vance-addon-permission-allowall "
-                            + "for dev/test, vance-addon-simpleauth for production)"
+                    ? "none — load a permission-provider addon "
+                            + "(vance-addon-shared-simpleauth, or an enterprise governor)"
                     : providers.stream().map(p -> p.getClass().getName()).toList()
                             + " — load exactly one";
             throw new IllegalStateException(

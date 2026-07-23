@@ -8,15 +8,33 @@
         <version>1.0.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>vance-addon-permission-allowall</artifactId>
-    <name>vance-addon-permission-allowall</name>
-    <description>Permission provider addon that allows everything. Registers a single AllowAll PermissionResolver via @AutoConfiguration so any context with this JAR on the classpath satisfies the mandatory "exactly one provider" guard. Server-only, depends solely on vance-shared, so it loads into both the Brain and the anus context. For dev/test/open deployments; production swaps it for vance-addon-simpleauth (or an enterprise governor).</description>
+    <artifactId>vance-addon-brain-simpleauth</artifactId>
+    <name>vance-addon-brain-simpleauth</name>
+    <description>Brain-side management surface for the Simple-Auth provider: the permission-grants admin REST endpoint and the permission_grant_* LLM tools. Depends on the shared-level core (vance-addon-simpleauth) for the grant storage/service + on vance-brain for RequestAuthority/tooling. Only loaded in the Brain — the anus CRUD lives in its own module.</description>
     <packaging>jar</packaging>
 
     <dependencies>
         <dependency>
             <groupId>de.mhus.vance</groupId>
+            <artifactId>vance-api</artifactId>
+            <version>${project.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>de.mhus.vance</groupId>
             <artifactId>vance-shared</artifactId>
+            <version>${project.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>de.mhus.vance</groupId>
+            <artifactId>vance-brain</artifactId>
+            <version>${project.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>de.mhus.vance</groupId>
+            <artifactId>vance-addon-shared-simpleauth</artifactId>
             <version>${project.version}</version>
             <scope>provided</scope>
         </dependency>

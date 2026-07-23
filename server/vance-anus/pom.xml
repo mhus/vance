@@ -25,12 +25,11 @@
         </dependency>
         <!-- The anus context scans vance-shared, so it instantiates
              PermissionService and must satisfy the mandatory single-provider
-             guard. Ship the allow-all provider at runtime; once
-             vance-addon-simpleauth exists it (and its anus CRUD commands)
-             replaces this in setups that want real authorization. -->
+             guard. Ship the Simple-Auth provider (shared core) at runtime;
+             the anus CRUD commands land in vance-addon-anus-simpleauth later. -->
         <dependency>
             <groupId>de.mhus.vance</groupId>
-            <artifactId>vance-addon-permission-allowall</artifactId>
+            <artifactId>vance-addon-shared-simpleauth</artifactId>
             <version>${project.version}</version>
             <scope>runtime</scope>
         </dependency>

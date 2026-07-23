@@ -19,12 +19,17 @@
             <artifactId>vance-brain</artifactId>
             <version>${project.version}</version>
         </dependency>
-        <!-- Permission provider: dev/IDE bundle ships allow-all so the
-             mandatory single-provider guard is satisfied without real auth.
-             Production swaps this for vance-addon-simpleauth. -->
+        <!-- Permission provider: Simple-Auth is the only provider. The
+             bootstrap seeds the demo tenant admin (marvin.acme); real
+             role-based enforcement is active in the dev/IDE bundle too. -->
         <dependency>
             <groupId>de.mhus.vance</groupId>
-            <artifactId>vance-addon-permission-allowall</artifactId>
+            <artifactId>vance-addon-shared-simpleauth</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>de.mhus.vance</groupId>
+            <artifactId>vance-addon-brain-simpleauth</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>

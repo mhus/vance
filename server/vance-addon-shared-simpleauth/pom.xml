@@ -8,18 +8,12 @@
         <version>1.0.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>vance-brain-simpleauth</artifactId>
-    <name>vance-brain-simpleauth</name>
-    <description>Brain-side management surface for the Simple-Auth provider: the permission-grants admin REST endpoint and the permission_grant_* LLM tools. Depends on the shared-level core (vance-addon-simpleauth) for the grant storage/service + on vance-brain for RequestAuthority/tooling. Only loaded in the Brain — the anus CRUD lives in its own module.</description>
+    <artifactId>vance-addon-shared-simpleauth</artifactId>
+    <name>vance-addon-shared-simpleauth</name>
+    <description>Bundled role-based permission provider. Contributes the MongoPermissionResolver (rules R1-R7), the permission_grants storage + service, the PermissionBootstrap implementation, the admin REST surface, LLM grant tools, and the anus CRUD commands. Depends only on vance-shared (+ toolpack/web as provided) so it loads into both the Brain and the anus context; web/LLM surfaces are @ConditionalOnWebApplication-gated. Swaps in for the allow-all provider — never both at once (single-provider guard).</description>
     <packaging>jar</packaging>
 
     <dependencies>
-        <dependency>
-            <groupId>de.mhus.vance</groupId>
-            <artifactId>vance-api</artifactId>
-            <version>${project.version}</version>
-            <scope>provided</scope>
-        </dependency>
         <dependency>
             <groupId>de.mhus.vance</groupId>
             <artifactId>vance-shared</artifactId>
@@ -27,16 +21,8 @@
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>de.mhus.vance</groupId>
-            <artifactId>vance-brain</artifactId>
-            <version>${project.version}</version>
-            <scope>provided</scope>
-        </dependency>
-        <dependency>
-            <groupId>de.mhus.vance</groupId>
-            <artifactId>vance-shared-simpleauth</artifactId>
-            <version>${project.version}</version>
-            <scope>provided</scope>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
         </dependency>
 
         <dependency>

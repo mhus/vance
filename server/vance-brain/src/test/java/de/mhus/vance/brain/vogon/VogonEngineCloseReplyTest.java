@@ -66,9 +66,9 @@ class VogonEngineCloseReplyTest {
             + "result:\n"
             + "  text: \"all good\"\n";
 
-    private ThinkProcessDocument processWith(StrategyState state) {
+    private ThinkProcessDocument processWith(StrategyState state, String yaml) {
         Map<String, Object> params = new LinkedHashMap<>();
-        params.put(VogonEngine.PLAN_KEY, YAML_WITH_RESULT);
+        params.put(VogonEngine.PLAN_KEY, yaml);
         params.put(VogonEngine.STATE_KEY, objectMapper.convertValue(state, Map.class));
         ThinkProcessDocument p = ThinkProcessDocument.builder()
                 .tenantId("acme").sessionId("s-1").name("vg-1")
@@ -79,11 +79,23 @@ class VogonEngineCloseReplyTest {
         return p;
     }
 
+    private static final String YAML_WITH_CHECKPOINT_ONFAILURE =
+            "name: t\n"
+            + "phases:\n"
+            + "  - name: gate1\n"
+            + "    checkpoint:\n"
+            + "      type: approval\n"
+            + "      message: \"approve?\"\n"
+            + "result:\n"
+            + "  text: \"all good\"\n"
+            + "  onFailure:\n"
+            + "    text: \"it failed\"\n";
+
     @Test
     void completedStrategy_emitsResultBlockReply_andClosesDone() {
         StrategyState state = StrategyState.builder()
                 .strategy("t").strategyComplete(true).build();
-        ThinkProcessDocument process = processWith(state);
+        ThinkProcessDocument process = processWith(state, YAML_WITH_RESULT);
         ThinkEngineContext ctx = mock(ThinkEngineContext.class);
         when(ctx.drainPending()).thenReturn(List.of());
 
@@ -92,5 +104,30 @@ class VogonEngineCloseReplyTest {
         // The result: block text reaches the parent, and the process closes DONE.
         verify(ctx).emitReply(eq("all good"), isNull(), any());
         verify(thinkProcessService).closeProcess("vg-1", CloseReason.DONE);
+    }
+
+    @Test
+    void failedCheckpointClosePath_emitsOnFailureBlock_andClosesStale() {
+        // A checkpoint answered as failed (rejected approval /
+        // undecidable — HIGH #1/#2) must close STALE via emitFinalReply so
+        // the onFailure block reaches the parent. Before HIGH #3 this
+        // failure close skipped the result block and onFailure was dead
+        // code (code-review Phase 2).
+        Map<String, Object> flags = new LinkedHashMap<>();
+        flags.put("gate1_checkpointAnswered", true);
+        flags.put("gate1_failed", true);
+        StrategyState state = StrategyState.builder()
+                .strategy("t")
+                .currentPhasePath(new java.util.ArrayList<>(List.of("gate1")))
+                .flags(flags)
+                .build();
+        ThinkProcessDocument process = processWith(state, YAML_WITH_CHECKPOINT_ONFAILURE);
+        ThinkEngineContext ctx = mock(ThinkEngineContext.class);
+        when(ctx.drainPending()).thenReturn(List.of());
+
+        engine.runTurn(process, ctx);
+
+        verify(ctx).emitReply(eq("it failed"), isNull(), any());
+        verify(thinkProcessService).closeProcess("vg-1", CloseReason.STALE);
     }
 }

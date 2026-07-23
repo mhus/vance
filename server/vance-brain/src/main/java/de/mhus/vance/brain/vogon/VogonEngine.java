@@ -421,8 +421,7 @@ public class VogonEngine implements ThinkEngine {
                                 ? "no phases executed"
                                 : "phases executed: "
                                         + String.join(", ", state.getPhaseHistory()));
-                emitFinalReply(process, ctx, strategy, state, /*failure*/ false);
-                thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
+                closeWithFinalReply(process, ctx, strategy, state, CloseReason.DONE);
                 return;
             }
 
@@ -439,8 +438,7 @@ public class VogonEngine implements ThinkEngine {
                         "Strategy " + state.getStrategy() + " — DONE",
                         "phases executed: "
                                 + String.join(", ", state.getPhaseHistory()));
-                emitFinalReply(process, ctx, strategy, state, /*failure*/ false);
-                thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
+                closeWithFinalReply(process, ctx, strategy, state, CloseReason.DONE);
                 return;
             }
             // resolveActivePhase may have pushed onto the path; persist
@@ -460,7 +458,7 @@ public class VogonEngine implements ThinkEngine {
             advancePhase(process, ctx, strategy, state, phase);
         } catch (RuntimeException e) {
             log.warn("Vogon runTurn failed id='{}': {}", process.getId(), e.toString(), e);
-            thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
+            closeWithFinalReply(process, ctx, strategy, loadState(process), CloseReason.STALE);
             throw e;
         }
     }
@@ -490,7 +488,7 @@ public class VogonEngine implements ThinkEngine {
                 if (isFlagTrue(state, phaseFlag(phaseName, "failed"))) {
                     log.warn("Vogon id='{}' phase '{}' worker FAILED — process stale",
                             process.getId(), phaseName);
-                    thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
+                    closeWithFinalReply(process, ctx, strategy, state, CloseReason.STALE);
                     return;
                 }
                 // Defensive: shouldn't happen with synchronous spawn,
@@ -502,7 +500,7 @@ public class VogonEngine implements ThinkEngine {
             // instead of running the normal checkpoint/gate/advance flow.
             if (override != null
                     && override.kind() != BranchActionExecutor.ResultKind.CONTINUE) {
-                applyBranchOverride(process, strategy, state, phase, override);
+                applyBranchOverride(process, ctx, strategy, state, phase, override);
                 return;
             }
         }
@@ -525,7 +523,7 @@ public class VogonEngine implements ThinkEngine {
                 && isFlagTrue(state, phaseFlag(phaseName, "failed"))) {
             log.warn("Vogon id='{}' phase '{}' checkpoint FAILED/rejected — process stale",
                     process.getId(), phaseName);
-            thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
+            closeWithFinalReply(process, ctx, strategy, state, CloseReason.STALE);
             return;
         }
 
@@ -541,7 +539,7 @@ public class VogonEngine implements ThinkEngine {
         }
 
         // 4. Advance to next phase.
-        advanceToNext(process, strategy, state, phase);
+        advanceToNext(process, ctx, strategy, state, phase);
         // Schedule the next turn so the new phase is picked up.
         eventEmitter.scheduleTurn(process.getId());
     }
@@ -924,6 +922,27 @@ public class VogonEngine implements ThinkEngine {
             log.warn("Vogon id='{}' emitFinalReply failed: {}",
                     process.getId(), e.toString());
         }
+    }
+
+    /**
+     * Emits the strategy's {@code result:} / {@code onFailure:} block to
+     * the parent and then closes the process. Every DONE/FAILED
+     * termination must go through here so the structured result reaches the
+     * parent regardless of which path ended the strategy — natural list
+     * end, scorer {@code exitStrategy}/{@code exitLoop}, loop exhaustion,
+     * or worker/checkpoint failure. Before this, only the natural end
+     * emitted and the {@code onFailure} branch was dead code (code-review
+     * Phase 2). {@code emitFinalReply} is idempotent, so double-routing is
+     * safe. {@code failure} is derived from the close reason.
+     */
+    private void closeWithFinalReply(
+            ThinkProcessDocument process,
+            ThinkEngineContext ctx,
+            StrategySpec strategy,
+            StrategyState state,
+            CloseReason reason) {
+        emitFinalReply(process, ctx, strategy, state, reason != CloseReason.DONE);
+        thinkProcessService.closeProcess(process.getId(), reason);
     }
 
     private @Nullable String readLastAssistantText(
@@ -1495,6 +1514,7 @@ public class VogonEngine implements ThinkEngine {
      */
     private void applyBranchOverride(
             ThinkProcessDocument process,
+            ThinkEngineContext ctx,
             StrategySpec strategy,
             StrategyState state,
             PhaseSpec donePhase,
@@ -1517,7 +1537,7 @@ public class VogonEngine implements ThinkEngine {
                 persistState(process, state);
                 log.info("Vogon id='{}' phase '{}' scorer EXIT_LOOP {} → outer outcome {}",
                         process.getId(), donePhase.getName(), outcome, out);
-                handleAdvancerOutcome(process, strategy, state, out);
+                handleAdvancerOutcome(process, ctx, strategy, state, out);
             }
             case EXIT_STRATEGY -> {
                 BranchAction.ExitOutcome outcome = override.exitOutcome() == null
@@ -1527,7 +1547,7 @@ public class VogonEngine implements ThinkEngine {
                 persistState(process, state);
                 log.info("Vogon id='{}' phase '{}' scorer EXIT_STRATEGY {}",
                         process.getId(), donePhase.getName(), outcome);
-                thinkProcessService.closeProcess(process.getId(),
+                closeWithFinalReply(process, ctx, strategy, state,
                         outcome == BranchAction.ExitOutcome.FAIL
                                 ? CloseReason.STALE : CloseReason.DONE);
             }
@@ -1540,7 +1560,7 @@ public class VogonEngine implements ThinkEngine {
                         process.getId(), donePhase.getName(), override.detail());
                 state.getFlags().put("__scorerEscalation__", override.detail());
                 persistState(process, state);
-                thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
+                closeWithFinalReply(process, ctx, strategy, state, CloseReason.STALE);
             }
             case PAUSED -> {
                 log.info("Vogon id='{}' phase '{}' scorer PAUSED reason='{}'",
@@ -1553,6 +1573,7 @@ public class VogonEngine implements ThinkEngine {
 
     private void handleAdvancerOutcome(
             ThinkProcessDocument process,
+            ThinkEngineContext ctx,
             StrategySpec strategy,
             StrategyState state,
             PhaseAdvancer.Outcome out) {
@@ -1561,19 +1582,20 @@ public class VogonEngine implements ThinkEngine {
             case STRATEGY_DONE -> {
                 log.info("Vogon id='{}' strategy '{}' done after scorer-forced exit",
                         process.getId(), strategy.getName());
-                thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
+                closeWithFinalReply(process, ctx, strategy, state, CloseReason.DONE);
             }
             case STRATEGY_FAILED, ESCALATION_NEEDED -> {
                 log.warn("Vogon id='{}' strategy '{}' STALE after scorer-forced exit "
                                 + "(outcome={})",
                         process.getId(), strategy.getName(), out);
-                thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
+                closeWithFinalReply(process, ctx, strategy, state, CloseReason.STALE);
             }
         }
     }
 
     private void advanceToNext(
             ThinkProcessDocument process,
+            ThinkEngineContext ctx,
             StrategySpec strategy,
             StrategyState state,
             PhaseSpec done) {
@@ -1587,7 +1609,7 @@ public class VogonEngine implements ThinkEngine {
             case STRATEGY_FAILED -> {
                 log.warn("Vogon id='{}' strategy '{}' loop EXIT_FAIL — failing process",
                         process.getId(), strategy.getName());
-                thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
+                closeWithFinalReply(process, ctx, strategy, state, CloseReason.STALE);
             }
             case ESCALATION_NEEDED -> {
                 // Phase B: §2.8 escalation block isn't wired yet, so we
@@ -1597,7 +1619,7 @@ public class VogonEngine implements ThinkEngine {
                 log.warn("Vogon id='{}' loop exhausted in strategy '{}' — "
                                 + "no escalation block yet, notifying parent",
                         process.getId(), strategy.getName());
-                thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
+                closeWithFinalReply(process, ctx, strategy, state, CloseReason.STALE);
             }
         }
     }

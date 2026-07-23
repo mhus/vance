@@ -204,8 +204,6 @@ public class DocumentController {
             @Valid @RequestBody DocumentCreateRequest request,
             HttpServletRequest httpRequest) {
 
-        authority.enforce(httpRequest,
-                new Resource.Document(tenant, projectId, request.getPath()), Action.CREATE);
         String username = (String) httpRequest.getAttribute(AccessFilterBase.ATTR_USERNAME);
         // No explicit mime → derive from path extension. The previous
         // "text/markdown" default mis-typed every .js/.json/.yaml file
@@ -230,7 +228,8 @@ public class DocumentController {
                     new java.io.ByteArrayInputStream(bytes),
                     username,
                     request.getAutoSummary(),
-                    ragEnabledOverride);
+                    ragEnabledOverride,
+                    actor(httpRequest));
         } catch (DocumentService.DocumentAlreadyExistsException e) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
         } catch (IllegalArgumentException e) {
@@ -267,8 +266,6 @@ public class DocumentController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Cannot infer document path — neither `path` nor an upload filename was provided.");
         }
-        authority.enforce(httpRequest,
-                new Resource.Document(tenant, projectId, resolvedPath), Action.CREATE);
         String resolvedMime = mimeType == null || mimeType.isBlank() ? file.getContentType() : mimeType;
         List<String> tags = parseTagsCsv(tagsCsv);
 
@@ -282,7 +279,8 @@ public class DocumentController {
                     tags,
                     resolvedMime,
                     file.getInputStream(),
-                    username);
+                    username,
+                    actor(httpRequest));
         } catch (DocumentService.DocumentAlreadyExistsException e) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
         } catch (IllegalArgumentException e) {
@@ -418,9 +416,6 @@ public class DocumentController {
         if (!tenant.equals(existing.getTenantId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
-        authority.enforce(httpRequest,
-                new Resource.Document(tenant, existing.getProjectId(), existing.getPath()), Action.WRITE);
-
         // Pull a clean mime out of the Content-Type header — strip the
         // optional ";charset=…" suffix the browser tacks on for text bodies.
         String mime = contentType;
@@ -435,7 +430,8 @@ public class DocumentController {
 
         DocumentDocument updated;
         try (InputStream body = httpRequest.getInputStream()) {
-            updated = documentService.replaceContent(id, body, mime, writerIdentity(httpRequest, editorId));
+            updated = documentService.replaceContent(id, body, mime,
+                    writerIdentity(httpRequest, editorId), actor(httpRequest));
         }
         return ResponseEntity.ok(toDto(updated));
     }
@@ -453,14 +449,11 @@ public class DocumentController {
         if (!tenant.equals(existing.getTenantId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
-        authority.enforce(httpRequest,
-                new Resource.Document(tenant, existing.getProjectId(), existing.getPath()), Action.WRITE);
-
         // RAG tri-state is applied as a separate atomic update so we can
         // distinguish "set to null" (auto) from "leave untouched" — the
         // overloaded update(...) method only carries a nullable Boolean
         // which collapses those two cases.
-        applyRagEnabledOverride(id, request.getRagEnabled());
+        applyRagEnabledOverride(id, request.getRagEnabled(), actor(httpRequest));
 
         // Accent color rides on the same single-field-atomic pattern —
         // keeps the update(...) overload chain stable and matches how
@@ -468,9 +461,9 @@ public class DocumentController {
         // enum can't distinguish "absent" from "explicit null", so
         // clearing goes through a separate boolean flag.
         if (Boolean.TRUE.equals(request.getClearColor())) {
-            documentService.clearColor(id);
+            documentService.clearColor(id, actor(httpRequest));
         } else {
-            documentService.setColor(id, request.getColor());
+            documentService.setColor(id, request.getColor(), actor(httpRequest));
         }
 
         DocumentDocument updated;
@@ -485,7 +478,8 @@ public class DocumentController {
                     request.getSummaryDirty(),
                     /* ragEnabled handled atomically above */ null,
                     request.getMimeType(),
-                    writerIdentity(httpRequest, editorId));
+                    writerIdentity(httpRequest, editorId),
+                    actor(httpRequest));
         } catch (DocumentService.DocumentAlreadyExistsException e) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
         } catch (IllegalArgumentException e) {
@@ -517,10 +511,7 @@ public class DocumentController {
         if (!tenant.equals(existing.getTenantId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
-        authority.enforce(httpRequest,
-                new Resource.Document(tenant, existing.getProjectId(), existing.getPath()), Action.WRITE);
-
-        DocumentDocument updated = documentService.setLockedFor(id, request.getLockedFor());
+        DocumentDocument updated = documentService.setLockedFor(id, request.getLockedFor(), actor(httpRequest));
         return ResponseEntity.ok(toDto(updated));
     }
 
@@ -568,6 +559,18 @@ public class DocumentController {
     }
 
     /**
+     * The mandatory {@link de.mhus.vance.shared.permission.WriteActor} for a
+     * user-initiated write from this REST surface — the JWT-authenticated
+     * {@link de.mhus.vance.shared.permission.SecurityContext} with
+     * {@code WriteReason.USER}. DocumentService enforces authorization at the
+     * source against this actor (F1 no-bypass), which is why these handlers no
+     * longer re-check writes at the surface (the source runs the identical check).
+     */
+    private de.mhus.vance.shared.permission.WriteActor actor(HttpServletRequest request) {
+        return de.mhus.vance.shared.permission.WriteActor.user(authority.contextOf(request));
+    }
+
+    /**
      * Optional REST header carrying the writer's WebSocket-connection
      * identity (the {@code editorId} from the {@code welcome} frame).
      * Forwarded to {@link DocumentService} so the live-broadcast can
@@ -596,9 +599,6 @@ public class DocumentController {
         if (!tenant.equals(existing.getTenantId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
-        authority.enforce(httpRequest,
-                new Resource.Document(tenant, existing.getProjectId(), existing.getPath()), Action.READ);
-
         String userId;
         try {
             userId = authority.contextOf(httpRequest).subjectId();
@@ -607,7 +607,7 @@ public class DocumentController {
         }
         try {
             de.mhus.vance.shared.document.DocumentNote note = documentService.addNote(
-                    id, request.getText(), userId, request.getLine(), editorId);
+                    id, request.getText(), userId, request.getLine(), editorId, actor(httpRequest));
             return ResponseEntity.status(HttpStatus.CREATED).body(noteToDto(note));
         } catch (DocumentService.NotesLimitExceededException e) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
@@ -629,12 +629,9 @@ public class DocumentController {
         if (!tenant.equals(existing.getTenantId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
-        authority.enforce(httpRequest,
-                new Resource.Document(tenant, existing.getProjectId(), existing.getPath()), Action.READ);
-
         de.mhus.vance.shared.document.DocumentNote updated = documentService.updateNote(
                 id, noteId, request.getText(), request.getDone(), request.getLine(),
-                request.getOrder(), editorId)
+                request.getOrder(), editorId, actor(httpRequest))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Unknown note id='" + noteId + "' on document id='" + id + "'"));
         return ResponseEntity.ok(noteToDto(updated));
@@ -652,9 +649,7 @@ public class DocumentController {
         if (!tenant.equals(existing.getTenantId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
-        authority.enforce(httpRequest,
-                new Resource.Document(tenant, existing.getProjectId(), existing.getPath()), Action.READ);
-        documentService.deleteNote(id, noteId, editorId);
+        documentService.deleteNote(id, noteId, editorId, actor(httpRequest));
         return ResponseEntity.noContent().build();
     }
 
@@ -690,10 +685,7 @@ public class DocumentController {
         if (!tenant.equals(existing.getTenantId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
-        authority.enforce(httpRequest,
-                new Resource.Document(tenant, existing.getProjectId(), existing.getPath()),
-                Action.WRITE);
-        documentService.setSummary(id, request.getSummary());
+        documentService.setSummary(id, request.getSummary(), actor(httpRequest));
         DocumentDocument refreshed = documentService.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         return toDto(refreshed);
@@ -710,13 +702,11 @@ public class DocumentController {
         if (!tenant.equals(existing.getTenantId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
-        authority.enforce(httpRequest,
-                new Resource.Document(tenant, existing.getProjectId(), existing.getPath()), Action.DELETE);
         DocumentService.WriterIdentity identity = writerIdentity(httpRequest, editorId);
         if (DocumentService.isTrash(existing.getPath())) {
-            documentService.delete(id, identity);
+            documentService.delete(id, identity, actor(httpRequest));
         } else {
-            documentService.trash(id, identity);
+            documentService.trash(id, identity, actor(httpRequest));
         }
         return ResponseEntity.noContent().build();
     }
@@ -808,14 +798,12 @@ public class DocumentController {
             @PathVariable("archiveId") String archiveId,
             HttpServletRequest httpRequest) {
         DocumentDocument doc = loadDocumentForTenant(tenant, id);
-        authority.enforce(httpRequest,
-                new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.WRITE);
         // Lineage check (also performed by DocumentService.restoreArchive)
         // — fail fast with 404 if the archive id does not belong to this doc.
         loadArchiveForLineage(doc, archiveId);
         DocumentDocument restored;
         try {
-            restored = documentService.restoreArchive(id, archiveId);
+            restored = documentService.restoreArchive(id, archiveId, actor(httpRequest));
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
@@ -992,9 +980,10 @@ public class DocumentController {
      * request. Absent or blank input is a no-op (leaves the current
      * setting untouched); a present {@code "auto"} clears the override.
      */
-    private void applyRagEnabledOverride(String docId, @Nullable String raw) {
+    private void applyRagEnabledOverride(String docId, @Nullable String raw,
+            de.mhus.vance.shared.permission.WriteActor actor) {
         if (raw == null || raw.trim().isEmpty()) return;
-        documentService.setRagEnabledOverride(docId, parseRagEnabledTriState(raw));
+        documentService.setRagEnabledOverride(docId, parseRagEnabledTriState(raw), actor);
     }
 
     /**

@@ -534,6 +534,140 @@ public class DocumentService {
     /** Return shape for {@link #searchProjectDocuments}. */
     public record DocumentListing(List<DocumentMatch> items, long total) {}
 
+    /**
+     * Metadata + summary full-text search — the shared retrieval path for
+     * folder-as-application addons (journal, gtd, scrum). Unlike
+     * {@link #searchProjectDocuments} (path + title only), this matches the
+     * free-text {@code query} across {@code title}, the LLM-written
+     * {@code summary} and {@code tags}, and returns a {@code snippet} per hit.
+     *
+     * <p><b>Why not the body?</b> A document's content lives in
+     * {@code StorageService}, gzip-compressed above the compression threshold
+     * — it is not a MongoDB field and cannot be regex-matched here. The
+     * {@code summary} (produced by the auto-summary scheduler, stored
+     * uncompressed) is the searchable proxy for the prose; deeper full-text /
+     * semantic recall belongs to the RAG subsystem, not this method.
+     *
+     * <p>All constraints are AND-combined; {@code query} itself is an OR over
+     * the three text fields. {@code pathPrefix} scopes to a suite folder,
+     * {@code requireTags} demands every listed tag (native {@code tags} array),
+     * {@code headerEquals} pins normalised front-matter values
+     * ({@code headers.<key> == value}). Any argument may be {@code null}/empty
+     * to skip that facet.
+     *
+     * @param headerEquals raw front-matter keys → exact values; keys are
+     *                     normalised the same way the header parser stores
+     *                     them (lower-case, dots→underscores).
+     */
+    public DocumentMetaListing searchProjectDocumentsMeta(
+            String tenantId, String projectId,
+            @Nullable String pathPrefix,
+            @Nullable String query,
+            @Nullable List<String> requireTags,
+            @Nullable Map<String, String> headerEquals,
+            int limit) {
+        int safeLimit = Math.max(1, Math.min(limit, 200));
+        Query q = new Query()
+                .addCriteria(Criteria.where("tenantId").is(tenantId))
+                .addCriteria(Criteria.where("projectId").is(projectId))
+                .addCriteria(Criteria.where("status").is(DocumentStatus.ACTIVE));
+
+        List<Criteria> pathConstraints = new ArrayList<>();
+        pathConstraints.add(Criteria.where("path")
+                .not().regex("^" + java.util.regex.Pattern.quote(TRASH_FOLDER_PREFIX)));
+        if (pathPrefix != null && !pathPrefix.isBlank()) {
+            String prefix = pathPrefix.startsWith("/") ? pathPrefix.substring(1) : pathPrefix;
+            pathConstraints.add(Criteria.where("path")
+                    .regex("^" + java.util.regex.Pattern.quote(prefix)));
+        }
+        q.addCriteria(pathConstraints.size() == 1
+                ? pathConstraints.get(0)
+                : new Criteria().andOperator(pathConstraints.toArray(new Criteria[0])));
+
+        String needle = query == null ? "" : query.trim();
+        if (!needle.isEmpty()) {
+            String rx = java.util.regex.Pattern.quote(needle);
+            q.addCriteria(new Criteria().orOperator(
+                    Criteria.where("title").regex(rx, "i"),
+                    Criteria.where("summary").regex(rx, "i"),
+                    Criteria.where("tags").regex(rx, "i")));
+        }
+        if (requireTags != null) {
+            List<String> tags = requireTags.stream()
+                    .filter(t -> t != null && !t.isBlank()).map(String::trim).toList();
+            if (!tags.isEmpty()) q.addCriteria(Criteria.where("tags").all(tags));
+        }
+        if (headerEquals != null) {
+            for (Map.Entry<String, String> e : headerEquals.entrySet()) {
+                if (e.getKey() == null || e.getValue() == null) continue;
+                String key = DocumentHeaderParser.normalizeKey(e.getKey());
+                if (key.isEmpty()) continue;
+                q.addCriteria(Criteria.where("headers." + key).is(e.getValue()));
+            }
+        }
+
+        long total = mongoTemplate.count(Query.of(q), DocumentDocument.class);
+        q.with(Sort.by("path").ascending()).limit(safeLimit);
+        List<DocumentDocument> docs = mongoTemplate.find(q, DocumentDocument.class);
+        List<DocumentMetaMatch> matches = new ArrayList<>(docs.size());
+        for (DocumentDocument d : docs) {
+            matches.add(new DocumentMetaMatch(
+                    d.getId(), d.getPath(), d.getTitle(), d.getKind(), d.getMimeType(),
+                    buildSnippet(d, needle), scoreOf(d, needle)));
+        }
+        return new DocumentMetaListing(matches, total);
+    }
+
+    /** Score a metadata hit: title match beats summary match. Pure, testable. */
+    static int scoreOf(DocumentDocument doc, String needle) {
+        if (needle.isEmpty()) return 0;
+        String low = needle.toLowerCase(java.util.Locale.ROOT);
+        int score = 0;
+        if (doc.getTitle() != null && doc.getTitle().toLowerCase(java.util.Locale.ROOT).contains(low)) {
+            score += 2;
+        }
+        if (doc.getSummary() != null && doc.getSummary().toLowerCase(java.util.Locale.ROOT).contains(low)) {
+            score += 1;
+        }
+        return score;
+    }
+
+    /**
+     * A short excerpt around the first {@code needle} hit in the summary,
+     * falling back to the summary head, then the title. Never returns
+     * {@code null} content — an empty string when there's nothing to show.
+     */
+    static String buildSnippet(DocumentDocument doc, String needle) {
+        String summary = doc.getSummary();
+        if (summary != null && !summary.isBlank()) {
+            String flat = summary.replaceAll("\\s+", " ").trim();
+            if (!needle.isEmpty()) {
+                int at = flat.toLowerCase(java.util.Locale.ROOT)
+                        .indexOf(needle.toLowerCase(java.util.Locale.ROOT));
+                if (at >= 0) {
+                    int start = Math.max(0, at - 40);
+                    int end = Math.min(flat.length(), at + needle.length() + 80);
+                    String core = flat.substring(start, end);
+                    return (start > 0 ? "…" : "") + core + (end < flat.length() ? "…" : "");
+                }
+            }
+            return flat.length() > 160 ? flat.substring(0, 160) + "…" : flat;
+        }
+        return doc.getTitle() != null ? doc.getTitle() : "";
+    }
+
+    /** Slim projection for {@link #searchProjectDocumentsMeta} — carries a snippet + score. */
+    public record DocumentMetaMatch(
+            String id, String path,
+            @Nullable String title,
+            @Nullable String kind,
+            @Nullable String mimeType,
+            String snippet,
+            int score) {}
+
+    /** Return shape for {@link #searchProjectDocumentsMeta}. */
+    public record DocumentMetaListing(List<DocumentMetaMatch> items, long total) {}
+
     /** All {@link DocumentStatus#ACTIVE} documents in the project that declared {@code kind: <kind>}. */
     public List<DocumentDocument> listByKind(String tenantId, String projectId, String kind) {
         return repository.findByTenantIdAndProjectIdAndStatusAndKind(
@@ -743,6 +877,21 @@ public class DocumentService {
             @Nullable String createdBy) {
         return create(tenantId, projectId, path, title, tags, mimeType, content, createdBy,
                 /*autoSummaryOverride*/ null, /*ragEnabledOverride*/ null);
+    }
+
+    /** Actor-carrying 8-arg create — enforces {@code CREATE} at the source (F1). */
+    public DocumentDocument create(
+            String tenantId,
+            String projectId,
+            String path,
+            @Nullable String title,
+            @Nullable List<String> tags,
+            @Nullable String mimeType,
+            InputStream content,
+            @Nullable String createdBy,
+            de.mhus.vance.shared.permission.WriteActor actor) {
+        return create(tenantId, projectId, path, title, tags, mimeType, content, createdBy,
+                null, null, actor);
     }
 
     /**
@@ -2152,6 +2301,14 @@ public class DocumentService {
      * for the audit trail. An empty/blank summary clears the field.
      */
     public void setSummary(String id, @Nullable String summary) {
+        // Transitional (F1 stage 2c): defaults to SYSTEM until callers migrate.
+        setSummary(id, summary, de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+    }
+
+    /** Actor-carrying summary set — enforces {@code WRITE} at the source (F1). */
+    public void setSummary(String id, @Nullable String summary,
+            de.mhus.vance.shared.permission.WriteActor actor) {
+        if (enforceWriteById(id, de.mhus.vance.shared.permission.Action.WRITE, actor) == null) return;
         String normalised = (summary != null && !summary.isBlank())
                 ? summary.trim() : null;
         Update update = new Update()
@@ -3455,7 +3612,9 @@ public class DocumentService {
             @Nullable Integer line,
             @Nullable String editorId,
             de.mhus.vance.shared.permission.WriteActor actor) {
-        if (enforceWriteById(docId, de.mhus.vance.shared.permission.Action.WRITE, actor) == null) {
+        // Notes are annotations: a reader may comment on a document they can
+        // see, so the bar is Document READ (matches the REST surface), not WRITE.
+        if (enforceWriteById(docId, de.mhus.vance.shared.permission.Action.READ, actor) == null) {
             throw new IllegalArgumentException("Unknown document id='" + docId + "'");
         }
         Instant now = Instant.now();
@@ -3561,7 +3720,8 @@ public class DocumentService {
             @Nullable Double newOrder,
             @Nullable String editorId,
             de.mhus.vance.shared.permission.WriteActor actor) {
-        if (enforceWriteById(docId, de.mhus.vance.shared.permission.Action.WRITE, actor) == null) {
+        // Notes are annotations → Document READ (see addNote), not WRITE.
+        if (enforceWriteById(docId, de.mhus.vance.shared.permission.Action.READ, actor) == null) {
             return Optional.empty();
         }
         Update update = new Update().set("notes." + noteId + ".updatedAt", Instant.now());
@@ -3613,8 +3773,9 @@ public class DocumentService {
         // Resolve the doc once so the event can carry tenantId/projectId/path.
         DocumentDocument doc = repository.findById(docId).orElse(null);
         if (doc == null) return false;
+        // Notes are annotations → Document READ (see addNote), not WRITE.
         enforceWrite(doc.getTenantId(), doc.getProjectId(), doc.getPath(),
-                de.mhus.vance.shared.permission.Action.WRITE, actor);
+                de.mhus.vance.shared.permission.Action.READ, actor);
         Query query = Query.query(Criteria.where("_id").is(docId)
                 .and("notes." + noteId).exists(true));
         Update update = new Update().unset("notes." + noteId);

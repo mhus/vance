@@ -55,4 +55,42 @@ class DocumentSearchCriteriaTest {
         assertThat(assemble("studium-ws26/", "noten").getQueryObject())
                 .containsKey("$and");
     }
+
+    // ── searchProjectDocumentsMeta helpers (scoreOf / buildSnippet) ──
+
+    private static DocumentDocument doc(String title, String summary) {
+        return DocumentDocument.builder().title(title).summary(summary).build();
+    }
+
+    @Test
+    void scoreOf_titleMatchOutranksSummaryMatch() {
+        assertThat(DocumentService.scoreOf(doc("Dentist visit", "went well"), "dentist"))
+                .isEqualTo(2);
+        assertThat(DocumentService.scoreOf(doc("Monday", "saw the dentist today"), "dentist"))
+                .isEqualTo(1);
+        assertThat(DocumentService.scoreOf(doc("Dentist", "dentist again"), "dentist"))
+                .isEqualTo(3);
+    }
+
+    @Test
+    void scoreOf_noNeedle_isZero() {
+        assertThat(DocumentService.scoreOf(doc("anything", "anything"), "")).isZero();
+    }
+
+    @Test
+    void buildSnippet_windowsAroundTheHitInSummary() {
+        String summary = "Started the morning with coffee and a slow walk to the office, then a "
+                + "long meeting about the quarterly budget, and afterwards a long stretch of "
+                + "focused work, some running in the park, dinner, and finally reading a book.";
+        String snippet = DocumentService.buildSnippet(doc("Tuesday", summary), "budget");
+        assertThat(snippet).contains("budget").startsWith("…").endsWith("…");
+    }
+
+    @Test
+    void buildSnippet_fallsBackToSummaryHeadThenTitle() {
+        assertThat(DocumentService.buildSnippet(doc("T", "short summary"), "absent"))
+                .isEqualTo("short summary");
+        assertThat(DocumentService.buildSnippet(doc("Only title", null), "x"))
+                .isEqualTo("Only title");
+    }
 }

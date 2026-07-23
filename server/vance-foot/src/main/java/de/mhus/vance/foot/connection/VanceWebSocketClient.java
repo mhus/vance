@@ -1,4 +1,4 @@
-package de.mhus.vance.api.ws.client;
+package de.mhus.vance.foot.connection;
 
 import de.mhus.vance.api.ws.HandshakeHeaders;
 import de.mhus.vance.api.ws.LiveEnvelope;

@@ -143,6 +143,19 @@ public class AgentTaskExecutor implements MagratheaTypeExecutor {
         } catch (RuntimeException ex) {
             log.warn("Magrathea agent_task '{}' engine.start failed: {}",
                     state.name(), ex.getMessage());
+            // Unlink before closing so the completion listener won't match
+            // the abandoned process to this task, then close it so it does
+            // not linger as an unstarted orphan (holding a session slot).
+            // The returned failure is the task's single authoritative
+            // terminal outcome.
+            taskService.unlinkSubProcess(context.taskId());
+            try {
+                thinkProcessService.closeProcess(
+                        spawned.getId(), de.mhus.vance.api.thinkprocess.CloseReason.ABANDONED);
+            } catch (RuntimeException closeEx) {
+                log.warn("Magrathea agent_task '{}' could not close orphaned process '{}': {}",
+                        state.name(), spawned.getId(), closeEx.toString());
+            }
             return Optional.of(TaskOutcome.failure(
                     "Engine start failed: " + ex.getMessage()));
         }

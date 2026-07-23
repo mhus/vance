@@ -128,6 +128,21 @@ class MagratheaInboxCompletionListenerTest {
     }
 
     @Test
+    void approval_decided_without_approved_flag_yields_undecidable_not_approved() {
+        wireTask("inbox-8", "task-8");
+        InboxItemDocument item = workflowGateItem("inbox-8", InboxItemType.APPROVAL);
+        AnswerPayload answer = new AnswerPayload();
+        answer.setOutcome(AnswerOutcome.DECIDED);
+        answer.setValue(new LinkedHashMap<>()); // DECIDED but no 'approved' key
+        item.setAnswer(answer);
+
+        listener.onAnswered(new InboxItemAnsweredEvent(item));
+
+        // Must never silently pass the gate the human didn't approve.
+        assertThat(capture().outcome()).isEqualTo("undecidable");
+    }
+
+    @Test
     void answer_without_payload_yields_agent_error() {
         wireTask("inbox-7", "task-7");
         InboxItemDocument item = workflowGateItem("inbox-7", InboxItemType.APPROVAL);

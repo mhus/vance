@@ -101,10 +101,12 @@ public class MagratheaInboxCompletionListener {
                 if (approved instanceof Boolean b) {
                     return b ? "approved" : "rejected";
                 }
-                // Lenient fallback — APPROVAL DECIDED without `approved` boolean
-                // shouldn't happen, but treat as approved by default to avoid
-                // wedging the run.
-                return "approved";
+                // A DECIDED approval with no `approved` boolean is ambiguous.
+                // Never default to "approved" — that would silently pass a
+                // gate the human never actually approved. Treat it as
+                // undecidable so the workflow's catch/undecidable path (or a
+                // wedge that surfaces) handles it instead.
+                return "undecidable";
             case DECISION:
                 Object chosen = value == null ? null : value.get("chosen");
                 if (chosen instanceof String s && !s.isBlank()) {

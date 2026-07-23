@@ -128,6 +128,11 @@ class AgentTaskExecutorTest {
 
         assertThat(outcome.get().outcome()).isEqualTo(TaskCompletedEvent.OUTCOME_FAILURE);
         assertThat(outcome.get().errorMessage()).contains("Engine start failed");
+        // The unstarted process must not linger as an orphan, and it must
+        // be unlinked so the completion listener won't match it later.
+        verify(taskService).unlinkSubProcess("task-1");
+        verify(thinkProcessService).closeProcess(
+                "proc-1", de.mhus.vance.api.thinkprocess.CloseReason.ABANDONED);
     }
 
     // ─────── helpers ───────

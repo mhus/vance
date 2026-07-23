@@ -61,6 +61,18 @@ public class MagratheaTaskService {
         mongoTemplate.updateFirst(q, u, MagratheaTaskDocument.class);
     }
 
+    /**
+     * Reverse of {@link #linkSubProcess}: clears the sub-process link and
+     * the WAITING_SUBPROCESS run-status. Used when spawning failed after
+     * the link but before the process could start, so the completion
+     * listener won't later match the abandoned process to this task.
+     */
+    public void unlinkSubProcess(String taskId) {
+        Query q = new Query(Criteria.where("_id").is(taskId));
+        Update u = new Update().unset("subProcessId").unset("runStatus");
+        mongoTemplate.updateFirst(q, u, MagratheaTaskDocument.class);
+    }
+
     /** Inbox-equivalent of {@link #linkSubProcess} — used by {@code GateTaskExecutor}. */
     public void linkInboxItem(String taskId, String inboxItemId) {
         Query q = new Query(Criteria.where("_id").is(taskId));
@@ -101,9 +113,11 @@ public class MagratheaTaskService {
     /**
      * Atomic CLAIMED → PENDING reclaim. Caller has already filtered by
      * staleness; the CAS predicates on status + version so two pods
-     * racing on the same stale row produce one winner. The
-     * {@code attemptCount} is incremented so a chronically-failing
-     * task eventually trips {@link #failTerminally}.
+     * racing on the same stale row produce one winner. Reclaim itself
+     * does <em>not</em> touch {@code attemptCount} — the following
+     * {@link #claim(String, String, Instant)} increments it, so a
+     * chronically-failing task still trips the scanner's max-attempts
+     * cut-off after enough reclaim→claim cycles.
      *
      * @return the post-CAS document if this caller won the race
      */

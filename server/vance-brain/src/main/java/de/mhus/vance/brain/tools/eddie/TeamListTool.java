@@ -39,6 +39,24 @@ public class TeamListTool implements Tool {
 
     private final EddieContext eddieContext;
     private final TeamService teamService;
+    private final de.mhus.vance.shared.permission.PermissionService permissionService;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
+
+    /**
+     * Tenant-wide team listing is admin-territory (mirrors the REST
+     * TeamController). A non-admin caller sees only their own teams; an
+     * admin sees all. Resolver decides (Tenant ADMIN); shadow keeps it
+     * full. (permission-system finding — team_list tenant-wide leak)
+     */
+    private List<TeamDocument> tenantWideVisibleTo(ToolInvocationContext ctx, List<TeamDocument> all) {
+        if (permissionService.check(
+                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()),
+                new de.mhus.vance.shared.permission.Resource.Tenant(ctx.tenantId()),
+                de.mhus.vance.shared.permission.Action.ADMIN)) {
+            return all;
+        }
+        return ctx.userId() == null ? List.of() : teamService.byMember(ctx.tenantId(), ctx.userId());
+    }
 
     @Override
     public String name() {
@@ -76,7 +94,7 @@ public class TeamListTool implements Tool {
         List<TeamDocument> filtered;
         String scope;
         if (wantsAll) {
-            filtered = teams;
+            filtered = tenantWideVisibleTo(ctx, teams);
             scope = "tenant";
         } else {
             ProjectDocument project;
@@ -86,7 +104,7 @@ public class TeamListTool implements Tool {
                 // No active project and no explicit one passed → fall
                 // back to tenant-wide; keep the result useful instead
                 // of failing on first call.
-                filtered = teams;
+                filtered = tenantWideVisibleTo(ctx, teams);
                 scope = "tenant";
                 return buildOut(filtered, scope, null);
             }

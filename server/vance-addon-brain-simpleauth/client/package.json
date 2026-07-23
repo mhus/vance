@@ -1,0 +1,45 @@
+{
+  "name": "@vance-addon/simpleauth",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Client surface of the Simple-Auth Brain addon — the federated permission-grant management area consumed by vance-face.",
+  "license": "SEE LICENSE IN ../../../../client/LICENSE.txt",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./dist/index.d.ts",
+  "vanceTile": {
+    "label": "Permissions",
+    "description": "Grant and revoke roles for users and teams.",
+    "minLevel": "admin"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./src/index.ts"
+    },
+    "./PermissionsArea.vue": {
+      "types": "./dist/PermissionsArea.vue.d.ts",
+      "import": "./src/PermissionsArea.vue"
+    }
+  },
+  "files": ["src", "dist"],
+  "scripts": {
+    "build": "vue-tsc -b && vite build",
+    "dev": "vite",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@vance/components": "workspace:*",
+    "@vance/shared": "workspace:*"
+  },
+  "peerDependencies": {
+    "vue": "^3.5.0"
+  },
+  "devDependencies": {
+    "@module-federation/vite": "^1.4.0",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "vite": "^5.4.11",
+    "vue": "^3.5.13",
+    "vue-tsc": "^2.1.10"
+  }
+}

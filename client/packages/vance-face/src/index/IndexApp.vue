@@ -86,6 +86,47 @@ const uiLevel = ref<WebUiLevel>('standard');
 const showExpertTiles = computed(() => rankOf(uiLevel.value) >= rankOf('expert'));
 const showAdminTiles = computed(() => rankOf(uiLevel.value) >= rankOf('admin'));
 
+// Landing tiles contributed by installed addons (declarative, from
+// /face/addons — no federation remote loaded here). Each is gated by the
+// user's UI level just like the built-in tiles, and only appears when the
+// addon is actually present, so e.g. the Simple-Auth "Permissions" tile is
+// there iff the simpleauth addon is loaded.
+interface AddonTileEntry {
+  name: string;
+  label: string;
+  description?: string;
+  minLevel: WebUiLevel;
+}
+const addonTiles = ref<AddonTileEntry[]>([]);
+const visibleAddonTiles = computed(() =>
+  addonTiles.value.filter((tile) => rankOf(uiLevel.value) >= rankOf(tile.minLevel)),
+);
+
+function normLevel(v: string | undefined): WebUiLevel {
+  return v === 'expert' || v === 'admin' ? v : 'standard';
+}
+
+async function loadAddonTiles(): Promise<void> {
+  try {
+    const res = await fetch('/face/addons', { headers: { Accept: 'application/json' } });
+    if (!res.ok) return;
+    const entries = (await res.json()) as Array<{
+      name: string;
+      tile?: { label?: string; description?: string; minLevel?: string };
+    }>;
+    addonTiles.value = entries
+      .filter((e) => e.tile?.label)
+      .map((e) => ({
+        name: e.name,
+        label: e.tile!.label as string,
+        description: e.tile!.description,
+        minLevel: normLevel(e.tile!.minLevel),
+      }));
+  } catch {
+    // no addons / offline — no tiles
+  }
+}
+
 onMounted(async () => {
   // Drop any stale localStorage tokens from the pre-cookie build.
   // Idempotent — no-op when already cleared.
@@ -199,6 +240,7 @@ function redirectAfterLogin(): void {
   // Default landing: keep this page mounted in 'landing' mode so the
   // user lands on the editor list rather than bouncing through a
   // separate URL.
+  void loadAddonTiles();
   mode.value = 'landing';
 }
 
@@ -372,6 +414,15 @@ function readNextParam(): string | null {
             <a class="tile-row" href="/tool-templates.html">
                 <div class="font-semibold">{{ $t('toolTemplates.pageTitle') }}</div>
                 <div class="text-sm opacity-70">{{ $t('toolTemplates.intro') }}</div>
+            </a>
+          </li>
+
+          <!-- Addon-contributed tiles (e.g. Simple-Auth "Permissions").
+               Present only when the addon is installed; gated by UI level. -->
+          <li v-for="tile in visibleAddonTiles" :key="tile.name">
+            <a class="tile-row" :href="`/addon.html?addon=${encodeURIComponent(tile.name)}`">
+                <div class="font-semibold">{{ tile.label }}</div>
+                <div v-if="tile.description" class="text-sm opacity-70">{{ tile.description }}</div>
             </a>
           </li>
         </ul>

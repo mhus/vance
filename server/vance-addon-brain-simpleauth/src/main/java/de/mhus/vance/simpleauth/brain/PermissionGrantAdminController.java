@@ -38,10 +38,11 @@ public class PermissionGrantAdminController {
     public List<PermissionGrantDto> list(
             @PathVariable("tenant") String tenant,
             @RequestParam("scopeType") GrantScopeType scopeType,
-            @RequestParam("scopeId") String scopeId,
+            @RequestParam(value = "scopeId", required = false, defaultValue = "") String scopeId,
             HttpServletRequest httpRequest) {
-        authority.enforce(httpRequest, scopeResource(tenant, scopeType, scopeId), Action.ADMIN);
-        return grants.forScope(tenant, scopeType, scopeId).stream()
+        String effectiveScopeId = scopeId(scopeType, tenant, scopeId);
+        authority.enforce(httpRequest, scopeResource(tenant, scopeType, effectiveScopeId), Action.ADMIN);
+        return grants.forScope(tenant, scopeType, effectiveScopeId).stream()
                 .map(PermissionGrantMapper::toDto)
                 .toList();
     }
@@ -64,12 +65,13 @@ public class PermissionGrantAdminController {
     public void remove(
             @PathVariable("tenant") String tenant,
             @RequestParam("scopeType") GrantScopeType scopeType,
-            @RequestParam("scopeId") String scopeId,
+            @RequestParam(value = "scopeId", required = false, defaultValue = "") String scopeId,
             @RequestParam("subjectType") GrantSubjectType subjectType,
             @RequestParam("subjectId") String subjectId,
             HttpServletRequest httpRequest) {
-        authority.enforce(httpRequest, scopeResource(tenant, scopeType, scopeId), Action.ADMIN);
-        grants.remove(tenant, scopeType, scopeId(scopeType, tenant, scopeId), subjectType, subjectId);
+        String effectiveScopeId = scopeId(scopeType, tenant, scopeId);
+        authority.enforce(httpRequest, scopeResource(tenant, scopeType, effectiveScopeId), Action.ADMIN);
+        grants.remove(tenant, scopeType, effectiveScopeId, subjectType, subjectId);
     }
 
     /** TENANT grants are keyed on the tenant itself (self-reference). */

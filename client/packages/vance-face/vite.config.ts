@@ -2,7 +2,7 @@ import { defineConfig, type Plugin } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import { federation } from '@module-federation/vite';
 import { resolve, extname } from 'node:path';
-import { createReadStream, existsSync, readdirSync, statSync } from 'node:fs';
+import { createReadStream, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 
 // One Rollup input per top-level HTML file. Add new editor HTMLs here as they
 // are implemented — see specification/web-ui.md §3 for the full list.
@@ -25,6 +25,9 @@ const editorEntries = {
   'oauth-providers': resolve(__dirname, 'oauth-providers.html'),
   'tool-templates': resolve(__dirname, 'tool-templates.html'),
   'setting-forms': resolve(__dirname, 'setting-forms.html'),
+  // Generic host for federated addon "areas": addon.html?addon=<id> loads the
+  // addon's ./area expose (e.g. the Simple-Auth permission-grant UI).
+  addon: resolve(__dirname, 'addon.html'),
 };
 
 // Build-time remotes list is intentionally empty — addons are discovered
@@ -86,7 +89,7 @@ function vanceAddonDevServe(): Plugin {
         // and runtime Kind contributions never reach the registry.
         if (pathname === '/face/addons') {
           const addonsRoot = resolve(workspaceRoot, 'server');
-          let entries: { name: string; path: string }[] = [];
+          let entries: { name: string; path: string; tile?: unknown }[] = [];
           try {
             entries = readdirSync(addonsRoot, { withFileTypes: true })
               .filter((d) => d.isDirectory() && d.name.startsWith('vance-addon-brain-'))
@@ -94,7 +97,27 @@ function vanceAddonDevServe(): Plugin {
               .filter((id) =>
                 existsSync(resolve(addonsRoot, `vance-addon-brain-${id}`, 'client', 'dist', 'remoteEntry.js')),
               )
-              .map((id) => ({ name: id, path: `bundled:${id}` }));
+              .map((id) => {
+                const entry: { name: string; path: string; tile?: unknown } = {
+                  name: id,
+                  path: `bundled:${id}`,
+                };
+                // Optional landing-tile metadata, declared by the addon in its
+                // client package.json `vanceTile` field. Lets IndexApp render a
+                // tile for the addon without loading its federation remote.
+                try {
+                  const pkg = JSON.parse(
+                    readFileSync(
+                      resolve(addonsRoot, `vance-addon-brain-${id}`, 'client', 'package.json'),
+                      'utf8',
+                    ),
+                  );
+                  if (pkg.vanceTile) entry.tile = pkg.vanceTile;
+                } catch {
+                  // no package.json / no tile — addon simply has no landing tile
+                }
+                return entry;
+              });
           } catch {
             entries = [];
           }

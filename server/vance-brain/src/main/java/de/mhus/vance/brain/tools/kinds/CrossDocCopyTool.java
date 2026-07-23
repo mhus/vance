@@ -72,6 +72,11 @@ public class CrossDocCopyTool implements Tool {
                 && !targetProjectName.equals(ProjectService.SYSTEM_NAME_PREFIX + "vance")) {
             throw new ToolException("Cannot copy into SYSTEM project '" + targetProjectName + "'");
         }
+        // Target project is resolved directly (not via resolveProject), so
+        // gate the cross-project CREATE here — the caller must be allowed to
+        // write the destination.
+        support.enforceDocWrite(ctx, target.getName(), newPath,
+                de.mhus.vance.shared.permission.Action.CREATE);
 
         // Flush buffer so we copy the in-flight body, not stale disk.
         support.buffer().flush(ctx.processId(), source.getId());

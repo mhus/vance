@@ -53,7 +53,7 @@ public class DocPurgeTool implements Tool {
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        DocumentDocument doc = support.loadDocument(params, ctx);
+        DocumentDocument doc = support.loadDocumentForWrite(params, ctx, de.mhus.vance.shared.permission.Action.DELETE);
         boolean force = Boolean.TRUE.equals(KindToolSupport.paramBoolean(params, "force"));
         if (!force && !DocumentService.isTrash(doc.getPath())) {
             throw new ToolException("doc_purge requires the document to be in the trash folder "

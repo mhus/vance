@@ -52,7 +52,7 @@ public class DocSetColorTool implements Tool {
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        DocumentDocument doc = support.loadDocument(params, ctx);
+        DocumentDocument doc = support.loadDocumentForWrite(params, ctx, de.mhus.vance.shared.permission.Action.WRITE);
         // Raw read — requireString would refuse a blank "clear" value.
         String raw = KindToolSupport.paramRawString(params, "color");
         if (raw == null) {

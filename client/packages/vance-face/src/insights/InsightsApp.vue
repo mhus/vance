@@ -24,6 +24,10 @@ import {
   useMarvinTree,
   useProcessPrakRuns,
 } from '@/composables/useInsights';
+import {
+  useInsightsNavigation,
+  type InsightsTopTab,
+} from '@/composables/useInsightsNavigation';
 import { useHelp } from '@/composables/useHelp';
 import MarvinTreeItem, { type MarvinTreeNode } from './MarvinTreeItem.vue';
 import SessionTimelineTab from './SessionTimelineTab.vue';
@@ -92,12 +96,13 @@ const filterProjectId = ref<string | null>(null);
 const filterUserId = ref<string>('');
 const filterStatus = ref<string | null>(null);
 
-// ─── Project-level top tab ─────────────────────────────────────────────
-// Sessions = the existing session-walker (default). Recipes / Tools
-// show project-scope read-only views fed from the same project filter
-// as the sidebar.
-type TopTab = 'sessions' | 'recipes' | 'tools' | 'workspace' | 'executions' | 'workflows' | 'events' | 'scheduler' | 'ursahooks' | 'rag' | 'research' | 'cluster' | 'addons' | 'usage';
-const topTab = ref<TopTab>('sessions');
+// ─── Navigation state (URL/history-bound) ──────────────────────────────
+// topTab (project-level pane), selection (session/process drill-down), and
+// activeTab (sub-tab) are mirrored to the URL and pushed to the browser
+// history by useInsightsNavigation, so Back steps up one drill-down level
+// and a reload restores the view instead of dropping to the empty state.
+const { topTab, selection, activeTab } = useInsightsNavigation();
+type TopTab = InsightsTopTab;
 
 // Top-tab inventory. Order is significant: tabs to the left stay
 // visible in the bar, tabs to the right are the first to spill into
@@ -270,19 +275,13 @@ const statusOptions = computed(() => [
 ]);
 
 // ─── Selection state ────────────────────────────────────────────────────
-type Selection =
-  | { kind: 'session'; id: string }   // sessionId (business id)
-  | { kind: 'process'; id: string };  // process Mongo id
-
-const selection = ref<Selection | null>(null);
+// `selection` + `activeTab` are provided by useInsightsNavigation above.
 
 /** Sessions whose processes-list is open in the sidebar. Loaded lazily. */
 const expanded = ref<Set<string>>(new Set());
 
 /** Per-sessionId cache of processes — populated as sessions expand. */
 const processesBySession = ref<Record<string, ThinkProcessInsightsDto[]>>({});
-
-const activeTab = ref<string>('overview');
 
 // ─── Lifecycle ──────────────────────────────────────────────────────────
 
@@ -298,8 +297,9 @@ watch([filterProjectId, filterUserId, filterStatus], () => {
   void reloadSessions();
 });
 
+// Load the data behind a selection. The sub-tab reset to 'overview' lives
+// in useInsightsNavigation (synchronous + restore-aware); here we only load.
 watch(selection, async (sel) => {
-  activeTab.value = 'overview';
   if (!sel) return;
   if (sel.kind === 'session') {
     // Make sure the processes for this session are loaded — they
@@ -446,21 +446,60 @@ function sessionLabel(sessionId: string): string {
   return t('insights.breadcrumbs.sessionPrefix', { label });
 }
 
+/** Label for a process sub-tab, used as the breadcrumb leaf. */
+function processSubTabLabel(tab: string): string {
+  switch (tab) {
+    case 'chat': return t('insights.tabs.chat');
+    case 'memory': return t('insights.tabs.memory');
+    case 'tree': return t('insights.tabs.tree');
+    case 'llm-traces': return t('insights.tabs.llmTrace');
+    case 'cache-stats': return t('insights.tabs.cacheStats');
+    case 'prak-runs': return t('insights.tabs.prakRuns');
+    default: return t('insights.tabs.overview');
+  }
+}
+
 const breadcrumbs = computed<Crumb[]>(() => {
+  // Non-session top tabs are standalone project-scoped panes — surface the
+  // tab name so the crumb bar reflects the pane actually on screen.
+  if (topTab.value !== 'sessions') {
+    return [ALL_TABS.find(tt => tt.key === topTab.value)?.label ?? topTab.value];
+  }
+
   const sel = selection.value;
   if (!sel) return [];
-  if (sel.kind === 'session') return [sessionLabel(sel.id)];
+
+  // Root crumb walks back to the sessions list (clears the selection).
+  const root: Crumb = {
+    text: t('insights.breadcrumbs.sessionsRoot'),
+    onClick: () => { selection.value = null; },
+  };
+
+  if (sel.kind === 'session') return [root, sessionLabel(sel.id)];
+
   const p = selectedProcess.value;
-  if (!p) return [t('insights.breadcrumbs.processFallback')];
-  // When a process is selected, the session crumb navigates back to the
-  // session view — the most common "go up one level" gesture.
-  return [
-    {
-      text: sessionLabel(p.sessionId),
-      onClick: () => { selection.value = { kind: 'session', id: p.sessionId }; },
-    },
-    t('insights.breadcrumbs.processPrefix', { name: p.name }),
-  ];
+  if (!p) return [root, t('insights.breadcrumbs.processFallback')];
+
+  // Session crumb navigates back to the owning session — the most common
+  // "go up one level" gesture.
+  const sessionCrumb: Crumb = {
+    text: sessionLabel(p.sessionId),
+    onClick: () => { selection.value = { kind: 'session', id: p.sessionId }; },
+  };
+  const processLabel = t('insights.breadcrumbs.processPrefix', { name: p.name });
+
+  // A deep sub-tab (Memory, Chat, Tree, …) becomes the leaf crumb so the
+  // user always sees a labelled path back out; the process crumb turns
+  // clickable to hop to its Overview.
+  if (activeTab.value !== 'overview') {
+    return [
+      root,
+      sessionCrumb,
+      { text: processLabel, onClick: () => { activeTab.value = 'overview'; } },
+      processSubTabLabel(activeTab.value),
+    ];
+  }
+  return [root, sessionCrumb, processLabel];
 });
 
 const combinedError = computed<string | null>(() =>

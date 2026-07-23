@@ -61,7 +61,7 @@ public class DocNoteUpdateTool implements Tool {
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        DocumentDocument doc = support.loadDocument(params, ctx);
+        DocumentDocument doc = support.loadDocumentForWrite(params, ctx, de.mhus.vance.shared.permission.Action.WRITE);
         String noteId = KindToolSupport.requireString(params, "noteId");
         String newText = KindToolSupport.paramRawString(params, "text");
         Boolean newDone = KindToolSupport.paramBoolean(params, "done");

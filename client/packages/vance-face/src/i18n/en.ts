@@ -794,6 +794,7 @@ export default {
         'Pick a session on the left to inspect, or expand to drill into its processes.',
     },
     breadcrumbs: {
+      sessionsRoot: 'Sessions',
       sessionPrefix: 'Session: {label}',
       processPrefix: 'Process: {name}',
       processFallback: 'Process',

@@ -790,6 +790,7 @@ export default {
         'Links eine Session auswählen, um sie zu inspizieren — oder aufklappen, um in ihre Prozesse zu drillen.',
     },
     breadcrumbs: {
+      sessionsRoot: 'Sessions',
       sessionPrefix: 'Session: {label}',
       processPrefix: 'Prozess: {name}',
       processFallback: 'Prozess',

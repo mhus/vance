@@ -57,7 +57,7 @@ public class DocNoteAddTool implements Tool {
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        DocumentDocument doc = support.loadDocument(params, ctx);
+        DocumentDocument doc = support.loadDocumentForWrite(params, ctx, de.mhus.vance.shared.permission.Action.WRITE);
         String text = KindToolSupport.requireRawString(params, "text");
         Integer line = KindToolSupport.paramInt(params, "line");
         String userId = ctx.userId() == null || ctx.userId().isBlank() ? "agent" : ctx.userId();

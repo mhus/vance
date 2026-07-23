@@ -83,6 +83,21 @@ public class KindToolSupport {
                 de.mhus.vance.shared.permission.Action.READ);
     }
 
+    /**
+     * Resolve a document AND authorize {@code action} on it in one step —
+     * for mutating tools that persist through {@code DocumentService}
+     * directly (notes, move, tag, color, …) instead of {@link #writeBody}
+     * (which gates WRITE itself). Keeps the write check at the resolution
+     * source so no such tool can mutate a document it may only read.
+     */
+    public DocumentDocument loadDocumentForWrite(
+            Map<String, Object> params, ToolInvocationContext ctx,
+            de.mhus.vance.shared.permission.Action action) {
+        DocumentDocument doc = loadDocument(params, ctx);
+        enforceDocWrite(ctx, doc, action);
+        return doc;
+    }
+
     public DocumentBufferService buffer() {
         return bufferService;
     }

@@ -62,6 +62,10 @@ public class DocCopyTool implements Tool {
         if (fresh == null) throw new ToolException("Source document disappeared during copy");
         String newPath = KindToolSupport.requireString(params, "newPath");
         String title = KindToolSupport.paramString(params, "title");
+        // Source was READ-gated by loadDocument; the copy is a CREATE at the
+        // target path — gate that too.
+        support.enforceDocWrite(ctx, fresh.getProjectId(), newPath,
+                de.mhus.vance.shared.permission.Action.CREATE);
         DocumentDocument copy;
         try {
             copy = support.documentService().create(

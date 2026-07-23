@@ -49,7 +49,7 @@ public class DocMoveTool implements Tool {
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        DocumentDocument doc = support.loadDocument(params, ctx);
+        DocumentDocument doc = support.loadDocumentForWrite(params, ctx, de.mhus.vance.shared.permission.Action.WRITE);
         String newPath = KindToolSupport.requireString(params, "newPath");
         // Flush any pending writes — DocumentService.update() reads
         // the current MongoDB row, not the in-buffer body.

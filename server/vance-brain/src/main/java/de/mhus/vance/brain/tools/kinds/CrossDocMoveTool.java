@@ -64,7 +64,10 @@ public class CrossDocMoveTool implements Tool {
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        DocumentDocument source = support.requireInline(support.loadDocument(params, ctx));
+        // Move removes the source, so it needs a DELETE right on the source
+        // (not just READ) plus CREATE on the target below.
+        DocumentDocument source = support.requireInline(support.loadDocumentForWrite(
+                params, ctx, de.mhus.vance.shared.permission.Action.DELETE));
         String targetProjectName = KindToolSupport.requireString(params, "targetProjectId");
         String newPath = KindToolSupport.requireString(params, "newPath");
         String title = KindToolSupport.paramString(params, "title");
@@ -76,6 +79,8 @@ public class CrossDocMoveTool implements Tool {
                 && !targetProjectName.equals(ProjectService.SYSTEM_NAME_PREFIX + "vance")) {
             throw new ToolException("Cannot move into SYSTEM project '" + targetProjectName + "'");
         }
+        support.enforceDocWrite(ctx, target.getName(), newPath,
+                de.mhus.vance.shared.permission.Action.CREATE);
 
         support.buffer().flush(ctx.processId(), source.getId());
         DocumentDocument fresh = support.buffer().read(ctx.processId(), source.getId());

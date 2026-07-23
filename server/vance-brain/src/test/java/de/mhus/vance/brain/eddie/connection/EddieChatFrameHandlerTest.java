@@ -120,7 +120,11 @@ class EddieChatFrameHandlerTest {
         verify(thinkProcessService).appendPending(eq("eddie-1"), pending.capture(), eq("w-1"));
         assertThat(pending.getValue().getType()).isEqualTo(PendingMessageType.PROCESS_EVENT);
         assertThat(pending.getValue().getSourceProcessId()).isEqualTo("w-1");
-        assertThat(pending.getValue().getContent()).isNotBlank();
+        // The event must carry the FULL worker reply, not the ~120-char
+        // triage summary — RELAY_INBOX posts it verbatim to the inbox
+        // (code-review Phase 2).
+        assertThat(pending.getValue().getContent()).isEqualTo(midLength);
+        assertThat(pending.getValue().getContent().length()).isGreaterThan(120);
 
         verify(eventEmitter).scheduleTurn("eddie-1");
     }

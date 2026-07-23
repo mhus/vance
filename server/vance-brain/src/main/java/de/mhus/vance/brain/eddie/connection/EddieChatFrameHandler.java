@@ -175,15 +175,19 @@ public class EddieChatFrameHandler implements EddieFrameRouter.ChatFrameHandler 
             WorkerLinkSnapshot link,
             ChatMessageAppendedData data,
             TriageResult result) {
-        String summary = result.memorySummary() != null && !result.memorySummary().isBlank()
-                ? result.memorySummary()
-                : data.getContent();
+        // Carry the FULL worker reply in the relay event. RELAY/RELAY_INBOX
+        // posts this verbatim to the inbox; memorySummary is the ~120-char
+        // triage gist meant only for the <delegated_workers> render
+        // (link.triageSummary, set above), NOT for the relayed body —
+        // truncating here dropped multi-paragraph worker output (Phase 2).
+        // data.getContent() is guaranteed non-blank by the caller's guard.
+        String content = data.getContent();
         PendingMessageDocument event = PendingMessageDocument.builder()
                 .type(PendingMessageType.PROCESS_EVENT)
                 .at(Instant.now())
                 .sourceProcessId(link.getWorkerProcessId())
                 .eventType(ProcessEventType.SUMMARY)
-                .content(summary)
+                .content(content)
                 .eventId(java.util.UUID.randomUUID().toString())
                 .build();
         try {

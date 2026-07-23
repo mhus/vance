@@ -194,7 +194,8 @@ public class KitInstaller {
                         documentService.findByPath(tenantId, projectId, oldPath);
                 if (doc.isEmpty()) continue;
                 try {
-                    documentService.delete(doc.get().getId(), DocumentService.KIT_IDENTITY);
+                    documentService.delete(doc.get().getId(), DocumentService.KIT_IDENTITY,
+                            de.mhus.vance.shared.permission.WriteActor.SYSTEM);
                     removed.add(oldPath);
                 } catch (DocumentService.DocumentLockedException ex) {
                     log.info("KitInstaller: skipped prune of KIT-locked document '{}/{}/{}' lockedFor={}",
@@ -258,7 +259,8 @@ public class KitInstaller {
         Optional<DocumentDocument> existing =
                 documentService.findByPath(tenantId, projectId, path);
         if (existing.isEmpty()) {
-            documentService.createText(tenantId, projectId, path, null, null, content, actor);
+            documentService.createText(tenantId, projectId, path, null, null, content, actor,
+                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
             return UpsertOutcome.CREATED;
         }
         DocumentDocument doc = existing.get();
@@ -268,7 +270,8 @@ public class KitInstaller {
                         /*title*/ null, /*tags*/ null, /*inlineText*/ content,
                         /*newPath*/ null, /*autoSummary*/ null,
                         /*summaryDirty*/ null, /*ragEnabled*/ null,
-                        /*mimeType*/ null, DocumentService.KIT_IDENTITY);
+                        /*mimeType*/ null, DocumentService.KIT_IDENTITY,
+                        de.mhus.vance.shared.permission.WriteActor.SYSTEM);
                 return UpsertOutcome.UPDATED;
             } catch (DocumentService.DocumentLockedException e) {
                 log.info("KitInstaller: skipped KIT-locked document '{}/{}/{}' lockedFor={}",
@@ -280,7 +283,8 @@ public class KitInstaller {
             }
         }
         try {
-            documentService.delete(doc.getId(), DocumentService.KIT_IDENTITY);
+            documentService.delete(doc.getId(), DocumentService.KIT_IDENTITY,
+                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
         } catch (DocumentService.DocumentLockedException e) {
             log.info("KitInstaller: skipped KIT-locked document '{}/{}/{}' lockedFor={}",
                     tenantId, projectId, path, e.getLockedFor());
@@ -462,7 +466,8 @@ public class KitInstaller {
                 documentService.findByPath(tenantId, projectId, MANIFEST_PATH);
         if (existing.isEmpty()) {
             documentService.createText(tenantId, projectId, MANIFEST_PATH,
-                    "Kit Manifest", List.of("vance", "kit"), yaml, actor);
+                    "Kit Manifest", List.of("vance", "kit"), yaml, actor,
+                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
             return;
         }
         DocumentDocument doc = existing.get();
@@ -472,15 +477,18 @@ public class KitInstaller {
                         /*title*/ null, /*tags*/ null, /*inlineText*/ yaml,
                         /*newPath*/ null, /*autoSummary*/ null,
                         /*summaryDirty*/ null, /*ragEnabled*/ null,
-                        /*mimeType*/ null, DocumentService.KIT_IDENTITY);
+                        /*mimeType*/ null, DocumentService.KIT_IDENTITY,
+                        de.mhus.vance.shared.permission.WriteActor.SYSTEM);
                 return;
             } catch (IllegalArgumentException ignored) {
                 // fall through
             }
         }
-        documentService.delete(doc.getId(), DocumentService.KIT_IDENTITY);
+        documentService.delete(doc.getId(), DocumentService.KIT_IDENTITY,
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
         documentService.createText(tenantId, projectId, MANIFEST_PATH,
-                "Kit Manifest", List.of("vance", "kit"), yaml, actor);
+                "Kit Manifest", List.of("vance", "kit"), yaml, actor,
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
     }
 
     /**
@@ -496,7 +504,8 @@ public class KitInstaller {
     public void removeManifest(String tenantId, String projectId) {
         documentService.findByPath(tenantId, projectId, MANIFEST_PATH)
                 .ifPresent(doc -> documentService.delete(doc.getId(),
-                        DocumentService.KIT_IDENTITY));
+                        DocumentService.KIT_IDENTITY,
+                        de.mhus.vance.shared.permission.WriteActor.SYSTEM));
     }
 
     /** Set-based union helper used by tests. */

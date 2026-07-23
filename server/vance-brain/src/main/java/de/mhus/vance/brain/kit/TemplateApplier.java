@@ -591,7 +591,8 @@ public class TemplateApplier {
         String title = "Applied state — " + descriptor.name();
         List<String> tags = List.of("tool-template", "applied");
         try {
-            documentService.upsertText(tenantId, projectId, path, title, tags, yaml, actor);
+            documentService.upsertText(tenantId, projectId, path, title, tags, yaml, actor,
+                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
         } catch (RuntimeException e) {
             // Best-effort: a failure here must not roll back the apply
             // (documents + settings are already persisted). Log and move

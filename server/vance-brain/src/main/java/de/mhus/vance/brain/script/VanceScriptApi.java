@@ -733,7 +733,8 @@ public final class VanceScriptApi {
             }
             documentService.upsertText(
                     scope.tenantId(), scope.projectId(),
-                    resolved, null, null, content, scope.userId());
+                    resolved, null, null, content, scope.userId(),
+                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
         }
 
         @HostAccess.Export
@@ -756,7 +757,7 @@ public final class VanceScriptApi {
             return documentService.findByPath(
                             scope.tenantId(), scope.projectId(), resolve(path))
                     .map(doc -> {
-                        documentService.trash(doc.getId());
+                        documentService.trash(doc.getId(), de.mhus.vance.shared.permission.WriteActor.SYSTEM);
                         return true;
                     })
                     .orElse(false);

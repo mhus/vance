@@ -279,7 +279,8 @@ public class OfficeController {
                 String editorSub = asString(claims.get("sub"));
                 documentService.replaceBinaryContent(doc.getId(), mime, bytes,
                         editorSub,
-                        DocumentService.WriterIdentity.of(editorSub, editorSub, null));
+                        DocumentService.WriterIdentity.of(editorSub, editorSub, null),
+                        de.mhus.vance.shared.permission.WriteActor.SYSTEM);
                 log.info("OfficeController: saved docId={} bytes={} status={}",
                         docId, bytes.length, status);
             } catch (Exception e) {

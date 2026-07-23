@@ -1034,6 +1034,23 @@ public class DocumentService {
                 createdBy);
     }
 
+    /** Actor-carrying text create — enforces {@code CREATE} at the source (F1). */
+    public DocumentDocument createText(
+            String tenantId,
+            String projectId,
+            String path,
+            @Nullable String title,
+            @Nullable List<String> tags,
+            String text,
+            @Nullable String createdBy,
+            de.mhus.vance.shared.permission.WriteActor actor) {
+        byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
+        return create(tenantId, projectId, path, title, tags,
+                mimeFromPath(path),
+                new ByteArrayInputStream(bytes),
+                createdBy, actor);
+    }
+
     /** Map file extension to a canonical text MIME. Falls back to
      *  {@code text/plain} for unknown extensions or paths without
      *  one — matches what kind-codecs / header strategies expect
@@ -1747,6 +1764,18 @@ public class DocumentService {
             @Nullable String newInlineText,
             @Nullable String newPath) {
         return update(id, newTitle, newTags, newInlineText, newPath, null, null);
+    }
+
+    /** Actor-carrying convenience update (TOOL identity) — enforces {@code WRITE} at the source (F1). */
+    public DocumentDocument update(
+            String id,
+            @Nullable String newTitle,
+            @Nullable List<String> newTags,
+            @Nullable String newInlineText,
+            @Nullable String newPath,
+            de.mhus.vance.shared.permission.WriteActor actor) {
+        return update(id, newTitle, newTags, newInlineText, newPath,
+                null, null, null, null, TOOL_IDENTITY, actor);
     }
 
     /**

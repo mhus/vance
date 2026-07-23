@@ -125,13 +125,15 @@ public class UrsaSchedulerController {
                     /*newTitle*/ null,
                     /*newTags*/ null,
                     /*newInlineText*/ yaml,
-                    /*newPath*/ null);
+                    /*newPath*/ null,
+                    systemActor(request));
         } else {
             documentService.createText(tenant, project, path,
                     "Scheduler: " + norm,
                     /*tags*/ null,
                     yaml,
-                    createdBy);
+                    createdBy,
+                    systemActor(request));
         }
         // refreshOne is driven by the DocumentChangedEvent →
         // UrsaSchedulerDocumentListener chain that documentService
@@ -158,7 +160,7 @@ public class UrsaSchedulerController {
         if (existing.isEmpty()) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
         }
-        documentService.delete(existing.get().getId());
+        documentService.delete(existing.get().getId(), systemActor(request));
         // Refresh travels via the DocumentChangedEvent → listener chain.
         return ResponseEntity.noContent().build();
     }
@@ -293,6 +295,18 @@ public class UrsaSchedulerController {
                     "scheduler name must not be blank");
         }
         return n;
+    }
+
+    /**
+     * The mandatory {@link de.mhus.vance.shared.permission.WriteActor} for this
+     * management surface: a trusted server write of a {@code _vance/} system
+     * resource on behalf of the request user. The surface has already run its
+     * own authorization (Project WRITE above); WriteReason.SYSTEM is the hint
+     * that lets the resolver allow the reserved-path write while the real user
+     * stays recorded for audit. (F1)
+     */
+    private de.mhus.vance.shared.permission.WriteActor systemActor(HttpServletRequest request) {
+        return de.mhus.vance.shared.permission.WriteActor.system(authority.contextOf(request));
     }
 
     private static String pathFor(String name) {

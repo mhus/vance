@@ -816,7 +816,7 @@ public class UrsaSchedulerService {
             return;
         }
         try {
-            documentService.trash(docId);
+            documentService.trash(docId, de.mhus.vance.shared.permission.WriteActor.SYSTEM);
             log.info("Scheduler '{}/{}/{}' moved to trash after one-shot fire",
                     reg.tenantId, reg.projectId, reg.config.name());
         } catch (RuntimeException ex) {
@@ -870,7 +870,8 @@ public class UrsaSchedulerService {
             String mutated = disableInYaml(reg.config.yaml());
             documentService.update(docId,
                     /*newTitle*/ null, /*newTags*/ null,
-                    /*newInlineText*/ mutated, /*newPath*/ null);
+                    /*newInlineText*/ mutated, /*newPath*/ null,
+                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
             refreshOne(tenantId, projectId, name);
             log.warn("Scheduler '{}/{}/{}' auto-disabled after recipe-resolution failure: {}",
                     tenantId, projectId, name, reason);

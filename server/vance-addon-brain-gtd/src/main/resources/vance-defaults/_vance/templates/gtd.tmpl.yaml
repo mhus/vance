@@ -1,0 +1,10 @@
+$meta:
+  kind: application
+  app: gtd
+title: "{{ title }}"
+{% if description %}description: "{{ description }}"{% endif %}
+gtd:
+  inboxDir: inbox
+  actionsDir: actions
+  projectsDir: projects
+  contexts: ["@calls", "@errands", "@home", "@office", "@computer"]

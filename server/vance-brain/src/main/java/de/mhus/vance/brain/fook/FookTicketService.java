@@ -181,7 +181,8 @@ public class FookTicketService {
                 payload.getTitle(),
                 List.of("fook"),
                 dumpYaml(root),
-                TRIAGED_BY);
+                TRIAGED_BY,
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
         log.info("Fook: created ticket id='{}' type='{}' severity='{}' " +
                         "reporter={}/{}",
                 uuid, meta.get("type"), meta.get("severity"),
@@ -232,7 +233,8 @@ public class FookTicketService {
                 doc.getTitle(),
                 doc.getTags(),
                 dumpYaml(root),
-                TRIAGED_BY);
+                TRIAGED_BY,
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
         log.info("Fook: updated relations on ticket id='{}' duplicateOf='{}' " +
                         "+rootCauseOf={} +relatedTo={}",
                 uuid, patch.getDuplicateOf(),
@@ -359,7 +361,8 @@ public class FookTicketService {
                 doc.getTitle(),
                 doc.getTags(),
                 dumpYaml(root),
-                TRIAGED_BY);
+                TRIAGED_BY,
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
     }
 
     // ─── Helpers ────────────────────────────────────────────────────

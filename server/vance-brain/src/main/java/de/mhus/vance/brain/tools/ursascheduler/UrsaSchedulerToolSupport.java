@@ -166,20 +166,23 @@ class UrsaSchedulerToolSupport {
                     /*newTitle*/ null,
                     /*newTags*/ null,
                     /*newInlineText*/ yaml,
-                    /*newPath*/ null);
+                    /*newPath*/ null,
+                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
         }
         return documentService.createText(
                 tenantId, projectId, path,
                 /*title*/ "Scheduler: " + name,
                 /*tags*/ null,
                 yaml,
-                createdBy);
+                createdBy,
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
     }
 
     void deleteByPath(String tenantId, String projectId, String name) {
         String path = pathFor(name);
         documentService.findByPath(tenantId, projectId, path)
-                .ifPresent(doc -> documentService.delete(doc.getId()));
+                .ifPresent(doc -> documentService.delete(doc.getId(),
+                        de.mhus.vance.shared.permission.WriteActor.SYSTEM));
     }
 
     /** Compact list-shape for the read tools and REST list endpoint. */

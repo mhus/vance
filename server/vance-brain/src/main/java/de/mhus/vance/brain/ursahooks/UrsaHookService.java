@@ -143,7 +143,8 @@ public class UrsaHookService {
                     /*newTitle*/ existing.get().getTitle(),
                     /*newTags*/ parsed.tags(),
                     /*newInlineText*/ yaml,
-                    /*newPath*/ null);
+                    /*newPath*/ null,
+                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
         } else {
             documentService.create(
                     tenantId, projectId, path,
@@ -151,7 +152,8 @@ public class UrsaHookService {
                     parsed.tags(),
                     YAML_MIME,
                     new ByteArrayInputStream(yaml.getBytes(StandardCharsets.UTF_8)),
-                    createdBy);
+                    createdBy,
+                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
         }
         // refreshOne fires synchronously via the DocumentChangedEvent →
         // UrsaHookDocumentListener chain that documentService.update/create
@@ -174,7 +176,7 @@ public class UrsaHookService {
         if (existing.isEmpty()) {
             return false;
         }
-        documentService.trash(existing.get().getId());
+        documentService.trash(existing.get().getId(), de.mhus.vance.shared.permission.WriteActor.SYSTEM);
         // documentService.trash publishes a Deleted event for the
         // original path; UrsaHookDocumentListener picks it up and runs
         // refreshOne for us.

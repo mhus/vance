@@ -90,7 +90,8 @@ class UrsaEventToolSupport {
                     /*newTitle*/ null,
                     /*newTags*/ null,
                     /*newInlineText*/ yaml,
-                    /*newPath*/ null);
+                    /*newPath*/ null,
+                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
             return true;
         }
         documentService.createText(
@@ -98,7 +99,8 @@ class UrsaEventToolSupport {
                 /*title*/ "Event: " + name,
                 /*tags*/ null,
                 yaml,
-                createdBy);
+                createdBy,
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
         return false;
     }
 
@@ -113,7 +115,7 @@ class UrsaEventToolSupport {
         if (existing.isEmpty()) {
             return false;
         }
-        documentService.delete(existing.get().getId());
+        documentService.delete(existing.get().getId(), de.mhus.vance.shared.permission.WriteActor.SYSTEM);
         return true;
     }
 

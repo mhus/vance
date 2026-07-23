@@ -1,0 +1,19 @@
+title:       { de: "GTD",  en: "GTD" }
+description: { de: "Getting Things Done à la Things — Inbox/Today/Upcoming/Anytime/Someday, abgeleitet aus dem when-Attribut",
+               en: "Getting Things Done, Things-style — Inbox/Today/Upcoming/Anytime/Someday, derived from the when attribute" }
+icon: check-circle
+tags: [app, gtd, tasks, productivity]
+
+name:
+  mode: fixed
+  value: _app.yaml
+
+fields:
+  - name: title
+    type: string
+    required: true
+    label: { de: "Titel",        en: "Title" }
+  - name: description
+    type: textarea
+    rows: 2
+    label: { de: "Beschreibung", en: "Description" }

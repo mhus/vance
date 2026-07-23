@@ -53,13 +53,19 @@ public class AppRebuildTool implements Tool {
     private final EddieContext eddieContext;
     private final DocumentService documentService;
     private final VanceApplicationRegistry registry;
+    private final de.mhus.vance.shared.permission.PermissionService permissionService;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
     public AppRebuildTool(EddieContext eddieContext,
                           DocumentService documentService,
-                          VanceApplicationRegistry registry) {
+                          VanceApplicationRegistry registry,
+                          de.mhus.vance.shared.permission.PermissionService permissionService,
+                          de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
         this.eddieContext = eddieContext;
         this.documentService = documentService;
         this.registry = registry;
+        this.permissionService = permissionService;
+        this.contextFactory = contextFactory;
     }
 
     @Override public String name() { return "app_rebuild"; }
@@ -93,6 +99,14 @@ public class AppRebuildTool implements Tool {
 
         ProjectDocument project = eddieContext.resolveProject(params, ctx, false);
         String projectName = project.getName();
+
+        // app_rebuild can target a project other than the caller's scope
+        // (projectId override), which ToolDispatcher's scope EXECUTE check
+        // does not cover — enforce WRITE on the resolved target project.
+        permissionService.enforce(
+                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()),
+                new de.mhus.vance.shared.permission.Resource.Project(ctx.tenantId(), projectName),
+                de.mhus.vance.shared.permission.Action.WRITE);
 
         // Read the manifest first so we know which app to dispatch
         // to — this is the only generic step; from here on the app's

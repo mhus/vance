@@ -1579,12 +1579,10 @@ public class DocumentService {
      * Apply a partial update. Each parameter is independently optional —
      * pass {@code null} to leave that field untouched.
      *
-     * <p>{@code newInlineText} is only honoured for documents that already
-     * live inline (i.e. {@link DocumentDocument#getInlineText()} is non-null)
-     * and only when the new text fits within {@code vance.document.inline-threshold}.
-     * Storage-backed documents are read-only in v1 with respect to content.
-     * {@code newPath} works for any document (inline or storage-backed) —
-     * it's metadata, not content.
+     * <p>{@code newInlineText} carries the new textual content (the parameter
+     * name is historical — the body is persisted to {@code StorageService},
+     * gzip-compressed above the compression threshold). {@code newPath} is
+     * metadata, not content, and works for any document.
      *
      * @return the updated document
      * @throws IllegalArgumentException if the document is unknown or the update
@@ -1964,9 +1962,18 @@ public class DocumentService {
      *         to the live document's lineage.
      */
     public DocumentDocument restoreArchive(String liveDocId, String archiveId) {
+        // Transitional (F1 stage 2c): defaults to SYSTEM until callers migrate.
+        return restoreArchive(liveDocId, archiveId, de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+    }
+
+    /** Actor-carrying archive restore — enforces {@code WRITE} at the source (F1). */
+    public DocumentDocument restoreArchive(String liveDocId, String archiveId,
+            de.mhus.vance.shared.permission.WriteActor actor) {
         DocumentDocument live = repository.findById(liveDocId)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Unknown document id='" + liveDocId + "'"));
+        enforceWrite(live.getTenantId(), live.getProjectId(), live.getPath(),
+                de.mhus.vance.shared.permission.Action.WRITE, actor);
         DocumentArchiveDocument archive = archiveService.findById(archiveId)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Unknown archive id='" + archiveId + "'"));
@@ -2306,7 +2313,15 @@ public class DocumentService {
      * (use {@link #clearColor} to remove an existing color).
      */
     public void setColor(String id, @Nullable AccentColor value) {
+        // Transitional (F1 stage 2c): defaults to SYSTEM until callers migrate.
+        setColor(id, value, de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+    }
+
+    /** Actor-carrying color set — enforces {@code WRITE} at the source (F1). */
+    public void setColor(String id, @Nullable AccentColor value,
+            de.mhus.vance.shared.permission.WriteActor actor) {
         if (value == null) return;
+        if (enforceWriteById(id, de.mhus.vance.shared.permission.Action.WRITE, actor) == null) return;
         mongoTemplate.updateFirst(
                 Query.query(Criteria.where("_id").is(id)),
                 new Update().set("color", value),
@@ -2315,6 +2330,14 @@ public class DocumentService {
 
     /** Companion to {@link #setColor} — clears the color back to neutral. */
     public void clearColor(String id) {
+        // Transitional (F1 stage 2c): defaults to SYSTEM until callers migrate.
+        clearColor(id, de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+    }
+
+    /** Actor-carrying color clear — enforces {@code WRITE} at the source (F1). */
+    public void clearColor(String id,
+            de.mhus.vance.shared.permission.WriteActor actor) {
+        if (enforceWriteById(id, de.mhus.vance.shared.permission.Action.WRITE, actor) == null) return;
         mongoTemplate.updateFirst(
                 Query.query(Criteria.where("_id").is(id)),
                 new Update().unset("color"),
@@ -2322,6 +2345,14 @@ public class DocumentService {
     }
 
     public void setRagEnabledOverride(String id, @Nullable Boolean value) {
+        // Transitional (F1 stage 2c): defaults to SYSTEM until callers migrate.
+        setRagEnabledOverride(id, value, de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+    }
+
+    /** Actor-carrying RAG-override set — enforces {@code WRITE} at the source (F1). */
+    public void setRagEnabledOverride(String id, @Nullable Boolean value,
+            de.mhus.vance.shared.permission.WriteActor actor) {
+        if (enforceWriteById(id, de.mhus.vance.shared.permission.Action.WRITE, actor) == null) return;
         Update u = new Update().set("ragDirty", true);
         if (value == null) {
             u.unset("ragEnabled");
@@ -2362,6 +2393,14 @@ public class DocumentService {
      * documents and the list-filter cannot find them.
      */
     public void setKind(String id, String kind) {
+        // Transitional (F1 stage 2c): defaults to SYSTEM until callers migrate.
+        setKind(id, kind, de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+    }
+
+    /** Actor-carrying kind stamp — enforces {@code WRITE} at the source (F1). */
+    public void setKind(String id, String kind,
+            de.mhus.vance.shared.permission.WriteActor actor) {
+        if (enforceWriteById(id, de.mhus.vance.shared.permission.Action.WRITE, actor) == null) return;
         mongoTemplate.updateFirst(
                 Query.query(Criteria.where("_id").is(id)),
                 new Update().set("kind", kind),
@@ -2550,6 +2589,13 @@ public class DocumentService {
      *         the document isn't in the trash folder.
      */
     public DocumentDocument restore(String id, @Nullable String newPath) {
+        // Transitional (F1 stage 2c): defaults to SYSTEM until callers migrate.
+        return restore(id, newPath, de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+    }
+
+    /** Actor-carrying restore — enforces {@code WRITE} at the restored path (F1). */
+    public DocumentDocument restore(String id, @Nullable String newPath,
+            de.mhus.vance.shared.permission.WriteActor actor) {
         DocumentDocument doc = repository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown document id='" + id + "'"));
         if (!isTrash(doc.getPath())) {
@@ -2566,6 +2612,8 @@ public class DocumentService {
             throw new IllegalArgumentException(
                     "Cannot restore: no original path recorded and no newPath given for id='" + id + "'");
         }
+        enforceWrite(doc.getTenantId(), doc.getProjectId(), target,
+                de.mhus.vance.shared.permission.Action.WRITE, actor);
         if (repository.existsByTenantIdAndProjectIdAndPath(
                 doc.getTenantId(), doc.getProjectId(), target)) {
             throw new DocumentAlreadyExistsException(
@@ -3103,9 +3151,20 @@ public class DocumentService {
     public DocumentDocument setLockedFor(
             String id,
             java.util.@Nullable Collection<de.mhus.vance.api.documents.WriterRole> lockedFor) {
+        // Transitional (F1 stage 2c): defaults to SYSTEM until callers migrate.
+        return setLockedFor(id, lockedFor, de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+    }
+
+    /** Actor-carrying lock set — enforces {@code WRITE} at the source (F1). */
+    public DocumentDocument setLockedFor(
+            String id,
+            java.util.@Nullable Collection<de.mhus.vance.api.documents.WriterRole> lockedFor,
+            de.mhus.vance.shared.permission.WriteActor actor) {
         DocumentDocument doc = repository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Unknown document id='" + id + "'"));
+        enforceWrite(doc.getTenantId(), doc.getProjectId(), doc.getPath(),
+                de.mhus.vance.shared.permission.Action.WRITE, actor);
         java.util.Set<de.mhus.vance.api.documents.WriterRole> normalized = normalizeLockedFor(lockedFor);
         doc.setLockedFor(normalized);
         DocumentDocument saved = repository.save(doc);
@@ -3193,6 +3252,22 @@ public class DocumentService {
                 actor.subject(),
                 new de.mhus.vance.shared.permission.Resource.Document(tenantId, projectId, path),
                 action, actor.reason());
+    }
+
+    /**
+     * Source-enforce for id-only atomic setters that don't otherwise load
+     * the document. Loads the target for its authorization coordinates and
+     * enforces {@code action}; returns the doc, or {@code null} if the id is
+     * unknown (the caller then no-ops, preserving the setters' lenient
+     * "unknown id → no-op" contract). Part of the F1 no-bypass chokepoint.
+     */
+    private @Nullable DocumentDocument enforceWriteById(String id,
+            de.mhus.vance.shared.permission.Action action,
+            de.mhus.vance.shared.permission.WriteActor actor) {
+        DocumentDocument doc = repository.findById(id).orElse(null);
+        if (doc == null) return null;
+        enforceWrite(doc.getTenantId(), doc.getProjectId(), doc.getPath(), action, actor);
+        return doc;
     }
 
     /**

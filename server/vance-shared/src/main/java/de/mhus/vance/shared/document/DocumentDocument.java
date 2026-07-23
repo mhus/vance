@@ -26,10 +26,11 @@ import org.springframework.data.mongodb.core.mapping.Document;
  * Persistent document record. Scoped to a tenant + project; addressed by
  * {@code path} inside the project.
  *
- * <p>Exactly one of {@link #inlineText} or {@link #storageId} is populated:
- * small text documents stay inline; everything else lives in
- * {@code StorageService}. The {@link #size} field always reflects the logical
- * (uncompressed, un-encoded) byte size of the content.
+ * <p>The content lives in {@code StorageService}, addressed by
+ * {@link #storageId} (gzip-compressed above
+ * {@code vance.document.compression.threshold}; see {@link #compressed}). The
+ * {@link #size} field always reflects the logical (uncompressed, un-encoded)
+ * byte size of the content.
  */
 @Document(collection = "documents")
 @CompoundIndexes({
@@ -88,8 +89,9 @@ public class DocumentDocument {
     private long size;
 
     /** Storage id ({@code StorageService}) — the body lives there exclusively.
-     *  Sparse-indexed: inline-text documents leave this {@code null} and aren't
-     *  carried in the index. Looked up by the storage-orphan sweep in batches. */
+     *  Sparse-indexed: documents with no stored body (zero-byte) leave this
+     *  {@code null} and aren't carried in the index. Looked up by the
+     *  storage-orphan sweep in batches. */
     @Indexed(sparse = true)
     private @Nullable String storageId;
 
@@ -125,8 +127,8 @@ public class DocumentDocument {
 
     /**
      * Stable identifier shared by the live document and every archived
-     * version of it. Survives renames, restores, and inline⇄storage
-     * transitions. Assigned at create-time and never overwritten.
+     * version of it. Survives renames and restores. Assigned at create-time
+     * and never overwritten.
      */
     @Indexed
     private String lineageId = "";
@@ -164,7 +166,7 @@ public class DocumentDocument {
 
     /**
      * Dirty flag for the auto-summary scheduler — set in
-     * {@link DocumentService#update} when inline content changes,
+     * {@link DocumentService#update} when content changes,
      * cleared by {@link DocumentService#writeSummary} after the
      * scheduler successfully produced a summary.
      */
@@ -207,7 +209,7 @@ public class DocumentDocument {
     // ─── Script Cortex deep-validate cache (see planning/script-cortex.md) ───
 
     /**
-     * SHA-256 hex of the {@link #inlineText} that was deep-validated by an
+     * SHA-256 hex of the content that was deep-validated by an
      * LLM review. Used by the Script Cortex UI to mark the document as
      * "still reviewed" when the current content hashes to the same value.
      */

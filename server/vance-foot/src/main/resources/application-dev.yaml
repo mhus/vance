@@ -1,0 +1,11 @@
+# Local-development profile for the Foot CLI.
+#
+# Activate with --spring.profiles.active=dev. Disables the plaintext-
+# transport gate so Foot can talk to a NON-loopback dev brain without TLS
+# (e.g. a LAN / mini-cluster host). Loopback (localhost) plaintext works
+# without this profile — the gate only refuses non-loopback plaintext by
+# default so production stays secure (code-review Phase 2, foot-core).
+
+vance:
+  brain:
+    allowInsecureTransport: true

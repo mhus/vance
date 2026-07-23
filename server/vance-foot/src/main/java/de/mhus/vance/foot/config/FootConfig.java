@@ -30,6 +30,16 @@ public class FootConfig {
     public static class Brain {
         private String httpBase = "http://localhost:8080";
         private String wsBase = "ws://localhost:8080";
+        /**
+         * Permit plaintext ({@code http://}/{@code ws://}) transport to a
+         * NON-loopback brain. Default {@code false}: plaintext is only
+         * allowed to loopback (local dev works out of the box), a remote
+         * plaintext base is rejected at connect. Set {@code true} in a
+         * local dev config to talk to a non-loopback brain without TLS
+         * (e.g. a LAN/cluster dev host) — production stays secure by
+         * default (code-review Phase 2, foot-core plaintext HIGH).
+         */
+        private boolean allowInsecureTransport = false;
     }
 
     @Data

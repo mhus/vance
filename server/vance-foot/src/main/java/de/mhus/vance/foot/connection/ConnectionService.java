@@ -93,6 +93,7 @@ public class ConnectionService {
      * REPL) shows the error to the user and continues without a connection.
      */
     public void connect() throws Exception {
+        assertTransportAllowed();
         if (!state.compareAndSet(State.DISCONNECTED, State.CONNECTING)) {
             terminal.println(Verbosity.WARN, "Connection state is %s — /disconnect first.", state.get());
             return;
@@ -373,6 +374,54 @@ public class ConnectionService {
     @PreDestroy
     void shutdown() {
         disconnect("shutdown");
+    }
+
+    /**
+     * Rejects plaintext ({@code http://}/{@code ws://}) transport to a
+     * non-loopback brain unless {@code vance.brain.allowInsecureTransport}
+     * is set — otherwise the mint-token POST carries the password in
+     * cleartext over the network (code-review Phase 2). Loopback plaintext
+     * (local dev) is always allowed; a plaintext base with a configured
+     * password is warned about either way.
+     */
+    void assertTransportAllowed() {
+        boolean allowInsecure = config.getBrain().isAllowInsecureTransport();
+        boolean hasPassword = config.getAuth().getPassword() != null
+                && !config.getAuth().getPassword().isBlank();
+        for (String base : new String[] {
+                config.getBrain().getHttpBase(), config.getBrain().getWsBase()}) {
+            if (base == null || base.isBlank()) continue;
+            URI uri;
+            try {
+                uri = URI.create(base.strip());
+            } catch (IllegalArgumentException e) {
+                throw new IllegalStateException("Malformed brain base URL: " + base, e);
+            }
+            String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase();
+            boolean plaintext = scheme.equals("http") || scheme.equals("ws");
+            if (!plaintext) continue;
+            if (!isLoopbackHost(uri.getHost()) && !allowInsecure) {
+                throw new IllegalStateException(
+                        "Refusing plaintext transport to non-loopback brain '" + base
+                                + "' — credentials would go over the wire in cleartext. "
+                                + "Use wss://https://, or set vance.brain.allowInsecureTransport=true "
+                                + "for an insecure local/dev connection.");
+            }
+            if (hasPassword) {
+                terminal.println(Verbosity.WARN,
+                        "Insecure transport (%s) with a configured password — "
+                                + "credentials are sent in cleartext.", base);
+            }
+        }
+    }
+
+    private static boolean isLoopbackHost(@Nullable String host) {
+        if (host == null || host.isBlank()) return true; // no host = local
+        String h = host.replace("[", "").replace("]", "");
+        return h.equalsIgnoreCase("localhost")
+                || h.startsWith("127.")
+                || h.equals("::1")
+                || h.equals("0:0:0:0:0:0:0:1");
     }
 
     private AccessTokenResponse mintToken() throws Exception {

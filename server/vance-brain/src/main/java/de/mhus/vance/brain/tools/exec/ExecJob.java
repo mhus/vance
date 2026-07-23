@@ -37,6 +37,15 @@ final class ExecJob {
      */
     private final Map<String, String> labels;
 
+    /**
+     * Hard cap on each in-memory output buffer (code-review Phase 2). A
+     * long-running / chatty job would otherwise grow {@code stdout}/
+     * {@code stderr} without bound on the heap. Generous — well above the
+     * inline render cap — and only the oldest chars are dropped; the full
+     * output stays in the on-disk log for {@code tail}.
+     */
+    private static final int MAX_BUFFER_CHARS = 64 * 1024;
+
     private final StringBuilder stdout = new StringBuilder();
     private final StringBuilder stderr = new StringBuilder();
 
@@ -106,13 +115,25 @@ final class ExecJob {
     void process(Process p) { this.process = p; }
 
     void appendStdout(String line) {
-        synchronized (stdout) { stdout.append(line).append('\n'); }
+        synchronized (stdout) { stdout.append(line).append('\n'); capBuffer(stdout); }
         lastOutputAt = Instant.now();
     }
 
     void appendStderr(String line) {
-        synchronized (stderr) { stderr.append(line).append('\n'); }
+        synchronized (stderr) { stderr.append(line).append('\n'); capBuffer(stderr); }
         lastOutputAt = Instant.now();
+    }
+
+    /**
+     * Keeps only the most recent {@link #MAX_BUFFER_CHARS} chars in the
+     * in-memory buffer — drop the oldest overflow. Caller holds the
+     * buffer's monitor.
+     */
+    private static void capBuffer(StringBuilder sb) {
+        int over = sb.length() - MAX_BUFFER_CHARS;
+        if (over > 0) {
+            sb.delete(0, over);
+        }
     }
 
     Instant lastOutputAt() {

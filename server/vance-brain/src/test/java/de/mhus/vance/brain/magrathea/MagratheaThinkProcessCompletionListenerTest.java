@@ -56,6 +56,22 @@ class MagratheaThinkProcessCompletionListenerTest {
     }
 
     @Test
+    void reconcile_returns_false_and_publishes_nothing_when_process_still_running() {
+        // Crash-recovery guard: the scanner may hand reconcile() a task
+        // whose subprocess is still alive — that must be a no-op.
+        MagratheaTaskDocument task = task("p-running", "ford");
+        ThinkProcessDocument process = new ThinkProcessDocument();
+        process.setId("p-running");
+        process.setStatus(ThinkProcessStatus.RUNNING);
+        when(thinkProcessService.findById(eq("p-running"))).thenReturn(Optional.of(process));
+
+        boolean reconciled = listener.reconcile(task, "p-running");
+
+        assertThat(reconciled).isFalse();
+        verify(eventBus, never()).publish(any());
+    }
+
+    @Test
     void jeltz_wrapper_success_yields_success_outcome_with_data_output() {
         wireTask("ford-jeltz", "jeltz");
         wireChatHistory("ford-jeltz",
@@ -187,6 +203,7 @@ class MagratheaThinkProcessCompletionListenerTest {
         process.setTenantId("acme");
         process.setSessionId("sess-1");
         process.setThinkEngine(engineName);
+        process.setStatus(ThinkProcessStatus.CLOSED);
         process.setCloseReason(closeReason);
         process.setCreatedAt(Instant.parse("2024-01-01T00:00:00Z"));
         process.setUpdatedAt(Instant.parse("2024-01-01T00:00:05Z"));

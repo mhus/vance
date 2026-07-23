@@ -146,6 +146,23 @@ public class MagratheaTaskService {
     }
 
     /**
+     * Crash-recovery helper: CLAIMED tasks still parked in
+     * {@code WAITING_SUBPROCESS} whose claim is older than the grace.
+     * A task waiting this long after its subprocess closed lost its
+     * in-memory completion event (pod crash); the recovery scanner
+     * reconciles it against the actual ThinkProcess status.
+     */
+    public List<MagratheaTaskDocument> findWaitingSubprocessClaimedBefore(
+            Instant threshold, int limit) {
+        Query q = new Query(
+                Criteria.where("status").is(MagratheaTaskStatus.CLAIMED)
+                        .and("runStatus").is(MagratheaTaskRunStatus.WAITING_SUBPROCESS)
+                        .and("claimedAt").lt(threshold))
+                .limit(limit);
+        return mongoTemplate.find(q, MagratheaTaskDocument.class);
+    }
+
+    /**
      * Atomic PENDING → CLAIMED transition. Returns the fresh document on
      * success, or {@link Optional#empty()} when another pod won the
      * race (optimistic-version-mismatch).

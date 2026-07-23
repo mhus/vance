@@ -51,6 +51,7 @@ public class MagratheaReclaimScanner {
     private final MongoTemplate mongoTemplate;
     private final MagratheaTaskService taskService;
     private final MagratheaCompletionEventBus eventBus;
+    private final MagratheaThinkProcessCompletionListener subProcessReconciler;
 
     @Scheduled(fixedDelay = SCAN_INTERVAL_MS, initialDelay = SCAN_INTERVAL_MS)
     public void scan() {
@@ -70,6 +71,42 @@ public class MagratheaReclaimScanner {
                 failTerminally(task);
             } else {
                 reclaim(task);
+            }
+        }
+    }
+
+    /**
+     * Crash-recovery for lost subprocess-completion events (plan §11,
+     * code-review Phase 2 HIGH #4). The {@code agent_task} completion path
+     * rides an in-memory {@code ThinkProcessStatusChangedEvent}: a pod
+     * crash between event-fire and lane dispatch — or a subprocess that
+     * closed while no pod was listening — leaves the task stuck in
+     * {@code WAITING_SUBPROCESS} with no timeout and no recovery. This
+     * scan finds tasks that have waited past the grace and reconciles
+     * each against the persisted ThinkProcess status; a still-running
+     * subprocess is left untouched, a terminal one re-drives the same
+     * completion mapping the live listener would have produced.
+     */
+    @Scheduled(fixedDelay = SCAN_INTERVAL_MS, initialDelay = SCAN_INTERVAL_MS)
+    public void recoverLostSubprocessCompletions() {
+        Instant threshold = Instant.now().minus(GRACE_TIMEOUT);
+        List<MagratheaTaskDocument> waiting =
+                taskService.findWaitingSubprocessClaimedBefore(threshold, SCAN_BATCH);
+        for (MagratheaTaskDocument task : waiting) {
+            String subProcessId = task.getSubProcessId();
+            if (subProcessId == null) {
+                continue;
+            }
+            try {
+                boolean reconciled = subProcessReconciler.reconcile(task, subProcessId);
+                if (reconciled) {
+                    log.warn("Magrathea recovery: task='{}' state='{}' subProcess='{}'"
+                                    + " re-driven from persisted status (lost completion event)",
+                            task.getId(), task.getStateName(), subProcessId);
+                }
+            } catch (RuntimeException ex) {
+                log.warn("Magrathea recovery: reconcile failed for task {} (subProcess {})",
+                        task.getId(), subProcessId, ex);
             }
         }
     }

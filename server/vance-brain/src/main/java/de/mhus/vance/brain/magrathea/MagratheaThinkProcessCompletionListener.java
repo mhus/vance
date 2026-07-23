@@ -72,16 +72,40 @@ public class MagratheaThinkProcessCompletionListener {
             // Not a Magrathea-spawned process — stay silent.
             return;
         }
-        MagratheaTaskDocument task = taskOpt.get();
+        reconcile(taskOpt.get(), event.processId());
+    }
 
-        Optional<ThinkProcessDocument> processOpt = thinkProcessService.findById(event.processId());
+    /**
+     * Map the terminal status of the task's linked {@code ThinkProcess}
+     * onto the waiting task and publish the {@link TaskCompletedEvent}.
+     * Shared by the live {@link #onStatusChanged} listener and the
+     * crash-recovery scanner (code-review Phase 2 HIGH #4): the
+     * status-changed event is an in-memory Spring event, so a pod crash
+     * between event-fire and lane dispatch leaves the task stuck in
+     * {@code WAITING_SUBPROCESS} forever. The scanner calls this to
+     * re-drive the exact same outcome mapping from the persisted process
+     * status. The completion dispatcher is idempotent
+     * ({@code appendIfAbsent} on the result record), so a re-drive that
+     * races the live path is harmless.
+     *
+     * @return {@code true} when the process was terminal and a completion
+     *         was published; {@code false} when the process is still
+     *         running (scanner no-op).
+     */
+    public boolean reconcile(MagratheaTaskDocument task, String processId) {
+        Optional<ThinkProcessDocument> processOpt = thinkProcessService.findById(processId);
         if (processOpt.isEmpty()) {
             log.warn("Magrathea listener: ThinkProcess {} closed but document is gone — failing task {}",
-                    event.processId(), task.getId());
+                    processId, task.getId());
             publish(task, "technical_error", null, "ThinkProcess document not found", 0L, null);
-            return;
+            return true;
         }
         ThinkProcessDocument process = processOpt.get();
+        if (process.getStatus() != ThinkProcessStatus.CLOSED) {
+            // Still running — the completion will arrive through the
+            // normal event path. Recovery scanner must not touch it.
+            return false;
+        }
         CloseReason closeReason = process.getCloseReason();
         String engineName = process.getThinkEngine();
 
@@ -90,10 +114,10 @@ public class MagratheaThinkProcessCompletionListener {
         // Categorise the closure first.
         if (closeReason == null) {
             log.warn("Magrathea listener: ThinkProcess {} closed without closeReason — technical_error",
-                    event.processId());
+                    processId);
             publish(task, "technical_error", null, "process closed without closeReason",
                     durationMs, null);
-            return;
+            return true;
         }
 
         switch (closeReason) {
@@ -116,6 +140,7 @@ public class MagratheaThinkProcessCompletionListener {
                 publish(task, "technical_error", null,
                         "Unhandled closeReason: " + closeReason, durationMs, null);
         }
+        return true;
     }
 
     private void handleSuccessfulClose(

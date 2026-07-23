@@ -2,6 +2,7 @@ package de.mhus.vance.brain.magrathea;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -25,8 +26,10 @@ class MagratheaReclaimScannerTest {
     private final MongoTemplate mongoTemplate = mock(MongoTemplate.class);
     private final MagratheaTaskService taskService = mock(MagratheaTaskService.class);
     private final MagratheaCompletionEventBus eventBus = mock(MagratheaCompletionEventBus.class);
+    private final MagratheaThinkProcessCompletionListener reconciler =
+            mock(MagratheaThinkProcessCompletionListener.class);
     private final MagratheaReclaimScanner scanner = new MagratheaReclaimScanner(
-            mongoTemplate, taskService, eventBus);
+            mongoTemplate, taskService, eventBus, reconciler);
 
     @Test
     void no_stale_tasks_does_nothing() {
@@ -97,6 +100,43 @@ class MagratheaReclaimScannerTest {
         verify(taskService).reclaim("t-retried");
         verify(taskService, never()).reclaim("t-exhausted");
         verify(eventBus).publish(any());
+    }
+
+    @Test
+    void recovery_reconciles_waiting_subprocess_task_against_persisted_status() {
+        MagratheaTaskDocument waiting = waitingSubprocess("t-lost", "proc-9");
+        when(taskService.findWaitingSubprocessClaimedBefore(any(Instant.class), anyInt()))
+                .thenReturn(List.of(waiting));
+        when(reconciler.reconcile(eq(waiting), eq("proc-9"))).thenReturn(true);
+
+        scanner.recoverLostSubprocessCompletions();
+
+        verify(reconciler).reconcile(waiting, "proc-9");
+    }
+
+    @Test
+    void recovery_skips_task_without_subProcessId() {
+        MagratheaTaskDocument waiting = waitingSubprocess("t-nolink", null);
+        when(taskService.findWaitingSubprocessClaimedBefore(any(Instant.class), anyInt()))
+                .thenReturn(List.of(waiting));
+
+        scanner.recoverLostSubprocessCompletions();
+
+        verify(reconciler, never()).reconcile(any(), any());
+    }
+
+    private static MagratheaTaskDocument waitingSubprocess(String id, String subProcessId) {
+        return MagratheaTaskDocument.builder()
+                .id(id)
+                .tenantId("acme").projectId("proj").workflowRunId("r1")
+                .workflowName("demo").stateName("analyze")
+                .taskType(MagratheaTaskType.AGENT_TASK)
+                .status(MagratheaTaskStatus.CLAIMED)
+                .runStatus(de.mhus.vance.api.magrathea.MagratheaTaskRunStatus.WAITING_SUBPROCESS)
+                .subProcessId(subProcessId)
+                .claimedBy("dead-pod")
+                .claimedAt(Instant.now().minusSeconds(600))
+                .build();
     }
 
     private static MagratheaTaskDocument task(String id, int attemptCount) {

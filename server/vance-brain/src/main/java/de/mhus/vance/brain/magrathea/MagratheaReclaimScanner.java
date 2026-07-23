@@ -1,6 +1,5 @@
 package de.mhus.vance.brain.magrathea;
 
-import de.mhus.vance.api.magrathea.MagratheaTaskStatus;
 import de.mhus.vance.api.magrathea.MagratheaTaskType;
 import de.mhus.vance.shared.magrathea.MagratheaTaskDocument;
 import de.mhus.vance.shared.magrathea.MagratheaTaskService;
@@ -11,9 +10,6 @@ import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -48,7 +44,6 @@ public class MagratheaReclaimScanner {
     private static final Duration GRACE_TIMEOUT = Duration.ofMinutes(5);
     private static final int MAX_CLAIM_ATTEMPTS = 3;
 
-    private final MongoTemplate mongoTemplate;
     private final MagratheaTaskService taskService;
     private final MagratheaCompletionEventBus eventBus;
     private final MagratheaThinkProcessCompletionListener subProcessReconciler;
@@ -56,15 +51,7 @@ public class MagratheaReclaimScanner {
     @Scheduled(fixedDelay = SCAN_INTERVAL_MS, initialDelay = SCAN_INTERVAL_MS)
     public void scan() {
         Instant threshold = Instant.now().minus(GRACE_TIMEOUT);
-        Query q = new Query(
-                Criteria.where("status").is(MagratheaTaskStatus.CLAIMED)
-                        .and("runStatus").is(null)
-                        .and("claimedAt").lt(threshold)
-                        .orOperator(
-                                Criteria.where("heartbeatAt").is(null),
-                                Criteria.where("heartbeatAt").lt(threshold)))
-                .limit(SCAN_BATCH);
-        List<MagratheaTaskDocument> stale = mongoTemplate.find(q, MagratheaTaskDocument.class);
+        List<MagratheaTaskDocument> stale = taskService.findStaleClaimed(threshold, SCAN_BATCH);
         if (stale.isEmpty()) return;
         for (MagratheaTaskDocument task : stale) {
             if (task.getAttemptCount() >= MAX_CLAIM_ATTEMPTS) {

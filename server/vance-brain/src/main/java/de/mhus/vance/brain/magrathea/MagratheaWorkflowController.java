@@ -1,7 +1,5 @@
 package de.mhus.vance.brain.magrathea;
 
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
 import de.mhus.vance.api.magrathea.MagratheaParameterDto;
 import de.mhus.vance.api.magrathea.MagratheaProcessDto;
 import de.mhus.vance.api.magrathea.MagratheaStartRequest;
@@ -15,25 +13,20 @@ import de.mhus.vance.shared.magrathea.MagratheaStateProjector;
 import de.mhus.vance.shared.magrathea.MagratheaWorkflowLoader;
 import de.mhus.vance.shared.magrathea.MagratheaWorkflowParseException;
 import de.mhus.vance.shared.magrathea.ResolvedMagratheaWorkflow;
-import de.mhus.vance.shared.magrathea.journal.StartRecord;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.bson.Document;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -77,7 +70,6 @@ public class MagratheaWorkflowController {
     private final MagratheaWorkflowLoader workflowLoader;
     private final MagratheaStateProjector projector;
     private final MagratheaJournalService journalService;
-    private final MongoTemplate mongoTemplate;
     private final RequestAuthority authority;
 
     // ─── List + detail (definitions) ──────────────────────────────────────
@@ -180,18 +172,11 @@ public class MagratheaWorkflowController {
             HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, project), Action.READ);
 
-        // Find StartRecord entries for this tenant+project — they
-        // identify every run in this project. Newest first.
-        org.bson.conversions.Bson filter = Filters.and(
-                Filters.eq("tenantId", tenant),
-                Filters.eq("projectId", project),
-                Filters.eq("type", StartRecord.class.getName()));
-        Set<String> seen = new HashSet<>();
+        // Distinct run ids for this tenant/project, newest first — the
+        // journal service owns the collection (datahoheit). Fetch a
+        // buffer so the workflowName filter still fills LIST_LIMIT.
         List<MagratheaProcessDto> out = new ArrayList<>();
-        for (Document entry : mongoTemplate.getCollection("magrathea_journal")
-                .find(filter).sort(Sorts.descending("createdAt")).limit(LIST_LIMIT * 2)) {
-            String runId = entry.getString("workflowRunId");
-            if (runId == null || !seen.add(runId)) continue;
+        for (String runId : journalService.listRunIds(tenant, project, LIST_LIMIT * 2)) {
             Optional<MagratheaProcessDto> dto = projector.project(tenant, project, runId);
             if (dto.isEmpty()) continue;
             if (workflowName != null && !workflowName.equals(dto.get().getWorkflowName())) {

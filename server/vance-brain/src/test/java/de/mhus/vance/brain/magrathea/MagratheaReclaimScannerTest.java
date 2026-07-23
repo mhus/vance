@@ -18,22 +18,19 @@ import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Query;
 
 class MagratheaReclaimScannerTest {
 
-    private final MongoTemplate mongoTemplate = mock(MongoTemplate.class);
     private final MagratheaTaskService taskService = mock(MagratheaTaskService.class);
     private final MagratheaCompletionEventBus eventBus = mock(MagratheaCompletionEventBus.class);
     private final MagratheaThinkProcessCompletionListener reconciler =
             mock(MagratheaThinkProcessCompletionListener.class);
     private final MagratheaReclaimScanner scanner = new MagratheaReclaimScanner(
-            mongoTemplate, taskService, eventBus, reconciler);
+            taskService, eventBus, reconciler);
 
     @Test
     void no_stale_tasks_does_nothing() {
-        when(mongoTemplate.find(any(Query.class), eq(MagratheaTaskDocument.class)))
+        when(taskService.findStaleClaimed(any(Instant.class), anyInt()))
                 .thenReturn(List.of());
 
         scanner.scan();
@@ -45,7 +42,7 @@ class MagratheaReclaimScannerTest {
     @Test
     void stale_task_under_attempt_limit_is_reclaimed_to_PENDING() {
         MagratheaTaskDocument task = task("t-1", 1);
-        when(mongoTemplate.find(any(Query.class), eq(MagratheaTaskDocument.class)))
+        when(taskService.findStaleClaimed(any(Instant.class), anyInt()))
                 .thenReturn(List.of(task));
         when(taskService.reclaim(eq("t-1"))).thenReturn(Optional.of(task));
 
@@ -58,7 +55,7 @@ class MagratheaReclaimScannerTest {
     @Test
     void exhausted_attempts_publishes_technical_error_event() {
         MagratheaTaskDocument task = task("t-exhausted", 3);
-        when(mongoTemplate.find(any(Query.class), eq(MagratheaTaskDocument.class)))
+        when(taskService.findStaleClaimed(any(Instant.class), anyInt()))
                 .thenReturn(List.of(task));
 
         scanner.scan();
@@ -76,7 +73,7 @@ class MagratheaReclaimScannerTest {
     @Test
     void reclaim_race_lost_is_silent() {
         MagratheaTaskDocument task = task("t-race", 1);
-        when(mongoTemplate.find(any(Query.class), eq(MagratheaTaskDocument.class)))
+        when(taskService.findStaleClaimed(any(Instant.class), anyInt()))
                 .thenReturn(List.of(task));
         when(taskService.reclaim(eq("t-race"))).thenReturn(Optional.empty());
 
@@ -90,7 +87,7 @@ class MagratheaReclaimScannerTest {
         MagratheaTaskDocument fresh = task("t-fresh", 0);
         MagratheaTaskDocument retried = task("t-retried", 2);
         MagratheaTaskDocument exhausted = task("t-exhausted", 3);
-        when(mongoTemplate.find(any(Query.class), eq(MagratheaTaskDocument.class)))
+        when(taskService.findStaleClaimed(any(Instant.class), anyInt()))
                 .thenReturn(List.of(fresh, retried, exhausted));
         when(taskService.reclaim(any())).thenReturn(Optional.of(fresh));
 

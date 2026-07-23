@@ -145,6 +145,37 @@ public class MagratheaTaskService {
     }
 
     /**
+     * Claimer helper: PENDING tasks whose {@code nextAttemptAt} is due,
+     * oldest-due first, capped at {@code limit}. Keeps the claim scan
+     * behind the owning service instead of a raw collection query.
+     */
+    public List<MagratheaTaskDocument> findClaimable(Instant now, int limit) {
+        Query q = new Query(
+                Criteria.where("status").is(MagratheaTaskStatus.PENDING)
+                        .and("nextAttemptAt").lte(now))
+                .with(org.springframework.data.domain.Sort.by("nextAttemptAt").ascending())
+                .limit(limit);
+        return mongoTemplate.find(q, MagratheaTaskDocument.class);
+    }
+
+    /**
+     * Reclaim-scanner helper: CLAIMED synchronous tasks
+     * ({@code runStatus == null}) whose claim is older than the grace and
+     * whose heartbeat is unset or also stale — the orphaned-mid-run set.
+     */
+    public List<MagratheaTaskDocument> findStaleClaimed(Instant threshold, int limit) {
+        Query q = new Query(
+                Criteria.where("status").is(MagratheaTaskStatus.CLAIMED)
+                        .and("runStatus").is(null)
+                        .and("claimedAt").lt(threshold)
+                        .orOperator(
+                                Criteria.where("heartbeatAt").is(null),
+                                Criteria.where("heartbeatAt").lt(threshold)))
+                .limit(limit);
+        return mongoTemplate.find(q, MagratheaTaskDocument.class);
+    }
+
+    /**
      * Crash-recovery helper: CLAIMED tasks still parked in
      * {@code WAITING_SUBPROCESS} whose claim is older than the grace.
      * A task waiting this long after its subprocess closed lost its

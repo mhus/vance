@@ -12,6 +12,10 @@ interface MagratheaJournalRepository extends MongoRepository<MagratheaJournalEnt
     List<MagratheaJournalEntry> findByTenantIdAndProjectIdAndWorkflowRunIdOrderByCreatedAtAsc(
             String tenantId, String projectId, String workflowRunId);
 
+    List<MagratheaJournalEntry> findByTenantIdAndProjectIdAndTypeOrderByCreatedAtDesc(
+            String tenantId, String projectId, String type,
+            org.springframework.data.domain.Pageable pageable);
+
     List<MagratheaJournalEntry> findByTenantIdAndProjectIdAndWorkflowRunIdAndTaskId(
             String tenantId, String projectId, String workflowRunId, String taskId);
 

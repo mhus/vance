@@ -9,9 +9,6 @@ import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -41,20 +38,13 @@ public class MagratheaTaskClaimer {
     private static final long SCAN_INTERVAL_MS = 2_000L;
     private static final int CLAIM_BATCH = 32;
 
-    private final MongoTemplate mongoTemplate;
     private final MagratheaTaskService taskService;
     private final MagratheaProjectLaneManager laneManager;
     private final MagratheaTaskExecutor taskExecutor;
 
     @Scheduled(fixedDelay = SCAN_INTERVAL_MS, initialDelay = SCAN_INTERVAL_MS)
     public void scan() {
-        Instant now = Instant.now();
-        Query query = new Query(
-                Criteria.where("status").is(MagratheaTaskStatus.PENDING)
-                        .and("nextAttemptAt").lte(now))
-                .with(org.springframework.data.domain.Sort.by("nextAttemptAt").ascending())
-                .limit(CLAIM_BATCH);
-        List<MagratheaTaskDocument> tasks = mongoTemplate.find(query, MagratheaTaskDocument.class);
+        List<MagratheaTaskDocument> tasks = taskService.findClaimable(Instant.now(), CLAIM_BATCH);
         if (tasks.isEmpty()) return;
 
         String podId = podId();

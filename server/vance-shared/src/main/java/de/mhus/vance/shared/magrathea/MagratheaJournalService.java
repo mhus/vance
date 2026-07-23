@@ -223,6 +223,24 @@ public class MagratheaJournalService {
         }
     }
 
+    /**
+     * Distinct run ids for a tenant/project, newest first — one
+     * {@code StartRecord} is written per run, so listing those in
+     * {@code createdAt} desc order enumerates the project's runs. Keeps
+     * the run-listing behind the owning service instead of a raw
+     * {@code magrathea_journal} collection query in the controller.
+     */
+    public List<String> listRunIds(String tenantId, String projectId, int limit) {
+        return repository.findByTenantIdAndProjectIdAndTypeOrderByCreatedAtDesc(
+                        tenantId, projectId,
+                        de.mhus.vance.shared.magrathea.journal.StartRecord.class.getName(),
+                        org.springframework.data.domain.PageRequest.of(0, limit))
+                .stream()
+                .map(MagratheaJournalEntry::getWorkflowRunId)
+                .distinct()
+                .toList();
+    }
+
     // ──────────── admin ────────────
 
     /** Drop the whole journal of a run — admin / test fixture. */

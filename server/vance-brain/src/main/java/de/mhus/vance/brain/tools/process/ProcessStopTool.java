@@ -24,10 +24,10 @@ import org.springframework.stereotype.Component;
  *
  * <p>Runs the engine's {@code stop} on the target's lane so the call
  * doesn't deadlock with the orchestrator's own lane and serialises
- * cleanly with whatever turn the worker is currently in. Self-stop
- * is allowed (a process can step itself off the queue), but the
- * caller is then responsible for not depending on its own state
- * afterwards.
+ * cleanly with whatever turn the worker is currently in. Self-stop is
+ * rejected: the stop task would be enqueued behind the running turn on
+ * the same lane while that turn blocks waiting for it — a permanent lane
+ * deadlock (see the self-guard in {@code invoke}).
  */
 @Component
 @Slf4j
@@ -106,6 +106,16 @@ public class ProcessStopTool implements Tool {
                                 && sessionId.equals(p.getSessionId())))
                 .orElseThrow(() -> new ToolException(
                         "Process '" + name + "' not found in current session"));
+
+        // Self-stop would enqueue the stop task BEHIND the currently-running
+        // turn on the same lane, and the turn thread blocks on .get() waiting
+        // for it → permanent lane deadlock. Reject it, mirroring
+        // ProcessSteerTool's self-guard (code-review Phase 2).
+        if (target.getId() != null && target.getId().equals(ctx.processId())) {
+            throw new ToolException(
+                    "process_stop cannot target the current process — "
+                            + "self-stop would deadlock the lane");
+        }
 
         // If already terminal, return its current shape — no engine call.
         ThinkProcessStatus current = target.getStatus();

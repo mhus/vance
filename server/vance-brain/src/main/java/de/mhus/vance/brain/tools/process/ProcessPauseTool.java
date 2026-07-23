@@ -89,6 +89,15 @@ public class ProcessPauseTool implements Tool {
                 .orElseThrow(() -> new ToolException(
                         "Process '" + name + "' not found in current session"));
 
+        // Self-pause would enqueue the pause task behind the running turn on
+        // the same lane while that turn blocks on .get() → lane deadlock.
+        // Reject it, mirroring ProcessSteerTool's self-guard (Phase 2).
+        if (target.getId() != null && target.getId().equals(ctx.processId())) {
+            throw new ToolException(
+                    "process_pause cannot target the current process — "
+                            + "self-pause would deadlock the lane");
+        }
+
         ThinkProcessStatus current = target.getStatus();
         if (current == ThinkProcessStatus.CLOSED
                 || current == ThinkProcessStatus.PAUSED) {

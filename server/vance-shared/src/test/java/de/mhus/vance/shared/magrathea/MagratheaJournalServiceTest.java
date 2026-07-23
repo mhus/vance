@@ -91,10 +91,11 @@ class MagratheaJournalServiceTest {
                 "{\"status\":\"RUNNING\"}", Instant.parse("2024-01-01T00:00:01Z"));
         MagratheaJournalEntry status2 = entry("s2", StatusRecord.class.getName(),
                 "{\"status\":\"DONE\"}", Instant.parse("2024-01-01T00:00:02Z"));
-        when(repo.findByWorkflowRunIdOrderByCreatedAtAsc(eq("run-1")))
+        when(repo.findByTenantIdAndProjectIdAndWorkflowRunIdOrderByCreatedAtAsc(
+                eq("acme"), eq("proj"), eq("run-1")))
                 .thenReturn(List.of(note, status1, status2));
 
-        Optional<StatusRecord> last = service.readLast("run-1", StatusRecord.class);
+        Optional<StatusRecord> last = service.readLast("acme", "proj", "run-1", StatusRecord.class);
 
         assertThat(last).isPresent();
         assertThat(last.get().getStatus()).isEqualTo(MagratheaRunStatus.DONE);
@@ -102,10 +103,11 @@ class MagratheaJournalServiceTest {
 
     @Test
     void readLast_returns_empty_when_no_match() {
-        when(repo.findByWorkflowRunIdOrderByCreatedAtAsc(eq("run-x")))
+        when(repo.findByTenantIdAndProjectIdAndWorkflowRunIdOrderByCreatedAtAsc(
+                eq("acme"), eq("proj"), eq("run-x")))
                 .thenReturn(List.of());
 
-        assertThat(service.readLast("run-x", StatusRecord.class)).isEmpty();
+        assertThat(service.readLast("acme", "proj", "run-x", StatusRecord.class)).isEmpty();
     }
 
     @Test
@@ -116,10 +118,11 @@ class MagratheaJournalServiceTest {
                 "{\"note\":\"a\"}", Instant.parse("2024-01-01T00:00:01Z"));
         MagratheaJournalEntry note2 = entry("e3", NoteRecord.class.getName(),
                 "{\"note\":\"b\"}", Instant.parse("2024-01-01T00:00:02Z"));
-        when(repo.findByWorkflowRunIdOrderByCreatedAtAsc(eq("run-1")))
+        when(repo.findByTenantIdAndProjectIdAndWorkflowRunIdOrderByCreatedAtAsc(
+                eq("acme"), eq("proj"), eq("run-1")))
                 .thenReturn(List.of(start, note1, note2));
 
-        List<NoteRecord> notes = service.readAll("run-1", NoteRecord.class);
+        List<NoteRecord> notes = service.readAll("acme", "proj", "run-1", NoteRecord.class);
 
         assertThat(notes).extracting(NoteRecord::getNote).containsExactly("a", "b");
     }

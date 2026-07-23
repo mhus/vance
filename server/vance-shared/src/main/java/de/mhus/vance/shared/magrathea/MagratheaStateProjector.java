@@ -47,8 +47,10 @@ public class MagratheaStateProjector {
      * {@link Optional#empty()} when there is no {@link StartRecord}
      * yet — i.e. the run id is unknown.
      */
-    public Optional<MagratheaProcessDto> project(String workflowRunId) {
-        List<MagratheaJournalEntry> entries = journalService.read(workflowRunId);
+    public Optional<MagratheaProcessDto> project(
+            String scopeTenantId, String scopeProjectId, String workflowRunId) {
+        List<MagratheaJournalEntry> entries =
+                journalService.read(scopeTenantId, scopeProjectId, workflowRunId);
         if (entries.isEmpty()) return Optional.empty();
 
         // Accumulators
@@ -140,8 +142,8 @@ public class MagratheaStateProjector {
      * been written yet (start of a run before the engine writes its
      * first explicit transition).
      */
-    public MagratheaRunStatus projectStatus(String workflowRunId) {
-        return journalService.readLast(workflowRunId, StatusRecord.class)
+    public MagratheaRunStatus projectStatus(String tenantId, String projectId, String workflowRunId) {
+        return journalService.readLast(tenantId, projectId, workflowRunId, StatusRecord.class)
                 .map(StatusRecord::getStatus)
                 .orElse(MagratheaRunStatus.RUNNING);
     }
@@ -150,9 +152,10 @@ public class MagratheaStateProjector {
      * Current variable map by replaying every {@link VarRecord} in
      * order; later writes win.
      */
-    public Map<String, Object> projectVars(String workflowRunId) {
+    public Map<String, Object> projectVars(String tenantId, String projectId, String workflowRunId) {
         Map<String, Object> out = new LinkedHashMap<>();
-        for (VarRecord record : journalService.readAll(workflowRunId, VarRecord.class)) {
+        for (VarRecord record : journalService.readAll(
+                tenantId, projectId, workflowRunId, VarRecord.class)) {
             out.put(record.getKey(), unwrap(record.getValue()));
         }
         return out;

@@ -3,16 +3,20 @@ package de.mhus.vance.brain.magrathea;
 import java.util.UUID;
 
 /**
- * 8-hex-char run identifiers — short enough for log lines, wide enough
- * to be unique across a project. Matches the convention Slartibartfast
- * uses for its run buckets.
+ * Full 32-hex-char (128-bit) run identifiers. An earlier version used
+ * only the first 8 hex chars (32 bit); at ~77k concurrent runs that has
+ * a 50% birthday-collision chance, and because journal reads key on the
+ * run id, a collision across two tenants merged their journals
+ * (cross-scope data leak — code-review Phase 2 HIGH #5). A full UUID
+ * makes collision astronomically unlikely; journal reads are
+ * additionally tenant/project-scoped as defence in depth.
  */
 public final class MagratheaRunIdGenerator {
 
     private MagratheaRunIdGenerator() {}
 
-    /** Returns the first 8 hex chars of a fresh UUIDv4. */
+    /** Returns a fresh UUIDv4 as 32 hex chars (no dashes). */
     public static String fresh() {
-        return UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+        return UUID.randomUUID().toString().replace("-", "");
     }
 }

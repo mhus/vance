@@ -89,7 +89,7 @@ public class MagratheaTaskExecutor {
      */
     public void execute(MagratheaTaskDocument task) {
         Optional<StartRecord> maybeStart = journalService.readLast(
-                task.getWorkflowRunId(), StartRecord.class);
+                task.getTenantId(), task.getProjectId(), task.getWorkflowRunId(), StartRecord.class);
         if (maybeStart.isEmpty()) {
             log.error("Magrathea task {} references run {} without StartRecord — failing",
                     task.getId(), task.getWorkflowRunId());
@@ -125,7 +125,8 @@ public class MagratheaTaskExecutor {
         }
 
         // Replay vars + params for the executor's view.
-        Map<String, Object> vars = projector.projectVars(task.getWorkflowRunId());
+        Map<String, Object> vars = projector.projectVars(
+                task.getTenantId(), task.getProjectId(), task.getWorkflowRunId());
         Map<String, Object> params = start.getParams() == null ? Map.of() : start.getParams();
 
         // TaskStartedRecord — marks the execution window opened.

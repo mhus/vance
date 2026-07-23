@@ -133,7 +133,7 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
     void technical_error_with_retry_room_enqueues_a_retry_in_same_state() {
         StartRecord start = StartRecord.builder()
                 .workflowName("flaky-wf").definitionYaml(YAML_WITH_RETRY).build();
-        when(journalService.readLast(any(), eq(StartRecord.class))).thenReturn(Optional.of(start));
+        when(journalService.readLast(any(), any(), any(), eq(StartRecord.class))).thenReturn(Optional.of(start));
         String runId = workflowService.start("acme", "proj", "flaky-wf", Map.of(), null);
         MagratheaTaskDocument firstTask = insertedTasks.get(0);
         appendedRecords.clear();
@@ -156,7 +156,7 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
     void technical_error_after_max_attempts_falls_through_to_catch_block() {
         StartRecord start = StartRecord.builder()
                 .workflowName("flaky-wf").definitionYaml(YAML_WITH_RETRY).build();
-        when(journalService.readLast(any(), eq(StartRecord.class))).thenReturn(Optional.of(start));
+        when(journalService.readLast(any(), any(), any(), eq(StartRecord.class))).thenReturn(Optional.of(start));
         String runId = workflowService.start("acme", "proj", "flaky-wf", Map.of(), null);
         MagratheaTaskDocument firstTask = insertedTasks.get(0);
         // Force the task to look like it's already at the retry limit.
@@ -181,7 +181,7 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
     void business_error_not_in_retry_on_list_skips_retry_path() {
         StartRecord start = StartRecord.builder()
                 .workflowName("flaky-wf").definitionYaml(YAML_WITH_RETRY).build();
-        when(journalService.readLast(any(), eq(StartRecord.class))).thenReturn(Optional.of(start));
+        when(journalService.readLast(any(), any(), any(), eq(StartRecord.class))).thenReturn(Optional.of(start));
         String runId = workflowService.start("acme", "proj", "flaky-wf", Map.of(), null);
         MagratheaTaskDocument firstTask = insertedTasks.get(0);
         appendedRecords.clear();
@@ -205,7 +205,7 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
     void successful_outcome_takes_the_on_block_without_retry() {
         StartRecord start = StartRecord.builder()
                 .workflowName("flaky-wf").definitionYaml(YAML_WITH_RETRY).build();
-        when(journalService.readLast(any(), eq(StartRecord.class))).thenReturn(Optional.of(start));
+        when(journalService.readLast(any(), any(), any(), eq(StartRecord.class))).thenReturn(Optional.of(start));
         String runId = workflowService.start("acme", "proj", "flaky-wf", Map.of(), null);
         MagratheaTaskDocument firstTask = insertedTasks.get(0);
         appendedRecords.clear();
@@ -226,9 +226,9 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
     void maxTaskSpawns_exhausted_fails_the_run_with_bounds_reason() {
         StartRecord start = StartRecord.builder()
                 .workflowName("bounded-wf").definitionYaml(YAML_WITH_BOUNDS).build();
-        when(journalService.readLast(any(), eq(StartRecord.class))).thenReturn(Optional.of(start));
+        when(journalService.readLast(any(), any(), any(), eq(StartRecord.class))).thenReturn(Optional.of(start));
         // 3 TaskStartedRecords already → bounds.maxTaskSpawns=2 exceeded.
-        when(journalService.count(any(), eq(TaskStartedRecord.class))).thenReturn(3L);
+        when(journalService.count(any(), any(), any(), eq(TaskStartedRecord.class))).thenReturn(3L);
 
         String runId = workflowService.start("acme", "proj", "bounded-wf", Map.of(), null);
         MagratheaTaskDocument firstTask = insertedTasks.get(0);
@@ -263,9 +263,9 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
                             transitions:
                               - else: loop
                         """).build();
-        when(journalService.readLast(any(), eq(StartRecord.class))).thenReturn(Optional.of(start));
+        when(journalService.readLast(any(), any(), any(), eq(StartRecord.class))).thenReturn(Optional.of(start));
         // Force the run to look 60s old.
-        when(journalService.firstCreatedAt(any()))
+        when(journalService.firstCreatedAt(any(), any(), any()))
                 .thenReturn(Optional.of(Instant.now().minusSeconds(60)));
         // Hook the loader's validateYaml for the override.
         when(workflowLoader.validateYaml(any(), any()))
@@ -292,8 +292,8 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
     void within_bounds_workflow_proceeds_normally() {
         StartRecord start = StartRecord.builder()
                 .workflowName("bounded-wf").definitionYaml(YAML_WITH_BOUNDS).build();
-        when(journalService.readLast(any(), eq(StartRecord.class))).thenReturn(Optional.of(start));
-        when(journalService.count(any(), eq(TaskStartedRecord.class))).thenReturn(1L);
+        when(journalService.readLast(any(), any(), any(), eq(StartRecord.class))).thenReturn(Optional.of(start));
+        when(journalService.count(any(), any(), any(), eq(TaskStartedRecord.class))).thenReturn(1L);
 
         String runId = workflowService.start("acme", "proj", "bounded-wf", Map.of(), null);
         MagratheaTaskDocument firstTask = insertedTasks.get(0);

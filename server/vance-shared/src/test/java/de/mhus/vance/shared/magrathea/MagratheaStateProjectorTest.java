@@ -49,7 +49,8 @@ class MagratheaStateProjectorTest {
             entries.add(e);
             return e;
         });
-        when(repo.findByWorkflowRunIdOrderByCreatedAtAsc(eq("r1")))
+        when(repo.findByTenantIdAndProjectIdAndWorkflowRunIdOrderByCreatedAtAsc(
+                eq("acme"), eq("proj"), eq("r1")))
                 .thenAnswer(inv -> entries.stream()
                         .filter(e -> "r1".equals(e.getWorkflowRunId()))
                         .toList());
@@ -60,16 +61,17 @@ class MagratheaStateProjectorTest {
 
     @Test
     void project_returns_empty_when_run_has_no_journal() {
-        when(repo.findByWorkflowRunIdOrderByCreatedAtAsc(eq("missing"))).thenReturn(List.of());
+        when(repo.findByTenantIdAndProjectIdAndWorkflowRunIdOrderByCreatedAtAsc(
+                eq("acme"), eq("proj"), eq("missing"))).thenReturn(List.of());
 
-        assertThat(projector.project("missing")).isEmpty();
+        assertThat(projector.project("acme", "proj", "missing")).isEmpty();
     }
 
     @Test
     void project_returns_empty_when_no_start_record_yet() {
         append(NoteRecord.builder().note("orphan").build());
 
-        assertThat(projector.project("r1")).isEmpty();
+        assertThat(projector.project("acme", "proj", "r1")).isEmpty();
     }
 
     @Test
@@ -83,7 +85,7 @@ class MagratheaStateProjectorTest {
                 .build());
         append(StateEnteredRecord.builder().state("plan").build());
 
-        MagratheaProcessDto dto = projector.project("r1").orElseThrow();
+        MagratheaProcessDto dto = projector.project("acme", "proj", "r1").orElseThrow();
 
         assertThat(dto.getWorkflowRunId()).isEqualTo("r1");
         assertThat(dto.getWorkflowName()).isEqualTo("pr-review");
@@ -102,7 +104,7 @@ class MagratheaStateProjectorTest {
         append(VarRecord.builder().key("count").value(objectMapper.valueToTree(3)).build());
         append(VarRecord.builder().key("risk").value(objectMapper.valueToTree("low")).build());
 
-        MagratheaProcessDto dto = projector.project("r1").orElseThrow();
+        MagratheaProcessDto dto = projector.project("acme", "proj", "r1").orElseThrow();
 
         assertThat(dto.getVars()).containsEntry("risk", "low").containsEntry("count", 3);
     }
@@ -117,7 +119,7 @@ class MagratheaStateProjectorTest {
                 .build());
         append(StatusRecord.builder().status(MagratheaRunStatus.DONE).build());
 
-        MagratheaProcessDto dto = projector.project("r1").orElseThrow();
+        MagratheaProcessDto dto = projector.project("acme", "proj", "r1").orElseThrow();
 
         assertThat(dto.getStatus()).isEqualTo(MagratheaRunStatus.DONE);
         assertThat(dto.getCurrentState()).isEqualTo("done");
@@ -131,7 +133,7 @@ class MagratheaStateProjectorTest {
         append(StateEnteredRecord.builder().state("escalate").build());
         append(StatusRecord.builder().status(MagratheaRunStatus.FAILED).reason("checks failed").build());
 
-        MagratheaProcessDto dto = projector.project("r1").orElseThrow();
+        MagratheaProcessDto dto = projector.project("acme", "proj", "r1").orElseThrow();
 
         assertThat(dto.getStatus()).isEqualTo(MagratheaRunStatus.FAILED);
         assertThat(dto.getCurrentState()).isEqualTo("escalate");
@@ -142,7 +144,7 @@ class MagratheaStateProjectorTest {
     void projectStatus_returns_RUNNING_when_no_status_record_yet() {
         append(StartRecord.builder().workflowName("x").definitionYaml("y").build());
 
-        assertThat(projector.projectStatus("r1")).isEqualTo(MagratheaRunStatus.RUNNING);
+        assertThat(projector.projectStatus("acme", "proj", "r1")).isEqualTo(MagratheaRunStatus.RUNNING);
     }
 
     @Test
@@ -151,14 +153,14 @@ class MagratheaStateProjectorTest {
         append(StatusRecord.builder().status(MagratheaRunStatus.PAUSED).build());
         append(StatusRecord.builder().status(MagratheaRunStatus.DONE).build());
 
-        assertThat(projector.projectStatus("r1")).isEqualTo(MagratheaRunStatus.DONE);
+        assertThat(projector.projectStatus("acme", "proj", "r1")).isEqualTo(MagratheaRunStatus.DONE);
     }
 
     @Test
     void projectVars_returns_empty_map_when_no_vars() {
         append(StartRecord.builder().workflowName("x").definitionYaml("y").build());
 
-        assertThat(projector.projectVars("r1")).isEmpty();
+        assertThat(projector.projectVars("acme", "proj", "r1")).isEmpty();
     }
 
     @Test
@@ -168,7 +170,7 @@ class MagratheaStateProjectorTest {
                 .value(objectMapper.valueToTree(Map.of("risk", "low", "tests_passed", true)))
                 .build());
 
-        Map<String, Object> vars = projector.projectVars("r1");
+        Map<String, Object> vars = projector.projectVars("acme", "proj", "r1");
 
         assertThat(vars).containsKey("plan_output");
         @SuppressWarnings("unchecked")
@@ -185,7 +187,7 @@ class MagratheaStateProjectorTest {
         append(StateEnteredRecord.builder().state("done").build());
         append(StatusRecord.builder().status(MagratheaRunStatus.DONE).build());
 
-        MagratheaProcessDto dto = projector.project("r1").orElseThrow();
+        MagratheaProcessDto dto = projector.project("acme", "proj", "r1").orElseThrow();
 
         assertThat(dto.getCurrentState()).isEqualTo("done");
     }

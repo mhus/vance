@@ -1,7 +1,6 @@
 package de.mhus.vance.shared.magrathea;
 
 import java.util.List;
-import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.repository.MongoRepository;
 
 /**
@@ -10,11 +9,12 @@ import org.springframework.data.mongodb.repository.MongoRepository;
  */
 interface MagratheaJournalRepository extends MongoRepository<MagratheaJournalEntry, String> {
 
-    List<MagratheaJournalEntry> findByWorkflowRunIdOrderByCreatedAtAsc(String workflowRunId);
+    List<MagratheaJournalEntry> findByTenantIdAndProjectIdAndWorkflowRunIdOrderByCreatedAtAsc(
+            String tenantId, String projectId, String workflowRunId);
 
-    List<MagratheaJournalEntry> findByWorkflowRunIdAndType(String workflowRunId, String type, Sort sort);
+    List<MagratheaJournalEntry> findByTenantIdAndProjectIdAndWorkflowRunIdAndTaskId(
+            String tenantId, String projectId, String workflowRunId, String taskId);
 
-    List<MagratheaJournalEntry> findByWorkflowRunIdAndTaskId(String workflowRunId, String taskId);
-
-    long deleteByWorkflowRunId(String workflowRunId);
+    long deleteByTenantIdAndProjectIdAndWorkflowRunId(
+            String tenantId, String projectId, String workflowRunId);
 }

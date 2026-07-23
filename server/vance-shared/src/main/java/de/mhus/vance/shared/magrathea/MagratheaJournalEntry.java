@@ -24,21 +24,22 @@ import org.springframework.data.mongodb.core.mapping.Document;
  * the {@code MagratheaStateProjector} from a sequence of these entries
  * (plan §3.2).
  *
- * <p>The {@code (workflowRunId, taskId, type=TaskResultRecord)} index
- * is unique — that's how the projector enforces idempotent task
- * completion in the face of pod-reclaim retries (plan §11.1).
+ * <p>The {@code (tenantId, projectId, workflowRunId, taskId,
+ * type=TaskResultRecord)} index is unique — that's how the projector
+ * enforces idempotent task completion in the face of pod-reclaim
+ * retries (plan §11.1).
  */
 @Document(collection = "magrathea_journal")
 @CompoundIndexes({
         @CompoundIndex(
-                name = "run_created_idx",
-                def = "{ 'workflowRunId': 1, 'createdAt': 1 }"),
+                name = "scope_run_created_idx",
+                def = "{ 'tenantId': 1, 'projectId': 1, 'workflowRunId': 1, 'createdAt': 1 }"),
         @CompoundIndex(
                 name = "tenant_project_status_idx",
                 def = "{ 'tenantId': 1, 'projectId': 1, 'type': 1, 'createdAt': -1 }"),
         @CompoundIndex(
-                name = "run_task_result_unique_idx",
-                def = "{ 'workflowRunId': 1, 'taskId': 1, 'type': 1 }",
+                name = "scope_run_task_result_unique_idx",
+                def = "{ 'tenantId': 1, 'projectId': 1, 'workflowRunId': 1, 'taskId': 1, 'type': 1 }",
                 unique = true,
                 partialFilter = "{ 'type': 'de.mhus.vance.shared.magrathea.journal.TaskResultRecord' }")
 })
@@ -54,7 +55,7 @@ public class MagratheaJournalEntry {
     private String tenantId = "";
     private String projectId = "";
 
-    /** 8-hex-prefix bucket id for the workflow run. */
+    /** Full 32-hex UUID for the workflow run (unique across all scopes). */
     private String workflowRunId = "";
 
     /** FQN of the concrete {@link de.mhus.vance.shared.magrathea.journal.JournalRecord}. */

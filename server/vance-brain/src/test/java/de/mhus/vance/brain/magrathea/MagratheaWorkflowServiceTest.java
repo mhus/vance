@@ -141,7 +141,7 @@ class MagratheaWorkflowServiceTest {
         String runId = workflowService.start("acme", "proj", "demo",
                 Map.of("explicit", "value"), "alice");
 
-        assertThat(runId).hasSize(8);
+        assertThat(runId).hasSize(32);
         assertThat(appendedRecords).hasSize(2);
         assertThat(appendedRecords.get(0)).isInstanceOf(StartRecord.class);
         assertThat(appendedRecords.get(1)).isInstanceOf(StateEnteredRecord.class);
@@ -183,7 +183,7 @@ class MagratheaWorkflowServiceTest {
         // Set up StartRecord lookup for handleCompletion.
         StartRecord start = StartRecord.builder()
                 .workflowName("demo").definitionYaml(YAML).build();
-        when(journalService.readLast(any(), eq(StartRecord.class)))
+        when(journalService.readLast(any(), any(), any(), eq(StartRecord.class)))
                 .thenReturn(Optional.of(start));
 
         String runId = workflowService.start("acme", "proj", "demo", Map.of(), null);
@@ -210,7 +210,7 @@ class MagratheaWorkflowServiceTest {
     void terminal_success_writes_StatusRecord_DONE_and_ResultRecord() {
         StartRecord start = StartRecord.builder()
                 .workflowName("demo").definitionYaml(YAML).build();
-        when(journalService.readLast(any(), eq(StartRecord.class)))
+        when(journalService.readLast(any(), any(), any(), eq(StartRecord.class)))
                 .thenReturn(Optional.of(start));
 
         String runId = workflowService.start("acme", "proj", "demo", Map.of(), null);
@@ -244,7 +244,7 @@ class MagratheaWorkflowServiceTest {
     void terminal_failure_writes_StatusRecord_FAILED() {
         StartRecord start = StartRecord.builder()
                 .workflowName("demo").definitionYaml(YAML).build();
-        when(journalService.readLast(any(), eq(StartRecord.class)))
+        when(journalService.readLast(any(), any(), any(), eq(StartRecord.class)))
                 .thenReturn(Optional.of(start));
 
         String runId = workflowService.start("acme", "proj", "demo", Map.of(), null);
@@ -274,7 +274,7 @@ class MagratheaWorkflowServiceTest {
     void duplicate_completion_event_short_circuits() {
         StartRecord start = StartRecord.builder()
                 .workflowName("demo").definitionYaml(YAML).build();
-        when(journalService.readLast(any(), eq(StartRecord.class)))
+        when(journalService.readLast(any(), any(), any(), eq(StartRecord.class)))
                 .thenReturn(Optional.of(start));
 
         String runId = workflowService.start("acme", "proj", "demo", Map.of(), null);
@@ -319,7 +319,7 @@ class MagratheaWorkflowServiceTest {
                 .thenAnswer(inv -> realLoader.validateYaml("withstore", yamlWithStore));
         StartRecord start = StartRecord.builder()
                 .workflowName("withstore").definitionYaml(yamlWithStore).build();
-        when(journalService.readLast(any(), eq(StartRecord.class)))
+        when(journalService.readLast(any(), any(), any(), eq(StartRecord.class)))
                 .thenReturn(Optional.of(start));
 
         String runId = workflowService.start("acme", "proj", "withstore", Map.of(), null);

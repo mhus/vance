@@ -160,7 +160,7 @@ public class MagratheaWorkflowController {
             HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, project), Action.READ);
 
-        MagratheaProcessDto dto = projector.project(runId)
+        MagratheaProcessDto dto = projector.project(tenant, project, runId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Workflow run not found: " + runId));
         if (!tenant.equals(dto.getTenantId()) || !project.equals(dto.getProjectId())) {
@@ -192,7 +192,7 @@ public class MagratheaWorkflowController {
                 .find(filter).sort(Sorts.descending("createdAt")).limit(LIST_LIMIT * 2)) {
             String runId = entry.getString("workflowRunId");
             if (runId == null || !seen.add(runId)) continue;
-            Optional<MagratheaProcessDto> dto = projector.project(runId);
+            Optional<MagratheaProcessDto> dto = projector.project(tenant, project, runId);
             if (dto.isEmpty()) continue;
             if (workflowName != null && !workflowName.equals(dto.get().getWorkflowName())) {
                 continue;

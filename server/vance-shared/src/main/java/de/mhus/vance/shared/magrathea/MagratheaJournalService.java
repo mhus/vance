@@ -113,27 +113,38 @@ public class MagratheaJournalService {
     }
 
     // ──────────── read ────────────
+    //
+    // All reads are scoped by (tenantId, projectId, workflowRunId). Even
+    // though the run id is a full UUID and globally unique, keying reads
+    // on the scope keeps a stray cross-tenant entry (bug, replayed
+    // fixture, id reuse) from ever bleeding into another scope's
+    // projection (code-review Phase 2 HIGH #5).
 
     /** All entries for a run, ordered ascending by creation time. */
-    public List<MagratheaJournalEntry> read(String workflowRunId) {
-        return repository.findByWorkflowRunIdOrderByCreatedAtAsc(workflowRunId);
+    public List<MagratheaJournalEntry> read(String tenantId, String projectId, String workflowRunId) {
+        return repository.findByTenantIdAndProjectIdAndWorkflowRunIdOrderByCreatedAtAsc(
+                tenantId, projectId, workflowRunId);
     }
 
     /** Entries linked to one task — used by the executor for replay during reclaim. */
-    public List<MagratheaJournalEntry> readByTaskId(String workflowRunId, String taskId) {
-        return repository.findByWorkflowRunIdAndTaskId(workflowRunId, taskId);
+    public List<MagratheaJournalEntry> readByTaskId(
+            String tenantId, String projectId, String workflowRunId, String taskId) {
+        return repository.findByTenantIdAndProjectIdAndWorkflowRunIdAndTaskId(
+                tenantId, projectId, workflowRunId, taskId);
     }
 
     /** When the run started — the timestamp of its first journal entry. */
-    public Optional<java.time.Instant> firstCreatedAt(String workflowRunId) {
-        List<MagratheaJournalEntry> entries = repository.findByWorkflowRunIdOrderByCreatedAtAsc(workflowRunId);
+    public Optional<java.time.Instant> firstCreatedAt(
+            String tenantId, String projectId, String workflowRunId) {
+        List<MagratheaJournalEntry> entries = read(tenantId, projectId, workflowRunId);
         if (entries.isEmpty()) return Optional.empty();
         return Optional.ofNullable(entries.get(0).getCreatedAt());
     }
 
     /** Count entries of a typed record subclass — used for bounds enforcement. */
-    public <T extends JournalRecord> long count(String workflowRunId, Class<T> recordType) {
-        return repository.findByWorkflowRunIdOrderByCreatedAtAsc(workflowRunId).stream()
+    public <T extends JournalRecord> long count(
+            String tenantId, String projectId, String workflowRunId, Class<T> recordType) {
+        return read(tenantId, projectId, workflowRunId).stream()
                 .filter(e -> recordType.getName().equals(e.getType()))
                 .count();
     }
@@ -143,8 +154,8 @@ public class MagratheaJournalService {
      * {@code WorkflowContext.getLastJournalRecord(Class)}.
      */
     public <T extends JournalRecord> Optional<T> readLast(
-            String workflowRunId, Class<T> recordType) {
-        List<MagratheaJournalEntry> entries = repository.findByWorkflowRunIdOrderByCreatedAtAsc(workflowRunId);
+            String tenantId, String projectId, String workflowRunId, Class<T> recordType) {
+        List<MagratheaJournalEntry> entries = read(tenantId, projectId, workflowRunId);
         for (int i = entries.size() - 1; i >= 0; i--) {
             MagratheaJournalEntry entry = entries.get(i);
             if (recordType.getName().equals(entry.getType())) {
@@ -159,8 +170,9 @@ public class MagratheaJournalService {
      * variable replay (typed {@link de.mhus.vance.shared.magrathea.journal.VarRecord})
      * and audit trails.
      */
-    public <T extends JournalRecord> List<T> readAll(String workflowRunId, Class<T> recordType) {
-        List<MagratheaJournalEntry> entries = repository.findByWorkflowRunIdOrderByCreatedAtAsc(workflowRunId);
+    public <T extends JournalRecord> List<T> readAll(
+            String tenantId, String projectId, String workflowRunId, Class<T> recordType) {
+        List<MagratheaJournalEntry> entries = read(tenantId, projectId, workflowRunId);
         List<T> out = new ArrayList<>();
         for (MagratheaJournalEntry entry : entries) {
             if (recordType.getName().equals(entry.getType())) {
@@ -214,7 +226,8 @@ public class MagratheaJournalService {
     // ──────────── admin ────────────
 
     /** Drop the whole journal of a run — admin / test fixture. */
-    public long deleteRun(String workflowRunId) {
-        return repository.deleteByWorkflowRunId(workflowRunId);
+    public long deleteRun(String tenantId, String projectId, String workflowRunId) {
+        return repository.deleteByTenantIdAndProjectIdAndWorkflowRunId(
+                tenantId, projectId, workflowRunId);
     }
 }

@@ -276,7 +276,7 @@ public class MagratheaWorkflowService {
 
         // Re-load fresh definition + state spec for transition resolution.
         Optional<StartRecord> start = journalService.readLast(
-                event.workflowRunId(), StartRecord.class);
+                event.tenantId(), event.projectId(), event.workflowRunId(), StartRecord.class);
         if (start.isEmpty()) {
             log.error("Magrathea onTaskCompleted: run {} has no StartRecord", event.workflowRunId());
             markTaskTerminal(task, event.outcome());
@@ -325,8 +325,8 @@ public class MagratheaWorkflowService {
                     StatusRecord.builder().status(runStatus).reason(event.errorMessage()).build());
             markTaskTerminal(task, event.outcome());
 
-            recordTerminalMetrics(start.get().getWorkflowName(),
-                    runStatus, event.workflowRunId());
+            recordTerminalMetrics(start.get().getWorkflowName(), runStatus,
+                    event.tenantId(), event.projectId(), event.workflowRunId());
 
             // Surface to any parent that's waiting on this run as a sub-workflow.
             publishWorkflowCompleted(event, start.get(), runStatus);
@@ -344,7 +344,8 @@ public class MagratheaWorkflowService {
 
         // 4. Bounds check before enqueueing any further task — same
         //    place catches both normal transitions and catch-routes.
-        Optional<String> boundsViolation = checkBounds(event.workflowRunId(), workflow);
+        Optional<String> boundsViolation = checkBounds(
+                event.tenantId(), event.projectId(), event.workflowRunId(), workflow);
         if (boundsViolation.isPresent()) {
             log.warn("Magrathea run {} bounds exhausted: {}",
                     event.workflowRunId(), boundsViolation.get());
@@ -402,12 +403,15 @@ public class MagratheaWorkflowService {
                 prev.workflowRunId(), prev.stateName(), retryCount, backoff);
     }
 
-    private Optional<String> checkBounds(String workflowRunId, ResolvedMagratheaWorkflow workflow) {
+    private Optional<String> checkBounds(
+            String tenantId, String projectId, String workflowRunId,
+            ResolvedMagratheaWorkflow workflow) {
         MagratheaBoundsSpec bounds = workflow.bounds();
         if (bounds == null) return Optional.empty();
 
         if (bounds.maxWallclockSeconds() != null) {
-            Optional<Instant> runStart = journalService.firstCreatedAt(workflowRunId);
+            Optional<Instant> runStart =
+                    journalService.firstCreatedAt(tenantId, projectId, workflowRunId);
             if (runStart.isPresent()) {
                 long elapsed = java.time.Duration.between(runStart.get(), Instant.now()).getSeconds();
                 if (elapsed > bounds.maxWallclockSeconds()) {
@@ -417,7 +421,7 @@ public class MagratheaWorkflowService {
             }
         }
         if (bounds.maxTaskSpawns() != null) {
-            long spawned = journalService.count(workflowRunId,
+            long spawned = journalService.count(tenantId, projectId, workflowRunId,
                     de.mhus.vance.shared.magrathea.journal.TaskStartedRecord.class);
             if (spawned > bounds.maxTaskSpawns()) {
                 return Optional.of("maxTaskSpawns=" + bounds.maxTaskSpawns()
@@ -492,10 +496,12 @@ public class MagratheaWorkflowService {
     private void writeRunFailed(TaskCompletedEvent event, String reason) {
         journalService.append(event.tenantId(), event.projectId(), event.workflowRunId(),
                 StatusRecord.builder().status(MagratheaRunStatus.FAILED).reason(reason).build());
-        String workflowName = journalService.readLast(event.workflowRunId(), StartRecord.class)
+        String workflowName = journalService.readLast(
+                        event.tenantId(), event.projectId(), event.workflowRunId(), StartRecord.class)
                 .map(StartRecord::getWorkflowName)
                 .orElse("unknown");
-        recordTerminalMetrics(workflowName, MagratheaRunStatus.FAILED, event.workflowRunId());
+        recordTerminalMetrics(workflowName, MagratheaRunStatus.FAILED,
+                event.tenantId(), event.projectId(), event.workflowRunId());
     }
 
     /**
@@ -505,11 +511,12 @@ public class MagratheaWorkflowService {
      * paths) the timer is skipped, the counter still fires.
      */
     private void recordTerminalMetrics(
-            String workflowName, MagratheaRunStatus status, String workflowRunId) {
+            String workflowName, MagratheaRunStatus status,
+            String tenantId, String projectId, String workflowRunId) {
         metricService.counter(METRIC_TERMINATIONS,
                 "workflow", workflowName,
                 "status", status.name()).increment();
-        Instant startedAt = findStartInstant(workflowRunId);
+        Instant startedAt = findStartInstant(tenantId, projectId, workflowRunId);
         if (startedAt != null) {
             metricService.timer(METRIC_DURATION,
                     "workflow", workflowName,
@@ -519,8 +526,9 @@ public class MagratheaWorkflowService {
     }
 
     /** Walks the journal in createdAt order; the first entry is the StartRecord. */
-    private @Nullable Instant findStartInstant(String workflowRunId) {
-        List<MagratheaJournalEntry> entries = journalService.read(workflowRunId);
+    private @Nullable Instant findStartInstant(
+            String tenantId, String projectId, String workflowRunId) {
+        List<MagratheaJournalEntry> entries = journalService.read(tenantId, projectId, workflowRunId);
         if (entries.isEmpty()) return null;
         return entries.get(0).getCreatedAt();
     }

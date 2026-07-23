@@ -43,6 +43,8 @@ public class ProjectListTool implements Tool {
             "required", List.of());
 
     private final ProjectService projectService;
+    private final de.mhus.vance.shared.permission.PermissionService permissionService;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
     @Override
     public String name() {
@@ -81,9 +83,19 @@ public class ProjectListTool implements Tool {
                 || boolParam(params, "includeArchived", false); // legacy alias
 
         List<ProjectDocument> all = projectService.all(ctx.tenantId());
+        de.mhus.vance.shared.permission.SecurityContext subject =
+                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId());
         List<Map<String, Object>> rows = new ArrayList<>(all.size());
         for (ProjectDocument p : all) {
             if (!includeSystem && p.getKind() == ProjectKind.SYSTEM) {
+                continue;
+            }
+            // Only surface projects the caller may READ — otherwise the LLM
+            // sees projects it will be denied on (permission-system #11).
+            // Resolver decides (R3/R7); shadow-mode keeps the list full.
+            if (!permissionService.check(subject,
+                    new de.mhus.vance.shared.permission.Resource.Project(ctx.tenantId(), p.getName()),
+                    de.mhus.vance.shared.permission.Action.READ)) {
                 continue;
             }
             if (!includeClosed && p.getStatus() != null

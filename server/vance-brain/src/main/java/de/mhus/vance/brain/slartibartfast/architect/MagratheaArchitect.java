@@ -178,6 +178,21 @@ public class MagratheaArchitect implements SchemaArchitect {
                 outcome: success | failure         # MANDATORY
                 result: { ... }                    # optional result payload
 
+            DATAFLOW — thread data between tasks:
+              Any spec string value may embed placeholders resolved
+              just before the task runs:
+                ${params.<key>}   — a run parameter (from parameters:)
+                ${state.<key>}    — a variable an earlier state wrote
+                                    via storeAs: <key>
+              Nested access works: ${state.review.summary}. A missing
+              key resolves to an empty string. Use this to feed one
+              task's output into a later task — e.g. store an
+              agent_task's result with `storeAs: plan`, then reference
+              ${state.plan} in a later agent_task prompt, tool_task
+              param, gate_task title, or terminal result.
+              This is DIFFERENT from condition_task `if:`, which uses
+              SpEL (#state['k'] / #params['k']), not ${...}.
+
             RULES:
             - Reference recipes in `agent_task.recipe` ONLY by names
               from the available-recipes list below (a tool name like

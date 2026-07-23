@@ -56,6 +56,25 @@ Error kinds (for `catch:` / `retry.on:`): `technical_error`,
 `business_error`, `agent_error`, `timeout`, `permission_error`,
 `human_rejected`, `cancelled`.
 
+## Dataflow — reading params and earlier task output
+
+Any spec string value may embed placeholders that are resolved just
+before the task runs:
+
+- `${params.<key>}` — a run parameter declared in `parameters:`.
+- `${state.<key>}` — a variable an earlier state wrote via
+  `storeAs: <key>`. Nested access works: `${state.review.summary}`.
+
+A missing key resolves to an empty string. This is how tasks thread
+data between each other: store one task's output with `storeAs`, then
+reference `${state.<key>}` in a **later** task's prompt, tool param,
+gate title/body, or terminal result — e.g. `agent_task` with
+`storeAs: plan`, then a later `agent_task` prompt
+`"Implement: ${state.plan}"`.
+
+This is **distinct** from `condition_task` branching, which uses SpEL
+(`#state['k']` / `#params['k']`, see below), not `${…}`.
+
 ## Task types
 
 | `type:` | Sync? | Key fields | Outcomes |

@@ -50,6 +50,12 @@ public class SetupWizard {
     private final PasswordService passwordService;
     private final SettingService settingService;
     private final HomeBootstrapService homeBootstrapService;
+    // Optional permission-bootstrap SPI — present only when a grant-storing
+    // provider (Simple-Auth) is loaded. The setup wizard only ever provisions
+    // an ADMIN, so the created user is seeded as tenant-admin; all other users
+    // get their grants later through the normal tooling.
+    private final ObjectProvider<de.mhus.vance.shared.permission.PermissionBootstrap>
+            permissionBootstrapProvider;
     // ObjectProvider mirrors the AccessCommands trick — the LineReader bean
     // depends transitively on the command catalog, so resolving it lazily
     // breaks the wiring cycle Spring Boot 4 otherwise rejects.
@@ -61,12 +67,14 @@ public class SetupWizard {
             PasswordService passwordService,
             SettingService settingService,
             HomeBootstrapService homeBootstrapService,
+            ObjectProvider<de.mhus.vance.shared.permission.PermissionBootstrap> permissionBootstrapProvider,
             ObjectProvider<LineReader> lineReaderProvider) {
         this.tenantService = tenantService;
         this.userService = userService;
         this.passwordService = passwordService;
         this.settingService = settingService;
         this.homeBootstrapService = homeBootstrapService;
+        this.permissionBootstrapProvider = permissionBootstrapProvider;
         this.lineReaderProvider = lineReaderProvider;
     }
 
@@ -531,6 +539,14 @@ public class SetupWizard {
                     null,
                     null);
             out.println("  ~ user '" + state.getUserName() + "' updated");
+        }
+
+        // Seed the setup user as TENANT-ADMIN. The wizard only provisions
+        // admins; every other user is granted later via the normal tooling.
+        // No-op unless a grant-storing provider (Simple-Auth) is loaded.
+        if (StringUtils.isNotBlank(state.getUserName())) {
+            permissionBootstrapProvider.ifAvailable(
+                    pb -> pb.grantTenantAdmin(state.getTenantId(), state.getUserName()));
         }
 
         writeProviderSettings(out, state);

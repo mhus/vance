@@ -28,16 +28,49 @@ public class KindToolSupport {
     private final DocumentService documentService;
     private final EddieContext eddieContext;
     private final DocumentInvalidationEmitter invalidationEmitter;
+    private final de.mhus.vance.shared.permission.PermissionService permissionService;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
     public KindToolSupport(
             DocumentBufferService bufferService,
             DocumentService documentService,
             EddieContext eddieContext,
-            DocumentInvalidationEmitter invalidationEmitter) {
+            DocumentInvalidationEmitter invalidationEmitter,
+            de.mhus.vance.shared.permission.PermissionService permissionService,
+            de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
         this.bufferService = bufferService;
         this.documentService = documentService;
         this.eddieContext = eddieContext;
         this.invalidationEmitter = invalidationEmitter;
+        this.permissionService = permissionService;
+        this.contextFactory = contextFactory;
+    }
+
+    /**
+     * Per-document authorization gate for the LLM-tool write path
+     * (permission-system F1, finding #9). ToolDispatcher only enforces a
+     * coarse EXECUTE on the *caller's* scope; a tool can target another
+     * project or a reserved {@code _vance/...} path, so the actual target
+     * document is authorized here. The subject is derived from the tool
+     * context ({@code forToolSubject} maps a null userId → SYSTEM, so
+     * headless/scheduler-triggered writes pass; a real user is checked).
+     * The resolver decides — reserved-prefix writes need ADMIN (R4),
+     * ordinary project docs need WRITER (R3). Rolled out under the
+     * {@code vance.permission.shadow} switch.
+     */
+    public void enforceDocWrite(ToolInvocationContext ctx, String projectName, String path,
+            de.mhus.vance.shared.permission.Action action) {
+        permissionService.enforce(
+                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()),
+                new de.mhus.vance.shared.permission.Resource.Document(
+                        ctx.tenantId(), projectName, path),
+                action);
+    }
+
+    /** Overload for an already-loaded document. */
+    public void enforceDocWrite(ToolInvocationContext ctx, DocumentDocument doc,
+            de.mhus.vance.shared.permission.Action action) {
+        enforceDocWrite(ctx, doc.getProjectId(), doc.getPath(), action);
     }
 
     public DocumentBufferService buffer() {
@@ -152,6 +185,7 @@ public class KindToolSupport {
      * own openDocumentIds.
      */
     public void writeBody(DocumentDocument doc, String newBody, ToolInvocationContext ctx) {
+        enforceDocWrite(ctx, doc, de.mhus.vance.shared.permission.Action.WRITE);
         bufferService.writeBody(ctx.processId(), doc.getId(), newBody);
         bufferService.flush(ctx.processId(), doc.getId());
         invalidationEmitter.emitBody(ctx.sessionId(), doc);

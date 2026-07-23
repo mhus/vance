@@ -41,6 +41,7 @@ public class DocDeleteTool implements Tool {
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         DocumentDocument doc = support.loadDocument(params, ctx);
+        support.enforceDocWrite(ctx, doc, de.mhus.vance.shared.permission.Action.DELETE);
         // Flush pending writes so the trashed copy reflects the
         // latest in-flight body, not stale disk content.
         support.buffer().flush(ctx.processId(), doc.getId());

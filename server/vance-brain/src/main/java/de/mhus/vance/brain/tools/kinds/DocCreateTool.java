@@ -143,6 +143,8 @@ public class DocCreateTool implements Tool {
                 : null;
 
         ProjectDocument project = support.eddieContext().resolveProject(params, ctx, false);
+        support.enforceDocWrite(ctx, project.getName(), path,
+                de.mhus.vance.shared.permission.Action.CREATE);
         DocumentService docService = support.documentService();
 
         Optional<DocumentDocument> existing =

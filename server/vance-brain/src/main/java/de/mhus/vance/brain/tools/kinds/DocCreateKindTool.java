@@ -80,6 +80,8 @@ public class DocCreateKindTool implements Tool {
         if (body == null) body = stubFor(kind, mimeType);
 
         ProjectDocument project = support.eddieContext().resolveProject(params, ctx, false);
+        support.enforceDocWrite(ctx, project.getName(), path,
+                de.mhus.vance.shared.permission.Action.CREATE);
         DocumentDocument created;
         try {
             created = support.documentService().create(

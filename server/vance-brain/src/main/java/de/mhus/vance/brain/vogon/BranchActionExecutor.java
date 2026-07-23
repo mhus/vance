@@ -203,14 +203,16 @@ final class BranchActionExecutor {
                 if (existing.isPresent()) {
                     ctx.documentService().update(
                             existing.get().getId(),
-                            d.title(), d.tags(), content, /*newPath*/ null);
+                            d.title(), d.tags(), content, /*newPath*/ null,
+                            de.mhus.vance.shared.permission.WriteActor.SYSTEM);
                     return null;
                 }
             }
             ctx.documentService().createText(
                     tenantId, projectId, d.path(),
                     d.title(), d.tags(), content,
-                    /*createdBy*/ null);
+                    /*createdBy*/ null,
+                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
             return null;
         }
         if (action instanceof BranchAction.DocCreateKind d) {
@@ -229,7 +231,8 @@ final class BranchActionExecutor {
                 if (existing.isPresent()) {
                     ctx.documentService().update(
                             existing.get().getId(),
-                            d.title(), d.tags(), body, /*newPath*/ null);
+                            d.title(), d.tags(), body, /*newPath*/ null,
+                            de.mhus.vance.shared.permission.WriteActor.SYSTEM);
                     return null;
                 }
             }
@@ -238,7 +241,8 @@ final class BranchActionExecutor {
                     d.title(), d.tags(),
                     "text/markdown",
                     new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8)),
-                    /*createdBy*/ null);
+                    /*createdBy*/ null,
+                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
             return null;
         }
         if (action instanceof BranchAction.ListAppend la) {
@@ -260,7 +264,8 @@ final class BranchActionExecutor {
                     /*newTitle*/ null,
                     /*newTags*/ null,
                     updated,
-                    /*newPath*/ null);
+                    /*newPath*/ null,
+                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
             return null;
         }
         if (action instanceof BranchAction.DocConcat dc) {
@@ -288,7 +293,8 @@ final class BranchActionExecutor {
                     dc.title(),
                     /*tags*/ null,
                     sb.toString(),
-                    /*createdBy*/ null);
+                    /*createdBy*/ null,
+                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
             return null;
         }
         if (action instanceof BranchAction.InboxPost ip) {

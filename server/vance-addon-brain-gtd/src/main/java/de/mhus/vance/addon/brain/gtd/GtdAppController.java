@@ -98,6 +98,19 @@ public class GtdAppController {
         return toContentView(doc);
     }
 
+    @GetMapping("/brain/{tenant}/addon/gtd/action")
+    public GtdActionContentView getAction(
+            @PathVariable("tenant") String tenant,
+            @RequestParam("projectId") String projectId,
+            @RequestParam("path") String path,
+            HttpServletRequest httpRequest) {
+
+        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.READ);
+        DocumentDocument doc = documentService.findByPath(tenant, projectId, path)
+                .orElseThrow(() -> new ToolException("No action at '" + path + "'"));
+        return toContentView(doc);
+    }
+
     @PostMapping("/brain/{tenant}/addon/gtd/action")
     public GtdActionContentView createAction(
             @PathVariable("tenant") String tenant,

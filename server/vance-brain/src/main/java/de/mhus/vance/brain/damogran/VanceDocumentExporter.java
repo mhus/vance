@@ -39,10 +39,12 @@ class VanceDocumentExporter implements DamogranExporter {
 
         if (DamogranMime.isText(mime)) {
             documentService.upsertText(ctx.tenantId(), project, docPath,
-                    null, null, new String(bytes, StandardCharsets.UTF_8), CREATED_BY);
+                    null, null, new String(bytes, StandardCharsets.UTF_8), CREATED_BY,
+                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
         } else {
             documentService.createOrReplaceBinary(ctx.tenantId(), project, docPath,
-                    bytes, mime, null, null, null, CREATED_BY);
+                    bytes, mime, null, null, null, CREATED_BY,
+                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
         }
     }
 }

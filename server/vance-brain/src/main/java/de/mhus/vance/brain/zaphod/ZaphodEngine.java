@@ -1106,12 +1106,14 @@ public class ZaphodEngine implements ThinkEngine {
         if (existing.isPresent()) {
             documentService.update(
                     existing.get().getId(),
-                    title, /*tags*/ null, content, /*newPath*/ null);
+                    title, /*tags*/ null, content, /*newPath*/ null,
+                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
         } else {
             documentService.createText(
                     tenantId, projectId, path, title,
                     java.util.List.of("council", "draft"),
-                    content, "zaphod:" + process.getId());
+                    content, "zaphod:" + process.getId(),
+                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
         }
     }
 

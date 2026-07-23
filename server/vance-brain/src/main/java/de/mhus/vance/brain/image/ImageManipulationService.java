@@ -464,7 +464,8 @@ public class ImageManipulationService {
         DocumentDocument written = documentService.createOrReplaceBinary(
                 tenantId, effectiveProject, effectiveTarget,
                 outBytes, outputMime,
-                null, null, null, userId);
+                null, null, null, userId,
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
 
         long durationMs = System.currentTimeMillis() - startMs;
         recordOutcome(opName, "success", startMs);

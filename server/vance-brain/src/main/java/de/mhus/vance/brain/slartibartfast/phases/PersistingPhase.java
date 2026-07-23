@@ -252,12 +252,14 @@ public class PersistingPhase {
         if (existing.isPresent()) {
             documentService.update(
                     existing.get().getId(),
-                    title, /*tags*/ null, content, /*newPath*/ null);
+                    title, /*tags*/ null, content, /*newPath*/ null,
+                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
         } else {
             documentService.createText(
                     tenantId, projectId, path,
                     title, /*tags*/ null, content,
-                    /*createdBy*/ "slartibartfast:" + process.getId());
+                    /*createdBy*/ "slartibartfast:" + process.getId(),
+                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
         }
     }
 

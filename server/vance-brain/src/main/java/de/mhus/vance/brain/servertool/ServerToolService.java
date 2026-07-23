@@ -173,7 +173,7 @@ public class ServerToolService {
                     // registry.refreshOne. Keeping ensureBootstrapped so
                     // the listener's refresh actually has a scope to update.
                     ensureBootstrapped(tenantId, projectId);
-                    documentService.delete(doc.getId());
+                    documentService.delete(doc.getId(), de.mhus.vance.shared.permission.WriteActor.SYSTEM);
                 });
     }
 
@@ -218,7 +218,8 @@ public class ServerToolService {
                 /*title*/ "Server tool: " + normName,
                 /*tags*/ null,
                 yaml,
-                createdBy);
+                createdBy,
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
         return registry.findConfig(tenantId, projectId, normName).orElseThrow(
                 () -> new IllegalStateException(
                         "Server tool vanished immediately after write: " + normName));

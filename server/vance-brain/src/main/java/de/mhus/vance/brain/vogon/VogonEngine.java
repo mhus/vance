@@ -653,7 +653,8 @@ public class VogonEngine implements ThinkEngine {
                             "Vogon phase draft: " + phase.getName(),
                             java.util.List.of("vogon-draft",
                                     "phase:" + phase.getName()),
-                            reply, /*createdBy*/ null);
+                            reply, /*createdBy*/ null,
+                            de.mhus.vance.shared.permission.WriteActor.SYSTEM);
                     artifact.put("draftPath", draftPath);
                 } catch (RuntimeException e) {
                     // Persist-failure must not break the phase —

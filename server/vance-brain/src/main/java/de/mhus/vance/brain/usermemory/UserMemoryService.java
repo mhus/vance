@@ -125,7 +125,8 @@ public class UserMemoryService {
                 ? mergeAppend(loadPersona(tenantId, userProjectName), content)
                 : content.trim();
         documentService.upsertText(tenantId, userProjectName, PERSONA_DOC_PATH,
-                PERSONA_DOC_TITLE, PERSONA_TAGS, newContent, authorTag);
+                PERSONA_DOC_TITLE, PERSONA_TAGS, newContent, authorTag,
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
         return newContent.length();
     }
 
@@ -143,7 +144,8 @@ public class UserMemoryService {
                 ? entry
                 : existing.stripTrailing() + "\n" + entry;
         documentService.upsertText(tenantId, userProjectName, FACTS_DOC_PATH,
-                FACTS_DOC_TITLE, FACTS_TAGS, newContent, authorTag);
+                FACTS_DOC_TITLE, FACTS_TAGS, newContent, authorTag,
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
         return newContent.length();
     }
 
@@ -225,7 +227,8 @@ public class UserMemoryService {
             return;
         }
         documentService.upsertText(tenantId, userProjectName, docPath,
-                title, tags, consolidated, authorTag);
+                title, tags, consolidated, authorTag,
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
         log.info("UserMemory consolidation scope='{}' project='{}' {} → {} chars",
                 scope, userProjectName, current.length(), consolidated.length());
     }

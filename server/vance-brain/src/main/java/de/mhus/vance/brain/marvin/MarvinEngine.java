@@ -1701,13 +1701,15 @@ public class MarvinEngine implements ThinkEngine {
             var existing = documentService.findByPath(tenantId, projectId, path);
             if (existing.isPresent()) {
                 documentService.update(
-                        existing.get().getId(), title, /*tags*/ null, body, /*newPath*/ null);
+                        existing.get().getId(), title, /*tags*/ null, body, /*newPath*/ null,
+                        de.mhus.vance.shared.permission.WriteActor.SYSTEM);
             } else {
                 documentService.createText(
                         tenantId, projectId, path, title,
                         List.of("marvin", "draft", "process-" + process.getId()),
                         body,
-                        "marvin:" + process.getId());
+                        "marvin:" + process.getId(),
+                        de.mhus.vance.shared.permission.WriteActor.SYSTEM);
             }
             log.info("Marvin id='{}' wrote draft node='{}' path='{}' ({} chars)",
                     process.getId(), node.getId(), path, result.length());
@@ -1836,14 +1838,16 @@ public class MarvinEngine implements ThinkEngine {
         var existing = documentService.findByPath(tenantId, projectId, path);
         if (existing.isPresent()) {
             documentService.update(
-                    existing.get().getId(), title, /*tags*/ null, content, /*newPath*/ null);
+                    existing.get().getId(), title, /*tags*/ null, content, /*newPath*/ null,
+                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
             log.info("Marvin id='{}' postAction doc_create node='{}' updated path='{}' ({} chars)",
                     process.getId(), node.getId(), path, content.length());
         } else {
             documentService.createText(
                     tenantId, projectId, path, title,
                     List.of("marvin", "post-action"), content,
-                    "marvin:" + process.getId());
+                    "marvin:" + process.getId(),
+                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
             log.info("Marvin id='{}' postAction doc_create node='{}' created path='{}' ({} chars)",
                     process.getId(), node.getId(), path, content.length());
         }

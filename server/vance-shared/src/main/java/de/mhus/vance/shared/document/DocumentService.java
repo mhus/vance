@@ -1523,6 +1523,41 @@ public class DocumentService {
             @Nullable Map<String, String> headers,
             @Nullable String createdBy,
             WriterIdentity identity) {
+        // Transitional (F1 stage 2): defaults to SYSTEM until callers migrate.
+        return createOrReplaceBinary(tenantId, projectId, path, bytes, mimeType,
+                title, tags, headers, createdBy, identity,
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+    }
+
+    /** Actor-carrying create-or-replace binary (TOOL identity) — enforces at the source (F1). */
+    public DocumentDocument createOrReplaceBinary(
+            String tenantId,
+            String projectId,
+            String path,
+            byte[] bytes,
+            String mimeType,
+            @Nullable String title,
+            @Nullable List<String> tags,
+            @Nullable Map<String, String> headers,
+            @Nullable String createdBy,
+            de.mhus.vance.shared.permission.WriteActor actor) {
+        return createOrReplaceBinary(tenantId, projectId, path, bytes, mimeType,
+                title, tags, headers, createdBy, TOOL_IDENTITY, actor);
+    }
+
+    /** Actor-carrying create-or-replace binary funnel — threads the actor into the source. */
+    public DocumentDocument createOrReplaceBinary(
+            String tenantId,
+            String projectId,
+            String path,
+            byte[] bytes,
+            String mimeType,
+            @Nullable String title,
+            @Nullable List<String> tags,
+            @Nullable Map<String, String> headers,
+            @Nullable String createdBy,
+            WriterIdentity identity,
+            de.mhus.vance.shared.permission.WriteActor actor) {
         if (bytes == null) {
             throw new IllegalArgumentException(
                     "bytes must not be null for binary write");
@@ -1534,7 +1569,7 @@ public class DocumentService {
         Optional<DocumentDocument> existing = findByPath(tenantId, projectId, path);
         if (existing.isPresent()) {
             DocumentDocument doc = replaceBinaryContent(
-                    existing.get().getId(), mimeType, bytes, createdBy, identity);
+                    existing.get().getId(), mimeType, bytes, createdBy, identity, actor);
             boolean changed = false;
             if (title != null) {
                 doc.setTitle(title);
@@ -1554,7 +1589,7 @@ public class DocumentService {
                 tenantId, projectId, path,
                 title, tags, mimeType,
                 new ByteArrayInputStream(bytes),
-                createdBy);
+                createdBy, actor);
         if (headers != null) {
             doc.setHeaders(new LinkedHashMap<>(headers));
             doc = repository.save(doc);

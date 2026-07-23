@@ -141,7 +141,8 @@ public class DocumentImageDestinationStream extends ImageDestinationStream {
                 title,
                 tags,
                 headers,
-                createdBy);
+                createdBy,
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
     }
 
     private void ensureOpen() {

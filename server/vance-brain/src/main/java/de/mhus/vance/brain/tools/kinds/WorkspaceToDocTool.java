@@ -111,7 +111,8 @@ public class WorkspaceToDocTool implements Tool {
                         null,
                         mime,
                         new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8)),
-                        ctx.userId());
+                        ctx.userId(),
+                        support.writeActor(ctx, documentPath));
                 created = true;
             } catch (DocumentService.DocumentAlreadyExistsException e) {
                 throw new ToolException(e.getMessage(), e);
@@ -122,7 +123,7 @@ public class WorkspaceToDocTool implements Tool {
             // pending older write.
             support.buffer().flush(ctx.processId(), existing.getId());
             result = support.documentService().update(
-                    existing.getId(), title, null, content, null);
+                    existing.getId(), title, null, content, null, support.writeActor(ctx, existing));
             created = false;
         }
 

@@ -56,7 +56,8 @@ public class DocMoveTool implements Tool {
         support.buffer().flush(ctx.processId(), doc.getId());
         DocumentDocument moved;
         try {
-            moved = support.documentService().update(doc.getId(), null, null, null, newPath);
+            moved = support.documentService().update(doc.getId(), null, null, null, newPath,
+                    support.writeActor(ctx, doc));
         } catch (DocumentService.DocumentAlreadyExistsException e) {
             throw new ToolException(e.getMessage(), e);
         }

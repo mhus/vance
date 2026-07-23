@@ -64,7 +64,8 @@ public class DocNoteAddTool implements Tool {
 
         DocumentNote note;
         try {
-            note = support.documentService().addNote(doc.getId(), text, userId, line);
+            note = support.documentService().addNote(doc.getId(), text, userId, line, null,
+                    support.writeActor(ctx, doc));
         } catch (DocumentService.NotesLimitExceededException e) {
             throw new ToolException("Document already has the maximum number of notes ("
                     + DocumentService.NOTES_MAX

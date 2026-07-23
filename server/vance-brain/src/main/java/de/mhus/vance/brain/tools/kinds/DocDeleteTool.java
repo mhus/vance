@@ -45,7 +45,7 @@ public class DocDeleteTool implements Tool {
         // Flush pending writes so the trashed copy reflects the
         // latest in-flight body, not stale disk content.
         support.buffer().flush(ctx.processId(), doc.getId());
-        DocumentDocument trashed = support.documentService().trash(doc.getId());
+        DocumentDocument trashed = support.documentService().trash(doc.getId(), support.writeActor(ctx, doc));
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("documentId", trashed.getId());
         out.put("originalPath", doc.getPath());

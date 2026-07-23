@@ -48,7 +48,8 @@ public class DocNoteDeleteTool implements Tool {
         DocumentDocument doc = support.loadDocumentForWrite(params, ctx, de.mhus.vance.shared.permission.Action.WRITE);
         String noteId = KindToolSupport.requireString(params, "noteId");
 
-        boolean removed = support.documentService().deleteNote(doc.getId(), noteId);
+        boolean removed = support.documentService().deleteNote(doc.getId(), noteId, null,
+                support.writeActor(ctx, doc));
         if (removed) {
             support.emitNotesInvalidate(doc, ctx);
         }

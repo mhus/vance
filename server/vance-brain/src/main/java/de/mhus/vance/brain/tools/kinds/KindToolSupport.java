@@ -73,6 +73,32 @@ public class KindToolSupport {
     }
 
     /**
+     * The mandatory {@link de.mhus.vance.shared.permission.WriteActor} for a
+     * tool-driven DocumentService write. Carries the real tool subject
+     * ({@code forToolSubject} maps a null userId → SYSTEM). The reason follows
+     * the agreed rule: a deliberate write into {@code _vance/} is a system
+     * resource → {@code WriteReason.SYSTEM}; everything else is the user's own
+     * write → {@code WriteReason.USER}. Authorization has already run through
+     * {@link #enforceDocWrite} at the tool's resolution source; this threads the
+     * actor so the DocumentService chokepoint sees a real reason, not a
+     * transitional default. (F1)
+     */
+    public de.mhus.vance.shared.permission.WriteActor writeActor(
+            ToolInvocationContext ctx, String path) {
+        de.mhus.vance.shared.permission.SecurityContext subject =
+                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId());
+        return path != null && path.startsWith("_vance/")
+                ? de.mhus.vance.shared.permission.WriteActor.system(subject)
+                : de.mhus.vance.shared.permission.WriteActor.user(subject);
+    }
+
+    /** Overload for an already-loaded document. */
+    public de.mhus.vance.shared.permission.WriteActor writeActor(
+            ToolInvocationContext ctx, DocumentDocument doc) {
+        return writeActor(ctx, doc.getPath());
+    }
+
+    /**
      * READ gate for a document resolved directly by id (the branch that
      * bypasses {@code resolveProject}). Same subject/resolver semantics as
      * {@link #enforceDocWrite}. (permission-system read path)

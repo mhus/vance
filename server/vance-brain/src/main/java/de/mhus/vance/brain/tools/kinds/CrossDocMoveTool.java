@@ -96,14 +96,15 @@ public class CrossDocMoveTool implements Tool {
                     fresh.getTags() != null ? List.copyOf(fresh.getTags()) : null,
                     fresh.getMimeType(),
                     new ByteArrayInputStream(support.readBody(fresh, ctx).getBytes(StandardCharsets.UTF_8)),
-                    ctx.userId());
+                    ctx.userId(),
+                    support.writeActor(ctx, newPath));
         } catch (DocumentService.DocumentAlreadyExistsException e) {
             throw new ToolException(e.getMessage(), e);
         }
 
         DocumentDocument trashed;
         try {
-            trashed = support.documentService().trash(fresh.getId());
+            trashed = support.documentService().trash(fresh.getId(), support.writeActor(ctx, fresh));
         } catch (RuntimeException e) {
             // Copy succeeded but trash failed — the source is still
             // in place, the target also has the new copy. Tell the

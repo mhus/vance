@@ -62,7 +62,7 @@ public class DocPurgeTool implements Tool {
         // Drop the buffer entry so a stale write doesn't recreate
         // the row right after we delete it.
         support.buffer().flushAll(ctx.processId());
-        support.documentService().delete(doc.getId());
+        support.documentService().delete(doc.getId(), support.writeActor(ctx, doc));
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("purgedId", doc.getId());
         out.put("purgedPath", doc.getPath());

@@ -92,7 +92,8 @@ public class DocCreateKindTool implements Tool {
                     tags,
                     mimeType,
                     new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8)),
-                    ctx.userId());
+                    ctx.userId(),
+                    support.writeActor(ctx, path));
         } catch (DocumentService.DocumentAlreadyExistsException e) {
             throw new ToolException(e.getMessage(), e);
         }
@@ -105,7 +106,7 @@ public class DocCreateKindTool implements Tool {
         // purpose. Stamp the kind directly so the editor always
         // recognises the document regardless of body shape.
         if (!kind.equalsIgnoreCase(created.getKind())) {
-            support.documentService().setKind(created.getId(), kind);
+            support.documentService().setKind(created.getId(), kind, support.writeActor(ctx, created));
             created.setKind(kind);
         }
 

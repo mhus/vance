@@ -113,7 +113,11 @@ public class DocumentBufferService {
         Objects.requireNonNull(documentId, "documentId");
         Objects.requireNonNull(newBody, "newBody");
         if (processId == null) {
-            documentService.update(documentId, null, null, newBody, null);
+            // The buffer is a trusted write-behind persister; the tool that
+            // filled it already authorized the write at its own source
+            // (KindToolSupport.enforceDocWrite). Persist as SYSTEM. (F1)
+            documentService.update(documentId, null, null, newBody, null,
+                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
             return;
         }
         BufferKey key = new BufferKey(processId, documentId);
@@ -211,7 +215,9 @@ public class DocumentBufferService {
 
     private void flushEntry(BufferKey key, BufferedEntry entry) {
         try {
-            documentService.update(key.documentId(), null, null, entry.currentBody(), null);
+            // Write-behind flush of already-authorized content → SYSTEM. (F1)
+            documentService.update(key.documentId(), null, null, entry.currentBody(), null,
+                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
             // Mark clean by replacing in the map; concurrent writers
             // who dirty between our compute and the put will get
             // re-flushed on the next sweep.

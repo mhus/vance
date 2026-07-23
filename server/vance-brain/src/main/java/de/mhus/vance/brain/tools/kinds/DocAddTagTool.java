@@ -50,7 +50,7 @@ public class DocAddTagTool implements Tool {
         // in-flight body when it writes the new tag set.
         support.buffer().flush(ctx.processId(), doc.getId());
         DocumentDocument saved = support.documentService().update(
-                doc.getId(), null, tags, null, null);
+                doc.getId(), null, tags, null, null, support.writeActor(ctx, doc));
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("documentId", saved.getId());
         out.put("tag", tag);

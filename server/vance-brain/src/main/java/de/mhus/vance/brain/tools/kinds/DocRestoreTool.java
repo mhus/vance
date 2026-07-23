@@ -53,7 +53,7 @@ public class DocRestoreTool implements Tool {
         String newPath = KindToolSupport.paramString(params, "newPath");
         DocumentDocument restored;
         try {
-            restored = support.documentService().restore(doc.getId(), newPath);
+            restored = support.documentService().restore(doc.getId(), newPath, support.writeActor(ctx, doc));
         } catch (DocumentService.DocumentAlreadyExistsException e) {
             throw new ToolException(e.getMessage(), e);
         } catch (IllegalArgumentException e) {

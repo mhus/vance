@@ -60,9 +60,9 @@ public class DocSetColorTool implements Tool {
         }
         @Nullable AccentColor color = parseColor(raw);
         if (color == null) {
-            support.documentService().clearColor(doc.getId());
+            support.documentService().clearColor(doc.getId(), support.writeActor(ctx, doc));
         } else {
-            support.documentService().setColor(doc.getId(), color);
+            support.documentService().setColor(doc.getId(), color, support.writeActor(ctx, doc));
         }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("documentId", doc.getId());

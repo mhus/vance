@@ -6,6 +6,9 @@ import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
+import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.io.InputStream;
@@ -63,6 +66,7 @@ public class ComposeController {
     private final DamogranProcessResolver processResolver;
     private final ComposeRunRegistry runRegistry;
     private final ExecManager execManager;
+    private final RequestAuthority authority;
 
     public ComposeController(DamogranComposeService composeService,
                              DamogranManifestParser manifestParser,
@@ -70,7 +74,8 @@ public class ComposeController {
                              SessionService sessionService,
                              DamogranProcessResolver processResolver,
                              ComposeRunRegistry runRegistry,
-                             ExecManager execManager) {
+                             ExecManager execManager,
+                             RequestAuthority authority) {
         this.composeService = composeService;
         this.manifestParser = manifestParser;
         this.documentService = documentService;
@@ -78,6 +83,7 @@ public class ComposeController {
         this.processResolver = processResolver;
         this.runRegistry = runRegistry;
         this.execManager = execManager;
+        this.authority = authority;
     }
 
     @PostMapping("/run")
@@ -90,6 +96,9 @@ public class ComposeController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "'projectId' is required");
         }
         String projectId = body.projectId().trim();
+        // Running a compose provisions a workspace and executes tasks in the
+        // project — a project-mutating capability, so require WRITE.
+        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
         String yaml = resolveYaml(tenant, projectId, body);
         // Base dir for relative vance: paths: the compose document's directory
         // when run by path, else an explicit composeBasePath (e.g. the Cortex
@@ -128,7 +137,9 @@ public class ComposeController {
     public Map<String, Object> runStatus(
             @PathVariable("tenant") String tenant,
             @PathVariable("runId") String runId,
-            @RequestParam("projectId") String projectId) {
+            @RequestParam("projectId") String projectId,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.READ);
         ComposeRun run = runRegistry.find(tenant, projectId, runId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "compose run not found: " + runId));
@@ -145,7 +156,9 @@ public class ComposeController {
     public Map<String, Object> cancelRun(
             @PathVariable("tenant") String tenant,
             @PathVariable("runId") String runId,
-            @RequestParam("projectId") String projectId) {
+            @RequestParam("projectId") String projectId,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
         ComposeRun run = runRegistry.find(tenant, projectId, runId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "compose run not found: " + runId));

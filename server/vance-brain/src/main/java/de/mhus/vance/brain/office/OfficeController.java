@@ -66,6 +66,7 @@ public class OfficeController {
     private final OfficeSettings officeSettings;
     private final OfficeJwtService jwtService;
     private final DocumentService documentService;
+    private final de.mhus.vance.brain.permission.RequestAuthority authority;
 
     @Value("${vance.web.publicBaseUrl}")
     private String publicBaseUrl;
@@ -90,6 +91,14 @@ public class OfficeController {
             HttpServletRequest request) {
 
         DocumentDocument doc = loadDocument(tenant, docId);
+        // The session hands the browser an edit-enabled ONLYOFFICE config,
+        // so gate it on WRITE for this document before issuing any token.
+        // (download/callback are machine-to-machine and JWT-scoped by this
+        // grant.)
+        authority.enforce(request,
+                new de.mhus.vance.shared.permission.Resource.Document(
+                        tenant, projectId != null ? projectId : doc.getProjectId(), doc.getPath()),
+                de.mhus.vance.shared.permission.Action.WRITE);
         OfficeSettings.Snapshot office = officeSettings.resolve(
                 tenant, projectId != null ? projectId : doc.getProjectId());
 

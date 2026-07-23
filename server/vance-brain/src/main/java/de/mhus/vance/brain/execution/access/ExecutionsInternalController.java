@@ -103,7 +103,7 @@ public class ExecutionsInternalController {
         }
         Map<String, Object> result;
         try {
-            result = router.tail(id, tenant, n, stream);
+            result = router.tail(id, tenant, project, n, stream);
         } catch (ToolException e) {
             String msg = e.getMessage() == null ? "" : e.getMessage();
             HttpStatus status = msg.startsWith("Unknown execution") || msg.contains("not connected")

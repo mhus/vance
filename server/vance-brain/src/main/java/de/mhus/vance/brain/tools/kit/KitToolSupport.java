@@ -2,6 +2,10 @@ package de.mhus.vance.brain.tools.kit;
 
 import de.mhus.vance.api.kit.KitInheritDto;
 import de.mhus.vance.api.kit.KitOperationResultDto;
+import de.mhus.vance.brain.permission.SecurityContextFactory;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.PermissionService;
+import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.LinkedHashMap;
@@ -17,12 +21,24 @@ final class KitToolSupport {
 
     private KitToolSupport() {}
 
-    static String requireProject(ToolInvocationContext ctx, @Nullable String override) {
+    /**
+     * Resolve the target project (explicit {@code override} or the caller's
+     * scope) <em>and</em> authorize {@code action} on it. Kit tools can target
+     * a project other than the caller's scope, which {@code ToolDispatcher}'s
+     * scope check does not cover — so enforce the per-target grant here.
+     */
+    static String requireProjectAuthorized(ToolInvocationContext ctx, @Nullable String override,
+            PermissionService permissionService, SecurityContextFactory contextFactory,
+            Action action) {
         String p = override == null || override.isBlank() ? ctx.projectId() : override;
         if (p == null || p.isBlank()) {
             throw new ToolException("kit tools require a project — pass `project` or "
                     + "invoke from within a project scope");
         }
+        permissionService.enforce(
+                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()),
+                new Resource.Project(ctx.tenantId(), p),
+                action);
         return p;
     }
 

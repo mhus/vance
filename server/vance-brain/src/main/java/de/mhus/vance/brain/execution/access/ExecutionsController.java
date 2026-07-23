@@ -176,7 +176,7 @@ public class ExecutionsController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "'n' must be > 0");
         }
         if (properties.isBypassProxy() || ProjectService.isPodless(project)) {
-            return tailDirect(tenant, id, n, stream);
+            return tailDirect(tenant, project, id, n, stream);
         }
         ProjectPodKey key = new ProjectPodKey(tenant, project);
         if (routingCache.lookup(key).isEmpty()) {
@@ -222,10 +222,10 @@ public class ExecutionsController {
         return ExecutionInsightsMapper.toDto(hit.get());
     }
 
-    private ExecutionTailDto tailDirect(String tenant, String id, int n, String stream) {
+    private ExecutionTailDto tailDirect(String tenant, String project, String id, int n, String stream) {
         Map<String, Object> result;
         try {
-            result = router.tail(id, tenant, n, stream);
+            result = router.tail(id, tenant, project, n, stream);
         } catch (ToolException e) {
             String msg = e.getMessage() == null ? "" : e.getMessage();
             HttpStatus status = msg.startsWith("Unknown execution") || msg.contains("not connected")

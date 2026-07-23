@@ -30,6 +30,8 @@ public class KitStatusTool implements Tool {
             "required", List.of());
 
     private final KitService kitService;
+    private final de.mhus.vance.shared.permission.PermissionService permissionService;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
     @Override
     public String name() {
@@ -62,8 +64,9 @@ public class KitStatusTool implements Tool {
         if (ctx.tenantId() == null) {
             throw new ToolException("kit_status requires a tenant scope");
         }
-        String projectId = KitToolSupport.requireProject(ctx,
-                KitToolSupport.optionalString(params, "project"));
+        String projectId = KitToolSupport.requireProjectAuthorized(ctx,
+                KitToolSupport.optionalString(params, "project"),
+                permissionService, contextFactory, de.mhus.vance.shared.permission.Action.READ);
         KitManifestDto manifest = kitService.status(ctx.tenantId(), projectId);
         Map<String, Object> out = new LinkedHashMap<>();
         if (manifest == null) {

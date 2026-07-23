@@ -197,10 +197,16 @@ public class UrsaEventLoader {
             }
         }
 
-        String runAs = stringOrNull(spec.get("runAs"));
+        String runAsRaw = stringOrNull(spec.get("runAs"));
         List<String> tags = stringList(spec.get("tags"), "tags");
 
         DocumentDocument doc = hit.document();
+        // Impersonation gate: honor runAs only from a *persisted, privileged*
+        // source document ($meta.privileged); a non-privileged event trigger
+        // cannot escalate. doc == null means validation/preview or a bundled
+        // (in-code, trusted) source — keep the raw value there. See
+        // planning/permission-system-concept.md §4.3a.
+        String runAs = (doc == null || doc.isPrivileged()) ? runAsRaw : null;
         return new ResolvedUrsaEvent(
                 name,
                 hit.content(),

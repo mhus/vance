@@ -19,6 +19,14 @@
             <artifactId>vance-brain</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <!-- Permission provider: dev/IDE bundle ships allow-all so the
+             mandatory single-provider guard is satisfied without real auth.
+             Production swaps this for vance-addon-simpleauth. -->
+        <dependency>
+            <groupId>de.mhus.vance</groupId>
+            <artifactId>vance-addon-permission-allowall</artifactId>
+            <version>${project.version}</version>
+        </dependency>
         <dependency>
             <groupId>de.mhus.vance</groupId>
             <artifactId>vance-addon-brain-slideshow</artifactId>

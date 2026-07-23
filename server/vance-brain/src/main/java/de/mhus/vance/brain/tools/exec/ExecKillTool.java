@@ -70,6 +70,6 @@ public class ExecKillTool implements Tool {
         if (!(raw instanceof String id) || id.isBlank()) {
             throw new ToolException("'id' is required");
         }
-        return router.kill(id, ctx.tenantId());
+        return router.kill(id, ctx.tenantId(), ctx.projectId());
     }
 }

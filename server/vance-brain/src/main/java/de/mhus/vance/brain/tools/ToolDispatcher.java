@@ -4,13 +4,18 @@ import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.ToolException;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import de.mhus.vance.api.tools.ToolSpec;
 import de.mhus.vance.brain.agrajag.AgrajagChecker;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.PermissionService;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.permission.SecurityContext;
+import de.mhus.vance.shared.team.TeamDocument;
+import de.mhus.vance.shared.team.TeamService;
 import de.mhus.vance.shared.toolhealth.ToolHealthService;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -40,6 +45,19 @@ public class ToolDispatcher {
     private final PermissionService permissionService;
     private final AgrajagChecker agrajagChecker;
     private final ToolHealthService toolHealthService;
+    private final TeamService teamService;
+
+    /**
+     * Short-TTL cache of a user's team names, keyed by {@code tenant\0user}.
+     * The tool path has no HTTP request to hang a per-request cache on (unlike
+     * {@code SecurityContextFactory}), and a Mongo team lookup on every tool
+     * dispatch would be a real regression — so memoise it here. Team
+     * membership changes rarely; a 60 s TTL keeps drift bounded.
+     */
+    private final Cache<String, List<String>> teamCache = Caffeine.newBuilder()
+            .maximumSize(2_000)
+            .expireAfterWrite(Duration.ofSeconds(60))
+            .build();
 
     @jakarta.annotation.PostConstruct
     public void postConstruct() {
@@ -202,16 +220,30 @@ public class ToolDispatcher {
      * userId is on {@link ToolInvocationContext}. Internal flows without a
      * user (e.g. lifecycle listeners) get {@link SecurityContext#SYSTEM}.
      *
-     * <p>Teams stay empty here on purpose: the AllowAll resolver doesn't
-     * read them, and a per-call Mongo lookup for every tool dispatch
-     * would be a meaningful regression. When a real role-based resolver
-     * lands, this is the place to wire team caching.
+     * <p>Team memberships are resolved (via {@link TeamService}, memoised in
+     * {@link #teamCache}) so that team-scoped grants apply on the tool path
+     * too — a real resolver folds {@link SecurityContext#teams()} into the
+     * effective role.
      */
-    private static SecurityContext securityContextOf(ToolInvocationContext ctx) {
+    private SecurityContext securityContextOf(ToolInvocationContext ctx) {
         if (ctx.userId() == null || ctx.userId().isBlank()) {
             return SecurityContext.SYSTEM;
         }
-        return SecurityContext.user(ctx.userId(), ctx.tenantId(), List.of());
+        return SecurityContext.user(ctx.userId(), ctx.tenantId(),
+                teamsOf(ctx.tenantId(), ctx.userId()));
+    }
+
+    private List<String> teamsOf(String tenantId, String userId) {
+        String key = tenantId + '\0' + userId;
+        List<String> cached = teamCache.getIfPresent(key);
+        if (cached != null) {
+            return cached;
+        }
+        List<String> names = teamService.byMember(tenantId, userId).stream()
+                .map(TeamDocument::getName)
+                .toList();
+        teamCache.put(key, names);
+        return names;
     }
 
     /**

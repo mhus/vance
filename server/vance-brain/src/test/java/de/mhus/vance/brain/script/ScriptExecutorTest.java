@@ -55,9 +55,10 @@ class ScriptExecutorTest {
             when(src.find(eq(t.name()), any())).thenReturn(Optional.of(t));
         }
         ToolDispatcher dispatcher = new ToolDispatcher(
-                List.of(src), new PermissionService(new RecordingPermissionResolver()),
+                List.of(src), new PermissionService(java.util.List.of(new RecordingPermissionResolver())),
                 mock(de.mhus.vance.brain.agrajag.AgrajagChecker.class),
-                mock(de.mhus.vance.shared.toolhealth.ToolHealthService.class));
+                mock(de.mhus.vance.shared.toolhealth.ToolHealthService.class),
+                mock(de.mhus.vance.shared.team.TeamService.class));
         ToolInvocationContext ctx = new ToolInvocationContext(
                 "acme", "proj-1", "sess-1", "proc-1", "alice");
         return new ContextToolsApi(dispatcher, ctx, allowed);

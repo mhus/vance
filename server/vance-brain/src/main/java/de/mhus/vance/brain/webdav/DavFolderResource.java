@@ -124,7 +124,18 @@ class DavFolderResource extends AbstractDavResource
         // Recursive: trash visible descendants (files) and recurse into
         // subfolders, then remove this folder's own hidden marker. Scoped
         // per-resource, so it never escapes the (tenant, project) boundary.
+        //
+        // Milton only authorised DELETE on *this* folder. Re-run the per-child
+        // check so a plain folder-WRITE can't remove children that need more
+        // (reserved-prefix paths → ADMIN via R4). Document locks are still
+        // enforced downstream by DocumentService.delete.
+        io.milton.http.Request request = io.milton.http.HttpManager.request();
+        io.milton.http.Auth auth = request == null ? null : request.getAuthorization();
         for (Resource child : getChildren()) {
+            if (!factory.securityManager().authorise(
+                    request, io.milton.http.Request.Method.DELETE, auth, child)) {
+                throw new NotAuthorizedException(this);
+            }
             if (child instanceof DeletableResource deletable) {
                 deletable.delete();
             }

@@ -94,6 +94,8 @@ public class CrossProcessCreateTool implements Tool {
     private final ActionExecutorRegistry actionRegistry;
     private final ProjectService projectService;
     private final ThinkProcessService thinkProcessService;
+    private final de.mhus.vance.shared.permission.PermissionService permissionService;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
     @Override
     public String name() {
@@ -163,6 +165,13 @@ public class CrossProcessCreateTool implements Tool {
                             + "may not be spawned there. Pick a regular user "
                             + "project.");
         }
+
+        // Cross-project spawn: the caller must be authorized to START work in
+        // the *target* project. ToolDispatcher only checked the calling scope.
+        permissionService.enforce(
+                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()),
+                new de.mhus.vance.shared.permission.Resource.Project(ctx.tenantId(), project.getName()),
+                de.mhus.vance.shared.permission.Action.START);
 
         // 2. Dispatch via the standard action executor, but with the
         //    target projectId. The executor passes this through to

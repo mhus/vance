@@ -31,7 +31,7 @@ class RequestAuthorityTest {
         when(teamService.byMember("acme", "alice")).thenReturn(List.of());
 
         SecurityContextFactory factory = new SecurityContextFactory(teamService);
-        PermissionService service = new PermissionService(recorder);
+        PermissionService service = new PermissionService(List.of(recorder));
         authority = new RequestAuthority(service, factory);
     }
 

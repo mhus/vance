@@ -5,14 +5,14 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * Test helper resolver that records every check it sees and lets the test
- * decide whether to allow or deny. Default verdict is {@code true} (mirrors
- * {@link AllowAllPermissionResolver}); call {@link #denyNext} to flip the
- * next decision to {@code false}, or {@link #verdict} to set a permanent
- * verdict for all subsequent checks.
+ * decide whether to allow or deny. Default verdict is {@code true} (allow);
+ * call {@link #denyNext} to flip the next decision to {@code false}, or
+ * {@link #verdict} to set a permanent verdict for all subsequent checks.
  *
- * <p>Not registered as a Spring bean — production wiring stays on
- * {@link AllowAllPermissionResolver}. Tests register this manually as
- * {@code @Bean PermissionResolver} (the conditional default steps aside).
+ * <p>Serves as the single {@link PermissionResolver} in test contexts that
+ * boot Spring without a provider addon — register it as
+ * {@code @Bean PermissionResolver} so the mandatory-provider guard in
+ * {@link PermissionService} is satisfied.
  */
 public class RecordingPermissionResolver implements PermissionResolver {
 

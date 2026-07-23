@@ -149,7 +149,8 @@ public class ProjectCreateTool implements Tool {
                     title,
                     projectGroupId,
                     /*teamIds*/ null,
-                    ProjectKind.NORMAL);
+                    ProjectKind.NORMAL,
+                    /*createdBy*/ ctx.userId());
         } catch (ProjectService.ProjectAlreadyExistsException
                 | ProjectService.ReservedProjectNameException e) {
             throw new ToolException(e.getMessage(), e);

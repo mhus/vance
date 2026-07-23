@@ -31,5 +31,16 @@ public enum Action {
      */
     EXECUTE,
     /** Configure or grant access — strictly more than WRITE. */
-    ADMIN
+    ADMIN,
+    /**
+     * Author a resource that lets a later execution assume a foreign
+     * identity — the {@code runAs} of a scheduler/hook/event document, gated
+     * by its {@code $meta.privileged} flag. Conceptually distinct from
+     * {@link #ADMIN}: it is the specific "may configure impersonation" verb,
+     * kept separate so a provider (notably an enterprise governor) can grant
+     * it independently of general administration. The bundled provider maps
+     * it to the ADMIN role. See {@code planning/permission-system-concept.md}
+     * §4.3a.
+     */
+    IMPERSONATE
 }

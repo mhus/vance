@@ -169,9 +169,10 @@ public final class ScriptHarness {
             return fakes.stream().filter(t -> t.name().equals(name)).findFirst();
         });
         ToolDispatcher dispatcher = new ToolDispatcher(
-                List.of(src), new PermissionService(new RecordingPermissionResolver()),
+                List.of(src), new PermissionService(java.util.List.of(new RecordingPermissionResolver())),
                 mock(de.mhus.vance.brain.agrajag.AgrajagChecker.class),
-                mock(de.mhus.vance.shared.toolhealth.ToolHealthService.class));
+                mock(de.mhus.vance.shared.toolhealth.ToolHealthService.class),
+                mock(de.mhus.vance.shared.team.TeamService.class));
         // ContextToolsApi's allow-filter set: include every mocked tool
         // by name so vance.tools.call(...) doesn't get filtered out.
         Set<String> allowed = new LinkedHashSet<>(toolMocks.keySet());

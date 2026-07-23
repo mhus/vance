@@ -50,6 +50,8 @@ public class TrillianSessionSendTool implements Tool {
     private final ThinkProcessService thinkProcessService;
     private final ThinkEngineService thinkEngineService;
     private final LaneScheduler laneScheduler;
+    private final de.mhus.vance.shared.permission.PermissionService permissionService;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
     @Override
     public String name() {
@@ -101,6 +103,14 @@ public class TrillianSessionSendTool implements Tool {
         if (!session.getTenantId().equals(ctx.tenantId())) {
             throw new ToolException("Session '" + sessionId + "' is in another tenant");
         }
+        // Steering a session the caller merely knows the id of must be
+        // authorized: EXECUTE on the target session (inherits from its
+        // project). ToolDispatcher only checked the calling scope.
+        permissionService.enforce(
+                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()),
+                new de.mhus.vance.shared.permission.Resource.Session(
+                        ctx.tenantId(), session.getProjectId(), sessionId),
+                de.mhus.vance.shared.permission.Action.EXECUTE);
         if (session.getChatProcessId() == null) {
             throw new ToolException(
                     "Session '" + sessionId + "' has no chat-process yet");

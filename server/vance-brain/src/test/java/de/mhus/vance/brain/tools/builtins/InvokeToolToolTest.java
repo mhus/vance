@@ -63,9 +63,10 @@ class InvokeToolToolTest {
         when(src.tools(any())).thenReturn(List.of(invokeTool, gatedTool, allowedTarget));
 
         dispatcher = new ToolDispatcher(List.of(src),
-                new PermissionService(new RecordingPermissionResolver()),
+                new PermissionService(java.util.List.of(new RecordingPermissionResolver())),
                 mock(de.mhus.vance.brain.agrajag.AgrajagChecker.class),
-                mock(de.mhus.vance.shared.toolhealth.ToolHealthService.class));
+                mock(de.mhus.vance.shared.toolhealth.ToolHealthService.class),
+                mock(de.mhus.vance.shared.team.TeamService.class));
     }
 
     @Test

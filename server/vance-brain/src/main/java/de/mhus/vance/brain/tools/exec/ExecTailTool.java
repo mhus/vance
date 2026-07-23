@@ -81,6 +81,6 @@ public class ExecTailTool implements Tool {
         if (rawStream instanceof String s && "stderr".equalsIgnoreCase(s)) {
             streamName = "stderr";
         }
-        return router.tail(id, ctx.tenantId(), n, streamName);
+        return router.tail(id, ctx.tenantId(), ctx.projectId(), n, streamName);
     }
 }

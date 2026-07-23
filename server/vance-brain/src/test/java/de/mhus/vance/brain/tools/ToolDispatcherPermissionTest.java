@@ -35,7 +35,7 @@ class ToolDispatcherPermissionTest {
     @BeforeEach
     void setUp() {
         recorder = new RecordingPermissionResolver();
-        PermissionService permissions = new PermissionService(recorder);
+        PermissionService permissions = new PermissionService(List.of(recorder));
 
         fakeTool = mock(Tool.class);
         when(fakeTool.name()).thenReturn("fake.tool");
@@ -51,7 +51,8 @@ class ToolDispatcherPermissionTest {
 
         dispatcher = new ToolDispatcher(List.of(src), permissions,
                 mock(de.mhus.vance.brain.agrajag.AgrajagChecker.class),
-                mock(de.mhus.vance.shared.toolhealth.ToolHealthService.class));
+                mock(de.mhus.vance.shared.toolhealth.ToolHealthService.class),
+                mock(de.mhus.vance.shared.team.TeamService.class));
     }
 
     @Test

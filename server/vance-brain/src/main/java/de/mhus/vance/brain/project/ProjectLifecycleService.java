@@ -76,6 +76,15 @@ public class ProjectLifecycleService {
      * need to instantiate just because lifecycle is being touched.
      */
     private final ObjectProvider<EngineMessageRouter> messageRouterProvider;
+    /**
+     * Optional permission-bootstrap SPI. Present only when a provider addon
+     * that stores grants in Vance (simple-auth) is loaded; then the creator
+     * of a project is seeded as its PROJECT-ADMIN. Absent under the allow-all
+     * provider or an external governor — {@code ifAvailable} makes the seed a
+     * no-op there. See {@code planning/permission-system-concept.md} §7.0.
+     */
+    private final ObjectProvider<de.mhus.vance.shared.permission.PermissionBootstrap>
+            permissionBootstrapProvider;
 
     /**
      * Create a new project and bring it to RUNNING in one shot —
@@ -103,15 +112,23 @@ public class ProjectLifecycleService {
             @Nullable String title,
             @Nullable String projectGroupId,
             @Nullable List<String> teamIds,
-            ProjectKind kind) {
+            ProjectKind kind,
+            @Nullable String createdBy) {
         projectService.create(tenantId, name, title, projectGroupId, teamIds, kind);
         // Direct-spawn — picks local-first or master-routed depending on
         // capacity, see specification/cluster-project-management.md §5.3.
         // HOMELESS short-circuits to the existing podless bring.
         projectManager.spawnNew(tenantId, name);
-        return projectService.findByTenantAndName(tenantId, name)
+        ProjectDocument saved = projectService.findByTenantAndName(tenantId, name)
                 .orElseThrow(() -> new ProjectService.ProjectNotFoundException(
                         "Project '" + name + "' vanished during create"));
+        // Seed the creator as PROJECT-ADMIN so they can manage the project
+        // they just made. No-op unless a grant-storing provider is loaded.
+        if (createdBy != null && !createdBy.isBlank() && kind != ProjectKind.SYSTEM) {
+            permissionBootstrapProvider.ifAvailable(
+                    pb -> pb.grantProjectAdmin(tenantId, saved.getName(), createdBy));
+        }
+        return saved;
     }
 
     /**

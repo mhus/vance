@@ -1,10 +1,11 @@
 package de.mhus.vance.shared.permission;
 
 /**
- * Strategy for evaluating permission checks. Exactly one bean is active at a
- * time. The default in this module is {@link AllowAllPermissionResolver};
- * downstream applications swap it by registering their own
- * {@code PermissionResolver} bean.
+ * Strategy for evaluating permission checks. Exactly one bean must be active —
+ * {@link PermissionService} enforces that at startup. This module ships no
+ * implementation; a provider addon contributes one (allow-all for dev/test,
+ * simple-auth for production, or an enterprise governor). Swapping the addon
+ * swaps the behaviour without touching any call site.
  *
  * <p>Implementations must be stateless and side-effect-free apart from logging
  * — they are called from request threads and must not block on remote I/O for

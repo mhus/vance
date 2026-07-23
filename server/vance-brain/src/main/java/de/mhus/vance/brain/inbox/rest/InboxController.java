@@ -73,6 +73,7 @@ public class InboxController {
     private final TeamService teamService;
     private final ProjectService projectService;
     private final RequestAuthority authority;
+    private final de.mhus.vance.brain.inbox.InboxAuthz inboxAuthz;
 
     // ──────────────────── Read ────────────────────
 
@@ -336,20 +337,12 @@ public class InboxController {
             return others;
         }
         // Specific userId — only allowed if shared team.
-        if (!sharesTeam(tenant, currentUser, assignedTo)) {
+        if (!inboxAuthz.sharesTeam(tenant, currentUser, assignedTo)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
         List<String> out = new ArrayList<>();
         out.add(assignedTo);
         return out;
-    }
-
-    private boolean sharesTeam(String tenant, String userA, String userB) {
-        if (userA.equals(userB)) return true;
-        for (TeamDocument t : teamService.byMember(tenant, userA)) {
-            if (t.getMembers() != null && t.getMembers().contains(userB)) return true;
-        }
-        return false;
     }
 
     /**
@@ -374,9 +367,7 @@ public class InboxController {
         if (!tenant.equals(doc.getTenantId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
-        String assignee = doc.getAssignedToUserId();
-        if (assignee == null
-                || (!assignee.equals(currentUser) && !sharesTeam(tenant, currentUser, assignee))) {
+        if (!inboxAuthz.isAuthorized(tenant, currentUser, doc.getAssignedToUserId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
         return doc;

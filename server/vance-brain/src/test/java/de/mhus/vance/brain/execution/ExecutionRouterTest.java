@@ -40,7 +40,7 @@ class ExecutionRouterTest {
 
     @Test
     void unknownExecution_throws() {
-        assertThatThrownBy(() -> router.stat("nope", "acme"))
+        assertThatThrownBy(() -> router.stat("nope", "acme", null))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("Unknown execution");
     }
@@ -49,9 +49,18 @@ class ExecutionRouterTest {
     void crossTenant_isRejected() {
         registry.register(brainEntry("e1", "acme", "p1"));
 
-        assertThatThrownBy(() -> router.stat("e1", "evil-corp"))
+        assertThatThrownBy(() -> router.stat("e1", "evil-corp", null))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("different tenant");
+    }
+
+    @Test
+    void crossProject_isRejected() {
+        registry.register(brainEntry("e1", "acme", "p1"));
+
+        assertThatThrownBy(() -> router.stat("e1", "acme", "other-project"))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("different project");
     }
 
     @Test
@@ -79,7 +88,7 @@ class ExecutionRouterTest {
             return null;
         }).when(clientToolChannel).sendInvoke(eq(ws), any(), eq("client_exec_stat"), any());
 
-        Map<String, Object> result = router.stat("e1", "acme");
+        Map<String, Object> result = router.stat("e1", "acme", null);
 
         assertThat(result).containsEntry("status", "RUNNING");
     }
@@ -88,7 +97,7 @@ class ExecutionRouterTest {
     void footRoute_withDisconnectedClient_throws() {
         registry.register(footEntry("e1", "conn-gone", "acme", "proj"));
 
-        assertThatThrownBy(() -> router.stat("e1", "acme"))
+        assertThatThrownBy(() -> router.stat("e1", "acme", null))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("not connected");
     }

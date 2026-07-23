@@ -1,7 +1,10 @@
-package de.mhus.vance.shared.permission;
+package de.mhus.vance.addon.permission.allowall;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.Resource;
+import de.mhus.vance.shared.permission.SecurityContext;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 

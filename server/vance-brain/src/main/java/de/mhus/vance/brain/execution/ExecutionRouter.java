@@ -38,8 +38,9 @@ public class ExecutionRouter {
     private final ClientToolRegistry clientToolRegistry;
     private final ClientToolChannel clientToolChannel;
 
-    public Map<String, Object> stat(String executionId, String tenantId) {
-        ExecutionRegistryEntry entry = require(executionId, tenantId);
+    public Map<String, Object> stat(String executionId, String tenantId,
+            @org.jspecify.annotations.Nullable String projectId) {
+        ExecutionRegistryEntry entry = require(executionId, tenantId, projectId);
         return switch (entry.owner()) {
             case ExecutionOwner.Brain brain -> ExecStatTool.render(
                     execManager.stat(tenantId, entry.projectId(), executionId)
@@ -52,8 +53,9 @@ public class ExecutionRouter {
     }
 
     public Map<String, Object> tail(
-            String executionId, String tenantId, int n, String streamName) {
-        ExecutionRegistryEntry entry = require(executionId, tenantId);
+            String executionId, String tenantId,
+            @org.jspecify.annotations.Nullable String projectId, int n, String streamName) {
+        ExecutionRegistryEntry entry = require(executionId, tenantId, projectId);
         return switch (entry.owner()) {
             case ExecutionOwner.Brain brain -> renderTail(executionId,
                     execManager.tail(tenantId, entry.projectId(), executionId, n,
@@ -68,8 +70,9 @@ public class ExecutionRouter {
         };
     }
 
-    public Map<String, Object> kill(String executionId, String tenantId) {
-        ExecutionRegistryEntry entry = require(executionId, tenantId);
+    public Map<String, Object> kill(String executionId, String tenantId,
+            @org.jspecify.annotations.Nullable String projectId) {
+        ExecutionRegistryEntry entry = require(executionId, tenantId, projectId);
         return switch (entry.owner()) {
             case ExecutionOwner.Brain brain -> {
                 boolean killed = execManager.kill(tenantId, entry.projectId(), executionId);
@@ -84,7 +87,8 @@ public class ExecutionRouter {
         };
     }
 
-    private ExecutionRegistryEntry require(String executionId, String tenantId) {
+    private ExecutionRegistryEntry require(String executionId, String tenantId,
+            @org.jspecify.annotations.Nullable String projectId) {
         if (executionId == null || executionId.isBlank()) {
             throw new ToolException("'id' is required");
         }
@@ -93,6 +97,15 @@ public class ExecutionRouter {
         if (entry.tenantId() != null && !entry.tenantId().equals(tenantId)) {
             throw new ToolException(
                     "Execution '" + executionId + "' belongs to a different tenant");
+        }
+        // Cross-project scoping: a caller authorized for one project must not
+        // stat/tail/kill an execution owned by another project of the same
+        // tenant. Enforced here (not just per-controller) so every entry point
+        // — the exec_* LLM tools and both controllers — shares the guard.
+        if (projectId != null && entry.projectId() != null
+                && !entry.projectId().equals(projectId)) {
+            throw new ToolException(
+                    "Execution '" + executionId + "' belongs to a different project");
         }
         return entry;
     }

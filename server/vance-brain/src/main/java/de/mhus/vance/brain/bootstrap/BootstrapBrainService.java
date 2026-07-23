@@ -64,6 +64,15 @@ public class BootstrapBrainService {
     private final HomeBootstrapService homeBootstrapService;
     private final InitSettingsLoader initSettingsLoader;
     private final BootstrapProperties properties;
+    /**
+     * Optional permission-bootstrap SPI (see
+     * {@code planning/permission-system-concept.md} §7.0). Present only when a
+     * grant-storing provider addon (simple-auth) is loaded; then the Acme demo
+     * admin is seeded as TENANT-ADMIN. Absent under the allow-all provider or
+     * an external governor — {@code ifAvailable} keeps the seed a no-op.
+     */
+    private final org.springframework.beans.factory.ObjectProvider<
+            de.mhus.vance.shared.permission.PermissionBootstrap> permissionBootstrapProvider;
 
     @PostConstruct
     void init() {
@@ -107,6 +116,11 @@ public class BootstrapBrainService {
         ensureTeam(ACME_TENANT, "rd-propulsion", "R&D & Propulsion", List.of("wile.coyote"));
         ensureTeam(ACME_TENANT, "field-testing-qa", "Field Testing & Quality Assurance",
                 List.of("wile.coyote", "road.runner"));
+
+        // Seed the demo tenant admin so the tenant is administrable the moment
+        // a grant-storing provider is switched on. No-op under allow-all.
+        permissionBootstrapProvider.ifAvailable(
+                pb -> pb.grantTenantAdmin(ACME_TENANT, "marvin.acme"));
 
         seedInstantHoleDocuments();
 

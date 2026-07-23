@@ -54,6 +54,23 @@ public class SecurityContextFactory {
                 resolveTeams(connection.getTenantId(), connection.getUserId()));
     }
 
+    /**
+     * Build a {@link SecurityContext} for a tool invocation that needs an
+     * <em>additional</em> per-target check beyond the scope check
+     * {@code ToolDispatcher} already ran (e.g. a kit install or a cross-project
+     * spawn into a project other than the caller's). A blank {@code userId}
+     * (internal/system-originated work) yields {@link SecurityContext#SYSTEM}.
+     * Not request-cached — cross-scope tool actions are rare; the hot
+     * per-dispatch path caches teams in {@code ToolDispatcher} itself.
+     */
+    public SecurityContext forToolSubject(String tenantId,
+            @org.jspecify.annotations.Nullable String userId) {
+        if (userId == null || userId.isBlank()) {
+            return SecurityContext.SYSTEM;
+        }
+        return SecurityContext.user(userId, tenantId, resolveTeams(tenantId, userId));
+    }
+
     private List<String> resolveTeams(String tenantId, String username) {
         return teamService.byMember(tenantId, username).stream()
                 .map(TeamDocument::getName)

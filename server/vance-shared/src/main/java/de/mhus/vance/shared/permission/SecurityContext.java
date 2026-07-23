@@ -13,8 +13,8 @@ import java.util.List;
  * controller / WS handler from the JWT claims) and frozen for the duration of
  * the request — it is not re-queried per check.
  *
- * <p>For {@link SubjectType#SYSTEM}, use the {@link #SYSTEM} singleton.
- * {@link AllowAllPermissionResolver} permits it; future resolvers must too.
+ * <p>For {@link SubjectType#SYSTEM}, use the {@link #SYSTEM} singleton. Every
+ * provider must permit it — it is the identity of internal, trusted callers.
  */
 public record SecurityContext(
         SubjectType subjectType,

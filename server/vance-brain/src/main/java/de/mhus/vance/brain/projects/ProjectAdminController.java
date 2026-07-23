@@ -85,7 +85,8 @@ public class ProjectAdminController {
                     request.getTitle(),
                     request.getProjectGroupId(),
                     request.getTeamIds(),
-                    ProjectKind.NORMAL);
+                    ProjectKind.NORMAL,
+                    /*createdBy*/ actor(httpRequest));
             try {
                 projectKitInstaller.installFromCatalog(
                         tenant, saved.getName(), request.getKitName(), actor(httpRequest));

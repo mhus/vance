@@ -134,6 +134,26 @@ public class VanceWebDavSecurityManager implements io.milton.http.SecurityManage
         return permissionService.check(ctx, target, action);
     }
 
+    /**
+     * Authorise {@code action} against a target identified only by its
+     * {@link WebDavPaths.Coords} — for paths that do not yet resolve to a
+     * resource, notably the LOCK-null case where macOS locks a document before
+     * its first PUT. Lets {@code WebDavLockService} gate CREATE <em>before</em>
+     * materialising an empty target.
+     */
+    public boolean check(DavPrincipal principal, WebDavPaths.Coords coords,
+            boolean collection, Action action) {
+        if (coords.project() == null || !principal.tenantId().equals(coords.tenantId())) {
+            return false;
+        }
+        SecurityContext ctx = SecurityContext.user(
+                principal.username(), principal.tenantId(), principal.teams());
+        Resource target = collection
+                ? new Resource.Project(coords.tenantId(), coords.project())
+                : new Resource.Document(coords.tenantId(), coords.project(), coords.path());
+        return permissionService.check(ctx, target, action);
+    }
+
     @Override
     public String getRealm(String host) {
         return properties.getRealm();

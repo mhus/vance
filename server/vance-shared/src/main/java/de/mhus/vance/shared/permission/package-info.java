@@ -8,9 +8,12 @@
  * call {@link PermissionService#enforce} before delegating to a service.
  *
  * <p>The actual rule evaluation is delegated to a {@link PermissionResolver}.
- * The default bean is {@link AllowAllPermissionResolver}, which permits
- * everything and only logs the check on DEBUG. Real implementations replace
- * this bean later (e.g. role-based memberships) without touching call sites.
+ * This module ships only the SPI — the concrete resolver is contributed by a
+ * provider addon (allow-all for dev/test, simple-auth for production, or an
+ * enterprise governor). {@link PermissionService} requires exactly one such
+ * provider on the classpath and fails startup fast otherwise. Swapping the
+ * provider addon changes the whole authorization behaviour without touching a
+ * single call site.
  *
  * <p>Convention:
  * <ul>

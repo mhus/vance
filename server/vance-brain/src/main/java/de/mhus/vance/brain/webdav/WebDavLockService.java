@@ -55,8 +55,16 @@ public class WebDavLockService {
         boolean created = false;
         if (resource == null) {
             // Lock-null: the target doesn't exist yet (macOS locks before the
-            // first PUT). Materialise an empty target so the lock has something
-            // to attach to and the subsequent PUT replaces it.
+            // first PUT). Gate CREATE on the target path *before* materialising
+            // it — otherwise an unauthorized LOCK would create a file (and only
+            // the later WRITE check would fire, too late). Reserved-prefix
+            // paths (R4) are rejected here for non-admins.
+            if (!factory.securityManager().check(principal, coords, /*collection*/ false, Action.CREATE)) {
+                response.sendError(HttpServletResponse.SC_FORBIDDEN);
+                return;
+            }
+            // Materialise an empty target so the lock has something to attach
+            // to and the subsequent PUT replaces it.
             if (!createEmptyTarget(coords, principal, response)) {
                 return;
             }

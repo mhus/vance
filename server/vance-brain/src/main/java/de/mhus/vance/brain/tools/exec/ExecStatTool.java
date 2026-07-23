@@ -68,7 +68,7 @@ public class ExecStatTool implements Tool {
         if (!(raw instanceof String id) || id.isBlank()) {
             throw new ToolException("'id' is required");
         }
-        return router.stat(id, ctx.tenantId());
+        return router.stat(id, ctx.tenantId(), ctx.projectId());
     }
 
     public static Map<String, Object> render(ExecStat s) {

@@ -278,12 +278,19 @@ public class UrsaSchedulerLoader {
         }
 
         String initialMessage = stringOrNull(spec.get("initialMessage"));
-        String runAs = stringOrNull(spec.get("runAs"));
+        String runAsRaw = stringOrNull(spec.get("runAs"));
         OverlapPolicy overlap = parseOverlap(spec.get("overlap"));
         LockMode lockMode = parseLockMode(spec.get("lockMode"));
         List<String> tags = stringList(spec.get("tags"), "tags");
 
         DocumentDocument doc = hit.document();
+        // Impersonation gate: a runAs: from a *persisted user document* is
+        // honored only when that document is privileged ($meta.privileged); a
+        // non-privileged scheduler cannot escalate to a foreign identity.
+        // doc == null means validation/preview or a bundled (in-code, trusted)
+        // source — keep the raw value there. See
+        // planning/permission-system-concept.md §4.3a.
+        String runAs = (doc == null || doc.isPrivileged()) ? runAsRaw : null;
         return new ResolvedUrsaScheduler(
                 name,
                 hit.content(),

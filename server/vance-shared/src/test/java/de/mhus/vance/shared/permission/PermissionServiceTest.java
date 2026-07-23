@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
 class PermissionServiceTest {
 
     private final PermissionResolver resolver = mock(PermissionResolver.class);
-    private final PermissionService service = new PermissionService(resolver);
+    private final PermissionService service = new PermissionService(List.of(resolver));
 
     private final SecurityContext alice = SecurityContext.user("alice", "acme", List.of());
     private final Resource resource = new Resource.Project("acme", "proj");
@@ -61,5 +61,23 @@ class PermissionServiceTest {
 
         verify(resolver).isAllowed(alice, resource, Action.READ);
         verify(resolver, never()).isAllowed(alice, resource, Action.WRITE);
+    }
+
+    @Test
+    void construction_failsFast_whenNoProviderPresent() {
+        assertThatThrownBy(() -> new PermissionService(List.of()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("exactly one permission provider")
+                .hasMessageContaining("found 0");
+    }
+
+    @Test
+    void construction_failsFast_whenMultipleProvidersPresent() {
+        assertThatThrownBy(() ->
+                new PermissionService(List.of(mock(PermissionResolver.class),
+                        mock(PermissionResolver.class))))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("exactly one permission provider")
+                .hasMessageContaining("found 2");
     }
 }

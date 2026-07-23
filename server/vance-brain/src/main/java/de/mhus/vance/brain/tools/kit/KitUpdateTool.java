@@ -25,6 +25,8 @@ import org.springframework.stereotype.Component;
 public class KitUpdateTool implements Tool {
 
     private final KitService kitService;
+    private final de.mhus.vance.shared.permission.PermissionService permissionService;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
     @Override
     public String name() {
@@ -82,8 +84,9 @@ public class KitUpdateTool implements Tool {
         if (ctx.tenantId() == null) {
             throw new ToolException("kit_update requires a tenant scope");
         }
-        String projectId = KitToolSupport.requireProject(ctx,
-                KitToolSupport.optionalString(params, "project"));
+        String projectId = KitToolSupport.requireProjectAuthorized(ctx,
+                KitToolSupport.optionalString(params, "project"),
+                permissionService, contextFactory, de.mhus.vance.shared.permission.Action.WRITE);
         KitInheritDto source = sourceWithFallback(
                 ctx.tenantId(), projectId, params);
         KitImportRequestDto request = KitImportRequestDto.builder()

@@ -819,6 +819,12 @@ public class DocumentService {
             if (!seed.isEmpty()) {
                 doc.setLockedFor(seed);
             }
+            // $meta.privileged → gates whether a runAs: in this document is
+            // honored by the Ursa loaders. Seeded once at create-time, same as
+            // lockedForInitial. Who may write such a document is governed by the
+            // reserved-prefix rule (scheduler/hook/event YAMLs are _vance/... →
+            // ADMIN). See planning/permission-system-concept.md §4.3a.
+            doc.setPrivileged(Boolean.parseBoolean(doc.getHeaders().get(PRIVILEGED_HEADER)));
         }
         // isRagEligible respects the override set above: if ragEnabled=false
         // it returns false and we never enqueue an embed run.
@@ -3026,6 +3032,15 @@ public class DocumentService {
      * untouched. See {@code planning/document-lock-level.md} §3.1.
      */
     public static final String LOCKED_FOR_INITIAL_HEADER = "lockedforinitial";
+
+    /**
+     * Front-matter header ({@code $meta.privileged}) that marks a document as
+     * carrying elevated execution authority. Seeded onto
+     * {@link DocumentDocument#isPrivileged()} at create-time; the Ursa loaders
+     * honor a {@code runAs:} only when this is set. See
+     * {@code planning/permission-system-concept.md} §4.3a.
+     */
+    public static final String PRIVILEGED_HEADER = "privileged";
 
     /**
      * Parse the {@code $meta.lockedForInitial} header value (a raw string

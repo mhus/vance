@@ -271,4 +271,17 @@ public class DocumentDocument {
      */
     @Builder.Default
     private Set<WriterRole> lockedFor = EnumSet.noneOf(WriterRole.class);
+
+    /**
+     * Marks a document as carrying elevated execution authority — most
+     * importantly, it is the gate that decides whether a {@code runAs:} inside
+     * a scheduler/hook/event YAML is honored (see the Ursa loaders). A
+     * non-privileged document's {@code runAs} is ignored, so it cannot escalate
+     * to a foreign identity. Seeded at create-time from the body's
+     * {@code $meta.privileged} header. Which principals may write such a
+     * document at all is governed by the reserved-prefix rule (these YAMLs live
+     * under {@code _vance/...} / scheduler-hook prefixes → ADMIN). See
+     * {@code planning/permission-system-concept.md} §4.3a.
+     */
+    private boolean privileged;
 }

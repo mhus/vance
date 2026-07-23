@@ -4,7 +4,6 @@ import de.mhus.vance.api.magrathea.MagratheaTaskRunStatus;
 import de.mhus.vance.api.magrathea.MagratheaTaskStatus;
 import de.mhus.vance.api.magrathea.MagratheaTaskType;
 import java.time.Instant;
-import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -102,16 +101,6 @@ public class MagratheaTaskDocument {
 
     /** Set periodically by long-running type-executors; reclaim-scanner respects this. */
     private @Nullable Instant heartbeatAt;
-
-    /** Task-level timeout — set when type-executor honours it. */
-    private @Nullable Instant timeoutAt;
-
-    /**
-     * Variables-snapshot at task creation time. Type-executors read
-     * this for {@code ${state.X}} substitution; the projector
-     * reconstructs the live view from the journal.
-     */
-    private @Nullable Map<String, Object> stateVars;
 
     // ─── Sub-execution links (sparse) ───
 

@@ -8,7 +8,6 @@ import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.jspecify.annotations.Nullable;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
@@ -202,17 +201,6 @@ public class MagratheaTaskService {
                 .set("status", status)
                 .unset("runStatus")
                 .unset("heartbeatAt");
-        mongoTemplate.updateFirst(q, u, MagratheaTaskDocument.class);
-    }
-
-    public void setRunStatus(String taskId, @Nullable MagratheaTaskRunStatus runStatus) {
-        Query q = new Query(Criteria.where("_id").is(taskId));
-        Update u = new Update();
-        if (runStatus == null) {
-            u.unset("runStatus");
-        } else {
-            u.set("runStatus", runStatus);
-        }
         mongoTemplate.updateFirst(q, u, MagratheaTaskDocument.class);
     }
 

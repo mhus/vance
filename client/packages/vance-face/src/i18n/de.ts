@@ -778,11 +778,14 @@ export default {
       status: 'Status',
       allProjects: '(alle Projekte)',
       all: '(alle)',
+      active: '(aktiv)',
+      closed: 'geschlossen',
     },
     sidebar: {
       loadingSessions: 'Sessions werden geladen…',
       noSessionsHeadline: 'Keine Sessions',
       noSessionsBody: 'Keine Sessions entsprechen dem aktuellen Filter.',
+      loadMore: 'Mehr laden',
     },
     emptyMain: {
       headline: 'Etwas auswählen',

@@ -2,14 +2,12 @@ package de.mhus.vance.simpleauth;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.permission.SecurityContext;
-import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.team.TeamDocument;
 import de.mhus.vance.shared.team.TeamService;
 import java.util.List;
@@ -21,7 +19,6 @@ class MongoPermissionResolverTest {
 
     private PermissionGrantService grants;
     private TeamService teamService;
-    private SettingService settingService;
     private MongoPermissionResolver resolver;
 
     private final SecurityContext alice = SecurityContext.user("alice", "acme", List.of());
@@ -31,14 +28,9 @@ class MongoPermissionResolverTest {
     void setUp() {
         grants = mock(PermissionGrantService.class);
         teamService = mock(TeamService.class);
-        settingService = mock(SettingService.class);
         when(grants.forScope(any(), any(), any())).thenReturn(List.of());
         when(teamService.byMember(any(), any())).thenReturn(List.of());
-        // shadow off by default → sharp verdicts in the rule-matrix tests.
-        when(settingService.getBooleanValueCascade(any(), any(), any(), any(), eq(false)))
-                .thenReturn(false);
-        resolver = new MongoPermissionResolver(
-                grants, teamService, settingService, /* metricService */ null);
+        resolver = new MongoPermissionResolver(grants, teamService, /* metricService */ null);
     }
 
     private static PermissionGrantDocument grant(GrantScopeType scope, String scopeId,
@@ -156,15 +148,6 @@ class MongoPermissionResolverTest {
                 new Resource.Session("acme", "ghost", "s1"), Action.EXECUTE)).isFalse();
     }
 
-    @Test
-    void shadow_mode_lets_a_would_deny_through() {
-        when(settingService.getBooleanValueCascade(
-                eq("acme"), any(), any(), eq(MongoPermissionResolver.SHADOW_SETTING), eq(false)))
-                .thenReturn(true);
-        // Same check that denies sharply above — under shadow it is allowed.
-        assertThat(resolver.isAllowed(alice,
-                new Resource.Session("acme", "ghost", "s1"), Action.EXECUTE)).isTrue();
-    }
 
     private static TeamDocument team(String name) {
         TeamDocument t = new TeamDocument();

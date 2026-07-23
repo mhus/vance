@@ -202,6 +202,44 @@ public class SessionService {
         return repository.findByTenantIdAndProjectId(tenantId, projectId);
     }
 
+    /**
+     * Admin-style, paginated listing for the Insights inspector. Sorted by
+     * {@code lastActivityAt} desc (newest first, missing dates last),
+     * sliced with {@code skip}/{@code limit} at the DB so a busy tenant
+     * never ships its whole session set to the UI.
+     *
+     * <p>{@code statuses}: {@code null}/empty means "all non-{@code CLOSED}"
+     * — the default active view that hides closed sessions. An explicit
+     * set includes exactly those statuses ({@code CLOSED} is honoured when
+     * the caller asks for it).
+     */
+    public List<SessionDocument> listForInsights(
+            String tenantId,
+            @Nullable String userId,
+            @Nullable String projectId,
+            @Nullable Set<SessionStatus> statuses,
+            long skip,
+            int limit) {
+        Criteria c = Criteria.where("tenantId").is(tenantId);
+        if (userId != null && !userId.isBlank()) {
+            c = c.and("userId").is(userId);
+        }
+        if (projectId != null && !projectId.isBlank()) {
+            c = c.and("projectId").is(projectId);
+        }
+        if (statuses == null || statuses.isEmpty()) {
+            c = c.and(F_STATUS).ne(SessionStatus.CLOSED);
+        } else {
+            c = c.and(F_STATUS).in(statuses);
+        }
+        Query q = new Query(c)
+                .with(org.springframework.data.domain.Sort.by(
+                        org.springframework.data.domain.Sort.Order.desc(F_LAST_ACTIVITY)))
+                .skip(Math.max(0, skip))
+                .limit(Math.max(1, limit));
+        return mongoTemplate.find(q, SessionDocument.class);
+    }
+
     // ------------------------------------------------------------- creation
 
     /**

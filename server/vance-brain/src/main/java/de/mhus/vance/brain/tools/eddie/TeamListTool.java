@@ -45,8 +45,8 @@ public class TeamListTool implements Tool {
     /**
      * Tenant-wide team listing is admin-territory (mirrors the REST
      * TeamController). A non-admin caller sees only their own teams; an
-     * admin sees all. Resolver decides (Tenant ADMIN); shadow keeps it
-     * full. (permission-system finding — team_list tenant-wide leak)
+     * admin sees all. Resolver decides (Tenant ADMIN).
+     * (permission-system finding — team_list tenant-wide leak)
      */
     private List<TeamDocument> tenantWideVisibleTo(ToolInvocationContext ctx, List<TeamDocument> all) {
         if (permissionService.check(

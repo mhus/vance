@@ -266,12 +266,13 @@ const projectFilterOptions = computed(() => [
   })),
 ]);
 
-// OPEN / CLOSED labels stay as the literal server enum values — they
-// are technical identifiers, recognisable across UI languages.
+// Status filter: blank hides CLOSED sessions (the default active view),
+// "all" shows every status, "CLOSED" narrows to closed ones. The server
+// interprets these values (see InsightsAdminController.listSessions).
 const statusOptions = computed(() => [
-  { value: '', label: t('insights.filters.all') },
-  { value: 'OPEN', label: 'OPEN' },
-  { value: 'CLOSED', label: 'CLOSED' },
+  { value: '', label: t('insights.filters.active') },
+  { value: 'all', label: t('insights.filters.all') },
+  { value: 'CLOSED', label: t('insights.filters.closed') },
 ]);
 
 // ─── Selection state ────────────────────────────────────────────────────
@@ -712,6 +713,18 @@ function clickProcessByMongoId(id: string | undefined | null): void {
             </div>
           </template>
         </nav>
+
+        <VButton
+          v-if="sessionsState.hasMore.value"
+          variant="ghost"
+          size="sm"
+          class="self-center mt-1"
+          :loading="sessionsState.loadingMore.value"
+          :disabled="sessionsState.loadingMore.value"
+          @click="sessionsState.loadMore()"
+        >
+          {{ $t('insights.sidebar.loadMore') }}
+        </VButton>
       </div>
     </template>
 

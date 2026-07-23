@@ -16,40 +16,79 @@ interface SessionFilter {
   status?: string | null;
 }
 
+/** Sessions fetched per page — matches the server-side default limit. */
+const SESSION_PAGE_SIZE = 200;
+
 /**
  * Read-only access to the insights inspector endpoints. One composable
  * per concept (sessions / processes / chat / memory / marvin tree)
  * keeps the component glue thin and the loading flags scoped.
+ *
+ * Sessions are paginated: the endpoint returns at most {@link
+ * SESSION_PAGE_SIZE} rows sorted newest-first, so a busy tenant never
+ * ships its whole session set. `reload` fetches the first page; `loadMore`
+ * appends the next. `hasMore` is a heuristic — a full page implies there
+ * may be more (avoids a separate count query).
  */
 export function useInsightsSessions(): {
   sessions: Ref<SessionInsightsDto[]>;
   loading: Ref<boolean>;
+  loadingMore: Ref<boolean>;
+  hasMore: Ref<boolean>;
   error: Ref<string | null>;
   reload: (filter: SessionFilter) => Promise<void>;
+  loadMore: () => Promise<void>;
 } {
   const sessions = ref<SessionInsightsDto[]>([]);
   const loading = ref(false);
+  const loadingMore = ref(false);
+  const hasMore = ref(false);
   const error = ref<string | null>(null);
+  let currentFilter: SessionFilter = {};
+
+  async function fetchPage(offset: number): Promise<SessionInsightsDto[]> {
+    const params = new URLSearchParams();
+    if (currentFilter.projectId) params.set('projectId', currentFilter.projectId);
+    if (currentFilter.userId) params.set('userId', currentFilter.userId);
+    if (currentFilter.status) params.set('status', currentFilter.status);
+    params.set('offset', String(offset));
+    params.set('limit', String(SESSION_PAGE_SIZE));
+    return brainFetch<SessionInsightsDto[]>('GET', `admin/sessions?${params.toString()}`);
+  }
 
   async function reload(filter: SessionFilter): Promise<void> {
+    currentFilter = filter;
     loading.value = true;
     error.value = null;
     try {
-      const params = new URLSearchParams();
-      if (filter.projectId) params.set('projectId', filter.projectId);
-      if (filter.userId) params.set('userId', filter.userId);
-      if (filter.status) params.set('status', filter.status);
-      const path = `admin/sessions${params.toString() ? '?' + params.toString() : ''}`;
-      sessions.value = await brainFetch<SessionInsightsDto[]>('GET', path);
+      const page = await fetchPage(0);
+      sessions.value = page;
+      hasMore.value = page.length === SESSION_PAGE_SIZE;
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load sessions.';
       sessions.value = [];
+      hasMore.value = false;
     } finally {
       loading.value = false;
     }
   }
 
-  return { sessions, loading, error, reload };
+  async function loadMore(): Promise<void> {
+    if (loadingMore.value || loading.value || !hasMore.value) return;
+    loadingMore.value = true;
+    error.value = null;
+    try {
+      const page = await fetchPage(sessions.value.length);
+      sessions.value = [...sessions.value, ...page];
+      hasMore.value = page.length === SESSION_PAGE_SIZE;
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to load more sessions.';
+    } finally {
+      loadingMore.value = false;
+    }
+  }
+
+  return { sessions, loading, loadingMore, hasMore, error, reload, loadMore };
 }
 
 export function useSessionProcesses(): {

@@ -67,6 +67,7 @@ import de.mhus.vance.shared.marvin.MarvinNodeDocument;
 import de.mhus.vance.shared.marvin.MarvinNodeService;
 import de.mhus.vance.shared.memory.MemoryDocument;
 import de.mhus.vance.shared.memory.MemoryService;
+import de.mhus.vance.api.session.SessionStatus;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
@@ -79,10 +80,13 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -154,26 +158,36 @@ public class InsightsAdminController {
             @RequestParam(value = "projectId", required = false) @Nullable String projectId,
             @RequestParam(value = "userId", required = false) @Nullable String userId,
             @RequestParam(value = "status", required = false) @Nullable String status,
+            @RequestParam(value = "offset", required = false, defaultValue = "0") int offset,
+            @RequestParam(value = "limit", required = false, defaultValue = "200") int limit,
             HttpServletRequest httpRequest) {
 
         authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
-        List<SessionDocument> sessions;
-        if (userId != null && !userId.isBlank() && projectId != null && !projectId.isBlank()) {
-            sessions = sessionService.listForUserAndProject(tenant, userId, projectId);
-        } else if (userId != null && !userId.isBlank()) {
-            sessions = sessionService.listForUser(tenant, userId);
-        } else if (projectId != null && !projectId.isBlank()) {
-            sessions = sessionService.listForProject(tenant, projectId);
-        } else {
-            sessions = sessionService.listForTenant(tenant);
+
+        // status semantics: blank → the active view (all non-CLOSED, so
+        // closed sessions stay hidden by default); "all" → every status
+        // incl. CLOSED; otherwise a single explicit status name. An
+        // unknown value falls back to the active view.
+        Set<SessionStatus> statuses = null;
+        if (status != null && !status.isBlank()) {
+            if ("all".equalsIgnoreCase(status)) {
+                statuses = EnumSet.allOf(SessionStatus.class);
+            } else {
+                try {
+                    statuses = EnumSet.of(
+                            SessionStatus.valueOf(status.toUpperCase(Locale.ROOT)));
+                } catch (IllegalArgumentException ignored) {
+                    statuses = null;
+                }
+            }
         }
 
+        int cappedLimit = Math.min(Math.max(1, limit), 500);
+        List<SessionDocument> sessions = sessionService.listForInsights(
+                tenant, userId, projectId, statuses, Math.max(0, offset), cappedLimit);
+
+        // Already sorted (lastActivityAt desc) and sliced at the DB.
         return sessions.stream()
-                .filter(s -> status == null || status.isBlank()
-                        || (s.getStatus() != null && status.equalsIgnoreCase(s.getStatus().name())))
-                .sorted(Comparator
-                        .comparing(SessionDocument::getLastActivityAt,
-                                Comparator.nullsLast(Comparator.reverseOrder())))
                 .map(s -> toListDto(tenant, s))
                 .toList();
     }

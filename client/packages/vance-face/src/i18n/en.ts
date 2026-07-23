@@ -782,11 +782,14 @@ export default {
       status: 'Status',
       allProjects: '(all projects)',
       all: '(all)',
+      active: '(active)',
+      closed: 'closed',
     },
     sidebar: {
       loadingSessions: 'Loading sessions…',
       noSessionsHeadline: 'No sessions',
       noSessionsBody: 'No sessions match the current filter.',
+      loadMore: 'Load more',
     },
     emptyMain: {
       headline: 'Select something',

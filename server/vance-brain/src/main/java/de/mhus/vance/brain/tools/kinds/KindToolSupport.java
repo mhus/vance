@@ -55,8 +55,7 @@ public class KindToolSupport {
      * context ({@code forToolSubject} maps a null userId → SYSTEM, so
      * headless/scheduler-triggered writes pass; a real user is checked).
      * The resolver decides — reserved-prefix writes need ADMIN (R4),
-     * ordinary project docs need WRITER (R3). Rolled out under the
-     * {@code vance.permission.shadow} switch.
+     * ordinary project docs need WRITER (R3).
      */
     public void enforceDocWrite(ToolInvocationContext ctx, String projectName, String path,
             de.mhus.vance.shared.permission.Action action) {

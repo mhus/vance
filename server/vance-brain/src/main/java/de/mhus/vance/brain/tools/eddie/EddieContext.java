@@ -177,7 +177,6 @@ public class EddieContext {
         // gating READ once here covers them all (write tools additionally
         // enforce WRITE downstream). forToolSubject maps a null userId →
         // SYSTEM (headless/internal passes); the resolver decides (R3/R7).
-        // Under vance.permission.shadow this only logs would-deny.
         // (permission-system finding #9/#11 — read path)
         permissionService.enforce(
                 contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()),

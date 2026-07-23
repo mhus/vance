@@ -515,6 +515,20 @@ public class VogonEngine implements ThinkEngine {
             return;
         }
 
+        // 2b. Checkpoint answered but the phase was FAILED — a rejected
+        // approval or an UNDECIDABLE/INSUFFICIENT_INFO decision. Must NOT
+        // fall through to the gate/advance (which ignores the failed flag)
+        // — close on the rejection/failure path instead (code-review
+        // Phase 2). The worker-step above has its own failed-check; this
+        // covers the checkpoint step.
+        if (phase.getCheckpoint() != null
+                && isFlagTrue(state, phaseFlag(phaseName, "failed"))) {
+            log.warn("Vogon id='{}' phase '{}' checkpoint FAILED/rejected — process stale",
+                    process.getId(), phaseName);
+            thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
+            return;
+        }
+
         // 3. Gate evaluation.
         if (!gateSatisfied(phase.getGate(), state)) {
             // Gate not met — yield. Either an external event will
@@ -1087,6 +1101,16 @@ public class VogonEngine implements ThinkEngine {
                 }
                 state.getFlags().put(
                         phaseFlag(pending.getPhaseName(), "checkpointAnswered"), true);
+                // A rejected approval must fail the phase, not silently
+                // advance — the post-checkpoint failed-check in advancePhase
+                // then closes the strategy on the rejection path
+                // (code-review Phase 2). Without this, "no" to an approval
+                // gate let the strategy proceed anyway.
+                if (pending.getType() == CheckpointType.APPROVAL
+                        && Boolean.FALSE.equals(value)) {
+                    state.getFlags().put(
+                            phaseFlag(pending.getPhaseName(), "failed"), true);
+                }
                 state.setPendingCheckpoint(null);
                 persistState(process, state);
                 log.info("Vogon id='{}' phase '{}' checkpoint DECIDED storeAs='{}' value='{}'",

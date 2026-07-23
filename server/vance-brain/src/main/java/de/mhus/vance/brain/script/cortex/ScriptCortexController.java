@@ -140,6 +140,16 @@ public class ScriptCortexController {
         return toDto(doc);
     }
 
+    /**
+     * The mandatory {@link de.mhus.vance.shared.permission.WriteActor} for a
+     * user-initiated write from this REST surface — DocumentService enforces
+     * authorization at the source against it (F1 no-bypass), so these handlers
+     * no longer re-check the write at the surface.
+     */
+    private de.mhus.vance.shared.permission.WriteActor actor(HttpServletRequest request) {
+        return de.mhus.vance.shared.permission.WriteActor.user(authority.contextOf(request));
+    }
+
     @PostMapping("/brain/{tenant}/scripts")
     public ResponseEntity<DocumentDto> create(
             @PathVariable("tenant") String tenant,
@@ -147,8 +157,6 @@ public class ScriptCortexController {
             @Valid @RequestBody ScriptCreateRequest request,
             HttpServletRequest httpRequest) {
 
-        authority.enforce(httpRequest,
-                new Resource.Document(tenant, projectId, request.getPath()), Action.CREATE);
         String username = (String) httpRequest.getAttribute(AccessFilterBase.ATTR_USERNAME);
         String mimeType = ScriptMimeResolver.resolve(request.getPath(), request.getMimeType());
         String inlineText = request.getInlineText() == null ? "" : request.getInlineText();
@@ -163,7 +171,8 @@ public class ScriptCortexController {
                     request.getTags(),
                     mimeType,
                     new ByteArrayInputStream(inlineText.getBytes(StandardCharsets.UTF_8)),
-                    username);
+                    username,
+                    actor(httpRequest));
         } catch (DocumentService.DocumentAlreadyExistsException e) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
         } catch (IllegalArgumentException e) {
@@ -183,9 +192,9 @@ public class ScriptCortexController {
             @RequestBody UpdateBody body,
             HttpServletRequest httpRequest) {
 
-        DocumentDocument existing = loadOwned(tenant, id);
-        authority.enforce(httpRequest,
-                new Resource.Document(tenant, existing.getProjectId(), existing.getPath()), Action.WRITE);
+        // loadOwned enforces ownership + 404; the write is authorized at the
+        // source via the actor passed below.
+        loadOwned(tenant, id);
 
         DocumentDocument updated;
         try {
@@ -196,7 +205,11 @@ public class ScriptCortexController {
                     body.inlineText,
                     body.newPath,
                     /*autoSummary*/ null,
-                    /*summaryDirty*/ null);
+                    /*summaryDirty*/ null,
+                    /*ragEnabled*/ null,
+                    /*mimeType*/ null,
+                    DocumentService.TOOL_IDENTITY,
+                    actor(httpRequest));
         } catch (DocumentService.DocumentAlreadyExistsException e) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
         } catch (IllegalArgumentException e) {
@@ -211,12 +224,10 @@ public class ScriptCortexController {
             @PathVariable("id") String id,
             HttpServletRequest httpRequest) {
         DocumentDocument existing = loadOwned(tenant, id);
-        authority.enforce(httpRequest,
-                new Resource.Document(tenant, existing.getProjectId(), existing.getPath()), Action.DELETE);
         if (DocumentService.isTrash(existing.getPath())) {
-            documentService.delete(id);
+            documentService.delete(id, actor(httpRequest));
         } else {
-            documentService.trash(id);
+            documentService.trash(id, actor(httpRequest));
         }
         return ResponseEntity.noContent().build();
     }

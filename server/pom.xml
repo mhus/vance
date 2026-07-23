@@ -32,6 +32,7 @@
         <module>vance-addon-brain-calendar</module>
         <module>vance-addon-brain-workbook</module>
         <module>vance-addon-brain-wiki</module>
+        <module>vance-addon-brain-journal</module>
         <module>vance-addon-brain-canvas</module>
         <module>vance-addon-brain-rlang</module>
         <module>vance-addon-brain-tex</module>

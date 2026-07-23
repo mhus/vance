@@ -2577,6 +2577,11 @@ public class DocumentService {
         delete(id, TOOL_IDENTITY);
     }
 
+    /** Actor-carrying convenience delete (TOOL identity) — enforces {@code DELETE} at the source (F1). */
+    public void delete(String id, de.mhus.vance.shared.permission.WriteActor actor) {
+        delete(id, TOOL_IDENTITY, actor);
+    }
+
     /** Single-editorId-overload — used by callers that only have the editorId. */
     public void delete(String id, @Nullable String editorId) {
         delete(id, WriterIdentity.of(editorId, null, null));
@@ -2670,6 +2675,11 @@ public class DocumentService {
      */
     public DocumentDocument trash(String id) {
         return trash(id, TOOL_IDENTITY);
+    }
+
+    /** Actor-carrying convenience trash (TOOL identity) — enforces {@code DELETE} at the source (F1). */
+    public DocumentDocument trash(String id, de.mhus.vance.shared.permission.WriteActor actor) {
+        return trash(id, TOOL_IDENTITY, actor);
     }
 
     /** Single-editorId-overload — used by callers that only have the editorId. */

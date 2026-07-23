@@ -1,0 +1,19 @@
+title:       { de: "Journal",  en: "Journal" }
+description: { de: "Ein neues Tagebuch — ein Eintrag pro Tag mit Stimmung, Tags und Kalender-Navigation",
+               en: "A new journal — one entry per day with mood, tags and calendar navigation" }
+icon: book-open
+tags: [app, journal, diary, note]
+
+name:
+  mode: fixed
+  value: _app.yaml
+
+fields:
+  - name: title
+    type: string
+    required: true
+    label: { de: "Titel",        en: "Title" }
+  - name: description
+    type: textarea
+    rows: 2
+    label: { de: "Beschreibung", en: "Description" }

@@ -1,0 +1,9 @@
+$meta:
+  kind: application
+  app: journal
+title: "{{ title }}"
+{% if description %}description: "{{ description }}"{% endif %}
+journal:
+  entriesDir: entries
+  indexLimit: 20
+  moodPresets: [great, good, neutral, low, bad]

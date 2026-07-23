@@ -122,10 +122,13 @@ public class DocImportUrlTool implements Tool {
 
     private final EddieContext eddieContext;
     private final DocumentService documentService;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
-    public DocImportUrlTool(EddieContext eddieContext, DocumentService documentService) {
+    public DocImportUrlTool(EddieContext eddieContext, DocumentService documentService,
+            de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
         this.eddieContext = eddieContext;
         this.documentService = documentService;
+        this.contextFactory = contextFactory;
     }
 
     @Override
@@ -281,7 +284,9 @@ public class DocImportUrlTool implements Tool {
             result = documentService.replaceContent(
                     existing.get().getId(),
                     new ByteArrayInputStream(body),
-                    contentType);
+                    contentType,
+                    DocumentService.TOOL_IDENTITY,
+                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), existing.get().getPath()));
             updated = true;
         } else {
             try {
@@ -293,7 +298,8 @@ public class DocImportUrlTool implements Tool {
                         tags,
                         contentType,
                         new ByteArrayInputStream(body),
-                        ctx.userId());
+                        ctx.userId(),
+                        contextFactory.writeActor(ctx.tenantId(), ctx.userId(), path));
             } catch (DocumentService.DocumentAlreadyExistsException e) {
                 // Race with a concurrent import on the same path. The
                 // fetched body is discarded — falling back to reuse is
@@ -312,7 +318,8 @@ public class DocImportUrlTool implements Tool {
         // (images, PDFs) where the auto-summary scheduler doesn't run.
         String summary = paramString(params, "summary");
         if (summary != null) {
-            documentService.setSummary(result.getId(), summary);
+            documentService.setSummary(result.getId(), summary,
+                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), result.getPath()));
         }
 
         log.info("DocImportUrl {} tenant='{}' project='{}' path='{}' from='{}' bytes={} summary={}",

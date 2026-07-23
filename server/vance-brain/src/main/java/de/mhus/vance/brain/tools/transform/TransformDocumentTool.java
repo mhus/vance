@@ -91,6 +91,7 @@ public class TransformDocumentTool implements Tool {
 
     private final EddieContext eddieContext;
     private final DocumentService documentService;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
     private final DocumentLinkBuilder linkBuilder;
     private final DocumentTransformService transformService;
     private final ThinkProcessService thinkProcessService;
@@ -101,7 +102,9 @@ public class TransformDocumentTool implements Tool {
                                  DocumentLinkBuilder linkBuilder,
                                  DocumentTransformService transformService,
                                  ThinkProcessService thinkProcessService,
-                                 ProgressEmitter progressEmitter) {
+                                 ProgressEmitter progressEmitter,
+                                 de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
+        this.contextFactory = contextFactory;
         this.eddieContext = eddieContext;
         this.documentService = documentService;
         this.linkBuilder = linkBuilder;
@@ -198,7 +201,8 @@ public class TransformDocumentTool implements Tool {
                     List.of("transform", effectiveFormat),
                     transformer.targetMimeType(),
                     in,
-                    ctx.userId());
+                    ctx.userId(),
+                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), finalPath));
         } catch (IOException e) {
             throw new ToolException(
                     "Could not store transformed document: "

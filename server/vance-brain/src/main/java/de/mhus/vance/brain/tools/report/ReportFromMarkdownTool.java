@@ -93,6 +93,7 @@ public class ReportFromMarkdownTool implements Tool {
     private final MarkdownReportService reportService;
     private final EddieContext eddieContext;
     private final DocumentService documentService;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
     private final DocumentLinkBuilder linkBuilder;
     private final ThinkProcessService thinkProcessService;
     private final ProgressEmitter progressEmitter;
@@ -102,7 +103,9 @@ public class ReportFromMarkdownTool implements Tool {
                                   DocumentService documentService,
                                   DocumentLinkBuilder linkBuilder,
                                   ThinkProcessService thinkProcessService,
-                                  ProgressEmitter progressEmitter) {
+                                  ProgressEmitter progressEmitter,
+                                  de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
+        this.contextFactory = contextFactory;
         this.reportService = reportService;
         this.eddieContext = eddieContext;
         this.documentService = documentService;
@@ -215,7 +218,8 @@ public class ReportFromMarkdownTool implements Tool {
                     List.of("report", format.toLowerCase(Locale.ROOT)),
                     rendered.mimeType(),
                     in,
-                    ctx.userId());
+                    ctx.userId(),
+                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), finalPath));
         } catch (IOException e) {
             throw new ToolException(
                     "Could not store rendered report: " + e.getMessage());

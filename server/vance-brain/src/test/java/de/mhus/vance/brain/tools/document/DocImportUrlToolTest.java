@@ -46,7 +46,9 @@ class DocImportUrlToolTest {
     void setUp() {
         eddieContext = mock(EddieContext.class);
         documentService = mock(DocumentService.class);
-        tool = new DocImportUrlTool(eddieContext, documentService);
+        de.mhus.vance.brain.permission.SecurityContextFactory contextFactory =
+                mock(de.mhus.vance.brain.permission.SecurityContextFactory.class);
+        tool = new DocImportUrlTool(eddieContext, documentService, contextFactory);
 
         ProjectDocument project = ProjectDocument.builder()
                 .tenantId("mhus").name("vibecoding").build();

@@ -124,6 +124,7 @@ public class XlsxFromRecordsTool implements Tool {
 
     private final EddieContext eddieContext;
     private final DocumentService documentService;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
     private final DocumentLinkBuilder linkBuilder;
     private final ThinkProcessService thinkProcessService;
     private final ProgressEmitter progressEmitter;
@@ -132,7 +133,9 @@ public class XlsxFromRecordsTool implements Tool {
                                DocumentService documentService,
                                DocumentLinkBuilder linkBuilder,
                                ThinkProcessService thinkProcessService,
-                               ProgressEmitter progressEmitter) {
+                               ProgressEmitter progressEmitter,
+                               de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
+        this.contextFactory = contextFactory;
         this.eddieContext = eddieContext;
         this.documentService = documentService;
         this.linkBuilder = linkBuilder;
@@ -247,7 +250,8 @@ public class XlsxFromRecordsTool implements Tool {
                     List.of("report", "xlsx"),
                     XLSX_MIME,
                     in,
-                    ctx.userId());
+                    ctx.userId(),
+                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), finalPath));
         } catch (IOException e) {
             throw new ToolException(
                     "Could not store rendered XLSX: " + e.getMessage());

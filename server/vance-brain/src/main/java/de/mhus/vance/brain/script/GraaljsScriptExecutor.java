@@ -206,6 +206,12 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
                         ? header.statementLimit()
                         : props.getStatements().getDefault(),
                 props.getStatements(), sourceName);
+        long effectiveMaxResultNodes = clampResultNodes(
+                header.maxResultNodes() != null
+                        ? header.maxResultNodes()
+                        : props.getResult().getDefault(),
+                props.getResult(), sourceName);
+        int resultMaxDepth = props.getResult().getMaxDepth();
 
         // ── Phase 3: capability check — @requiresTools must all be in
         // the effective allow-set, otherwise fail-fast before eval.
@@ -306,7 +312,8 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
             }
             Source source = Source.newBuilder("js", request.code(), sourceName).buildLiteral();
 
-            Future<@Nullable Object> future = watchdog.submit(() -> resolveResult(ctx.eval(source)));
+            Future<@Nullable Object> future = watchdog.submit(() -> resolveResult(
+                    ctx.eval(source), effectiveMaxResultNodes, resultMaxDepth));
             try {
                 Object value = future.get(effectiveTimeout.toMillis(), TimeUnit.MILLISECONDS);
                 return new ScriptResult(value, Duration.between(start, Instant.now()));
@@ -377,6 +384,26 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
         if (value < props.getMin()) {
             log.warn("Script [{}] @statements {} below "
                             + "vance.script.statements.min ({}), clamping up",
+                    sourceName, value, props.getMin());
+            value = props.getMin();
+        }
+        return value;
+    }
+
+    private static long clampResultNodes(
+            long requested,
+            ScriptEngineProperties.ResultLimits props,
+            String sourceName) {
+        long value = requested;
+        if (value > props.getMax()) {
+            log.warn("Script [{}] @maxResultNodes {} exceeds "
+                            + "vance.script.result.max ({}), clamping",
+                    sourceName, value, props.getMax());
+            value = props.getMax();
+        }
+        if (value < props.getMin()) {
+            log.warn("Script [{}] @maxResultNodes {} below "
+                            + "vance.script.result.min ({}), clamping up",
                     sourceName, value, props.getMin());
             value = props.getMin();
         }
@@ -636,9 +663,9 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
      * with Eddie's "mark all unread as read" script.
      */
     @Nullable
-    private static Object resolveResult(Value value) {
+    private static Object resolveResult(Value value, long maxNodes, int maxDepth) {
         Value settled = settlePromise(value);
-        return mapValue(settled);
+        return mapValue(settled, 0, new long[] {maxNodes}, maxDepth);
     }
 
     /**
@@ -697,9 +724,18 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
     /**
      * Primitives stay primitive, objects become {@link LinkedHashMap},
      * arrays become {@link ArrayList}.
+     *
+     * <p>Bounded against a hostile return value (hactar-jeltz-script
+     * review): {@code budget[0]} counts down one per array element /
+     * object member materialised and throws {@code RESOURCE_EXHAUSTED}
+     * when it goes negative — a script returning a giant array can no
+     * longer OOM the shared JVM during marshalling. {@code depth} is
+     * capped at {@code maxDepth}, which also bounds a self-referential
+     * (cyclic) return value ({@code const a={}; a.self=a; return a;})
+     * that would otherwise StackOverflow.
      */
     @Nullable
-    private static Object mapValue(Value value) {
+    private static Object mapValue(Value value, int depth, long[] budget, int maxDepth) {
         if (value == null || value.isNull()) {
             return null;
         }
@@ -715,21 +751,40 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
         if (value.isString()) {
             return value.asString();
         }
+        if (depth > maxDepth) {
+            throw new ScriptExecutionException(
+                    ScriptExecutionException.ErrorClass.RESOURCE_EXHAUSTED,
+                    "Script result nesting exceeds vance.script.result.maxDepth ("
+                            + maxDepth + ") — cyclic or too deeply nested return value");
+        }
         if (value.hasArrayElements()) {
             long size = value.getArraySize();
             List<@Nullable Object> out = new ArrayList<>((int) Math.min(size, 1024));
             for (long i = 0; i < size; i++) {
-                out.add(mapValue(value.getArrayElement(i)));
+                consumeNode(budget);
+                out.add(mapValue(value.getArrayElement(i), depth + 1, budget, maxDepth));
             }
             return out;
         }
         if (value.hasMembers()) {
             Map<String, @Nullable Object> out = new LinkedHashMap<>();
             for (String key : value.getMemberKeys()) {
-                out.put(key, mapValue(value.getMember(key)));
+                consumeNode(budget);
+                out.put(key, mapValue(value.getMember(key), depth + 1, budget, maxDepth));
             }
             return out;
         }
         return value.toString();
+    }
+
+    /** Decrement the node budget; throw once it is exhausted. */
+    private static void consumeNode(long[] budget) {
+        if (--budget[0] < 0) {
+            throw new ScriptExecutionException(
+                    ScriptExecutionException.ErrorClass.RESOURCE_EXHAUSTED,
+                    "Script result exceeds the node cap "
+                            + "(vance.script.result.max / @maxResultNodes) — "
+                            + "returned value is too large");
+        }
     }
 }

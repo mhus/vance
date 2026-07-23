@@ -21,6 +21,7 @@ import org.jspecify.annotations.Nullable;
 public record ScriptHeader(
         @Nullable Duration timeout,
         @Nullable Long statementLimit,
+        @Nullable Long maxResultNodes,
         Set<String> allowTools,
         Set<String> requiresTools,
         @Nullable String description,
@@ -41,7 +42,7 @@ public record ScriptHeader(
     }
 
     private static final ScriptHeader EMPTY = new ScriptHeader(
-            null, null, Set.of(), Set.of(), null, null,
+            null, null, null, Set.of(), Set.of(), null, null,
             Set.of(), null, Set.of());
 
     /** No header present — every field defaults; executor uses
@@ -56,6 +57,7 @@ public record ScriptHeader(
     public boolean isPresent() {
         return timeout != null
                 || statementLimit != null
+                || maxResultNodes != null
                 || !allowTools.isEmpty()
                 || !requiresTools.isEmpty()
                 || description != null

@@ -24,6 +24,14 @@ class ScriptHeaderParserTest {
     }
 
     @Test
+    void parse_maxResultNodes_uses_count_grammar() {
+        ScriptHeader h = ScriptHeaderParser.parse(
+                "/**\n * @maxResultNodes 5k\n */\n42", "test");
+        assertThat(h.maxResultNodes()).isEqualTo(5_000L);
+        assertThat(h.isPresent()).isTrue();
+    }
+
+    @Test
     void parse_first_block_only_later_blocks_ignored() {
         String code = """
                 /**

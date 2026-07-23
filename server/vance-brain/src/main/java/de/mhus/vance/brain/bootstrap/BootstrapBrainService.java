@@ -117,10 +117,22 @@ public class BootstrapBrainService {
         ensureTeam(ACME_TENANT, "field-testing-qa", "Field Testing & Quality Assurance",
                 List.of("wile.coyote", "road.runner"));
 
-        // Seed the demo tenant admin so the tenant is administrable the moment
-        // a grant-storing provider is switched on. No-op under allow-all.
-        permissionBootstrapProvider.ifAvailable(
-                pb -> pb.grantTenantAdmin(ACME_TENANT, "marvin.acme"));
+        // Seed sensible demo grants once a grant-storing provider (Simple-Auth)
+        // is loaded; no-op otherwise. marvin.acme runs the tenant; the two demo
+        // teams get WRITER on the projects they work on. This also showcases
+        // scoped access: road.runner (only in field-testing-qa) can touch the
+        // testing/logistics projects but not the engineering ones, while
+        // wile.coyote (in both teams) reaches everything. Idempotent per boot.
+        permissionBootstrapProvider.ifAvailable(pb -> {
+            pb.grantTenantAdmin(ACME_TENANT, "marvin.acme");
+            for (String project : List.of("instant-hole", "dehydrated-boulders",
+                    "rocket-powered-skates", "giant-slingshot")) {
+                pb.grantProjectTeamWriter(ACME_TENANT, project, "rd-propulsion");
+            }
+            for (String project : List.of("invisible-paint", "iron-seed", "cloud-delivery")) {
+                pb.grantProjectTeamWriter(ACME_TENANT, project, "field-testing-qa");
+            }
+        });
 
         seedInstantHoleDocuments();
 

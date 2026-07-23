@@ -18,6 +18,7 @@ public class ScriptEngineProperties {
 
     private TimeoutLimits timeout = new TimeoutLimits();
     private StatementLimits statements = new StatementLimits();
+    private ResultLimits result = new ResultLimits();
     private Capabilities capabilities = new Capabilities();
     private Require require = new Require();
 
@@ -28,6 +29,9 @@ public class ScriptEngineProperties {
     public void setStatements(StatementLimits statements) {
         this.statements = statements;
     }
+
+    public ResultLimits getResult() { return result; }
+    public void setResult(ResultLimits result) { this.result = result; }
 
     public Capabilities getCapabilities() { return capabilities; }
     public void setCapabilities(Capabilities capabilities) {
@@ -66,6 +70,41 @@ public class ScriptEngineProperties {
         public void setMin(long v) { this.min = v; }
         public long getMax() { return max; }
         public void setMax(long v) { this.max = v; }
+    }
+
+    /**
+     * Bounds the size of the value a script returns while it is being
+     * marshalled back into Java ({@code GraaljsScriptExecutor.mapValue}).
+     * A statement limit caps CPU but not the size of the return graph:
+     * a script that returns a giant array or a self-referential object
+     * would otherwise OOM (huge array) or StackOverflow (cycle) the
+     * shared Brain JVM during result extraction. {@code maxNodes} caps
+     * the total array-elements + object-members materialised; the
+     * header tag {@code @maxResultNodes} overrides the default within
+     * {@code [min, max]}. {@code maxDepth} bounds the recursion depth,
+     * which also stops a cyclic return value before it overflows the
+     * stack.
+     *
+     * <p><b>Note:</b> this does not bound memory allocated <em>during</em>
+     * script execution (e.g. {@code new Array(2**30)}). A true
+     * per-context heap cap needs the GraalVM Enterprise
+     * {@code sandbox.MaxHeapMemory} option or running scripts in an
+     * isolated worker process — tracked separately.
+     */
+    public static class ResultLimits {
+        private long defaultValue = 1_000_000L;
+        private long min = 1_000L;
+        private long max = 100_000_000L;
+        private int maxDepth = 64;
+
+        public long getDefault() { return defaultValue; }
+        public void setDefault(long v) { this.defaultValue = v; }
+        public long getMin() { return min; }
+        public void setMin(long v) { this.min = v; }
+        public long getMax() { return max; }
+        public void setMax(long v) { this.max = v; }
+        public int getMaxDepth() { return maxDepth; }
+        public void setMaxDepth(int v) { this.maxDepth = v; }
     }
 
     /**

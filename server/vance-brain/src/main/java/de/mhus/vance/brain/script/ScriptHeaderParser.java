@@ -43,7 +43,7 @@ public final class ScriptHeaderParser {
      *  v2 additions (e.g. {@code maxSpawnDepth}, {@code fixture}) get
      *  added here. */
     private static final Set<String> KNOWN_TAGS = Set.of(
-            "timeout", "statements", "allowTools", "requiresTools",
+            "timeout", "statements", "maxResultNodes", "allowTools", "requiresTools",
             "description", "version",
             // CommonJS require pathway (vance.script.require.enabled):
             "requires", "workspaceRoot", "nodeBuiltins");
@@ -71,6 +71,7 @@ public final class ScriptHeaderParser {
 
         Duration timeout = null;
         Long statementLimit = null;
+        Long maxResultNodes = null;
         Set<String> allowTools = new LinkedHashSet<>();
         Set<String> requiresTools = new LinkedHashSet<>();
         String description = null;
@@ -102,6 +103,7 @@ public final class ScriptHeaderParser {
             switch (tag) {
                 case "timeout" -> timeout = parseDuration(value, sourceName, tag);
                 case "statements" -> statementLimit = parseCount(value, sourceName, tag);
+                case "maxResultNodes" -> maxResultNodes = parseCount(value, sourceName, tag);
                 case "allowTools" -> {
                     allowTools.clear();
                     allowTools.addAll(parseList(value));
@@ -128,7 +130,7 @@ public final class ScriptHeaderParser {
         if (!anyTag) {
             return ScriptHeader.empty();
         }
-        return new ScriptHeader(timeout, statementLimit,
+        return new ScriptHeader(timeout, statementLimit, maxResultNodes,
                 allowTools, requiresTools, description, version,
                 requires, workspaceRoot, nodeBuiltins);
     }

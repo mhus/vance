@@ -161,6 +161,64 @@ class GraaljsScriptExecutorHeaderTest {
         assertThat(r.value()).isEqualTo(2L);
     }
 
+    @Test
+    void result_node_cap_trips_on_oversized_return_array() {
+        ScriptEngineProperties props = props(Duration.ofSeconds(5), 100_000_000L);
+        props.getResult().setMin(1L);
+        props.getResult().setDefault(10L); // effective node cap = 10
+        GraaljsScriptExecutor exec = new GraaljsScriptExecutor(engine, props);
+        String code = "Array.from({length: 500}, (_, i) => i)";
+        assertThatThrownBy(() -> exec.run(new ScriptRequest(
+                "js", code, "test", tools(), Duration.ofSeconds(5))))
+                .isInstanceOf(ScriptExecutionException.class)
+                .satisfies(e -> assertThat(((ScriptExecutionException) e).errorClass())
+                        .isEqualTo(ScriptExecutionException.ErrorClass.RESOURCE_EXHAUSTED))
+                .hasMessageContaining("node cap");
+    }
+
+    @Test
+    void header_maxResultNodes_overrides_default_cap() {
+        ScriptEngineProperties props = props(Duration.ofSeconds(5), 100_000_000L);
+        props.getResult().setMin(1L);
+        props.getResult().setDefault(100_000L); // generous default
+        GraaljsScriptExecutor exec = new GraaljsScriptExecutor(engine, props);
+        String code = """
+                /**
+                 * @maxResultNodes 5
+                 */
+                Array.from({length: 50}, (_, i) => i)
+                """;
+        assertThatThrownBy(() -> exec.run(new ScriptRequest(
+                "js", code, "test", tools(), Duration.ofSeconds(5))))
+                .isInstanceOf(ScriptExecutionException.class)
+                .satisfies(e -> assertThat(((ScriptExecutionException) e).errorClass())
+                        .isEqualTo(ScriptExecutionException.ErrorClass.RESOURCE_EXHAUSTED));
+    }
+
+    @Test
+    void result_cyclic_object_trips_depth_cap_instead_of_stack_overflow() {
+        ScriptEngineProperties props = props(Duration.ofSeconds(5), 100_000_000L);
+        props.getResult().setMaxDepth(8); // shallow so the cycle trips fast
+        GraaljsScriptExecutor exec = new GraaljsScriptExecutor(engine, props);
+        String code = "const a = {}; a.self = a; a";
+        assertThatThrownBy(() -> exec.run(new ScriptRequest(
+                "js", code, "test", tools(), Duration.ofSeconds(5))))
+                .isInstanceOf(ScriptExecutionException.class)
+                .satisfies(e -> assertThat(((ScriptExecutionException) e).errorClass())
+                        .isEqualTo(ScriptExecutionException.ErrorClass.RESOURCE_EXHAUSTED))
+                .hasMessageContaining("maxDepth");
+    }
+
+    @Test
+    void result_within_caps_passes_through() {
+        ScriptEngineProperties props = props(Duration.ofSeconds(5), 100_000_000L);
+        GraaljsScriptExecutor exec = new GraaljsScriptExecutor(engine, props);
+        String code = "[1, 2, {a: 3}]";
+        ScriptResult r = exec.run(new ScriptRequest(
+                "js", code, "test", tools(), Duration.ofSeconds(5)));
+        assertThat(r.value()).isEqualTo(List.of(1L, 2L, java.util.Map.of("a", 3L)));
+    }
+
     // ──────────────────── helpers ────────────────────
 
     private static ScriptEngineProperties props(Duration maxTimeout, long maxStatements) {

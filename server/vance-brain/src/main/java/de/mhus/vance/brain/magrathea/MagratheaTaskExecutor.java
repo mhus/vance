@@ -125,6 +125,14 @@ public class MagratheaTaskExecutor {
                         .subWorkflowRunId(task.getSubWorkflowRunId())
                         .build());
 
+        // Resolve ${params.X}/${state.X} in the spec once, so every
+        // type-executor sees concrete values instead of raw placeholders —
+        // this is the task-to-task dataflow that was documented but never
+        // implemented (code-review Phase 2). SpEL fields (no ${}) pass
+        // through untouched.
+        MagratheaStateSpec resolvedState = state.withSpec(
+                new MagratheaSubstitutor(params, vars).substituteSpec(state.spec()));
+
         MagratheaTaskContext ctx = new MagratheaTaskContext(
                 task.getTenantId(),
                 task.getProjectId(),
@@ -132,7 +140,7 @@ public class MagratheaTaskExecutor {
                 task.getId(),
                 start.getStartedBy(),
                 workflow,
-                state,
+                resolvedState,
                 params,
                 vars);
 

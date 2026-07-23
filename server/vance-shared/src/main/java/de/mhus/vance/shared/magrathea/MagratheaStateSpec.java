@@ -48,6 +48,16 @@ public record MagratheaStateSpec(
         MagratheaRetrySpec retry,
         Map<String, Object> spec) {
 
+    /**
+     * Returns a copy with the {@code spec} map replaced — used to hand
+     * executors a spec whose {@code ${params.X}}/{@code ${state.X}}
+     * placeholders have been resolved (code-review Phase 2).
+     */
+    public MagratheaStateSpec withSpec(Map<String, Object> newSpec) {
+        return new MagratheaStateSpec(name, type, description, timeoutSeconds,
+                storeAs, onOutcomes, catchKinds, transitions, retry, newSpec);
+    }
+
     /** Convenience for type-executors: read a typed spec field. */
     public @Nullable Object specField(String key) {
         return spec.get(key);

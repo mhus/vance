@@ -46,6 +46,16 @@ public class MagratheaProjectLane {
         });
     }
 
+    /**
+     * Like {@link #submit} but returns the {@link Future} so the caller can
+     * await completion and observe failures instead of having them
+     * swallowed. Used by {@code start()} so the runId is returned only
+     * after the start-records are journalled (code-review Phase 2).
+     */
+    public java.util.concurrent.Future<?> submitTracked(Runnable work) {
+        return executor.submit(work);
+    }
+
     void shutdown() {
         executor.shutdown();
         try {

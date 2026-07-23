@@ -87,6 +87,19 @@ class MagratheaWorkflowServiceTest {
             r.run();
             return null;
         }).when(laneManager).submit(any(), any());
+        // start() now awaits the tracked future — run inline and hand back a
+        // completed future so .get() returns immediately.
+        doAnswer(inv -> {
+            Runnable r = inv.getArgument(1);
+            // Mirror a real single-thread executor: a throwing task
+            // surfaces via the future as an ExecutionException on get().
+            try {
+                r.run();
+                return java.util.concurrent.CompletableFuture.completedFuture(null);
+            } catch (RuntimeException ex) {
+                return java.util.concurrent.CompletableFuture.failedFuture(ex);
+            }
+        }).when(laneManager).submitTracked(any(), any());
 
         // journalService captures records.
         when(journalService.append(any(), any(), any(), any(JournalRecord.class)))
@@ -150,6 +163,19 @@ class MagratheaWorkflowServiceTest {
         assertThatThrownBy(() -> workflowService.start("acme", "proj", "missing", Map.of(), null))
                 .isInstanceOf(MagratheaWorkflowService.MagratheaWorkflowException.class)
                 .hasMessageContaining("not found");
+    }
+
+    @Test
+    void start_propagatesJournalFailure_insteadOfReturningDeadRunId() {
+        // A start-record write failure on the lane must surface to the
+        // caller — not leave them holding a runId for a run that never got
+        // journalled (code-review Phase 2 HIGH #1).
+        when(journalService.append(any(), any(), any(), any(StartRecord.class)))
+                .thenThrow(new RuntimeException("mongo down"));
+
+        assertThatThrownBy(() -> workflowService.start("acme", "proj", "demo", Map.of(), null))
+                .isInstanceOf(MagratheaWorkflowService.MagratheaWorkflowException.class)
+                .hasMessageContaining("Failed to start");
     }
 
     @Test

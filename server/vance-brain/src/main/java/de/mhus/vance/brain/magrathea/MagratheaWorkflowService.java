@@ -56,6 +56,9 @@ import org.springframework.stereotype.Service;
 public class MagratheaWorkflowService {
 
     /** Counter for fresh workflow starts. Tag: {@code workflow}. */
+    /** Max wait for the lane to journal the start-records before start() returns. */
+    private static final long START_TIMEOUT_SECONDS = 30;
+
     private static final String METRIC_STARTS = "vance.magrathea.workflow.starts";
 
     /** Counter for terminal status writes. Tags: {@code workflow}, {@code status}. */
@@ -134,11 +137,28 @@ public class MagratheaWorkflowService {
         Map<String, Object> resolvedParams = applyDefaultsAndValidate(workflow, callerParams);
         String runId = MagratheaRunIdGenerator.fresh();
 
-        // Synchronously enqueue start on the lane; await completion so the
-        // caller sees the runId only after the journal is consistent.
-        laneManager.submit(projectId, () -> writeStartRecords(
-                tenantId, projectId, runId, workflow, resolvedParams, startedBy,
-                parentMagratheaProcessId, parentState));
+        // Enqueue start on the lane and ACTUALLY await it, so the caller
+        // sees the runId only after the start-records are journalled — and
+        // a write failure propagates instead of leaving the caller with a
+        // runId for a run that never materialised (code-review Phase 2).
+        try {
+            laneManager.submitTracked(projectId, () -> writeStartRecords(
+                    tenantId, projectId, runId, workflow, resolvedParams, startedBy,
+                    parentMagratheaProcessId, parentState))
+                    .get(START_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (java.util.concurrent.ExecutionException e) {
+            Throwable cause = e.getCause() == null ? e : e.getCause();
+            throw new MagratheaWorkflowException(
+                    "Failed to start workflow '" + workflow.name() + "': " + cause.getMessage(),
+                    cause);
+        } catch (java.util.concurrent.TimeoutException e) {
+            throw new MagratheaWorkflowException(
+                    "Timed out starting workflow '" + workflow.name() + "'", e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new MagratheaWorkflowException(
+                    "Interrupted starting workflow '" + workflow.name() + "'", e);
+        }
 
         metricService.counter(METRIC_STARTS, "workflow", workflow.name()).increment();
         return runId;
@@ -522,6 +542,10 @@ public class MagratheaWorkflowService {
     public static class MagratheaWorkflowException extends RuntimeException {
         public MagratheaWorkflowException(String message) {
             super(message);
+        }
+
+        public MagratheaWorkflowException(String message, Throwable cause) {
+            super(message, cause);
         }
     }
 }

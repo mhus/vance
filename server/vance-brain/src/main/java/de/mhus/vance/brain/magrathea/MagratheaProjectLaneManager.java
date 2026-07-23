@@ -26,6 +26,14 @@ public class MagratheaProjectLaneManager {
 
     private final Map<String, MagratheaProjectLane> lanes = new ConcurrentHashMap<>();
 
+    /**
+     * Enqueue {@code work} on the project lane and return its {@link Future}
+     * so the caller can await + observe failures (code-review Phase 2).
+     */
+    public java.util.concurrent.Future<?> submitTracked(String projectId, Runnable work) {
+        return lanes.computeIfAbsent(projectId, MagratheaProjectLane::new).submitTracked(work);
+    }
+
     public void submit(String projectId, Runnable work) {
         lanes.computeIfAbsent(projectId, MagratheaProjectLane::new).submit(work);
     }

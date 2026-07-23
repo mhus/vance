@@ -61,6 +61,7 @@ class HookRegistryTest {
                 /*description*/ null, Duration.ofSeconds(5), /*tags*/ null,
                 /*yamlBody*/ "recipe: notify\n",
                 /*createdByUserId*/ null,
+                /*privileged*/ false,
                 action);
     }
 }

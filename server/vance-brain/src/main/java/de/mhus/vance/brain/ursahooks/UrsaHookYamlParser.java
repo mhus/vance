@@ -120,9 +120,12 @@ public class UrsaHookYamlParser {
             throw new UrsaHookParseException(msg.toString());
         }
 
+        // privileged defaults to false here — the parser sees only the YAML
+        // body, not $meta.privileged. UrsaHookLoader stamps the real value
+        // from the source document via withPrivileged(...).
         return new UrsaHookDef(
                 hookName, event, source, enabled, description,
-                timeout, tags, yamlBody, createdByUserId, action);
+                timeout, tags, yamlBody, createdByUserId, /* privileged */ false, action);
     }
 
     // ───────────────────────── Field parsers ─────────────────────────

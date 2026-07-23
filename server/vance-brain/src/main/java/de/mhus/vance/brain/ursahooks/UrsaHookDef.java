@@ -31,10 +31,24 @@ public record UrsaHookDef(
         @Nullable List<String> tags,
         String yamlBody,
         @Nullable String createdByUserId,
+        boolean privileged,
         TriggerAction action) {
 
     public String sourceKey() {
         return UrsaHookSourceKeys.sourceFor(event.wireName(), name);
+    }
+
+    /**
+     * Copy carrying the resolved {@code privileged} flag of the source
+     * document. Set by {@link UrsaHookLoader} from
+     * {@code DocumentDocument.isPrivileged()}; the parser can't know it
+     * (it's {@code $meta}, not YAML body). Gates {@code action.runAs()}
+     * impersonation in the dispatcher — see
+     * {@code planning/permission-system-concept.md} §4.3a.
+     */
+    public UrsaHookDef withPrivileged(boolean privilegedValue) {
+        return new UrsaHookDef(name, event, source, enabled, description, timeout,
+                tags, yamlBody, createdByUserId, privilegedValue, action);
     }
 
     /**

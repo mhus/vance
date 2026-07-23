@@ -63,9 +63,12 @@ public class UrsaHookLoader {
             UrsaHookSource source = mapSource(e.getValue().source());
             @Nullable String createdBy = e.getValue().document() == null
                     ? null : e.getValue().document().getCreatedBy();
+            boolean privileged = e.getValue().document() != null
+                    && e.getValue().document().isPrivileged();
             try {
                 out.add(parser.parse(
-                        e.getValue().content(), event, source, hookName, createdBy));
+                        e.getValue().content(), event, source, hookName, createdBy)
+                        .withPrivileged(privileged));
             } catch (UrsaHookParseException ex) {
                 log.warn("Hook '{}/{}/{}/{}' failed to parse: {}",
                         tenantId, projectId, event.wireName(), hookName, ex.getMessage());
@@ -84,8 +87,11 @@ public class UrsaHookLoader {
         UrsaHookSource source = mapSource(hit.get().source());
         @Nullable String createdBy = hit.get().document() == null
                 ? null : hit.get().document().getCreatedBy();
+        boolean privileged = hit.get().document() != null
+                && hit.get().document().isPrivileged();
         return Optional.of(parser.parse(
-                hit.get().content(), event, source, hookName, createdBy));
+                hit.get().content(), event, source, hookName, createdBy)
+                .withPrivileged(privileged));
     }
 
     /**

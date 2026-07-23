@@ -110,8 +110,7 @@ public class UrsaHookDispatcher implements DisposableBean {
         // under "event". Subscribers read it via vance.params.event in
         // scripts, or as params.event in recipes/workflows.
         TriggerAction action = withEventInParams(def.action(), event.payload());
-        String runAs = def.action().runAs() != null
-                ? def.action().runAs() : def.createdByUserId();
+        String runAs = effectiveRunAs(def);
         // Recipe-actions need a session to spawn the ThinkProcess into.
         // Resolve (or lazily create) a per-hook system session — same
         // pattern Scheduler uses, with the hook source-key as the
@@ -211,6 +210,23 @@ public class UrsaHookDispatcher implements DisposableBean {
                             event.projectId(), displayName, created.getSessionId(), runAs);
                     return created.getSessionId();
                 });
+    }
+
+    /**
+     * Impersonation gate for hook execution. An explicit
+     * {@code action.runAs()} (a foreign identity) is honored only when
+     * the hook's source document is {@code privileged}
+     * ($meta.privileged) — a non-privileged hook cannot escalate to
+     * another user. Otherwise the hook runs under its creator's own
+     * identity ({@code createdByUserId}), which is not impersonation.
+     * Mirrors the scheduler/event loaders; see
+     * {@code planning/permission-system-concept.md} §4.3a.
+     */
+    static @Nullable String effectiveRunAs(UrsaHookDef def) {
+        if (def.privileged() && def.action().runAs() != null) {
+            return def.action().runAs();
+        }
+        return def.createdByUserId();
     }
 
     /**

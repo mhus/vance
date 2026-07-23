@@ -10,7 +10,6 @@ import static org.mockito.Mockito.when;
 import de.mhus.vance.api.magrathea.MagratheaRunStatus;
 import de.mhus.vance.shared.magrathea.journal.JournalRecord;
 import de.mhus.vance.shared.magrathea.journal.NoteRecord;
-import de.mhus.vance.shared.magrathea.journal.StartRecord;
 import de.mhus.vance.shared.magrathea.journal.StatusRecord;
 import de.mhus.vance.shared.magrathea.journal.TaskResultRecord;
 import java.time.Instant;
@@ -84,16 +83,13 @@ class MagratheaJournalServiceTest {
     }
 
     @Test
-    void readLast_walks_journal_from_the_back_for_matching_type() {
-        MagratheaJournalEntry note = entry("note", NoteRecord.class.getName(),
-                "{\"note\":\"first\"}", Instant.parse("2024-01-01T00:00:00Z"));
-        MagratheaJournalEntry status1 = entry("s1", StatusRecord.class.getName(),
-                "{\"status\":\"RUNNING\"}", Instant.parse("2024-01-01T00:00:01Z"));
+    void readLast_returns_deserialised_latest_of_type_from_targeted_query() {
         MagratheaJournalEntry status2 = entry("s2", StatusRecord.class.getName(),
                 "{\"status\":\"DONE\"}", Instant.parse("2024-01-01T00:00:02Z"));
-        when(repo.findByTenantIdAndProjectIdAndWorkflowRunIdOrderByCreatedAtAsc(
-                eq("acme"), eq("proj"), eq("run-1")))
-                .thenReturn(List.of(note, status1, status2));
+        // The DB does the ordering now — readLast asks for the newest of type.
+        when(repo.findFirstByTenantIdAndProjectIdAndWorkflowRunIdAndTypeOrderByCreatedAtDesc(
+                eq("acme"), eq("proj"), eq("run-1"), eq(StatusRecord.class.getName())))
+                .thenReturn(Optional.of(status2));
 
         Optional<StatusRecord> last = service.readLast("acme", "proj", "run-1", StatusRecord.class);
 
@@ -103,24 +99,22 @@ class MagratheaJournalServiceTest {
 
     @Test
     void readLast_returns_empty_when_no_match() {
-        when(repo.findByTenantIdAndProjectIdAndWorkflowRunIdOrderByCreatedAtAsc(
-                eq("acme"), eq("proj"), eq("run-x")))
-                .thenReturn(List.of());
+        when(repo.findFirstByTenantIdAndProjectIdAndWorkflowRunIdAndTypeOrderByCreatedAtDesc(
+                eq("acme"), eq("proj"), eq("run-x"), eq(StatusRecord.class.getName())))
+                .thenReturn(Optional.empty());
 
         assertThat(service.readLast("acme", "proj", "run-x", StatusRecord.class)).isEmpty();
     }
 
     @Test
-    void readAll_returns_only_entries_of_requested_type_in_order() {
-        MagratheaJournalEntry start = entry("e1", StartRecord.class.getName(),
-                "{\"workflowName\":\"x\",\"definitionYaml\":\"y\"}", Instant.parse("2024-01-01T00:00:00Z"));
+    void readAll_returns_entries_of_requested_type_in_order() {
         MagratheaJournalEntry note1 = entry("e2", NoteRecord.class.getName(),
                 "{\"note\":\"a\"}", Instant.parse("2024-01-01T00:00:01Z"));
         MagratheaJournalEntry note2 = entry("e3", NoteRecord.class.getName(),
                 "{\"note\":\"b\"}", Instant.parse("2024-01-01T00:00:02Z"));
-        when(repo.findByTenantIdAndProjectIdAndWorkflowRunIdOrderByCreatedAtAsc(
-                eq("acme"), eq("proj"), eq("run-1")))
-                .thenReturn(List.of(start, note1, note2));
+        when(repo.findByTenantIdAndProjectIdAndWorkflowRunIdAndTypeOrderByCreatedAtAsc(
+                eq("acme"), eq("proj"), eq("run-1"), eq(NoteRecord.class.getName())))
+                .thenReturn(List.of(note1, note2));
 
         List<NoteRecord> notes = service.readAll("acme", "proj", "run-1", NoteRecord.class);
 

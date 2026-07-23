@@ -1,6 +1,7 @@
 package de.mhus.vance.shared.magrathea;
 
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.mongodb.repository.MongoRepository;
 
 /**
@@ -18,6 +19,23 @@ interface MagratheaJournalRepository extends MongoRepository<MagratheaJournalEnt
 
     List<MagratheaJournalEntry> findByTenantIdAndProjectIdAndWorkflowRunIdAndTaskId(
             String tenantId, String projectId, String workflowRunId, String taskId);
+
+    // Type-targeted reads — avoid loading the whole journal just to pick
+    // out one record kind (was O(n) per read, O(n²) per transition).
+
+    List<MagratheaJournalEntry> findByTenantIdAndProjectIdAndWorkflowRunIdAndTypeOrderByCreatedAtAsc(
+            String tenantId, String projectId, String workflowRunId, String type);
+
+    Optional<MagratheaJournalEntry>
+            findFirstByTenantIdAndProjectIdAndWorkflowRunIdAndTypeOrderByCreatedAtDesc(
+            String tenantId, String projectId, String workflowRunId, String type);
+
+    long countByTenantIdAndProjectIdAndWorkflowRunIdAndType(
+            String tenantId, String projectId, String workflowRunId, String type);
+
+    Optional<MagratheaJournalEntry>
+            findFirstByTenantIdAndProjectIdAndWorkflowRunIdOrderByCreatedAtAsc(
+            String tenantId, String projectId, String workflowRunId);
 
     long deleteByTenantIdAndProjectIdAndWorkflowRunId(
             String tenantId, String projectId, String workflowRunId);

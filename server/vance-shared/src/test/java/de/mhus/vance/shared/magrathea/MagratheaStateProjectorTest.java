@@ -2,6 +2,7 @@ package de.mhus.vance.shared.magrathea;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -54,6 +55,19 @@ class MagratheaStateProjectorTest {
                 .thenAnswer(inv -> entries.stream()
                         .filter(e -> "r1".equals(e.getWorkflowRunId()))
                         .toList());
+        // Targeted type-filtered reads (readAll / readLast use these now).
+        when(repo.findByTenantIdAndProjectIdAndWorkflowRunIdAndTypeOrderByCreatedAtAsc(
+                eq("acme"), eq("proj"), eq("r1"), anyString()))
+                .thenAnswer(inv -> entries.stream()
+                        .filter(e -> "r1".equals(e.getWorkflowRunId()))
+                        .filter(e -> inv.getArgument(3).equals(e.getType()))
+                        .toList());
+        when(repo.findFirstByTenantIdAndProjectIdAndWorkflowRunIdAndTypeOrderByCreatedAtDesc(
+                eq("acme"), eq("proj"), eq("r1"), anyString()))
+                .thenAnswer(inv -> entries.stream()
+                        .filter(e -> "r1".equals(e.getWorkflowRunId()))
+                        .filter(e -> inv.getArgument(3).equals(e.getType()))
+                        .reduce((a, b) -> b));  // last = newest (entries are appended in order)
 
         journal = new MagratheaJournalService(repo, objectMapper);
         projector = new MagratheaStateProjector(journal, objectMapper);

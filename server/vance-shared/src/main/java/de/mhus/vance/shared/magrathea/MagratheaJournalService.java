@@ -136,17 +136,17 @@ public class MagratheaJournalService {
     /** When the run started — the timestamp of its first journal entry. */
     public Optional<java.time.Instant> firstCreatedAt(
             String tenantId, String projectId, String workflowRunId) {
-        List<MagratheaJournalEntry> entries = read(tenantId, projectId, workflowRunId);
-        if (entries.isEmpty()) return Optional.empty();
-        return Optional.ofNullable(entries.get(0).getCreatedAt());
+        return repository
+                .findFirstByTenantIdAndProjectIdAndWorkflowRunIdOrderByCreatedAtAsc(
+                        tenantId, projectId, workflowRunId)
+                .map(MagratheaJournalEntry::getCreatedAt);
     }
 
     /** Count entries of a typed record subclass — used for bounds enforcement. */
     public <T extends JournalRecord> long count(
             String tenantId, String projectId, String workflowRunId, Class<T> recordType) {
-        return read(tenantId, projectId, workflowRunId).stream()
-                .filter(e -> recordType.getName().equals(e.getType()))
-                .count();
+        return repository.countByTenantIdAndProjectIdAndWorkflowRunIdAndType(
+                tenantId, projectId, workflowRunId, recordType.getName());
     }
 
     /**
@@ -155,14 +155,10 @@ public class MagratheaJournalService {
      */
     public <T extends JournalRecord> Optional<T> readLast(
             String tenantId, String projectId, String workflowRunId, Class<T> recordType) {
-        List<MagratheaJournalEntry> entries = read(tenantId, projectId, workflowRunId);
-        for (int i = entries.size() - 1; i >= 0; i--) {
-            MagratheaJournalEntry entry = entries.get(i);
-            if (recordType.getName().equals(entry.getType())) {
-                return Optional.of(deserialize(entry, recordType));
-            }
-        }
-        return Optional.empty();
+        return repository
+                .findFirstByTenantIdAndProjectIdAndWorkflowRunIdAndTypeOrderByCreatedAtDesc(
+                        tenantId, projectId, workflowRunId, recordType.getName())
+                .map(entry -> deserialize(entry, recordType));
     }
 
     /**
@@ -172,12 +168,12 @@ public class MagratheaJournalService {
      */
     public <T extends JournalRecord> List<T> readAll(
             String tenantId, String projectId, String workflowRunId, Class<T> recordType) {
-        List<MagratheaJournalEntry> entries = read(tenantId, projectId, workflowRunId);
+        List<MagratheaJournalEntry> entries = repository
+                .findByTenantIdAndProjectIdAndWorkflowRunIdAndTypeOrderByCreatedAtAsc(
+                        tenantId, projectId, workflowRunId, recordType.getName());
         List<T> out = new ArrayList<>();
         for (MagratheaJournalEntry entry : entries) {
-            if (recordType.getName().equals(entry.getType())) {
-                out.add(deserialize(entry, recordType));
-            }
+            out.add(deserialize(entry, recordType));
         }
         return out;
     }

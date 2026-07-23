@@ -180,6 +180,40 @@ class MemoryContextLoaderArchivedChatTest {
         org.mockito.Mockito.verifyNoInteractions(memoryService);
     }
 
+    @Test
+    void recompactionRow_excluded_bulkSlidingWindowSummaryStillRendered() {
+        // A topic-recompaction ARCHIVED_CHAT (metadata.recompaction=true) is
+        // also active but surfaces via its inline SYSTEM marker — it must NOT
+        // hide the sliding-window bulk summary here (code-review Phase 2).
+        ThinkProcessDocument p = process();
+        MemoryDocument bulk = archivedChat("Compaction", "Bulk sliding-window history.");
+        MemoryDocument recompaction = recompactionChat(
+                "Recompaction auth", "Narrow topic: auth setup.");
+        when(memoryService.activeByProcessAndKind(
+                "acme", "proc-1", MemoryKind.ARCHIVED_CHAT))
+                .thenReturn(List.of(bulk, recompaction)); // recompaction is newer
+
+        String block = loader.composeBlock(p);
+
+        assertThat(block)
+                .contains("Bulk sliding-window history.")
+                .doesNotContain("Narrow topic: auth setup.");
+    }
+
+    @Test
+    void onlyRecompactionRow_blockOmitted() {
+        ThinkProcessDocument p = process();
+        MemoryDocument recompaction = recompactionChat(
+                "Recompaction auth", "Narrow topic only.");
+        when(memoryService.activeByProcessAndKind(
+                "acme", "proc-1", MemoryKind.ARCHIVED_CHAT))
+                .thenReturn(List.of(recompaction));
+
+        // No non-recompaction bulk summary → the archived-chat block is
+        // omitted (and no other layer produces output here) → null.
+        assertThat(loader.composeBlock(p)).isNull();
+    }
+
     // ─── helpers ────────────────────────────────────────────────────────
 
     private static ThinkProcessDocument process() {
@@ -200,5 +234,11 @@ class MemoryContextLoaderArchivedChatTest {
                 .content(content)
                 .createdAt(Instant.now())
                 .build();
+    }
+
+    private static MemoryDocument recompactionChat(String title, String content) {
+        MemoryDocument m = archivedChat(title, content);
+        m.setMetadata(Map.of("recompaction", true));
+        return m;
     }
 }

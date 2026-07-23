@@ -202,11 +202,14 @@ class MemoryCompactionServiceRangeTest {
         // Archival was atomic on the captured ids.
         verify(chatMessageService).markArchived(List.of("m1", "m2", "m3"), "mem-99");
 
-        // SYSTEM marker — role, content, tag, createdAt one ms after last range row.
-        ArgumentCaptor<ChatMessageDocument> markerCap =
-                ArgumentCaptor.forClass(ChatMessageDocument.class);
-        verify(chatMessageService).append(markerCap.capture());
-        ChatMessageDocument marker = markerCap.getValue();
+        // SYSTEM marker — role, content, tag, createdAt one ms after last range
+        // row. Persisted via insertCopies (not append) so @CreatedDate auditing
+        // does not clobber the pinned createdAt (code-review Phase 2).
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        ArgumentCaptor<List<ChatMessageDocument>> markerCap =
+                ArgumentCaptor.forClass((Class) List.class);
+        verify(chatMessageService).insertCopies(markerCap.capture());
+        ChatMessageDocument marker = markerCap.getValue().get(0);
         assertThat(marker.getRole()).isEqualTo(ChatRole.SYSTEM);
         assertThat(marker.getContent())
                 .matches("\\[\\d{4}-\\d{2}-\\d{2}] Auth setup completed in three steps\\.");

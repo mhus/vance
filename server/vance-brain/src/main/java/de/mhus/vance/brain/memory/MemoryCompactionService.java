@@ -402,7 +402,11 @@ public class MemoryCompactionService {
                         java.util.Set.of("RECOMPACTION:" + topicLabel)))
                 .createdAt(markerAt)
                 .build();
-        chatMessageService.append(marker);
+        // insertCopies (not append) so the pinned createdAt survives — the
+        // @CreatedDate auditing on append() would re-stamp the marker to
+        // "now", stitching the summary in at the wrong chronological spot
+        // (code-review Phase 2).
+        chatMessageService.insertCopies(java.util.List.of(marker));
 
         log.info("Recompaction process='{}' topic='{}' range={} archived={} memoryId='{}' summaryChars={}",
                 processId, topicLabel, rangeIds.size(), archived, saved.getId(), summary.length());

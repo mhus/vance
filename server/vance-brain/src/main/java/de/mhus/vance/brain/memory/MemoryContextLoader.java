@@ -249,13 +249,28 @@ public class MemoryContextLoader {
         List<MemoryDocument> active = memoryService.activeByProcessAndKind(
                 tenantId, processId, MemoryKind.ARCHIVED_CHAT);
         if (active.isEmpty()) return;
-        MemoryDocument summary = active.getLast();
+        // Range-recompaction rows (metadata.recompaction=true) are also
+        // active ARCHIVED_CHAT but surface via their inline SYSTEM marker in
+        // history replay — not here. Excluding them stops a topic-scoped
+        // recompaction from hiding the sliding-window bulk summary, which is
+        // the one this block must render (code-review Phase 2).
+        MemoryDocument summary = null;
+        for (MemoryDocument m : active) {
+            if (!isRecompaction(m)) summary = m;
+        }
+        if (summary == null) return;
         String body = summary.getContent();
         if (body == null || body.isBlank()) return;
         if (sb.length() > 0) sb.append('\n');
         sb.append("## Earlier Conversation (compacted)\n\n");
         sb.append(body);
         if (!body.endsWith("\n")) sb.append('\n');
+    }
+
+    /** A range-recompaction ARCHIVED_CHAT (surfaces via its inline marker). */
+    private static boolean isRecompaction(MemoryDocument m) {
+        return m.getMetadata() != null
+                && Boolean.TRUE.equals(m.getMetadata().get("recompaction"));
     }
 
     /**

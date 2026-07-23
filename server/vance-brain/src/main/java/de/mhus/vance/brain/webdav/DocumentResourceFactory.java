@@ -111,6 +111,27 @@ public class DocumentResourceFactory implements ResourceFactory {
         return DocumentService.WriterIdentity.of(null, user, user);
     }
 
+    /**
+     * The mandatory {@link de.mhus.vance.shared.permission.WriteActor} for a
+     * WebDAV mutation — the authenticated principal as a USER-reason actor so
+     * DocumentService enforces authorization at the source (reserved {@code
+     * _vance/} paths still hit R4). Milton already authorised the request via
+     * the security manager; this makes the source the hard check. (F1)
+     */
+    de.mhus.vance.shared.permission.WriteActor currentActor() {
+        return actorOf(currentPrincipal());
+    }
+
+    /** Build a USER-reason actor from a principal; fail closed if absent. */
+    static de.mhus.vance.shared.permission.WriteActor actorOf(@Nullable DavPrincipal principal) {
+        if (principal == null) {
+            throw new IllegalStateException("WebDAV write without an authenticated principal");
+        }
+        return de.mhus.vance.shared.permission.WriteActor.user(
+                de.mhus.vance.shared.permission.SecurityContext.user(
+                        principal.username(), principal.tenantId(), principal.teams()));
+    }
+
     private static @Nullable DavPrincipal currentPrincipal() {
         Request request = HttpManager.request();
         if (request == null) {

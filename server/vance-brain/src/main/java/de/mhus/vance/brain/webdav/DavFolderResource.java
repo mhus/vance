@@ -98,7 +98,7 @@ class DavFolderResource extends AbstractDavResource
             DocumentDocument created = factory.documentService().create(
                     coords().tenantId(), requireProject(), childPath,
                     null, null, DocumentService.mimeFromPath(childPath),
-                    inputStream, factory.currentUser());
+                    inputStream, factory.currentUser(), factory.currentActor());
             return new DavFileResource(factory, childCoords, created);
         } catch (DocumentService.DocumentAlreadyExistsException e) {
             throw new ConflictException(this, e.getMessage());
@@ -115,7 +115,7 @@ class DavFolderResource extends AbstractDavResource
         Instant expiresAt = Instant.now().plus(factory.properties().getFolderMarkerTtl());
         factory.documentService().upsertEphemeralText(
                 coords().tenantId(), requireProject(), markerPath,
-                null, null, "", factory.currentUser(), expiresAt);
+                null, null, "", factory.currentUser(), expiresAt, factory.currentActor());
         return new DavFolderResource(factory, childCoords);
     }
 
@@ -145,7 +145,8 @@ class DavFolderResource extends AbstractDavResource
             String markerPath = path + "/" + factory.properties().getFolderMarkerName();
             Optional<DocumentDocument> marker = factory.documentService()
                     .findByPath(coords().tenantId(), requireProject(), markerPath);
-            marker.ifPresent(m -> factory.documentService().delete(m.getId(), factory.currentWriter()));
+            marker.ifPresent(m -> factory.documentService().delete(
+                    m.getId(), factory.currentWriter(), factory.currentActor()));
         }
     }
 

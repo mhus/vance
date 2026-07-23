@@ -104,7 +104,8 @@ class DavFileResource extends AbstractDavResource
         try {
             // MIME stays derived from the (unchanged) extension — pass null to
             // leave it untouched. See planning/webdav-support.md §8.5.
-            factory.documentService().replaceContent(doc.getId(), in, null, factory.currentWriter());
+            factory.documentService().replaceContent(doc.getId(), in, null,
+                    factory.currentWriter(), factory.currentActor());
         } catch (DocumentService.DocumentLockedException e) {
             throw new ConflictException(this, e.getMessage());
         } catch (OptimisticLockingFailureException e) {
@@ -117,7 +118,7 @@ class DavFileResource extends AbstractDavResource
     @Override
     public void delete() throws NotAuthorizedException, ConflictException, BadRequestException {
         try {
-            factory.documentService().trash(doc.getId(), factory.currentWriter());
+            factory.documentService().trash(doc.getId(), factory.currentWriter(), factory.currentActor());
         } catch (DocumentService.DocumentLockedException e) {
             throw new ConflictException(this, e.getMessage());
         }
@@ -131,7 +132,7 @@ class DavFileResource extends AbstractDavResource
         try {
             factory.documentService().update(
                     doc.getId(), null, null, null, newPath,
-                    null, null, null, null, factory.currentWriter());
+                    null, null, null, null, factory.currentWriter(), factory.currentActor());
         } catch (DocumentService.DocumentAlreadyExistsException e) {
             throw new ConflictException(this, e.getMessage());
         } catch (DocumentService.DocumentLockedException e) {
@@ -156,7 +157,7 @@ class DavFileResource extends AbstractDavResource
             factory.documentService().create(
                     coords().tenantId(), destCoords.project(), newPath,
                     doc.getTitle(), doc.getTags(), doc.getMimeType(),
-                    new ByteArrayInputStream(bytes), factory.currentUser());
+                    new ByteArrayInputStream(bytes), factory.currentUser(), factory.currentActor());
         } catch (DocumentService.DocumentAlreadyExistsException e) {
             throw new ConflictException(this, e.getMessage());
         }

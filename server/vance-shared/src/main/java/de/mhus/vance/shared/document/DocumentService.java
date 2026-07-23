@@ -1112,6 +1112,24 @@ public class DocumentService {
                 text, createdBy);
     }
 
+    /** Actor-carrying upsert (create-or-update text) — enforces at the source (F1). */
+    public DocumentDocument upsertText(
+            String tenantId,
+            String projectId,
+            String path,
+            @Nullable String title,
+            @Nullable List<String> tags,
+            String text,
+            @Nullable String createdBy,
+            de.mhus.vance.shared.permission.WriteActor actor) {
+        Optional<DocumentDocument> existing = findByPath(tenantId, projectId, path);
+        if (existing.isPresent()) {
+            return update(existing.get().getId(), title, tags, text, null, actor);
+        }
+        return createText(tenantId, projectId, path, title, tags,
+                text, createdBy, actor);
+    }
+
     /**
      * {@link #upsertText} variant that sets {@link DocumentDocument#getExpiresAt()}
      * so MongoDB's TTL monitor reaps the row at the given timestamp.
@@ -1140,7 +1158,23 @@ public class DocumentService {
             String text,
             @Nullable String createdBy,
             @Nullable Instant expiresAt) {
-        DocumentDocument doc = upsertText(tenantId, projectId, path, title, tags, text, createdBy);
+        // Transitional (F1 stage 2): defaults to SYSTEM until callers migrate.
+        return upsertEphemeralText(tenantId, projectId, path, title, tags, text,
+                createdBy, expiresAt, de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+    }
+
+    /** Actor-carrying ephemeral upsert — enforces at the source (F1). */
+    public DocumentDocument upsertEphemeralText(
+            String tenantId,
+            String projectId,
+            String path,
+            @Nullable String title,
+            @Nullable List<String> tags,
+            String text,
+            @Nullable String createdBy,
+            @Nullable Instant expiresAt,
+            de.mhus.vance.shared.permission.WriteActor actor) {
+        DocumentDocument doc = upsertText(tenantId, projectId, path, title, tags, text, createdBy, actor);
         boolean dirty = false;
         if (!java.util.Objects.equals(doc.getExpiresAt(), expiresAt)) {
             doc.setExpiresAt(expiresAt);

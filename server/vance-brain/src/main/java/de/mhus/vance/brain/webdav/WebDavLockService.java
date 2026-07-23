@@ -145,7 +145,8 @@ public class WebDavLockService {
                 factory.documentService().create(
                         coords.tenantId(), coords.project(), coords.path(),
                         null, null, DocumentService.mimeFromPath(coords.path()),
-                        new ByteArrayInputStream(new byte[0]), principal.username());
+                        new ByteArrayInputStream(new byte[0]), principal.username(),
+                        DocumentResourceFactory.actorOf(principal));
             }
             return true;
         } catch (DocumentService.DocumentAlreadyExistsException e) {

@@ -10,7 +10,9 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -35,6 +37,16 @@ import org.jspecify.annotations.Nullable;
  */
 @Slf4j
 public final class McpStdioTransport implements McpTransport {
+
+    /**
+     * Non-secret environment variables passed through to the MCP
+     * subprocess so a command can still be located and run. Everything
+     * else from the Brain process env (secrets included) is dropped; the
+     * pack's explicit {@code env} supplies the rest (code-review Phase 2).
+     */
+    private static final Set<String> ENV_PASSTHROUGH = Set.of(
+            "PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TZ",
+            "TMPDIR", "TMP", "TEMP", "SystemRoot", "USERPROFILE");
 
     private final McpConfig config;
     private final McpJsonRpc rpc;
@@ -62,7 +74,16 @@ public final class McpStdioTransport implements McpTransport {
         }
         ProcessBuilder pb = new ProcessBuilder(config.command());
         if (config.cwd() != null) pb.directory(new File(config.cwd()));
-        pb.environment().putAll(config.env());
+        // Do NOT inherit the full Brain process environment — it carries
+        // secrets (encryption password, Mongo credentials, provider API
+        // keys, internal token) that must not leak into an admin-configured
+        // MCP subprocess. Start from a minimal non-secret base needed to
+        // locate/run the command, then apply the pack's explicit env, which
+        // may override any of it (code-review Phase 2).
+        Map<String, String> env = pb.environment();
+        Map<String, String> child = childEnv(new HashMap<>(env), config.env());
+        env.clear();
+        env.putAll(child);
         pb.redirectErrorStream(false);
         try {
             this.process = pb.start();
@@ -259,6 +280,23 @@ public final class McpStdioTransport implements McpTransport {
                 log.info("[mcp-stderr] {}", line);
             }
         } catch (IOException ignored) { /* process exited */ }
+    }
+
+    /**
+     * Builds the MCP subprocess environment: only the non-secret
+     * {@link #ENV_PASSTHROUGH} keys from {@code inherited}, then the pack's
+     * explicit {@code configEnv} (which may override them). The Brain
+     * process's secrets are never carried through (code-review Phase 2).
+     */
+    static Map<String, String> childEnv(
+            Map<String, String> inherited, Map<String, String> configEnv) {
+        Map<String, String> out = new HashMap<>();
+        for (String key : ENV_PASSTHROUGH) {
+            String v = inherited.get(key);
+            if (v != null) out.put(key, v);
+        }
+        if (configEnv != null) out.putAll(configEnv);
+        return out;
     }
 
     private static String truncate(String s) {

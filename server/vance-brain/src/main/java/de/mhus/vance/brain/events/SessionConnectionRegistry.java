@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -39,10 +40,13 @@ import org.springframework.web.socket.WebSocketSession;
 public class SessionConnectionRegistry {
 
     /**
-     * sessionId → connection list. Each list is wrapped in a synchronised
-     * view at access time; the outer map is {@link ConcurrentHashMap}.
-     * Lists are tiny (typically 1, rarely 2-3) so iteration cost is
-     * irrelevant.
+     * sessionId → connection list. Each value is a
+     * {@link CopyOnWriteArrayList} so lock-free readers (roster snapshots,
+     * chat-message fan-out) can iterate safely while a writer connects or
+     * disconnects under the {@link ConcurrentHashMap} bin lock — without a
+     * COW list the shared {@code ArrayList} threw CME/AIOOBE on a connect
+     * during broadcast (code-review Phase 2). Lists are tiny (typically 1,
+     * rarely 2-3) so the copy-on-write cost is irrelevant.
      */
     private final Map<String, List<ConnectionEntry>> bySession = new ConcurrentHashMap<>();
 
@@ -150,7 +154,8 @@ public class SessionConnectionRegistry {
         final RegisterOutcome[] outcomeHolder = {RegisterOutcome.ACCEPTED};
 
         bySession.compute(sessionId, (key, existing) -> {
-            List<ConnectionEntry> list = existing != null ? existing : new ArrayList<>();
+            List<ConnectionEntry> list = existing != null
+                    ? existing : new CopyOnWriteArrayList<>();
             ConnectionEntry sameUser = null;
             ConnectionEntry otherUser = null;
             for (ConnectionEntry entry : list) {

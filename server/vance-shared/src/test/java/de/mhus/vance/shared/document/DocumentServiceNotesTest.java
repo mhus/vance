@@ -56,7 +56,9 @@ class DocumentServiceNotesTest {
 
     @Test
     void addNote_persistsViaFindAndModify_andReturnsNoteWithGeneratedId() {
-        when(repository.existsById("doc-1")).thenReturn(true);
+        DocumentDocument existing = new DocumentDocument();
+        existing.setId("doc-1");
+        when(repository.findById("doc-1")).thenReturn(Optional.of(existing));
         when(mongoTemplate.findAndModify(any(Query.class), any(Update.class),
                 any(FindAndModifyOptions.class), eq(DocumentDocument.class)))
                 .thenAnswer(inv -> {
@@ -81,7 +83,9 @@ class DocumentServiceNotesTest {
 
     @Test
     void addNote_atCap_throwsNotesLimitExceeded() {
-        when(repository.existsById("doc-1")).thenReturn(true);
+        DocumentDocument existing = new DocumentDocument();
+        existing.setId("doc-1");
+        when(repository.findById("doc-1")).thenReturn(Optional.of(existing));
         when(mongoTemplate.findAndModify(any(Query.class), any(Update.class),
                 any(FindAndModifyOptions.class), eq(DocumentDocument.class)))
                 .thenReturn(null);
@@ -105,6 +109,7 @@ class DocumentServiceNotesTest {
         Map<String, DocumentNote> notes = new LinkedHashMap<>();
         notes.put("n-1", stored);
         modified.setNotes(notes);
+        when(repository.findById("doc-1")).thenReturn(Optional.of(modified));
         when(mongoTemplate.findAndModify(any(Query.class), any(Update.class),
                 any(FindAndModifyOptions.class), eq(DocumentDocument.class)))
                 .thenReturn(modified);
@@ -119,6 +124,9 @@ class DocumentServiceNotesTest {
 
     @Test
     void updateNote_unknownNote_returnsEmpty() {
+        DocumentDocument doc = new DocumentDocument();
+        doc.setId("doc-1");
+        when(repository.findById("doc-1")).thenReturn(Optional.of(doc));
         when(mongoTemplate.findAndModify(any(Query.class), any(Update.class),
                 any(FindAndModifyOptions.class), eq(DocumentDocument.class)))
                 .thenReturn(null);

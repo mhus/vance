@@ -3442,7 +3442,20 @@ public class DocumentService {
             String userId,
             @Nullable Integer line,
             @Nullable String editorId) {
-        if (!repository.existsById(docId)) {
+        // Transitional (F1 stage 2d): defaults to SYSTEM until callers migrate.
+        return addNote(docId, text, userId, line, editorId,
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+    }
+
+    /** Actor-carrying note add — enforces {@code WRITE} at the source (F1). */
+    public DocumentNote addNote(
+            String docId,
+            String text,
+            String userId,
+            @Nullable Integer line,
+            @Nullable String editorId,
+            de.mhus.vance.shared.permission.WriteActor actor) {
+        if (enforceWriteById(docId, de.mhus.vance.shared.permission.Action.WRITE, actor) == null) {
             throw new IllegalArgumentException("Unknown document id='" + docId + "'");
         }
         Instant now = Instant.now();
@@ -3533,6 +3546,24 @@ public class DocumentService {
             @Nullable Integer newLine,
             @Nullable Double newOrder,
             @Nullable String editorId) {
+        // Transitional (F1 stage 2d): defaults to SYSTEM until callers migrate.
+        return updateNote(docId, noteId, newText, newDone, newLine, newOrder, editorId,
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+    }
+
+    /** Actor-carrying note patch — enforces {@code WRITE} at the source (F1). */
+    public Optional<DocumentNote> updateNote(
+            String docId,
+            String noteId,
+            @Nullable String newText,
+            @Nullable Boolean newDone,
+            @Nullable Integer newLine,
+            @Nullable Double newOrder,
+            @Nullable String editorId,
+            de.mhus.vance.shared.permission.WriteActor actor) {
+        if (enforceWriteById(docId, de.mhus.vance.shared.permission.Action.WRITE, actor) == null) {
+            return Optional.empty();
+        }
         Update update = new Update().set("notes." + noteId + ".updatedAt", Instant.now());
         if (newText != null) update.set("notes." + noteId + ".text", newText);
         if (newDone != null) update.set("notes." + noteId + ".done", newDone);
@@ -3571,9 +3602,19 @@ public class DocumentService {
 
     /** {@link #deleteNote(String, String)} with the writer's editorId. */
     public boolean deleteNote(String docId, String noteId, @Nullable String editorId) {
+        // Transitional (F1 stage 2d): defaults to SYSTEM until callers migrate.
+        return deleteNote(docId, noteId, editorId,
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+    }
+
+    /** Actor-carrying note delete — enforces {@code WRITE} at the source (F1). */
+    public boolean deleteNote(String docId, String noteId, @Nullable String editorId,
+            de.mhus.vance.shared.permission.WriteActor actor) {
         // Resolve the doc once so the event can carry tenantId/projectId/path.
         DocumentDocument doc = repository.findById(docId).orElse(null);
         if (doc == null) return false;
+        enforceWrite(doc.getTenantId(), doc.getProjectId(), doc.getPath(),
+                de.mhus.vance.shared.permission.Action.WRITE, actor);
         Query query = Query.query(Criteria.where("_id").is(docId)
                 .and("notes." + noteId).exists(true));
         Update update = new Update().unset("notes." + noteId);

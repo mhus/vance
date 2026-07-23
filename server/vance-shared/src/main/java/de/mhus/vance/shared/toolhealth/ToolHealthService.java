@@ -11,6 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Supplier;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -192,33 +193,35 @@ public class ToolHealthService {
             @Nullable Instant expectedRecoveryAt,
             @Nullable String note,
             String by) {
-        Instant now = Instant.now();
-        ToolHealthDocument doc = fetchOrCreate(tenantId, scope, scopeId, toolName, now);
+        return withOptimisticRetry(() -> {
+            Instant now = Instant.now();
+            ToolHealthDocument doc = fetchOrCreate(tenantId, scope, scopeId, toolName, now);
 
-        boolean statusChanged = doc.getStatus() != newStatus;
-        doc.setStatus(newStatus);
-        if (statusChanged) {
-            doc.setSince(now);
-        }
-        doc.setLastCheckedAt(now);
-        doc.setExpectedRecoveryAt(expectedRecoveryAt);
-        doc.setLastNote(note);
-        doc.setLastClassification(classification);
-        doc.setUpdatedAt(now);
+            boolean statusChanged = doc.getStatus() != newStatus;
+            doc.setStatus(newStatus);
+            if (statusChanged) {
+                doc.setSince(now);
+            }
+            doc.setLastCheckedAt(now);
+            doc.setExpectedRecoveryAt(expectedRecoveryAt);
+            doc.setLastNote(note);
+            doc.setLastClassification(classification);
+            doc.setUpdatedAt(now);
 
-        appendHistory(doc, ToolHealthHistoryEntry.builder()
-                .at(now)
-                .status(newStatus)
-                .classification(classification)
-                .note(note)
-                .by(by)
-                .expectedRecoveryAt(expectedRecoveryAt)
-                .build());
+            appendHistory(doc, ToolHealthHistoryEntry.builder()
+                    .at(now)
+                    .status(newStatus)
+                    .classification(classification)
+                    .note(note)
+                    .by(by)
+                    .expectedRecoveryAt(expectedRecoveryAt)
+                    .build());
 
-        log.info("ToolHealth {} {} '{}' {} → {} by={} expectedRecoveryAt={}",
-                scope, nullToEmpty(scopeId), toolName,
-                classification, newStatus, by, expectedRecoveryAt);
-        return repository.save(doc);
+            log.info("ToolHealth {} {} '{}' {} → {} by={} expectedRecoveryAt={}",
+                    scope, nullToEmpty(scopeId), toolName,
+                    classification, newStatus, by, expectedRecoveryAt);
+            return repository.save(doc);
+        });
     }
 
     // ───────────────────────────────── Cooldown writes
@@ -239,40 +242,42 @@ public class ToolHealthService {
             ToolHealthClassification classification,
             Duration duration,
             @Nullable String note) {
-        Instant now = Instant.now();
-        ToolHealthDocument doc = fetchOrCreate(tenantId, scope, scopeId, toolName, now);
+        return withOptimisticRetry(() -> {
+            Instant now = Instant.now();
+            ToolHealthDocument doc = fetchOrCreate(tenantId, scope, scopeId, toolName, now);
 
-        ToolHealthCooldown existing = null;
-        for (ToolHealthCooldown c : doc.getCooldowns()) {
-            if (matches(c, errorSignature, userId)) {
-                existing = c;
-                break;
+            ToolHealthCooldown existing = null;
+            for (ToolHealthCooldown c : doc.getCooldowns()) {
+                if (matches(c, errorSignature, userId)) {
+                    existing = c;
+                    break;
+                }
             }
-        }
-        Instant newDeadline = now.plus(duration);
-        if (existing == null) {
-            ToolHealthCooldown fresh = ToolHealthCooldown.builder()
-                    .errorSignature(errorSignature)
-                    .userId(userId)
-                    .nextSpawnAllowedAt(newDeadline)
-                    .hits(1)
-                    .lastClassification(classification)
-                    .lastTriggeredAt(now)
-                    .note(note)
-                    .build();
-            doc.getCooldowns().add(fresh);
+            Instant newDeadline = now.plus(duration);
+            if (existing == null) {
+                ToolHealthCooldown fresh = ToolHealthCooldown.builder()
+                        .errorSignature(errorSignature)
+                        .userId(userId)
+                        .nextSpawnAllowedAt(newDeadline)
+                        .hits(1)
+                        .lastClassification(classification)
+                        .lastTriggeredAt(now)
+                        .note(note)
+                        .build();
+                doc.getCooldowns().add(fresh);
+                doc.setUpdatedAt(now);
+                repository.save(doc);
+                return fresh;
+            }
+            existing.setNextSpawnAllowedAt(maxInstant(existing.getNextSpawnAllowedAt(), newDeadline));
+            existing.setHits(existing.getHits() + 1);
+            existing.setLastClassification(classification);
+            existing.setLastTriggeredAt(now);
+            if (note != null) existing.setNote(note);
             doc.setUpdatedAt(now);
             repository.save(doc);
-            return fresh;
-        }
-        existing.setNextSpawnAllowedAt(maxInstant(existing.getNextSpawnAllowedAt(), newDeadline));
-        existing.setHits(existing.getHits() + 1);
-        existing.setLastClassification(classification);
-        existing.setLastTriggeredAt(now);
-        if (note != null) existing.setNote(note);
-        doc.setUpdatedAt(now);
-        repository.save(doc);
-        return existing;
+            return existing;
+        });
     }
 
     /**
@@ -287,15 +292,18 @@ public class ToolHealthService {
             String toolName,
             String errorSignature,
             @Nullable String userId) {
-        repository.findByTenantIdAndScopeAndScopeIdAndToolName(
-                        tenantId, scope, nullToEmpty(scopeId), toolName)
-                .ifPresent(doc -> {
-                    boolean removed = removeMatching(doc, errorSignature, userId);
-                    if (removed) {
-                        doc.setUpdatedAt(Instant.now());
-                        repository.save(doc);
-                    }
-                });
+        withOptimisticRetry(() -> {
+            repository.findByTenantIdAndScopeAndScopeIdAndToolName(
+                            tenantId, scope, nullToEmpty(scopeId), toolName)
+                    .ifPresent(doc -> {
+                        boolean removed = removeMatching(doc, errorSignature, userId);
+                        if (removed) {
+                            doc.setUpdatedAt(Instant.now());
+                            repository.save(doc);
+                        }
+                    });
+            return null;
+        });
     }
 
     /**
@@ -320,47 +328,89 @@ public class ToolHealthService {
 
         boolean okFlipped = false;
         for (Map.Entry<ToolHealthScope, String> e : scopes.entrySet()) {
-            Optional<ToolHealthDocument> maybe =
-                    repository.findByTenantIdAndScopeAndScopeIdAndToolName(
-                            tenantId, e.getKey(), nullToEmpty(e.getValue()), toolName);
-            if (maybe.isEmpty()) continue;
-            ToolHealthDocument doc = maybe.get();
-            boolean changed = false;
-            if (!okFlipped && doc.getStatus() != ToolHealthStatus.OK) {
-                doc.setStatus(ToolHealthStatus.OK);
-                doc.setSince(now);
-                doc.setLastClassification(ToolHealthClassification.WORKING);
-                doc.setExpectedRecoveryAt(null);
-                doc.setLastCheckedAt(now);
-                appendHistory(doc, ToolHealthHistoryEntry.builder()
-                        .at(now)
-                        .status(ToolHealthStatus.OK)
-                        .classification(ToolHealthClassification.WORKING)
-                        .by("auto-clear")
-                        .note("Auto-cleared by successful invocation")
-                        .build());
-                okFlipped = true;
-                changed = true;
-            }
-            // Clear any cooldown owned by this caller's userId or scope-wide.
-            Iterator<ToolHealthCooldown> it = doc.getCooldowns().iterator();
-            while (it.hasNext()) {
-                ToolHealthCooldown c = it.next();
-                if (c.getUserId() == null
-                        || (userId != null && c.getUserId().equals(userId))) {
-                    it.remove();
-                    changed = true;
-                }
-            }
-            if (changed) {
-                doc.setUpdatedAt(now);
-                doc.setLastCheckedAt(now);
-                repository.save(doc);
-            }
+            final boolean flipAllowed = !okFlipped;
+            boolean flipped = withOptimisticRetry(() -> noteScopeSuccessOnce(
+                    tenantId, e.getKey(), e.getValue(), userId, toolName, flipAllowed, now));
+            if (flipped) okFlipped = true;
         }
     }
 
+    /**
+     * Single scope's auto-clear read-modify-save. Flips a non-OK status to
+     * OK (only when {@code flipAllowed}) and drops cooldowns owned by the
+     * caller. Returns whether it flipped the status, so
+     * {@link #noteSuccessfulCall} flips OK in only the narrowest scope.
+     * Retried by {@link #withOptimisticRetry}.
+     */
+    private boolean noteScopeSuccessOnce(
+            String tenantId,
+            ToolHealthScope scope,
+            @Nullable String scopeId,
+            @Nullable String userId,
+            String toolName,
+            boolean flipAllowed,
+            Instant now) {
+        Optional<ToolHealthDocument> maybe =
+                repository.findByTenantIdAndScopeAndScopeIdAndToolName(
+                        tenantId, scope, nullToEmpty(scopeId), toolName);
+        if (maybe.isEmpty()) return false;
+        ToolHealthDocument doc = maybe.get();
+        boolean changed = false;
+        boolean flipped = false;
+        if (flipAllowed && doc.getStatus() != ToolHealthStatus.OK) {
+            doc.setStatus(ToolHealthStatus.OK);
+            doc.setSince(now);
+            doc.setLastClassification(ToolHealthClassification.WORKING);
+            doc.setExpectedRecoveryAt(null);
+            doc.setLastCheckedAt(now);
+            appendHistory(doc, ToolHealthHistoryEntry.builder()
+                    .at(now)
+                    .status(ToolHealthStatus.OK)
+                    .classification(ToolHealthClassification.WORKING)
+                    .by("auto-clear")
+                    .note("Auto-cleared by successful invocation")
+                    .build());
+            flipped = true;
+            changed = true;
+        }
+        // Clear any cooldown owned by this caller's userId or scope-wide.
+        Iterator<ToolHealthCooldown> it = doc.getCooldowns().iterator();
+        while (it.hasNext()) {
+            ToolHealthCooldown c = it.next();
+            if (c.getUserId() == null
+                    || (userId != null && c.getUserId().equals(userId))) {
+                it.remove();
+                changed = true;
+            }
+        }
+        if (changed) {
+            doc.setUpdatedAt(now);
+            doc.setLastCheckedAt(now);
+            repository.save(doc);
+        }
+        return flipped;
+    }
+
     // ───────────────────────────────── Internals
+
+    /**
+     * Retries a read-modify-save block on an optimistic-lock version
+     * conflict ({@code @Version}) or a first-insert duplicate-key race,
+     * re-reading fresh each attempt so concurrent cooldown/status writes
+     * merge instead of losing each other (code-review Phase 2).
+     */
+    private <T> T withOptimisticRetry(Supplier<T> body) {
+        RuntimeException last = null;
+        for (int attempt = 0; attempt < 5; attempt++) {
+            try {
+                return body.get();
+            } catch (org.springframework.dao.OptimisticLockingFailureException
+                    | org.springframework.dao.DuplicateKeyException e) {
+                last = e;
+            }
+        }
+        throw last;
+    }
 
     private ToolHealthDocument fetchOrCreate(
             String tenantId,

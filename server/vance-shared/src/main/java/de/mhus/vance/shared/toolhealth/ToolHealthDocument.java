@@ -49,6 +49,16 @@ public class ToolHealthDocument {
     private @Nullable String id;
 
     /**
+     * Optimistic-lock version. Status/cooldown writes are read-modify-save
+     * over the embedded {@code cooldowns}/{@code history} lists; without a
+     * version guard two concurrent writers lost each other's updates
+     * (code-review Phase 2). {@code ToolHealthService} retries the whole
+     * read-modify-save on a version conflict.
+     */
+    @org.springframework.data.annotation.Version
+    private @Nullable Long version;
+
+    /**
      * Tenant the entry belongs to. Always set, even for {@code GLOBAL}
      * scope — we keep cross-tenant data in the same collection but the
      * tenant boundary stays explicit. {@code GLOBAL}-scope entries can

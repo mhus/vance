@@ -60,6 +60,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -104,6 +106,15 @@ public class FrankieEngine implements ThinkEngine {
 
     public static final String NAME = "frankie";
     public static final String VERSION = "0.5.0";
+
+    /**
+     * Safety-net ceiling for a single LLM streaming call. An untimed
+     * {@code done.get()} would block the lane forever if the provider never
+     * fires {@code onCompleteResponse}/{@code onError}, and none of the four
+     * Frankie stop-paths (checked only at loop head) could interrupt it.
+     * Generous — bounds only a stall (code-review Phase 2).
+     */
+    private static final long STREAM_TIMEOUT_MINUTES = 20;
 
     /**
      * Engine-intrinsic tool baseline — the minimum every Frankie
@@ -995,12 +1006,16 @@ public class FrankieEngine implements ThinkEngine {
         });
 
         try {
-            ChatResponse response = done.get();
+            ChatResponse response = done.get(STREAM_TIMEOUT_MINUTES, TimeUnit.MINUTES);
             llmCallTracker.record(
                     process, request, response,
                     System.currentTimeMillis() - startMs, modelAlias,
                     modelInfo);
             return response.aiMessage();
+        } catch (TimeoutException e) {
+            done.cancel(true);
+            throw new AiChatException(
+                    "Frankie streaming timed out after " + STREAM_TIMEOUT_MINUTES + "m", e);
         } catch (ExecutionException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
             throw new AiChatException("Frankie streaming failed: " + cause.getMessage(), cause);

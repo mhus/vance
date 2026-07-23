@@ -33,6 +33,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -95,6 +97,16 @@ import tools.jackson.databind.ObjectMapper;
 public abstract class StructuredActionEngine implements ThinkEngine {
 
     private static final Logger log = LoggerFactory.getLogger(StructuredActionEngine.class);
+
+    /**
+     * Safety-net ceiling for a single LLM streaming call. If the provider
+     * never fires {@code onCompleteResponse}/{@code onError}, an untimed
+     * {@code done.get()} would block the lane thread forever (process stays
+     * RUNNING, so the BLOCKED-watchdog never reaps it). Generous — a real
+     * call finishes in seconds to low minutes; this only bounds a stall
+     * (code-review Phase 2).
+     */
+    private static final long STREAM_TIMEOUT_MINUTES = 20;
 
     private final StreamingProperties streamingProperties;
     private final LlmCallTracker llmCallTracker;
@@ -1023,10 +1035,14 @@ public abstract class StructuredActionEngine implements ThinkEngine {
         });
 
         try {
-            ChatResponse complete = done.get();
+            ChatResponse complete = done.get(STREAM_TIMEOUT_MINUTES, TimeUnit.MINUTES);
             llmCallTracker.record(
                     process, request, complete, System.currentTimeMillis() - startMs, modelAlias);
             return complete.aiMessage();
+        } catch (TimeoutException e) {
+            done.cancel(true);
+            throw new AiChatException(
+                    name() + " streaming timed out after " + STREAM_TIMEOUT_MINUTES + "m", e);
         } catch (ExecutionException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
             throw new AiChatException(

@@ -264,7 +264,25 @@ public class FootTransferService {
                     + state.getNextSeqExpected() + ", got " + chunk.getSeq());
             return;
         }
-        byte[] data = Base64.getDecoder().decode(chunk.getBytes());
+        byte[] data;
+        try {
+            data = Base64.getDecoder().decode(chunk.getBytes());
+        } catch (IllegalArgumentException e) {
+            // Malformed base64 would otherwise unwind past the dispatcher
+            // and leave the transfer pending with an open FileChannel until
+            // the sweeper (~30s) reaps it (code-review Phase 2).
+            abortReceive(state, "malformed chunk encoding");
+            return;
+        }
+        // Cumulative byte-cap: totalSize was checked against maxDownloadSize
+        // at init, but the chunk loop never re-checked — a sender could
+        // stream past the declared size and fill the disk (code-review
+        // Phase 2). Abort as soon as the running total would exceed it.
+        if (state.getBytesProcessed() + (long) data.length > state.getTotalSize()) {
+            abortReceive(state, "stream exceeds declared totalSize "
+                    + state.getTotalSize());
+            return;
+        }
         try {
             state.getFileChannel().write(ByteBuffer.wrap(data));
         } catch (IOException e) {
@@ -358,6 +376,22 @@ public class FootTransferService {
             state.setFileChannel(null);
         } catch (IOException e) {
             log.warn("close failed for {}: {}", state.getTransferId(), e.getMessage());
+        }
+        // The last chunk arrived, but the bytes received must match the
+        // declared size — a truncated stream flagged isLast() would
+        // otherwise be accepted as complete (code-review Phase 2).
+        if (state.getBytesProcessed() != state.getTotalSize()) {
+            try {
+                Files.deleteIfExists(state.getPath());
+            } catch (IOException ignored) {
+                // best effort
+            }
+            sendComplete(state.getTransferId(), false,
+                    "size mismatch: got " + state.getBytesProcessed()
+                            + " expected " + state.getTotalSize(),
+                    state.getBytesProcessed(), "size_mismatch");
+            state.setPhase(TransferState.Phase.COMPLETE_SENT);
+            return;
         }
         String actualHash = toHex(state.getDigest().digest());
         boolean hashOk = state.getExpectedHash() == null

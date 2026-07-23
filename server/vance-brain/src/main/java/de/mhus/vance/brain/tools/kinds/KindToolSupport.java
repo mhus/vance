@@ -73,6 +73,16 @@ public class KindToolSupport {
         enforceDocWrite(ctx, doc.getProjectId(), doc.getPath(), action);
     }
 
+    /**
+     * READ gate for a document resolved directly by id (the branch that
+     * bypasses {@code resolveProject}). Same subject/resolver semantics as
+     * {@link #enforceDocWrite}. (permission-system read path)
+     */
+    public void enforceDocRead(ToolInvocationContext ctx, DocumentDocument doc) {
+        enforceDocWrite(ctx, doc.getProjectId(), doc.getPath(),
+                de.mhus.vance.shared.permission.Action.READ);
+    }
+
     public DocumentBufferService buffer() {
         return bufferService;
     }
@@ -103,8 +113,13 @@ public class KindToolSupport {
             if (!ctx.tenantId().equals(doc.getTenantId())) {
                 throw new ToolException("Document with id '" + id + "' is not in your tenant");
             }
+            // The id branch bypasses resolveProject, so enforce READ on the
+            // target document here — otherwise any tenant document is
+            // readable by id. (permission-system read path)
+            enforceDocRead(ctx, doc);
             return doc;
         }
+        // Path branch: resolveProject already enforces Project READ.
         ProjectDocument project = eddieContext.resolveProject(params, ctx, false);
         DocumentDocument disk = documentService.findByPath(ctx.tenantId(), project.getName(), path)
                 .orElseThrow(() -> new ToolException(

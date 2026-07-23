@@ -53,6 +53,8 @@ public class EddieContext {
 
     private final ProjectService projectService;
     private final ThinkProcessService thinkProcessService;
+    private final de.mhus.vance.shared.permission.PermissionService permissionService;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
     /**
      * Reads the active "spot" project for the calling Eddie process —
@@ -168,6 +170,20 @@ public class EddieContext {
                     "Project '" + name + "' is SYSTEM (hub project) — "
                             + "this operation requires a regular user project");
         }
+        // Hard READ check at the resolution source: the projectId param is
+        // caller-controllable, and ToolDispatcher only checks the caller's
+        // own scope — so a tool could otherwise target ANY project in the
+        // tenant. Every read/list/write tool resolves through here, so
+        // gating READ once here covers them all (write tools additionally
+        // enforce WRITE downstream). forToolSubject maps a null userId →
+        // SYSTEM (headless/internal passes); the resolver decides (R3/R7).
+        // Under vance.permission.shadow this only logs would-deny.
+        // (permission-system finding #9/#11 — read path)
+        permissionService.enforce(
+                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()),
+                new de.mhus.vance.shared.permission.Resource.Project(
+                        ctx.tenantId(), project.getName()),
+                de.mhus.vance.shared.permission.Action.READ);
         return project;
     }
 

@@ -30,6 +30,7 @@ public class CrossDocListProjectsTool implements Tool {
             "required", List.of());
 
     private final ProjectService projectService;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
     @Override public String name() { return "cross_doc_list_projects"; }
     @Override public String description() {
@@ -47,7 +48,8 @@ public class CrossDocListProjectsTool implements Tool {
         boolean includeSystem = params == null
                 || !(params.get("includeSystem") instanceof Boolean b)
                 || b;
-        List<ProjectDocument> projects = projectService.all(ctx.tenantId());
+        List<ProjectDocument> projects = projectService.listReadableBy(
+                ctx.tenantId(), contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()));
         List<Map<String, Object>> rows = new ArrayList<>();
         for (ProjectDocument p : projects) {
             if (!includeSystem && p.getName() != null

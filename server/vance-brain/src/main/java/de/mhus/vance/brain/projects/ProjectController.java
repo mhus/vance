@@ -48,15 +48,10 @@ public class ProjectController {
                 .map(ProjectController::toSummary)
                 .toList();
 
-        // Filter to the projects the caller may actually READ — Tenant READ
-        // (enforced above) is implicit for every member, so without this
-        // per-project check the list would surface projects the user has no
-        // grant on (they'd then be denied on click). Resolver decides (R3/R7);
-        // under vance.permission.shadow the check returns true, so the list
-        // stays full while would-deny is logged. (permission-system finding #11)
-        List<ProjectSummary> projects = projectService.all(tenant).stream()
-                .filter(p -> authority.check(
-                        httpRequest, new Resource.Project(tenant, p.getName()), Action.READ))
+        // Authorized list comes from the source (ProjectService owns the
+        // READ check); the controller only supplies the caller identity.
+        List<ProjectSummary> projects = projectService
+                .listReadableBy(tenant, authority.contextOf(httpRequest)).stream()
                 .sorted(Comparator
                         .comparing((ProjectDocument p) -> p.getProjectGroupId() == null ? "￿" : p.getProjectGroupId())
                         .thenComparing(ProjectDocument::getName))

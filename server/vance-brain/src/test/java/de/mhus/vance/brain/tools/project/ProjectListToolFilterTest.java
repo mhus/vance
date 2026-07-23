@@ -1,15 +1,11 @@
 package de.mhus.vance.brain.tools.project;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.brain.permission.SecurityContextFactory;
-import de.mhus.vance.shared.permission.Action;
-import de.mhus.vance.shared.permission.PermissionService;
-import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.permission.SecurityContext;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
@@ -19,27 +15,23 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * project_list must only surface projects the caller may READ — otherwise
- * the LLM sees projects it is denied on when it tries to use them
- * (permission-system finding #11).
+ * project_list surfaces only what the authorized source returns — the
+ * READ check lives in ProjectService.listReadableBy, the tool just passes
+ * the caller identity (permission-system finding #11).
  */
 class ProjectListToolFilterTest {
 
     private final ProjectService projectService = mock(ProjectService.class);
-    private final PermissionService permissionService = mock(PermissionService.class);
     private final SecurityContextFactory contextFactory = mock(SecurityContextFactory.class);
-    private final ProjectListTool tool =
-            new ProjectListTool(projectService, permissionService, contextFactory);
+    private final ProjectListTool tool = new ProjectListTool(projectService, contextFactory);
 
     @Test
-    void lists_only_projects_the_subject_may_read() {
+    void lists_only_what_the_authorized_source_returns() {
         SecurityContext subject = SecurityContext.user("alice", "acme", List.of());
         when(contextFactory.forToolSubject("acme", "alice")).thenReturn(subject);
-        when(projectService.all("acme")).thenReturn(List.of(project("mine"), project("secret")));
-        when(permissionService.check(eq(subject),
-                eq(new Resource.Project("acme", "mine")), eq(Action.READ))).thenReturn(true);
-        when(permissionService.check(eq(subject),
-                eq(new Resource.Project("acme", "secret")), eq(Action.READ))).thenReturn(false);
+        // Source already filtered by READ — the tool must not re-list all().
+        when(projectService.listReadableBy(eq("acme"), eq(subject)))
+                .thenReturn(List.of(project("mine")));
 
         Map<String, Object> out = tool.invoke(Map.of(),
                 new ToolInvocationContext("acme", "mine", "sess", "proc", "alice"));

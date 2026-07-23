@@ -351,8 +351,10 @@ public class SessionBootstrapHandler implements WsHandler {
             WebSocketEnvelope envelope, SessionBootstrapRequest request) throws IOException {
         String projectId = request.getProjectId();
         if (isBlank(projectId)) {
+            // Default to the caller's first *readable* project — never bind
+            // them into one they can't access. Source owns the READ check.
             List<de.mhus.vance.shared.project.ProjectDocument> all =
-                    projectService.all(ctx.getTenantId());
+                    projectService.listReadableBy(ctx.getTenantId(), authority.contextOf(ctx));
             if (all.isEmpty()) {
                 sender.sendError(wsSession, envelope, 404,
                         "No projects found in tenant '" + ctx.getTenantId() + "'");

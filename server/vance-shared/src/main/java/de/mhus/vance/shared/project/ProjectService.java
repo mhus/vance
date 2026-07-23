@@ -60,6 +60,10 @@ public class ProjectService {
     private final ProjectRepository repository;
     private final MongoTemplate mongoTemplate;
     private final AuditService auditService;
+    /** Lazy — ProjectService is a core bean; resolve the permission layer
+     *  on demand to keep it out of this service's construction graph. */
+    private final org.springframework.beans.factory.ObjectProvider<
+            de.mhus.vance.shared.permission.PermissionService> permissionServiceProvider;
 
     public Optional<ProjectDocument> findByTenantAndName(String tenantId, String name) {
         return repository.findByTenantIdAndName(tenantId, name);
@@ -71,6 +75,40 @@ public class ProjectService {
 
     public List<ProjectDocument> all(String tenantId) {
         return repository.findByTenantId(tenantId);
+    }
+
+    /**
+     * The projects in {@code tenantId} that {@code subject} is allowed to
+     * READ — the authorized list surface. Authorization is a hard check
+     * owned here, at the data source, <em>not</em> re-implemented by each
+     * frontend: REST, WebSocket and the LLM tools all list through this
+     * method, so project visibility is decided in exactly one place and
+     * cannot drift or be forgotten on a surface. {@link #all(String)}
+     * stays unfiltered for SYSTEM / internal callers (model discovery,
+     * migration, bootstrap). (permission-system finding #11)
+     */
+    public List<ProjectDocument> listReadableBy(
+            String tenantId, de.mhus.vance.shared.permission.SecurityContext subject) {
+        return filterReadable(tenantId, subject, all(tenantId));
+    }
+
+    /**
+     * Keep only the projects {@code subject} may READ. The check primitive
+     * that {@link #listReadableBy} and group/filtered list surfaces share,
+     * so the READ decision lives once in this service rather than in each
+     * caller. (permission-system finding #11)
+     */
+    public List<ProjectDocument> filterReadable(
+            String tenantId, de.mhus.vance.shared.permission.SecurityContext subject,
+            List<ProjectDocument> projects) {
+        de.mhus.vance.shared.permission.PermissionService permissionService =
+                permissionServiceProvider.getObject();
+        return projects.stream()
+                .filter(p -> permissionService.check(
+                        subject,
+                        new de.mhus.vance.shared.permission.Resource.Project(tenantId, p.getName()),
+                        de.mhus.vance.shared.permission.Action.READ))
+                .toList();
     }
 
     public List<ProjectDocument> byGroup(String tenantId, String projectGroupId) {

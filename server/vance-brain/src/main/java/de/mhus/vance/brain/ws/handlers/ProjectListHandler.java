@@ -65,9 +65,13 @@ public class ProjectListHandler implements WsHandler {
 
         authority.enforce(ctx, new Resource.Tenant(ctx.getTenantId()), Action.READ);
 
-        List<ProjectDocument> documents = isBlank(projectGroupId)
+        List<ProjectDocument> base = isBlank(projectGroupId)
                 ? projectService.all(ctx.getTenantId())
                 : projectService.byGroup(ctx.getTenantId(), projectGroupId);
+        // Authorization is a hard check owned by the source — filter the
+        // base list through ProjectService, don't decide visibility here.
+        List<ProjectDocument> documents = projectService.filterReadable(
+                ctx.getTenantId(), authority.contextOf(ctx), base);
 
         List<ProjectSummary> summaries = documents.stream().map(ProjectListHandler::toSummary).toList();
         ProjectListResponse response = ProjectListResponse.builder().projects(summaries).build();

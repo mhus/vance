@@ -80,6 +80,11 @@ public class DocumentService {
     private final DocumentHeaderParser headerParser;
     private final DocumentArchiveService archiveService;
     private final de.mhus.vance.shared.settings.SettingService settingService;
+    /** Lazy — DocumentService is a core bean; resolve the permission layer on
+     *  demand to keep it out of this service's construction graph. Writes on
+     *  the actor-carrying overloads enforce through {@link #enforceWrite}. */
+    private final org.springframework.beans.factory.ObjectProvider<
+            de.mhus.vance.shared.permission.PermissionService> permissionServiceProvider;
 
     @Value("${vance.document.inline-threshold:40960}")
     private int inlineThreshold;
@@ -771,8 +776,31 @@ public class DocumentService {
             @Nullable String createdBy,
             @Nullable Boolean autoSummaryOverride,
             @Nullable Boolean ragEnabledOverride) {
+        // Transitional (F1 stage 2): the no-actor overload defaults to SYSTEM
+        // until its callers migrate to the actor-carrying overload. Removed
+        // once migration completes so authorization has no bypass.
+        return create(tenantId, projectId, path, title, tags, mimeType, content,
+                createdBy, autoSummaryOverride, ragEnabledOverride,
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+    }
+
+    /** Actor-carrying create funnel — enforces {@code CREATE} at the source (F1). */
+    public DocumentDocument create(
+            String tenantId,
+            String projectId,
+            String path,
+            @Nullable String title,
+            @Nullable List<String> tags,
+            @Nullable String mimeType,
+            InputStream content,
+            @Nullable String createdBy,
+            @Nullable Boolean autoSummaryOverride,
+            @Nullable Boolean ragEnabledOverride,
+            de.mhus.vance.shared.permission.WriteActor actor) {
 
         String normalizedPath = normalizePath(path);
+        enforceWrite(tenantId, projectId, normalizedPath,
+                de.mhus.vance.shared.permission.Action.CREATE, actor);
         if (repository.existsByTenantIdAndProjectIdAndPath(tenantId, projectId, normalizedPath)) {
             throw new DocumentAlreadyExistsException(
                     "Document '" + normalizedPath + "' already exists in "
@@ -3079,6 +3107,24 @@ public class DocumentService {
             }
         }
         return out;
+    }
+
+    /**
+     * Authorization gate at the write source (F1, "no bypass"). Enforces
+     * {@code action} on the target document for the mandatory
+     * {@link de.mhus.vance.shared.permission.WriteActor}: a user write gets
+     * the resolver's role check (reserved {@code _vance/} paths → ADMIN), a
+     * trusted server write ({@code WriteReason.SYSTEM}) is allowed while the
+     * real actor stays recorded. Orthogonal to {@link #requireWriteAllowed}
+     * (the soft document-lock).
+     */
+    private void enforceWrite(String tenantId, String projectId, String path,
+            de.mhus.vance.shared.permission.Action action,
+            de.mhus.vance.shared.permission.WriteActor actor) {
+        permissionServiceProvider.getObject().enforce(
+                actor.subject(),
+                new de.mhus.vance.shared.permission.Resource.Document(tenantId, projectId, path),
+                action, actor.reason());
     }
 
     /**

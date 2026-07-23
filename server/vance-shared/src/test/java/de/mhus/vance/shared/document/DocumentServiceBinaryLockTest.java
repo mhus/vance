@@ -37,7 +37,7 @@ class DocumentServiceBinaryLockTest {
         service = new DocumentService(
                 repository, storageService, mongoTemplate,
                 resourcePatternResolver, headerParser,
-                archiveService, settingService);
+                archiveService, settingService, DocTestSupport.permissionProvider());
     }
 
     private DocumentDocument lockedDoc(String id, WriterRole... roles) {

@@ -55,7 +55,7 @@ class DocumentServiceStreamingTest {
         service = new DocumentService(
                 repository, storageService, mongoTemplate,
                 resourcePatternResolver, headerParser,
-                archiveService, settingService);
+                archiveService, settingService, DocTestSupport.permissionProvider());
         ReflectionTestUtils.setField(service, "compressionEnabled", true);
         ReflectionTestUtils.setField(service, "compressionThreshold", 1000);
     }

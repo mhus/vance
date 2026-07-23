@@ -41,7 +41,7 @@ class DocumentServiceNotesTest {
         service = new DocumentService(
                 repository, storageService, mongoTemplate,
                 resourcePatternResolver, headerParser,
-                archiveService, settingService);
+                archiveService, settingService, DocTestSupport.permissionProvider());
     }
 
     // ── addNote ────────────────────────────────────────────────────────

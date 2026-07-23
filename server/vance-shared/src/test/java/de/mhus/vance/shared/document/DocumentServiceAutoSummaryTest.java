@@ -67,7 +67,7 @@ class DocumentServiceAutoSummaryTest {
         service = new DocumentService(
                 repository, storageService, mongoTemplate,
                 resourcePatternResolver, headerParser,
-                archiveService, settingService);
+                archiveService, settingService, DocTestSupport.permissionProvider());
         ReflectionTestUtils.setField(service, "inlineThreshold", 40960);
         ReflectionTestUtils.setField(service, "compressionEnabled", false);
         ReflectionTestUtils.setField(service, "compressionThreshold", 1000);

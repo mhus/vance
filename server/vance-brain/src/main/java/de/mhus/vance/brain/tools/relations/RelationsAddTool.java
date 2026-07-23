@@ -68,6 +68,7 @@ public class RelationsAddTool implements Tool {
 
     private final DocumentRelationsService relationsService;
     private final DocumentService documentService;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
     @Override
     public String name() {
@@ -117,7 +118,7 @@ public class RelationsAddTool implements Tool {
         if (existing.isEmpty()) {
             saved = createNew(ctx, projectId, file, source, type, target, note);
         } else {
-            saved = appendTo(existing.get(), source, type, target, note);
+            saved = appendTo(ctx, existing.get(), source, type, target, note);
         }
 
         // Re-resolve the live count so the agent sees the result of its
@@ -153,12 +154,13 @@ public class RelationsAddTool implements Tool {
                     null,
                     "application/yaml",
                     new ByteArrayInputStream(bytes),
-                    ctx.userId());
+                    ctx.userId(),
+                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), file));
         } catch (DocumentService.DocumentAlreadyExistsException e) {
             // Race with a concurrent create — fall back to append on the
             // newly-created file.
             return documentService.findByPath(ctx.tenantId(), projectId, file)
-                    .map(d -> appendTo(d, source, type, target, note))
+                    .map(d -> appendTo(ctx, d, source, type, target, note))
                     .orElseThrow(() -> new ToolException(
                             "Failed to create relations file '" + file + "': " + e.getMessage(), e));
         } catch (RuntimeException e) {
@@ -168,6 +170,7 @@ public class RelationsAddTool implements Tool {
     }
 
     private DocumentDocument appendTo(
+            ToolInvocationContext ctx,
             DocumentDocument doc,
             String source, String type, String target, String note) {
         String inline = documentService.readContent(doc);
@@ -194,7 +197,8 @@ public class RelationsAddTool implements Tool {
                     null,
                     null,
                     body.toString(),
-                    null);
+                    null,
+                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), doc.getPath()));
         } catch (RuntimeException e) {
             throw new ToolException(
                     "Failed to append relation to '" + doc.getPath() + "': " + e.getMessage(), e);

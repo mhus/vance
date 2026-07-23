@@ -43,7 +43,9 @@ class DocConcatToolTest {
     void setUp() {
         documentService = mock(DocumentService.class);
         eddieContext = mock(EddieContext.class);
-        tool = new DocConcatTool(eddieContext, documentService);
+        de.mhus.vance.brain.permission.SecurityContextFactory contextFactory =
+                mock(de.mhus.vance.brain.permission.SecurityContextFactory.class);
+        tool = new DocConcatTool(eddieContext, documentService, contextFactory);
         ctx = new ToolInvocationContext(TENANT, PROJECT, null, null, USER);
         project = mock(ProjectDocument.class);
         when(project.getName()).thenReturn(PROJECT);
@@ -99,7 +101,7 @@ class DocConcatToolTest {
         when(documentService.createText(
                 eq(TENANT), eq(PROJECT), eq("out.md"),
                 eq("Combined"), any(),
-                contentCaptor.capture(), eq(USER)))
+                contentCaptor.capture(), eq(USER), any()))
                 .thenReturn(created);
 
         tool.invoke(params, ctx);
@@ -163,7 +165,7 @@ class DocConcatToolTest {
         when(created.getSize()).thenReturn((long) expectedContent.length());
         when(documentService.createText(
                 eq(TENANT), eq(PROJECT), eq(targetPath),
-                any(), any(), eq(expectedContent), eq(USER)))
+                any(), any(), eq(expectedContent), eq(USER), any()))
                 .thenReturn(created);
         return created;
     }

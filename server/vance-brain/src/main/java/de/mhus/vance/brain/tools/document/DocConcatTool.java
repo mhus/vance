@@ -76,6 +76,7 @@ public class DocConcatTool implements Tool {
 
     private final EddieContext eddieContext;
     private final DocumentService documentService;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
     @Override
     public String name() {
@@ -152,7 +153,8 @@ public class DocConcatTool implements Tool {
                     title,
                     tags,
                     body.toString(),
-                    /*createdBy*/ ctx.userId());
+                    /*createdBy*/ ctx.userId(),
+                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), target));
         } catch (DocumentService.DocumentAlreadyExistsException e) {
             throw new ToolException(e.getMessage(), e);
         }

@@ -49,6 +49,22 @@ class ExecutionRegistryServiceTest {
     }
 
     @Test
+    void removeById_evictsEntry_soRegistryDoesNotLeak() {
+        // Mirrors ExecManager evicting a terminal Brain job from its
+        // per-project cap — the registry entry must go too (code-review
+        // Phase 2, unbounded-leak fix).
+        registry.register(brainEntry("e1", "acme", "proj", ExecutionStatus.COMPLETED));
+        registry.register(brainEntry("e2", "acme", "proj", ExecutionStatus.RUNNING));
+
+        registry.removeById("e1");
+
+        assertThat(registry.find("e1")).isEmpty();
+        assertThat(registry.find("e2")).isPresent();
+        registry.removeById("ghost"); // unknown id is a no-op
+        assertThat(registry.size()).isEqualTo(1);
+    }
+
+    @Test
     void list_filtersByProjectAndOnlyRunning() {
         registry.register(brainEntry("a", "t", "p1", ExecutionStatus.RUNNING));
         registry.register(brainEntry("b", "t", "p1", ExecutionStatus.COMPLETED));

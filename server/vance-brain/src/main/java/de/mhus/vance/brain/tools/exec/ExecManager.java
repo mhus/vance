@@ -761,6 +761,10 @@ public class ExecManager {
                 }
                 if (victim != null) {
                     perProject.remove(victim);
+                    // Evict the mirrored registry entry too — otherwise the
+                    // Brain-owned ExecutionRegistryEntry outlives the job and
+                    // leaks for the pod's lifetime (code-review Phase 2).
+                    registry.removeById(victim);
                 }
             }
         }

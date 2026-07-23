@@ -127,6 +127,16 @@ public class ExecutionRegistryService {
         return before - entries.size();
     }
 
+    /**
+     * Removes a single entry by id. Called when {@code ExecManager} evicts
+     * a terminal Brain-owned job from its per-project cap, so the registry
+     * entry doesn't outlive the job and leak for the pod's lifetime
+     * (code-review Phase 2). No-op for an unknown id.
+     */
+    public void removeById(String executionId) {
+        entries.remove(executionId);
+    }
+
     /** For tests. */
     int size() {
         return entries.size();

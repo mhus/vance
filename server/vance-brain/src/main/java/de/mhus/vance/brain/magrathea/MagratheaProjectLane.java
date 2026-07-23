@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.magrathea;
 
+import java.time.Instant;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadFactory;
@@ -24,9 +25,11 @@ public class MagratheaProjectLane {
 
     private final String projectId;
     private final ThreadPoolExecutor executor;
+    private volatile Instant lastActivityAt;
 
     MagratheaProjectLane(String projectId) {
         this.projectId = projectId;
+        this.lastActivityAt = Instant.now();
         ThreadFactory tf = newThreadFactory(projectId);
         this.executor = new ThreadPoolExecutor(
                 /* core */ 1,
@@ -37,6 +40,7 @@ public class MagratheaProjectLane {
     }
 
     public void submit(Runnable work) {
+        lastActivityAt = Instant.now();
         executor.submit(() -> {
             try {
                 work.run();
@@ -53,7 +57,21 @@ public class MagratheaProjectLane {
      * after the start-records are journalled (code-review Phase 2).
      */
     public java.util.concurrent.Future<?> submitTracked(Runnable work) {
+        lastActivityAt = Instant.now();
         return executor.submit(work);
+    }
+
+    /**
+     * True when the lane has no queued work, nothing running, and its
+     * last submission is older than {@code idleBefore} — safe for the
+     * manager to evict. Callers must evaluate this under the manager's
+     * per-key map lock so a concurrent submit cannot slip in between the
+     * check and the shutdown (see {@code MagratheaProjectLaneManager}).
+     */
+    boolean isEvictable(Instant idleBefore) {
+        return executor.getQueue().isEmpty()
+                && executor.getActiveCount() == 0
+                && lastActivityAt.isBefore(idleBefore);
     }
 
     void shutdown() {

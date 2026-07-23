@@ -91,6 +91,11 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
             r.run();
             return null;
         }).when(laneManager).submit(any(), any());
+        when(laneManager.submitTracked(any(), any())).thenAnswer(inv -> {
+            Runnable r = inv.getArgument(1);
+            r.run();
+            return java.util.concurrent.CompletableFuture.completedFuture(null);
+        });
 
         when(taskService.insert(any())).thenAnswer(inv -> {
             MagratheaTaskDocument t = inv.getArgument(0);

@@ -37,22 +37,40 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class MagratheaTaskExecutor {
 
+    /**
+     * Heartbeat cadence for a running synchronous task — well under the
+     * reclaim grace (5 min) so a live long task stays claimed, but a
+     * crashed pod's task goes stale within the grace and is reclaimed
+     * (code-review Phase 2).
+     */
+    private static final long HEARTBEAT_INTERVAL_SECONDS = 60;
+
     private final MagratheaJournalService journalService;
     private final MagratheaStateProjector projector;
     private final MagratheaWorkflowLoader workflowLoader;
     private final MagratheaCompletionEventBus eventBus;
+    private final de.mhus.vance.shared.magrathea.MagratheaTaskService taskService;
     private final Map<MagratheaTaskType, MagratheaTypeExecutor> byType;
+
+    private final java.util.concurrent.ScheduledExecutorService heartbeatScheduler =
+            java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "magrathea-heartbeat");
+                t.setDaemon(true);
+                return t;
+            });
 
     public MagratheaTaskExecutor(
             MagratheaJournalService journalService,
             MagratheaStateProjector projector,
             MagratheaWorkflowLoader workflowLoader,
             MagratheaCompletionEventBus eventBus,
+            de.mhus.vance.shared.magrathea.MagratheaTaskService taskService,
             List<MagratheaTypeExecutor> executors) {
         this.journalService = journalService;
         this.projector = projector;
         this.workflowLoader = workflowLoader;
         this.eventBus = eventBus;
+        this.taskService = taskService;
         this.byType = new EnumMap<>(MagratheaTaskType.class);
         for (MagratheaTypeExecutor executor : executors) {
             MagratheaTypeExecutor previous = byType.put(executor.type(), executor);
@@ -146,6 +164,24 @@ public class MagratheaTaskExecutor {
 
         long started = System.currentTimeMillis();
         Optional<TaskOutcome> outcome;
+        // Heartbeat while a synchronous task runs: without it a task that
+        // takes longer than the reclaim grace (runStatus stays null for
+        // sync executors) would be reclaimed and double-executed. A crash
+        // stops the heartbeat, so a genuinely dead task still goes stale
+        // and is reclaimed (code-review Phase 2 HIGH #3).
+        String taskId = task.getId();
+        java.util.concurrent.ScheduledFuture<?> heartbeat =
+                heartbeatScheduler.scheduleWithFixedDelay(
+                        () -> {
+                            try {
+                                taskService.touchHeartbeat(taskId);
+                            } catch (RuntimeException hbEx) {
+                                log.trace("heartbeat touch failed for task {}: {}",
+                                        taskId, hbEx.toString());
+                            }
+                        },
+                        HEARTBEAT_INTERVAL_SECONDS, HEARTBEAT_INTERVAL_SECONDS,
+                        java.util.concurrent.TimeUnit.SECONDS);
         try {
             outcome = executor.execute(ctx);
         } catch (RuntimeException ex) {
@@ -153,6 +189,8 @@ public class MagratheaTaskExecutor {
                     executor.getClass().getSimpleName(), task.getId(), ex);
             publishFailure(task, ex.getMessage());
             return;
+        } finally {
+            heartbeat.cancel(false);
         }
 
         if (outcome.isEmpty()) {

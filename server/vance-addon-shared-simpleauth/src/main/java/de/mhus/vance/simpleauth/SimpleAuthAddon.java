@@ -1,7 +1,10 @@
 package de.mhus.vance.simpleauth;
 
+import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.permission.PermissionResolver;
+import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.team.TeamService;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
@@ -24,7 +27,10 @@ public class SimpleAuthAddon {
 
     @Bean
     public PermissionResolver mongoPermissionResolver(
-            PermissionGrantService grants, TeamService teamService) {
-        return new MongoPermissionResolver(grants, teamService);
+            PermissionGrantService grants, TeamService teamService,
+            SettingService settingService, ObjectProvider<MetricService> metricService) {
+        // MetricService is optional — the anus context has no MeterRegistry.
+        return new MongoPermissionResolver(
+                grants, teamService, settingService, metricService.getIfAvailable());
     }
 }

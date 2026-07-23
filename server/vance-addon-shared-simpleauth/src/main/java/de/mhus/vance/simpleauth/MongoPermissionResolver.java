@@ -1,12 +1,14 @@
 package de.mhus.vance.simpleauth;
 
 import de.mhus.vance.shared.home.HomeBootstrapService;
+import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.PermissionResolver;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.permission.SecurityContext;
 import de.mhus.vance.shared.permission.SubjectType;
 import de.mhus.vance.shared.project.ProjectService;
+import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.team.TeamDocument;
 import de.mhus.vance.shared.team.TeamService;
 import java.util.List;
@@ -26,16 +28,68 @@ public class MongoPermissionResolver implements PermissionResolver {
     private static final String VANCE_PROJECT = "_vance";
     private static final List<String> RESERVED_PATH_PREFIXES = List.of("_vance/", "recipes/");
 
+    /** Hot setting: when true, deny verdicts are logged + counted but allowed. */
+    static final String SHADOW_SETTING = "vance.permission.shadow";
+    private static final String METRIC_CHECKS = "vance.permission.checks";
+
     private final PermissionGrantService grants;
     private final TeamService teamService;
+    private final SettingService settingService;
+    private final @Nullable MetricService metricService;
 
-    public MongoPermissionResolver(PermissionGrantService grants, TeamService teamService) {
+    public MongoPermissionResolver(PermissionGrantService grants, TeamService teamService,
+            SettingService settingService, @Nullable MetricService metricService) {
         this.grants = grants;
         this.teamService = teamService;
+        this.settingService = settingService;
+        this.metricService = metricService;
     }
 
     @Override
     public boolean isAllowed(SecurityContext subject, Resource resource, Action action) {
+        boolean allowed = computeAllowed(subject, resource, action);
+        String resourceName = resource.getClass().getSimpleName();
+        if (allowed) {
+            count("allow", resourceName);
+            return true;
+        }
+        // Shadow mode: compute the real (deny) verdict but let it through,
+        // logging + counting it so an operator can see which legitimate
+        // flows a sharp cut would break before flipping shadow off
+        // (permission-system-concept §7.3). Read per-tenant so it's hot.
+        if (isShadow(subject)) {
+            count("would_deny", resourceName);
+            log.warn("permission SHADOW would-deny subject={}:{} action={} resource={}",
+                    subject.subjectType(), subject.subjectId(), action, resource);
+            return true;
+        }
+        count("deny", resourceName);
+        return false;
+    }
+
+    private boolean isShadow(SecurityContext subject) {
+        try {
+            return settingService.getBooleanValueCascade(
+                    subject.tenantId(), null, null, SHADOW_SETTING, false);
+        } catch (RuntimeException e) {
+            // Never let a setting-lookup failure silently open access.
+            return false;
+        }
+    }
+
+    private void count(String outcome, String resourceName) {
+        if (metricService == null) {
+            return;
+        }
+        try {
+            metricService.counter(METRIC_CHECKS, "outcome", outcome, "resource", resourceName)
+                    .increment();
+        } catch (RuntimeException ignore) {
+            // metrics are best-effort; never affect the verdict
+        }
+    }
+
+    private boolean computeAllowed(SecurityContext subject, Resource resource, Action action) {
         try {
             // R1 — internal callers are trusted.
             if (subject.subjectType() == SubjectType.SYSTEM) {

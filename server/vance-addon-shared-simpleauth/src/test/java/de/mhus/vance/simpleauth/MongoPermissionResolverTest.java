@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.permission.SecurityContext;
+import de.mhus.vance.shared.permission.WriteReason;
 import de.mhus.vance.shared.team.TeamDocument;
 import de.mhus.vance.shared.team.TeamService;
 import java.util.List;
@@ -109,6 +110,37 @@ class MongoPermissionResolverTest {
                 .thenReturn(List.of(grant(GrantScopeType.PROJECT, "proj",
                         GrantSubjectType.USER, "alice", GrantRole.ADMIN)));
         assertThat(resolver.isAllowed(alice, reserved, Action.WRITE)).isTrue();
+    }
+
+    @Test
+    void r4_only_autoexec_vance_subfolders_are_reserved_recipes_is_open() {
+        // alice is project WRITER
+        when(grants.forScope("acme", GrantScopeType.PROJECT, "proj"))
+                .thenReturn(List.of(grant(GrantScopeType.PROJECT, "proj",
+                        GrantSubjectType.USER, "alice", GrantRole.WRITER)));
+        // scheduler/hooks/events auto-execute → reserved → WRITER denied
+        assertThat(resolver.isAllowed(alice,
+                new Resource.Document("acme", "proj", "_vance/scheduler/x.yaml"), Action.WRITE))
+                .isFalse();
+        // recipes/scripts/workflows are open for now → WRITER allowed
+        assertThat(resolver.isAllowed(alice,
+                new Resource.Document("acme", "proj", "_vance/recipes/x.yaml"), Action.WRITE))
+                .isTrue();
+        assertThat(resolver.isAllowed(alice,
+                new Resource.Document("acme", "proj", "_vance/logs/run.md"), Action.WRITE))
+                .isTrue();
+    }
+
+    @Test
+    void systemReason_allows_a_write_the_user_role_would_deny() {
+        // alice has NO grant on proj → a USER write to a reserved path denies…
+        assertThat(resolver.isAllowed(alice,
+                new Resource.Document("acme", "proj", "_vance/scheduler/x.yaml"),
+                Action.WRITE, WriteReason.USER)).isFalse();
+        // …but a trusted server write (WriteReason.SYSTEM) is allowed, actor kept.
+        assertThat(resolver.isAllowed(alice,
+                new Resource.Document("acme", "proj", "_vance/scheduler/x.yaml"),
+                Action.WRITE, WriteReason.SYSTEM)).isTrue();
     }
 
     @Test

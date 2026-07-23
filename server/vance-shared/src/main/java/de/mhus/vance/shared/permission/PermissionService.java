@@ -42,18 +42,34 @@ public class PermissionService {
     }
 
     public boolean check(SecurityContext subject, Resource resource, Action action) {
-        boolean allowed = resolver.isAllowed(subject, resource, action);
+        return check(subject, resource, action, WriteReason.USER);
+    }
+
+    /**
+     * Reason-aware check — {@code reason} lets the resolver allow a trusted
+     * internal write ({@link WriteReason#SYSTEM}) while {@code subject} still
+     * carries the real actor. Only server code passes anything but
+     * {@link WriteReason#USER}.
+     */
+    public boolean check(
+            SecurityContext subject, Resource resource, Action action, WriteReason reason) {
+        boolean allowed = resolver.isAllowed(subject, resource, action, reason);
         if (log.isTraceEnabled()) {
-            log.trace("permission {}: subject={}:{} tenant={} action={} resource={}",
+            log.trace("permission {}: subject={}:{} tenant={} action={} reason={} resource={}",
                     allowed ? "ALLOW" : "DENY",
                     subject.subjectType(), subject.subjectId(), subject.tenantId(),
-                    action, resource);
+                    action, reason, resource);
         }
         return allowed;
     }
 
     public void enforce(SecurityContext subject, Resource resource, Action action) {
-        if (!check(subject, resource, action)) {
+        enforce(subject, resource, action, WriteReason.USER);
+    }
+
+    public void enforce(
+            SecurityContext subject, Resource resource, Action action, WriteReason reason) {
+        if (!check(subject, resource, action, reason)) {
             throw new PermissionDeniedException(subject, resource, action);
         }
     }

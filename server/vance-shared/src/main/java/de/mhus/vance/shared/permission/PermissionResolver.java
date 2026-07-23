@@ -19,4 +19,16 @@ public interface PermissionResolver {
      *         {@code false} on missing data.
      */
     boolean isAllowed(SecurityContext subject, Resource resource, Action action);
+
+    /**
+     * Reason-aware variant — lets a resolver treat a trusted internal write
+     * ({@link WriteReason#SYSTEM}) differently from a user write while the
+     * {@code subject} still carries the real actor. The default ignores the
+     * reason (reason-unaware providers, e.g. allow-all, behave unchanged);
+     * the simple-auth resolver overrides it.
+     */
+    default boolean isAllowed(
+            SecurityContext subject, Resource resource, Action action, WriteReason reason) {
+        return isAllowed(subject, resource, action);
+    }
 }

@@ -7,6 +7,7 @@ import de.mhus.vance.shared.permission.PermissionResolver;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.permission.SecurityContext;
 import de.mhus.vance.shared.permission.SubjectType;
+import de.mhus.vance.shared.permission.WriteReason;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.team.TeamDocument;
 import de.mhus.vance.shared.team.TeamService;
@@ -26,16 +27,16 @@ public class MongoPermissionResolver implements PermissionResolver {
     private static final String TENANT_PROJECT = "_tenant";
     private static final String VANCE_PROJECT = "_vance";
     /**
-     * Reserved document paths — writable only by ADMIN/SYSTEM (R4). Every
-     * config namespace lives under {@code _vance/}: recipes
-     * ({@code _vance/recipes/}), hooks ({@code _vance/hooks/}), events
-     * ({@code _vance/events/}), scheduler ({@code _vance/scheduler/}),
-     * model catalog, setting-forms, wizards, templates, manuals, … — so
-     * the single {@code _vance/} prefix subsumes them all. (A bare
-     * {@code recipes/} used to be listed too, but that wrongly reserved a
-     * user's own {@code recipes/…} doc in a normal project.)
+     * Reserved document paths — a USER write here needs ADMIN (R4). Only the
+     * {@code _vance/} subfolders that <em>autonomously execute</em> and can
+     * carry {@code runAs} (scheduler, hooks, events) are reserved — those are
+     * the real escalation surface. The rest of {@code _vance/} (recipes,
+     * scripts, workflows, logs, model, setting-forms, …) is open for now
+     * (auth business — tighten later as needed). Trusted server writes pass
+     * {@link WriteReason#SYSTEM} and bypass this regardless.
      */
-    private static final List<String> RESERVED_PATH_PREFIXES = List.of("_vance/");
+    private static final List<String> RESERVED_PATH_PREFIXES = List.of(
+            "_vance/scheduler/", "_vance/hooks/", "_vance/events/");
 
     private static final String METRIC_CHECKS = "vance.permission.checks";
 
@@ -52,7 +53,17 @@ public class MongoPermissionResolver implements PermissionResolver {
 
     @Override
     public boolean isAllowed(SecurityContext subject, Resource resource, Action action) {
-        boolean allowed = computeAllowed(subject, resource, action);
+        return isAllowed(subject, resource, action, WriteReason.USER);
+    }
+
+    @Override
+    public boolean isAllowed(
+            SecurityContext subject, Resource resource, Action action, WriteReason reason) {
+        // A trusted server write of a system resource is allowed regardless of
+        // the user's role (only Java code can pass SYSTEM); the real actor is
+        // still in `subject` for audit. Otherwise the normal verdict applies.
+        boolean allowed = reason == WriteReason.SYSTEM
+                || computeAllowed(subject, resource, action);
         // Metric only — the verdict is always enforced (fail-closed). The
         // deny counter (vance.permission.checks{outcome=deny}) is the
         // diagnosis surface for tightening grants.

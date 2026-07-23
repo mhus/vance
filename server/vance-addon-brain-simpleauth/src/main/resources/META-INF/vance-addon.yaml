@@ -1,2 +1,6 @@
 id: simpleauth
-version: @project.version@
+version: "@project.version@"
+tile:
+  label: Permissions
+  description: Grant and revoke roles for users and teams.
+  minLevel: admin

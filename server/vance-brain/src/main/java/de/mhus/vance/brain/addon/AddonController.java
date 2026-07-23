@@ -24,19 +24,21 @@ import org.springframework.web.bind.annotation.RestController;
 public class AddonController {
 
     private final AddonService addonService;
+    private final AddonManifestRegistry manifestRegistry;
 
     @GetMapping("/face/addons")
     public List<AddonDto> list() {
         return addonService.listEnabled().stream()
-                .map(AddonController::toDto)
+                .map(this::toDto)
                 .toList();
     }
 
-    private static AddonDto toDto(AddonDocument doc) {
+    private AddonDto toDto(AddonDocument doc) {
         return AddonDto.builder()
                 .name(doc.getName())
                 .path(doc.getPath())
                 .checksum(doc.getChecksum())
+                .tile(manifestRegistry.tileFor(doc.getName()))
                 .build();
     }
 }

@@ -3,6 +3,7 @@ import vue from '@vitejs/plugin-vue';
 import { federation } from '@module-federation/vite';
 import { resolve, extname } from 'node:path';
 import { createReadStream, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import yaml from 'js-yaml';
 
 // One Rollup input per top-level HTML file. Add new editor HTMLs here as they
 // are implemented — see specification/web-ui.md §3 for the full list.
@@ -102,19 +103,28 @@ function vanceAddonDevServe(): Plugin {
                   name: id,
                   path: `bundled:${id}`,
                 };
-                // Optional landing-tile metadata, declared by the addon in its
-                // client package.json `vanceTile` field. Lets IndexApp render a
-                // tile for the addon without loading its federation remote.
+                // Optional landing-tile metadata — single source: the addon's
+                // server manifest META-INF/vance-addon.yaml `tile:` block (the
+                // same file the brain reads for prod /face/addons). Lets IndexApp
+                // render a tile without loading the federation remote.
                 try {
-                  const pkg = JSON.parse(
+                  const manifest = yaml.load(
                     readFileSync(
-                      resolve(addonsRoot, `vance-addon-brain-${id}`, 'client', 'package.json'),
+                      resolve(
+                        addonsRoot,
+                        `vance-addon-brain-${id}`,
+                        'src',
+                        'main',
+                        'resources',
+                        'META-INF',
+                        'vance-addon.yaml',
+                      ),
                       'utf8',
                     ),
-                  );
-                  if (pkg.vanceTile) entry.tile = pkg.vanceTile;
+                  ) as { tile?: unknown } | null;
+                  if (manifest?.tile) entry.tile = manifest.tile;
                 } catch {
-                  // no package.json / no tile — addon simply has no landing tile
+                  // no manifest / no tile — addon simply has no landing tile
                 }
                 return entry;
               });

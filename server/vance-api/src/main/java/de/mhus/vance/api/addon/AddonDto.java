@@ -37,4 +37,12 @@ public class AddonDto {
      * cache directory.
      */
     private @Nullable String checksum;
+
+    /**
+     * Optional landing-tile metadata (from the addon's {@code vance-addon.yaml}
+     * {@code tile:} block). Present only for addons that declare one; the Web-UI
+     * renders a launcher tile from it, gated by the viewer's UI level.
+     */
+    private @Nullable AddonTileDto tile;
 }
+

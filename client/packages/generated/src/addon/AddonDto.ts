@@ -3,8 +3,11 @@
  Source: de.mhus.vance.api.addon.AddonDto
 */
 
+import { AddonTileDto } from './AddonTileDto';
+
 export interface AddonDto {
   name: string;
   path: string;
   checksum?: string;
+  tile?: AddonTileDto;
 }

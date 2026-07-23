@@ -7,11 +7,6 @@
   "type": "module",
   "main": "./src/index.ts",
   "types": "./dist/index.d.ts",
-  "vanceTile": {
-    "label": "Permissions",
-    "description": "Grant and revoke roles for users and teams.",
-    "minLevel": "admin"
-  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",

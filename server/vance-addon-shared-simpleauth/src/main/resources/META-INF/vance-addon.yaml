@@ -1,2 +1,2 @@
-id: simpleauth
-version: @project.version@
+id: simpleauth-core
+version: "@project.version@"

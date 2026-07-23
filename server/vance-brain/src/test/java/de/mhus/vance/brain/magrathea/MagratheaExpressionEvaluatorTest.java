@@ -111,4 +111,25 @@ class MagratheaExpressionEvaluatorTest {
         assertThat(eval.evaluateBoolean("#state['missing'] == null", Map.of(), Map.of(), Map.of()))
                 .isTrue();
     }
+
+    @Test
+    void dotted_map_navigation_works_via_map_accessor() {
+        // The javadoc advertises dotted syntax; MapAccessor makes it real.
+        Map<String, Object> vars = Map.of("plan_output", Map.of("risk", "low"));
+
+        assertThat(eval.evaluateBoolean("#state.plan_output.risk == 'low'",
+                Map.of(), vars, Map.of())).isTrue();
+    }
+
+    @Test
+    void reflective_property_navigation_is_blocked_by_sandbox() {
+        // The classic SpEL escape #x.class.classLoader… must not navigate:
+        // SimpleEvaluationContext exposes no reflective bean properties on
+        // arbitrary objects, only map keys / read-only data binding.
+        Map<String, Object> vars = Map.of("name", "alice");
+
+        assertThatThrownBy(() -> eval.evaluate(
+                "#state['name'].class.name", Map.of(), vars, Map.of()))
+                .isInstanceOf(MagratheaExpressionEvaluator.MagratheaExpressionException.class);
+    }
 }

@@ -1,36 +1,40 @@
 package de.mhus.vance.brain.magrathea;
 
-import java.util.List;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.expression.MapAccessor;
+import org.springframework.expression.EvaluationContext;
 import org.springframework.expression.Expression;
 import org.springframework.expression.ExpressionException;
 import org.springframework.expression.ExpressionParser;
-import org.springframework.expression.spel.SpelEvaluationException;
-import org.springframework.expression.spel.SpelMessage;
 import org.springframework.expression.spel.SpelParserConfiguration;
 import org.springframework.expression.spel.standard.SpelExpressionParser;
-import org.springframework.expression.spel.support.StandardEvaluationContext;
+import org.springframework.expression.spel.support.DataBindingPropertyAccessor;
+import org.springframework.expression.spel.support.SimpleEvaluationContext;
 import org.springframework.stereotype.Service;
 
 /**
  * SpEL-based condition evaluator for {@code condition_task} (and
- * future {@code if:} guards). Sandboxed via three switches on the
- * evaluation context (plan §6.5):
+ * future {@code if:} guards). Sandboxed via a
+ * {@link SimpleEvaluationContext} (plan §6.5): it exposes <em>only</em>
+ * read-only property access — no type references ({@code T(...)}), no
+ * constructors ({@code new ...}), no method invocation ({@code .foo()}),
+ * and no bean references. Expression authors are project-writing users,
+ * so this is the documented-safe way to run untrusted SpEL: unlike the
+ * old {@code StandardEvaluationContext}-with-switches approach, the
+ * default reflective property navigation ({@code #state.class.classLoader…})
+ * is off by construction rather than patched shut. SpEL operators
+ * ({@code ==}, {@code in}, {@code matches}, {@code &&}, indexers …) are
+ * evaluated in the AST and need no context support.
  *
- * <ul>
- *   <li>{@code TypeLocator} throws — blocks {@code T(...)} expressions.</li>
- *   <li>{@code ConstructorResolvers} empty — blocks {@code new ...}.</li>
- *   <li>{@code MethodResolvers} empty — blocks arbitrary method calls.
- *       Operators ({@code ==}, {@code in}, {@code matches}, {@code &&},
- *       …) are handled inside SpEL and need no resolver.</li>
- * </ul>
- *
- * <p>Variables in expressions are accessed with the SpEL {@code #}-syntax:
+ * <p>A {@link MapAccessor} is registered so the {@code #}-variables (all
+ * {@code Map}s) can be navigated with dotted property syntax as well as
+ * the indexer syntax:
  *
  * <pre>
- *   #state.plan_output.risk == 'low'
+ *   #state.plan_output.risk == 'low'        // dotted (MapAccessor)
+ *   #state['plan_output']['risk'] == 'low'  // indexer (built-in)
  *   #params.tier in {'free', 'pro'}
  *   #tasks.plan.output.risk matches 'low|medium'
  * </pre>
@@ -86,7 +90,7 @@ public class MagratheaExpressionEvaluator {
             Map<String, Object> params,
             Map<String, Object> vars,
             Map<String, Object> tasks) {
-        StandardEvaluationContext ctx = sandboxedContext(params, vars, tasks);
+        EvaluationContext ctx = sandboxedContext(params, vars, tasks);
         try {
             Expression parsed = parser.parseExpression(expression);
             return parsed.getValue(ctx);
@@ -96,25 +100,21 @@ public class MagratheaExpressionEvaluator {
         }
     }
 
-    private static StandardEvaluationContext sandboxedContext(
+    private static EvaluationContext sandboxedContext(
             Map<String, Object> params,
             Map<String, Object> vars,
             Map<String, Object> tasks) {
-        StandardEvaluationContext ctx = new StandardEvaluationContext();
+        // Read-only data binding + MapAccessor: no methods, no ctors, no
+        // type refs, no bean refs, no assignment — only reading properties
+        // and map keys off the three exposed variable maps.
+        SimpleEvaluationContext ctx = SimpleEvaluationContext
+                .forPropertyAccessors(
+                        new MapAccessor(/* allowWrite */ false),
+                        DataBindingPropertyAccessor.forReadOnlyAccess())
+                .build();
         ctx.setVariable("params", params == null ? Map.of() : params);
         ctx.setVariable("state",  vars   == null ? Map.of() : vars);
         ctx.setVariable("tasks",  tasks  == null ? Map.of() : tasks);
-
-        // Block T(...) reflection on classes.
-        ctx.setTypeLocator(name -> {
-            throw new SpelEvaluationException(SpelMessage.TYPE_NOT_FOUND, name);
-        });
-        // Block new ... constructor invocation.
-        ctx.setConstructorResolvers(List.of());
-        // Block arbitrary method calls. SpEL operators (==, in, matches,
-        // &&, ||, !, <, ≥) are evaluated inside SpEL without resolvers,
-        // so this only blocks .foo() style invocations.
-        ctx.setMethodResolvers(List.of());
         return ctx;
     }
 

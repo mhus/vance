@@ -3,6 +3,7 @@ package de.mhus.vance.foot.script;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -94,20 +95,28 @@ class ClientScriptExecutorTest {
 
     @Test
     void clientTools_call_dispatchesToClientToolService() {
-        ClientTool echo = mock(ClientTool.class);
-        when(echo.name()).thenReturn("client_echo");
-        when(echo.invoke(any())).thenReturn(Map.of("ok", true));
+        // client.tools.call now routes through the gated
+        // ClientToolService.invokeFromScript (enforces suppression /
+        // permission), not a raw findBean + tool.invoke (code-review B5).
+        ClientToolService svc = mock(ClientToolService.class);
+        when(svc.invokeFromScript(eq("client_echo"), any())).thenReturn(Map.of("ok", true));
+        GraaljsClientScriptExecutor exec = new GraaljsClientScriptExecutor(engine, svc);
 
-        Object result = eval(executor(echo), "!!client.tools.call('client_echo', {}).ok;").value();
+        Object result = eval(exec, "!!client.tools.call('client_echo', {}).ok;").value();
         assertThat(result).isEqualTo(true);
-        verify(echo, times(1)).invoke(any());
+        verify(svc, times(1)).invokeFromScript(eq("client_echo"), any());
     }
 
     @Test
     void clientTools_call_unknownTool_throwsInJs_andCanBeCaught() {
+        ClientToolService svc = mock(ClientToolService.class);
+        when(svc.invokeFromScript(eq("nope"), any()))
+                .thenThrow(new IllegalArgumentException("unknown tool"));
+        GraaljsClientScriptExecutor exec = new GraaljsClientScriptExecutor(engine, svc);
+
         String code =
                 "try { client.tools.call('nope', {}); 'no-throw'; } catch (e) { 'caught'; }";
-        assertThat(eval(executor(), code).value()).isEqualTo("caught");
+        assertThat(eval(exec, code).value()).isEqualTo("caught");
     }
 
     // ------------------------------------------------------------------
@@ -121,9 +130,11 @@ class ClientScriptExecutorTest {
 
     @Test
     void clientExecutor_rejectsServerToolNames() {
-        // Server tool name like "web_search" is not registered locally, must throw.
+        // Server tool name like "web_search" is not a local client tool —
+        // the gated invokeFromScript rejects it (code-review B5).
         ClientToolService svc = mock(ClientToolService.class);
-        when(svc.find("web_search")).thenReturn(null);
+        when(svc.invokeFromScript(eq("web_search"), any()))
+                .thenThrow(new SecurityException("not a client tool"));
         GraaljsClientScriptExecutor exec = new GraaljsClientScriptExecutor(engine, svc);
 
         String code = "try { client.tools.call('web_search', {}); 'no-throw'; }"

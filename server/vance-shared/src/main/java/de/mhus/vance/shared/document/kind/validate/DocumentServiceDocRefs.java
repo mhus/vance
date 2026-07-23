@@ -9,7 +9,9 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
+import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 /**
  * {@link DocRefs} implementation backed by {@link DocumentService} for a single
@@ -47,7 +49,12 @@ public final class DocumentServiceDocRefs implements DocRefs {
         Optional<DocumentDocument> doc = documentService.findByPath(tenantId, projectId, path);
         if (doc.isEmpty()) return null;
         try {
-            Object loaded = new Yaml().load(read(doc.get()));
+            // SafeConstructor: never instantiate arbitrary classpath types
+            // from !!<java-type> tags in referenced-document YAML — this is
+            // a validation read of untrusted document content (code-review
+            // Phase 2). Mirrors the Kind codecs (DataCodec/DiagramCodec/…).
+            Yaml yaml = new Yaml(new SafeConstructor(new LoaderOptions()));
+            Object loaded = yaml.load(read(doc.get()));
             if (!(loaded instanceof Map<?, ?> m)) return null;
             Map<String, Object> out = new LinkedHashMap<>();
             for (Map.Entry<?, ?> e : m.entrySet()) {

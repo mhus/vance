@@ -1053,9 +1053,23 @@ public class DocumentService {
             InputStream content,
             @Nullable String newMimeType,
             WriterIdentity identity) {
+        // Transitional (F1 stage 2b): defaults to SYSTEM until callers migrate.
+        return replaceContent(id, content, newMimeType, identity,
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+    }
+
+    /** Actor-carrying content replace — enforces {@code WRITE} at the source (F1). */
+    public DocumentDocument replaceContent(
+            String id,
+            InputStream content,
+            @Nullable String newMimeType,
+            WriterIdentity identity,
+            de.mhus.vance.shared.permission.WriteActor actor) {
         DocumentDocument doc = repository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Unknown document id='" + id + "'"));
+        enforceWrite(doc.getTenantId(), doc.getProjectId(), doc.getPath(),
+                de.mhus.vance.shared.permission.Action.WRITE, actor);
         requireWriteAllowed(doc, identity);
 
         // Buffer the new body so we can short-circuit no-op writes. The
@@ -1186,9 +1200,24 @@ public class DocumentService {
             byte[] bytes,
             @Nullable String updatedBy,
             WriterIdentity identity) {
+        // Transitional (F1 stage 2b): defaults to SYSTEM until callers migrate.
+        return replaceBinaryContent(id, newMimeType, bytes, updatedBy, identity,
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+    }
+
+    /** Actor-carrying binary replace — enforces {@code WRITE} at the source (F1). */
+    public DocumentDocument replaceBinaryContent(
+            String id,
+            @Nullable String newMimeType,
+            byte[] bytes,
+            @Nullable String updatedBy,
+            WriterIdentity identity,
+            de.mhus.vance.shared.permission.WriteActor actor) {
         DocumentDocument doc = repository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Unknown document id='" + id + "'"));
+        enforceWrite(doc.getTenantId(), doc.getProjectId(), doc.getPath(),
+                de.mhus.vance.shared.permission.Action.WRITE, actor);
         requireWriteAllowed(doc, identity);
         if (bytes == null) {
             throw new IllegalArgumentException(
@@ -1672,9 +1701,30 @@ public class DocumentService {
             @Nullable Boolean newRagEnabled,
             @Nullable String newMimeType,
             WriterIdentity identity) {
+        // Transitional (F1 stage 2b): defaults to SYSTEM until callers migrate.
+        return update(id, newTitle, newTags, newInlineText, newPath,
+                newAutoSummary, newSummaryDirty, newRagEnabled, newMimeType,
+                identity, de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+    }
+
+    /** Actor-carrying update funnel — enforces {@code WRITE} at the source (F1). */
+    public DocumentDocument update(
+            String id,
+            @Nullable String newTitle,
+            @Nullable List<String> newTags,
+            @Nullable String newInlineText,
+            @Nullable String newPath,
+            @Nullable Boolean newAutoSummary,
+            @Nullable Boolean newSummaryDirty,
+            @Nullable Boolean newRagEnabled,
+            @Nullable String newMimeType,
+            WriterIdentity identity,
+            de.mhus.vance.shared.permission.WriteActor actor) {
 
         DocumentDocument doc = repository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown document id='" + id + "'"));
+        enforceWrite(doc.getTenantId(), doc.getProjectId(), doc.getPath(),
+                de.mhus.vance.shared.permission.Action.WRITE, actor);
         requireWriteAllowed(doc, identity);
 
         // Lazy backfill for documents created before lineage-tracking
@@ -2342,7 +2392,16 @@ public class DocumentService {
      * WebSocket is filtered out and subscribers can show {@code ⏺ name}.
      */
     public void delete(String id, WriterIdentity identity) {
+        // Transitional (F1 stage 2b): defaults to SYSTEM until callers migrate.
+        delete(id, identity, de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+    }
+
+    /** Actor-carrying delete funnel — enforces {@code DELETE} at the source (F1). */
+    public void delete(String id, WriterIdentity identity,
+            de.mhus.vance.shared.permission.WriteActor actor) {
         repository.findById(id).ifPresent(doc -> {
+            enforceWrite(doc.getTenantId(), doc.getProjectId(), doc.getPath(),
+                    de.mhus.vance.shared.permission.Action.DELETE, actor);
             requireWriteAllowed(doc, identity);
             String sid = doc.getStorageId();
             if (sid != null) {
@@ -2429,8 +2488,17 @@ public class DocumentService {
      * and subscribers can render {@code ⏺ name}.
      */
     public DocumentDocument trash(String id, WriterIdentity identity) {
+        // Transitional (F1 stage 2b): defaults to SYSTEM until callers migrate.
+        return trash(id, identity, de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+    }
+
+    /** Actor-carrying trash funnel — enforces {@code DELETE} at the source (F1). */
+    public DocumentDocument trash(String id, WriterIdentity identity,
+            de.mhus.vance.shared.permission.WriteActor actor) {
         DocumentDocument doc = repository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown document id='" + id + "'"));
+        enforceWrite(doc.getTenantId(), doc.getProjectId(), doc.getPath(),
+                de.mhus.vance.shared.permission.Action.DELETE, actor);
         requireWriteAllowed(doc, identity);
         if (isTrash(doc.getPath())) {
             log.debug("Document id='{}' is already in trash at path='{}'", id, doc.getPath());

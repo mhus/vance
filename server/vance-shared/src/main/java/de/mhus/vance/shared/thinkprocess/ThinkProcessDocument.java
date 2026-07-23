@@ -111,6 +111,16 @@ public class ThinkProcessDocument {
     private @Nullable String recipeName;
 
     /**
+     * Trigger origin for spawned processes (e.g. {@code "HOOK"}). Set when
+     * a {@code TriggerAction} spawn creates this process. Used to break the
+     * self-triggering hook chain: a hook-spawned process must not re-fire
+     * process-lifecycle hooks on its own termination, or a
+     * {@code process.completed} hook with a recipe action would spawn
+     * forever (code-review Phase 2). {@code null} for normal spawns.
+     */
+    private @Nullable String triggerSource;
+
+    /**
      * Connection-profile that was active when this process was spawned
      * (e.g. {@code "foot"}, {@code "web"}, {@code "mobile"}). {@code null}
      * for processes spawned outside an interactive connection (e.g. by

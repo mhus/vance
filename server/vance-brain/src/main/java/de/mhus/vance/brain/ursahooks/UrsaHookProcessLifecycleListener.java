@@ -2,6 +2,7 @@ package de.mhus.vance.brain.ursahooks;
 
 import de.mhus.vance.api.ursahooks.UrsaHookEventName;
 import de.mhus.vance.api.thinkprocess.CloseReason;
+import de.mhus.vance.brain.action.TriggerKind;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
@@ -43,6 +44,18 @@ public class UrsaHookProcessLifecycleListener {
         Optional<ThinkProcessDocument> opt = thinkProcessService.findById(event.processId());
         if (opt.isEmpty()) return;
         ThinkProcessDocument doc = opt.get();
+
+        // Cycle guard: a process spawned BY a hook must not re-fire
+        // process-lifecycle hooks on its own termination, or a
+        // process.completed hook with a recipe action would spawn forever
+        // (code-review Phase 2). Scheduler/event/user/tool spawns are not
+        // tagged HOOK and fire normally.
+        if (TriggerKind.HOOK.name().equals(doc.getTriggerSource())) {
+            log.debug("Skipping hook lifecycle fire for hook-spawned process id='{}'",
+                    doc.getId());
+            return;
+        }
+
         CloseReason reason = doc.getCloseReason();
 
         UrsaHookEventName hookEvent = (reason == CloseReason.DONE)

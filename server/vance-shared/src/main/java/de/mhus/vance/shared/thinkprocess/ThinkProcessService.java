@@ -476,6 +476,20 @@ public class ThinkProcessService {
     }
 
     /**
+     * Records the trigger origin of a spawned process (e.g. {@code "HOOK"}),
+     * so a hook-spawned process can be excluded from re-firing
+     * process-lifecycle hooks and the self-triggering chain is broken
+     * (code-review Phase 2).
+     */
+    public boolean setTriggerSource(String id, String triggerSource) {
+        Query query = new Query(Criteria.where("_id").is(id));
+        Update update = new Update().set("triggerSource", triggerSource);
+        UpdateResult result = mongoTemplate.updateFirst(
+                query, update, ThinkProcessDocument.class);
+        return result.getModifiedCount() > 0;
+    }
+
+    /**
      * Atomically replaces the {@code activeSkills} list. Used by the
      * skill-steer pipeline (activate/clear) and by the engine itself
      * after draining one-shot skills at end-of-turn.

@@ -185,6 +185,14 @@ public final class SpawnActionExecutor implements ActionExecutor<TriggerAction.R
                     "process_create: " + ex.getMessage(), null);
         }
 
+        // Tag hook-spawned processes so their termination does NOT re-fire
+        // process-lifecycle hooks — breaks the self-triggering
+        // hook → process → hook chain that would otherwise spawn forever
+        // (code-review Phase 2).
+        if (invocation.triggerKind() == TriggerKind.HOOK) {
+            thinkProcessService.setTriggerSource(fresh.getId(), TriggerKind.HOOK.name());
+        }
+
         // ── Start engine ─────────────────────────────────────────────────
         try {
             thinkEngineServiceProvider.getObject().start(fresh);

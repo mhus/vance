@@ -41,9 +41,12 @@ public class DocLockSetTool implements Tool {
             "required", List.of("documentId", "lockedFor"));
 
     private final DocumentService documentService;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
-    public DocLockSetTool(DocumentService documentService) {
+    public DocLockSetTool(DocumentService documentService,
+            de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
         this.documentService = documentService;
+        this.contextFactory = contextFactory;
     }
 
     @Override public String name() { return "document_lock_set"; }
@@ -82,7 +85,8 @@ public class DocLockSetTool implements Tool {
             throw new ToolException("Unknown document id '" + documentId + "'");
         }
 
-        DocumentDocument saved = documentService.setLockedFor(documentId, requested);
+        DocumentDocument saved = documentService.setLockedFor(documentId, requested,
+                contextFactory.writeActor(ctx.tenantId(), ctx.userId(), doc.getPath()));
         log.info("DocLockSetTool tenant='{}' id='{}' lockedFor={}",
                 ctx.tenantId(), documentId, requested);
 

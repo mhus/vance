@@ -38,9 +38,12 @@ public class DocLockRemoveTool implements Tool {
             "required", List.of("documentId", "role"));
 
     private final DocumentService documentService;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
-    public DocLockRemoveTool(DocumentService documentService) {
+    public DocLockRemoveTool(DocumentService documentService,
+            de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
         this.documentService = documentService;
+        this.contextFactory = contextFactory;
     }
 
     @Override public String name() { return "document_lock_remove"; }
@@ -82,7 +85,8 @@ public class DocLockRemoveTool implements Tool {
                 : EnumSet.copyOf(doc.getLockedFor());
         next.remove(role);
 
-        DocumentDocument saved = documentService.setLockedFor(documentId, next);
+        DocumentDocument saved = documentService.setLockedFor(documentId, next,
+                contextFactory.writeActor(ctx.tenantId(), ctx.userId(), doc.getPath()));
         log.info("DocLockRemoveTool tenant='{}' id='{}' removed={} now={}",
                 ctx.tenantId(), documentId, role, next);
 

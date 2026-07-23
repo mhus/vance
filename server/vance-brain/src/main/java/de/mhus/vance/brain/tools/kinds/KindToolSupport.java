@@ -85,11 +85,7 @@ public class KindToolSupport {
      */
     public de.mhus.vance.shared.permission.WriteActor writeActor(
             ToolInvocationContext ctx, String path) {
-        de.mhus.vance.shared.permission.SecurityContext subject =
-                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId());
-        return path != null && path.startsWith("_vance/")
-                ? de.mhus.vance.shared.permission.WriteActor.system(subject)
-                : de.mhus.vance.shared.permission.WriteActor.user(subject);
+        return contextFactory.writeActor(ctx.tenantId(), ctx.userId(), path);
     }
 
     /** Overload for an already-loaded document. */

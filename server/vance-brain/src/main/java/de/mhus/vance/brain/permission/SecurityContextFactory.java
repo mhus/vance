@@ -71,6 +71,24 @@ public class SecurityContextFactory {
         return SecurityContext.user(userId, tenantId, resolveTeams(tenantId, userId));
     }
 
+    /**
+     * The mandatory {@link de.mhus.vance.shared.permission.WriteActor} for a
+     * tool-driven DocumentService write. Subject via {@link #forToolSubject}
+     * (null userId → SYSTEM subject); the reason follows the agreed rule — a
+     * deliberate write into {@code _vance/} is a system resource
+     * ({@code WriteReason.SYSTEM}), everything else is the user's own write
+     * ({@code WriteReason.USER}). (F1)
+     */
+    public de.mhus.vance.shared.permission.WriteActor writeActor(
+            String tenantId,
+            @org.jspecify.annotations.Nullable String userId,
+            @org.jspecify.annotations.Nullable String path) {
+        SecurityContext subject = forToolSubject(tenantId, userId);
+        return path != null && path.startsWith("_vance/")
+                ? de.mhus.vance.shared.permission.WriteActor.system(subject)
+                : de.mhus.vance.shared.permission.WriteActor.user(subject);
+    }
+
     private List<String> resolveTeams(String tenantId, String username) {
         return teamService.byMember(tenantId, username).stream()
                 .map(TeamDocument::getName)

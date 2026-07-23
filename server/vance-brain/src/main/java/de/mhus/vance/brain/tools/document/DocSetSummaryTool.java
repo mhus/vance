@@ -42,9 +42,12 @@ public class DocSetSummaryTool implements Tool {
             "required", List.of("documentId", "summary"));
 
     private final DocumentService documentService;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
-    public DocSetSummaryTool(DocumentService documentService) {
+    public DocSetSummaryTool(DocumentService documentService,
+            de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
         this.documentService = documentService;
+        this.contextFactory = contextFactory;
     }
 
     @Override public String name() { return "doc_set_summary"; }
@@ -91,7 +94,8 @@ public class DocSetSummaryTool implements Tool {
             throw new ToolException("Unknown document id '" + documentId + "'");
         }
 
-        documentService.setSummary(documentId, summary);
+        documentService.setSummary(documentId, summary,
+                contextFactory.writeActor(ctx.tenantId(), ctx.userId(), doc.getPath()));
         log.info("DocSetSummaryTool tenant='{}' id='{}' cleared={}",
                 ctx.tenantId(), documentId, summary.isBlank());
 

@@ -38,9 +38,12 @@ public class DocLockAddTool implements Tool {
             "required", List.of("documentId", "role"));
 
     private final DocumentService documentService;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
-    public DocLockAddTool(DocumentService documentService) {
+    public DocLockAddTool(DocumentService documentService,
+            de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
         this.documentService = documentService;
+        this.contextFactory = contextFactory;
     }
 
     @Override public String name() { return "document_lock_add"; }
@@ -83,7 +86,8 @@ public class DocLockAddTool implements Tool {
                 : EnumSet.copyOf(doc.getLockedFor());
         next.add(role);
 
-        DocumentDocument saved = documentService.setLockedFor(documentId, next);
+        DocumentDocument saved = documentService.setLockedFor(documentId, next,
+                contextFactory.writeActor(ctx.tenantId(), ctx.userId(), doc.getPath()));
         log.info("DocLockAddTool tenant='{}' id='{}' added={} now={}",
                 ctx.tenantId(), documentId, role, next);
 

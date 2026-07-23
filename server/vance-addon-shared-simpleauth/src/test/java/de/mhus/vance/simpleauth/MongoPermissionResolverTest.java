@@ -112,6 +112,17 @@ class MongoPermissionResolverTest {
     }
 
     @Test
+    void r4_only_vance_prefix_is_reserved_not_a_users_own_recipes_path() {
+        // Regression: a bare "recipes/" prefix used to over-reserve a user's
+        // own doc. Only "_vance/..." is reserved.
+        when(grants.forScope("acme", GrantScopeType.PROJECT, "proj"))
+                .thenReturn(List.of(grant(GrantScopeType.PROJECT, "proj",
+                        GrantSubjectType.USER, "alice", GrantRole.WRITER)));
+        assertThat(resolver.isAllowed(alice,
+                new Resource.Document("acme", "proj", "recipes/mine.md"), Action.WRITE)).isTrue();
+    }
+
+    @Test
     void r5_inbox_ownAssignee_orSharedTeam() {
         // own item
         assertThat(resolver.isAllowed(alice,

@@ -25,7 +25,17 @@ public class MongoPermissionResolver implements PermissionResolver {
 
     private static final String TENANT_PROJECT = "_tenant";
     private static final String VANCE_PROJECT = "_vance";
-    private static final List<String> RESERVED_PATH_PREFIXES = List.of("_vance/", "recipes/");
+    /**
+     * Reserved document paths — writable only by ADMIN/SYSTEM (R4). Every
+     * config namespace lives under {@code _vance/}: recipes
+     * ({@code _vance/recipes/}), hooks ({@code _vance/hooks/}), events
+     * ({@code _vance/events/}), scheduler ({@code _vance/scheduler/}),
+     * model catalog, setting-forms, wizards, templates, manuals, … — so
+     * the single {@code _vance/} prefix subsumes them all. (A bare
+     * {@code recipes/} used to be listed too, but that wrongly reserved a
+     * user's own {@code recipes/…} doc in a normal project.)
+     */
+    private static final List<String> RESERVED_PATH_PREFIXES = List.of("_vance/");
 
     private static final String METRIC_CHECKS = "vance.permission.checks";
 

@@ -593,6 +593,30 @@ function fmt(value: unknown): string {
   return String(value);
 }
 
+// Compact relative timestamp for the session list — same convention as
+// the chat/cortex session pickers (reuses their chat.picker.relative* keys).
+function toEpochMillis(d: Date | string | number | undefined): number {
+  if (d === undefined || d === null) return 0;
+  if (d instanceof Date) return d.getTime();
+  if (typeof d === 'number') return d;
+  const parsed = new Date(d).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function formatRelativeTime(value: Date | string | number | undefined): string {
+  const epochMillis = toEpochMillis(value);
+  if (!epochMillis) return '';
+  const seconds = Math.floor((Date.now() - epochMillis) / 1000);
+  if (seconds < 60) return t('chat.picker.relativeJustNow');
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return t('chat.picker.relativeMinutes', { n: minutes });
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return t('chat.picker.relativeHours', { n: hours });
+  const days = Math.floor(hours / 24);
+  if (days < 7) return t('chat.picker.relativeDays', { n: days });
+  return new Date(epochMillis).toLocaleDateString();
+}
+
 function asJson(obj: unknown): string {
   if (obj == null) return '';
   try {
@@ -680,6 +704,9 @@ function clickProcessByMongoId(id: string | undefined | null): void {
                 </div>
                 <div class="text-xs opacity-60 truncate">
                   {{ s.userId }} · {{ s.projectId }}
+                  <span v-if="formatRelativeTime(s.lastActivityAt)">
+                    · {{ formatRelativeTime(s.lastActivityAt) }}
+                  </span>
                   <span v-if="s.processCount != null">· {{ s.processCount }} proc</span>
                 </div>
                 <div

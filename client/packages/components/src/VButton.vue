@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 
-type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'link';
+type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'link' | 'neutral';
 
 interface Props {
   variant?: Variant;
@@ -11,7 +11,9 @@ interface Props {
   loading?: boolean;
   disabled?: boolean;
   block?: boolean;
-  size?: 'sm' | 'md';
+  size?: 'xs' | 'sm' | 'md';
+  /** DaisyUI outline style — combinable with any variant. */
+  outline?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -21,6 +23,7 @@ const props = withDefaults(defineProps<Props>(), {
   disabled: false,
   block: false,
   size: 'md',
+  outline: false,
 });
 
 defineEmits<{ (e: 'click', event: MouseEvent): void }>();
@@ -32,17 +35,24 @@ const variantClass = computed<string>(() => {
     case 'ghost': return 'btn-ghost';
     case 'danger': return 'btn-error';
     case 'link': return 'btn-link';
+    case 'neutral': return '';
   }
 });
 
-const sizeClass = computed<string>(() => (props.size === 'sm' ? 'btn-sm' : ''));
+const sizeClass = computed<string>(() => {
+  switch (props.size) {
+    case 'xs': return 'btn-xs';
+    case 'sm': return 'btn-sm';
+    default: return '';
+  }
+});
 </script>
 
 <template>
   <a
     v-if="href"
     :href="href"
-    :class="['btn', variantClass, sizeClass, { 'btn-block': block, 'btn-disabled': disabled }]"
+    :class="['btn', variantClass, sizeClass, { 'btn-outline': outline, 'btn-block': block, 'btn-disabled': disabled }]"
     @click="(e) => $emit('click', e)"
   >
     <span v-if="loading" class="loading loading-spinner loading-sm" />
@@ -52,7 +62,7 @@ const sizeClass = computed<string>(() => (props.size === 'sm' ? 'btn-sm' : ''));
     v-else
     :type="type"
     :disabled="disabled || loading"
-    :class="['btn', variantClass, sizeClass, { 'btn-block': block }]"
+    :class="['btn', variantClass, sizeClass, { 'btn-outline': outline, 'btn-block': block }]"
     @click="(e) => $emit('click', e)"
   >
     <span v-if="loading" class="loading loading-spinner loading-sm" />

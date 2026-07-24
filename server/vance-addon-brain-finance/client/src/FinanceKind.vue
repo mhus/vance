@@ -3,7 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from
 import { VAlert, VButton, VModal } from '@vance/components';
 import FinanceTreeNode from './FinanceTreeNode.vue';
 import * as ops from './treeOps';
-import { calc, generateReport, getTree, listProcessors, putTree } from './api';
+import { calc, generateReport, getSnapshot, getTree, listProcessors, putTree } from './api';
 import type { FinanceNodeDto } from './generated/finance/FinanceNodeDto';
 import type { FinanceTreeDto } from './generated/finance/FinanceTreeDto';
 import type { FinanceValueDto } from './generated/finance/FinanceValueDto';
@@ -54,13 +54,25 @@ async function load(): Promise<void> {
   try {
     tree.value = await getTree(props.document.projectId, props.document.path);
     processors.value = await listProcessors(props.document.projectId);
-    computedMap.value = null;
     await nextTick();
     dirtyEnabled = true;
+    await refreshSnapshot();
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
   } finally {
     loading.value = false;
+  }
+}
+
+/** Live, ephemeral recompute (read-only, no persist) → per-node figures. */
+async function refreshSnapshot(): Promise<void> {
+  try {
+    const c = await getSnapshot(props.document.projectId, props.document.path);
+    const map: Record<string, NodeSnapshot> = {};
+    for (const n of c.nodes) map[n.name] = n;
+    computedMap.value = map;
+  } catch {
+    /* keep the previous figures if a recompute fails */
   }
 }
 
@@ -76,6 +88,7 @@ async function save(): Promise<void> {
   try {
     await putTree(props.document.projectId, props.document.path, tree.value);
     saveState.value = 'saved';
+    await refreshSnapshot(); // live figures reflect the just-saved edits
   } catch (e) {
     saveState.value = 'error';
     error.value = e instanceof Error ? e.message : String(e);

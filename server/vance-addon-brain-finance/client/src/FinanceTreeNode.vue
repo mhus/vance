@@ -11,11 +11,14 @@ const props = defineProps<{
   onAction: (action: NodeAction, name: string) => void;
 }>();
 
-function figure(): string | null {
+function figureValue(): number | null {
   const snap = props.computedMap?.[props.node.name];
-  if (!snap) return null;
-  const v = snap[props.unitKey];
-  return v.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  return snap ? snap[props.unitKey] : null;
+}
+
+function figure(): string | null {
+  const v = figureValue();
+  return v === null ? null : v.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 </script>
 
@@ -30,7 +33,12 @@ function figure(): string | null {
       <span v-if="node.icon" class="shrink-0">{{ node.icon }}</span>
       <span v-if="node.sign < 0" class="shrink-0 text-red-500 font-mono">−</span>
       <span class="truncate flex-1">{{ node.title || node.name }}</span>
-      <span v-if="figure() !== null" class="shrink-0 tabular-nums text-xs opacity-70">
+      <span
+        v-if="figure() !== null"
+        class="shrink-0 tabular-nums text-xs font-medium"
+        :class="(figureValue() ?? 0) < 0 ? 'text-red-500' : 'text-green-600'"
+        :title="'per ' + unitKey.replace('per', '').toLowerCase()"
+      >
         {{ figure() }}
       </span>
       <span class="shrink-0 flex items-center gap-0.5">

@@ -85,7 +85,7 @@ public class CanvasEdgeAddTool implements Tool {
             throw new ToolException("from and to are required");
         }
 
-        CanvasService.MutationResult res = canvasService.addEdge(r.doc(), edge);
+        CanvasService.MutationResult res = canvasService.addEdge(r.doc(), edge, ctx.userId());
         log.info("CanvasEdgeAddTool path='{}' edgeId='{}' {} -> {}",
                 r.doc().getPath(), res.id(), edge.get("from"), edge.get("to"));
 

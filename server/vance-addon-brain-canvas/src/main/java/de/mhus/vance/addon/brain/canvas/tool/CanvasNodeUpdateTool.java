@@ -68,7 +68,7 @@ public class CanvasNodeUpdateTool implements Tool {
         Map<String, Object> patch = CanvasToolSupport.paramMap(params, "patch");
         if (patch.isEmpty()) throw new ToolException("patch is required");
 
-        CanvasService.MutationResult res = canvasService.updateNode(r.doc(), id, patch);
+        CanvasService.MutationResult res = canvasService.updateNode(r.doc(), id, patch, ctx.userId());
         log.info("CanvasNodeUpdateTool path='{}' nodeId='{}'", r.doc().getPath(), id);
 
         Map<String, Object> result = new LinkedHashMap<>();

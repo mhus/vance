@@ -27,6 +27,7 @@ import org.mockito.ArgumentCaptor;
 class CanvasServiceTest {
 
     private static final String YAML = "application/yaml";
+    private static final String USER = "alice";
 
     private DocumentService documentService;
     private SecurityContextFactory contextFactory;
@@ -77,7 +78,7 @@ class CanvasServiceTest {
         DocumentDocument doc = docWithBody(body);
 
         CanvasService.MutationResult res =
-                service.addNode(doc, Map.of("type", "text", "x", 10, "y", 20, "text", "hi"));
+                service.addNode(doc, Map.of("type", "text", "x", 10, "y", 20, "text", "hi"), USER);
 
         assertThat(res.id()).isEqualTo("n1");
         CanvasDocument written = CanvasCodec.parse(capturedBody(), YAML);
@@ -93,7 +94,7 @@ class CanvasServiceTest {
         DocumentDocument doc = docWithBody(body);
 
         assertThatThrownBy(() ->
-                service.addNode(doc, Map.of("id", "n1", "type", "text", "text", "b")))
+                service.addNode(doc, Map.of("id", "n1", "type", "text", "text", "b"), USER))
                 .isInstanceOf(ToolException.class);
     }
 
@@ -103,7 +104,7 @@ class CanvasServiceTest {
         DocumentDocument doc = docWithBody(body);
 
         assertThatThrownBy(() ->
-                service.addEdge(doc, Map.of("from", "n1", "to", "n2")))
+                service.addEdge(doc, Map.of("from", "n1", "to", "n2"), USER))
                 .isInstanceOf(ToolException.class);
     }
 
@@ -117,11 +118,25 @@ class CanvasServiceTest {
                 new CanvasDocument("T", null, new CanvasGraph(List.of(n1, n2), List.of(e1))), YAML);
         DocumentDocument doc = docWithBody(body);
 
-        service.deleteNode(doc, "n1");
+        service.deleteNode(doc, "n1", USER);
 
         CanvasDocument written = CanvasCodec.parse(capturedBody(), YAML);
         assertThat(written.graph().nodes()).extracting(CanvasNode::id).containsExactly("n2");
         assertThat(written.graph().edges()).isEmpty();
+    }
+
+    @Test
+    void mutation_threadsActingUserIntoWriteActor_notNullSystem() {
+        // Security regression (code-review-2 canvas HIGH): writeDocument used a
+        // hardcoded null userId, which SecurityContextFactory maps to
+        // SecurityContext.SYSTEM → fail-opens per-document authz. A user-initiated
+        // mutation must thread the real acting user into the write actor.
+        String body = CanvasCodec.serialize(CanvasDocument.empty("T", null), YAML);
+        DocumentDocument doc = docWithBody(body);
+
+        service.addNode(doc, Map.of("type", "text", "x", 1, "y", 2, "text", "hi"), USER);
+
+        verify(contextFactory).writeActor(any(), eq(USER), any());
     }
 
     @Test
@@ -131,7 +146,7 @@ class CanvasServiceTest {
                 new CanvasDocument("T", null, new CanvasGraph(List.of(n1), List.of())), YAML);
         DocumentDocument doc = docWithBody(body);
 
-        service.updateNode(doc, "n1", Map.of("x", 99, "id", "hacked"));
+        service.updateNode(doc, "n1", Map.of("x", 99, "id", "hacked"), USER);
 
         CanvasDocument written = CanvasCodec.parse(capturedBody(), YAML);
         assertThat(written.graph().nodes()).hasSize(1);

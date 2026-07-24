@@ -86,15 +86,20 @@ public class CanvasService {
         return CanvasCodec.parse(body, mime);
     }
 
-    public DocumentDocument writeDocument(DocumentDocument doc, CanvasDocument canvas) {
+    public DocumentDocument writeDocument(DocumentDocument doc, CanvasDocument canvas,
+                                          @Nullable String userId) {
         String mime = CanvasCodec.supports(doc.getMimeType()) ? doc.getMimeType() : DEFAULT_MIME;
         String body = CanvasCodec.serialize(canvas, mime);
+        // A canvas edit is user-initiated, so the write must carry the acting
+        // user's subject — never a hardcoded null, which SecurityContextFactory
+        // maps to SecurityContext.SYSTEM and thereby fail-opens the per-document
+        // authz (reserved-prefix ADMIN + $meta.privileged gate). Matches create().
         return documentService.update(
                 doc.getId(),
                 canvas.title() != null ? canvas.title() : doc.getTitle(),
                 null, body, null, null, null, null, mime,
                 DocumentService.TOOL_IDENTITY,
-                contextFactory.writeActor(doc.getTenantId(), null, doc.getPath()));
+                contextFactory.writeActor(doc.getTenantId(), userId, doc.getPath()));
     }
 
     private String readBody(DocumentDocument doc) {
@@ -111,7 +116,8 @@ public class CanvasService {
     /** Result of a node/edge mutation: the created/affected id + updated doc. */
     public record MutationResult(String id, DocumentDocument doc) {}
 
-    public MutationResult addNode(DocumentDocument doc, Map<String, Object> raw) {
+    public MutationResult addNode(DocumentDocument doc, Map<String, Object> raw,
+                                  @Nullable String userId) {
         CanvasDocument canvas = readDocument(doc);
         List<CanvasNode> nodes = new ArrayList<>(canvas.graph().nodes());
 
@@ -127,12 +133,12 @@ public class CanvasService {
         CanvasNode node = CanvasCodec.nodeFromMap(spec);
         nodes.add(node);
         DocumentDocument updated = writeDocument(doc,
-                canvas.withGraph(new CanvasGraph(nodes, canvas.graph().edges())));
+                canvas.withGraph(new CanvasGraph(nodes, canvas.graph().edges())), userId);
         return new MutationResult(id, updated);
     }
 
     public MutationResult updateNode(DocumentDocument doc, String nodeId,
-                                     Map<String, Object> patch) {
+                                     Map<String, Object> patch, @Nullable String userId) {
         CanvasDocument canvas = readDocument(doc);
         List<CanvasNode> nodes = new ArrayList<>(canvas.graph().nodes());
         int pos = indexOfNode(nodes, nodeId);
@@ -145,11 +151,12 @@ public class CanvasService {
         nodes.set(pos, updatedNode);
 
         DocumentDocument updated = writeDocument(doc,
-                canvas.withGraph(new CanvasGraph(nodes, canvas.graph().edges())));
+                canvas.withGraph(new CanvasGraph(nodes, canvas.graph().edges())), userId);
         return new MutationResult(nodeId, updated);
     }
 
-    public MutationResult deleteNode(DocumentDocument doc, String nodeId) {
+    public MutationResult deleteNode(DocumentDocument doc, String nodeId,
+                                     @Nullable String userId) {
         CanvasDocument canvas = readDocument(doc);
         List<CanvasNode> nodes = new ArrayList<>(canvas.graph().nodes());
         int pos = indexOfNode(nodes, nodeId);
@@ -162,13 +169,14 @@ public class CanvasService {
             if (!e.from().equals(nodeId) && !e.to().equals(nodeId)) edges.add(e);
         }
         DocumentDocument updated = writeDocument(doc,
-                canvas.withGraph(new CanvasGraph(nodes, edges)));
+                canvas.withGraph(new CanvasGraph(nodes, edges)), userId);
         return new MutationResult(nodeId, updated);
     }
 
     // ── Edge operations ───────────────────────────────────────────
 
-    public MutationResult addEdge(DocumentDocument doc, Map<String, Object> raw) {
+    public MutationResult addEdge(DocumentDocument doc, Map<String, Object> raw,
+                                  @Nullable String userId) {
         CanvasDocument canvas = readDocument(doc);
         List<CanvasNode> nodes = canvas.graph().nodes();
         List<CanvasEdge> edges = new ArrayList<>(canvas.graph().edges());
@@ -191,17 +199,18 @@ public class CanvasService {
         }
         edges.add(edge);
         DocumentDocument updated = writeDocument(doc,
-                canvas.withGraph(new CanvasGraph(nodes, edges)));
+                canvas.withGraph(new CanvasGraph(nodes, edges)), userId);
         return new MutationResult(id, updated);
     }
 
-    public MutationResult deleteEdge(DocumentDocument doc, String edgeId) {
+    public MutationResult deleteEdge(DocumentDocument doc, String edgeId,
+                                     @Nullable String userId) {
         CanvasDocument canvas = readDocument(doc);
         List<CanvasEdge> edges = new ArrayList<>(canvas.graph().edges());
         boolean removed = edges.removeIf(e -> e.id().equals(edgeId));
         if (!removed) throw new ToolException("No edge with id '" + edgeId + "'.");
         DocumentDocument updated = writeDocument(doc,
-                canvas.withGraph(new CanvasGraph(canvas.graph().nodes(), edges)));
+                canvas.withGraph(new CanvasGraph(canvas.graph().nodes(), edges)), userId);
         return new MutationResult(edgeId, updated);
     }
 

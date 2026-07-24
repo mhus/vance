@@ -66,7 +66,7 @@ public class CanvasNodeAddTool implements Tool {
         Map<String, Object> node = CanvasToolSupport.paramMap(params, "node");
         if (node.isEmpty()) throw new ToolException("node is required");
 
-        CanvasService.MutationResult res = canvasService.addNode(r.doc(), node);
+        CanvasService.MutationResult res = canvasService.addNode(r.doc(), node, ctx.userId());
         log.info("CanvasNodeAddTool path='{}' nodeId='{}'", r.doc().getPath(), res.id());
 
         Map<String, Object> result = new LinkedHashMap<>();

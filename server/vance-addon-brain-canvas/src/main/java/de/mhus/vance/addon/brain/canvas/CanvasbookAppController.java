@@ -137,7 +137,7 @@ public class CanvasbookAppController {
                                    HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.WRITE);
         DocumentDocument doc = requireCanvas(tenant, projectId, path);
-        DocumentDocument saved = canvasService.writeDocument(doc, CanvasDtoMapper.fromDto(body));
+        DocumentDocument saved = canvasService.writeDocument(doc, CanvasDtoMapper.fromDto(body), currentUser(request));
         return CanvasDtoMapper.toDto(canvasService.readDocument(saved));
     }
 

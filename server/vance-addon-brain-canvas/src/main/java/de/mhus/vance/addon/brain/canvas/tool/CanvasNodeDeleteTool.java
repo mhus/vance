@@ -62,7 +62,7 @@ public class CanvasNodeDeleteTool implements Tool {
         String id = CanvasToolSupport.paramString(params, "id");
         if (id == null) throw new ToolException("id is required");
 
-        CanvasService.MutationResult res = canvasService.deleteNode(r.doc(), id);
+        CanvasService.MutationResult res = canvasService.deleteNode(r.doc(), id, ctx.userId());
         log.info("CanvasNodeDeleteTool path='{}' nodeId='{}'", r.doc().getPath(), id);
 
         Map<String, Object> result = new LinkedHashMap<>();

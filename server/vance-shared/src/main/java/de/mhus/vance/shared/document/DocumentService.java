@@ -971,6 +971,9 @@ public class DocumentService {
             // ADMIN). See planning/permission-system-concept.md §4.3a.
             doc.setPrivileged(Boolean.parseBoolean(doc.getHeaders().get(PRIVILEGED_HEADER)));
         }
+        // Setting $meta.privileged is a runAs-authority escalation → Document
+        // ADMIN, on top of the CREATE check above (F1).
+        enforcePrivilegedAdmin(doc, actor);
         // isRagEligible respects the override set above: if ragEnabled=false
         // it returns false and we never enqueue an embed run.
         doc.setRagDirty(isRagEligible(doc));
@@ -1154,6 +1157,7 @@ public class DocumentService {
                         "Unknown document id='" + id + "'"));
         enforceWrite(doc.getTenantId(), doc.getProjectId(), doc.getPath(),
                 de.mhus.vance.shared.permission.Action.WRITE, actor);
+        enforcePrivilegedAdmin(doc, actor);
         requireWriteAllowed(doc, identity);
 
         // Buffer the new body so we can short-circuit no-op writes. The
@@ -1273,6 +1277,7 @@ public class DocumentService {
                         "Unknown document id='" + id + "'"));
         enforceWrite(doc.getTenantId(), doc.getProjectId(), doc.getPath(),
                 de.mhus.vance.shared.permission.Action.WRITE, actor);
+        enforcePrivilegedAdmin(doc, actor);
         requireWriteAllowed(doc, identity);
         if (bytes == null) {
             throw new IllegalArgumentException(
@@ -1674,6 +1679,7 @@ public class DocumentService {
                 .orElseThrow(() -> new IllegalArgumentException("Unknown document id='" + id + "'"));
         enforceWrite(doc.getTenantId(), doc.getProjectId(), doc.getPath(),
                 de.mhus.vance.shared.permission.Action.WRITE, actor);
+        enforcePrivilegedAdmin(doc, actor);
         requireWriteAllowed(doc, identity);
 
         // Lazy backfill for documents created before lineage-tracking
@@ -1920,6 +1926,7 @@ public class DocumentService {
                         "Unknown document id='" + liveDocId + "'"));
         enforceWrite(live.getTenantId(), live.getProjectId(), live.getPath(),
                 de.mhus.vance.shared.permission.Action.WRITE, actor);
+        enforcePrivilegedAdmin(live, actor);
         DocumentArchiveDocument archive = archiveService.findById(archiveId)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Unknown archive id='" + archiveId + "'"));
@@ -2351,6 +2358,7 @@ public class DocumentService {
         repository.findById(id).ifPresent(doc -> {
             enforceWrite(doc.getTenantId(), doc.getProjectId(), doc.getPath(),
                     de.mhus.vance.shared.permission.Action.DELETE, actor);
+            enforcePrivilegedAdmin(doc, actor);
             requireWriteAllowed(doc, identity);
             String sid = doc.getStorageId();
             if (sid != null) {
@@ -2433,6 +2441,7 @@ public class DocumentService {
                 .orElseThrow(() -> new IllegalArgumentException("Unknown document id='" + id + "'"));
         enforceWrite(doc.getTenantId(), doc.getProjectId(), doc.getPath(),
                 de.mhus.vance.shared.permission.Action.DELETE, actor);
+        enforcePrivilegedAdmin(doc, actor);
         requireWriteAllowed(doc, identity);
         if (isTrash(doc.getPath())) {
             log.debug("Document id='{}' is already in trash at path='{}'", id, doc.getPath());
@@ -2504,6 +2513,7 @@ public class DocumentService {
         }
         enforceWrite(doc.getTenantId(), doc.getProjectId(), target,
                 de.mhus.vance.shared.permission.Action.WRITE, actor);
+        enforcePrivilegedAdmin(doc, actor);
         if (repository.existsByTenantIdAndProjectIdAndPath(
                 doc.getTenantId(), doc.getProjectId(), target)) {
             throw new DocumentAlreadyExistsException(
@@ -3048,6 +3058,7 @@ public class DocumentService {
                         "Unknown document id='" + id + "'"));
         enforceWrite(doc.getTenantId(), doc.getProjectId(), doc.getPath(),
                 de.mhus.vance.shared.permission.Action.WRITE, actor);
+        enforcePrivilegedAdmin(doc, actor);
         java.util.Set<de.mhus.vance.api.documents.WriterRole> normalized = normalizeLockedFor(lockedFor);
         doc.setLockedFor(normalized);
         DocumentDocument saved = repository.save(doc);
@@ -3150,7 +3161,24 @@ public class DocumentService {
         DocumentDocument doc = repository.findById(id).orElse(null);
         if (doc == null) return null;
         enforceWrite(doc.getTenantId(), doc.getProjectId(), doc.getPath(), action, actor);
+        enforcePrivilegedAdmin(doc, actor);
         return doc;
+    }
+
+    /**
+     * Elevated-authority gate for the {@code $meta.privileged} flag (F1). A
+     * privileged document carries {@code runAs} execution authority, so it is
+     * admin-only in two senses: SETTING the flag (guarded at create) and
+     * MODIFYING an already-privileged document both require Document
+     * {@code ADMIN} — a plain WRITER must not plant or alter a runAs-carrying
+     * document. Enforced on top of the ordinary write check.
+     */
+    private void enforcePrivilegedAdmin(DocumentDocument doc,
+            de.mhus.vance.shared.permission.WriteActor actor) {
+        if (doc.isPrivileged()) {
+            enforceWrite(doc.getTenantId(), doc.getProjectId(), doc.getPath(),
+                    de.mhus.vance.shared.permission.Action.ADMIN, actor);
+        }
     }
 
     /**
@@ -3426,6 +3454,7 @@ public class DocumentService {
         // Notes are annotations → Document READ (see addNote), not WRITE.
         enforceWrite(doc.getTenantId(), doc.getProjectId(), doc.getPath(),
                 de.mhus.vance.shared.permission.Action.READ, actor);
+        enforcePrivilegedAdmin(doc, actor);
         Query query = Query.query(Criteria.where("_id").is(docId)
                 .and("notes." + noteId).exists(true));
         Update update = new Update().unset("notes." + noteId);

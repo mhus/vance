@@ -1,7 +1,9 @@
 package de.mhus.vance.foot.ui;
 
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
@@ -35,6 +37,22 @@ public class BusyIndicator {
     private final AtomicInteger inFlight = new AtomicInteger();
 
     /**
+     * Edge listeners (e.g. the sleep inhibitor). Notified only on the
+     * 0↔1 boundary transitions, never on nested enter/exit.
+     */
+    private final List<BusyListener> listeners;
+
+    /** No-arg constructor for unit tests that exercise the counter in isolation. */
+    public BusyIndicator() {
+        this(List.of());
+    }
+
+    @Autowired
+    public BusyIndicator(List<BusyListener> listeners) {
+        this.listeners = listeners;
+    }
+
+    /**
      * Mark a new in-flight operation. Pair with {@link #exit(String)} in a
      * finally. {@code source} is a free-form short label (e.g.
      * {@code "chat-roundtrip"}, {@code "engine_turn_start:web-research-x"})
@@ -43,12 +61,18 @@ public class BusyIndicator {
     public void enter(String source) {
         int depth = inFlight.incrementAndGet();
         log.info("BUSY enter source='{}' depth={}", source, depth);
+        if (depth == 1) {
+            fire(true);
+        }
     }
 
     /** Decrement the in-flight counter. Idempotent at zero. */
     public void exit(String source) {
         int depth = inFlight.updateAndGet(n -> n > 0 ? n - 1 : 0);
         log.info("BUSY exit source='{}' depth={}", source, depth);
+        if (depth == 0) {
+            fire(false);
+        }
     }
 
     /**
@@ -63,6 +87,27 @@ public class BusyIndicator {
         int prior = inFlight.getAndSet(0);
         if (prior > 0) {
             log.info("BUSY clear (prior depth={})", prior);
+            fire(false);
+        }
+    }
+
+    /**
+     * Notify edge listeners. Runs on the caller's thread; a throwing or
+     * slow listener must never corrupt the counter, so every callback is
+     * isolated in its own try/catch.
+     */
+    private void fire(boolean started) {
+        for (BusyListener l : listeners) {
+            try {
+                if (started) {
+                    l.onBusyStart();
+                } else {
+                    l.onBusyEnd();
+                }
+            } catch (RuntimeException e) {
+                log.trace("BusyListener {} failed on {}", l.getClass().getSimpleName(),
+                        started ? "start" : "end", e);
+            }
         }
     }
 

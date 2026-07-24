@@ -25,6 +25,7 @@ public class FootConfig {
     private Bootstrap bootstrap = new Bootstrap();
     private Ui ui = new Ui();
     private Ide ide = new Ide();
+    private SleepGuard sleepGuard = new SleepGuard();
 
     @Data
     public static class Brain {
@@ -339,6 +340,31 @@ public class FootConfig {
          * Empty map = engine defaults.
          */
         private Map<String, Object> params = new LinkedHashMap<>();
+    }
+
+    /**
+     * Keep the host machine awake while the brain is working. Long
+     * agent turns (research, multi-step worker trees) can run for many
+     * minutes with no keyboard/mouse activity, so the OS would suspend
+     * to sleep mid-flight and drop the WebSocket. When enabled, foot
+     * asks the OS to inhibit <em>idle system sleep</em> for the exact
+     * span the {@link de.mhus.vance.foot.ui.BusyIndicator} reports work
+     * in flight, then lets it sleep normally again once idle.
+     *
+     * <p>Implemented via the platform's native, headless inhibitor —
+     * {@code caffeinate} (macOS), {@code systemd-inhibit} (Linux),
+     * {@code SetThreadExecutionState} through a hidden PowerShell
+     * (Windows). No GUI, no window, no synthetic input. The display is
+     * intentionally allowed to sleep — only system suspend is blocked.
+     */
+    @Data
+    public static class SleepGuard {
+        /**
+         * Master switch. Default {@code true}. Set to {@code false} to
+         * let the machine follow its normal sleep policy even while a
+         * chat round-trip or worker turn is running.
+         */
+        private boolean enabled = true;
     }
 }
 

@@ -1,14 +1,18 @@
 package de.mhus.vance.addon.brain.finance;
 
 import de.mhus.vance.addon.brain.finance.model.FinanceComputed;
+import de.mhus.vance.addon.brain.finance.model.FinanceNode;
 import de.mhus.vance.addon.brain.finance.model.FinanceProjection;
 import de.mhus.vance.addon.brain.finance.model.FinanceTreeDocument;
+import de.mhus.vance.addon.brain.finance.model.FinanceValue;
 import de.mhus.vance.addon.brain.finance.model.NodeSnapshot;
 import de.mhus.vance.addon.brain.finance.model.PeriodUnit;
+import de.mhus.vance.addon.brain.finance.report.FinanceReport;
 import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.toolpack.ToolException;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -16,6 +20,9 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
@@ -45,6 +52,70 @@ public class FinanceService {
                           SecurityContextFactory contextFactory) {
         this.documentService = documentService;
         this.contextFactory = contextFactory;
+    }
+
+    // ── Create ────────────────────────────────────────────────────
+
+    /** Create a new empty {@code finance-tree} document (no root yet). */
+    public DocumentDocument create(String tenantId, String projectId, String path,
+                                   @Nullable String title, @Nullable String description,
+                                   @Nullable String userId) {
+        String normalised = ensureExtension(path.trim());
+        Optional<DocumentDocument> existing =
+                documentService.findByPath(tenantId, projectId, normalised);
+        if (existing.isPresent()) {
+            throw new ToolException("A finance-tree already exists at '" + normalised + "'.");
+        }
+        String mime = mimeForPath(normalised);
+        String body = FinanceTreeCodec.serialize(FinanceTreeDocument.empty(title, description), mime);
+        try (InputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
+            DocumentDocument stored = documentService.create(
+                    tenantId, projectId, normalised, title, List.of(KIND), mime, in, userId,
+                    contextFactory.writeActor(tenantId, userId, normalised));
+            log.info("FinanceService.create path='{}'", normalised);
+            return stored;
+        } catch (IOException e) {
+            throw new ToolException(
+                    "Could not write finance-tree '" + normalised + "': " + e.getMessage());
+        }
+    }
+
+    /** Persist a generated report as a new document (its kind lives in the body). */
+    public DocumentDocument createReport(String tenantId, String projectId, String path,
+                                         FinanceReport report, @Nullable String userId) {
+        try (InputStream in = new ByteArrayInputStream(
+                report.body().getBytes(StandardCharsets.UTF_8))) {
+            return documentService.create(
+                    tenantId, projectId, path.trim(), null, List.of(report.outputKind()),
+                    report.mimeType(), in, userId,
+                    contextFactory.writeActor(tenantId, userId, path.trim()));
+        } catch (IOException e) {
+            throw new ToolException("Could not write report '" + path + "': " + e.getMessage());
+        }
+    }
+
+    // ── Node / value mutations (read-modify-write) ────────────────
+
+    public DocumentDocument addNode(DocumentDocument doc, @Nullable String parentName,
+                                    FinanceNode child, @Nullable String userId) {
+        return writeDocument(doc, FinanceTreeOps.addChild(readDocument(doc), parentName, child),
+                null, userId);
+    }
+
+    public DocumentDocument updateNode(DocumentDocument doc, String name,
+                                       Map<String, Object> patch, @Nullable String userId) {
+        return writeDocument(doc, FinanceTreeOps.updateNode(readDocument(doc), name, patch),
+                null, userId);
+    }
+
+    public DocumentDocument removeNode(DocumentDocument doc, String name, @Nullable String userId) {
+        return writeDocument(doc, FinanceTreeOps.removeNode(readDocument(doc), name), null, userId);
+    }
+
+    public DocumentDocument setValues(DocumentDocument doc, String name,
+                                      List<FinanceValue> values, @Nullable String userId) {
+        return writeDocument(doc, FinanceTreeOps.setValues(readDocument(doc), name, values),
+                null, userId);
     }
 
     // ── Read / write ──────────────────────────────────────────────
@@ -111,5 +182,18 @@ public class FinanceService {
             throw new ToolException(
                     "Could not load finance-tree '" + doc.getPath() + "': " + e.getMessage());
         }
+    }
+
+    private static String ensureExtension(String path) {
+        String lower = path.toLowerCase(Locale.ROOT);
+        if (lower.endsWith(".yaml") || lower.endsWith(".yml") || lower.endsWith(".json")) {
+            return path;
+        }
+        if (lower.endsWith(".finance-tree")) return path + ".yaml";
+        return path + ".finance-tree.yaml";
+    }
+
+    private static String mimeForPath(String path) {
+        return path.toLowerCase(Locale.ROOT).endsWith(".json") ? "application/json" : DEFAULT_MIME;
     }
 }

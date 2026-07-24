@@ -44,9 +44,16 @@ public class SuspendSweeper {
         List<SessionDocument> due = sessionService.findOverdueSuspended(cutoff);
         if (due.isEmpty()) return;
         log.info("Suspend-sweeper: {} session(s) due for transition", due.size());
-        for (SessionDocument session : due) {
-            // Re-check status — another pod may have raced us.
-            if (session.getStatus() != SessionStatus.SUSPENDED) continue;
+        for (SessionDocument stale : due) {
+            // Re-check from a FRESH read — the doc in `due` is a snapshot from
+            // the query and may be stale (a user reconnect could have resumed
+            // the session to IDLE since). Acting on the stale SUSPENDED would
+            // archive/close a freshly-resumed, actively-used session. The
+            // guarded archive()/close() writes are the last line of defence;
+            // this narrows the window before the engine-stop cascade runs.
+            SessionDocument session = sessionService.findBySessionId(stale.getSessionId())
+                    .orElse(null);
+            if (session == null || session.getStatus() != SessionStatus.SUSPENDED) continue;
             try {
                 if (abandonedSessionEvaluator.isAbandoned(session)) {
                     lifecycleService.closeWithCascade(

@@ -797,7 +797,10 @@ public class SessionService {
      * <em>after</em> all of the session's processes have been stopped.
      */
     public void close(String sessionId) {
-        Query query = new Query(Criteria.where(F_SESSION_ID).is(sessionId));
+        SessionDocument session = repository.findBySessionId(sessionId).orElse(null);
+        if (session == null || session.getStatus() == SessionStatus.CLOSED) {
+            return;
+        }
         Update update = new Update()
                 .set(F_STATUS, SessionStatus.CLOSED)
                 .set(F_BOUND_CONNECTION, null)
@@ -805,7 +808,15 @@ public class SessionService {
                 .unset(F_SUSPENDED_AT)
                 .unset(F_SUSPEND_CAUSE)
                 .unset(F_TRANSITION_AT);
-        UpdateResult result = mongoTemplate.updateFirst(query, update, SessionDocument.class);
+        // Guard on the observed status (TOCTOU): if the session transitioned
+        // concurrently between the read and here — e.g. a user reconnect resumed
+        // a SUSPENDED session to IDLE while the suspend-sweeper was closing it —
+        // the update no-ops instead of clobbering the freshly-resumed session to
+        // CLOSED (killing its running engines). Mirrors suspend()/resume().
+        UpdateResult result = mongoTemplate.updateFirst(
+                new Query(Criteria.where(F_SESSION_ID).is(sessionId)
+                        .and(F_STATUS).is(session.getStatus())),
+                update, SessionDocument.class);
         if (result.getModifiedCount() == 1) {
             log.info("Closed session '{}'", sessionId);
         }
@@ -834,10 +845,18 @@ public class SessionService {
                 .unset(F_SUSPENDED_AT)
                 .unset(F_SUSPEND_CAUSE)
                 .unset(F_TRANSITION_AT);
-        mongoTemplate.updateFirst(
-                new Query(Criteria.where(F_SESSION_ID).is(sessionId)),
+        // Guard on the observed status (TOCTOU): if the session transitioned
+        // concurrently between the read above and here — e.g. a user reconnect
+        // resumed a SUSPENDED session to IDLE while the suspend-sweeper was
+        // archiving it — the update no-ops instead of clobbering the
+        // freshly-resumed session to ARCHIVED. Mirrors suspend()/resume().
+        UpdateResult result = mongoTemplate.updateFirst(
+                new Query(Criteria.where(F_SESSION_ID).is(sessionId)
+                        .and(F_STATUS).is(session.getStatus())),
                 update, SessionDocument.class);
-        log.info("Archived session '{}'", sessionId);
+        if (result.getModifiedCount() == 1) {
+            log.info("Archived session '{}'", sessionId);
+        }
     }
 
     /**

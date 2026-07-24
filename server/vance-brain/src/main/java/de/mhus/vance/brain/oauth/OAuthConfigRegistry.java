@@ -78,26 +78,25 @@ public class OAuthConfigRegistry {
         TenantScope scope = scopes.get(tenantId);
         if (scope == null) return false;
         String norm = OAuthProviderLoader.normalizedName(providerId);
-        Optional<OAuthProviderConfig> reloaded;
+        // Copy-and-swap the whole scope — never mutate a published entries map in
+        // place. resolve()/list() read entries locklessly, so a structural
+        // put/remove on the live LinkedHashMap can hand them a half-linked map
+        // (CME / corrupt read). Mirror bootstrapTenant's atomic swap.
+        Map<String, ResolvedOAuthProvider> next = new LinkedHashMap<>(scope.entries);
+        ResolvedOAuthProvider resolved = null;
         try {
-            reloaded = loader.load(tenantId, norm);
+            resolved = loader.load(tenantId, norm).map(this::resolveBeanFor).orElse(null);
         } catch (OAuthProviderLoader.OAuthProviderParseException ex) {
             log.warn("OAuthConfigRegistry refreshOne parse failed '{}/{}': {}",
                     tenantId, norm, ex.getMessage());
-            scope.entries.remove(norm);
-            return false;
         }
-        if (reloaded.isEmpty()) {
-            scope.entries.remove(norm);
-            return false;
-        }
-        ResolvedOAuthProvider resolved = resolveBeanFor(reloaded.get());
         if (resolved == null) {
-            scope.entries.remove(norm);
-            return false;
+            next.remove(norm);
+        } else {
+            next.put(norm, resolved);
         }
-        scope.entries.put(norm, resolved);
-        return true;
+        scopes.put(tenantId, new TenantScope(next));
+        return resolved != null;
     }
 
     // ──────────────────── Read API ────────────────────
@@ -144,12 +143,17 @@ public class OAuthConfigRegistry {
         return new ResolvedOAuthProvider(cfg, bean.get());
     }
 
-    /** Mutable per-tenant container — accessed under the registry-level lock. */
+    /**
+     * Immutable per-tenant container. {@code entries} is never mutated after
+     * publication — every change (bootstrap / refreshOne) builds a fresh scope
+     * and atomically swaps it into {@code scopes}, so lockless readers always
+     * see a consistent, fully-linked map (insertion order preserved).
+     */
     private static final class TenantScope {
         final Map<String, ResolvedOAuthProvider> entries;
 
         TenantScope(Map<String, ResolvedOAuthProvider> entries) {
-            this.entries = new LinkedHashMap<>(entries);
+            this.entries = java.util.Collections.unmodifiableMap(new LinkedHashMap<>(entries));
         }
     }
 }

@@ -35,6 +35,10 @@ class DamogranComposeServiceTest {
     @BeforeEach
     void setUp() {
         workspaceService = mock(WorkspaceService.class);
+        // provision() now runs its find-or-create under withLabelLock; make the
+        // mock a pass-through so the supplier executes.
+        when(workspaceService.withLabelLock(any(), any(), any(), any()))
+                .thenAnswer(inv -> ((java.util.function.Supplier<?>) inv.getArgument(3)).get());
         workTargetService = mock(WorkTargetService.class);
         taskExecutor = mock(DamogranTaskExecutor.class);
         transport = mock(DamogranTransport.class);

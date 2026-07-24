@@ -152,33 +152,40 @@ public class WorkspaceComposeRunner implements ComposeRunner {
      * reuse is a hard error.
      */
     private RootDirHandle provision(String tenantId, String projectId, WorkspaceSpec ws) {
-        Optional<RootDirHandle> existing =
-                workspaceService.listRootDirs(tenantId, projectId).stream()
-                        .filter(h -> ws.name().equals(h.getDescriptor().getLabel()))
-                        .findFirst();
+        // Whole find-or-create is atomic per (tenant, project, label): two
+        // parallel compose runs with the same workspace.name (virtual threads)
+        // otherwise both saw "no RootDir", both created one → duplicate dirs
+        // with the same label, and clear=true let one dispose the other's
+        // fresh dir. See WorkspaceService.withLabelLock.
+        return workspaceService.withLabelLock(tenantId, projectId, ws.name(), () -> {
+            Optional<RootDirHandle> existing =
+                    workspaceService.listRootDirs(tenantId, projectId).stream()
+                            .filter(h -> ws.name().equals(h.getDescriptor().getLabel()))
+                            .findFirst();
 
-        if (existing.isPresent()) {
-            RootDirHandle handle = existing.get();
-            if (!ws.clear()) {
-                if (!handle.getType().equals(ws.type())) {
-                    throw new DamogranException("workspace '" + ws.name()
-                            + "' already exists with type '" + handle.getType()
-                            + "', requested '" + ws.type() + "'");
+            if (existing.isPresent()) {
+                RootDirHandle handle = existing.get();
+                if (!ws.clear()) {
+                    if (!handle.getType().equals(ws.type())) {
+                        throw new DamogranException("workspace '" + ws.name()
+                                + "' already exists with type '" + handle.getType()
+                                + "', requested '" + ws.type() + "'");
+                    }
+                    return handle;
                 }
-                return handle;
+                workspaceService.disposeRootDir(tenantId, projectId, handle.getDirName());
             }
-            workspaceService.disposeRootDir(tenantId, projectId, handle.getDirName());
-        }
 
-        RootDirSpec spec = RootDirSpec.builder()
-                .tenantId(tenantId)
-                .projectId(projectId)
-                .type(ws.type())
-                .creatorProcessId(WORKSPACE_CREATOR)
-                .labelHint(ws.name())
-                .deleteOnCreatorClose(false)
-                .metadata(ws.options())
-                .build();
-        return workspaceService.createRootDir(spec);
+            RootDirSpec spec = RootDirSpec.builder()
+                    .tenantId(tenantId)
+                    .projectId(projectId)
+                    .type(ws.type())
+                    .creatorProcessId(WORKSPACE_CREATOR)
+                    .labelHint(ws.name())
+                    .deleteOnCreatorClose(false)
+                    .metadata(ws.options())
+                    .build();
+            return workspaceService.createRootDir(spec);
+        });
     }
 }

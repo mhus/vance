@@ -88,6 +88,7 @@ public class UrsaSchedulerService {
     private final de.mhus.vance.shared.metric.MetricService metricService;
     /** LLM-facing materialised log of every run — see {@link SchedulerLogService}. */
     private final SchedulerLogService schedulerLogService;
+    private final UrsaFireClaimService fireClaimService;
     /** For auto-disable notifications — see {@link #autoDisableScheduler}. */
     private final InboxItemService inboxItemService;
 
@@ -425,7 +426,20 @@ public class UrsaSchedulerService {
     /** Crash-safe wrapper around {@link #fire} for the cron-thread path. */
     private void safeFire(Registration reg) {
         try {
-            fire(reg, "cron", "run_" + UUID.randomUUID(), Instant.now());
+            Instant now = Instant.now();
+            // Cross-pod claim before firing: during a project handover two pods
+            // can briefly both hold this scheduler and both tick. The atomic
+            // per-(scheduler, second-slot) claim lets exactly one fire; the
+            // loser skips. Manual fireNow bypasses this (calls fire directly).
+            Instant slot = now.truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+            if (!fireClaimService.claim(
+                    reg.tenantId, reg.projectId, reg.config.name(), slot)) {
+                log.debug("Scheduler '{}/{}/{}' tick slot {} already claimed by "
+                                + "another pod — skipping",
+                        reg.tenantId, reg.projectId, reg.config.name(), slot);
+                return;
+            }
+            fire(reg, "cron", "run_" + UUID.randomUUID(), now);
         } catch (RuntimeException ex) {
             log.error("Scheduler '{}/{}/{}' tick failed: {}",
                     reg.tenantId, reg.projectId, reg.config.name(), ex.toString(), ex);

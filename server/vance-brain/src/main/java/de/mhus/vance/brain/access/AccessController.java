@@ -248,6 +248,18 @@ public class AccessController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
+        // Only a login-issued ACCESS token may be re-minted. A SCRIPT_RUN token
+        // is a confined, loopback-bound, job-lifetime credential (the filter
+        // accepts it for content/ws routes) — refreshing it would exchange it for
+        // an unconfined, renewable 24h ACCESS token for the spawning user.
+        Object claimsAttr = request.getAttribute(AccessFilterBase.ATTR_CLAIMS);
+        if (!(claimsAttr instanceof VanceJwtClaims claims)
+                || claims.tokenType() != TokenType.ACCESS) {
+            log.debug("Refresh rejected: only ACCESS tokens are refreshable (tenant='{}' type={})",
+                    tenant, claimsAttr instanceof VanceJwtClaims c ? c.tokenType() : "none");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
         Optional<UserDocument> userOpt = userService.findByTenantAndName(tenant, username);
         if (userOpt.isEmpty() || userOpt.get().getStatus() != UserStatus.ACTIVE) {
             log.debug("Refresh rejected: user inactive or missing tenant='{}' name='{}'", tenant, username);

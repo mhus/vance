@@ -12,6 +12,8 @@ import de.mhus.vance.shared.access.WebUiCookies;
 import de.mhus.vance.shared.audit.AuditService;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.jwt.JwtService;
+import de.mhus.vance.api.access.RefreshTokenResponse;
+import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.jwt.TokenType;
 import de.mhus.vance.shared.jwt.VanceJwtClaims;
 import de.mhus.vance.shared.password.PasswordService;
@@ -591,6 +593,39 @@ class AccessControllerTest {
     }
 
     // ──────────────── Helpers ────────────────
+
+    // ──────────────── POST /refresh token-type gate (code-review-2) ────────────────
+
+    @Test
+    void refreshToken_withScriptRunToken_returns401_andNeverReMints() {
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getAttribute(AccessFilterBase.ATTR_USERNAME)).thenReturn(USERNAME);
+        when(req.getAttribute(AccessFilterBase.ATTR_CLAIMS)).thenReturn(
+                VanceJwtClaims.scriptRun(USERNAME, TENANT, null, null, "run-1", "proj", "sess"));
+
+        ResponseEntity<RefreshTokenResponse> resp = controller.refreshToken(TENANT, req);
+
+        assertThat(resp.getStatusCode().value()).isEqualTo(401);
+        // A confined SCRIPT_RUN token must never be exchanged for a fresh ACCESS token.
+        verify(jwtService, never()).createToken(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(Instant.class));
+    }
+
+    @Test
+    void refreshToken_withAccessToken_returns200() {
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getAttribute(AccessFilterBase.ATTR_USERNAME)).thenReturn(USERNAME);
+        when(req.getAttribute(AccessFilterBase.ATTR_CLAIMS)).thenReturn(
+                VanceJwtClaims.user(USERNAME, TENANT, null, null, TokenType.ACCESS));
+        when(jwtService.createToken(eqTenant(), eqUsername(), anyInstant()))
+                .thenReturn("fresh-access");
+
+        ResponseEntity<RefreshTokenResponse> resp = controller.refreshToken(TENANT, req);
+
+        assertThat(resp.getStatusCode().value()).isEqualTo(200);
+    }
 
     private static HttpServletRequest emptyRequest() {
         // Stand-in for the HttpServletRequest the controller expects.

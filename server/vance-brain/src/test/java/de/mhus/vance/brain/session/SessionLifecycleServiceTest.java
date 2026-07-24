@@ -180,6 +180,26 @@ class SessionLifecycleServiceTest {
     }
 
     @Test
+    void suspendCascade_catchesChildSpawnedMidCascade() {
+        // Regression (code-review-2 S5): a child think-process spawned by an
+        // in-flight turn AFTER the initial snapshot must still be suspended,
+        // not escape into a SUSPENDED session. The re-scan surfaces it: the
+        // first scan sees only p-1, the second scan (after p-1's turn spawned
+        // it) also returns the child p-2.
+        stubSession("s-1", SessionStatus.RUNNING, DisconnectPolicy.SUSPEND);
+        ThinkProcessDocument p1 = process("p-1", ThinkProcessStatus.RUNNING);
+        ThinkProcessDocument p2Child = process("p-2", ThinkProcessStatus.RUNNING);
+        when(thinkProcessService.findBySession(any(), eq("s-1")))
+                .thenReturn(List.of(p1), List.of(p1, p2Child));
+
+        lifecycle.suspendCascade("s-1", SuspendCause.IDLE);
+
+        verify(engineService, times(1)).suspend(p1);
+        verify(engineService, times(1)).suspend(p2Child); // caught by the re-scan
+        verify(sessionService).suspend(eq("s-1"), eq(SuspendCause.IDLE), anyLong());
+    }
+
+    @Test
     void suspendCascade_engineFailure_fallsBackToServiceUpdate() {
         stubSession("s-1", SessionStatus.RUNNING, DisconnectPolicy.SUSPEND);
         ThinkProcessDocument p1 = process("p-1", ThinkProcessStatus.RUNNING);

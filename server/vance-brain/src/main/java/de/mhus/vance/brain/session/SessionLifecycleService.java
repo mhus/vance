@@ -115,32 +115,28 @@ public class SessionLifecycleService {
             return;
         }
         log.info("Suspend cascade sessionId='{}' cause={}", sessionId, cause);
-        List<ThinkProcessDocument> processes = thinkProcessService.findBySession(
-                session.getTenantId(), sessionId);
         ThinkEngineService engines = thinkEngineServiceProvider.getObject();
-        List<CompletableFuture<Void>> futures = new ArrayList<>();
-        List<String> laneIdsToForget = new ArrayList<>();
-        for (ThinkProcessDocument p : processes) {
-            if (p.getStatus() == ThinkProcessStatus.CLOSED) {
-                continue;
-            }
-            laneIdsToForget.add(p.getId());
-            if (p.getStatus() == ThinkProcessStatus.SUSPENDED) {
-                continue;
-            }
-            futures.add(laneScheduler.submit(p.getId(), () -> {
-                try {
-                    engines.suspend(p);
-                } catch (RuntimeException e) {
-                    log.warn("engine.suspend failed during cascade id='{}': {}",
-                            p.getId(), e.toString());
-                    thinkProcessService.updateStatus(
-                            p.getId(), ThinkProcessStatus.SUSPENDED);
-                }
-                return null;
-            }));
-        }
-        joinAll(futures);
+        // Drain with re-scan: a child think-process spawned by an in-flight turn
+        // AFTER the initial snapshot but before the terminal flip would otherwise
+        // escape the cascade (running process outside a SUSPENDED session). The
+        // loop re-scans until no new non-terminal process appears.
+        List<String> laneIdsToForget = drainSessionProcesses(
+                session.getTenantId(), sessionId, p -> {
+                    if (p.getStatus() == ThinkProcessStatus.SUSPENDED) {
+                        return null; // already suspended — only its lane needs forgetting
+                    }
+                    return laneScheduler.submit(p.getId(), () -> {
+                        try {
+                            engines.suspend(p);
+                        } catch (RuntimeException e) {
+                            log.warn("engine.suspend failed during cascade id='{}': {}",
+                                    p.getId(), e.toString());
+                            thinkProcessService.updateStatus(
+                                    p.getId(), ThinkProcessStatus.SUSPENDED);
+                        }
+                        return null;
+                    });
+                });
         // Memory cleanup: drop each suspended process's lane and per-engine
         // state so a SUSPENDED session lives only in MongoDB. The lane map
         // would otherwise grow monotonically over the pod's lifetime.
@@ -177,26 +173,21 @@ public class SessionLifecycleService {
         if (session == null) return;
         if (session.getStatus() == SessionStatus.CLOSED) return;
         log.info("Close cascade sessionId='{}' reason={}", sessionId, reason);
-        List<ThinkProcessDocument> processes = thinkProcessService.findBySession(
-                session.getTenantId(), sessionId);
         ThinkEngineService engines = thinkEngineServiceProvider.getObject();
-        List<CompletableFuture<Void>> futures = new ArrayList<>();
-        List<String> closedProcessIds = new ArrayList<>();
-        for (ThinkProcessDocument p : processes) {
-            closedProcessIds.add(p.getId());
-            if (p.getStatus() == ThinkProcessStatus.CLOSED) continue;
-            futures.add(laneScheduler.submit(p.getId(), () -> {
-                try {
-                    engines.stop(p);
-                } catch (RuntimeException e) {
-                    log.warn("engine.stop failed during cascade id='{}': {}",
-                            p.getId(), e.toString());
-                    thinkProcessService.closeProcess(p.getId(), CloseReason.STOPPED);
-                }
-                return null;
-            }));
-        }
-        joinAll(futures);
+        // Drain with re-scan (see suspendCascade) so a mid-cascade-spawned child
+        // is stopped too rather than escaping into a CLOSED session.
+        List<String> closedProcessIds = drainSessionProcesses(
+                session.getTenantId(), sessionId, p ->
+                        laneScheduler.submit(p.getId(), () -> {
+                            try {
+                                engines.stop(p);
+                            } catch (RuntimeException e) {
+                                log.warn("engine.stop failed during cascade id='{}': {}",
+                                        p.getId(), e.toString());
+                                thinkProcessService.closeProcess(p.getId(), CloseReason.STOPPED);
+                            }
+                            return null;
+                        }));
         // Engines closed with reason=STOPPED — re-stamp to the cascade's
         // audit reason for everything that actually went through stop.
         // closeProcess is idempotent, but our overrideCloseReason only
@@ -229,26 +220,21 @@ public class SessionLifecycleService {
             return;
         }
         log.info("Archive cascade sessionId='{}'", sessionId);
-        List<ThinkProcessDocument> processes = thinkProcessService.findBySession(
-                session.getTenantId(), sessionId);
         ThinkEngineService engines = thinkEngineServiceProvider.getObject();
-        List<CompletableFuture<Void>> futures = new ArrayList<>();
-        List<String> closedProcessIds = new ArrayList<>();
-        for (ThinkProcessDocument p : processes) {
-            closedProcessIds.add(p.getId());
-            if (p.getStatus() == ThinkProcessStatus.CLOSED) continue;
-            futures.add(laneScheduler.submit(p.getId(), () -> {
-                try {
-                    engines.stop(p);
-                } catch (RuntimeException e) {
-                    log.warn("engine.stop failed during archive cascade id='{}': {}",
-                            p.getId(), e.toString());
-                    thinkProcessService.closeProcess(p.getId(), CloseReason.STOPPED);
-                }
-                return null;
-            }));
-        }
-        joinAll(futures);
+        // Drain with re-scan (see suspendCascade) so a mid-cascade-spawned child
+        // is stopped too rather than escaping into an ARCHIVED session.
+        List<String> closedProcessIds = drainSessionProcesses(
+                session.getTenantId(), sessionId, p ->
+                        laneScheduler.submit(p.getId(), () -> {
+                            try {
+                                engines.stop(p);
+                            } catch (RuntimeException e) {
+                                log.warn("engine.stop failed during archive cascade id='{}': {}",
+                                        p.getId(), e.toString());
+                                thinkProcessService.closeProcess(p.getId(), CloseReason.STOPPED);
+                            }
+                            return null;
+                        }));
         for (String id : closedProcessIds) {
             thinkProcessService.overrideCloseReason(id, CloseReason.ARCHIVED);
         }
@@ -589,5 +575,57 @@ public class SessionLifecycleService {
                 // Already logged at the lane callback's catch.
             }
         }
+    }
+
+    /** Round cap for the cascade drain loop — a backstop against a runaway spawner. */
+    private static final int MAX_CASCADE_ROUNDS = 8;
+
+    /**
+     * Applies {@code action} to every non-CLOSED think-process of the session,
+     * re-scanning after each round until a scan surfaces no new non-terminal
+     * process (stable) or {@link #MAX_CASCADE_ROUNDS} is hit.
+     *
+     * <p>Closes the mid-cascade-spawn window: the lifecycle cascades used to
+     * snapshot the process set once, submit their engine actions, join, then
+     * flip the session terminal. A child spawned by an in-flight turn (which is
+     * serialized on a lane and thus runs after the snapshot) escaped — a running
+     * process outside a SUSPENDED/CLOSED/ARCHIVED session. Re-scanning catches it
+     * before the flip.
+     *
+     * @param action submits the per-process engine action and returns its future,
+     *               or {@code null} to record the id without an action (e.g. an
+     *               already-SUSPENDED process that only needs its lane forgotten)
+     * @return the ids of every non-CLOSED process handled, across all rounds
+     */
+    private List<String> drainSessionProcesses(
+            String tenantId, String sessionId,
+            java.util.function.Function<ThinkProcessDocument, CompletableFuture<Void>> action) {
+        java.util.LinkedHashSet<String> handled = new java.util.LinkedHashSet<>();
+        boolean stable = false;
+        int rounds = 0;
+        while (rounds++ < MAX_CASCADE_ROUNDS) {
+            List<ThinkProcessDocument> processes =
+                    thinkProcessService.findBySession(tenantId, sessionId);
+            List<CompletableFuture<Void>> futures = new ArrayList<>();
+            boolean sawNew = false;
+            for (ThinkProcessDocument p : processes) {
+                if (p.getStatus() == ThinkProcessStatus.CLOSED) continue;
+                if (!handled.add(p.getId())) continue;
+                sawNew = true;
+                CompletableFuture<Void> f = action.apply(p);
+                if (f != null) futures.add(f);
+            }
+            if (!sawNew) {
+                stable = true;
+                break;
+            }
+            joinAll(futures);
+        }
+        if (!stable) {
+            log.warn("Session cascade '{}' hit the {}-round drain cap — a process may still "
+                    + "be spawning children; proceeding to the terminal flip", sessionId,
+                    MAX_CASCADE_ROUNDS);
+        }
+        return new ArrayList<>(handled);
     }
 }

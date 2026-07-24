@@ -1,10 +1,12 @@
 package de.mhus.vance.addon.brain.finance;
 
+import de.mhus.vance.addon.brain.finance.model.FinanceComputed;
 import de.mhus.vance.addon.brain.finance.model.FinanceInterest;
 import de.mhus.vance.addon.brain.finance.model.FinanceNode;
 import de.mhus.vance.addon.brain.finance.model.FinanceTreeDocument;
 import de.mhus.vance.addon.brain.finance.model.FinanceValue;
 import de.mhus.vance.addon.brain.finance.model.InterestBasis;
+import de.mhus.vance.addon.brain.finance.model.NodeSnapshot;
 import de.mhus.vance.addon.brain.finance.model.Period;
 import de.mhus.vance.addon.brain.finance.model.PeriodUnit;
 import de.mhus.vance.addon.brain.finance.model.ValueMode;
@@ -58,8 +60,19 @@ public final class FinanceTreeCodec {
     }
 
     public static String serialize(FinanceTreeDocument doc, @Nullable String mimeType) {
-        if (isJson(mimeType)) return serializeJson(doc);
-        if (isYaml(mimeType)) return KindHeaderCodec.dumpYamlBody(KIND, buildBody(doc));
+        return serialize(doc, null, mimeType);
+    }
+
+    /**
+     * Serialise with an optional computed overlay written under
+     * {@code $computed}. The overlay is derived data — dropped on the next
+     * {@link #parse} (parse reads only the input keys), so a recompute simply
+     * rewrites it.
+     */
+    public static String serialize(FinanceTreeDocument doc, @Nullable FinanceComputed computed,
+                                   @Nullable String mimeType) {
+        if (isJson(mimeType)) return serializeJson(doc, computed);
+        if (isYaml(mimeType)) return KindHeaderCodec.dumpYamlBody(KIND, buildBody(doc, computed));
         throw new KindCodecException("Unsupported mime type for finance-tree: " + mimeType);
     }
 
@@ -102,8 +115,8 @@ public final class FinanceTreeCodec {
 
     // ── Serialize ─────────────────────────────────────────────────
 
-    private static String serializeJson(FinanceTreeDocument doc) {
-        Map<String, Object> wrapped = KindHeaderCodec.wrapJsonMeta(KIND, buildBody(doc));
+    private static String serializeJson(FinanceTreeDocument doc, @Nullable FinanceComputed computed) {
+        Map<String, Object> wrapped = KindHeaderCodec.wrapJsonMeta(KIND, buildBody(doc, computed));
         try {
             return JSON.writerWithDefaultPrettyPrinter().writeValueAsString(wrapped) + "\n";
         } catch (JacksonException e) {
@@ -111,13 +124,39 @@ public final class FinanceTreeCodec {
         }
     }
 
-    private static Map<String, Object> buildBody(FinanceTreeDocument doc) {
+    private static Map<String, Object> buildBody(FinanceTreeDocument doc,
+                                                 @Nullable FinanceComputed computed) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("version", doc.version());
         if (doc.title() != null) body.put("title", doc.title());
         if (doc.description() != null) body.put("description", doc.description());
         if (doc.root() != null) body.put("root", nodeToMap(doc.root()));
+        if (computed != null) body.put("$computed", computedToMap(computed));
         return body;
+    }
+
+    private static Map<String, Object> computedToMap(FinanceComputed c) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        if (c.computedAt() != null) m.put("computedAt", c.computedAt());
+        Map<String, Object> nodes = new LinkedHashMap<>();
+        for (NodeSnapshot s : c.nodes()) {
+            Map<String, Object> n = new LinkedHashMap<>();
+            n.put("perYear", round(s.perYear()));
+            n.put("perMonth", round(s.perMonth()));
+            n.put("perWeek", round(s.perWeek()));
+            n.put("perDay", round(s.perDay()));
+            n.put("base", round(s.base()));
+            n.put("interest", round(s.interest()));
+            n.put("oneTimeSum", round(s.oneTimeSum()));
+            nodes.put(s.name(), n);
+        }
+        m.put("nodes", nodes);
+        return m;
+    }
+
+    /** Trim float noise for display; the canonical value is the raw double. */
+    private static double round(double v) {
+        return Math.round(v * 1_000_000d) / 1_000_000d;
     }
 
     // ── Node map ↔ model ──────────────────────────────────────────

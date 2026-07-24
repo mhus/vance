@@ -3,11 +3,13 @@ package de.mhus.vance.addon.brain.finance;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import de.mhus.vance.addon.brain.finance.model.FinanceComputed;
 import de.mhus.vance.addon.brain.finance.model.FinanceInterest;
 import de.mhus.vance.addon.brain.finance.model.FinanceNode;
 import de.mhus.vance.addon.brain.finance.model.FinanceTreeDocument;
 import de.mhus.vance.addon.brain.finance.model.FinanceValue;
 import de.mhus.vance.addon.brain.finance.model.InterestBasis;
+import de.mhus.vance.addon.brain.finance.model.NodeSnapshot;
 import de.mhus.vance.addon.brain.finance.model.Period;
 import de.mhus.vance.addon.brain.finance.model.PeriodUnit;
 import de.mhus.vance.addon.brain.finance.model.ValueMode;
@@ -146,6 +148,24 @@ class FinanceTreeCodecTest {
         assertThatThrownBy(() -> FinanceTreeCodec.parse(yaml, YAML))
                 .isInstanceOf(KindCodecException.class)
                 .hasMessageContaining("requires `validFrom`");
+    }
+
+    @Test
+    void serializeWithComputed_emitsOverlayAndParseIgnoresIt() {
+        FinanceTreeDocument doc = sample();
+        FinanceComputed computed = new FinanceComputed("2026-07-24T10:00:00Z",
+                List.of(new NodeSnapshot("projekt", 1050.0, 87.5, 20.19, 2.87,
+                        1000.0, 50.0, 0.0)));
+
+        String yaml = FinanceTreeCodec.serialize(doc, computed, YAML);
+        assertThat(yaml).contains("$computed").contains("computedAt").contains("perYear");
+
+        // $computed is derived — parse reads input keys only and drops it,
+        // so the overlay never corrupts the typed round-trip.
+        FinanceTreeDocument back = FinanceTreeCodec.parse(yaml, YAML);
+        assertThat(back.title()).isEqualTo("Q1 Finanzplanung");
+        assertThat(back.root()).isNotNull();
+        assertThat(back.root().children()).hasSize(2);
     }
 
     @Test

@@ -48,8 +48,8 @@ promptPrefix: |
   Give extra weight to the focus the user named above.
   {% endif %}
 
-  Reply with Markdown prose only — no code fences around the whole answer, no
-  JSON. Match the language of the model's titles where obvious, otherwise English.
+  Reply with Markdown prose only — no code fences around the whole answer, no JSON.
+  {% if lang %}Write the assessment in this language: **{{ lang }}**.{% else %}Match the language of the model's titles where obvious, otherwise English.{% endif %}
 tags:
   - internal
   - finance

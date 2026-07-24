@@ -13,6 +13,7 @@ import de.mhus.vance.addon.brain.finance.model.PeriodUnit;
 import de.mhus.vance.addon.brain.finance.model.ValueMode;
 import de.mhus.vance.brain.ai.light.LightLlmRequest;
 import de.mhus.vance.brain.ai.light.LightLlmService;
+import de.mhus.vance.shared.settings.LanguageResolver;
 import de.mhus.vance.toolpack.ToolException;
 import java.util.List;
 import java.util.Map;
@@ -38,12 +39,21 @@ class AssessmentReportProcessorTest {
         return new FinanceTreeDocument(1, "Q1 Plan", null, root);
     }
 
+    private static LanguageResolver langResolver(String lang) {
+        LanguageResolver r = mock(LanguageResolver.class);
+        when(r.chatLanguage(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(lang);
+        return r;
+    }
+
     @Test
     void render_callsLightLlmWithSignAppliedModelAndReturnsMarkdown() {
         LightLlmService llm = mock(LightLlmService.class);
         when(llm.call(org.mockito.ArgumentMatchers.any())).thenReturn("## Assessment\nLooks tight.");
 
-        FinanceReport report = new AssessmentReportProcessor(llm).render(tree(), ReportParams.of(Map.of()), CTX);
+        FinanceReport report = new AssessmentReportProcessor(llm, langResolver("de"))
+                .render(tree(), ReportParams.of(Map.of()), CTX);
 
         assertThat(report.outputKind()).isEqualTo("markdown");
         assertThat(report.mimeType()).isEqualTo("text/markdown");
@@ -58,12 +68,13 @@ class AssessmentReportProcessorTest {
         // Expense branch reads as negative (sign-applied); income positive.
         assertThat(model).contains("Einnahmen (einnahmen): +12000.00/yr");
         assertThat(model).contains("Ausgaben (ausgaben): -9600.00/yr");
+        assertThat(req.getPebbleVars().get("lang")).isEqualTo("de");
     }
 
     @Test
     void render_emptyTree_throws() {
         LightLlmService llm = mock(LightLlmService.class);
-        assertThatThrownBy(() -> new AssessmentReportProcessor(llm)
+        assertThatThrownBy(() -> new AssessmentReportProcessor(llm, langResolver("en"))
                 .render(FinanceTreeDocument.empty("x", null), ReportParams.of(Map.of()), CTX))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("empty");

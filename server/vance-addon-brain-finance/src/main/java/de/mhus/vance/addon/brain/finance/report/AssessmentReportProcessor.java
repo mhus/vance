@@ -6,6 +6,7 @@ import de.mhus.vance.addon.brain.finance.model.FinanceTreeDocument;
 import de.mhus.vance.addon.brain.finance.model.NodeSnapshot;
 import de.mhus.vance.brain.ai.light.LightLlmRequest;
 import de.mhus.vance.brain.ai.light.LightLlmService;
+import de.mhus.vance.shared.settings.LanguageResolver;
 import de.mhus.vance.toolpack.ToolException;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -29,9 +30,11 @@ public class AssessmentReportProcessor implements FinanceReportProcessor {
     static final String RECIPE = "finance-report";
 
     private final LightLlmService lightLlm;
+    private final LanguageResolver languageResolver;
 
-    public AssessmentReportProcessor(LightLlmService lightLlm) {
+    public AssessmentReportProcessor(LightLlmService lightLlm, LanguageResolver languageResolver) {
         this.lightLlm = lightLlm;
+        this.languageResolver = languageResolver;
     }
 
     @Override public String type() { return "assessment"; }
@@ -53,6 +56,10 @@ public class AssessmentReportProcessor implements FinanceReportProcessor {
         vars.put("title", tree.title() == null ? "" : tree.title());
         String focus = params.getString("focus");
         vars.put("focus", focus == null ? "" : focus);
+        // Configured language (same resolver the big prompt contexts use) so the
+        // report is written in the user's language, not just the model's titles.
+        vars.put("lang", languageResolver.chatLanguage(
+                ctx.tenantId(), ctx.userId(), ctx.projectId(), ctx.processId()));
 
         String markdown = lightLlm.call(LightLlmRequest.builder()
                 .recipeName(RECIPE)

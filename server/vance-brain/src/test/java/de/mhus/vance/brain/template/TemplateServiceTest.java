@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.form.FormFieldDto;
@@ -11,6 +12,9 @@ import de.mhus.vance.brain.prompt.PromptTemplateRenderer;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.form.FormValidator;
+import de.mhus.vance.shared.permission.SecurityContext;
+import de.mhus.vance.shared.permission.WriteActor;
+import de.mhus.vance.shared.permission.WriteReason;
 import de.mhus.vance.shared.settings.TimezoneResolver;
 import java.time.ZoneId;
 import java.util.List;
@@ -18,12 +22,14 @@ import java.util.Map;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 class TemplateServiceTest {
 
     private static final String TENANT = "acme";
     private static final String PROJECT = "research";
     private static final String USER = "alice";
+    private static final SecurityContext SUBJECT = SecurityContext.user(USER, TENANT, List.of());
     private static final String BODY_PATH = "_vance/templates/meeting-notes.tmpl.md";
 
     private final DocumentService documentService = mock(DocumentService.class);
@@ -75,7 +81,7 @@ class TemplateServiceTest {
                 TemplateNameMode.FREE, null, null, List.of(), BODY_PATH, "# Hello\n");
 
         TemplateService.AppliedTemplate applied = service.apply(
-                t, "docs", "my-notes", Map.of(), TENANT, PROJECT, USER, "en");
+                t, "docs", "my-notes", Map.of(), TENANT, PROJECT, SUBJECT, "en");
 
         assertThat(applied.path()).isEqualTo("docs/my-notes.md");
         assertThat(applied.mimeType()).isEqualTo("text/markdown");
@@ -87,7 +93,7 @@ class TemplateServiceTest {
                 TemplateNameMode.FREE, null, null, List.of(), BODY_PATH, "x");
 
         TemplateService.AppliedTemplate applied = service.apply(
-                t, "", "readme.txt", Map.of(), TENANT, PROJECT, USER, "en");
+                t, "", "readme.txt", Map.of(), TENANT, PROJECT, SUBJECT, "en");
 
         assertThat(applied.path()).isEqualTo("readme.txt");
     }
@@ -99,7 +105,7 @@ class TemplateServiceTest {
                 "_vance/templates/workbook.tmpl.yaml", "$meta:\n  kind: application\n");
 
         TemplateService.AppliedTemplate applied = service.apply(
-                t, "my-app/", null, Map.of(), TENANT, PROJECT, USER, "en");
+                t, "my-app/", null, Map.of(), TENANT, PROJECT, SUBJECT, "en");
 
         assertThat(applied.path()).isEqualTo("my-app/_app.yaml");
     }
@@ -110,7 +116,7 @@ class TemplateServiceTest {
                 TemplateNameMode.FREE, null, "text/x-custom", List.of(), BODY_PATH, "x");
 
         TemplateService.AppliedTemplate applied = service.apply(
-                t, "docs", "n", Map.of(), TENANT, PROJECT, USER, "en");
+                t, "docs", "n", Map.of(), TENANT, PROJECT, SUBJECT, "en");
 
         assertThat(applied.path()).isEqualTo("docs/n.md");
         assertThat(applied.mimeType()).isEqualTo("text/x-custom");
@@ -125,7 +131,7 @@ class TemplateServiceTest {
                 TemplateNameMode.FREE, null, null, List.of(topic), BODY_PATH,
                 "# {{ topic }}\nfile:{{ name }}\n");
 
-        service.apply(t, "docs", "kickoff", Map.of("topic", "Launch"), TENANT, PROJECT, USER, "en");
+        service.apply(t, "docs", "kickoff", Map.of("topic", "Launch"), TENANT, PROJECT, SUBJECT, "en");
 
         // Verify the content passed to create() was fully rendered.
         var contentCaptor = org.mockito.ArgumentCaptor.forClass(java.io.InputStream.class);
@@ -136,11 +142,29 @@ class TemplateServiceTest {
     }
 
     @Test
+    void apply_writesWithUserReasonActor_notSystemBypass() {
+        // Security regression (code-review-2 B3): the target folder is
+        // caller-chosen, so the write must carry the authenticated subject with
+        // WriteReason.USER — NOT WriteActor.SYSTEM, which would fail-open past the
+        // reserved-prefix (R4) ADMIN gate and let a WRITER plant _vance/ docs.
+        ResolvedTemplate t = template(
+                TemplateNameMode.FREE, null, null, List.of(), BODY_PATH, "x");
+
+        service.apply(t, "docs", "n", Map.of(), TENANT, PROJECT, SUBJECT, "en");
+
+        ArgumentCaptor<WriteActor> actor = ArgumentCaptor.forClass(WriteActor.class);
+        verify(documentService).create(
+                any(), any(), any(), any(), any(), any(), any(), any(), actor.capture());
+        assertThat(actor.getValue().reason()).isEqualTo(WriteReason.USER);
+        assertThat(actor.getValue().subject()).isEqualTo(SUBJECT);
+    }
+
+    @Test
     void apply_blankFreeName_throws() {
         ResolvedTemplate t = template(
                 TemplateNameMode.FREE, null, null, List.of(), BODY_PATH, "x");
 
-        assertThatThrownBy(() -> service.apply(t, "docs", "   ", Map.of(), TENANT, PROJECT, USER, "en"))
+        assertThatThrownBy(() -> service.apply(t, "docs", "   ", Map.of(), TENANT, PROJECT, SUBJECT, "en"))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("filename is required");
     }
@@ -152,7 +176,7 @@ class TemplateServiceTest {
         ResolvedTemplate t = template(
                 TemplateNameMode.FREE, null, null, List.of(), BODY_PATH, "x");
 
-        assertThatThrownBy(() -> service.apply(t, "docs", "dup", Map.of(), TENANT, PROJECT, USER, "en"))
+        assertThatThrownBy(() -> service.apply(t, "docs", "dup", Map.of(), TENANT, PROJECT, SUBJECT, "en"))
                 .isInstanceOf(DocumentService.DocumentAlreadyExistsException.class);
     }
 

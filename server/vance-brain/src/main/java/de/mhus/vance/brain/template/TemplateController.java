@@ -128,7 +128,7 @@ public class TemplateController {
         TemplateService.AppliedTemplate applied;
         try {
             applied = templateService.apply(
-                    t, body.getFolder(), body.getName(), values, tenant, projectId, userId, lang);
+                    t, body.getFolder(), body.getName(), values, tenant, projectId, context, lang);
         } catch (DocumentService.DocumentAlreadyExistsException e) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage(), e);
         } catch (IllegalStateException e) {

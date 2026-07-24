@@ -57,12 +57,21 @@ public class TemplateService {
             Map<String, Object> values,
             String tenantId,
             @Nullable String projectId,
-            @Nullable String userId,
+            de.mhus.vance.shared.permission.SecurityContext subject,
             @Nullable String lang) {
 
         if (!template.fields().isEmpty()) {
             formValidator.validate(template.fields(), values);
         }
+
+        // The target folder is caller-chosen, so this is a user-driven write:
+        // it must carry the authenticated subject with WriteReason.USER so the
+        // permission provider applies the normal role check (R4: a reserved
+        // _vance/ folder needs ADMIN). Passing WriteActor.SYSTEM here would
+        // fail-open and let a WRITER plant privileged control-plane docs.
+        String userId = subject.subjectType() == de.mhus.vance.shared.permission.SubjectType.USER
+                ? subject.subjectId()
+                : null;
 
         String bodyExt = template.bodyExtension();
         String filename = resolveFilename(template, requestedName, bodyExt);
@@ -82,7 +91,7 @@ public class TemplateService {
                 /*title*/ null, /*tags*/ null, mime,
                 new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8)),
                 /*createdBy*/ userId,
-                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+                de.mhus.vance.shared.permission.WriteActor.user(subject));
 
         log.info("Template '{}' applied tenant='{}' project='{}' path='{}'",
                 template.name(), tenantId, project, doc.getPath());

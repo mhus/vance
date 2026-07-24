@@ -5,7 +5,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -15,15 +14,17 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
-import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Query;
 
 /**
  * Unit tests for {@link OAuthStateService}: state-mint shape, consume
- * happy + reject paths (unknown / expired / tenant-or-user-mismatch),
- * and the single-use guarantee (document always deleted on any consume
- * outcome that touches a stored doc).
+ * happy + reject paths (unknown / expired / tenant-or-user-mismatch), and the
+ * atomic single-use guarantee — {@code consume} removes the document with one
+ * atomic {@code findAndRemove}, so two concurrent callbacks with the same
+ * state can never both succeed. Mongo is mocked.
  */
 class OAuthStateServiceTest {
 
@@ -34,15 +35,17 @@ class OAuthStateServiceTest {
     private static final String RETURN_TO = "/settings/integrations";
 
     private OAuthStateRepository repository;
+    private MongoTemplate mongoTemplate;
     private OAuthStateService service;
 
     @BeforeEach
     void setUp() {
         repository = mock(OAuthStateRepository.class);
+        mongoTemplate = mock(MongoTemplate.class);
         when(repository.save(any(OAuthStateDocument.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
         Clock clock = Clock.fixed(FIXED_NOW, ZoneOffset.UTC);
-        service = new OAuthStateService(repository, clock);
+        service = new OAuthStateService(repository, mongoTemplate, clock);
     }
 
     @Test
@@ -68,14 +71,13 @@ class OAuthStateServiceTest {
     void start_persists_code_verifier_and_returns_it_on_consume() {
         // PKCE round-trip — init writes verifier alongside state, callback
         // reads it back to replay against the provider's /token endpoint.
-        when(repository.findByState("S1"))
-                .thenAnswer(inv -> Optional.of(OAuthStateDocument.builder()
-                        .state("S1")
-                        .tenantId(TENANT).userId(USER).providerId(PROVIDER)
-                        .codeVerifier("verifier-42")
-                        .createdAt(FIXED_NOW)
-                        .expiresAt(FIXED_NOW.plus(OAuthStateService.DEFAULT_TTL))
-                        .build()));
+        stubConsume(OAuthStateDocument.builder()
+                .state("S1")
+                .tenantId(TENANT).userId(USER).providerId(PROVIDER)
+                .codeVerifier("verifier-42")
+                .createdAt(FIXED_NOW)
+                .expiresAt(FIXED_NOW.plus(OAuthStateService.DEFAULT_TTL))
+                .build());
 
         String state = service.start(TENANT, USER, PROVIDER, null, "verifier-42");
 
@@ -84,8 +86,7 @@ class OAuthStateServiceTest {
         verify(repository).save(captor.capture());
         assertThat(captor.getValue().getCodeVerifier()).isEqualTo("verifier-42");
 
-        Optional<OAuthStateService.Consumed> consumed =
-                service.consume("S1", TENANT, USER);
+        var consumed = service.consume("S1", TENANT, USER);
         assertThat(consumed).isPresent();
         assertThat(consumed.get().codeVerifier()).isEqualTo("verifier-42");
     }
@@ -112,26 +113,26 @@ class OAuthStateServiceTest {
     }
 
     @Test
-    void consume_happy_path_returns_provider_and_deletes_document() {
-        OAuthStateDocument doc = liveDoc("state-1");
-        when(repository.findByState("state-1")).thenReturn(Optional.of(doc));
+    void consume_happy_path_returns_provider_andRemovesAtomically() {
+        stubConsume(liveDoc("state-1"));
 
-        Optional<OAuthStateService.Consumed> consumed =
-                service.consume("state-1", TENANT, USER);
+        var consumed = service.consume("state-1", TENANT, USER);
 
         assertThat(consumed).isPresent();
         assertThat(consumed.get().providerId()).isEqualTo(PROVIDER);
         assertThat(consumed.get().returnTo()).isEqualTo(RETURN_TO);
-        verify(repository).delete(doc);
+        // Single-use is carried by the atomic find-and-remove itself — no
+        // separate repository.delete round-trip.
+        verify(mongoTemplate).findAndRemove(any(Query.class), eq(OAuthStateDocument.class));
+        verify(repository, never()).delete(any(OAuthStateDocument.class));
     }
 
     @Test
-    void consume_unknown_state_returns_empty_without_delete() {
-        when(repository.findByState("nope")).thenReturn(Optional.empty());
+    void consume_unknown_state_returns_empty() {
+        when(mongoTemplate.findAndRemove(any(Query.class), eq(OAuthStateDocument.class)))
+                .thenReturn(null);
 
         assertThat(service.consume("nope", TENANT, USER)).isEmpty();
-
-        verify(repository, never()).delete(any(OAuthStateDocument.class));
     }
 
     @Test
@@ -140,51 +141,50 @@ class OAuthStateServiceTest {
         assertThat(service.consume("", TENANT, USER)).isEmpty();
         assertThat(service.consume("   ", TENANT, USER)).isEmpty();
 
-        verify(repository, never()).findByState(any());
+        // No atomic op is issued for a blank state.
+        verify(mongoTemplate, never()).findAndRemove(any(Query.class), eq(OAuthStateDocument.class));
     }
 
     @Test
-    void consume_expired_state_rejects_and_deletes() {
+    void consume_expired_state_rejects() {
         OAuthStateDocument doc = liveDoc("state-2");
         doc.setExpiresAt(FIXED_NOW.minusSeconds(1));
-        when(repository.findByState("state-2")).thenReturn(Optional.of(doc));
+        stubConsume(doc);
 
+        // Even though removed atomically, an expired doc must not authenticate.
         assertThat(service.consume("state-2", TENANT, USER)).isEmpty();
-
-        verify(repository, times(1)).delete(doc);
     }
 
     @Test
-    void consume_tenant_mismatch_rejects_and_deletes() {
-        OAuthStateDocument doc = liveDoc("state-3");
-        when(repository.findByState("state-3")).thenReturn(Optional.of(doc));
+    void consume_tenant_mismatch_rejects() {
+        stubConsume(liveDoc("state-3"));
 
         assertThat(service.consume("state-3", "other-tenant", USER)).isEmpty();
-
-        verify(repository, times(1)).delete(doc);
     }
 
     @Test
-    void consume_user_mismatch_rejects_and_deletes() {
-        OAuthStateDocument doc = liveDoc("state-4");
-        when(repository.findByState("state-4")).thenReturn(Optional.of(doc));
+    void consume_user_mismatch_rejects() {
+        stubConsume(liveDoc("state-4"));
 
         assertThat(service.consume("state-4", TENANT, "other-user")).isEmpty();
-
-        verify(repository, times(1)).delete(doc);
     }
 
     @Test
     void consume_is_single_use_even_after_success() {
-        OAuthStateDocument doc = liveDoc("state-5");
-        when(repository.findByState(eq("state-5")))
-                .thenReturn(Optional.of(doc))   // first call: found
-                .thenReturn(Optional.empty());  // second call: gone (we deleted it)
+        // First find-and-remove wins (returns the doc); the second finds
+        // nothing (already removed) → empty. This is exactly the concurrent
+        // double-callback protection the atomic op provides.
+        when(mongoTemplate.findAndRemove(any(Query.class), eq(OAuthStateDocument.class)))
+                .thenReturn(liveDoc("state-5"))
+                .thenReturn(null);
 
         assertThat(service.consume("state-5", TENANT, USER)).isPresent();
         assertThat(service.consume("state-5", TENANT, USER)).isEmpty();
+    }
 
-        verify(repository, times(1)).delete(doc);
+    private void stubConsume(OAuthStateDocument doc) {
+        when(mongoTemplate.findAndRemove(any(Query.class), eq(OAuthStateDocument.class)))
+                .thenReturn(doc);
     }
 
     private static OAuthStateDocument liveDoc(String state) {

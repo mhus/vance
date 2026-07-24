@@ -25,6 +25,7 @@ public class DocGrepTool implements Tool {
 
     private static final int DEFAULT_LIMIT = 100;
     private static final int MAX_LIMIT = 500;
+    private static final long REGEX_BUDGET_NANOS = 2_000_000_000L; // 2s per grep call
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
@@ -80,11 +81,13 @@ public class DocGrepTool implements Tool {
             throw new ToolException("Invalid regex: " + e.getMessage());
         }
 
+        // Wall-clock budget for the (untrusted) regex — see RegexGuard.
+        long deadline = System.nanoTime() + REGEX_BUDGET_NANOS;
         String[] lines = support.readBody(doc, ctx).split("\\R", -1);
         List<Map<String, Object>> matches = new ArrayList<>();
         boolean truncated = false;
         for (int i = 0; i < lines.length; i++) {
-            if (!pattern.matcher(lines[i]).find()) continue;
+            if (!matchGuarded(pattern, lines[i], deadline)) continue;
             if (matches.size() >= limit) { truncated = true; break; }
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("lineNumber", i + 1);
@@ -110,5 +113,15 @@ public class DocGrepTool implements Tool {
         out.put("truncated", truncated);
         out.put("matches", matches);
         return out;
+    }
+
+    /** {@link RegexGuard#find} but mapping a budget overrun to a clean ToolException. */
+    private static boolean matchGuarded(Pattern pattern, String line, long deadline) {
+        try {
+            return RegexGuard.find(pattern, line, deadline);
+        } catch (RegexGuard.RegexBudgetExceeded e) {
+            throw new ToolException("regex too slow — possible catastrophic backtracking; "
+                    + "simplify the pattern (avoid nested quantifiers like (a+)+).");
+        }
     }
 }

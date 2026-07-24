@@ -91,6 +91,10 @@ public class DocGrepPathTool implements Tool {
         } catch (PatternSyntaxException e) {
             throw new ToolException("Invalid regex: " + e.getMessage());
         }
+        // Shared wall-clock budget for the whole grep — the (untrusted) regex is
+        // matched against every line of every scanned doc; a catastrophic-
+        // backtracking pattern would otherwise pin the lane thread.
+        long deadline = System.nanoTime() + REGEX_BUDGET_NANOS;
 
         ProjectDocument project = support.eddieContext().resolveProject(params, ctx, false);
         List<DocumentDocument> all = support.documentService()
@@ -103,7 +107,7 @@ public class DocGrepPathTool implements Tool {
                 if (!pathPrefix.isEmpty() && !d.getPath().startsWith(pathPrefix)) continue;
                 if (support.readBody(d, ctx) == null) continue;
                 scanned++;
-                if (containsMatch(support.readBody(d, ctx), pattern)) {
+                if (containsMatch(support.readBody(d, ctx), pattern, deadline)) {
                     Map<String, Object> hit = new LinkedHashMap<>();
                     hit.put("documentId", d.getId());
                     hit.put("path", d.getPath());
@@ -131,7 +135,7 @@ public class DocGrepPathTool implements Tool {
             scanned++;
             String[] lines = support.readBody(d, ctx).split("\\R", -1);
             for (int i = 0; i < lines.length; i++) {
-                if (!pattern.matcher(lines[i]).find()) continue;
+                if (!matchGuarded(pattern, lines[i], deadline)) continue;
                 if (hits.size() >= limit) { truncated = true; break outer; }
                 Map<String, Object> hit = new LinkedHashMap<>();
                 hit.put("documentId", d.getId());
@@ -151,13 +155,25 @@ public class DocGrepPathTool implements Tool {
         return out;
     }
 
-    private static boolean containsMatch(String text, Pattern pattern) {
+    private static final long REGEX_BUDGET_NANOS = 2_000_000_000L; // 2s per grep call
+
+    private static boolean containsMatch(String text, Pattern pattern, long deadline) {
         // Split + scan instead of pattern.matcher(text).find() so a
         // multi-line dot-greedy regex doesn't accidentally swallow
         // the whole body.
         for (String line : text.split("\\R", -1)) {
-            if (pattern.matcher(line).find()) return true;
+            if (matchGuarded(pattern, line, deadline)) return true;
         }
         return false;
+    }
+
+    /** {@link RegexGuard#find} but mapping a budget overrun to a clean ToolException. */
+    private static boolean matchGuarded(Pattern pattern, String line, long deadline) {
+        try {
+            return RegexGuard.find(pattern, line, deadline);
+        } catch (RegexGuard.RegexBudgetExceeded e) {
+            throw new ToolException("regex too slow — possible catastrophic backtracking; "
+                    + "simplify the pattern (avoid nested quantifiers like (a+)+).");
+        }
     }
 }

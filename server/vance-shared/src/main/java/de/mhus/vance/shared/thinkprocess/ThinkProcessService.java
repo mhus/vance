@@ -667,6 +667,28 @@ public class ThinkProcessService {
     }
 
     /**
+     * Atomically claims the one-shot final-reply emission for a
+     * terminal engine (Marvin). Flips {@code finalReplyEmitted}
+     * {@code false → true} and returns {@code true} only for the first
+     * caller; every later call (e.g. a duplicate/late child
+     * {@code ProcessEvent} re-activating an already-terminal tree)
+     * observes the latch set and returns {@code false}, so at most one
+     * ParentReport reaches the parent.
+     *
+     * @return {@code true} if this call won the claim (first emission)
+     */
+    public boolean claimFinalReplyEmission(String id) {
+        Query query = new Query(Criteria.where("_id").is(id)
+                .and("finalReplyEmitted").ne(true));
+        Update update = new Update().set("finalReplyEmitted", true);
+        ThinkProcessDocument prior = mongoTemplate.findAndModify(
+                query, update,
+                FindAndModifyOptions.options().returnNew(false),
+                ThinkProcessDocument.class);
+        return prior != null;
+    }
+
+    /**
      * Rewrites the {@link CloseReason} on an already-CLOSED process to a
      * more specific value. Used by the archive / hard-delete cascades that
      * call {@code engine.stop} (which closes with {@code STOPPED}) and

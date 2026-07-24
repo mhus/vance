@@ -211,6 +211,31 @@ class ThinkProcessServiceTest {
         verify(eventPublisher, never()).publishEvent(any());
     }
 
+    // ─── Final-reply emission latch ──────────────────────────────────────
+
+    @Test
+    void claimFinalReplyEmission_returnsTrue_onFirstClaim() {
+        // findAndModify flips false→true and returns the prior (non-null) doc.
+        when(mongoTemplate.findAndModify(
+                any(Query.class), any(Update.class),
+                any(FindAndModifyOptions.class), eq(ThinkProcessDocument.class)))
+                .thenReturn(process("p-1"));
+
+        assertThat(service.claimFinalReplyEmission("p-1")).isTrue();
+    }
+
+    @Test
+    void claimFinalReplyEmission_returnsFalse_whenAlreadyEmitted() {
+        // The `finalReplyEmitted != true` guard makes findAndModify return null
+        // once the latch is set → duplicate/late re-activation cannot re-emit.
+        when(mongoTemplate.findAndModify(
+                any(Query.class), any(Update.class),
+                any(FindAndModifyOptions.class), eq(ThinkProcessDocument.class)))
+                .thenReturn(null);
+
+        assertThat(service.claimFinalReplyEmission("p-1")).isFalse();
+    }
+
     // ─── Halt flag ───────────────────────────────────────────────────────
 
     @Test

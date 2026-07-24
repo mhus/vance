@@ -110,7 +110,8 @@ public class PlanSnapshotRenderer {
         if (currentNodeId == null) return chain;
         String cur = currentNodeId;
         while (cur != null) {
-            chain.add(cur);
+            if (!chain.add(cur)) break; // cycle guard: a corrupted parent chain
+                                        // (A.parent=B, B.parent=A) must not loop forever
             MarvinNodeDocument n = byId.get(cur);
             if (n == null) break;
             cur = n.getParentId();

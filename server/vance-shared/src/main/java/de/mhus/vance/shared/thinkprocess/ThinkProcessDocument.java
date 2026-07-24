@@ -392,6 +392,17 @@ public class ThinkProcessDocument {
     private boolean haltRequested = false;
 
     /**
+     * One-shot latch for terminal engines (e.g. Marvin) that emit a
+     * single final REPLY to their parent right before
+     * {@code closeProcess(DONE)}. Claimed atomically via
+     * {@code ThinkProcessService.claimFinalReplyEmission} so a late or
+     * duplicate child {@code ProcessEvent} that re-activates an
+     * already-terminal tree cannot emit a second ParentReport (which
+     * would double-aggregate on the parent).
+     */
+    private boolean finalReplyEmitted = false;
+
+    /**
      * Timestamp of the last successful Prak side-channel pass over this
      * process. {@code null} means Prak has never seen any message yet —
      * the periodic trigger then considers the entire active history as

@@ -1971,8 +1971,10 @@ public class MarvinEngine implements ThinkEngine {
      * the routing goes through the explicit REPLY channel which the
      * receiving parent engine (Arthur/Eddie) handles via the same
      * {@code <process-event type="reply">} render path that Ford's
-     * Reply uses. Re-entrance guard: only fires when the tree just
-     * became terminal in this turn, not on every idle reactivation.
+     * Reply uses. Re-entrance guard: the emission is claimed atomically
+     * via {@code claimFinalReplyEmission}, so a late/duplicate child
+     * ProcessEvent that re-activates an already-terminal (or re-closed)
+     * tree cannot emit a second ParentReport.
      * See {@code planning/process-engine-reply-channel.md} §4.4.
      */
     private void emitFinalReplyIfTreeTerminal(
@@ -1988,6 +1990,14 @@ public class MarvinEngine implements ThinkEngine {
             ParentReport report = summarizeForParent(process, ProcessEventType.DONE);
             String body = report == null ? null : report.humanSummary();
             if (body == null || body.isBlank()) {
+                return;
+            }
+            // Idempotency: only the first caller wins the latch. A late or
+            // duplicate child ProcessEvent that re-runs runTurn on an
+            // already-DONE tree would otherwise re-emit here (runTurn flips
+            // the process to RUNNING at turn start, so the live status is
+            // no defence) and double-aggregate on the parent.
+            if (!thinkProcessService.claimFinalReplyEmission(process.getId())) {
                 return;
             }
             ctx.emitReply(body, /*inResponseToAt*/ null, report.payload());

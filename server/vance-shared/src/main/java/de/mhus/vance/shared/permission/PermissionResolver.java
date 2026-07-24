@@ -10,6 +10,13 @@ package de.mhus.vance.shared.permission;
  * <p>Implementations must be stateless and side-effect-free apart from logging
  * — they are called from request threads and must not block on remote I/O for
  * data that should be pre-resolved into the {@link SecurityContext}.
+ *
+ * <p><b>A provider only ever evaluates genuine user policy.</b> The framework
+ * trust boundary — a {@link SubjectType#SYSTEM} subject (the server acting as
+ * itself) or a {@link WriteReason#SYSTEM} write (server code vouching for a
+ * write) — is short-circuited by {@link PermissionService} <em>before</em>
+ * delegation, so no provider sees it and none can accidentally break internal
+ * server operations. {@link WriteReason} is therefore not part of this SPI.
  */
 public interface PermissionResolver {
 
@@ -19,16 +26,4 @@ public interface PermissionResolver {
      *         {@code false} on missing data.
      */
     boolean isAllowed(SecurityContext subject, Resource resource, Action action);
-
-    /**
-     * Reason-aware variant — lets a resolver treat a trusted internal write
-     * ({@link WriteReason#SYSTEM}) differently from a user write while the
-     * {@code subject} still carries the real actor. The default ignores the
-     * reason (reason-unaware providers, e.g. allow-all, behave unchanged);
-     * the simple-auth resolver overrides it.
-     */
-    default boolean isAllowed(
-            SecurityContext subject, Resource resource, Action action, WriteReason reason) {
-        return isAllowed(subject, resource, action);
-    }
 }

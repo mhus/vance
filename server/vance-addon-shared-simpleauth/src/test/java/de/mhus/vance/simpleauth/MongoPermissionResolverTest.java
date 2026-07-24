@@ -8,7 +8,6 @@ import static org.mockito.Mockito.when;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.permission.SecurityContext;
-import de.mhus.vance.shared.permission.WriteReason;
 import de.mhus.vance.shared.team.TeamDocument;
 import de.mhus.vance.shared.team.TeamService;
 import java.util.List;
@@ -41,11 +40,10 @@ class MongoPermissionResolverTest {
                 .subjectType(subjectType).subjectId(subjectId).role(role).build();
     }
 
-    @Test
-    void r1_system_isAlwaysAllowed() {
-        assertThat(resolver.isAllowed(SecurityContext.SYSTEM,
-                new Resource.Document("acme", "proj", "_vance/secret.yaml"), Action.DELETE)).isTrue();
-    }
+    // Note: the SYSTEM trust boundary (SYSTEM subject / SYSTEM write-reason) is
+    // no longer this resolver's concern — PermissionService short-circuits it
+    // before delegation, so it's covered in PermissionServiceTest instead. This
+    // provider only evaluates user policy (R2–R7 below).
 
     @Test
     void crossTenant_isDenied() {
@@ -151,18 +149,6 @@ class MongoPermissionResolverTest {
         assertThat(resolver.isAllowed(alice,
                 new Resource.Document("acme", "proj", "_vance/logs/run.md"), Action.WRITE))
                 .isTrue();
-    }
-
-    @Test
-    void systemReason_allows_a_write_the_user_role_would_deny() {
-        // alice has NO grant on proj → a USER write to a reserved path denies…
-        assertThat(resolver.isAllowed(alice,
-                new Resource.Document("acme", "proj", "_vance/scheduler/x.yaml"),
-                Action.WRITE, WriteReason.USER)).isFalse();
-        // …but a trusted server write (WriteReason.SYSTEM) is allowed, actor kept.
-        assertThat(resolver.isAllowed(alice,
-                new Resource.Document("acme", "proj", "_vance/scheduler/x.yaml"),
-                Action.WRITE, WriteReason.SYSTEM)).isTrue();
     }
 
     @Test

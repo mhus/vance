@@ -21,19 +21,19 @@ class PermissionServiceTest {
 
     @Test
     void check_delegatesToResolver_andPropagatesResult() {
-        when(resolver.isAllowed(alice, resource, Action.READ, WriteReason.USER)).thenReturn(true);
-        when(resolver.isAllowed(alice, resource, Action.WRITE, WriteReason.USER)).thenReturn(false);
+        when(resolver.isAllowed(alice, resource, Action.READ)).thenReturn(true);
+        when(resolver.isAllowed(alice, resource, Action.WRITE)).thenReturn(false);
 
         assertThat(service.check(alice, resource, Action.READ)).isTrue();
         assertThat(service.check(alice, resource, Action.WRITE)).isFalse();
 
-        verify(resolver).isAllowed(alice, resource, Action.READ, WriteReason.USER);
-        verify(resolver).isAllowed(alice, resource, Action.WRITE, WriteReason.USER);
+        verify(resolver).isAllowed(alice, resource, Action.READ);
+        verify(resolver).isAllowed(alice, resource, Action.WRITE);
     }
 
     @Test
     void enforce_passesThrough_whenResolverAllows() {
-        when(resolver.isAllowed(any(), any(), any(), any())).thenReturn(true);
+        when(resolver.isAllowed(any(), any(), any())).thenReturn(true);
 
         // Must not throw.
         service.enforce(alice, resource, Action.READ);
@@ -55,12 +55,43 @@ class PermissionServiceTest {
 
     @Test
     void enforce_consultsResolverExactlyOnce() {
-        when(resolver.isAllowed(any(), any(), any(), any())).thenReturn(true);
+        when(resolver.isAllowed(any(), any(), any())).thenReturn(true);
 
         service.enforce(alice, resource, Action.READ);
 
-        verify(resolver).isAllowed(alice, resource, Action.READ, WriteReason.USER);
-        verify(resolver, never()).isAllowed(alice, resource, Action.WRITE, WriteReason.USER);
+        verify(resolver).isAllowed(alice, resource, Action.READ);
+        verify(resolver, never()).isAllowed(alice, resource, Action.WRITE);
+    }
+
+    // ── Framework trust boundary: SYSTEM is handled here, never delegated ──
+
+    @Test
+    void systemSubject_isAllowed_withoutConsultingResolver() {
+        // A SYSTEM subject (server acting as itself) is trusted by the framework;
+        // the provider must never even see it (R1 lives here now, not in the resolver).
+        assertThat(service.check(SecurityContext.SYSTEM, resource, Action.DELETE)).isTrue();
+        verify(resolver, never()).isAllowed(any(), any(), any());
+    }
+
+    @Test
+    void systemReason_isAllowed_withoutConsultingResolver_actorKept() {
+        // A trusted server write (WriteReason.SYSTEM) with a real user actor is
+        // allowed regardless of the user's role; the resolver is never consulted.
+        when(resolver.isAllowed(any(), any(), any())).thenReturn(false);
+
+        assertThat(service.check(alice, resource, Action.WRITE, WriteReason.SYSTEM)).isTrue();
+        // enforce must not throw either.
+        service.enforce(alice, resource, Action.WRITE, WriteReason.SYSTEM);
+
+        verify(resolver, never()).isAllowed(any(), any(), any());
+    }
+
+    @Test
+    void userReason_isDelegatedToResolver() {
+        // The default reason (USER) always goes to the provider.
+        when(resolver.isAllowed(alice, resource, Action.WRITE)).thenReturn(false);
+        assertThat(service.check(alice, resource, Action.WRITE, WriteReason.USER)).isFalse();
+        verify(resolver).isAllowed(alice, resource, Action.WRITE);
     }
 
     @Test

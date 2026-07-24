@@ -4,10 +4,9 @@ import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.PermissionResolver;
+import de.mhus.vance.shared.permission.PermissionService;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.permission.SecurityContext;
-import de.mhus.vance.shared.permission.SubjectType;
-import de.mhus.vance.shared.permission.WriteReason;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.team.TeamDocument;
 import de.mhus.vance.shared.team.TeamService;
@@ -16,10 +15,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The bundled role-based resolver. Implements rules R1–R7 (see
- * {@code specification/public/permission-system.md} §5). Stateless apart from
- * the (cached) grant lookup via {@link PermissionGrantService}; never throws —
- * returns {@code false} on any missing data (fail-closed).
+ * The bundled role-based resolver. Implements the user-policy rules R2–R7 (see
+ * {@code specification/public/permission-system.md} §5). R1 — the SYSTEM trust
+ * boundary — is <em>not</em> here: {@link PermissionService} short-circuits a
+ * SYSTEM subject / SYSTEM write-reason before delegation, so this provider only
+ * ever sees genuine user policy. Stateless apart from the (cached) grant lookup
+ * via {@link PermissionGrantService}; never throws — returns {@code false} on
+ * any missing data (fail-closed).
  */
 @Slf4j
 public class MongoPermissionResolver implements PermissionResolver {
@@ -32,8 +34,9 @@ public class MongoPermissionResolver implements PermissionResolver {
      * carry {@code runAs} (scheduler, hooks, events) are reserved — those are
      * the real escalation surface. The rest of {@code _vance/} (recipes,
      * scripts, workflows, logs, model, setting-forms, …) is open for now
-     * (auth business — tighten later as needed). Trusted server writes pass
-     * {@link WriteReason#SYSTEM} and bypass this regardless.
+     * (auth business — tighten later as needed). Trusted server writes are
+     * short-circuited upstream by {@link PermissionService} and never reach
+     * this resolver.
      */
     private static final List<String> RESERVED_PATH_PREFIXES = List.of(
             "_vance/scheduler/", "_vance/hooks/", "_vance/events/");
@@ -53,17 +56,10 @@ public class MongoPermissionResolver implements PermissionResolver {
 
     @Override
     public boolean isAllowed(SecurityContext subject, Resource resource, Action action) {
-        return isAllowed(subject, resource, action, WriteReason.USER);
-    }
-
-    @Override
-    public boolean isAllowed(
-            SecurityContext subject, Resource resource, Action action, WriteReason reason) {
-        // A trusted server write of a system resource is allowed regardless of
-        // the user's role (only Java code can pass SYSTEM); the real actor is
-        // still in `subject` for audit. Otherwise the normal verdict applies.
-        boolean allowed = reason == WriteReason.SYSTEM
-                || computeAllowed(subject, resource, action);
+        // This provider evaluates user policy only. The SYSTEM trust boundary
+        // (SYSTEM subject / SYSTEM write-reason) is short-circuited by
+        // PermissionService before delegation, so it never reaches here.
+        boolean allowed = computeAllowed(subject, resource, action);
         // Metric only — the verdict is always enforced (fail-closed). The
         // deny counter (vance.permission.checks{outcome=deny}) is the
         // diagnosis surface for tightening grants.
@@ -85,10 +81,6 @@ public class MongoPermissionResolver implements PermissionResolver {
 
     private boolean computeAllowed(SecurityContext subject, Resource resource, Action action) {
         try {
-            // R1 — internal callers are trusted.
-            if (subject.subjectType() == SubjectType.SYSTEM) {
-                return true;
-            }
             // Tenant guard — a USER never acts cross-tenant.
             if (!subject.tenantId().equals(tenantOf(resource))) {
                 return false;
@@ -117,8 +109,8 @@ public class MongoPermissionResolver implements PermissionResolver {
     private boolean documentAllowed(SecurityContext subject, Resource.Document d, Action action) {
         GrantRole required = minRole(action);
         if (isWrite(action) && isReservedPath(d.path())) {
-            // Reserved paths (_vance/**, recipes/**, scheduler/hook/event YAMLs)
-            // may only be written by ADMIN (or SYSTEM via R1).
+            // Reserved paths (scheduler/hook/event YAMLs that auto-execute)
+            // may only be written by ADMIN (SYSTEM writes are handled upstream).
             required = GrantRole.ADMIN;
         }
         return roleOnProject(subject, d.tenantId(), d.projectName(), required);

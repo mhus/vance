@@ -53,7 +53,23 @@ public class PermissionService {
      */
     public boolean check(
             SecurityContext subject, Resource resource, Action action, WriteReason reason) {
-        boolean allowed = resolver.isAllowed(subject, resource, action, reason);
+        // Framework trust boundary — enforced here, before the provider, so the
+        // provider only ever evaluates genuine user policy and no provider can
+        // accidentally break internal server operations. A SYSTEM subject (the
+        // server acting as itself) or a SYSTEM reason (server code vouching for
+        // a write; only Java can set it — never a user surface) is trusted; the
+        // real actor stays in `subject` for audit. WriteReason therefore never
+        // reaches the resolver (see PermissionResolver SPI).
+        if (subject.subjectType() == SubjectType.SYSTEM || reason == WriteReason.SYSTEM) {
+            if (log.isTraceEnabled()) {
+                log.trace("permission ALLOW (system-trust): subject={}:{} tenant={} "
+                                + "action={} reason={} resource={}",
+                        subject.subjectType(), subject.subjectId(), subject.tenantId(),
+                        action, reason, resource);
+            }
+            return true;
+        }
+        boolean allowed = resolver.isAllowed(subject, resource, action);
         if (log.isTraceEnabled()) {
             log.trace("permission {}: subject={}:{} tenant={} action={} reason={} resource={}",
                     allowed ? "ALLOW" : "DENY",

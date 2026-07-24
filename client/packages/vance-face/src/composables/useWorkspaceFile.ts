@@ -1,5 +1,5 @@
 import { ref, type Ref } from 'vue';
-import { brainBaseUrl, getTenantId } from '@vance/shared';
+import { brainBaseUrl, brainFetchText, getTenantId } from '@vance/shared';
 
 /**
  * One-shot fetcher for a single workspace file. The Brain serves raw
@@ -96,9 +96,13 @@ export function useWorkspaceFile(): UseWorkspaceFile {
     try {
       let text: string | null = null;
       if (mode === 'text' || mode === 'markdown') {
-        const r = await fetch(url, { credentials: 'include' });
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        text = await r.text();
+        // Route through the shared REST wrapper so a 401 silently
+        // refreshes + retries instead of hard-failing. image/binary
+        // modes keep the absolute `url` (loaded by <img>/<iframe> src).
+        const query = new URLSearchParams({ path }).toString();
+        text = await brainFetchText(
+          `projects/${encodeURIComponent(projectId)}/workspace/file?${query}`,
+        );
       }
       result.value = { mode, text, url, mimeType };
     } catch (e) {

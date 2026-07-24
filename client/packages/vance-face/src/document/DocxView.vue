@@ -17,7 +17,7 @@
  * Word/Pages/LibreOffice lokal.
  */
 import { computed, onMounted, ref, watch } from 'vue';
-import { documentContentUrl } from '@vance/shared';
+import { brainFetchBlob, documentContentUrl } from '@vance/shared';
 import DOMPurify from 'dompurify';
 import mammoth from 'mammoth';
 import type { DocumentDto } from '@vance/generated';
@@ -53,17 +53,17 @@ async function loadDocx(): Promise<void> {
   html.value = '';
   warnings.value = [];
   try {
-    // cache: 'no-store' is critical — after an office-edit save
-    // the bytes change but the URL stays identical, and the
-    // browser would otherwise hand us the stale prior body.
-    const res = await fetch(url.value, {
-      credentials: 'include',
-      cache: 'no-store',
-    });
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status} ${res.statusText}`);
-    }
-    const arrayBuffer = await res.arrayBuffer();
+    const id = props.document?.id ?? props.documentId;
+    if (!id) return;
+    // Through the shared REST wrapper so a 401 refreshes+retries.
+    // cache: 'no-store' is critical — after an office-edit save the
+    // bytes change but the content URL stays identical, and the browser
+    // would otherwise hand us the stale prior body.
+    const { blob } = await brainFetchBlob(
+      `documents/${encodeURIComponent(id)}/content`,
+      { cache: 'no-store' },
+    );
+    const arrayBuffer = await blob.arrayBuffer();
     const result = await mammoth.convertToHtml({ arrayBuffer });
     // mammoth's HTML is structured but unstyled; DOMPurify strips
     // anything it doesn't recognise (event handlers, scripts) —

@@ -57,6 +57,13 @@ interface RestOptions {
    *   that run before any WebSocket exists).
    */
   editorId?: string | false;
+  /**
+   * Optional {@link RequestCache} mode forwarded to the underlying
+   * `fetch`. Content viewers pass `'no-store'` because the bytes at a
+   * stable content URL change after an in-place save and the browser
+   * would otherwise hand back the stale prior body.
+   */
+  cache?: RequestCache;
 }
 
 /**
@@ -77,16 +84,21 @@ export async function brainFetch<T>(
   if (!tenant) throw new RestError(0, path, 'No tenant configured — user is not logged in.');
 
   const url = `${brainBaseUrl()}/brain/${encodeURIComponent(tenant)}/${path.replace(/^\//, '')}`;
-  const response = await doFetch(url, method, options);
+  let response = await doFetch(url, method, options);
 
   if (response.status === 401 && options.authenticated !== false) {
     const refreshed = await getRestConfig().refreshAccess();
     if (refreshed) {
-      const retry = await doFetch(url, method, options);
-      if (retry.ok) return parseJson<T>(retry);
+      // Retry once with the fresh credential. Any non-ok retry status
+      // (403 genuine denial, 404, transient 500) must surface as a
+      // RestError — NOT a logout. Only a failed refresh (below) or a
+      // second 401 means the session is truly dead. Aligns with the
+      // WithMeta / Blob / Raw helpers.
+      response = await doFetch(url, method, options);
+    } else {
+      redirectToLogin();
+      return new Promise<T>(() => {});
     }
-    redirectToLogin();
-    return new Promise<T>(() => {});
   }
 
   if (!response.ok) {
@@ -127,6 +139,7 @@ async function doFetch(url: string, method: string, options: RestOptions): Promi
     method,
     headers,
     body,
+    ...(options.cache ? { cache: options.cache } : {}),
     credentials:
       config.authMode === 'cookie' && options.authenticated !== false ? 'include' : 'omit',
   });
@@ -186,17 +199,18 @@ export async function brainFetchWithMeta<T>(
  */
 export async function brainFetchBlob(
   path: string,
+  options: RestOptions = {},
 ): Promise<{ blob: Blob; filename: string | null }> {
   const tenant = getTenantId();
   if (!tenant) throw new RestError(0, path, 'No tenant configured — user is not logged in.');
 
   const url = `${brainBaseUrl()}/brain/${encodeURIComponent(tenant)}/${path.replace(/^\//, '')}`;
-  let response = await doFetch(url, 'GET', {});
+  let response = await doFetch(url, 'GET', options);
 
   if (response.status === 401) {
     const refreshed = await getRestConfig().refreshAccess();
     if (refreshed) {
-      response = await doFetch(url, 'GET', {});
+      response = await doFetch(url, 'GET', options);
     } else {
       redirectToLogin();
       return new Promise<{ blob: Blob; filename: string | null }>(() => {});
@@ -242,21 +256,24 @@ export async function brainFetchText(path: string): Promise<string | null> {
   if (!tenant) throw new RestError(0, path, 'No tenant configured — user is not logged in.');
 
   const url = `${brainBaseUrl()}/brain/${encodeURIComponent(tenant)}/${path.replace(/^\//, '')}`;
-  const response = await doFetch(url, 'GET', {});
+  let response = await doFetch(url, 'GET', {});
 
   if (response.status === 404) return null;
 
   if (response.status === 401) {
     const refreshed = await getRestConfig().refreshAccess();
     if (refreshed) {
-      const retry = await doFetch(url, 'GET', {});
-      if (retry.status === 404) return null;
-      if (retry.ok) return retry.text();
+      // Retry once; a non-ok retry (other than 404) surfaces as a
+      // RestError below, not a logout. Only a failed refresh means the
+      // session is dead. Aligns with the WithMeta / Blob / Raw helpers.
+      response = await doFetch(url, 'GET', {});
+    } else {
+      redirectToLogin();
+      return new Promise<string | null>(() => {});
     }
-    redirectToLogin();
-    return new Promise<string | null>(() => {});
   }
 
+  if (response.status === 404) return null;
   if (!response.ok) {
     const text = await response.text().catch(() => '');
     throw new RestError(response.status, path, text || response.statusText);

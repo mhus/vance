@@ -14,7 +14,7 @@
  * Download + lokal in Excel/LibreOffice/Numbers öffnen.
  */
 import { computed, onMounted, ref, watch } from 'vue';
-import { documentContentUrl } from '@vance/shared';
+import { brainFetchBlob, documentContentUrl } from '@vance/shared';
 import DOMPurify from 'dompurify';
 import * as XLSX from 'xlsx';
 import type { DocumentDto } from '@vance/generated';
@@ -54,17 +54,17 @@ async function loadXlsx(): Promise<void> {
   activeSheet.value = '';
   sheetHtml.value = {};
   try {
-    // cache: 'no-store' is critical — after an office-edit save
-    // the bytes change but the URL stays identical, and the
-    // browser would otherwise hand us the stale prior body.
-    const res = await fetch(url.value, {
-      credentials: 'include',
-      cache: 'no-store',
-    });
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status} ${res.statusText}`);
-    }
-    const arrayBuffer = await res.arrayBuffer();
+    const id = props.document?.id ?? props.documentId;
+    if (!id) return;
+    // Through the shared REST wrapper so a 401 refreshes+retries.
+    // cache: 'no-store' is critical — after an office-edit save the
+    // bytes change but the content URL stays identical, and the browser
+    // would otherwise hand us the stale prior body.
+    const { blob } = await brainFetchBlob(
+      `documents/${encodeURIComponent(id)}/content`,
+      { cache: 'no-store' },
+    );
+    const arrayBuffer = await blob.arrayBuffer();
     const wb = XLSX.read(arrayBuffer, { type: 'array' });
     sheetNames.value = [...wb.SheetNames];
     activeSheet.value = sheetNames.value[0] ?? '';

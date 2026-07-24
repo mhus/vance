@@ -106,6 +106,15 @@ public class FinanceController {
         return financeService.recalculate(requireDoc(tenant, projectId, path), currentUser(request));
     }
 
+    @GetMapping("/brain/{tenant}/addon/finance/snapshot")
+    public FinanceComputed snapshot(@PathVariable String tenant,
+                                    @RequestParam String projectId,
+                                    @RequestParam String path,
+                                    HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
+        return financeService.snapshot(requireDoc(tenant, projectId, path));
+    }
+
     @GetMapping("/brain/{tenant}/addon/finance/project")
     public FinanceProjection project(@PathVariable String tenant,
                                      @RequestParam String projectId,

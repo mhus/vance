@@ -47,6 +47,17 @@ const CalendarView = defineAsyncComponent(async () => {
   const m = mod as { default?: unknown };
   return (m?.default ?? mod) as ReturnType<typeof defineAsyncComponent>;
 });
+// Finance-tree summary lives in the finance addon (embedded channel only).
+// Same dynamic-federation pattern as CalendarView — the remote is registered
+// at boot by loadAddonRegistrations; full editing happens in its own dialog.
+const FinanceView = defineAsyncComponent(async () => {
+  const { loadRemote } = await import('@module-federation/runtime');
+  const mod = await loadRemote<{ default?: unknown } | unknown>(
+    'vance_addon_finance/FinanceSummaryView',
+  );
+  const m = mod as { default?: unknown };
+  return (m?.default ?? mod) as ReturnType<typeof defineAsyncComponent>;
+});
 const SlidesView  = defineAsyncComponent(() => import('@/document/SlidesView.vue'));
 const ImageView   = defineAsyncComponent(() => import('@/document/ImageView.vue'));
 const PdfView     = defineAsyncComponent(() => import('@/document/PdfView.vue'));
@@ -80,6 +91,9 @@ export const kindRegistry: Record<string, KindRenderer> = {
   chart:   { inline: ChartView,   embedded: ChartView,   label: 'Chart',   icon: '📊' },
   map:     { inline: MapView,     embedded: MapView,     label: 'Map',     icon: '🗺' },
   calendar: { inline: CalendarView, embedded: CalendarView, label: 'Calendar', icon: '📅' },
+  // Finance-tree is embedded-only (no inline fence form) — a data-only summary
+  // card with an "Edit" dialog; authoring lives in the Cortex kind editor.
+  'finance-tree': { embedded: FinanceView, label: 'Finance', icon: '🧮' },
   // Mermaid / Gantt / sequence / pie / … — DiagramView parses the
   // fenced mermaid block (or full markdown document with one) and
   // renders via the bundled mermaid runtime. Embedded mode reads the

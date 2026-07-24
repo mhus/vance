@@ -11,6 +11,7 @@ export default defineConfig({
       filename: 'remoteEntry.js',
       exposes: {
         './register': './src/register.ts',
+        './FinanceSummaryView': './src/FinanceSummaryView.vue',
       },
       shared: {
         vue: { singleton: true, requiredVersion: '^3.5.0' },

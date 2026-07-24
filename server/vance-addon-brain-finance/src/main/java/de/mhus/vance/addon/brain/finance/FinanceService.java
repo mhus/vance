@@ -146,6 +146,18 @@ public class FinanceService {
      * caller for an immediate response, e.g. the {@code finance_tree_calc} tool
      * / REST {@code /calc}).
      */
+    /**
+     * Compute the snapshot <em>without</em> persisting — a read-only view for
+     * the embedded summary / preview. {@link #recalculate} is the write path.
+     */
+    public FinanceComputed snapshot(DocumentDocument doc) {
+        FinanceTreeDocument tree = readDocument(doc);
+        List<NodeSnapshot> nodes = tree.root() == null
+                ? List.of()
+                : FinanceCalculator.compute(tree.root(), LocalDate.now(ZoneOffset.UTC));
+        return new FinanceComputed(Instant.now().toString(), nodes);
+    }
+
     public FinanceComputed recalculate(DocumentDocument doc, @Nullable String userId) {
         FinanceTreeDocument tree = readDocument(doc);
         List<NodeSnapshot> nodes = tree.root() == null

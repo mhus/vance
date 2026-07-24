@@ -42,6 +42,10 @@ export async function calc(projectId: string, path: string): Promise<FinanceComp
   return brainFetch<FinanceComputed>('POST', `addon/finance/calc?${qs({ projectId, path })}`);
 }
 
+export async function getSnapshot(projectId: string, path: string): Promise<FinanceComputed> {
+  return brainFetch<FinanceComputed>('GET', `addon/finance/snapshot?${qs({ projectId, path })}`);
+}
+
 export async function project(
   projectId: string,
   path: string,

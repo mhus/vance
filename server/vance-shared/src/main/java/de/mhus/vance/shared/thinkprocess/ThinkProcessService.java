@@ -595,7 +595,13 @@ public class ThinkProcessService {
             throw new IllegalArgumentException(
                     "updateStatus(CLOSED) requires a CloseReason — use closeProcess(id, reason)");
         }
-        Query query = new Query(Criteria.where("_id").is(id));
+        // Guard against reviving a concurrently-CLOSED process (TOCTOU): the
+        // three call-sites decide on a stale doc, so match only a still-open
+        // process. Without this, a process that went DONE/STALE between the
+        // caller's read and here would be reset to a live status — a zombie in
+        // the lane with its closeReason wiped. Mirrors closeProcess's guard.
+        Query query = new Query(Criteria.where("_id").is(id)
+                .and("status").ne(ThinkProcessStatus.CLOSED));
         Update update = new Update()
                 .set("status", status)
                 .unset("closeReason");

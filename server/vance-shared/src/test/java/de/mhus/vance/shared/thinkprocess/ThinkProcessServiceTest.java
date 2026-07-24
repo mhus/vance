@@ -151,6 +151,28 @@ class ThinkProcessServiceTest {
     }
 
     @Test
+    void updateStatus_queryGuardsAgainstRevivingClosedProcess() {
+        ThinkProcessDocument prior = process("p-1");
+        prior.setStatus(ThinkProcessStatus.RUNNING);
+        when(mongoTemplate.findAndModify(
+                any(Query.class), any(Update.class),
+                any(FindAndModifyOptions.class), eq(ThinkProcessDocument.class)))
+                .thenReturn(prior);
+
+        service.updateStatus("p-1", ThinkProcessStatus.PAUSED);
+
+        // TOCTOU guard: the atomic query must exclude an already-CLOSED row so
+        // a concurrent DONE/STALE can't be reset to a live status.
+        org.mockito.ArgumentCaptor<Query> captor =
+                org.mockito.ArgumentCaptor.forClass(Query.class);
+        verify(mongoTemplate).findAndModify(captor.capture(), any(Update.class),
+                any(FindAndModifyOptions.class), eq(ThinkProcessDocument.class));
+        org.bson.Document q = captor.getValue().getQueryObject();
+        assertThat(q).containsKey("status");
+        assertThat(q.toString()).contains("$ne").contains("CLOSED");
+    }
+
+    @Test
     void updateStatus_rejectsClosedRoute() {
         // CLOSED requires CloseReason — has its own dedicated method.
         assertThatThrownBy(() ->

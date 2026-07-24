@@ -896,11 +896,20 @@ public class SessionService {
                 .set(F_SUSPEND_CAUSE, cause)
                 .set(F_TRANSITION_AT, transitionAt)
                 .set(F_LAST_ACTIVITY, now);
-        mongoTemplate.updateFirst(
-                new Query(Criteria.where(F_SESSION_ID).is(sessionId)),
+        // Guard the write on the status observed above (TOCTOU): if the
+        // session transitioned concurrently between the read and here — e.g.
+        // a user message drove an IDLE session to RUNNING while the idle
+        // sweeper was suspending it — the update no-ops instead of clobbering
+        // an active session to SUSPENDED (orphaning its running engine).
+        // Mirrors the guard resume() already applies.
+        UpdateResult result = mongoTemplate.updateFirst(
+                new Query(Criteria.where(F_SESSION_ID).is(sessionId)
+                        .and(F_STATUS).is(session.getStatus())),
                 update, SessionDocument.class);
-        log.info("Suspended session '{}' cause={} transitionAt={}",
-                sessionId, cause, transitionAt);
+        if (result.getModifiedCount() == 1) {
+            log.info("Suspended session '{}' cause={} transitionAt={}",
+                    sessionId, cause, transitionAt);
+        }
     }
 
     /**

@@ -199,6 +199,16 @@ public final class SpawnActionExecutor implements ActionExecutor<TriggerAction.R
         } catch (RuntimeException ex) {
             log.warn("SpawnActionExecutor: engine.start failed for id='{}' recipe='{}': {}",
                     fresh.getId(), action.recipe(), ex.toString());
+            // Roll back the persisted INIT row so it does not linger as an
+            // orphan in the session listing (never started, never closed).
+            // Mirrors the AgentTaskExecutor cleanup.
+            try {
+                thinkProcessService.closeProcess(
+                        fresh.getId(), de.mhus.vance.api.thinkprocess.CloseReason.ABANDONED);
+            } catch (RuntimeException closeEx) {
+                log.warn("SpawnActionExecutor: could not close orphaned process '{}': {}",
+                        fresh.getId(), closeEx.toString());
+            }
             return ActionResult.failure(ActionOutcome.TECHNICAL_ERROR,
                     "engine_start: " + ex.getMessage(),
                     Map.of("processId", fresh.getId()));
@@ -423,7 +433,12 @@ public final class SpawnActionExecutor implements ActionExecutor<TriggerAction.R
     }
 
     private static String autoGenerateProcessName() {
-        return "run_" + Instant.now().toEpochMilli();
+        // Collision-free: two auto-spawns in the same session within the same
+        // millisecond would otherwise produce an identical name, make create()
+        // throw AlreadyExists, and collapse into the FIRST process (silent
+        // fan-out loss). The short-UUID suffix disambiguates same-ms spawns.
+        return "run_" + Instant.now().toEpochMilli() + "_"
+                + java.util.UUID.randomUUID().toString().substring(0, 8);
     }
 
     private static String deriveConnectionProfileFromKind(TriggerKind kind) {

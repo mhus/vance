@@ -54,6 +54,22 @@ public class ExecListSnapshotHandler implements WsHandler {
         }
         ExecutionOwner owner = new ExecutionOwner.Foot(ctx.getEditorId());
 
+        // Preserve owner-process linkage across the rebuild: snapshot frames
+        // carry no processId (attached at invoke-time by ClientToolSource), and
+        // removeByFootClient wipes the entries, so a blind re-register would
+        // orphan the owning process (never gets EXEC_FINISHED/EXEC_TIMEOUT).
+        // Capture the attached processIds first, reattach after re-register.
+        java.util.Map<String, String> preservedProcessIds = new java.util.HashMap<>();
+        if (snapshot != null && snapshot.getExecutions() != null) {
+            for (ExecEvent e : snapshot.getExecutions()) {
+                if (e.getExecutionId() == null || e.getExecutionId().isBlank()) continue;
+                registry.find(e.getExecutionId())
+                        .map(ExecutionRegistryEntry::processId)
+                        .filter(pid -> pid != null && !pid.isBlank())
+                        .ifPresent(pid -> preservedProcessIds.put(e.getExecutionId(), pid));
+            }
+        }
+
         int dropped = registry.removeByFootClient(ctx.getEditorId());
         log.debug("exec-list-snapshot: dropped {} stale entries for client '{}'",
                 dropped, ctx.getEditorId());
@@ -79,6 +95,10 @@ public class ExecListSnapshotHandler implements WsHandler {
                     e.getExitCode(),
                     e.getStdoutPath(),
                     e.getStderrPath()));
+            String preserved = preservedProcessIds.get(e.getExecutionId());
+            if (preserved != null) {
+                registry.attachProcessId(e.getExecutionId(), preserved);
+            }
         }
     }
 }

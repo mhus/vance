@@ -98,13 +98,8 @@ public class ExecEventHandler implements WsHandler {
                     event.getExitCode(),
                     event.getStdoutPath(),
                     event.getStderrPath()));
-            case TICK -> registry.find(event.getExecutionId()).ifPresent(entry ->
-                    registry.updateProgress(
-                            entry.executionId(),
-                            event.getLastOutputAt() != null ? event.getLastOutputAt() : entry.lastOutputAt(),
-                            entry.status(),
-                            entry.exitCode(),
-                            entry.endedAt()));
+            case TICK -> registry.touchLastOutput(
+                    event.getExecutionId(), event.getLastOutputAt());
             case ENDED -> {
                 registry.updateProgress(
                         event.getExecutionId(),

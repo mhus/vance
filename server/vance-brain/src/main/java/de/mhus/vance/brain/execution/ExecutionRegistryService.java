@@ -29,9 +29,21 @@ public class ExecutionRegistryService {
 
     private final Map<String, ExecutionRegistryEntry> entries = new ConcurrentHashMap<>();
 
-    /** Insert or replace an entry. Idempotent on {@link ExecutionRegistryEntry#executionId()}. */
+    /**
+     * Insert or replace an entry. Idempotent on
+     * {@link ExecutionRegistryEntry#executionId()}. Preserves an
+     * already-attached owner {@code processId} when the incoming entry
+     * has none: STARTED / snapshot frames carry no processId (it is
+     * attached at invoke-time by {@code ClientToolSource}), so a blind
+     * replace on a foot reconnect would wipe the owner linkage and the
+     * spawning process would never receive EXEC_FINISHED/EXEC_TIMEOUT.
+     */
     public void register(ExecutionRegistryEntry entry) {
-        entries.put(entry.executionId(), entry);
+        entries.merge(entry.executionId(), entry, (prev, incoming) ->
+                (incoming.processId() == null || incoming.processId().isBlank())
+                        && prev.processId() != null && !prev.processId().isBlank()
+                        ? incoming.withProcessId(prev.processId())
+                        : incoming);
     }
 
     /**
@@ -47,6 +59,21 @@ public class ExecutionRegistryService {
             @Nullable Instant endedAt) {
         entries.computeIfPresent(executionId, (id, prev) ->
                 prev.withProgress(lastOutputAt, status, exitCode, endedAt));
+    }
+
+    /**
+     * Touch-only progress update: advances {@code lastOutputAt} while
+     * reading status/exitCode/endedAt from the CURRENT entry inside the
+     * atomic section. Unlike a find-then-updateProgress with a pre-read
+     * status, a concurrent ENDED cannot be overwritten back to RUNNING by
+     * a stale TICK. Falls back to the entry's own lastOutputAt when the
+     * frame carries none.
+     */
+    public void touchLastOutput(String executionId, @Nullable Instant lastOutputAt) {
+        entries.computeIfPresent(executionId, (id, prev) ->
+                prev.withProgress(
+                        lastOutputAt != null ? lastOutputAt : prev.lastOutputAt(),
+                        prev.status(), prev.exitCode(), prev.endedAt()));
     }
 
     public Optional<ExecutionRegistryEntry> find(String executionId) {

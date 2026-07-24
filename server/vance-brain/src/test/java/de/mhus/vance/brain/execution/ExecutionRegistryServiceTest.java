@@ -42,6 +42,37 @@ class ExecutionRegistryServiceTest {
     }
 
     @Test
+    void register_preservesAttachedProcessId_whenReRegisteredWithNone() {
+        // Regression (code-review-2): a STARTED/snapshot re-register carries no
+        // processId; a blind replace wiped the owner linkage attached at
+        // invoke-time, so the owning process never got EXEC_FINISHED.
+        registry.register(brainEntry("e1", "acme", "proj", ExecutionStatus.RUNNING));
+        registry.attachProcessId("e1", "owner-proc-1");
+
+        // Re-register (reconnect) with the same id but no processId.
+        registry.register(brainEntry("e1", "acme", "proj", ExecutionStatus.RUNNING));
+
+        assertThat(registry.find("e1").orElseThrow().processId()).isEqualTo("owner-proc-1");
+    }
+
+    @Test
+    void touchLastOutput_keepsTerminalStatus_notResurrectedToRunning() {
+        // Regression (code-review-2): a TICK read-modify-write with a pre-read
+        // RUNNING status could overwrite a concurrent ENDED back to RUNNING.
+        // touchLastOutput reads status from the current entry atomically.
+        registry.register(brainEntry("e1", "acme", "proj", ExecutionStatus.RUNNING));
+        Instant ended = Instant.now();
+        registry.updateProgress("e1", ended, ExecutionStatus.COMPLETED, 0, ended);
+
+        registry.touchLastOutput("e1", Instant.now());
+
+        ExecutionRegistryEntry e = registry.find("e1").orElseThrow();
+        assertThat(e.status()).isEqualTo(ExecutionStatus.COMPLETED);
+        assertThat(e.exitCode()).isEqualTo(0);
+        assertThat(e.endedAt()).isEqualTo(ended);
+    }
+
+    @Test
     void updateProgress_unknownId_isNoOp() {
         registry.updateProgress("ghost", Instant.now(), ExecutionStatus.COMPLETED, 0, Instant.now());
 

@@ -68,13 +68,16 @@ public class CalendarsApplication implements VanceApplication {
     private final CalendarFolderReader folderReader;
     private final DocumentService documentService;
     private final DocumentLinkBuilder linkBuilder;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
     public CalendarsApplication(CalendarFolderReader folderReader,
                                 DocumentService documentService,
-                                DocumentLinkBuilder linkBuilder) {
+                                DocumentLinkBuilder linkBuilder,
+                                de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
         this.folderReader = folderReader;
         this.documentService = documentService;
         this.linkBuilder = linkBuilder;
+        this.contextFactory = contextFactory;
     }
 
     @Override public String appName() { return APP_NAME; }
@@ -229,7 +232,9 @@ public class CalendarsApplication implements VanceApplication {
                     existing.get().getId(),
                     title != null ? title : "Calendar app",
                     List.of("application", "calendar"),
-                    body, null, null, null, null, YAML_MIME);
+                    body, null, null, null, null, YAML_MIME,
+                    DocumentService.TOOL_IDENTITY,
+                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), existing.get().getPath()));
         } else {
             try (var in = new java.io.ByteArrayInputStream(
                     body.getBytes(java.nio.charset.StandardCharsets.UTF_8))) {
@@ -238,7 +243,8 @@ public class CalendarsApplication implements VanceApplication {
                         manifestPath,
                         title != null ? title : "Calendar app",
                         List.of("application", "calendar"),
-                        YAML_MIME, in, ctx.userId());
+                        YAML_MIME, in, ctx.userId(),
+                        contextFactory.writeActor(ctx.tenantId(), ctx.userId(), manifestPath));
             } catch (java.io.IOException e) {
                 throw new ToolException(
                         "Could not write manifest '" + manifestPath
@@ -359,7 +365,9 @@ public class CalendarsApplication implements VanceApplication {
             documentService.update(
                     existing.get().getId(),
                     title, List.of("calendar"),
-                    body, null, null, null, null, YAML_MIME);
+                    body, null, null, null, null, YAML_MIME,
+                    DocumentService.TOOL_IDENTITY,
+                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), existing.get().getPath()));
             return;
         }
         try (ByteArrayInputStream in = new ByteArrayInputStream(
@@ -367,7 +375,8 @@ public class CalendarsApplication implements VanceApplication {
             documentService.create(
                     ctx.tenantId(), ctx.projectName(),
                     path, title, List.of("calendar"),
-                    YAML_MIME, in, ctx.userId());
+                    YAML_MIME, in, ctx.userId(),
+                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), path));
         } catch (IOException e) {
             throw new ToolException(
                     "Could not write calendar '" + path + "': " + e.getMessage());
@@ -556,12 +565,15 @@ public class CalendarsApplication implements VanceApplication {
         if (existing.isPresent()) {
             return documentService.update(
                     existing.get().getId(),
-                    title, tags, body, null, null, null, null, mime);
+                    title, tags, body, null, null, null, null, mime,
+                    DocumentService.TOOL_IDENTITY,
+                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), existing.get().getPath()));
         }
         try (InputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
             return documentService.create(
                     ctx.tenantId(), ctx.projectName(),
-                    outputPath, title, tags, mime, in, ctx.userId());
+                    outputPath, title, tags, mime, in, ctx.userId(),
+                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), outputPath));
         } catch (IOException e) {
             throw new ToolException(
                     "Could not write artefact '" + outputPath + "': " + e.getMessage());

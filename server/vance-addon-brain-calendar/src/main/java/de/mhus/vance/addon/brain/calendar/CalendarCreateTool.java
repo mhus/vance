@@ -144,17 +144,20 @@ public class CalendarCreateTool implements Tool {
     private final DocumentLinkBuilder linkBuilder;
     private final ThinkProcessService thinkProcessService;
     private final ProgressEmitter progressEmitter;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
     public CalendarCreateTool(EddieContext eddieContext,
                               DocumentService documentService,
                               DocumentLinkBuilder linkBuilder,
                               ThinkProcessService thinkProcessService,
-                              ProgressEmitter progressEmitter) {
+                              ProgressEmitter progressEmitter,
+                              de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
         this.eddieContext = eddieContext;
         this.documentService = documentService;
         this.linkBuilder = linkBuilder;
         this.thinkProcessService = thinkProcessService;
         this.progressEmitter = progressEmitter;
+        this.contextFactory = contextFactory;
     }
 
     @Override public String name() { return "calendar_create"; }
@@ -256,7 +259,9 @@ public class CalendarCreateTool implements Tool {
                     null,
                     null,
                     null,
-                    YAML_MIME);
+                    YAML_MIME,
+                    DocumentService.TOOL_IDENTITY,
+                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), existing.get().getPath()));
         } else {
             try (InputStream in = new ByteArrayInputStream(bytes)) {
                 stored = documentService.create(
@@ -267,7 +272,8 @@ public class CalendarCreateTool implements Tool {
                         List.of("calendar"),
                         YAML_MIME,
                         in,
-                        ctx.userId());
+                        ctx.userId(),
+                        contextFactory.writeActor(ctx.tenantId(), ctx.userId(), finalPath));
             } catch (IOException e) {
                 throw new ToolException(
                         "Could not store calendar: " + e.getMessage());

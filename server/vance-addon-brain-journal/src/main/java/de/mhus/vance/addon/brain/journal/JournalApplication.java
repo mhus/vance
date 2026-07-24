@@ -43,19 +43,22 @@ public class JournalApplication implements VanceApplication {
     private final JournalStatsRenderer statsRenderer;
     private final DocumentService documentService;
     private final DocumentLinkBuilder linkBuilder;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
     public JournalApplication(JournalFolderReader folderReader,
                               JournalStatsBuilder statsBuilder,
                               JournalIndexRenderer indexRenderer,
                               JournalStatsRenderer statsRenderer,
                               DocumentService documentService,
-                              DocumentLinkBuilder linkBuilder) {
+                              DocumentLinkBuilder linkBuilder,
+                              de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
         this.folderReader = folderReader;
         this.statsBuilder = statsBuilder;
         this.indexRenderer = indexRenderer;
         this.statsRenderer = statsRenderer;
         this.documentService = documentService;
         this.linkBuilder = linkBuilder;
+        this.contextFactory = contextFactory;
     }
 
     @Override public String appName() { return APP_NAME; }
@@ -110,7 +113,9 @@ public class JournalApplication implements VanceApplication {
                     existing.get().getId(),
                     title != null ? title : "Journal",
                     List.of("application", "journal"),
-                    manifestBody, null, null, null, null, YAML_MIME);
+                    manifestBody, null, null, null, null, YAML_MIME,
+                    DocumentService.TOOL_IDENTITY,
+                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), manifestPath));
         } else {
             try (InputStream in = new ByteArrayInputStream(
                     manifestBody.getBytes(StandardCharsets.UTF_8))) {
@@ -118,7 +123,8 @@ public class JournalApplication implements VanceApplication {
                         ctx.tenantId(), ctx.projectName(), manifestPath,
                         title != null ? title : "Journal",
                         List.of("application", "journal"),
-                        YAML_MIME, in, ctx.userId());
+                        YAML_MIME, in, ctx.userId(),
+                        contextFactory.writeActor(ctx.tenantId(), ctx.userId(), manifestPath));
             } catch (IOException e) {
                 throw new ToolException(
                         "Could not write manifest '" + manifestPath + "': " + e.getMessage());
@@ -192,12 +198,15 @@ public class JournalApplication implements VanceApplication {
         if (existing.isPresent()) {
             return documentService.update(
                     existing.get().getId(), title, tags,
-                    body, null, null, null, null, mime);
+                    body, null, null, null, null, mime,
+                    DocumentService.TOOL_IDENTITY,
+                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), outputPath));
         }
         try (InputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
             return documentService.create(
                     ctx.tenantId(), ctx.projectName(),
-                    outputPath, title, tags, mime, in, ctx.userId());
+                    outputPath, title, tags, mime, in, ctx.userId(),
+                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), outputPath));
         } catch (IOException e) {
             throw new ToolException(
                     "Could not write artefact '" + outputPath + "': " + e.getMessage());

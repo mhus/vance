@@ -30,10 +30,13 @@ public class IssuesService {
 
     private final DocumentService documentService;
     private final IssuesFolderReader folderReader;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
-    public IssuesService(DocumentService documentService, IssuesFolderReader folderReader) {
+    public IssuesService(DocumentService documentService, IssuesFolderReader folderReader,
+                         de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
         this.documentService = documentService;
         this.folderReader = folderReader;
+        this.contextFactory = contextFactory;
     }
 
     public IssuesFolderReader.Scan scan(String tenantId, String projectId, String folder) {
@@ -82,7 +85,8 @@ public class IssuesService {
             String serialized = IssueCodec.serialize(issue, MD_MIME);
             try (InputStream in = new ByteArrayInputStream(serialized.getBytes(StandardCharsets.UTF_8))) {
                 DocumentDocument stored = documentService.create(tenantId, projectId, path,
-                        title.trim(), nativeTags(issue), MD_MIME, in, userId);
+                        title.trim(), nativeTags(issue), MD_MIME, in, userId,
+                        contextFactory.writeActor(tenantId, userId, path));
                 bumpNextNumber(scan.manifest(), config, number + 1);
                 log.info("IssuesService.createIssue tenant='{}' #{} path='{}'", tenantId, number, path);
                 return stored;
@@ -101,7 +105,9 @@ public class IssuesService {
         try {
             documentService.update(manifest.getId(),
                     manifest.getTitle(), List.of("application", "issues"),
-                    config.withNextNumber(next).render(), null, null, null, null, YAML_MIME);
+                    config.withNextNumber(next).render(), null, null, null, null, YAML_MIME,
+                    DocumentService.TOOL_IDENTITY,
+                    contextFactory.writeActor(manifest.getTenantId(), null, manifest.getPath()));
         } catch (RuntimeException e) {
             // Best-effort: the unique-path guard + max()+1 floor keep numbers
             // correct even if this bump loses a race. Log and move on.
@@ -128,7 +134,9 @@ public class IssuesService {
                 base.extra());
         String serialized = IssueCodec.serialize(merged, MD_MIME);
         return documentService.update(doc.getId(), merged.title(), nativeTags(merged),
-                serialized, null, null, null, null, MD_MIME);
+                serialized, null, null, null, null, MD_MIME,
+                DocumentService.TOOL_IDENTITY,
+                contextFactory.writeActor(tenantId, null, doc.getPath()));
     }
 
     public DocumentDocument setState(String tenantId, String projectId, String path, String state) {
@@ -143,7 +151,8 @@ public class IssuesService {
         DocumentDocument doc = documentService.findByPath(tenantId, projectId, path)
                 .orElseThrow(() -> new ToolException("No issue at '" + path + "'"));
         return documentService.addNote(doc.getId(), text.trim(),
-                userId == null ? "unknown" : userId, null);
+                userId == null ? "unknown" : userId, null, null,
+                contextFactory.writeActor(tenantId, userId, doc.getPath()));
     }
 
     public List<DocumentNote> listComments(DocumentDocument doc) {
@@ -156,7 +165,8 @@ public class IssuesService {
     public boolean deleteComment(String tenantId, String projectId, String path, String commentId) {
         DocumentDocument doc = documentService.findByPath(tenantId, projectId, path)
                 .orElseThrow(() -> new ToolException("No issue at '" + path + "'"));
-        return documentService.deleteNote(doc.getId(), commentId);
+        return documentService.deleteNote(doc.getId(), commentId, null,
+                contextFactory.writeActor(tenantId, null, doc.getPath()));
     }
 
     // ── Archive / unarchive (file move) ───────────────────────────
@@ -181,14 +191,17 @@ public class IssuesService {
         if (base.equals(path)) return doc; // already there
         String newPath = uniquePath(tenantId, projectId, stripExt(base));
         DocumentDocument moved = documentService.update(doc.getId(),
-                null, null, null, newPath, null, null, null, null);
+                null, null, null, newPath, null, null, null, null,
+                DocumentService.TOOL_IDENTITY,
+                contextFactory.writeActor(tenantId, null, doc.getPath()));
         log.info("IssuesService.relocate '{}' -> '{}'", path, newPath);
         return moved;
     }
 
     public void trash(String tenantId, String projectId, String path, @Nullable String userId) {
         documentService.findByPath(tenantId, projectId, path)
-                .ifPresent(d -> documentService.trash(d.getId(), userId));
+                .ifPresent(d -> documentService.trash(d.getId(),
+                        contextFactory.writeActor(tenantId, userId, d.getPath())));
     }
 
     // ── Search ────────────────────────────────────────────────────

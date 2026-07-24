@@ -12,6 +12,7 @@ import de.mhus.vance.addon.brain.canvas.model.CanvasDocument;
 import de.mhus.vance.addon.brain.canvas.model.CanvasEdge;
 import de.mhus.vance.addon.brain.canvas.model.CanvasGraph;
 import de.mhus.vance.addon.brain.canvas.model.CanvasNode;
+import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.toolpack.ToolException;
@@ -28,12 +29,14 @@ class CanvasServiceTest {
     private static final String YAML = "application/yaml";
 
     private DocumentService documentService;
+    private SecurityContextFactory contextFactory;
     private CanvasService service;
 
     @BeforeEach
     void setUp() {
         documentService = mock(DocumentService.class);
-        service = new CanvasService(documentService);
+        contextFactory = mock(SecurityContextFactory.class);
+        service = new CanvasService(documentService, contextFactory);
     }
 
     private DocumentDocument docWithBody(String body) {
@@ -44,7 +47,8 @@ class CanvasServiceTest {
         when(doc.getTitle()).thenReturn("T");
         when(documentService.loadContent(doc))
                 .thenReturn(new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8)));
-        when(documentService.update(any(), any(), any(), any(), any(), any(), any(), any(), any()))
+        when(documentService.update(
+                any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(doc);
         return doc;
     }
@@ -52,7 +56,8 @@ class CanvasServiceTest {
     private String capturedBody() {
         ArgumentCaptor<String> cap = ArgumentCaptor.forClass(String.class);
         verify(documentService).update(
-                eq("id1"), any(), any(), cap.capture(), any(), any(), any(), any(), any());
+                eq("id1"), any(), any(), cap.capture(), any(), any(), any(), any(), any(),
+                any(), any());
         return cap.getValue();
     }
 

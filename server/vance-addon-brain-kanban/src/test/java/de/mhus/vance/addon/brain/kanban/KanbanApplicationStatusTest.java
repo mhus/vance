@@ -28,7 +28,8 @@ class KanbanApplicationStatusTest {
     private final KanbanApplication app = new KanbanApplication(
             folderReader,
             mock(DocumentService.class),
-            mock(DocumentLinkBuilder.class));
+            mock(DocumentLinkBuilder.class),
+            mock(de.mhus.vance.brain.permission.SecurityContextFactory.class));
 
     private static final StatusContext CTX =
             new StatusContext("t", "p", "board", null, null, Map.of());

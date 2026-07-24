@@ -6,6 +6,7 @@ import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
+import de.mhus.vance.shared.permission.WriteActor;
 import de.mhus.vance.toolpack.ToolException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.ArrayList;
@@ -154,7 +155,7 @@ public class WikiAppController {
         if (!doc.getPath().startsWith(normalised + "/")) {
             throw new ToolException("Page is not inside wiki '" + normalised + "'");
         }
-        documentService.trash(id, currentUser(httpRequest));
+        documentService.trash(id, actor(httpRequest));
         log.info("WikiAppController.deletePage tenant='{}' folder='{}' path='{}'",
                 tenant, normalised, doc.getPath());
         return ResponseEntity.noContent().build();
@@ -297,5 +298,9 @@ public class WikiAppController {
     private static @Nullable String currentUser(HttpServletRequest req) {
         Object o = req.getAttribute("vanceUserId");
         return o instanceof String s ? s : null;
+    }
+
+    private WriteActor actor(HttpServletRequest request) {
+        return WriteActor.user(authority.contextOf(request));
     }
 }

@@ -41,6 +41,7 @@ public class WorkbookInputService {
     private final ScriptExecutor scriptExecutor;
     private final ToolDispatcher toolDispatcher;
     private final SessionService sessionService;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
     /** Wall-clock cap for an onSave recompute script. */
     private static final Duration ON_SAVE_TIMEOUT = Duration.ofSeconds(30);
@@ -70,10 +71,12 @@ public class WorkbookInputService {
                     existing.get().getId(),
                     new ByteArrayInputStream(full.getBytes(StandardCharsets.UTF_8)),
                     DocumentService.mimeFromPath(docPath),
-                    editorId);
+                    DocumentService.WriterIdentity.of(editorId, null, null),
+                    contextFactory.writeActor(tenantId, editorId, docPath));
         } else {
             documentService.createText(
-                    tenantId, projectId, docPath, null, null, full, editorId);
+                    tenantId, projectId, docPath, null, null, full, editorId,
+                    contextFactory.writeActor(tenantId, editorId, docPath));
         }
         log.info("WorkbookInputService.saveInput tenant='{}' doc='{}' len={}",
                 tenantId, docPath, full.length());
@@ -101,14 +104,16 @@ public class WorkbookInputService {
             if (documentService.findByPath(tenantId, projectId, path).isPresent()) {
                 throw new ToolException("document already exists: " + path);
             }
-            documentService.createText(tenantId, projectId, path, null, null, "", editorId);
+            documentService.createText(tenantId, projectId, path, null, null, "", editorId,
+                    contextFactory.writeActor(tenantId, editorId, path));
             log.info("WorkbookInputService.createInput tenant='{}' doc='{}'", tenantId, path);
             return path;
         }
         for (int n = 1; n <= 9999; n++) {
             String path = (base.isEmpty() ? "" : base + "/") + "input-" + n + ".md";
             if (documentService.findByPath(tenantId, projectId, path).isEmpty()) {
-                documentService.createText(tenantId, projectId, path, null, null, "", editorId);
+                documentService.createText(tenantId, projectId, path, null, null, "", editorId,
+                    contextFactory.writeActor(tenantId, editorId, path));
                 log.info("WorkbookInputService.createInput tenant='{}' doc='{}'", tenantId, path);
                 return path;
             }

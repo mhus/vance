@@ -1,5 +1,6 @@
 package de.mhus.vance.addon.brain.wiki;
 
+import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.toolpack.ToolException;
@@ -32,10 +33,13 @@ public class WikiService {
 
     private final DocumentService documentService;
     private final WikiFolderReader folderReader;
+    private final SecurityContextFactory contextFactory;
 
-    public WikiService(DocumentService documentService, WikiFolderReader folderReader) {
+    public WikiService(DocumentService documentService, WikiFolderReader folderReader,
+                       SecurityContextFactory contextFactory) {
         this.documentService = documentService;
         this.folderReader = folderReader;
+        this.contextFactory = contextFactory;
     }
 
     public WikiFolderReader.Scan scan(String tenantId, String projectId, String folder) {
@@ -212,7 +216,8 @@ public class WikiService {
         try (InputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
             DocumentDocument stored = documentService.create(
                     tenantId, projectId, path, title,
-                    List.of("wiki", "workpage"), MD_MIME, in, userId);
+                    List.of("wiki", "workpage"), MD_MIME, in, userId,
+                    contextFactory.writeActor(tenantId, userId, path));
             log.info("WikiService.createPage tenant='{}' folder='{}' path='{}'",
                     tenantId, normalisedFolder, path);
             return stored;

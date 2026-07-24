@@ -1,5 +1,6 @@
 package de.mhus.vance.addon.brain.kanban;
 
+import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.brain.tools.eddie.EddieContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
@@ -70,11 +71,14 @@ public class KanbanCardCreateTool implements Tool {
 
     private final EddieContext eddieContext;
     private final DocumentService documentService;
+    private final SecurityContextFactory contextFactory;
 
     public KanbanCardCreateTool(EddieContext eddieContext,
-                                DocumentService documentService) {
+                                DocumentService documentService,
+                                SecurityContextFactory contextFactory) {
         this.eddieContext = eddieContext;
         this.documentService = documentService;
+        this.contextFactory = contextFactory;
     }
 
     @Override public String name() { return "kanban_card_create"; }
@@ -146,13 +150,16 @@ public class KanbanCardCreateTool implements Tool {
             stored = documentService.update(
                     existing.get().getId(),
                     title, List.of("card"),
-                    body, null, null, null, null, MD_MIME);
+                    body, null, null, null, null, MD_MIME,
+                    DocumentService.TOOL_IDENTITY,
+                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), path));
         } else {
             try (ByteArrayInputStream in = new ByteArrayInputStream(
                     body.getBytes(StandardCharsets.UTF_8))) {
                 stored = documentService.create(
                         tenantId, projectName, path, title,
-                        List.of("card"), MD_MIME, in, ctx.userId());
+                        List.of("card"), MD_MIME, in, ctx.userId(),
+                        contextFactory.writeActor(ctx.tenantId(), ctx.userId(), path));
             } catch (IOException e) {
                 throw new ToolException(
                         "Could not write card '" + path + "': " + e.getMessage());

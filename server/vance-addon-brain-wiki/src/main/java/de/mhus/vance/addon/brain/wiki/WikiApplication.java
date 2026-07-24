@@ -1,6 +1,7 @@
 package de.mhus.vance.addon.brain.wiki;
 
 import de.mhus.vance.brain.applications.VanceApplication;
+import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.brain.tools.document.DocumentLinkBuilder;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
@@ -41,19 +42,22 @@ public class WikiApplication implements VanceApplication {
     private final WikiBacklinksRenderer backlinksRenderer;
     private final DocumentService documentService;
     private final DocumentLinkBuilder linkBuilder;
+    private final SecurityContextFactory contextFactory;
 
     public WikiApplication(WikiFolderReader folderReader,
                            WikiService wikiService,
                            WikiIndexRenderer indexRenderer,
                            WikiBacklinksRenderer backlinksRenderer,
                            DocumentService documentService,
-                           DocumentLinkBuilder linkBuilder) {
+                           DocumentLinkBuilder linkBuilder,
+                           SecurityContextFactory contextFactory) {
         this.folderReader = folderReader;
         this.wikiService = wikiService;
         this.indexRenderer = indexRenderer;
         this.backlinksRenderer = backlinksRenderer;
         this.documentService = documentService;
         this.linkBuilder = linkBuilder;
+        this.contextFactory = contextFactory;
     }
 
     @Override public String appName() { return APP_NAME; }
@@ -107,7 +111,9 @@ public class WikiApplication implements VanceApplication {
                     existing.get().getId(),
                     title != null ? title : "Wiki",
                     List.of("application", "wiki"),
-                    manifestBody, null, null, null, null, YAML_MIME);
+                    manifestBody, null, null, null, null, YAML_MIME,
+                    DocumentService.TOOL_IDENTITY,
+                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), manifestPath));
         } else {
             try (InputStream in = new ByteArrayInputStream(
                     manifestBody.getBytes(StandardCharsets.UTF_8))) {
@@ -116,7 +122,8 @@ public class WikiApplication implements VanceApplication {
                         manifestPath,
                         title != null ? title : "Wiki",
                         List.of("application", "wiki"),
-                        YAML_MIME, in, ctx.userId());
+                        YAML_MIME, in, ctx.userId(),
+                        contextFactory.writeActor(ctx.tenantId(), ctx.userId(), manifestPath));
             } catch (IOException e) {
                 throw new ToolException(
                         "Could not write manifest '" + manifestPath + "': " + e.getMessage());
@@ -221,7 +228,8 @@ public class WikiApplication implements VanceApplication {
         String homeBody = WikiService.workpageStub(title);
         try (InputStream in = new ByteArrayInputStream(homeBody.getBytes(StandardCharsets.UTF_8))) {
             documentService.create(tenant, project, mainPath, title,
-                    List.of("wiki", "workpage"), MD_MIME, in, userId);
+                    List.of("wiki", "workpage"), MD_MIME, in, userId,
+                    contextFactory.writeActor(tenant, userId, mainPath));
             log.info("WikiApplication.seedMain tenant='{}' path='{}'", tenant, mainPath);
             return true;
         } catch (IOException e) {
@@ -238,12 +246,15 @@ public class WikiApplication implements VanceApplication {
         if (existing.isPresent()) {
             return documentService.update(
                     existing.get().getId(), title, tags,
-                    body, null, null, null, null, mime);
+                    body, null, null, null, null, mime,
+                    DocumentService.TOOL_IDENTITY,
+                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), outputPath));
         }
         try (InputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
             return documentService.create(
                     ctx.tenantId(), ctx.projectName(),
-                    outputPath, title, tags, mime, in, ctx.userId());
+                    outputPath, title, tags, mime, in, ctx.userId(),
+                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), outputPath));
         } catch (IOException e) {
             throw new ToolException(
                     "Could not write artefact '" + outputPath + "': " + e.getMessage());

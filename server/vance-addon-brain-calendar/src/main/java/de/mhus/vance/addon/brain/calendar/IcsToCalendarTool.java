@@ -102,17 +102,20 @@ public class IcsToCalendarTool implements Tool {
     private final DocumentLinkBuilder linkBuilder;
     private final ThinkProcessService thinkProcessService;
     private final ProgressEmitter progressEmitter;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
     public IcsToCalendarTool(EddieContext eddieContext,
                              DocumentService documentService,
                              DocumentLinkBuilder linkBuilder,
                              ThinkProcessService thinkProcessService,
-                             ProgressEmitter progressEmitter) {
+                             ProgressEmitter progressEmitter,
+                             de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
         this.eddieContext = eddieContext;
         this.documentService = documentService;
         this.linkBuilder = linkBuilder;
         this.thinkProcessService = thinkProcessService;
         this.progressEmitter = progressEmitter;
+        this.contextFactory = contextFactory;
     }
 
     @Override public String name() { return "ics_to_calendar"; }
@@ -208,7 +211,8 @@ public class IcsToCalendarTool implements Tool {
                     List.of("calendar", "imported"),
                     YAML_MIME,
                     in,
-                    ctx.userId());
+                    ctx.userId(),
+                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), finalPath));
         } catch (IOException e) {
             throw new ToolException(
                     "Could not store imported calendar: " + e.getMessage());

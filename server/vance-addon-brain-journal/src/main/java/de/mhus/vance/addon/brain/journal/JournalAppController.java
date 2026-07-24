@@ -138,7 +138,7 @@ public class JournalAppController {
         Optional<DocumentDocument> doc = journalService.findEntry(
                 tenant, projectId, normalised, config, date);
         if (doc.isEmpty()) return ResponseEntity.notFound().build();
-        documentService.trash(doc.get().getId(), currentUser(httpRequest));
+        documentService.trash(doc.get().getId(), actor(httpRequest));
         log.info("JournalAppController.deleteEntry tenant='{}' folder='{}' path='{}'",
                 tenant, normalised, doc.get().getPath());
         return ResponseEntity.noContent().build();
@@ -253,5 +253,9 @@ public class JournalAppController {
     private static @Nullable String currentUser(HttpServletRequest req) {
         Object o = req.getAttribute("vanceUserId");
         return o instanceof String s ? s : null;
+    }
+
+    private de.mhus.vance.shared.permission.WriteActor actor(HttpServletRequest request) {
+        return de.mhus.vance.shared.permission.WriteActor.user(authority.contextOf(request));
     }
 }

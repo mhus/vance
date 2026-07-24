@@ -1,6 +1,7 @@
 package de.mhus.vance.addon.brain.desktop;
 
 import de.mhus.vance.brain.applications.VanceApplication;
+import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.brain.tools.document.DocumentLinkBuilder;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
@@ -48,13 +49,16 @@ public class DesktopApplication implements VanceApplication {
     private final DesktopStatusService statusService;
     private final DocumentService documentService;
     private final DocumentLinkBuilder linkBuilder;
+    private final SecurityContextFactory contextFactory;
 
     public DesktopApplication(DesktopStatusService statusService,
                               DocumentService documentService,
-                              DocumentLinkBuilder linkBuilder) {
+                              DocumentLinkBuilder linkBuilder,
+                              SecurityContextFactory contextFactory) {
         this.statusService = statusService;
         this.documentService = documentService;
         this.linkBuilder = linkBuilder;
+        this.contextFactory = contextFactory;
     }
 
     @Override public String appName() { return APP_NAME; }
@@ -135,12 +139,15 @@ public class DesktopApplication implements VanceApplication {
         if (existing.isPresent()) {
             return documentService.update(
                     existing.get().getId(), title, tags, body,
-                    null, null, null, null, MD_MIME);
+                    null, null, null, null, MD_MIME,
+                    DocumentService.TOOL_IDENTITY,
+                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), outputPath));
         }
         try (InputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
             return documentService.create(
                     ctx.tenantId(), ctx.projectName(), outputPath, title,
-                    tags, MD_MIME, in, ctx.userId());
+                    tags, MD_MIME, in, ctx.userId(),
+                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), outputPath));
         } catch (IOException e) {
             throw new ToolException(
                     "Could not write artefact '" + outputPath + "': " + e.getMessage());
@@ -190,13 +197,16 @@ public class DesktopApplication implements VanceApplication {
         if (existing.isPresent()) {
             stored = documentService.update(
                     existing.get().getId(), docTitle, tags,
-                    manifestBody, null, null, null, null, YAML_MIME);
+                    manifestBody, null, null, null, null, YAML_MIME,
+                    DocumentService.TOOL_IDENTITY,
+                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), manifestPath));
         } else {
             try (InputStream in = new ByteArrayInputStream(
                     manifestBody.getBytes(StandardCharsets.UTF_8))) {
                 stored = documentService.create(
                         ctx.tenantId(), ctx.projectName(), manifestPath,
-                        docTitle, tags, YAML_MIME, in, ctx.userId());
+                        docTitle, tags, YAML_MIME, in, ctx.userId(),
+                        contextFactory.writeActor(ctx.tenantId(), ctx.userId(), manifestPath));
             } catch (IOException e) {
                 throw new ToolException(
                         "Could not write manifest '" + manifestPath

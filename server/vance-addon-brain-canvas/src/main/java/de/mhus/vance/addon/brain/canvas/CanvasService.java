@@ -4,6 +4,7 @@ import de.mhus.vance.addon.brain.canvas.model.CanvasDocument;
 import de.mhus.vance.addon.brain.canvas.model.CanvasEdge;
 import de.mhus.vance.addon.brain.canvas.model.CanvasGraph;
 import de.mhus.vance.addon.brain.canvas.model.CanvasNode;
+import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.toolpack.ToolException;
@@ -42,9 +43,12 @@ public class CanvasService {
     private static final String DEFAULT_MIME = "application/yaml";
 
     private final DocumentService documentService;
+    private final SecurityContextFactory contextFactory;
 
-    public CanvasService(DocumentService documentService) {
+    public CanvasService(DocumentService documentService,
+                         SecurityContextFactory contextFactory) {
         this.documentService = documentService;
+        this.contextFactory = contextFactory;
     }
 
     // ── Create / read / write ─────────────────────────────────────
@@ -65,7 +69,8 @@ public class CanvasService {
         try (InputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
             DocumentDocument stored = documentService.create(
                     tenantId, projectId, normalisedPath,
-                    title, List.of("canvas"), mime, in, userId);
+                    title, List.of("canvas"), mime, in, userId,
+                    contextFactory.writeActor(tenantId, userId, normalisedPath));
             log.info("CanvasService.create tenant='{}' project='{}' path='{}'",
                     tenantId, projectId, normalisedPath);
             return stored;
@@ -87,7 +92,9 @@ public class CanvasService {
         return documentService.update(
                 doc.getId(),
                 canvas.title() != null ? canvas.title() : doc.getTitle(),
-                null, body, null, null, null, null, mime);
+                null, body, null, null, null, null, mime,
+                DocumentService.TOOL_IDENTITY,
+                contextFactory.writeActor(doc.getTenantId(), null, doc.getPath()));
     }
 
     private String readBody(DocumentDocument doc) {

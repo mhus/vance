@@ -83,19 +83,22 @@ public class CalendarExportIcsTool implements Tool {
     private final ThinkProcessService thinkProcessService;
     private final ProgressEmitter progressEmitter;
     private final IcsExportService exportService;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
     public CalendarExportIcsTool(EddieContext eddieContext,
                                  DocumentService documentService,
                                  DocumentLinkBuilder linkBuilder,
                                  ThinkProcessService thinkProcessService,
                                  ProgressEmitter progressEmitter,
-                                 IcsExportService exportService) {
+                                 IcsExportService exportService,
+                                 de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
         this.eddieContext = eddieContext;
         this.documentService = documentService;
         this.linkBuilder = linkBuilder;
         this.thinkProcessService = thinkProcessService;
         this.progressEmitter = progressEmitter;
         this.exportService = exportService;
+        this.contextFactory = contextFactory;
     }
 
     @Override public String name() { return "calendar_export_ics"; }
@@ -177,7 +180,8 @@ public class CalendarExportIcsTool implements Tool {
                     List.of("calendar", "ics", "export"),
                     ICS_MIME,
                     in,
-                    ctx.userId());
+                    ctx.userId(),
+                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), finalPath));
         } catch (IOException e) {
             throw new ToolException(
                     "Could not store generated .ics: " + e.getMessage());

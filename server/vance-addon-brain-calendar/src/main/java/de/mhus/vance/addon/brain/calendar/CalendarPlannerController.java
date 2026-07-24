@@ -147,12 +147,12 @@ public class CalendarPlannerController {
 
         if (targetLane.equals(loc.lane())) {
             // In-place update.
-            replaceEventInLane(tenant, projectId, loc.sourcePath(), loc.event().id(), merged);
+            replaceEventInLane(tenant, projectId, loc.sourcePath(), loc.event().id(), merged, httpRequest);
             return eventToView(merged, targetLane, loc.sourcePath());
         }
 
         // Cross-lane move: remove from source, add to target.
-        removeEventFromLane(tenant, projectId, loc.sourcePath(), loc.event().id());
+        removeEventFromLane(tenant, projectId, loc.sourcePath(), loc.event().id(), httpRequest);
         DocumentDocument targetDoc = appendEventToLane(
                 tenant, projectId, targetLaneFile, merged, httpRequest);
 
@@ -177,7 +177,7 @@ public class CalendarPlannerController {
         String normalisedFolder = normaliseFolder(folder);
         CalendarFolderReader.Scan scan = folderReader.scan(tenant, projectId, normalisedFolder);
         EventLocation loc = findEvent(scan, eventId);
-        removeEventFromLane(tenant, projectId, loc.sourcePath(), eventId);
+        removeEventFromLane(tenant, projectId, loc.sourcePath(), eventId, httpRequest);
 
         log.info("CalendarPlannerController.deleteEvent tenant='{}' folder='{}' id='{}'",
                 tenant, normalisedFolder, eventId);
@@ -227,7 +227,8 @@ public class CalendarPlannerController {
             return documentService.update(
                     existing.get().getId(),
                     titleFromPath(laneFilePath), List.of("calendar"),
-                    body, null, null, null, null, YAML_MIME);
+                    body, null, null, null, null, YAML_MIME,
+                    DocumentService.TOOL_IDENTITY, actor(httpRequest));
         }
         // Fresh file.
         List<CalendarEvent> events = List.of(event);
@@ -237,7 +238,8 @@ public class CalendarPlannerController {
             return documentService.create(
                     tenant, projectId, laneFilePath,
                     titleFromPath(laneFilePath), List.of("calendar"),
-                    YAML_MIME, in, currentUser(httpRequest));
+                    YAML_MIME, in, currentUser(httpRequest),
+                    actor(httpRequest));
         } catch (IOException e) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
                     "Could not write calendar '" + laneFilePath + "': " + e.getMessage());
@@ -246,7 +248,8 @@ public class CalendarPlannerController {
 
     private void replaceEventInLane(String tenant, String projectId,
                                     String laneFilePath, String eventId,
-                                    CalendarEvent newEvent) {
+                                    CalendarEvent newEvent,
+                                    HttpServletRequest httpRequest) {
         DocumentDocument doc = documentService.findByPath(tenant, projectId, laneFilePath)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Lane file not found: " + laneFilePath));
@@ -269,11 +272,13 @@ public class CalendarPlannerController {
         String body = CalendarCodec.serialize(updated, YAML_MIME);
         documentService.update(doc.getId(),
                 doc.getTitle(), List.of("calendar"),
-                body, null, null, null, null, YAML_MIME);
+                body, null, null, null, null, YAML_MIME,
+                DocumentService.TOOL_IDENTITY, actor(httpRequest));
     }
 
     private void removeEventFromLane(String tenant, String projectId,
-                                     String laneFilePath, String eventId) {
+                                     String laneFilePath, String eventId,
+                                     HttpServletRequest httpRequest) {
         Optional<DocumentDocument> docOpt = documentService.findByPath(
                 tenant, projectId, laneFilePath);
         if (docOpt.isEmpty()) return;
@@ -288,7 +293,8 @@ public class CalendarPlannerController {
         String body = CalendarCodec.serialize(updated, YAML_MIME);
         documentService.update(doc.getId(),
                 doc.getTitle(), List.of("calendar"),
-                body, null, null, null, null, YAML_MIME);
+                body, null, null, null, null, YAML_MIME,
+                DocumentService.TOOL_IDENTITY, actor(httpRequest));
     }
 
     // ── Lookup helpers ────────────────────────────────────────────
@@ -447,5 +453,9 @@ public class CalendarPlannerController {
     private static @Nullable String currentUser(HttpServletRequest httpRequest) {
         Object v = httpRequest.getAttribute(AccessFilterBase.ATTR_USERNAME);
         return v instanceof String s ? s : null;
+    }
+
+    private de.mhus.vance.shared.permission.WriteActor actor(HttpServletRequest request) {
+        return de.mhus.vance.shared.permission.WriteActor.user(authority.contextOf(request));
     }
 }

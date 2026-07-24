@@ -33,13 +33,16 @@ public class GtdService {
     private final DocumentService documentService;
     private final GtdFolderReader folderReader;
     private final GtdBucketResolver bucketResolver;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
     public GtdService(DocumentService documentService,
                       GtdFolderReader folderReader,
-                      GtdBucketResolver bucketResolver) {
+                      GtdBucketResolver bucketResolver,
+                      de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
         this.documentService = documentService;
         this.folderReader = folderReader;
         this.bucketResolver = bucketResolver;
+        this.contextFactory = contextFactory;
     }
 
     public GtdFolderReader.Scan scan(String tenantId, String projectId, String folder) {
@@ -162,7 +165,9 @@ public class GtdService {
         String serialized = GtdActionCodec.serialize(merged, MD_MIME);
         DocumentDocument updated = documentService.update(
                 doc.getId(), base.title(), nativeTags(merged),
-                serialized, newPath, null, null, null, MD_MIME);
+                serialized, newPath, null, null, null, MD_MIME,
+                DocumentService.TOOL_IDENTITY,
+                contextFactory.writeActor(tenantId, userId, doc.getPath()));
         log.info("GtdService.move path='{}' bucket={} newPath='{}'", path, bucket, newPath);
         return updated;
     }
@@ -177,7 +182,8 @@ public class GtdService {
 
     public void trash(String tenantId, String projectId, String path, @Nullable String userId) {
         documentService.findByPath(tenantId, projectId, path)
-                .ifPresent(d -> documentService.trash(d.getId(), userId));
+                .ifPresent(d -> documentService.trash(d.getId(),
+                        contextFactory.writeActor(tenantId, userId, d.getPath())));
     }
 
     // ── Bucket computation ────────────────────────────────────────
@@ -223,7 +229,8 @@ public class GtdService {
         try (InputStream in = new ByteArrayInputStream(serialized.getBytes(StandardCharsets.UTF_8))) {
             DocumentDocument stored = documentService.create(
                     tenantId, projectId, path, action.title(),
-                    nativeTags(action), MD_MIME, in, userId);
+                    nativeTags(action), MD_MIME, in, userId,
+                    contextFactory.writeActor(tenantId, userId, path));
             log.info("GtdService.create tenant='{}' path='{}'", tenantId, path);
             return stored;
         } catch (IOException e) {
@@ -235,7 +242,9 @@ public class GtdService {
         String serialized = GtdActionCodec.serialize(action, MD_MIME);
         return documentService.update(
                 doc.getId(), action.title(), nativeTags(action),
-                serialized, null, null, null, null, MD_MIME);
+                serialized, null, null, null, null, MD_MIME,
+                DocumentService.TOOL_IDENTITY,
+                contextFactory.writeActor(doc.getTenantId(), null, doc.getPath()));
     }
 
     private static List<String> nativeTags(GtdActionDocument action) {

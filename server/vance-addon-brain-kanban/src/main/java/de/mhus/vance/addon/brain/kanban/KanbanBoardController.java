@@ -183,7 +183,7 @@ public class KanbanBoardController {
         // front-matter. Apply it atomically (single-field $set/$unset) BEFORE
         // the content merge so the merge's versioned save preserves it.
         if (Boolean.TRUE.equals(request.getClearColor())) {
-            documentService.clearColor(doc0.getId());
+            documentService.clearColor(doc0.getId(), actor(httpRequest));
         } else if (request.getColor() != null) {
             AccentColor accent;
             try {
@@ -192,7 +192,7 @@ public class KanbanBoardController {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "Unknown accent color '" + request.getColor() + "'.");
             }
-            documentService.setColor(doc0.getId(), accent);
+            documentService.setColor(doc0.getId(), accent, actor(httpRequest));
         }
 
         DocumentDocument updated;
@@ -222,7 +222,8 @@ public class KanbanBoardController {
                 try {
                     saved = documentService.update(
                             doc.getId(), mergedCard.title(), List.of(CARD_KIND),
-                            mergedBody, null, null, null, null, MD_MIME);
+                            mergedBody, null, null, null, null, MD_MIME,
+                            DocumentService.TOOL_IDENTITY, actor(httpRequest));
                     break;
                 } catch (OptimisticLockingFailureException e) {
                     if (attempt >= UPDATE_MAX_ATTEMPTS) {
@@ -275,7 +276,7 @@ public class KanbanBoardController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Document at '" + path + "' is not a card.");
         }
-        documentService.trash(doc.getId());
+        documentService.trash(doc.getId(), actor(httpRequest));
         log.info("KanbanBoardController.deleteCard tenant='{}' folder='{}' path='{}'",
                 tenant, folder, path);
     }
@@ -348,7 +349,7 @@ public class KanbanBoardController {
         try (InputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
             return documentService.create(
                     tenant, projectId, path, title,
-                    List.of(CARD_KIND), MD_MIME, in, currentUser(httpRequest));
+                    List.of(CARD_KIND), MD_MIME, in, currentUser(httpRequest), actor(httpRequest));
         } catch (IOException e) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
                     "Could not write card '" + path + "': " + e.getMessage());
@@ -415,5 +416,9 @@ public class KanbanBoardController {
     private static @Nullable String currentUser(HttpServletRequest httpRequest) {
         Object v = httpRequest.getAttribute(AccessFilterBase.ATTR_USERNAME);
         return v instanceof String s ? s : null;
+    }
+
+    private de.mhus.vance.shared.permission.WriteActor actor(HttpServletRequest request) {
+        return de.mhus.vance.shared.permission.WriteActor.user(authority.contextOf(request));
     }
 }

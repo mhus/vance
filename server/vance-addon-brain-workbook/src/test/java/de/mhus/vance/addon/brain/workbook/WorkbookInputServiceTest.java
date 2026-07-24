@@ -88,8 +88,10 @@ class WorkbookInputServiceTest {
     private final ScriptExecutor scriptExecutor = mock(ScriptExecutor.class);
     private final ToolDispatcher toolDispatcher = mock(ToolDispatcher.class);
     private final SessionService sessionService = mock(SessionService.class);
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory =
+            mock(de.mhus.vance.brain.permission.SecurityContextFactory.class);
     private final WorkbookInputService service = new WorkbookInputService(
-            documentService, scriptExecutor, toolDispatcher, sessionService);
+            documentService, scriptExecutor, toolDispatcher, sessionService, contextFactory);
 
     private DocumentDocument docWith(String content) {
         DocumentDocument doc = mock(DocumentDocument.class);
@@ -173,10 +175,11 @@ class WorkbookInputServiceTest {
     /** The content handed to the single replaceContent call, as a string. */
     private String writtenContent() {
         ArgumentCaptor<InputStream> captor = ArgumentCaptor.forClass(InputStream.class);
-        // Disambiguate the overloaded replaceContent: select the
-        // (String, InputStream, String mime, String editorId) variant.
+        // Match the actor-carrying replaceContent variant:
+        // (String, InputStream, String mime, WriterIdentity, WriteActor).
         verify(documentService).replaceContent(
-                eq("doc-1"), captor.capture(), any(String.class), any(String.class));
+                eq("doc-1"), captor.capture(), any(String.class),
+                any(DocumentService.WriterIdentity.class), any());
         try {
             return new String(captor.getValue().readAllBytes(), StandardCharsets.UTF_8);
         } catch (Exception e) {

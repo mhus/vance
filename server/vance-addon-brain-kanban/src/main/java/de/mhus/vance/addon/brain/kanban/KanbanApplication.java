@@ -7,6 +7,7 @@ import de.mhus.vance.brain.applications.VanceApplication.CreateResult;
 import de.mhus.vance.brain.applications.VanceApplication.RefreshContext;
 import de.mhus.vance.brain.applications.VanceApplication.RefreshResult;
 
+import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.brain.tools.document.DocumentLinkBuilder;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
@@ -55,13 +56,16 @@ public class KanbanApplication implements VanceApplication {
     private final KanbanFolderReader folderReader;
     private final DocumentService documentService;
     private final DocumentLinkBuilder linkBuilder;
+    private final SecurityContextFactory contextFactory;
 
     public KanbanApplication(KanbanFolderReader folderReader,
                              DocumentService documentService,
-                             DocumentLinkBuilder linkBuilder) {
+                             DocumentLinkBuilder linkBuilder,
+                             SecurityContextFactory contextFactory) {
         this.folderReader = folderReader;
         this.documentService = documentService;
         this.linkBuilder = linkBuilder;
+        this.contextFactory = contextFactory;
     }
 
     @Override public String appName() { return APP_NAME; }
@@ -277,7 +281,9 @@ public class KanbanApplication implements VanceApplication {
                     existing.get().getId(),
                     title != null ? title : "Kanban app",
                     List.of("application", "kanban"),
-                    manifestBody, null, null, null, null, YAML_MIME);
+                    manifestBody, null, null, null, null, YAML_MIME,
+                    DocumentService.TOOL_IDENTITY,
+                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), manifestPath));
         } else {
             try (InputStream in = new ByteArrayInputStream(
                     manifestBody.getBytes(StandardCharsets.UTF_8))) {
@@ -286,7 +292,8 @@ public class KanbanApplication implements VanceApplication {
                         manifestPath,
                         title != null ? title : "Kanban app",
                         List.of("application", "kanban"),
-                        YAML_MIME, in, ctx.userId());
+                        YAML_MIME, in, ctx.userId(),
+                        contextFactory.writeActor(ctx.tenantId(), ctx.userId(), manifestPath));
             } catch (IOException e) {
                 throw new ToolException(
                         "Could not write manifest '" + manifestPath
@@ -444,7 +451,8 @@ public class KanbanApplication implements VanceApplication {
         }
 
         DocumentDocument moved = documentService.update(
-                cardDoc.getId(), null, null, null, newPath);
+                cardDoc.getId(), null, null, null, newPath,
+                contextFactory.writeActor(ctx.tenantId(), ctx.userId(), newPath));
 
         log.info("KanbanApplication.moveCard tenant='{}' folder='{}' "
                         + "card='{}' {}→{} warnings={}",
@@ -601,12 +609,15 @@ public class KanbanApplication implements VanceApplication {
         if (existing.isPresent()) {
             return documentService.update(
                     existing.get().getId(),
-                    title, tags, body, null, null, null, null, mime);
+                    title, tags, body, null, null, null, null, mime,
+                    DocumentService.TOOL_IDENTITY,
+                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), outputPath));
         }
         try (InputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
             return documentService.create(
                     ctx.tenantId(), ctx.projectName(),
-                    outputPath, title, tags, mime, in, ctx.userId());
+                    outputPath, title, tags, mime, in, ctx.userId(),
+                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), outputPath));
         } catch (IOException e) {
             throw new ToolException(
                     "Could not write artefact '" + outputPath + "': " + e.getMessage());
@@ -621,7 +632,9 @@ public class KanbanApplication implements VanceApplication {
             documentService.update(
                     existing.get().getId(),
                     title, List.of("card"),
-                    body, null, null, null, null, MD_MIME);
+                    body, null, null, null, null, MD_MIME,
+                    DocumentService.TOOL_IDENTITY,
+                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), path));
             return;
         }
         try (ByteArrayInputStream in = new ByteArrayInputStream(
@@ -629,7 +642,8 @@ public class KanbanApplication implements VanceApplication {
             documentService.create(
                     ctx.tenantId(), ctx.projectName(),
                     path, title, List.of("card"),
-                    MD_MIME, in, ctx.userId());
+                    MD_MIME, in, ctx.userId(),
+                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), path));
         } catch (IOException e) {
             throw new ToolException(
                     "Could not write card '" + path + "': " + e.getMessage());

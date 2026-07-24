@@ -99,19 +99,22 @@ public class RScriptTool implements Tool {
     private final ProgressEmitter progressEmitter;
     private final DocumentService documentService;
     private final DocumentLinkBuilder linkBuilder;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
     public RScriptTool(RserveHealth health,
                        RserveDaemonManager daemonManager,
                        ThinkProcessService thinkProcessService,
                        ProgressEmitter progressEmitter,
                        DocumentService documentService,
-                       DocumentLinkBuilder linkBuilder) {
+                       DocumentLinkBuilder linkBuilder,
+                       de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
         this.health = health;
         this.daemonManager = daemonManager;
         this.thinkProcessService = thinkProcessService;
         this.progressEmitter = progressEmitter;
         this.documentService = documentService;
         this.linkBuilder = linkBuilder;
+        this.contextFactory = contextFactory;
     }
 
     @Override
@@ -383,7 +386,8 @@ public class RScriptTool implements Tool {
                         List.of("r-output"),  // tags
                         mime,
                         in,
-                        ctx.userId());
+                        ctx.userId(),
+                        contextFactory.writeActor(ctx.tenantId(), ctx.userId(), docPath));
                 String vanceUri = DocumentLinkBuilder.buildVanceUri(
                         null, created.getPath(), kind,
                         DocumentLinkBuilder.defaultModeForKind(kind));

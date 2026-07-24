@@ -37,13 +37,16 @@ public class WorkPageService {
     private final DocumentService documentService;
     private final WorkPageParser parser;
     private final WorkPageSerializer serializer;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
     public WorkPageService(DocumentService documentService,
                          WorkPageParser parser,
-                         WorkPageSerializer serializer) {
+                         WorkPageSerializer serializer,
+                         de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
         this.documentService = documentService;
         this.parser = parser;
         this.serializer = serializer;
+        this.contextFactory = contextFactory;
     }
 
     // ── Create / read / write ─────────────────────────────────────
@@ -67,7 +70,8 @@ public class WorkPageService {
                 body.getBytes(StandardCharsets.UTF_8))) {
             DocumentDocument stored = documentService.create(
                     tenantId, projectId, normalisedPath,
-                    title, List.of("workpage"), MIME, in, userId);
+                    title, List.of("workpage"), MIME, in, userId,
+                    contextFactory.writeActor(tenantId, userId, normalisedPath));
             log.info("WorkPageService.create tenant='{}' project='{}' path='{}'",
                     tenantId, projectId, normalisedPath);
             return stored;
@@ -87,7 +91,9 @@ public class WorkPageService {
         return documentService.update(
                 doc.getId(),
                 page.title() != null ? page.title() : doc.getTitle(),
-                null, body, null, null, null, null, MIME);
+                null, body, null, null, null, null, MIME,
+                DocumentService.TOOL_IDENTITY,
+                contextFactory.writeActor(doc.getTenantId(), null, doc.getPath()));
     }
 
     private String readBody(DocumentDocument doc) {

@@ -178,6 +178,12 @@ public class WorkbookAppController {
         return o instanceof String s ? s : null;
     }
 
+    /** Mandatory {@link de.mhus.vance.shared.permission.WriteActor} for a
+     *  user-driven DocumentService write (F1). */
+    private de.mhus.vance.shared.permission.WriteActor actor(HttpServletRequest request) {
+        return de.mhus.vance.shared.permission.WriteActor.user(authority.contextOf(request));
+    }
+
     private static String sanitiseSegment(@Nullable String raw) {
         if (raw == null) return "";
         StringBuilder sb = new StringBuilder(raw.length());
@@ -221,7 +227,7 @@ public class WorkbookAppController {
 
         boolean patchFrontMatter = request.title() != null || request.sortIndex() != null;
         if (patchFrontMatter) {
-            patchFrontMatter(doc, request, currentUser(httpRequest));
+            patchFrontMatter(doc, request, currentUser(httpRequest), actor(httpRequest));
             // Reload to pick up the storageId / inlineText that the
             // content-write produced.
             doc = documentService.findById(id).orElse(doc);
@@ -240,7 +246,8 @@ public class WorkbookAppController {
                 }
                 doc = documentService.update(
                         id, null, null, null, newPath, null, null, null, null,
-                        currentUser(httpRequest));
+                        DocumentService.WriterIdentity.of(currentUser(httpRequest), null, null),
+                        actor(httpRequest));
             }
         }
 
@@ -277,7 +284,9 @@ public class WorkbookAppController {
         if (!doc.getPath().startsWith(normalised + "/")) {
             throw new ToolException("Page is not inside workbook '" + normalised + "'");
         }
-        documentService.trash(id, currentUser(httpRequest));
+        documentService.trash(id,
+                DocumentService.WriterIdentity.of(currentUser(httpRequest), null, null),
+                actor(httpRequest));
         log.info("WorkbookAppController.deletePage tenant='{}' folder='{}' path='{}'",
                 tenant, normalised, doc.getPath());
         return ResponseEntity.noContent().build();
@@ -292,7 +301,8 @@ public class WorkbookAppController {
     private void patchFrontMatter(
             DocumentDocument doc,
             WorkbookUpdatePageRequest request,
-            @Nullable String editorId) {
+            @Nullable String editorId,
+            de.mhus.vance.shared.permission.WriteActor actor) {
         try (InputStream in = documentService.loadContent(doc)) {
             String body = new String(in.readAllBytes(), StandardCharsets.UTF_8);
             String headerText = "";
@@ -333,7 +343,8 @@ public class WorkbookAppController {
                     doc.getId(),
                     new java.io.ByteArrayInputStream(newBody.getBytes(StandardCharsets.UTF_8)),
                     "text/markdown",
-                    editorId);
+                    DocumentService.WriterIdentity.of(editorId, null, null),
+                    actor);
         } catch (java.io.IOException e) {
             throw new ToolException("Could not patch front-matter: " + e.getMessage());
         }
@@ -367,7 +378,8 @@ public class WorkbookAppController {
         for (String id : request.orderedIds()) {
             DocumentDocument doc = documentService.findById(id).orElse(null);
             if (doc == null || !doc.getPath().startsWith(normalised + "/")) continue;
-            patchFrontMatter(doc, new WorkbookUpdatePageRequest(null, null, idx), editorId);
+            patchFrontMatter(doc, new WorkbookUpdatePageRequest(null, null, idx), editorId,
+                    actor(httpRequest));
             idx += step;
         }
     }
@@ -424,7 +436,8 @@ public class WorkbookAppController {
         String newBody = patchTitleSuffix(body, " (Copy)");
 
         DocumentDocument copy = documentService.createText(
-                tenant, projectId, newPath, null, null, newBody, currentUser(httpRequest));
+                tenant, projectId, newPath, null, null, newBody, currentUser(httpRequest),
+                actor(httpRequest));
 
         // Re-scan to read the canonical view fields back (icon, section, …).
         WorkbookFolderReader.Scan scan = folderReader.scan(tenant, projectId, normalised);
@@ -500,7 +513,8 @@ public class WorkbookAppController {
                     manifest.getId(),
                     new java.io.ByteArrayInputStream(newBody.getBytes(StandardCharsets.UTF_8)),
                     "application/yaml",
-                    currentUser(httpRequest));
+                    DocumentService.WriterIdentity.of(currentUser(httpRequest), null, null),
+                    actor(httpRequest));
         } catch (java.io.IOException e) {
             throw new ToolException("Could not update manifest: " + e.getMessage());
         }
@@ -562,7 +576,9 @@ public class WorkbookAppController {
                 }
             });
             documentService.update(
-                    doc.getId(), null, null, null, newPath, null, null, null, null, editorId);
+                    doc.getId(), null, null, null, newPath, null, null, null, null,
+                    DocumentService.WriterIdentity.of(editorId, null, null),
+                    actor(httpRequest));
         }
     }
 

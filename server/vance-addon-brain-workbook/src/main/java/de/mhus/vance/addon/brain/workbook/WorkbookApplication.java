@@ -1,6 +1,7 @@
 package de.mhus.vance.addon.brain.workbook;
 
 import de.mhus.vance.brain.applications.VanceApplication;
+import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.brain.tools.document.DocumentLinkBuilder;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
@@ -38,17 +39,20 @@ public class WorkbookApplication implements VanceApplication {
     private final DocumentService documentService;
     private final DocumentLinkBuilder linkBuilder;
     private final WorkbookScriptService scriptService;
+    private final SecurityContextFactory contextFactory;
 
     public WorkbookApplication(WorkbookFolderReader folderReader,
                                 WorkbookIndexRenderer indexRenderer,
                                 DocumentService documentService,
                                 DocumentLinkBuilder linkBuilder,
-                                WorkbookScriptService scriptService) {
+                                WorkbookScriptService scriptService,
+                                SecurityContextFactory contextFactory) {
         this.folderReader = folderReader;
         this.indexRenderer = indexRenderer;
         this.documentService = documentService;
         this.linkBuilder = linkBuilder;
         this.scriptService = scriptService;
+        this.contextFactory = contextFactory;
     }
 
     @Override public String appName() { return APP_NAME; }
@@ -107,7 +111,9 @@ public class WorkbookApplication implements VanceApplication {
                     existing.get().getId(),
                     title != null ? title : "Workbook",
                     List.of("application", "workbook"),
-                    manifestBody, null, null, null, null, YAML_MIME);
+                    manifestBody, null, null, null, null, YAML_MIME,
+                    DocumentService.TOOL_IDENTITY,
+                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), manifestPath));
         } else {
             try (InputStream in = new ByteArrayInputStream(
                     manifestBody.getBytes(StandardCharsets.UTF_8))) {
@@ -116,7 +122,8 @@ public class WorkbookApplication implements VanceApplication {
                         manifestPath,
                         title != null ? title : "Workbook",
                         List.of("application", "workbook"),
-                        YAML_MIME, in, ctx.userId());
+                        YAML_MIME, in, ctx.userId(),
+                        contextFactory.writeActor(ctx.tenantId(), ctx.userId(), manifestPath));
             } catch (IOException e) {
                 throw new ToolException(
                         "Could not write manifest '" + manifestPath + "': " + e.getMessage());
@@ -214,14 +221,17 @@ public class WorkbookApplication implements VanceApplication {
             return documentService.update(
                     existing.get().getId(),
                     title, List.of("workbook", "generated", "index"),
-                    body, null, null, null, null, MD_MIME);
+                    body, null, null, null, null, MD_MIME,
+                    DocumentService.TOOL_IDENTITY,
+                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), outputPath));
         }
         try (InputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
             return documentService.create(
                     ctx.tenantId(), ctx.projectName(),
                     outputPath, title,
                     List.of("workbook", "generated", "index"),
-                    MD_MIME, in, ctx.userId());
+                    MD_MIME, in, ctx.userId(),
+                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), outputPath));
         } catch (IOException e) {
             throw new ToolException(
                     "Could not write artefact '" + outputPath + "': " + e.getMessage());

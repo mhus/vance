@@ -56,6 +56,7 @@ public class WorkbookFormService {
     private final ScriptExecutor scriptExecutor;
     private final ToolDispatcher toolDispatcher;
     private final SessionService sessionService;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
     /** Wall-clock cap for a saveScript recompute run. */
     private static final Duration ON_SAVE_TIMEOUT = Duration.ofSeconds(30);
@@ -95,7 +96,7 @@ public class WorkbookFormService {
         doc.put("items", rows);
         doc.put("schema", (schema != null && !schema.isEmpty()) ? schema : unionKeys(rows));
 
-        writeDoc(docDoc.getId(), docPath, doc, editorId);
+        writeDoc(docDoc.getId(), tenantId, docPath, doc, editorId);
         log.info("WorkbookFormService.saveForm tenant='{}' doc='{}' records={}",
                 tenantId, docPath, rows.size());
 
@@ -131,7 +132,8 @@ public class WorkbookFormService {
         doc.put("items", new ArrayList<>());
 
         documentService.createText(
-                tenantId, projectId, docPath, displayTitle, null, serialize(docPath, doc), editorId);
+                tenantId, projectId, docPath, displayTitle, null, serialize(docPath, doc), editorId,
+                contextFactory.writeActor(tenantId, editorId, docPath));
         log.info("WorkbookFormService.createForm tenant='{}' doc='{}'", tenantId, docPath);
         return docPath;
     }
@@ -212,12 +214,14 @@ public class WorkbookFormService {
         return new ArrayList<>(keys);
     }
 
-    private void writeDoc(String docId, String docPath, Map<String, Object> doc, String editorId) {
+    private void writeDoc(String docId, String tenantId, String docPath,
+            Map<String, Object> doc, String editorId) {
         documentService.replaceContent(
                 docId,
                 new ByteArrayInputStream(serialize(docPath, doc).getBytes(StandardCharsets.UTF_8)),
                 DocumentService.mimeFromPath(docPath),
-                editorId);
+                DocumentService.WriterIdentity.of(editorId, null, null),
+                contextFactory.writeActor(tenantId, editorId, docPath));
     }
 
     private Map<String, Object> readYamlMap(

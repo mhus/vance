@@ -34,10 +34,13 @@ public class JournalService {
 
     private final DocumentService documentService;
     private final JournalFolderReader folderReader;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
-    public JournalService(DocumentService documentService, JournalFolderReader folderReader) {
+    public JournalService(DocumentService documentService, JournalFolderReader folderReader,
+                          de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
         this.documentService = documentService;
         this.folderReader = folderReader;
+        this.contextFactory = contextFactory;
     }
 
     public JournalFolderReader.Scan scan(String tenantId, String projectId, String folder) {
@@ -122,14 +125,17 @@ public class JournalService {
         if (existing.isPresent()) {
             DocumentDocument updated = documentService.update(
                     existing.get().getId(), effectiveTitle, nativeTags,
-                    serialized, null, null, null, null, MD_MIME);
+                    serialized, null, null, null, null, MD_MIME,
+                    DocumentService.TOOL_IDENTITY,
+                    contextFactory.writeActor(tenantId, userId, path));
             log.info("JournalService.upsertEntry(update) tenant='{}' path='{}'", tenantId, path);
             return updated;
         }
         try (InputStream in = new ByteArrayInputStream(serialized.getBytes(StandardCharsets.UTF_8))) {
             DocumentDocument stored = documentService.create(
                     tenantId, projectId, path, effectiveTitle,
-                    nativeTags, MD_MIME, in, userId);
+                    nativeTags, MD_MIME, in, userId,
+                    contextFactory.writeActor(tenantId, userId, path));
             log.info("JournalService.upsertEntry(create) tenant='{}' path='{}'", tenantId, path);
             return stored;
         } catch (IOException e) {

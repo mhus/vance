@@ -31,12 +31,22 @@ public class EngineLifecycleProgressListener {
 
     private final ThinkProcessService thinkProcessService;
     private final ProgressEmitter progressEmitter;
+    private final LlmCallTracker llmCallTracker;
 
     @EventListener
     public void onStatusChanged(ThinkProcessStatusChangedEvent event) {
         ThinkProcessStatus prior = event.priorStatus();
         ThinkProcessStatus next = event.newStatus();
         if (prior == next) return;
+
+        if (next == ThinkProcessStatus.CLOSED) {
+            // Process terminated → drop its cumulative LLM counters. This is
+            // the single robust teardown point across all close paths (session
+            // cascade, engine self-close, worker/scheduler termination);
+            // LlmCallTracker.forget otherwise had no caller and byProcess grew
+            // for the pod's lifetime.
+            llmCallTracker.forget(event.processId());
+        }
 
         // Translate the transition to a tag. Many transitions are
         // internal noise (INIT → IDLE, etc.) — we only surface the

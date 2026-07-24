@@ -8,7 +8,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Value;
@@ -37,10 +36,11 @@ import org.springframework.web.client.RestClientException;
  *
  * <p>Mongo-backed persistence is intentionally not implemented in v1
  * — most brain instances see at most a few dozen unique places, and
- * a fresh pod re-warming from Nominatim is well within policy. If a
- * deployment ever shows cache pressure, swapping the
- * {@link ConcurrentHashMap} for a Mongo-backed adapter is a local
- * change.
+ * a fresh pod re-warming from Nominatim is well within policy. The
+ * in-memory cache is a bounded LRU ({@link #CACHE_MAX} entries) so a
+ * flood of distinct queries can't grow it without limit; if a deployment
+ * ever shows cache pressure, swapping it for a Mongo-backed adapter is a
+ * local change.
  */
 @Service
 @Slf4j
@@ -53,8 +53,19 @@ public class GeocodeService {
     private static final String METRIC_LOOKUPS = "vance.geocode.lookups";
     private static final String METRIC_UPSTREAM = "vance.geocode.upstream";
 
+    /** Upper bound on cached geocode results — oldest (LRU) evicted past this. */
+    private static final int CACHE_MAX = 2048;
+
     private final RestClient restClient;
-    private final ConcurrentHashMap<String, GeocodeResult> cache = new ConcurrentHashMap<>();
+    // Bounded LRU (access-order + removeEldestEntry), synchronized so the
+    // get()-reorders and put()-evictions are thread-safe.
+    private final Map<String, GeocodeResult> cache = java.util.Collections.synchronizedMap(
+            new java.util.LinkedHashMap<>(256, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<String, GeocodeResult> eldest) {
+                    return size() > CACHE_MAX;
+                }
+            });
     private final MetricService metricService;
     private final String userAgent;
 

@@ -10,7 +10,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -57,13 +56,21 @@ public class VanceSupportRequestTool implements Tool {
     private final FookService fookService;
     private final ThinkProcessService thinkProcessService;
 
-    /** Process-id → call count. Stays in memory until the JVM
-     *  restarts; processes that finish leave their counter behind
-     *  until the next restart. v1 doesn't bother with eviction
-     *  because the map grows ~O(processes-per-pod-per-day), which
-     *  is small. If that changes, add a scheduled sweeper. */
-    private final ConcurrentHashMap<String, AtomicInteger> callCountByProcess
-            = new ConcurrentHashMap<>();
+    /** Upper bound on tracked per-process counters — LRU-evicted past this. */
+    private static final int MAX_TRACKED_PROCESSES = 4096;
+
+    /** Process-id → call count. In-memory (per pod, until JVM restart).
+     *  Bounded LRU so finished processes' counters can't accumulate without
+     *  limit; evicting a long-idle process's counter is safe (it's done). */
+    private final Map<String, AtomicInteger> callCountByProcess =
+            java.util.Collections.synchronizedMap(
+                    new java.util.LinkedHashMap<>(256, 0.75f, true) {
+                        @Override
+                        protected boolean removeEldestEntry(
+                                Map.Entry<String, AtomicInteger> eldest) {
+                            return size() > MAX_TRACKED_PROCESSES;
+                        }
+                    });
 
     // ─── metadata ───────────────────────────────────────────────────
 

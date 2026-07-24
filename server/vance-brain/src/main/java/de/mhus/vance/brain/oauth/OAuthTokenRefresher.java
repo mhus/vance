@@ -10,8 +10,6 @@ import java.time.format.DateTimeParseException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
@@ -54,8 +52,22 @@ public class OAuthTokenRefresher {
     private final Clock clock;
     private final ObjectMapper json = JsonMapper.builder().build();
 
-    /** Per-{@code (tenantId|userId|providerId)} lock pool. */
-    private final ConcurrentMap<String, Object> locks = new ConcurrentHashMap<>();
+    /**
+     * Striped lock pool keyed by {@code (tenantId|userId|providerId)}. Fixed
+     * size (bounded) rather than one-entry-per-key so it never grows for the
+     * pod's lifetime — a hash collision only means two unrelated keys share a
+     * monitor (extra, harmless serialization).
+     */
+    private static final int LOCK_STRIPES = 64;
+    private final Object[] locks = newStripes(LOCK_STRIPES);
+
+    private static Object[] newStripes(int n) {
+        Object[] a = new Object[n];
+        for (int i = 0; i < n; i++) {
+            a[i] = new Object();
+        }
+        return a;
+    }
 
     @org.springframework.beans.factory.annotation.Autowired
     public OAuthTokenRefresher(
@@ -239,8 +251,8 @@ public class OAuthTokenRefresher {
     }
 
     private Object lockFor(String tenantId, String userId, String providerId) {
-        return locks.computeIfAbsent(tenantId + "|" + userId + "|" + providerId,
-                k -> new Object());
+        String key = tenantId + "|" + userId + "|" + providerId;
+        return locks[Math.floorMod(key.hashCode(), locks.length)];
     }
 
     private static String oauthKey(String providerId, String suffix) {

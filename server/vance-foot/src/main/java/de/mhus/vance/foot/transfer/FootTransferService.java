@@ -56,7 +56,9 @@ public class FootTransferService {
     private final FootWorkspaceProperties properties;
     private final ConnectionService connection;
     private final SessionService sessions;
-    private final Map<String, TransferState> pending = new ConcurrentHashMap<>();
+    // package-private: FootTransferServiceTest drives the state machine and
+    // ages entries to exercise the sweeper without waiting the 30s timeout.
+    final Map<String, TransferState> pending = new ConcurrentHashMap<>();
     /**
      * Hard kill-switch. Flipped by {@code --no-tools}; while on, both
      * upload and download initiations are rejected with a finish/init-
@@ -409,7 +411,9 @@ public class FootTransferService {
         }
         applyAttrs(state.getPath(), state.getAttrs(), properties.getModeMask());
         sendComplete(state.getTransferId(), true, null, state.getBytesProcessed(), "ok");
-        state.setPhase(TransferState.Phase.COMPLETE_SENT);
+        // DONE (not COMPLETE_SENT): the file is fully received + hash-verified.
+        // The sweeper must never delete it if TRANSFER_FINISH is delayed/lost.
+        state.setPhase(TransferState.Phase.DONE);
     }
 
     private void abortReceive(TransferState state, String error) {
@@ -484,11 +488,25 @@ public class FootTransferService {
         }
     }
 
-    private void sweepTimeouts() {
+    void sweepTimeouts() {
         long deadlineNanos = System.nanoTime() - PHASE_TIMEOUT_MS * 1_000_000L;
         for (Map.Entry<String, TransferState> entry : pending.entrySet()) {
             TransferState state = entry.getValue();
             if (state.getLastActivityNanos() < deadlineNanos) {
+                // A receiver that already finished (DONE) or sent its terminal
+                // TransferComplete (COMPLETE_SENT — file already deleted on the
+                // failure paths) must NOT be abort-deleted: a delayed/lost
+                // TRANSFER_FINISH would otherwise wipe a good, verified download.
+                // Just evict the stale bookkeeping entry.
+                TransferState.Phase phase = state.getPhase();
+                boolean terminal = phase == TransferState.Phase.DONE
+                        || phase == TransferState.Phase.COMPLETE_SENT;
+                if (state.getRole() == TransferState.Role.RECEIVER && terminal) {
+                    log.warn("transfer {} evicted stale in terminal phase {}",
+                            state.getTransferId(), phase);
+                    cleanup(state.getTransferId());
+                    continue;
+                }
                 log.warn("transfer {} timed out in phase {}",
                         state.getTransferId(), state.getPhase());
                 if (state.getRole() == TransferState.Role.RECEIVER) {

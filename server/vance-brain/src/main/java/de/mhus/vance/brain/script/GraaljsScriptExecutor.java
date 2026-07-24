@@ -267,6 +267,18 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
                 request.notificationEmitter(), paramsForApi,
                 lightLlmService, settingService, request.documentBasePath(),
                 securityContextFactory);
+        // Resource bounds enforceable on GraalVM CE / HotSpot:
+        //   - statementLimit bounds the *number* of statements executed, and
+        //   - the wall-clock watchdog below (ctx.close(true) on timeout) bounds
+        //     total *runtime* — together they kill a runaway loop.
+        // KNOWN RESIDUAL (allocation/heap): neither bounds the memory a single
+        // statement allocates, so `new Array(2**30)` / `'x'.repeat(2e9)` can OOM
+        // the shared JVM before either limit fires. A real heap cap needs
+        // GraalVM EE `sandbox.MaxHeapMemory` (which requires a non-TRUSTED
+        // SandboxPolicy — incompatible with the custom allowHostAccess the Vance
+        // script API relies on) or, the portable fix, running eval in an
+        // out-of-process worker with -Xmx. Tracked as an infra item, not a code
+        // tweak — see specification (script-engine §3.5.7).
         ResourceLimits limits = ResourceLimits.newBuilder()
                 .statementLimit(effectiveStatements, null)
                 .build();

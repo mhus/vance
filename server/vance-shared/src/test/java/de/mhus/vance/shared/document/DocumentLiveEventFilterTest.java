@@ -27,9 +27,17 @@ class DocumentLiveEventFilterTest {
     @Test
     void noisePrefixes_areNotPublishable() {
         assertThat(DocumentService.isLiveEventPublishable("_vance/logs/scheduler-2026-06-19.json")).isFalse();
-        assertThat(DocumentService.isLiveEventPublishable("_bin/trashed.md")).isFalse();
+        assertThat(DocumentService.isLiveEventPublishable("_vance/trash/1234_trashed.md")).isFalse();
         assertThat(DocumentService.isLiveEventPublishable("_slart/scratch.md")).isFalse();
         assertThat(DocumentService.isLiveEventPublishable("_chatbox/upload-abc.bin")).isFalse();
+    }
+
+    @Test
+    void trashUnderVance_isNotOnCacheCoherenceBus() {
+        // Trash now lives under _vance/ (matches the include prefix) but must
+        // stay off the config cache-coherence bus — no registry reads it.
+        assertThat(DocumentService.isEventPublishable("_vance/trash/1234_trashed.md")).isFalse();
+        assertThat(DocumentService.isEventPublishable("_vance/server-tools/foo.yaml")).isTrue();
     }
 
     @Test

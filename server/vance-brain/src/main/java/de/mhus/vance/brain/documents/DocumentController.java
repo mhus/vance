@@ -655,7 +655,7 @@ public class DocumentController {
 
     /**
      * Two-stage delete: documents that live outside the project's
-     * trash folder get soft-deleted (moved to {@code _bin/}
+     * trash folder get soft-deleted (moved to {@code _vance/trash/}
      * via {@link DocumentService#trash}); documents already in the
      * trash get hard-deleted (row + storage blob gone). The behaviour
      * mirrors a desktop file manager — first DELETE moves to bin,

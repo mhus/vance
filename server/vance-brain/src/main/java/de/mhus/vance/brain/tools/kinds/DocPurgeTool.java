@@ -16,7 +16,7 @@ import org.springframework.stereotype.Component;
  * Permanently delete a document — Mongo row gone, storage blob
  * scheduled for cleanup. There is no undo. To accidentally-protect,
  * the tool requires the document to already be in the trash folder
- * ({@code _bin/}) — a two-step delete: first {@code doc_delete}
+ * ({@code _vance/trash/}) — a two-step delete: first {@code doc_delete}
  * (soft), then {@code doc_purge} (hard). Set
  * {@code force: true} to skip the trash requirement when you really
  * mean it.
@@ -53,16 +53,37 @@ public class DocPurgeTool implements Tool {
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        DocumentDocument doc = support.loadDocumentForWrite(params, ctx, de.mhus.vance.shared.permission.Action.DELETE);
+        // Load READ-enforced only; the DELETE authorization branches below by
+        // whether this is a trash purge or a forced live-doc purge.
+        DocumentDocument doc = support.loadDocument(params, ctx);
         boolean force = Boolean.TRUE.equals(KindToolSupport.paramBoolean(params, "force"));
-        if (!force && !DocumentService.isTrash(doc.getPath())) {
+        boolean trash = DocumentService.isTrash(doc.getPath());
+        if (!force && !trash) {
             throw new ToolException("doc_purge requires the document to be in the trash folder "
                     + "(use doc_delete first), or set force=true. Path was: '" + doc.getPath() + "'");
         }
-        // Drop the buffer entry so a stale write doesn't recreate
-        // the row right after we delete it.
-        support.buffer().flushAll(ctx.processId());
-        support.documentService().delete(doc.getId(), support.writeActor(ctx, doc));
+
+        if (trash) {
+            // Trash purge: a project admin may empty any trash entry, everyone
+            // else only their own (permission-system variant B — the admin
+            // verdict is asked of the pluggable provider, not a role test).
+            // Under a fully write-protected _vance/ the trash path itself is
+            // reserved, so the delete runs as a trusted server write once this
+            // gate has approved it.
+            if (!support.canPurgeTrash(ctx, doc)) {
+                throw new ToolException("doc_purge: only the document's creator or a project admin "
+                        + "may purge this trash entry (path='" + doc.getPath() + "')");
+            }
+            support.buffer().flushAll(ctx.processId());
+            support.documentService().delete(doc.getId(), support.systemWriteActor(ctx));
+        } else {
+            // Forced purge of a live document: the ordinary DELETE role check
+            // applies at the document's own path.
+            support.enforceDocWrite(ctx, doc, de.mhus.vance.shared.permission.Action.DELETE);
+            support.buffer().flushAll(ctx.processId());
+            support.documentService().delete(doc.getId(), support.writeActor(ctx, doc));
+        }
+
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("purgedId", doc.getId());
         out.put("purgedPath", doc.getPath());

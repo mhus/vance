@@ -107,7 +107,6 @@ public class ContentValidatingPhase {
      *  under {@code _vance/}, which the first entry already covers. */
     private static final List<String> EXCLUDED_PREFIXES = List.of(
             "_vance/",
-            "_bin/",
             "_vogon-drafts/",
             "manuals/",
             "recipes/",

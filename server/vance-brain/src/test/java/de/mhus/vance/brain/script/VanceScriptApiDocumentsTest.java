@@ -117,9 +117,9 @@ class VanceScriptApiDocumentsTest {
 
     @Test
     void write_intoTrashFolder_isRejected() {
-        assertThatThrownBy(() -> api.documents.write("_bin/sneaky.md", "x"))
+        assertThatThrownBy(() -> api.documents.write("_vance/trash/sneaky.md", "x"))
                 .isInstanceOf(VanceScriptApi.ScriptHostException.class)
-                .hasMessageContaining("_bin/");
+                .hasMessageContaining("_vance/trash/");
         verify(documentService, never()).upsertText(any(), any(), any(), any(), any(), any(), any(), any());
     }
 

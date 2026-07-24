@@ -248,9 +248,9 @@ public class DocumentService {
         // Hide the trash folder by default — soft-deleted documents
         // live under {@value #TRASH_FOLDER_PREFIX} and would otherwise
         // pollute every default listing. Callers that want to inspect
-        // the trash pass {@code pathPrefix="_bin/"} explicitly, which
-        // skips this filter (the prefix narrows the query to exactly
-        // the trash subtree).
+        // the trash pass {@code pathPrefix="_vance/trash/"} explicitly,
+        // which skips this filter (the prefix narrows the query to
+        // exactly the trash subtree).
         Query query = new Query()
                 .addCriteria(Criteria.where("tenantId").is(tenantId))
                 .addCriteria(Criteria.where("projectId").is(projectId))
@@ -299,8 +299,8 @@ public class DocumentService {
         // ─── Files: paths starting with prefix and containing no further slash.
         // No explicit trash-exclusion needed: the {@code [^/]+$} tail
         // already rejects anything that nests further (including
-        // {@code _bin/foo}), and the only way to see trash files is to
-        // explicitly browse with {@code prefix = "_bin/"}.
+        // {@code _vance/trash/foo}), and the only way to see trash files
+        // is to explicitly browse with {@code prefix = "_vance/trash/"}.
         //
         // When a search needle is set we layer an OR(path, title)
         // substring match via {@code andOperator} so the path-shape
@@ -2386,13 +2386,18 @@ public class DocumentService {
     }
 
     /** Trash-folder convention: every project has a virtual
-     *  {@code _bin/} folder that holds soft-deleted documents.
+     *  {@code _vance/trash/} folder that holds soft-deleted documents.
      *  Names there always carry a UUID prefix so collisions with
      *  active documents (or earlier trash entries with the same
-     *  basename) are impossible. Lives one level above
-     *  {@code _vance/} so it's a peer of the project's own work,
-     *  not nested under the system folder. */
-    public static final String TRASH_FOLDER_PREFIX = "_bin/";
+     *  basename) are impossible. Lives <em>under</em> {@code _vance/}
+     *  so it inherits the system-folder protection (writes are
+     *  reserved), stays out of every default listing, and is excluded
+     *  from both the cache-coherence and live event buses (see
+     *  {@link #isEventPublishable} / {@link #LIVE_EVENT_EXCLUDE_PREFIXES}).
+     *  The trash lifecycle (trash / restore / purge) authorizes against
+     *  the document's <em>visible</em> path (original or restore target),
+     *  not this reserved trash path, so it stays usable without ADMIN. */
+    public static final String TRASH_FOLDER_PREFIX = "_vance/trash/";
 
     /** Default folder for user-content documents. Search / list tools
      *  scope to this prefix by default so trash, kit manifests
@@ -2414,7 +2419,7 @@ public class DocumentService {
 
     /**
      * Soft-delete a document by moving it into the project's trash
-     * folder ({@code _bin/}). The document keeps its
+     * folder ({@code _vance/trash/}). The document keeps its
      * id, body and metadata; only {@link DocumentDocument#getPath()}
      * and {@link DocumentDocument#getName()} change. The original
      * path is recorded in the document's header map under
@@ -2471,7 +2476,7 @@ public class DocumentService {
         // original location, so listeners that key on the original path
         // (e.g. UrsaHookDocumentListener) need a Deleted event for it.
         // We synthesise one with the original path; the trash row itself
-        // lives under _bin/… and is filtered out by isEventPublishable.
+        // lives under _vance/trash/… and is filtered out by isEventPublishable.
         publishDeleted(originalPath, doc.getTenantId(), doc.getProjectId(), saved.getId(),
                 identity);
         return saved;
@@ -2894,11 +2899,13 @@ public class DocumentService {
     /**
      * Folder prefix every config-document path begins with. Only writes
      * under this prefix matter for cache-coherence — user documents
-     * ({@code documents/...}), chat attachments ({@code _chatbox/...}),
-     * trash ({@code _bin/...}) and Slartibartfast scratch
-     * ({@code _slart/...}) never feed any in-memory registry. Keeping
-     * the event bus to just config writes makes downstream listeners
-     * trivially cheap (their first line is a {@code startsWith}).
+     * ({@code documents/...}), chat attachments ({@code _chatbox/...})
+     * and Slartibartfast scratch ({@code _slart/...}) never feed any
+     * in-memory registry. Trash ({@value #TRASH_FOLDER_PREFIX}) now lives
+     * under {@code _vance/} too, so it matches this include prefix and must
+     * be excluded explicitly in {@link #isEventPublishable}. Keeping the
+     * event bus to just config writes makes downstream listeners trivially
+     * cheap (their first line is a {@code startsWith}).
      */
     static final String EVENT_PUBLISH_INCLUDE_PREFIX = "_vance/";
 
@@ -2918,7 +2925,7 @@ public class DocumentService {
      */
     static final java.util.List<String> LIVE_EVENT_EXCLUDE_PREFIXES = java.util.List.of(
             EVENT_PUBLISH_EXCLUDE_LOGS_PREFIX,
-            "_bin/",
+            TRASH_FOLDER_PREFIX,
             "_slart/",
             "_chatbox/");
 
@@ -2929,7 +2936,10 @@ public class DocumentService {
     static boolean isEventPublishable(@Nullable String path) {
         if (path == null) return false;
         if (!path.startsWith(EVENT_PUBLISH_INCLUDE_PREFIX)) return false;
-        return !path.startsWith(EVENT_PUBLISH_EXCLUDE_LOGS_PREFIX);
+        if (path.startsWith(EVENT_PUBLISH_EXCLUDE_LOGS_PREFIX)) return false;
+        // Trash lives under _vance/ but is transient bookkeeping, not config —
+        // keep it off the cache-coherence bus (no registry reads trash paths).
+        return !path.startsWith(TRASH_FOLDER_PREFIX);
     }
 
     /**

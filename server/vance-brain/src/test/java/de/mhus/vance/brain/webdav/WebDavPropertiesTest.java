@@ -32,7 +32,6 @@ class WebDavPropertiesTest {
     @Test
     void isHidden_doesNotHideSystemPrefixesOrRealFiles() {
         // §8.3 — _-prefixed system paths stay visible in v1.
-        assertThat(properties.isHidden("_bin")).isFalse();
         assertThat(properties.isHidden("_vance")).isFalse();
         assertThat(properties.isHidden("a.md")).isFalse();
     }

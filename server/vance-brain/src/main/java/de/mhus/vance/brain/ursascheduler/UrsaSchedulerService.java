@@ -813,7 +813,7 @@ public class UrsaSchedulerService {
      * {@code specification/scheduler.md} §10a.
      *
      * <p>Trash (not hard-delete) keeps the YAML restorable from
-     * {@code _bin/} for audit and re-arming use cases, and matches the
+     * {@code _vance/trash/} for audit and re-arming use cases, and matches the
      * convention used by all other LLM/agent-facing destructive
      * operations on documents.
      *

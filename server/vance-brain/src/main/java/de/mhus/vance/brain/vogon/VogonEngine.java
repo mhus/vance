@@ -628,7 +628,7 @@ public class VogonEngine implements ThinkEngine {
             // LLM produced text but didn't call doc_create / doc_edit
             // on its own. Downstream phases can read it
             // via ${phases.X.draftPath}; the _vogon-drafts/ prefix
-            // matches the hidden-folder convention (_vance/, _bin/).
+            // matches the hidden-folder convention (_vance/, _vance/trash/).
             if (reply != null && !reply.isBlank()) {
                 String draftPath = "_vogon-drafts/" + process.getId()
                         + "/" + phase.getName() + ".md";

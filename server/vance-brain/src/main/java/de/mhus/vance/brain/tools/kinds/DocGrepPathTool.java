@@ -47,7 +47,7 @@ public class DocGrepPathTool implements Tool {
                         + "(excludes trash, kit config, chat attachments, engine scratch, "
                         + "and other system folders). Pass '*' to search the entire "
                         + "project. Pass any specific prefix (e.g. 'documents/notes/', "
-                        + "'_bin/') to narrow further or address a system folder explicitly."));
+                        + "'_vance/trash/') to narrow further or address a system folder explicitly."));
         p.put("pattern", Map.of("type", "string",
                 "description", "Java regex pattern. Use plain substrings for literal match."));
         p.put("caseInsensitive", Map.of("type", "boolean",

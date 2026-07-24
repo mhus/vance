@@ -57,11 +57,11 @@ public class DocListByTagTool implements Tool {
                 .listByTag(ctx.tenantId(), project.getName(), tag);
         List<Map<String, Object>> entries = new ArrayList<>();
         for (DocumentDocument d : hits) {
-            // The scope filter already excludes _bin/ when on the
+            // The scope filter already excludes _vance/trash/ when on the
             // default 'documents/' scope. The explicit isTrash check
             // is only needed when the caller opted into '*' (all) —
             // tag search across the whole project shouldn't return
-            // trashed hits unless they ask for a _bin/ prefix.
+            // trashed hits unless they ask for a _vance/trash/ prefix.
             if (pathPrefix.isEmpty() && DocumentService.isTrash(d.getPath())) continue;
             if (!pathPrefix.isEmpty()
                     && (d.getPath() == null || !d.getPath().startsWith(pathPrefix))) continue;

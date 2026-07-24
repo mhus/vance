@@ -103,6 +103,43 @@ public class KindToolSupport {
     }
 
     /**
+     * Trash-purge authorization (permission-system variant B). A project
+     * admin may purge any trash entry; everyone else may purge only entries
+     * they created ({@link DocumentDocument#getCreatedBy()}). The admin verdict
+     * comes from the pluggable permission provider — an abstract {@code ADMIN}
+     * check on the project scope — never a hard-coded role test, so an
+     * enterprise governor answers the same way. A headless caller (null userId
+     * → SYSTEM subject) resolves to admin via R1.
+     *
+     * <p>Deliberately soft: it keys on {@code createdBy}, not per-doc grants,
+     * which is enough to stop one user emptying another's trash while keeping
+     * the flow available without ADMIN even under a fully write-protected
+     * {@code _vance/} (where the trash path itself is reserved).
+     */
+    public boolean canPurgeTrash(ToolInvocationContext ctx, DocumentDocument doc) {
+        de.mhus.vance.shared.permission.SecurityContext subject =
+                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId());
+        boolean admin = permissionService.check(
+                subject,
+                new de.mhus.vance.shared.permission.Resource.Project(
+                        ctx.tenantId(), doc.getProjectId()),
+                de.mhus.vance.shared.permission.Action.ADMIN);
+        return admin || subject.subjectId().equals(doc.getCreatedBy());
+    }
+
+    /**
+     * A trusted server {@link de.mhus.vance.shared.permission.WriteActor} on
+     * behalf of the tool's subject — for a mutation the tool has already
+     * authorized itself (e.g. a trash purge the {@link #canPurgeTrash} gate
+     * just approved). The real user stays recorded for audit. Never hand this
+     * to a write path that has not run its own authorization first.
+     */
+    public de.mhus.vance.shared.permission.WriteActor systemWriteActor(ToolInvocationContext ctx) {
+        return de.mhus.vance.shared.permission.WriteActor.system(
+                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()));
+    }
+
+    /**
      * READ gate for a document resolved directly by id (the branch that
      * bypasses {@code resolveProject}). Same subject/resolver semantics as
      * {@link #enforceDocWrite}. (permission-system read path)

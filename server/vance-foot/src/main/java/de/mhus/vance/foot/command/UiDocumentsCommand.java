@@ -39,7 +39,7 @@ import org.springframework.stereotype.Component;
  * rows), then files at that depth. Selecting a folder descends into
  * it; {@code Up} walks one segment back up. Initial landing path is
  * {@code documents/} so the user-content view is the first thing they
- * see (system folders like {@code _vance/}, {@code _bin/} only appear
+ * see (system folders like {@code _vance/}, {@code _vance/trash/} only appear
  * when the user navigates to the project root).
  *
  * <p>Actions on the selected file row:
@@ -63,7 +63,7 @@ public class UiDocumentsCommand implements SlashCommand {
     /**
      * Same landing as {@code DocumentApp.vue} — the user-facing
      * {@code documents/} folder; system folders ({@code _vance/},
-     * {@code _bin/}, {@code _chatbox/}, {@code _slart/}) stay out of
+     * {@code _vance/trash/}, {@code _chatbox/}, {@code _slart/}) stay out of
      * sight unless the user climbs out via Up or sets the path
      * explicitly.
      */
@@ -291,8 +291,8 @@ public class UiDocumentsCommand implements SlashCommand {
             MessageDialogButton answer = MessageDialog.showMessageDialog(
                     gui, "Confirm delete",
                     "Delete '" + sel.getPath() + "'?\n\n"
-                            + "Outside _bin/ → moved to project trash.\n"
-                            + "Already in _bin/ → permanent.",
+                            + "Outside _vance/trash/ → moved to project trash.\n"
+                            + "Already in _vance/trash/ → permanent.",
                     MessageDialogButton.Yes, MessageDialogButton.No);
             if (answer != MessageDialogButton.Yes) return;
             try {

@@ -2,6 +2,7 @@ package de.mhus.vance.addon.brain.rlang;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import de.mhus.vance.api.tools.ToolSafety;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -10,6 +11,17 @@ import org.junit.jupiter.api.Test;
  * elsewhere.
  */
 class RScriptToolTest {
+
+    @Test
+    void safety_isMutating_notSafeProbe() {
+        // Security regression (code-review-2): r_script executes arbitrary R
+        // (shell-exec + file IO) and writes documents. It must NOT derive
+        // ToolSafety.SAFE_PROBE from a "read-only" label, or the Agrajag probe
+        // tools would re-run arbitrary R as SYSTEM / a substituted user.
+        RScriptTool tool = new RScriptTool(null, null, null, null, null, null, null);
+        assertThat(tool.labels()).doesNotContain("read-only");
+        assertThat(tool.safety()).isEqualTo(ToolSafety.MUTATING);
+    }
 
     @Test
     void combine_bothEmpty_returnsEmpty() {

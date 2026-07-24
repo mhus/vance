@@ -149,7 +149,18 @@ public class RScriptTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("read-only");
+        // NOT "read-only": r_script evaluates arbitrary R on the Rserve daemon
+        // (R can system()/system2() shell-exec on the brain host, read/write any
+        // file) and imports produced files as Vance documents. The "read-only"
+        // label would derive ToolSafety.SAFE_PROBE (Tool.safety()) and let the
+        // Agrajag probe tools (tool_probe_as_system/_user) re-run arbitrary R.
+        return Set.of("compute");
+    }
+
+    @Override
+    public de.mhus.vance.api.tools.ToolSafety safety() {
+        // Arbitrary code execution + document writes → never a safe probe.
+        return de.mhus.vance.api.tools.ToolSafety.MUTATING;
     }
 
     @Override

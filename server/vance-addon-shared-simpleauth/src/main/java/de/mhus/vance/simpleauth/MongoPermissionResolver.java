@@ -7,6 +7,7 @@ import de.mhus.vance.shared.permission.PermissionResolver;
 import de.mhus.vance.shared.permission.PermissionService;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.permission.SecurityContext;
+import de.mhus.vance.shared.permission.WriteReason;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.team.TeamDocument;
 import de.mhus.vance.shared.team.TeamService;
@@ -29,17 +30,18 @@ public class MongoPermissionResolver implements PermissionResolver {
     private static final String TENANT_PROJECT = "_tenant";
     private static final String VANCE_PROJECT = "_vance";
     /**
-     * Reserved document paths — a USER write here needs ADMIN (R4). Only the
-     * {@code _vance/} subfolders that <em>autonomously execute</em> and can
-     * carry {@code runAs} (scheduler, hooks, events) are reserved — those are
-     * the real escalation surface. The rest of {@code _vance/} (recipes,
-     * scripts, workflows, logs, model, setting-forms, …) is open for now
-     * (auth business — tighten later as needed). Trusted server writes are
-     * short-circuited upstream by {@link PermissionService} and never reach
-     * this resolver.
+     * Reserved document paths — WRITE here is server-only (R4). The whole
+     * {@code _vance/} namespace is reserved: recipes, models, manuals,
+     * setting-forms, wizards, templates and the auto-executing scheduler/hooks/
+     * events all shape system behaviour, so writing any of them — even a
+     * project-local override in a normal project — is denied for every user
+     * actor, ADMIN included. Only trusted server code writes it, via
+     * {@link WriteReason#SYSTEM}, which {@link PermissionService} short-circuits
+     * upstream so it never reaches this resolver (internal log/recipe/kit writes
+     * are unaffected). Reading stays open (the recipe/model/settings cascade
+     * resolves here for every user).
      */
-    private static final List<String> RESERVED_PATH_PREFIXES = List.of(
-            "_vance/scheduler/", "_vance/hooks/", "_vance/events/");
+    private static final List<String> RESERVED_PATH_PREFIXES = List.of("_vance/");
 
     private static final String METRIC_CHECKS = "vance.permission.checks";
 
@@ -107,13 +109,14 @@ public class MongoPermissionResolver implements PermissionResolver {
     // ── Document (R4 reserved-prefix, then R3 project inheritance) ──
 
     private boolean documentAllowed(SecurityContext subject, Resource.Document d, Action action) {
-        GrantRole required = minRole(action);
         if (isWrite(action) && isReservedPath(d.path())) {
-            // Reserved paths (scheduler/hook/event YAMLs that auto-execute)
-            // may only be written by ADMIN (SYSTEM writes are handled upstream).
-            required = GrantRole.ADMIN;
+            // The _vance/ config namespace is server-owned: WRITE is reserved to
+            // trusted server code (WriteReason.SYSTEM, short-circuited upstream
+            // by PermissionService) — no user actor writes it, not even a
+            // project ADMIN. READ falls through to the normal project rule.
+            return false;
         }
-        return roleOnProject(subject, d.tenantId(), d.projectName(), required);
+        return roleOnProject(subject, d.tenantId(), d.projectName(), minRole(action));
     }
 
     // ── Setting (inherits from its reference scope) ──
@@ -150,14 +153,15 @@ public class MongoPermissionResolver implements PermissionResolver {
             }
             return hasRole(tenantRole(subject, tenantId), GrantRole.ADMIN);
         }
-        // _vance: system defaults (recipes, models, manuals, setting-forms) — every
-        // tenant member may READ (the recipe/model/settings cascade resolves here
-        // for all users); writing needs tenant-ADMIN. Same shape as _tenant.
+        // _vance: server-owned system config (recipes, models, manuals,
+        // setting-forms). Every tenant member may READ (the recipe/model/
+        // settings cascade resolves here for all users), but WRITE is reserved
+        // to trusted server code (WriteReason.SYSTEM, short-circuited upstream
+        // by PermissionService) — not even a tenant ADMIN writes _vance through
+        // the normal policy; admin edits go through dedicated tools that vouch
+        // SYSTEM. Unlike _tenant (ADMIN-writable), _vance is read-only to users.
         if (project.equals(VANCE_PROJECT)) {
-            if (required == GrantRole.READER) {
-                return true;
-            }
-            return hasRole(tenantRole(subject, tenantId), GrantRole.ADMIN);
+            return required == GrantRole.READER;
         }
         // Other users' hubs (_user_<other>) and any other system project:
         // tenant-ADMIN only.

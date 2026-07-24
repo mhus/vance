@@ -59,9 +59,10 @@ class MongoPermissionResolverTest {
     }
 
     @Test
-    void vanceProject_isReadableByAnyMember_butWriteNeedsAdmin() {
+    void vanceProject_isReadableByAnyMember_butWriteIsSystemOnly() {
         // System defaults (recipes/models/manuals/setting-forms) live in _vance and
-        // must be readable by every tenant member for the cascade; writing is ADMIN.
+        // must be readable by every tenant member for the cascade; WRITE is
+        // server-only (WriteReason.SYSTEM, handled upstream) — a user actor is denied.
         assertThat(resolver.isAllowed(alice,
                 new Resource.Document("acme", "_vance", "recipes/default.yaml"), Action.READ))
                 .isTrue();
@@ -71,12 +72,18 @@ class MongoPermissionResolverTest {
     }
 
     @Test
-    void vanceProject_writableByTenantAdmin() {
+    void vanceProject_notWritableEvenByTenantAdmin() {
+        // Unlike _tenant, _vance is read-only to users: not even a tenant ADMIN
+        // writes it through policy — only server code via WriteReason.SYSTEM.
         when(grants.forScope("acme", GrantScopeType.TENANT, "acme"))
                 .thenReturn(List.of(grant(GrantScopeType.TENANT, "acme",
                         GrantSubjectType.USER, "alice", GrantRole.ADMIN)));
         assertThat(resolver.isAllowed(alice,
                 new Resource.Document("acme", "_vance", "recipes/default.yaml"), Action.WRITE))
+                .isFalse();
+        // …but READ still works for the admin (and every member).
+        assertThat(resolver.isAllowed(alice,
+                new Resource.Document("acme", "_vance", "recipes/default.yaml"), Action.READ))
                 .isTrue();
     }
 
@@ -115,7 +122,7 @@ class MongoPermissionResolverTest {
     }
 
     @Test
-    void r4_reservedPathWrite_needsAdmin() {
+    void r4_reservedVancePath_writeDenied_evenForProjectAdmin() {
         // alice is project WRITER
         when(grants.forScope("acme", GrantScopeType.PROJECT, "proj"))
                 .thenReturn(List.of(grant(GrantScopeType.PROJECT, "proj",
@@ -123,31 +130,36 @@ class MongoPermissionResolverTest {
         Resource.Document reserved = new Resource.Document("acme", "proj", "_vance/scheduler/x.yaml");
         // READ on a reserved path follows the project rule (WRITER can read)
         assertThat(resolver.isAllowed(alice, reserved, Action.READ)).isTrue();
-        // WRITE on a reserved path needs ADMIN → WRITER denied
+        // WRITE into _vance/ is server-only → WRITER denied
         assertThat(resolver.isAllowed(alice, reserved, Action.WRITE)).isFalse();
 
+        // …and a project ADMIN is denied too — only WriteReason.SYSTEM writes it.
         when(grants.forScope("acme", GrantScopeType.PROJECT, "proj"))
                 .thenReturn(List.of(grant(GrantScopeType.PROJECT, "proj",
                         GrantSubjectType.USER, "alice", GrantRole.ADMIN)));
-        assertThat(resolver.isAllowed(alice, reserved, Action.WRITE)).isTrue();
+        assertThat(resolver.isAllowed(alice, reserved, Action.WRITE)).isFalse();
     }
 
     @Test
-    void r4_only_autoexec_vance_subfolders_are_reserved_recipes_is_open() {
+    void r4_wholeVanceNamespace_isReserved_forWrite() {
         // alice is project WRITER
         when(grants.forScope("acme", GrantScopeType.PROJECT, "proj"))
                 .thenReturn(List.of(grant(GrantScopeType.PROJECT, "proj",
                         GrantSubjectType.USER, "alice", GrantRole.WRITER)));
-        // scheduler/hooks/events auto-execute → reserved → WRITER denied
+        // Every _vance/ path is reserved — auto-exec (scheduler) AND config
+        // (recipes) AND logs alike; a user actor never writes it (SYSTEM only).
         assertThat(resolver.isAllowed(alice,
                 new Resource.Document("acme", "proj", "_vance/scheduler/x.yaml"), Action.WRITE))
                 .isFalse();
-        // recipes/scripts/workflows are open for now → WRITER allowed
         assertThat(resolver.isAllowed(alice,
                 new Resource.Document("acme", "proj", "_vance/recipes/x.yaml"), Action.WRITE))
-                .isTrue();
+                .isFalse();
         assertThat(resolver.isAllowed(alice,
                 new Resource.Document("acme", "proj", "_vance/logs/run.md"), Action.WRITE))
+                .isFalse();
+        // But READ into _vance/ still follows the normal project role.
+        assertThat(resolver.isAllowed(alice,
+                new Resource.Document("acme", "proj", "_vance/recipes/x.yaml"), Action.READ))
                 .isTrue();
     }
 

@@ -67,6 +67,10 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
     private final @Nullable DocumentService documentService;
     private final @Nullable LightLlmService lightLlmService;
     private final @Nullable SettingService settingService;
+    /** Resolves the real subject (user + teams) for {@code vance.documents.*}
+     *  writes so they carry {@code WriteReason.USER} and the permission provider
+     *  applies the normal role check. Null in test builds → teamless fallback. */
+    private final de.mhus.vance.brain.permission.@Nullable SecurityContextFactory securityContextFactory;
 
     @Autowired
     public GraaljsScriptExecutor(
@@ -77,7 +81,9 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
             @Autowired(required = false) @Nullable SpawnToolRegistry spawnToolRegistry,
             @Autowired(required = false) @Nullable DocumentService documentService,
             @Autowired(required = false) @Nullable LightLlmService lightLlmService,
-            @Autowired(required = false) @Nullable SettingService settingService) {
+            @Autowired(required = false) @Nullable SettingService settingService,
+            @Autowired(required = false)
+            de.mhus.vance.brain.permission.@Nullable SecurityContextFactory securityContextFactory) {
         this.engine = engine;
         this.hostAccess = hostAccess;
         this.props = props;
@@ -86,6 +92,22 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
         this.documentService = documentService;
         this.lightLlmService = lightLlmService;
         this.settingService = settingService;
+        this.securityContextFactory = securityContextFactory;
+    }
+
+    /** Eight-arg backwards-compat constructor — pre-SecurityContextFactory.
+     *  {@code vance.documents.*} writes fall back to a teamless subject. */
+    public GraaljsScriptExecutor(
+            Engine engine,
+            HostAccess hostAccess,
+            ScriptEngineProperties props,
+            @Nullable WorkspaceService workspaceService,
+            @Nullable SpawnToolRegistry spawnToolRegistry,
+            @Nullable DocumentService documentService,
+            @Nullable LightLlmService lightLlmService,
+            @Nullable SettingService settingService) {
+        this(engine, hostAccess, props, workspaceService, spawnToolRegistry,
+                documentService, lightLlmService, settingService, null);
     }
 
     /** Seven-arg backwards-compat constructor — pre-SettingService.
@@ -243,7 +265,8 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
                 effectiveTools, request.recipeName(), deniedToolNames,
                 documentService, request.progressEmitter(),
                 request.notificationEmitter(), paramsForApi,
-                lightLlmService, settingService, request.documentBasePath());
+                lightLlmService, settingService, request.documentBasePath(),
+                securityContextFactory);
         ResourceLimits limits = ResourceLimits.newBuilder()
                 .statementLimit(effectiveStatements, null)
                 .build();

@@ -12,8 +12,11 @@ import static org.mockito.Mockito.when;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.shared.permission.SecurityContext;
 import de.mhus.vance.shared.permission.WriteActor;
+import de.mhus.vance.shared.permission.WriteReason;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import org.mockito.ArgumentCaptor;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -72,6 +75,36 @@ class VanceScriptApiDocumentsTest {
         verify(documentService).upsertText(
                 eq("acme"), eq("proj"), eq("notes/new.md"),
                 eq(null), eq(null), eq("# New"), eq("alice"), any());
+    }
+
+    @Test
+    void write_carriesUserReasonActor_notSystemBypass() {
+        // Security regression (code-review-2 B1): a script-supplied path is a
+        // user-driven write, so the actor must carry WriteReason.USER with the
+        // run's real subject — NOT WriteActor.SYSTEM (which would fail-open past
+        // the reserved-prefix ADMIN gate at the DocumentService chokepoint).
+        api.documents.write("notes/new.md", "# New");
+
+        ArgumentCaptor<WriteActor> actor = ArgumentCaptor.forClass(WriteActor.class);
+        verify(documentService).upsertText(
+                any(), any(), any(), any(), any(), any(), any(), actor.capture());
+        assertThat(actor.getValue().reason()).isEqualTo(WriteReason.USER);
+        assertThat(actor.getValue().subject()).isNotEqualTo(SecurityContext.SYSTEM);
+    }
+
+    @Test
+    void delete_carriesUserReasonActor_notSystemBypass() {
+        DocumentDocument doc = doc("dead.md", "x");
+        doc.setId("doc-123");
+        when(documentService.findByPath("acme", "proj", "dead.md"))
+                .thenReturn(Optional.of(doc));
+
+        api.documents.delete("dead.md");
+
+        ArgumentCaptor<WriteActor> actor = ArgumentCaptor.forClass(WriteActor.class);
+        verify(documentService).trash(eq("doc-123"), actor.capture());
+        assertThat(actor.getValue().reason()).isEqualTo(WriteReason.USER);
+        assertThat(actor.getValue().subject()).isNotEqualTo(SecurityContext.SYSTEM);
     }
 
     @Test
@@ -239,7 +272,7 @@ class VanceScriptApiDocumentsTest {
     private VanceScriptApi apiWithBasePath(String basePath) {
         return new VanceScriptApi(
                 contextTools("acme", "proj", "sess", "proc", "alice"),
-                null, Set.of(), documentService, null, null, null, null, null, basePath);
+                null, Set.of(), documentService, null, null, null, null, null, basePath, null);
     }
 
     // ─── helpers ─────────────────────────────────────────────────────────

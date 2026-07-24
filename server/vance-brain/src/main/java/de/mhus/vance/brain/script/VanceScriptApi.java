@@ -209,7 +209,7 @@ public final class VanceScriptApi {
         this.params = Map.of();
         this.documents = documentService == null
                 ? null
-                : new ScriptDocumentApi(documentService, toolsApi.scope(), null);
+                : new ScriptDocumentApi(documentService, toolsApi.scope(), null, null);
         this.llm = null;
         this.settings = null;
     }
@@ -232,7 +232,7 @@ public final class VanceScriptApi {
                                   @Nullable NotificationSeverity> notificationEmitter,
                           @Nullable Map<String, Object> paramsMap) {
         this(toolsApi, recipeName, deniedToolNames, documentService,
-                progressEmitter, notificationEmitter, paramsMap, null, null, null);
+                progressEmitter, notificationEmitter, paramsMap, null, null, null, null);
     }
 
     public VanceScriptApi(ContextToolsApi toolsApi,
@@ -246,7 +246,7 @@ public final class VanceScriptApi {
                           @Nullable Map<String, Object> paramsMap,
                           @Nullable LightLlmService lightLlmService) {
         this(toolsApi, recipeName, deniedToolNames, documentService,
-                progressEmitter, notificationEmitter, paramsMap, lightLlmService, null, null);
+                progressEmitter, notificationEmitter, paramsMap, lightLlmService, null, null, null);
     }
 
     /**
@@ -266,7 +266,7 @@ public final class VanceScriptApi {
                           @Nullable LightLlmService lightLlmService,
                           @Nullable SettingService settingService) {
         this(toolsApi, recipeName, deniedToolNames, documentService, progressEmitter,
-                notificationEmitter, paramsMap, lightLlmService, settingService, null);
+                notificationEmitter, paramsMap, lightLlmService, settingService, null, null);
     }
 
     /**
@@ -287,7 +287,8 @@ public final class VanceScriptApi {
                           @Nullable Map<String, Object> paramsMap,
                           @Nullable LightLlmService lightLlmService,
                           @Nullable SettingService settingService,
-                          @Nullable String documentBasePath) {
+                          @Nullable String documentBasePath,
+                          de.mhus.vance.brain.permission.@Nullable SecurityContextFactory contextFactory) {
         this.tools = new ScriptToolsApi(toolsApi, deniedToolNames);
         this.files = new ScriptFilesApi(this.tools);
         this.context = new ScriptContextView(toolsApi.scope(), recipeName);
@@ -298,7 +299,7 @@ public final class VanceScriptApi {
                 : java.util.Collections.unmodifiableMap(new LinkedHashMap<>(paramsMap));
         this.documents = documentService == null
                 ? null
-                : new ScriptDocumentApi(documentService, toolsApi.scope(), documentBasePath);
+                : new ScriptDocumentApi(documentService, toolsApi.scope(), documentBasePath, contextFactory);
         this.llm = lightLlmService == null
                 ? null
                 : new ScriptLightLlmApi(lightLlmService, toolsApi.scope());
@@ -672,12 +673,49 @@ public final class VanceScriptApi {
         private final ToolInvocationContext scope;
         /** "Current directory" — relative paths resolve against it. "" = project root. */
         private final String basePath;
+        /**
+         * Resolves the script run's real subject (user + teams) for the write
+         * authorization. {@code null} only in legacy/test call-sites that build
+         * the API without permission wiring — then a teamless subject is built
+         * inline (fail-closed; prod always has the factory via
+         * {@link GraaljsScriptExecutor}).
+         */
+        private final de.mhus.vance.brain.permission.@Nullable SecurityContextFactory contextFactory;
 
         ScriptDocumentApi(DocumentService documentService, ToolInvocationContext scope,
-                          @Nullable String basePath) {
+                          @Nullable String basePath,
+                          de.mhus.vance.brain.permission.@Nullable SecurityContextFactory contextFactory) {
             this.documentService = documentService;
             this.scope = scope;
             this.basePath = normalizeBasePath(basePath);
+            this.contextFactory = contextFactory;
+        }
+
+        /**
+         * The write actor for a script-driven document write. {@code vance.documents.*}
+         * takes a caller-supplied {@code path}, so this is a user-driven write (never
+         * a trusted internal one): it must carry the run's real subject with
+         * {@link de.mhus.vance.shared.permission.WriteReason#USER} so the permission
+         * provider applies the normal role check (R3 project role, R4 reserved
+         * {@code _vance/} → ADMIN, document locks). A script may only write {@code _vance/}
+         * when started under an admin user, or via a dedicated tool that owns that policy.
+         * A headless run (no userId) resolves to {@code SecurityContext.SYSTEM}, which the
+         * provider trusts (R1) — genuine system scripts still pass.
+         */
+        private de.mhus.vance.shared.permission.WriteActor writeActor() {
+            de.mhus.vance.shared.permission.SecurityContext subject =
+                    contextFactory != null
+                            ? contextFactory.forToolSubject(scope.tenantId(), scope.userId())
+                            : subjectFallback();
+            return de.mhus.vance.shared.permission.WriteActor.user(subject);
+        }
+
+        private de.mhus.vance.shared.permission.SecurityContext subjectFallback() {
+            String uid = scope.userId();
+            return uid == null || uid.isBlank()
+                    ? de.mhus.vance.shared.permission.SecurityContext.SYSTEM
+                    : de.mhus.vance.shared.permission.SecurityContext.user(
+                            uid, scope.tenantId(), java.util.List.of());
         }
 
         /**
@@ -734,7 +772,7 @@ public final class VanceScriptApi {
             documentService.upsertText(
                     scope.tenantId(), scope.projectId(),
                     resolved, null, null, content, scope.userId(),
-                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+                    writeActor());
         }
 
         @HostAccess.Export
@@ -757,7 +795,7 @@ public final class VanceScriptApi {
             return documentService.findByPath(
                             scope.tenantId(), scope.projectId(), resolve(path))
                     .map(doc -> {
-                        documentService.trash(doc.getId(), de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+                        documentService.trash(doc.getId(), writeActor());
                         return true;
                     })
                     .orElse(false);

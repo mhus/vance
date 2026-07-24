@@ -2,6 +2,7 @@ package de.mhus.vance.brain.tools.video;
 
 import de.mhus.vance.api.progress.StatusTag;
 import de.mhus.vance.brain.progress.ProgressEmitter;
+import de.mhus.vance.brain.prompt.UntrustedContent;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.Tool;
@@ -256,7 +257,7 @@ public class VideoTranscriptTool implements Tool {
             out.put("durationSec", duration);
             out.put("contentLength", fullLength);
             out.put("truncated", truncated);
-            out.put("text", body);
+            out.put("text", UntrustedContent.wrap("untrusted-video-transcript", body));
             return out;
         } catch (TranscriptRetrievalException e) {
             // We can't distinguish "no captions at all" from "all
@@ -364,7 +365,7 @@ public class VideoTranscriptTool implements Tool {
             out.put("transcriptionSec", result.elapsedSec());
             out.put("contentLength", fullLength);
             out.put("truncated", truncated);
-            out.put("text", body);
+            out.put("text", UntrustedContent.wrap("untrusted-video-transcript", body));
             return out;
         } finally {
             cleanupTempAudio(audio, videoId);

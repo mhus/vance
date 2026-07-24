@@ -102,17 +102,4 @@ public interface TrillianNature {
             ThinkProcessDocument process, ThinkEngineContext ctx) {
         // no-op for Nature-0
     }
-
-    // ─── Policy switches ──────────────────────────────────────────
-
-    /**
-     * Whether the Trillian-User-loop may transition itself to
-     * {@code CLOSED}/DONE on natural-stop. Nature-0: never (the
-     * loop is endless-by-design, only session-close ends it).
-     * Future Natures might allow self-termination as part of a
-     * "goal achieved, no longer needed" semantic.
-     */
-    default boolean userLoopMayTerminate() {
-        return false;
-    }
 }

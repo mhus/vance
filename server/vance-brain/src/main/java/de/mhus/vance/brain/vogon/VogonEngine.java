@@ -121,19 +121,6 @@ public class VogonEngine implements ThinkEngine {
     }
 
     /**
-     * Replace the leaf segment of the path with {@code newName} —
-     * used for "advance to the next phase on the same level".
-     */
-    static void replaceLeafPhase(StrategyState state, String newName) {
-        java.util.List<String> path = state.getCurrentPhasePath();
-        if (path.isEmpty()) {
-            path.add(newName);
-        } else {
-            path.set(path.size() - 1, newName);
-        }
-    }
-
-    /**
      * Qualified storage key for a phase. Top-level phases use their
      * bare name; sub-phases inside a loop use {@code <loopName>/<subName>}
      * so a sub-phase can't collide with an unrelated top-level phase
@@ -1680,14 +1667,6 @@ public class VogonEngine implements ThinkEngine {
     }
 
     // ──────────────────── Helpers ────────────────────
-
-    private @Nullable PhaseSpec findPhase(StrategySpec strategy, @Nullable String phaseName) {
-        if (phaseName == null) return null;
-        for (PhaseSpec p : strategy.getPhases()) {
-            if (phaseName.equals(p.getName())) return p;
-        }
-        return null;
-    }
 
     // ──────────────────── Plan snapshot ────────────────────
 

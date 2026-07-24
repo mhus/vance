@@ -15,7 +15,6 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicReference;
@@ -363,15 +362,4 @@ public final class McpHttpTransport implements McpTransport {
         return s.length() <= 200 ? s : s.substring(0, 197) + "...";
     }
 
-    /**
-     * Convenience: stub for a header map whose case-insensitive lookup
-     * mirrors {@link java.net.http.HttpHeaders}. Lives here for the
-     * legacy SSE pump we'll add later.
-     */
-    @SuppressWarnings("unused")
-    private static Map<String, String> caseInsensitiveCopy(Map<String, String> in) {
-        Map<String, String> out = new LinkedHashMap<>();
-        in.forEach((k, v) -> out.put(k.toLowerCase(), v));
-        return out;
-    }
 }

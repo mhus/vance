@@ -8,9 +8,7 @@ import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.brain.ai.AiChat;
 import de.mhus.vance.brain.ai.AiChatConfig;
 import de.mhus.vance.brain.ai.AiChatException;
-import de.mhus.vance.brain.ai.ChatBehaviorBuilder;
 import de.mhus.vance.brain.ai.AiChatOptions;
-import de.mhus.vance.brain.ai.AiModelResolver;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ModelInfo;
 import de.mhus.vance.brain.ai.ModelSize;
@@ -34,7 +32,6 @@ import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.home.HomeBootstrapService;
-import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
@@ -177,8 +174,6 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             ArthurActionSchema.TYPE_TODO_UPDATE,
             ArthurActionSchema.TYPE_DISCOVER);
 
-    private static final String SETTING_PROVIDER_API_KEY_FMT = "ai.provider.%s.apiKey";
-
     // ──────────────────── End-of-turn marker ────────────────────
     // Arthur drives every turn through a single structured action
     // ({@code arthur_action}). See {@link ArthurActionSchema} for the
@@ -209,7 +204,6 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     private final de.mhus.vance.brain.ai.EngineChatFactory engineChatFactory;
     private final de.mhus.vance.brain.skill.SkillTriggerMatcher skillTriggerMatcher;
     private final de.mhus.vance.brain.enginemessage.EngineMessageRouter messageRouter;
-    private final PlanModeEventEmitter planModeEventEmitter;
     private final de.mhus.vance.brain.thinkengine.plan.PlanModeService planModeService;
     private final de.mhus.vance.brain.ai.attachment.AttachmentResolver attachmentResolver;
     private final de.mhus.vance.shared.workspace.WorkspaceService workspaceService;
@@ -295,7 +289,6 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             de.mhus.vance.brain.ai.EngineChatFactory engineChatFactory,
             de.mhus.vance.brain.skill.SkillTriggerMatcher skillTriggerMatcher,
             de.mhus.vance.brain.enginemessage.EngineMessageRouter messageRouter,
-            PlanModeEventEmitter planModeEventEmitter,
             de.mhus.vance.brain.thinkengine.plan.PlanModeService planModeService,
             de.mhus.vance.brain.ai.attachment.AttachmentResolver attachmentResolver,
             de.mhus.vance.brain.thinkengine.SystemPromptComposer composer,
@@ -323,7 +316,6 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         this.engineChatFactory = engineChatFactory;
         this.skillTriggerMatcher = skillTriggerMatcher;
         this.messageRouter = messageRouter;
-        this.planModeEventEmitter = planModeEventEmitter;
         this.planModeService = planModeService;
         this.attachmentResolver = attachmentResolver;
         this.workspaceService = workspaceService;
@@ -3205,15 +3197,6 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         return trimmed;
     }
 
-    // ──────────────────── Config resolve (mirrors Ford) ────────────────────
-
-    private static AiChatConfig resolveAiConfig(
-            ThinkProcessDocument process,
-            SettingService settings,
-            AiModelResolver modelResolver) {
-        return ChatBehaviorBuilder.resolveForProcess(process, settings, modelResolver);
-    }
-
     // ──────────────────── engineParams helpers ────────────────────
 
     private static @Nullable Object param(ThinkProcessDocument process, String key) {
@@ -3225,21 +3208,6 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             ThinkProcessDocument process, String key, @Nullable String fallback) {
         Object v = param(process, key);
         return v instanceof String s && !s.isBlank() ? s : fallback;
-    }
-
-    private static String nonBlankOr(@Nullable String candidate, String fallback) {
-        return candidate != null && !candidate.isBlank() ? candidate : fallback;
-    }
-
-    /** {@link String#format} that survives misformatted templates. */
-    private static String formatSafe(String template, Object... args) {
-        try {
-            return String.format(template, args);
-        } catch (RuntimeException e) {
-            log.warn("Arthur: validator template format failed ({}), using verbatim",
-                    e.toString());
-            return template;
-        }
     }
 
     private static int paramInt(

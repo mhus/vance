@@ -1230,7 +1230,8 @@ public class SlartibartfastEngine implements ThinkEngine {
      * <p><b>M1 stand:</b> every phase is a deterministic stub that
      * fills in canned data so the lifecycle can be tested end-to-end
      * without LLM calls. M2 onward replaces the stubs in
-     * {@link SlartibartfastPhases} with real implementations.
+     * {@code SlartibartfastPhases} (a test-only fixture) with real
+     * implementations.
      */
     /**
      * Surface the just-completed phase transition to the chat user

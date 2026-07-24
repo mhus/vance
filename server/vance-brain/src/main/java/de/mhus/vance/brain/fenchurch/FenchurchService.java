@@ -196,11 +196,11 @@ public class FenchurchService {
             imageService.generate(config, prompt, stream);
         } catch (AiImageException e) {
             cancelHeartbeat(heartbeat);
-            recordFailure(reserveId, request, resolved, config, callStart, e);
+            recordFailure(reserveId, request, config, callStart, e);
             throw mapProviderError(e, config);
         } catch (RuntimeException e) {
             cancelHeartbeat(heartbeat);
-            recordFailure(reserveId, request, resolved, config, callStart, e);
+            recordFailure(reserveId, request, config, callStart, e);
             throw new FenchurchException(
                     FenchurchException.Reason.PROVIDER_ERROR,
                     "Fenchurch generation failed for " + config.fullName()
@@ -216,7 +216,7 @@ public class FenchurchService {
                         "Image generation reported success but the document at "
                                 + path + " was not committed"));
 
-        recordSuccess(reserveId, request, resolved, config, modelInfo,
+        recordSuccess(reserveId, request, config, modelInfo,
                 callStart, durationMs, committed);
 
         return GenerateImageResult.builder()
@@ -488,7 +488,6 @@ public class FenchurchService {
     private void recordSuccess(
             String reserveId,
             GenerateImageRequest request,
-            AiModelResolver.Resolved resolved,
             AiImageConfig config,
             ImageModelInfo modelInfo,
             long callStart,
@@ -521,7 +520,6 @@ public class FenchurchService {
     private void recordFailure(
             String reserveId,
             GenerateImageRequest request,
-            AiModelResolver.Resolved resolved,
             AiImageConfig config,
             long callStart,
             Throwable cause) {

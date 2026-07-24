@@ -11,9 +11,7 @@ import de.mhus.vance.api.zaphod.ZaphodState;
 import de.mhus.vance.api.zaphod.ZaphodStatus;
 import de.mhus.vance.brain.ai.AiChat;
 import de.mhus.vance.brain.ai.AiChatConfig;
-import de.mhus.vance.brain.ai.ChatBehaviorBuilder;
 import de.mhus.vance.brain.ai.AiChatOptions;
-import de.mhus.vance.brain.ai.AiModelResolver;
 import de.mhus.vance.brain.recipe.AppliedRecipe;
 import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
@@ -25,7 +23,6 @@ import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
-import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import dev.langchain4j.data.message.ChatMessage;
@@ -82,8 +79,6 @@ public class ZaphodEngine implements ThinkEngine {
 
     /** {@code engineParams[SYNTHESIS_PROMPT_KEY]} — optional. */
     public static final String SYNTHESIS_PROMPT_KEY = "synthesisPrompt";
-
-    private static final String SETTING_PROVIDER_API_KEY_FMT = "ai.provider.%s.apiKey";
 
     /** Engine-default synthesis system prompt — last-resort Java
      *  fallback. Primary source is the document cascade
@@ -1376,15 +1371,6 @@ public class ZaphodEngine implements ThinkEngine {
         p.put(STATE_KEY, serialized);
         process.setEngineParams(p);
         thinkProcessService.replaceEngineParams(process.getId(), p);
-    }
-
-    // ──────────────────── AI-Config (mirrors Marvin / Vogon) ────────────────────
-
-    private static AiChatConfig resolveAiConfig(
-            ThinkProcessDocument process,
-            SettingService settings,
-            AiModelResolver modelResolver) {
-        return ChatBehaviorBuilder.resolveForProcess(process, settings, modelResolver);
     }
 
     private static @Nullable String paramString(

@@ -7,10 +7,8 @@ import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.brain.ai.AiChat;
 import de.mhus.vance.brain.ai.AiChatConfig;
-import de.mhus.vance.brain.ai.ChatBehaviorBuilder;
 import de.mhus.vance.brain.ai.AiChatException;
 import de.mhus.vance.brain.ai.AiChatOptions;
-import de.mhus.vance.brain.ai.AiModelResolver;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ModelInfo;
 import de.mhus.vance.brain.ai.ModelSize;
@@ -38,7 +36,6 @@ import de.mhus.vance.shared.memory.MemoryKind;
 import de.mhus.vance.shared.memory.MemoryService;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
-import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
@@ -174,9 +171,6 @@ public class Ford implements ThinkEngine {
                     + "instead. Free assistant text without a tool call "
                     + "is never the right output.";
 
-    /** Provider-specific API-key setting key, e.g. {@code ai.provider.gemini.apiKey}. */
-    private static final String SETTING_PROVIDER_API_KEY_FMT = "ai.provider.%s.apiKey";
-
     private final ThinkProcessService thinkProcessService;
     private final ObjectMapper objectMapper;
     private final StreamingProperties streamingProperties;
@@ -186,7 +180,6 @@ public class Ford implements ThinkEngine {
     private final de.mhus.vance.brain.thinkengine.EnginePromptResolver enginePromptResolver;
     private final de.mhus.vance.brain.thinkengine.SystemPromptComposer composer;
     private final de.mhus.vance.brain.ai.EngineChatFactory engineChatFactory;
-    private final FordProperties fordProperties;
     private final MemoryService memoryService;
     private final MemoryCompactionService memoryCompactionService;
     private final SkillResolver skillResolver;
@@ -1297,36 +1290,6 @@ public class Ford implements ThinkEngine {
     private static String escapeText(@Nullable String s) {
         if (s == null) return "";
         return s.replace("&", "&amp;").replace("<", "&lt;");
-    }
-
-    /**
-     * Cheap, provider-agnostic token estimator: ≈ 4 chars per token for
-     * English-ish text. Conservative enough as a compaction trigger; the
-     * proper tokenizer per provider is a future refinement once the
-     * compaction loop demands precision.
-     */
-    private static int estimateTokens(List<ChatMessage> messages) {
-        long chars = 0;
-        for (ChatMessage m : messages) {
-            String text = textOf(m);
-            if (text != null) chars += text.length();
-        }
-        return (int) Math.min(Integer.MAX_VALUE, chars / 4 + messages.size() * 4L);
-    }
-
-    private static String textOf(ChatMessage m) {
-        if (m instanceof UserMessage u) return u.singleText();
-        if (m instanceof AiMessage a) return a.text();
-        if (m instanceof SystemMessage s) return s.text();
-        if (m instanceof ToolExecutionResultMessage t) return t.text();
-        return m.toString();
-    }
-
-    private static AiChatConfig resolveAiConfig(
-            ThinkProcessDocument process,
-            SettingService settings,
-            AiModelResolver modelResolver) {
-        return ChatBehaviorBuilder.resolveForProcess(process, settings, modelResolver);
     }
 
     /**

@@ -15,7 +15,6 @@ import de.mhus.vance.toolpack.research.SearchScope;
 import de.mhus.vance.toolpack.research.SearchTier;
 import java.net.URI;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -305,8 +304,5 @@ public class HackerNewsProtocol implements SearchProtocol {
             return requested;
         }
 
-        // Unused — kept for symmetry with the other instances. */
-        @SuppressWarnings("unused")
-        private Instant now() { return Instant.now(); }
     }
 }

@@ -14,7 +14,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -59,10 +58,6 @@ public class SettingFormPlanBuilder {
 
     /** Pebble-context variable name carrying the live cascade values. */
     public static final String CURRENT_VAR = "current";
-
-    /** Field types whose values may be coerced into a setting payload via {@code bindsTo}. */
-    private static final Set<String> SCALAR_BINDABLE_TYPES = Set.of(
-            "string", "textarea", "password", "integer", "boolean", "select");
 
     /**
      * Builds the apply plan for {@code form} given the submitted values

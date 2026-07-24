@@ -50,6 +50,7 @@ export default {
       },
       error: {
         forbidden: 'This action requires tenant-admin access.',
+        invalidInput: 'Invalid input: {message}',
         generic: 'Error: {message}',
       },
     },

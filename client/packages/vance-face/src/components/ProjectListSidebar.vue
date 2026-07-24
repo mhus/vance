@@ -7,7 +7,7 @@ import type {
   ProjectSummary,
   SidebarUiStateDto,
 } from '@vance/generated';
-import { brainFetch } from '@vance/shared';
+import { brainFetch, RestError } from '@vance/shared';
 import { useProjectKitsCatalog } from '@/composables/useProjectKitsCatalog';
 
 /**
@@ -400,15 +400,24 @@ function openCreateProject(groupId: string | null = null): void {
 }
 
 async function submitCreateGroup(): Promise<void> {
-  const name = newGroupName.value.trim();
-  if (!name) return;
+  const raw = newGroupName.value.trim();
+  if (!raw) return;
+  // Group names are case-sensitive identifiers on the server side
+  // (validated against ^[a-z0-9][a-z0-9_-]*$) but humans frequently type
+  // "MyGroup" expecting it to work like a label. Mirror the project path:
+  // lowercase on submit, and — if the user's original typing carried any
+  // uppercase — promote that original spelling to `title` so the prettier
+  // form survives as the display name.
+  const name = raw.toLowerCase();
+  const titleInput = newGroupTitle.value.trim();
+  const title = titleInput || (raw !== name ? raw : undefined);
   creating.value = true;
   creationError.value = null;
   try {
     await brainFetch('POST', 'admin/project-groups', {
       body: {
         name,
-        title: newGroupTitle.value.trim() || undefined,
+        title,
       },
     });
     showCreateGroup.value = false;
@@ -457,11 +466,56 @@ async function submitCreateProject(): Promise<void> {
 }
 
 function describeError(e: unknown): string {
+  if (e instanceof RestError) {
+    if (e.status === 403) return t('common.projectPicker.error.forbidden');
+    const clean = extractServerMessage(e.message);
+    // 400 (bean-validation) / 422 carry an actionable constraint message —
+    // surface it as "invalid input" rather than a raw error dump.
+    if (e.status === 400 || e.status === 422) {
+      return t('common.projectPicker.error.invalidInput', { message: clean });
+    }
+    return t('common.projectPicker.error.generic', { message: clean });
+  }
   const msg = e instanceof Error ? e.message : String(e);
   if (msg.toLowerCase().includes('forbidden') || msg.includes('403')) {
     return t('common.projectPicker.error.forbidden');
   }
   return t('common.projectPicker.error.generic', { message: msg });
+}
+
+/**
+ * The Brain's error body is JSON. With {@code server.error.include-message=
+ * always} it carries a verbose {@code message} and, for bean-validation
+ * failures, an {@code errors} array whose {@code defaultMessage} fields hold
+ * the human-readable constraint text (e.g. "must be lower-case alphanumerics
+ * with optional '-' or '_'"). Prefer those field messages; fall back to
+ * {@code detail} (ProblemDetail) / {@code message} / {@code error}, then the
+ * raw text. Keeps the dialog from dumping a full JSON blob at the user.
+ */
+function extractServerMessage(body: string): string {
+  const trimmed = body.trim();
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return trimmed;
+  try {
+    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+    const errors = parsed.errors;
+    if (Array.isArray(errors) && errors.length > 0) {
+      const messages = errors
+        .map((it) => (it && typeof it === 'object'
+          ? (it as Record<string, unknown>).defaultMessage
+          : undefined))
+        .filter((m): m is string => typeof m === 'string' && m.length > 0);
+      if (messages.length > 0) return messages.join('; ');
+    }
+    for (const key of ['detail', 'message', 'error'] as const) {
+      const val = parsed[key];
+      if (typeof val === 'string' && val && val !== 'No message available') {
+        return val;
+      }
+    }
+    return trimmed;
+  } catch {
+    return trimmed;
+  }
 }
 
 // ────────────────── Edit mode: drag-and-drop to move ──────────────────

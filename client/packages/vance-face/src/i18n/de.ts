@@ -44,6 +44,7 @@ export default {
       },
       error: {
         forbidden: 'Diese Aktion ist Tenant-Admins vorbehalten.',
+        invalidInput: 'Ungültige Eingabe: {message}',
         generic: 'Fehler: {message}',
       },
     },

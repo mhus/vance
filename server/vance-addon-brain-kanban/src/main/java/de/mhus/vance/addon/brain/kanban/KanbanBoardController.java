@@ -321,7 +321,9 @@ public class KanbanBoardController {
                 || p.getBody() != null;
     }
 
-    private static CardDocument mergePatch(CardDocument existing, KanbanCardUpdateRequest p) {
+    // package-private for KanbanBoardControllerMergeTest: the blank-clears /
+    // null-leaves-untouched contract is deterministic and worth pinning.
+    static CardDocument mergePatch(CardDocument existing, KanbanCardUpdateRequest p) {
         String title = p.getTitle() != null ? p.getTitle() : existing.title();
         String priority = p.getPriority() != null
                 ? (p.getPriority().isBlank() ? null : p.getPriority())

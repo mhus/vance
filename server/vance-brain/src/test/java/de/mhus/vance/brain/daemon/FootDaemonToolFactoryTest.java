@@ -119,6 +119,7 @@ class FootDaemonToolFactoryTest {
                 try { Thread.sleep(10); } catch (InterruptedException ignored) {}
                 registry.completeInvocation(
                         req.getCorrelationId(),
+                        daemonWs,
                         Map.of("stdout", "hello", "exit", 0),
                         null);
             }).start();
@@ -160,7 +161,7 @@ class FootDaemonToolFactoryTest {
             ClientToolInvokeRequest req = inv.getArgument(2);
             new Thread(() -> {
                 try { Thread.sleep(10); } catch (InterruptedException ignored) {}
-                registry.completeInvocation(req.getCorrelationId(), null, "permission denied");
+                registry.completeInvocation(req.getCorrelationId(), daemonWs, null, "permission denied");
             }).start();
             return null;
         }).when(sender).sendNotification(eq(daemonWs), eq(MessageType.CLIENT_TOOL_INVOKE), any());

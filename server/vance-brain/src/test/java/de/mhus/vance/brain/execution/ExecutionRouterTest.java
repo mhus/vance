@@ -82,6 +82,8 @@ class ExecutionRouterTest {
                 try { Thread.sleep(50); } catch (InterruptedException ignored) {}
                 clientToolRegistry.completeInvocation(
                         correlationId,
+                        "sess-1",
+                        "conn-foo",
                         Map.of("id", "e1", "status", "RUNNING"),
                         null);
             }).start();

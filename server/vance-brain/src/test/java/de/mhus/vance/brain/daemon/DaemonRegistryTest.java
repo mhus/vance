@@ -8,6 +8,7 @@ import de.mhus.vance.api.tools.ToolSpec;
 import de.mhus.vance.brain.daemon.DaemonRegistry.DaemonKey;
 import de.mhus.vance.brain.daemon.DaemonRegistry.DaemonRef;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -259,5 +260,27 @@ class DaemonRegistryTest {
         registry.sweepStaleEntries();
 
         assertThat(dropped.get()).isEqualTo(key);
+    }
+
+    @Test
+    void completeInvocation_fromForeignConnection_isRejected() {
+        // Security regression (code-review-2 HIGH): correlation ids are a
+        // guessable global sequence, so a result must only complete a pending
+        // invocation when delivered on the WS connection that owns the daemon key.
+        WebSocketSession owner = mock(WebSocketSession.class);
+        WebSocketSession attacker = mock(WebSocketSession.class);
+        DaemonKey key = new DaemonKey("acme", "ops", "server-prod-01");
+        registry.register(key, owner, List.of(ToolSpec.builder().name("a").build()));
+        DaemonRegistry.DaemonPending p = registry.beginInvocation(key, "a");
+
+        // Foreign connection → rejected, future untouched (no forgery, no cancel).
+        assertThat(registry.completeInvocation(p.correlationId(), attacker, Map.of("x", 1), null))
+                .isEmpty();
+        assertThat(p.future().isDone()).isFalse();
+
+        // The owning connection completes it.
+        assertThat(registry.completeInvocation(p.correlationId(), owner, Map.of("x", 1), null))
+                .isPresent();
+        assertThat(p.future().isDone()).isTrue();
     }
 }

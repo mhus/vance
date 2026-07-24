@@ -138,10 +138,29 @@ public class ClientToolRegistry {
     /** Matches an incoming result to a pending future. */
     public Optional<Pending> completeInvocation(
             String correlationId,
+            @Nullable String deliveringSessionId,
+            @Nullable String deliveringEditorId,
             @Nullable Map<String, Object> result,
             @Nullable String error) {
-        Pending p = pending.remove(correlationId);
+        Pending p = pending.get(correlationId);
         if (p == null) return Optional.empty();
+        // Ownership: the result must come from the connection that owns the
+        // pending invocation. Correlation ids are a guessable global sequence, so
+        // without this a client in session B could complete session A's client_*
+        // future with forged content. The owner token in Pending.sessionId is the
+        // id the producer used — a real session id (ClientToolSource) OR the
+        // connection's editorId (ExecutionRouter) — so match either against the
+        // delivering connection. Mismatch → reject WITHOUT removing/completing so
+        // the real owner can still deliver (a forgery must not cancel it either).
+        boolean owns = p.sessionId.equals(deliveringSessionId)
+                || p.sessionId.equals(deliveringEditorId);
+        if (!owns) {
+            log.warn("client-tool result correlation='{}' delivered by session='{}'/editor='{}' but "
+                    + "owned by '{}' — rejected", correlationId, deliveringSessionId,
+                    deliveringEditorId, p.sessionId);
+            return Optional.empty();
+        }
+        pending.remove(correlationId);
         if (error != null) {
             p.future.completeExceptionally(new ClientToolFailureException(error));
         } else {

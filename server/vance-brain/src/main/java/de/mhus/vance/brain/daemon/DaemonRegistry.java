@@ -328,9 +328,21 @@ public class DaemonRegistry {
      * owns).
      */
     public Optional<DaemonPending> completeInvocation(
-            String correlationId, @Nullable Map<String, Object> result, @Nullable String error) {
-        DaemonPending p = pendingByCorr.remove(correlationId);
+            String correlationId, WebSocketSession deliveringWs,
+            @Nullable Map<String, Object> result, @Nullable String error) {
+        DaemonPending p = pendingByCorr.get(correlationId);
         if (p == null) return Optional.empty();
+        // Ownership: the result must arrive on the same WS connection that owns
+        // the daemon key the invocation was sent to. Correlation ids are a
+        // guessable global sequence, so without this another connection could
+        // complete a foreign daemon's future with forged content. Mismatch →
+        // reject without removing/completing (the real daemon may still answer).
+        if (!p.daemonKey().equals(byWs.get(deliveringWs))) {
+            log.warn("daemon-tool result correlation='{}' delivered by a connection that does not "
+                    + "own daemon key='{}' — rejected", correlationId, p.daemonKey());
+            return Optional.empty();
+        }
+        pendingByCorr.remove(correlationId);
         if (error != null) {
             p.future().completeExceptionally(new java.io.IOException(
                     "daemon tool '" + p.toolName() + "' failed: " + error));

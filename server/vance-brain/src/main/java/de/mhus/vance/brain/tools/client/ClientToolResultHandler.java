@@ -74,11 +74,14 @@ public class ClientToolResultHandler implements WsHandler {
         // at most one will match.
         boolean matched = registry.completeInvocation(
                 response.getCorrelationId(),
+                ctx.getSessionId(),
+                ctx.getEditorId(),
                 response.getResult(),
                 response.getError()).isPresent();
         if (!matched) {
             matched = daemonRegistry.completeInvocation(
                     response.getCorrelationId(),
+                    wsSession,
                     response.getResult(),
                     response.getError()).isPresent();
         }

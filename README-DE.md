@@ -13,6 +13,10 @@ Es ist kein Produkt. Nichts wird verkauft, es gibt keinen Support-Vertrag und ke
 
 Vance ist ein Server (das "Brain"), auf dem Agenten Aufträge über Stunden und Tage bearbeiten — und den man fast vollständig aus sich selbst heraus gestalten kann, weil Konfiguration, Verhalten und Wissen alle als Dokumente in der Datenbank liegen.
 
+## Von Agenten geschrieben. Mit Absicht.
+
+Jede Zeile von Vance ist AI-geschrieben — dirigiert, reviewt und geformt von einem Menschen. Das ist kein Geständnis, sondern der ganze Punkt: Vance ist das, was dabei herauskommt, wenn man über Monate *mit* Agenten arbeitet statt nur mit ihnen zu chatten — ein großes, kohärentes System, das man laufen lassen, lesen und ändern kann. Tool und Beweis sind dasselbe.
+
 ## Was es ausmacht
 
 - **Alles ist ein Dokument.** Templates, Recipes, Prompts, Scheduler, Hooks, Settings, Manuals — alle als Dokument in MongoDB abgelegt. Ein neues Recipe ist ein neues Dokument, ein neuer Automatismus ein neues Hook-Dokument. Das System konfiguriert sich aus seinen eigenen Daten — und Agenten können dasselbe tun.

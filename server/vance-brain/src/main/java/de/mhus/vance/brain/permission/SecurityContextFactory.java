@@ -20,8 +20,10 @@ import org.springframework.stereotype.Component;
  *
  * <p>Team memberships are resolved via {@link TeamService} and cached on the
  * request so multi-check endpoints don't multiply the lookup. WebSocket
- * connections cache on the {@link ConnectionContext} attribute slot — see
- * {@link #fromConnection}.
+ * connections cache the resolved {@link SecurityContext} on the
+ * {@link ConnectionContext} for the connection lifetime — see
+ * {@link #fromConnection} — so a chatty leitkanal session doesn't re-query team
+ * membership per frame.
  */
 @Component
 @RequiredArgsConstructor
@@ -48,10 +50,16 @@ public class SecurityContextFactory {
     }
 
     public SecurityContext fromConnection(ConnectionContext connection) {
-        return SecurityContext.user(
+        SecurityContext cached = connection.getSecurityContext();
+        if (cached != null) {
+            return cached;
+        }
+        SecurityContext ctx = SecurityContext.user(
                 connection.getUserId(),
                 connection.getTenantId(),
                 resolveTeams(connection.getTenantId(), connection.getUserId()));
+        connection.cacheSecurityContext(ctx);
+        return ctx;
     }
 
     /**

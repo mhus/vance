@@ -85,6 +85,24 @@ class SecurityContextFactoryTest {
         assertThat(ctx.teams()).containsExactly("dev");
     }
 
+    @Test
+    void fromConnection_cachesContext_soTeamsResolveOncePerConnection() {
+        // Regression (code-review-2): the leitkanal re-queried team membership
+        // from Mongo on every permission-checked WS frame. The resolved context
+        // is now cached on the ConnectionContext for its lifetime.
+        ConnectionContext connection = new ConnectionContext(
+                "acme", "alice", "Alice A.",
+                "default", "1.0", "vance-foot",
+                "conn-1", "10.0.0.1");
+        when(teamService.byMember("acme", "alice")).thenReturn(List.of(team("dev")));
+
+        SecurityContext first = factory.fromConnection(connection);
+        SecurityContext second = factory.fromConnection(connection);
+
+        assertThat(second).isSameAs(first);
+        verify(teamService, times(1)).byMember("acme", "alice");
+    }
+
     private static HttpServletRequest mockRequestWith(String username, String tenantId) {
         HttpServletRequest request = mock(HttpServletRequest.class);
         Map<String, Object> attrs = new HashMap<>();

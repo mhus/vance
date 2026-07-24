@@ -256,10 +256,19 @@ public class WebUiCookieService {
             // SPA at least has identity, even if settings are missing.
             log.warn("Failed to serialise WebUiSessionData for tenant='{}' user='{}': {}",
                     sessionData.getTenantId(), sessionData.getUsername(), e.getMessage());
-            return URLEncoder.encode(
-                    "{\"username\":\"" + sessionData.getUsername()
-                            + "\",\"tenantId\":\"" + sessionData.getTenantId() + "\"}",
-                    StandardCharsets.UTF_8);
+            // Serialise a minimal Map via Jackson — never hand-build JSON
+            // (a username/tenantId containing a quote would otherwise produce
+            // malformed/injected cookie JSON). CLAUDE.md: keine JSON-Manipulation.
+            try {
+                String json = objectMapper.writeValueAsString(java.util.Map.of(
+                        "username", sessionData.getUsername(),
+                        "tenantId", sessionData.getTenantId()));
+                return URLEncoder.encode(json, StandardCharsets.UTF_8);
+            } catch (JacksonException fatal) {
+                // A plain string Map cannot fail to serialise; if it somehow
+                // does, drop the data cookie rather than emit broken JSON.
+                return "";
+            }
         }
     }
 

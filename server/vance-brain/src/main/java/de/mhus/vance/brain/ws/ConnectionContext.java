@@ -43,6 +43,16 @@ public class ConnectionContext {
     private volatile @Nullable WebSocketSession webSocketSession;
     private volatile @Nullable SessionDocument sessionDocument;
 
+    /**
+     * Per-connection cache of the resolved {@link de.mhus.vance.shared.permission.SecurityContext}
+     * (user + team memberships). tenantId/userId are handshake-final, so this
+     * is stable for the connection lifetime; without it every permission-checked
+     * WS frame on the leitkanal re-queried team membership from Mongo. Populated
+     * lazily by {@code SecurityContextFactory.fromConnection}. Mirrors the
+     * per-request cache the HTTP path already keeps.
+     */
+    private volatile de.mhus.vance.shared.permission.@Nullable SecurityContext securityContext;
+
     public void attach(WebSocketSession webSocketSession) {
         this.webSocketSession = webSocketSession;
     }
@@ -57,6 +67,11 @@ public class ConnectionContext {
 
     public void unbindSession() {
         this.sessionDocument = null;
+    }
+
+    public void cacheSecurityContext(
+            de.mhus.vance.shared.permission.SecurityContext context) {
+        this.securityContext = context;
     }
 
     public @Nullable String getSessionId() {

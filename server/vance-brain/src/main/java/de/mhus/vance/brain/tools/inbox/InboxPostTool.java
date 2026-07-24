@@ -91,6 +91,8 @@ public class InboxPostTool implements Tool {
 
     private final InboxItemService inboxItemService;
     private final DocumentService documentService;
+    private final de.mhus.vance.shared.permission.PermissionService permissionService;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
     @Override
     public String name() {
@@ -126,6 +128,14 @@ public class InboxPostTool implements Tool {
             throw new ToolException("inbox_post requires a tenant scope");
         }
         String targetUserId = stringOrThrow(params, "targetUserId");
+        // Authorize delivery: targetUserId is a raw LLM param, so without this any
+        // tenant user could be spammed with unsolicited action-requiring items.
+        // The provider's inbox rule (R5) permits self / shares-team; a null itemId
+        // asks "may this subject deliver to that assignee?" for the not-yet-created item.
+        permissionService.enforce(
+                contextFactory.forToolSubject(tenantId, ctx.userId()),
+                new de.mhus.vance.shared.permission.Resource.InboxItem(tenantId, null, targetUserId),
+                de.mhus.vance.shared.permission.Action.WRITE);
         InboxItemType type = parseType(stringOrThrow(params, "type"));
         String title = stringOrThrow(params, "title");
         String body = optString(params, "body");
@@ -214,6 +224,15 @@ public class InboxPostTool implements Tool {
                     "documentRef requires either 'id' or both "
                             + "'projectId' and 'path'");
         }
+
+        // Authorize the referenced document against the caller's scope —
+        // findById/findByPath above are raw reads, so without this a project-A
+        // caller could leak project-B document metadata (title/path/mime).
+        permissionService.enforce(
+                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()),
+                new de.mhus.vance.shared.permission.Resource.Document(
+                        ctx.tenantId(), doc.getProjectId(), doc.getPath()),
+                de.mhus.vance.shared.permission.Action.READ);
 
         Map<String, Object> ref = new LinkedHashMap<>();
         ref.put("documentId", doc.getId());

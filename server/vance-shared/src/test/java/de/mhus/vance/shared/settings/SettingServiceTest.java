@@ -10,34 +10,48 @@ import static org.mockito.Mockito.when;
 import de.mhus.vance.api.settings.SettingType;
 import de.mhus.vance.shared.audit.AuditService;
 import de.mhus.vance.shared.crypto.AesEncryptionService;
+import de.mhus.vance.shared.home.HomeBootstrapService;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * Focused coverage for the secret-handling invariant of SettingService
- * (code-review F4): PASSWORD values must never be persisted via the generic
- * {@code set()} (which would store them in the clear) and the encrypted
- * round-trip must return the original plaintext.
+ * Secret-handling coverage for SettingService (code-review F4 + test-gap):
+ * PASSWORD values must never be persisted via the generic {@code set()}
+ * (which would store them in the clear), the encrypted round-trip must return
+ * the original plaintext, plaintext must never leak through the string
+ * getters or bulk reads, and the password cascade must resolve inner-first
+ * and fail closed on decrypt errors. Uses the real {@link AesEncryptionService}
+ * so the crypto round-trip and a genuine decrypt failure are exercised.
  */
 class SettingServiceTest {
 
+    private static final String TENANT = "acme";
+    private static final String PROJECT = SettingService.SCOPE_PROJECT;
+    private static final String TP = SettingService.SCOPE_THINK_PROCESS;
+    private static final String TENANT_PROJ = HomeBootstrapService.TENANT_PROJECT_NAME;
+
     private SettingRepository repository;
+    private AesEncryptionService encryption;
+    private AuditService audit;
     private SettingService service;
 
     @BeforeEach
     void setUp() {
         repository = mock(SettingRepository.class);
-        AuditService audit = mock(AuditService.class);
-        AesEncryptionService encryption = new AesEncryptionService("unit-test-master-key");
+        audit = mock(AuditService.class);
+        encryption = new AesEncryptionService("unit-test-master-key");
         service = new SettingService(repository, encryption, audit);
         when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
     }
 
+    // ──────────────── write path ────────────────
+
     @Test
     void set_rejectsPasswordType() {
         assertThatThrownBy(() -> service.set(
-                "acme", SettingService.SCOPE_PROJECT, "proj", "api.key",
+                TENANT, PROJECT, "proj", "api.key",
                 "some-ciphertext", SettingType.PASSWORD, null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("setEncryptedPassword");
@@ -46,7 +60,7 @@ class SettingServiceTest {
     @Test
     void set_allowsStringType() {
         SettingDocument saved = service.set(
-                "acme", SettingService.SCOPE_PROJECT, "proj", "ui.theme",
+                TENANT, PROJECT, "proj", "ui.theme",
                 "dark", SettingType.STRING, null);
 
         assertThat(saved.getValue()).isEqualTo("dark");
@@ -56,7 +70,7 @@ class SettingServiceTest {
     @Test
     void setEncryptedPassword_storesCiphertextAndRoundTrips() {
         SettingDocument saved = service.setEncryptedPassword(
-                "acme", SettingService.SCOPE_PROJECT, "proj", "api.key", "s3cr3t");
+                TENANT, PROJECT, "proj", "api.key", "s3cr3t");
 
         // Persisted value is not the plaintext.
         assertThat(saved.getType()).isEqualTo(SettingType.PASSWORD);
@@ -68,7 +82,104 @@ class SettingServiceTest {
                 .thenReturn(Optional.of(saved));
 
         String plain = service.getDecryptedPassword(
-                "acme", SettingService.SCOPE_PROJECT, "proj", "api.key");
+                TENANT, PROJECT, "proj", "api.key");
         assertThat(plain).isEqualTo("s3cr3t");
+    }
+
+    // ──────────────── refuse-read guard ────────────────
+
+    @Test
+    void getStringValue_refusesPasswordSetting_returnsNull() {
+        stubFind(PROJECT, "proj", "api.key", passwordDoc("api.key", "s3cr3t"));
+
+        // Never expose an encrypted secret through the plain string getter.
+        assertThat(service.getStringValue(TENANT, PROJECT, "proj", "api.key")).isNull();
+    }
+
+    @Test
+    void getStringValue_returnsPlainStringSetting() {
+        stubFind(PROJECT, "proj", "ui.lang", doc("ui.lang", "de", SettingType.STRING));
+
+        assertThat(service.getStringValue(TENANT, PROJECT, "proj", "ui.lang")).isEqualTo("de");
+    }
+
+    // ──────────────── decrypt paths ────────────────
+
+    @Test
+    void getDecryptedPassword_missing_returnsNull() {
+        stubFind(PROJECT, "proj", "api.key", null);
+
+        assertThat(service.getDecryptedPassword(TENANT, PROJECT, "proj", "api.key")).isNull();
+    }
+
+    @Test
+    void getDecryptedPassword_wrongType_returnsNull() {
+        stubFind(PROJECT, "proj", "api.key", doc("api.key", "de", SettingType.STRING));
+
+        assertThat(service.getDecryptedPassword(TENANT, PROJECT, "proj", "api.key")).isNull();
+    }
+
+    @Test
+    void getDecryptedPassword_corruptCiphertext_failsClosedToNull() {
+        // A PASSWORD whose stored value is not valid ciphertext — decrypt throws
+        // internally and the service must return null, never the raw ciphertext.
+        stubFind(PROJECT, "proj", "api.key", doc("api.key", "not-real-ciphertext", SettingType.PASSWORD));
+
+        assertThat(service.getDecryptedPassword(TENANT, PROJECT, "proj", "api.key")).isNull();
+    }
+
+    // ──────────────── cascade resolution ────────────────
+
+    @Test
+    void passwordCascade_prefersThinkProcessOverProjectOverTenant() {
+        stubFind(TP, "tp-1", "api.key", passwordDoc("api.key", "inner"));
+        stubFind(PROJECT, "proj-1", "api.key", passwordDoc("api.key", "mid"));
+        stubFind(PROJECT, TENANT_PROJ, "api.key", passwordDoc("api.key", "outer"));
+
+        assertThat(service.getDecryptedPasswordCascade(TENANT, "proj-1", "tp-1", "api.key"))
+                .isEqualTo("inner");
+    }
+
+    @Test
+    void passwordCascade_fallsThroughToTenantWhenInnerLayersMiss() {
+        stubFind(TP, "tp-1", "api.key", null);
+        stubFind(PROJECT, "proj-1", "api.key", null);
+        stubFind(PROJECT, TENANT_PROJ, "api.key", passwordDoc("api.key", "outer"));
+
+        assertThat(service.getDecryptedPasswordCascade(TENANT, "proj-1", "tp-1", "api.key"))
+                .isEqualTo("outer");
+    }
+
+    // ──────────────── bulk read skips secrets ────────────────
+
+    @Test
+    void findByPrefixCascade_skipsPasswordEntries() {
+        SettingDocument plain = doc("provider.name", "openai", SettingType.STRING);
+        SettingDocument secret = passwordDoc("provider.key", "s3cr3t");
+        when(repository.findByTenantIdAndReferenceTypeAndReferenceId(
+                TENANT, PROJECT, TENANT_PROJ)).thenReturn(List.of(plain, secret));
+
+        var merged = service.findByPrefixCascade(TENANT, null, null, "provider.");
+
+        assertThat(merged).containsEntry("provider.name", "openai");
+        assertThat(merged).doesNotContainKey("provider.key");
+    }
+
+    // ──────────────── helpers ────────────────
+
+    private SettingDocument doc(String key, String value, SettingType type) {
+        return SettingDocument.builder()
+                .tenantId(TENANT).key(key).value(value).type(type).build();
+    }
+
+    /** A PASSWORD document holding the real ciphertext of {@code plaintext}. */
+    private SettingDocument passwordDoc(String key, String plaintext) {
+        return doc(key, encryption.encrypt(plaintext), SettingType.PASSWORD);
+    }
+
+    private void stubFind(String refType, String refId, String key, SettingDocument doc) {
+        when(repository.findByTenantIdAndReferenceTypeAndReferenceIdAndKey(
+                TENANT, refType, refId, key))
+                .thenReturn(Optional.ofNullable(doc));
     }
 }

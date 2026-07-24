@@ -123,19 +123,24 @@ public class AgrajagChecker {
             case NONE -> { /* cooldown-only */ }
         }
 
-        // Set / refresh the cooldown.
-        if (cooldown != null) {
-            healthService.setCooldown(
-                    ctx.tenantId(), scope, scopeId, toolName,
-                    signature, userKey,
-                    matched.getClassification(), cooldown,
-                    matched.getNote());
-        }
+        // Atomically claim the cooldown instead of a separate check-then-set:
+        // only the caller that flips the (scope,scopeId,tool,signature,user) key
+        // from no-active-cooldown to active gets claimed=true. Two lanes hitting
+        // the same backend outage simultaneously would both have passed the
+        // lookupActiveCooldown check above, but only one wins the claim → a
+        // single diagnosis spawn, not a duplicate storm. With no cooldown
+        // configured there is nothing to dedup against, so treat it as claimed.
+        boolean claimed = cooldown == null
+                || healthService.claimSpawnCooldown(
+                        ctx.tenantId(), scope, scopeId, toolName,
+                        signature, userKey,
+                        matched.getClassification(), cooldown,
+                        matched.getNote());
 
         // Escalate UNCLEAR cases to Agrajag's async engine for deeper
-        // diagnosis. The cooldown above prevents spawn-storms; the
+        // diagnosis — but only for the lane that won the cooldown claim; the
         // spawner itself swallows errors.
-        if (matched.getClassification() == ToolHealthClassification.UNCLEAR) {
+        if (matched.getClassification() == ToolHealthClassification.UNCLEAR && claimed) {
             AgrajagSpawnerService spawner = spawnerProvider.getIfAvailable();
             if (spawner != null) {
                 try {

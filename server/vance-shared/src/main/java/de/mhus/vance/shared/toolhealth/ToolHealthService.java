@@ -281,6 +281,73 @@ public class ToolHealthService {
     }
 
     /**
+     * Atomically <em>claims</em> the spawn-cooldown for
+     * {@code (scope,scopeId,toolName,errorSignature,userId)}: sets/refreshes the
+     * cooldown and returns {@code true} only when this call transitioned the key
+     * from no-active-cooldown to active. Returns {@code false} when an active
+     * cooldown already existed (set by a prior or concurrent caller).
+     *
+     * <p>Unlike a {@code lookupActiveCooldown} + {@link #setCooldown} pair, the
+     * check and set happen inside one optimistic-retry transaction: two lanes
+     * racing the same backend outage both read no-active-cooldown, both try to
+     * save, the {@code @Version}/unique-index guard fails one, and its retry
+     * re-reads the winner's active cooldown and returns {@code false}. Callers
+     * gate spawn-once side effects (Agrajag diagnosis) on the {@code true} return
+     * so a shared failure produces a single spawn, not a storm.
+     */
+    public boolean claimSpawnCooldown(
+            String tenantId,
+            ToolHealthScope scope,
+            String scopeId,
+            String toolName,
+            String errorSignature,
+            @Nullable String userId,
+            ToolHealthClassification classification,
+            Duration duration,
+            @Nullable String note) {
+        return withOptimisticRetry(() -> {
+            Instant now = Instant.now();
+            ToolHealthDocument doc = fetchOrCreate(tenantId, scope, scopeId, toolName, now);
+
+            ToolHealthCooldown existing = null;
+            for (ToolHealthCooldown c : doc.getCooldowns()) {
+                if (matches(c, errorSignature, userId)) {
+                    existing = c;
+                    break;
+                }
+            }
+            // Already actively cooling down → not our claim; leave it untouched.
+            if (existing != null
+                    && existing.getNextSpawnAllowedAt() != null
+                    && existing.getNextSpawnAllowedAt().isAfter(now)) {
+                return false;
+            }
+            Instant newDeadline = now.plus(duration);
+            if (existing == null) {
+                doc.getCooldowns().add(ToolHealthCooldown.builder()
+                        .errorSignature(errorSignature)
+                        .userId(userId)
+                        .nextSpawnAllowedAt(newDeadline)
+                        .hits(1)
+                        .lastClassification(classification)
+                        .lastTriggeredAt(now)
+                        .note(note)
+                        .build());
+            } else {
+                // Expired entry — reclaim it.
+                existing.setNextSpawnAllowedAt(newDeadline);
+                existing.setHits(existing.getHits() + 1);
+                existing.setLastClassification(classification);
+                existing.setLastTriggeredAt(now);
+                if (note != null) existing.setNote(note);
+            }
+            doc.setUpdatedAt(now);
+            repository.save(doc);
+            return true;
+        });
+    }
+
+    /**
      * Removes any cooldown entry matching {@code (errorSignature, userId)}
      * on the matching health document. Used by the auto-clear path on
      * successful tool calls. No-op when nothing matches.

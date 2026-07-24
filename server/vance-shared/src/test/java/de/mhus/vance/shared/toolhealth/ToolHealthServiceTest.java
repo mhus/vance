@@ -11,8 +11,10 @@ import static org.mockito.Mockito.when;
 import de.mhus.vance.api.toolhealth.ToolHealthClassification;
 import de.mhus.vance.api.toolhealth.ToolHealthScope;
 import de.mhus.vance.api.toolhealth.ToolHealthStatus;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -47,6 +49,31 @@ class ToolHealthServiceTest {
         MongoTemplate mongoTemplate = mock(MongoTemplate.class);
         repository = mock(ToolHealthRepository.class);
         service = new ToolHealthService(mongoTemplate, repository);
+    }
+
+    // ──────────────── claimSpawnCooldown: atomic single-claim ────────────
+
+    @Test
+    void claimSpawnCooldown_firstCallClaims_secondWithinDurationDoesNot() {
+        // Stateful repo: a saved doc is visible to the next find — models the
+        // atomic claim across two sequential callers (the concurrent case is the
+        // @Version/unique-index retry, an opt-in Mongo concern).
+        AtomicReference<ToolHealthDocument> stored = new AtomicReference<>();
+        when(repository.findByTenantIdAndScopeAndScopeIdAndToolName(any(), any(), any(), any()))
+                .thenAnswer(inv -> Optional.ofNullable(stored.get()));
+        when(repository.save(any(ToolHealthDocument.class))).thenAnswer(inv -> {
+            ToolHealthDocument d = inv.getArgument(0);
+            stored.set(d);
+            return d;
+        });
+
+        boolean first = service.claimSpawnCooldown(TENANT, ToolHealthScope.PROJECT, "proj", TOOL,
+                SIG, "alice", ToolHealthClassification.UNCLEAR, Duration.ofHours(1), "n");
+        boolean second = service.claimSpawnCooldown(TENANT, ToolHealthScope.PROJECT, "proj", TOOL,
+                SIG, "alice", ToolHealthClassification.UNCLEAR, Duration.ofHours(1), "n");
+
+        assertThat(first).isTrue();   // won the claim
+        assertThat(second).isFalse(); // active cooldown already held → no second spawn
     }
 
     // ──────────────── lookupActiveCooldown: block decision ────────────────

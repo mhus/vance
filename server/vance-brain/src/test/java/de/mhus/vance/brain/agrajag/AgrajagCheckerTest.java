@@ -67,7 +67,7 @@ class AgrajagCheckerTest {
         assertThat(res.cooldownAlreadyActive()).isFalse();
         assertThat(res.wroteHealth()).isFalse();
 
-        verify(healthService).setCooldown(
+        verify(healthService).claimSpawnCooldown(
                 eq("acme"), eq(ToolHealthScope.USER), eq("alice"),
                 eq("jira_create_issue"), eq("http-403"), eq("alice"),
                 eq(ToolHealthClassification.USER_PERMISSION),
@@ -97,7 +97,7 @@ class AgrajagCheckerTest {
                 eq("mcp_search"),
                 eq(ToolHealthClassification.TECHNICALLY_BROKEN),
                 any(), any(), eq("agrajag-checker"));
-        verify(healthService, atLeastOnce()).setCooldown(
+        verify(healthService, atLeastOnce()).claimSpawnCooldown(
                 anyString(), any(), anyString(), anyString(),
                 anyString(), any(), any(), any(Duration.class), any());
     }
@@ -144,7 +144,7 @@ class AgrajagCheckerTest {
                 new ToolException("Forbidden 403"), ctx);
 
         assertThat(res.cooldownAlreadyActive()).isTrue();
-        verify(healthService, never()).setCooldown(
+        verify(healthService, never()).claimSpawnCooldown(
                 anyString(), any(), anyString(), anyString(),
                 anyString(), any(), any(), any(Duration.class), any());
         verify(healthService, never()).markUnavailable(
@@ -162,7 +162,7 @@ class AgrajagCheckerTest {
         AgrajagCheckResult res = checker.handle("orphan_tool",
                 new ToolException("weird"), ctx);
         assertThat(res.classification()).isEqualTo(ToolHealthClassification.UNCLEAR);
-        verify(healthService, never()).setCooldown(
+        verify(healthService, never()).claimSpawnCooldown(
                 anyString(), any(), anyString(), anyString(),
                 anyString(), any(), any(), any(Duration.class), any());
     }

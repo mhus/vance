@@ -30,10 +30,28 @@ public class UrsaHookInboxLifecycleListener {
 
     private final ApplicationEventPublisher publisher;
     private final SessionService sessionService;
+    private final de.mhus.vance.shared.thinkprocess.ThinkProcessService thinkProcessService;
 
     @EventListener
     public void onCreated(InboxItemCreatedEvent event) {
         InboxItemDocument item = event.item();
+        // Cycle guard (mirror UrsaHookProcessLifecycleListener): if this inbox
+        // item was created by a hook-spawned process, do NOT re-fire
+        // inbox.item.created — a hook on inbox.item.created whose action posts an
+        // inbox item would otherwise loop forever (no depth bound). Scheduler/
+        // event/user/tool origins are not HOOK-tagged and fan out normally.
+        String originProcessId = item.getOriginProcessId();
+        if (originProcessId != null && !originProcessId.isBlank()) {
+            boolean hookSpawned = thinkProcessService.findById(originProcessId)
+                    .map(p -> de.mhus.vance.brain.action.TriggerKind.HOOK.name()
+                            .equals(p.getTriggerSource()))
+                    .orElse(false);
+            if (hookSpawned) {
+                log.debug("Skipping inbox.item.created fire for hook-spawned origin "
+                        + "process id='{}'", originProcessId);
+                return;
+            }
+        }
         @org.jspecify.annotations.Nullable
         String projectId = resolveProjectId(item);
         if (projectId == null) return;

@@ -6,6 +6,7 @@ import type { Component } from 'vue';
 import type { Block } from './markdown/blocks';
 import { parse } from './markdown/parser';
 import InlineRender from './InlineRender.vue';
+import BlockImage from './BlockImage.vue';
 import { safeHref } from './safeHref';
 import { findBlockByFence } from './blockRegistry';
 import { registerBuiltInBlocks } from './builtins';
@@ -60,6 +61,12 @@ function highlightCode(code: string, lang: string | null): string {
  */
 const props = defineProps<{
   blocks: Block[];
+  /**
+   * Resolve a `vance:/…` image URI to a loadable URL. Injected by the
+   * host (Cortex / canvas / workbook detail pane); without it a
+   * vance: image cannot load and renders a labelled placeholder.
+   */
+  resolveImageSrc?: (vanceUri: string) => Promise<string | null>;
 }>();
 
 // ── Heading anchors ────────────────────────────────────────────────
@@ -227,7 +234,11 @@ const items = computed(() => props.blocks ?? []);
       <hr v-else-if="block.kind === 'divider'" class="block-view__divider" />
 
       <p v-else-if="block.kind === 'image'" class="block-view__image-wrap">
-        <img :src="block.src" :alt="block.alt" class="block-view__image" />
+        <BlockImage
+          :src="block.src"
+          :alt="block.alt"
+          :resolve-image-src="resolveImageSrc"
+        />
       </p>
 
       <table v-else-if="block.kind === 'table'" class="block-view__table">
@@ -292,7 +303,7 @@ const items = computed(() => props.blocks ?? []);
           :key="k"
           class="vance-column"
         >
-          <BlockView :blocks="col.blocks" />
+          <BlockView :blocks="col.blocks" :resolve-image-src="resolveImageSrc" />
         </div>
       </div>
 
@@ -316,6 +327,35 @@ const items = computed(() => props.blocks ?? []);
           </li>
         </ul>
       </aside>
+
+      <!-- Interactive/bound block kinds have no read-only rendering yet
+           (they need the editor's live bindings). Render a labelled,
+           kind-aware placeholder card so they are visible instead of
+           silently dropped in the read-only view. -->
+      <div v-else-if="block.kind === 'compose'" class="vance-block-card">
+        <div class="vance-block-card__label">⚙ Compose</div>
+        <div class="vance-block-card__hint">Runnable in the editor.</div>
+      </div>
+
+      <div v-else-if="block.kind === 'embed'" class="vance-block-card">
+        <div class="vance-block-card__label">🔗 Embed</div>
+        <div class="vance-block-card__hint">{{ block.uri }}</div>
+      </div>
+
+      <div v-else-if="block.kind === 'form'" class="vance-block-card">
+        <div class="vance-block-card__label">📝 Form</div>
+        <div class="vance-block-card__hint">Editable in the editor.</div>
+      </div>
+
+      <div v-else-if="block.kind === 'input'" class="vance-block-card">
+        <div class="vance-block-card__label">✏ Input</div>
+        <div class="vance-block-card__hint">Editable in the editor.</div>
+      </div>
+
+      <div v-else-if="block.kind === 'button'" class="vance-block-card">
+        <div class="vance-block-card__label">▶ {{ block.title || 'Button' }}</div>
+        <div class="vance-block-card__hint">Runnable in the editor.</div>
+      </div>
 
       <pre v-else-if="block.kind === 'unknown-fence'" class="vance-unknown-fence">
         <div class="vance-unknown-fence__label">Unknown block: {{ block.info }}</div>
@@ -506,4 +546,18 @@ const items = computed(() => props.blocks ?? []);
   font-size: 0.85em;
 }
 .vance-unknown-fence__label { font-weight: 600; margin-bottom: 0.25em; color: oklch(var(--er)); }
+
+.vance-block-card {
+  border: 1px solid oklch(var(--bc) / 0.2);
+  border-radius: 0.5rem;
+  padding: 0.6em 0.8em;
+  margin: 0.5em 0;
+  background: oklch(var(--b2) / 0.4);
+}
+.vance-block-card__label { font-weight: 600; margin-bottom: 0.15em; }
+.vance-block-card__hint {
+  font-size: 0.85em;
+  color: oklch(var(--bc) / 0.65);
+  word-break: break-all;
+}
 </style>

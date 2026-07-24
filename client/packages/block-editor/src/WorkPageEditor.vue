@@ -19,6 +19,7 @@ import 'highlight.js/styles/github.css';
 
 const lowlight = createLowlight(common);
 
+import { safeHref } from './safeHref';
 import { parseDocument } from './markdown/parser';
 import { serialize, serializeDocument, documentHeader, serializeWithBlockRanges } from './markdown/serializer';
 import { blocksToContent, contentToBlocks } from './markdown/proseMirror';
@@ -820,8 +821,15 @@ function onLinkClickCapture(e: MouseEvent) {
   if (editor.value?.isEditable && !modifier) return;
   const anchor = (e.target as HTMLElement | null)?.closest('a');
   if (!anchor) return;
-  const href = anchor.getAttribute('href');
-  if (!href) return;
+  const rawHref = anchor.getAttribute('href');
+  if (!rawHref) return;
+  // Defense-in-depth: inline link marks can be injected via setContent
+  // with a raw {type:'link',attrs:{href}} that bypasses setLink()/input-rule
+  // validation, so the scheme is only as safe as tiptap's renderHTML. Filter
+  // through safeHref before handing the href to the host or window.open —
+  // safeHref collapses javascript:/data:/etc. to '#'.
+  const href = safeHref(rawHref);
+  if (href === '#') return;
   // Stop ProseMirror + Tiptap's link-plugin from also handling this
   // click. We're taking ownership of the navigation.
   e.preventDefault();

@@ -104,8 +104,15 @@ public class SearchProviderFactory {
     // ── internals ────────────────────────────────────────────────────
 
     private List<SearchProviderInstance> build(SearchScope scope) {
+        // Resolve endpoint settings at PROJECT scope (processId=null), matching
+        // the project-scoped cache key + the project-wide eviction. Resolving the
+        // process-level cascade here while caching per (tenant, project) leaked
+        // the first-caller process's process-scoped research.endpoint.* overrides
+        // to every other process in the project until TTL expiry (cross-process
+        // setting bleed). Research endpoints are project/tenant config, not
+        // per-process.
         Map<String, String> rawSettings = settings.findByPrefixCascade(
-                scope.tenantId(), scope.projectId(), scope.processId(),
+                scope.tenantId(), scope.projectId(), /* processId */ null,
                 ZarniwoopSettings.PREFIX_ENDPOINT);
         if (rawSettings.isEmpty()) {
             return List.of();

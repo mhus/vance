@@ -208,7 +208,11 @@ public class ZarniwoopService {
                     scope.projectId(),
                     subject,
                     /* errorSignature */ "proactive_quota_zero",
-                    /* userId */ null,
+                    // Store under the same userId isUsable() looks up with — a
+                    // null-user cooldown is only matched by a null-user lookup,
+                    // so writing null here made the proactive zero-quota gate a
+                    // no-op for the normal (non-null userId) call path.
+                    /* userId */ scope.userId(),
                     ToolHealthClassification.TECHNICALLY_BROKEN,
                     cooldown,
                     "proactive: remaining=0"

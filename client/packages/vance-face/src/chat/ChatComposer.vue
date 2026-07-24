@@ -19,8 +19,11 @@ import {
   getSpeakerEnabled,
   getSpeechRate,
   getSpeechVolume,
+  getTalkCommands,
   resolveSpeechLanguage,
   saveSpeakerEnabled,
+  type TalkCommandAction,
+  type TalkCommandConfig,
 } from '../platform/speechSettings';
 import type {
   ActiveAppContext,
@@ -38,6 +41,7 @@ import {
 } from '@composables/useChatboxUpload';
 import { VAlert, VButton, VDropdown, VRange, VTextarea } from '@components/index';
 import { OPTIMISTIC_PREFIX } from './optimisticEcho';
+import { matchTalkCommand, stripCommandTail } from './talkCommands';
 
 /**
  * Mirrors {@code ChatApp.MediationState}. Non-null while the bound
@@ -350,20 +354,18 @@ function initSpeechRecognition(): void {
   instance.interimResults = false;
   instance.lang = resolveSpeechLanguage();
   instance.onresult = (event) => {
-    let gotFinal = false;
     for (let i = event.resultIndex; i < event.results.length; i++) {
       const r = event.results[i];
       if (!r.isFinal) continue;
-      const text = (r[0].transcript ?? '').trim();
-      if (!text) continue;
-      composerText.value = composerText.value
-        ? `${composerText.value} ${text}`
-        : text;
-      gotFinal = true;
-    }
-    if (gotFinal && talkMode.value) {
-      noteTalkActivity();
-      scheduleTalkAutoSend();
+      const phrase = (r[0].transcript ?? '').trim();
+      if (!phrase) continue;
+      if (talkStatus.value === 'OFF') {
+        // Plain speech-to-text (mic button, no talk mode): just dictate
+        // into the composer, no command interpretation.
+        appendToComposer(phrase);
+      } else {
+        handleTalkPhrase(phrase);
+      }
     }
   };
   instance.onerror = (event) => {
@@ -443,6 +445,9 @@ function initSpeechSynthesis(): void {
 function speakMessage(content: string): void {
   if (!speakerEnabled.value || !speakerSupported.value) return;
   if (!speakerLiveReady.value) return;
+  // Talk mode paused → stay silent; the user stepped away or is
+  // thinking and only "<name> weiter" resumes.
+  if (talkStatus.value === 'PAUSED') return;
   const text = markdownToSpeech(content);
   if (!text) return;
   const utter = buildUtterance(text, resolveSpeechLanguage(), {
@@ -503,23 +508,49 @@ function onVolumeInput(value: number): void {
 
 // ──────────────── Talk-Mode (hands-free phone-call UX) ────────────────
 //
-// Übermode that orchestrates mic + speaker:
-//   • on activation: speaker forced on, mic started, idle-timer armed.
-//   • each final STT phrase appends to the composer; a 2s pause without
-//     follow-up commits via auto-send (no Enter / no click needed).
+// Übermode that orchestrates mic + speaker as a two-stage pipeline:
+//
+//   Stage 1 (capture): the composer runs in multiline "block" mode and
+//     every final STT phrase is appended to it — nothing is sent on an
+//     STT silence gap, because that signal is unreliable (the user
+//     pauses to think and the sentence isn't finished). A later
+//     "direct mode" may add silence-based auto-send; v1 is block-only.
+//   Stage 2 (analyze): each phrase is checked against a spoken-command
+//     table (`<triggerName> <word>`, e.g. "Computer senden") gated by
+//     the current talk status. A match runs the action (send / clear /
+//     pause / resume / end) and the command text is stripped from the
+//     dictated content.
+//
+// Status model:
+//   • ACTIVE — accumulate speech; send/clear/pause/end honored.
+//   • PAUSED — keep listening but discard dictation; only resume/clear/
+//     end honored, and the assistant stays silent. Lets the user talk
+//     to someone in the room without polluting the message.
+//
+// Other rules (unchanged from the original talk mode):
 //   • while the speaker is reading the reply, the mic is paused.
 //   • idle-timeout (120s without mic input AND without assistant
 //     output) hard-disables the whole stack.
 //   • manually clicking 🎤 or 🔊 while talk mode is on also hard-
 //     disables — the user taking back control.
 
+type TalkStatus = 'OFF' | 'ACTIVE' | 'PAUSED';
+
 const TALK_MODE_STORAGE_KEY = 'vance.chat.talkMode';
 const TALK_MODE_IDLE_MS = 120_000;
-const TALK_MODE_AUTO_SEND_MS = 2_000;
 
-const talkMode = ref<boolean>(false);
+/** Which command actions are honored in each status. */
+const TALK_ALLOWED: Readonly<Record<TalkStatus, readonly TalkCommandAction[]>> = {
+  OFF: [],
+  ACTIVE: ['send', 'clear', 'pause', 'end'],
+  PAUSED: ['resume', 'clear', 'end'],
+};
+
+const talkStatus = ref<TalkStatus>('OFF');
+/** True whenever talk mode is on at all (ACTIVE or PAUSED). */
+const talkMode = computed<boolean>(() => talkStatus.value !== 'OFF');
+const talkCommands = ref<TalkCommandConfig>(getTalkCommands());
 let talkIdleTimer: number | null = null;
-let talkAutoSendTimer: number | null = null;
 
 function readTalkModeStored(): boolean {
   try {
@@ -543,13 +574,6 @@ function clearTalkIdle(): void {
   }
 }
 
-function clearTalkAutoSend(): void {
-  if (talkAutoSendTimer !== null) {
-    window.clearTimeout(talkAutoSendTimer);
-    talkAutoSendTimer = null;
-  }
-}
-
 function noteTalkActivity(): void {
   if (!talkMode.value) return;
   clearTalkIdle();
@@ -559,17 +583,55 @@ function noteTalkActivity(): void {
   }, TALK_MODE_IDLE_MS);
 }
 
-function scheduleTalkAutoSend(): void {
-  clearTalkAutoSend();
-  talkAutoSendTimer = window.setTimeout(() => {
-    talkAutoSendTimer = null;
-    if (!talkMode.value) return;
-    if (!composerText.value.trim()) return;
-    if (sending.value || uploading.value) return;
-    stopMic();
-    void send();
-  }, TALK_MODE_AUTO_SEND_MS);
+// ──────────────── Talk-Mode command analysis ────────────────
+
+/** Append a dictated phrase to the composer (space-joined). */
+function appendToComposer(phrase: string): void {
+  composerText.value = composerText.value
+    ? `${composerText.value} ${phrase}`
+    : phrase;
 }
+
+function runTalkAction(action: TalkCommandAction): void {
+  switch (action) {
+    case 'send':
+      if (composerText.value.trim() && !sending.value && !uploading.value) {
+        void send();
+      }
+      break;
+    case 'clear':
+      composerText.value = '';
+      break;
+    case 'pause':
+      pauseTalkMode();
+      break;
+    case 'resume':
+      resumeTalkMode();
+      break;
+    case 'end':
+      disableTalkMode();
+      break;
+  }
+}
+
+/** Stage-2 entry point for a final phrase while talk mode is on. */
+function handleTalkPhrase(phrase: string): void {
+  noteTalkActivity();
+  const match = matchTalkCommand(
+    phrase, talkCommands.value, TALK_ALLOWED[talkStatus.value]);
+  if (match) {
+    const content = stripCommandTail(phrase, match.firstToken);
+    // Dictated content that preceded the command is kept (ACTIVE only);
+    // in PAUSED everything but the command is discarded.
+    if (content && talkStatus.value === 'ACTIVE') appendToComposer(content);
+    runTalkAction(match.action);
+    return;
+  }
+  if (talkStatus.value === 'ACTIVE') appendToComposer(phrase);
+  // PAUSED with no command → discard (talking to the room / thinking).
+}
+
+// ──────────────── Talk-Mode lifecycle ────────────────
 
 const talkModeSupported = computed<boolean>(
   () => speechSupported.value && speakerSupported.value);
@@ -577,9 +639,13 @@ const talkModeSupported = computed<boolean>(
 function enableTalkMode(): void {
   if (talkMode.value) return;
   if (!talkModeSupported.value) return;
-  talkMode.value = true;
+  talkStatus.value = 'ACTIVE';
+  talkCommands.value = getTalkCommands();
   writeTalkModeStored(true);
   speechError.value = null;
+  // Block mode dictates into a growing prompt — force multiline so the
+  // user sees the whole buffer before "<name> senden" commits it.
+  multiline.value = true;
   if (!speakerEnabled.value) {
     speakerEnabled.value = true;
     void saveSpeakerEnabled(true);
@@ -590,12 +656,32 @@ function enableTalkMode(): void {
   noteTalkActivity();
 }
 
+function pauseTalkMode(): void {
+  if (talkStatus.value !== 'ACTIVE') return;
+  talkStatus.value = 'PAUSED';
+  speechError.value = t('chat.speech.talkModePaused');
+  // Silence the assistant; keep the mic running so "resume" is heard.
+  if (window.speechSynthesis && window.speechSynthesis.speaking) {
+    window.speechSynthesis.cancel();
+  }
+  speakerSpeaking.value = false;
+  if (!speechRecording.value) startMic();
+  noteTalkActivity();
+}
+
+function resumeTalkMode(): void {
+  if (talkStatus.value !== 'PAUSED') return;
+  talkStatus.value = 'ACTIVE';
+  speechError.value = null;
+  if (!speechRecording.value && !speakerSpeaking.value) startMic();
+  noteTalkActivity();
+}
+
 function disableTalkMode(): void {
   if (!talkMode.value) return;
-  talkMode.value = false;
+  talkStatus.value = 'OFF';
   writeTalkModeStored(false);
   clearTalkIdle();
-  clearTalkAutoSend();
   stopMic();
   if (window.speechSynthesis && window.speechSynthesis.speaking) {
     window.speechSynthesis.cancel();
@@ -674,7 +760,6 @@ async function send(): Promise<void> {
   if (!text && filesSnapshot.length === 0 && docsSnapshot.length === 0) return;
   sending.value = true;
   sendError.value = null;
-  clearTalkAutoSend();
   noteTalkActivity();
 
   // Apply auto-AI rewriting just before the wire-send — keeps the
@@ -995,7 +1080,6 @@ onBeforeUnmount(() => {
   // session switch (component remount) is expected to resurrect it
   // from sessionStorage on the next mount.
   clearTalkIdle();
-  clearTalkAutoSend();
   if (recognition && speechRecording.value) {
     try { recognition.stop(); } catch { /* already stopped */ }
   }
@@ -1104,11 +1188,14 @@ onBeforeUnmount(() => {
             v-if="talkModeSupported"
             variant="ghost"
             size="sm"
-            :class="talkMode ? 'text-success animate-pulse' : ''"
-            :title="talkMode ? $t('chat.speech.talkModeStop') : $t('chat.speech.talkModeStart')"
+            :class="talkStatus === 'ACTIVE' ? 'text-success animate-pulse'
+              : talkStatus === 'PAUSED' ? 'text-warning' : ''"
+            :title="talkStatus === 'PAUSED' ? $t('chat.speech.talkModePausedHint')
+              : talkStatus === 'ACTIVE' ? $t('chat.speech.talkModeStop')
+              : $t('chat.speech.talkModeStart')"
             @click="toggleTalkMode"
           >
-            📞
+            {{ talkStatus === 'PAUSED' ? '⏸️' : '📞' }}
           </VButton>
           <VButton
             v-if="speechSupported"

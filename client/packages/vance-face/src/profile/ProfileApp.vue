@@ -12,7 +12,11 @@ import {
   onVoicesChanged,
 } from '@/platform/speechWeb';
 import {
+  defaultTalkCommands,
+  parseTalkCommands,
   resolveSpeechLanguage,
+  type TalkCommandAction,
+  type TalkCommandConfig,
 } from '@/platform/speechSettings';
 import {
   brainFetch,
@@ -78,6 +82,50 @@ function browserTimezone(): string {
 const SPEECH_VOICE_KEY = 'webui.speech.voiceUri';
 const SPEECH_RATE_KEY = 'webui.speech.rate';
 const SPEECH_VOLUME_KEY = 'webui.speech.volume';
+const TALK_COMMANDS_KEY = 'webui.speech.talkCommands';
+
+// Talk-mode spoken commands. The setting is one JSON blob; the form
+// edits it as friendly fields (trigger names + a comma list per action)
+// and rebuilds the JSON on save. "Reset" deletes the setting so the
+// bundled default applies again. Order drives the template rows.
+const TALK_ACTION_ORDER: readonly TalkCommandAction[] = [
+  'send', 'clear', 'pause', 'resume', 'end',
+];
+const talkTriggerNamesDraft = ref<string>('');
+const talkRequireNameDraft = ref<boolean>(true);
+const talkWordsDraft = ref<Record<TalkCommandAction, string>>({
+  send: '', clear: '', pause: '', resume: '', end: '',
+});
+const talkCommandsSaved = ref<string | null>(null);
+
+function splitWords(csv: string): string[] {
+  return csv.split(',').map((w) => w.trim()).filter(Boolean);
+}
+
+/** Populate the talk-command drafts from a config object. */
+function fillTalkDrafts(cfg: TalkCommandConfig): void {
+  talkTriggerNamesDraft.value = cfg.triggerNames.join(', ');
+  talkRequireNameDraft.value = cfg.requireTriggerName;
+  for (const action of TALK_ACTION_ORDER) {
+    talkWordsDraft.value[action] = (cfg.commands[action] ?? []).join(', ');
+  }
+}
+
+/** Build a config object from the current drafts. */
+function buildTalkConfig(): TalkCommandConfig {
+  const fallback = defaultTalkCommands();
+  const triggerNames = splitWords(talkTriggerNamesDraft.value);
+  const commands = {} as TalkCommandConfig['commands'];
+  for (const action of TALK_ACTION_ORDER) {
+    const words = splitWords(talkWordsDraft.value[action]);
+    commands[action] = words.length > 0 ? words : fallback.commands[action];
+  }
+  return {
+    triggerNames: triggerNames.length > 0 ? triggerNames : fallback.triggerNames,
+    requireTriggerName: talkRequireNameDraft.value,
+    commands,
+  };
+}
 
 // Speech settings — voice depends on browser-provided voices for the
 // resolved chat-language, rate + volume are numeric strings (server
@@ -211,6 +259,7 @@ watch(profile, (current) => {
   speechVoiceDraft.value = current.webUiSettings?.[SPEECH_VOICE_KEY] ?? '';
   speechRateDraft.value = parseSpeechRate(current.webUiSettings?.[SPEECH_RATE_KEY]);
   speechVolumeDraft.value = parseSpeechVolume(current.webUiSettings?.[SPEECH_VOLUME_KEY]);
+  fillTalkDrafts(parseTalkCommands(current.webUiSettings?.[TALK_COMMANDS_KEY]));
   const storedTimezone = current.webUiSettings?.[TIMEZONE_KEY] ?? '';
   if (storedTimezone) {
     timezoneDraft.value = storedTimezone;
@@ -469,6 +518,31 @@ async function onSpeechVolumeInput(event: Event): Promise<void> {
     speechVolumeSaved.value = t('profile.speech.volumeSaved');
   }
 }
+
+async function onSaveTalkCommands(): Promise<void> {
+  talkCommandsSaved.value = null;
+  const built = buildTalkConfig();
+  // Byte-identical to the bundled default → store nothing so the cookie
+  // / DB stay tidy and future default changes are picked up.
+  const isDefault = JSON.stringify(built) === JSON.stringify(defaultTalkCommands());
+  if (isDefault) {
+    await deleteSetting(TALK_COMMANDS_KEY).catch(() => undefined);
+  } else {
+    await saveSetting(TALK_COMMANDS_KEY, JSON.stringify(built)).catch(() => undefined);
+  }
+  if (!error.value) {
+    talkCommandsSaved.value = t('profile.speech.talkCommandsSaved');
+  }
+}
+
+async function onResetTalkCommands(): Promise<void> {
+  talkCommandsSaved.value = null;
+  fillTalkDrafts(defaultTalkCommands());
+  await deleteSetting(TALK_COMMANDS_KEY).catch(() => undefined);
+  if (!error.value) {
+    talkCommandsSaved.value = t('profile.speech.talkCommandsReset');
+  }
+}
 </script>
 
 <template>
@@ -657,6 +731,51 @@ async function onSpeechVolumeInput(event: Event): Promise<void> {
             <p v-else class="text-sm opacity-60">
               {{ $t('profile.speech.voiceUnsupported') }}
             </p>
+
+            <!-- Talk-mode spoken commands ─────────────────────────────── -->
+            <div class="border-t border-base-300 pt-4 mt-2 flex flex-col gap-3">
+              <div>
+                <h3 class="text-sm font-semibold">
+                  {{ $t('profile.speech.talkCommandsTitle') }}
+                </h3>
+                <p class="text-xs opacity-60 mt-1">
+                  {{ $t('profile.speech.talkCommandsDescription') }}
+                </p>
+              </div>
+              <VInput
+                v-model="talkTriggerNamesDraft"
+                :label="$t('profile.speech.talkTriggerNames')"
+                :help="$t('profile.speech.talkTriggerNamesHelp')"
+                :disabled="loading"
+                placeholder="Computer, Vance"
+              />
+              <VCheckbox
+                v-model="talkRequireNameDraft"
+                :label="$t('profile.speech.talkRequireName')"
+                :help="$t('profile.speech.talkRequireNameHelp')"
+                :disabled="loading"
+              />
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <VInput
+                  v-for="action in TALK_ACTION_ORDER"
+                  :key="action"
+                  v-model="talkWordsDraft[action]"
+                  :label="$t(`profile.speech.talkAction.${action}`)"
+                  :disabled="loading"
+                />
+              </div>
+              <div class="flex items-center gap-3">
+                <VButton variant="primary" :loading="loading" @click="onSaveTalkCommands">
+                  {{ $t('profile.speech.talkCommandsSave') }}
+                </VButton>
+                <VButton variant="ghost" :disabled="loading" @click="onResetTalkCommands">
+                  {{ $t('profile.speech.talkCommandsResetBtn') }}
+                </VButton>
+                <span v-if="talkCommandsSaved" class="text-success text-sm">
+                  {{ talkCommandsSaved }}
+                </span>
+              </div>
+            </div>
           </div>
         </VCard>
 

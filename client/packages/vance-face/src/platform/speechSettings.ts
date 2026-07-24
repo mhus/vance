@@ -29,8 +29,52 @@ const KEY_VOICE_URI = 'webui.speech.voiceUri';
 const KEY_RATE = 'webui.speech.rate';
 const KEY_VOLUME = 'webui.speech.volume';
 const KEY_SPEAKER_ENABLED = 'webui.speech.speakerEnabled';
+const KEY_TALK_COMMANDS = 'webui.speech.talkCommands';
 const KEY_CHAT_LANGUAGE = 'chat.language';
 const KEY_WEBUI_LANGUAGE = 'webui.language';
+
+// ──────────────── Talk-mode voice commands ────────────────
+//
+// In talk mode nothing is sent on an STT silence gap — that signal is
+// unreliable (the user pauses to think and the sentence isn't done).
+// Instead every phrase accumulates into the composer ("block mode")
+// and an explicit spoken command commits or steers. A later "direct
+// mode" may add silence-based auto-send; v1 is block-only.
+//
+// A command is `<triggerName> <word>`, e.g. "Computer senden". The
+// trigger name defaults to "Computer" (STT transcribes it reliably,
+// unlike engine names such as "Arthur"). Synonyms cover both German
+// and English because the STT language follows the chat language.
+
+export type TalkCommandAction = 'send' | 'clear' | 'pause' | 'resume' | 'end';
+
+export interface TalkCommandConfig {
+  /** Wake-words that may prefix a command, e.g. "Computer". */
+  triggerNames: string[];
+  /** When true a bare command word (no trigger name) is ignored. */
+  requireTriggerName: boolean;
+  /** Phrase synonyms per action (lower-cased on match). */
+  commands: Record<TalkCommandAction, string[]>;
+}
+
+function baseTalkCommands(): TalkCommandConfig {
+  return {
+    triggerNames: ['Computer', 'Vance'],
+    requireTriggerName: true,
+    commands: {
+      send: ['senden', 'abschicken', 'send'],
+      clear: ['korrektur', 'verwerfen', 'correction', 'clear'],
+      pause: ['pause', 'stopp', 'stop'],
+      resume: ['weiter', 'fortsetzen', 'resume', 'continue'],
+      end: ['ende', 'beenden', 'end'],
+    },
+  };
+}
+
+/** Fresh, mutation-safe copy of the bundled default command config. */
+export function defaultTalkCommands(): TalkCommandConfig {
+  return baseTalkCommands();
+}
 
 // ──────────────── Reads ────────────────
 
@@ -61,6 +105,44 @@ export function getSpeechVolume(): number {
 
 export function getSpeakerEnabled(): boolean {
   return readCookieSetting(KEY_SPEAKER_ENABLED) === '1';
+}
+
+/**
+ * Merge a stored JSON override over the bundled default (per-field; the
+ * per-action synonym lists replace the default list wholesale when
+ * present). Malformed / empty JSON yields the plain default so a broken
+ * setting never disables talk mode. Pure — callers pass the raw setting
+ * value from whichever source they hold (cookie or profile object).
+ */
+export function parseTalkCommands(raw: string | null | undefined): TalkCommandConfig {
+  if (!raw) return defaultTalkCommands();
+  let parsed: Partial<TalkCommandConfig>;
+  try {
+    parsed = JSON.parse(raw) as Partial<TalkCommandConfig>;
+  } catch {
+    return defaultTalkCommands();
+  }
+  const merged = defaultTalkCommands();
+  if (Array.isArray(parsed.triggerNames) && parsed.triggerNames.length > 0) {
+    merged.triggerNames = parsed.triggerNames.filter((n) => typeof n === 'string');
+  }
+  if (typeof parsed.requireTriggerName === 'boolean') {
+    merged.requireTriggerName = parsed.requireTriggerName;
+  }
+  if (parsed.commands && typeof parsed.commands === 'object') {
+    for (const action of Object.keys(merged.commands) as TalkCommandAction[]) {
+      const list = parsed.commands[action];
+      if (Array.isArray(list) && list.length > 0) {
+        merged.commands[action] = list.filter((w) => typeof w === 'string');
+      }
+    }
+  }
+  return merged;
+}
+
+/** Talk-mode command config from the current session (cookie-backed). */
+export function getTalkCommands(): TalkCommandConfig {
+  return parseTalkCommands(readCookieSetting(KEY_TALK_COMMANDS));
 }
 
 /**
@@ -133,6 +215,14 @@ export async function saveSpeakerEnabled(enabled: boolean): Promise<void> {
     await putSetting(KEY_SPEAKER_ENABLED, '1');
   } else {
     await deleteSetting(KEY_SPEAKER_ENABLED);
+  }
+}
+
+export async function saveTalkCommands(cfg: TalkCommandConfig | null): Promise<void> {
+  if (!cfg) {
+    await deleteSetting(KEY_TALK_COMMANDS);
+  } else {
+    await putSetting(KEY_TALK_COMMANDS, JSON.stringify(cfg));
   }
 }
 

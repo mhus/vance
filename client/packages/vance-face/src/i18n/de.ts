@@ -213,9 +213,11 @@ export default {
         'Lokal gespeichert. Wird vom Chat-Vorleser und allen künftigen Vorlese-Funktionen genutzt.',
       microphoneError: 'Mikrofonfehler: {error}',
       recordStartFailed: 'Aufnahme konnte nicht gestartet werden.',
-      talkModeStart: 'Talk-Modus starten (Hände frei — Mic + Vorlesen automatisch)',
+      talkModeStart: 'Talk-Modus starten (Hände frei — Gesprochenes sammelt sich, „Computer senden" schickt ab)',
       talkModeStop: 'Talk-Modus beenden',
       talkModeIdleOff: 'Talk-Modus wegen Inaktivität beendet.',
+      talkModePaused: 'Talk-Modus pausiert — sag „Computer weiter", um fortzusetzen.',
+      talkModePausedHint: 'Talk-Modus pausiert (antippen beendet; „Computer weiter" setzt fort)',
     },
     bubble: {
       copy: 'Als Markdown kopieren',
@@ -1808,6 +1810,26 @@ export default {
       rateSaved: 'Geschwindigkeit aktualisiert.',
       volume: 'Lautstärke',
       volumeSaved: 'Lautstärke aktualisiert.',
+      talkCommandsTitle: 'Talk-Modus Sprachbefehle',
+      talkCommandsDescription:
+        'Im Talk-Modus sammelt sich Gesprochenes im Eingabefeld; ein Sprachbefehl wie „Computer senden" schickt ab oder steuert. Ein Befehl ist „<Name> <Wort>". Mehrere Wörter je Aktion mit Komma trennen.',
+      talkTriggerNames: 'Auslöse-Namen',
+      talkTriggerNamesHelp:
+        'Wach-Wörter, die einem Befehl vorangehen (kommagetrennt). „Computer" wird von der Spracherkennung zuverlässig erkannt.',
+      talkRequireName: 'Auslöse-Name erforderlich',
+      talkRequireNameHelp:
+        'Wenn aktiv, wirkt ein Befehl nur mit vorangestelltem Namen („Computer pause") — schützt vor versehentlichem Auslösen.',
+      talkAction: {
+        send: 'Senden',
+        clear: 'Korrektur (leeren)',
+        pause: 'Pause',
+        resume: 'Weiter',
+        end: 'Ende',
+      },
+      talkCommandsSave: 'Befehle speichern',
+      talkCommandsResetBtn: 'Auf Standard zurücksetzen',
+      talkCommandsSaved: 'Sprachbefehle gespeichert.',
+      talkCommandsReset: 'Auf Standard zurückgesetzt.',
     },
     teams: {
       title: 'Teams',

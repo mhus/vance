@@ -218,9 +218,11 @@ export default {
         'Saved locally. Used by the chat speaker now and any future read-aloud feature.',
       microphoneError: 'Microphone error: {error}',
       recordStartFailed: 'Failed to start recording.',
-      talkModeStart: 'Start talk mode (hands-free — mic + read-aloud automatic)',
+      talkModeStart: 'Start talk mode (hands-free — speech accumulates, say "Computer send" to submit)',
       talkModeStop: 'Stop talk mode',
       talkModeIdleOff: 'Talk mode stopped due to inactivity.',
+      talkModePaused: 'Talk mode paused — say "Computer resume" to continue.',
+      talkModePausedHint: 'Talk mode paused (tap to stop; say "Computer resume" to continue)',
     },
     bubble: {
       copy: 'Copy as Markdown',
@@ -1799,6 +1801,26 @@ export default {
       rateSaved: 'Speed updated.',
       volume: 'Volume',
       volumeSaved: 'Volume updated.',
+      talkCommandsTitle: 'Talk-mode voice commands',
+      talkCommandsDescription:
+        'In talk mode speech accumulates in the input; a voice command such as "Computer send" submits or steers. A command is "<name> <word>". Separate multiple words per action with commas.',
+      talkTriggerNames: 'Trigger names',
+      talkTriggerNamesHelp:
+        'Wake words that may precede a command (comma-separated). "Computer" is transcribed reliably by speech recognition.',
+      talkRequireName: 'Require trigger name',
+      talkRequireNameHelp:
+        'When on, a command only fires with a leading name ("Computer pause") — guards against accidental triggers.',
+      talkAction: {
+        send: 'Send',
+        clear: 'Correction (clear)',
+        pause: 'Pause',
+        resume: 'Resume',
+        end: 'End',
+      },
+      talkCommandsSave: 'Save commands',
+      talkCommandsResetBtn: 'Reset to defaults',
+      talkCommandsSaved: 'Voice commands saved.',
+      talkCommandsReset: 'Reset to defaults.',
     },
     teams: {
       title: 'Teams',

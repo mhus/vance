@@ -56,6 +56,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -121,6 +123,13 @@ public class Ford implements ThinkEngine {
     /** Hard cap on tool-call iterations per turn — a broken model can loop.
      *  Per-process override via {@code params.maxIterations}. */
     private static final int MAX_TOOL_ITERATIONS = 8;
+
+    /**
+     * Wall-clock safety-net for a single streaming LLM call. A hung provider
+     * stream (never fires onCompleteResponse/onError) would otherwise block the
+     * lane virtual-thread forever. Matches {@code StructuredActionEngine}.
+     */
+    private static final long STREAM_TIMEOUT_MINUTES = 20;
 
     // ──────────────────── Validation heuristic ────────────────────
     // Opt-in via params.validation == true. One remaining check:
@@ -1034,11 +1043,23 @@ public class Ford implements ThinkEngine {
         });
 
         try {
-            ChatResponse response = done.get();
+            // Bound the wait (Ford implements ThinkEngine directly, so it is NOT
+            // covered by StructuredActionEngine's stream-timeout safety-net). A
+            // provider whose streaming callback never fires onCompleteResponse/
+            // onError would otherwise block the lane virtual-thread forever — the
+            // process stays RUNNING (never BLOCKED), so the BLOCKED watchdog never
+            // recovers it and the per-process + per-project lane wedge. On timeout
+            // throw AiChatException so runToolLoop's bestFreeText/format-correction
+            // recovery engages, exactly as the structured engines do.
+            ChatResponse response = done.get(STREAM_TIMEOUT_MINUTES, TimeUnit.MINUTES);
             llmCallTracker.record(
                     process, request, response, System.currentTimeMillis() - startMs, modelAlias);
             AiMessage reply = response.aiMessage();
             return new StreamResult(reply, reply.text() == null ? "" : reply.text());
+        } catch (TimeoutException e) {
+            done.cancel(true);
+            throw new AiChatException(
+                    "Ford streaming timed out after " + STREAM_TIMEOUT_MINUTES + "m", e);
         } catch (ExecutionException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
             throw new AiChatException("Ford streaming failed: " + cause.getMessage(), cause);

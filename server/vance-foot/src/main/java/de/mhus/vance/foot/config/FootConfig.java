@@ -1,5 +1,6 @@
 package de.mhus.vance.foot.config;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -365,6 +366,20 @@ public class FootConfig {
          * chat round-trip or worker turn is running.
          */
         private boolean enabled = true;
+
+        /**
+         * Trailing-edge grace period before the OS inhibitor is actually
+         * released once work settles. Default {@code 5m}. Agent turns
+         * come in bursts (chat round-trip, then async worker turns), so
+         * releasing immediately on every idle would thrash the native
+         * inhibitor process on and off between turns — and let the
+         * machine try to suspend in the gap. Instead we keep the
+         * inhibitor for this span after the last turn; any new work
+         * inside the window cancels the pending release. Worst case the
+         * host stays awake a few extra minutes after the agent is truly
+         * done, which is harmless.
+         */
+        private Duration linger = Duration.ofMinutes(5);
     }
 }
 

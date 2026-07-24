@@ -36,7 +36,7 @@ import {
   uploadChatboxAttachments,
   ChatboxUploadError,
 } from '@composables/useChatboxUpload';
-import { VAlert, VButton, VTextarea } from '@components/index';
+import { VAlert, VButton, VDropdown, VRange, VTextarea } from '@components/index';
 import { OPTIMISTIC_PREFIX } from './optimisticEcho';
 
 /**
@@ -489,16 +489,14 @@ function toggleSpeaker(): void {
   }
 }
 
-function onRateInput(event: Event): void {
-  const value = parseFloat((event.target as HTMLInputElement).value);
+function onRateInput(value: number): void {
   if (!Number.isFinite(value)) return;
   // Session-only override — not persisted. See speechRate / speechVolume
   // definition above.
   speechRate.value = value;
 }
 
-function onVolumeInput(event: Event): void {
-  const value = parseFloat((event.target as HTMLInputElement).value);
+function onVolumeInput(value: number): void {
   if (!Number.isFinite(value)) return;
   speechVolume.value = value;
 }
@@ -1136,25 +1134,25 @@ onBeforeUnmount(() => {
                on every input event — these are the user's persistent
                default, not a session-only override. Voice + language
                live on the profile page. -->
-          <input
+          <VRange
             v-if="speakerSupported"
-            type="range"
-            class="range range-xs w-16"
+            size="xs"
+            class="w-16"
             :min="MIN_VOLUME"
             :max="MAX_VOLUME"
-            step="0.05"
-            :value="speechVolume"
+            :step="0.05"
+            :model-value="speechVolume"
             :title="$t('chat.speech.volume') + ': ' + Math.round(speechVolume * 100) + '%'"
             @input="onVolumeInput"
           />
-          <input
+          <VRange
             v-if="speakerSupported"
-            type="range"
-            class="range range-xs w-16"
+            size="xs"
+            class="w-16"
             :min="MIN_RATE"
             :max="MAX_RATE"
-            step="0.05"
-            :value="speechRate"
+            :step="0.05"
+            :model-value="speechRate"
             :title="$t('chat.speech.rate') + ': ' + speechRate.toFixed(2) + '×'"
             @input="onRateInput"
           />
@@ -1174,38 +1172,34 @@ onBeforeUnmount(() => {
              between picking a fresh file and attaching the contextual
              one without a roundtrip. Without that source we keep the
              single-click direct picker — same UX as standalone chat. -->
-        <div v-if="currentFileSource" class="dropdown dropdown-top">
-          <div
-            tabindex="0"
-            role="button"
-            class="btn btn-ghost btn-sm"
-            :class="{ 'btn-disabled': sending || uploading || !chatProcessName }"
-            :title="$t('chat.attachments.pickerTooltip')"
-          >📎</div>
-          <ul
-            tabindex="0"
-            class="dropdown-content menu menu-sm bg-base-100 rounded-box z-[30]
-                   mb-2 w-72 p-2 shadow border border-base-300"
-          >
-            <li>
-              <a @click="closeAttachmentMenu(); fileInputRef?.click()">
-                <span aria-hidden="true">📎</span>
-                <span class="flex-1">{{ $t('chat.attachments.pickFromComputer') }}</span>
-              </a>
-            </li>
-            <li>
-              <a @click="closeAttachmentMenu(); attachCurrentFile()">
-                <span aria-hidden="true">📄</span>
-                <span class="flex-1 min-w-0">
-                  <span class="block text-xs opacity-60">
-                    {{ $t('chat.attachments.attachCurrentFile') }}
-                  </span>
-                  <span class="block truncate font-mono">{{ currentFileSource.label }}</span>
+        <VDropdown
+          v-if="currentFileSource"
+          position="top"
+          trigger-variant="ghost"
+          trigger-size="sm"
+          :trigger-disabled="sending || uploading || !chatProcessName"
+          :trigger-title="$t('chat.attachments.pickerTooltip')"
+          menu-class="mb-2 w-72"
+        >
+          <template #trigger>📎</template>
+          <li>
+            <a @click="closeAttachmentMenu(); fileInputRef?.click()">
+              <span aria-hidden="true">📎</span>
+              <span class="flex-1">{{ $t('chat.attachments.pickFromComputer') }}</span>
+            </a>
+          </li>
+          <li>
+            <a @click="closeAttachmentMenu(); attachCurrentFile()">
+              <span aria-hidden="true">📄</span>
+              <span class="flex-1 min-w-0">
+                <span class="block text-xs opacity-60">
+                  {{ $t('chat.attachments.attachCurrentFile') }}
                 </span>
-              </a>
-            </li>
-          </ul>
-        </div>
+                <span class="block truncate font-mono">{{ currentFileSource.label }}</span>
+              </span>
+            </a>
+          </li>
+        </VDropdown>
         <VButton
           v-else
           variant="ghost"

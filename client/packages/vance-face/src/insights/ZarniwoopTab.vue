@@ -126,13 +126,15 @@ const now = Date.now();
           · {{ totals.calls }} call{{ totals.calls === 1 ? '' : 's' }}
           ({{ totals.ok }} ok / {{ totals.errors }} error)
         </div>
-        <button
-          class="btn btn-xs ml-auto"
+        <VButton
+          variant="neutral"
+          size="xs"
+          class="ml-auto"
           @click="reload"
           :disabled="state.loading.value"
         >
           Reload
-        </button>
+        </VButton>
       </div>
 
       <table class="table table-sm">
@@ -170,12 +172,14 @@ const now = Date.now();
                   title="Settings have research.endpoint.<id>.enabled=false"
                 >off by default</span>
               </label>
-              <button
+              <VButton
                 v-if="inst.manualOverride"
-                class="btn btn-xs btn-link mt-1"
+                variant="link"
+                size="xs"
+                class="mt-1"
                 @click="resetOverride(inst)"
                 :disabled="state.loading.value"
-              >reset</button>
+              >reset</VButton>
             </td>
             <td class="font-mono">
               {{ inst.id }}

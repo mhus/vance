@@ -25,6 +25,7 @@ import {
   VANCE_LINK_HANDLER_KEY,
   type VanceLinkHandler,
   VButton,
+  VDropdown,
   VEmptyState,
 } from '@/components';
 import { brainFetch } from '@vance/shared';
@@ -1180,9 +1181,8 @@ const toggleTooltip = computed<string>(() => {
         v-if="!isAppTab"
         class="flex items-center gap-1 px-2 py-1 border-b border-base-300 bg-base-200 text-sm shrink-0"
       >
-        <div class="dropdown">
-          <div tabindex="0" role="button" class="btn btn-ghost btn-xs">File</div>
-          <ul tabindex="0" class="dropdown-content menu menu-sm bg-base-100 rounded-box z-[20] mt-1 w-56 p-2 shadow">
+        <VDropdown menu-class="mt-1 w-56">
+          <template #trigger>File</template>
             <li>
               <a @click="closeMenus(); onNew()">
                 <span class="flex-1">New file…</span>
@@ -1217,12 +1217,10 @@ const toggleTooltip = computed<string>(() => {
                 <span class="flex-1">{{ hasSession ? 'Back to chat' : 'Back to documents' }}</span>
               </a>
             </li>
-          </ul>
-        </div>
+        </VDropdown>
 
-        <div v-if="hasSession" class="dropdown">
-          <div tabindex="0" role="button" class="btn btn-ghost btn-xs">Chat</div>
-          <ul tabindex="0" class="dropdown-content menu menu-sm bg-base-100 rounded-box z-[20] mt-1 w-72 p-2 shadow">
+        <VDropdown v-if="hasSession" menu-class="mt-1 w-72">
+          <template #trigger>Chat</template>
             <li>
               <a @click="closeMenus(); onBindModeAuto()">
                 <span class="w-4 text-center">{{ chatBindMode === 'auto' ? '✓' : '' }}</span>
@@ -1241,8 +1239,7 @@ const toggleTooltip = computed<string>(() => {
                 <span class="flex-1">Unbind chat</span>
               </a>
             </li>
-          </ul>
-        </div>
+        </VDropdown>
 
         <span class="flex-1" />
 

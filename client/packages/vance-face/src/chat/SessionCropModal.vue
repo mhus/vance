@@ -206,12 +206,13 @@ function rowState(m: ChatMessageDto): 'willRemove' | 'willRestore' | 'removed' |
               style="display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden"
             >{{ m.content }}</div>
           </div>
-          <button
-            type="button"
-            class="btn btn-ghost btn-xs shrink-0"
+          <VButton
+            variant="ghost"
+            size="xs"
+            class="shrink-0"
             :title="t('chat.crop.cropFromHere')"
             @click="cropFrom(index)"
-          >✂</button>
+          >✂</VButton>
         </li>
       </ul>
     </div>

@@ -18,6 +18,7 @@ import {
 import { useInbox, type AssignedToFilter, type InboxFilter } from '@/composables/useInbox';
 import { useTeams } from '@/composables/useTeams';
 import { getUsername } from '@vance/shared';
+import { VBadge } from '@/components';
 import { setDocumentDraft } from '@/platform';
 import {
   AnswerOutcome,
@@ -563,10 +564,11 @@ const breadcrumbs = computed<string[]>(() => {
         </div>
         <div class="text-xs opacity-70 flex items-center gap-3 shrink-0">
           <span>{{ inbox.selected.value.type }}</span>
-          <span
+          <VBadge
             v-if="inbox.selected.value.criticality !== Criticality.NORMAL"
-            class="badge badge-warning badge-sm"
-          >{{ inbox.selected.value.criticality }}</span>
+            variant="warning"
+            size="sm"
+          >{{ inbox.selected.value.criticality }}</VBadge>
         </div>
       </div>
 
@@ -597,18 +599,19 @@ const breadcrumbs = computed<string[]>(() => {
           </div>
           <div class="flex items-center gap-2 text-xs opacity-70">
             <span>{{ item.type }}</span>
-            <span v-if="item.criticality !== Criticality.NORMAL" class="badge badge-warning badge-sm">{{ item.criticality }}</span>
+            <VBadge v-if="item.criticality !== Criticality.NORMAL" variant="warning" size="sm">{{ item.criticality }}</VBadge>
             <span v-if="item.assignedToUserId !== currentUser" class="opacity-60">
               → {{ item.assignedToUserId }}
             </span>
             <span v-if="item.status !== InboxItemStatus.PENDING" class="opacity-60">{{ item.status }}</span>
           </div>
           <div v-if="item.tags && item.tags.length" class="mt-1 flex gap-1 flex-wrap">
-            <span
+            <VBadge
               v-for="t in item.tags"
               :key="t"
-              class="badge badge-ghost badge-sm"
-            >{{ t }}</span>
+              variant="ghost"
+              size="sm"
+            >{{ t }}</VBadge>
           </div>
         </li>
       </ul>

@@ -5,7 +5,7 @@ import type {
   ToolHealthCooldownDto,
   ToolHealthEntryDto,
 } from '@vance/generated';
-import { VAlert, VCheckbox, VEmptyState, VInput } from '@/components';
+import { VAlert, VButton, VCheckbox, VEmptyState, VInput } from '@/components';
 import { useEffectiveTools, useToolHealth } from '@/composables/useProjectInsights';
 
 const props = defineProps<{ projectId: string | null }>();
@@ -368,14 +368,15 @@ const filteredTools = computed<EffectiveToolDto[]>(() => {
                           <span class="opacity-50">({{ cd.nextSpawnAllowedAt }})</span>
                         </td>
                         <td>
-                          <button
-                            type="button"
-                            class="btn btn-xs btn-outline"
+                          <VButton
+                            variant="neutral"
+                            size="xs"
+                            :outline="true"
                             @click="onClearCooldown(t.name, cd)"
                             title="Clear this cooldown — the tool can fire again immediately"
                           >
                             Clear
-                          </button>
+                          </VButton>
                         </td>
                       </tr>
                     </tbody>

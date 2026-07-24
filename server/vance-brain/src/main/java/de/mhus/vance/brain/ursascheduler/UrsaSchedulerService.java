@@ -213,10 +213,25 @@ public class UrsaSchedulerService {
                         reg.pendingQueued = false;
                         log.info("Scheduler queued re-fire '{}' after process '{}' terminated",
                                 reg.config.name(), processId);
-                        // Submit on the cron thread pool — keeps the
-                        // listener's synchronous path short.
-                        taskScheduler.schedule(
-                                () -> safeFire(reg), Instant.now());
+                        // Fire DIRECTLY (bypass the per-second cross-pod claim) —
+                        // a QUEUE re-fire is a pod-local decision, not a cron
+                        // tick. Routing it through safeFire()'s claim meant that
+                        // if the prior run terminated in the same wall-clock
+                        // second as the tick that queued it, the re-fire's slot
+                        // was already claimed → DuplicateKey → the queued run was
+                        // silently lost. Same rationale as fireNow.
+                        Registration fReg = reg;
+                        String correlationId = "run_" + UUID.randomUUID();
+                        Instant firedAt = Instant.now();
+                        taskScheduler.schedule(() -> {
+                            try {
+                                fire(fReg, "queued", correlationId, firedAt);
+                            } catch (RuntimeException ex) {
+                                log.error("Scheduler '{}/{}/{}' queued re-fire failed: {}",
+                                        fReg.tenantId, fReg.projectId, fReg.config.name(),
+                                        ex.toString(), ex);
+                            }
+                        }, firedAt);
                     }
                 }
             }

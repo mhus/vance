@@ -17,9 +17,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -52,6 +56,14 @@ public class UrsaHookDispatcher implements DisposableBean {
     private final EventLogService eventLogService;
     private final SessionService sessionService;
     private final ExecutorService runnerPool;
+    /**
+     * Separate (unbounded, cached) pool for the per-hook timeout ceiling. Kept
+     * distinct from runnerPool: a runOne task blocking on Future.get() while the
+     * bounded action ran on the SAME fixed pool would exhaust it under concurrent
+     * hook load (all 4 threads waiting on a 5th task) — a cached pool grows on
+     * demand instead.
+     */
+    private final ExecutorService timeoutPool;
 
     public UrsaHookDispatcher(
             UrsaHookRegistry registry,
@@ -69,6 +81,11 @@ public class UrsaHookDispatcher implements DisposableBean {
             return t;
         };
         this.runnerPool = Executors.newFixedThreadPool(4, tf);
+        this.timeoutPool = Executors.newCachedThreadPool(r -> {
+            Thread t = new Thread(r, "vance-hook-timeout-" + tid.incrementAndGet());
+            t.setDaemon(true);
+            return t;
+        });
     }
 
     @EventListener
@@ -133,7 +150,7 @@ public class UrsaHookDispatcher implements DisposableBean {
         Instant start = Instant.now();
         ActionResult result;
         try {
-            result = actionRegistry.execute(action, ctx, TriggerKind.HOOK);
+            result = executeBounded(action, ctx, def);
         } catch (RuntimeException ex) {
             log.warn("hook '{}' raised an unexpected exception during dispatch: {}",
                     def.sourceKey(), ex.toString(), ex);
@@ -257,8 +274,42 @@ public class UrsaHookDispatcher implements DisposableBean {
         };
     }
 
+    /**
+     * Runs the action, enforcing the hook's optional {@code timeout} ceiling.
+     * When a positive timeout is configured the action runs on the cached
+     * timeout pool bounded by {@code Future.get(timeout)}; on overrun the future
+     * is cancelled (best-effort interrupt) and a TECHNICAL_ERROR is returned, so
+     * the parsed/validated ≤30s ceiling is real rather than decorative config
+     * (it previously bounded nothing — only the script's own timeoutSeconds
+     * applied). No timeout → run inline as before.
+     */
+    private ActionResult executeBounded(TriggerAction action, TriggerContext ctx, UrsaHookDef def) {
+        Duration to = def.timeout();
+        if (to == null || to.isZero() || to.isNegative()) {
+            return actionRegistry.execute(action, ctx, TriggerKind.HOOK);
+        }
+        Future<ActionResult> fut = timeoutPool.submit(
+                () -> actionRegistry.execute(action, ctx, TriggerKind.HOOK));
+        try {
+            return fut.get(to.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (TimeoutException te) {
+            fut.cancel(true);
+            return ActionResult.failure(ActionOutcome.TECHNICAL_ERROR,
+                    "hook exceeded its timeout of " + to.toMillis() + "ms", null);
+        } catch (ExecutionException ee) {
+            Throwable c = ee.getCause() != null ? ee.getCause() : ee;
+            return ActionResult.failure(ActionOutcome.TECHNICAL_ERROR,
+                    c.getMessage() == null ? c.getClass().getSimpleName() : c.getMessage(), null);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            fut.cancel(true);
+            return ActionResult.failure(ActionOutcome.TECHNICAL_ERROR, "hook interrupted", null);
+        }
+    }
+
     @Override
     public void destroy() {
         runnerPool.shutdownNow();
+        timeoutPool.shutdownNow();
     }
 }

@@ -167,12 +167,12 @@ final class PhaseAdvancer {
         if (gateSatisfied(loop.getUntil(), state)) {
             return exitLoop(strategy, state, loopPhase);
         }
-        // Bump the iteration counter (we just finished the iteration).
+        // `counter` is the 1-based number of the iteration that just finished
+        // (set to 1 on loop entry, before iteration 1 runs). Check exhaustion
+        // BEFORE bumping: exactly maxIterations iterations must run, so we stop
+        // once `counter` (iterations completed) has reached the max — bumping
+        // first made the body run maxIterations-1 times (off-by-one).
         int counter = state.getLoopCounters().getOrDefault(loopName, 0);
-        if (counter < loop.getMaxIterations()) {
-            counter += 1;
-            state.getLoopCounters().put(loopName, counter);
-        }
         if (counter >= loop.getMaxIterations()) {
             state.getFlags().put(loopName + MAX_ITER_SUFFIX, true);
             // Re-evaluate gate now that the max-iter flag is set; it may
@@ -182,6 +182,9 @@ final class PhaseAdvancer {
             }
             return handleMaxReached(strategy, state, loopPhase, loop);
         }
+        // Not exhausted → re-enter: bump the counter for the next iteration.
+        counter += 1;
+        state.getLoopCounters().put(loopName, counter);
         // Re-enter: invalidate loop body workers / artifacts and reset
         // the leaf to the first sub-phase.
         invalidateLoopBody(state, loopPhase, loop);

@@ -1274,6 +1274,7 @@ public class VogonEngine implements ThinkEngine {
                 process, documentService, inboxItemService);
         try {
             BranchActionExecutor.execute(strategy, state, resolved, execCtx);
+            drainPendingNotifyParent(process, state);
             persistState(process, state);
             log.info("Vogon id='{}' phase '{}' postActions executed ({} actions)",
                     process.getId(), phase.getName(), resolved.size());
@@ -1283,6 +1284,42 @@ public class VogonEngine implements ThinkEngine {
             state.getFlags().put(phaseFlag(phase.getName(), "failed"), true);
             persistState(process, state);
         }
+    }
+
+    /**
+     * Drain the transient {@code __pendingNotifyParent__} flag left by a
+     * {@code notifyParent} branch-action and actually emit the ProcessEvent to
+     * the parent (previously the flag was written and never read — the action
+     * was a silent no-op that also polluted the flags map surfaced to the
+     * parent). Removing the flag here both fires the event and cleans up the
+     * pollution.
+     */
+    @SuppressWarnings("unchecked")
+    private void drainPendingNotifyParent(ThinkProcessDocument process, StrategyState state) {
+        Object pendingRaw = state.getFlags().remove("__pendingNotifyParent__");
+        if (!(pendingRaw instanceof Map)) {
+            return;
+        }
+        Map<String, Object> pending = (Map<String, Object>) pendingRaw;
+        String parentId = process.getParentProcessId();
+        if (parentId == null || parentId.isBlank()) {
+            log.debug("Vogon id='{}' notifyParent skipped — no parent process", process.getId());
+            return;
+        }
+        String typeStr = String.valueOf(pending.getOrDefault("type", "SUMMARY"));
+        ProcessEventType type;
+        try {
+            type = ProcessEventType.valueOf(typeStr.trim().toUpperCase(java.util.Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            type = ProcessEventType.SUMMARY;
+        }
+        Object summary = pending.get("summary");
+        eventEmitter.notifyParent(
+                parentId, process.getId(), type,
+                summary == null ? null : String.valueOf(summary),
+                Map.of("source", "vogon-notifyParent"), null);
+        log.info("Vogon id='{}' emitted notifyParent to '{}' type={}",
+                process.getId(), parentId, type);
     }
 
     /** Extract the last top-level JSON object from a free-form

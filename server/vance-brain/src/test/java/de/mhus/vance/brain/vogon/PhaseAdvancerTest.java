@@ -173,8 +173,8 @@ class PhaseAdvancerTest {
                     writer, lector);
             StrategySpec strategy = strategy(loop);
             StrategyState state = stateAt("iter", "lector");
-            state.getLoopCounters().put("iter", 1);
-            // Already on iteration 1; counter bump goes to 2 == max.
+            state.getLoopCounters().put("iter", 2);
+            // Both iterations completed (counter == max == 2) → exhausted.
             // No approval flag.
 
             PhaseAdvancer.Outcome out = PhaseAdvancer.advanceAfter(strategy, state, lector);
@@ -200,7 +200,7 @@ class PhaseAdvancerTest {
                     writer, lector);
             StrategySpec strategy = strategy(loop);
             StrategyState state = stateAt("iter", "lector");
-            state.getLoopCounters().put("iter", 1);
+            state.getLoopCounters().put("iter", 2); // both iterations completed → exhausted
 
             PhaseAdvancer.Outcome out = PhaseAdvancer.advanceAfter(strategy, state, lector);
 

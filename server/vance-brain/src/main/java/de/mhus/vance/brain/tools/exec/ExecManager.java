@@ -711,6 +711,84 @@ public class ExecManager {
         };
     }
 
+    // ──────────────────── Orphan reconciliation ────────────────────
+
+    /**
+     * Reconciles jobs stuck in {@code RUNNING} because their worker thread
+     * died without running its {@code finally} (a hard Error / thread-death
+     * that skipped the terminal transition + registry mirror). Such a job
+     * would otherwise stay RUNNING for the pod's lifetime, which pins its
+     * session alive via {@link
+     * ExecutionRegistryService#hasActiveJobsForSession} (blocking the
+     * IdleSweeper) and leaves an owning think-process waiting for a wakeup
+     * that never comes.
+     *
+     * <p>Pod-local by design: {@link #jobs} and the registry are in-memory
+     * per pod, and the {@code Process} liveness handle only exists in this
+     * JVM — so this runs on <em>every</em> pod (never cluster-master-gated).
+     * A stuck job is completed as {@link ExecJob.Status#ORPHANED}, then
+     * mirrored to the registry (status → terminal, session no longer pinned)
+     * and its owner is notified.
+     *
+     * <p>False-positive-safe: a job is only reconciled when its OS process
+     * is dead/absent <em>and</em> it has shown no output for longer than
+     * {@link ExecProperties#getOrphanReconcileTtl()}. A legitimately
+     * long-running but quiet job has a live process and is never touched.
+     *
+     * @return the number of jobs reconciled to ORPHANED this pass
+     */
+    public int reconcileOrphanedJobs(Instant now) {
+        Duration ttl = properties.getOrphanReconcileTtl();
+        // Collect candidates under each per-project monitor (required for
+        // safe iteration of the synchronizedMap), then act outside the lock
+        // so notifyRegistry / owner-push I/O never blocks submit/indexJob.
+        List<ExecJob> candidates = new ArrayList<>();
+        for (Map<String, ExecJob> perProject : jobs.values()) {
+            synchronized (perProject) {
+                for (ExecJob job : perProject.values()) {
+                    if (isStuckOrphan(job, now, ttl)) {
+                        candidates.add(job);
+                    }
+                }
+            }
+        }
+        int reconciled = 0;
+        for (ExecJob job : candidates) {
+            // Re-check atomically: a real finally may have terminated the
+            // job between collection and now — then this is a no-op.
+            if (!job.markOrphanedIfRunning()) {
+                continue;
+            }
+            log.warn("Reconciled orphaned exec job '{}' (RUNNING with dead process, "
+                    + "no output for >{}) → ORPHANED", job.id(), ttl);
+            notifyRegistry(job);
+            cancelWatchdog(job.id());
+            pushCompletionIfTracked(job);
+            reconciled++;
+        }
+        return reconciled;
+    }
+
+    /**
+     * A job is a stuck orphan when it is still RUNNING, its OS process is
+     * dead or was never assigned (the worker never reached {@code
+     * pb.start()} or died right after the process exited), and it has been
+     * silent past the TTL. The silence dwell also covers the tiny window
+     * between {@code Process.waitFor()} returning and the worker setting the
+     * terminal status, so a normally-completing job is never misclassified.
+     */
+    static boolean isStuckOrphan(ExecJob job, Instant now, Duration ttl) {
+        if (job.isTerminal()) {
+            return false;
+        }
+        Process p = job.process();
+        boolean processDeadOrAbsent = (p == null) || !p.isAlive();
+        if (!processDeadOrAbsent) {
+            return false;
+        }
+        return Duration.between(job.lastOutputAt(), now).compareTo(ttl) > 0;
+    }
+
     private static Thread pumpVirtual(InputStream in, Consumer<String> sink) {
         return Thread.ofVirtual().unstarted(() -> {
             try (BufferedReader r = new BufferedReader(

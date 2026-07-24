@@ -200,4 +200,24 @@ final class ExecJob {
     boolean killedByWatchdog() {
         return killedByWatchdog;
     }
+
+    /**
+     * Reconciliation entry point for the orphan sweeper. Atomically
+     * transitions a still-RUNNING job to {@link Status#ORPHANED} — used
+     * when the worker thread died without running its {@code finally}
+     * (a hard Error / thread-death that skipped the terminal transition),
+     * leaving the job stuck RUNNING forever. Synchronised against
+     * {@link #attemptWatchdogKill()} / {@link #extendDeadline(Instant)}
+     * and consistent with the worker's status writes: returns {@code
+     * false} when the job already terminated, so a real {@code finally}
+     * that just set COMPLETED/FAILED/KILLED is never clobbered.
+     */
+    synchronized boolean markOrphanedIfRunning() {
+        if (status != Status.RUNNING) {
+            return false;
+        }
+        status = Status.ORPHANED;
+        finishedAt = Instant.now();
+        return true;
+    }
 }

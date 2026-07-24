@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.tools.exec;
 
+import java.time.Duration;
 import lombok.Data;
 import org.jspecify.annotations.Nullable;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -33,6 +34,18 @@ public class ExecProperties {
 
     /** Per-project cap on retained jobs. Oldest completed jobs drop out first. */
     private int maxJobsPerProject = 32;
+
+    /**
+     * How long a job may stay {@code RUNNING} with a dead/absent OS process
+     * before the orphan sweeper reconciles it to {@code ORPHANED}. Guards
+     * the rare case where the worker thread died without running its {@code
+     * finally} (a hard Error/thread-death), leaving the job stuck RUNNING
+     * forever — which pins its session alive (via {@code
+     * hasActiveJobsForSession}) and blocks the IdleSweeper. Measured from the
+     * job's last output; generous so a legitimately quiet-but-live job (its
+     * process is still alive) is never touched, only genuinely dead ones.
+     */
+    private Duration orphanReconcileTtl = Duration.ofMinutes(2);
 
     /**
      * Number of stdout/stderr tail lines carried on the

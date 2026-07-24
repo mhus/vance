@@ -63,6 +63,7 @@ public class AgentTaskExecutor implements MagratheaTypeExecutor {
     private final ThinkEngineService thinkEngineService;
     private final MagratheaSessionResolver sessionResolver;
     private final MagratheaTaskService taskService;
+    private final de.mhus.vance.brain.scheduling.LaneScheduler laneScheduler;
 
     @Override
     public MagratheaTaskType type() {
@@ -138,11 +139,25 @@ public class AgentTaskExecutor implements MagratheaTypeExecutor {
         // engine still finds a WAITING_SUBPROCESS row when the listener fires.
         taskService.linkSubProcess(context.taskId(), spawned.getId());
 
+        // Start ON the process lane (like the other spawn sites), so start()
+        // is serialized against any concurrent runTurn/steer for this process
+        // — the Lane-Serialisierung invariant (CLAUDE.md). An off-lane start
+        // right after linkSubProcess would race the completion listener path.
+        Throwable startFailure = null;
         try {
-            thinkEngineService.start(spawned);
-        } catch (RuntimeException ex) {
+            laneScheduler.submit(spawned.getId(), () -> {
+                thinkEngineService.start(spawned);
+                return null;
+            }).get();
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            startFailure = ie;
+        } catch (java.util.concurrent.ExecutionException ee) {
+            startFailure = ee.getCause() == null ? ee : ee.getCause();
+        }
+        if (startFailure != null) {
             log.warn("Magrathea agent_task '{}' engine.start failed: {}",
-                    state.name(), ex.getMessage());
+                    state.name(), startFailure.getMessage());
             // Unlink before closing so the completion listener won't match
             // the abandoned process to this task, then close it so it does
             // not linger as an unstarted orphan (holding a session slot).
@@ -157,7 +172,7 @@ public class AgentTaskExecutor implements MagratheaTypeExecutor {
                         state.name(), spawned.getId(), closeEx.toString());
             }
             return Optional.of(TaskOutcome.failure(
-                    "Engine start failed: " + ex.getMessage()));
+                    "Engine start failed: " + startFailure.getMessage()));
         }
 
         log.info("Magrathea agent_task '{}' spawned recipe='{}' engine='{}' subProcessId='{}'",

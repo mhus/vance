@@ -38,9 +38,27 @@ class AgentTaskExecutorTest {
     private final ThinkEngineService thinkEngineService = mock(ThinkEngineService.class);
     private final MagratheaSessionResolver sessionResolver = mock(MagratheaSessionResolver.class);
     private final MagratheaTaskService taskService = mock(MagratheaTaskService.class);
+    private final de.mhus.vance.brain.scheduling.LaneScheduler laneScheduler =
+            mock(de.mhus.vance.brain.scheduling.LaneScheduler.class);
     private final AgentTaskExecutor executor = new AgentTaskExecutor(
             recipeResolver, thinkProcessService, thinkEngineService,
-            sessionResolver, taskService);
+            sessionResolver, taskService, laneScheduler);
+
+    @org.junit.jupiter.api.BeforeEach
+    @SuppressWarnings("unchecked")
+    void wireLane() {
+        // Run the submitted start() synchronously on the calling thread so the
+        // executor's on-lane routing behaves like the direct call did in tests.
+        when(laneScheduler.submit(any(String.class), any(java.util.concurrent.Callable.class)))
+                .thenAnswer(inv -> {
+                    java.util.concurrent.Callable<?> c = inv.getArgument(1);
+                    try {
+                        return java.util.concurrent.CompletableFuture.completedFuture(c.call());
+                    } catch (Exception e) {
+                        return java.util.concurrent.CompletableFuture.failedFuture(e);
+                    }
+                });
+    }
 
     @Test
     void happy_path_spawns_process_and_returns_async() {

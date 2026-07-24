@@ -8,6 +8,7 @@ import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import java.util.Optional;
 import java.util.Set;
+import org.slf4j.LoggerFactory;
 
 /**
  * A think-engine algorithm. Implementations are Spring beans; the registry
@@ -201,13 +202,23 @@ public interface ThinkEngine {
      * override this to fold the whole inbox into one call.
      */
     default void runTurn(ThinkProcessDocument process, ThinkEngineContext context) {
-        while (true) {
+        // Soft ceiling on drain passes. A steer() path that re-enqueues a
+        // pending message on the same process every pass (self-append or a
+        // fast external flood) would otherwise spin forever, pinning the
+        // process lane exclusively and starving all other lane work. Bail with
+        // a warn after the ceiling; the next scheduled turn resumes the drain.
+        final int maxPasses = 10_000;
+        for (int pass = 0; pass < maxPasses; pass++) {
             var drained = context.drainPending();
             if (drained.isEmpty()) return;
             for (SteerMessage msg : drained) {
                 steer(process, context, msg);
             }
         }
+        LoggerFactory.getLogger(ThinkEngine.class).warn(
+                "Default runTurn hit the {}-pass drain ceiling for process id='{}' — "
+                        + "yielding the lane; a steer path is likely re-enqueuing every pass",
+                maxPasses, process.getId());
     }
 
     /** Final stop. Process becomes {@code STOPPED}. */

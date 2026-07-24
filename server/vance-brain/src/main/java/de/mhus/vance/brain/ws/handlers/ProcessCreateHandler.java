@@ -51,6 +51,7 @@ public class ProcessCreateHandler implements WsHandler {
     private final RecipeResolver recipeResolver;
     private final SessionService sessionService;
     private final RequestAuthority authority;
+    private final de.mhus.vance.brain.scheduling.LaneScheduler laneScheduler;
 
     @Override
     public String type() {
@@ -131,13 +132,28 @@ public class ProcessCreateHandler implements WsHandler {
             return;
         }
 
+        // Run start() ON the process lane, like the other spawn sites
+        // (SessionChatBootstrapper / AgrajagSpawnerService / Trillian): an
+        // off-lane start would race a concurrent runTurn/steer for the same
+        // process on a multi-client session, both mutating the doc/chat log.
+        // Lane-Serialisierung invariant, CLAUDE.md.
+        Throwable startFailure = null;
         try {
-            thinkEngineService.start(created);
-        } catch (RuntimeException e) {
+            laneScheduler.submit(created.getId(), () -> {
+                thinkEngineService.start(created);
+                return null;
+            }).get();
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            startFailure = ie;
+        } catch (java.util.concurrent.ExecutionException ee) {
+            startFailure = ee.getCause() == null ? ee : ee.getCause();
+        }
+        if (startFailure != null) {
             log.error("Engine start failed for process id='{}' engine='{}'",
-                    created.getId(), created.getThinkEngine(), e);
+                    created.getId(), created.getThinkEngine(), startFailure);
             sender.sendError(wsSession, envelope, 500,
-                    "Engine start failed: " + e.getMessage());
+                    "Engine start failed: " + startFailure.getMessage());
             return;
         }
 

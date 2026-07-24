@@ -289,6 +289,45 @@ class FookUpstreamServiceTest {
         assertThat(item.getBody()).contains("Can you reproduce");
         assertThat(item.getTags()).contains("fook-comment");
         assertThat(item.isRequiresAction()).isTrue();
+        // The delivered comment is recorded so the next tick can dedup it.
+        verify(ticketService).recordSyncedComments("uuid-1", List.of("c1"));
+    }
+
+    @Test
+    void poll_tick_does_not_re_deliver_already_synced_comment() {
+        // Regression (code-review-2): the provider is queried with a global
+        // `since`, so an already-delivered comment can be re-fetched. A ticket
+        // that already recorded comment c1 must NOT re-post it.
+        TicketDocument transferred = TicketDocument.builder()
+                .id("uuid-1").title("T").type("bug").severity("medium")
+                .status("transferred").transportApproval("auto").inboxItemId("inbox-x")
+                .createdAt(Instant.now().minusSeconds(3600))
+                .transferredAt(Instant.now().minusSeconds(1800))
+                .upstreamProvider("github").upstreamExternalId("4287")
+                .upstreamUrl("https://example/4287").upstreamState("open")
+                .syncedCommentExternalIds(List.of("c1"))
+                .description("d")
+                .reporter(TicketReporter.builder()
+                        .kind(TicketReporter.Kind.ENGINE).userId("alice").tenantId("acme").build())
+                .relations(TicketRelations.builder()
+                        .rootCauseOf(List.of()).relatedTo(List.of()).build())
+                .build();
+        when(ticketService.listTransferredForPolling()).thenReturn(List.of(transferred));
+        when(provider.pollUpdates(any(), any())).thenReturn(List.of(
+                ProviderTicketUpdate.builder()
+                        .ref(ProviderTicketRef.builder()
+                                .provider("github").externalId("4287").url("u").build())
+                        .state("open")
+                        .newComments(List.of(
+                                ProviderTicketUpdate.ProviderComment.builder()
+                                        .externalId("c1").author("ford").body("dup")
+                                        .createdAt(Instant.now()).build()))
+                        .build()));
+
+        service.pollTick();
+
+        // c1 was already delivered → no new FEEDBACK inbox item.
+        verify(inboxItemService, times(0)).create(any());
     }
 
     @Test
@@ -360,6 +399,7 @@ class FookUpstreamServiceTest {
                 .upstreamUrl("https://example/" + externalId)
                 .upstreamState(state)
                 .upstreamLastSyncedAt(lastSyncedAt)
+                .syncedCommentExternalIds(List.of())
                 .description("d")
                 .triageNote(null)
                 .reporter(TicketReporter.builder()

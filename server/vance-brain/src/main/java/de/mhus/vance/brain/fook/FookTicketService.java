@@ -6,6 +6,7 @@ import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.tenant.TenantService;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -78,6 +79,9 @@ public class FookTicketService {
      *  beyond this cap don't surface as candidates; that's the cue
      *  to switch the search to a proper index. */
     static final int MAX_CANDIDATES_SCAN = 500;
+
+    /** Page size for the paginated all-tickets walk (transport/poll selection). */
+    static final int TRANSPORT_PAGE_SIZE = 500;
 
     /** Body-field name for the human-readable description (literal
      *  string in the YAML). */
@@ -308,6 +312,21 @@ public class FookTicketService {
     }
 
     /**
+     * Records upstream comment external-ids already fanned out to the
+     * reporter's inbox, so the poll-tick can dedup against them. Merges
+     * (union) into the existing set — order-preserving, idempotent.
+     */
+    public void recordSyncedComments(String uuid, Collection<String> commentExternalIds) {
+        if (commentExternalIds.isEmpty()) return;
+        patchMeta(uuid, meta -> {
+            java.util.LinkedHashSet<String> merged =
+                    new java.util.LinkedHashSet<>(readStringList(meta, "syncedCommentIds"));
+            merged.addAll(commentExternalIds);
+            meta.put("syncedCommentIds", new ArrayList<>(merged));
+        });
+    }
+
+    /**
      * All tickets the sender-tick should consider: lifecycle is still
      * {@link #STATUS_NEW}, and the approval flag permits transport
      * ({@link #TRANSPORT_AUTO} or {@link #TRANSPORT_APPROVED}).
@@ -333,14 +352,22 @@ public class FookTicketService {
     }
 
     private List<TicketDocument> listAllTickets() {
-        Page<DocumentDocument> page = documentService.listByProjectPaged(
-                TENANT_ID, PROJECT_ID, 0, MAX_CANDIDATES_SCAN,
-                PATH_PREFIX, DOC_KIND);
-        if (page.isEmpty()) return List.of();
-        List<TicketDocument> out = new ArrayList<>(page.getNumberOfElements());
-        for (DocumentDocument doc : page.getContent()) {
-            parse(doc).ifPresent(p -> out.add(toDocument(p)));
-        }
+        // Walk ALL pages — transport/poll selection must see every ticket, not
+        // just the first MAX_CANDIDATES_SCAN page (that cap is for the
+        // similarity scan). Once the global _vance pool exceeds one page,
+        // tickets beyond it were silently never sent upstream nor polled.
+        List<TicketDocument> out = new ArrayList<>();
+        int pageNum = 0;
+        Page<DocumentDocument> page;
+        do {
+            page = documentService.listByProjectPaged(
+                    TENANT_ID, PROJECT_ID, pageNum, TRANSPORT_PAGE_SIZE,
+                    PATH_PREFIX, DOC_KIND);
+            for (DocumentDocument doc : page.getContent()) {
+                parse(doc).ifPresent(p -> out.add(toDocument(p)));
+            }
+            pageNum++;
+        } while (page.hasNext());
         return out;
     }
 
@@ -436,6 +463,7 @@ public class FookTicketService {
         p.upstreamUrl = stringOrNull(meta.get("upstreamUrl"));
         p.upstreamState = stringOrNull(meta.get("upstreamState"));
         p.upstreamLastSyncedAt = parseInstant(meta.get("upstreamLastSyncedAt"));
+        p.syncedCommentExternalIds = readStringList(meta, "syncedCommentIds");
         p.reporter = readReporter(meta);
         p.description = stringOrEmpty(root.get(FIELD_DESCRIPTION));
         p.triageNote = stringOrNull(root.get(FIELD_TRIAGE_NOTE));
@@ -480,6 +508,7 @@ public class FookTicketService {
                 .upstreamUrl(p.upstreamUrl)
                 .upstreamState(p.upstreamState)
                 .upstreamLastSyncedAt(p.upstreamLastSyncedAt)
+                .syncedCommentExternalIds(p.syncedCommentExternalIds)
                 .description(p.description)
                 .triageNote(p.triageNote)
                 .context(p.context)
@@ -642,6 +671,7 @@ public class FookTicketService {
         @Nullable String upstreamUrl;
         @Nullable String upstreamState;
         @Nullable Instant upstreamLastSyncedAt;
+        List<String> syncedCommentExternalIds;
         TicketReporter reporter;
         String description;
         @Nullable String triageNote;

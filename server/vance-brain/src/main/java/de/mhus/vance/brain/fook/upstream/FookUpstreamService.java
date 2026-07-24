@@ -290,10 +290,25 @@ public class FookUpstreamService {
                     update.getState() == null ? local.getUpstreamState() : update.getState());
         }
 
-        // Fan out new comments as separate FEEDBACK inbox items.
+        // Fan out new comments as separate FEEDBACK inbox items — but dedup
+        // against comments already delivered for this ticket. The provider is
+        // queried with a single global `since` (min across all tickets), so a
+        // ticket whose own lastSyncedAt already advanced re-fetches older
+        // comments; without this guard every one re-posts as a fresh
+        // action-required item on each tick.
+        java.util.Set<String> alreadySeen = new java.util.HashSet<>(
+                local.getSyncedCommentExternalIds() == null
+                        ? java.util.List.of()
+                        : local.getSyncedCommentExternalIds());
+        java.util.List<String> delivered = new java.util.ArrayList<>();
         for (ProviderTicketUpdate.ProviderComment c : update.getNewComments()) {
+            if (c.getExternalId() != null && !alreadySeen.add(c.getExternalId())) {
+                continue; // already delivered in an earlier tick
+            }
             postCommentInbox(local, c);
+            if (c.getExternalId() != null) delivered.add(c.getExternalId());
         }
+        ticketService.recordSyncedComments(local.getId(), delivered);
     }
 
     private void postStatusInbox(TicketDocument local, ProviderTicketUpdate update) {

@@ -68,6 +68,14 @@ public class TicketDocument {
     /** Last poll-tick that touched this ticket. */
     @Nullable Instant upstreamLastSyncedAt;
 
+    /**
+     * External ids of upstream comments already fanned out to the
+     * reporter's inbox. The poll-tick dedups against this so a stale
+     * global {@code since} cannot re-deliver a comment as a fresh
+     * FEEDBACK item. Never null (empty when nothing synced yet).
+     */
+    java.util.List<String> syncedCommentExternalIds;
+
     // ── body ────────────────────────────────────────────────────────
     String description;
     @Nullable String triageNote;

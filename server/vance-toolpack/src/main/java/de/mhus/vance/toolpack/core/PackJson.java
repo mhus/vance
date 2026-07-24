@@ -76,10 +76,20 @@ public final class PackJson {
      * {@code List<Object>} / strings / numbers / booleans / null.
      * Throws {@link IllegalArgumentException} on malformed input.
      */
+    /**
+     * Max object/array nesting depth. Untrusted MCP/REST responses flow through
+     * this hand-rolled parser; without a bound, a frame like
+     * {@code [[[[…10000 levels…]]]]} overflows the stack — and StackOverflowError
+     * is an Error, not a RuntimeException, so it bypasses the catch(RuntimeException)
+     * guards in the MCP/REST dispatch and kills the invocation/reader thread. 200
+     * is far beyond any legitimate tool payload.
+     */
+    private static final int MAX_DEPTH = 200;
+
     public static Object read(String json) {
         Cursor c = new Cursor(json);
         c.skipWs();
-        Object v = readValue(c);
+        Object v = readValue(c, 0);
         c.skipWs();
         if (c.hasMore()) {
             throw new IllegalArgumentException("Trailing input after JSON value at pos " + c.pos());
@@ -87,12 +97,12 @@ public final class PackJson {
         return v;
     }
 
-    private static Object readValue(Cursor c) {
+    private static Object readValue(Cursor c, int depth) {
         c.skipWs();
         char ch = c.peek();
         if (ch == '"') return readJsonString(c);
-        if (ch == '{') return readObject(c);
-        if (ch == '[') return readArray(c);
+        if (ch == '{') return readObject(c, depth);
+        if (ch == '[') return readArray(c, depth);
         if (ch == 't' || ch == 'f') return readBool(c);
         if (ch == 'n') { c.expectLiteral("null"); return null; }
         return readNumber(c);
@@ -128,7 +138,11 @@ public final class PackJson {
         throw new IllegalArgumentException("Unterminated string at pos " + c.pos());
     }
 
-    private static Map<String, Object> readObject(Cursor c) {
+    private static Map<String, Object> readObject(Cursor c, int depth) {
+        if (depth >= MAX_DEPTH) {
+            throw new IllegalArgumentException(
+                    "JSON nesting exceeds max depth " + MAX_DEPTH + " at pos " + c.pos());
+        }
         c.expect('{');
         Map<String, Object> out = new LinkedHashMap<>();
         c.skipWs();
@@ -138,7 +152,7 @@ public final class PackJson {
             String key = readJsonString(c);
             c.skipWs();
             c.expect(':');
-            out.put(key, readValue(c));
+            out.put(key, readValue(c, depth + 1));
             c.skipWs();
             char sep = c.next();
             if (sep == ',') continue;
@@ -147,13 +161,17 @@ public final class PackJson {
         }
     }
 
-    private static java.util.List<Object> readArray(Cursor c) {
+    private static java.util.List<Object> readArray(Cursor c, int depth) {
+        if (depth >= MAX_DEPTH) {
+            throw new IllegalArgumentException(
+                    "JSON nesting exceeds max depth " + MAX_DEPTH + " at pos " + c.pos());
+        }
         c.expect('[');
         java.util.List<Object> out = new java.util.ArrayList<>();
         c.skipWs();
         if (c.peek() == ']') { c.next(); return out; }
         while (true) {
-            out.add(readValue(c));
+            out.add(readValue(c, depth + 1));
             c.skipWs();
             char sep = c.next();
             if (sep == ',') continue;

@@ -24,6 +24,39 @@ import org.junit.jupiter.api.Test;
  */
 class SsrfGuardTest {
 
+    @org.junit.jupiter.api.AfterEach
+    void resetEscapeHatch() {
+        // The dev/test escape hatch is a static global — never leak it into
+        // other tests (which assume the secure default-deny).
+        SsrfGuard.setAllowPrivate(false);
+    }
+
+    @Test
+    void allowPrivate_escapeHatch_permitsLoopbackAndPrivate_thenResets() {
+        // Operator opt-in (vance.net.ssrf.allowPrivate) for local testing: the
+        // guard stops blocking loopback / LAN targets so a dev can reach them.
+        SsrfGuard.setAllowPrivate(true);
+        assertThatCode(() -> SsrfGuard.assertAllowed("http://localhost:9090/actuator"))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> SsrfGuard.assertAllowed("http://127.0.0.1:8080/x"))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> SsrfGuard.assertAllowed("http://192.168.1.10/x"))
+                .doesNotThrowAnyException();
+
+        // Turning it back off restores the block (matches the prod default).
+        SsrfGuard.setAllowPrivate(false);
+        assertThatThrownBy(() -> SsrfGuard.assertAllowed("http://localhost:9090/actuator"))
+                .isInstanceOf(SsrfGuard.SsrfException.class);
+    }
+
+    @Test
+    void allowPrivate_stillRejectsNonHttpScheme() {
+        // The escape hatch relaxes only the address policy, not the scheme gate.
+        SsrfGuard.setAllowPrivate(true);
+        assertThatThrownBy(() -> SsrfGuard.assertAllowed("file:///etc/passwd"))
+                .isInstanceOf(SsrfGuard.SsrfException.class);
+    }
+
     @Test
     void rejects_nonHttpSchemes() {
         for (String url : new String[] {

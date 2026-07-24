@@ -62,8 +62,14 @@ public final class InsecureHttpClientFactory {
             };
             SSLContext ctx = SSLContext.getInstance("TLS");
             ctx.init(null, trustAll, new java.security.SecureRandom());
+            // Redirect.NEVER is mandatory: this client is handed to
+            // SsrfGuard.sendGuarded, which must own and re-check every redirect
+            // hop (assertAllowed per hop). A NORMAL client would let the JDK
+            // auto-follow a public→private 3xx before the guard sees it,
+            // re-opening SSRF. Trust-all TLS (self-signed local servers) is
+            // orthogonal and stays — this only fixes redirect handling.
             return HttpClient.newBuilder()
-                    .followRedirects(HttpClient.Redirect.NORMAL)
+                    .followRedirects(HttpClient.Redirect.NEVER)
                     .connectTimeout(TIMEOUT)
                     .sslContext(ctx)
                     .build();

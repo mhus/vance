@@ -69,8 +69,10 @@ public class LlmsTxtProbeService {
     @Autowired
     public LlmsTxtProbeService(
             WebOriginOverviewService cache, SettingService settings) {
-        this(cache, settings, HttpClient.newBuilder()
-                .followRedirects(HttpClient.Redirect.NORMAL)
+        // Route through the SSRF guard like every other tools/web fetch:
+        // guardedClientBuilder() is Redirect.NEVER so sendGuarded re-checks each
+        // hop. A page's /llms.txt could otherwise 302 into the internal network.
+        this(cache, settings, de.mhus.vance.shared.net.SsrfGuard.guardedClientBuilder()
                 .connectTimeout(PROBE_TIMEOUT)
                 .build());
     }
@@ -149,8 +151,9 @@ public class LlmsTxtProbeService {
                     .timeout(PROBE_TIMEOUT)
                     .GET()
                     .build();
-            HttpResponse<String> response = http.send(
-                    request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = de.mhus.vance.shared.net.SsrfGuard.sendGuarded(
+                    http, request,
+                    de.mhus.vance.shared.net.SsrfGuard.capped(HttpResponse.BodyHandlers.ofString()));
 
             int status = response.statusCode();
             if (status == 200) {

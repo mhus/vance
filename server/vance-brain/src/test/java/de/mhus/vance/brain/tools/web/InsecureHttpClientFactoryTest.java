@@ -34,10 +34,14 @@ class InsecureHttpClientFactoryTest {
     }
 
     @Test
-    void client_followsRedirects_andHasConnectTimeout() {
+    void client_neverAutoFollowsRedirects_soSsrfGuardReChecksEachHop() {
         HttpClient insecure = InsecureHttpClientFactory.client();
 
-        assertThat(insecure.followRedirects()).isEqualTo(HttpClient.Redirect.NORMAL);
+        // Security regression (code-review-2): the insecure (trust-all-TLS) client
+        // is handed to SsrfGuard.sendGuarded, which MUST own redirect-following so
+        // it re-checks each hop. A NORMAL client would let the JDK auto-follow a
+        // public→private 3xx before the guard sees it, re-opening SSRF.
+        assertThat(insecure.followRedirects()).isEqualTo(HttpClient.Redirect.NEVER);
         assertThat(insecure.connectTimeout()).isPresent();
     }
 }

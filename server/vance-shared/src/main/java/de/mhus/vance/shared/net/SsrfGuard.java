@@ -41,6 +41,28 @@ public final class SsrfGuard {
     /** Default max redirect hops followed by {@link #sendGuarded}. */
     public static final int DEFAULT_MAX_REDIRECTS = 5;
 
+    /**
+     * Operator escape hatch for local development/testing ONLY. When set, the
+     * egress guard stops blocking loopback / private / link-local / unique-local
+     * addresses so a dev can point {@code web_fetch}/{@code doc_import_url} at
+     * {@code localhost} / a LAN service. Default {@code false} — production must
+     * never enable it (it re-opens SSRF). Wired from
+     * {@code vance.net.ssrf.allowPrivate} by {@code SsrfGuardConfigurer} and set
+     * only in a non-default profile. It is an operator config, never an
+     * LLM-controllable per-call flag, so untrusted input can't reach it.
+     */
+    private static volatile boolean allowPrivate = false;
+
+    /** Set by {@code SsrfGuardConfigurer} at boot from {@code vance.net.ssrf.allowPrivate}. */
+    public static void setAllowPrivate(boolean allow) {
+        allowPrivate = allow;
+    }
+
+    /** Current escape-hatch state (for diagnostics/tests). */
+    public static boolean isAllowPrivate() {
+        return allowPrivate;
+    }
+
     /** Thrown when a URL is rejected by the egress policy. */
     public static final class SsrfException extends RuntimeException {
         public SsrfException(String message) {
@@ -91,6 +113,11 @@ public final class SsrfGuard {
 
     /** {@code true} for any address a server must not be steered at. */
     static boolean isBlocked(InetAddress addr) {
+        // Dev/test escape hatch — operator opted into reaching local/private
+        // targets (vance.net.ssrf.allowPrivate). Never true in production.
+        if (allowPrivate) {
+            return false;
+        }
         if (addr.isLoopbackAddress()      // 127.0.0.0/8, ::1
                 || addr.isAnyLocalAddress()   // 0.0.0.0, ::
                 || addr.isLinkLocalAddress()  // 169.254.0.0/16 (incl. metadata), fe80::/10

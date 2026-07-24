@@ -40,6 +40,15 @@ server:
     include-message: always
 
 vance:
+  net:
+    ssrf:
+      # SSRF egress guard escape hatch. Default false: web_fetch / doc_import_url
+      # / link-preview / llms.txt-probe refuse loopback + private/LAN targets so
+      # untrusted (LLM/prompt-injected) fetches can't reach internal services or
+      # cloud-metadata. Set true ONLY in a local/dev profile to point tools at
+      # localhost / a LAN service while testing — it re-opens SSRF and logs a
+      # startup warning. Operator config only; never an LLM-controllable flag.
+      allowPrivate: false
   bootstrap:
     # Seed the Acme demo tenant on first start (users, project groups,
     # projects, demo documents, _vance system project, init-settings

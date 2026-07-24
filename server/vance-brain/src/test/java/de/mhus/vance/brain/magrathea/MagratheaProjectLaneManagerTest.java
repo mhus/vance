@@ -4,7 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Instant;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -63,5 +67,53 @@ class MagratheaProjectLaneManagerTest {
         manager.evictIdleLanesBefore(Instant.now().minusSeconds(60));
 
         assertThat(manager.laneCount()).isEqualTo(1);
+    }
+
+    /**
+     * Security/liveness regression (code-review-2 B2): a workflow_task runs ON
+     * the project lane and spawns a sub-workflow via
+     * {@code MagratheaWorkflowService.start}, which does
+     * {@code submitTracked(sameProject).get()}. The single lane thread cannot
+     * run the queued start while it is blocked on .get(), so the old code
+     * dead-locked (30s timeout → orphaned sub-run). A re-entrant, same-lane
+     * submission must now run inline and return immediately.
+     */
+    @Test
+    void reentrant_submitTracked_runsInline_notDeadlock() throws Exception {
+        AtomicBoolean innerRan = new AtomicBoolean(false);
+        AtomicReference<Throwable> innerErr = new AtomicReference<>();
+
+        Future<?> outer = manager.submitTracked("proj-re", () -> {
+            try {
+                // Re-entrant submit onto the SAME lane from the lane thread.
+                manager.submitTracked("proj-re", () -> innerRan.set(true))
+                        .get(2, TimeUnit.SECONDS);
+            } catch (Exception e) {
+                innerErr.set(e);
+            }
+        });
+
+        outer.get(3, TimeUnit.SECONDS); // TimeoutException here before the fix
+        assertThat(innerRan).isTrue();
+        assertThat(innerErr.get()).isNull();
+    }
+
+    @Test
+    void reentrant_submitTracked_propagatesFailureViaGet() throws Exception {
+        AtomicReference<Throwable> caught = new AtomicReference<>();
+
+        Future<?> outer = manager.submitTracked("proj-rf", () -> {
+            try {
+                manager.submitTracked("proj-rf",
+                        () -> { throw new IllegalStateException("boom"); })
+                        .get(2, TimeUnit.SECONDS);
+            } catch (Throwable t) {
+                caught.set(t);
+            }
+        });
+
+        outer.get(3, TimeUnit.SECONDS);
+        assertThat(caught.get()).isInstanceOf(ExecutionException.class);
+        assertThat(caught.get().getCause()).isInstanceOf(IllegalStateException.class);
     }
 }

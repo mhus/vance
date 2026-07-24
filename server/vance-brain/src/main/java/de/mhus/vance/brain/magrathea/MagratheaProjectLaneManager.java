@@ -46,6 +46,25 @@ public class MagratheaProjectLaneManager {
      * so the caller can await + observe failures (code-review Phase 2).
      */
     public java.util.concurrent.Future<?> submitTracked(String projectId, Runnable work) {
+        // Re-entrant submission from the lane's own worker thread (e.g. a
+        // workflow_task spawning a sub-workflow via MagratheaWorkflowService
+        // .start, which submitTracked+get()s on the same project lane). The
+        // single lane thread cannot run a queued task while it is blocked on
+        // .get(), so submitting would dead-lock (code-review-2 B2). We are
+        // already on the lane, so serialization is held — run inline.
+        if (MagratheaProjectLane.isCurrentThreadOnLane(projectId)) {
+            java.util.concurrent.CompletableFuture<Object> done =
+                    new java.util.concurrent.CompletableFuture<>();
+            try {
+                work.run();
+                done.complete(null);
+            } catch (Throwable t) {
+                // Surfaced to the caller's Future.get() as ExecutionException,
+                // matching the normal executor.submit(work).get() contract.
+                done.completeExceptionally(t);
+            }
+            return done;
+        }
         java.util.concurrent.Future<?>[] holder = new java.util.concurrent.Future<?>[1];
         lanes.compute(projectId, (id, lane) -> {
             MagratheaProjectLane l = (lane == null) ? new MagratheaProjectLane(id) : lane;

@@ -337,6 +337,56 @@ class MarvinNodeServiceTest {
         assertThat(service.hasRunningNodes("p")).isTrue();
     }
 
+    // ─── allChildrenTerminal — POST_CHILDREN reactivation trigger ───────
+
+    @Test
+    void allChildrenTerminal_allDoneAndSettled_returnsTrue() {
+        MarvinNodeDocument a = node("a", "parent", 0, NodeStatus.DONE);
+        MarvinNodeDocument b = node("b", "parent", 1, NodeStatus.SKIPPED);
+        when(repository.findByProcessIdAndParentIdOrderByPositionAsc("p", "parent"))
+                .thenReturn(List.of(a, b));
+
+        assertThat(service.allChildrenTerminal("p", "parent")).isTrue();
+    }
+
+    @Test
+    void allChildrenTerminal_noChildren_returnsFalse() {
+        when(repository.findByProcessIdAndParentIdOrderByPositionAsc("p", "parent"))
+                .thenReturn(List.of());
+
+        assertThat(service.allChildrenTerminal("p", "parent")).isFalse();
+    }
+
+    @Test
+    void allChildrenTerminal_pendingChild_returnsFalse() {
+        MarvinNodeDocument a = node("a", "parent", 0, NodeStatus.DONE);
+        MarvinNodeDocument b = node("b", "parent", 1, NodeStatus.PENDING);
+        when(repository.findByProcessIdAndParentIdOrderByPositionAsc("p", "parent"))
+                .thenReturn(List.of(a, b));
+
+        assertThat(service.allChildrenTerminal("p", "parent")).isFalse();
+    }
+
+    @Test
+    void allChildrenTerminal_doneButAwaitingPostChildren_returnsFalse() {
+        // Regression (code-review-2 HIGH): a nested NEEDS_SUBTASKS child is
+        // flipped to DONE+awaitingPostChildren only so the DFS can descend —
+        // it still owes its own POST_CHILDREN synthesis. It must NOT count as
+        // terminal for its parent, else a grandparent reactivates and concludes
+        // over an unfinished nested subtree.
+        MarvinNodeDocument awaiting = node("child", "parent", 0, NodeStatus.DONE);
+        awaiting.setAwaitingPostChildren(true);
+        when(repository.findByProcessIdAndParentIdOrderByPositionAsc("p", "parent"))
+                .thenReturn(List.of(awaiting));
+
+        assertThat(service.allChildrenTerminal("p", "parent")).isFalse();
+
+        // Once the child clears its awaiting flag (its own POST_CHILDREN done),
+        // the parent may reactivate.
+        awaiting.setAwaitingPostChildren(false);
+        assertThat(service.allChildrenTerminal("p", "parent")).isTrue();
+    }
+
     // ─── insertSiblingBefore ────────────────────────────────────────────
 
     @Test

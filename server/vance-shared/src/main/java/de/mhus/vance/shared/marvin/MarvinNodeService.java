@@ -365,9 +365,18 @@ public class MarvinNodeService {
     }
 
     /**
-     * @return {@code true} iff every direct child of {@code node}
-     *         is terminal (DONE/FAILED/SKIPPED). Used by the
-     *         POST_CHILDREN trigger.
+     * @return {@code true} iff every direct child of {@code node} has truly
+     *         settled — terminal status (DONE/FAILED/SKIPPED) <em>and</em> not
+     *         merely DONE as a NEEDS_SUBTASKS transparency device. Used by the
+     *         POST_CHILDREN reactivation trigger.
+     *
+     * <p>A child flipped to DONE+{@code awaitingPostChildren} (its own
+     * NEEDS_SUBTASKS decomposition, so the DFS can descend) has <em>not</em>
+     * finished — it still owes its own POST_CHILDREN synthesis over its subtree.
+     * Counting it as terminal would let an ancestor reactivate and
+     * conclude/synthesize over an unfinished nested decomposition (grandparent
+     * runs before the intermediate node produced any result). So an awaiting
+     * child pins the parent as non-terminal until the child clears its flag.
      */
     public boolean allChildrenTerminal(String processId, String parentId) {
         List<MarvinNodeDocument> kids = findChildren(processId, parentId);
@@ -375,6 +384,9 @@ public class MarvinNodeService {
         for (MarvinNodeDocument k : kids) {
             NodeStatus s = k.getStatus();
             if (s != NodeStatus.DONE && s != NodeStatus.FAILED && s != NodeStatus.SKIPPED) {
+                return false;
+            }
+            if (k.isAwaitingPostChildren()) {
                 return false;
             }
         }

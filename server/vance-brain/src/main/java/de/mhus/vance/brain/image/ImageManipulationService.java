@@ -433,6 +433,12 @@ public class ImageManipulationService {
         String normalizedMime = source.getMimeType().toLowerCase(Locale.ROOT);
 
         byte[] sourceBytes = readBytes(source, limits);
+        // Reject oversized images from the HEADER before the full decode: the
+        // byte cap bounds only the compressed size, so a small, highly
+        // compressible file (e.g. a near-uniform 30000x30000 PNG well under the
+        // byte cap) decodes to gigabytes and OOMs the pod before the
+        // post-decode ensureInputDimensions ever runs (decompression bomb).
+        ensureHeaderDimensions(sourceBytes, limits);
         ImmutableImage input = decode(sourceBytes);
         ensureInputDimensions(input, limits);
 
@@ -536,6 +542,39 @@ public class ImageManipulationService {
             throw new ImageManipulationException(
                     ImageManipulationException.Reason.PROCESSING_ERROR,
                     "Failed to decode image: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Enforce {@code maxInputDimension} from the image header, without a full
+     * decode, so a decompression bomb is rejected before it can allocate its
+     * decoded pixel buffer. Falls through silently when the header can't be read
+     * (exotic/corrupt container) — {@link #ensureInputDimensions} then still
+     * catches it post-decode.
+     */
+    private void ensureHeaderDimensions(byte[] bytes, Limits limits) {
+        try (javax.imageio.stream.ImageInputStream iis =
+                ImageIO.createImageInputStream(new java.io.ByteArrayInputStream(bytes))) {
+            if (iis == null) return;
+            java.util.Iterator<javax.imageio.ImageReader> readers = ImageIO.getImageReaders(iis);
+            if (!readers.hasNext()) return;
+            javax.imageio.ImageReader reader = readers.next();
+            try {
+                reader.setInput(iis, true, true);
+                int w = reader.getWidth(0);
+                int h = reader.getHeight(0);
+                if (w > limits.maxInputDimension() || h > limits.maxInputDimension()) {
+                    throw new ImageManipulationException(
+                            ImageManipulationException.Reason.LIMIT_EXCEEDED,
+                            "Source dimensions " + w + "x" + h
+                                    + " exceed " + limits.maxInputDimension()
+                                    + " (" + SETTING_MAX_INPUT_DIMENSION + ")");
+                }
+            } finally {
+                reader.dispose();
+            }
+        } catch (java.io.IOException e) {
+            // Header unreadable — defer to the post-decode dimension check.
         }
     }
 

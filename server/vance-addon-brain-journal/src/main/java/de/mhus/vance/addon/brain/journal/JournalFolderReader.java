@@ -86,8 +86,15 @@ public class JournalFolderReader {
                     ? doc.getTitle()
                     : humaniseDate(date);
             String mood = headerValue(doc, "mood");
-            List<String> tags = doc.getTags() != null ? doc.getTags() : List.of();
-            entries.add(new JournalEntry(doc, date, title, mood, new ArrayList<>(tags)));
+            // Strip the internal "journal" marker tag that JournalService prepends
+            // to native tags on write — it must not leak into user-facing tag
+            // stats / index / query output (it would rank #1 in every histogram).
+            List<String> rawTags = doc.getTags() != null ? doc.getTags() : List.of();
+            List<String> tags = new ArrayList<>();
+            for (String t : rawTags) {
+                if (!"journal".equals(t)) tags.add(t);
+            }
+            entries.add(new JournalEntry(doc, date, title, mood, tags));
         }
 
         // Newest day first; stable on title for same-day (should not happen in v1).

@@ -78,11 +78,10 @@ public class KanbanApplication implements VanceApplication {
      */
     @Override
     public String promptInject(PromptInjectContext ctx) {
-        return "You can move / create / update cards on this board via "
-                + "the `kanban_card_create` / `kanban_card_update` / "
-                + "`kanban_card_move` tools. Regenerate `_board.md` via "
-                + "`app_rebuild('" + ctx.folder() + "')` after structural "
-                + "edits.";
+        return "You can add cards with `kanban_card_create` and move them "
+                + "between columns with `kanban_move` on this board. Regenerate "
+                + "`_board.md` via `app_rebuild('" + ctx.folder() + "')` after "
+                + "structural edits.";
     }
 
     /**

@@ -104,7 +104,11 @@ public class GtdRenderer {
     }
 
     private static String yamlKey(String key) {
-        return key.matches("[A-Za-z0-9_@-]+") ? key : "\"" + key.replace("\"", "\\\"") + "\"";
+        // '@' must NOT be in the unquoted-safe set: GTD contexts use the
+        // @-convention (@calls, @office), and '@' is a YAML reserved indicator
+        // that cannot start a plain scalar — a bare `@calls:` key makes the
+        // generated _stats.yaml (kind:data) unparseable. Quote such keys.
+        return key.matches("[A-Za-z0-9_-]+") ? key : "\"" + key.replace("\"", "\\\"") + "\"";
     }
 
     private static String escape(String s) {

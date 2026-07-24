@@ -95,12 +95,18 @@ public class KitResolver {
         tmp.add(topLoadDir);
         KitRepoLoader.LoadedKit top = repoLoader.load(source, token, topLoadDir);
         markVisited(visited, source);
+        // Active DFS path for TRUE cycle detection (a key that is its own
+        // ancestor), kept distinct from `visited` which now only dedupes
+        // already-merged layers (first-seen-wins for a diamond). Seed it with
+        // the top so an inherit pointing back at the top is caught as a cycle.
+        Set<String> onPath = new HashSet<>();
+        onPath.add(visitKey(source));
 
         // 1. Recursively gather the merge order: outermost inherit first,
         //    top layer last. We build a stack-style list so DFS-order
         //    becomes the desired application order.
         List<KitRepoLoader.LoadedKit> mergeOrder = new ArrayList<>();
-        collectInherits(top, token, visited, resolvedNames, tmp, warnings, mergeOrder);
+        collectInherits(top, token, visited, onPath, resolvedNames, tmp, warnings, mergeOrder);
         mergeOrder.add(top); // top layer applied last → wins
 
         // 2. Build the merged tree. Each layer is copy-on-top: same
@@ -216,6 +222,7 @@ public class KitResolver {
             KitRepoLoader.LoadedKit layer,
             @Nullable String token,
             Set<String> visited,
+            Set<String> onPath,
             LinkedHashSet<String> resolvedNames,
             List<Path> tmp,
             List<String> warnings,
@@ -224,30 +231,44 @@ public class KitResolver {
         if (inherits == null || inherits.isEmpty()) return;
         for (KitInheritDto parent : inherits) {
             String key = visitKey(parent);
-            if (!visited.add(key)) {
+            // True cycle: this key is its own ancestor on the current DFS path.
+            if (onPath.contains(key)) {
                 throw new KitException("inherit cycle detected at " + key);
             }
-            Path dir = workspace.allocate("kit-inherit");
-            tmp.add(dir);
-            KitRepoLoader.LoadedKit loaded;
-            try {
-                loaded = repoLoader.load(parent, token, dir);
-            } catch (KitException e) {
-                warnings.add("failed to load inherit " + key + ": " + e.getMessage());
-                log.warn("inherit load failed: {}", e.getMessage());
+            // Diamond (two branches reach the same base): NOT a cycle — merge it
+            // once, first-seen-wins (kits.md §11), and skip the re-visit.
+            if (!visited.add(key)) {
+                log.debug("kit inherit '{}' already resolved on another branch "
+                        + "— skipping re-merge (diamond)", key);
                 continue;
             }
-            // Spec kits.md §3.2 — sealed kits refuse to be inherited
-            // from. Hard fail so the user gets the actual reason rather
-            // than a confusing missing-artefact message later.
-            if (loaded.descriptor().isSealed()) {
-                throw new KitException("kit '" + loaded.descriptor().getName()
-                        + "' is sealed and cannot be inherited from (referenced as "
-                        + key + ")");
+            onPath.add(key);
+            try {
+                Path dir = workspace.allocate("kit-inherit");
+                tmp.add(dir);
+                KitRepoLoader.LoadedKit loaded;
+                try {
+                    loaded = repoLoader.load(parent, token, dir);
+                } catch (KitException e) {
+                    warnings.add("failed to load inherit " + key + ": " + e.getMessage());
+                    log.warn("inherit load failed: {}", e.getMessage());
+                    continue;
+                }
+                // Spec kits.md §3.2 — sealed kits refuse to be inherited
+                // from. Hard fail so the user gets the actual reason rather
+                // than a confusing missing-artefact message later.
+                if (loaded.descriptor().isSealed()) {
+                    throw new KitException("kit '" + loaded.descriptor().getName()
+                            + "' is sealed and cannot be inherited from (referenced as "
+                            + key + ")");
+                }
+                collectInherits(loaded, token, visited, onPath, resolvedNames,
+                        tmp, warnings, mergeOrder);
+                mergeOrder.add(loaded);
+                resolvedNames.add(loaded.descriptor().getName());
+            } finally {
+                onPath.remove(key);
             }
-            collectInherits(loaded, token, visited, resolvedNames, tmp, warnings, mergeOrder);
-            mergeOrder.add(loaded);
-            resolvedNames.add(loaded.descriptor().getName());
         }
     }
 

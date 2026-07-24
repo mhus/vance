@@ -65,6 +65,13 @@ public class RedisLockManager implements LockManager {
             return lock(timeout, ensureInfo(null, ""), resource);
         }
         Parsed parsed = decode(current);
+        // A live lock may only be refreshed by its own token holder. Ignoring the
+        // presented tokenId would let any WRITE-holder refresh someone else's lock
+        // AND receive the owner's real token back (→ steal/unlock it), defeating
+        // the exclusive-lock contract. Mismatch → ALREADY_LOCKED, no token leak.
+        if (!parsed.tokenId().equals(tokenId)) {
+            return LockResult.failed(LockResult.FailureReason.ALREADY_LOCKED);
+        }
         redis.opsForValue().set(key, encode(parsed.tokenId(), parsed.user(), seconds), Duration.ofSeconds(seconds));
         return LockResult.success(new LockToken(parsed.tokenId(), ensureInfo(null, parsed.user()), timeout));
     }

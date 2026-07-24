@@ -1,35 +1,31 @@
 # 𝑣 vance
 
-**Collaborative Brain.** Vance is a system that takes assignments, executes them with the right tools and engines, and delivers **verifiable results** — for teams, not just individuals.
+**A personal project.** Vance is something I built to develop LLM agents — and to shape them until I could actually work productively with them. Over time everything I found interesting went in, plus a few things I think others might get something out of.
 
-Vance is more than a chatbot or coding assistant. It is a server on which assignments run for hours and days, every step stays visible, and every result is traceable back to its source.
+It's not a product. Nothing is for sale, there's no support contract and no roadmap promises. The code is open because it might be useful to someone, not because it's meant to become a business. Poke around, build on it, steal ideas — go ahead.
 
 > [!WARNING]
-> **Beta.** Vance is in active development. APIs, data model, configuration keys and engine behaviour can change between releases. Suitable for hands-on experimentation and early adopters; not yet hardened for unattended production use.
+> **Beta.** Vance is in active development. APIs, data model, configuration keys and engine behaviour can change between releases. Good for hands-on experimentation; not hardened for unattended production use.
 
 > 🇩🇪 German version: [`README-DE.md`](README-DE.md)
 
-## What Vance actually does
+## The idea
 
-- **Assignment in, result out.** An assignment is more than a question: it has context, tools, and a goal. Vance decides context-dependently which engine, which recipe and which tools handle the job — and works it through, not in the RAM of a session, but as a persistent Think-Process in MongoDB.
-- **Verifiable results, not plausible ones.** Every engine step, every tool call and every document write is visible and traceable. Documents are versioned (`document_archives`), tool calls carry source blocks, inbox items hold replies and delegations. Result = output + traceable path to it.
-- **The right engine for the job.** Engines are Java algorithms with a lifecycle — code drives the flow, not the LLM. `vogon` runs strict phase pipelines with gates, `marvin` grows dynamic task trees, `lunkwill` runs as a focused worker with defined stop paths, `trillian` coordinates agentic user loops cross-project, `arthur`/`eddie` hold the user session, `slartibartfast`/`hactar` generate and execute scripts. Which engine? The recipe decides.
-- **Recipes instead of code changes.** Recipe = YAML configuration: engine + default params + prompt prefix + tool adjustments. Few engines (structural algorithms), many recipes (named configuration bundles). To add a new type of assignment, you write a recipe — no Java.
-- **Project Kits & Cascade.** Recipes, prompts, tools, settings flow through a cascade: bundled defaults → tenant → project. Project Kits are Git bundles that make a project productive instantly (`kernel-security`, `python-data-science`, your own). Teams maintain their kits centrally, projects pull in what they need.
-- **Scopes from day one.** Tenant → project group → project → session → think-process. Memory cascades downward and is isolated laterally. Permissions, quotas and settings hang off the scope — the foundation for multi-user operation.
-- **Live working environment with documents and notes.** Cortex unites chat, document and execute in one surface. Documents come in many kinds (Markdown, mindmap, sheet, kanban, slides, graph, diagram, checklist, …) and are shared live — presence, 3-way merge, versioning included. Notes attached to a document are part of the assignment, not external bookkeeping.
-- **Several clients, one Brain.** CLI (`vance-foot`), Web UI (`vance-face`), Mobile (`vance-facelift` — Capacitor wrapper around the deployed Web UI, one native WKWebView per account for full cookie isolation). The Brain is the single source of truth; clients are different entry points — not views on the same thing.
+Vance is a server (the "Brain") on which agents work assignments over hours and days — and which you can shape almost entirely from within itself, because configuration, behaviour and knowledge all live as documents in the database.
 
-## For teams, not just individuals
+## What makes it tick
 
-Vance is designed as a multi-user system: tenants, project sharing, service accounts, quotas and permissions live in the data model. That already covers today:
-
-- **Shared projects** with centrally maintained kits, recipes and prompt manuals
-- **Service accounts** (`_trillian-0…`, `_daemon-…`) for headless worker loops that run on someone's behalf
-- **Inbox system** with delegation, tags, criticality and reply lifecycle for asynchronous coordination
-- **Live-WS channels** (`session`, `documents`) with presence and cross-pod routing via Redis Pub/Sub
-
-The full multi-user UI layer (team management, role UI, shared sessions) is in progress — the foundation is in place.
+- **Everything is a document.** Templates, recipes, prompts, schedulers, hooks, settings, manuals — all stored as documents in MongoDB. A new recipe is a new document, a new automation a new hook document. The system configures itself out of its own data — and agents can do the same.
+- **Agents drive (almost) everything.** Nearly every capability is exposed as a tool: write documents, create recipes, spawn processes, set triggers, research, delegate to other agents. You give the direction and step in when you want — the flow stays visible and steerable.
+- **Projects draw the boundaries.** A project is a bounded area with its own documents, configuration and agents, so different setups live side by side without interfering. Memory, permissions and settings hang off a scope cascade (tenant → project → session → think-process) and inherit downward.
+- **A place to actually work.** Cortex unites chat, document and execute on one surface. Documents come in many kinds (Markdown, workpage, mindmap, sheet, kanban, slides, graph, diagram, canvas, checklist, …), and apps bundle them into something whole (workbook, wiki, GTD, kanban, journal, calendar, canvasbook). All shared live — presence, 3-way merge, versioning included.
+- **Collaborative.** Several people work in the same project at once, including live-edited documents. Agents are participants alongside humans — same session, same documents.
+- **Assignment in, traceable result out.** Work runs as a persistent think-process in MongoDB, not in session RAM. Documents are versioned (`document_archives`), tool calls carry source blocks, inbox items hold replies and delegations. Result = output + the path that led to it.
+- **The right engine for the job.** Engines are Java algorithms with a lifecycle — code drives the flow, not the LLM. `vogon` runs strict phase pipelines with gates, `marvin` grows dynamic task trees, `frankie` runs as a focused worker with defined stop paths, `trillian` coordinates agentic user loops cross-project, `arthur`/`eddie` hold the user session, `slartibartfast`/`hactar` generate and run scripts. Which engine? The recipe decides.
+- **Recipes instead of code changes.** A recipe is YAML config: engine + default params + prompt prefix + tool adjustments. Few engines (structural algorithms), many recipes (named configuration bundles). To add a new kind of assignment, you write a recipe — no Java.
+- **Project Kits & cascade.** Recipes, prompts, tools and settings flow through a cascade: bundled defaults → tenant → project. Project Kits are Git bundles that make a project productive instantly; teams maintain their kits centrally, projects pull in what they need.
+- **Several clients, one Brain.** CLI (`vance-foot`) — work right at the terminal, but always inside a project with everything stored in it. Web UI (`vance-face`). Mobile (`vance-facelift` — a Capacitor wrapper around the deployed Web UI, one isolated WebView per account). The Brain is the single source of truth; clients are different entry points, not views on the same thing.
+- **Connectors to the outside.** Mail, Jira, Google services, MCP tools. Inputs come in; finished artefacts that live on elsewhere go out.
 
 ## What Vance is not
 
@@ -40,7 +36,7 @@ Not a team-chat replacement (Slack/Teams), not a project-management tool (Jira/L
 | Term | Meaning |
 |---|---|
 | **Assignment** | What the user (or another process) wants done. Executed by recipe + engine. |
-| **Engine** | Java algorithm with a lifecycle (details below in "Engines at a glance"). |
+| **Engine** | Java algorithm with a lifecycle (see "Engines at a glance" below). |
 | **Recipe** | YAML config: engine + default params + prompt prefix + tool adjustments. Many of them, no code change required. |
 | **Think Process** | Running assignment instance, persisted in Mongo. Status, task tree, inbox, history. |
 | **Project Kit** | Git repo with skills/recipes/tools/settings, imported into a project. |
@@ -57,7 +53,7 @@ Not a team-chat replacement (Slack/Teams), not a project-management tool (Jira/L
 | `vogon` | Strategy Runner | Deterministic phase pipeline with gates, checkpoints, loops, forks and escalation. For structured workflows with hard handovers. |
 | `zaphod` | Multi-Head | Horizontal multi-perspective: several heads work the same question in parallel, Zaphod synthesises. For view comparison and cross-validation. |
 | `jeltz` | Schema Loop | Single-shot with JSON-schema validation: question in, schema-validated JSON out. Retries on schema violations, structured error after that. |
-| `lunkwill` | Focused Worker | Endless-by-design worker with four defined stop paths (natural / `_terminate` / external / safety-net). First production recipe: `coding`. |
+| `frankie` | Focused Worker | Endless-by-design worker with four defined stop paths (natural / `_terminate` / external / safety-net). First production recipe: `coding`. |
 | `trillian` | Agentic Loop | Agentic user loop with a service account: two sessions (human control + headless `_trillian-…` user loop), cross-project spawn capable. For autonomous, persistent worker loops. |
 | `slartibartfast` | Authoring | Meta-engine that generates or updates recipes (YAML) and scripts (SCRIPT_JS). Typically hands off to Hactar for execution. |
 | `hactar` | Script Execution | Pure script executor: loads SCRIPT_JS, validates minimally, runs. Authoring lives in Slartibartfast; Hactar is just runtime. |
@@ -65,7 +61,7 @@ Not a team-chat replacement (Slack/Teams), not a project-management tool (Jira/L
 | `magrathea` | Workflow Runtime | Not a think engine — its own lifecycle class: runs YAML workflows (phases, steps, sub-process spawns). Composable with engine calls. |
 | `fook` | Triage Service | Bug and feature triage: reporters (LLM, web menu, Foot `/support`) submit free-text, Fook decides via a LightLLM call between `new_ticket`/`merge_into`/`discard` and stores tickets in the `_vance` tenant. Optional upstream transfer to GitHub Issues. |
 | `fenchurch` | Image Service | Vance's only image generator: service + tool set (`image_generate`, `image_style_*`), synchronous provider call, concatenative style cascade across tenant → user → project → session. Aliases `default:image` / `default:image-high`. |
-| `zarniwoop` | Research Service | Unified search/research layer with pluggable protocols (web, Wikipedia, OpenAlex, arXiv, OpenLibrary, …). One endpoint = one instance with its own quotas and scopes. In migration: existing search tools still run directly on Serper. |
+| `zarniwoop` | Research Service | Unified search/research layer with pluggable protocols (web, Wikipedia, OpenAlex, arXiv, OpenLibrary, …). One endpoint = one instance with its own quotas and scopes. |
 | `ursa` | Trigger System | Not an engine but the trigger subsystem with three paths: **Scheduler** (time-based), **Ursahooks** (internal lifecycle events) and **Events** (external HTTP calls). All three fire the same `TriggerAction` hierarchy (recipe / script / workflow). |
 
 ## Tech stack
@@ -74,7 +70,7 @@ Java 25 + Spring Boot 4 + MongoDB + langchain4j/langgraph4j (Brain) · TypeScrip
 
 ## Status
 
-In active development. Brain, CLI and Web UI run locally; twelve think-engines are implemented (`arthur`, `eddie`, `ford`, `marvin`, `vogon`, `zaphod`, `jeltz`, `lunkwill`, `trillian`, `slartibartfast`, `hactar`, `agrajag`) plus the workflow runtime `magrathea` and the services `fook`, `fenchurch`, `zarniwoop`. Tenants, service accounts and permissions are active in the data model; the team UI is landing incrementally.
+In active development. Brain, CLI and Web UI run locally; twelve think-engines are implemented (`arthur`, `eddie`, `ford`, `marvin`, `vogon`, `zaphod`, `jeltz`, `frankie`, `trillian`, `slartibartfast`, `hactar`, `agrajag`) plus the workflow runtime `magrathea` and the services `fook`, `fenchurch`, `zarniwoop`. Tenants, service accounts and permissions are active in the data model; collaborative multi-user features are landing incrementally.
 
 ## Documentation
 
@@ -82,17 +78,8 @@ Full docs at <https://vance.mhus.de>. To run Vance locally with Docker, see <htt
 
 ## License
 
-**Business Source License 1.1** — see [`LICENSE.txt`](LICENSE.txt). Source-available, not classic open source. On **2029-06-23** (three years after initial release) the license automatically converts to **AGPLv3**.
+**Business Source License 1.1** — see [`LICENSE.txt`](LICENSE.txt). Source-available, not classic open source. On **2029-06-23** (three years after initial release) it converts automatically to **AGPLv3**.
 
-**Permitted under the Additional Use Grant** (including production):
+Permitted under the Additional Use Grant (including production): personal use, education, research, internal business use, consulting, and customer-specific deployments (one instance per customer). Not permitted: offering Vance as a hosted/managed/SaaS service to third parties where Vance forms a substantial part of the service. A commercial license for uses outside the grant is available per LICENSE.txt.
 
-- Personal use, educational use, research
-- Internal business purposes (your own company, your own employees)
-- Consulting & professional services
-- Customer-specific deployments (one instance per customer)
-
-**Not permitted**: offering Vance as a hosted, managed or SaaS service to third parties when Vance forms a substantial part of the service.
-
-**Dual commercial license**: anyone working outside this grant (e.g. multi-tenant Vance hosting) can purchase a commercial license from the licensor. Contact: see LICENSE.txt.
-
-**Enterprise features** (SSO, audit, team management) live separately under their own commercial license: [`vance-ee`](https://github.com/mhus/vance-ee).
+Enterprise-oriented features (SSO, audit, team management) live separately in [`vance-ee`](https://github.com/mhus/vance-ee) under their own license.

@@ -8,9 +8,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Service;
 
 /**
@@ -27,6 +31,7 @@ import org.springframework.stereotype.Service;
 public class SettingService {
 
     private final SettingRepository repository;
+    private final MongoTemplate mongoTemplate;
     private final AesEncryptionService encryption;
     private final AuditService auditService;
 
@@ -78,15 +83,15 @@ public class SettingService {
     public long deleteByPrefix(
             String tenantId, String referenceType, String referenceId, String keyPrefix) {
         if (keyPrefix == null || keyPrefix.isEmpty()) return 0;
-        long count = 0;
-        for (SettingDocument doc : findAll(tenantId, referenceType, referenceId)) {
-            String key = doc.getKey();
-            if (key == null || !key.startsWith(keyPrefix)) continue;
-            repository.deleteByTenantIdAndReferenceTypeAndReferenceIdAndKey(
-                    tenantId, referenceType, referenceId, key);
-            count++;
-        }
-        return count;
+        // Single atomic prefix-remove instead of scan-then-N-deletes: no
+        // window for a concurrent write to slip a matching key past the delete,
+        // and one round-trip instead of O(n). Pattern.quote keeps prefix dots
+        // (e.g. "oauth.slack.") literal rather than regex wildcards.
+        Query query = new Query(Criteria.where("tenantId").is(tenantId)
+                .and("referenceType").is(referenceType)
+                .and("referenceId").is(referenceId)
+                .and("key").regex("^" + Pattern.quote(keyPrefix)));
+        return mongoTemplate.remove(query, SettingDocument.class).getDeletedCount();
     }
 
     // ──────────────────── Set / upsert ────────────────────

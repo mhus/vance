@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.settings.SettingType;
@@ -33,6 +34,7 @@ class SettingServiceTest {
     private static final String TENANT_PROJ = HomeBootstrapService.TENANT_PROJECT_NAME;
 
     private SettingRepository repository;
+    private org.springframework.data.mongodb.core.MongoTemplate mongoTemplate;
     private AesEncryptionService encryption;
     private AuditService audit;
     private SettingService service;
@@ -40,9 +42,10 @@ class SettingServiceTest {
     @BeforeEach
     void setUp() {
         repository = mock(SettingRepository.class);
+        mongoTemplate = mock(org.springframework.data.mongodb.core.MongoTemplate.class);
         audit = mock(AuditService.class);
         encryption = new AesEncryptionService("unit-test-master-key");
-        service = new SettingService(repository, encryption, audit);
+        service = new SettingService(repository, mongoTemplate, encryption, audit);
         when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
     }
 
@@ -148,6 +151,42 @@ class SettingServiceTest {
 
         assertThat(service.getDecryptedPasswordCascade(TENANT, "proj-1", "tp-1", "api.key"))
                 .isEqualTo("outer");
+    }
+
+    // ──────────────── atomic prefix delete ────────────────
+
+    @Test
+    void deleteByPrefix_issuesSingleAtomicRemove_withAnchoredLiteralPrefix() {
+        when(mongoTemplate.remove(any(org.springframework.data.mongodb.core.query.Query.class),
+                org.mockito.ArgumentMatchers.eq(SettingDocument.class)))
+                .thenReturn(com.mongodb.client.result.DeleteResult.acknowledged(3));
+
+        long deleted = service.deleteByPrefix(TENANT, PROJECT, "p-1", "oauth.slack.");
+
+        assertThat(deleted).isEqualTo(3);
+        org.mockito.ArgumentCaptor<org.springframework.data.mongodb.core.query.Query> captor =
+                org.mockito.ArgumentCaptor.forClass(
+                        org.springframework.data.mongodb.core.query.Query.class);
+        verify(mongoTemplate).remove(captor.capture(),
+                org.mockito.ArgumentMatchers.eq(SettingDocument.class));
+        org.bson.Document q = captor.getValue().getQueryObject();
+        assertThat(q).containsEntry("tenantId", TENANT)
+                .containsEntry("referenceType", PROJECT)
+                .containsEntry("referenceId", "p-1")
+                .containsKey("key");
+        // The dot in the prefix must be quoted (literal), not a regex wildcard.
+        assertThat(q.toString()).contains("\\Qoauth.slack.\\E");
+        // Exactly one round-trip — no per-key scan-then-delete.
+        verify(repository, org.mockito.Mockito.never())
+                .deleteByTenantIdAndReferenceTypeAndReferenceIdAndKey(any(), any(), any(), any());
+    }
+
+    @Test
+    void deleteByPrefix_blankPrefix_isNoOp() {
+        assertThat(service.deleteByPrefix(TENANT, PROJECT, "p-1", "")).isZero();
+        verify(mongoTemplate, org.mockito.Mockito.never()).remove(
+                any(org.springframework.data.mongodb.core.query.Query.class),
+                org.mockito.ArgumentMatchers.eq(SettingDocument.class));
     }
 
     // ──────────────── bulk read skips secrets ────────────────

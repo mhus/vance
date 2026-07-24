@@ -15,8 +15,8 @@ import {
   postComposeRun,
   pollComposeRun,
   cancelComposeRun,
-  useDocumentPrefixReaction,
 } from '@vance/shared';
+import { useDocumentPrefixReaction } from '@vance/components';
 import { WorkPageEditor, type ComposeRunResult } from '@vance/block-editor';
 import {
   scanGtd,

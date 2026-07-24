@@ -29,7 +29,9 @@
       "import": "./dist/storage/keys.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -b",
     "clean": "rm -rf dist *.tsbuildinfo"
@@ -41,10 +43,9 @@
   "devDependencies": {
     "@types/js-yaml": "^4.0.9"
   },
-  "peerDependencies": {
-    "vue": "^3.5.0"
-  },
   "peerDependenciesMeta": {
-    "vue": { "optional": true }
+    "vue": {
+      "optional": true
+    }
   }
 }

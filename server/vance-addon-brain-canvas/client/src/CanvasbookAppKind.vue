@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { VAlert, VButton } from '@vance/components';
-import { useDocumentPrefixReaction } from '@vance/shared';
+import { VAlert, VButton, useDocumentPrefixReaction } from '@vance/components';
 import CanvasEditor from './CanvasEditor.vue';
 import InputDialog from './InputDialog.vue';
 import { createCanvasPage, getGraph, putGraph, rebuildCanvasbook, scanCanvasbook } from './api';

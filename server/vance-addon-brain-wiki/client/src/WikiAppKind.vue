@@ -18,8 +18,8 @@ import {
   postComposeRun,
   pollComposeRun,
   cancelComposeRun,
-  useDocumentPrefixReaction,
 } from '@vance/shared';
+import { useDocumentPrefixReaction } from '@vance/components';
 import {
   WorkPageEditor,
   parseDocument,

@@ -9,6 +9,10 @@ export {
   followUpExtension,
   type FollowUpExtensionOptions,
 } from './followUpExtension';
+// Live-WS Vue composables. Vue-bound, so they live here rather than in the
+// platform-neutral @vance/shared (which must stay Vue-free for RN/Electron).
+export * from './useDocumentPrefixReaction';
+export * from './usePointers';
 export { default as VAlert } from './VAlert.vue';
 export { default as VBackButton } from './VBackButton.vue';
 export { default as VButton } from './VButton.vue';

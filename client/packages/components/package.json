@@ -13,7 +13,10 @@
       "import": "./src/index.ts"
     }
   },
-  "files": ["src", "dist"],
+  "files": [
+    "src",
+    "dist"
+  ],
   "scripts": {
     "build": "vue-tsc -b",
     "clean": "rm -rf dist *.tsbuildinfo"
@@ -34,7 +37,8 @@
     "@codemirror/legacy-modes": "^6.5.2",
     "@codemirror/state": "^6.6.0",
     "@codemirror/view": "^6.41.1",
-    "@vance/generated": "workspace:*"
+    "@vance/generated": "workspace:*",
+    "@vance/shared": "workspace:*"
   },
   "peerDependencies": {
     "vue": "^3.5.0"

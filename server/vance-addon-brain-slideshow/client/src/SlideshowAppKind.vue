@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { useDocumentPrefixReaction } from '@vance/shared';
+import { useDocumentPrefixReaction } from '@vance/components';
 import SlideshowApp from './SlideshowApp.vue';
 
 // Wrapper that adapts the kind-registry mount contract (single `document`

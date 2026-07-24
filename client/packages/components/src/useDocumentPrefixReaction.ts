@@ -1,6 +1,6 @@
 import { onBeforeUnmount, watch, type Ref } from 'vue';
 import type { DocumentChangedNotification } from '@vance/generated';
-import { getVanceWs } from './bridge';
+import { getVanceWs } from '@vance/shared';
 
 /**
  * Live-watch a folder prefix. Sends {@code documents.subscribePrefix}

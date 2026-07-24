@@ -1,6 +1,6 @@
 import { onBeforeUnmount, reactive, watch, type Ref } from 'vue';
 import type { PointerNotification } from '@vance/generated';
-import { getVanceWs } from './bridge';
+import { getVanceWs } from '@vance/shared';
 
 /**
  * A remote participant's last-known pointer on the watched path. Held in

@@ -8,9 +8,8 @@ import {
   postComposeRun,
   pollComposeRun,
   cancelComposeRun,
-  useDocumentPrefixReaction,
-  usePointers,
 } from '@vance/shared';
+import { useDocumentPrefixReaction, usePointers } from '@vance/components';
 import { getUsername } from '@vance/shared/auth';
 import { WorkPageEditor, parseDocument, type ComposeRunResult } from '@vance/block-editor';
 import {

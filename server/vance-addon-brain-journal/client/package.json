@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@vance/block-editor": "workspace:*",
+    "@vance/components": "workspace:*",
     "@vance/kind-registry": "workspace:*",
     "@vance/shared": "workspace:*"
   },

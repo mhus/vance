@@ -15,8 +15,8 @@ import type { Connection, Edge, EdgeChange, GraphNode, Node, NodeChange } from '
 import '@vue-flow/core/dist/style.css';
 import '@vue-flow/core/dist/theme-default.css';
 import { getUsername } from '@vance/shared/auth';
-import { usePointers, brainFetch } from '@vance/shared';
-import { VButton } from '@vance/components';
+import { brainFetch } from '@vance/shared';
+import { VButton, usePointers } from '@vance/components';
 import CanvasNodeCard from './CanvasNodeCard.vue';
 import InputDialog from './InputDialog.vue';
 import DocPicker from './DocPicker.vue';

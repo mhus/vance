@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { useDocumentPrefixReaction } from '@vance/shared';
+import { useDocumentPrefixReaction } from '@vance/components';
 import DesktopBoard from './DesktopBoard.vue';
 
 // Adapts the kind-registry mount contract (single `document` prop

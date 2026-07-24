@@ -11,6 +11,7 @@ import de.mhus.vance.api.session.SuspendPolicy;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.EnumSet;
@@ -24,6 +25,8 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.TextCriteria;
+import org.springframework.data.mongodb.core.query.TextQuery;
 import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Service;
 
@@ -195,6 +198,24 @@ public class SessionService {
     /** Admin-style cross-user listing — used by the insights inspector. */
     public List<SessionDocument> listForTenant(String tenantId) {
         return repository.findByTenantId(tenantId);
+    }
+
+    /**
+     * Owner-side text search over session metadata (title + tags text
+     * index), restricted to a caller-provided set of {@code sessionIds}.
+     * SessionSearchService orchestrates through this rather than querying
+     * the {@code SessionDocument} collection directly (Datenhoheit).
+     */
+    public List<SessionDocument> searchMetadataByText(
+            String tenantId, Collection<String> sessionIds, String query, int limit) {
+        if (sessionIds.isEmpty()) return List.of();
+        TextCriteria tc = TextCriteria.forDefaultLanguage().matching(query);
+        Query tq = TextQuery.queryText(tc)
+                .sortByScore()
+                .addCriteria(Criteria.where("tenantId").is(tenantId)
+                        .and(F_SESSION_ID).in(sessionIds))
+                .limit(limit);
+        return mongoTemplate.find(tq, SessionDocument.class);
     }
 
     /** Admin-style cross-user listing scoped to a project. */

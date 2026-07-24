@@ -533,6 +533,39 @@ public class ChatMessageService {
         return out;
     }
 
+    /**
+     * Owner-side content search over {@code ChatMessageDocument.content}
+     * within a caller-provided set of {@code sessionIds}. Uses the Mongo
+     * text index first, falling back to a case-insensitive literal-regex
+     * scan when the stemmer/text-index yields nothing (short queries,
+     * stemmer mismatches). Archived-into-memory messages are excluded.
+     * SessionSearchService orchestrates through this rather than querying
+     * the chat collection directly (Datenhoheit).
+     */
+    public List<ChatMessageDocument> searchContentByText(
+            String tenantId, Collection<String> sessionIds, String query, int limit) {
+        if (sessionIds.isEmpty()) return List.of();
+        TextCriteria tc = TextCriteria.forDefaultLanguage().matching(query);
+        Query tq = TextQuery.queryText(tc)
+                .sortByScore()
+                .addCriteria(Criteria.where("tenantId").is(tenantId)
+                        .and("sessionId").in(sessionIds)
+                        .and("archivedInMemoryId").isNull())
+                .limit(limit);
+        List<ChatMessageDocument> messages = mongoTemplate.find(tq, ChatMessageDocument.class);
+        if (messages.isEmpty()) {
+            Query fallback = new Query(Criteria.where("tenantId").is(tenantId)
+                    .and("sessionId").in(sessionIds)
+                    .and("archivedInMemoryId").isNull()
+                    .and("content").regex(
+                            java.util.regex.Pattern.quote(query.trim()), "i"))
+                    .with(Sort.by(Sort.Direction.DESC, "createdAt"))
+                    .limit(limit);
+            messages = mongoTemplate.find(fallback, ChatMessageDocument.class);
+        }
+        return messages;
+    }
+
     /** Drops all messages of a think-process (process deletion). */
     public long deleteByProcess(String tenantId, String sessionId, String thinkProcessId) {
         long n = repository.deleteByTenantIdAndSessionIdAndThinkProcessId(

@@ -31,8 +31,9 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * REST list endpoint for the Web/Mobile session pickers. Returns the
- * caller's own sessions only — admin cross-user listing lives on the
- * insights inspector path.
+ * caller's own sessions plus tenant-shared ({@code allowMultipleClients})
+ * sessions — see {@code SessionService.listWithFilters}. Admin cross-user
+ * listing lives on the insights inspector path.
  *
  * <p>Default filter excludes {@code CLOSED} (terminal, eligible for
  * hard-delete) and {@code ARCHIVED} (long-term storage, hidden from

@@ -2,12 +2,13 @@ package de.mhus.vance.brain.session;
 
 import de.mhus.vance.api.session.SessionSearchHitDto;
 import de.mhus.vance.api.session.SessionSearchScope;
-import de.mhus.vance.api.session.SessionSummaryRichDto;
+import de.mhus.vance.api.session.SessionStatus;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
+import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import java.util.ArrayList;
-import java.util.Collection;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -16,12 +17,6 @@ import java.util.Map;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.Sort;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.core.query.TextCriteria;
-import org.springframework.data.mongodb.core.query.TextQuery;
 import org.springframework.stereotype.Service;
 
 /**
@@ -51,7 +46,12 @@ public class SessionSearchService {
     private static final int STAGE_LIMIT_DEFAULT = 50;
 
     private final SessionService sessionService;
-    private final MongoTemplate mongoTemplate;
+    private final ChatMessageService chatMessageService;
+
+    /** Active (non-terminal) statuses that make up a user's search universe. */
+    private static final EnumSet<SessionStatus> ACTIVE_STATUSES = EnumSet.of(
+            SessionStatus.INIT, SessionStatus.RUNNING,
+            SessionStatus.IDLE, SessionStatus.SUSPENDED);
 
     public List<SessionSearchHitDto> search(
             String tenantId,
@@ -65,21 +65,12 @@ public class SessionSearchService {
         SessionSearchScope effective = scope == null ? SessionSearchScope.BOTH : scope;
 
         // Resolve the user's session universe once — both stages need it.
+        EnumSet<SessionStatus> statuses = EnumSet.copyOf(ACTIVE_STATUSES);
+        if (includeArchived) statuses.add(SessionStatus.ARCHIVED);
         List<SessionDocument> universe = sessionService.listWithFilters(
                 tenantId, userId,
                 /*projectId*/ null,
-                includeArchived
-                        ? java.util.EnumSet.of(
-                                de.mhus.vance.api.session.SessionStatus.INIT,
-                                de.mhus.vance.api.session.SessionStatus.RUNNING,
-                                de.mhus.vance.api.session.SessionStatus.IDLE,
-                                de.mhus.vance.api.session.SessionStatus.SUSPENDED,
-                                de.mhus.vance.api.session.SessionStatus.ARCHIVED)
-                        : java.util.EnumSet.of(
-                                de.mhus.vance.api.session.SessionStatus.INIT,
-                                de.mhus.vance.api.session.SessionStatus.RUNNING,
-                                de.mhus.vance.api.session.SessionStatus.IDLE,
-                                de.mhus.vance.api.session.SessionStatus.SUSPENDED),
+                statuses,
                 /*tag*/ null);
         if (universe.isEmpty()) return List.of();
         Map<String, SessionDocument> byId = new HashMap<>();
@@ -114,13 +105,8 @@ public class SessionSearchService {
     private List<SessionSearchHitDto> searchMetadata(
             String tenantId, String query, Set<String> sessionIds, int cap) {
         if (sessionIds.isEmpty()) return List.of();
-        TextCriteria tc = TextCriteria.forDefaultLanguage().matching(query);
-        Query tq = TextQuery.queryText(tc)
-                .sortByScore()
-                .addCriteria(Criteria.where("tenantId").is(tenantId)
-                        .and("sessionId").in(sessionIds))
-                .limit(cap);
-        List<SessionDocument> sessions = mongoTemplate.find(tq, SessionDocument.class);
+        List<SessionDocument> sessions =
+                sessionService.searchMetadataByText(tenantId, sessionIds, query, cap);
         List<SessionSearchHitDto> out = new ArrayList<>(sessions.size());
         for (SessionDocument s : sessions) {
             out.add(SessionSearchHitDto.builder()
@@ -137,29 +123,8 @@ public class SessionSearchService {
             Map<String, SessionDocument> byId,
             int cap) {
         if (byId.isEmpty()) return List.of();
-        TextCriteria tc = TextCriteria.forDefaultLanguage().matching(query);
-        Query tq = TextQuery.queryText(tc)
-                .sortByScore()
-                .addCriteria(Criteria.where("tenantId").is(tenantId)
-                        .and("sessionId").in(byId.keySet())
-                        .and("archivedInMemoryId").isNull())
-                .limit(cap);
-        // Score is exposed via projection; we don't actually need the
-        // number — sort order is enough.
-        List<ChatMessageDocument> messages = mongoTemplate.find(tq, ChatMessageDocument.class);
-        if (messages.isEmpty()) {
-            // Fall back to a plain regex (case-insensitive) when the
-            // text-index returns nothing — useful for short queries
-            // (≤ 2 chars) or stemmer mismatches.
-            Query fallback = new Query(Criteria.where("tenantId").is(tenantId)
-                    .and("sessionId").in(byId.keySet())
-                    .and("archivedInMemoryId").isNull()
-                    .and("content").regex(java.util.regex.Pattern.quote(query.trim()),
-                            "i"))
-                    .with(Sort.by(Sort.Direction.DESC, "createdAt"))
-                    .limit(cap);
-            messages = mongoTemplate.find(fallback, ChatMessageDocument.class);
-        }
+        List<ChatMessageDocument> messages =
+                chatMessageService.searchContentByText(tenantId, byId.keySet(), query, cap);
         // Deduplicate by sessionId — one chat-hit per session is enough
         // for the list view; the user opens the session to see the rest.
         Set<String> seen = new LinkedHashSet<>();

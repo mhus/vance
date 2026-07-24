@@ -106,14 +106,27 @@ public class CrossDocMoveTool implements Tool {
         try {
             trashed = support.documentService().trash(fresh.getId(), support.writeActor(ctx, fresh));
         } catch (RuntimeException e) {
-            // Copy succeeded but trash failed — the source is still
-            // in place, the target also has the new copy. Tell the
-            // user explicitly so they can manually clean up.
-            throw new ToolException("Cross-project move partially succeeded: copy created at "
-                    + copy.getProjectId() + ":" + copy.getPath() + " (id=" + copy.getId()
-                    + "), but trashing the source failed (" + e.getMessage()
-                    + "). Source still alive at " + fresh.getProjectId() + ":" + fresh.getPath()
-                    + ". Use doc_delete on the source to finish manually.", e);
+            // Copy committed but trashing the source failed → the document would
+            // otherwise live in BOTH projects. Compensating rollback: delete the
+            // just-created copy so the still-intact source stays the single
+            // authoritative version. A clean "move aborted, nothing moved" beats
+            // a silent double-existence (violates the Atomare-Operationen rule).
+            try {
+                support.documentService().delete(copy.getId(), support.writeActor(ctx, newPath));
+            } catch (RuntimeException rollbackEx) {
+                // Rollback itself failed — now the duplicate is real; surface both
+                // so the user can finish manually.
+                throw new ToolException("Cross-project move failed and rollback failed: the copy at "
+                        + copy.getProjectId() + ":" + copy.getPath() + " (id=" + copy.getId()
+                        + ") could not be removed (" + rollbackEx.getMessage()
+                        + ") after the source-trash error (" + e.getMessage()
+                        + "). Source still alive at " + fresh.getProjectId() + ":" + fresh.getPath()
+                        + ". Use doc_delete on the copy to finish manually.", e);
+            }
+            throw new ToolException("Cross-project move aborted: trashing the source failed ("
+                    + e.getMessage() + "); the created copy was rolled back, so the document "
+                    + "remains only at its source " + fresh.getProjectId() + ":" + fresh.getPath()
+                    + ". Retry the move.", e);
         }
 
         Map<String, Object> out = new LinkedHashMap<>();

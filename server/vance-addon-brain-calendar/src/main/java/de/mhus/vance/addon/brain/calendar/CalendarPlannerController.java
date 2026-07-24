@@ -151,10 +151,15 @@ public class CalendarPlannerController {
             return eventToView(merged, targetLane, loc.sourcePath());
         }
 
-        // Cross-lane move: remove from source, add to target.
-        removeEventFromLane(tenant, projectId, loc.sourcePath(), loc.event().id(), httpRequest);
+        // Cross-lane move: add to target FIRST, then remove from source. The two
+        // writes are independent (non-transactional) DocumentService calls, so if
+        // the target write throws (e.g. target lane work.yaml USER/KIT-locked) the
+        // source removal must not have run — otherwise the event is lost from
+        // every lane. Add-then-remove degrades to a recoverable duplicate on
+        // partial failure instead of data loss.
         DocumentDocument targetDoc = appendEventToLane(
                 tenant, projectId, targetLaneFile, merged, httpRequest);
+        removeEventFromLane(tenant, projectId, loc.sourcePath(), loc.event().id(), httpRequest);
 
         log.info("CalendarPlannerController.updateEvent tenant='{}' folder='{}' "
                         + "{}→{} id='{}'",

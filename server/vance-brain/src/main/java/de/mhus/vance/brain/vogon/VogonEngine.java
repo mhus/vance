@@ -965,12 +965,12 @@ public class VogonEngine implements ThinkEngine {
     // ──────────────────── Checkpoints ────────────────────
 
     private boolean checkpointAnswered(StrategyState state, CheckpointSpec spec) {
-        // The flag-key is the storeAs (if set); otherwise the
-        // generic <phase>_checkpointAnswered marker. Either way,
-        // presence of the key means we've routed an answer already.
-        if (spec.getStoreAs() != null) {
-            return state.getFlags().containsKey(spec.getStoreAs());
-        }
+        // Always key the answered-check on the dedicated per-phase marker, never
+        // on storeAs. Keying on storeAs broke loops: invalidateLoopBody clears
+        // the marker per iteration but the stored VALUE persists, so a checkpoint
+        // in a loop looked "already answered" from iteration 2 on (user never
+        // re-prompted); two phases sharing a storeAs also cross-marked each other.
+        // The marker is set alongside the answer (see answer-routing handler).
         return state.getFlags().containsKey(
                 phaseFlag(currentLeafPhaseName(state), "checkpointAnswered"));
     }

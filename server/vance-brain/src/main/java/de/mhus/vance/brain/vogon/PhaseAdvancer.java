@@ -272,6 +272,12 @@ final class PhaseAdvancer {
             flags.remove(sub.getName() + "_completed");
             flags.remove(sub.getName() + "_failed");
             flags.remove(sub.getName() + "_checkpointAnswered");
+            // Also clear the checkpoint's stored value so a loop-body checkpoint
+            // is genuinely re-collected each iteration (not left holding the
+            // prior iteration's answer).
+            if (sub.getCheckpoint() != null && sub.getCheckpoint().getStoreAs() != null) {
+                flags.remove(sub.getCheckpoint().getStoreAs());
+            }
         }
     }
 

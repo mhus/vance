@@ -1,0 +1,19 @@
+title:       { de: "Finanz-Baum",  en: "Finance tree" }
+description: { de: "Ein neues hierarchisches Finanzmodell (Einnahmen/Ausgaben) mit Start-Struktur. Knoten und Werte fügst du danach im Editor hinzu.",
+               en: "A new hierarchical finance model (income/expenses) with a starter structure. Add nodes and values afterwards in the editor." }
+icon: calculator
+tags: [finance]
+
+name:
+  mode: free
+  default: "finance-{{ date }}"
+
+fields:
+  - name: title
+    type: string
+    required: true
+    label: { de: "Titel",        en: "Title" }
+  - name: description
+    type: textarea
+    rows: 2
+    label: { de: "Beschreibung", en: "Description" }

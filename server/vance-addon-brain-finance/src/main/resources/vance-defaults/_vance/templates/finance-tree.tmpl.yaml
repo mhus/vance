@@ -1,0 +1,24 @@
+# vance finance-tree v1 · amounts are per record; a node's sign flips its whole subtree
+# agent: run manual_read('finance-tree') before interpreting · computed values under $computed
+$meta:
+  kind: finance-tree
+version: 1
+title: "{{ title }}"
+{% if description %}description: "{{ description }}"{% endif %}
+root:
+  name: projekt
+  title: "{{ title }}"
+  sign: 1
+  children:
+    - name: einnahmen
+      title: Einnahmen
+      icon: "💰"
+      sign: 1
+      values: []
+      children: []
+    - name: ausgaben
+      title: Ausgaben
+      icon: "🧾"
+      sign: -1
+      values: []
+      children: []

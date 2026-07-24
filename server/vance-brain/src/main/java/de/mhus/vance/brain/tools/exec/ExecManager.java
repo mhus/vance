@@ -19,6 +19,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.Comparator;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayDeque;
@@ -843,6 +844,12 @@ public class ExecManager {
                     // Brain-owned ExecutionRegistryEntry outlives the job and
                     // leaks for the pod's lifetime (code-review Phase 2).
                     registry.removeById(victim);
+                    // Reclaim the evicted job's on-disk log dir. Otherwise
+                    // <baseDir>/<scopeKey>/<jobId>/ accumulates unbounded for the
+                    // pod lifetime (nothing else deletes it — these dirs live
+                    // outside workspace RootDirs, so process/project teardown
+                    // never reaches them).
+                    deleteJobDirQuietly(scopeKey, victim);
                 }
             }
         }
@@ -851,6 +858,25 @@ public class ExecManager {
     private Path jobDir(String scopeKey, String jobId) {
         return Path.of(properties.getBaseDir()).toAbsolutePath().normalize()
                 .resolve(scopeKey).resolve(jobId);
+    }
+
+    /** Best-effort recursive delete of an evicted job's on-disk log directory. */
+    private void deleteJobDirQuietly(String scopeKey, String jobId) {
+        Path dir = jobDir(scopeKey, jobId);
+        try {
+            if (!Files.exists(dir)) return;
+            try (java.util.stream.Stream<Path> walk = Files.walk(dir)) {
+                walk.sorted(Comparator.reverseOrder()).forEach(p -> {
+                    try {
+                        Files.deleteIfExists(p);
+                    } catch (IOException ignore) {
+                        // best-effort per entry
+                    }
+                });
+            }
+        } catch (IOException | RuntimeException e) {
+            log.warn("ExecManager: failed to delete evicted job dir {}: {}", dir, e.toString());
+        }
     }
 
     private static void requireTenant(@Nullable String tenantId) {

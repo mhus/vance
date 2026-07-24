@@ -128,11 +128,13 @@ public class UrsaHookController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage());
         }
         boolean created = ursaHookService.findOne(tenant, project, event, norm).isEmpty();
+        de.mhus.vance.shared.permission.SecurityContext context = authority.contextOf(request);
         UrsaHookDef saved;
         try {
             saved = ursaHookService.save(
                     tenant, project, event, norm, body.getYaml(),
-                    authority.contextOf(request).subjectId());
+                    context.subjectId(),
+                    de.mhus.vance.shared.permission.WriteActor.user(context));
         } catch (UrsaHookParseException ex) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage());
         }
@@ -153,7 +155,8 @@ public class UrsaHookController {
         authority.enforce(request, new Resource.Project(tenant, project), Action.WRITE);
         UrsaHookEventName event = parseEvent(eventName);
         String norm = normalizeName(name);
-        boolean removed = ursaHookService.delete(tenant, project, event, norm);
+        boolean removed = ursaHookService.delete(tenant, project, event, norm,
+                de.mhus.vance.shared.permission.WriteActor.user(authority.contextOf(request)));
         return removed
                 ? ResponseEntity.noContent().build()
                 : ResponseEntity.status(HttpStatus.NOT_FOUND).build();

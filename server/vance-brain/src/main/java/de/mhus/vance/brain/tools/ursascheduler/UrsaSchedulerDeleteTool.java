@@ -58,7 +58,7 @@ public class UrsaSchedulerDeleteTool implements Tool {
         boolean existed = documentService.findByPath(
                 ctx.tenantId(), ctx.projectId(),
                 UrsaSchedulerToolSupport.pathFor(name)).isPresent();
-        support.deleteByPath(ctx.tenantId(), ctx.projectId(), name);
+        support.deleteByPath(ctx.tenantId(), ctx.projectId(), name, ctx.userId());
         // refreshOne runs via the DocumentChangedEvent →
         // UrsaSchedulerDocumentListener chain that documentService.delete
         // already kicked off.

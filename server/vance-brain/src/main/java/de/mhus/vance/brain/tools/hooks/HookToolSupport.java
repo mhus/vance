@@ -26,6 +26,21 @@ public class HookToolSupport {
             Pattern.compile("[a-z0-9][a-z0-9_-]{0,63}");
 
     private final EventLogService eventLogService;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
+
+    /**
+     * Write actor for a hook-tool document write. Hook YAML lives under the
+     * reserved {@code _vance/hooks/} prefix and can carry a {@code runAs}
+     * authority, so it must be a user-driven write ({@link
+     * de.mhus.vance.shared.permission.WriteReason#USER}) with the caller's real
+     * subject — never {@code WriteActor.SYSTEM}, which would fail-open past the
+     * reserved-prefix ADMIN gate (R4) and the {@code $meta.privileged} gate.
+     */
+    public de.mhus.vance.shared.permission.WriteActor writeActor(
+            String tenantId, @org.jspecify.annotations.Nullable String userId) {
+        return de.mhus.vance.shared.permission.WriteActor.user(
+                contextFactory.forToolSubject(tenantId, userId));
+    }
 
     /** Normalise + validate a hook name passed by the agent. */
     public static String normalizeName(String raw) {

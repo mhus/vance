@@ -35,6 +35,21 @@ class UrsaEventToolSupport {
 
     private final DocumentService documentService;
     private final UrsaEventLoader loader;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
+
+    /**
+     * Write actor for an event-tool document write. Event YAML lives under the
+     * reserved {@code _vance/events/} prefix and can carry a {@code runAs}
+     * authority, so it must be a user-driven write ({@link
+     * de.mhus.vance.shared.permission.WriteReason#USER}) with the caller's real
+     * subject — never {@code WriteActor.SYSTEM}, which would fail-open past the
+     * reserved-prefix ADMIN gate (R4) and let a non-admin plant a privileged event.
+     */
+    private de.mhus.vance.shared.permission.WriteActor writeActor(
+            String tenantId, @Nullable String userId) {
+        return de.mhus.vance.shared.permission.WriteActor.user(
+                contextFactory.forToolSubject(tenantId, userId));
+    }
 
     static String normalizeName(String name) {
         if (name == null) {
@@ -91,7 +106,7 @@ class UrsaEventToolSupport {
                     /*newTags*/ null,
                     /*newInlineText*/ yaml,
                     /*newPath*/ null,
-                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+                    writeActor(tenantId, createdBy));
             return true;
         }
         documentService.createText(
@@ -100,7 +115,7 @@ class UrsaEventToolSupport {
                 /*tags*/ null,
                 yaml,
                 createdBy,
-                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+                writeActor(tenantId, createdBy));
         return false;
     }
 
@@ -109,13 +124,14 @@ class UrsaEventToolSupport {
      * tenant copy (if any) is untouched — same semantics as
      * {@code scheduler_delete}.
      */
-    boolean deleteByName(String tenantId, String projectId, String name) {
+    boolean deleteByName(String tenantId, String projectId, String name,
+            @Nullable String userId) {
         String path = pathFor(name);
         Optional<DocumentDocument> existing = documentService.findByPath(tenantId, projectId, path);
         if (existing.isEmpty()) {
             return false;
         }
-        documentService.delete(existing.get().getId(), de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+        documentService.delete(existing.get().getId(), writeActor(tenantId, userId));
         return true;
     }
 

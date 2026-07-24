@@ -52,7 +52,7 @@ public class UrsaEventDeleteTool implements Tool {
             throw new ToolException("event_delete requires a project scope");
         }
         String name = UrsaEventToolSupport.normalizeName(stringOrThrow(params, "name"));
-        boolean deleted = support.deleteByName(ctx.tenantId(), ctx.projectId(), name);
+        boolean deleted = support.deleteByName(ctx.tenantId(), ctx.projectId(), name, ctx.userId());
         return Map.of("name", name, "deleted", deleted);
     }
 

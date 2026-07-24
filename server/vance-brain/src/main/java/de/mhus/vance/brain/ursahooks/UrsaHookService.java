@@ -128,7 +128,8 @@ public class UrsaHookService {
     public UrsaHookDef save(
             String tenantId, String projectId,
             UrsaHookEventName event, String name,
-            String yaml, @Nullable String createdBy) {
+            String yaml, @Nullable String createdBy,
+            de.mhus.vance.shared.permission.WriteActor actor) {
         // Parse first so a bad YAML never lands on disk.
         UrsaHookDef parsed = parser.parse(yaml, event,
                 de.mhus.vance.api.ursahooks.UrsaHookSource.PROJECT, name, createdBy);
@@ -144,7 +145,7 @@ public class UrsaHookService {
                     /*newTags*/ parsed.tags(),
                     /*newInlineText*/ yaml,
                     /*newPath*/ null,
-                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+                    actor);
         } else {
             documentService.create(
                     tenantId, projectId, path,
@@ -153,7 +154,7 @@ public class UrsaHookService {
                     YAML_MIME,
                     new ByteArrayInputStream(yaml.getBytes(StandardCharsets.UTF_8)),
                     createdBy,
-                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+                    actor);
         }
         // refreshOne fires synchronously via the DocumentChangedEvent →
         // UrsaHookDocumentListener chain that documentService.update/create
@@ -168,7 +169,8 @@ public class UrsaHookService {
      */
     public boolean delete(
             String tenantId, String projectId,
-            UrsaHookEventName event, String name) {
+            UrsaHookEventName event, String name,
+            de.mhus.vance.shared.permission.WriteActor actor) {
         String path = UrsaHookLoader.HOOK_PATH_ROOT + event.wireName() + "/"
                 + name + UrsaHookLoader.HOOK_PATH_SUFFIX;
         Optional<de.mhus.vance.shared.document.DocumentDocument> existing =
@@ -176,7 +178,7 @@ public class UrsaHookService {
         if (existing.isEmpty()) {
             return false;
         }
-        documentService.trash(existing.get().getId(), de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+        documentService.trash(existing.get().getId(), actor);
         // documentService.trash publishes a Deleted event for the
         // original path; UrsaHookDocumentListener picks it up and runs
         // refreshOne for us.

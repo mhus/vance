@@ -42,6 +42,22 @@ class UrsaSchedulerToolSupport {
     private final UrsaSchedulerService schedulerService;
     private final RecipeResolver recipeResolver;
     private final de.mhus.vance.shared.settings.TimezoneResolver timezoneResolver;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
+
+    /**
+     * Write actor for a scheduler-tool document write. The scheduler YAML lives
+     * under the reserved {@code _vance/scheduler/} prefix and can carry a
+     * {@code runAs} authority, so this must be a user-driven write ({@link
+     * de.mhus.vance.shared.permission.WriteReason#USER}) carrying the caller's
+     * real subject — never {@code WriteActor.SYSTEM}, which would fail-open past
+     * the reserved-prefix ADMIN gate (R4) and the {@code $meta.privileged} gate,
+     * letting a non-admin plant a privileged scheduler.
+     */
+    private de.mhus.vance.shared.permission.WriteActor writeActor(
+            String tenantId, @org.jspecify.annotations.Nullable String userId) {
+        return de.mhus.vance.shared.permission.WriteActor.user(
+                contextFactory.forToolSubject(tenantId, userId));
+    }
 
     /**
      * Pin the scheduler to the author's display timezone when the YAML
@@ -167,7 +183,7 @@ class UrsaSchedulerToolSupport {
                     /*newTags*/ null,
                     /*newInlineText*/ yaml,
                     /*newPath*/ null,
-                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+                    writeActor(tenantId, createdBy));
         }
         return documentService.createText(
                 tenantId, projectId, path,
@@ -175,14 +191,15 @@ class UrsaSchedulerToolSupport {
                 /*tags*/ null,
                 yaml,
                 createdBy,
-                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+                writeActor(tenantId, createdBy));
     }
 
-    void deleteByPath(String tenantId, String projectId, String name) {
+    void deleteByPath(String tenantId, String projectId, String name,
+            @Nullable String userId) {
         String path = pathFor(name);
         documentService.findByPath(tenantId, projectId, path)
                 .ifPresent(doc -> documentService.delete(doc.getId(),
-                        de.mhus.vance.shared.permission.WriteActor.SYSTEM));
+                        writeActor(tenantId, userId)));
     }
 
     /** Compact list-shape for the read tools and REST list endpoint. */

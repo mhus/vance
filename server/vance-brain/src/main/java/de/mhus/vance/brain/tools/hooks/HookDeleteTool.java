@@ -52,7 +52,8 @@ public class HookDeleteTool implements Tool {
                 support.stringOrThrow(params, "event"));
         String name = HookToolSupport.normalizeName(
                 support.stringOrThrow(params, "name"));
-        boolean removed = ursaHookService.delete(ctx.tenantId(), ctx.projectId(), event, name);
+        boolean removed = ursaHookService.delete(ctx.tenantId(), ctx.projectId(), event, name,
+                support.writeActor(ctx.tenantId(), ctx.userId()));
         Map<String, Object> resp = new LinkedHashMap<>();
         resp.put("event", event.wireName());
         resp.put("name", name);

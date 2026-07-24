@@ -25,6 +25,7 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -60,6 +61,40 @@ public class FinanceController {
             out.add(new ProcessorInfo(p.type(), p.title(), p.outputKind(), p.paramForm()));
         }
         return out;
+    }
+
+    @GetMapping("/brain/{tenant}/addon/finance/tree")
+    public FinanceTreeDto getTree(@PathVariable String tenant,
+                                  @RequestParam String projectId,
+                                  @RequestParam String path,
+                                  HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
+        return FinanceDtoMapper.toDto(
+                financeService.readDocument(requireDoc(tenant, projectId, path)));
+    }
+
+    @PutMapping("/brain/{tenant}/addon/finance/tree")
+    public FinanceTreeDto putTree(@PathVariable String tenant,
+                                  @RequestParam String projectId,
+                                  @RequestParam String path,
+                                  @RequestBody FinanceTreeDto dto,
+                                  HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.WRITE);
+        DocumentDocument doc = requireDoc(tenant, projectId, path);
+        financeService.writeDocument(doc, FinanceDtoMapper.fromDto(dto), null, currentUser(request));
+        return FinanceDtoMapper.toDto(financeService.readDocument(doc));
+    }
+
+    @PostMapping("/brain/{tenant}/addon/finance/create")
+    public FinanceTreeDto create(@PathVariable String tenant,
+                                 @RequestParam String projectId,
+                                 @RequestParam String path,
+                                 @RequestParam(required = false) @Nullable String title,
+                                 HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.CREATE);
+        DocumentDocument stored =
+                financeService.create(tenant, projectId, path, title, null, currentUser(request));
+        return FinanceDtoMapper.toDto(financeService.readDocument(stored));
     }
 
     @PostMapping("/brain/{tenant}/addon/finance/calc")

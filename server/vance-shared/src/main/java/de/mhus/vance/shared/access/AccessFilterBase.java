@@ -17,9 +17,11 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * Base servlet filter that verifies {@code Authorization: Bearer &lt;jwt&gt;} on
  * every request and attaches the verified claims as request attributes.
  *
- * <p>Authentication for vance is JWT-only — no cookies. Clients always send the
- * bearer header, whether they are hitting REST or upgrading to WebSocket. For
- * the WebSocket endpoint this means the filter runs during the HTTP upgrade
+ * <p>Token resolution order: {@code Authorization: Bearer &lt;jwt&gt;} header first
+ * (CLI and native clients), then the {@code HttpOnly} {@code vance_access} cookie
+ * the Web-UI login controller sets (so JavaScript never holds the token), then —
+ * only for endpoints that opt in via {@link #allowsQueryToken} — a query-parameter
+ * token. For the WebSocket endpoint the filter runs during the HTTP upgrade
  * request, before the handshake interceptor; the interceptor simply reads
  * {@link #ATTR_CLAIMS} from the request.
  *

@@ -866,19 +866,6 @@ public class DocumentService {
      * @throws DocumentAlreadyExistsException if a document with the same {@code path}
      *         already exists in {@code (tenantId, projectId)}.
      */
-    public DocumentDocument create(
-            String tenantId,
-            String projectId,
-            String path,
-            @Nullable String title,
-            @Nullable List<String> tags,
-            @Nullable String mimeType,
-            InputStream content,
-            @Nullable String createdBy) {
-        return create(tenantId, projectId, path, title, tags, mimeType, content, createdBy,
-                /*autoSummaryOverride*/ null, /*ragEnabledOverride*/ null);
-    }
-
     /** Actor-carrying 8-arg create — enforces {@code CREATE} at the source (F1). */
     public DocumentDocument create(
             String tenantId,
@@ -914,25 +901,6 @@ public class DocumentService {
      * @throws DocumentAlreadyExistsException if a document with the same {@code path}
      *         already exists in {@code (tenantId, projectId)}.
      */
-    public DocumentDocument create(
-            String tenantId,
-            String projectId,
-            String path,
-            @Nullable String title,
-            @Nullable List<String> tags,
-            @Nullable String mimeType,
-            InputStream content,
-            @Nullable String createdBy,
-            @Nullable Boolean autoSummaryOverride,
-            @Nullable Boolean ragEnabledOverride) {
-        // Transitional (F1 stage 2): the no-actor overload defaults to SYSTEM
-        // until its callers migrate to the actor-carrying overload. Removed
-        // once migration completes so authorization has no bypass.
-        return create(tenantId, projectId, path, title, tags, mimeType, content,
-                createdBy, autoSummaryOverride, ragEnabledOverride,
-                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
-    }
-
     /** Actor-carrying create funnel — enforces {@code CREATE} at the source (F1). */
     public DocumentDocument create(
             String tenantId,
@@ -1019,21 +987,6 @@ public class DocumentService {
      *  .yaml/.yml → application/yaml, .json → application/json,
      *  everything else → text/plain) so kind-codecs and header
      *  strategies pick the right parser. */
-    public DocumentDocument createText(
-            String tenantId,
-            String projectId,
-            String path,
-            @Nullable String title,
-            @Nullable List<String> tags,
-            String text,
-            @Nullable String createdBy) {
-        byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
-        return create(tenantId, projectId, path, title, tags,
-                mimeFromPath(path),
-                new ByteArrayInputStream(bytes),
-                createdBy);
-    }
-
     /** Actor-carrying text create — enforces {@code CREATE} at the source (F1). */
     public DocumentDocument createText(
             String tenantId,
@@ -1096,22 +1049,6 @@ public class DocumentService {
      * document. Idempotent — useful for callers that re-emit the
      * same logical artifact across retries.
      */
-    public DocumentDocument upsertText(
-            String tenantId,
-            String projectId,
-            String path,
-            @Nullable String title,
-            @Nullable List<String> tags,
-            String text,
-            @Nullable String createdBy) {
-        Optional<DocumentDocument> existing = findByPath(tenantId, projectId, path);
-        if (existing.isPresent()) {
-            return update(existing.get().getId(), title, tags, text, null);
-        }
-        return createText(tenantId, projectId, path, title, tags,
-                text, createdBy);
-    }
-
     /** Actor-carrying upsert (create-or-update text) — enforces at the source (F1). */
     public DocumentDocument upsertText(
             String tenantId,
@@ -1149,20 +1086,6 @@ public class DocumentService {
      * writing through that path keeps lineage and header application
      * consistent with every other document.
      */
-    public DocumentDocument upsertEphemeralText(
-            String tenantId,
-            String projectId,
-            String path,
-            @Nullable String title,
-            @Nullable List<String> tags,
-            String text,
-            @Nullable String createdBy,
-            @Nullable Instant expiresAt) {
-        // Transitional (F1 stage 2): defaults to SYSTEM until callers migrate.
-        return upsertEphemeralText(tenantId, projectId, path, title, tags, text,
-                createdBy, expiresAt, de.mhus.vance.shared.permission.WriteActor.SYSTEM);
-    }
-
     /** Actor-carrying ephemeral upsert — enforces at the source (F1). */
     public DocumentDocument upsertEphemeralText(
             String tenantId,
@@ -1219,45 +1142,6 @@ public class DocumentService {
      * @return the updated document
      * @throws IllegalArgumentException if the document is unknown
      */
-    public DocumentDocument replaceContent(
-            String id,
-            InputStream content,
-            @Nullable String newMimeType) {
-        return replaceContent(id, content, newMimeType, TOOL_IDENTITY);
-    }
-
-    /**
-     * Single-editorId-overload — used by callers that only have the
-     * editorId on hand (no user identity). Translates to a
-     * {@link WriterIdentity} with null user fields.
-     */
-    public DocumentDocument replaceContent(
-            String id,
-            InputStream content,
-            @Nullable String newMimeType,
-            @Nullable String editorId) {
-        return replaceContent(id, content, newMimeType,
-                WriterIdentity.of(editorId, null, null));
-    }
-
-    /**
-     * Same as {@link #replaceContent(String, InputStream, String)} but
-     * with full {@link WriterIdentity} — used by REST controllers that
-     * have a JWT-bound user and the X-Editor-Id header. Forwarded into
-     * the live-broadcast event so the writer's own WebSocket can be
-     * skipped during local fan-out and subscribers can render the
-     * {@code ⏺ name} awareness badge.
-     */
-    public DocumentDocument replaceContent(
-            String id,
-            InputStream content,
-            @Nullable String newMimeType,
-            WriterIdentity identity) {
-        // Transitional (F1 stage 2b): defaults to SYSTEM until callers migrate.
-        return replaceContent(id, content, newMimeType, identity,
-                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
-    }
-
     /** Actor-carrying content replace — enforces {@code WRITE} at the source (F1). */
     public DocumentDocument replaceContent(
             String id,
@@ -1376,35 +1260,6 @@ public class DocumentService {
      * @return the updated document
      * @throws IllegalArgumentException if the document is unknown
      */
-    public DocumentDocument replaceBinaryContent(
-            String id,
-            @Nullable String newMimeType,
-            byte[] bytes,
-            @Nullable String updatedBy) {
-        // Default binary writers (image tools, Fenchurch, Damogran export)
-        // are tool-driven → gate as AI (code-review F6).
-        return replaceBinaryContent(id, newMimeType, bytes, updatedBy, TOOL_IDENTITY);
-    }
-
-    /**
-     * Binary content replace that honours the soft document-lock
-     * (code-review F6). The text paths ({@link #replaceContent},
-     * {@link #update}, {@link #delete}, {@link #trash}) already gate on
-     * {@link #requireWriteAllowed}; the binary path did not, so an
-     * AI/USER/KIT-locked image or office document could be overwritten
-     * through {@code image_*}, Fenchurch, or the OnlyOffice save callback.
-     */
-    public DocumentDocument replaceBinaryContent(
-            String id,
-            @Nullable String newMimeType,
-            byte[] bytes,
-            @Nullable String updatedBy,
-            WriterIdentity identity) {
-        // Transitional (F1 stage 2b): defaults to SYSTEM until callers migrate.
-        return replaceBinaryContent(id, newMimeType, bytes, updatedBy, identity,
-                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
-    }
-
     /** Actor-carrying binary replace — enforces {@code WRITE} at the source (F1). */
     public DocumentDocument replaceBinaryContent(
             String id,
@@ -1492,43 +1347,6 @@ public class DocumentService {
      * @param createdBy  audit field forwarded to {@link #create} /
      *                   {@link #replaceBinaryContent}
      */
-    public DocumentDocument createOrReplaceBinary(
-            String tenantId,
-            String projectId,
-            String path,
-            byte[] bytes,
-            String mimeType,
-            @Nullable String title,
-            @Nullable List<String> tags,
-            @Nullable Map<String, String> headers,
-            @Nullable String createdBy) {
-        // Default binary writers are tool-driven → gate as AI (F6).
-        return createOrReplaceBinary(tenantId, projectId, path, bytes, mimeType,
-                title, tags, headers, createdBy, TOOL_IDENTITY);
-    }
-
-    /**
-     * Create-or-replace variant that honours the soft document-lock via
-     * {@code identity} on the replace branch (code-review F6). A fresh
-     * create has no lock to honour.
-     */
-    public DocumentDocument createOrReplaceBinary(
-            String tenantId,
-            String projectId,
-            String path,
-            byte[] bytes,
-            String mimeType,
-            @Nullable String title,
-            @Nullable List<String> tags,
-            @Nullable Map<String, String> headers,
-            @Nullable String createdBy,
-            WriterIdentity identity) {
-        // Transitional (F1 stage 2): defaults to SYSTEM until callers migrate.
-        return createOrReplaceBinary(tenantId, projectId, path, bytes, mimeType,
-                title, tags, headers, createdBy, identity,
-                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
-    }
-
     /** Actor-carrying create-or-replace binary (TOOL identity) — enforces at the source (F1). */
     public DocumentDocument createOrReplaceBinary(
             String tenantId,
@@ -1826,15 +1644,6 @@ public class DocumentService {
      * @throws DocumentAlreadyExistsException if {@code newPath} clashes with
      *         a sibling document in the same project
      */
-    public DocumentDocument update(
-            String id,
-            @Nullable String newTitle,
-            @Nullable List<String> newTags,
-            @Nullable String newInlineText,
-            @Nullable String newPath) {
-        return update(id, newTitle, newTags, newInlineText, newPath, null, null);
-    }
-
     /** Actor-carrying convenience update (TOOL identity) — enforces {@code WRITE} at the source (F1). */
     public DocumentDocument update(
             String id,
@@ -1845,111 +1654,6 @@ public class DocumentService {
             de.mhus.vance.shared.permission.WriteActor actor) {
         return update(id, newTitle, newTags, newInlineText, newPath,
                 null, null, null, null, TOOL_IDENTITY, actor);
-    }
-
-    /**
-     * Overload that also accepts the two auto-summary flags
-     * ({@code autoSummary}, {@code summaryDirty}) — pass {@code null} to
-     * leave either untouched. Setting {@code summaryDirty = true} forces
-     * the next scheduler tick to re-summarise the document even without
-     * a content change.
-     */
-    public DocumentDocument update(
-            String id,
-            @Nullable String newTitle,
-            @Nullable List<String> newTags,
-            @Nullable String newInlineText,
-            @Nullable String newPath,
-            @Nullable Boolean newAutoSummary,
-            @Nullable Boolean newSummaryDirty) {
-        return update(id, newTitle, newTags, newInlineText, newPath,
-                newAutoSummary, newSummaryDirty, null);
-    }
-
-    /**
-     * Overload that also accepts the {@code ragEnabled} tri-state override.
-     * {@code null} means "leave untouched" (or "auto" if never set);
-     * {@code true} forces RAG inclusion, {@code false} excludes the document
-     * from the project RAG.
-     */
-    public DocumentDocument update(
-            String id,
-            @Nullable String newTitle,
-            @Nullable List<String> newTags,
-            @Nullable String newInlineText,
-            @Nullable String newPath,
-            @Nullable Boolean newAutoSummary,
-            @Nullable Boolean newSummaryDirty,
-            @Nullable Boolean newRagEnabled) {
-        return update(id, newTitle, newTags, newInlineText, newPath,
-                newAutoSummary, newSummaryDirty, newRagEnabled, null);
-    }
-
-    /**
-     * Overload that also accepts a {@code newMimeType} override. Use
-     * when the original guess from the upload was wrong (e.g. a doc
-     * that came in as {@code text/plain} but is actually Markdown).
-     * {@code null} leaves the current MIME type untouched. The new
-     * value is applied <b>before</b> the inline-text branch runs so the
-     * inline-vs-storage threshold uses the new mime type's textual
-     * status for the decision.
-     */
-    public DocumentDocument update(
-            String id,
-            @Nullable String newTitle,
-            @Nullable List<String> newTags,
-            @Nullable String newInlineText,
-            @Nullable String newPath,
-            @Nullable Boolean newAutoSummary,
-            @Nullable Boolean newSummaryDirty,
-            @Nullable Boolean newRagEnabled,
-            @Nullable String newMimeType) {
-        return update(id, newTitle, newTags, newInlineText, newPath,
-                newAutoSummary, newSummaryDirty, newRagEnabled, newMimeType,
-                TOOL_IDENTITY);
-    }
-
-    /**
-     * Single-editorId-overload — kept for callers that have only the
-     * editorId on hand. Translates to a {@link WriterIdentity} with
-     * null user fields.
-     */
-    public DocumentDocument update(
-            String id,
-            @Nullable String newTitle,
-            @Nullable List<String> newTags,
-            @Nullable String newInlineText,
-            @Nullable String newPath,
-            @Nullable Boolean newAutoSummary,
-            @Nullable Boolean newSummaryDirty,
-            @Nullable Boolean newRagEnabled,
-            @Nullable String newMimeType,
-            @Nullable String editorId) {
-        return update(id, newTitle, newTags, newInlineText, newPath,
-                newAutoSummary, newSummaryDirty, newRagEnabled, newMimeType,
-                WriterIdentity.of(editorId, null, null));
-    }
-
-    /**
-     * Same as the {@code String editorId} overload but with full
-     * {@link WriterIdentity} — used by REST controllers that have a
-     * JWT-bound user along with the X-Editor-Id header.
-     */
-    public DocumentDocument update(
-            String id,
-            @Nullable String newTitle,
-            @Nullable List<String> newTags,
-            @Nullable String newInlineText,
-            @Nullable String newPath,
-            @Nullable Boolean newAutoSummary,
-            @Nullable Boolean newSummaryDirty,
-            @Nullable Boolean newRagEnabled,
-            @Nullable String newMimeType,
-            WriterIdentity identity) {
-        // Transitional (F1 stage 2b): defaults to SYSTEM until callers migrate.
-        return update(id, newTitle, newTags, newInlineText, newPath,
-                newAutoSummary, newSummaryDirty, newRagEnabled, newMimeType,
-                identity, de.mhus.vance.shared.permission.WriteActor.SYSTEM);
     }
 
     /** Actor-carrying update funnel — enforces {@code WRITE} at the source (F1). */
@@ -2208,11 +1912,6 @@ public class DocumentService {
      * @throws IllegalArgumentException if the archive does not belong
      *         to the live document's lineage.
      */
-    public DocumentDocument restoreArchive(String liveDocId, String archiveId) {
-        // Transitional (F1 stage 2c): defaults to SYSTEM until callers migrate.
-        return restoreArchive(liveDocId, archiveId, de.mhus.vance.shared.permission.WriteActor.SYSTEM);
-    }
-
     /** Actor-carrying archive restore — enforces {@code WRITE} at the source (F1). */
     public DocumentDocument restoreArchive(String liveDocId, String archiveId,
             de.mhus.vance.shared.permission.WriteActor actor) {
@@ -2398,11 +2097,6 @@ public class DocumentService {
      * document up again immediately, and stamps {@code summarizedAt}
      * for the audit trail. An empty/blank summary clears the field.
      */
-    public void setSummary(String id, @Nullable String summary) {
-        // Transitional (F1 stage 2c): defaults to SYSTEM until callers migrate.
-        setSummary(id, summary, de.mhus.vance.shared.permission.WriteActor.SYSTEM);
-    }
-
     /** Actor-carrying summary set — enforces {@code WRITE} at the source (F1). */
     public void setSummary(String id, @Nullable String summary,
             de.mhus.vance.shared.permission.WriteActor actor) {
@@ -2567,11 +2261,6 @@ public class DocumentService {
      * / {@code ragDirty}. Pass {@code null} to leave the value untouched
      * (use {@link #clearColor} to remove an existing color).
      */
-    public void setColor(String id, @Nullable AccentColor value) {
-        // Transitional (F1 stage 2c): defaults to SYSTEM until callers migrate.
-        setColor(id, value, de.mhus.vance.shared.permission.WriteActor.SYSTEM);
-    }
-
     /** Actor-carrying color set — enforces {@code WRITE} at the source (F1). */
     public void setColor(String id, @Nullable AccentColor value,
             de.mhus.vance.shared.permission.WriteActor actor) {
@@ -2583,12 +2272,6 @@ public class DocumentService {
                 DocumentDocument.class);
     }
 
-    /** Companion to {@link #setColor} — clears the color back to neutral. */
-    public void clearColor(String id) {
-        // Transitional (F1 stage 2c): defaults to SYSTEM until callers migrate.
-        clearColor(id, de.mhus.vance.shared.permission.WriteActor.SYSTEM);
-    }
-
     /** Actor-carrying color clear — enforces {@code WRITE} at the source (F1). */
     public void clearColor(String id,
             de.mhus.vance.shared.permission.WriteActor actor) {
@@ -2597,11 +2280,6 @@ public class DocumentService {
                 Query.query(Criteria.where("_id").is(id)),
                 new Update().unset("color"),
                 DocumentDocument.class);
-    }
-
-    public void setRagEnabledOverride(String id, @Nullable Boolean value) {
-        // Transitional (F1 stage 2c): defaults to SYSTEM until callers migrate.
-        setRagEnabledOverride(id, value, de.mhus.vance.shared.permission.WriteActor.SYSTEM);
     }
 
     /** Actor-carrying RAG-override set — enforces {@code WRITE} at the source (F1). */
@@ -2647,11 +2325,6 @@ public class DocumentService {
      * leaves the field {@code null} for {@code .js}/{@code .json}
      * documents and the list-filter cannot find them.
      */
-    public void setKind(String id, String kind) {
-        // Transitional (F1 stage 2c): defaults to SYSTEM until callers migrate.
-        setKind(id, kind, de.mhus.vance.shared.permission.WriteActor.SYSTEM);
-    }
-
     /** Actor-carrying kind stamp — enforces {@code WRITE} at the source (F1). */
     public void setKind(String id, String kind,
             de.mhus.vance.shared.permission.WriteActor actor) {
@@ -2664,35 +2337,12 @@ public class DocumentService {
 
     /**
      * Removes the document and its storage blob (soft-delete on storage).
-     * No-op if the id is unknown.
-     *
-     * <p>This is the <b>hard</b> delete path — the document row is gone.
-     * For the recoverable LLM-tool delete, use {@link #trash(String)}
-     * instead, which moves the document to {@value #TRASH_FOLDER_PREFIX}
-     * inside the same project.
+     * No-op if the id is unknown. The <b>hard</b> delete path — the row is
+     * gone. For the recoverable LLM-tool delete use {@link #trash}.
+     * Actor-carrying convenience (TOOL identity) — enforces {@code DELETE} (F1).
      */
-    public void delete(String id) {
-        delete(id, TOOL_IDENTITY);
-    }
-
-    /** Actor-carrying convenience delete (TOOL identity) — enforces {@code DELETE} at the source (F1). */
     public void delete(String id, de.mhus.vance.shared.permission.WriteActor actor) {
         delete(id, TOOL_IDENTITY, actor);
-    }
-
-    /** Single-editorId-overload — used by callers that only have the editorId. */
-    public void delete(String id, @Nullable String editorId) {
-        delete(id, WriterIdentity.of(editorId, null, null));
-    }
-
-    /**
-     * Same as {@link #delete(String)} but with full {@link WriterIdentity} —
-     * forwarded into the live-broadcast event so the deleter's own
-     * WebSocket is filtered out and subscribers can show {@code ⏺ name}.
-     */
-    public void delete(String id, WriterIdentity identity) {
-        // Transitional (F1 stage 2b): defaults to SYSTEM until callers migrate.
-        delete(id, identity, de.mhus.vance.shared.permission.WriteActor.SYSTEM);
     }
 
     /** Actor-carrying delete funnel — enforces {@code DELETE} at the source (F1). */
@@ -2771,29 +2421,9 @@ public class DocumentService {
      * @return the document at its new trash path.
      * @throws IllegalArgumentException if the id is unknown.
      */
-    public DocumentDocument trash(String id) {
-        return trash(id, TOOL_IDENTITY);
-    }
-
     /** Actor-carrying convenience trash (TOOL identity) — enforces {@code DELETE} at the source (F1). */
     public DocumentDocument trash(String id, de.mhus.vance.shared.permission.WriteActor actor) {
         return trash(id, TOOL_IDENTITY, actor);
-    }
-
-    /** Single-editorId-overload — used by callers that only have the editorId. */
-    public DocumentDocument trash(String id, @Nullable String editorId) {
-        return trash(id, WriterIdentity.of(editorId, null, null));
-    }
-
-    /**
-     * Same as {@link #trash(String)} but with full {@link WriterIdentity} —
-     * forwarded into the synthetic {@code DocumentLiveChangedEvent.DELETED}
-     * event so the live-broadcast layer can skip the deleter's own WebSocket
-     * and subscribers can render {@code ⏺ name}.
-     */
-    public DocumentDocument trash(String id, WriterIdentity identity) {
-        // Transitional (F1 stage 2b): defaults to SYSTEM until callers migrate.
-        return trash(id, identity, de.mhus.vance.shared.permission.WriteActor.SYSTEM);
     }
 
     /** Actor-carrying trash funnel — enforces {@code DELETE} at the source (F1). */
@@ -2853,11 +2483,6 @@ public class DocumentService {
      * @throws IllegalArgumentException when the id is unknown or when
      *         the document isn't in the trash folder.
      */
-    public DocumentDocument restore(String id, @Nullable String newPath) {
-        // Transitional (F1 stage 2c): defaults to SYSTEM until callers migrate.
-        return restore(id, newPath, de.mhus.vance.shared.permission.WriteActor.SYSTEM);
-    }
-
     /** Actor-carrying restore — enforces {@code WRITE} at the restored path (F1). */
     public DocumentDocument restore(String id, @Nullable String newPath,
             de.mhus.vance.shared.permission.WriteActor actor) {
@@ -3413,13 +3038,6 @@ public class DocumentService {
      * @return the updated document
      * @throws IllegalArgumentException if the id is unknown
      */
-    public DocumentDocument setLockedFor(
-            String id,
-            java.util.@Nullable Collection<de.mhus.vance.api.documents.WriterRole> lockedFor) {
-        // Transitional (F1 stage 2c): defaults to SYSTEM until callers migrate.
-        return setLockedFor(id, lockedFor, de.mhus.vance.shared.permission.WriteActor.SYSTEM);
-    }
-
     /** Actor-carrying lock set — enforces {@code WRITE} at the source (F1). */
     public DocumentDocument setLockedFor(
             String id,
@@ -3686,32 +3304,6 @@ public class DocumentService {
      * @return the persisted note with its id + timestamps populated.
      * @throws IllegalArgumentException when the document is unknown.
      */
-    public DocumentNote addNote(
-            String docId,
-            String text,
-            String userId,
-            @Nullable Integer line) {
-        return addNote(docId, text, userId, line, null);
-    }
-
-    /**
-     * Same as {@link #addNote(String, String, String, Integer)} but with
-     * the writing connection's {@code editorId} — forwarded into the
-     * {@link DocumentNotesChangedEvent} so the live-broadcast layer can
-     * skip the writer's own WebSocket and the user doesn't see their
-     * own add echo back into the UI.
-     */
-    public DocumentNote addNote(
-            String docId,
-            String text,
-            String userId,
-            @Nullable Integer line,
-            @Nullable String editorId) {
-        // Transitional (F1 stage 2d): defaults to SYSTEM until callers migrate.
-        return addNote(docId, text, userId, line, editorId,
-                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
-    }
-
     /** Actor-carrying note add — enforces {@code WRITE} at the source (F1). */
     public DocumentNote addNote(
             String docId,
@@ -3779,45 +3371,6 @@ public class DocumentService {
      *
      * @return the patched note, or empty if the document or note id is unknown.
      */
-    public Optional<DocumentNote> updateNote(
-            String docId,
-            String noteId,
-            @Nullable String newText,
-            @Nullable Boolean newDone,
-            @Nullable Integer newLine) {
-        return updateNote(docId, noteId, newText, newDone, newLine, null, null);
-    }
-
-    /** {@link #updateNote} with the writer's editorId for live-broadcast routing. */
-    public Optional<DocumentNote> updateNote(
-            String docId,
-            String noteId,
-            @Nullable String newText,
-            @Nullable Boolean newDone,
-            @Nullable Integer newLine,
-            @Nullable String editorId) {
-        return updateNote(docId, noteId, newText, newDone, newLine, null, editorId);
-    }
-
-    /**
-     * Full-arg {@link #updateNote} overload that also accepts a new
-     * {@code order} value (drag-reorder writes a midpoint between
-     * neighbours' values). All scalar patch-fields follow the same
-     * "null = leave alone" convention.
-     */
-    public Optional<DocumentNote> updateNote(
-            String docId,
-            String noteId,
-            @Nullable String newText,
-            @Nullable Boolean newDone,
-            @Nullable Integer newLine,
-            @Nullable Double newOrder,
-            @Nullable String editorId) {
-        // Transitional (F1 stage 2d): defaults to SYSTEM until callers migrate.
-        return updateNote(docId, noteId, newText, newDone, newLine, newOrder, editorId,
-                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
-    }
-
     /** Actor-carrying note patch — enforces {@code WRITE} at the source (F1). */
     public Optional<DocumentNote> updateNote(
             String docId,
@@ -3864,17 +3417,6 @@ public class DocumentService {
      * note is a silent no-op. Returns {@code true} when the note existed
      * and was removed, {@code false} otherwise.
      */
-    public boolean deleteNote(String docId, String noteId) {
-        return deleteNote(docId, noteId, null);
-    }
-
-    /** {@link #deleteNote(String, String)} with the writer's editorId. */
-    public boolean deleteNote(String docId, String noteId, @Nullable String editorId) {
-        // Transitional (F1 stage 2d): defaults to SYSTEM until callers migrate.
-        return deleteNote(docId, noteId, editorId,
-                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
-    }
-
     /** Actor-carrying note delete — enforces {@code WRITE} at the source (F1). */
     public boolean deleteNote(String docId, String noteId, @Nullable String editorId,
             de.mhus.vance.shared.permission.WriteActor actor) {

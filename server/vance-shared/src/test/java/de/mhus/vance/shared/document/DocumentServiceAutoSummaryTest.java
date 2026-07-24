@@ -83,7 +83,8 @@ class DocumentServiceAutoSummaryTest {
                 .thenAnswer(inv -> inv.getArgument(0));
         DocumentDocument saved = service.create(
                 "t1", "p1", "notes/a.md", null, null, "text/markdown",
-                new ByteArrayInputStream("hello".getBytes()), "alice");
+                new ByteArrayInputStream("hello".getBytes()), "alice",
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
         assertThat(saved.isAutoSummary()).isTrue();
         assertThat(saved.isSummaryDirty()).isFalse();
     }
@@ -94,7 +95,8 @@ class DocumentServiceAutoSummaryTest {
                 .thenAnswer(inv -> inv.getArgument(0));
         DocumentDocument saved = service.create(
                 "t1", "p1", "notes/a.txt", null, null, "text/plain",
-                new ByteArrayInputStream("hello".getBytes()), "alice");
+                new ByteArrayInputStream("hello".getBytes()), "alice",
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
         assertThat(saved.isAutoSummary()).isTrue();
     }
 
@@ -104,7 +106,8 @@ class DocumentServiceAutoSummaryTest {
                 .thenAnswer(inv -> inv.getArgument(0));
         DocumentDocument saved = service.create(
                 "t1", "p1", "notes/a.md", null, null, "text/markdown; charset=utf-8",
-                new ByteArrayInputStream("hello".getBytes()), "alice");
+                new ByteArrayInputStream("hello".getBytes()), "alice",
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
         assertThat(saved.isAutoSummary()).isTrue();
     }
 
@@ -114,7 +117,8 @@ class DocumentServiceAutoSummaryTest {
                 .thenAnswer(inv -> inv.getArgument(0));
         DocumentDocument saved = service.create(
                 "t1", "p1", "config/a.json", null, null, "application/json",
-                new ByteArrayInputStream("{}".getBytes()), "alice");
+                new ByteArrayInputStream("{}".getBytes()), "alice",
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
         assertThat(saved.isAutoSummary()).isFalse();
     }
 
@@ -125,7 +129,8 @@ class DocumentServiceAutoSummaryTest {
         // setUp() already provides a streaming store stub.
         DocumentDocument saved = service.create(
                 "t1", "p1", "docs/a.pdf", null, null, "application/pdf",
-                new ByteArrayInputStream("%PDF-".getBytes()), "alice");
+                new ByteArrayInputStream("%PDF-".getBytes()), "alice",
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
         assertThat(saved.isAutoSummary()).isFalse();
     }
 
@@ -142,7 +147,8 @@ class DocumentServiceAutoSummaryTest {
                 "t1", "p1", "_vance/logs/scheduler/run-1.md",
                 "Scheduler run 1", List.of("scheduler-log"),
                 "body", "ursascheduler",
-                Instant.now().plus(Duration.ofDays(7)));
+                Instant.now().plus(Duration.ofDays(7)),
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
 
         // Markdown would normally default to autoSummary=true; the ephemeral
         // path must override that so the auto-summary scheduler ignores logs.
@@ -180,7 +186,8 @@ class DocumentServiceAutoSummaryTest {
                 "t1", "p1", "_vance/logs/scheduler/run-1.md",
                 "Scheduler run 1", List.of("scheduler-log"),
                 "new body", "ursascheduler",
-                Instant.now().plus(Duration.ofDays(7)));
+                Instant.now().plus(Duration.ofDays(7)),
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
 
         // update() would have flipped summaryDirty + ragDirty to true because
         // the body changed — the ephemeral overlay clears them back to false.
@@ -207,7 +214,8 @@ class DocumentServiceAutoSummaryTest {
                 new java.io.ByteArrayInputStream("old body".getBytes()));
 
         DocumentDocument saved = service.update(
-                "d1", null, null, "new body", null);
+                "d1", null, null, "new body", null,
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
 
         assertThat(saved.isSummaryDirty()).isTrue();
         assertThat(saved.getStorageId()).isNotNull();
@@ -229,7 +237,8 @@ class DocumentServiceAutoSummaryTest {
                 new java.io.ByteArrayInputStream("body".getBytes()));
 
         DocumentDocument saved = service.update(
-                "d1", null, null, "body", null);
+                "d1", null, null, "body", null,
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
 
         assertThat(saved.isSummaryDirty()).isFalse();
     }
@@ -247,7 +256,8 @@ class DocumentServiceAutoSummaryTest {
                 .thenAnswer(inv -> inv.getArgument(0));
 
         DocumentDocument saved = service.update(
-                "d1", "New Title", null, null, null);
+                "d1", "New Title", null, null, null,
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
 
         assertThat(saved.isSummaryDirty()).isFalse();
         assertThat(saved.getTitle()).isEqualTo("New Title");

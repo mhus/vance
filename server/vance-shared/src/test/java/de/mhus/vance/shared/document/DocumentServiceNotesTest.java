@@ -49,7 +49,7 @@ class DocumentServiceNotesTest {
     @Test
     void addNote_unknownDocument_throws() {
         when(repository.existsById("missing")).thenReturn(false);
-        assertThatThrownBy(() -> service.addNote("missing", "hi", "alice", null))
+        assertThatThrownBy(() -> service.addNote("missing", "hi", "alice", null, null, de.mhus.vance.shared.permission.WriteActor.SYSTEM))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("missing");
     }
@@ -67,7 +67,7 @@ class DocumentServiceNotesTest {
                     return doc;
                 });
 
-        DocumentNote note = service.addNote("doc-1", "first thought", "alice", 4);
+        DocumentNote note = service.addNote("doc-1", "first thought", "alice", 4, null, de.mhus.vance.shared.permission.WriteActor.SYSTEM);
 
         assertThat(note.getId()).isNotBlank();
         assertThat(note.getText()).isEqualTo("first thought");
@@ -90,7 +90,7 @@ class DocumentServiceNotesTest {
                 any(FindAndModifyOptions.class), eq(DocumentDocument.class)))
                 .thenReturn(null);
 
-        assertThatThrownBy(() -> service.addNote("doc-1", "boom", "alice", null))
+        assertThatThrownBy(() -> service.addNote("doc-1", "boom", "alice", null, null, de.mhus.vance.shared.permission.WriteActor.SYSTEM))
                 .isInstanceOf(DocumentService.NotesLimitExceededException.class)
                 .hasMessageContaining("doc-1")
                 .hasMessageContaining(String.valueOf(DocumentService.NOTES_MAX));
@@ -114,7 +114,7 @@ class DocumentServiceNotesTest {
                 any(FindAndModifyOptions.class), eq(DocumentDocument.class)))
                 .thenReturn(modified);
 
-        Optional<DocumentNote> result = service.updateNote("doc-1", "n-1", "new text", true, null);
+        Optional<DocumentNote> result = service.updateNote("doc-1", "n-1", "new text", true, null, null, null, de.mhus.vance.shared.permission.WriteActor.SYSTEM);
 
         assertThat(result).isPresent();
         assertThat(result.get().getId()).isEqualTo("n-1");
@@ -131,7 +131,7 @@ class DocumentServiceNotesTest {
                 any(FindAndModifyOptions.class), eq(DocumentDocument.class)))
                 .thenReturn(null);
 
-        assertThat(service.updateNote("doc-1", "missing-note", "x", null, null)).isEmpty();
+        assertThat(service.updateNote("doc-1", "missing-note", "x", null, null, null, null, de.mhus.vance.shared.permission.WriteActor.SYSTEM)).isEmpty();
     }
 
     // ── deleteNote ─────────────────────────────────────────────────────
@@ -146,7 +146,7 @@ class DocumentServiceNotesTest {
         when(mongoTemplate.updateFirst(any(Query.class), any(Update.class),
                 eq(DocumentDocument.class))).thenReturn(result);
 
-        assertThat(service.deleteNote("doc-1", "n-1")).isTrue();
+        assertThat(service.deleteNote("doc-1", "n-1", null, de.mhus.vance.shared.permission.WriteActor.SYSTEM)).isTrue();
     }
 
     @Test
@@ -159,13 +159,13 @@ class DocumentServiceNotesTest {
         when(mongoTemplate.updateFirst(any(Query.class), any(Update.class),
                 eq(DocumentDocument.class))).thenReturn(result);
 
-        assertThat(service.deleteNote("doc-1", "missing-note")).isFalse();
+        assertThat(service.deleteNote("doc-1", "missing-note", null, de.mhus.vance.shared.permission.WriteActor.SYSTEM)).isFalse();
     }
 
     @Test
     void deleteNote_unknownDocument_returnsFalse() {
         when(repository.findById("ghost")).thenReturn(Optional.empty());
-        assertThat(service.deleteNote("ghost", "n-1")).isFalse();
+        assertThat(service.deleteNote("ghost", "n-1", null, de.mhus.vance.shared.permission.WriteActor.SYSTEM)).isFalse();
     }
 
     // ── listNotes ──────────────────────────────────────────────────────

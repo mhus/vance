@@ -230,7 +230,7 @@ class OAuthAdminControllerTest {
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("missing field 'type'");
         verify(documentService, never()).createText(any(), any(), any(), any(), any(), any(), any(), any());
-        verify(documentService, never()).update(any(), any(), any(), any(), any());
+        verify(documentService, never()).update(any(), any(), any(), any(), any(), any());
     }
 
     // ─────── Delete ───────

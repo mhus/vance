@@ -84,7 +84,7 @@ class DocumentServiceArchiveTriggerTest {
         DocumentDocument doc = freshDoc("hello", Instant.now().minusSeconds(3600));
         when(repository.findById("doc-1")).thenReturn(Optional.of(doc));
 
-        service.update("doc-1", null, null, "world", null);
+        service.update("doc-1", null, null, "world", null, de.mhus.vance.shared.permission.WriteActor.SYSTEM);
 
         verify(archiveService, times(1)).archiveCurrent(any(DocumentDocument.class));
     }
@@ -95,7 +95,7 @@ class DocumentServiceArchiveTriggerTest {
         doc.setLastArchivedAt(Instant.now().minusSeconds(60));
         when(repository.findById("doc-1")).thenReturn(Optional.of(doc));
 
-        service.update("doc-1", null, null, "world", null);
+        service.update("doc-1", null, null, "world", null, de.mhus.vance.shared.permission.WriteActor.SYSTEM);
 
         verify(archiveService, never()).archiveCurrent(any(DocumentDocument.class));
     }
@@ -105,7 +105,7 @@ class DocumentServiceArchiveTriggerTest {
         DocumentDocument doc = freshDoc("hello", Instant.now().minusSeconds(3600));
         when(repository.findById("doc-1")).thenReturn(Optional.of(doc));
 
-        service.update("doc-1", null, null, "hello", null);
+        service.update("doc-1", null, null, "hello", null, de.mhus.vance.shared.permission.WriteActor.SYSTEM);
 
         verify(archiveService, never()).archiveCurrent(any(DocumentDocument.class));
     }
@@ -119,7 +119,7 @@ class DocumentServiceArchiveTriggerTest {
                 eq(DocumentService.SETTING_ARCHIVE_ENABLED), anyBoolean()))
                 .thenReturn(false);
 
-        service.update("doc-1", null, null, "world", null);
+        service.update("doc-1", null, null, "world", null, de.mhus.vance.shared.permission.WriteActor.SYSTEM);
 
         verify(archiveService, never()).archiveCurrent(any(DocumentDocument.class));
     }
@@ -130,7 +130,7 @@ class DocumentServiceArchiveTriggerTest {
         when(repository.findById("doc-1")).thenReturn(Optional.of(doc));
         ReflectionTestUtils.setField(service, "archiveEnabledDefault", false);
 
-        service.update("doc-1", null, null, "world", null);
+        service.update("doc-1", null, null, "world", null, de.mhus.vance.shared.permission.WriteActor.SYSTEM);
 
         verify(archiveService, never()).archiveCurrent(any(DocumentDocument.class));
         verify(settingService, never()).getBooleanValueCascade(
@@ -143,7 +143,7 @@ class DocumentServiceArchiveTriggerTest {
         DocumentDocument doc = freshDoc("hello", Instant.now().minusSeconds(3600));
         when(repository.findById("doc-1")).thenReturn(Optional.of(doc));
 
-        service.update("doc-1", "New Title", null, null, null);
+        service.update("doc-1", "New Title", null, null, null, de.mhus.vance.shared.permission.WriteActor.SYSTEM);
 
         verify(archiveService, never()).archiveCurrent(any(DocumentDocument.class));
     }
@@ -155,7 +155,7 @@ class DocumentServiceArchiveTriggerTest {
         DocumentDocument doc = freshDoc("hello", Instant.now().minusSeconds(60));
         when(repository.findById("doc-1")).thenReturn(Optional.of(doc));
 
-        service.delete("doc-1");
+        service.delete("doc-1", de.mhus.vance.shared.permission.WriteActor.SYSTEM);
 
         verify(archiveService).deleteAllForLineage("t1", "p1", doc.getLineageId());
         verify(repository).delete(doc);
@@ -169,7 +169,7 @@ class DocumentServiceArchiveTriggerTest {
                 .when(archiveService).deleteAllForLineage(any(), any(), any());
 
         // Must not throw — live delete already happened.
-        service.delete("doc-1");
+        service.delete("doc-1", de.mhus.vance.shared.permission.WriteActor.SYSTEM);
 
         verify(repository).delete(doc);
     }

@@ -290,7 +290,8 @@ public class KitInstaller {
                     tenantId, projectId, path, e.getLockedFor());
             return UpsertOutcome.SKIPPED;
         }
-        documentService.createText(tenantId, projectId, path, null, null, content, actor);
+        documentService.createText(tenantId, projectId, path, null, null, content, actor,
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
         return UpsertOutcome.UPDATED;
     }
 

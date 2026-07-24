@@ -58,7 +58,9 @@ class DocumentServiceBinaryLockTest {
 
         // Default overload → TOOL_IDENTITY (AI role): must be blocked.
         assertThatThrownBy(() -> service.replaceBinaryContent(
-                "d1", "image/png", new byte[] {1, 2, 3}, "someUser"))
+                "d1", "image/png", new byte[] {1, 2, 3}, "someUser",
+                DocumentService.TOOL_IDENTITY,
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM))
                 .isInstanceOf(DocumentService.DocumentLockedException.class);
     }
 
@@ -69,7 +71,8 @@ class DocumentServiceBinaryLockTest {
         // Office save callback passes a USER identity (real editorId).
         assertThatThrownBy(() -> service.replaceBinaryContent(
                 "d2", "image/png", new byte[] {1}, "bob",
-                DocumentService.WriterIdentity.of("bob", "bob", null)))
+                DocumentService.WriterIdentity.of("bob", "bob", null),
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM))
                 .isInstanceOf(DocumentService.DocumentLockedException.class);
     }
 
@@ -83,7 +86,8 @@ class DocumentServiceBinaryLockTest {
 
         assertThatThrownBy(() -> service.createOrReplaceBinary(
                 "acme", "proj", "images/pic.png", new byte[] {9},
-                "image/png", null, null, null, "creator"))
+                "image/png", null, null, null, "creator",
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM))
                 .isInstanceOf(DocumentService.DocumentLockedException.class);
     }
 }

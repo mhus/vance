@@ -168,7 +168,9 @@ public class DocCreateTool implements Tool {
                     /*autoSummary*/ null,
                     /*summaryDirty*/ null,
                     /*ragEnabled*/ null,
-                    mimeType);
+                    mimeType,
+                    DocumentService.TOOL_IDENTITY,
+                    support.writeActor(ctx, path));
             overwritten = true;
         } else {
             try {
@@ -180,7 +182,8 @@ public class DocCreateTool implements Tool {
                         tags,
                         mimeType,
                         new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8)),
-                        ctx.userId());
+                        ctx.userId(),
+                        support.writeActor(ctx, path));
             } catch (DocumentService.DocumentAlreadyExistsException e) {
                 // Race: findByPath came back empty but create lost to a
                 // concurrent insert. Surface a clean ToolException —
@@ -197,7 +200,7 @@ public class DocCreateTool implements Tool {
         // like `slides` where the `---` separators serve a second
         // purpose. Match `DocCreateKindTool`'s behaviour.
         if (!resolvedKind.equalsIgnoreCase(result.getKind())) {
-            docService.setKind(result.getId(), resolvedKind);
+            docService.setKind(result.getId(), resolvedKind, support.writeActor(ctx, path));
             result.setKind(resolvedKind);
         }
 

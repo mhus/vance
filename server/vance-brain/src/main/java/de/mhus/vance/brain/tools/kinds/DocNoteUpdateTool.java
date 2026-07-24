@@ -79,7 +79,8 @@ public class DocNoteUpdateTool implements Tool {
         }
 
         Optional<DocumentNote> result = support.documentService()
-                .updateNote(doc.getId(), noteId, newText, newDone, newLine);
+                .updateNote(doc.getId(), noteId, newText, newDone, newLine, null, null,
+                        support.writeActor(ctx, doc));
         if (result.isEmpty()) {
             throw new ToolException("Note id='" + noteId + "' not found on document "
                     + support.identify(doc));

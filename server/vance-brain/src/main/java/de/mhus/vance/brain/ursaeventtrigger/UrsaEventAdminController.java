@@ -143,9 +143,18 @@ public class UrsaEventAdminController {
                 ? null
                 : new ArrayList<>(r.methods());
         Map<String, Object> params = r.params().isEmpty() ? null : r.params();
+        // Redact an inline auth.token literal from the returned YAML: getEvent is
+        // gated on READ only, and a project-READ user could otherwise lift the
+        // bearer secret from the raw yaml and replay it against the JWT-free
+        // public trigger endpoint (READ→fire escalation). tokenSetting-based
+        // events carry no literal here and are unaffected.
+        String yaml = r.yaml();
+        if (yaml != null && r.tokenLiteral() != null && !r.tokenLiteral().isBlank()) {
+            yaml = yaml.replace(r.tokenLiteral(), "***REDACTED***");
+        }
         return EventDto.builder()
                 .name(r.name())
-                .yaml(r.yaml())
+                .yaml(yaml)
                 .source(r.source())
                 .description(r.description())
                 .workflow(r.workflow())

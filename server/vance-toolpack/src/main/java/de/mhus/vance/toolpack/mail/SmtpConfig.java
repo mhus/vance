@@ -28,7 +28,11 @@ public record SmtpConfig(
         String user,
         String password,
         String from,
-        int timeoutSeconds) {
+        int timeoutSeconds,
+        /** When non-empty, every recipient's domain must be listed (abuse guard). */
+        java.util.List<String> allowedRecipientDomains,
+        /** When non-empty, the effective From: must be listed (anti-spoofing). */
+        java.util.List<String> allowedFrom) {
 
     public static final int DEFAULT_STARTTLS_PORT = 587;
     public static final int DEFAULT_TLS_PORT = 465;
@@ -42,6 +46,10 @@ public record SmtpConfig(
         if (from == null) from = "";
         if (user == null) user = "";
         if (password == null) password = "";
+        allowedRecipientDomains = allowedRecipientDomains == null
+                ? java.util.List.of() : java.util.List.copyOf(allowedRecipientDomains);
+        allowedFrom = allowedFrom == null
+                ? java.util.List.of() : java.util.List.copyOf(allowedFrom);
     }
 
     public static SmtpConfig fromParameters(@Nullable Map<String, Object> params) {
@@ -55,7 +63,28 @@ public record SmtpConfig(
         String password = stringOrEmpty(params.get("password"));
         String from = stringOrEmpty(params.get("from"));
         int timeout = intOrDefault(params.get("timeoutSeconds"), DEFAULT_TIMEOUT_SECONDS);
-        return new SmtpConfig(host, port, tls, starttls, user, password, from, timeout);
+        return new SmtpConfig(host, port, tls, starttls, user, password, from, timeout,
+                stringList(params.get("allowedRecipientDomains")),
+                stringList(params.get("allowedFrom")));
+    }
+
+    /** Parse a config value that may be a YAML list or a comma-separated string. */
+    private static java.util.List<String> stringList(@Nullable Object v) {
+        if (v instanceof java.util.List<?> list) {
+            java.util.List<String> out = new java.util.ArrayList<>();
+            for (Object o : list) {
+                if (o != null && !o.toString().isBlank()) out.add(o.toString().trim());
+            }
+            return out;
+        }
+        if (v instanceof String s && !s.isBlank()) {
+            java.util.List<String> out = new java.util.ArrayList<>();
+            for (String part : s.split(",")) {
+                if (!part.isBlank()) out.add(part.trim());
+            }
+            return out;
+        }
+        return java.util.List.of();
     }
 
     /** "smtps" for implicit-TLS on 465; "smtp" for plain or STARTTLS upgrade. */

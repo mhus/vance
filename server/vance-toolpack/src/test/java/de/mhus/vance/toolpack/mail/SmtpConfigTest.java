@@ -50,4 +50,21 @@ class SmtpConfigTest {
         SmtpConfig cfg = SmtpConfig.fromParameters(Map.of("host", "smtp.example.com"));
         assertThat(cfg.from()).isEmpty();
     }
+
+    @Test
+    void allowlists_default_empty() {
+        SmtpConfig cfg = SmtpConfig.fromParameters(Map.of("host", "smtp.example.com"));
+        assertThat(cfg.allowedRecipientDomains()).isEmpty();
+        assertThat(cfg.allowedFrom()).isEmpty();
+    }
+
+    @Test
+    void parses_allowlists_from_comma_string_and_list() {
+        SmtpConfig cfg = SmtpConfig.fromParameters(Map.of(
+                "host", "smtp.example.com",
+                "allowedRecipientDomains", "acme.com, ok.org",
+                "allowedFrom", java.util.List.of("noreply@acme.com")));
+        assertThat(cfg.allowedRecipientDomains()).containsExactly("acme.com", "ok.org");
+        assertThat(cfg.allowedFrom()).containsExactly("noreply@acme.com");
+    }
 }

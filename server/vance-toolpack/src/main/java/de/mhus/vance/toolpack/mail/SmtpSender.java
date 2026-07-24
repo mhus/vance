@@ -80,6 +80,14 @@ public final class SmtpSender {
                         "send_message: no 'from' address — set parameters.from on the pack "
                                 + "or pass from=... on the call");
             }
+            // Abuse guards (defense-in-depth vs. prompt-injected send_message):
+            // an allowedFrom list blocks sender spoofing through the org relay;
+            // an allowedRecipientDomains list blocks data exfiltration to an
+            // attacker address. Empty lists = unrestricted (backward compatible).
+            enforceFromPolicy(fromAddr);
+            enforceRecipientPolicy(req.to());
+            enforceRecipientPolicy(req.cc());
+            enforceRecipientPolicy(req.bcc());
             msg.setFrom(new InternetAddress(fromAddr));
             if (req.replyTo() != null && !req.replyTo().isBlank()) {
                 msg.setReplyTo(new Address[]{new InternetAddress(req.replyTo())});
@@ -162,6 +170,10 @@ public final class SmtpSender {
         p.put(prefix + "writetimeout", String.valueOf(config.timeoutSeconds() * 1000L));
         if (config.starttls() && !config.tls()) {
             p.put(prefix + "starttls.enable", "true");
+            // Require, not just enable: without this a MITM stripping the
+            // server's STARTTLS advertisement makes Jakarta Mail fall back to
+            // cleartext, leaking AUTH credentials + message bodies.
+            p.put(prefix + "starttls.required", "true");
         }
         if (!config.user().isEmpty()) {
             p.put(prefix + "auth", "true");
@@ -172,6 +184,33 @@ public final class SmtpSender {
     private static @Nullable String pick(@Nullable String a, @Nullable String b) {
         if (a != null && !a.isBlank()) return a;
         return b == null || b.isBlank() ? null : b;
+    }
+
+    private void enforceFromPolicy(String fromAddr) {
+        java.util.List<String> allowed = config.allowedFrom();
+        if (allowed.isEmpty()) return;
+        String f = fromAddr.trim().toLowerCase(java.util.Locale.ROOT);
+        boolean ok = allowed.stream().anyMatch(a -> a.trim().toLowerCase(java.util.Locale.ROOT).equals(f));
+        if (!ok) {
+            throw new IllegalArgumentException(
+                    "send_message: From '" + fromAddr + "' is not in the allowed sender list");
+        }
+    }
+
+    private void enforceRecipientPolicy(@Nullable Collection<String> recipients) {
+        java.util.List<String> allowed = config.allowedRecipientDomains();
+        if (allowed.isEmpty() || recipients == null) return;
+        for (String r : recipients) {
+            if (r == null || r.isBlank()) continue;
+            int at = r.lastIndexOf('@');
+            String domain = at >= 0 ? r.substring(at + 1).trim().toLowerCase(java.util.Locale.ROOT) : "";
+            boolean ok = allowed.stream()
+                    .anyMatch(d -> d.trim().toLowerCase(java.util.Locale.ROOT).equals(domain));
+            if (!ok) {
+                throw new IllegalArgumentException(
+                        "send_message: recipient '" + r + "' is not in an allowed domain");
+            }
+        }
     }
 
     /** Wrapper exception so callers don't have to import jakarta.mail. */

@@ -107,7 +107,13 @@ public class KitExporter {
                 continue;
             }
             String content = readDocumentText(doc.get());
-            Path file = docsRoot.resolve(path);
+            // Containment: manifest paths come from _vance/kit-manifest.yaml (a
+            // project document), so a `../../../etc/...` entry must not let the
+            // export write outside the kit root. Mirror resolveKitPath's guard.
+            Path file = docsRoot.resolve(path).normalize();
+            if (!file.startsWith(docsRoot)) {
+                throw new KitException("manifest document path escapes kit root: " + path);
+            }
             try {
                 Path parent = file.getParent();
                 if (parent != null) Files.createDirectories(parent);
@@ -166,7 +172,12 @@ public class KitExporter {
             KitYamlMapper.ParsedSetting parsed = new KitYamlMapper.ParsedSetting(
                     setting.getType(), exportedValue, setting.getDescription());
             String yaml = KitYamlMapper.writeSetting(parsed);
-            Path file = settingsRoot.resolve(key + KitInstaller.SETTING_FILE_SUFFIX);
+            // Containment (see writeDocuments): a manifest setting key must not
+            // traverse outside the settings root.
+            Path file = settingsRoot.resolve(key + KitInstaller.SETTING_FILE_SUFFIX).normalize();
+            if (!file.startsWith(settingsRoot)) {
+                throw new KitException("manifest setting key escapes kit root: " + key);
+            }
             try {
                 Files.writeString(file, yaml, StandardCharsets.UTF_8);
                 written.add(key);

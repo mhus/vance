@@ -65,8 +65,22 @@ final class KitToolSupport {
     }
 
     static KitInheritDto sourceFrom(Map<String, Object> params) {
+        String url = requireString(params, "url");
+        // LLM-driven installs must not turn into an arbitrary local-directory
+        // read primitive: reject file:// and filesystem paths, require a remote
+        // git transport (https/http/git@/ssh). Local-folder sources stay
+        // available to non-LLM paths (anus bootstrap) that call KitRepoLoader
+        // directly, which don't go through this tool helper.
+        String t = url.trim();
+        boolean remote = t.startsWith("https://") || t.startsWith("http://")
+                || t.startsWith("git@") || t.startsWith("ssh://");
+        if (!remote) {
+            throw new ToolException(
+                    "kit source must be a remote repo (https://, git@, ssh://); "
+                    + "file:// and local filesystem paths are not allowed for kit_install");
+        }
         return KitInheritDto.builder()
-                .url(requireString(params, "url"))
+                .url(url)
                 .path(optionalString(params, "path"))
                 .branch(optionalString(params, "branch"))
                 .commit(optionalString(params, "commit"))

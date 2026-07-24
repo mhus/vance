@@ -39,6 +39,21 @@ class RecordsToCsvTransformerTest {
     }
 
     @Test
+    void quoteIfNeeded_neutralizesFormulaInjection() {
+        // Values starting with = + - @ (or tab/CR) are formulas in Excel/Sheets;
+        // they must be prefixed with a single quote (code-review-2 S-injection).
+        // Contains a comma + quotes, so it is also RFC-4180-wrapped ("'=…"):
+        // the single-quote neutralizer sits right after the opening quote.
+        assertThat(RecordsToCsvTransformer.quoteIfNeeded("=HYPERLINK(\"http://evil\",\"x\")"))
+                .startsWith("\"'=");
+        assertThat(RecordsToCsvTransformer.quoteIfNeeded("+1")).isEqualTo("'+1");
+        assertThat(RecordsToCsvTransformer.quoteIfNeeded("-2")).isEqualTo("'-2");
+        assertThat(RecordsToCsvTransformer.quoteIfNeeded("@cmd")).isEqualTo("'@cmd");
+        // A plain value is untouched.
+        assertThat(RecordsToCsvTransformer.quoteIfNeeded("42")).isEqualTo("42");
+    }
+
+    @Test
     void quoteIfNeeded_internalQuoteIsDoubled() {
         assertThat(RecordsToCsvTransformer.quoteIfNeeded("she said \"hi\""))
                 .isEqualTo("\"she said \"\"hi\"\"\"");

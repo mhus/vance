@@ -384,7 +384,15 @@ public class DocumentExpander {
             String tenantId, String projectId, Map<String, Object> ref) {
         Object id = ref.get("id");
         if (id instanceof String s && !s.isBlank()) {
-            return documentService.findById(s);
+            // findById is unscoped; confine the result to the process's own
+            // tenant+project. An LLM-/prompt-injected documentRef.id pointing at
+            // a foreign Mongo id must not pull another tenant's/project's body
+            // into this process's goals/plan/report (cross-scope leak). The
+            // path/name variants below are already project-scoped via findByPath/
+            // listByProject.
+            return documentService.findById(s)
+                    .filter(d -> tenantId.equals(d.getTenantId())
+                            && projectId.equals(d.getProjectId()));
         }
         Object path = ref.get("path");
         if (path instanceof String p && !p.isBlank()) {

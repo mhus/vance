@@ -97,6 +97,17 @@ public class RecordsToCsvTransformer implements DocumentTransformer {
      */
     static String quoteIfNeeded(String v) {
         if (v == null || v.isEmpty()) return "";
+        // Neutralize spreadsheet formula-injection: a cell whose first char is
+        // = + - @ (or a leading tab/CR) is executed as a formula by Excel/
+        // LibreOffice/Sheets. Record values may be LLM-synthesized or
+        // web-imported (untrusted), so prefix such a cell with a single quote
+        // before RFC-4180 quoting — matching the typed-cell safety on the
+        // XLSX/ODT paths.
+        char first = v.charAt(0);
+        if (first == '=' || first == '+' || first == '-' || first == '@'
+                || first == '\t' || first == '\r') {
+            v = "'" + v;
+        }
         boolean needsQuote = false;
         for (int i = 0; i < v.length(); i++) {
             char c = v.charAt(i);

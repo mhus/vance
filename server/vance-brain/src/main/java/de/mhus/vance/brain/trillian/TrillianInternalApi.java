@@ -6,6 +6,7 @@ import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
+import de.mhus.vance.shared.util.MongoKeys;
 import de.mhus.vance.shared.enginemessage.EngineMessageDocument;
 import de.mhus.vance.shared.enginemessage.EngineMessageService;
 import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
@@ -303,7 +304,10 @@ public class TrillianInternalApi {
             params.putAll(peer.getEngineParams());
         }
         Map<String, Object> attributes = new LinkedHashMap<>(readAttributes(peer));
-        attributes.put(name, value);
+        // The attribute name is LLM-chosen and lands as a nested Mongo map key;
+        // a dot would be read as a path separator (project mongo_map_keys
+        // gotcha), so escape it to '_'.
+        attributes.put(MongoKeys.sanitizeKey(name), value);
         params.put(PARAM_ATTRIBUTES, attributes);
         return thinkProcessService.replaceEngineParams(peer.getId(), params);
     }

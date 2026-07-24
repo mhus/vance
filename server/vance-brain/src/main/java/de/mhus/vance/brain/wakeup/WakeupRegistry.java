@@ -4,6 +4,7 @@ import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
 import de.mhus.vance.shared.thinkprocess.PendingMessageType;
+import de.mhus.vance.shared.util.MongoKeys;
 import jakarta.annotation.PreDestroy;
 import java.time.Duration;
 import java.time.Instant;
@@ -245,7 +246,11 @@ public class WakeupRegistry {
         envelope.put("correlationId", correlationId);
         envelope.put("label", label);
         if (userPayload != null && !userPayload.isEmpty()) {
-            envelope.put("payload", userPayload);
+            // Sanitize dot-keys: an arbitrary caller key like {"file.txt":…}
+            // would otherwise fail the Mongo persist on fire — the wakeup is
+            // then silently dropped (persist error is only logged), so
+            // heartbeats/watchdogs never arrive.
+            envelope.put("payload", MongoKeys.sanitizeKeys(userPayload));
         }
         return envelope;
     }

@@ -54,19 +54,22 @@ public class ComposeBlockRunTool implements Tool {
     private final ComposeFinishedNotifier finishedNotifier;
     private final CortexTurnSelectionHolder selectionHolder;
     private final SignalBroadcaster signalBroadcaster;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
     public ComposeBlockRunTool(DamogranComposeService composeService,
                                DocumentService documentService,
                                KindToolSupport support,
                                ComposeFinishedNotifier finishedNotifier,
                                CortexTurnSelectionHolder selectionHolder,
-                               SignalBroadcaster signalBroadcaster) {
+                               SignalBroadcaster signalBroadcaster,
+                               de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
         this.composeService = composeService;
         this.documentService = documentService;
         this.support = support;
         this.finishedNotifier = finishedNotifier;
         this.selectionHolder = selectionHolder;
         this.signalBroadcaster = signalBroadcaster;
+        this.contextFactory = contextFactory;
     }
 
     private static final Map<String, Object> SCHEMA = Map.of(
@@ -127,7 +130,8 @@ public class ComposeBlockRunTool implements Tool {
 
         ComposeRun run;
         try {
-            run = composeService.runAsync(ctx.tenantId(), projectId, ctx.processId(), target.manifest(), baseDir);
+            run = composeService.runAsync(ctx.tenantId(), projectId, ctx.processId(), target.manifest(), baseDir,
+                    contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()));
         } catch (DamogranException e) {
             throw new ToolException(e.getMessage());
         }

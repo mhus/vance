@@ -73,7 +73,8 @@ abstract class RemoteExecComposeRunner implements ComposeRunner {
     @Override
     public final DamogranComposeResult run(
             String tenantId, String projectId, @Nullable String processId,
-            DamogranManifest manifest, @Nullable String baseDir, @Nullable ComposeRun run) {
+            DamogranManifest manifest, @Nullable String baseDir, @Nullable ComposeRun run,
+            de.mhus.vance.shared.permission.@Nullable SecurityContext caller) {
         WorkspaceSpec ws = manifest.workspace();
 
         if (ws.delete() || ws.clear()) {
@@ -98,7 +99,7 @@ abstract class RemoteExecComposeRunner implements ComposeRunner {
         DamogranContext ctx = new DamogranContext(
                 tenantId, projectId, processId, ws.name(), ws.name(), null,
                 target(), null, baseDir, new RemoteFileIo(tools), run,
-                exec, new RemoteComposeGit(exec, target()));
+                exec, new RemoteComposeGit(exec, target()), caller);
 
         for (ImportEntry imp : manifest.imports()) {
             transport.doImport(ctx, imp);

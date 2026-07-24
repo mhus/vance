@@ -70,7 +70,8 @@ public class WorkspaceComposeRunner implements ComposeRunner {
     @Override
     public DamogranComposeResult run(
             String tenantId, String projectId, @Nullable String processId,
-            DamogranManifest manifest, @Nullable String baseDir, @Nullable ComposeRun run) {
+            DamogranManifest manifest, @Nullable String baseDir, @Nullable ComposeRun run,
+            de.mhus.vance.shared.permission.@Nullable SecurityContext caller) {
         WorkspaceSpec ws = manifest.workspace();
 
         // Terminal delete: dispose the named workspace (if any) and stop. No
@@ -92,7 +93,7 @@ public class WorkspaceComposeRunner implements ComposeRunner {
         DamogranContext ctx = new DamogranContext(
                 tenantId, projectId, processId,
                 ws.name(), handle.getDirName(), handle.getPath(),
-                ws.target(), null, baseDir, io, run, exec, git);
+                ws.target(), null, baseDir, io, run, exec, git, caller);
 
         for (ImportEntry imp : manifest.imports()) {
             transport.doImport(ctx, imp);

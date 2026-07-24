@@ -37,14 +37,24 @@ class VanceDocumentExporter implements DamogranExporter {
         byte[] bytes = ctx.requireFileIo("export").readBytes(entry.from(), MAX_EXPORT_BYTES);
         String mime = DamogranMime.mimeForPath(docPath);
 
+        // A manifest can target any project (vance://otherProject/…) and any path
+        // (incl. reserved _vance/…), so the write must carry the run's caller as a
+        // WriteReason.USER actor — the DocumentService chokepoint then enforces
+        // WRITE (R3) on the target project and the reserved-prefix ADMIN gate (R4).
+        // WriteActor.SYSTEM here would fail-open both. A null caller is an internal
+        // system run (trusted).
+        de.mhus.vance.shared.permission.WriteActor actor = ctx.caller() != null
+                ? de.mhus.vance.shared.permission.WriteActor.user(ctx.caller())
+                : de.mhus.vance.shared.permission.WriteActor.SYSTEM;
+
         if (DamogranMime.isText(mime)) {
             documentService.upsertText(ctx.tenantId(), project, docPath,
                     null, null, new String(bytes, StandardCharsets.UTF_8), CREATED_BY,
-                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+                    actor);
         } else {
             documentService.createOrReplaceBinary(ctx.tenantId(), project, docPath,
                     bytes, mime, null, null, null, CREATED_BY,
-                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+                    actor);
         }
     }
 }

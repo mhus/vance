@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.damogran;
 
+import de.mhus.vance.shared.permission.SecurityContext;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -22,8 +23,9 @@ public interface ComposeRunner {
 
     /** Synchronous run (no progress tracking). */
     default DamogranComposeResult run(String tenantId, String projectId, @Nullable String processId,
-                                      DamogranManifest manifest, @Nullable String baseDir) {
-        return run(tenantId, projectId, processId, manifest, baseDir, null);
+                                      DamogranManifest manifest, @Nullable String baseDir,
+                                      @Nullable SecurityContext caller) {
+        return run(tenantId, projectId, processId, manifest, baseDir, null, caller);
     }
 
     /**
@@ -35,8 +37,11 @@ public interface ComposeRunner {
      *                  {@code vance:} import/export paths ({@code null} = root)
      * @param run       async-run state for progress reporting, or {@code null}
      *                  for a synchronous run
+     * @param caller    the user the run acts for (REST user or agent-session user),
+     *                  authorizing {@code vance:} import/export; {@code null} only
+     *                  for internal system-initiated runs
      */
     DamogranComposeResult run(String tenantId, String projectId, @Nullable String processId,
                               DamogranManifest manifest, @Nullable String baseDir,
-                              @Nullable ComposeRun run);
+                              @Nullable ComposeRun run, @Nullable SecurityContext caller);
 }

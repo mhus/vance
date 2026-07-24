@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.damogran;
 
+import de.mhus.vance.shared.permission.SecurityContext;
 import java.nio.file.Path;
 import org.jspecify.annotations.Nullable;
 
@@ -28,6 +29,11 @@ import org.jspecify.annotations.Nullable;
  * @param composeBaseDir  directory of the compose document, used to resolve
  *                        relative {@code vance:} import/export paths ({@code null}
  *                        for inline runs without a document context)
+ * @param caller          the user on whose behalf the run fires (directly via REST
+ *                        or through an agent session) — threaded so cross-project
+ *                        {@code vance:} import/export is authorized against the
+ *                        real subject and project writes carry a user actor, not
+ *                        SYSTEM. {@code null} only for internal system-initiated runs.
  */
 public record DamogranContext(
         String tenantId,
@@ -42,7 +48,8 @@ public record DamogranContext(
         @Nullable ComposeFileIo fileIo,
         @Nullable ComposeProgress progress,
         @Nullable ComposeExec exec,
-        @Nullable ComposeGit git) {
+        @Nullable ComposeGit git,
+        @Nullable SecurityContext caller) {
 
     /** Convenience for callers/tests that don't drive import/export or progress. */
     public DamogranContext(
@@ -50,7 +57,7 @@ public record DamogranContext(
             String workspaceName, String workspaceDirName, @Nullable Path workspacePath,
             String target, @Nullable String daemonName, @Nullable String composeBaseDir) {
         this(tenantId, projectId, processId, workspaceName, workspaceDirName, workspacePath,
-                target, daemonName, composeBaseDir, null, null, null, null);
+                target, daemonName, composeBaseDir, null, null, null, null, null);
     }
 
     /** The run's file backend for import/export; throws if none was bound. */

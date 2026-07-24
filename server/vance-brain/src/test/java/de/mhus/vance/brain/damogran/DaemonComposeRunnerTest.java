@@ -62,7 +62,7 @@ class DaemonComposeRunnerTest {
         when(daemonRegistry.find("t", "p", "build-box")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> runner.run("t", "p", "proc",
-                manifest(List.of(new TaskSpec("exec", Map.of("command", "make"), List.of()))), null))
+                manifest(List.of(new TaskSpec("exec", Map.of("command", "make"), List.of()))), null, null))
                 .isInstanceOf(DamogranException.class)
                 .hasMessageContaining("build-box")
                 .hasMessageContaining("not connected");
@@ -74,7 +74,7 @@ class DaemonComposeRunnerTest {
         when(daemonRegistry.find("t", "p", "build-box")).thenReturn(Optional.of(liveRef()));
 
         DamogranComposeResult result = runner.run("t", "p", "proc",
-                manifest(List.of(new TaskSpec("python", Map.of("code", "x=1"), List.of()))), null);
+                manifest(List.of(new TaskSpec("python", Map.of("code", "x=1"), List.of()))), null, null);
 
         assertThat(result.isSuccess()).isFalse();
         assertThat(result.error()).contains("python").contains("DAEMON");

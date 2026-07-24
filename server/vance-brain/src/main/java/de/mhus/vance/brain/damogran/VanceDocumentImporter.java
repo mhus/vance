@@ -18,9 +18,12 @@ import org.springframework.stereotype.Component;
 class VanceDocumentImporter implements DamogranImporter {
 
     private final DocumentService documentService;
+    private final de.mhus.vance.shared.permission.PermissionService permissionService;
 
-    VanceDocumentImporter(DocumentService documentService) {
+    VanceDocumentImporter(DocumentService documentService,
+            de.mhus.vance.shared.permission.PermissionService permissionService) {
         this.documentService = documentService;
+        this.permissionService = permissionService;
     }
 
     @Override
@@ -32,7 +35,17 @@ class VanceDocumentImporter implements DamogranImporter {
     public void doImport(DamogranContext ctx, ImportEntry entry) {
         DamogranUri.VanceRef ref = DamogranUri.resolveVance(ctx.composeBaseDir(), entry.from());
         String project = ref.project() != null ? ref.project() : ctx.projectId();
-        // Cross-project ACL is enforced by findByPath.
+        // findByPath is a raw repository lookup with NO authorization — a manifest
+        // may name any project (vance://otherProject/…), so authorize the READ
+        // against the run's caller (the user, directly or via the agent session)
+        // before reading. The provider decides: cross-project is allowed only if
+        // the caller has READ there. A null caller is an internal system run.
+        if (ctx.caller() != null) {
+            permissionService.enforce(ctx.caller(),
+                    new de.mhus.vance.shared.permission.Resource.Document(
+                            ctx.tenantId(), project, ref.path()),
+                    de.mhus.vance.shared.permission.Action.READ);
+        }
         Optional<DocumentDocument> doc =
                 documentService.findByPath(ctx.tenantId(), project, ref.path());
         if (doc.isEmpty()) {

@@ -24,7 +24,7 @@ class DamogranBuiltinTasksTest {
 
     private static DamogranContext workCtx(@Nullable ComposeExec exec) {
         return new DamogranContext("t", "p", "proc1", "ws", "ws", Path.of("/tmp/ws"),
-                "WORK", null, null, null, null, exec, null);
+                "WORK", null, null, null, null, exec, null, null);
     }
 
     // ──────────────────── exec ────────────────────

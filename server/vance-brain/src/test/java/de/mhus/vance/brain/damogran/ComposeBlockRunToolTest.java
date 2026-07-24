@@ -49,7 +49,10 @@ class ComposeBlockRunToolTest {
         ComposeFinishedNotifier notifier = mock(ComposeFinishedNotifier.class);
         de.mhus.vance.brain.ws.signals.SignalBroadcaster signals =
                 mock(de.mhus.vance.brain.ws.signals.SignalBroadcaster.class);
-        tool = new ComposeBlockRunTool(composeService, documentService, support, notifier, selectionHolder, signals);
+        de.mhus.vance.brain.permission.SecurityContextFactory contextFactory =
+                mock(de.mhus.vance.brain.permission.SecurityContextFactory.class);
+        tool = new ComposeBlockRunTool(composeService, documentService, support, notifier,
+                selectionHolder, signals, contextFactory);
 
         doc = mock(DocumentDocument.class);
         ctx = mock(ToolInvocationContext.class);
@@ -73,7 +76,7 @@ class ComposeBlockRunToolTest {
         when(run.isTerminal()).thenReturn(true);
         when(run.result()).thenReturn(result);
         // Disambiguate the (…, String yaml, …) overload from the manifest one.
-        when(composeService.runAsync(anyString(), anyString(), any(), anyString(), any())).thenReturn(run);
+        when(composeService.runAsync(anyString(), anyString(), any(), anyString(), any(), any())).thenReturn(run);
         return run;
     }
 

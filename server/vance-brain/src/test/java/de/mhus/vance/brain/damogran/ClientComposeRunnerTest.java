@@ -58,7 +58,7 @@ class ClientComposeRunnerTest {
         DamogranManifest m = manifest(List.of(),
                 List.of(new ImportEntry("vance:a.txt", "a.txt", Map.of())), List.of(), false);
 
-        DamogranComposeResult result = runner.run("t", "p", "proc", m, null);
+        DamogranComposeResult result = runner.run("t", "p", "proc", m, null, null);
 
         assertThat(result.isSuccess()).isTrue();
         org.mockito.Mockito.verify(transport)
@@ -69,7 +69,7 @@ class ClientComposeRunnerTest {
     void run_withDelete_throws_noManagedWorkspace() {
         DamogranManifest m = manifest(List.of(), List.of(), List.of(), true);
 
-        assertThatThrownBy(() -> runner.run("t", "p", "proc", m, null))
+        assertThatThrownBy(() -> runner.run("t", "p", "proc", m, null, null))
                 .isInstanceOf(DamogranException.class)
                 .hasMessageContaining("managed workspace");
     }
@@ -78,7 +78,7 @@ class ClientComposeRunnerTest {
     void run_withoutProcess_throws_needsSession() {
         DamogranManifest m = manifest(List.of(exec("ls")), List.of(), List.of(), false);
 
-        assertThatThrownBy(() -> runner.run("t", "p", null, m, null))
+        assertThatThrownBy(() -> runner.run("t", "p", null, m, null, null))
                 .isInstanceOf(DamogranException.class)
                 .hasMessageContaining("session-bound process");
     }
@@ -92,7 +92,7 @@ class ClientComposeRunnerTest {
 
         DamogranManifest m = manifest(List.of(exec("ls")), List.of(), List.of(), false);
 
-        assertThatThrownBy(() -> runner.run("t", "p", "proc", m, null))
+        assertThatThrownBy(() -> runner.run("t", "p", "proc", m, null, null))
                 .isInstanceOf(DamogranException.class)
                 .hasMessageContaining("no Foot");
     }
@@ -108,7 +108,7 @@ class ClientComposeRunnerTest {
                 List.of(new TaskSpec("python", Map.of("code", "x=1"), List.of())),
                 List.of(), List.of(), false);
 
-        DamogranComposeResult result = runner.run("t", "p", "proc", m, null);
+        DamogranComposeResult result = runner.run("t", "p", "proc", m, null, null);
 
         assertThat(result.isSuccess()).isFalse();
         assertThat(result.error()).contains("python").contains("not supported");

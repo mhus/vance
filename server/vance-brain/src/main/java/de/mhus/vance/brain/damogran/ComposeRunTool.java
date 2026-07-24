@@ -34,13 +34,16 @@ public class ComposeRunTool implements Tool {
     private final DamogranComposeService composeService;
     private final DocumentService documentService;
     private final ComposeFinishedNotifier finishedNotifier;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
     public ComposeRunTool(DamogranComposeService composeService,
                           DocumentService documentService,
-                          ComposeFinishedNotifier finishedNotifier) {
+                          ComposeFinishedNotifier finishedNotifier,
+                          de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
         this.composeService = composeService;
         this.documentService = documentService;
         this.finishedNotifier = finishedNotifier;
+        this.contextFactory = contextFactory;
     }
 
     private static final Map<String, Object> SCHEMA = Map.of(
@@ -99,7 +102,8 @@ public class ComposeRunTool implements Tool {
 
         ComposeRun run;
         try {
-            run = composeService.runAsync(ctx.tenantId(), projectId, ctx.processId(), yaml, baseDir);
+            run = composeService.runAsync(ctx.tenantId(), projectId, ctx.processId(), yaml, baseDir,
+                    contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()));
         } catch (DamogranException e) {
             throw new ToolException(e.getMessage());
         }

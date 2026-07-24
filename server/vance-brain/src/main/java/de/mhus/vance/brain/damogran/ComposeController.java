@@ -123,7 +123,8 @@ public class ComposeController {
             return errorResult(e.getMessage());
         }
 
-        ComposeRun run = composeService.runAsync(tenant, projectId, processId, manifest, baseDir);
+        ComposeRun run = composeService.runAsync(tenant, projectId, processId, manifest, baseDir,
+                authority.contextOf(httpRequest));
         try {
             run.awaitDone(FAST_PATH_WAIT_MS);
         } catch (InterruptedException e) {

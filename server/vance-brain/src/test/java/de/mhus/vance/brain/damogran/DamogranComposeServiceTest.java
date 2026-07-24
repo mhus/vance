@@ -102,7 +102,7 @@ class DamogranComposeServiceTest {
         run.requestCancel();
 
         DamogranManifest m = manifest("WORK", List.of(task("exec")), List.of(), List.of());
-        DamogranComposeResult result = runner.run("t", "p", "proc1", m, null, run);
+        DamogranComposeResult result = runner.run("t", "p", "proc1", m, null, run, null);
 
         assertThat(result.status()).isEqualTo(DamogranStatus.FAILURE);
         assertThat(result.error()).contains("cancelled");
@@ -133,7 +133,7 @@ class DamogranComposeServiceTest {
         when(taskExecutor.dispatch(any(), any())).thenReturn(DamogranTaskResult.success(List.of()));
 
         DamogranManifest m = manifest("WORK", List.of(task("exec")), List.of(), List.of());
-        ComposeRun run = service.runAsync("t", "p", "proc1", m, null);
+        ComposeRun run = service.runAsync("t", "p", "proc1", m, null, null);
 
         assertThat(run.runId()).startsWith("cr-");
         assertThat(run.awaitDone(5000)).isTrue();

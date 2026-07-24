@@ -72,7 +72,9 @@ public class DamogranComposeService {
     public DamogranComposeResult run(
             String tenantId, String projectId, @Nullable String processId,
             DamogranManifest manifest, @Nullable String baseDir) {
-        return dispatch(tenantId, projectId, processId, manifest, baseDir, null);
+        // Synchronous run has no user-facing caller today (internal/tests only) →
+        // system-initiated (null caller). User-facing paths go through runAsync.
+        return dispatch(tenantId, projectId, processId, manifest, baseDir, null, null);
     }
 
     // ──────────────────── async ────────────────────
@@ -80,8 +82,9 @@ public class DamogranComposeService {
     /** Parse and start an async compose run; returns the (registered) {@link ComposeRun}. */
     public ComposeRun runAsync(
             String tenantId, String projectId, @Nullable String processId,
-            String yaml, @Nullable String baseDir) {
-        return runAsync(tenantId, projectId, processId, parser.parse(yaml), baseDir);
+            String yaml, @Nullable String baseDir,
+            de.mhus.vance.shared.permission.@Nullable SecurityContext caller) {
+        return runAsync(tenantId, projectId, processId, parser.parse(yaml), baseDir, caller);
     }
 
     /**
@@ -92,14 +95,15 @@ public class DamogranComposeService {
      */
     public ComposeRun runAsync(
             String tenantId, String projectId, @Nullable String processId,
-            DamogranManifest manifest, @Nullable String baseDir) {
+            DamogranManifest manifest, @Nullable String baseDir,
+            de.mhus.vance.shared.permission.@Nullable SecurityContext caller) {
         String runId = "cr-" + UUID.randomUUID().toString().substring(0, 8);
         ComposeRun run = new ComposeRun(
                 runId, tenantId, projectId, manifest.workspace().name(), Instant.now());
         runRegistry.register(run);
         asyncRunners.submit(() -> {
             try {
-                run.complete(dispatch(tenantId, projectId, processId, manifest, baseDir, run));
+                run.complete(dispatch(tenantId, projectId, processId, manifest, baseDir, run, caller));
             } catch (RuntimeException e) {
                 log.warn("Damogran async compose '{}' failed: {}", runId, e.toString());
                 run.fail(e.getMessage());
@@ -110,13 +114,14 @@ public class DamogranComposeService {
 
     private DamogranComposeResult dispatch(
             String tenantId, String projectId, @Nullable String processId,
-            DamogranManifest manifest, @Nullable String baseDir, @Nullable ComposeRun run) {
+            DamogranManifest manifest, @Nullable String baseDir, @Nullable ComposeRun run,
+            de.mhus.vance.shared.permission.@Nullable SecurityContext caller) {
         String target = manifest.workspace().target();
         ComposeRunner runner = runners.get(target);
         if (runner == null) {
             throw new DamogranException("compose target not supported: " + target
                     + " (available: " + new TreeSet<>(runners.keySet()) + ")");
         }
-        return runner.run(tenantId, projectId, processId, manifest, baseDir, run);
+        return runner.run(tenantId, projectId, processId, manifest, baseDir, run, caller);
     }
 }

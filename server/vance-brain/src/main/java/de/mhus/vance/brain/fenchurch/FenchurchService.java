@@ -130,20 +130,6 @@ public class FenchurchService {
     public GenerateImageResult generate(GenerateImageRequest request) {
         validate(request);
         ensureEnabled(request);
-        // Reserve a quota slot up front (atomic vs. the ~360s generation
-        // window) instead of a bare read — see ImageCallTracker.reserve. The
-        // reserve row is finalized in place (its id is threaded into the final
-        // record) on success/failure, or was already rolled back on denial.
-        ImageCallTracker.Reservation reservation = callTracker.reserve(
-                request.getTenantId(), request.getUserId(),
-                request.getProjectId(), request.getProcessId());
-        if (reservation instanceof ImageCallTracker.Denied denied) {
-            throw new FenchurchException(
-                    FenchurchException.Reason.QUOTA_EXCEEDED,
-                    denied.verdict().message() == null
-                            ? "Quota exceeded" : denied.verdict().message());
-        }
-        String reserveId = ((ImageCallTracker.Granted) reservation).reserveId();
 
         long callStart = System.currentTimeMillis();
         String resolvedAlias = request.getAlias() == null || request.getAlias().isBlank()
@@ -176,6 +162,26 @@ public class FenchurchService {
                 request, resolved, aspectRatio, timeoutSeconds);
 
         ThinkProcessDocument process = loadProcess(request);
+
+        // Reserve a quota slot only AFTER all cheap validation (alias/model
+        // lookup, aspect-ratio, prompt-fit, path, process load) has passed. A
+        // reserve row counts against quota until finalized and the repository is
+        // append-only with no sweep, so reserving before validation orphans a
+        // PENDING row — permanent quota burn — on every rejected request (an
+        // unsupported aspect ratio or over-long prompt would silently exhaust the
+        // tenant's daily/monthly limit). Placed before the heartbeat so a denial
+        // throws without leaving a dangling timer.
+        ImageCallTracker.Reservation reservation = callTracker.reserve(
+                request.getTenantId(), request.getUserId(),
+                request.getProjectId(), request.getProcessId());
+        if (reservation instanceof ImageCallTracker.Denied denied) {
+            throw new FenchurchException(
+                    FenchurchException.Reason.QUOTA_EXCEEDED,
+                    denied.verdict().message() == null
+                            ? "Quota exceeded" : denied.verdict().message());
+        }
+        String reserveId = ((ImageCallTracker.Granted) reservation).reserveId();
+
         ScheduledFuture<?> heartbeat = startHeartbeat(process, resolvedAlias, callStart);
 
         try {

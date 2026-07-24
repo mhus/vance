@@ -542,13 +542,21 @@ public class ThinkProcessService {
     }
 
     /**
-     * Atomically advances {@code lastPrakAt} to the given timestamp.
-     * Used by {@code PrakPeriodicTrigger} after a successful periodic
-     * pass; the next pass then reads from this cursor to find unrated
-     * messages. Idempotent on equal-or-older timestamps.
+     * Atomically advances {@code lastPrakAt} <em>forward only</em> to the given
+     * timestamp. Used by {@code PrakPeriodicTrigger} after a successful periodic
+     * pass; the next pass reads from this cursor to find unrated messages.
+     *
+     * <p>The write is guarded on {@code lastPrakAt} being null/absent or strictly
+     * older than the new value, so a slower async run finishing after a faster
+     * one can never rewind the cursor to an older timestamp (which would cause an
+     * already-processed span to be re-evaluated and duplicate INSIGHT promotions).
+     * Returns {@code false} when the cursor was already at or beyond the new value.
      */
     public boolean updateLastPrakAt(String id, Instant lastPrakAt) {
-        Query query = new Query(Criteria.where("_id").is(id));
+        Query query = new Query(Criteria.where("_id").is(id)
+                .orOperator(
+                        Criteria.where("lastPrakAt").is(null),
+                        Criteria.where("lastPrakAt").lt(lastPrakAt)));
         Update update = new Update().set("lastPrakAt", lastPrakAt);
         UpdateResult result = mongoTemplate.updateFirst(
                 query, update, ThinkProcessDocument.class);

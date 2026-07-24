@@ -340,6 +340,17 @@ const speechSupported = ref(false);
 const speechRecording = ref(false);
 const speechError = ref<string | null>(null);
 let recognition: SpeechRecognitionLike | null = null;
+// Tracked so onBeforeUnmount can cancel a pending mic-restart — otherwise
+// recognition.stop()'s async onend reschedules startMic() AFTER teardown,
+// leaving an orphaned continuous recognizer looping with the mic live.
+let micRestartTimer: number | null = null;
+let composerUnmounted = false;
+// Set for fatal STT errors (permission revoked / network) so onend does not
+// busy-restart the recognizer ~20×/s until the idle timeout.
+let speechFatalError = false;
+// Remembers whether the speaker (TTS) was already on before talk mode forced
+// it on, so exiting talk mode doesn't clobber a pre-existing TTS preference.
+let speakerWasOnBeforeTalk = false;
 
 function initSpeechRecognition(): void {
   const w = window as unknown as {
@@ -371,12 +382,22 @@ function initSpeechRecognition(): void {
   instance.onerror = (event) => {
     speechError.value = t('chat.speech.microphoneError', { error: event.error });
     speechRecording.value = false;
+    // Fatal errors won't recover on retry — suppress the auto-restart so
+    // onend doesn't spin start→onerror→onend ~20×/s until the idle timeout.
+    if (event.error === 'not-allowed'
+        || event.error === 'service-not-allowed'
+        || event.error === 'network') {
+      speechFatalError = true;
+    }
   };
   instance.onend = () => {
     speechRecording.value = false;
+    if (composerUnmounted || speechFatalError) return;
     if (talkMode.value && !speakerSpeaking.value && !sending.value) {
-      window.setTimeout(() => {
-        if (talkMode.value && !speakerSpeaking.value && !sending.value
+      micRestartTimer = window.setTimeout(() => {
+        micRestartTimer = null;
+        if (!composerUnmounted && !speechFatalError
+            && talkMode.value && !speakerSpeaking.value && !sending.value
             && !speechRecording.value) {
           startMic();
         }
@@ -643,9 +664,13 @@ function enableTalkMode(): void {
   talkCommands.value = getTalkCommands();
   writeTalkModeStored(true);
   speechError.value = null;
+  speechFatalError = false; // explicit (re-)activation clears a prior fatal STT error
   // Block mode dictates into a growing prompt — force multiline so the
   // user sees the whole buffer before "<name> senden" commits it.
   multiline.value = true;
+  // Remember the pre-talk speaker state so exiting talk mode doesn't
+  // clobber a user who runs with TTS on persistently.
+  speakerWasOnBeforeTalk = speakerEnabled.value;
   if (!speakerEnabled.value) {
     speakerEnabled.value = true;
     void saveSpeakerEnabled(true);
@@ -687,7 +712,9 @@ function disableTalkMode(): void {
     window.speechSynthesis.cancel();
   }
   speakerSpeaking.value = false;
-  if (speakerEnabled.value) {
+  // Only turn TTS off if talk mode was what enabled it — otherwise leave the
+  // user's pre-existing persisted speaker preference untouched.
+  if (speakerEnabled.value && !speakerWasOnBeforeTalk) {
     speakerEnabled.value = false;
     void saveSpeakerEnabled(false);
   }
@@ -1079,6 +1106,11 @@ onBeforeUnmount(() => {
   // Tear down Talk-Mode timers but keep the persisted flag — a
   // session switch (component remount) is expected to resurrect it
   // from sessionStorage on the next mount.
+  composerUnmounted = true; // stops onend from rescheduling startMic post-teardown
+  if (micRestartTimer !== null) {
+    window.clearTimeout(micRestartTimer);
+    micRestartTimer = null;
+  }
   clearTalkIdle();
   if (recognition && speechRecording.value) {
     try { recognition.stop(); } catch { /* already stopped */ }

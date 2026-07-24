@@ -164,9 +164,14 @@ public class FookTicketService {
 
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("$meta", meta);
-        root.put(FIELD_DESCRIPTION, nonBlank(payload.getDescription(), ""));
+        // Scrub secret-shaped tokens at rest — the reporter's verbatim text lands
+        // in the globally-readable _vance fook pool, so a pasted API key must not
+        // sit there in cleartext (it's already redacted before GitHub egress).
+        root.put(FIELD_DESCRIPTION, de.mhus.vance.brain.fook.upstream.FookTicketAnonymizer
+                .scrubSecretsAtRest(nonBlank(payload.getDescription(), "")));
         if (payload.getTriageNote() != null && !payload.getTriageNote().isBlank()) {
-            root.put(FIELD_TRIAGE_NOTE, payload.getTriageNote());
+            root.put(FIELD_TRIAGE_NOTE, de.mhus.vance.brain.fook.upstream.FookTicketAnonymizer
+                    .scrubSecretsAtRest(payload.getTriageNote()));
         }
         if (payload.getContext() != null) {
             root.put(FIELD_CONTEXT, contextToMap(payload.getContext()));

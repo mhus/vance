@@ -75,6 +75,20 @@ public class FookTicketAnonymizer {
     }
 
     /**
+     * Scrub secret-shaped tokens (API keys / PATs) from free text at INGEST, so a
+     * credential a reporter pasted is never persisted in cleartext in the
+     * globally-readable {@code _vance/fook/tickets} pool (readable by any
+     * _vance-tenant admin). The full pattern set still runs at upstream egress;
+     * email/ip/guid stay unscrubbed here as they are often legitimate triage
+     * context. Best-effort — not a guarantee (see the LOW findings on key shapes).
+     */
+    public static String scrubSecretsAtRest(String text) {
+        if (text == null || text.isBlank()) return text;
+        return scrub(text, ALL_PATTERNS.stream()
+                .filter(p -> "apiKey".equals(p.name)).toList());
+    }
+
+    /**
      * Build a {@link ProviderTicketDraft} from a local ticket plus
      * the operator's anonymization config.
      *

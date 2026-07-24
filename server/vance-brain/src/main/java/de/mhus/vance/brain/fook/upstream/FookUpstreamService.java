@@ -135,8 +135,25 @@ public class FookUpstreamService {
 
         ProviderTicketRef ref = provider.create(draft);
 
-        ticketService.markTransferred(
-                ticket.getId(), provider.name(), ref.getExternalId(), ref.getUrl());
+        // provider.create is irreversible. If the status flip to `transferred`
+        // fails afterwards (pod crash, transient Mongo error, optimistic-lock
+        // conflict), the ticket would stay status=new and be RE-SENT next tick —
+        // a duplicate upstream issue. Treat a post-create bookkeeping failure as
+        // fatal-for-this-ticket (mark failed, not re-eligible); the externalId is
+        // logged so an operator can reconcile the already-created upstream issue.
+        try {
+            ticketService.markTransferred(
+                    ticket.getId(), provider.name(), ref.getExternalId(), ref.getUrl());
+        } catch (RuntimeException e) {
+            log.error("Fook upstream: issue {} ({}) was created for ticket {} but "
+                            + "markTransferred failed — marking ticket failed to prevent a "
+                            + "duplicate re-send (reconcile the upstream issue manually): {}",
+                    ref.getExternalId(), ref.getUrl(), ticket.getId(), e.toString(), e);
+            ticketService.markTransferFailed(ticket.getId(),
+                    "upstream issue " + ref.getExternalId() + " was created but transfer "
+                            + "bookkeeping failed: " + e.getMessage());
+            return;
+        }
 
         updateInboxOnTransfer(ticket, ref);
     }

@@ -95,6 +95,7 @@ public class FenchurchService {
     private final LightLlmService lightLlm;
     private final SettingService settingService;
     private final DocumentService documentService;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
     private final ProgressEmitter progressEmitter;
     private final ThinkProcessService thinkProcessService;
 
@@ -178,12 +179,18 @@ public class FenchurchService {
         ScheduledFuture<?> heartbeat = startHeartbeat(process, resolvedAlias, callStart);
 
         try {
+            String imageProject = resolveProjectId(request);
             DocumentImageDestinationStream stream = new DocumentImageDestinationStream(
                     documentService,
                     request.getTenantId(),
-                    resolveProjectId(request),
+                    imageProject,
                     path,
-                    request.getUserId());
+                    request.getUserId(),
+                    // Image generation is user-initiated with a caller-controlled
+                    // target path → carry the acting user so the DocumentService
+                    // chokepoint enforces WRITE (and reserved-prefix ADMIN) instead
+                    // of a SYSTEM fail-open.
+                    contextFactory.writeActor(request.getTenantId(), request.getUserId(), path));
             // Push the caller-supplied or LightLlm-generated title onto
             // the stream BEFORE the provider call so the eventual
             // DocumentService.createOrReplaceBinary (commit on stream

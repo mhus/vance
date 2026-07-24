@@ -43,6 +43,7 @@ class ImageManipulationServiceTest {
     private ProgressEmitter progressEmitter;
     private ThinkProcessService thinkProcessService;
     private MetricService metricService;
+    private de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
     private ImageManipulationService service;
 
@@ -55,6 +56,9 @@ class ImageManipulationServiceTest {
         progressEmitter = mock(ProgressEmitter.class);
         thinkProcessService = mock(ThinkProcessService.class);
         metricService = mock(MetricService.class);
+        contextFactory = mock(de.mhus.vance.brain.permission.SecurityContextFactory.class);
+        when(contextFactory.writeActor(any(), any(), any()))
+                .thenReturn(de.mhus.vance.shared.permission.WriteActor.SYSTEM);
 
         when(settingService.getBooleanValueCascade(
                 anyString(), any(), any(), eq(ImageManipulationService.SETTING_ENABLED), anyBoolean()))
@@ -64,7 +68,7 @@ class ImageManipulationServiceTest {
 
         service = new ImageManipulationService(
                 documentService, settingService, progressEmitter,
-                thinkProcessService, metricService);
+                thinkProcessService, metricService, contextFactory);
 
         redPng40x40 = renderSolidPng(40, 40, Color.RED);
     }
@@ -85,6 +89,9 @@ class ImageManipulationServiceTest {
                 bytesCap.capture(), eq("image/png"),
                 any(), any(), any(), eq("alice"),
                 any(de.mhus.vance.shared.permission.WriteActor.class));
+        // Security regression (code-review-2): the write actor is built from the
+        // acting user + target path, not the hardcoded WriteActor.SYSTEM.
+        verify(contextFactory).writeActor(eq("acme"), eq("alice"), eq("images/cat.png"));
 
         assertThat(pathCap.getValue()).isEqualTo("images/cat.png");
         assertThat(result.path()).isEqualTo("images/cat.png");

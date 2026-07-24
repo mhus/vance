@@ -100,6 +100,7 @@ public class ImageManipulationService {
     private final ProgressEmitter progressEmitter;
     private final ThinkProcessService thinkProcessService;
     private final MetricService metricService;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
     // ─────────────────── Public op surface ───────────────────
 
@@ -461,11 +462,15 @@ public class ImageManipulationService {
         String effectiveTarget = resolveTarget(sourcePath, targetPath);
         ensureTargetIsWritable(opName, startMs, tenantId, effectiveProject, sourcePath, effectiveTarget);
 
+        // LLM-driven op with a caller-controlled target path in the process's
+        // own project → user-driven write. Carry the acting user so the per-doc
+        // WRITE check (and reserved-prefix ADMIN gate for _vance/) applies at the
+        // DocumentService chokepoint, instead of the SYSTEM fail-open.
         DocumentDocument written = documentService.createOrReplaceBinary(
                 tenantId, effectiveProject, effectiveTarget,
                 outBytes, outputMime,
                 null, null, null, userId,
-                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+                contextFactory.writeActor(tenantId, userId, effectiveTarget));
 
         long durationMs = System.currentTimeMillis() - startMs;
         recordOutcome(opName, "success", startMs);

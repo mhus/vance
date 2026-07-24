@@ -20,12 +20,16 @@ class DocumentImageDestinationStreamTest {
     private static final String TENANT = "acme";
     private static final String PROJECT = "demo";
     private static final String PATH = "images/abc-cat.png";
+    // These tests exercise the stream's IO/commit mechanics against a mocked
+    // DocumentService; the write actor is not under test here.
+    private static final de.mhus.vance.shared.permission.WriteActor ACTOR =
+            de.mhus.vance.shared.permission.WriteActor.SYSTEM;
 
     @Test
     void close_commits_accumulated_bytes_with_metadata() {
         DocumentService docs = mock(DocumentService.class);
         DocumentImageDestinationStream stream = new DocumentImageDestinationStream(
-                docs, TENANT, PROJECT, PATH, "mike");
+                docs, TENANT, PROJECT, PATH, "mike", ACTOR);
 
         stream.setMimeType("image/png");
         stream.setTitle("A Watercolor Cat");
@@ -62,7 +66,7 @@ class DocumentImageDestinationStreamTest {
     void custom_tag_list_replaces_defaults() {
         DocumentService docs = mock(DocumentService.class);
         DocumentImageDestinationStream stream = new DocumentImageDestinationStream(
-                docs, TENANT, PROJECT, PATH, null, List.of("avatar"));
+                docs, TENANT, PROJECT, PATH, null, List.of("avatar"), ACTOR);
 
         stream.setMimeType("image/png");
         stream.write(0xFF);
@@ -83,7 +87,7 @@ class DocumentImageDestinationStreamTest {
     void close_without_mime_type_throws() {
         DocumentService docs = mock(DocumentService.class);
         DocumentImageDestinationStream stream = new DocumentImageDestinationStream(
-                docs, TENANT, PROJECT, PATH, null);
+                docs, TENANT, PROJECT, PATH, null, ACTOR);
         stream.write(1);
 
         assertThatThrownBy(stream::close)
@@ -98,7 +102,7 @@ class DocumentImageDestinationStreamTest {
     void close_without_bytes_throws() {
         DocumentService docs = mock(DocumentService.class);
         DocumentImageDestinationStream stream = new DocumentImageDestinationStream(
-                docs, TENANT, PROJECT, PATH, null);
+                docs, TENANT, PROJECT, PATH, null, ACTOR);
         stream.setMimeType("image/png");
 
         assertThatThrownBy(stream::close)
@@ -110,7 +114,7 @@ class DocumentImageDestinationStreamTest {
     void double_close_is_no_op() {
         DocumentService docs = mock(DocumentService.class);
         DocumentImageDestinationStream stream = new DocumentImageDestinationStream(
-                docs, TENANT, PROJECT, PATH, null);
+                docs, TENANT, PROJECT, PATH, null, ACTOR);
         stream.setMimeType("image/png");
         stream.write(1);
         stream.close();
@@ -125,7 +129,7 @@ class DocumentImageDestinationStreamTest {
     void write_after_close_throws() {
         DocumentService docs = mock(DocumentService.class);
         DocumentImageDestinationStream stream = new DocumentImageDestinationStream(
-                docs, TENANT, PROJECT, PATH, null);
+                docs, TENANT, PROJECT, PATH, null, ACTOR);
         stream.setMimeType("image/png");
         stream.write(1);
         stream.close();
@@ -140,7 +144,7 @@ class DocumentImageDestinationStreamTest {
     void setMetadata_null_value_removes_key() {
         DocumentService docs = mock(DocumentService.class);
         DocumentImageDestinationStream stream = new DocumentImageDestinationStream(
-                docs, TENANT, PROJECT, PATH, null);
+                docs, TENANT, PROJECT, PATH, null, ACTOR);
         stream.setMimeType("image/png");
         stream.setMetadata("seed", "42");
         stream.setMetadata("seed", null);
@@ -161,7 +165,7 @@ class DocumentImageDestinationStreamTest {
     void setAltText_null_removes_alt_text() {
         DocumentService docs = mock(DocumentService.class);
         DocumentImageDestinationStream stream = new DocumentImageDestinationStream(
-                docs, TENANT, PROJECT, PATH, null);
+                docs, TENANT, PROJECT, PATH, null, ACTOR);
         stream.setMimeType("image/png");
         stream.setAltText("a cat");
         stream.setAltText(null);
@@ -182,7 +186,7 @@ class DocumentImageDestinationStreamTest {
     void setMimeType_rejects_blank() {
         DocumentService docs = mock(DocumentService.class);
         DocumentImageDestinationStream stream = new DocumentImageDestinationStream(
-                docs, TENANT, PROJECT, PATH, null);
+                docs, TENANT, PROJECT, PATH, null, ACTOR);
 
         assertThatThrownBy(() -> stream.setMimeType(" "))
                 .isInstanceOf(IllegalArgumentException.class);
@@ -192,7 +196,7 @@ class DocumentImageDestinationStreamTest {
     void setMetadata_rejects_blank_key() {
         DocumentService docs = mock(DocumentService.class);
         DocumentImageDestinationStream stream = new DocumentImageDestinationStream(
-                docs, TENANT, PROJECT, PATH, null);
+                docs, TENANT, PROJECT, PATH, null, ACTOR);
 
         assertThatThrownBy(() -> stream.setMetadata(" ", "v"))
                 .isInstanceOf(IllegalArgumentException.class);

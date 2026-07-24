@@ -48,13 +48,16 @@ public class SlideshowApplication implements VanceApplication {
     private final SlideshowFolderReader folderReader;
     private final DocumentService documentService;
     private final DocumentLinkBuilder linkBuilder;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
     public SlideshowApplication(SlideshowFolderReader folderReader,
                                 DocumentService documentService,
-                                DocumentLinkBuilder linkBuilder) {
+                                DocumentLinkBuilder linkBuilder,
+                                de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
         this.folderReader = folderReader;
         this.documentService = documentService;
         this.linkBuilder = linkBuilder;
+        this.contextFactory = contextFactory;
     }
 
     @Override public String appName() { return APP_NAME; }
@@ -126,7 +129,7 @@ public class SlideshowApplication implements VanceApplication {
                     List.of("application", "slideshow"),
                     body, null, null, null, null, YAML_MIME,
                     de.mhus.vance.shared.document.DocumentService.TOOL_IDENTITY,
-                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), manifestPath));
         } else {
             try (InputStream in = new ByteArrayInputStream(
                     body.getBytes(StandardCharsets.UTF_8))) {
@@ -136,7 +139,7 @@ public class SlideshowApplication implements VanceApplication {
                         title != null ? title : "Slideshow",
                         List.of("application", "slideshow"),
                         YAML_MIME, in, ctx.userId(),
-                        de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+                        contextFactory.writeActor(ctx.tenantId(), ctx.userId(), manifestPath));
             } catch (IOException e) {
                 throw new ToolException(
                         "Could not write manifest '" + manifestPath
@@ -277,13 +280,13 @@ public class SlideshowApplication implements VanceApplication {
                     existing.get().getId(),
                     title, tags, body, null, null, null, null, mime,
                     de.mhus.vance.shared.document.DocumentService.TOOL_IDENTITY,
-                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), outputPath));
         }
         try (InputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
             return documentService.create(
                     ctx.tenantId(), ctx.projectName(),
                     outputPath, title, tags, mime, in, ctx.userId(),
-                    de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), outputPath));
         } catch (IOException e) {
             throw new ToolException(
                     "Could not write artefact '" + outputPath + "': " + e.getMessage());

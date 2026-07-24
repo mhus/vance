@@ -37,6 +37,10 @@ public class DocumentImageDestinationStream extends ImageDestinationStream {
     private final String path;
     private final @Nullable String createdBy;
     private final List<String> tags;
+    /** Authorization actor for the commit write — supplied by the caller so the
+     *  DocumentService chokepoint applies WRITE/reserved-prefix against the real
+     *  user instead of a SYSTEM fail-open. */
+    private final de.mhus.vance.shared.permission.WriteActor actor;
 
     private final ByteArrayOutputStream buffer = new ByteArrayOutputStream();
     private final Map<String, String> headers = new LinkedHashMap<>();
@@ -50,13 +54,15 @@ public class DocumentImageDestinationStream extends ImageDestinationStream {
             String projectId,
             String path,
             @Nullable String createdBy,
-            @Nullable List<String> tags) {
+            @Nullable List<String> tags,
+            de.mhus.vance.shared.permission.WriteActor actor) {
         this.documentService = documentService;
         this.tenantId = tenantId;
         this.projectId = projectId;
         this.path = path;
         this.createdBy = createdBy;
         this.tags = tags == null ? DEFAULT_TAGS : List.copyOf(tags);
+        this.actor = actor;
     }
 
     public DocumentImageDestinationStream(
@@ -64,8 +70,9 @@ public class DocumentImageDestinationStream extends ImageDestinationStream {
             String tenantId,
             String projectId,
             String path,
-            @Nullable String createdBy) {
-        this(documentService, tenantId, projectId, path, createdBy, null);
+            @Nullable String createdBy,
+            de.mhus.vance.shared.permission.WriteActor actor) {
+        this(documentService, tenantId, projectId, path, createdBy, null, actor);
     }
 
     @Override
@@ -142,7 +149,7 @@ public class DocumentImageDestinationStream extends ImageDestinationStream {
                 tags,
                 headers,
                 createdBy,
-                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+                actor);
     }
 
     private void ensureOpen() {

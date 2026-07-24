@@ -84,32 +84,28 @@ app_rebuild(folder="projects/website/calendars")
 
 **Always `app_rebuild` after editing the manifest** — the new lane / color / filter only shows up in `_gantt.md` and `_conflicts.yaml` after rebuild.
 
-## Future app types
+## Available app types
 
-```yaml
-$meta:
-  kind: application
-  app:  kanban           # v2: Board mit Cards in Spalten-Unterordnern
+Mehrere Application-Typen sind produktiv. Die verbindliche Liste liefert zur
+Laufzeit `VanceApplicationRegistry.knownAppNames()`; aktuell registriert sind:
 
-kanban:
-  columns: [todo, doing, done]
-  ...
-```
+| `app:` | Container für | Eigenes Manual |
+|---|---|---|
+| `calendar` | Kalender-/Termin-Dokumente (Gantt, Konflikte) | siehe oben |
+| `kanban` | Board mit Cards in Spalten | `manual_read('app-kanban')` |
+| `wiki` | vernetzte Markdown-Pages | `manual_read('app-wiki')` |
+| `workbook` | `kind: workpage`-Seiten (Block-Editor) | `manual_read('app-workbook')` |
+| `canvasbook` | `kind: canvas`-Seiten (2D-Fläche) | `manual_read('app-canvasbook')` |
+| `gtd` | Getting-Things-Done-Listen | `manual_read('app-gtd')` |
+| `issues` | Issue-Tracker | `manual_read('app-issues')` |
+| `journal` | Tagebuch-/Log-Einträge | `manual_read('app-journal')` |
+| `slideshow` | Präsentations-Decks | `manual_read('app-slideshow')` |
+| `common-desktop` | Desktop-Container | — |
 
-```yaml
-$meta:
-  kind: application
-  app:  wiki             # v2: vernetzte Markdown-Pages
-
-wiki:
-  startPage: "index.md"
-  ...
-```
-
-Heute existiert nur `app: calendar`. Andere Werte werden vom Backend abgelehnt:
-```
-"Unknown application type 'kanban'. Known: [calendar]"
-```
+Ein unbekannter `app:`-Wert wird vom Backend abgelehnt; die Fehlermeldung führt
+die live registrierten Namen aus `knownAppNames()` — nicht raten, im Zweifel das
+per-App-Manual lesen. Schema-Details pro App stehen **nicht** hier, sondern im
+jeweiligen Addon-Manual.
 
 ## Multi-face apps (v2, geplant)
 

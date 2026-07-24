@@ -67,7 +67,7 @@ public class UrsaEventFireTool implements Tool {
         return "Trigger a configured UrsaEvent from the current project, "
                 + "bypassing the webhook bearer-token check. Returns "
                 + "correlationId + logPath so the run can be inspected via "
-                + "document_read on the resulting _vance/logs/events/... "
+                + "doc_read on the resulting _vance/logs/events/... "
                 + "document, plus targetName + spawnedId on success.";
     }
 
@@ -107,7 +107,7 @@ public class UrsaEventFireTool implements Tool {
                 "targetName", result.workflowName(),
                 "spawnedId", result.workflowRunId() == null ? "" : result.workflowRunId(),
                 "logPath", logPath,
-                "note", "Event fired. Read '" + logPath + "' via document_read for the per-trigger log.");
+                "note", "Event fired. Read '" + logPath + "' via doc_read for the per-trigger log.");
     }
 
     private static String stringOrThrow(Map<String, Object> params, String key) {

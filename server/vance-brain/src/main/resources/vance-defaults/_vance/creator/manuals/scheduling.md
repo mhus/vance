@@ -24,7 +24,7 @@ sie selbständig nach jedem Schreiben (Delta-Refresh).
 | Scheduler anlegen oder ändern | `scheduler_set` |
 | Entfernen | `scheduler_delete` |
 | Sofort testweise auslösen (am Cron vorbei) | `scheduler_fire` |
-| Lauf-Ergebnis nachlesen (Outcome, Timeline) | `document_read` auf `_vance/logs/scheduler/<name>/…` |
+| Lauf-Ergebnis nachlesen (Outcome, Timeline) | `doc_read` auf `_vance/logs/scheduler/<name>/…` |
 
 Vor jedem `scheduler_set` sollte ich kurz `scheduler_list` aufrufen — wenn der
 User „einen Reminder für morgen früh" will und sowas schon existiert, lege
@@ -168,7 +168,7 @@ Antwort:
 ```
 { "correlationId": "run_550e8400-…",
   "logPath": "_vance/logs/scheduler/morning-briefing/2026-06-09T08-15-00Z-run_550e8400-….md",
-  "note": "Run started. Read '...' via document_read for status/outcome." }
+  "note": "Run started. Read '...' via doc_read for status/outcome." }
 ```
 
 - Der Lauf geht durch denselben Code-Pfad wie ein Cron-Tick — Overlap-
@@ -203,10 +203,10 @@ einstellbar (tri-state):
 
 So gehe ich vor:
 
-1. `document_list(pathPrefix = "_vance/logs/scheduler/<schedulerName>/")`
+1. `doc_list(pathPrefix = "_vance/logs/scheduler/<schedulerName>/")`
    — listet alle Läufe des Schedulers, neueste zuletzt (Pfad ist
    ISO-sortierbar).
-2. `document_read(path = "<einer der gelisteten Pfade>")` — Front-Matter
+2. `doc_read(path = "<einer der gelisteten Pfade>")` — Front-Matter
    und Timeline analysieren.
 3. Bei `outcome: failed` → die `## Error`-Sektion im Body zeigt die
    Fehler-Message. Bei `outcome: skipped_overlap` → ein anderer Lauf war

@@ -186,7 +186,7 @@ public class UrsaSchedulerController {
      * marker on the run's log document. Designed for the
      * {@code ursascheduler_fire} agent tool: callers receive the
      * {@code correlationId} and the path of the scheduler-log document
-     * they can {@code document_read} once the run completes.
+     * they can {@code doc_read} once the run completes.
      */
     @PostMapping("/scheduler/{name}/fire")
     public FireResult fire(
@@ -324,7 +324,7 @@ public class UrsaSchedulerController {
      * Response of {@code POST /scheduler/{name}/fire}. {@code correlationId}
      * is the freshly-minted run identifier; {@code logPath} is the
      * project-relative document path the matching scheduler-log will
-     * live at — callers can {@code document_read} it once the run
+     * live at — callers can {@code doc_read} it once the run
      * completes (or while it's still pending, in which case the
      * front-matter shows {@code outcome: pending}).
      */

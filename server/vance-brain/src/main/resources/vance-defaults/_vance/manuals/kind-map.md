@@ -207,4 +207,4 @@ content=<raw YAML, NO fence>)` and embed the returned
 - Spec: `specification/doc-kind-map.md`
 - `manual_read('kind-mindmap')` — radial bullet hierarchy (the other "map")
 - `manual_read('kind-graph')` — abstract node/edge networks (no geography)
-- `manual_read('doc-tools')` — generic document CRUD tools
+- `manual_read('tools')` — generic document CRUD tools

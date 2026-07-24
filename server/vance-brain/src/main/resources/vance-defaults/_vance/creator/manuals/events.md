@@ -37,13 +37,13 @@ Antwort bei Erfolg:
   "targetName": "review-pr",
   "spawnedId": "run_xyz",
   "logPath": "_vance/logs/events/github-pr/2026-06-09T08-15-00Z-evt_550e8400-….md",
-  "note": "Event fired. Read '...' via document_read for the per-trigger log." }
+  "note": "Event fired. Read '...' via doc_read for the per-trigger log." }
 ```
 
 Antwort bei Misserfolg: das Tool wirft eine Fehler-Message mit dem
 Server-Reason (`not_found`, `disabled`, `magrathea_unavailable`,
 `spawn_failed`, …). Bei allen Misserfolgen **außer `not_found`** wurde
-trotzdem ein Log-Document geschrieben — `document_read` auf den
+trotzdem ein Log-Document geschrieben — `doc_read` auf den
 zurückgegebenen `logPath` zeigt die genauen Details.
 
 ## Log-Document direkt lesen
@@ -60,14 +60,14 @@ kann das pro Tenant/Projekt überschreiben (tri-state):
 
 ```
 invoke_tool(
-  name = "document_read",
+  name = "doc_read",
   params = { "path": "<logPath aus event_fire>" }
 )
 ```
 
 ## Wenn der User fragt: „lief das Webhook gestern?"
 
-`document_list(pathPrefix = "_vance/logs/events/<eventName>/")` —
+`doc_list(pathPrefix = "_vance/logs/events/<eventName>/")` —
 neueste zuletzt (ISO-Stamp sortiert). Pro Lauf eine Datei. Bei
 `source: public` ist es ein extern empfangener Webhook, bei
 `source: admin` ein Test-Fire (UI oder `event_fire`).

@@ -26,7 +26,7 @@ import org.springframework.stereotype.Component;
  *
  * <p>Result carries the {@code correlationId} and the {@code logPath}
  * of the matching scheduler-log document — read it via
- * {@code document_read} to see how the run progressed.
+ * {@code doc_read} to see how the run progressed.
  */
 @Component
 @RequiredArgsConstructor
@@ -51,7 +51,7 @@ public class UrsaSchedulerFireTool implements Tool {
     @Override public String description() {
         return "Trigger a scheduler immediately, bypassing its cron schedule. "
                 + "Returns the correlationId and the path of the scheduler-log "
-                + "document — read it with document_read to see whether the run "
+                + "document — read it with doc_read to see whether the run "
                 + "succeeded, failed, or is still pending. Overlap policy applies "
                 + "as for a cron tick; the run is marked trigger=manual.";
     }
@@ -79,7 +79,7 @@ public class UrsaSchedulerFireTool implements Tool {
         return Map.of(
                 "correlationId", outcome.correlationId(),
                 "logPath", logPath,
-                "note", "Run started. Read '" + logPath + "' via document_read for status/outcome.");
+                "note", "Run started. Read '" + logPath + "' via doc_read for status/outcome.");
     }
 
     private static String stringOrThrow(Map<String, Object> params, String key) {

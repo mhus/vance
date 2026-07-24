@@ -32,7 +32,7 @@ import org.springframework.stereotype.Service;
  * {@link de.mhus.vance.shared.eventlog.EventLogService}: the event log
  * remains the source of truth (atomic appends, metric coupling, REST
  * surface). The document is purely the LLM-/user-readable shape that
- * the {@code document_read} tool can pick up — no new tool surface
+ * the {@code doc_read} tool can pick up — no new tool surface
  * needed for the model to inspect a scheduler run.
  *
  * <p>State model: an in-memory map keyed by {@code correlationId}

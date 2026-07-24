@@ -28,6 +28,8 @@ public class TeamDescribeTool implements Tool {
             "required", List.of("name"));
 
     private final TeamService teamService;
+    private final de.mhus.vance.shared.permission.PermissionService permissionService;
+    private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
     @Override
     public String name() {
@@ -65,6 +67,20 @@ public class TeamDescribeTool implements Tool {
                 .orElseThrow(() -> new ToolException(
                         "Team '" + name + "' not found in tenant '"
                                 + ctx.tenantId() + "'"));
+        // Visibility gate — mirror team_list: the full member roster is only
+        // visible to a Tenant ADMIN or a member of the team. Otherwise any
+        // tenant user could dump another team's usernames by guessing its name
+        // (the leak team_list deliberately reduces to memberCount).
+        boolean admin = permissionService.check(
+                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()),
+                new de.mhus.vance.shared.permission.Resource.Tenant(ctx.tenantId()),
+                de.mhus.vance.shared.permission.Action.ADMIN);
+        boolean member = ctx.userId() != null && team.getMembers() != null
+                && team.getMembers().contains(ctx.userId());
+        if (!admin && !member) {
+            throw new ToolException(
+                    "not authorized to view team '" + name + "' — membership or tenant-admin required");
+        }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("name", team.getName());
         if (team.getTitle() != null) out.put("title", team.getTitle());

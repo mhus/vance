@@ -119,6 +119,22 @@ public class EddieContext {
             @Nullable Map<String, Object> params,
             ToolInvocationContext ctx,
             boolean allowSystem) {
+        return resolveProject(params, ctx, allowSystem,
+                de.mhus.vance.shared.permission.Action.READ);
+    }
+
+    /**
+     * As {@link #resolveProject(Map, ToolInvocationContext, boolean)} but
+     * enforcing {@code requiredAction} at the resolution source instead of the
+     * default READ. A tool that operates on the project's running processes
+     * (steering a chat, spawning) passes {@code EXECUTE}/{@code WRITE} so a
+     * READ-only share can't drive another project's engine.
+     */
+    public ProjectDocument resolveProject(
+            @Nullable Map<String, Object> params,
+            ToolInvocationContext ctx,
+            boolean allowSystem,
+            de.mhus.vance.shared.permission.Action requiredAction) {
         String explicit = paramString(params, "projectId");
         String name;
         if (isSubProcess(ctx)) {
@@ -182,7 +198,7 @@ public class EddieContext {
                 contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()),
                 new de.mhus.vance.shared.permission.Resource.Project(
                         ctx.tenantId(), project.getName()),
-                de.mhus.vance.shared.permission.Action.READ);
+                requiredAction);
         return project;
     }
 

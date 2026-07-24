@@ -109,7 +109,11 @@ public class ProjectChatSendTool implements Tool {
             throw new ToolException("project_chat_send requires an Eddie process scope");
         }
         String message = stringOrThrow(params, "message");
-        ProjectDocument project = eddieContext.resolveProject(params, ctx, false);
+        // EXECUTE, not READ: dispatching USER_CHAT_INPUT steers the target
+        // project's running Arthur — an operate-on-process action. A READER-only
+        // share must not be able to drive a foreign project's chat.
+        ProjectDocument project = eddieContext.resolveProject(
+                params, ctx, false, de.mhus.vance.shared.permission.Action.EXECUTE);
 
         // Resolve the chat-process for this project. We pick the most
         // recently created session whose chatProcessId is set — that's

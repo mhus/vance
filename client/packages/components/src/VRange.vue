@@ -22,12 +22,19 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{
   (e: 'update:modelValue', value: number): void;
   (e: 'input', value: number): void;
+  // Fires on the native `change` event (drag release / keyboard commit) —
+  // use this to persist rather than `input`, which fires on every tick.
+  (e: 'change', value: number): void;
 }>();
 
 function onInput(event: Event): void {
   const value = Number((event.target as HTMLInputElement).value);
   emit('update:modelValue', value);
   emit('input', value);
+}
+
+function onChange(event: Event): void {
+  emit('change', Number((event.target as HTMLInputElement).value));
 }
 
 const sizeClass = props.size === 'md' ? '' : `range-${props.size}`;
@@ -43,5 +50,6 @@ const sizeClass = props.size === 'md' ? '' : `range-${props.size}`;
     :value="modelValue"
     :disabled="disabled"
     @input="onInput"
+    @change="onChange"
   />
 </template>

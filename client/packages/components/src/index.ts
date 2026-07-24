@@ -30,5 +30,7 @@ export { default as VInput } from './VInput.vue';
 export { default as VModal } from './VModal.vue';
 export { default as VPagination } from './VPagination.vue';
 export { default as VSelect } from './VSelect.vue';
+export { default as VSideTabs } from './VSideTabs.vue';
+export type { SideTab } from './VSideTabs.vue';
 export { default as VTagEditor } from './VTagEditor.vue';
 export { default as VTextarea } from './VTextarea.vue';

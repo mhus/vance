@@ -28,11 +28,34 @@ import {
   MIN_VOLUME,
 } from '@vance/shared';
 import { setUiLocale } from '@/i18n';
-import { EditorShell, VAlert, VButton, VCard, VCheckbox, VInput, VSelect } from '@components/index';
+import {
+  EditorShell,
+  type SideTab,
+  VAlert,
+  VBadge,
+  VButton,
+  VCard,
+  VCheckbox,
+  VInput,
+  VRange,
+  VSelect,
+  VSideTabs,
+} from '@components/index';
 import { useProfile } from '@composables/useProfile';
 
 const { t } = useI18n();
 const { profile, loading, error, load, saveIdentity, saveSetting, deleteSetting } = useProfile();
+
+// Left-rail tabs. Ids double as the URL hash fragment (deep-linkable:
+// profile.html#speech) and the VSideTabs slot names.
+const activeTab = ref('identity');
+const tabs = computed<SideTab[]>(() => [
+  { id: 'identity', label: t('profile.identity.title') },
+  { id: 'preferences', label: t('profile.preferences.title') },
+  { id: 'speech', label: t('profile.speech.title') },
+  { id: 'actions', label: t('profile.actions.title') },
+  { id: 'teams', label: t('profile.teams.title'), badge: profile.value?.teams.length },
+]);
 
 const titleDraft = ref('');
 const emailDraft = ref('');
@@ -407,9 +430,8 @@ async function onSpeechVoiceChanged(value: string | null): Promise<void> {
   }
 }
 
-async function onSpeechRateInput(event: Event): Promise<void> {
+async function onSpeechRateInput(value: number): Promise<void> {
   speechRateSaved.value = null;
-  const value = parseFloat((event.target as HTMLInputElement).value);
   if (!Number.isFinite(value)) return;
   const clamped = Math.max(MIN_RATE, Math.min(MAX_RATE, value));
   speechRateDraft.value = clamped;
@@ -503,9 +525,8 @@ async function onDiscoverModels(): Promise<void> {
   }
 }
 
-async function onSpeechVolumeInput(event: Event): Promise<void> {
+async function onSpeechVolumeInput(value: number): Promise<void> {
   speechVolumeSaved.value = null;
-  const value = parseFloat((event.target as HTMLInputElement).value);
   if (!Number.isFinite(value)) return;
   const clamped = Math.max(MIN_VOLUME, Math.min(MAX_VOLUME, value));
   speechVolumeDraft.value = clamped;
@@ -547,7 +568,7 @@ async function onResetTalkCommands(): Promise<void> {
 
 <template>
   <EditorShell :title="$t('profile.pageTitle')">
-    <div class="container mx-auto px-4 py-8 max-w-3xl flex flex-col gap-6">
+    <div class="container mx-auto px-4 py-8 max-w-5xl flex flex-col gap-6">
       <VAlert v-if="error" variant="error">{{ error }}</VAlert>
 
       <div v-if="loading && !profile" class="text-sm opacity-60">
@@ -555,6 +576,8 @@ async function onResetTalkCommands(): Promise<void> {
       </div>
 
       <template v-else-if="profile">
+        <VSideTabs v-model="activeTab" :tabs="tabs" sync-hash>
+        <template #identity>
         <!-- Identity ─────────────────────────────────────────────────────── -->
         <VCard>
           <h2 class="text-lg font-semibold mb-3">{{ $t('profile.identity.title') }}</h2>
@@ -591,7 +614,9 @@ async function onResetTalkCommands(): Promise<void> {
             </div>
           </div>
         </VCard>
+        </template>
 
+        <template #preferences>
         <!-- Preferences ──────────────────────────────────────────────────── -->
         <VCard>
           <h2 class="text-lg font-semibold mb-3">{{ $t('profile.preferences.title') }}</h2>
@@ -670,7 +695,9 @@ async function onResetTalkCommands(): Promise<void> {
             </span>
           </div>
         </VCard>
+        </template>
 
+        <template #speech>
         <!-- Speech & Audio ───────────────────────────────────────────────── -->
         <VCard>
           <h2 class="text-lg font-semibold mb-3">{{ $t('profile.speech.title') }}</h2>
@@ -694,14 +721,15 @@ async function onResetTalkCommands(): Promise<void> {
                   <span>{{ $t('profile.speech.rate') }}</span>
                   <span class="opacity-70">{{ speechRateDraft.toFixed(2) }}×</span>
                 </div>
-                <input
-                  type="range"
-                  class="range range-sm w-full"
+                <VRange
+                  class="w-full"
+                  size="sm"
+                  :model-value="speechRateDraft"
                   :min="MIN_RATE"
                   :max="MAX_RATE"
-                  step="0.05"
-                  :value="speechRateDraft"
+                  :step="0.05"
                   :disabled="loading"
+                  @input="speechRateDraft = $event"
                   @change="onSpeechRateInput"
                 />
                 <span v-if="speechRateSaved" class="text-success text-sm">
@@ -713,14 +741,15 @@ async function onResetTalkCommands(): Promise<void> {
                   <span>{{ $t('profile.speech.volume') }}</span>
                   <span class="opacity-70">{{ Math.round(speechVolumeDraft * 100) }}%</span>
                 </div>
-                <input
-                  type="range"
-                  class="range range-sm w-full"
+                <VRange
+                  class="w-full"
+                  size="sm"
+                  :model-value="speechVolumeDraft"
                   :min="MIN_VOLUME"
                   :max="MAX_VOLUME"
-                  step="0.05"
-                  :value="speechVolumeDraft"
+                  :step="0.05"
                   :disabled="loading"
+                  @input="speechVolumeDraft = $event"
                   @change="onSpeechVolumeInput"
                 />
                 <span v-if="speechVolumeSaved" class="text-success text-sm">
@@ -778,7 +807,9 @@ async function onResetTalkCommands(): Promise<void> {
             </div>
           </div>
         </VCard>
+        </template>
 
+        <template #actions>
         <!-- Actions ─────────────────────────────────────────────────────── -->
         <VCard>
           <h2 class="text-lg font-semibold mb-3">{{ $t('profile.actions.title') }}</h2>
@@ -851,7 +882,9 @@ async function onResetTalkCommands(): Promise<void> {
             </div>
           </div>
         </VCard>
+        </template>
 
+        <template #teams>
         <!-- Teams ────────────────────────────────────────────────────────── -->
         <VCard>
           <h2 class="text-lg font-semibold mb-3">{{ $t('profile.teams.title') }}</h2>
@@ -878,15 +911,18 @@ async function onResetTalkCommands(): Promise<void> {
                       : $t('profile.teams.memberCountOther', { count: team.members.length })
                   }}
                 </span>
-                <span
+                <VBadge
                   v-if="!team.enabled"
-                  class="badge badge-warning badge-sm"
+                  variant="warning"
+                  size="sm"
                   :title="$t('profile.teams.disabledTooltip')"
-                >{{ $t('profile.teams.disabled') }}</span>
+                >{{ $t('profile.teams.disabled') }}</VBadge>
               </div>
             </li>
           </ul>
         </VCard>
+        </template>
+        </VSideTabs>
       </template>
     </div>
   </EditorShell>

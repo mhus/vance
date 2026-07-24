@@ -13,6 +13,25 @@ class PromptTemplateRendererTest {
     private final PromptTemplateRenderer renderer = new PromptTemplateRenderer();
 
     @Test
+    void render_abortsWhenOutputExceedsCap() {
+        // Untrusted-template OOM guard: a loop that emits more than the cap
+        // must abort deterministically instead of buffering the pod to death.
+        // 150k iterations × 10 chars = 1.5M > MAX_RENDER_CHARS (1M).
+        Map<String, Object> ctx = Map.of("items", java.util.Collections.nCopies(150_000, "x"));
+        String tpl = "{% for i in items %}0123456789{% endfor %}";
+
+        assertThatThrownBy(() -> renderer.render(tpl, ctx))
+                .isInstanceOf(PromptTemplateException.class)
+                .hasMessageContaining("exceeds max");
+    }
+
+    @Test
+    void render_underCap_rendersNormally() {
+        Map<String, Object> ctx = Map.of("items", java.util.Collections.nCopies(3, "x"));
+        assertThat(renderer.render("{% for i in items %}ab{% endfor %}", ctx)).isEqualTo("ababab");
+    }
+
+    @Test
     void render_passesLiteralStringsThrough() {
         String out = renderer.render(
                 "You are a helpful assistant.",

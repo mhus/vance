@@ -5,7 +5,6 @@ import io.pebbletemplates.pebble.error.PebbleException;
 import io.pebbletemplates.pebble.loader.StringLoader;
 import io.pebbletemplates.pebble.template.PebbleTemplate;
 import java.io.IOException;
-import java.io.StringWriter;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
@@ -77,15 +76,65 @@ public class PromptTemplateRenderer {
         if (template.isEmpty()) return template;
         try {
             PebbleTemplate compiled = engine.getTemplate(template);
-            StringWriter out = new StringWriter(template.length() + 256);
+            // Bounded output: template bodies are untrusted (any DB document
+            // author supplies them), so a runaway construct like
+            // {% for i in range(0, 10^9) %}x{% endfor %} must not buffer the
+            // pod out of memory. The cap aborts the render deterministically
+            // once output exceeds MAX_RENDER_CHARS (F5 residual). Far above any
+            // legitimate prompt.
+            BoundedWriter out = new BoundedWriter(template.length() + 256, MAX_RENDER_CHARS);
             compiled.evaluate(out, context);
-            return out.toString();
+            return out.result();
         } catch (PebbleException e) {
             throw new PromptTemplateException(
                     "Pebble render failed: " + collapseMessages(e), e);
         } catch (IOException e) {
-            // StringWriter never throws — keep the branch for the API contract.
-            throw new PromptTemplateException("Unexpected I/O during render", e);
+            // Only the BoundedWriter's cap throws here now.
+            throw new PromptTemplateException("Render aborted: " + e.getMessage(), e);
+        }
+    }
+
+    /** Max characters a single template render may emit (~2 MB of text). */
+    static final int MAX_RENDER_CHARS = 1_000_000;
+
+    /**
+     * Accumulating writer that throws once more than {@code max} chars are
+     * written, so an untrusted template can't OOM the pod by emitting an
+     * unbounded body. Overriding {@code write(char[], off, len)} covers every
+     * {@link java.io.Writer} write path.
+     */
+    private static final class BoundedWriter extends java.io.Writer {
+        private final StringBuilder sb;
+        private final int max;
+        private int count;
+
+        BoundedWriter(int initialCapacity, int max) {
+            this.sb = new StringBuilder(Math.max(16, initialCapacity));
+            this.max = max;
+        }
+
+        @Override
+        public void write(char[] cbuf, int off, int len) throws IOException {
+            count += len;
+            if (count > max) {
+                throw new IOException(
+                        "rendered output exceeds max of " + max + " characters");
+            }
+            sb.append(cbuf, off, len);
+        }
+
+        @Override
+        public void flush() {
+            // no-op — in-memory buffer
+        }
+
+        @Override
+        public void close() {
+            // no-op — in-memory buffer
+        }
+
+        String result() {
+            return sb.toString();
         }
     }
 

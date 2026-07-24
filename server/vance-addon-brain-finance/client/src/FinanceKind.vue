@@ -185,6 +185,7 @@ function toggleSign(node: FinanceNodeDto): void {
 // ── Report panel ──────────────────────────────────────────────
 
 const reportOpen = ref(false);
+const reportRunning = ref(false);
 const reportResult = ref<ReportResult | null>(null);
 const reportForm = reactive({
   processor: '',
@@ -206,7 +207,7 @@ function openReport(): void {
 }
 
 async function runReport(): Promise<void> {
-  if (!reportForm.processor) return;
+  if (!reportForm.processor || reportRunning.value) return;
   const params: Record<string, unknown> = {
     from: reportForm.from,
     to: reportForm.to,
@@ -214,6 +215,8 @@ async function runReport(): Promise<void> {
     chartType: reportForm.chartType,
   };
   if (reportForm.focus.trim()) params.focus = reportForm.focus.trim();
+  reportRunning.value = true;
+  reportResult.value = null;
   try {
     reportResult.value = await generateReport(
       props.document.projectId,
@@ -225,6 +228,8 @@ async function runReport(): Promise<void> {
     );
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    reportRunning.value = false;
   }
 }
 </script>
@@ -446,9 +451,17 @@ async function runReport(): Promise<void> {
           <input v-model="reportForm.outputPath" class="fx-in" placeholder="reports/q1.chart.yaml" />
         </label>
 
-        <VButton variant="primary" @click="runReport">Generate</VButton>
+        <VButton
+          variant="primary"
+          :loading="reportRunning"
+          :disabled="reportRunning || !reportForm.processor"
+          @click="runReport"
+        >
+          {{ reportRunning ? 'Generating…' : 'Generate' }}
+        </VButton>
 
-        <div v-if="reportResult" class="mt-2">
+        <div v-if="reportRunning" class="mt-2 opacity-60">Generating report…</div>
+        <div v-else-if="reportResult" class="mt-2">
           <div v-if="reportResult.path" class="text-green-600">Saved to {{ reportResult.path }}</div>
           <pre v-else class="max-h-64 overflow-auto text-xs bg-black/5 dark:bg-white/5 p-2 rounded">{{ reportResult.body }}</pre>
         </div>

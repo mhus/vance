@@ -11,6 +11,8 @@ import de.mhus.vance.brain.eddie.triage.TriageInput;
 import de.mhus.vance.brain.eddie.triage.TriageResult;
 import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
+import de.mhus.vance.shared.chat.ChatMessageDocument;
+import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot;
 import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
 import de.mhus.vance.shared.thinkprocess.PendingMessageType;
@@ -75,6 +77,7 @@ public class EddieChatFrameHandler implements EddieFrameRouter.ChatFrameHandler 
     private final EddieWorkerConnectionPool pool;
     private final ClientEventPublisher clientEventPublisher;
     private final ProcessEventEmitter processEventEmitter;
+    private final ChatMessageService chatMessageService;
 
     @Override
     public void onChatFrame(WebSocketEnvelope envelope, WorkerLinkSnapshot link) {
@@ -101,11 +104,18 @@ public class EddieChatFrameHandler implements EddieFrameRouter.ChatFrameHandler 
             return;
         }
 
+        // voiceMode is a per-turn signal, deliberately never persisted
+        // (voice-mode.md §6). A worker frame arrives asynchronously with no
+        // owning user turn, so no live voice flag is reachable here — default
+        // to text-mode (false), the system-wide baseline every other voiceMode
+        // site uses. Hardcoding true forced voice thresholds (VERBATIM ≤60 chars,
+        // any markdown → INBOX) on text-mode users too, making the whole
+        // text-mode column of the triage design dead.
         TriageInput input = new TriageInput(
                 data.getContent(),
                 /*outputHint=*/ null,
                 link.getWorkerProcessName(),
-                /*voiceMode=*/ true);
+                /*voiceMode=*/ false);
         // Resolve the Eddie process so the LLM-stage of the triage can
         // run with the right tenant/project for settings cascade. The
         // pool reverse-lookup is the canonical mapping.
@@ -217,14 +227,40 @@ public class EddieChatFrameHandler implements EddieFrameRouter.ChatFrameHandler 
         String sessionId = eddie.getSessionId();
         if (sessionId == null || sessionId.isBlank()) return;
 
+        // Persist the relayed reply as an ASSISTANT message on Eddie's own
+        // session BEFORE the live push, so it survives a reload (the REST
+        // snapshot is built from ChatMessageDocuments) and enters Eddie's
+        // next-turn history. The worker's chatMessageId points into the
+        // worker's message collection, not Eddie's — the client must
+        // reference the id of the message we just persisted here.
+        ChatMessageDocument persisted;
+        try {
+            persisted = chatMessageService.append(ChatMessageDocument.builder()
+                    .tenantId(eddie.getTenantId())
+                    .sessionId(sessionId)
+                    .thinkProcessId(eddie.getId())
+                    .role(workerData.getRole())
+                    .content(workerData.getContent())
+                    .thinking(workerData.getThinking())
+                    .createdAt(workerData.getCreatedAt())
+                    .senderUserId(workerData.getSenderUserId())
+                    .senderDisplayName(workerData.getSenderDisplayName())
+                    .addressedToAgent(workerData.isAddressedToAgent())
+                    .build());
+        } catch (RuntimeException e) {
+            log.warn("EddieChatFrameHandler: verbatim persist to session='{}' failed: {}",
+                    sessionId, e.toString());
+            return;
+        }
+
         ChatMessageAppendedData out = ChatMessageAppendedData.builder()
-                .chatMessageId(workerData.getChatMessageId())
+                .chatMessageId(persisted.getId())
                 .thinkProcessId(eddie.getId())
                 .processName(eddie.getName())
                 .role(workerData.getRole())
                 .content(workerData.getContent())
                 .thinking(workerData.getThinking())
-                .createdAt(workerData.getCreatedAt())
+                .createdAt(persisted.getCreatedAt())
                 .meta(workerData.getMeta())
                 .senderUserId(workerData.getSenderUserId())
                 .senderDisplayName(workerData.getSenderDisplayName())

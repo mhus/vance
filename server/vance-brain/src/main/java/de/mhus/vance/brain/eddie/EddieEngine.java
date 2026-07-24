@@ -512,14 +512,15 @@ public class EddieEngine extends StructuredActionEngine {
         var links = process.getWorkerLinks();
         if (links == null || links.isEmpty()) return;
         String tenantId = process.getTenantId();
-        // Eddie's process is owned by the user; we use the project name
-        // (which for the user-project is _user_<username>) to recover
-        // the user identity. Defensive: if the project id isn't a
-        // _user_ container, fall back to the process's tenant default.
-        String userId = process.getProjectId() != null
-                && process.getProjectId().startsWith("_user_")
-                ? process.getProjectId().substring("_user_".length())
-                : tenantId;
+        // The reconnect JWT subject is the session owner — resolved from the
+        // session, exactly like resolveUserId() and every other identity read
+        // in this engine. Deriving it by string-parsing projectId collapsed to
+        // tenantId whenever Eddie sat in the tenant hub (_tenant) or any
+        // non-_user_ project — a principal with no grants for the worker
+        // session — silently losing live worker observation after a pod move
+        // (user-projects have no home pod). See MEMORY user_memory_project_resolution.
+        String resolvedUserId = resolveUserId(process);
+        String userId = resolvedUserId != null ? resolvedUserId : tenantId;
         java.time.Instant exp = java.time.Instant.now().plus(java.time.Duration.ofMinutes(15));
         String jwt;
         try {
@@ -2841,7 +2842,10 @@ public class EddieEngine extends StructuredActionEngine {
             sb.append("- ").append(workerLabel(link)).append(' ')
                     .append('(').append(linkStatus(link, now)).append(')');
             if (link.getTriageSummary() != null && !link.getTriageSummary().isBlank()) {
-                sb.append(" — ").append(link.getTriageSummary().strip());
+                // The summary originates from worker LLM output — escape it the
+                // same way process-event content is (renderForLlm) so worker
+                // markup/instructions can't leak control into Eddie's prompt.
+                sb.append(" — ").append(escapeText(link.getTriageSummary().strip()));
             }
             sb.append('\n');
         }

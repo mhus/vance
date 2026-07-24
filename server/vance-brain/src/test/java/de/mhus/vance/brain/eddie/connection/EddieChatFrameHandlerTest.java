@@ -42,18 +42,28 @@ class EddieChatFrameHandlerTest {
     private final EddieWorkerConnectionPool pool = mock(EddieWorkerConnectionPool.class);
     private final ClientEventPublisher publisher = mock(ClientEventPublisher.class);
     private final ProcessEventEmitter eventEmitter = mock(ProcessEventEmitter.class);
+    private final de.mhus.vance.shared.chat.ChatMessageService chatMessageService =
+            mock(de.mhus.vance.shared.chat.ChatMessageService.class);
     // jackson 3 ObjectMapper. Real instance — convertValue path is the
     // production path we want to exercise.
     private final ObjectMapper objectMapper = JsonMapper.builder().build();
 
     private final EddieChatFrameHandler handler = new EddieChatFrameHandler(
-            triage, thinkProcessService, objectMapper, pool, publisher, eventEmitter);
+            triage, thinkProcessService, objectMapper, pool, publisher, eventEmitter,
+            chatMessageService);
 
     @Test
     void assistantMessage_runsTriage_andPersistsSummary_andForwardsVerbatim() {
         WorkerLinkSnapshot link = link("w-1");
         when(pool.findEddieIdForWorker("w-1")).thenReturn(Optional.of("eddie-1"));
         when(thinkProcessService.findById("eddie-1")).thenReturn(Optional.of(eddie("eddie-1")));
+        // The relay persists an ASSISTANT message on Eddie's session; echo the
+        // saved doc back with a fresh id (Eddie's collection, not the worker's).
+        when(chatMessageService.append(any())).thenAnswer(inv -> {
+            de.mhus.vance.shared.chat.ChatMessageDocument d = inv.getArgument(0);
+            d.setId("eddie-cm-1");
+            return d;
+        });
 
         handler.onChatFrame(envelope(MessageType.CHAT_MESSAGE_APPENDED,
                 ChatMessageAppendedData.builder()
@@ -81,6 +91,19 @@ class EddieChatFrameHandlerTest {
         assertThat(forwarded.getValue().getThinkProcessId()).isEqualTo("eddie-1");
         assertThat(forwarded.getValue().getProcessName()).isEqualTo("eddie");
         assertThat(forwarded.getValue().getContent()).isEqualTo("Tests sind grün.");
+        // The forwarded frame references Eddie's persisted message id, not the
+        // worker's (cm-1) — the worker id points into the worker's collection.
+        assertThat(forwarded.getValue().getChatMessageId()).isEqualTo("eddie-cm-1");
+
+        // Relay is persisted as an ASSISTANT message on Eddie's session so it
+        // survives reload and enters Eddie's history.
+        ArgumentCaptor<de.mhus.vance.shared.chat.ChatMessageDocument> persisted =
+                ArgumentCaptor.forClass(de.mhus.vance.shared.chat.ChatMessageDocument.class);
+        verify(chatMessageService).append(persisted.capture());
+        assertThat(persisted.getValue().getSessionId()).isEqualTo("eddie-sess");
+        assertThat(persisted.getValue().getThinkProcessId()).isEqualTo("eddie-1");
+        assertThat(persisted.getValue().getRole()).isEqualTo(ChatRole.ASSISTANT);
+        assertThat(persisted.getValue().getContent()).isEqualTo("Tests sind grün.");
 
         // VERBATIM is the auto-forward branch — Eddie must NOT think
         // again on top of it, otherwise she'd reformulate text the

@@ -12,21 +12,24 @@ import { bodyFromAttrs } from './customBlock';
  * the FULL document, i.e. shifted by this header.
  */
 export function documentHeader(doc: WorkPageDocument): string {
-  let out = '---\n$meta:\n  kind: workpage\n';
-  if (doc.title && doc.title.trim().length > 0) {
-    out += `title: ${escapeYaml(doc.title)}\n`;
-  }
-  if (doc.description && doc.description.trim().length > 0) {
-    out += `description: ${escapeYaml(doc.description)}\n`;
-  }
-  if (doc.icon && doc.icon.trim().length > 0) {
-    out += `icon: ${escapeYaml(doc.icon)}\n`;
-  }
-  if (doc.cover && doc.cover.trim().length > 0) {
-    out += `cover: ${escapeYaml(doc.cover)}\n`;
-  }
-  out += '---\n';
-  return out;
+  // Dump the whole front-matter through js-yaml rather than hand-rolling it:
+  // a value that merely *begins* with a YAML indicator (@, `, !, *, &, |, >,
+  // %, [, {, or '- '/'? ') is not caught by a naive contains-check and would be
+  // emitted unquoted → invalid YAML → yaml.load throws on reload → title/etc.
+  // silently lost. yaml.dump quotes exactly what needs quoting (matches
+  // renderFence). Key insertion order is preserved by js-yaml.
+  const header: Record<string, unknown> = { $meta: { kind: 'workpage' } };
+  if (doc.title && doc.title.trim().length > 0) header.title = doc.title;
+  if (doc.description && doc.description.trim().length > 0) header.description = doc.description;
+  if (doc.icon && doc.icon.trim().length > 0) header.icon = doc.icon;
+  if (doc.cover && doc.cover.trim().length > 0) header.cover = doc.cover;
+  const dumped = yaml.dump(header, {
+    lineWidth: -1,
+    noCompatMode: true,
+    quotingType: '"',
+    forceQuotes: false,
+  });
+  return '---\n' + dumped + '---\n';
 }
 
 /**
@@ -89,15 +92,11 @@ function renderBlock(b: Block): string {
           .map((l) => '> ' + l)
           .join('\n') + '\n'
       );
-    case 'code':
-      return (
-        '```' +
-        (b.lang ?? '') +
-        '\n' +
-        b.code +
-        (b.code.endsWith('\n') ? '' : '\n') +
-        '```\n'
-      );
+    case 'code': {
+      const body = b.code + (b.code.endsWith('\n') ? '' : '\n');
+      const f = fenceFor(body);
+      return f + (b.lang ?? '') + '\n' + body + f + '\n';
+    }
     case 'divider':
       return '---\n';
     case 'image': {
@@ -110,9 +109,15 @@ function renderBlock(b: Block): string {
       return `![${altWithWidth}](${b.src})\n`;
     }
     case 'table': {
-      const head = '| ' + b.headers.join(' | ') + ' |';
+      // Escape so a cell containing '|' doesn't spawn extra columns on
+      // re-parse, and a multi-line cell survives as one line. Order matters:
+      // backslash first (so the backslash we add for '|' isn't re-escaped),
+      // then '|', then newline → <br>. splitTableRow reverses this.
+      const esc = (s: string) =>
+        s.replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/\r?\n/g, '<br>');
+      const head = '| ' + b.headers.map(esc).join(' | ') + ' |';
       const div = '| ' + b.headers.map(() => '---').join(' | ') + ' |';
-      const rows = b.rows.map((r) => '| ' + r.join(' | ') + ' |');
+      const rows = b.rows.map((r) => '| ' + r.map(esc).join(' | ') + ' |');
       return [head, div, ...rows].join('\n') + '\n';
     }
     case 'toggle':
@@ -127,9 +132,12 @@ function renderBlock(b: Block): string {
     }
     case 'toc':
       return '```vance-toc\n```\n';
-    case 'compose':
+    case 'compose': {
       // Raw YAML body verbatim (not renderFence, which key/value-dumps).
-      return '```vance-compose\n' + (b.yaml.endsWith('\n') ? b.yaml : b.yaml + '\n') + '```\n';
+      const body = b.yaml.endsWith('\n') ? b.yaml : b.yaml + '\n';
+      const f = fenceFor(body);
+      return f + 'vance-compose\n' + body + f + '\n';
+    }
     case 'embed':
       return renderFence('vance-embed', { uri: b.uri });
     case 'form': {
@@ -188,12 +196,17 @@ function renderBlock(b: Block): string {
       // byte-equal to the old core block). Without an extension (addon gone
       // since parse), fall back to the preserved rawBody verbatim.
       const ext = findBlockByFence(b.fence);
-      const body = ext ? bodyFromAttrs(ext, b.attrs) : b.rawBody;
-      if (!body) return '```' + b.fence + '\n```\n';
-      return '```' + b.fence + '\n' + body + (body.endsWith('\n') ? '' : '\n') + '```\n';
+      const raw = ext ? bodyFromAttrs(ext, b.attrs) : b.rawBody;
+      if (!raw) return '```' + b.fence + '\n```\n';
+      const body = raw + (raw.endsWith('\n') ? '' : '\n');
+      const f = fenceFor(body);
+      return f + b.fence + '\n' + body + f + '\n';
     }
-    case 'unknown-fence':
-      return '```' + b.info + '\n' + b.body + (b.body.endsWith('\n') ? '' : '\n') + '```\n';
+    case 'unknown-fence': {
+      const body = b.body + (b.body.endsWith('\n') ? '' : '\n');
+      const f = fenceFor(body);
+      return f + b.info + '\n' + body + f + '\n';
+    }
   }
 }
 
@@ -219,18 +232,18 @@ function renderFence(info: string, body: Record<string, unknown>): string {
     quotingType: '"',
     forceQuotes: false,
   });
-  return '```' + info + '\n' + dumped + '```\n';
+  const f = fenceFor(dumped);
+  return f + info + '\n' + dumped + f + '\n';
 }
 
-function escapeYaml(value: string): string {
-  if (
-    value.includes('\n') ||
-    value.includes(':') ||
-    value.includes('#') ||
-    value.includes('"') ||
-    value.includes("'")
-  ) {
-    return '"' + value.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
-  }
-  return value;
+/**
+ * A fence opener/closer long enough that no line inside {@code body} can close
+ * it: one backtick longer than the longest triple-plus backtick run in the
+ * body (minimum 3). Mirrors what the `columns` block already did, applied to
+ * every fenced block so a body containing a ``` line round-trips instead of
+ * being truncated by {@code findFenceClose} (which closes at a fence ≥ opener
+ * length).
+ */
+function fenceFor(body: string): string {
+  return '`'.repeat(Math.max(3, maxFenceLength(body) + 1));
 }

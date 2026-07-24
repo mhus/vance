@@ -66,6 +66,43 @@ describe('serialize/parse — round-trip fixpoint', () => {
   });
 });
 
+describe('serialize/parse — S6 round-trip hardening', () => {
+  it('a code block containing a triple-backtick line survives (length-aware fence)', () => {
+    const doc: WorkPageDocument = {
+      title: null, description: null, icon: null, cover: null,
+      blocks: [{ kind: 'code', lang: 'md', code: 'a fence:\n```\ninner\n```\ndone' }],
+    };
+    const back = parseDocument(serializeDocument(doc));
+    const code = back.blocks.find((b) => b.kind === 'code') as { code: string } | undefined;
+    // The inner ``` line must not have closed the outer block.
+    expect(code?.code).toContain('```\ninner\n```');
+    expect(back.blocks.length).toBe(1);
+  });
+
+  it('a title beginning with a YAML indicator char round-trips', () => {
+    for (const title of ['@team sync', '!Important', '- draft', '> note', '`code`', '*star']) {
+      const doc: WorkPageDocument = {
+        title, description: null, icon: null, cover: null,
+        blocks: [{ kind: 'paragraph', text: 'x' }],
+      };
+      const back = parseDocument(serializeDocument(doc));
+      expect(back.title).toBe(title);
+    }
+  });
+
+  it('table cells containing | and newlines round-trip', () => {
+    const doc: WorkPageDocument = {
+      title: null, description: null, icon: null, cover: null,
+      blocks: [{ kind: 'table', headers: ['a|b', 'c'], rows: [['x\ny', 'p|q']] }],
+    };
+    const back = parseDocument(serializeDocument(doc));
+    const t = back.blocks.find((b) => b.kind === 'table') as
+      { headers: string[]; rows: string[][] } | undefined;
+    expect(t?.headers).toEqual(['a|b', 'c']);
+    expect(t?.rows[0]).toEqual(['x\ny', 'p|q']);
+  });
+});
+
 describe('parseDocument/serializeDocument — front-matter + blocks', () => {
   it('title, icon and blocks survive a full document round-trip', () => {
     const doc: WorkPageDocument = {

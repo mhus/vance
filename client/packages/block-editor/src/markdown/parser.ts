@@ -403,8 +403,31 @@ function parseImageAlt(raw: string): { alt: string; width: ImageWidth | null } {
 function splitTableRow(line: string): string[] {
   let trimmed = line.trim();
   if (trimmed.startsWith('|')) trimmed = trimmed.substring(1);
-  if (trimmed.endsWith('|')) trimmed = trimmed.substring(0, trimmed.length - 1);
-  return trimmed.split('|').map((s) => s.trim());
+  // Strip the trailing table-terminator '|', but not an escaped '\|'.
+  if (trimmed.endsWith('|') && !trimmed.endsWith('\\|')) {
+    trimmed = trimmed.substring(0, trimmed.length - 1);
+  }
+  // Split on UNescaped '|' only; a backslash escapes the next char into the
+  // cell verbatim (\| → |, \\ → \). Reverses the serializer's cell escaping.
+  const cells: string[] = [];
+  let buf = '';
+  for (let i = 0; i < trimmed.length; i++) {
+    const ch = trimmed[i];
+    if (ch === '\\' && i + 1 < trimmed.length) {
+      buf += trimmed[i + 1];
+      i++;
+      continue;
+    }
+    if (ch === '|') {
+      cells.push(buf);
+      buf = '';
+      continue;
+    }
+    buf += ch;
+  }
+  cells.push(buf);
+  // Decode multi-line cells and trim surrounding padding.
+  return cells.map((s) => s.replace(/<br>/g, '\n').trim());
 }
 
 function str(obj: Record<string, unknown>, key: string): string | null {

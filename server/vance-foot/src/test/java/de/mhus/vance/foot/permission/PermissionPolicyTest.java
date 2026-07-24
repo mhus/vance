@@ -57,7 +57,7 @@ class PermissionPolicyTest {
         // descendants, so the folder `~/.ssh` itself fell through to ASK.
         // Both forms are now floored.
         PermissionConfig c = config();
-        c.getPath().getAllow().add("~/**"); // broad convenience allow
+        c.getPaths().getAllow().add("~/**"); // broad convenience allow
         PermissionPolicy policy =
                 PermissionPolicy.compile(c, PermissionConfigLoader.DEFAULT_PATH_DENY);
         Path sshDir = Path.of(System.getProperty("user.home"), ".ssh");

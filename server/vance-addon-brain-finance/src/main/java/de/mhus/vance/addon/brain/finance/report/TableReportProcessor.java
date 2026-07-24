@@ -28,7 +28,7 @@ public class TableReportProcessor implements FinanceReportProcessor {
     @Override public String outputKind() { return "sheet"; }
 
     @Override
-    public FinanceReport render(FinanceTreeDocument tree, ReportParams params) {
+    public FinanceReport render(FinanceTreeDocument tree, ReportParams params, ReportContext ctx) {
         ReportSupport.Range r = ReportSupport.resolveRange(type(), params);
         FinanceProjection proj = tree.root() == null
                 ? new FinanceProjection(List.of(), List.of())

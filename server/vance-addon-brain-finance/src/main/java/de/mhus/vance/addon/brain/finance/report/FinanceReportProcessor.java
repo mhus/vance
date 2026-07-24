@@ -38,7 +38,8 @@ public interface FinanceReportProcessor {
     /**
      * Render the report. {@code tree} is the parsed input model; the processor
      * runs the shared math over it with {@code params} and returns a serialised
-     * document body for {@link #outputKind()}.
+     * document body for {@link #outputKind()}. {@code ctx} carries the tenant/
+     * project scope — pure processors ignore it, service-backed ones (LLM) use it.
      */
-    FinanceReport render(FinanceTreeDocument tree, ReportParams params);
+    FinanceReport render(FinanceTreeDocument tree, ReportParams params, ReportContext ctx);
 }

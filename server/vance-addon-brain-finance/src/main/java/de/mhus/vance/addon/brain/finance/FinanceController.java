@@ -6,6 +6,7 @@ import de.mhus.vance.addon.brain.finance.model.PeriodUnit;
 import de.mhus.vance.addon.brain.finance.report.FinanceReport;
 import de.mhus.vance.addon.brain.finance.report.FinanceReportProcessor;
 import de.mhus.vance.addon.brain.finance.report.FinanceReportRegistry;
+import de.mhus.vance.addon.brain.finance.report.ReportContext;
 import de.mhus.vance.addon.brain.finance.report.ReportParams;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.document.DocumentDocument;
@@ -101,7 +102,8 @@ public class FinanceController {
 
         FinanceReport rep = proc.render(
                 financeService.readDocument(requireDoc(tenant, projectId, path)),
-                ReportParams.of(params == null ? Map.of() : params));
+                ReportParams.of(params == null ? Map.of() : params),
+                new ReportContext(tenant, projectId, null, currentUser(request)));
 
         if (persist) {
             if (outputPath == null || outputPath.isBlank()) {

@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 class TableReportProcessorTest {
 
     private static final String YAML = "application/yaml";
+    private static final ReportContext CTX = new ReportContext("t1", "p1", null, null);
 
     /** Single leaf "x" at 3650/year (= 10/day). */
     private static FinanceTreeDocument tree() {
@@ -38,7 +39,7 @@ class TableReportProcessorTest {
         FinanceReport report = new TableReportProcessor().render(
                 tree(),
                 ReportParams.of(Map.of("from", "2026-01-01", "to", "2026-03-01",
-                        "granularity", "month")));
+                        "granularity", "month")), CTX);
 
         assertThat(report.outputKind()).isEqualTo("sheet");
         SheetDocument sheet = SheetCodec.parse(report.body(), YAML);
@@ -58,7 +59,7 @@ class TableReportProcessorTest {
     void render_bodyRoundTripsThroughSheetCodec() {
         FinanceReport report = new TableReportProcessor().render(
                 tree(),
-                ReportParams.of(Map.of("from", "2026-01-01", "to", "2026-02-01")));
+                ReportParams.of(Map.of("from", "2026-01-01", "to", "2026-02-01")), CTX);
         SheetDocument sheet = SheetCodec.parse(report.body(), YAML);
         assertThat(SheetCodec.serialize(sheet, YAML)).isEqualTo(report.body());
     }

@@ -35,7 +35,7 @@ public class SeriesReportProcessor implements FinanceReportProcessor {
     @Override public String outputKind() { return "chart"; }
 
     @Override
-    public FinanceReport render(FinanceTreeDocument tree, ReportParams params) {
+    public FinanceReport render(FinanceTreeDocument tree, ReportParams params, ReportContext ctx) {
         ReportSupport.Range r = ReportSupport.resolveRange(type(), params);
 
         ChartType chartType = ChartType.fromWire(params.getString("chartType"));

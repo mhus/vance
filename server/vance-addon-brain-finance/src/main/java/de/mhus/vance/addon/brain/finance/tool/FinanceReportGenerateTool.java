@@ -5,6 +5,7 @@ import de.mhus.vance.addon.brain.finance.model.FinanceTreeDocument;
 import de.mhus.vance.addon.brain.finance.report.FinanceReport;
 import de.mhus.vance.addon.brain.finance.report.FinanceReportProcessor;
 import de.mhus.vance.addon.brain.finance.report.FinanceReportRegistry;
+import de.mhus.vance.addon.brain.finance.report.ReportContext;
 import de.mhus.vance.addon.brain.finance.report.ReportParams;
 import de.mhus.vance.brain.tools.eddie.EddieContext;
 import de.mhus.vance.shared.document.DocumentDocument;
@@ -78,8 +79,10 @@ public class FinanceReportGenerateTool implements Tool {
         if (processor == null) throw new ToolException("Unknown report processor '" + type + "'.");
 
         FinanceTreeDocument tree = financeService.readDocument(r.doc());
+        ReportContext reportCtx = new ReportContext(
+                r.tenantId(), r.projectName(), ctx.processId(), ctx.userId());
         FinanceReport report = processor.render(
-                tree, ReportParams.of(FinanceToolSupport.paramMap(params, "params")));
+                tree, ReportParams.of(FinanceToolSupport.paramMap(params, "params")), reportCtx);
 
         boolean persist = params.get("persist") instanceof Boolean b && b;
         Map<String, Object> result = new LinkedHashMap<>();

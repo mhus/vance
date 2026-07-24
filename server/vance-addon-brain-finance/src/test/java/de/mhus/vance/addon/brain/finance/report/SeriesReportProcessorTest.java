@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test;
 class SeriesReportProcessorTest {
 
     private static final String YAML = "application/yaml";
+    private static final ReportContext CTX = new ReportContext("t1", "p1", null, null);
 
     private static FinanceTreeDocument tree() {
         FinanceValue v = new FinanceValue(3650, ValueMode.RECURRING,
@@ -38,7 +39,7 @@ class SeriesReportProcessorTest {
 
     @Test
     void render_producesLineChartWithCategoriesAndXyPoints() {
-        FinanceReport report = new SeriesReportProcessor().render(tree(), params(Map.of()));
+        FinanceReport report = new SeriesReportProcessor().render(tree(), params(Map.of()), CTX);
 
         assertThat(report.outputKind()).isEqualTo("chart");
         ChartDocument chart = ChartCodec.parse(report.body(), YAML);
@@ -58,7 +59,7 @@ class SeriesReportProcessorTest {
     @Test
     void render_honoursChartTypeParam() {
         FinanceReport report = new SeriesReportProcessor()
-                .render(tree(), params(Map.of("chartType", "bar")));
+                .render(tree(), params(Map.of("chartType", "bar")), CTX);
         ChartDocument chart = ChartCodec.parse(report.body(), YAML);
         assertThat(chart.chart().chartType()).isEqualTo(ChartType.BAR);
     }
@@ -66,7 +67,7 @@ class SeriesReportProcessorTest {
     @Test
     void render_rejectsNonXyChartType() {
         assertThatThrownBy(() -> new SeriesReportProcessor()
-                .render(tree(), params(Map.of("chartType", "pie"))))
+                .render(tree(), params(Map.of("chartType", "pie")), CTX))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("line/bar/area/scatter");
     }
@@ -74,7 +75,7 @@ class SeriesReportProcessorTest {
     @Test
     void render_requiresRange() {
         assertThatThrownBy(() -> new SeriesReportProcessor()
-                .render(tree(), ReportParams.of(Map.of("granularity", "month"))))
+                .render(tree(), ReportParams.of(Map.of("granularity", "month")), CTX))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("'from' and 'to'");
     }

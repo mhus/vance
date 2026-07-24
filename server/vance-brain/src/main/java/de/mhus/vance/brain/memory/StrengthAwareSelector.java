@@ -65,7 +65,7 @@ public class StrengthAwareSelector {
         return out;
     }
 
-    private int anchorForMode(CompactionMode mode) {
+    public int anchorForMode(CompactionMode mode) {
         return switch (mode) {
             case EMERGENCY -> Math.max(1, prakProperties.getEmergencyAnchor());
             case HARD      -> Math.max(1, prakProperties.getHardAnchor());

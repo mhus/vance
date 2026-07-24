@@ -165,6 +165,11 @@ class HistorySearchToolTest {
     void invoke_scopeChildren_resolvesViaThinkProcessService() {
         when(thinkProcessService.findDescendantIds("process-abc"))
                 .thenReturn(Set.of("process-abc", "child-1", "child-2"));
+        when(thinkProcessService.findByIds(org.mockito.ArgumentMatchers.anyCollection()))
+                .thenReturn(List.of(
+                        ThinkProcessDocument.builder().id("process-abc").projectId("proj").build(),
+                        ThinkProcessDocument.builder().id("child-1").projectId("proj").build(),
+                        ThinkProcessDocument.builder().id("child-2").projectId("proj").build()));
         when(service.search(any(), any())).thenReturn(List.of());
 
         tool.invoke(Map.of("scope", "children"), ctx);

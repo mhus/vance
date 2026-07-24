@@ -88,6 +88,12 @@ class HistoryRecallToolTest {
     void invoke_scopeChildren_widensProcessFilter() {
         when(thinkProcessService.findDescendantIds("process-abc"))
                 .thenReturn(Set.of("process-abc", "child-1"));
+        when(thinkProcessService.findByIds(org.mockito.ArgumentMatchers.anyCollection()))
+                .thenReturn(List.of(
+                        de.mhus.vance.shared.thinkprocess.ThinkProcessDocument.builder()
+                                .id("process-abc").projectId("proj").build(),
+                        de.mhus.vance.shared.thinkprocess.ThinkProcessDocument.builder()
+                                .id("child-1").projectId("proj").build()));
         when(service.findByIds(any(), any(Set.class), any())).thenReturn(List.of());
 
         tool.invoke(Map.of(

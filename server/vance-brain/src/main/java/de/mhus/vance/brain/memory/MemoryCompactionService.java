@@ -138,11 +138,16 @@ public class MemoryCompactionService {
 
         List<ChatMessageDocument> active = chatMessageService.activeHistory(
                 tenantId, sessionId, processId);
-        int keepRecent = Math.max(1, properties.getCompactionKeepRecent());
-        if (active.size() <= keepRecent) {
+        // Gate the early no-op on the MODE anchor, not a flat keepRecent(10):
+        // EMERGENCY (anchor 3) must be able to compact a short-but-huge history
+        // (e.g. 8 giant messages at 95% context) — the flat floor refused
+        // compaction exactly when it was needed most. The selector below applies
+        // the same anchor per-message.
+        int anchor = strengthAwareSelector.anchorForMode(mode);
+        if (active.size() <= anchor) {
             return CompactionResult.noop(
                     "history has " + active.size()
-                            + " active messages, keepRecent=" + keepRecent
+                            + " active messages, mode=" + mode + " anchor=" + anchor
                             + " — nothing to compact");
         }
 
@@ -174,8 +179,19 @@ public class MemoryCompactionService {
 
         List<MemoryDocument> priorActive = memoryService.activeByProcessAndKind(
                 tenantId, processId, MemoryKind.ARCHIVED_CHAT);
-        MemoryDocument priorSummary = priorActive.isEmpty()
-                ? null : priorActive.get(priorActive.size() - 1);
+        // Chain/supersede the newest NON-recompaction summary, not simply the
+        // newest active row: a range-recompaction row (from a RECOMPACTION_OFFER)
+        // does not supersede the bulk sliding summary, so picking the newest row
+        // would chain from the narrow recompaction topic and orphan the bulk
+        // summary forever (its gist dropped from all later prompts). Mirrors
+        // MemoryContextLoader's read-side isRecompaction skip.
+        MemoryDocument priorSummary = null;
+        for (int i = priorActive.size() - 1; i >= 0; i--) {
+            if (!isRecompaction(priorActive.get(i))) {
+                priorSummary = priorActive.get(i);
+                break;
+            }
+        }
 
         String summary;
         try {
@@ -437,7 +453,11 @@ public class MemoryCompactionService {
                         .build());
         List<ChatMessage> messages = new ArrayList<>();
         messages.add(SystemMessage.from(SUMMARIZER_SYSTEM_PROMPT));
-        StringBuilder body = new StringBuilder();
+        // Prefix = date stamp + carried-forward priorSummary. This is the
+        // accumulated gist and MUST survive the source cap — trimming it (the old
+        // delete-from-front bug) erased the coherence the recursive-compaction
+        // contract depends on. Only the raw-messages block is capped.
+        StringBuilder prefix = new StringBuilder();
         // Anchor the summary in time. We pass the date only (no clock time,
         // no timezone): compaction runs server-side asynchronously without
         // any client context, so we can't honestly emit a wall-clock that
@@ -445,28 +465,32 @@ public class MemoryCompactionService {
         // memory-anchoring anyway. If a tenant ever wants timestamps in
         // their timezone, add a `display.timezone` setting and feed it
         // through here.
-        body.append("Today's date (UTC): ")
+        prefix.append("Today's date (UTC): ")
                 .append(java.time.LocalDate.now(java.time.ZoneOffset.UTC))
                 .append("\n\n");
         if (priorSummary != null && priorSummary.getContent() != null
                 && !priorSummary.getContent().isBlank()) {
-            body.append("EXISTING SUMMARY (compact this further along with the new turns):\n");
-            body.append(priorSummary.getContent()).append("\n\n");
+            prefix.append("EXISTING SUMMARY (compact this further along with the new turns):\n");
+            prefix.append(priorSummary.getContent()).append("\n\n");
         }
-        body.append("OLDER CONVERSATION TO COMPACT:\n");
+        String messagesHeader = "OLDER CONVERSATION TO COMPACT:\n";
+        StringBuilder rawMessages = new StringBuilder();
         for (ChatMessageDocument m : older) {
             String role = m.getRole() == null ? "?" : m.getRole().name().toLowerCase();
-            body.append('[').append(role).append("] ");
-            body.append(m.getContent() == null ? "" : m.getContent());
-            body.append('\n');
+            rawMessages.append('[').append(role).append("] ");
+            rawMessages.append(m.getContent() == null ? "" : m.getContent());
+            rawMessages.append('\n');
         }
         int cap = Math.max(1_000, properties.getCompactionMaxSourceChars());
-        if (body.length() > cap) {
-            int keep = body.length() - cap;
-            body.delete(0, keep);
-            log.warn("Compaction source over cap — dropped oldest {} chars", keep);
+        int messagesBudget = Math.max(0, cap - prefix.length() - messagesHeader.length());
+        if (rawMessages.length() > messagesBudget) {
+            int drop = rawMessages.length() - messagesBudget;
+            // Drop the OLDEST raw-message chars (front of the messages block),
+            // never the date + carried priorSummary above.
+            rawMessages.delete(0, drop);
+            log.warn("Compaction source over cap — dropped oldest {} chars of raw messages", drop);
         }
-        messages.add(UserMessage.from(body.toString()));
+        messages.add(UserMessage.from(prefix + messagesHeader + rawMessages));
 
         ChatRequest request = ChatRequest.builder().messages(messages).build();
         String modelAlias = config.provider() + ":" + config.modelName();
@@ -530,21 +554,39 @@ public class MemoryCompactionService {
     private AiChatConfig resolveAiConfig(ThinkProcessDocument process) {
         String tenantId = process.getTenantId();
         String processId = process.getId();
+        // Include the project layer of the settings cascade (derived from the
+        // session, as done for the memory doc): a tenant that configures
+        // provider/model/apiKey/baseUrl only at PROJECT scope would otherwise get
+        // tenant defaults / a blank apiKey, and the recompaction-offer summarizer
+        // call would silently fail → the accepted offer does nothing.
+        String projectId = sessionService.findBySessionId(process.getSessionId())
+                .map(SessionDocument::getProjectId)
+                .orElse(null);
         String providerCascade = settingService.getStringValueCascade(
-                tenantId, /*projectId*/ null, processId, SETTING_AI_PROVIDER);
+                tenantId, projectId, processId, SETTING_AI_PROVIDER);
         String provider = (providerCascade == null || providerCascade.isBlank())
                 ? DEFAULT_PROVIDER.wireName() : providerCascade;
         String modelCascade = settingService.getStringValueCascade(
-                tenantId, /*projectId*/ null, processId, SETTING_AI_MODEL);
+                tenantId, projectId, processId, SETTING_AI_MODEL);
         String model = (modelCascade == null || modelCascade.isBlank())
                 ? DEFAULT_MODEL : modelCascade;
         // Compaction reads provider/model from settings directly (no recipe
         // alias), so instance defaults to the protocol wire-name. Named
         // instances aren't reachable here without going through the resolver.
         String apiKey = ChatBehaviorBuilder.resolveApiKey(
-                provider, provider, tenantId, /*projectId*/ null, processId, settingService);
+                provider, provider, tenantId, projectId, processId, settingService);
         String baseUrl = ChatBehaviorBuilder.resolveBaseUrl(
-                provider, tenantId, /*projectId*/ null, processId, settingService);
+                provider, tenantId, projectId, processId, settingService);
         return new AiChatConfig(provider, model, apiKey, baseUrl);
+    }
+
+    /**
+     * Whether {@code m} is a range-recompaction row (from a RECOMPACTION_OFFER)
+     * rather than a bulk sliding-window summary. Mirrors MemoryContextLoader's
+     * read-side check so the write side (priorSummary selection) agrees.
+     */
+    private static boolean isRecompaction(MemoryDocument m) {
+        return m.getMetadata() != null
+                && Boolean.TRUE.equals(m.getMetadata().get("recompaction"));
     }
 }

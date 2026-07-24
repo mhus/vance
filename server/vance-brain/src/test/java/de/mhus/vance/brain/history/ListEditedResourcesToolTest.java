@@ -173,6 +173,14 @@ class ListEditedResourcesToolTest {
     void invoke_scopeChildren_widensProcessSet() {
         when(thinkProcessService.findDescendantIds("process-abc"))
                 .thenReturn(Set.of("process-abc", "child-1", "child-2"));
+        when(thinkProcessService.findByIds(org.mockito.ArgumentMatchers.anyCollection()))
+                .thenReturn(List.of(
+                        de.mhus.vance.shared.thinkprocess.ThinkProcessDocument.builder()
+                                .id("process-abc").projectId("proj").build(),
+                        de.mhus.vance.shared.thinkprocess.ThinkProcessDocument.builder()
+                                .id("child-1").projectId("proj").build(),
+                        de.mhus.vance.shared.thinkprocess.ThinkProcessDocument.builder()
+                                .id("child-2").projectId("proj").build()));
         when(service.distinctResourceKeys(eq("tenant-1"), any(), eq(null)))
                 .thenReturn(List.of());
 

@@ -39,11 +39,37 @@ class HistoryScopeResolverTest {
     void children_resolvesViaFindDescendantIds() {
         when(thinkProcessService.findDescendantIds("process-abc"))
                 .thenReturn(Set.of("process-abc", "c1", "c2"));
+        when(thinkProcessService.findByIds(org.mockito.ArgumentMatchers.anyCollection()))
+                .thenReturn(List.of(tp("process-abc", "proj"), tp("c1", "proj"), tp("c2", "proj")));
 
         Set<String> ids = HistoryScopeResolver.resolve(
                 HistorySearchTool.SCOPE_CHILDREN, ctx, thinkProcessService);
 
         assertThat(ids).containsExactlyInAnyOrder("process-abc", "c1", "c2");
+    }
+
+    @Test
+    void children_filtersCrossProjectDescendants() {
+        // Security (code-review-2): a cross-project descendant (Trillian
+        // cross_process_create) must NOT be surfaced to a parent in project
+        // "proj" — its chat turns would leak across the project boundary.
+        when(thinkProcessService.findDescendantIds("process-abc"))
+                .thenReturn(Set.of("process-abc", "same-proj-child", "foreign-child"));
+        when(thinkProcessService.findByIds(org.mockito.ArgumentMatchers.anyCollection()))
+                .thenReturn(List.of(
+                        tp("process-abc", "proj"),
+                        tp("same-proj-child", "proj"),
+                        tp("foreign-child", "other-project")));
+
+        Set<String> ids = HistoryScopeResolver.resolve(
+                HistorySearchTool.SCOPE_CHILDREN, ctx, thinkProcessService);
+
+        assertThat(ids).containsExactlyInAnyOrder("process-abc", "same-proj-child");
+        assertThat(ids).doesNotContain("foreign-child");
+    }
+
+    private static ThinkProcessDocument tp(String id, String projectId) {
+        return ThinkProcessDocument.builder().id(id).projectId(projectId).build();
     }
 
     @Test

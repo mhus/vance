@@ -43,7 +43,22 @@ public final class HistoryScopeResolver {
                     // so the caller still sees its own history.
                     return Set.of(ctx.processId());
                 }
-                return descendants;
+                // Confine descendants to the CALLER'S project: findDescendantIds
+                // walks parentProcessId pinned only by tenant, so a cross-project
+                // child (spawned via Trillian cross_process_create) would
+                // otherwise leak its raw chat turns to a parent in another
+                // project. The memory cascade never reads sideways/cross-project.
+                String callerProject = ctx.projectId();
+                Set<String> sameProject = new LinkedHashSet<>();
+                sameProject.add(ctx.processId());
+                if (callerProject != null && !callerProject.isBlank()) {
+                    for (ThinkProcessDocument p : thinkProcessService.findByIds(descendants)) {
+                        if (p.getId() != null && callerProject.equals(p.getProjectId())) {
+                            sameProject.add(p.getId());
+                        }
+                    }
+                }
+                return Set.copyOf(sameProject);
             case HistorySearchTool.SCOPE_SESSION:
                 if (ctx.sessionId() == null || ctx.sessionId().isBlank()) {
                     // No session = no widening; caller still sees own process.

@@ -109,7 +109,7 @@ public class ToolHealthService {
             ToolHealthScope scope,
             String scopeId,
             String toolName,
-            String errorSignature,
+            @Nullable String errorSignature,
             @Nullable String userId,
             Instant now) {
         Optional<ToolHealthDocument> doc = repository
@@ -455,8 +455,12 @@ public class ToolHealthService {
         };
     }
 
-    private static boolean matches(ToolHealthCooldown c, String signature, @Nullable String userId) {
-        if (!signature.equals(c.getErrorSignature())) return false;
+    private static boolean matches(
+            ToolHealthCooldown c, @Nullable String signature, @Nullable String userId) {
+        // A null signature is a match-any probe ("is this subject cooled down at
+        // all?") — callers like ZarniwoopService.isUsable pass null. A non-null
+        // NPE'd here before the guard, aborting the whole caller.
+        if (signature != null && !signature.equals(c.getErrorSignature())) return false;
         if (c.getUserId() == null) return userId == null;
         return c.getUserId().equals(userId);
     }

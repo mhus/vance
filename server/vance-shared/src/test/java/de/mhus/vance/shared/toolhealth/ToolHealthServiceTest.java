@@ -74,6 +74,20 @@ class ToolHealthServiceTest {
     }
 
     @Test
+    void nullSignature_matchesAnyActiveCooldown_withoutNpe() {
+        // A null signature is a "is this subject cooled down at all?" probe
+        // (ZarniwoopService.isUsable). Before the fix matches() did
+        // null.equals(...) → NPE, aborting the whole caller once a cooldown
+        // existed — the protection broke exactly when it was needed.
+        stubSession(docWithCooldown(cooldown(SIG, "bob", now.plusSeconds(60))));
+
+        Optional<ToolHealthCooldown> result = service.lookupActiveCooldown(
+                TENANT, ToolHealthScope.SESSION, "s-1", TOOL, null, "bob", now);
+
+        assertThat(result).isPresent();
+    }
+
+    @Test
     void userSpecificCooldown_doesNotBlockOtherUsers() {
         stubSession(docWithCooldown(cooldown(SIG, "bob", now.plusSeconds(60))));
 

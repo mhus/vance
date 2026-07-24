@@ -555,6 +555,20 @@ public class VogonEngine implements ThinkEngine {
         String steerContent = renderWorkerSteerContent(
                 process, phase, state, sub.apply(phase.getWorkerInput()));
         ThinkProcessDocument child;
+        // Resume reconciliation: the worker's id is persisted to
+        // workerProcessIds BEFORE the <phase>_completed flag is set, so a Brain
+        // restart in that window would otherwise re-enter here with the flag
+        // still unset and spawn a SECOND worker — running the phase (and its
+        // draft write) twice. If a worker already exists for this phase key,
+        // reuse it (re-drive + capture) instead of spawning a duplicate.
+        String existingWorkerId = state.getWorkerProcessIds().get(qualifiedPhaseKey(state, phase));
+        ThinkProcessDocument existingWorker = existingWorkerId == null ? null
+                : thinkProcessService.findById(existingWorkerId).orElse(null);
+        if (existingWorker != null) {
+            log.info("Vogon id='{}' phase '{}' reusing existing worker child='{}' (resume — "
+                            + "not re-spawning)", process.getId(), phase.getName(), existingWorkerId);
+            child = existingWorker;
+        } else {
         try {
             AppliedRecipe applied = recipeResolver.apply(
                     process.getTenantId(), ctx.projectId(), recipeName,
@@ -611,6 +625,7 @@ public class VogonEngine implements ThinkEngine {
             state.getFlags().put(phaseFlag(phase.getName(), "failed"), true);
             persistState(process, state);
             return null;
+        }
         }
 
         // Synchronous turn drive.

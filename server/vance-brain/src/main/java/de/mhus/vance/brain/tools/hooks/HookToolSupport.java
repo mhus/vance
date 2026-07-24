@@ -27,19 +27,27 @@ public class HookToolSupport {
 
     private final EventLogService eventLogService;
     private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
+    private final de.mhus.vance.shared.permission.PermissionService permissionService;
 
     /**
-     * Write actor for a hook-tool document write. Hook YAML lives under the
-     * reserved {@code _vance/hooks/} prefix and can carry a {@code runAs}
-     * authority, so it must be a user-driven write ({@link
-     * de.mhus.vance.shared.permission.WriteReason#USER}) with the caller's real
-     * subject — never {@code WriteActor.SYSTEM}, which would fail-open past the
-     * reserved-prefix ADMIN gate (R4) and the {@code $meta.privileged} gate.
+     * Authorize + build the write actor for a hook-tool document write. Hook
+     * YAML lives under the server-owned {@code _vance/hooks/} namespace, which
+     * is SYSTEM-only at the document chokepoint (a plain user-actor write is
+     * denied regardless of role). As the dedicated authoring tool for that
+     * namespace this support owns the policy: it enforces project-ADMIN here,
+     * then writes as a trusted SYSTEM operation with the caller's real subject
+     * kept for audit. A non-admin therefore cannot plant a (possibly
+     * {@code runAs}-carrying) hook; a headless caller (null userId → SYSTEM
+     * subject) passes the ADMIN gate as an internal actor.
      */
-    public de.mhus.vance.shared.permission.WriteActor writeActor(
-            String tenantId, @org.jspecify.annotations.Nullable String userId) {
-        return de.mhus.vance.shared.permission.WriteActor.user(
-                contextFactory.forToolSubject(tenantId, userId));
+    public de.mhus.vance.shared.permission.WriteActor adminSystemActor(
+            String tenantId, String projectId, @org.jspecify.annotations.Nullable String userId) {
+        de.mhus.vance.shared.permission.SecurityContext subject =
+                contextFactory.forToolSubject(tenantId, userId);
+        permissionService.enforce(subject,
+                new de.mhus.vance.shared.permission.Resource.Project(tenantId, projectId),
+                de.mhus.vance.shared.permission.Action.ADMIN);
+        return de.mhus.vance.shared.permission.WriteActor.system(subject);
     }
 
     /** Normalise + validate a hook name passed by the agent. */

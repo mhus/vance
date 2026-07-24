@@ -53,7 +53,7 @@ public class HookDeleteTool implements Tool {
         String name = HookToolSupport.normalizeName(
                 support.stringOrThrow(params, "name"));
         boolean removed = ursaHookService.delete(ctx.tenantId(), ctx.projectId(), event, name,
-                support.writeActor(ctx.tenantId(), ctx.userId()));
+                support.adminSystemActor(ctx.tenantId(), ctx.projectId(), ctx.userId()));
         Map<String, Object> resp = new LinkedHashMap<>();
         resp.put("event", event.wireName());
         resp.put("name", name);

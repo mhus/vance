@@ -104,7 +104,7 @@ public class UrsaSchedulerController {
             @PathVariable("name") String name,
             @Valid @RequestBody SchedulerSaveRequest body,
             HttpServletRequest request) {
-        authority.enforce(request, new Resource.Project(tenant, project), Action.WRITE);
+        authority.enforce(request, new Resource.Project(tenant, project), Action.ADMIN);
         String norm = normalizeName(name);
         String yaml = body.getYaml();
         if (yaml == null || yaml.isBlank()) {
@@ -153,7 +153,7 @@ public class UrsaSchedulerController {
             @PathVariable("project") String project,
             @PathVariable("name") String name,
             HttpServletRequest request) {
-        authority.enforce(request, new Resource.Project(tenant, project), Action.WRITE);
+        authority.enforce(request, new Resource.Project(tenant, project), Action.ADMIN);
         String norm = normalizeName(name);
         Optional<DocumentDocument> existing = documentService.findByPath(
                 tenant, project, pathFor(norm));
@@ -298,12 +298,15 @@ public class UrsaSchedulerController {
     }
 
     /**
-     * The mandatory {@link de.mhus.vance.shared.permission.WriteActor} for this
-     * management surface: a trusted server write of a {@code _vance/} system
-     * resource on behalf of the request user. The surface has already run its
-     * own authorization (Project WRITE above); WriteReason.SYSTEM is the hint
-     * that lets the resolver allow the reserved-path write while the real user
-     * stays recorded for audit. (F1)
+     * The {@link de.mhus.vance.shared.permission.WriteActor} for this management
+     * surface. The scheduler document lives under the server-owned
+     * {@code _vance/scheduler/} namespace, which is SYSTEM-only at the document
+     * chokepoint. As the dedicated authoring surface this controller owns the
+     * policy: the save/delete handlers first enforce project-ADMIN
+     * (see {@code authorizeAdmin}), then this writes as a trusted SYSTEM
+     * operation with the request user kept for audit. Net effect: saving/deleting
+     * a scheduler via REST requires the same project-ADMIN authority as the
+     * {@code scheduler_set} tool — not merely project-WRITER.
      */
     private de.mhus.vance.shared.permission.WriteActor systemActor(HttpServletRequest request) {
         return de.mhus.vance.shared.permission.WriteActor.system(authority.contextOf(request));

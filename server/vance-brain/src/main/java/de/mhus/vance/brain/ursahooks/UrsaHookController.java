@@ -113,7 +113,9 @@ public class UrsaHookController {
             @PathVariable("name") String name,
             @Valid @RequestBody UrsaHookSaveRequest body,
             HttpServletRequest request) {
-        authority.enforce(request, new Resource.Project(tenant, project), Action.WRITE);
+        // _vance/hooks/ is server-owned (SYSTEM-only at the chokepoint); this
+        // authoring surface owns the policy → require project-ADMIN, write SYSTEM.
+        authority.enforce(request, new Resource.Project(tenant, project), Action.ADMIN);
         UrsaHookEventName event = parseEvent(eventName);
         String norm = normalizeName(name);
         if (body.getYaml() == null || body.getYaml().isBlank()) {
@@ -134,7 +136,7 @@ public class UrsaHookController {
             saved = ursaHookService.save(
                     tenant, project, event, norm, body.getYaml(),
                     context.subjectId(),
-                    de.mhus.vance.shared.permission.WriteActor.user(context));
+                    de.mhus.vance.shared.permission.WriteActor.system(context));
         } catch (UrsaHookParseException ex) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage());
         }
@@ -152,11 +154,13 @@ public class UrsaHookController {
             @PathVariable("event") String eventName,
             @PathVariable("name") String name,
             HttpServletRequest request) {
-        authority.enforce(request, new Resource.Project(tenant, project), Action.WRITE);
+        // _vance/hooks/ is server-owned (SYSTEM-only at the chokepoint); this
+        // authoring surface owns the policy → require project-ADMIN, write SYSTEM.
+        authority.enforce(request, new Resource.Project(tenant, project), Action.ADMIN);
         UrsaHookEventName event = parseEvent(eventName);
         String norm = normalizeName(name);
         boolean removed = ursaHookService.delete(tenant, project, event, norm,
-                de.mhus.vance.shared.permission.WriteActor.user(authority.contextOf(request)));
+                de.mhus.vance.shared.permission.WriteActor.system(authority.contextOf(request)));
         return removed
                 ? ResponseEntity.noContent().build()
                 : ResponseEntity.status(HttpStatus.NOT_FOUND).build();

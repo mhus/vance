@@ -43,20 +43,27 @@ class UrsaSchedulerToolSupport {
     private final RecipeResolver recipeResolver;
     private final de.mhus.vance.shared.settings.TimezoneResolver timezoneResolver;
     private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
+    private final de.mhus.vance.shared.permission.PermissionService permissionService;
 
     /**
-     * Write actor for a scheduler-tool document write. The scheduler YAML lives
-     * under the reserved {@code _vance/scheduler/} prefix and can carry a
-     * {@code runAs} authority, so this must be a user-driven write ({@link
-     * de.mhus.vance.shared.permission.WriteReason#USER}) carrying the caller's
-     * real subject — never {@code WriteActor.SYSTEM}, which would fail-open past
-     * the reserved-prefix ADMIN gate (R4) and the {@code $meta.privileged} gate,
-     * letting a non-admin plant a privileged scheduler.
+     * Authorize + build the write actor for a scheduler-tool document write.
+     * Scheduler YAML lives under the server-owned {@code _vance/scheduler/}
+     * namespace, which is SYSTEM-only at the document chokepoint (a plain
+     * user-actor write is denied regardless of role). As the dedicated authoring
+     * tool for that namespace, this support owns the policy: it enforces
+     * project-ADMIN here, then writes as a trusted SYSTEM operation with the
+     * caller's real subject kept for audit. A non-admin therefore cannot plant a
+     * (possibly {@code runAs}-carrying) scheduler; a headless caller (null
+     * userId → SYSTEM subject) passes the ADMIN gate as an internal actor.
      */
-    private de.mhus.vance.shared.permission.WriteActor writeActor(
-            String tenantId, @org.jspecify.annotations.Nullable String userId) {
-        return de.mhus.vance.shared.permission.WriteActor.user(
-                contextFactory.forToolSubject(tenantId, userId));
+    private de.mhus.vance.shared.permission.WriteActor adminSystemActor(
+            String tenantId, String projectId, @org.jspecify.annotations.Nullable String userId) {
+        de.mhus.vance.shared.permission.SecurityContext subject =
+                contextFactory.forToolSubject(tenantId, userId);
+        permissionService.enforce(subject,
+                new de.mhus.vance.shared.permission.Resource.Project(tenantId, projectId),
+                de.mhus.vance.shared.permission.Action.ADMIN);
+        return de.mhus.vance.shared.permission.WriteActor.system(subject);
     }
 
     /**
@@ -183,7 +190,7 @@ class UrsaSchedulerToolSupport {
                     /*newTags*/ null,
                     /*newInlineText*/ yaml,
                     /*newPath*/ null,
-                    writeActor(tenantId, createdBy));
+                    adminSystemActor(tenantId, projectId, createdBy));
         }
         return documentService.createText(
                 tenantId, projectId, path,
@@ -191,7 +198,7 @@ class UrsaSchedulerToolSupport {
                 /*tags*/ null,
                 yaml,
                 createdBy,
-                writeActor(tenantId, createdBy));
+                adminSystemActor(tenantId, projectId, createdBy));
     }
 
     void deleteByPath(String tenantId, String projectId, String name,
@@ -199,7 +206,7 @@ class UrsaSchedulerToolSupport {
         String path = pathFor(name);
         documentService.findByPath(tenantId, projectId, path)
                 .ifPresent(doc -> documentService.delete(doc.getId(),
-                        writeActor(tenantId, userId)));
+                        adminSystemActor(tenantId, projectId, userId)));
     }
 
     /** Compact list-shape for the read tools and REST list endpoint. */

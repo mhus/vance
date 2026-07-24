@@ -36,19 +36,27 @@ class UrsaEventToolSupport {
     private final DocumentService documentService;
     private final UrsaEventLoader loader;
     private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
+    private final de.mhus.vance.shared.permission.PermissionService permissionService;
 
     /**
-     * Write actor for an event-tool document write. Event YAML lives under the
-     * reserved {@code _vance/events/} prefix and can carry a {@code runAs}
-     * authority, so it must be a user-driven write ({@link
-     * de.mhus.vance.shared.permission.WriteReason#USER}) with the caller's real
-     * subject — never {@code WriteActor.SYSTEM}, which would fail-open past the
-     * reserved-prefix ADMIN gate (R4) and let a non-admin plant a privileged event.
+     * Authorize + build the write actor for an event-tool document write. Event
+     * YAML lives under the server-owned {@code _vance/events/} namespace, which
+     * is SYSTEM-only at the document chokepoint (a plain user-actor write is
+     * denied regardless of role). As the dedicated authoring tool for that
+     * namespace this support owns the policy: it enforces project-ADMIN here,
+     * then writes as a trusted SYSTEM operation with the caller's real subject
+     * kept for audit. A non-admin therefore cannot plant a (possibly
+     * {@code runAs}-carrying) event; a headless caller (null userId → SYSTEM
+     * subject) passes the ADMIN gate as an internal actor.
      */
-    private de.mhus.vance.shared.permission.WriteActor writeActor(
-            String tenantId, @Nullable String userId) {
-        return de.mhus.vance.shared.permission.WriteActor.user(
-                contextFactory.forToolSubject(tenantId, userId));
+    private de.mhus.vance.shared.permission.WriteActor adminSystemActor(
+            String tenantId, String projectId, @Nullable String userId) {
+        de.mhus.vance.shared.permission.SecurityContext subject =
+                contextFactory.forToolSubject(tenantId, userId);
+        permissionService.enforce(subject,
+                new de.mhus.vance.shared.permission.Resource.Project(tenantId, projectId),
+                de.mhus.vance.shared.permission.Action.ADMIN);
+        return de.mhus.vance.shared.permission.WriteActor.system(subject);
     }
 
     static String normalizeName(String name) {
@@ -106,7 +114,7 @@ class UrsaEventToolSupport {
                     /*newTags*/ null,
                     /*newInlineText*/ yaml,
                     /*newPath*/ null,
-                    writeActor(tenantId, createdBy));
+                    adminSystemActor(tenantId, projectId, createdBy));
             return true;
         }
         documentService.createText(
@@ -115,7 +123,7 @@ class UrsaEventToolSupport {
                 /*tags*/ null,
                 yaml,
                 createdBy,
-                writeActor(tenantId, createdBy));
+                adminSystemActor(tenantId, projectId, createdBy));
         return false;
     }
 
@@ -131,7 +139,7 @@ class UrsaEventToolSupport {
         if (existing.isEmpty()) {
             return false;
         }
-        documentService.delete(existing.get().getId(), writeActor(tenantId, userId));
+        documentService.delete(existing.get().getId(), adminSystemActor(tenantId, projectId, userId));
         return true;
     }
 

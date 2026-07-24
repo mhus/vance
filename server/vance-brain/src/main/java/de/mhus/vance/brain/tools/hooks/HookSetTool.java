@@ -83,7 +83,7 @@ public class HookSetTool implements Tool {
         try {
             saved = ursaHookService.save(
                     ctx.tenantId(), ctx.projectId(), event, name, yaml, ctx.userId(),
-                    support.writeActor(ctx.tenantId(), ctx.userId()));
+                    support.adminSystemActor(ctx.tenantId(), ctx.projectId(), ctx.userId()));
         } catch (UrsaHookParseException ex) {
             throw new ToolException("hook YAML rejected: " + ex.getMessage());
         }

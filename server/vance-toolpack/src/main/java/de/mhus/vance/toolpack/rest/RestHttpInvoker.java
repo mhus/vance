@@ -97,7 +97,8 @@ public final class RestHttpInvoker {
         HttpClient client = httpClient.client(config.tls());
         HttpResponse<String> response;
         try {
-            response = client.send(rb.build(), HttpResponse.BodyHandlers.ofString());
+            response = client.send(rb.build(), de.mhus.vance.toolpack.core.PackHttpLimits.cappedString(
+                    de.mhus.vance.toolpack.core.PackHttpLimits.DEFAULT_MAX_RESPONSE_BYTES));
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             throw new RestInvocationException(

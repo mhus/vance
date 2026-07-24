@@ -30,6 +30,42 @@ public class PdfReportRenderer implements MarkdownReportRenderer {
     private static final List<Extension> EXTENSIONS = List.of(
             TablesExtension.create());
 
+    /**
+     * Egress policy for image/resource URIs referenced from the (untrusted)
+     * markdown. Embedded {@code data:} URIs pass; {@code http(s)} passes only
+     * when {@link de.mhus.vance.shared.net.SsrfGuard} allows the host; any other
+     * scheme (notably {@code file:}) is refused. A refused/blocked URI resolves
+     * to {@code null} so openhtmltopdf skips that resource instead of failing the
+     * whole render.
+     */
+    private static final com.openhtmltopdf.extend.FSUriResolver SAFE_URI_RESOLVER =
+            (baseUri, uri) -> resolveResourceUri(uri);
+
+    /**
+     * Egress policy for a resource URI referenced from the markdown. Returns the
+     * URI when openhtmltopdf may fetch it, or {@code null} to skip it. Package
+     * -private for unit tests.
+     */
+    static String resolveResourceUri(String uri) {
+        if (uri == null) {
+            return null;
+        }
+        String u = uri.strip();
+        if (u.regionMatches(true, 0, "data:", 0, 5)) {
+            return u; // embedded — safe
+        }
+        if (u.regionMatches(true, 0, "http://", 0, 7)
+                || u.regionMatches(true, 0, "https://", 0, 8)) {
+            try {
+                de.mhus.vance.shared.net.SsrfGuard.assertAllowed(u);
+                return u;
+            } catch (de.mhus.vance.shared.net.SsrfGuard.SsrfException e) {
+                return null; // internal/private host → skip the image
+            }
+        }
+        return null; // file:, jar:, ftp:, relative, … → never fetched
+    }
+
     private final Parser parser = Parser.builder()
             .extensions(EXTENSIONS)
             .build();
@@ -63,6 +99,13 @@ public class PdfReportRenderer implements MarkdownReportRenderer {
         try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             PdfRendererBuilder builder = new PdfRendererBuilder();
             builder.useFastMode();
+            // Untrusted markdown can carry ![alt](url) → <img src>. Without a
+            // resolver openhtmltopdf fetches file:// (local-file disclosure into
+            // the PDF) and any http(s) host (SSRF) at run() time. Restrict it:
+            // embedded data: URIs pass; http(s) only if SsrfGuard allows the host
+            // (blocks loopback/private/metadata, honors the dev escape hatch);
+            // everything else (file:, jar:, ftp:, relative) is refused → skipped.
+            builder.useUriResolver(SAFE_URI_RESOLVER);
             builder.withHtmlContent(html, null);
             if (context.title() != null && !context.title().isBlank()) {
                 builder.withProducer("Vance Brain — report_from_markdown");

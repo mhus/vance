@@ -56,6 +56,10 @@ public final class McpHttpTransport implements McpTransport {
             new AtomicReference<>();
     private final ConcurrentLinkedQueue<McpJsonRpc.Frame.Notification> pendingNotifications =
             new ConcurrentLinkedQueue<>();
+    /** Per-frame SSE data cap — an endless data: line must not exhaust the heap. */
+    private static final int MAX_SSE_FRAME_CHARS = 8 * 1024 * 1024;
+    /** Cap on buffered notifications when no handler is registered (drop beyond). */
+    private static final int MAX_PENDING_NOTIFICATIONS = 4096;
     /**
      * Streamable-HTTP session id assigned by the server. Per MCP spec the
      * server may return an {@code Mcp-Session-Id} header on the
@@ -302,6 +306,12 @@ public final class McpHttpTransport implements McpTransport {
                 if (line.startsWith("data:")) {
                     if (dataBuf.length() > 0) dataBuf.append('\n');
                     dataBuf.append(line.substring(5).stripLeading());
+                    // A frame with no boundary (or an endless data: line) must not
+                    // grow the buffer without limit → heap exhaustion.
+                    if (dataBuf.length() > MAX_SSE_FRAME_CHARS) {
+                        throw new IllegalStateException(
+                                "MCP HTTP SSE frame exceeds " + MAX_SSE_FRAME_CHARS + " chars");
+                    }
                 }
                 // Ignore other SSE fields (event:, id:, retry:) — MCP-HTTP
                 // only carries data.
@@ -342,8 +352,13 @@ public final class McpHttpTransport implements McpTransport {
                 catch (RuntimeException e) {
                     log.warn("MCP HTTP SSE notification handler threw: {}", e.toString());
                 }
-            } else {
+            } else if (pendingNotifications.size() < MAX_PENDING_NOTIFICATIONS) {
                 pendingNotifications.add(n);
+            } else {
+                // Bounded — a server that floods notifications while no handler
+                // is registered must not grow this queue without limit.
+                log.warn("MCP HTTP SSE: dropping notification, pending queue at cap ({})",
+                        MAX_PENDING_NOTIFICATIONS);
             }
         }
         return SSE_NOT_RESPONSE;
@@ -351,7 +366,12 @@ public final class McpHttpTransport implements McpTransport {
 
     private static String readAllText(InputStream in) {
         try (in) {
-            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            // Bounded read — a hostile/runaway endpoint must not stream a
+            // multi-GB body into the Brain heap (OOM for all tenants).
+            return new String(
+                    de.mhus.vance.toolpack.core.PackHttpLimits.readCapped(
+                            in, de.mhus.vance.toolpack.core.PackHttpLimits.DEFAULT_MAX_RESPONSE_BYTES),
+                    StandardCharsets.UTF_8);
         } catch (IOException e) {
             throw new IllegalStateException("Failed to read MCP HTTP response: " + e.getMessage(), e);
         }

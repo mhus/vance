@@ -34,6 +34,7 @@ public class GitService {
     /** Clone {@code url} into {@code dir}, or pull if {@code dir} is already a repo. */
     public void cloneOrPull(Path dir, String url, @Nullable String branch,
                             String tenantId, @Nullable String projectId, @Nullable String alias) {
+        assertRemoteAllowed(url);
         CredentialsProvider creds = authProvider.provide(tenantId, projectId, alias);
         if (isGitRepo(dir)) {
             try (Git git = Git.open(dir.toFile())) {
@@ -77,6 +78,7 @@ public class GitService {
                 git.commit().setMessage(message).call();
             }
             if (push) {
+                assertRemoteAllowed(url);
                 String target = StringUtils.isNotBlank(branch) ? branch : git.getRepository().getBranch();
                 git.push()
                         .setRemote(url)
@@ -91,5 +93,38 @@ public class GitService {
 
     private static boolean isGitRepo(Path dir) {
         return Files.isDirectory(dir.resolve(".git"));
+    }
+
+    /**
+     * Validate a manifest-authored git remote before handing it to jgit. jgit's
+     * transport otherwise accepts {@code file://} (clone another workspace's/
+     * tenant's repo → local-file disclosure) and {@code git://} (unauthenticated
+     * probe of an internal git daemon → SSRF); the {@code WorkspaceService}
+     * confinement only covers the destination directory, not the source URL.
+     * Policy: {@code http(s)} is allowed but SSRF-guarded (loopback/private
+     * blocked unless the operator dev escape hatch is on); {@code ssh://} and
+     * scp-like ({@code user@host:path}) authenticated remotes pass; everything
+     * else (notably {@code file://} and {@code git://}) is refused.
+     */
+    private static void assertRemoteAllowed(String url) {
+        if (url == null || url.isBlank()) {
+            throw new DamogranException("git remote URL is empty");
+        }
+        String u = url.strip();
+        String lower = u.toLowerCase(java.util.Locale.ROOT);
+        if (lower.startsWith("http://") || lower.startsWith("https://")) {
+            de.mhus.vance.shared.net.SsrfGuard.assertAllowed(u);
+            return;
+        }
+        if (lower.startsWith("ssh://") || lower.startsWith("git+ssh://")) {
+            return;
+        }
+        // scp-like authenticated remote: user@host:path, no URL scheme.
+        if (!u.contains("://") && u.matches("[^@/]+@[^:/]+:.+")) {
+            return;
+        }
+        throw new DamogranException("git remote scheme not allowed: '" + url
+                + "' — only http(s) (SSRF-guarded) and ssh remotes are permitted; "
+                + "file:// and git:// are refused");
     }
 }

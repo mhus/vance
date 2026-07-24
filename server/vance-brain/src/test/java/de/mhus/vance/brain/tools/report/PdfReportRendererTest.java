@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.tools.report;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 import java.io.ByteArrayInputStream;
 import org.apache.pdfbox.Loader;
@@ -35,6 +36,28 @@ class PdfReportRendererTest {
             code block content
             ```
             """;
+
+    @Test
+    void resolveResourceUri_blocksFileAndPrivate_allowsDataAndPublic() {
+        // Security regression (code-review-2 S2): untrusted ![alt](url) images
+        // must not let openhtmltopdf read local files or reach internal hosts.
+        assertThat(PdfReportRenderer.resolveResourceUri("file:///etc/passwd")).isNull();
+        assertThat(PdfReportRenderer.resolveResourceUri("http://169.254.169.254/latest/meta-data/"))
+                .isNull();
+        assertThat(PdfReportRenderer.resolveResourceUri("http://127.0.0.1/x")).isNull();
+        assertThat(PdfReportRenderer.resolveResourceUri("jar:http://h!/x")).isNull();
+        assertThat(PdfReportRenderer.resolveResourceUri("data:image/png;base64,AAAA"))
+                .startsWith("data:");
+        assertThat(PdfReportRenderer.resolveResourceUri("https://1.1.1.1/logo.png"))
+                .isEqualTo("https://1.1.1.1/logo.png");
+    }
+
+    @Test
+    void render_withFileImage_skipsIt_andStillProducesPdf() {
+        MarkdownReportContext ctx = new MarkdownReportContext(
+                "![x](file:///etc/passwd)\n\nBody text.", "Title", null, "acme", "proj");
+        assertThatCode(() -> new PdfReportRenderer().render(ctx)).doesNotThrowAnyException();
+    }
 
     @Test
     void render_producesValidPdfBytes() throws Exception {

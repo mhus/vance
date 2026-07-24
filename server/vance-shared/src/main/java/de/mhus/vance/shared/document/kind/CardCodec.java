@@ -155,6 +155,12 @@ public final class CardCodec {
             } else {
                 out.append("estimate: ").append(e).append('\n');
             }
+        } else if (doc.extra().get("estimate") != null) {
+            // A non-numeric estimate that couldn't coerce to Double was
+            // preserved verbatim in extra — emit it here so it round-trips
+            // (the extra loop below skips it as a known field).
+            out.append("estimate: ")
+                    .append(stringifyScalar(doc.extra().get("estimate"))).append('\n');
         }
         if (doc.blocked()) {
             out.append("blocked: true").append('\n');
@@ -222,6 +228,12 @@ public final class CardCodec {
         for (Map.Entry<String, Object> e : obj.entrySet()) {
             if (isKnownField(e.getKey())) continue;
             extra.put(e.getKey(), e.getValue());
+        }
+        // A non-numeric estimate coerces to null; preserve the raw value in
+        // extra (serialize falls back to it) so it round-trips instead of being
+        // silently dropped.
+        if (estimate == null && obj.get("estimate") != null) {
+            extra.put("estimate", obj.get("estimate"));
         }
         return new CardDocument(
                 kind.isEmpty() ? "card" : kind,

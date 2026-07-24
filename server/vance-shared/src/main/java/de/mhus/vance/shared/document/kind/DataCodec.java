@@ -128,7 +128,10 @@ public final class DataCodec {
         if (parsed instanceof Map<?, ?> m) {
             Map<String, Object> map = new LinkedHashMap<>();
             for (Map.Entry<?, ?> e : m.entrySet()) {
-                if (e.getKey() instanceof String key) map.put(key, e.getValue());
+                // Coerce non-String keys (YAML allows int/bool/null keys) to
+                // their string form instead of dropping them — a parse-mutate-
+                // serialize cycle must not silently lose {2026: "x", true: "y"}.
+                map.put(String.valueOf(e.getKey()), e.getValue());
             }
             map = KindHeaderCodec.unwrapJsonMeta(map);
             Object kindRaw = map.remove("kind");
@@ -159,7 +162,9 @@ public final class DataCodec {
         if (doc.body() instanceof Map<?, ?> bm) {
             Map<String, Object> body = new LinkedHashMap<>();
             for (Map.Entry<?, ?> e : bm.entrySet()) {
-                if (e.getKey() instanceof String key) body.put(key, e.getValue());
+                // Preserve non-String keys as their string form (see
+                // promoteFromObject) rather than truncating the map on write.
+                body.put(String.valueOf(e.getKey()), e.getValue());
             }
             Map<String, Object> meta = new LinkedHashMap<>();
             meta.put("kind", canonicalKind(doc));

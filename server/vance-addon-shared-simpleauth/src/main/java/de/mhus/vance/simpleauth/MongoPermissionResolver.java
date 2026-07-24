@@ -158,8 +158,18 @@ public class MongoPermissionResolver implements PermissionResolver {
             }
             return hasRole(tenantRole(subject, tenantId), GrantRole.ADMIN);
         }
-        // _vance and other users' hubs: tenant-ADMIN only.
-        if (project.equals(VANCE_PROJECT) || project.startsWith(ProjectService.SYSTEM_NAME_PREFIX)) {
+        // _vance: system defaults (recipes, models, manuals, setting-forms) — every
+        // tenant member may READ (the recipe/model/settings cascade resolves here
+        // for all users); writing needs tenant-ADMIN. Same shape as _tenant.
+        if (project.equals(VANCE_PROJECT)) {
+            if (required == GrantRole.READER) {
+                return true;
+            }
+            return hasRole(tenantRole(subject, tenantId), GrantRole.ADMIN);
+        }
+        // Other users' hubs (_user_<other>) and any other system project:
+        // tenant-ADMIN only.
+        if (project.startsWith(ProjectService.SYSTEM_NAME_PREFIX)) {
             return hasRole(tenantRole(subject, tenantId), GrantRole.ADMIN);
         }
         return hasRole(effectiveRole(subject, tenantId, project), required);

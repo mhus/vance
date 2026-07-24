@@ -61,6 +61,28 @@ class MongoPermissionResolverTest {
     }
 
     @Test
+    void vanceProject_isReadableByAnyMember_butWriteNeedsAdmin() {
+        // System defaults (recipes/models/manuals/setting-forms) live in _vance and
+        // must be readable by every tenant member for the cascade; writing is ADMIN.
+        assertThat(resolver.isAllowed(alice,
+                new Resource.Document("acme", "_vance", "recipes/default.yaml"), Action.READ))
+                .isTrue();
+        assertThat(resolver.isAllowed(alice,
+                new Resource.Document("acme", "_vance", "recipes/default.yaml"), Action.WRITE))
+                .isFalse();
+    }
+
+    @Test
+    void vanceProject_writableByTenantAdmin() {
+        when(grants.forScope("acme", GrantScopeType.TENANT, "acme"))
+                .thenReturn(List.of(grant(GrantScopeType.TENANT, "acme",
+                        GrantSubjectType.USER, "alice", GrantRole.ADMIN)));
+        assertThat(resolver.isAllowed(alice,
+                new Resource.Document("acme", "_vance", "recipes/default.yaml"), Action.WRITE))
+                .isTrue();
+    }
+
+    @Test
     void r3_projectRead_needsAGrant_writeFollowsRole() {
         // no grant → even READ denied on a normal project
         assertThat(resolver.isAllowed(alice, new Resource.Project("acme", "proj"), Action.READ)).isFalse();

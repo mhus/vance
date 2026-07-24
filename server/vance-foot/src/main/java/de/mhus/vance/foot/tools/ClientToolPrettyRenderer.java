@@ -101,7 +101,9 @@ public class ClientToolPrettyRenderer {
         String tail = summariseResult(state.toolName, result);
         AttributedStringBuilder line = new AttributedStringBuilder();
         if (resultStyle != null) line.style(resultStyle);
-        line.append("  ⎿  ").append(tail);
+        // oneLine() strips escape/control bytes — summariseResult may echo
+        // attacker-influenceable fields (paths, error text) into the tail.
+        line.append("  ⎿  ").append(oneLine(tail));
         terminal.printlnStyled(Verbosity.INFO, line.toAttributedString());
         if (config.getUi().getToolOutput().isDiffEnabled()) {
             renderDiff(state, result);
@@ -326,7 +328,12 @@ public class ClientToolPrettyRenderer {
     /** Flattens newlines to spaces so the header stays a single line. */
     private static String oneLine(String s) {
         if (s == null) return "";
-        return s.replace('\n', ' ').replace('\r', ' ');
+        // Strip terminal control/escape bytes (ESC/C0/C1/OSC/DEL) from
+        // attacker-influenceable tool params/results before they reach the
+        // AttributedString → terminal (screen spoof, OSC-52 clipboard, hidden
+        // text). summariseParams + renderError both funnel through here.
+        return de.mhus.vance.foot.ui.TerminalSanitizer.sanitizeContent(s)
+                .replace('\n', ' ').replace('\r', ' ');
     }
 
     /**

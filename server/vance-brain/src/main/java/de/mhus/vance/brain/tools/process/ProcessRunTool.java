@@ -226,11 +226,29 @@ public class ProcessRunTool implements Tool {
             terminalStatus = refreshed.getStatus() == null
                     ? "UNKNOWN" : refreshed.getStatus().name();
         } finally {
+            // Serialize the stop onto the CHILD lane — never run engineService.stop
+            // on the parent thread. On the timeout path the child's steer is still
+            // executing on its lane; an off-lane stop mutates the same process /
+            // chat history concurrently (state corruption, lost/duplicated messages).
+            // Enqueuing behind the steer serializes cleanly (like ProcessStopTool);
+            // we wait only a bounded grace so the tool returns even for a long
+            // runaway turn — the stop still runs on-lane once the turn yields.
             try {
-                engineService.stop(child);
-            } catch (RuntimeException e) {
+                laneScheduler.submit(child.getId(),
+                                () -> {
+                                    engineService.stop(child);
+                                    return null;
+                                })
+                        .get(30, TimeUnit.SECONDS);
+            } catch (TimeoutException te) {
+                log.warn("process_run: stop for child='{}' enqueued behind a still-running "
+                        + "turn; it will run on-lane once the turn yields", child.getId());
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+            } catch (ExecutionException ee) {
+                Throwable cause = ee.getCause() == null ? ee : ee.getCause();
                 log.warn("process_run: stop failed for child='{}': {}",
-                        child.getId(), e.toString());
+                        child.getId(), cause.getMessage());
             }
         }
 

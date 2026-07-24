@@ -68,4 +68,33 @@ class RedisLockManagerTest {
         assertThat(result.getLockToken().tokenId).isEqualTo("T_A");
         verify(ops).set(anyString(), anyString(), any(Duration.class));
     }
+
+    @Test
+    void refresh_absentKey_reEstablishesLenient() {
+        // TTL-lapsed / etag-instead-of-token clients: re-establish rather than fail.
+        when(ops.get(anyString())).thenReturn(null);
+        when(ops.setIfAbsent(anyString(), anyString(), any(Duration.class))).thenReturn(true);
+
+        LockResult result = manager.refresh("anything", new LockTimeout(60L), resource);
+
+        assertThat(result.isSuccessful()).isTrue();
+    }
+
+    @Test
+    void unlock_withOwnerToken_deletesLock() {
+        when(ops.get(anyString())).thenReturn("T_A\nalice\n300");
+
+        manager.unlock("T_A", resource);
+
+        verify(redis).delete(anyString());
+    }
+
+    @Test
+    void unlock_withWrongToken_doesNotDeleteAnotherHoldersLock() {
+        when(ops.get(anyString())).thenReturn("T_A\nalice\n300");
+
+        manager.unlock("attacker-bogus", resource);
+
+        verify(redis, never()).delete(anyString());
+    }
 }

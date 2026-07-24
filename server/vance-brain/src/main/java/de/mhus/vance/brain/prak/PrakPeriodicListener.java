@@ -54,6 +54,19 @@ public class PrakPeriodicListener {
     private final ThinkProcessService thinkProcessService;
     private final SessionService sessionService;
 
+    /**
+     * Think-process ids with a periodic-Prak run currently in flight. Since
+     * this listener is {@code @Async} with no per-process ordering, two turns
+     * completing close together would otherwise run two Prak passes for the
+     * same process concurrently — both read the same {@code lastPrakAt} cursor
+     * and promote the overlapping span twice (duplicate INSIGHT memories). This
+     * set serializes to at most one in-flight run per process; an overlapping
+     * trigger is dropped, and the next ASSISTANT message re-triggers (the
+     * forward-only cursor guarantees no span is skipped).
+     */
+    private final java.util.Set<String> inFlight =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
+
     @Async
     @EventListener
     public void onChatMessageAppended(ChatMessageAppendedEvent event) {
@@ -71,9 +84,14 @@ public class PrakPeriodicListener {
             return;
         }
 
+        String processId = m.getThinkProcessId();
+        if (!inFlight.add(processId)) {
+            log.trace("Periodic-Prak already in flight for processId='{}' — skipping overlap",
+                    processId);
+            return;
+        }
         try {
-            Optional<ThinkProcessDocument> proc =
-                    thinkProcessService.findById(m.getThinkProcessId());
+            Optional<ThinkProcessDocument> proc = thinkProcessService.findById(processId);
             if (proc.isEmpty()) return;
             ThinkProcessDocument process = proc.get();
             String projectId = process.getSessionId() == null
@@ -83,7 +101,9 @@ public class PrakPeriodicListener {
             trigger.maybeFire(process, projectId);
         } catch (RuntimeException e) {
             log.warn("Periodic-Prak listener failed for processId='{}': {}",
-                    m.getThinkProcessId(), e.toString());
+                    processId, e.toString());
+        } finally {
+            inFlight.remove(processId);
         }
     }
 }

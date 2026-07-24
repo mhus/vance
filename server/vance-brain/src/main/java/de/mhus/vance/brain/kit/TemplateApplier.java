@@ -474,6 +474,18 @@ public class TemplateApplier {
 
     private void persistSetting(String tenantId, String applyProject, SettingTarget st) {
         String project = resolveProjectFor(st.input.target(), applyProject);
+        // Security (code-review-2): a kit template's setting target must stay within
+        // the project the kit is applied to. An untrusted template.yaml could
+        // otherwise select scope=TENANT (→ _vance) or a foreign project and write a
+        // (possibly PASSWORD) setting there — e.g. ai.provider.*.apiKey — a
+        // tenant-wide privilege escalation, since no authz runs on the resolved
+        // target. Confine it to the apply-project.
+        if (!project.equals(applyProject)) {
+            throw new IllegalStateException(
+                    "kit template setting '" + st.input.target().key() + "' targets project '"
+                    + project + "' outside the apply-project '" + applyProject
+                    + "' — cross-project/tenant setting targets are not allowed");
+        }
         String key = st.input.target().key();
         if (st.input.type() == TemplateInputType.PASSWORD) {
             settingService.setEncryptedPassword(

@@ -271,6 +271,9 @@ public class WikiService {
     }
 
     private static String escape(String s) {
-        return s.replace("\"", "\\\"");
+        // Backslash first, then quote, then newline — see WikiApplication.escape.
+        // Prevents an unterminated double-quoted YAML scalar (title ending in '\').
+        return s.replace("\\", "\\\\").replace("\"", "\\\"")
+                .replace("\n", "\\n").replace("\r", "");
     }
 }

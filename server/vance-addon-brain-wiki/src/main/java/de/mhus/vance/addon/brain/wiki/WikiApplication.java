@@ -273,6 +273,12 @@ public class WikiApplication implements VanceApplication {
     }
 
     private static String escape(String s) {
-        return s.replace("\"", "\\\"");
+        // Escape backslash FIRST (so the backslashes added below aren't
+        // re-escaped), then the quote, then encode newlines. A title ending in
+        // a backslash (e.g. "C:\") otherwise emits an unterminated double-quoted
+        // YAML scalar that SnakeYAML rejects, corrupting the manifest so every
+        // later scan() throws until the file is hand-repaired.
+        return s.replace("\\", "\\\\").replace("\"", "\\\"")
+                .replace("\n", "\\n").replace("\r", "");
     }
 }

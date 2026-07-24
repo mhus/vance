@@ -95,8 +95,11 @@ public class WorkPageSerializer {
                 }
                 yield s.toString();
             }
-            case Block.Code c -> "```" + (c.lang() == null ? "" : c.lang()) + "\n"
-                    + c.code() + (c.code().endsWith("\n") ? "" : "\n") + "```\n";
+            case Block.Code c -> {
+                String body = c.code() + (c.code().endsWith("\n") ? "" : "\n");
+                String f = fenceFor(body);
+                yield f + (c.lang() == null ? "" : c.lang()) + "\n" + body + f + "\n";
+            }
             case Block.Divider ignored -> "---\n";
             case Block.Image img -> "![" + img.alt() + "](" + img.src() + ")\n";
             case Block.Table tbl -> renderTable(tbl);
@@ -139,8 +142,11 @@ public class WorkPageSerializer {
             }});
             case Block.Toc ignored -> "```vance-toc\n```\n";
             case Block.Columns cols -> renderColumns(cols);
-            case Block.UnknownFence uf -> "```" + uf.infoString() + "\n"
-                    + uf.body() + (uf.body().endsWith("\n") ? "" : "\n") + "```\n";
+            case Block.UnknownFence uf -> {
+                String body = uf.body() + (uf.body().endsWith("\n") ? "" : "\n");
+                String f = fenceFor(body);
+                yield f + uf.infoString() + "\n" + body + f + "\n";
+            }
         };
     }
 
@@ -186,6 +192,17 @@ public class WorkPageSerializer {
         return max;
     }
 
+    /**
+     * A fence opener/closer long enough that no line inside {@code body} can
+     * close it — one backtick past the longest ``` run in the body (min 3).
+     * Applied to every fenced block so a body containing a ``` line round-trips
+     * instead of being truncated by the parser (which closes at a fence ≥ the
+     * opener length). Mirrors what {@code renderColumns} already did.
+     */
+    private static String fenceFor(String body) {
+        return "`".repeat(Math.max(3, maxFenceLength(body) + 1));
+    }
+
     /** Compact width formatting — {@code 0.4}, {@code 1} (no trailing {@code .0}). */
     private static String formatWidth(double w) {
         if (w == Math.rint(w) && !Double.isInfinite(w)) {
@@ -219,6 +236,7 @@ public class WorkPageSerializer {
         Yaml yaml = new Yaml(opts);
         String dumped = yaml.dump(body);
         if (!dumped.endsWith("\n")) dumped = dumped + "\n";
-        return "```" + info + "\n" + dumped + "```\n";
+        String f = fenceFor(dumped);
+        return f + info + "\n" + dumped + f + "\n";
     }
 }

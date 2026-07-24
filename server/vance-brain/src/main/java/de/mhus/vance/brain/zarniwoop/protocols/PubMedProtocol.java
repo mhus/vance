@@ -57,15 +57,19 @@ public class PubMedProtocol implements SearchProtocol {
 
     private final ObjectMapper objectMapper;
     private final SimpleHttpClient http;
+    private final de.mhus.vance.shared.settings.SettingService settings;
 
     @Autowired
-    public PubMedProtocol(ObjectMapper objectMapper) {
-        this(objectMapper, new SimpleHttpClient.JdkSimpleHttpClient());
+    public PubMedProtocol(ObjectMapper objectMapper,
+                          de.mhus.vance.shared.settings.SettingService settings) {
+        this(objectMapper, new SimpleHttpClient.JdkSimpleHttpClient(), settings);
     }
 
-    PubMedProtocol(ObjectMapper objectMapper, SimpleHttpClient http) {
+    PubMedProtocol(ObjectMapper objectMapper, SimpleHttpClient http,
+                   de.mhus.vance.shared.settings.SettingService settings) {
         this.objectMapper = objectMapper;
         this.http = http;
+        this.settings = settings;
     }
 
     @Override public String id() { return ID; }
@@ -83,7 +87,7 @@ public class PubMedProtocol implements SearchProtocol {
                     "PubMedProtocol cannot instantiate config with protocol '"
                             + cfg.protocolId() + "'");
         }
-        return new PubMedInstance(cfg, objectMapper, http);
+        return new PubMedInstance(cfg, objectMapper, http, settings);
     }
 
     // ── Instance ─────────────────────────────────────────────────────
@@ -97,13 +101,16 @@ public class PubMedProtocol implements SearchProtocol {
         private final ProviderInstanceConfig cfg;
         private final ObjectMapper objectMapper;
         private final SimpleHttpClient http;
+        private final de.mhus.vance.shared.settings.SettingService settings;
 
         PubMedInstance(ProviderInstanceConfig cfg,
                        ObjectMapper objectMapper,
-                       SimpleHttpClient http) {
+                       SimpleHttpClient http,
+                       de.mhus.vance.shared.settings.SettingService settings) {
             this.cfg = cfg;
             this.objectMapper = objectMapper;
             this.http = http;
+            this.settings = settings;
         }
 
         @Override public String id() { return cfg.instanceId(); }
@@ -128,7 +135,7 @@ public class PubMedProtocol implements SearchProtocol {
 
         @Override
         public String statusText(SearchScope scope) {
-            if (!StringUtils.isBlank(apiKey())) {
+            if (!StringUtils.isBlank(resolveApiKey(scope))) {
                 return "10 req/sec (api_key configured)";
             }
             String mail = contactEmail();
@@ -165,13 +172,14 @@ public class PubMedProtocol implements SearchProtocol {
                         + " not supported by PubMed '" + cfg.instanceId() + "'");
             }
             int num = clampNum(req.maxResults());
-            List<String> pmids = esearch(req.query(), num);
+            String apiKey = resolveApiKey(scope);
+            List<String> pmids = esearch(req.query(), num, apiKey);
             if (pmids.isEmpty()) {
                 return new SearchResult(
                         req.query(), req.modality(), cfg.instanceId(), req.tier(),
                         List.of(), 0, 0, null, null, Map.of());
             }
-            List<SearchHit> hits = esummary(pmids);
+            List<SearchHit> hits = esummary(pmids, apiKey);
             return new SearchResult(
                     req.query(), req.modality(), cfg.instanceId(), req.tier(),
                     hits, hits.size(), 0, null, null, Map.of());
@@ -179,7 +187,7 @@ public class PubMedProtocol implements SearchProtocol {
 
         // ── Step 1 — esearch ────────────────────────────────────────
 
-        List<String> esearch(String query, int num) {
+        List<String> esearch(String query, int num, String apiKey) {
             Map<String, String> params = SimpleHttpClient.mapOf(
                     "db", "pubmed",
                     "term", query,
@@ -188,8 +196,7 @@ public class PubMedProtocol implements SearchProtocol {
                     "tool", "Vance");
             String mail = contactEmail();
             if (!StringUtils.isBlank(mail)) params.put("email", mail);
-            String key = apiKey();
-            if (!StringUtils.isBlank(key)) params.put("api_key", key);
+            if (!StringUtils.isBlank(apiKey)) params.put("api_key", apiKey);
 
             String url = SimpleHttpClient.buildQuery(
                     URI.create(baseUrl() + "/esearch.fcgi"), params);
@@ -213,7 +220,7 @@ public class PubMedProtocol implements SearchProtocol {
 
         // ── Step 2 — esummary ───────────────────────────────────────
 
-        List<SearchHit> esummary(List<String> pmids) {
+        List<SearchHit> esummary(List<String> pmids, String apiKey) {
             Map<String, String> params = SimpleHttpClient.mapOf(
                     "db", "pubmed",
                     "id", String.join(",", pmids),
@@ -221,8 +228,7 @@ public class PubMedProtocol implements SearchProtocol {
                     "tool", "Vance");
             String mail = contactEmail();
             if (!StringUtils.isBlank(mail)) params.put("email", mail);
-            String key = apiKey();
-            if (!StringUtils.isBlank(key)) params.put("api_key", key);
+            if (!StringUtils.isBlank(apiKey)) params.put("api_key", apiKey);
 
             String url = SimpleHttpClient.buildQuery(
                     URI.create(baseUrl() + "/esummary.fcgi"), params);
@@ -371,8 +377,19 @@ public class PubMedProtocol implements SearchProtocol {
             return raw == null ? "" : raw.toString().trim();
         }
 
-        private String apiKey() {
-            Object raw = cfg.extras().get("apiKey");
+        /**
+         * Resolve the NCBI api_key from the credential-setting cascade (like
+         * Serper), not from {@code extras}: SearchProviderFactory routes the
+         * .apiKey suffix into {@code credentialSettingKey}, so the old
+         * {@code extras.get("apiKey")} was always empty — the 10 req/s tier was
+         * unreachable. Falls back to an inline extras.apiKey for back-compat.
+         */
+        private String resolveApiKey(SearchScope scope) {
+            String fromSetting = settings.getDecryptedPasswordCascade(
+                    scope.tenantId(), scope.projectId(), scope.processId(),
+                    cfg.credentialSettingKey());
+            if (!StringUtils.isBlank(fromSetting)) return fromSetting;
+            Object raw = cfg.extras() == null ? null : cfg.extras().get("apiKey");
             return raw == null ? "" : raw.toString().trim();
         }
 

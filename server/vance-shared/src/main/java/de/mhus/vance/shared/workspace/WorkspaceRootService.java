@@ -38,6 +38,18 @@ public class WorkspaceRootService {
      * containment (syntactic + symlink). Returns the absolute, normalised
      * target path.
      *
+     * <p><b>Known limitation — check-vs-I/O TOCTOU.</b> This validates the
+     * deepest <em>existing</em> ancestor via {@code toRealPath} and returns the
+     * logical path; callers then perform link-following I/O on it. A concurrent
+     * writer in the same project could swap an intermediate path component for a
+     * symlink pointing outside the RootDir <em>between</em> this check and the
+     * I/O, so the I/O follows it out of confinement. Fully closing this needs
+     * per-component {@code openat(O_NOFOLLOW)} semantics, which the JDK NIO API
+     * does not expose. It is defense-in-depth held closed in practice by the
+     * single-writer-per-path assumption within a project's trust boundary; the
+     * racing party is already inside the same project. Do not rely on this as a
+     * hard boundary against a hostile co-tenant that can write concurrently.
+     *
      * @throws WorkspaceException on blank/NUL input or any escape attempt
      */
     public Path resolveWithin(Path base, String relativePath) {

@@ -34,6 +34,7 @@
         <module>vance-addon-brain-wiki</module>
         <module>vance-addon-brain-journal</module>
         <module>vance-addon-brain-gtd</module>
+        <module>vance-addon-brain-issues</module>
         <module>vance-addon-brain-canvas</module>
         <module>vance-addon-brain-rlang</module>
         <module>vance-addon-brain-tex</module>

@@ -1,0 +1,19 @@
+title:       { de: "Issues",  en: "Issues" }
+description: { de: "Ein leichter Issue-Tracker im GitHub-Stil — Nummern (#42), open/closed, Labels, Kommentare, Archiv",
+               en: "A lightweight GitHub-style issue tracker — numbers (#42), open/closed, labels, comments, archive" }
+icon: alert-circle
+tags: [app, issues, tracker, bug]
+
+name:
+  mode: fixed
+  value: _app.yaml
+
+fields:
+  - name: title
+    type: string
+    required: true
+    label: { de: "Titel",        en: "Title" }
+  - name: description
+    type: textarea
+    rows: 2
+    label: { de: "Beschreibung", en: "Description" }

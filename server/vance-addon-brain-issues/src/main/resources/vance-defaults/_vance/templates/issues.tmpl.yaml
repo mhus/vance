@@ -1,0 +1,10 @@
+$meta:
+  kind: application
+  app: issues
+title: "{{ title }}"
+{% if description %}description: "{{ description }}"{% endif %}
+issues:
+  itemsDir: items
+  archiveDir: archive
+  nextNumber: 1
+  labels: ["bug", "feature", "question"]

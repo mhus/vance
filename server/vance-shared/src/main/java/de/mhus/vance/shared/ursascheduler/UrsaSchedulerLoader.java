@@ -280,6 +280,20 @@ public class UrsaSchedulerLoader {
         String initialMessage = stringOrNull(spec.get("initialMessage"));
         String runAsRaw = stringOrNull(spec.get("runAs"));
         OverlapPolicy overlap = parseOverlap(spec.get("overlap"));
+        // Overlap tracking only exists for recipe triggers — the running
+        // ThinkProcess id is recorded on the registration and matched on
+        // termination. Workflow/script runs are not tracked, so QUEUE /
+        // CANCEL_PREVIOUS would silently no-op (every tick spawns a fresh
+        // overlapping run). Reject the combination at parse time instead of
+        // accepting misleading config; SKIP (the default) is allowed as
+        // best-effort. See specification/scheduler.md.
+        if (recipe == null
+                && (overlap == OverlapPolicy.QUEUE || overlap == OverlapPolicy.CANCEL_PREVIOUS)) {
+            throw new IllegalStateException(
+                    "overlap: " + overlap + " is only supported for 'recipe' triggers — "
+                            + "workflow/script runs are not overlap-tracked. Use overlap: SKIP "
+                            + "(or a recipe trigger).");
+        }
         LockMode lockMode = parseLockMode(spec.get("lockMode"));
         List<String> tags = stringList(spec.get("tags"), "tags");
 

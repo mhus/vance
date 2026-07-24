@@ -10,6 +10,7 @@ import de.mhus.vance.brain.tools.eddie.EddieContext;
 import de.mhus.vance.brain.documents.DocumentBufferService;
 import de.mhus.vance.brain.documents.DocumentInvalidationEmitter;
 import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.shared.document.kind.validate.KindValidationService;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.PermissionService;
 import de.mhus.vance.shared.permission.Resource;
@@ -32,7 +33,7 @@ class KindToolSupportAuthzTest {
     private final KindToolSupport support = new KindToolSupport(
             mock(DocumentBufferService.class), mock(DocumentService.class),
             mock(EddieContext.class), mock(DocumentInvalidationEmitter.class),
-            permissionService, contextFactory);
+            permissionService, contextFactory, mock(KindValidationService.class));
 
     @Test
     void enforceDocWrite_checks_target_document_against_tool_subject() {

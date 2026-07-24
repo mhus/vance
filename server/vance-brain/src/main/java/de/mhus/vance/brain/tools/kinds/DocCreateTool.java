@@ -214,6 +214,11 @@ public class DocCreateTool implements Tool {
         // Pre-built Markdown link so the LLM can embed the doc into
         // its reply without a second tool round-trip.
         out.put("markdownLink", linkBuilder.linkFor(result, ctx.projectId()));
+        // Kind-aware post-write self-check folded into the save (advisory):
+        // the resolved kind is stamped above, so structural mistakes in the
+        // body come straight back as feedback instead of persisting silently.
+        Map<String, Object> validation = support.validateWritten(result, content, ctx);
+        if (validation != null) out.put("validation", validation);
         return out;
     }
 

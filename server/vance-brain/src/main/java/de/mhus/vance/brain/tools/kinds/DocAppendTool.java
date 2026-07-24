@@ -70,13 +70,14 @@ public class DocAppendTool implements Tool {
         }
         out.append(content);
         String updated = out.toString();
-        support.writeBody(doc, updated, ctx);
+        Map<String, Object> validation = support.writeBody(doc, updated, ctx);
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("documentId", doc.getId());
         result.put("path", doc.getPath());
         result.put("appendedLength", content.length());
         result.put("newLength", updated.length());
+        if (validation != null) result.put("validation", validation);
         return result;
     }
 }

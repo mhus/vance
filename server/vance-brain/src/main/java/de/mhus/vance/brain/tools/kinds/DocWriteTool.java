@@ -60,12 +60,13 @@ public class DocWriteTool implements Tool {
         if (content == null) {
             throw new ToolException("Missing required parameter 'content'");
         }
-        support.writeBody(doc, content, ctx);
+        Map<String, Object> validation = support.writeBody(doc, content, ctx);
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("documentId", doc.getId());
         out.put("path", doc.getPath());
         out.put("newLength", content.length());
+        if (validation != null) out.put("validation", validation);
         return out;
     }
 }

@@ -7,10 +7,14 @@ import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.brain.tools.eddie.EddieContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.shared.document.kind.validate.Finding;
+import de.mhus.vance.shared.document.kind.validate.KindValidationResult;
+import de.mhus.vance.shared.document.kind.validate.KindValidationService;
 import de.mhus.vance.shared.project.ProjectDocument;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
@@ -22,6 +26,7 @@ import org.springframework.stereotype.Component;
  * cache stays in effect.
  */
 @Component
+@Slf4j
 public class KindToolSupport {
 
     private final DocumentBufferService bufferService;
@@ -30,6 +35,7 @@ public class KindToolSupport {
     private final DocumentInvalidationEmitter invalidationEmitter;
     private final de.mhus.vance.shared.permission.PermissionService permissionService;
     private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
+    private final KindValidationService validationService;
 
     public KindToolSupport(
             DocumentBufferService bufferService,
@@ -37,13 +43,15 @@ public class KindToolSupport {
             EddieContext eddieContext,
             DocumentInvalidationEmitter invalidationEmitter,
             de.mhus.vance.shared.permission.PermissionService permissionService,
-            de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
+            de.mhus.vance.brain.permission.SecurityContextFactory contextFactory,
+            KindValidationService validationService) {
         this.bufferService = bufferService;
         this.documentService = documentService;
         this.eddieContext = eddieContext;
         this.invalidationEmitter = invalidationEmitter;
         this.permissionService = permissionService;
         this.contextFactory = contextFactory;
+        this.validationService = validationService;
     }
 
     /**
@@ -234,12 +242,55 @@ public class KindToolSupport {
      * <p>Always emits a body invalidation frame to the originating
      * session — the Cortex tab decides whether to react based on its
      * own openDocumentIds.
+     *
+     * <p>Returns the kind-validation envelope for the freshly-written body
+     * (see {@link #validateWritten}) so the calling tool can hand the agent
+     * direct feedback about a structurally-broken write, or {@code null} when
+     * there is nothing actionable to report. Callers that ignore the return
+     * value keep the old void-style behaviour.
      */
-    public void writeBody(DocumentDocument doc, String newBody, ToolInvocationContext ctx) {
+    public @Nullable Map<String, Object> writeBody(
+            DocumentDocument doc, String newBody, ToolInvocationContext ctx) {
         enforceDocWrite(ctx, doc, de.mhus.vance.shared.permission.Action.WRITE);
         bufferService.writeBody(ctx.processId(), doc.getId(), newBody);
         bufferService.flush(ctx.processId(), doc.getId());
         invalidationEmitter.emitBody(ctx.sessionId(), doc);
+        return validateWritten(doc, newBody, ctx);
+    }
+
+    /**
+     * Run the {@link KindValidationService} over freshly-written body content
+     * and return the {@code { target, ok, errors, warnings, findings[] }}
+     * envelope — but only when there is something the agent should act on.
+     *
+     * <p>Advisory, never blocks: the write has already happened. This is the
+     * post-write self-check the agent would otherwise have to trigger via the
+     * separate {@code kind_validate} tool — folding it into the write closes
+     * the loop in the same turn for the kinds that carry a real validator
+     * (canvas, records, finance-tree, workpage, codec-backed kinds).
+     *
+     * <p>Returns {@code null} when the body validates clean, when the kind has
+     * no validator, or on any internal failure — so feedback never becomes
+     * noise on plain-text writes. {@code kind-unknown} warnings are dropped
+     * here (an uninstalled addon is not the agent's fault); they stay visible
+     * in the explicit {@code kind_validate} tool. The document's stamped
+     * {@code kind} drives the check; a blank kind falls back to header
+     * inference inside the service.
+     */
+    public @Nullable Map<String, Object> validateWritten(
+            DocumentDocument doc, String body, ToolInvocationContext ctx) {
+        try {
+            KindValidationResult result = validationService.validateContent(
+                    ctx.tenantId(), doc.getProjectId(), doc.getKind(), body, doc.getPath());
+            List<Finding> actionable = result.findings().stream()
+                    .filter(f -> !"kind-unknown".equals(f.code()))
+                    .toList();
+            if (actionable.isEmpty()) return null;
+            return new KindValidationResult(result.target(), actionable).toMap();
+        } catch (RuntimeException e) {
+            log.debug("kind validation after write failed for {}: {}", identify(doc), e.toString());
+            return null;
+        }
     }
 
     /**

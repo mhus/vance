@@ -87,13 +87,14 @@ public class DocEditTool implements Tool {
         String updated = replaceAll
                 ? body.replace(oldString, newString)
                 : replaceFirst(body, oldString, newString);
-        support.writeBody(doc, updated, ctx);
+        Map<String, Object> validation = support.writeBody(doc, updated, ctx);
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("documentId", doc.getId());
         out.put("path", doc.getPath());
         out.put("replacedOccurrences", occurrences);
         out.put("replaceAll", replaceAll);
+        if (validation != null) out.put("validation", validation);
         return out;
     }
 

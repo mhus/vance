@@ -141,7 +141,7 @@ public class DocReplaceLinesTool implements Tool {
         // so the loop above already accounts for it (via the inner
         // newline). For explicit clarity though, keep it simple.
 
-        support.writeBody(doc, out.toString(), ctx);
+        Map<String, Object> validation = support.writeBody(doc, out.toString(), ctx);
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("documentId", doc.getId());
@@ -150,6 +150,7 @@ public class DocReplaceLinesTool implements Tool {
         result.put("toLine", insertOnly ? fromLine - 1 : toLine);
         result.put("inserted", insertOnly);
         result.put("newLineCount", countLines(newContent));
+        if (validation != null) result.put("validation", validation);
         return result;
     }
 

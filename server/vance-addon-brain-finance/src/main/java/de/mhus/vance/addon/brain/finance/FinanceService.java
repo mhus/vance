@@ -1,8 +1,10 @@
 package de.mhus.vance.addon.brain.finance;
 
 import de.mhus.vance.addon.brain.finance.model.FinanceComputed;
+import de.mhus.vance.addon.brain.finance.model.FinanceProjection;
 import de.mhus.vance.addon.brain.finance.model.FinanceTreeDocument;
 import de.mhus.vance.addon.brain.finance.model.NodeSnapshot;
+import de.mhus.vance.addon.brain.finance.model.PeriodUnit;
 import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
@@ -82,6 +84,22 @@ public class FinanceService {
         writeDocument(doc, tree, computed, userId);
         log.debug("FinanceService.recalculate path='{}' nodes={}", doc.getPath(), nodes.size());
         return computed;
+    }
+
+    // ── Projection (on-demand, not persisted) ─────────────────────
+
+    /**
+     * Project the tree over {@code [from, to)} at {@code granularity}. Pure
+     * read — never writes the document; the result feeds the editor preview,
+     * the {@code /project} REST endpoint and the report processors.
+     */
+    public FinanceProjection project(DocumentDocument doc, LocalDate from, LocalDate to,
+                                     PeriodUnit granularity) {
+        FinanceTreeDocument tree = readDocument(doc);
+        if (tree.root() == null) {
+            return new FinanceProjection(List.of(), List.of());
+        }
+        return FinanceProjector.project(tree.root(), from, to, granularity);
     }
 
     // ── Internal ──────────────────────────────────────────────────

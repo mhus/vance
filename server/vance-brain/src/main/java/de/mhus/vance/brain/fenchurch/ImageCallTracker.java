@@ -48,6 +48,9 @@ public class ImageCallTracker {
     public static final String SETTING_DAILY = "ai.fenchurch.daily_images";
     public static final String SETTING_MONTHLY = "ai.fenchurch.monthly_images";
 
+    /** Outcome marker for a reserved-but-not-yet-finalized call row. */
+    public static final String OUTCOME_PENDING = "pending";
+
     private final ImageCallRecordRepository repository;
     private final SettingService settingService;
     private final MetricService metricService;
@@ -130,6 +133,79 @@ public class ImageCallTracker {
         }
         return Verdict.OK;
     }
+
+    /**
+     * Atomically reserve a quota slot <em>before</em> the (long, up to
+     * ~360s) provider call, closing the check-then-generate-then-record
+     * TOCTOU: a bare {@link #checkQuota} read let N parallel calls all see
+     * {@code count = limit-1} and all pass before any wrote its record,
+     * overrunning the limit by N-1.
+     *
+     * <p>The reserve is a {@link #OUTCOME_PENDING} row inserted up front, so
+     * it counts against concurrent reservations for the whole generation
+     * window. We then re-count (our own reserve included) and roll the
+     * reserve back if it pushed the total past the limit — strict {@code >}
+     * because the reserve is already in the count. Fail-safe: never more than
+     * {@code limit} reserves survive; a rare exact-tie may over-reject (both
+     * roll back) but never over-admit.
+     *
+     * <p>On success the caller finalizes by writing the real record with the
+     * returned {@link Granted#reserveId()} as its id (overwriting the reserve
+     * in place — one row, stable count). {@link #recordCall} does that when
+     * the record carries the id.
+     */
+    public Reservation reserve(
+            String tenantId,
+            @Nullable String userId,
+            @Nullable String projectId,
+            @Nullable String processId) {
+        long dailyLimit = readLimit(tenantId, userId, projectId, processId, SETTING_DAILY);
+        long monthlyLimit = readLimit(tenantId, userId, projectId, processId, SETTING_MONTHLY);
+
+        ImageCallRecord reserve = ImageCallRecord.builder()
+                .tenantId(tenantId)
+                .accountId(userId)
+                .projectId(projectId)
+                .outcome(OUTCOME_PENDING)
+                .at(Instant.now())
+                .build();
+        repository.save(reserve);
+
+        if (dailyLimit > 0) {
+            Instant startOfDay = LocalDate.now(ZoneOffset.UTC)
+                    .atStartOfDay(ZoneOffset.UTC).toInstant();
+            long today = repository
+                    .countByTenantIdAndAtGreaterThanEqual(tenantId, startOfDay);
+            if (today > dailyLimit) {
+                repository.delete(reserve);
+                return new Denied(new Verdict(false, "daily",
+                        "Daily Fenchurch image-generation limit reached ("
+                                + (today - 1) + " of " + dailyLimit + " calls today)"));
+            }
+        }
+        if (monthlyLimit > 0) {
+            Instant startOfMonth = YearMonth.now(ZoneOffset.UTC)
+                    .atDay(1).atStartOfDay(ZoneOffset.UTC).toInstant();
+            long thisMonth = repository
+                    .countByTenantIdAndAtGreaterThanEqual(tenantId, startOfMonth);
+            if (thisMonth > monthlyLimit) {
+                repository.delete(reserve);
+                return new Denied(new Verdict(false, "monthly",
+                        "Monthly Fenchurch image-generation limit reached ("
+                                + (thisMonth - 1) + " of " + monthlyLimit + " calls this month)"));
+            }
+        }
+        return new Granted(reserve.getId());
+    }
+
+    /** Outcome of {@link #reserve}: a granted slot or a quota denial. */
+    public sealed interface Reservation permits Granted, Denied {}
+
+    /** The reserve row was inserted and survived the limit check. */
+    public record Granted(String reserveId) implements Reservation {}
+
+    /** The limit was hit; the reserve row was rolled back. */
+    public record Denied(Verdict verdict) implements Reservation {}
 
     private long readLimit(
             String tenantId,

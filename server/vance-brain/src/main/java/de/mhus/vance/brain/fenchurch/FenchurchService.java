@@ -129,15 +129,20 @@ public class FenchurchService {
     public GenerateImageResult generate(GenerateImageRequest request) {
         validate(request);
         ensureEnabled(request);
-        ImageCallTracker.Verdict quota = callTracker.checkQuota(
+        // Reserve a quota slot up front (atomic vs. the ~360s generation
+        // window) instead of a bare read — see ImageCallTracker.reserve. The
+        // reserve row is finalized in place (its id is threaded into the final
+        // record) on success/failure, or was already rolled back on denial.
+        ImageCallTracker.Reservation reservation = callTracker.reserve(
                 request.getTenantId(), request.getUserId(),
                 request.getProjectId(), request.getProcessId());
-        if (!quota.allowed()) {
-            recordRejected(request, "quota_exceeded", null, null, 0L);
+        if (reservation instanceof ImageCallTracker.Denied denied) {
             throw new FenchurchException(
                     FenchurchException.Reason.QUOTA_EXCEEDED,
-                    quota.message() == null ? "Quota exceeded" : quota.message());
+                    denied.verdict().message() == null
+                            ? "Quota exceeded" : denied.verdict().message());
         }
+        String reserveId = ((ImageCallTracker.Granted) reservation).reserveId();
 
         long callStart = System.currentTimeMillis();
         String resolvedAlias = request.getAlias() == null || request.getAlias().isBlank()
@@ -191,11 +196,11 @@ public class FenchurchService {
             imageService.generate(config, prompt, stream);
         } catch (AiImageException e) {
             cancelHeartbeat(heartbeat);
-            recordFailure(request, resolved, config, callStart, e);
+            recordFailure(reserveId, request, resolved, config, callStart, e);
             throw mapProviderError(e, config);
         } catch (RuntimeException e) {
             cancelHeartbeat(heartbeat);
-            recordFailure(request, resolved, config, callStart, e);
+            recordFailure(reserveId, request, resolved, config, callStart, e);
             throw new FenchurchException(
                     FenchurchException.Reason.PROVIDER_ERROR,
                     "Fenchurch generation failed for " + config.fullName()
@@ -211,7 +216,7 @@ public class FenchurchService {
                         "Image generation reported success but the document at "
                                 + path + " was not committed"));
 
-        recordSuccess(request, resolved, config, modelInfo,
+        recordSuccess(reserveId, request, resolved, config, modelInfo,
                 callStart, durationMs, committed);
 
         return GenerateImageResult.builder()
@@ -481,6 +486,7 @@ public class FenchurchService {
     // ──────────────────── Call-record bookkeeping ────────────────────
 
     private void recordSuccess(
+            String reserveId,
             GenerateImageRequest request,
             AiModelResolver.Resolved resolved,
             AiImageConfig config,
@@ -488,7 +494,10 @@ public class FenchurchService {
             long callStart,
             long durationMs,
             DocumentDocument committed) {
+        // Reuse the reserve row's id so this finalizes it in place (one row,
+        // stable count) rather than inserting a second record.
         ImageCallRecord record = ImageCallRecord.builder()
+                .id(reserveId)
                 .tenantId(request.getTenantId())
                 .accountId(request.getUserId())
                 .projectId(request.getProjectId())
@@ -510,13 +519,17 @@ public class FenchurchService {
     }
 
     private void recordFailure(
+            String reserveId,
             GenerateImageRequest request,
             AiModelResolver.Resolved resolved,
             AiImageConfig config,
             long callStart,
             Throwable cause) {
         String outcome = outcomeFromError(cause);
+        // Finalize the reserve row in place (a failed attempt still counts
+        // against quota — vendor-charged) by reusing its id.
         ImageCallRecord record = ImageCallRecord.builder()
+                .id(reserveId)
                 .tenantId(request.getTenantId())
                 .accountId(request.getUserId())
                 .projectId(request.getProjectId())
@@ -525,24 +538,6 @@ public class FenchurchService {
                 .outcome(outcome)
                 .at(Instant.ofEpochMilli(callStart))
                 .durationMs(System.currentTimeMillis() - callStart)
-                .build();
-        callTracker.recordCall(record);
-    }
-
-    private void recordRejected(
-            GenerateImageRequest request, String outcome,
-            @Nullable AiImageConfig config, @Nullable String model, long durationMs) {
-        ImageCallRecord record = ImageCallRecord.builder()
-                .tenantId(request.getTenantId())
-                .accountId(request.getUserId())
-                .projectId(request.getProjectId())
-                .modelUsed(config == null
-                        ? (model == null ? "" : model)
-                        : config.fullName())
-                .alias(request.getAlias())
-                .outcome(outcome)
-                .at(Instant.now())
-                .durationMs(durationMs)
                 .build();
         callTracker.recordCall(record);
     }

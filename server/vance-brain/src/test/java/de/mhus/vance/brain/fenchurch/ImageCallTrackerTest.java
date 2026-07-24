@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -129,6 +130,62 @@ class ImageCallTrackerTest {
         tracker.recordCall(null);
         // No exception, no mock calls — verified implicitly by the
         // strict-stubs default in Mockito.
+    }
+
+    // ──────────────── reserve (atomic quota gate) ────────────────
+
+    @Test
+    void reserve_underLimit_grants_andInsertsPendingRow() {
+        stubLimit(ImageCallTracker.SETTING_DAILY, "100");
+        // Count already includes the just-inserted reserve.
+        when(repository.countByTenantIdAndAtGreaterThanEqual(eq(TENANT), any(Instant.class)))
+                .thenReturn(43L);
+
+        ImageCallTracker.Reservation r = tracker.reserve(TENANT, USER, PROJECT, null);
+
+        assertThat(r).isInstanceOf(ImageCallTracker.Granted.class);
+        org.mockito.ArgumentCaptor<ImageCallRecord> cap =
+                org.mockito.ArgumentCaptor.forClass(ImageCallRecord.class);
+        verify(repository).save(cap.capture());
+        assertThat(cap.getValue().getOutcome()).isEqualTo(ImageCallTracker.OUTCOME_PENDING);
+        verify(repository, never()).delete(any(ImageCallRecord.class));
+    }
+
+    @Test
+    void reserve_overLimit_denies_andRollsBackReserve() {
+        stubLimit(ImageCallTracker.SETTING_DAILY, "10");
+        // Reserve pushed the count strictly past the limit.
+        when(repository.countByTenantIdAndAtGreaterThanEqual(eq(TENANT), any(Instant.class)))
+                .thenReturn(11L);
+
+        ImageCallTracker.Reservation r = tracker.reserve(TENANT, USER, PROJECT, null);
+
+        assertThat(r).isInstanceOf(ImageCallTracker.Denied.class);
+        assertThat(((ImageCallTracker.Denied) r).verdict().reason()).isEqualTo("daily");
+        // The reserve row must be rolled back so it does not count.
+        verify(repository).delete(any(ImageCallRecord.class));
+    }
+
+    @Test
+    void reserve_atLimitBoundary_grants() {
+        // Real count was limit-1 → with the reserve counted it equals the
+        // limit exactly, which is still allowed (deny only on strict >).
+        stubLimit(ImageCallTracker.SETTING_DAILY, "10");
+        when(repository.countByTenantIdAndAtGreaterThanEqual(eq(TENANT), any(Instant.class)))
+                .thenReturn(10L);
+
+        assertThat(tracker.reserve(TENANT, USER, PROJECT, null))
+                .isInstanceOf(ImageCallTracker.Granted.class);
+        verify(repository, never()).delete(any(ImageCallRecord.class));
+    }
+
+    @Test
+    void reserve_unlimited_grants_withoutCounting() {
+        ImageCallTracker.Reservation r = tracker.reserve(TENANT, USER, PROJECT, null);
+
+        assertThat(r).isInstanceOf(ImageCallTracker.Granted.class);
+        verify(repository, never())
+                .countByTenantIdAndAtGreaterThanEqual(any(), any(Instant.class));
     }
 
     private void stubLimit(String key, String value) {

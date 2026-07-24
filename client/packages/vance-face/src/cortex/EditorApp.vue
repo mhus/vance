@@ -869,6 +869,19 @@ async function onUploadFiles(payload: { files: File[]; targetFolder: string }): 
   }
 }
 
+/**
+ * The folder prefix (with trailing slash) of the currently active
+ * document, or '' when at the project root / no doc is open. Used to
+ * return the Documents explorer to the folder the user was working in
+ * rather than the project root.
+ */
+function currentFolderPrefix(): string {
+  const path = store.activeTab?.path;
+  if (!path) return '';
+  const idx = path.lastIndexOf('/');
+  return idx >= 0 ? path.slice(0, idx + 1) : '';
+}
+
 function backHome(): void {
   if (hasSession.value && sessionId.value) {
     const params = new URLSearchParams();
@@ -876,7 +889,11 @@ function backHome(): void {
     if (projectId.value) params.set('project', projectId.value);
     window.location.href = `/chat.html?${params.toString()}`;
   } else if (projectId.value) {
-    window.location.href = `/documents.html?projectId=${encodeURIComponent(projectId.value)}`;
+    const params = new URLSearchParams();
+    params.set('projectId', projectId.value);
+    const folder = currentFolderPrefix();
+    if (folder) params.set('path', folder);
+    window.location.href = `/documents.html?${params.toString()}`;
   } else {
     window.location.href = '/documents.html';
   }

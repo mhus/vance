@@ -36,7 +36,9 @@ const selectedProjectId = ref<string | null>(null);
 const focusZone = ref<FocusZone>('main');
 const search = ref('');
 
-const DEFAULT_PATH_PREFIX = 'documents/';
+// Root of the project document tree — the explorer opens at '/' unless
+// the URL carries an explicit ?path=.
+const DEFAULT_PATH_PREFIX = '';
 
 const pendingDraft = ref(false);
 
@@ -283,7 +285,7 @@ function gotoPage(p: number): void {
             @click="navigateToRoot"
           >/</button>
           <template v-for="(seg, idx) in breadcrumbSegments" :key="idx">
-            <span class="opacity-40">/</span>
+            <span v-if="idx > 0" class="opacity-40">/</span>
             <button
               type="button"
               class="opacity-70 hover:opacity-100 hover:underline"

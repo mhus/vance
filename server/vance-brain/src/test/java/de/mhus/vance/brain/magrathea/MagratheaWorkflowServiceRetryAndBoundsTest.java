@@ -289,6 +289,44 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
     }
 
     @Test
+    void subRunFailure_publishesWorkflowCompletedFailed_soParentTaskAdvances() {
+        // Regression (code-review-2 HIGH): a sub-run failing on a NON-terminal
+        // path (here bounds-exhausted → writeRunFailed) must still publish a
+        // WorkflowCompletedEvent(FAILED) so the parent's WAITING_SUBWORKFLOW
+        // task advances — otherwise it hangs forever (no terminal state, no
+        // recovery scan).
+        StartRecord start = StartRecord.builder()
+                .workflowName("bounded-wf").definitionYaml(YAML_WITH_BOUNDS)
+                .parentMagratheaProcessId("parent-proc-1")
+                .parentState("await-sub")
+                .build();
+        when(journalService.readLast(any(), any(), any(), eq(StartRecord.class)))
+                .thenReturn(Optional.of(start));
+        when(journalService.count(any(), any(), any(), eq(TaskStartedRecord.class))).thenReturn(3L);
+
+        String runId = workflowService.start("acme", "proj", "bounded-wf", Map.of(), null);
+        MagratheaTaskDocument firstTask = insertedTasks.get(0);
+        appendedRecords.clear();
+
+        TaskCompletedEvent event = new TaskCompletedEvent(
+                "acme", "proj", runId, firstTask.getId(), "loop",
+                MagratheaTaskType.CONDITION_TASK, TaskCompletedEvent.OUTCOME_SUCCESS,
+                null, null, 1L, "loop");
+
+        workflowService.handleCompletion(event);
+
+        org.mockito.ArgumentCaptor<WorkflowCompletedEvent> cap =
+                org.mockito.ArgumentCaptor.forClass(WorkflowCompletedEvent.class);
+        verify(eventPublisher).publishEvent(cap.capture());
+        WorkflowCompletedEvent published = cap.getValue();
+        assertThat(published.status())
+                .isEqualTo(de.mhus.vance.api.magrathea.MagratheaRunStatus.FAILED);
+        assertThat(published.parentMagratheaProcessId()).isEqualTo("parent-proc-1");
+        assertThat(published.parentState()).isEqualTo("await-sub");
+        assertThat(published.workflowRunId()).isEqualTo(runId);
+    }
+
+    @Test
     void within_bounds_workflow_proceeds_normally() {
         StartRecord start = StartRecord.builder()
                 .workflowName("bounded-wf").definitionYaml(YAML_WITH_BOUNDS).build();

@@ -496,12 +496,19 @@ public class MagratheaWorkflowService {
     private void writeRunFailed(TaskCompletedEvent event, String reason) {
         journalService.append(event.tenantId(), event.projectId(), event.workflowRunId(),
                 StatusRecord.builder().status(MagratheaRunStatus.FAILED).reason(reason).build());
-        String workflowName = journalService.readLast(
-                        event.tenantId(), event.projectId(), event.workflowRunId(), StartRecord.class)
-                .map(StartRecord::getWorkflowName)
-                .orElse("unknown");
+        Optional<StartRecord> start = journalService.readLast(
+                event.tenantId(), event.projectId(), event.workflowRunId(), StartRecord.class);
+        String workflowName = start.map(StartRecord::getWorkflowName).orElse("unknown");
         recordTerminalMetrics(workflowName, MagratheaRunStatus.FAILED,
                 event.tenantId(), event.projectId(), event.workflowRunId());
+        // Surface this non-terminal failure to any parent waiting on the run as a
+        // sub-workflow. Only onTaskCompleted's TERMINAL branch publishes the
+        // completion event, and there is no WAITING_SUBWORKFLOW recovery scan —
+        // so without this a parent workflow_task hangs forever when its sub-run
+        // fails via bounds-exhaustion / no-matching-transition / missing target /
+        // unparseable frozen YAML. For a top-level run (no parent in the
+        // StartRecord) the listener no-ops, so this is safe to fire always.
+        start.ifPresent(s -> publishWorkflowCompleted(event, s, MagratheaRunStatus.FAILED));
     }
 
     /**

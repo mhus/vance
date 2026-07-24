@@ -93,6 +93,25 @@ class FootWorkspaceServiceTest {
     }
 
     @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void resolveForWriteRejectsIntermediateSymlinkEscape() throws Exception {
+        // Regression (code-review-2): a pre-existing symlinked directory under
+        // the sandbox pointing outside passed the lexical startsWith check, and
+        // the write would follow it out. Now the deepest existing ancestor is
+        // canonicalized and re-checked.
+        Path projectRoot = service.projectRoot("p1");
+        Files.createDirectories(projectRoot);
+        Path outsideDir = root.resolve("outsideDir");
+        Files.createDirectories(outsideDir);
+        Path linkDir = projectRoot.resolve("escape");
+        Files.createSymbolicLink(linkDir, outsideDir);
+
+        assertThatThrownBy(() -> service.resolveForWrite("p1", "escape/pwned.txt"))
+                .isInstanceOf(TransferPathException.class)
+                .hasMessageContaining("escapes");
+    }
+
+    @Test
     void blankProjectIdRejected() {
         assertThatThrownBy(() -> service.resolveForWrite("", "foo.txt"))
                 .isInstanceOf(TransferPathException.class);

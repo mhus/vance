@@ -47,11 +47,16 @@ public class PermissionConfigLoader {
      * and the user cannot accidentally widen access to these by editing
      * the allow list.
      */
+    // Each floor is listed twice: the bare directory AND its subtree. A Java
+    // glob `~/.ssh/**` requires a segment AFTER `~/.ssh/`, so the directory
+    // `~/.ssh` itself would not match and `client_file_list {path:"~/.ssh"}`
+    // fell through to ASK/ALLOW. Both forms are needed to floor the folder
+    // and everything below it.
     public static final List<String> DEFAULT_PATH_DENY = List.of(
-            "~/.ssh/**",
-            "~/.aws/**",
-            "~/.gnupg/**",
-            "~/.vance/**");
+            "~/.ssh", "~/.ssh/**",
+            "~/.aws", "~/.aws/**",
+            "~/.gnupg", "~/.gnupg/**",
+            "~/.vance", "~/.vance/**");
 
     private final YAMLMapper mapper = (YAMLMapper) YAMLMapper.builder()
             .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)

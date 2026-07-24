@@ -110,6 +110,26 @@ public class FootWorkspaceService {
         if (!candidate.startsWith(projectRoot)) {
             throw new TransferPathException("path escapes project sandbox: " + userPath);
         }
+        // The lexical startsWith check above does not follow symlinks in
+        // intermediate path components: a pre-existing symlinked directory
+        // under the sandbox pointing outside would pass it, and the write path
+        // (FileChannel.open) would follow it out. Canonicalize the deepest
+        // existing ancestor and assert it is still inside the real project
+        // root — mirroring resolveForRead's leaf check, but for any ancestor
+        // and for not-yet-existing leaves (writes).
+        try {
+            Path ancestor = candidate;
+            while (ancestor != null && !Files.exists(ancestor)) {
+                ancestor = ancestor.getParent();
+            }
+            if (ancestor != null && !ancestor.toRealPath().startsWith(projectRoot)) {
+                throw new TransferPathException(
+                        "path escapes project sandbox via symlink: " + userPath);
+            }
+        } catch (IOException e) {
+            throw new TransferPathException(
+                    "failed to canonicalize path ancestor for " + userPath, e);
+        }
         return candidate;
     }
 

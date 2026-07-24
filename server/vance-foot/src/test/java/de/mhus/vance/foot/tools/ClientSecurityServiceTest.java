@@ -7,6 +7,7 @@ import de.mhus.vance.foot.permission.PermissionConfigLoader;
 import de.mhus.vance.foot.permission.PermissionDecision;
 import de.mhus.vance.foot.permission.PermissionDomain;
 import de.mhus.vance.foot.permission.PermissionService;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -35,11 +36,22 @@ class ClientSecurityServiceTest {
 
     private final StubResolver resolver = new StubResolver(PermissionDecision.DENY);
 
-    // Deliberately non-existent absolute paths so canonicalize() does no
-    // symlink resolution (macOS /tmp and temp dirs are symlinked) — the
-    // glob and the subject then compare as written.
-    private static final String SECRET = "/tmp/vance-test-sandbox/secret";
-    private static final String WORK = "/tmp/vance-test-sandbox/work";
+    // Base under the *real* temp path: canonicalize() now resolves the deepest
+    // existing ancestor's symlinks (macOS /tmp -> /private/tmp) even for a
+    // not-yet-existing target, so the glob must be written against the resolved
+    // base for glob and canonical subject to agree. (This is the very
+    // parent-symlink collapse the code-review-2 S3 fix added.)
+    private static final String TMP_REAL = tmpReal();
+    private static final String SECRET = TMP_REAL + "/vance-test-sandbox/secret";
+    private static final String WORK = TMP_REAL + "/vance-test-sandbox/work";
+
+    private static String tmpReal() {
+        try {
+            return Path.of(System.getProperty("java.io.tmpdir", "/tmp")).toRealPath().toString();
+        } catch (IOException e) {
+            return System.getProperty("java.io.tmpdir", "/tmp");
+        }
+    }
 
     private ClientSecurityService serviceWithRules(Path dir) throws Exception {
         Path central = dir.resolve("permissions.yaml");
@@ -93,6 +105,18 @@ class ClientSecurityServiceTest {
         ClientSecurityService service = serviceWithRules(dir);
 
         assertThat(service.permit("client_file_write", Map.of("path", WORK + "/out.txt"))).isTrue();
+    }
+
+    @Test
+    void permitWalkedFile_deniesFloorDescendant_allowsWorkDescendant(@TempDir Path dir)
+            throws Exception {
+        // Security regression (code-review-2 S3): the recursive file tools gate
+        // each walked file, so a deny-listed descendant is skipped even when the
+        // walk root was broadly allowed.
+        ClientSecurityService service = serviceWithRules(dir);
+
+        assertThat(service.permitWalkedFile(Path.of(SECRET + "/id_rsa"))).isFalse();
+        assertThat(service.permitWalkedFile(Path.of(WORK + "/notes.md"))).isTrue();
     }
 
     @Test

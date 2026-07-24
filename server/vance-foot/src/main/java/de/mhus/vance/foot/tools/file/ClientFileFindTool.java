@@ -1,5 +1,6 @@
 package de.mhus.vance.foot.tools.file;
 
+import de.mhus.vance.foot.tools.ClientSecurityService;
 import de.mhus.vance.foot.tools.ClientTool;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -24,6 +25,14 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class ClientFileFindTool implements ClientTool {
+
+    /** Per-file deny-floor guard for the recursive walk (permit() only gated the root). */
+    private final ClientSecurityService security;
+
+    public ClientFileFindTool(ClientSecurityService security) {
+        this.security = security;
+    }
+
 
     private static final int DEFAULT_LIMIT = 200;
     private static final int MAX_LIMIT = 2_000;
@@ -109,6 +118,9 @@ public class ClientFileFindTool implements ClientTool {
         try (Stream<Path> stream = Files.walk(root, maxDepth)) {
             for (Path file : (Iterable<Path>) stream::iterator) {
                 if (!Files.isRegularFile(file)) continue;
+                // Per-file deny-floor check: a broad allow on the root must not let
+                // the recursion list files under ~/.ssh/** etc.
+                if (!security.permitWalkedFile(file)) continue;
                 totalConsidered++;
                 Path rel = root.relativize(file);
                 if (matcher != null && !matcher.matches(rel)) continue;

@@ -2,7 +2,11 @@ package de.mhus.vance.foot.tools.file;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
+import de.mhus.vance.foot.tools.ClientSecurityService;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -29,10 +33,16 @@ import org.junit.jupiter.api.Test;
 class ClientFileReadOnlyToolsTest {
 
     private Path root;
+    // Permissive gate — these tests exercise the file-walk logic, not the
+    // sandbox; permitWalkedFile must return true (Mockito's boolean default is
+    // false, which would skip every file).
+    private ClientSecurityService security;
 
     @BeforeEach
     void setUp() throws IOException {
         root = Files.createTempDirectory("vance-client-readonly-test-");
+        security = mock(ClientSecurityService.class);
+        when(security.permitWalkedFile(any())).thenReturn(true);
     }
 
     @AfterEach
@@ -60,7 +70,7 @@ class ClientFileReadOnlyToolsTest {
         writeFile("docs/nested/sub.md", "TODO ship\nplain\n");
         writeFile("docs/ignore.txt", "TODO this should be skipped\n");
 
-        ClientFileGrepTool tool = new ClientFileGrepTool();
+        ClientFileGrepTool tool = new ClientFileGrepTool(security);
         Map<String, Object> result = tool.invoke(Map.of(
                 "pattern", "TODO",
                 "path", root.toString(),
@@ -78,7 +88,7 @@ class ClientFileReadOnlyToolsTest {
     void grep_caseInsensitive_andContext() throws IOException {
         writeFile("a.txt", "alpha\nGAMMA\nbeta\n");
 
-        ClientFileGrepTool tool = new ClientFileGrepTool();
+        ClientFileGrepTool tool = new ClientFileGrepTool(security);
         Map<String, Object> result = tool.invoke(Map.of(
                 "pattern", "gamma",
                 "path", root.toString(),
@@ -96,7 +106,7 @@ class ClientFileReadOnlyToolsTest {
 
     @Test
     void grep_invalidRegex_throwsIllegalArg() {
-        ClientFileGrepTool tool = new ClientFileGrepTool();
+        ClientFileGrepTool tool = new ClientFileGrepTool(security);
         assertThatThrownBy(() -> tool.invoke(Map.of(
                 "pattern", "[unclosed",
                 "path", root.toString())))
@@ -106,7 +116,7 @@ class ClientFileReadOnlyToolsTest {
 
     @Test
     void grep_carriesReadOnlyLabel_only() {
-        ClientFileGrepTool tool = new ClientFileGrepTool();
+        ClientFileGrepTool tool = new ClientFileGrepTool(security);
         assertThat(tool.labels()).containsExactly("read-only");
     }
 
@@ -118,7 +128,7 @@ class ClientFileReadOnlyToolsTest {
         writeFile("docs/big.md", "x".repeat(500) + "\n");   // 501 bytes
         writeFile("docs/ignore.txt", "x\n");
 
-        ClientFileFindTool tool = new ClientFileFindTool();
+        ClientFileFindTool tool = new ClientFileFindTool(security);
         Map<String, Object> result = tool.invoke(Map.of(
                 "path", root.toString(),
                 "pathGlob", "**/*.md",
@@ -137,7 +147,7 @@ class ClientFileReadOnlyToolsTest {
         Files.setLastModifiedTime(a, FileTime.from(Instant.parse("2026-01-01T00:00:00Z")));
         Files.setLastModifiedTime(b, FileTime.from(Instant.parse("2026-05-01T00:00:00Z")));
 
-        ClientFileFindTool tool = new ClientFileFindTool();
+        ClientFileFindTool tool = new ClientFileFindTool(security);
         Map<String, Object> result = tool.invoke(Map.of(
                 "path", root.toString(),
                 "sortBy", "mtime"));
@@ -150,7 +160,7 @@ class ClientFileReadOnlyToolsTest {
 
     @Test
     void find_invalidInstant_throws() {
-        ClientFileFindTool tool = new ClientFileFindTool();
+        ClientFileFindTool tool = new ClientFileFindTool(security);
         assertThatThrownBy(() -> tool.invoke(Map.of(
                 "path", root.toString(),
                 "modifiedAfter", "yesterday")))
@@ -205,7 +215,7 @@ class ClientFileReadOnlyToolsTest {
     @Test
     void count_singleFile() throws IOException {
         writeFile("a.txt", "hello\nworld\n");
-        ClientFileCountTool tool = new ClientFileCountTool();
+        ClientFileCountTool tool = new ClientFileCountTool(security);
 
         Map<String, Object> result = tool.invoke(Map.of(
                 "path", root.resolve("a.txt").toString()));
@@ -222,7 +232,7 @@ class ClientFileReadOnlyToolsTest {
         writeFile("a.md", "TODO buy milk\nplain\nTODO ship\n");
         writeFile("b.md", "todo lowercase\n");
 
-        ClientFileCountTool tool = new ClientFileCountTool();
+        ClientFileCountTool tool = new ClientFileCountTool(security);
         Map<String, Object> result = tool.invoke(Map.of(
                 "path", root.toString(),
                 "pattern", "TODO",
@@ -236,7 +246,7 @@ class ClientFileReadOnlyToolsTest {
 
     @Test
     void count_carriesReadOnlyLabel_only() {
-        ClientFileCountTool tool = new ClientFileCountTool();
+        ClientFileCountTool tool = new ClientFileCountTool(security);
         assertThat(tool.labels()).containsExactly("read-only");
     }
 }

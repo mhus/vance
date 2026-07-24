@@ -82,6 +82,23 @@ public class ClientSecurityService {
         return false;
     }
 
+    /**
+     * Per-file guard for the recursive file tools (grep/find/count). {@code permit}
+     * only gated the walk <em>root</em>; each descendant reached by
+     * {@code Files.walk} must ALSO be checked, or a broad allow on the root (e.g.
+     * {@code ~/**}) exfiltrates the deny-floor ({@code ~/.ssh/**}, …). Returns
+     * {@code false} for a {@code DENY} verdict → the tool skips that file. No
+     * interactive ASK here (a walk can't prompt per file); the root already
+     * cleared ASK. Sandbox-off → always {@code true}.
+     */
+    public boolean permitWalkedFile(Path file) {
+        if (!permissions.isSandboxEnabled()) {
+            return true;
+        }
+        Path canonical = PermissionPaths.canonicalize(file.toString());
+        return permissions.policy().evaluatePath(canonical) != PermissionDecision.DENY;
+    }
+
     /** The subject string the prompt shows and (on "always") stores as a rule. */
     private String ruleSubject(Scope scope, Map<String, Object> params) {
         if (scope == Scope.COMMAND) {

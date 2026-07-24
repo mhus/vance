@@ -33,11 +33,14 @@ public final class PermissionPaths {
      * Absolute, normalised, symlink-resolved form of {@code raw}.
      * Expands a leading {@code ~}, resolves relative paths against the
      * CWD, collapses {@code .}/{@code ..} segments, and follows symlinks
-     * via {@link Path#toRealPath}. Falls back to the
-     * normalised-absolute path when the target does not exist yet (a
-     * write to a not-yet-created file is legitimate) — the {@code ..}
-     * collapse has already happened by then, so the bypass is closed
-     * either way.
+     * via {@link Path#toRealPath}. When the target does not exist yet (a
+     * write to a not-yet-created file is legitimate), it resolves the
+     * deepest <em>existing</em> ancestor via {@code toRealPath} and
+     * re-appends the remaining segments — so a <em>symlinked parent
+     * directory</em> ({@code ~/link -> ~/.ssh}) is collapsed too, not just
+     * {@code ..}. Without that, {@code ~/link/authorized_keys} would slip
+     * past a {@code ~/.ssh/**} deny-floor and the OS write would follow the
+     * symlink into the protected directory.
      */
     public static Path canonicalize(String raw) {
         Path p = ClientFilePaths.resolve(raw);
@@ -48,8 +51,34 @@ public final class PermissionPaths {
         try {
             return p.toRealPath();
         } catch (IOException e) {
-            return p;
+            return canonicalizeNonExistent(p);
         }
+    }
+
+    /**
+     * The target itself does not exist — walk up to the deepest existing
+     * ancestor, {@code toRealPath}-resolve it (collapsing symlinked parents),
+     * then re-append the not-yet-existing tail segments in order.
+     */
+    private static Path canonicalizeNonExistent(Path normalized) {
+        java.util.Deque<Path> tail = new java.util.ArrayDeque<>();
+        Path cursor = normalized;
+        while (cursor != null) {
+            try {
+                Path real = cursor.toRealPath();
+                for (Path segment : tail) {
+                    real = real.resolve(segment);
+                }
+                return real.normalize();
+            } catch (IOException e) {
+                Path name = cursor.getFileName();
+                if (name != null) {
+                    tail.addFirst(name);
+                }
+                cursor = cursor.getParent();
+            }
+        }
+        return normalized; // no existing ancestor (unexpected for an absolute path)
     }
 
     /**

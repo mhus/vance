@@ -2,10 +2,29 @@ package de.mhus.vance.foot.permission;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class PermissionPathsTest {
+
+    @Test
+    void canonicalize_collapsesSymlinkedParent_forNotYetExistingTarget(@TempDir Path dir)
+            throws Exception {
+        // Security regression (code-review-2 S3): a symlinked *parent* directory
+        // must be collapsed even when the target file doesn't exist yet, so a
+        // write via ~/link/x can't slip past a deny-floor on the real directory
+        // and then follow the symlink at the OS level.
+        Path real = Files.createDirectories(dir.resolve("realdir"));
+        Path link = dir.resolve("link");
+        Files.createSymbolicLink(link, real);
+
+        Path canon = PermissionPaths.canonicalize(link.resolve("newfile").toString());
+
+        assertThat(canon).isEqualTo(real.toRealPath().resolve("newfile"));
+        assertThat(canon.toString()).doesNotContain("link");
+    }
 
     @Test
     void canonicalize_collapsesDotDot_closingTheBypass() {

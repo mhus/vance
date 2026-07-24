@@ -1,5 +1,6 @@
 package de.mhus.vance.foot.tools.file;
 
+import de.mhus.vance.foot.tools.ClientSecurityService;
 import de.mhus.vance.foot.tools.ClientTool;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -24,6 +25,13 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class ClientFileGrepTool implements ClientTool {
+
+    /** Per-file deny-floor guard for the recursive walk (permit() only gated the root). */
+    private final ClientSecurityService security;
+
+    public ClientFileGrepTool(ClientSecurityService security) {
+        this.security = security;
+    }
 
     private static final int DEFAULT_LIMIT = 200;
     private static final int MAX_LIMIT = 1_000;
@@ -130,6 +138,9 @@ public class ClientFileGrepTool implements ClientTool {
             for (Path file : (Iterable<Path>) stream::iterator) {
                 if (matches.size() >= limit) { truncated = true; break; }
                 if (!Files.isRegularFile(file)) continue;
+                // Per-file deny-floor check: the walk root was gated, but a broad
+                // allow (e.g. ~/**) must not let the recursion read ~/.ssh/** etc.
+                if (!singleFile && !security.permitWalkedFile(file)) { filesSkipped++; continue; }
                 Path rel = singleFile ? file.getFileName() : root.relativize(file);
                 if (matcher != null && !matcher.matches(rel)) continue;
                 long size;

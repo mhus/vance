@@ -483,7 +483,8 @@ public class ImageValidatorService {
                     .header("Range", "bytes=0-1023")
                     .timeout(timeout)
                     .build();
-            HttpResponse<byte[]> response = SsrfGuard.sendGuarded(http, request, HttpResponse.BodyHandlers.ofByteArray());
+            HttpResponse<byte[]> response = SsrfGuard.sendGuarded(http, request,
+                    SsrfGuard.capped(HttpResponse.BodyHandlers.ofByteArray()));
             return ProbeResponse.builder()
                     .status(response.statusCode())
                     .finalUri(response.uri())

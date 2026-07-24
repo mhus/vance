@@ -245,7 +245,7 @@ public class DocImportUrlTool implements Tool {
             HttpResponse<byte[]> response;
             try {
                 response = SsrfGuard.sendGuarded(
-                        client, request, HttpResponse.BodyHandlers.ofByteArray());
+                        client, request, SsrfGuard.capped(HttpResponse.BodyHandlers.ofByteArray()));
             } catch (SsrfGuard.SsrfException e) {
                 throw new ToolException(e.getMessage());
             }

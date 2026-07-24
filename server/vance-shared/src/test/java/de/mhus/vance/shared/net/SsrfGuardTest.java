@@ -1,5 +1,6 @@
 package de.mhus.vance.shared.net;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -103,5 +104,37 @@ class SsrfGuardTest {
         assertThatThrownBy(() -> SsrfGuard.sendGuarded(
                 client, head, HttpResponse.BodyHandlers.discarding()))
                 .isInstanceOf(SsrfGuard.SsrfException.class);
+    }
+
+    // ──────────────── capped body handler (OOM guard) ────────────────
+
+    @Test
+    void capped_abortsBodyOverLimit() throws Exception {
+        HttpResponse.BodySubscriber<byte[]> sub = SsrfGuard
+                .capped(HttpResponse.BodyHandlers.ofByteArray(), 10)
+                .apply(mock(HttpResponse.ResponseInfo.class));
+        java.util.concurrent.Flow.Subscription subscription =
+                mock(java.util.concurrent.Flow.Subscription.class);
+        sub.onSubscribe(subscription);
+
+        sub.onNext(List.of(java.nio.ByteBuffer.wrap(new byte[20]))); // 20 > 10
+
+        org.mockito.Mockito.verify(subscription).cancel();
+        assertThatThrownBy(() -> sub.getBody().toCompletableFuture().get(2, java.util.concurrent.TimeUnit.SECONDS))
+                .hasCauseInstanceOf(java.io.IOException.class);
+    }
+
+    @Test
+    void capped_passesBodyUnderLimit() throws Exception {
+        HttpResponse.BodySubscriber<byte[]> sub = SsrfGuard
+                .capped(HttpResponse.BodyHandlers.ofByteArray(), 100)
+                .apply(mock(HttpResponse.ResponseInfo.class));
+        sub.onSubscribe(mock(java.util.concurrent.Flow.Subscription.class));
+
+        sub.onNext(List.of(java.nio.ByteBuffer.wrap("hello".getBytes())));
+        sub.onComplete();
+
+        byte[] body = sub.getBody().toCompletableFuture().get(2, java.util.concurrent.TimeUnit.SECONDS);
+        assertThat(new String(body)).isEqualTo("hello");
     }
 }

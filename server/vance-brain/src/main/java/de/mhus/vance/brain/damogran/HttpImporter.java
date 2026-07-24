@@ -44,7 +44,8 @@ class HttpImporter implements DamogranImporter {
                     .GET()
                     .build();
             HttpResponse<byte[]> response =
-                    SsrfGuard.sendGuarded(httpClient, request, HttpResponse.BodyHandlers.ofByteArray());
+                    SsrfGuard.sendGuarded(httpClient, request,
+                            SsrfGuard.capped(HttpResponse.BodyHandlers.ofByteArray()));
             if (response.statusCode() / 100 != 2) {
                 throw new DamogranException("import HTTP " + response.statusCode() + " for " + url);
             }

@@ -7,7 +7,12 @@ import java.net.UnknownHostException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.ByteBuffer;
+import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.Flow;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Central egress guard against Server-Side Request Forgery (code-review
@@ -163,5 +168,94 @@ public final class SsrfGuard {
     /** Convenience: a redirect-disabled client suitable for {@link #sendGuarded}. */
     public static HttpClient.Builder guardedClientBuilder() {
         return HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER);
+    }
+
+    /**
+     * Default cap for a single outbound response body: 32 MiB. Enough for
+     * any page / document a tool legitimately fetches, small enough that a
+     * hostile or runaway endpoint can't OOM the pod by streaming forever.
+     */
+    public static final long DEFAULT_MAX_RESPONSE_BYTES = 32L * 1024 * 1024;
+
+    /**
+     * Wraps {@code delegate} so the response body is aborted once it exceeds
+     * {@code maxBytes} — closes the unbounded-buffering / OOM MEDIUMs on every
+     * outbound fetch (web_fetch, link-preview, doc-import, compose HTTP import,
+     * …). Works with any {@link HttpResponse.BodyHandler} (string, bytes,
+     * input-stream): the byte count is tallied as chunks flow to the delegate
+     * subscriber, and on overflow the subscription is cancelled and the body
+     * future fails with {@link IOException}. Use as
+     * {@code sendGuarded(client, req, SsrfGuard.capped(BodyHandlers.ofString()))}.
+     */
+    public static <T> HttpResponse.BodyHandler<T> capped(
+            HttpResponse.BodyHandler<T> delegate, long maxBytes) {
+        return info -> new LimitingBodySubscriber<>(delegate.apply(info), maxBytes);
+    }
+
+    /** {@link #capped(HttpResponse.BodyHandler, long)} with {@link #DEFAULT_MAX_RESPONSE_BYTES}. */
+    public static <T> HttpResponse.BodyHandler<T> capped(HttpResponse.BodyHandler<T> delegate) {
+        return capped(delegate, DEFAULT_MAX_RESPONSE_BYTES);
+    }
+
+    /**
+     * Byte-counting pass-through subscriber: forwards signals to the delegate
+     * until the cumulative body size exceeds the cap, then cancels the
+     * subscription and errors the delegate exactly once.
+     */
+    private static final class LimitingBodySubscriber<T> implements HttpResponse.BodySubscriber<T> {
+        private final HttpResponse.BodySubscriber<T> downstream;
+        private final long maxBytes;
+        private final AtomicLong received = new AtomicLong();
+        private Flow.@org.jspecify.annotations.Nullable Subscription subscription;
+        private boolean terminated;
+
+        LimitingBodySubscriber(HttpResponse.BodySubscriber<T> downstream, long maxBytes) {
+            this.downstream = downstream;
+            this.maxBytes = maxBytes;
+        }
+
+        @Override
+        public CompletionStage<T> getBody() {
+            return downstream.getBody();
+        }
+
+        @Override
+        public void onSubscribe(Flow.Subscription sub) {
+            this.subscription = sub;
+            downstream.onSubscribe(sub);
+        }
+
+        @Override
+        public void onNext(List<ByteBuffer> item) {
+            if (terminated) return;
+            long total = 0;
+            for (ByteBuffer b : item) {
+                total += b.remaining();
+            }
+            if (received.addAndGet(total) > maxBytes) {
+                terminated = true;
+                if (subscription != null) {
+                    subscription.cancel();
+                }
+                downstream.onError(new IOException(
+                        "Response body exceeds max size of " + maxBytes + " bytes"));
+                return;
+            }
+            downstream.onNext(item);
+        }
+
+        @Override
+        public void onError(Throwable throwable) {
+            if (terminated) return;
+            terminated = true;
+            downstream.onError(throwable);
+        }
+
+        @Override
+        public void onComplete() {
+            if (terminated) return;
+            terminated = true;
+            downstream.onComplete();
+        }
     }
 }

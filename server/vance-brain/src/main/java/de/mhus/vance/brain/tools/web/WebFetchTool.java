@@ -222,7 +222,7 @@ public class WebFetchTool implements Tool {
             HttpResponse<String> response;
             try {
                 response = SsrfGuard.sendGuarded(
-                        client, request, HttpResponse.BodyHandlers.ofString());
+                        client, request, SsrfGuard.capped(HttpResponse.BodyHandlers.ofString()));
             } catch (SsrfGuard.SsrfException e) {
                 throw new ToolException(e.getMessage());
             }

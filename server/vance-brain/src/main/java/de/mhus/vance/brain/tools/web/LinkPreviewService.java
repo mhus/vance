@@ -420,7 +420,8 @@ public class LinkPreviewService {
                     .timeout(timeout)
                     .build();
             HttpResponse<byte[]> response =
-                    SsrfGuard.sendGuarded(http, request, HttpResponse.BodyHandlers.ofByteArray());
+                    SsrfGuard.sendGuarded(http, request,
+                            SsrfGuard.capped(HttpResponse.BodyHandlers.ofByteArray()));
             byte[] raw = response.body();
             if (raw != null && raw.length > maxBodyBytes) {
                 byte[] capped = new byte[maxBodyBytes];

@@ -348,7 +348,8 @@ public class OfficeController {
             // SsrfGuard: the callback url is client-supplied — block fetches
             // aimed at internal/metadata addresses (F2). Client already
             // defaults to Redirect.NEVER, so sendGuarded owns redirects.
-            res = SsrfGuard.sendGuarded(httpClient, req, HttpResponse.BodyHandlers.ofByteArray());
+            res = SsrfGuard.sendGuarded(httpClient, req,
+                    SsrfGuard.capped(HttpResponse.BodyHandlers.ofByteArray()));
         } catch (SsrfGuard.SsrfException e) {
             throw new IOException("doc-server url rejected: " + e.getMessage(), e);
         }

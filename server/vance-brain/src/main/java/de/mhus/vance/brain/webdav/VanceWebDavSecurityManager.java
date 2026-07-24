@@ -78,16 +78,23 @@ public class VanceWebDavSecurityManager implements io.milton.http.SecurityManage
         Optional<UserDocument> userOpt = userService.findByTenantAndName(tenantId, user);
         if (userOpt.isEmpty()) {
             log.debug("webdav auth: unknown user tenant='{}' name='{}'", tenantId, user);
+            // Match the BCrypt cost of a real check so timing can't enumerate users.
+            passwordService.verifyDecoy(password);
             return null;
         }
         UserDocument doc = userOpt.get();
         if (doc.getStatus() != UserStatus.ACTIVE || !doc.isLoginEnabled()) {
             log.debug("webdav auth: user not eligible tenant='{}' name='{}' status={} loginEnabled={}",
                     tenantId, user, doc.getStatus(), doc.isLoginEnabled());
+            passwordService.verifyDecoy(password);
             return null;
         }
         String hash = doc.getPasswordHash();
-        if (hash == null || !passwordService.verify(password, hash)) {
+        if (hash == null) {
+            passwordService.verifyDecoy(password);
+            return null;
+        }
+        if (!passwordService.verify(password, hash)) {
             log.debug("webdav auth: bad password tenant='{}' name='{}'", tenantId, user);
             return null;
         }

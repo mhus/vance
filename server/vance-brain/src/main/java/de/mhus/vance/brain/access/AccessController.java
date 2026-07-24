@@ -119,12 +119,16 @@ public class AccessController {
         Optional<UserDocument> userOpt = userService.findByTenantAndName(tenant, username);
         if (userOpt.isEmpty()) {
             log.debug("Login rejected: unknown user tenant='{}' name='{}'", tenant, username);
+            // Spend the same BCrypt cost as a real wrong-password check so
+            // login latency can't enumerate valid usernames.
+            if (hasPassword) passwordService.verifyDecoy(request.getPassword());
             return rejectLogin(tenant, username, "unknown-user");
         }
         UserDocument user = userOpt.get();
 
         if (user.getStatus() != UserStatus.ACTIVE) {
             log.debug("Login rejected: status={} tenant='{}' name='{}'", user.getStatus(), tenant, username);
+            if (hasPassword) passwordService.verifyDecoy(request.getPassword());
             return rejectLogin(tenant, username, "user-not-active");
         }
 
@@ -135,6 +139,7 @@ public class AccessController {
         if (!user.isLoginEnabled()) {
             log.debug("Login rejected: loginEnabled=false tenant='{}' name='{}' serviceAccount={}",
                     tenant, username, user.isServiceAccount());
+            if (hasPassword) passwordService.verifyDecoy(request.getPassword());
             return rejectLogin(tenant, username, "login-disabled");
         }
 
@@ -142,6 +147,7 @@ public class AccessController {
             String hash = user.getPasswordHash();
             if (hash == null) {
                 log.debug("Login rejected: no password hash tenant='{}' name='{}'", tenant, username);
+                passwordService.verifyDecoy(request.getPassword());
                 return rejectLogin(tenant, username, "no-password-hash");
             }
             if (!passwordService.verify(request.getPassword(), hash)) {

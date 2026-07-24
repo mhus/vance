@@ -61,4 +61,13 @@ class PasswordServiceTest {
         assertThat(svc.verify("hunter2", "not-a-bcrypt-hash")).isFalse();
         assertThat(svc.verify("hunter2", "")).isFalse();
     }
+
+    @Test
+    void verifyDecoy_alwaysReturnsFalse_andToleratesNull() {
+        // The anti-enumeration decoy is a real BCrypt call whose result is
+        // discarded — it must never authenticate and must not throw on null.
+        assertThat(svc.verifyDecoy("anything")).isFalse();
+        assertThat(svc.verifyDecoy("")).isFalse();
+        assertThat(svc.verifyDecoy(null)).isFalse();
+    }
 }

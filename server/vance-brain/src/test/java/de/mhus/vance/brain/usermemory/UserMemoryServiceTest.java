@@ -114,7 +114,7 @@ class UserMemoryServiceTest {
                 eq(UserMemoryService.PERSONA_DOC_PATH),
                 anyString(), any(),
                 textCap.capture(),
-                eq(AUTHOR));
+                eq(AUTHOR), any());
         assertThat(textCap.getValue())
                 .isEqualTo("Be concise. Match the user's language.");
     }
@@ -134,7 +134,7 @@ class UserMemoryServiceTest {
                 eq(UserMemoryService.PERSONA_DOC_PATH),
                 anyString(), any(),
                 textCap.capture(),
-                eq(AUTHOR));
+                eq(AUTHOR), any());
         assertThat(textCap.getValue())
                 .isEqualTo("Prefers German.\n\nLikes dark mode.");
     }
@@ -153,7 +153,7 @@ class UserMemoryServiceTest {
                 eq(UserMemoryService.FACTS_DOC_PATH),
                 anyString(), any(),
                 textCap.capture(),
-                eq(AUTHOR));
+                eq(AUTHOR), any());
         String stored = textCap.getValue();
         assertThat(stored).startsWith("[2024-12-01] Likes coffee.\n[");
         assertThat(stored).endsWith("] Birthday: 4. April");
@@ -172,7 +172,7 @@ class UserMemoryServiceTest {
                 eq(UserMemoryService.FACTS_DOC_PATH),
                 anyString(), any(),
                 textCap.capture(),
-                eq(AUTHOR));
+                eq(AUTHOR), any());
         assertThat(textCap.getValue())
                 .matches("\\[\\d{4}-\\d{2}-\\d{2}\\] First fact\\.");
     }
@@ -193,7 +193,7 @@ class UserMemoryServiceTest {
 
         verify(documentService, never()).upsertText(
                 anyString(), anyString(), anyString(),
-                anyString(), any(), anyString(), anyString());
+                anyString(), any(), anyString(), anyString(), any());
     }
 
     @Test
@@ -213,7 +213,7 @@ class UserMemoryServiceTest {
                 eq(UserMemoryService.PERSONA_DOC_PATH),
                 anyString(), any(),
                 textCap.capture(),
-                eq(AUTHOR));
+                eq(AUTHOR), any());
         assertThat(textCap.getValue()).isEqualTo("Consolidated text.");
     }
 
@@ -230,7 +230,7 @@ class UserMemoryServiceTest {
 
         verify(documentService, never()).upsertText(
                 anyString(), anyString(), anyString(),
-                anyString(), any(), anyString(), anyString());
+                anyString(), any(), anyString(), anyString(), any());
     }
 
     @Test
@@ -251,7 +251,7 @@ class UserMemoryServiceTest {
                 eq(UserMemoryService.FACTS_DOC_PATH),
                 anyString(), any(),
                 textCap.capture(),
-                eq(AUTHOR));
+                eq(AUTHOR), any());
         assertThat(textCap.getValue()).isEqualTo("Clean consolidated text.");
     }
 
@@ -270,7 +270,7 @@ class UserMemoryServiceTest {
 
         verify(documentService, never()).upsertText(
                 anyString(), anyString(), anyString(),
-                anyString(), any(), anyString(), anyString());
+                anyString(), any(), anyString(), anyString(), any());
     }
 
     @Test
@@ -289,7 +289,7 @@ class UserMemoryServiceTest {
 
         verify(documentService, never()).upsertText(
                 anyString(), anyString(), anyString(),
-                anyString(), any(), anyString(), anyString());
+                anyString(), any(), anyString(), anyString(), any());
     }
 
     @Test
@@ -316,7 +316,7 @@ class UserMemoryServiceTest {
                 eq(UserMemoryService.FACTS_DOC_PATH),
                 anyString(), any(),
                 textCap.capture(),
-                eq(AUTHOR));
+                eq(AUTHOR), any());
         List<String> lines = textCap.getValue().lines().toList();
         assertThat(lines).hasSize(3);
         assertThat(lines.get(0)).isEqualTo("[2024-01-01] First.");

@@ -83,7 +83,8 @@ class ImageManipulationServiceTest {
         verify(documentService).createOrReplaceBinary(
                 eq("acme"), eq("p1"), pathCap.capture(),
                 bytesCap.capture(), eq("image/png"),
-                any(), any(), any(), eq("alice"));
+                any(), any(), any(), eq("alice"),
+                any(de.mhus.vance.shared.permission.WriteActor.class));
 
         assertThat(pathCap.getValue()).isEqualTo("images/cat.png");
         assertThat(result.path()).isEqualTo("images/cat.png");
@@ -118,7 +119,8 @@ class ImageManipulationServiceTest {
         verify(documentService).createOrReplaceBinary(
                 eq("acme"), eq("p1"), eq("images/cat-crop.png"),
                 any(byte[].class), eq("image/png"),
-                any(), any(), any(), eq("alice"));
+                any(), any(), any(), eq("alice"),
+                any(de.mhus.vance.shared.permission.WriteActor.class));
     }
 
     @Test
@@ -133,7 +135,8 @@ class ImageManipulationServiceTest {
                 .isEqualTo(ImageManipulationException.Reason.PARAMETER_INVALID);
 
         verify(documentService, never()).createOrReplaceBinary(
-                any(), any(), any(), any(byte[].class), any(), any(), any(), any(), any());
+                any(), any(), any(), any(byte[].class), any(), any(), any(), any(), any(),
+                any(de.mhus.vance.shared.permission.WriteActor.class));
     }
 
     @Test
@@ -225,7 +228,8 @@ class ImageManipulationServiceTest {
         verify(documentService).createOrReplaceBinary(
                 eq("acme"), eq("p1"), eq("images/cat.png"),
                 bytes.capture(), eq("image/png"),
-                any(), any(), any(), any());
+                any(), any(), any(), any(),
+                any(de.mhus.vance.shared.permission.WriteActor.class));
         ImmutableImage rt = decodePngOrFail(bytes.getValue());
         assertThat(rt.width).isEqualTo(80);
         assertThat(rt.height).isEqualTo(20);
@@ -380,7 +384,8 @@ class ImageManipulationServiceTest {
         verify(documentService).createOrReplaceBinary(
                 eq("acme"), eq("p1"), eq("images/cat.png"),
                 any(byte[].class), eq("image/png"),
-                any(), any(), any(), any());
+                any(), any(), any(), any(),
+                any(de.mhus.vance.shared.permission.WriteActor.class));
     }
 
     // ─────────────────── Filter ───────────────────
@@ -437,7 +442,8 @@ class ImageManipulationServiceTest {
         verify(documentService).createOrReplaceBinary(
                 eq("acme"), eq("p1"), eq("images/flat.png"),
                 any(byte[].class), eq("image/png"),
-                any(), any(), any(), any());
+                any(), any(), any(), any(),
+                any(de.mhus.vance.shared.permission.WriteActor.class));
     }
 
     // ─────────────────── Helpers ───────────────────
@@ -480,7 +486,8 @@ class ImageManipulationServiceTest {
 
     private void stubCreateOrReplaceBinaryEcho() {
         when(documentService.createOrReplaceBinary(
-                any(), any(), any(), any(byte[].class), any(), any(), any(), any(), any()))
+                any(), any(), any(), any(byte[].class), any(), any(), any(), any(), any(),
+                any(de.mhus.vance.shared.permission.WriteActor.class)))
                 .thenAnswer(inv -> {
                     String path = inv.getArgument(2);
                     byte[] bytes = inv.getArgument(3);

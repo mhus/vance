@@ -133,7 +133,7 @@ class ServerToolServiceTest {
         when(loader.validateYaml(eq("new_tool"), any())).thenReturn(enabledConfig("new_tool"));
         when(documentService.upsertText(
                 eq(TENANT), eq(PROJECT), eq("_vance/server-tools/new_tool.yaml"),
-                any(), any(), any(), any()))
+                any(), any(), any(), any(), any()))
                 .thenReturn(new DocumentDocument());
         when(registry.findConfig(eq(TENANT), eq(PROJECT), eq("new_tool")))
                 .thenReturn(Optional.of(enabledConfig("new_tool")));
@@ -143,7 +143,7 @@ class ServerToolServiceTest {
         assertThat(stored.name()).isEqualTo("new_tool");
         verify(documentService).upsertText(
                 eq(TENANT), eq(PROJECT), eq("_vance/server-tools/new_tool.yaml"),
-                any(), any(), any(), any());
+                any(), any(), any(), any(), any());
         verify(registry, never()).refreshOne(any(), any(), any());
     }
 
@@ -158,7 +158,7 @@ class ServerToolServiceTest {
                 .hasMessageContaining("already exists");
 
         verify(documentService, never()).upsertText(
-                any(), any(), any(), any(), any(), any(), any());
+                any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -191,7 +191,7 @@ class ServerToolServiceTest {
 
         service.delete(TENANT, PROJECT, "old");
 
-        verify(documentService).delete("doc-123");
+        verify(documentService).delete(eq("doc-123"), any(de.mhus.vance.shared.permission.WriteActor.class));
         verify(registry, never()).refreshOne(any(), any(), any());
     }
 
@@ -201,7 +201,7 @@ class ServerToolServiceTest {
 
         service.delete(TENANT, PROJECT, "missing");
 
-        verify(documentService, never()).delete(any());
+        verify(documentService, never()).delete(any(), any(de.mhus.vance.shared.permission.WriteActor.class));
         verify(registry, never()).refreshOne(any(), any(), any());
     }
 

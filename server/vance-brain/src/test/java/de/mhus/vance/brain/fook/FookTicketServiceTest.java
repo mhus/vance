@@ -46,7 +46,7 @@ class FookTicketServiceTest {
     @Test
     void create_emits_meta_wrapper_with_required_fields() {
         when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.empty());
-        when(documentService.upsertText(any(), any(), any(), any(), anyList(), any(), any()))
+        when(documentService.upsertText(any(), any(), any(), any(), anyList(), any(), any(), any()))
                 .thenReturn(new DocumentDocument());
 
         TicketReporter reporter = TicketReporter.builder()
@@ -87,7 +87,7 @@ class FookTicketServiceTest {
     @Test
     void create_routes_description_to_body_not_meta() {
         when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.empty());
-        when(documentService.upsertText(any(), any(), any(), any(), anyList(), any(), any()))
+        when(documentService.upsertText(any(), any(), any(), any(), anyList(), any(), any(), any()))
                 .thenReturn(new DocumentDocument());
 
         service.createTicket(NewTicketPayload.builder()
@@ -113,7 +113,7 @@ class FookTicketServiceTest {
     @Test
     void create_includes_relatedTo_when_provided() {
         when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.empty());
-        when(documentService.upsertText(any(), any(), any(), any(), anyList(), any(), any()))
+        when(documentService.upsertText(any(), any(), any(), any(), anyList(), any(), any(), any()))
                 .thenReturn(new DocumentDocument());
 
         service.createTicket(NewTicketPayload.builder()
@@ -132,7 +132,7 @@ class FookTicketServiceTest {
     @Test
     void create_path_uses_prefix_and_uuid() {
         when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.empty());
-        when(documentService.upsertText(any(), any(), any(), any(), anyList(), any(), any()))
+        when(documentService.upsertText(any(), any(), any(), any(), anyList(), any(), any(), any()))
                 .thenReturn(new DocumentDocument());
 
         String uuid = service.createTicket(minimalPayload());
@@ -140,7 +140,7 @@ class FookTicketServiceTest {
         ArgumentCaptor<String> path = ArgumentCaptor.forClass(String.class);
         verify(documentService).upsertText(
                 eq("_vance"), eq("_tenant"), path.capture(),
-                any(), anyList(), any(), any());
+                any(), anyList(), any(), any(), any());
         assertThat(path.getValue()).isEqualTo("_vance/fook/tickets/" + uuid + ".yaml");
     }
 
@@ -226,7 +226,7 @@ class FookTicketServiceTest {
         // Capture the YAML the create-path emits, then feed it back
         // through readTicket and verify field equivalence.
         when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.empty());
-        when(documentService.upsertText(any(), any(), any(), any(), anyList(), any(), any()))
+        when(documentService.upsertText(any(), any(), any(), any(), anyList(), any(), any(), any()))
                 .thenReturn(new DocumentDocument());
 
         String uuid = service.createTicket(NewTicketPayload.builder()
@@ -317,7 +317,7 @@ class FookTicketServiceTest {
         when(documentService.findByPath("_vance", "_tenant",
                 "_vance/fook/tickets/uuid-1.yaml")).thenReturn(Optional.of(doc));
         when(documentService.readContent(doc)).thenReturn(existing);
-        when(documentService.upsertText(any(), any(), any(), any(), any(), any(), any()))
+        when(documentService.upsertText(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(doc);
 
         service.updateRelations("uuid-1", RelationsPatch.builder()
@@ -379,7 +379,7 @@ class FookTicketServiceTest {
                 .storageId("blob-test-existing").mimeType("application/yaml").build();
         when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.of(doc));
         when(documentService.readContent(doc)).thenReturn(existing);
-        when(documentService.upsertText(any(), any(), any(), any(), any(), any(), any()))
+        when(documentService.upsertText(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(doc);
 
         service.updateRelations("uuid-2", RelationsPatch.builder()
@@ -447,7 +447,7 @@ class FookTicketServiceTest {
         ArgumentCaptor<String> textCap = ArgumentCaptor.forClass(String.class);
         verify(documentService).upsertText(
                 any(), any(), any(), any(), anyList(),
-                textCap.capture(), any());
+                textCap.capture(), any(), any());
         return textCap.getValue();
     }
 

@@ -85,7 +85,7 @@ class PersistingPhaseTest {
         ArgumentCaptor<String> pathCap = ArgumentCaptor.forClass(String.class);
         verify(documentService, times(2)).createText(
                 eq("acme"), eq("test-project"), pathCap.capture(),
-                any(), any(), any(), any());
+                any(), any(), any(), any(), any());
         assertThat(pathCap.getAllValues())
                 .containsExactly(
                         "_vance/recipes/_slart/3a4f7c91/essay-pipeline.yaml",
@@ -110,9 +110,9 @@ class PersistingPhaseTest {
         verify(documentService, never()).createText(
                 any(), any(),
                 eq("_vance/recipes/_slart/3a4f7c91/essay-pipeline.yaml"),
-                any(), any(), any(), any());
+                any(), any(), any(), any(), any());
         verify(documentService, atLeastOnce()).update(
-                eq("docid-recipe"), any(), any(), any(), any());
+                eq("docid-recipe"), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -193,7 +193,7 @@ class PersistingPhaseTest {
                 .when(documentService).createText(
                         any(), any(),
                         eq("_vance/recipes/_slart/3a4f7c91/x.yaml"),
-                        any(), any(), any(), any());
+                        any(), any(), any(), any(), any());
 
         ArchitectState state = stateWithMinimalRecipe("3a4f7c91", "x");
         phase.execute(state, process, ctx);
@@ -220,7 +220,7 @@ class PersistingPhaseTest {
                 .when(documentService).createText(
                         any(), any(),
                         eq("_vance/recipes/_slart/3a4f7c91/audit.json"),
-                        any(), any(), any(), any());
+                        any(), any(), any(), any(), any());
 
         ArchitectState state = stateWithMinimalRecipe("3a4f7c91", "x");
         phase.execute(state, process, ctx);

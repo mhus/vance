@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.shared.permission.WriteActor;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.time.Instant;
 import java.util.List;
@@ -70,7 +71,7 @@ class VanceScriptApiDocumentsTest {
 
         verify(documentService).upsertText(
                 eq("acme"), eq("proj"), eq("notes/new.md"),
-                eq(null), eq(null), eq("# New"), eq("alice"));
+                eq(null), eq(null), eq("# New"), eq("alice"), any());
     }
 
     @Test
@@ -78,7 +79,7 @@ class VanceScriptApiDocumentsTest {
         assertThatThrownBy(() -> api.documents.write("notes/x.md", null))
                 .isInstanceOf(VanceScriptApi.ScriptHostException.class)
                 .hasMessageContaining("content");
-        verify(documentService, never()).upsertText(any(), any(), any(), any(), any(), any(), any());
+        verify(documentService, never()).upsertText(any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -86,7 +87,7 @@ class VanceScriptApiDocumentsTest {
         assertThatThrownBy(() -> api.documents.write("_bin/sneaky.md", "x"))
                 .isInstanceOf(VanceScriptApi.ScriptHostException.class)
                 .hasMessageContaining("_bin/");
-        verify(documentService, never()).upsertText(any(), any(), any(), any(), any(), any(), any());
+        verify(documentService, never()).upsertText(any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -114,7 +115,7 @@ class VanceScriptApiDocumentsTest {
         boolean deleted = api.documents.delete("dead.md");
 
         assertThat(deleted).isTrue();
-        verify(documentService).trash("doc-123");
+        verify(documentService).trash(eq("doc-123"), any(WriteActor.class));
     }
 
     @Test
@@ -122,7 +123,7 @@ class VanceScriptApiDocumentsTest {
         when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.empty());
 
         assertThat(api.documents.delete("ghost.md")).isFalse();
-        verify(documentService, never()).trash(any());
+        verify(documentService, never()).trash(any(), any(WriteActor.class));
     }
 
     @Test
@@ -204,7 +205,7 @@ class VanceScriptApiDocumentsTest {
         scoped.documents.write("data/out.md", "x");
         verify(documentService).upsertText(
                 eq("acme"), eq("proj"), eq("apps/ws/data/out.md"),
-                eq(null), eq(null), eq("x"), eq("alice"));
+                eq(null), eq(null), eq("x"), eq("alice"), any());
     }
 
     @Test
@@ -223,7 +224,7 @@ class VanceScriptApiDocumentsTest {
         scoped.documents.write("/shared/g.md", "x");
         verify(documentService).upsertText(
                 eq("acme"), eq("proj"), eq("shared/g.md"),
-                eq(null), eq(null), eq("x"), eq("alice"));
+                eq(null), eq(null), eq("x"), eq("alice"), any());
     }
 
     @Test
@@ -232,7 +233,7 @@ class VanceScriptApiDocumentsTest {
         api.documents.write("data/out.md", "x");
         verify(documentService).upsertText(
                 eq("acme"), eq("proj"), eq("data/out.md"),
-                eq(null), eq(null), eq("x"), eq("alice"));
+                eq(null), eq(null), eq("x"), eq("alice"), any());
     }
 
     private VanceScriptApi apiWithBasePath(String basePath) {

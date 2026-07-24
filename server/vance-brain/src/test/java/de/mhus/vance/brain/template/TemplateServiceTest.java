@@ -38,7 +38,7 @@ class TemplateServiceTest {
     void setUp() {
         when(timezoneResolver.zoneId(any(), any())).thenReturn(ZoneId.of("UTC"));
         // create() echoes the path + mime it was called with, so tests can assert them.
-        when(documentService.create(any(), any(), any(), any(), any(), any(), any(), any()))
+        when(documentService.create(any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenAnswer(inv -> DocumentDocument.builder()
                         .path((String) inv.getArgument(2))
                         .mimeType((String) inv.getArgument(5))
@@ -130,7 +130,7 @@ class TemplateServiceTest {
         // Verify the content passed to create() was fully rendered.
         var contentCaptor = org.mockito.ArgumentCaptor.forClass(java.io.InputStream.class);
         org.mockito.Mockito.verify(documentService).create(
-                any(), any(), any(), any(), any(), any(), contentCaptor.capture(), any());
+                any(), any(), any(), any(), any(), any(), contentCaptor.capture(), any(), any());
         String written = new String(readAll(contentCaptor.getValue()), java.nio.charset.StandardCharsets.UTF_8);
         assertThat(written).contains("# Launch").contains("file:kickoff").doesNotContain("{{");
     }
@@ -147,7 +147,7 @@ class TemplateServiceTest {
 
     @Test
     void apply_existingDocument_propagatesConflict() {
-        when(documentService.create(any(), any(), any(), any(), any(), any(), any(), any()))
+        when(documentService.create(any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenThrow(new DocumentService.DocumentAlreadyExistsException("exists"));
         ResolvedTemplate t = template(
                 TemplateNameMode.FREE, null, null, List.of(), BODY_PATH, "x");

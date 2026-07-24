@@ -70,9 +70,9 @@ class DocImportUrlToolTest {
                 .containsEntry("sourceUrl", URL)
                 .doesNotContainKey("httpStatus");
         verify(documentService, never()).create(
-                any(), any(), any(), any(), any(), any(), any(), any());
+                any(), any(), any(), any(), any(), any(), any(), any(), any());
         verify(documentService, never()).replaceContent(
-                any(), any(), any(String.class));
+                any(), any(), any(String.class), any(), any());
     }
 
     @Test
@@ -99,7 +99,7 @@ class DocImportUrlToolTest {
                 .hasMessageContaining("ifExists")
                 .hasMessageContaining("overwrite");
         verify(documentService, never()).create(
-                any(), any(), any(), any(), any(), any(), any(), any());
+                any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test

@@ -65,7 +65,8 @@ class ProjectKitsCatalogServiceTest {
                 eq("Project Kits"),
                 isNull(),
                 yamlText.capture(),
-                isNull());
+                isNull(),
+                any());
 
         // Reset the mocks: now wire the saved YAML back through load().
         DocumentDocument doc = new DocumentDocument();
@@ -98,8 +99,8 @@ class ProjectKitsCatalogServiceTest {
 
         catalog.save("acme", sampleCatalog());
 
-        verify(documentService).update(eq("doc-1"), isNull(), isNull(), any(), isNull());
-        verify(documentService, never()).createText(any(), any(), any(), any(), any(), any(), any());
+        verify(documentService).update(eq("doc-1"), isNull(), isNull(), any(), isNull(), any());
+        verify(documentService, never()).createText(any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -200,7 +201,7 @@ class ProjectKitsCatalogServiceTest {
         catalog.seedFromSystemTenant("acme");
 
         verify(documentService, never())
-                .createText(eq("acme"), any(), any(), any(), any(), any(), any());
+                .createText(eq("acme"), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -224,7 +225,8 @@ class ProjectKitsCatalogServiceTest {
                 eq("Project Kits"),
                 isNull(),
                 eq(yaml),
-                isNull());
+                isNull(),
+                any());
     }
 
     @Test
@@ -238,7 +240,7 @@ class ProjectKitsCatalogServiceTest {
         when(documentService.findByPath(eq("acme"), any(), any()))
                 .thenReturn(Optional.empty());
         when(documentService.readContent(source)).thenReturn(yaml);
-        when(documentService.createText(eq("acme"), any(), any(), any(), any(), any(), any()))
+        when(documentService.createText(eq("acme"), any(), any(), any(), any(), any(), any(), any()))
                 .thenThrow(new IllegalStateException("project '_vance' not provisioned yet"));
 
         // Should not propagate — seed is best-effort.

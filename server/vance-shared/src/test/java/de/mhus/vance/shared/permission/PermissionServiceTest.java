@@ -21,19 +21,19 @@ class PermissionServiceTest {
 
     @Test
     void check_delegatesToResolver_andPropagatesResult() {
-        when(resolver.isAllowed(alice, resource, Action.READ)).thenReturn(true);
-        when(resolver.isAllowed(alice, resource, Action.WRITE)).thenReturn(false);
+        when(resolver.isAllowed(alice, resource, Action.READ, WriteReason.USER)).thenReturn(true);
+        when(resolver.isAllowed(alice, resource, Action.WRITE, WriteReason.USER)).thenReturn(false);
 
         assertThat(service.check(alice, resource, Action.READ)).isTrue();
         assertThat(service.check(alice, resource, Action.WRITE)).isFalse();
 
-        verify(resolver).isAllowed(alice, resource, Action.READ);
-        verify(resolver).isAllowed(alice, resource, Action.WRITE);
+        verify(resolver).isAllowed(alice, resource, Action.READ, WriteReason.USER);
+        verify(resolver).isAllowed(alice, resource, Action.WRITE, WriteReason.USER);
     }
 
     @Test
     void enforce_passesThrough_whenResolverAllows() {
-        when(resolver.isAllowed(any(), any(), any())).thenReturn(true);
+        when(resolver.isAllowed(any(), any(), any(), any())).thenReturn(true);
 
         // Must not throw.
         service.enforce(alice, resource, Action.READ);
@@ -55,12 +55,12 @@ class PermissionServiceTest {
 
     @Test
     void enforce_consultsResolverExactlyOnce() {
-        when(resolver.isAllowed(any(), any(), any())).thenReturn(true);
+        when(resolver.isAllowed(any(), any(), any(), any())).thenReturn(true);
 
         service.enforce(alice, resource, Action.READ);
 
-        verify(resolver).isAllowed(alice, resource, Action.READ);
-        verify(resolver, never()).isAllowed(alice, resource, Action.WRITE);
+        verify(resolver).isAllowed(alice, resource, Action.READ, WriteReason.USER);
+        verify(resolver, never()).isAllowed(alice, resource, Action.WRITE, WriteReason.USER);
     }
 
     @Test

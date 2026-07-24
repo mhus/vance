@@ -124,7 +124,7 @@ class OAuthAdminControllerTest {
     void upsert_creates_document_and_secret_when_absent() {
         when(documentService.findByPath(eq(TENANT), eq(TENANT_PROJECT), eq(DOC_PATH)))
                 .thenReturn(Optional.empty());
-        when(documentService.createText(any(), any(), any(), any(), any(), any(), any()))
+        when(documentService.createText(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new DocumentDocument());
         when(configRegistry.resolve(TENANT, PROVIDER))
                 .thenReturn(Optional.of(resolved(PROVIDER, "slack")));
@@ -141,7 +141,7 @@ class OAuthAdminControllerTest {
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         verify(documentService).createText(eq(TENANT), eq(TENANT_PROJECT), eq(DOC_PATH),
-                any(), any(), eq(body.getYaml()), eq(ADMIN_USER));
+                any(), any(), eq(body.getYaml()), eq(ADMIN_USER), any());
         verify(settingService).setEncryptedPassword(eq(TENANT),
                 eq(SettingService.SCOPE_PROJECT), eq(TENANT_PROJECT),
                 eq(SECRET_KEY), eq("secret-1"));
@@ -171,7 +171,7 @@ class OAuthAdminControllerTest {
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
         verify(documentService).update(eq("doc-1"), any(), any(),
-                eq(body.getYaml()), any());
+                eq(body.getYaml()), any(), any());
         verify(settingService, never()).setEncryptedPassword(any(), any(), any(), any(), any());
         verify(settingService, never()).delete(eq(TENANT), any(), any(), eq(SECRET_KEY));
     }
@@ -213,7 +213,7 @@ class OAuthAdminControllerTest {
         assertThatThrownBy(() -> controller.upsertProvider(TENANT, PROVIDER, body, request))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("non-empty");
-        verify(documentService, never()).createText(any(), any(), any(), any(), any(), any(), any());
+        verify(documentService, never()).createText(any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -229,7 +229,7 @@ class OAuthAdminControllerTest {
         assertThatThrownBy(() -> controller.upsertProvider(TENANT, PROVIDER, body, request))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("missing field 'type'");
-        verify(documentService, never()).createText(any(), any(), any(), any(), any(), any(), any());
+        verify(documentService, never()).createText(any(), any(), any(), any(), any(), any(), any(), any());
         verify(documentService, never()).update(any(), any(), any(), any(), any());
     }
 
@@ -245,7 +245,7 @@ class OAuthAdminControllerTest {
         ResponseEntity<Void> resp = controller.deleteProvider(TENANT, PROVIDER, request);
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
-        verify(documentService).delete("doc-1");
+        verify(documentService).delete(eq("doc-1"), any(de.mhus.vance.shared.permission.WriteActor.class));
         verify(settingService, times(1)).delete(eq(TENANT),
                 eq(SettingService.SCOPE_PROJECT), eq(TENANT_PROJECT),
                 eq(SECRET_KEY));
@@ -260,7 +260,7 @@ class OAuthAdminControllerTest {
         ResponseEntity<Void> resp = controller.deleteProvider(TENANT, PROVIDER, request);
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
-        verify(documentService, never()).delete(any());
+        verify(documentService, never()).delete(any(), any(de.mhus.vance.shared.permission.WriteActor.class));
         verify(configRegistry, never()).refreshOne(any(), any());
     }
 

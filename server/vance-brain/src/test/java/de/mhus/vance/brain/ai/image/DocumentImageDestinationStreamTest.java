@@ -46,7 +46,8 @@ class DocumentImageDestinationStreamTest {
                 eq("A Watercolor Cat"),
                 tagsCap.capture(),
                 headersCap.capture(),
-                eq("mike"));
+                eq("mike"),
+                any(de.mhus.vance.shared.permission.WriteActor.class));
 
         assertThat(bytesCap.getValue()).containsExactly(1, 2, 3, 4, 5);
         assertThat(tagsCap.getValue())
@@ -72,7 +73,8 @@ class DocumentImageDestinationStreamTest {
         verify(docs).createOrReplaceBinary(
                 any(), any(), any(),
                 any(byte[].class), any(),
-                any(), tagsCap.capture(), any(), any());
+                any(), tagsCap.capture(), any(), any(),
+                any(de.mhus.vance.shared.permission.WriteActor.class));
 
         assertThat(tagsCap.getValue()).containsExactly("avatar");
     }
@@ -88,7 +90,8 @@ class DocumentImageDestinationStreamTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("mime type");
         verify(docs, never()).createOrReplaceBinary(
-                any(), any(), any(), any(byte[].class), any(), any(), any(), any(), any());
+                any(), any(), any(), any(byte[].class), any(), any(), any(), any(), any(),
+                any(de.mhus.vance.shared.permission.WriteActor.class));
     }
 
     @Test
@@ -114,7 +117,8 @@ class DocumentImageDestinationStreamTest {
         stream.close();
 
         verify(docs, times(1)).createOrReplaceBinary(
-                any(), any(), any(), any(byte[].class), any(), any(), any(), any(), any());
+                any(), any(), any(), any(byte[].class), any(), any(), any(), any(), any(),
+                any(de.mhus.vance.shared.permission.WriteActor.class));
     }
 
     @Test
@@ -147,7 +151,8 @@ class DocumentImageDestinationStreamTest {
         ArgumentCaptor<Map<String, String>> headersCap = ArgumentCaptor.forClass(Map.class);
         verify(docs).createOrReplaceBinary(
                 any(), any(), any(), any(byte[].class), any(),
-                any(), any(), headersCap.capture(), any());
+                any(), any(), headersCap.capture(), any(),
+                any(de.mhus.vance.shared.permission.WriteActor.class));
 
         assertThat(headersCap.getValue()).doesNotContainKey("seed");
     }
@@ -167,7 +172,8 @@ class DocumentImageDestinationStreamTest {
         ArgumentCaptor<Map<String, String>> headersCap = ArgumentCaptor.forClass(Map.class);
         verify(docs).createOrReplaceBinary(
                 any(), any(), any(), any(byte[].class), any(),
-                any(), any(), headersCap.capture(), any());
+                any(), any(), headersCap.capture(), any(),
+                any(de.mhus.vance.shared.permission.WriteActor.class));
 
         assertThat(headersCap.getValue()).doesNotContainKey("altText");
     }

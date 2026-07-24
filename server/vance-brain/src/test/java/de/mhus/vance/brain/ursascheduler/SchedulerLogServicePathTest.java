@@ -46,7 +46,7 @@ class SchedulerLogServicePathTest {
         when(settings.getStringValueCascade(eq(TENANT), eq(PROJECT), any(), anyString()))
                 .thenReturn(null);
         when(docs.upsertEphemeralText(anyString(), anyString(), anyString(),
-                any(), any(), anyString(), any(), any()))
+                any(), any(), anyString(), any(), any(), any()))
                 .thenReturn(new DocumentDocument());
 
         SchedulerLogService service = new SchedulerLogService(docs, settings, 7);
@@ -61,7 +61,7 @@ class SchedulerLogServicePathTest {
         ArgumentCaptor<String> pathCaptor = ArgumentCaptor.forClass(String.class);
         verify(docs).upsertEphemeralText(
                 eq(TENANT), eq(PROJECT), pathCaptor.capture(),
-                any(), any(), anyString(), any(), any());
+                any(), any(), anyString(), any(), any(), any());
 
         String expectedPath = SchedulerLogService.pathFor(SCHEDULER, firedAt, CORRELATION_ID);
         assertThat(pathCaptor.getValue())

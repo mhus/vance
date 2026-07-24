@@ -209,8 +209,16 @@ public class IssuesService {
     public DocumentService.DocumentMetaListing search(String tenantId, String projectId, String folder,
                                                        @Nullable String query, @Nullable String label,
                                                        int limit) {
-        String prefix = IssuesFolderReader.normaliseFolder(folder) + "/";
-        List<String> requireTags = label != null && !label.isBlank() ? List.of(label.trim()) : List.of();
+        String normalized = IssuesFolderReader.normaliseFolder(folder);
+        IssuesConfig config = folderReader.scan(tenantId, projectId, normalized).config();
+        // Scope to the items dir — excludes archive/ and the _app.yaml/_index.md/
+        // _stats.yaml artefacts — and require the native "issue" tag so only
+        // kind:issue docs match (spec §8). Without this an empty query returned
+        // every active doc under the folder as a bogus "issue" hit.
+        String prefix = normalized + "/" + config.itemsDir() + "/";
+        List<String> requireTags = new ArrayList<>();
+        requireTags.add("issue");
+        if (label != null && !label.isBlank()) requireTags.add(label.trim());
         return documentService.searchProjectDocumentsMeta(
                 tenantId, projectId, prefix, query, requireTags, new java.util.LinkedHashMap<>(), limit);
     }

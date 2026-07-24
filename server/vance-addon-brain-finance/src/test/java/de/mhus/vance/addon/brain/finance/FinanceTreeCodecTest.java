@@ -169,6 +169,22 @@ class FinanceTreeCodecTest {
     }
 
     @Test
+    void serialize_yaml_prependsCommentHintAndStaysParseableAndIdempotent() {
+        FinanceTreeDocument doc = sample();
+        String yaml = FinanceTreeCodec.serialize(doc, YAML);
+
+        // Hint present for agent + human, doesn't break parse (SnakeYAML skips it).
+        assertThat(yaml).startsWith("# vance finance-tree v1");
+        assertThat(yaml).contains("manual_read('finance-tree')");
+        FinanceTreeDocument back = FinanceTreeCodec.parse(yaml, YAML);
+        assertThat(back.root()).isNotNull();
+        assertThat(back.root().name()).isEqualTo("projekt");
+
+        // Exactly one hint pair, so re-serialize is byte-idempotent (no doubling).
+        assertThat(FinanceTreeCodec.serialize(back, YAML)).isEqualTo(yaml);
+    }
+
+    @Test
     void parse_missingVersion_defaultsToOne() {
         String yaml = """
                 $meta:

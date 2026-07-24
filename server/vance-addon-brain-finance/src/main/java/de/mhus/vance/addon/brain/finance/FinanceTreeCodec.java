@@ -43,6 +43,17 @@ public final class FinanceTreeCodec {
 
     public static final String KIND = "finance-tree";
 
+    /**
+     * Fixed comment header prepended to the YAML body — orients both the agent
+     * (visible in {@code doc_read}) and a human reading the raw file. SnakeYAML
+     * ignores leading comments on parse, and exactly one line-pair is prepended
+     * on every serialize, so the model round-trip and serialize idempotency
+     * both hold. Not applied to JSON (no comments).
+     */
+    private static final String YAML_HINT =
+            "# vance finance-tree v1 · amounts are per record; a node's sign flips its whole subtree\n"
+            + "# agent: run manual_read('finance-tree') before interpreting · computed values under $computed\n";
+
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final TypeReference<LinkedHashMap<String, Object>> JSON_MAP =
             new TypeReference<>() {};
@@ -72,7 +83,9 @@ public final class FinanceTreeCodec {
     public static String serialize(FinanceTreeDocument doc, @Nullable FinanceComputed computed,
                                    @Nullable String mimeType) {
         if (isJson(mimeType)) return serializeJson(doc, computed);
-        if (isYaml(mimeType)) return KindHeaderCodec.dumpYamlBody(KIND, buildBody(doc, computed));
+        if (isYaml(mimeType)) {
+            return YAML_HINT + KindHeaderCodec.dumpYamlBody(KIND, buildBody(doc, computed));
+        }
         throw new KindCodecException("Unsupported mime type for finance-tree: " + mimeType);
     }
 

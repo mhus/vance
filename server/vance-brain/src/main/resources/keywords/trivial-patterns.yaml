@@ -8,9 +8,11 @@ patterns:
     fr: ["oui", "d'accord", "merci", "parfait", "compris", "très bien"]
     es: ["sí", "vale", "gracias", "perfecto", "entendido", "de acuerdo"]
     it: ["sì", "grazie", "va bene", "perfetto", "capito", "d'accordo"]
+    pl: ["tak", "dzięki", "dziękuję", "dobrze", "jasne", "rozumiem", "w porządku"]
   SELF_NARRATION: # assistant self-narration opener (message prefix)
     en: ["let me", "i'll now", "i'll just", "i'll first", "i will now", "i will just", "i will first", "i'm going to", "i am going to"]
     de: ["ich werde jetzt", "ich werde nun", "ich werde gleich", "ich werde als nächstes", "ich lese", "ich öffne", "ich schaue mir", "lass mich"]
     fr: ["je vais", "laisse-moi", "je regarde", "je lis", "j'ouvre"]
     es: ["voy a", "déjame", "estoy revisando", "estoy mirando"]
     it: ["sto per", "fammi vedere", "sto guardando", "sto leggendo"]
+    pl: ["pozwól, że", "sprawdzę", "otworzę", "przeczytam"]

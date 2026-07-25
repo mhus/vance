@@ -481,11 +481,11 @@ function clearCellFormat(): void {
 // ── Helpers for template ───────────────────────────────────────────
 
 const gridStyle = computed(() => {
+  // Excel-like: fixed column widths (no 1fr) so the grid keeps its
+  // natural width and scrolls horizontally instead of squeezing columns
+  // into the viewport. Unlike `records`, a sheet is a spatial grid.
   const cols = localSchema.value
-    .map((col) => {
-      const w = columnWidth(col);
-      return w != null ? `${w}px` : 'minmax(6rem, 1fr)';
-    })
+    .map((col) => `${columnWidth(col) ?? COLUMN_DEFAULT_WIDTH}px`)
     .join(' ');
   return { gridTemplateColumns: `2.5rem ${cols}` };
 });
@@ -747,6 +747,7 @@ function cellStyle(addr: string): Record<string, string> {
   /* Fill the tab body so only the grid scrolls, not the whole page. */
   height: 100%;
   min-height: 0;
+  min-width: 0;
 }
 .toolbar {
   display: flex;
@@ -767,6 +768,7 @@ function cellStyle(addr: string): Record<string, string> {
   /* Take the remaining height and contain the grid's own scroll. */
   flex: 1 1 auto;
   min-height: 0;
+  min-width: 0;
   overflow: hidden;
 }
 .grid-wrap {
@@ -784,6 +786,10 @@ function cellStyle(addr: string): Record<string, string> {
   display: grid;
   align-items: stretch;
   border-bottom: 1px solid oklch(var(--bc) / 0.08);
+  /* Take the grid's natural (summed) width so it scrolls horizontally,
+     but never shrink below the viewport (fills empty space on the right). */
+  width: max-content;
+  min-width: 100%;
 }
 .header-row {
   position: sticky;
@@ -808,6 +814,11 @@ function cellStyle(addr: string): Record<string, string> {
   position: sticky;
   left: 0;
   z-index: 1;
+}
+.header-corner {
+  position: sticky;
+  left: 0;
+  z-index: 3; /* above the sticky header row (2) and row numbers (1) */
 }
 .header-col {
   position: relative;

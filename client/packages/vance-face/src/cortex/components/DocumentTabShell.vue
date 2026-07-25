@@ -616,7 +616,7 @@ function fmtDuration(ms: number | null): string {
 </script>
 
 <template>
-  <div class="h-full flex flex-col min-h-0">
+  <div class="h-full flex flex-col min-h-0 min-w-0">
     <!-- App-kind slim header: only an App|Edit toggle (plus the path for
          orientation). Default state when opening an `_app.yaml` is the
          App view; clicking Edit drops to the YAML CodeEditor with the
@@ -799,8 +799,8 @@ function fmtDuration(ms: number | null): string {
          live in a flex-col on the LEFT; the notes panel slots in as a
          fixed-width column on the RIGHT when toggled. Keeps both side-by-side
          even when the Cortex right-panel (chat) is also present. -->
-    <div class="flex-1 flex flex-row min-h-0">
-      <div class="flex-1 flex flex-col min-h-0">
+    <div class="flex-1 flex flex-row min-h-0 min-w-0">
+      <div class="flex-1 flex flex-col min-h-0 min-w-0">
 
     <!-- Code mode: CodeEditor on the raw text. Documents with a
          codePreview Kind (Markdown, TeX) get a rendered Preview/Edit
@@ -902,7 +902,7 @@ function fmtDuration(ms: number | null): string {
           />
         </div>
       </div>
-      <div v-else class="flex-1 min-h-0 overflow-auto">
+      <div v-else class="flex-1 min-h-0 min-w-0 overflow-auto">
         <component
           :is="activeView"
           mode="editor"

@@ -744,12 +744,16 @@ function cellStyle(addr: string): Record<string, string> {
   flex-direction: column;
   gap: 0.5rem;
   font-size: 0.85rem;
+  /* Fill the tab body so only the grid scrolls, not the whole page. */
+  height: 100%;
+  min-height: 0;
 }
 .toolbar {
   display: flex;
   align-items: center;
   gap: 0.4rem;
   flex-wrap: wrap;
+  flex: none;
 }
 .hint {
   font-size: 0.7rem;
@@ -759,15 +763,20 @@ function cellStyle(addr: string): Record<string, string> {
 .grid-and-panel {
   display: flex;
   gap: 0.75rem;
-  align-items: flex-start;
+  align-items: stretch;
+  /* Take the remaining height and contain the grid's own scroll. */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
 }
 .grid-wrap {
   flex: 1 1 auto;
   min-width: 0;
+  min-height: 0;
   border: 1px solid oklch(var(--bc) / 0.18);
   border-radius: 0.4rem;
   background: oklch(var(--b1));
-  max-height: 65vh;
+  /* The single scroll container: sticky header + row numbers stay put. */
   overflow: auto;
 }
 .header-row,

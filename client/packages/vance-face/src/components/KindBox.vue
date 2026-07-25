@@ -49,19 +49,19 @@ defineProps<Props>();
   box-sizing: border-box;
   /* Don't shrink inside a flex parent (chat bubble row, etc.). */
   flex: 0 0 100%;
-  border: 1px solid hsl(var(--bc) / 0.18);
+  border: 1px solid oklch(var(--bc) / 0.18);
   border-radius: 0.5rem;
   overflow: hidden;
   margin: 0.6em 0;
-  background: hsl(var(--b1));
+  background: oklch(var(--b1));
 }
 .kind-box-header {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   padding: 0.4rem 0.75rem;
-  background: hsl(var(--bc) / 0.06);
-  border-bottom: 1px solid hsl(var(--bc) / 0.12);
+  background: oklch(var(--bc) / 0.06);
+  border-bottom: 1px solid oklch(var(--bc) / 0.12);
   font-size: 0.85rem;
 }
 .kind-box-icon { font-size: 1rem; line-height: 1; }

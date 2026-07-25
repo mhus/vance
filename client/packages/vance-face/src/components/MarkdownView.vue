@@ -839,21 +839,21 @@ export default defineComponent({
 .markdown-view :deep(ul ul ul) { list-style: square outside; }
 .markdown-view :deep(li) { margin: 0.15em 0; }
 .markdown-view :deep(blockquote) {
-  border-left: 3px solid hsl(var(--bc) / 0.25);
+  border-left: 3px solid oklch(var(--bc) / 0.25);
   padding-left: 0.75em;
   margin: 0.6em 0;
   opacity: 0.8;
 }
 
 .markdown-view :deep(code) {
-  background: hsl(var(--bc) / 0.08);
+  background: oklch(var(--bc) / 0.08);
   padding: 0.05em 0.3em;
   border-radius: 0.25rem;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 0.85em;
 }
 .markdown-view :deep(pre) {
-  background: hsl(var(--bc) / 0.06);
+  background: oklch(var(--bc) / 0.06);
   padding: 0.75em 1em;
   border-radius: 0.5rem;
   overflow-x: auto;
@@ -866,7 +866,7 @@ export default defineComponent({
 }
 
 .markdown-view :deep(a) {
-  color: hsl(var(--p));
+  color: oklch(var(--p));
   text-decoration: underline;
 }
 .markdown-view :deep(a:hover) { opacity: 0.85; }
@@ -877,18 +877,18 @@ export default defineComponent({
 }
 .markdown-view :deep(th),
 .markdown-view :deep(td) {
-  border: 1px solid hsl(var(--bc) / 0.2);
+  border: 1px solid oklch(var(--bc) / 0.2);
   padding: 0.3em 0.6em;
   text-align: left;
 }
 .markdown-view :deep(th) {
-  background: hsl(var(--bc) / 0.05);
+  background: oklch(var(--bc) / 0.05);
   font-weight: 600;
 }
 
 .markdown-view :deep(hr) {
   border: 0;
-  border-top: 1px solid hsl(var(--bc) / 0.18);
+  border-top: 1px solid oklch(var(--bc) / 0.18);
   margin: 1em 0;
 }
 
@@ -913,13 +913,13 @@ export default defineComponent({
   gap: 0.25rem 0.9rem;
   margin: 0 0 0.75rem;
   padding: 0.35rem 0.6rem;
-  border: 1px dashed hsl(var(--bc) / 0.18);
+  border: 1px dashed oklch(var(--bc) / 0.18);
   border-radius: 0.3rem;
-  background: hsl(var(--bc) / 0.03);
+  background: oklch(var(--bc) / 0.03);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 0.75rem;
   line-height: 1.35;
-  color: hsl(var(--bc) / 0.65);
+  color: oklch(var(--bc) / 0.65);
 }
 .markdown-view__fm-row {
   display: inline-flex;
@@ -931,11 +931,11 @@ export default defineComponent({
   text-overflow: ellipsis;
 }
 .markdown-view__fm-key {
-  color: hsl(var(--bc) / 0.45);
+  color: oklch(var(--bc) / 0.45);
   letter-spacing: 0.01em;
 }
 .markdown-view__fm-val {
-  color: hsl(var(--bc) / 0.78);
+  color: oklch(var(--bc) / 0.78);
   word-break: break-all;
 }
 

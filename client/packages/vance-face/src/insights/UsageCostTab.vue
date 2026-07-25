@@ -312,7 +312,7 @@ const hasData = computed<boolean>(() =>
 .usage-tab__table th,
 .usage-tab__table td {
   padding: 0.375rem 0.75rem;
-  border-bottom: 1px solid hsl(var(--border) / 0.5);
+  border-bottom: 1px solid oklch(var(--bc) / 0.1);
   text-align: left;
 }
 .usage-tab__table th.num,
@@ -320,7 +320,7 @@ const hasData = computed<boolean>(() =>
   text-align: right;
 }
 .muted {
-  color: hsl(var(--muted-foreground));
+  color: oklch(var(--bc) / 0.6);
   font-size: 0.875rem;
 }
 </style>

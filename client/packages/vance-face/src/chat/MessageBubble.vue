@@ -405,7 +405,7 @@ async function onCopyMarkdown(): Promise<void> {
   top: 0.25rem;
   right: 0.25rem;
   border: none;
-  background: hsl(var(--b1) / 0.8);
+  background: oklch(var(--b1) / 0.8);
   backdrop-filter: blur(2px);
   cursor: pointer;
   font-size: 0.85rem;
@@ -414,7 +414,7 @@ async function onCopyMarkdown(): Promise<void> {
   border-radius: 0.3rem;
   opacity: 0;
   transition: opacity 120ms ease-out, background 120ms ease-out;
-  color: hsl(var(--bc));
+  color: oklch(var(--bc));
   z-index: 1;
 }
 .group:hover .mb-copy-btn,
@@ -423,15 +423,15 @@ async function onCopyMarkdown(): Promise<void> {
 }
 .mb-copy-btn:hover {
   opacity: 1;
-  background: hsl(var(--b1));
+  background: oklch(var(--b1));
 }
 .mb-copy-btn--done {
   opacity: 1 !important;
-  color: hsl(var(--su));
+  color: oklch(var(--su));
 }
 .mb-thinking {
   margin-bottom: 0.5rem;
-  border-left: 2px solid hsl(var(--bc) / 0.2);
+  border-left: 2px solid oklch(var(--bc) / 0.2);
   padding-left: 0.6rem;
 }
 .mb-thinking-summary {

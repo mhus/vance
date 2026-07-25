@@ -630,30 +630,30 @@ function sourceBadgeClass(source: string | undefined): string {
   width: 100%;
   border: 1px solid transparent;
 }
-.tool-item:hover { background: hsl(var(--bc) / 0.06); }
+.tool-item:hover { background: oklch(var(--bc) / 0.06); }
 .tool-item--active {
-  background: hsl(var(--p) / 0.12);
-  border-color: hsl(var(--p) / 0.3);
+  background: oklch(var(--p) / 0.12);
+  border-color: oklch(var(--p) / 0.3);
 }
 .badge-type {
-  background: hsl(var(--in) / 0.18);
-  color: hsl(var(--inc));
+  background: oklch(var(--in) / 0.18);
+  color: oklch(var(--inc));
 }
 .badge-primary {
-  background: hsl(var(--su) / 0.18);
-  color: hsl(var(--suc));
+  background: oklch(var(--su) / 0.18);
+  color: oklch(var(--suc));
   padding: 0 0.4rem;
   border-radius: 0.25rem;
 }
 .badge-disabled {
-  background: hsl(var(--bc) / 0.1);
-  color: hsl(var(--bc) / 0.6);
+  background: oklch(var(--bc) / 0.1);
+  color: oklch(var(--bc) / 0.6);
   padding: 0 0.4rem;
   border-radius: 0.25rem;
 }
 .badge-deferred {
-  background: hsl(var(--wa) / 0.18);
-  color: hsl(var(--wac));
+  background: oklch(var(--wa) / 0.18);
+  color: oklch(var(--wac));
   padding: 0 0.4rem;
   border-radius: 0.25rem;
 }
@@ -669,18 +669,18 @@ function sourceBadgeClass(source: string | undefined): string {
   white-space: nowrap;
 }
 .badge-source--project {
-  background: hsl(var(--su) / 0.18);
-  color: hsl(var(--suc));
-  border-color: hsl(var(--su) / 0.35);
+  background: oklch(var(--su) / 0.18);
+  color: oklch(var(--suc));
+  border-color: oklch(var(--su) / 0.35);
 }
 .badge-source--tenant {
-  background: hsl(var(--in) / 0.18);
-  color: hsl(var(--inc));
-  border-color: hsl(var(--in) / 0.35);
+  background: oklch(var(--in) / 0.18);
+  color: oklch(var(--inc));
+  border-color: oklch(var(--in) / 0.35);
 }
 .badge-source--bundled {
-  background: hsl(var(--bc) / 0.08);
-  color: hsl(var(--bc) / 0.65);
-  border-color: hsl(var(--bc) / 0.2);
+  background: oklch(var(--bc) / 0.08);
+  color: oklch(var(--bc) / 0.65);
+  border-color: oklch(var(--bc) / 0.2);
 }
 </style>

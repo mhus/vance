@@ -106,7 +106,7 @@ function mimeForKind(kind: string | undefined): string {
 .code-view :deep(.code-editor) {
   border: none;
   border-radius: 0;
-  background: hsl(var(--b1));
+  background: oklch(var(--b1));
 }
 .code-view--inline :deep(.cm-editor),
 .code-view--embedded :deep(.cm-editor) {

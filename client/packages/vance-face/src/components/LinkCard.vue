@@ -206,16 +206,16 @@ function hostnameLabel(): string {
   gap: 0.75rem;
   align-items: stretch;
   padding: 0.5rem 0.75rem;
-  border: 1px solid hsl(var(--bc) / 0.15);
+  border: 1px solid oklch(var(--bc) / 0.15);
   border-radius: 0.5rem;
-  background: hsl(var(--b1));
+  background: oklch(var(--b1));
   text-decoration: none !important;
   color: inherit;
   transition: background 0.15s, border-color 0.15s;
 }
 .link-card__inner:hover {
-  background: hsl(var(--bc) / 0.04);
-  border-color: hsl(var(--bc) / 0.25);
+  background: oklch(var(--bc) / 0.04);
+  border-color: oklch(var(--bc) / 0.25);
 }
 
 .link-card__inner--muted {
@@ -223,8 +223,8 @@ function hostnameLabel(): string {
   opacity: 0.7;
 }
 .link-card__inner--muted:hover {
-  background: hsl(var(--b1));
-  border-color: hsl(var(--bc) / 0.15);
+  background: oklch(var(--b1));
+  border-color: oklch(var(--bc) / 0.15);
 }
 
 /* "Reachable but preview restricted" — host blocked the OG fetch
@@ -236,7 +236,7 @@ function hostnameLabel(): string {
 }
 .link-card__title--restricted {
   font-weight: 500;
-  color: hsl(var(--p));
+  color: oklch(var(--p));
 }
 
 .link-card__inner--loading {
@@ -249,7 +249,7 @@ function hostnameLabel(): string {
   height: 72px;
   object-fit: cover;
   border-radius: 0.375rem;
-  background: hsl(var(--bc) / 0.05);
+  background: oklch(var(--bc) / 0.05);
 }
 
 /* Favicon fallback — used when the page didn't expose an og:image.
@@ -263,7 +263,7 @@ function hostnameLabel(): string {
   object-fit: contain;
   padding: 0.35rem;
   border-radius: 0.5rem;
-  background: hsl(var(--bc) / 0.05);
+  background: oklch(var(--bc) / 0.05);
 }
 
 .link-card__body {
@@ -276,7 +276,7 @@ function hostnameLabel(): string {
 
 .link-card__site {
   font-size: 0.75rem;
-  color: hsl(var(--bc) / 0.65);
+  color: oklch(var(--bc) / 0.65);
   text-transform: lowercase;
   letter-spacing: 0.02em;
 }
@@ -292,12 +292,12 @@ function hostnameLabel(): string {
 }
 .link-card__title--muted {
   font-weight: 500;
-  color: hsl(var(--bc) / 0.7);
+  color: oklch(var(--bc) / 0.7);
 }
 
 .link-card__desc {
   font-size: 0.85rem;
-  color: hsl(var(--bc) / 0.75);
+  color: oklch(var(--bc) / 0.75);
   line-height: 1.4;
   display: -webkit-box;
   -webkit-line-clamp: 2;

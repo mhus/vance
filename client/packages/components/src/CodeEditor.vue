@@ -356,10 +356,10 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .code-editor {
-  border: 1px solid hsl(var(--bc) / 0.2);
+  border: 1px solid oklch(var(--bc) / 0.2);
   border-radius: 0.5rem;
   overflow: hidden;
-  background: hsl(var(--b1));
+  background: oklch(var(--b1));
 }
 
 .code-editor :deep(.cm-editor) {

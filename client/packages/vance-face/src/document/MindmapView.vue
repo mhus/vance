@@ -131,8 +131,8 @@ onBeforeUnmount(() => {
 .mindmap-view {
   position: relative;
   width: 100%;
-  background: hsl(var(--b1));
-  border: 1px solid hsl(var(--bc) / 0.15);
+  background: oklch(var(--b1));
+  border: 1px solid oklch(var(--bc) / 0.15);
   border-radius: 0.5rem;
   overflow: hidden;
 }

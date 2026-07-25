@@ -250,8 +250,8 @@ const isEmpty = computed(() => props.notes.length === 0);
   flex-direction: column;
   width: 320px;
   flex-shrink: 0;
-  border-left: 1px solid hsl(var(--bc) / 0.15);
-  background: hsl(var(--b1));
+  border-left: 1px solid oklch(var(--bc) / 0.15);
+  background: oklch(var(--b1));
   min-height: 0;
 }
 
@@ -260,7 +260,7 @@ const isEmpty = computed(() => props.notes.length === 0);
   align-items: center;
   gap: 0.5rem;
   padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid hsl(var(--bc) / 0.15);
+  border-bottom: 1px solid oklch(var(--bc) / 0.15);
 }
 
 .notes-panel-empty {

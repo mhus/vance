@@ -299,10 +299,10 @@ function escapeHtml(text: string): string {
   width: 100%;
   height: 65vh;
   min-height: 420px;
-  border: 1px solid hsl(var(--bc) / 0.15);
+  border: 1px solid oklch(var(--bc) / 0.15);
   border-radius: 0.5rem;
   overflow: hidden;
-  background: hsl(var(--b1));
+  background: oklch(var(--b1));
 }
 .map-view--inline .map-canvas {
   height: 22rem;
@@ -314,7 +314,7 @@ function escapeHtml(text: string): string {
 }
 .map-warning {
   font-size: 0.8rem;
-  color: hsl(var(--wa));
+  color: oklch(var(--wa));
   margin: 0;
 }
 </style>

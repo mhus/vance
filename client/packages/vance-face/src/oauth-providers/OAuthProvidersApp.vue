@@ -324,26 +324,26 @@ function selectProvider(providerId: string): void {
   width: 100%;
   border: 1px solid transparent;
 }
-.provider-item:hover { background: hsl(var(--bc) / 0.06); }
+.provider-item:hover { background: oklch(var(--bc) / 0.06); }
 .provider-item--active {
-  background: hsl(var(--p) / 0.12);
-  border-color: hsl(var(--p) / 0.3);
+  background: oklch(var(--p) / 0.12);
+  border-color: oklch(var(--p) / 0.3);
 }
 .badge-type {
-  background: hsl(var(--in) / 0.18);
-  color: hsl(var(--inc));
+  background: oklch(var(--in) / 0.18);
+  color: oklch(var(--inc));
   padding: 0 0.4rem;
   border-radius: 0.25rem;
 }
 .badge-secret-set {
-  background: hsl(var(--su) / 0.18);
-  color: hsl(var(--suc));
+  background: oklch(var(--su) / 0.18);
+  color: oklch(var(--suc));
   padding: 0 0.4rem;
   border-radius: 0.25rem;
 }
 .badge-secret-missing {
-  background: hsl(var(--wa) / 0.18);
-  color: hsl(var(--wac));
+  background: oklch(var(--wa) / 0.18);
+  color: oklch(var(--wac));
   padding: 0 0.4rem;
   border-radius: 0.25rem;
 }

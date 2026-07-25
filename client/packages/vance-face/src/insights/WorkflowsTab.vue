@@ -515,10 +515,10 @@ function processSelectHandler(run: MagratheaProcessDto): void {
   cursor: pointer;
   border: 1px solid transparent;
 }
-.wf-row:hover { background: hsl(var(--bc) / 0.06); }
+.wf-row:hover { background: oklch(var(--bc) / 0.06); }
 .wf-row--active {
-  background: hsl(var(--p) / 0.12);
-  border-color: hsl(var(--p) / 0.3);
+  background: oklch(var(--p) / 0.12);
+  border-color: oklch(var(--p) / 0.3);
 }
 
 .badge-source {
@@ -527,18 +527,18 @@ function processSelectHandler(run: MagratheaProcessDto): void {
   font-family: ui-monospace, monospace;
 }
 .badge-source--project {
-  background: hsl(var(--p) / 0.18);
-  color: hsl(var(--p));
+  background: oklch(var(--p) / 0.18);
+  color: oklch(var(--p));
 }
 .badge-source--vance {
-  background: hsl(var(--bc) / 0.12);
-  color: hsl(var(--bc) / 0.7);
+  background: oklch(var(--bc) / 0.12);
+  color: oklch(var(--bc) / 0.7);
 }
 
 .sub-tab-bar {
   display: flex;
   gap: 0.25rem;
-  border-bottom: 1px solid hsl(var(--bc) / 0.15);
+  border-bottom: 1px solid oklch(var(--bc) / 0.15);
   padding-bottom: 0.25rem;
 }
 .sub-tab {
@@ -549,10 +549,10 @@ function processSelectHandler(run: MagratheaProcessDto): void {
   font-size: 0.85rem;
   cursor: pointer;
 }
-.sub-tab:hover { background: hsl(var(--bc) / 0.06); }
+.sub-tab:hover { background: oklch(var(--bc) / 0.06); }
 .sub-tab--active {
-  background: hsl(var(--p) / 0.12);
-  border-color: hsl(var(--p) / 0.3);
+  background: oklch(var(--p) / 0.12);
+  border-color: oklch(var(--p) / 0.3);
   font-weight: 600;
 }
 
@@ -561,14 +561,14 @@ function processSelectHandler(run: MagratheaProcessDto): void {
   border-radius: 0.25rem;
   font-family: ui-monospace, monospace;
 }
-.badge-run--running    { background: hsl(var(--in) / 0.18); color: hsl(var(--in)); }
-.badge-run--done       { background: hsl(var(--su) / 0.18); color: hsl(var(--su)); }
-.badge-run--failed     { background: hsl(var(--er) / 0.18); color: hsl(var(--er)); }
-.badge-run--terminated { background: hsl(var(--bc) / 0.12); color: hsl(var(--bc) / 0.7); }
-.badge-run--paused     { background: hsl(var(--wa) / 0.18); color: hsl(var(--wa)); }
+.badge-run--running    { background: oklch(var(--in) / 0.18); color: oklch(var(--in)); }
+.badge-run--done       { background: oklch(var(--su) / 0.18); color: oklch(var(--su)); }
+.badge-run--failed     { background: oklch(var(--er) / 0.18); color: oklch(var(--er)); }
+.badge-run--terminated { background: oklch(var(--bc) / 0.12); color: oklch(var(--bc) / 0.7); }
+.badge-run--paused     { background: oklch(var(--wa) / 0.18); color: oklch(var(--wa)); }
 
 .json-block {
-  background: hsl(var(--bc) / 0.05);
+  background: oklch(var(--bc) / 0.05);
   padding: 0.5rem 0.75rem;
   border-radius: 0.375rem;
   font-size: 0.8125rem;
@@ -578,7 +578,7 @@ function processSelectHandler(run: MagratheaProcessDto): void {
 }
 
 .link {
-  color: hsl(var(--p));
+  color: oklch(var(--p));
   text-decoration: underline;
   background: transparent;
   cursor: pointer;

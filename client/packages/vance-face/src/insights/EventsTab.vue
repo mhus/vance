@@ -323,11 +323,11 @@ function sortedEvents(): EventSummary[] {
   border: 1px solid transparent;
 }
 .event-row:hover {
-  background: hsl(var(--bc) / 0.06);
+  background: oklch(var(--bc) / 0.06);
 }
 .event-row--active {
-  background: hsl(var(--p) / 0.12);
-  border-color: hsl(var(--p) / 0.3);
+  background: oklch(var(--p) / 0.12);
+  border-color: oklch(var(--p) / 0.3);
 }
 .event-row--disabled {
   opacity: 0.55;
@@ -339,25 +339,25 @@ function sortedEvents(): EventSummary[] {
   font-family: ui-monospace, monospace;
 }
 .badge-source--project {
-  background: hsl(var(--p) / 0.18);
-  color: hsl(var(--p));
+  background: oklch(var(--p) / 0.18);
+  color: oklch(var(--p));
 }
 .badge-source--vance {
-  background: hsl(var(--bc) / 0.12);
-  color: hsl(var(--bc) / 0.7);
+  background: oklch(var(--bc) / 0.12);
+  color: oklch(var(--bc) / 0.7);
 }
 
 .badge-open {
-  background: hsl(var(--su) / 0.18);
-  color: hsl(var(--suc));
+  background: oklch(var(--su) / 0.18);
+  color: oklch(var(--suc));
 }
 .badge-closed {
-  background: hsl(var(--bc) / 0.1);
-  color: hsl(var(--bc) / 0.6);
+  background: oklch(var(--bc) / 0.1);
+  color: oklch(var(--bc) / 0.6);
 }
 
 .json-block {
-  background: hsl(var(--bc) / 0.05);
+  background: oklch(var(--bc) / 0.05);
   padding: 0.5rem 0.75rem;
   border-radius: 0.375rem;
   font-size: 0.8125rem;

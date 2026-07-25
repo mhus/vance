@@ -41,7 +41,7 @@ const emit = defineEmits<{ (e: 'select-process', id: string): void }>();
 .marvin-children {
   list-style: none;
   padding-left: 1.25rem;
-  border-left: 1px dashed hsl(var(--bc) / 0.2);
+  border-left: 1px dashed oklch(var(--bc) / 0.2);
 }
 .marvin-node-head {
   display: flex;
@@ -61,11 +61,11 @@ const emit = defineEmits<{ (e: 'select-process', id: string): void }>();
 .marvin-goal { font-size: 0.875rem; }
 .marvin-failure {
   font-size: 0.75rem;
-  color: hsl(var(--er));
+  color: oklch(var(--er));
   padding-left: 1rem;
 }
 .link {
-  color: hsl(var(--p));
+  color: oklch(var(--p));
   text-decoration: underline;
   background: transparent;
   cursor: pointer;

@@ -655,16 +655,16 @@ function contrastText(bgColor: string): string {
 }
 .canvas {
   flex: 1 1 auto;
-  background: hsl(var(--b1));
-  border: 1px solid hsl(var(--bc) / 0.15);
+  background: oklch(var(--b1));
+  border: 1px solid oklch(var(--bc) / 0.15);
   border-radius: 0.5rem;
   overflow: hidden;
 }
 .panel {
   width: 16rem;
   flex: 0 0 16rem;
-  background: hsl(var(--b1));
-  border: 1px solid hsl(var(--bc) / 0.15);
+  background: oklch(var(--b1));
+  border: 1px solid oklch(var(--bc) / 0.15);
   border-radius: 0.5rem;
   padding: 0.75rem;
   display: flex;
@@ -689,7 +689,7 @@ function contrastText(bgColor: string): string {
 }
 .panel-input {
   background: transparent;
-  border: 1px solid hsl(var(--bc) / 0.25);
+  border: 1px solid oklch(var(--bc) / 0.25);
   border-radius: 0.25rem;
   padding: 0.25rem 0.5rem;
   font: inherit;
@@ -697,8 +697,8 @@ function contrastText(bgColor: string): string {
   outline: none;
 }
 .panel-input:focus {
-  border-color: hsl(var(--p));
-  box-shadow: 0 0 0 2px hsl(var(--p) / 0.2);
+  border-color: oklch(var(--p));
+  box-shadow: 0 0 0 2px oklch(var(--p) / 0.2);
 }
 .color-row {
   display: flex;
@@ -708,7 +708,7 @@ function contrastText(bgColor: string): string {
 .color-row input[type="color"] {
   flex: 0 0 2.5rem;
   height: 2rem;
-  border: 1px solid hsl(var(--bc) / 0.25);
+  border: 1px solid oklch(var(--bc) / 0.25);
   border-radius: 0.25rem;
   background: transparent;
   cursor: pointer;
@@ -716,7 +716,7 @@ function contrastText(bgColor: string): string {
 }
 .clear-color {
   background: transparent;
-  border: 1px solid hsl(var(--bc) / 0.2);
+  border: 1px solid oklch(var(--bc) / 0.2);
   border-radius: 0.25rem;
   padding: 0.2rem 0.5rem;
   font-size: 0.75rem;
@@ -728,7 +728,7 @@ function contrastText(bgColor: string): string {
   cursor: not-allowed;
 }
 .panel-error {
-  color: hsl(var(--er));
+  color: oklch(var(--er));
   font-size: 0.8rem;
   margin: 0.25rem 0 0;
 }
@@ -740,7 +740,7 @@ function contrastText(bgColor: string): string {
   font-size: 0.78rem;
   margin: 0;
   padding: 0.4rem 0.5rem;
-  background: hsl(var(--bc) / 0.05);
+  background: oklch(var(--bc) / 0.05);
   border-radius: 0.25rem;
 }
 .edge-endpoint {

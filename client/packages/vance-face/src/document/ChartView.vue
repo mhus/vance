@@ -700,7 +700,7 @@ const showsAxes = computed(() => !isNamedValueShaped(localHeader.value.chartType
   flex-direction: column;
   gap: 1rem;
   padding-left: 0.75rem;
-  border-left: 1px solid hsl(var(--bc) / 0.1);
+  border-left: 1px solid oklch(var(--bc) / 0.1);
 }
 
 .chart-sidebar > section {
@@ -713,17 +713,17 @@ const showsAxes = computed(() => !isNamedValueShaped(localHeader.value.chartType
   font-size: 0.875rem;
   font-weight: 600;
   letter-spacing: 0.02em;
-  color: hsl(var(--bc) / 0.7);
+  color: oklch(var(--bc) / 0.7);
 }
 
 .chart-sidebar-hint {
   font-size: 0.75rem;
-  color: hsl(var(--bc) / 0.55);
+  color: oklch(var(--bc) / 0.55);
 }
 
 .chart-sidebar-error {
   font-size: 0.75rem;
-  color: hsl(var(--er));
+  color: oklch(var(--er));
 }
 
 .chart-series-row {
@@ -744,14 +744,14 @@ const showsAxes = computed(() => !isNamedValueShaped(localHeader.value.chartType
 .chart-series-color {
   width: 2.5rem;
   height: 1.5rem;
-  border: 1px solid hsl(var(--bc) / 0.15);
+  border: 1px solid oklch(var(--bc) / 0.15);
   border-radius: 0.25rem;
   cursor: pointer;
 }
 
 .chart-data-hint {
   font-size: 0.75rem;
-  color: hsl(var(--bc) / 0.55);
+  color: oklch(var(--bc) / 0.55);
   text-align: right;
 }
 </style>

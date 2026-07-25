@@ -95,7 +95,7 @@ function closeLightbox(): void {
   height: auto;
   border-radius: 0.375rem;
   cursor: zoom-in;
-  background: hsl(var(--bc) / 0.04);
+  background: oklch(var(--bc) / 0.04);
 }
 .image-view__empty {
   padding: 1rem;

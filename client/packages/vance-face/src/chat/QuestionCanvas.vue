@@ -116,16 +116,16 @@ function onPick(label: string): void {
   transition: background-color 0.12s, border-color 0.12s, opacity 0.12s;
 }
 .question-canvas__option.is-actionable {
-  border-color: hsl(var(--p) / 0.4);
-  background: hsl(var(--p) / 0.08);
+  border-color: oklch(var(--p) / 0.4);
+  background: oklch(var(--p) / 0.08);
 }
 .question-canvas__option.is-actionable:hover {
-  background: hsl(var(--p) / 0.18);
-  border-color: hsl(var(--p) / 0.6);
+  background: oklch(var(--p) / 0.18);
+  border-color: oklch(var(--p) / 0.6);
 }
 .question-canvas__option.is-stale {
-  border-color: hsl(var(--bc) / 0.18);
-  background: hsl(var(--bc) / 0.06);
+  border-color: oklch(var(--bc) / 0.18);
+  background: oklch(var(--bc) / 0.06);
   cursor: default;
   opacity: 0.55;
 }

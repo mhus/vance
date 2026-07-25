@@ -303,8 +303,8 @@ onBeforeUnmount(() => {
 .diagram-view {
   position: relative;
   width: 100%;
-  background: hsl(var(--b1));
-  border: 1px solid hsl(var(--bc) / 0.15);
+  background: oklch(var(--b1));
+  border: 1px solid oklch(var(--bc) / 0.15);
   border-radius: 0.5rem;
   outline: none;
   overflow: hidden;
@@ -369,7 +369,7 @@ onBeforeUnmount(() => {
   white-space: pre-wrap;
   margin: 0;
   padding: 0.5rem;
-  background: hsl(var(--b2));
+  background: oklch(var(--b2));
   border-radius: 0.25rem;
 }
 .diagram-error-source {
@@ -379,7 +379,7 @@ onBeforeUnmount(() => {
 .diagram-error-source pre {
   margin: 0.5rem 0 0;
   padding: 0.5rem;
-  background: hsl(var(--b2));
+  background: oklch(var(--b2));
   border-radius: 0.25rem;
   font-family: ui-monospace, SFMono-Regular, "Cascadia Mono", monospace;
   font-size: 0.8125rem;

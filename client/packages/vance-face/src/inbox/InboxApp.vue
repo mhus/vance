@@ -899,11 +899,11 @@ const breadcrumbs = computed<string[]>(() => {
   width: 100%;
 }
 .sidebar-item:hover {
-  background: hsl(var(--bc) / 0.08);
+  background: oklch(var(--bc) / 0.08);
 }
 .sidebar-item--active {
-  background: hsl(var(--p) / 0.15);
-  color: hsl(var(--pf));
+  background: oklch(var(--p) / 0.15);
+  color: oklch(var(--p));
   font-weight: 600;
 }
 .sidebar-item--child {
@@ -918,10 +918,10 @@ const breadcrumbs = computed<string[]>(() => {
   border: 1px solid transparent;
 }
 .list-row:hover {
-  background: hsl(var(--bc) / 0.04);
+  background: oklch(var(--bc) / 0.04);
 }
 .list-row--active {
-  background: hsl(var(--p) / 0.08);
-  border-color: hsl(var(--p) / 0.4);
+  background: oklch(var(--p) / 0.08);
+  border-color: oklch(var(--p) / 0.4);
 }
 </style>

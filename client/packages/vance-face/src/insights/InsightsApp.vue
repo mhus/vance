@@ -1431,11 +1431,11 @@ function clickProcessByMongoId(id: string | undefined | null): void {
   border: 1px solid transparent;
 }
 .session-label:hover {
-  background: hsl(var(--bc) / 0.06);
+  background: oklch(var(--bc) / 0.06);
 }
 .session-label--active {
-  background: hsl(var(--p) / 0.12);
-  border-color: hsl(var(--p) / 0.3);
+  background: oklch(var(--p) / 0.12);
+  border-color: oklch(var(--p) / 0.3);
 }
 .session-topic {
   font-size: 0.875rem;
@@ -1443,10 +1443,10 @@ function clickProcessByMongoId(id: string | undefined | null): void {
 }
 
 .session-header {
-  border: 1px solid hsl(var(--bc) / 0.12);
+  border: 1px solid oklch(var(--bc) / 0.12);
   border-radius: 0.5rem;
   padding: 0.75rem 1rem;
-  background: hsl(var(--b1));
+  background: oklch(var(--b1));
 }
 .session-topic-title {
   font-size: 1.05rem;
@@ -1472,26 +1472,26 @@ function clickProcessByMongoId(id: string | undefined | null): void {
   border: 1px solid transparent;
 }
 .process-row:hover {
-  background: hsl(var(--bc) / 0.06);
+  background: oklch(var(--bc) / 0.06);
 }
 .process-row--active {
-  background: hsl(var(--p) / 0.12);
-  border-color: hsl(var(--p) / 0.3);
+  background: oklch(var(--p) / 0.12);
+  border-color: oklch(var(--p) / 0.3);
 }
 
 .badge-open {
-  background: hsl(var(--su) / 0.18);
-  color: hsl(var(--suc));
+  background: oklch(var(--su) / 0.18);
+  color: oklch(var(--suc));
 }
 .badge-closed {
-  background: hsl(var(--bc) / 0.1);
-  color: hsl(var(--bc) / 0.6);
+  background: oklch(var(--bc) / 0.1);
+  color: oklch(var(--bc) / 0.6);
 }
 
 .tab-bar {
   display: flex;
   gap: 0.25rem;
-  border-bottom: 1px solid hsl(var(--bc) / 0.15);
+  border-bottom: 1px solid oklch(var(--bc) / 0.15);
   padding-bottom: 0.25rem;
 }
 /* Overflow variant: kept on a single row; ResizeObserver in
@@ -1533,15 +1533,15 @@ function clickProcessByMongoId(id: string | undefined | null): void {
 /* Tab-more__menu styles are in the un-scoped <style> block below —
    the menu is teleported to <body>, so Vue's scoped-attribute
    selectors would not match it. */
-.tab:hover { background: hsl(var(--bc) / 0.06); }
+.tab:hover { background: oklch(var(--bc) / 0.06); }
 .tab--active {
-  background: hsl(var(--p) / 0.12);
-  border-color: hsl(var(--p) / 0.3);
+  background: oklch(var(--p) / 0.12);
+  border-color: oklch(var(--p) / 0.3);
   font-weight: 600;
 }
 
 .json-block {
-  background: hsl(var(--bc) / 0.05);
+  background: oklch(var(--bc) / 0.05);
   padding: 0.5rem 0.75rem;
   border-radius: 0.375rem;
   font-size: 0.8125rem;
@@ -1550,7 +1550,7 @@ function clickProcessByMongoId(id: string | undefined | null): void {
 }
 
 .link {
-  color: hsl(var(--p));
+  color: oklch(var(--p));
   text-decoration: underline;
   background: transparent;
   cursor: pointer;
@@ -1562,15 +1562,15 @@ function clickProcessByMongoId(id: string | undefined | null): void {
   border-left: 3px solid transparent;
   padding: 0.5rem 0.75rem;
   border-radius: 0.375rem;
-  background: hsl(var(--bc) / 0.04);
+  background: oklch(var(--bc) / 0.04);
 }
-.chat-msg--user      { border-left-color: hsl(var(--p)); }
-.chat-msg--assistant { border-left-color: hsl(var(--su)); }
-.chat-msg--system    { border-left-color: hsl(var(--wa)); }
+.chat-msg--user      { border-left-color: oklch(var(--p)); }
+.chat-msg--assistant { border-left-color: oklch(var(--su)); }
+.chat-msg--system    { border-left-color: oklch(var(--wa)); }
 .chat-msg--archived  { opacity: 0.55; }
-.chat-msg--strength-weak { background: hsl(var(--bc) / 0.02); opacity: 0.7; }
-.chat-msg--strength-strong { box-shadow: inset 0 0 0 1px hsl(var(--in) / 0.4); }
-.chat-msg--strength-pinned { box-shadow: inset 0 0 0 1px hsl(var(--p) / 0.6); }
+.chat-msg--strength-weak { background: oklch(var(--bc) / 0.02); opacity: 0.7; }
+.chat-msg--strength-strong { box-shadow: inset 0 0 0 1px oklch(var(--in) / 0.4); }
+.chat-msg--strength-pinned { box-shadow: inset 0 0 0 1px oklch(var(--p) / 0.6); }
 
 .badge {
   display: inline-block;
@@ -1578,25 +1578,25 @@ function clickProcessByMongoId(id: string | undefined | null): void {
   border-radius: 0.25rem;
   font-size: 0.7rem;
   line-height: 1.25;
-  background: hsl(var(--bc) / 0.08);
-  border: 1px solid hsl(var(--bc) / 0.12);
+  background: oklch(var(--bc) / 0.08);
+  border: 1px solid oklch(var(--bc) / 0.12);
 }
 .badge--secondary  { opacity: 0.75; }
-.badge--prak       { background: hsl(var(--in) / 0.18); border-color: hsl(var(--in) / 0.4); }
-.badge--strength-weak   { background: hsl(var(--bc) / 0.10); opacity: 0.7; }
-.badge--strength-normal { background: hsl(var(--bc) / 0.12); }
-.badge--strength-strong { background: hsl(var(--in) / 0.20); border-color: hsl(var(--in) / 0.5); font-weight: 600; }
-.badge--strength-pinned { background: hsl(var(--p) / 0.20); border-color: hsl(var(--p) / 0.6); font-weight: 600; }
+.badge--prak       { background: oklch(var(--in) / 0.18); border-color: oklch(var(--in) / 0.4); }
+.badge--strength-weak   { background: oklch(var(--bc) / 0.10); opacity: 0.7; }
+.badge--strength-normal { background: oklch(var(--bc) / 0.12); }
+.badge--strength-strong { background: oklch(var(--in) / 0.20); border-color: oklch(var(--in) / 0.5); font-weight: 600; }
+.badge--strength-pinned { background: oklch(var(--p) / 0.20); border-color: oklch(var(--p) / 0.6); font-weight: 600; }
 
 .prak-meta-row { padding: 0.25rem 0; opacity: 0.85; }
 
 .marvin-tree { list-style: none; padding-left: 0; }
-.marvin-children { list-style: none; padding-left: 1.25rem; border-left: 1px dashed hsl(var(--bc) / 0.2); }
+.marvin-children { list-style: none; padding-left: 1.25rem; border-left: 1px dashed oklch(var(--bc) / 0.2); }
 .marvin-node-head { display: flex; gap: 0.5rem; align-items: baseline; padding: 0.25rem 0; }
 .marvin-kind { font-family: ui-monospace, monospace; font-size: 0.75rem; opacity: 0.7; }
 .marvin-status { font-size: 0.75rem; opacity: 0.6; }
 .marvin-goal { font-size: 0.875rem; }
-.marvin-failure { font-size: 0.75rem; color: hsl(var(--er)); padding-left: 1rem; }
+.marvin-failure { font-size: 0.75rem; color: oklch(var(--er)); padding-left: 1rem; }
 </style>
 
 <!-- Un-scoped styles: the More-button dropdown is teleported to

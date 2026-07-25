@@ -174,7 +174,7 @@ function extractVideoId(raw: string): string | null {
   width: 100%;
   /* 16:9 aspect-ratio box. */
   padding-bottom: 56.25%;
-  background: hsl(var(--bc) / 0.04);
+  background: oklch(var(--bc) / 0.04);
   border-radius: 0.375rem;
   overflow: hidden;
 }
@@ -195,7 +195,7 @@ function extractVideoId(raw: string): string | null {
 }
 .yt-view__source {
   margin-left: auto;
-  color: hsl(var(--p));
+  color: oklch(var(--p));
   text-decoration: none;
 }
 .yt-view__source:hover {
@@ -204,8 +204,8 @@ function extractVideoId(raw: string): string | null {
 .yt-view__error {
   padding: 0.6rem;
   font-size: 0.85rem;
-  color: hsl(var(--er));
-  background: hsl(var(--er) / 0.08);
+  color: oklch(var(--er));
+  background: oklch(var(--er) / 0.08);
   border-radius: 0.375rem;
 }
 </style>

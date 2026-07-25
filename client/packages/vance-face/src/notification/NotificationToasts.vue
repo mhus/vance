@@ -87,7 +87,7 @@ function sourceLine(n: { sourceProcessTitle?: string; sourceProcessName?: string
   padding: 0.6rem 0.75rem;
   /* Solid base-100 background. DaisyUI 4.x stores theme colors as
    * OKLCH channel triples in CSS vars, so the value lookup must wrap
-   * in `oklch(... / 1)` — `hsl(var(--b1))` would emit invalid CSS and
+   * in `oklch(... / 1)` — `oklch(var(--b1))` would emit invalid CSS and
    * the browser falls back to transparent (which is what made the
    * card see-through). Same fallback-var convention as EditorShell. */
   background-color: var(--fallback-b1, oklch(var(--b1) / 1));

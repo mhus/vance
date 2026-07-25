@@ -424,8 +424,8 @@ onBeforeUnmount(() => {
 .slides-view {
   position: relative;
   width: 100%;
-  background: hsl(var(--b1));
-  border: 1px solid hsl(var(--bc) / 0.15);
+  background: oklch(var(--b1));
+  border: 1px solid oklch(var(--bc) / 0.15);
   border-radius: 0.5rem;
   outline: none;
   overflow: hidden;
@@ -474,7 +474,7 @@ onBeforeUnmount(() => {
   border-radius: 0.5rem;
 }
 .slides-stage--single :deep(svg[data-marpit-svg]) {
-  box-shadow: 0 0.5rem 1.5rem hsl(var(--bc) / 0.15);
+  box-shadow: 0 0.5rem 1.5rem oklch(var(--bc) / 0.15);
 }
 .slides-stage--stream {
   flex-direction: column;
@@ -482,7 +482,7 @@ onBeforeUnmount(() => {
   gap: 1.5rem;
 }
 .slides-stage--stream :deep(svg[data-marpit-svg]) {
-  box-shadow: 0 0.25rem 0.75rem hsl(var(--bc) / 0.1);
+  box-shadow: 0 0.25rem 0.75rem oklch(var(--bc) / 0.1);
 }
 
 .slides-nav {
@@ -491,19 +491,19 @@ onBeforeUnmount(() => {
   justify-content: center;
   gap: 0.75rem;
   padding: 0.5rem;
-  border-top: 1px solid hsl(var(--bc) / 0.1);
-  background: hsl(var(--b2) / 0.5);
+  border-top: 1px solid oklch(var(--bc) / 0.1);
+  background: oklch(var(--b2) / 0.5);
 }
 .slides-nav-btn,
 .slides-nav-toggle,
 .slides-nav-present {
-  border: 1px solid hsl(var(--bc) / 0.2);
-  background: hsl(var(--b1));
+  border: 1px solid oklch(var(--bc) / 0.2);
+  background: oklch(var(--b1));
   border-radius: 0.375rem;
   padding: 0.25rem 0.75rem;
   font-size: 0.875rem;
   cursor: pointer;
-  color: hsl(var(--bc));
+  color: oklch(var(--bc));
 }
 .slides-nav-btn:disabled {
   opacity: 0.35;
@@ -512,17 +512,17 @@ onBeforeUnmount(() => {
 .slides-nav-btn:hover:not(:disabled),
 .slides-nav-toggle:hover,
 .slides-nav-present:hover {
-  background: hsl(var(--b2));
+  background: oklch(var(--b2));
 }
 .slides-nav-present {
   margin-left: 0.5rem;
-  background: hsl(var(--p) / 0.15);
-  border-color: hsl(var(--p) / 0.4);
-  color: hsl(var(--p));
+  background: oklch(var(--p) / 0.15);
+  border-color: oklch(var(--p) / 0.4);
+  color: oklch(var(--p));
   font-weight: 500;
 }
 .slides-nav-present:hover {
-  background: hsl(var(--p) / 0.25);
+  background: oklch(var(--p) / 0.25);
 }
 .slides-nav-index {
   font-variant-numeric: tabular-nums;

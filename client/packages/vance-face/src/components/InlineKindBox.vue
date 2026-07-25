@@ -232,7 +232,7 @@ function mimeForKind(kind: string): string {
   opacity: 0.7;
 }
 .kbx-act:hover {
-  background: hsl(var(--bc) / 0.1);
+  background: oklch(var(--bc) / 0.1);
   opacity: 1;
 }
 .kbx-act:disabled {
@@ -246,16 +246,16 @@ function mimeForKind(kind: string): string {
   margin-bottom: 0.4rem;
 }
 .kbx-status--ok {
-  background: hsl(var(--su) / 0.12);
-  color: hsl(var(--su));
+  background: oklch(var(--su) / 0.12);
+  color: oklch(var(--su));
 }
 .kbx-status--err {
-  background: hsl(var(--er) / 0.12);
-  color: hsl(var(--er));
+  background: oklch(var(--er) / 0.12);
+  color: oklch(var(--er));
 }
 .kbx-raw {
   margin: 0;
-  background: hsl(var(--bc) / 0.05);
+  background: oklch(var(--bc) / 0.05);
   padding: 0.5em 0.75em;
   border-radius: 0.25rem;
   overflow-x: auto;

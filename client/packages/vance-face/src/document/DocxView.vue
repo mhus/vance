@@ -119,8 +119,8 @@ watch(() => url.value, () => { void loadDocx(); });
 
 <style scoped>
 .docx-view {
-  background: hsl(var(--b1));
-  border: 1px solid hsl(var(--bc) / 0.15);
+  background: oklch(var(--b1));
+  border: 1px solid oklch(var(--bc) / 0.15);
   border-radius: 0.5rem;
   overflow: hidden;
   display: flex;
@@ -138,33 +138,33 @@ watch(() => url.value, () => { void loadDocx(); });
   opacity: 0.7;
   padding: 1rem;
 }
-.docx-state--err { opacity: 1; color: hsl(var(--er)); }
+.docx-state--err { opacity: 1; color: oklch(var(--er)); }
 
 .docx-toolbar {
   display: flex;
   align-items: center;
   gap: 0.6rem;
   padding: 0.3rem 0.5rem;
-  border-bottom: 1px solid hsl(var(--bc) / 0.1);
-  background: hsl(var(--b2) / 0.4);
+  border-bottom: 1px solid oklch(var(--bc) / 0.1);
+  background: oklch(var(--b2) / 0.4);
   flex-shrink: 0;
 }
 .docx-reload {
   font-size: 0.78rem;
   padding: 0.2rem 0.6rem;
-  border: 1px solid hsl(var(--bc) / 0.2);
+  border: 1px solid oklch(var(--bc) / 0.2);
   border-radius: 0.25rem;
   background: transparent;
   cursor: pointer;
   color: inherit;
 }
 .docx-reload:hover {
-  background: hsl(var(--bc) / 0.08);
+  background: oklch(var(--bc) / 0.08);
 }
 .docx-warnings {
   font-size: 0.75rem;
-  background: hsl(var(--wa) / 0.15);
-  color: hsl(var(--bc) / 0.7);
+  background: oklch(var(--wa) / 0.15);
+  color: oklch(var(--bc) / 0.7);
   padding: 0.3rem 0.6rem;
   border-radius: 0.25rem;
   cursor: help;

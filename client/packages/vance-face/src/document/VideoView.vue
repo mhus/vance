@@ -61,7 +61,7 @@ const mimeType = computed<string>(() => props.document?.mimeType ?? 'video/mp4')
 .video-view__player {
   width: 100%;
   max-height: 32rem;
-  background: hsl(var(--bc) / 0.04);
+  background: oklch(var(--bc) / 0.04);
   border-radius: 0.375rem;
 }
 .video-view--editor .video-view__player {

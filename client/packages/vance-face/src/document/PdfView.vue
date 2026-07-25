@@ -143,20 +143,20 @@ function closeLightbox(): void {
   gap: 0.45rem;
   align-self: flex-start;
   padding: 0.4rem 0.85rem;
-  border: 1px solid hsl(var(--bc) / 0.2);
+  border: 1px solid oklch(var(--bc) / 0.2);
   border-radius: 0.375rem;
-  background: hsl(var(--b1));
+  background: oklch(var(--b1));
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
   transition: background-color 120ms ease, border-color 120ms ease;
 }
 .pdf-view__open-btn:hover {
-  background: hsl(var(--bc) / 0.08);
-  border-color: hsl(var(--bc) / 0.35);
+  background: oklch(var(--bc) / 0.08);
+  border-color: oklch(var(--bc) / 0.35);
 }
 .pdf-view__open-btn:focus-visible {
-  outline: 2px solid hsl(var(--p));
+  outline: 2px solid oklch(var(--p));
   outline-offset: 2px;
 }
 .pdf-view__open-icon {
@@ -177,7 +177,7 @@ function closeLightbox(): void {
   padding: 2rem;
 }
 .pdf-view__lightbox-inner {
-  background: hsl(var(--b1));
+  background: oklch(var(--b1));
   border-radius: 0.5rem;
   padding: 1rem;
   max-width: min(1100px, calc(100vw - 4rem));

@@ -61,7 +61,7 @@ public class HistoryTagBuilder {
      * @param params the params map passed to the tool, used as a path
      *               fallback when the result lacks one.
      * @param result the tool's return map.
-     * @param ctx the invocation scope, used for the {@code SCRATCH:}
+     * @param ctx the invocation scope, used for the {@code WORKSPACE:}
      *            key (which is process-scoped).
      */
     public Set<String> onSuccess(

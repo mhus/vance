@@ -1,7 +1,7 @@
 ---
-triggers: spawn, sub worker, delegate, process_create, marvin, planning
+triggers: spawn, sub worker, delegate, process_spawn, marvin, planning
 summary: When to spawn a sub-worker (Marvin / research / long-running) vs do it yourself.
-requires-tools: process_create
+requires-tools: process_spawn
 ---
 
 # When to spawn another process
@@ -11,7 +11,7 @@ when:
 
 - **The task needs a different skill** that lives in another recipe.
   e.g. you (coding) hit a question like "should we re-architect the
-  auth stack?" → `process_create(recipe='marvin', goal='…')` and
+  auth stack?" → `process_spawn(recipe='marvin', task='…')` and
   wait for the reply.
 - **A long-running subtask would dilute your context.** e.g. "search
   the web for current best-practices on X" → spawn a research worker

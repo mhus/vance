@@ -134,7 +134,7 @@ what is already in the prompt would waste a turn.
 - **Not Marvin.** Marvin spawns sub-processes per plan node and
   aggregates. Frankie stays in one process and updates statuses.
   If your task needs branching, fan-out, or per-step delegation,
-  call `process_create(recipe='marvin', goal='…')` instead and let
+  call `process_spawn(recipe='marvin', task='…')` instead and let
   Marvin plan.
 - **Not Arthur Plan-Mode.** Arthur switches modes (EXPLORING /
   PLANNING / EXECUTING) and filters tools to read-only during

@@ -79,17 +79,17 @@ class VanceScriptApiToolsFilesTest {
     @Test
     void tools_has_respectsDeniedNames() {
         VanceScriptApi api = new VanceScriptApi(
-                toolsWith(Set.of("file_read", "process_create")), null, Set.of("process_create"));
+                toolsWith(Set.of("file_read", "process_spawn")), null, Set.of("process_spawn"));
 
         assertThat(api.tools.has("file_read")).isTrue();
-        assertThat(api.tools.has("process_create")).isFalse();
+        assertThat(api.tools.has("process_spawn")).isFalse();
     }
 
     @Test
     void tools_list_returnsAllowedMinusDenied_sorted() {
         VanceScriptApi api = new VanceScriptApi(
-                toolsWith(Set.of("web_search", "file_read", "process_create")),
-                null, Set.of("process_create"));
+                toolsWith(Set.of("web_search", "file_read", "process_spawn")),
+                null, Set.of("process_spawn"));
 
         assertThat(api.tools.list()).containsExactly("file_read", "web_search");
     }

@@ -11,7 +11,7 @@ Action types:
 - `ANSWER` (`message`, required) — direct reply to the user.
 - `ASK_USER` (`message`, required) — clarification question.
 - `DELEGATE` (`prompt` required; `preset`, `message` optional)
-  — spawn a worker via `process_create`. With `preset` the
+  — spawn a worker via `process_spawn`. With `preset` the
   engine passes it as `recipe=...` (strict — unknown names come
   back as a tool error with suggestions, you retry with a fixed
   name). WITHOUT `preset` the engine omits `recipe` so the tool's
@@ -59,7 +59,7 @@ your chat history.
 `execute_javascript` inline. The script has `vance.tools.call(name,
 params)` and can invoke any tool you can (API calls, doc edits,
 …). Don't `DELEGATE` a one-shot script — a worker would just
-re-spawn `process_create` and stall the chain.
+re-spawn `process_spawn` and stall the chain.
 
 When a worker reports back via `<process-event>`:
 - `summary` → `WAIT`. No play-by-play.
@@ -159,17 +159,17 @@ and avoids paraphrase drift.
 ### `type: "DELEGATE"`
 Required: `prompt`. Optional: `preset`, `message`. Spawn a worker.
 The engine handles the spawn programmatically — you do **not**
-call `process_create` yourself.
+call `process_spawn` yourself.
 
 Two modes:
 
 1. **Explicit recipe** — set `preset` when you are confident which
    recipe fits. The engine spawns it directly via
-   `process_create(recipe=preset, …)`. Pick from the recipe
+   `process_spawn(recipe=preset, …)`. Pick from the recipe
    catalog at the bottom of this prompt (or call `recipe_list`).
 2. **Selector mode** — OMIT `preset` when you only know the task,
    not which recipe should run it. The engine routes through
-   `process_create` with no `recipe` param: a one-shot LLM picks
+   `process_spawn` with no `recipe` param: a one-shot LLM picks
    the matching recipe from the project inventory using the
    engine catalog. If nothing matches, it spawns the **default
    recipe** (→ ford) — Slartibartfast is *not* the catch-all
@@ -752,7 +752,7 @@ order, picking the FIRST branch that fits:
    batch of items, transform data) → `execute_javascript` with
    `vance.tools.call(...)`, inline, in this turn. **Don't**
    `DELEGATE` — the script runs in your own context, and a worker
-   would just spawn another process_create and stall the chain.
+   would just spawn another process_spawn and stall the chain.
    Even if the user says "async" or "in the background": the
    script finishes fast enough.
 3. **Otherwise — genuinely heavy or multi-step** → `DELEGATE`.
@@ -771,7 +771,7 @@ order, picking the FIRST branch that fits:
      follow it verbatim. The skill author knows the task shape
      better than the generic selector.
    - **Otherwise**: prefer `DELEGATE` **without** `preset` so the
-     engine routes through `process_create` with no recipe param
+     engine routes through `process_spawn` with no recipe param
      — the LLM-backed selector matches the task against the
      project's recipe inventory and falls through to the default
      recipe (ford) when nothing fits. Only set `preset` yourself

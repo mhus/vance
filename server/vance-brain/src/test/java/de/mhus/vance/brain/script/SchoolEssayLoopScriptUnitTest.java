@@ -13,12 +13,12 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Unit-level coverage of the {@code school-essay-script-loop-kit}'s
- * {@code write.js}. Pins the orchestration: one {@code process_run}
+ * {@code write.js}. Pins the orchestration: one {@code process_spawn}
  * per chapter, in canonical order, with a steerContent that carries
  * the topic + sources + pros/contras + a growing recap of previous
  * chapters.
  *
- * <p>{@code process_run} is mocked to return a deterministic stub
+ * <p>{@code process_spawn} is mocked to return a deterministic stub
  * body per chapter ("CHAPTER-BODY-FOR-<NAME>"), which is what the
  * harness records as the would-be ASSISTANT reply. That lets us
  * assert the {@code doc_create} payloads and the chapter-recap
@@ -44,7 +44,7 @@ class SchoolEssayLoopScriptUnitTest {
                 .args(samplePayload("Sollten Schulnoten abgeschafft werden?"))
                 .mockTool("doc_create",
                         p -> Map.of("path", p.get("path"), "size", 0))
-                .mockTool("process_run", processRunStub())
+                .mockTool("process_spawn", processRunStub())
                 .build();
 
         ScriptResult result = harness.run();
@@ -54,9 +54,9 @@ class SchoolEssayLoopScriptUnitTest {
         assertThat(value).containsEntry("ok", true)
                 .containsEntry("marker", EXPECTED_MARKER);
 
-        // Exactly 5 process_run calls, exactly in chapter order.
+        // Exactly 5 process_spawn calls, exactly in chapter order.
         List<ToolCall> spawns = harness.toolCalls().stream()
-                .filter(t -> t.name().equals("process_run"))
+                .filter(t -> t.name().equals("process_spawn"))
                 .toList();
         assertThat(spawns).hasSize(5);
         assertThat(spawns).extracting(t -> t.params().get("name"))
@@ -74,15 +74,15 @@ class SchoolEssayLoopScriptUnitTest {
                 .scriptFile(WRITE_JS)
                 .args(samplePayload("Hausaufgaben — pro oder contra?"))
                 .mockTool("doc_create", p -> Map.of())
-                .mockTool("process_run", processRunStub())
+                .mockTool("process_spawn", processRunStub())
                 .build();
 
         harness.run();
 
         ToolCall firstSpawn = harness.toolCalls().stream()
-                .filter(t -> t.name().equals("process_run"))
+                .filter(t -> t.name().equals("process_spawn"))
                 .findFirst().orElseThrow();
-        String steer = (String) firstSpawn.params().get("steerContent");
+        String steer = (String) firstSpawn.params().get("task");
         assertThat(steer)
                 .contains("Hausaufgaben — pro oder contra?")
                 .contains("Pro-Argument 1")          // from samplePayload
@@ -93,7 +93,7 @@ class SchoolEssayLoopScriptUnitTest {
 
     @Test
     void write_each_chapter_sees_recap_of_previous_chapters() throws Exception {
-        // process_run replies with a per-chapter body. The script
+        // process_spawn replies with a per-chapter body. The script
         // builds a recap of all previously-completed chapters and
         // injects it into the next worker's steerContent. We capture
         // each steerContent and assert that the recap grows.
@@ -101,34 +101,34 @@ class SchoolEssayLoopScriptUnitTest {
                 .scriptFile(WRITE_JS)
                 .args(samplePayload("Topic"))
                 .mockTool("doc_create", p -> Map.of())
-                .mockTool("process_run", processRunStub())
+                .mockTool("process_spawn", processRunStub())
                 .build();
 
         harness.run();
 
         List<ToolCall> spawns = harness.toolCalls().stream()
-                .filter(t -> t.name().equals("process_run"))
+                .filter(t -> t.name().equals("process_spawn"))
                 .toList();
 
         // First chapter has the "noch kein Kapitel" sentinel.
-        assertThat((String) spawns.get(0).params().get("steerContent"))
+        assertThat((String) spawns.get(0).params().get("task"))
                 .contains("Noch kein Kapitel geschrieben");
 
         // Second chapter must see chapter #1's recap, but not its own.
-        String secondSteer = (String) spawns.get(1).params().get("steerContent");
+        String secondSteer = (String) spawns.get(1).params().get("task");
         assertThat(secondSteer)
                 .contains("## einleitung")
                 .doesNotContain("## pro");
 
         // Third chapter sees both #1 and #2.
-        String thirdSteer = (String) spawns.get(2).params().get("steerContent");
+        String thirdSteer = (String) spawns.get(2).params().get("task");
         assertThat(thirdSteer)
                 .contains("## einleitung")
                 .contains("## pro")
                 .doesNotContain("## contra");
 
         // Last chapter sees the four predecessors.
-        String fifthSteer = (String) spawns.get(4).params().get("steerContent");
+        String fifthSteer = (String) spawns.get(4).params().get("task");
         assertThat(fifthSteer)
                 .contains("## einleitung")
                 .contains("## pro")
@@ -143,7 +143,7 @@ class SchoolEssayLoopScriptUnitTest {
                 .scriptFile(WRITE_JS)
                 .args(samplePayload("Topic"))
                 .mockTool("doc_create", p -> Map.of())
-                .mockTool("process_run", processRunStub())
+                .mockTool("process_spawn", processRunStub())
                 .build();
 
         ScriptResult result = harness.run();
@@ -164,7 +164,7 @@ class SchoolEssayLoopScriptUnitTest {
         // doc_create calls happen up-front for the meta-files,
         // inline for each chapter, then once for the final assembly.
         // Total 8 — same count as the simpler kit, just interleaved
-        // with the process_run calls.
+        // with the process_spawn calls.
         long writes = harness.toolCalls().stream()
                 .filter(t -> t.name().equals("doc_create"))
                 .count();
@@ -173,13 +173,13 @@ class SchoolEssayLoopScriptUnitTest {
 
     @Test
     void write_final_essay_concatenates_subworker_replies() throws Exception {
-        // Capture each chapter body returned by process_run, then
+        // Capture each chapter body returned by process_spawn, then
         // verify all five appear verbatim in essay/final-essay.md.
         ScriptHarness harness = ScriptHarness.builder()
                 .scriptFile(WRITE_JS)
                 .args(samplePayload("Topic"))
                 .mockTool("doc_create", p -> Map.of())
-                .mockTool("process_run", processRunStub())
+                .mockTool("process_spawn", processRunStub())
                 .build();
 
         harness.run();
@@ -204,7 +204,7 @@ class SchoolEssayLoopScriptUnitTest {
                 .args(samplePayload("Topic"))
                 .mockTool("doc_create", p -> Map.of())
                 // Empty reply on chapter "contra" — third in the order.
-                .mockTool("process_run", params -> {
+                .mockTool("process_spawn", params -> {
                     String name = String.valueOf(params.get("name"));
                     if (name.equals("chapter-contra")) {
                         return Map.of("processId", "p-fail", "status", "FAILED");
@@ -227,12 +227,12 @@ class SchoolEssayLoopScriptUnitTest {
                 .scriptFile(WRITE_JS)
                 .args(noPros)
                 .mockTool("doc_create", p -> Map.of())
-                .mockTool("process_run", processRunStub())
+                .mockTool("process_spawn", processRunStub())
                 .build();
 
         assertThatThrownBy(harness::run)
                 .hasMessageContaining("pros and contras");
-        // No process_run + no doc_create should fire — the
+        // No process_spawn + no doc_create should fire — the
         // validator trips before the loop.
         assertThat(harness.toolCalls()).isEmpty();
     }
@@ -240,7 +240,7 @@ class SchoolEssayLoopScriptUnitTest {
     // ──────────────────── helpers ────────────────────
 
     /**
-     * Builds a {@code process_run} stub that returns a deterministic
+     * Builds a {@code process_spawn} stub that returns a deterministic
      * body per chapter, derived from the {@code name} parameter. The
      * body carries an uppercase marker so the final-essay assertion
      * can pin every chapter's presence by substring.

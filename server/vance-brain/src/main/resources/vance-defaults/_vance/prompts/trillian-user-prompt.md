@@ -22,7 +22,7 @@ The payload carries `taskId` and `description`. Steps:
    is named, use your home project — call `project_list` if you
    need to see what's available.
 2. Spawn a worker in the target project:
-   - **Same project as you (home):** `process_create(name=…,
+   - **Same project as you (home):** `process_spawn(name=…,
      recipe=…, goal=…)`.
    - **Different project:** `cross_process_create(projectId=…,
      name=…, recipe=…, goal=…)`. This is the **only correct way**

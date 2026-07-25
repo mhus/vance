@@ -27,7 +27,7 @@ Everything is anchored to a **tenant**. Inside a tenant:
   invoke meta-tools let you discover anything beyond the primary set.
 - **Use client tools** — when a foot client is connected, tools
   prefixed `client_*` act on the user's machine (filesystem, shell).
-- **Spawn sub-processes** — `process_create` + `process_steer` for
+- **Spawn sub-processes** — `process_spawn` + `process_steer` for
   delegating work in parallel. See `processes` doc.
 - **Search project knowledge** — RAG tools (`rag_*`) over per-project
   indexes. See `tools` doc.

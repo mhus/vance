@@ -198,7 +198,7 @@ params:
        manual exists.
     5. **Spawn for hard plans.** If the task is "refactor the whole
        auth stack" or "decide between architecture A and B", call
-       `process_create(recipe='marvin', goal='…')` and wait for the
+       `process_spawn(recipe='marvin', task='…')` and wait for the
        reply before touching code. Strategic thinking is not your
        strength.
     6. **Notify before destructive.** Before `rm`, `git reset --hard`,

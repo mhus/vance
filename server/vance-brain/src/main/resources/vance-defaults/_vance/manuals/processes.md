@@ -1,6 +1,6 @@
 ---
-triggers: process, sub-process, subprocess, spawn, delegate, delegieren, parallel work, background worker, process_create, process_steer, process_list, process_status, process_history_text, orchestration, Sub-Agent, side task, includeTerminated, geschlossene worker, terminated processes
-summary: Spawning sub-processes (process_create / process_steer / process_list / process_status / process_history_text) — when to delegate work to a side worker, how to discover and inspect them.
+triggers: process, sub-process, subprocess, spawn, delegate, delegieren, parallel work, background worker, process_spawn, process_steer, process_list, process_status, process_history_text, orchestration, Sub-Agent, side task, includeTerminated, geschlossene worker, terminated processes
+summary: Spawning sub-processes (process_spawn / process_steer / process_list / process_status / process_history_text) — when to delegate work to a side worker, how to discover and inspect them.
 ---
 # Sub-processes and orchestration
 
@@ -12,7 +12,7 @@ more sub-processes doing focused background work.
 ## Spawning
 
 ```text
-process_create name=researcher engine=ford goal="Summarise design docs"
+process_spawn name=researcher recipe=ford task="Summarise design docs"
 ```
 
 The new process starts in `READY` and immediately writes its greeting
@@ -39,7 +39,7 @@ process — that would deadlock. Reply to the user normally instead.
 When the user asks for something that needs different expertises or
 parallel work:
 
-1. `process_create` two sub-processes with distinct goals.
+1. `process_spawn` two sub-processes with distinct goals.
 2. `process_steer` each in turn (or in parallel — they're separate
    lanes).
 3. Read their outputs, synthesise, reply to the user.
@@ -48,7 +48,7 @@ parallel work:
 
 A long-lived sub-process that the user (or you) keeps consulting:
 
-1. `process_create name=lawyer engine=ford goal="Read all licence files"`.
+1. `process_spawn name=lawyer recipe=ford task="Read all licence files"`.
 2. Steer it once with the bulk reading task.
 3. From now on, every legal question goes there via `process_steer`.
 
@@ -57,7 +57,7 @@ A long-lived sub-process that the user (or you) keeps consulting:
 Spawn a process to do something slow while you continue the user
 conversation:
 
-1. `process_create name=indexer engine=ford goal="Build a RAG over /docs"`.
+1. `process_spawn name=indexer recipe=ford task="Build a RAG over /docs"`.
 2. Steer it once: `"Walk /docs, ingest each into rag_create+add_scratch_file."`.
 3. Carry on talking to the user. Later, query the resulting RAG.
 

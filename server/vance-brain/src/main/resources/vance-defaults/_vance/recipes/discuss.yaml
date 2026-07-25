@@ -104,7 +104,7 @@ modes:
   NORMAL:
     allowedToolsRemove: *destructive_excludes
     allowedToolsAdd:
-      - process_create
+      - process_spawn
       - doc_write
       - doc_edit
       - doc_append

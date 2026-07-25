@@ -97,7 +97,7 @@ out to be a three-line transform.
 ## Anti-patterns
 
 - Spawning a worker to run a one-shot script. Workers re-spawn
-  `process_create` and stall the chain — use `execute_javascript`
+  `process_spawn` and stall the chain — use `execute_javascript`
   inline instead.
 - Recreating the venv on every Python call. `execute_python`
   reuses the default `_python` RootDir; `python_create` is

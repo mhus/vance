@@ -73,5 +73,5 @@ TodoList — just do the work.
   `manual_read('<name>')` before claiming "I cannot do X".
 - If the task is genuinely too big for one focused worker (e.g.
   requires strategic planning, multi-step research, or a different
-  skill set), call `process_create` to spawn the right sub-worker
+  skill set), call `process_spawn` to spawn the right sub-worker
   and wait for its reply via your inbox.

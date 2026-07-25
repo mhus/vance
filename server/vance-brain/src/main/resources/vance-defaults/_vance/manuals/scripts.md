@@ -86,7 +86,7 @@ let h = vance.process.spawn({
 h.processId;
 ```
 
-Convenience wrapper over `vance.tools.call("process_create", ...)`.
+Convenience wrapper over `vance.tools.call("process_spawn", ...)`.
 Spawn returns immediately — don't synchronously wait on the
 sub-process's result; that's a multi-turn LLM job, not one script.
 

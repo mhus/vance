@@ -1,7 +1,7 @@
 {
   "description": "application/json, column metadata + row heights + per-cell formatting round-trip; $computed overlay is dropped on parse",
   "mime": "application/json",
-  "input": "{\"$meta\":{\"kind\":\"sheet\"},\"schema\":[\"A\",\"B\"],\"columns\":{\"A\":{\"width\":140},\"B\":{\"border\":\"right\"}},\"rowHeights\":{\"1\":40,\"2\":64},\"cells\":[{\"field\":\"A1\",\"data\":\"x\",\"bold\":true,\"align\":\"center\",\"numberFormat\":\"0%\"},{\"field\":\"B1\",\"data\":\"=A1\"}],\"$computed\":{\"computedAt\":\"2026-01-01T00:00:00Z\",\"values\":[{\"field\":\"B1\",\"value\":\"x\",\"type\":\"text\"}]}}",
+  "input": "{\"$meta\":{\"kind\":\"sheet\"},\"schema\":[\"A\",\"B\"],\"columns\":{\"A\":{\"width\":140},\"B\":{\"border\":\"right\"}},\"rowHeights\":{\"1\":40,\"2\":64},\"cells\":[{\"field\":\"A1\",\"data\":\"x\",\"bold\":true,\"align\":\"center\",\"numberFormat\":\"0%\",\"borders\":\"lbrt\"},{\"field\":\"B1\",\"data\":\"=A1\"}],\"$computed\":{\"computedAt\":\"2026-01-01T00:00:00Z\",\"values\":[{\"field\":\"B1\",\"value\":\"x\",\"type\":\"text\"}]}}",
   "expected": {
     "$meta": {
       "kind": "sheet"
@@ -28,7 +28,8 @@
         "data": "x",
         "bold": true,
         "align": "center",
-        "numberFormat": "0%"
+        "numberFormat": "0%",
+        "borders": "trbl"
       },
       {
         "field": "B1",

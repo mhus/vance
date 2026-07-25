@@ -40,6 +40,9 @@ public class SheetSetCellTool implements Tool {
         p.put("numberFormat", Map.of("type", "string",
                 "description", "Excel-style number format code, e.g. '#,##0.00', '0%', '@' (text). "
                         + "Empty string clears."));
+        p.put("borders", Map.of("type", "string",
+                "description", "Cell border edges as a subset of 'trbl' (top/right/bottom/left), "
+                        + "e.g. 'tb' or 'trbl'. Empty string clears."));
         return p;
     }
 
@@ -68,11 +71,13 @@ public class SheetSetCellTool implements Tool {
         String bg = KindToolSupport.paramRawString(params, "background");
         String align = KindToolSupport.paramRawString(params, "align");
         String numberFormat = KindToolSupport.paramRawString(params, "numberFormat");
+        String borders = KindToolSupport.paramRawString(params, "borders");
         Boolean bold = Boolean.TRUE.equals(params.get("bold")) ? Boolean.TRUE : null;
         Boolean italic = Boolean.TRUE.equals(params.get("italic")) ? Boolean.TRUE : null;
         String alignVal = (align != null && !align.isEmpty()
                 && ("left".equals(align) || "center".equals(align) || "right".equals(align)))
                 ? align : null;
+        String bordersVal = normalizeBorders(borders);
 
         SheetDocument sheet = SheetCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         List<SheetCell> cells = new ArrayList<>(sheet.cells().size() + 1);
@@ -82,6 +87,7 @@ public class SheetSetCellTool implements Tool {
                 (bg != null && !bg.isEmpty()) ? bg : null,
                 bold, italic, alignVal,
                 (numberFormat != null && !numberFormat.isEmpty()) ? numberFormat : null,
+                bordersVal,
                 new LinkedHashMap<>());
         for (SheetCell c : sheet.cells()) {
             if (c.field().equals(key)) {
@@ -99,5 +105,16 @@ public class SheetSetCellTool implements Tool {
                 "field", key,
                 "replaced", replaced,
                 "cellCount", cells.size());
+    }
+
+    /** Canonical subset of 'trbl' (top/right/bottom/left), or null if empty. */
+    private static String normalizeBorders(String s) {
+        if (s == null) return null;
+        String in = s.toLowerCase();
+        StringBuilder out = new StringBuilder(4);
+        for (char c : new char[]{'t', 'r', 'b', 'l'}) {
+            if (in.indexOf(c) >= 0) out.append(c);
+        }
+        return out.length() == 0 ? null : out.toString();
     }
 }

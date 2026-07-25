@@ -34,6 +34,8 @@ export interface SheetCell {
   align?: string;
   /** Excel-style number format code, e.g. `#,##0.00`, `0%`, `@`. */
   numberFormat?: string;
+  /** Cell border edges: a subset of `trbl` (top/right/bottom/left). */
+  borders?: string;
   /** Unknown per-cell fields, preserved across round-trip. */
   extra: Record<string, unknown>;
 }
@@ -259,8 +261,16 @@ function isAlign(s: string): boolean {
 }
 
 const CELL_FIELDS = new Set([
-  'field', 'data', 'color', 'background', 'bold', 'italic', 'align', 'numberFormat',
+  'field', 'data', 'color', 'background', 'bold', 'italic', 'align', 'numberFormat', 'borders',
 ]);
+
+/** Canonical subset of `trbl` (top/right/bottom/left); '' when empty. */
+export function normalizeBorders(s: string): string {
+  const inp = s.toLowerCase();
+  let out = '';
+  for (const c of ['t', 'r', 'b', 'l']) if (inp.includes(c)) out += c;
+  return out;
+}
 
 function promoteComputed(raw: unknown): SheetComputed | undefined {
   if (!isObject(raw)) return undefined;
@@ -328,6 +338,10 @@ function promoteCells(raw: unknown): SheetCell[] {
     if (typeof r.numberFormat === 'string' && r.numberFormat.trim()) {
       cell.numberFormat = r.numberFormat.trim();
     }
+    if (typeof r.borders === 'string') {
+      const b = normalizeBorders(r.borders);
+      if (b) cell.borders = b;
+    }
     for (const [k, v] of Object.entries(r)) {
       if (CELL_FIELDS.has(k)) continue;
       cell.extra[k] = v;
@@ -381,6 +395,7 @@ function cellToObject(cell: SheetCell): Record<string, unknown> {
   if (cell.italic === true) obj.italic = true;
   if (cell.align !== undefined) obj.align = cell.align;
   if (cell.numberFormat !== undefined) obj.numberFormat = cell.numberFormat;
+  if (cell.borders !== undefined) obj.borders = cell.borders;
   for (const [k, v] of Object.entries(cell.extra)) {
     if (!(k in obj)) obj[k] = v;
   }

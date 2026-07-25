@@ -10,7 +10,7 @@ import type {
   SheetComputedValue,
   SheetDocument,
 } from './sheetCodec';
-import { columnIndexFromLetter, columnLetterFromIndex } from './sheetCodec';
+import { columnIndexFromLetter, columnLetterFromIndex, normalizeBorders } from './sheetCodec';
 
 /**
  * Editor for `kind: sheet` documents. HTML grid with A1 cell
@@ -88,6 +88,7 @@ function cloneCells(src: SheetCell[]): SheetCell[] {
     italic: c.italic,
     align: c.align,
     numberFormat: c.numberFormat,
+    borders: c.borders,
     extra: { ...c.extra },
   }));
 }
@@ -218,6 +219,7 @@ function cellShouldBeDropped(c: SheetCell): boolean {
     && !c.italic
     && c.align === undefined
     && c.numberFormat === undefined
+    && c.borders === undefined
     && Object.keys(c.extra).length === 0;
 }
 
@@ -602,7 +604,8 @@ const selectionItalic = computed(() =>
 const selectionHasFormat = computed(() =>
   selectedAddresses.value.some((a) => {
     const c = getCell(a);
-    return c?.color || c?.background || c?.bold || c?.italic || c?.align || c?.numberFormat;
+    return c?.color || c?.background || c?.bold || c?.italic || c?.align
+      || c?.numberFormat || c?.borders;
   }));
 
 function toggleBold(): void { applyToSelection({ bold: selectionBold.value ? undefined : true }); }
@@ -642,6 +645,69 @@ function applyToSelection(patch: Partial<SheetCell>): void {
   emitDoc();
 }
 
+/** Like applyToSelection but the patch is computed per cell (needed for
+ *  borders, where each cell's new value depends on its current one). */
+function applyPerCell(patchFn: (addr: string, cell: SheetCell | undefined) => Partial<SheetCell>): void {
+  const addrs = selectedAddresses.value;
+  if (!addrs.length) return;
+  const cells = [...localCells.value];
+  const byField = new Map<string, number>();
+  cells.forEach((c, i) => byField.set(c.field, i));
+  for (const addr of addrs) {
+    const idx = byField.get(addr);
+    const existing = idx != null ? cells[idx] : undefined;
+    const patch = patchFn(addr, existing);
+    if (idx != null) {
+      cells[idx] = { ...cells[idx], ...patch, field: addr };
+    } else {
+      cells.push({ field: addr, data: '', extra: {}, ...patch });
+      byField.set(addr, cells.length - 1);
+    }
+  }
+  localCells.value = cells.filter((c) => !cellShouldBeDropped(c));
+  emitDoc();
+}
+
+// ── Cell borders (per side, additive to column/row borders) ────────
+
+function selectionBorderSide(side: string): boolean {
+  const addrs = selectedAddresses.value;
+  return addrs.length > 0 && addrs.every((a) => (getCell(a)?.borders ?? '').includes(side));
+}
+
+function toggleBorderSide(side: string): void {
+  const all = selectionBorderSide(side);
+  applyPerCell((_addr, cell) => {
+    const cur = cell?.borders ?? '';
+    const next = all ? cur.replace(side, '') : cur + side;
+    return { borders: normalizeBorders(next) || undefined };
+  });
+}
+
+/** Outer frame: enable the outward edges of the cells on the selection's
+ *  perimeter, so a border is drawn around the whole selection. Additive. */
+function applyOuterFrame(): void {
+  const r = selectionRect.value;
+  if (!r) return;
+  applyPerCell((addr, cell) => {
+    const p = cellPos(addr);
+    if (!p) return {};
+    let b = cell?.borders ?? '';
+    if (p.row === r.minRow) b += 't';
+    if (p.row === Math.min(r.maxRow, localRows.value)) b += 'b';
+    if (p.pos === r.minPos) b += 'l';
+    if (p.pos === r.maxPos) b += 'r';
+    return { borders: normalizeBorders(b) || undefined };
+  });
+}
+
+function clearBorders(): void {
+  applyPerCell(() => ({ borders: undefined }));
+}
+
+const selectionHasBorders = computed(() =>
+  selectedAddresses.value.some((a) => getCell(a)?.borders));
+
 function setColor(color: string): void {
   applyToSelection({ color: color && color.length > 0 ? color : undefined });
 }
@@ -654,6 +720,7 @@ function clearCellFormat(): void {
   applyToSelection({
     color: undefined, background: undefined,
     bold: undefined, italic: undefined, align: undefined, numberFormat: undefined,
+    borders: undefined,
   });
 }
 
@@ -769,6 +836,14 @@ function cellStyle(addr: string): Record<string, string> {
   if (c?.bold) out.fontWeight = '700';
   if (c?.italic) out.fontStyle = 'italic';
   if (c?.align) out.textAlign = c.align;
+  const b = c?.borders;
+  if (b) {
+    const line = '2px solid oklch(var(--bc) / 0.75)';
+    if (b.includes('t')) out.borderTop = line;
+    if (b.includes('r')) out.borderRight = line;
+    if (b.includes('b')) out.borderBottom = line;
+    if (b.includes('l')) out.borderLeft = line;
+  }
   return out;
 }
 
@@ -994,6 +1069,53 @@ function applyNumberFormat(raw: string, code: string): string {
               {{ t(f.labelKey) }}
             </option>
           </select>
+        </label>
+        <label>
+          {{ t('documents.sheetView.borders') }}
+          <div class="fmt-row">
+            <button
+              type="button"
+              class="fmt-btn"
+              :class="{ 'fmt-btn--on': selectionBorderSide('t') }"
+              :title="t('documents.sheetView.borderTop')"
+              @click="toggleBorderSide('t')"
+            >▔</button>
+            <button
+              type="button"
+              class="fmt-btn"
+              :class="{ 'fmt-btn--on': selectionBorderSide('l') }"
+              :title="t('documents.sheetView.borderLeft')"
+              @click="toggleBorderSide('l')"
+            >▏</button>
+            <button
+              type="button"
+              class="fmt-btn"
+              :class="{ 'fmt-btn--on': selectionBorderSide('r') }"
+              :title="t('documents.sheetView.borderRight')"
+              @click="toggleBorderSide('r')"
+            >▕</button>
+            <button
+              type="button"
+              class="fmt-btn"
+              :class="{ 'fmt-btn--on': selectionBorderSide('b') }"
+              :title="t('documents.sheetView.borderBottom')"
+              @click="toggleBorderSide('b')"
+            >▁</button>
+            <span class="fmt-sep" aria-hidden="true" />
+            <button
+              type="button"
+              class="fmt-btn"
+              :title="t('documents.sheetView.borderOuter')"
+              @click="applyOuterFrame"
+            >▢</button>
+            <button
+              type="button"
+              class="fmt-btn"
+              :disabled="!selectionHasBorders"
+              :title="t('documents.sheetView.borderClear')"
+              @click="clearBorders"
+            >⌫</button>
+          </div>
         </label>
         <VButton
           size="sm"

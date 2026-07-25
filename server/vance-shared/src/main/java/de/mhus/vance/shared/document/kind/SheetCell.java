@@ -14,9 +14,11 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Optional per-cell formatting: {@code color}/{@code background}
  * (HTML hex), {@code bold}/{@code italic}, {@code align}
- * ({@code left|center|right}) and {@code numberFormat} (an Excel-style
- * format code, e.g. {@code "#,##0.00"}, {@code "0%"}, {@code "@"}). All
- * sparse — only non-default values are stored.
+ * ({@code left|center|right}), {@code numberFormat} (an Excel-style
+ * format code, e.g. {@code "#,##0.00"}, {@code "0%"}, {@code "@"}) and
+ * {@code borders} (a subset of {@code "trbl"} — the cell edges that draw
+ * a border, additive to column/row borders). All sparse — only
+ * non-default values are stored.
  *
  * <p>Spec: {@code specification/doc-kind-sheet.md} §2.1.
  */
@@ -29,6 +31,7 @@ public record SheetCell(
         @Nullable Boolean italic,
         @Nullable String align,
         @Nullable String numberFormat,
+        @Nullable String borders,
         Map<String, Object> extra) {
 
     public SheetCell {
@@ -40,6 +43,6 @@ public record SheetCell(
     /** Backward-compatible constructor without the extended formatting fields. */
     public SheetCell(String field, String data, @Nullable String color,
                      @Nullable String background, Map<String, Object> extra) {
-        this(field, data, color, background, null, null, null, null, extra);
+        this(field, data, color, background, null, null, null, null, null, extra);
     }
 }

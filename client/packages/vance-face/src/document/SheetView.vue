@@ -182,8 +182,12 @@ function startEdit(addr: string, initial?: string): void {
 }
 
 function cancelEdit(): void {
+  const addr = editingAddr.value;
   editingAddr.value = null;
   editBuffer.value = '';
+  // Return focus to the cell button so arrow-key navigation resumes
+  // (onCellKeydown only fires while the button — not the input — holds focus).
+  if (addr) focusCell(addr);
 }
 
 function commitEdit(): void {
@@ -466,12 +470,14 @@ function onEditKeydown(event: KeyboardEvent, addr: string): void {
   if (event.key === 'Enter') {
     event.preventDefault();
     commitEdit();
-    let target = nextAddr(addr, 'down');
-    if (!target) {
-      addRowAppend();
-      target = nextAddr(addr, 'down');
-    }
-    if (target) void nextTick(() => startEdit(target!));
+    // Commit and drop back into navigation mode on the cell below
+    // (Excel-like) — Shift+Enter goes up. Arrow keys then navigate.
+    const dir = event.shiftKey ? 'up' : 'down';
+    if (dir === 'down' && !nextAddr(addr, 'down')) addRowAppend();
+    void nextTick(() => {
+      selectedAddr.value = addr;
+      moveSelection(dir);
+    });
     return;
   }
   if (event.key === 'Escape') {
@@ -482,13 +488,13 @@ function onEditKeydown(event: KeyboardEvent, addr: string): void {
   if (event.key === 'Tab') {
     event.preventDefault();
     commitEdit();
+    // Commit and drop back into navigation mode on the next cell sideways.
     const dir = event.shiftKey ? 'left' : 'right';
-    let target = nextAddr(addr, dir);
-    if (!target && !event.shiftKey) {
-      addRowAppend();
-      target = nextAddr(addr, 'right');
-    }
-    if (target) void nextTick(() => startEdit(target!));
+    if (dir === 'right' && !nextAddr(addr, 'right')) addRowAppend();
+    void nextTick(() => {
+      selectedAddr.value = addr;
+      moveSelection(dir);
+    });
   }
 }
 
@@ -506,12 +512,9 @@ function addColumnAppend(): void {
   emitDoc();
 }
 
-/** Insert an empty column to the right of the active column (Excel-style);
- *  appends at the end when no column/cell is selected. */
-function insertColumnRight(): void {
-  const col = activeColumn.value;
-  if (!col) { addColumnAppend(); return; }
-  const insertIdx = columnIndexFromLetter(col) + 1; // 1-based position of the new column
+/** Insert an empty column at the given 1-based position, shifting the
+ *  column at that index and everything to its right one letter over. */
+function insertColumnAt(insertIdx: number): void {
   localCells.value = localCells.value.map((c) => {
     const m = /^([A-Z]+)([0-9]+)$/.exec(c.field);
     if (!m) return c;
@@ -530,17 +533,30 @@ function insertColumnRight(): void {
   emitDoc();
 }
 
+/** Insert an empty column to the right of the active column (Excel-style);
+ *  appends at the end when no column/cell is selected. */
+function insertColumnRight(): void {
+  const col = activeColumn.value;
+  if (!col) { addColumnAppend(); return; }
+  insertColumnAt(columnIndexFromLetter(col) + 1);
+}
+
+/** Insert an empty column to the left of the active column; appends at
+ *  the end when no column/cell is selected. */
+function insertColumnLeft(): void {
+  const col = activeColumn.value;
+  if (!col) { addColumnAppend(); return; }
+  insertColumnAt(columnIndexFromLetter(col));
+}
+
 function addRowAppend(): void {
   localRows.value = localRows.value + 1;
   emitDoc();
 }
 
-/** Insert an empty row below the active row (Excel-style); appends at the
- *  end when no row/cell is selected. */
-function insertRowBelow(): void {
-  const at = activeRow.value;
-  if (at == null) { addRowAppend(); return; }
-  const insertRow = at + 1;
+/** Insert an empty row at the given 1-based position, shifting the row at
+ *  that index and everything below it down by one. */
+function insertRowAt(insertRow: number): void {
   localCells.value = localCells.value.map((c) => {
     const m = /^([A-Z]+)([0-9]+)$/.exec(c.field);
     if (!m) return c;
@@ -561,6 +577,22 @@ function insertRowBelow(): void {
   selectedRow.value = insertRow;
   selectedAddr.value = null;
   emitDoc();
+}
+
+/** Insert an empty row below the active row (Excel-style); appends at the
+ *  end when no row/cell is selected. */
+function insertRowBelow(): void {
+  const at = activeRow.value;
+  if (at == null) { addRowAppend(); return; }
+  insertRowAt(at + 1);
+}
+
+/** Insert an empty row above the active row; appends at the end when no
+ *  row/cell is selected. */
+function insertRowAbove(): void {
+  const at = activeRow.value;
+  if (at == null) { addRowAppend(); return; }
+  insertRowAt(at);
 }
 
 function deleteSelectedRow(): void {
@@ -1192,29 +1224,41 @@ function applyNumberFormat(raw: string, code: string): string {
       <VButton
         size="sm"
         variant="ghost"
+        :title="t('documents.sheetView.insertRowAbove')"
+        @click="insertRowAbove"
+      ><span class="ico">▭↑</span></VButton>
+      <VButton
+        size="sm"
+        variant="ghost"
         :title="t('documents.sheetView.insertRow')"
         @click="insertRowBelow"
-      ><span class="ico">＋▭</span></VButton>
+      ><span class="ico">▭↓</span></VButton>
+      <VButton
+        size="sm"
+        variant="ghost"
+        :title="t('documents.sheetView.insertColumnLeft')"
+        @click="insertColumnLeft"
+      ><span class="ico">←▯</span></VButton>
       <VButton
         size="sm"
         variant="ghost"
         :title="t('documents.sheetView.insertColumn')"
         @click="insertColumnRight"
-      ><span class="ico">＋▯</span></VButton>
+      ><span class="ico">▯→</span></VButton>
       <VButton
         size="sm"
         variant="ghost"
         :disabled="activeRow == null"
         :title="t('documents.sheetView.deleteRow')"
         @click="deleteSelectedRow"
-      ><span class="ico">－▭</span></VButton>
+      ><span class="ico ico--danger">▭✕</span></VButton>
       <VButton
         size="sm"
         variant="ghost"
         :disabled="!activeColumn || localSchema.length <= 1"
         :title="t('documents.sheetView.deleteColumn')"
         @click="deleteSelectedColumn"
-      ><span class="ico">－▯</span></VButton>
+      ><span class="ico ico--danger">▯✕</span></VButton>
       <VButton
         v-if="activeColumn"
         size="sm"
@@ -1531,6 +1575,9 @@ function applyNumberFormat(raw: string, code: string): string {
   font-family: ui-monospace, monospace;
   font-size: 0.95rem;
   letter-spacing: -0.02em;
+}
+.ico--danger {
+  color: oklch(var(--er));
 }
 .hidden-file {
   display: none;

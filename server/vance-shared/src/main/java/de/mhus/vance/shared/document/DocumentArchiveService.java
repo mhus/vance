@@ -120,6 +120,73 @@ public class DocumentArchiveService {
     }
 
     /**
+     * Snapshot {@code doc} into a new archive entry <em>without</em> stealing
+     * the live document's blob. Unlike {@link #archiveCurrent} — which
+     * pointer-moves the {@code storageId} because the overwrite path writes a
+     * fresh live blob immediately afterwards — this duplicates the blob so the
+     * live document keeps its own copy. Used by the manual "create version now"
+     * action ({@link DocumentService#createVersionNow}) where no new content
+     * follows the snapshot.
+     *
+     * <p>Storage-ownership stays exclusive: the archive gets a freshly
+     * {@linkplain StorageService#duplicate duplicated} blob, the live document
+     * keeps its original. The passed-in {@code doc} is left untouched.
+     *
+     * @return the persisted archive entry.
+     */
+    public DocumentArchiveDocument archiveSnapshot(DocumentDocument doc) {
+        if (doc.getId() == null) {
+            throw new IllegalArgumentException(
+                    "Cannot archive a transient document (id == null)");
+        }
+        if (doc.getLineageId() == null || doc.getLineageId().isBlank()) {
+            throw new IllegalArgumentException(
+                    "Cannot archive document id='" + doc.getId()
+                            + "' without lineageId");
+        }
+        String liveStorageId = doc.getStorageId();
+        String archiveStorageId = null;
+        if (liveStorageId != null) {
+            archiveStorageId = storageService.duplicate(liveStorageId, doc.getTenantId());
+            if (archiveStorageId == null) {
+                throw new IllegalStateException(
+                        "Failed to duplicate storage blob '" + liveStorageId
+                                + "' for snapshot — document id='" + doc.getId() + "'");
+            }
+        }
+        DocumentArchiveDocument entry = DocumentArchiveDocument.builder()
+                .lineageId(doc.getLineageId())
+                .originalDocumentId(doc.getId())
+                .tenantId(doc.getTenantId())
+                .projectId(doc.getProjectId())
+                .path(doc.getPath())
+                .name(doc.getName())
+                .title(doc.getTitle())
+                .tags(doc.getTags() == null
+                        ? new java.util.ArrayList<>()
+                        : new java.util.ArrayList<>(doc.getTags()))
+                .mimeType(doc.getMimeType())
+                .size(doc.getSize())
+                .storageId(archiveStorageId)
+                .compressed(doc.isCompressed())
+                .kind(doc.getKind())
+                .headers(doc.getHeaders() == null
+                        ? new LinkedHashMap<>()
+                        : new LinkedHashMap<>(doc.getHeaders()))
+                .createdBy(doc.getCreatedBy())
+                .archivedAt(Instant.now())
+                .notes(doc.getNotes() == null
+                        ? new LinkedHashMap<>()
+                        : new LinkedHashMap<>(doc.getNotes()))
+                .build();
+        DocumentArchiveDocument saved = repository.save(entry);
+        log.info("Snapshotted document tenantId='{}' projectId='{}' path='{}' lineageId='{}' archiveId='{}' archivedAt='{}'",
+                saved.getTenantId(), saved.getProjectId(), saved.getPath(),
+                saved.getLineageId(), saved.getId(), saved.getArchivedAt());
+        return saved;
+    }
+
+    /**
      * Materialise the body of an archive entry. Inline entries return a
      * fresh {@link ByteArrayInputStream}; storage-backed entries return
      * the stream from {@link StorageService#load}. Caller closes.
@@ -268,6 +335,21 @@ public class DocumentArchiveService {
         if (lineageId == null || lineageId.isBlank()) return List.of();
         return repository.findByTenantIdAndProjectIdAndLineageIdOrderByArchivedAtDesc(
                 tenantId, projectId, lineageId);
+    }
+
+    /**
+     * The most recent archive entry for the lineage, or {@code null} when the
+     * lineage has no versions yet. Used by the manual "create version now"
+     * content-diff guard — a single indexed lookup instead of loading the
+     * whole list.
+     */
+    public @Nullable DocumentArchiveDocument findLatestForLineage(
+            String tenantId, String projectId, String lineageId) {
+        if (lineageId == null || lineageId.isBlank()) return null;
+        return repository
+                .findFirstByTenantIdAndProjectIdAndLineageIdOrderByArchivedAtDesc(
+                        tenantId, projectId, lineageId)
+                .orElse(null);
     }
 
     /**

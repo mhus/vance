@@ -12,6 +12,10 @@ interface DocumentArchiveRepository extends MongoRepository<DocumentArchiveDocum
     List<DocumentArchiveDocument> findByTenantIdAndProjectIdAndLineageIdOrderByArchivedAtDesc(
             String tenantId, String projectId, String lineageId);
 
+    java.util.Optional<DocumentArchiveDocument>
+            findFirstByTenantIdAndProjectIdAndLineageIdOrderByArchivedAtDesc(
+                    String tenantId, String projectId, String lineageId);
+
     long countByTenantIdAndProjectIdAndLineageId(
             String tenantId, String projectId, String lineageId);
 

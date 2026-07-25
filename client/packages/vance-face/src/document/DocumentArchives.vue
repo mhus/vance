@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { VAlert, VButton, VModal } from '@/components';
 import { useDocumentArchives } from '@/composables/useDocumentArchives';
 import type { DocumentDto } from '@vance/generated';
@@ -28,6 +29,7 @@ const emit = defineEmits<{
   (e: 'update:count', count: number): void;
 }>();
 
+const { t } = useI18n();
 const archives = useDocumentArchives();
 const expanded = ref(false);
 
@@ -37,9 +39,14 @@ const confirmDelete = ref<string | null>(null);
 const confirmRestore = ref<string | null>(null);
 const acting = ref(false);
 
+// Transient feedback for the manual "create version now" action (e.g. the
+// "no changes, nothing to snapshot" case where no list row appears).
+const flash = ref<string | null>(null);
+
 watch(
   () => props.document?.id,
   async (newId) => {
+    flash.value = null;
     if (!newId) {
       archives.items.value = [];
       archives.clearPreview();
@@ -79,6 +86,24 @@ async function deleteArchive(): Promise<void> {
   }
 }
 
+async function createVersion(): Promise<void> {
+  if (!props.document) return;
+  acting.value = true;
+  flash.value = null;
+  try {
+    const outcome = await archives.createNow(props.document.id);
+    if (outcome === 'created') {
+      flash.value = t('documents.archives.createdOk');
+    } else if (outcome === 'unchanged') {
+      flash.value = t('documents.archives.createdUnchanged');
+    } else if (outcome === 'disabled') {
+      flash.value = t('documents.archives.createdDisabled');
+    }
+  } finally {
+    acting.value = false;
+  }
+}
+
 async function restoreArchive(): Promise<void> {
   if (!props.document || !confirmRestore.value) return;
   acting.value = true;
@@ -113,6 +138,19 @@ async function restoreArchive(): Promise<void> {
       <VAlert v-if="archives.error.value" variant="error">
         <span>{{ archives.error.value }}</span>
       </VAlert>
+
+      <div class="flex items-center justify-between gap-3">
+        <VButton
+          size="sm"
+          variant="primary"
+          :loading="acting"
+          :disabled="acting || !document"
+          @click="createVersion"
+        >
+          {{ $t('documents.archives.createNow') }}
+        </VButton>
+        <span v-if="flash" class="text-xs opacity-70">{{ flash }}</span>
+      </div>
 
       <p v-if="!archives.loading.value && count === 0" class="text-sm italic opacity-60">
         {{ $t('documents.archives.empty') }}

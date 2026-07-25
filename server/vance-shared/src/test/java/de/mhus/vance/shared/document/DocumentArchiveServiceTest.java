@@ -120,6 +120,53 @@ class DocumentArchiveServiceTest {
         assertThat(saved.getNotes()).isNotSameAs(doc.getNotes());
     }
 
+    // ──── archiveSnapshot ──────────────────────────────────────────────
+
+    @Test
+    void archiveSnapshot_storageBacked_duplicatesBlobAndKeepsLivePointer() {
+        DocumentDocument doc = baseDoc()
+                .storageId("blob-1")
+                .size(1024)
+                .build();
+        doc.setId("doc-1");
+        doc.setLineageId("lin-1");
+        when(storageService.duplicate("blob-1", "t1")).thenReturn("blob-copy");
+
+        DocumentArchiveDocument saved = service.archiveSnapshot(doc);
+
+        // Archive got a fresh copy of the blob…
+        assertThat(saved.getStorageId()).isEqualTo("blob-copy");
+        assertThat(saved.getLineageId()).isEqualTo("lin-1");
+        assertThat(saved.getOriginalDocumentId()).isEqualTo("doc-1");
+        // …and the live document keeps its own original blob (no pointer-move).
+        assertThat(doc.getStorageId()).isEqualTo("blob-1");
+        verify(storageService, times(1)).duplicate("blob-1", "t1");
+    }
+
+    @Test
+    void archiveSnapshot_duplicateFailure_propagates() {
+        DocumentDocument doc = baseDoc().storageId("blob-x").size(10).build();
+        doc.setId("doc-x");
+        doc.setLineageId("lin-x");
+        when(storageService.duplicate("blob-x", "t1")).thenReturn(null);
+
+        assertThatThrownBy(() -> service.archiveSnapshot(doc))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("duplicate");
+        verify(repository, never()).save(any(DocumentArchiveDocument.class));
+    }
+
+    @Test
+    void archiveSnapshot_rejectsDocumentWithoutLineage() {
+        DocumentDocument doc = baseDoc().storageId("blob-x").build();
+        doc.setId("doc-3");
+        doc.setLineageId("");
+
+        assertThatThrownBy(() -> service.archiveSnapshot(doc))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("lineageId");
+    }
+
     // ──── restore ───────────────────────────────────────────────────────
 
     @Test

@@ -1984,6 +1984,117 @@ public class DocumentService {
         return saved;
     }
 
+    /**
+     * Manually snapshot the current live document as a new archive version —
+     * the "create version now" button in the web UI. Deliberately
+     * <em>bypasses the min-version-interval cooldown</em> (an explicit user
+     * action, not an autosave burst) but keeps the content-diff guard: if the
+     * current content is byte-identical to the most recent archived version, no
+     * new version is created. That avoids piling up identical versions when the
+     * user clicks the button repeatedly.
+     *
+     * <p>Honors the archive on/off cascade (operator kill-switch +
+     * {@value #SETTING_ARCHIVE_ENABLED} project setting): archiving disabled ⇒
+     * never creates a version.
+     *
+     * <p>Uses {@link DocumentArchiveService#archiveSnapshot} (blob-duplicate),
+     * not {@code archiveCurrent} (blob pointer-move) — no content is written
+     * after the snapshot, so the live document must keep its own blob.
+     *
+     * @return a {@link CreateVersionResult} describing whether a version was
+     *         created and why not, when it was not.
+     */
+    public CreateVersionResult createVersionNow(
+            String docId, de.mhus.vance.shared.permission.WriteActor actor) {
+        DocumentDocument doc = repository.findById(docId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Unknown document id='" + docId + "'"));
+        enforceWrite(doc.getTenantId(), doc.getProjectId(), doc.getPath(),
+                de.mhus.vance.shared.permission.Action.WRITE, actor);
+        enforcePrivilegedAdmin(doc, actor);
+
+        // On/off cascade — identical to shouldArchiveOnSave(), minus the
+        // interval check (that's the whole point of the manual button).
+        if (!archiveEnabledDefault) {
+            return CreateVersionResult.notCreated(CreateVersionResult.Reason.DISABLED);
+        }
+        boolean projectEnabled = settingService.getBooleanValueCascade(
+                doc.getTenantId(), doc.getProjectId(), /*thinkProcessId*/ null,
+                SETTING_ARCHIVE_ENABLED, /*default*/ true);
+        if (!projectEnabled) {
+            return CreateVersionResult.notCreated(CreateVersionResult.Reason.DISABLED);
+        }
+
+        // Backfill lineage for docs created before the versioning feature —
+        // same lazy path as the update() flow.
+        if (doc.getLineageId() == null || doc.getLineageId().isBlank()) {
+            doc.setLineageId(java.util.UUID.randomUUID().toString());
+        }
+
+        // Content-diff against the most recent archived version. No archive yet
+        // ⇒ nothing to compare, always create the first version.
+        DocumentArchiveDocument latest = archiveService.findLatestForLineage(
+                doc.getTenantId(), doc.getProjectId(), doc.getLineageId());
+        if (latest != null && !isContentDifferentFromArchive(doc, latest)) {
+            return CreateVersionResult.notCreated(CreateVersionResult.Reason.UNCHANGED);
+        }
+
+        DocumentArchiveDocument saved = archiveService.archiveSnapshot(doc);
+        doc.setLastArchivedAt(Instant.now());
+        repository.save(doc);
+        return CreateVersionResult.created(saved);
+    }
+
+    /**
+     * {@code true} when the live document's current body differs from the
+     * archived version's body. Cheap size-check first; falls back to a full
+     * byte compare only when sizes match. A read failure on either side is
+     * treated as "different" — better a redundant version than a silently
+     * skipped one.
+     */
+    private boolean isContentDifferentFromArchive(
+            DocumentDocument doc, DocumentArchiveDocument archive) {
+        if (doc.getSize() != archive.getSize()) return true;
+        try (InputStream live = loadContent(doc);
+                InputStream archived = archiveService.loadContent(archive)) {
+            byte[] liveBytes = live.readAllBytes();
+            byte[] archivedBytes = archived.readAllBytes();
+            return !java.util.Arrays.equals(liveBytes, archivedBytes);
+        } catch (IOException | RuntimeException e) {
+            log.debug("isContentDifferentFromArchive: read failed for id='{}' archiveId='{}', "
+                            + "treating as changed: {}",
+                    doc.getId(), archive.getId(), e.toString());
+            return true;
+        }
+    }
+
+    /**
+     * Outcome of {@link #createVersionNow}. {@link #archive} is non-null only
+     * when {@link #created} is {@code true}.
+     */
+    public record CreateVersionResult(
+            boolean created,
+            @Nullable DocumentArchiveDocument archive,
+            Reason reason) {
+
+        public enum Reason {
+            /** A new archive version was written. */
+            CREATED,
+            /** Live content is byte-identical to the latest version — skipped. */
+            UNCHANGED,
+            /** Archiving is turned off (operator kill-switch or project setting). */
+            DISABLED
+        }
+
+        static CreateVersionResult created(DocumentArchiveDocument archive) {
+            return new CreateVersionResult(true, archive, Reason.CREATED);
+        }
+
+        static CreateVersionResult notCreated(Reason reason) {
+            return new CreateVersionResult(false, null, reason);
+        }
+    }
+
     /** Best-effort blob delete invoked after an
      *  inline→storage or storage→storage update has rewritten
      *  the doc's storageId. Failure to delete leaves an orphan

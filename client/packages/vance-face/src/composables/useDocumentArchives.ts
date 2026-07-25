@@ -1,5 +1,6 @@
 import { ref, type Ref } from 'vue';
 import type {
+  DocumentArchiveCreateResponse,
   DocumentArchiveDto,
   DocumentArchiveListResponse,
   DocumentArchiveSummary,
@@ -29,6 +30,7 @@ export function useDocumentArchives(): {
   clearPreview: () => void;
   remove: (documentId: string, archiveId: string) => Promise<boolean>;
   restore: (documentId: string, archiveId: string) => Promise<DocumentDto | null>;
+  createNow: (documentId: string) => Promise<'created' | 'unchanged' | 'disabled' | null>;
 } {
   const items = ref<DocumentArchiveSummary[]>([]);
   const loading = ref(false);
@@ -145,6 +147,37 @@ export function useDocumentArchives(): {
     }
   }
 
+  /**
+   * Manually create a new version of {@code documentId} — the "create version
+   * now" button. The server bypasses the min-interval cooldown but skips the
+   * write when the current content is unchanged vs. the latest version. On a
+   * created version the list is refreshed. Returns the outcome so the caller
+   * can surface feedback ({@code 'unchanged'} = nothing to snapshot), or
+   * {@code null} on error (banner set via {@link error}).
+   */
+  async function createNow(
+    documentId: string,
+  ): Promise<'created' | 'unchanged' | 'disabled' | null> {
+    loading.value = true;
+    error.value = null;
+    try {
+      const res = await brainFetch<DocumentArchiveCreateResponse>(
+        'POST',
+        `documents/${encodeURIComponent(documentId)}/archives`,
+      );
+      if (res.created) {
+        await load(documentId);
+        return 'created';
+      }
+      return res.reason === 'DISABLED' ? 'disabled' : 'unchanged';
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to create version.';
+      return null;
+    } finally {
+      loading.value = false;
+    }
+  }
+
   return {
     items,
     loading,
@@ -156,5 +189,6 @@ export function useDocumentArchives(): {
     clearPreview,
     remove,
     restore,
+    createNow,
   };
 }

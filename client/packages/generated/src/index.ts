@@ -42,6 +42,7 @@ export * from './python/PythonExecutionStatus';
 export * from './eddie/ChannelMode';
 export * from './eddie/SwitchToNotification';
 
+export * from './documents/DocumentArchiveCreateResponse';
 export * from './documents/DocumentArchiveDto';
 export * from './documents/DocumentArchiveListResponse';
 export * from './documents/DocumentArchiveSummary';

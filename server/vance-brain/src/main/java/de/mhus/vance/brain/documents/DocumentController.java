@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.documents;
 
+import de.mhus.vance.api.documents.DocumentArchiveCreateResponse;
 import de.mhus.vance.api.documents.DocumentArchiveDto;
 import de.mhus.vance.api.documents.DocumentArchiveListResponse;
 import de.mhus.vance.api.documents.DocumentArchiveSummary;
@@ -712,6 +713,34 @@ public class DocumentController {
     }
 
     // ──────────────────── Archive endpoints ────────────────────
+
+    /**
+     * Manually snapshot the current live document as a new version — the
+     * "create version now" button. Bypasses the min-version-interval cooldown
+     * (explicit user action) but keeps the content-diff guard: an unchanged
+     * document does not produce a duplicate version. WRITE permission is
+     * enforced inside {@link DocumentService#createVersionNow}.
+     */
+    @PostMapping("/brain/{tenant}/documents/{id}/archives")
+    public DocumentArchiveCreateResponse createArchive(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("id") String id,
+            HttpServletRequest httpRequest) {
+        loadDocumentForTenant(tenant, id);
+        DocumentService.CreateVersionResult result;
+        try {
+            result = documentService.createVersionNow(id, actor(httpRequest));
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+        }
+        return DocumentArchiveCreateResponse.builder()
+                .created(result.created())
+                .reason(result.reason().name())
+                .archive(result.archive() == null
+                        ? null
+                        : toArchiveSummary(result.archive()))
+                .build();
+    }
 
     /**
      * List archived versions of {@code id}, newest first. The body also

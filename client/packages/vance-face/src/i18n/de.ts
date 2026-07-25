@@ -542,6 +542,10 @@ export default {
     archives: {
       heading: 'Versionen',
       empty: 'Noch keine archivierten Versionen — sie erscheinen nach der nächsten Bearbeitung.',
+      createNow: 'Neue Version erstellen',
+      createdOk: 'Neue Version erstellt.',
+      createdUnchanged: 'Keine Änderung seit der letzten Version — nichts zu speichern.',
+      createdDisabled: 'Versionierung ist für dieses Projekt deaktiviert.',
       restore: 'Wiederherstellen',
       delete: 'Löschen',
       cancel: 'Abbrechen',

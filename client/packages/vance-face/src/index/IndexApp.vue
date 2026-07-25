@@ -22,6 +22,7 @@ import {
 } from '@/platform';
 import { setUiLocale } from '@/i18n';
 import { EditorShell, VAlert, VanceLogo, VButton, VCard, VCheckbox, VInput } from '@/components';
+import PanicEasterEgg from './PanicEasterEgg.vue';
 
 const { t } = useI18n();
 
@@ -261,6 +262,10 @@ function readNextParam(): string | null {
 </script>
 
 <template>
+  <!-- Konami-code easter egg (↑↑↓↓←→←→BA). Self-contained overlay,
+       armed on this page only. Renders nothing until triggered. -->
+  <PanicEasterEgg />
+
   <!-- "Open in app" banner — only on the login page, only on iOS,
        only when not already running inside the Facelift wrapper.
        Slim, dismissible-by-tap: a single tap fires the

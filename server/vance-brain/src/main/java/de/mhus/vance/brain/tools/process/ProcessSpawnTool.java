@@ -330,8 +330,7 @@ public class ProcessSpawnTool implements Tool {
                 String msg = result.errorMessage() == null
                         ? "process_spawn failed" : result.errorMessage();
                 Map<String, Object> output = result.output();
-                if (output != null && "unknown recipe ".regionMatches(0, msg, 0,
-                        Math.min(msg.length(), "unknown recipe ".length()))) {
+                if (output != null && isUnknownRecipeOutput(output)) {
                     throw new ToolException(composeUnknownRecipeMessage(requestedRecipe, output));
                 }
                 throw new ToolException("process_spawn: " + msg);
@@ -363,8 +362,7 @@ public class ProcessSpawnTool implements Tool {
             String msg = result.errorMessage() == null
                     ? "process_spawn failed" : result.errorMessage();
             Map<String, Object> output = result.output();
-            if (output != null && "unknown recipe ".regionMatches(0, msg, 0,
-                    Math.min(msg.length(), "unknown recipe ".length()))) {
+            if (output != null && isUnknownRecipeOutput(output)) {
                 throw new ToolException(composeUnknownRecipeMessage(requestedRecipe, output));
             }
             throw new ToolException("process_spawn: spawn failed (" + result.outcome()
@@ -457,6 +455,20 @@ public class ProcessSpawnTool implements Tool {
     }
 
     // ── shared helpers ────────────────────────────────────────────────────
+
+    /**
+     * Detects the unknown-recipe soft-error shape structurally, via the marker
+     * keys {@code SpawnActionExecutor.buildUnknownRecipeOutput} always sets
+     * ({@code requested}/{@code suggestions}/{@code available}). Replaces the
+     * previous case-sensitive string-match on the error message, which silently
+     * failed against the capital-U {@code "Unknown recipe '…'"} message and left
+     * {@link #composeUnknownRecipeMessage} unreachable.
+     */
+    private static boolean isUnknownRecipeOutput(Map<String, Object> output) {
+        return output.containsKey("requested")
+                && output.containsKey("suggestions")
+                && output.containsKey("available");
+    }
 
     private static String composeUnknownRecipeMessage(
             @Nullable String requested, Map<String, Object> output) {

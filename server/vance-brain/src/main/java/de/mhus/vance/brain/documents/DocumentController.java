@@ -840,6 +840,35 @@ public class DocumentController {
     }
 
     /**
+     * Restore an archived version into a NEW document alongside the live one
+     * ("restore as copy") — the live document is left untouched. Pass
+     * {@code path} to choose the target; omit it to auto-generate
+     * {@code foo-version-<N>-<date>.<ext>} next to the source. Returns the
+     * new document.
+     */
+    @PostMapping("/brain/{tenant}/documents/{id}/archives/{archiveId}/restore-copy")
+    public DocumentDto restoreArchiveToNewDocument(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("id") String id,
+            @PathVariable("archiveId") String archiveId,
+            @RequestParam(value = "path", required = false) @Nullable String path,
+            HttpServletRequest httpRequest) {
+        DocumentDocument doc = loadDocumentForTenant(tenant, id);
+        // Fast 404 if the archive id does not belong to this document's lineage.
+        loadArchiveForLineage(doc, archiveId);
+        DocumentDocument created;
+        try {
+            created = documentService.restoreArchiveToNewDocument(
+                    id, archiveId, path, actor(httpRequest));
+        } catch (DocumentService.DocumentAlreadyExistsException e) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+        }
+        return toDto(created);
+    }
+
+    /**
      * Delete one archived version permanently. The live document is
      * untouched. Idempotent against unknown archive ids — returns 404
      * the second time.

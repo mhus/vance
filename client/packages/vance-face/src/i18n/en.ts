@@ -551,6 +551,11 @@ export default {
       createdUnchanged: 'No changes since the last version — nothing to save.',
       createdDisabled: 'Versioning is disabled for this project.',
       restore: 'Restore',
+      restoreCopy: 'To new file',
+      copiedOk: 'Restored into new file: {path}',
+      confirmCopyTitle: 'Restore into a new file?',
+      confirmCopyBody:
+        'A new document is created next to the current one (name auto-generated, e.g. foo-version-3-<date>.yaml). The current document is not changed and nothing is overwritten.',
       delete: 'Delete',
       cancel: 'Cancel',
       close: 'Close',

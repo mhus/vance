@@ -1984,6 +1984,117 @@ public class DocumentService {
         return saved;
     }
 
+    /** Timestamp component of an auto-generated version-copy filename. UTC,
+     *  path-safe (no colons), second resolution. */
+    private static final java.time.format.DateTimeFormatter VERSION_COPY_DATE_FMT =
+            java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
+
+    /**
+     * Restore an archived version into a <em>new</em> document alongside the
+     * live one — "restore as a copy". Unlike {@link #restoreArchive}, the live
+     * document is left completely untouched; a fresh document is created (own
+     * {@code lineageId}) carrying the archived version's content and metadata.
+     *
+     * <p>{@code targetPath} is optional: when blank, a name is derived from the
+     * live document's path — {@code foo.yaml} → {@code foo-version-<N>-<date>.yaml}
+     * (N = the version's 1-based chronological position, date = the version's
+     * {@code archivedAt}). The date keeps the generated name from ever
+     * clobbering a real user document; a residual clash (same version restored
+     * twice in the same second) gets a numeric suffix.
+     *
+     * <p>Authorization: READ on the source document here, CREATE on the target
+     * path inside {@link #create} — so the copy lands only where the caller may
+     * write, and reads only a version they may see.
+     *
+     * @return the newly created document.
+     * @throws IllegalArgumentException if the archive is unknown or belongs to
+     *         another lineage.
+     * @throws DocumentAlreadyExistsException if an explicit {@code targetPath}
+     *         is already occupied.
+     */
+    public DocumentDocument restoreArchiveToNewDocument(
+            String liveDocId, String archiveId, @Nullable String targetPath,
+            de.mhus.vance.shared.permission.WriteActor actor) {
+        DocumentDocument live = repository.findById(liveDocId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Unknown document id='" + liveDocId + "'"));
+        enforceWrite(live.getTenantId(), live.getProjectId(), live.getPath(),
+                de.mhus.vance.shared.permission.Action.READ, actor);
+        DocumentArchiveDocument archive = archiveService.findById(archiveId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Unknown archive id='" + archiveId + "'"));
+        if (!archive.getLineageId().equals(live.getLineageId())) {
+            throw new IllegalArgumentException(
+                    "Archive id='" + archiveId + "' does not belong to "
+                            + "document id='" + liveDocId + "' (lineage mismatch)");
+        }
+
+        String target = (targetPath != null && !targetPath.isBlank())
+                ? normalizePath(targetPath)
+                : generateVersionCopyPath(live, archive);
+
+        try (InputStream content = archiveService.loadContent(archive)) {
+            DocumentDocument created = create(
+                    live.getTenantId(), live.getProjectId(), target,
+                    archive.getTitle(),
+                    archive.getTags(),
+                    archive.getMimeType(),
+                    content,
+                    actor.subject().subjectId(),
+                    actor);
+            log.info("Restored archive id='{}' of document id='{}' into new document id='{}' path='{}'",
+                    archiveId, liveDocId, created.getId(), created.getPath());
+            return created;
+        } catch (IOException e) {
+            throw new IllegalStateException(
+                    "Failed to read archive content for restore-copy archive id='"
+                            + archiveId + "'", e);
+        }
+    }
+
+    /**
+     * Derive a collision-free {@code foo-version-<N>-<date>.<ext>} path next to
+     * the live document for {@link #restoreArchiveToNewDocument}.
+     */
+    private String generateVersionCopyPath(
+            DocumentDocument live, DocumentArchiveDocument archive) {
+        String path = live.getPath();
+        int slash = path.lastIndexOf('/');
+        String dir = slash >= 0 ? path.substring(0, slash + 1) : "";
+        String file = slash >= 0 ? path.substring(slash + 1) : path;
+        int dot = file.lastIndexOf('.');
+        String base = dot > 0 ? file.substring(0, dot) : file;
+        String ext = dot > 0 ? file.substring(dot) : "";
+
+        int versionNo = versionOrdinal(live, archive);
+        Instant when = archive.getArchivedAt() == null ? Instant.now() : archive.getArchivedAt();
+        String date = VERSION_COPY_DATE_FMT.format(when.atZone(java.time.ZoneOffset.UTC));
+
+        String stem = dir + base + "-version-" + versionNo + "-" + date;
+        String candidate = stem + ext;
+        int suffix = 2;
+        while (repository.existsByTenantIdAndProjectIdAndPath(
+                live.getTenantId(), live.getProjectId(), normalizePath(candidate))) {
+            candidate = stem + "-" + suffix + ext;
+            if (++suffix > 1000) break; // pathological safety net
+        }
+        return candidate;
+    }
+
+    /** 1-based chronological position of {@code archive} among its lineage's
+     *  versions (oldest = 1). Falls back to the version count on mismatch. */
+    private int versionOrdinal(DocumentDocument live, DocumentArchiveDocument archive) {
+        List<DocumentArchiveDocument> all = archiveService.listForLineage(
+                live.getTenantId(), live.getProjectId(), live.getLineageId());
+        // listForLineage is newest-first — ordinal from the oldest end.
+        for (int i = 0; i < all.size(); i++) {
+            if (archive.getId() != null && archive.getId().equals(all.get(i).getId())) {
+                return all.size() - i;
+            }
+        }
+        return all.size();
+    }
+
     /**
      * Manually snapshot the current live document as a new archive version —
      * the "create version now" button in the web UI. Deliberately

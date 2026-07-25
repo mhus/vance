@@ -18,7 +18,12 @@ version history explicitly.
   carries the `archiveId` you pass to restore, plus `archivedAtMs` + `size`.
 - `doc_version_restore` — write a chosen version back onto the live
   document. The current content is archived first, so a restore is itself
-  undoable. Needs an `archiveId` from `doc_version_list`.
+  undoable. Needs an `archiveId` from `doc_version_list`. Pass `newFile:true`
+  (or a `targetPath`) to restore into a **new file beside** the current one
+  instead of overwriting it — the name is auto-generated
+  (`foo.yaml` → `foo-version-<N>-<date>.yaml`), so nothing is overwritten.
+  Use this when the user wants to compare an old version next to the current
+  one, or is unsure and does not want to lose the live content.
 
 All three select the document by `path` or `id` (same as `doc_read`).
 

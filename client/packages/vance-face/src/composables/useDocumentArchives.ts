@@ -30,6 +30,7 @@ export function useDocumentArchives(): {
   clearPreview: () => void;
   remove: (documentId: string, archiveId: string) => Promise<boolean>;
   restore: (documentId: string, archiveId: string) => Promise<DocumentDto | null>;
+  restoreToNewFile: (documentId: string, archiveId: string) => Promise<DocumentDto | null>;
   createNow: (documentId: string) => Promise<'created' | 'unchanged' | 'disabled' | null>;
 } {
   const items = ref<DocumentArchiveSummary[]>([]);
@@ -148,6 +149,31 @@ export function useDocumentArchives(): {
   }
 
   /**
+   * Restore a version into a NEW document next to the live one ("restore as
+   * copy"). The server auto-generates a {@code foo-version-N-date.ext} name so
+   * nothing is overwritten. The current document (and its version list) is
+   * untouched — returns the freshly created document, or {@code null} on error.
+   */
+  async function restoreToNewFile(
+    documentId: string,
+    archiveId: string,
+  ): Promise<DocumentDto | null> {
+    loading.value = true;
+    error.value = null;
+    try {
+      return await brainFetch<DocumentDto>(
+        'POST',
+        `documents/${encodeURIComponent(documentId)}/archives/${encodeURIComponent(archiveId)}/restore-copy`,
+      );
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to restore into a new file.';
+      return null;
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  /**
    * Manually create a new version of {@code documentId} — the "create version
    * now" button. The server bypasses the min-interval cooldown but skips the
    * write when the current content is unchanged vs. the latest version. On a
@@ -189,6 +215,7 @@ export function useDocumentArchives(): {
     clearPreview,
     remove,
     restore,
+    restoreToNewFile,
     createNow,
   };
 }

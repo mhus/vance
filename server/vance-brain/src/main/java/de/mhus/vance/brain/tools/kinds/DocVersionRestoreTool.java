@@ -12,16 +12,22 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * Restore a saved version onto the live document. The current content is
- * archived first (so the restore is itself undoable), then the chosen
- * version's body is written back. Distinct from {@code doc_restore}, which
- * pulls a document out of the trash — this reverts content to an earlier
- * version of the same live document.
+ * Restore a saved version. Two modes:
+ * <ul>
+ *   <li><b>overwrite</b> (default) — write the chosen version back onto the
+ *       live document. The current content is archived first, so the restore
+ *       is itself undoable.</li>
+ *   <li><b>copy</b> ({@code newFile:true} or a {@code targetPath}) — create a
+ *       NEW document beside the live one carrying the version's content; the
+ *       live document is left untouched. Without {@code targetPath} the name is
+ *       auto-generated ({@code foo.yaml} → {@code foo-version-<N>-<date>.yaml})
+ *       so nothing is overwritten.</li>
+ * </ul>
  *
- * <p>Pick the {@code archiveId} from {@code doc_version_list}. WRITE is
- * enforced at the resolution source and again at the {@code DocumentService}
- * chokepoint; a lineage mismatch (archive belongs to another document) is
- * rejected.
+ * <p>Distinct from {@code doc_restore}, which pulls a document out of the
+ * trash. Pick the {@code archiveId} from {@code doc_version_list}. WRITE
+ * (overwrite) / READ-source + CREATE-target (copy) are enforced at the source
+ * and the {@code DocumentService} chokepoint; a lineage mismatch is rejected.
  *
  * <p>Sibling tools: {@code doc_version_snapshot}, {@code doc_version_list}.
  * See {@code specification/public/document-versioning.md} §3.2/§11.
@@ -39,6 +45,13 @@ public class DocVersionRestoreTool implements Tool {
         Map<String, Object> p = new LinkedHashMap<>(KindToolSupport.documentSelectorProperties());
         p.put("archiveId", Map.of("type", "string",
                 "description", "Version to restore — an archiveId from doc_version_list."));
+        p.put("newFile", Map.of("type", "boolean",
+                "description", "When true, restore into a NEW file beside the current one "
+                        + "instead of overwriting it. Implied when targetPath is set. "
+                        + "Default false (overwrite the live document)."));
+        p.put("targetPath", Map.of("type", "string",
+                "description", "Optional path for the new file (implies newFile). "
+                        + "Omit to auto-generate foo-version-<N>-<date>.<ext>."));
         return p;
     }
 
@@ -48,11 +61,12 @@ public class DocVersionRestoreTool implements Tool {
 
     @Override
     public String description() {
-        return "Restore a saved version onto the live document. The current "
-                + "content is archived first (undoable), then the chosen version "
-                + "is written back. Get the archiveId from doc_version_list. Not "
-                + "for trash — that is doc_restore. Select the document by path "
-                + "or id.";
+        return "Restore a saved version. Default: overwrite the live document "
+                + "(current content archived first, undoable). With newFile=true "
+                + "or a targetPath: restore into a NEW file beside it instead "
+                + "(name auto-generated, nothing overwritten). Get the archiveId "
+                + "from doc_version_list. Not for trash — that is doc_restore. "
+                + "Select the document by path or id.";
     }
 
     @Override public boolean primary() { return false; }
@@ -71,19 +85,29 @@ public class DocVersionRestoreTool implements Tool {
         String archiveId = KindToolSupport.paramString(params, "archiveId");
         if (archiveId == null) throw new ToolException("archiveId is required");
 
-        DocumentDocument restored;
+        String targetPath = KindToolSupport.paramString(params, "targetPath");
+        Boolean newFile = KindToolSupport.paramBoolean(params, "newFile");
+        boolean asCopy = targetPath != null || Boolean.TRUE.equals(newFile);
+
+        DocumentDocument result;
         try {
-            restored = support.documentService().restoreArchive(
-                    doc.getId(), archiveId, support.writeActor(ctx, doc));
+            result = asCopy
+                    ? support.documentService().restoreArchiveToNewDocument(
+                            doc.getId(), archiveId, targetPath, support.writeActor(ctx, doc))
+                    : support.documentService().restoreArchive(
+                            doc.getId(), archiveId, support.writeActor(ctx, doc));
         } catch (IllegalArgumentException e) {
+            throw new ToolException(e.getMessage(), e);
+        } catch (de.mhus.vance.shared.document.DocumentService.DocumentAlreadyExistsException e) {
             throw new ToolException(e.getMessage(), e);
         }
 
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("documentId", restored.getId());
-        out.put("path", restored.getPath());
+        out.put("mode", asCopy ? "copy" : "overwrite");
+        out.put("documentId", result.getId());
+        out.put("path", result.getPath());
         out.put("restoredFromArchiveId", archiveId);
-        out.put("size", restored.getSize());
+        out.put("size", result.getSize());
         return out;
     }
 }

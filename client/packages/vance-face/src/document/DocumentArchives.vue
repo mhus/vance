@@ -23,6 +23,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   /** Fired after a successful restore — parent reloads the live document. */
   (e: 'restored', restored: DocumentDto): void;
+  /** Fired after a "restore into a new file" — parent may open / list it. */
+  (e: 'created', created: DocumentDto): void;
   /** Fired whenever the archive count for the current document changes.
    *  Lets the parent surface a counter outside the panel (e.g. a badge
    *  in the metadata strip) without owning the archive state. */
@@ -37,6 +39,7 @@ const expanded = ref(false);
 // confirmation modal in DocumentApp.vue.
 const confirmDelete = ref<string | null>(null);
 const confirmRestore = ref<string | null>(null);
+const confirmCopy = ref<string | null>(null);
 const acting = ref(false);
 
 // Transient feedback for the manual "create version now" action (e.g. the
@@ -118,6 +121,23 @@ async function restoreArchive(): Promise<void> {
     acting.value = false;
   }
 }
+
+async function copyToNewFile(): Promise<void> {
+  if (!props.document || !confirmCopy.value) return;
+  acting.value = true;
+  flash.value = null;
+  try {
+    const created = await archives.restoreToNewFile(props.document.id, confirmCopy.value);
+    if (created) {
+      confirmCopy.value = null;
+      archives.clearPreview();
+      flash.value = t('documents.archives.copiedOk', { path: created.path });
+      emit('created', created);
+    }
+  } finally {
+    acting.value = false;
+  }
+}
 </script>
 
 <template>
@@ -191,6 +211,14 @@ async function restoreArchive(): Promise<void> {
               size="sm"
               variant="ghost"
               :disabled="acting"
+              @click="confirmCopy = archive.id"
+            >
+              {{ $t('documents.archives.restoreCopy') }}
+            </VButton>
+            <VButton
+              size="sm"
+              variant="ghost"
+              :disabled="acting"
               @click="confirmDelete = archive.id"
             >
               {{ $t('documents.archives.delete') }}
@@ -245,6 +273,23 @@ async function restoreArchive(): Promise<void> {
         </VButton>
         <VButton variant="primary" :loading="acting" @click="restoreArchive">
           {{ $t('documents.archives.restore') }}
+        </VButton>
+      </template>
+    </VModal>
+
+    <!-- Confirm restore into a new file. -->
+    <VModal
+      :model-value="confirmCopy !== null"
+      @update:model-value="(v) => v || (confirmCopy = null)"
+    >
+      <template #title>{{ $t('documents.archives.confirmCopyTitle') }}</template>
+      <p class="text-sm">{{ $t('documents.archives.confirmCopyBody') }}</p>
+      <template #footer>
+        <VButton variant="ghost" :disabled="acting" @click="confirmCopy = null">
+          {{ $t('documents.archives.cancel') }}
+        </VButton>
+        <VButton variant="primary" :loading="acting" @click="copyToNewFile">
+          {{ $t('documents.archives.restoreCopy') }}
         </VButton>
       </template>
     </VModal>

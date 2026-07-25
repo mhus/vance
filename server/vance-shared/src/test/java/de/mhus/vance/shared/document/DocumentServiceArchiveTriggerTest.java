@@ -15,6 +15,7 @@ import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.storage.StorageService;
 import java.time.Instant;
 import java.util.Date;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -285,6 +286,63 @@ class DocumentServiceArchiveTriggerTest {
         // Permission is checked before any snapshot / setting / diff work runs.
         verify(archiveService, never()).archiveSnapshot(any());
         verify(archiveService, never()).findLatestForLineage(any(), any(), any());
+    }
+
+    // ──── restoreArchiveToNewDocument() — restore as a copy ────────────
+
+    @Test
+    void restoreToNewDocument_autoGeneratesVersionedName() {
+        DocumentDocument doc = freshDoc("hello", Instant.now().minusSeconds(3600));
+        when(repository.findById("doc-1")).thenReturn(Optional.of(doc));
+        DocumentArchiveDocument archive = archiveOf("hello");
+        archive.setId("arc-1");
+        archive.setArchivedAt(Instant.parse("2026-07-20T10:15:30Z"));
+        when(archiveService.findById("arc-1")).thenReturn(Optional.of(archive));
+        when(archiveService.loadContent(archive))
+                .thenReturn(new java.io.ByteArrayInputStream("hello".getBytes()));
+        when(archiveService.listForLineage("t1", "p1", "lin-1")).thenReturn(List.of(archive));
+
+        DocumentDocument created = service.restoreArchiveToNewDocument(
+                "doc-1", "arc-1", null, de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+
+        // notes/a.md → notes/a-version-<ordinal>-<archivedAt UTC>.md
+        assertThat(created.getPath()).isEqualTo("notes/a-version-1-20260720-101530.md");
+        // Brand-new document — its own lineage, not the source's.
+        assertThat(created.getLineageId()).isNotEqualTo("lin-1");
+    }
+
+    @Test
+    void restoreToNewDocument_honorsExplicitTargetPath() {
+        DocumentDocument doc = freshDoc("hello", Instant.now().minusSeconds(3600));
+        when(repository.findById("doc-1")).thenReturn(Optional.of(doc));
+        DocumentArchiveDocument archive = archiveOf("hello");
+        archive.setId("arc-1");
+        when(archiveService.findById("arc-1")).thenReturn(Optional.of(archive));
+        when(archiveService.loadContent(archive))
+                .thenReturn(new java.io.ByteArrayInputStream("hello".getBytes()));
+
+        DocumentDocument created = service.restoreArchiveToNewDocument(
+                "doc-1", "arc-1", "notes/manual-copy.md",
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+
+        assertThat(created.getPath()).isEqualTo("notes/manual-copy.md");
+        // No name generation → no lineage listing needed.
+        verify(archiveService, never()).listForLineage(any(), any(), any());
+    }
+
+    @Test
+    void restoreToNewDocument_lineageMismatch_throws() {
+        DocumentDocument doc = freshDoc("hello", Instant.now().minusSeconds(3600));
+        when(repository.findById("doc-1")).thenReturn(Optional.of(doc));
+        DocumentArchiveDocument foreign = archiveOf("hello");
+        foreign.setId("arc-x");
+        foreign.setLineageId("other-lineage");
+        when(archiveService.findById("arc-x")).thenReturn(Optional.of(foreign));
+
+        assertThatThrownBy(() -> service.restoreArchiveToNewDocument(
+                "doc-1", "arc-x", null, de.mhus.vance.shared.permission.WriteActor.SYSTEM))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("lineage");
     }
 
     private static DocumentArchiveDocument archiveOf(String body) {

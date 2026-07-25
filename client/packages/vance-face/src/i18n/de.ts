@@ -547,6 +547,11 @@ export default {
       createdUnchanged: 'Keine Änderung seit der letzten Version — nichts zu speichern.',
       createdDisabled: 'Versionierung ist für dieses Projekt deaktiviert.',
       restore: 'Wiederherstellen',
+      restoreCopy: 'In neue Datei',
+      copiedOk: 'In neue Datei wiederhergestellt: {path}',
+      confirmCopyTitle: 'In eine neue Datei wiederherstellen?',
+      confirmCopyBody:
+        'Es wird ein neues Dokument neben dem aktuellen angelegt (Name automatisch erzeugt, z. B. foo-version-3-<Datum>.yaml). Das aktuelle Dokument bleibt unverändert, es wird nichts überschrieben.',
       delete: 'Löschen',
       cancel: 'Abbrechen',
       close: 'Schließen',

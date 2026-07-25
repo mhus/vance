@@ -249,6 +249,13 @@ async function onRestored(): Promise<void> {
   // restored version.
   await store.reloadTab(props.document.id);
 }
+
+async function onCreated(created: DocumentDto): Promise<void> {
+  // A version was restored into a new document — refresh the file list so
+  // the new file shows up, then open it in its own tab.
+  if (store.projectId) await store.loadList(store.projectId);
+  await store.openFile(created.id);
+}
 </script>
 
 <template>
@@ -349,6 +356,7 @@ async function onRestored(): Promise<void> {
     <DocumentArchives
       :document="dtoForArchives"
       @restored="onRestored"
+      @created="onCreated"
     />
   </div>
 </template>

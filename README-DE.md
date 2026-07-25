@@ -2,7 +2,7 @@
 
 **Ein persönliches Projekt.** Vance habe ich gebaut, um LLM-Agenten zu entwickeln — und sie so zu formen, dass ich damit wirklich produktiv arbeiten kann. Über die Zeit ist alles reingewandert, was ich spannend fand, plus ein paar Dinge, von denen ich glaube, dass andere was davon haben.
 
-Es ist kein Produkt. Nichts wird verkauft, es gibt keinen Support-Vertrag und keine Roadmap-Versprechen. Der Code ist offen, weil er jemandem nützen kann, nicht weil daraus ein Geschäft werden soll. Rumspielen, mitbauen, Ideen klauen — gerne.
+Es ist ein Projekt, kein Produkt — kein Support-Vertrag, keine Roadmap-Versprechen. Der Quellcode ist öffentlich: lesen, ausprobieren, laufen lassen. Er ist source-available, kein klassisches Open Source, und wohin die Reise geht, halte ich mir offen.
 
 > [!WARNING]
 > **Beta.** Vance ist in aktiver Entwicklung. APIs, Datenmodell, Konfigurations-Keys und Engine-Verhalten können sich zwischen Releases ändern. Gut für Hands-on-Experimente; nicht gehärtet für unbeaufsichtigten Produktiv-Einsatz.

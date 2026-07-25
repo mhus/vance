@@ -101,6 +101,15 @@ public final class ArthurActionSchema {
      */
     public static final String TYPE_LEARN      = "LEARN";
 
+    /**
+     * Notifies the team via a configured channel (email / slack / …)
+     * about the current task context. Available in NORMAL and EXECUTING
+     * modes so the user can ping the team at any point during a session.
+     * The handler dispatches through {@code NotificationService} and
+     * returns a brief confirmation.
+     */
+    public static final String TYPE_NOTIFY_TEAM = "NOTIFY_TEAM";
+
     // ── Plan-Mode action types ───────────────────────────────────
     public static final String TYPE_START_PLAN      = "START_PLAN";
     public static final String TYPE_PROPOSE_PLAN    = "PROPOSE_PLAN";
@@ -118,6 +127,7 @@ public final class ArthurActionSchema {
     public static final Set<String> SUPPORTED_TYPES = Set.of(
             TYPE_ANSWER, TYPE_ASK_USER, TYPE_DELEGATE, TYPE_RELAY,
             TYPE_WAIT, TYPE_REJECT, TYPE_LEARN, TYPE_DISCOVER,
+            TYPE_NOTIFY_TEAM,
             TYPE_START_PLAN, TYPE_PROPOSE_PLAN, TYPE_START_EXECUTION,
             TYPE_TODO_UPDATE);
 
@@ -131,7 +141,8 @@ public final class ArthurActionSchema {
      */
     public static final Set<String> TYPES_FOR_NORMAL = Set.of(
             TYPE_ANSWER, TYPE_ASK_USER, TYPE_DELEGATE, TYPE_RELAY,
-            TYPE_WAIT, TYPE_REJECT, TYPE_LEARN, TYPE_DISCOVER, TYPE_START_PLAN);
+            TYPE_WAIT, TYPE_REJECT, TYPE_LEARN, TYPE_DISCOVER, TYPE_START_PLAN,
+            TYPE_NOTIFY_TEAM);
 
     /**
      * Action types allowed in {@code EXPLORING} mode — read-only
@@ -158,7 +169,8 @@ public final class ArthurActionSchema {
     public static final Set<String> TYPES_FOR_EXECUTING = Set.of(
             TYPE_ANSWER, TYPE_ASK_USER, TYPE_DELEGATE, TYPE_RELAY,
             TYPE_WAIT, TYPE_REJECT, TYPE_LEARN, TYPE_DISCOVER,
-            TYPE_START_PLAN, TYPE_TODO_UPDATE);
+            TYPE_START_PLAN, TYPE_TODO_UPDATE,
+            TYPE_NOTIFY_TEAM);
 
     public static Set<String> typesForMode(
             de.mhus.vance.api.thinkprocess.ProcessMode mode) {
@@ -231,7 +243,8 @@ public final class ArthurActionSchema {
         typeProp.put("enum", List.of(
                 TYPE_ANSWER, TYPE_ASK_USER, TYPE_DELEGATE,
                 TYPE_RELAY, TYPE_WAIT, TYPE_REJECT, TYPE_LEARN,
-                TYPE_DISCOVER, TYPE_START_PLAN, TYPE_PROPOSE_PLAN,
+                TYPE_DISCOVER, TYPE_NOTIFY_TEAM,
+                TYPE_START_PLAN, TYPE_PROPOSE_PLAN,
                 TYPE_START_EXECUTION, TYPE_TODO_UPDATE));
         typeProp.put("description",
                 "Which branch this turn takes. ANSWER = direct reply. "
@@ -252,7 +265,7 @@ public final class ArthurActionSchema {
                         + "TodoList for user approval (EXPLORING/PLANNING). "
                         + "START_EXECUTION = begin work after user accepted "
                         + "the plan (PLANNING). TODO_UPDATE = update TodoList "
-                        + "item statuses (EXECUTING). The system prompt tells "
+                        + "item statuses (EXECUTING). NOTIFY_TEAM = send a notification to the team via a configured channel (email / slack / …). The system prompt tells "
                         + "you which subset is currently allowed.");
 
         Map<String, Object> reasonProp = new LinkedHashMap<>();

@@ -218,6 +218,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     private final de.mhus.vance.brain.prak.HistoryStrengthFilter historyStrengthFilter;
     private final de.mhus.vance.brain.memory.MemoryCompactionService memoryCompactionService;
     private final UserMemoryService userMemoryService;
+    private final de.mhus.vance.brain.notification.NotificationService notificationService;
     private final de.mhus.vance.brain.discovery.DiscoveryService discoveryService;
     private final de.mhus.vance.brain.tools.client.CortexPromptResolver cortexPromptResolver;
     private final de.mhus.vance.brain.tools.client.CortexBoundDocumentResolver cortexBoundDocumentResolver;
@@ -305,7 +306,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             de.mhus.vance.brain.chat.CollabContextResolver collabContextResolver,
             de.mhus.vance.brain.applications.ActiveAppPromptResolver activeAppPromptResolver,
             de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeService actionLoopJudgeService,
-            de.mhus.vance.brain.context.PromptDateContextResolver promptDateContextResolver) {
+            de.mhus.vance.brain.context.PromptDateContextResolver promptDateContextResolver,
+            de.mhus.vance.brain.notification.NotificationService notificationService) {
         super(streamingProperties, llmCallTracker, objectMapper, composer);
         this.thinkProcessService = thinkProcessService;
         this.arthurProperties = arthurProperties;
@@ -332,6 +334,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         this.objectMapper = objectMapper;
         this.actionLoopJudgeService = actionLoopJudgeService;
         this.promptDateContextResolver = promptDateContextResolver;
+        this.notificationService = notificationService;
     }
 
     // ──────────────────── Metadata ────────────────────
@@ -1438,6 +1441,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             case ArthurActionSchema.TYPE_WAIT            -> handleWait(action);
             case ArthurActionSchema.TYPE_REJECT          -> handleReject(action);
             case ArthurActionSchema.TYPE_LEARN           -> handleLearn(action, process, ctx);
+            case ArthurActionSchema.TYPE_NOTIFY_TEAM     -> handleNotifyTeam(action, process, ctx);
             default -> {
                 // Should never happen — the base class validates against
                 // supportedActionTypes() before reaching here. Surface as
@@ -2216,6 +2220,40 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      * {@code process.projectId}, which would write the memory into the
      * wrong project.
      */
+    /**
+     * NOTIFY_TEAM — send a short notification about the current task
+     * context to the team, then confirm to the user. Routes through
+     * {@link de.mhus.vance.brain.notification.NotificationService} (a
+     * session-anchored {@code NOTIFY} frame); any email/slack fan-out is
+     * handled downstream by the notification-delivery layer. Available in
+     * NORMAL and EXECUTING modes.
+     */
+    private ActionTurnOutcome handleNotifyTeam(
+            de.mhus.vance.brain.thinkengine.action.EngineAction action,
+            ThinkProcessDocument process,
+            ThinkEngineContext ctx) {
+        String message = action.stringParam(ArthurActionSchema.PARAM_MESSAGE);
+        if (message == null || message.isBlank()) {
+            log.warn("Arthur id='{}' NOTIFY_TEAM missing message — reason='{}'",
+                    process.getId(), action.reason());
+            return new ActionTurnOutcome(
+                    "Konnte das Team nicht benachrichtigen — der Nachrichtentext "
+                            + "fehlte. (" + action.reason() + ")",
+                    true);
+        }
+        boolean delivered = notificationService.publish(
+                process, message,
+                de.mhus.vance.api.notification.NotificationSeverity.INFO);
+        log.info("Arthur id='{}' NOTIFY_TEAM delivered={} reason='{}'",
+                process.getId(), delivered, summariseReason(action.reason()));
+        return new ActionTurnOutcome(
+                delivered
+                        ? "Das Team wurde benachrichtigt."
+                        : "Die Benachrichtigung wurde erstellt, aber es war kein "
+                                + "Empfänger verbunden — sie wurde nicht zugestellt.",
+                true);
+    }
+
     private ActionTurnOutcome handleLearn(
             de.mhus.vance.brain.thinkengine.action.EngineAction action,
             ThinkProcessDocument process,

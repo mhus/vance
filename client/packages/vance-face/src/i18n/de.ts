@@ -644,6 +644,8 @@ export default {
       deleteColumn: 'Spalte löschen',
       recalc: 'Neu berechnen',
       recalcHint: 'Alle Formeln server-seitig auswerten und Ergebnisse aktualisieren',
+      columnBorder: 'Spalten-Rahmen',
+      columnBorderHint: 'Rahmen der Spalte durchschalten: keiner → rechts → links → beide',
       hint: 'Zelle klicken zum Auswählen · Doppelklick zum Bearbeiten · Tab/Enter zum Navigieren',
       cellProps: 'Zell-Eigenschaften',
       cellEmptyHint: 'Leere Zelle — tippen zum Befüllen.',

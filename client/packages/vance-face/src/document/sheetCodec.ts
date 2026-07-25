@@ -32,6 +32,13 @@ export interface SheetCell {
   extra: Record<string, unknown>;
 }
 
+/** Per-column metadata (width in px, vertical border). Sparse. */
+export interface SheetColumn {
+  width?: number;
+  /** left | right | both */
+  border?: string;
+}
+
 /** One evaluated cell in the `$computed` overlay (server-authoritative). */
 export interface SheetComputedValue {
   field: string;
@@ -57,6 +64,8 @@ export interface SheetDocument {
    *  der Editor sie aus der höchsten referenzierten Zeile ab. */
   rows: number | null;
   cells: SheetCell[];
+  /** Sparse per-column metadata (width, border), keyed by column letter. */
+  columns: Record<string, SheetColumn>;
   /** Unknown top-level fields, preserved across round-trip. */
   extra: Record<string, unknown>;
   /** Derived computed overlay (formula results). Read-only for display;
@@ -181,7 +190,7 @@ function serializeSheetYaml(doc: SheetDocument): string {
 // ── Promotion ───────────────────────────────────────────────────────
 
 function emptyDoc(): SheetDocument {
-  return { kind: 'sheet', schema: [], rows: null, cells: [], extra: {} };
+  return { kind: 'sheet', schema: [], rows: null, cells: [], columns: {}, extra: {} };
 }
 
 function promoteToSheetDocument(obj: Record<string, unknown>): SheetDocument {
@@ -189,13 +198,38 @@ function promoteToSheetDocument(obj: Record<string, unknown>): SheetDocument {
   const schema = promoteSchema(obj.schema);
   const rows = promoteRows(obj.rows);
   const cells = promoteCells(obj.cells);
+  const columns = promoteColumns(obj.columns);
   const computed = promoteComputed(obj['$computed']);
   // `$computed` is a derived overlay — dropped from `extra` so it never
   // round-trips through serialize (server-authoritative), matching Java.
-  const { kind: _k, schema: _s, rows: _r, cells: _c, ['$computed']: _comp, ...extra } = obj;
-  const doc: SheetDocument = { kind, schema, rows, cells, extra };
+  const {
+    kind: _k, schema: _s, rows: _r, cells: _c, columns: _cols, ['$computed']: _comp, ...extra
+  } = obj;
+  const doc: SheetDocument = { kind, schema, rows, cells, columns, extra };
   if (computed) doc.computed = computed;
   return doc;
+}
+
+function promoteColumns(raw: unknown): Record<string, SheetColumn> {
+  const out: Record<string, SheetColumn> = {};
+  if (!isObject(raw)) return out;
+  for (const [k, v] of Object.entries(raw)) {
+    const col = k.trim().toUpperCase();
+    if (!/^[A-Z]+$/.test(col)) continue;
+    if (!isObject(v)) continue;
+    const c: SheetColumn = {};
+    if (typeof v.width === 'number' && Number.isFinite(v.width) && v.width > 0) {
+      c.width = Math.round(v.width);
+    }
+    if (typeof v.border === 'string' && isBorder(v.border)) c.border = v.border.trim().toLowerCase();
+    if (c.width !== undefined || c.border !== undefined) out[col] = c;
+  }
+  return out;
+}
+
+function isBorder(s: string): boolean {
+  const t = s.trim().toLowerCase();
+  return t === 'left' || t === 'right' || t === 'both';
 }
 
 function promoteComputed(raw: unknown): SheetComputed | undefined {
@@ -280,11 +314,24 @@ function buildBody(doc: SheetDocument): Record<string, unknown> {
   const body: Record<string, unknown> = {};
   if (doc.schema.length > 0) body.schema = [...doc.schema];
   if (doc.rows != null) body.rows = doc.rows;
+  const cols = columnsToObject(doc.columns);
+  if (Object.keys(cols).length > 0) body.columns = cols;
   body.cells = doc.cells.map(cellToObject);
   for (const [k, v] of Object.entries(doc.extra)) {
     if (!(k in body)) body[k] = v;
   }
   return body;
+}
+
+function columnsToObject(columns: Record<string, SheetColumn>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [col, meta] of Object.entries(columns)) {
+    const m: Record<string, unknown> = {};
+    if (meta.width !== undefined) m.width = meta.width;
+    if (meta.border !== undefined && meta.border !== '') m.border = meta.border;
+    if (Object.keys(m).length > 0) out[col] = m;
+  }
+  return out;
 }
 
 function cellToObject(cell: SheetCell): Record<string, unknown> {

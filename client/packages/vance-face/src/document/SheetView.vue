@@ -5,6 +5,7 @@ import { brainFetch } from '@vance/shared';
 import { VButton } from '@/components';
 import type {
   SheetCell,
+  SheetColumn,
   SheetComputed,
   SheetComputedValue,
   SheetDocument,
@@ -60,6 +61,17 @@ watch(() => props.doc.schema, (next) => {
 watch(() => props.doc.rows, (next) => {
   localRows.value = deriveRows(next, localCells.value);
 });
+
+const localColumns = ref<Record<string, SheetColumn>>(cloneColumns(props.doc.columns));
+watch(() => props.doc.columns, (next) => {
+  localColumns.value = cloneColumns(next);
+}, { deep: true });
+
+function cloneColumns(src: Record<string, SheetColumn> | undefined): Record<string, SheetColumn> {
+  const out: Record<string, SheetColumn> = {};
+  for (const [k, v] of Object.entries(src ?? {})) out[k] = { ...v };
+  return out;
+}
 
 function cloneCells(src: SheetCell[]): SheetCell[] {
   return src.map((c) => ({
@@ -121,6 +133,7 @@ function getValue(addr: string): string {
 // ── Selection / Edit ───────────────────────────────────────────────
 
 const selectedAddr = ref<string | null>(null);
+const selectedColumn = ref<string | null>(null);
 const editingAddr = ref<string | null>(null);
 const editBuffer = ref('');
 const inputRefs = ref<Map<string, HTMLInputElement>>(new Map());
@@ -132,6 +145,7 @@ function registerInput(addr: string, el: Element | null): void {
 
 function selectCell(addr: string): void {
   selectedAddr.value = addr;
+  selectedColumn.value = null;
 }
 
 function startEdit(addr: string): void {
@@ -199,6 +213,7 @@ function emitDoc(): void {
     schema: [...localSchema.value],
     rows: localRows.value,
     cells: localCells.value,
+    columns: { ...localColumns.value },
     extra: props.doc.extra,
   });
 }
@@ -309,10 +324,8 @@ function deleteSelectedRow(): void {
 }
 
 function deleteSelectedColumn(): void {
-  if (!selectedAddr.value) return;
-  const m = /^([A-Z]+)([0-9]+)$/.exec(selectedAddr.value);
-  if (!m) return;
-  const col = m[1];
+  const col = activeColumn.value;
+  if (!col) return;
   const colIdx = columnIndexFromLetter(col);
   if (localSchema.value.length <= 1) return; // keep at least one column
   // Drop the column from schema, drop matching cells, renumber
@@ -333,9 +346,110 @@ function deleteSelectedColumn(): void {
   }
   localSchema.value = newSchema;
   localCells.value = survivors;
+  // Shift column metadata: drop the removed column, renumber higher ones down.
+  const newColumns: Record<string, SheetColumn> = {};
+  for (const [c, meta] of Object.entries(localColumns.value)) {
+    const idx = columnIndexFromLetter(c);
+    if (idx === colIdx) continue;
+    newColumns[idx > colIdx ? columnLetterFromIndex(idx - 1) : c] = meta;
+  }
+  localColumns.value = newColumns;
   selectedAddr.value = null;
+  selectedColumn.value = null;
   cancelEdit();
   emitDoc();
+}
+
+// ── Column selection / resize / border ─────────────────────────────
+
+/** The column a column-op targets: an explicit header selection, else
+ *  the column of the selected cell. */
+const activeColumn = computed<string | null>(() => {
+  if (selectedColumn.value) return selectedColumn.value;
+  if (selectedAddr.value) {
+    const m = /^([A-Z]+)[0-9]+$/.exec(selectedAddr.value);
+    if (m) return m[1];
+  }
+  return null;
+});
+
+function selectColumn(col: string): void {
+  selectedColumn.value = col;
+  selectedAddr.value = null;
+  cancelEdit();
+}
+
+const columnBorderLabel = computed<string>(() => {
+  const col = activeColumn.value;
+  const b = col ? localColumns.value[col]?.border : undefined;
+  return b ?? '—';
+});
+
+const BORDER_CYCLE: (string | undefined)[] = [undefined, 'right', 'left', 'both'];
+
+/** Cycle the active column's border none → right → left → both → none. */
+function cycleColumnBorder(): void {
+  const col = activeColumn.value;
+  if (!col) return;
+  const cur = localColumns.value[col]?.border;
+  const idx = BORDER_CYCLE.indexOf(cur ?? undefined);
+  const next = BORDER_CYCLE[(idx + 1) % BORDER_CYCLE.length];
+  patchColumn(col, { border: next });
+}
+
+function patchColumn(col: string, patch: Partial<SheetColumn>): void {
+  const merged: SheetColumn = { ...localColumns.value[col], ...patch };
+  if (merged.border === undefined && merged.width === undefined) {
+    const { [col]: _drop, ...rest } = localColumns.value;
+    localColumns.value = rest;
+  } else {
+    // strip explicit-undefined keys so the codec/emit stays sparse
+    const clean: SheetColumn = {};
+    if (merged.width !== undefined) clean.width = merged.width;
+    if (merged.border !== undefined && merged.border !== '') clean.border = merged.border;
+    localColumns.value = { ...localColumns.value, [col]: clean };
+  }
+  emitDoc();
+}
+
+const COLUMN_MIN_WIDTH = 48;
+const COLUMN_DEFAULT_WIDTH = 112;
+
+function columnWidth(col: string): number | null {
+  return localColumns.value[col]?.width ?? null;
+}
+
+let resizeCol: string | null = null;
+let resizeStartX = 0;
+let resizeStartWidth = 0;
+
+function startColumnResize(col: string, ev: PointerEvent): void {
+  ev.preventDefault();
+  ev.stopPropagation();
+  resizeCol = col;
+  resizeStartX = ev.clientX;
+  resizeStartWidth = columnWidth(col) ?? COLUMN_DEFAULT_WIDTH;
+  window.addEventListener('pointermove', onColumnResizeMove);
+  window.addEventListener('pointerup', onColumnResizeEnd, { once: true });
+}
+
+function onColumnResizeMove(ev: PointerEvent): void {
+  if (!resizeCol) return;
+  const w = Math.max(COLUMN_MIN_WIDTH, Math.round(resizeStartWidth + (ev.clientX - resizeStartX)));
+  // live update without persisting every pixel
+  localColumns.value = {
+    ...localColumns.value,
+    [resizeCol]: { ...localColumns.value[resizeCol], width: w },
+  };
+}
+
+function onColumnResizeEnd(): void {
+  window.removeEventListener('pointermove', onColumnResizeMove);
+  if (resizeCol) {
+    // persist the final width via the sparse-normalising patch
+    patchColumn(resizeCol, { width: localColumns.value[resizeCol]?.width });
+  }
+  resizeCol = null;
 }
 
 // ── Format actions (side panel) ────────────────────────────────────
@@ -366,9 +480,25 @@ function clearCellFormat(): void {
 
 // ── Helpers for template ───────────────────────────────────────────
 
-const gridStyle = computed(() => ({
-  gridTemplateColumns: `2.5rem repeat(${localSchema.value.length}, minmax(6rem, 1fr))`,
-}));
+const gridStyle = computed(() => {
+  const cols = localSchema.value
+    .map((col) => {
+      const w = columnWidth(col);
+      return w != null ? `${w}px` : 'minmax(6rem, 1fr)';
+    })
+    .join(' ');
+  return { gridTemplateColumns: `2.5rem ${cols}` };
+});
+
+function columnBorderStyle(col: string): Record<string, string> {
+  const b = localColumns.value[col]?.border;
+  if (!b) return {};
+  const line = '2px solid hsl(var(--bc) / 0.5)';
+  const out: Record<string, string> = {};
+  if (b === 'left' || b === 'both') out.borderLeft = line;
+  if (b === 'right' || b === 'both') out.borderRight = line;
+  return out;
+}
 
 const rowNumbers = computed<number[]>(() => {
   const out: number[] = [];
@@ -422,7 +552,10 @@ function scheduleRecalc(): void {
   recalcTimer = setTimeout(() => void recalc(), 1500);
 }
 
-onBeforeUnmount(() => { if (recalcTimer) clearTimeout(recalcTimer); });
+onBeforeUnmount(() => {
+  if (recalcTimer) clearTimeout(recalcTimer);
+  window.removeEventListener('pointermove', onColumnResizeMove);
+});
 
 /** Displayed cell content: computed value for a formula cell (once
  *  evaluated), otherwise the raw source. Editing always shows the source. */
@@ -442,10 +575,10 @@ function cellIsError(addr: string): boolean {
 
 function cellStyle(addr: string): Record<string, string> {
   const c = getCell(addr);
-  if (!c) return {};
-  const out: Record<string, string> = {};
-  if (c.color) out.color = c.color;
-  if (c.background) out.background = c.background;
+  const m = /^([A-Z]+)[0-9]+$/.exec(addr);
+  const out: Record<string, string> = m ? columnBorderStyle(m[1]) : {};
+  if (c?.color) out.color = c.color;
+  if (c?.background) out.background = c.background;
   return out;
 }
 </script>
@@ -468,9 +601,16 @@ function cellStyle(addr: string): Record<string, string> {
       <VButton
         size="sm"
         variant="ghost"
-        :disabled="!selectedAddr || localSchema.length <= 1"
+        :disabled="!activeColumn || localSchema.length <= 1"
         @click="deleteSelectedColumn"
       >{{ t('documents.sheetView.deleteColumn') }}</VButton>
+      <VButton
+        v-if="activeColumn"
+        size="sm"
+        variant="ghost"
+        :title="t('documents.sheetView.columnBorderHint')"
+        @click="cycleColumnBorder"
+      >{{ t('documents.sheetView.columnBorder') }}: {{ columnBorderLabel }}</VButton>
       <VButton
         v-if="canRecalc"
         size="sm"
@@ -486,11 +626,22 @@ function cellStyle(addr: string): Record<string, string> {
       <div class="grid-wrap">
         <div class="header-row" :style="gridStyle">
           <span class="header-corner" aria-hidden="true" />
-          <span
+          <div
             v-for="col in localSchema"
             :key="col"
             class="header-col"
-          >{{ col }}</span>
+            :class="{ 'header-col--selected': activeColumn === col }"
+            :style="columnBorderStyle(col)"
+            :title="col"
+            @click="selectColumn(col)"
+          >
+            <span class="header-col-label">{{ col }}</span>
+            <span
+              class="col-resize"
+              @click.stop
+              @pointerdown="startColumnResize(col, $event)"
+            />
+          </div>
         </div>
         <div
           v-for="row in rowNumbers"
@@ -516,6 +667,7 @@ function cellStyle(addr: string): Record<string, string> {
               class="cell"
               :class="{
                 'cell--selected': selectedAddr === col + row,
+                'cell--col-selected': activeColumn === col,
                 'cell--formula': isFormula(col + row),
                 'cell--error': cellIsError(col + row),
               }"
@@ -649,6 +801,7 @@ function cellStyle(addr: string): Record<string, string> {
   z-index: 1;
 }
 .header-col {
+  position: relative;
   font-family: ui-monospace, monospace;
   font-size: 0.75rem;
   text-align: center;
@@ -656,6 +809,27 @@ function cellStyle(addr: string): Record<string, string> {
   letter-spacing: 0.04em;
   color: hsl(var(--bc) / 0.7);
   border-right: 1px solid hsl(var(--bc) / 0.08);
+  cursor: pointer;
+  user-select: none;
+}
+.header-col--selected {
+  background: hsl(var(--p) / 0.14);
+  color: hsl(var(--bc));
+}
+.col-resize {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 7px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 1;
+}
+.col-resize:hover {
+  background: hsl(var(--p) / 0.5);
+}
+.cell--col-selected {
+  background: hsl(var(--p) / 0.05);
 }
 .cell,
 .cell-input {
@@ -682,8 +856,8 @@ function cellStyle(addr: string): Record<string, string> {
   box-shadow: inset 2px 0 0 hsl(var(--p));
 }
 .cell--error {
-  color: hsl(var(--er, 0 72% 51%));
-  box-shadow: inset 2px 0 0 hsl(var(--er, 0 72% 51%));
+  color: hsl(var(--er));
+  box-shadow: inset 2px 0 0 hsl(var(--er));
 }
 .cell-text {
   display: block;

@@ -59,7 +59,7 @@ public class SheetClearCellTool implements Tool {
         boolean changed = cells.size() != sheet.cells().size();
         if (changed) {
             SheetDocument updated = new SheetDocument(sheet.kind(), sheet.schema(),
-                    sheet.rows(), new java.util.ArrayList<>(cells), sheet.extra());
+                    sheet.rows(), new java.util.ArrayList<>(cells), sheet.columns(), sheet.extra());
             support.writeBody(doc, SheetCodec.serialize(updated, doc.getMimeType()), ctx);
         }
         return Map.of("documentId", doc.getId(),

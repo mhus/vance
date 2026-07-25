@@ -50,7 +50,7 @@ public class SheetAddColumnTool implements Tool {
         }
         schema.add(letter);
         SheetDocument updated = new SheetDocument(sheet.kind(), schema,
-                sheet.rows(), sheet.cells(), sheet.extra());
+                sheet.rows(), sheet.cells(), sheet.columns(), sheet.extra());
         support.writeBody(doc, SheetCodec.serialize(updated, doc.getMimeType()), ctx);
         return Map.of("documentId", doc.getId(),
                 "addedColumn", letter,

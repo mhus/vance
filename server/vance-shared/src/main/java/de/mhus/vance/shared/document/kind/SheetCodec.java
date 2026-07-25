@@ -160,13 +160,15 @@ public final class SheetCodec {
         List<String> schema = promoteSchema(obj.get("schema"));
         Integer rows = promoteRows(obj.get("rows"));
         List<SheetCell> cells = promoteCells(obj.get("cells"));
+        Map<String, SheetColumn> columns = promoteColumns(obj.get("columns"));
         Map<String, Object> extra = new LinkedHashMap<>(obj);
         extra.remove("kind");
         extra.remove("schema");
         extra.remove("rows");
         extra.remove("cells");
+        extra.remove("columns");
         extra.remove("$computed"); // derived overlay — never part of the input model
-        return new SheetDocument(kind.isEmpty() ? "sheet" : kind, schema, rows, cells, extra);
+        return new SheetDocument(kind.isEmpty() ? "sheet" : kind, schema, rows, cells, columns, extra);
     }
 
     private static List<String> promoteSchema(@Nullable Object raw) {
@@ -190,6 +192,31 @@ public final class SheetCodec {
             return v >= 1 ? v : null;
         }
         return null;
+    }
+
+    private static Map<String, SheetColumn> promoteColumns(@Nullable Object raw) {
+        Map<String, SheetColumn> out = new LinkedHashMap<>();
+        if (!(raw instanceof Map<?, ?> map)) return out;
+        for (Map.Entry<?, ?> e : map.entrySet()) {
+            if (!(e.getKey() instanceof String k)) continue;
+            String col = k.trim().toUpperCase();
+            if (!COL_LETTERS.matcher(col).matches()) continue;
+            if (!(e.getValue() instanceof Map<?, ?> m)) continue;
+            Integer width = null;
+            if (m.get("width") instanceof Number n && n.intValue() > 0) width = n.intValue();
+            String border = null;
+            if (m.get("border") instanceof String bs && isBorder(bs)) {
+                border = bs.trim().toLowerCase();
+            }
+            SheetColumn c = new SheetColumn(width, border);
+            if (!c.isEmpty()) out.put(col, c);
+        }
+        return out;
+    }
+
+    private static boolean isBorder(String s) {
+        String t = s.trim().toLowerCase();
+        return t.equals("left") || t.equals("right") || t.equals("both");
     }
 
     private static List<SheetCell> promoteCells(@Nullable Object raw) {
@@ -233,6 +260,8 @@ public final class SheetCodec {
         Map<String, Object> body = new LinkedHashMap<>();
         if (!doc.schema().isEmpty()) body.put("schema", new ArrayList<>(doc.schema()));
         if (doc.rows() != null) body.put("rows", doc.rows());
+        Map<String, Object> cols = columnsToMap(doc.columns());
+        if (!cols.isEmpty()) body.put("columns", cols);
         body.put("cells", cellsToList(doc.cells()));
         for (Map.Entry<String, Object> e : doc.extra().entrySet()) {
             if (!body.containsKey(e.getKey()) && !"$computed".equals(e.getKey())) {
@@ -259,6 +288,19 @@ public final class SheetCodec {
         }
         m.put("values", values);
         return m;
+    }
+
+    private static Map<String, Object> columnsToMap(Map<String, SheetColumn> columns) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        for (Map.Entry<String, SheetColumn> e : columns.entrySet()) {
+            SheetColumn c = e.getValue();
+            if (c == null || c.isEmpty()) continue;
+            Map<String, Object> cm = new LinkedHashMap<>();
+            if (c.width() != null) cm.put("width", c.width());
+            if (c.border() != null && !c.border().isBlank()) cm.put("border", c.border());
+            out.put(e.getKey(), cm);
+        }
+        return out;
     }
 
     private static List<Map<String, Object>> cellsToList(List<SheetCell> cells) {

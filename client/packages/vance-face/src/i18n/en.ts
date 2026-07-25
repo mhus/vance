@@ -648,6 +648,8 @@ export default {
       deleteColumn: 'Delete column',
       recalc: 'Recalculate',
       recalcHint: 'Evaluate all formulas server-side and refresh the results',
+      columnBorder: 'Column border',
+      columnBorderHint: 'Cycle the selected column border: none → right → left → both',
       hint: 'Click a cell to select · Double-click to edit · Tab/Enter to navigate',
       cellProps: 'Cell properties',
       cellEmptyHint: 'Empty cell — type to add content.',

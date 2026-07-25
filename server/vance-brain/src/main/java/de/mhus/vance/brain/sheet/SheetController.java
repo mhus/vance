@@ -14,14 +14,20 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
  * REST surface for {@code kind: sheet} server-side evaluation under
@@ -36,6 +42,7 @@ public class SheetController {
 
     private final DocumentService documentService;
     private final SheetEvalService evalService;
+    private final SheetXlsxService xlsxService;
     private final RequestAuthority authority;
     private final SecurityContextFactory contextFactory;
 
@@ -67,6 +74,77 @@ public class SheetController {
         DocumentDocument doc = requireSheet(tenant, projectId, path);
         SheetDocument sheet = SheetCodec.parse(readBody(doc), doc.getMimeType());
         return evalService.evaluate(sheet);
+    }
+
+    @GetMapping("/brain/{tenant}/sheet/export")
+    public ResponseEntity<byte[]> export(@PathVariable String tenant,
+                                         @RequestParam String projectId,
+                                         @RequestParam String path,
+                                         @RequestParam(defaultValue = "xlsx") String format,
+                                         HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
+        DocumentDocument doc = requireSheet(tenant, projectId, path);
+        SheetDocument sheet = SheetCodec.parse(readBody(doc), doc.getMimeType());
+        byte[] body;
+        MediaType contentType;
+        String ext;
+        if ("csv".equalsIgnoreCase(format)) {
+            body = xlsxService.exportCsv(sheet).getBytes(StandardCharsets.UTF_8);
+            contentType = MediaType.parseMediaType("text/csv");
+            ext = "csv";
+        } else {
+            body = xlsxService.exportXlsx(sheet);
+            contentType = MediaType.parseMediaType(
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            ext = "xlsx";
+        }
+        String filename = leafName(doc.getPath()) + "." + ext;
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .contentType(contentType)
+                .body(body);
+    }
+
+    @PostMapping("/brain/{tenant}/sheet/import")
+    public Map<String, Object> importSheet(@PathVariable String tenant,
+                                           @RequestParam String projectId,
+                                           @RequestParam String path,
+                                           @RequestParam(defaultValue = "xlsx") String format,
+                                           @RequestParam("file") MultipartFile file,
+                                           HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.WRITE);
+        DocumentDocument doc = requireSheet(tenant, projectId, path);
+        SheetDocument sheet;
+        try {
+            byte[] bytes = file.getBytes();
+            sheet = "csv".equalsIgnoreCase(format)
+                    ? xlsxService.importCsv(new String(bytes, StandardCharsets.UTF_8))
+                    : xlsxService.importXlsx(bytes);
+        } catch (IOException e) {
+            throw new ToolException("Could not read upload: " + e.getMessage());
+        }
+        String body = SheetCodec.serialize(sheet, doc.getMimeType());
+        documentService.update(doc.getId(), null, null, body, null,
+                null, null, null, null,
+                DocumentService.TOOL_IDENTITY,
+                contextFactory.writeActor(tenant, currentUser(request), doc.getPath()));
+        log.info("SheetController.import tenant='{}' path='{}' format='{}' cells={}",
+                tenant, path, format, sheet.cells().size());
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("path", doc.getPath());
+        out.put("cellCount", sheet.cells().size());
+        out.put("rows", sheet.rows());
+        out.put("columns", sheet.schema().size());
+        out.put("body", body);
+        out.put("mimeType", doc.getMimeType());
+        return out;
+    }
+
+    private static String leafName(String path) {
+        int slash = path.lastIndexOf('/');
+        String leaf = slash < 0 ? path : path.substring(slash + 1);
+        int dot = leaf.lastIndexOf('.');
+        return dot > 0 ? leaf.substring(0, dot) : leaf;
     }
 
     private DocumentDocument requireSheet(String tenant, String projectId, String path) {

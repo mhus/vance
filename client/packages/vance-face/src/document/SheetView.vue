@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { brainFetch } from '@vance/shared';
+import { brainFetch, brainFetchBlob } from '@vance/shared';
 import { VButton } from '@/components';
 import type {
   SheetCell,
@@ -10,7 +10,9 @@ import type {
   SheetComputedValue,
   SheetDocument,
 } from './sheetCodec';
-import { columnIndexFromLetter, columnLetterFromIndex, normalizeBorders } from './sheetCodec';
+import {
+  columnIndexFromLetter, columnLetterFromIndex, normalizeBorders, parseSheet,
+} from './sheetCodec';
 
 /**
  * Editor for `kind: sheet` documents. HTML grid with A1 cell
@@ -1036,6 +1038,67 @@ function scheduleRecalc(): void {
   recalcTimer = setTimeout(() => void recalc(), 1500);
 }
 
+// ── XLSX / CSV import & export ──────────────────────────────────────
+
+const importInput = ref<HTMLInputElement | null>(null);
+
+async function exportFile(format: 'xlsx' | 'csv'): Promise<void> {
+  if (!canRecalc.value) return;
+  const q = `projectId=${encodeURIComponent(props.projectId!)}`
+    + `&path=${encodeURIComponent(props.docPath!)}&format=${format}`;
+  try {
+    const { blob, filename } = await brainFetchBlob(`sheet/export?${q}`);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename ?? `sheet.${format}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch {
+    // ignore
+  }
+}
+
+function triggerImport(): void {
+  importInput.value?.click();
+}
+
+async function onImportFile(e: Event): Promise<void> {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = '';
+  if (!file || !canRecalc.value) return;
+  const format = file.name.toLowerCase().endsWith('.csv') ? 'csv' : 'xlsx';
+  const form = new FormData();
+  form.append('file', file);
+  const q = `projectId=${encodeURIComponent(props.projectId!)}`
+    + `&path=${encodeURIComponent(props.docPath!)}&format=${format}`;
+  try {
+    const res = await brainFetch<{ body: string; mimeType: string }>(
+      'POST', `sheet/import?${q}`, { body: form },
+    );
+    if (res?.body) applyImportedBody(res.body, res.mimeType);
+  } catch {
+    // ignore
+  }
+}
+
+/** Replace the local model with a freshly imported/serialised sheet body. */
+function applyImportedBody(body: string, mimeType: string): void {
+  const model = parseSheet(body, mimeType || 'application/json');
+  localCells.value = cloneCells(model.cells);
+  localSchema.value = deriveSchema(model.schema, model.cells);
+  localRows.value = deriveRows(model.rows, model.cells);
+  localColumns.value = cloneColumns(model.columns);
+  localRowHeights.value = { ...model.rowHeights };
+  localRowBorders.value = { ...model.rowBorders };
+  computedValues.value = computedMap(model.computed);
+  emitDoc();
+  scheduleRecalc();
+}
+
 onMounted(() => {
   window.addEventListener('pointerup', endSelecting);
 });
@@ -1174,6 +1237,34 @@ function applyNumberFormat(raw: string, code: string): string {
         :title="t('documents.sheetView.recalcHint')"
         @click="recalc"
       ><span class="ico">{{ recalcing ? '…' : '↻' }}</span></VButton>
+      <VButton
+        v-if="canRecalc"
+        size="sm"
+        variant="ghost"
+        :title="t('documents.sheetView.importFile')"
+        @click="triggerImport"
+      ><span class="ico">⬆</span></VButton>
+      <VButton
+        v-if="canRecalc"
+        size="sm"
+        variant="ghost"
+        :title="t('documents.sheetView.exportXlsx')"
+        @click="exportFile('xlsx')"
+      ><span class="ico">⬇</span> xlsx</VButton>
+      <VButton
+        v-if="canRecalc"
+        size="sm"
+        variant="ghost"
+        :title="t('documents.sheetView.exportCsv')"
+        @click="exportFile('csv')"
+      ><span class="ico">⬇</span> csv</VButton>
+      <input
+        ref="importInput"
+        type="file"
+        accept=".xlsx,.csv"
+        class="hidden-file"
+        @change="onImportFile"
+      />
       <span class="hint">{{ t('documents.sheetView.hint') }}</span>
     </div>
 
@@ -1440,6 +1531,9 @@ function applyNumberFormat(raw: string, code: string): string {
   font-family: ui-monospace, monospace;
   font-size: 0.95rem;
   letter-spacing: -0.02em;
+}
+.hidden-file {
+  display: none;
 }
 .grid-and-panel {
   display: flex;

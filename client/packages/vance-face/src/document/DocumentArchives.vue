@@ -33,7 +33,6 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 const archives = useDocumentArchives();
-const expanded = ref(false);
 
 // Two-step destructive actions — same posture as the document-delete
 // confirmation modal in DocumentApp.vue.
@@ -53,7 +52,6 @@ watch(
     if (!newId) {
       archives.items.value = [];
       archives.clearPreview();
-      expanded.value = false;
       return;
     }
     await archives.load(newId);
@@ -142,19 +140,14 @@ async function copyToNewFile(): Promise<void> {
 
 <template>
   <div class="mt-3 border border-base-300 rounded-md overflow-hidden">
-    <button
-      type="button"
-      class="w-full flex items-center justify-between px-3 py-2 bg-base-200 text-xs uppercase opacity-70 hover:opacity-100 transition cursor-pointer"
-      @click="expanded = !expanded"
-    >
+    <div class="flex items-center justify-between px-3 py-2 bg-base-200 text-xs uppercase opacity-70">
       <span>
         {{ $t('documents.archives.heading') }}
         <span class="ml-2 font-mono normal-case opacity-100">{{ count }}</span>
       </span>
-      <span aria-hidden="true">{{ expanded ? '▾' : '▸' }}</span>
-    </button>
+    </div>
 
-    <div v-if="expanded" class="p-3 flex flex-col gap-3">
+    <div class="p-3 flex flex-col gap-3">
       <VAlert v-if="archives.error.value" variant="error">
         <span>{{ archives.error.value }}</span>
       </VAlert>
@@ -178,7 +171,7 @@ async function copyToNewFile(): Promise<void> {
 
       <ul
         v-if="count > 0"
-        class="flex flex-col divide-y divide-base-300 max-h-80 overflow-y-auto"
+        class="flex flex-col divide-y divide-base-300 min-h-24 max-h-48 overflow-y-auto"
       >
         <li
           v-for="archive in archives.items.value"

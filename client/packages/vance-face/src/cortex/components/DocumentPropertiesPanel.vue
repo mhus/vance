@@ -27,6 +27,37 @@ const props = defineProps<{
 const store = useCortexStore();
 const { t } = useI18n();
 
+// Tab state for the property panel. Three tabs keep the growing set of
+// fields compact: editable meta+lock (one Save button), read-only
+// details, and the versions/archives list. Persisted per browser tab in
+// sessionStorage — same pattern as propertiesOpen/notesOpen in the shell.
+type PropTab = 'general' | 'details' | 'versions';
+const PROP_TAB_KEY = 'editor:propertiesTab';
+function loadPropTab(): PropTab {
+  try {
+    const v = sessionStorage.getItem(PROP_TAB_KEY);
+    if (v === 'details' || v === 'versions') return v;
+  } catch { /* sessionStorage unavailable */ }
+  return 'general';
+}
+const activeTab = ref<PropTab>(loadPropTab());
+// Lazy-mount the versions tab: DocumentArchives fetches on mount, so we
+// only pay that network call once the user actually opens the tab. Once
+// mounted it stays alive and self-reloads on doc switch via its own
+// id-watcher.
+const versionsMounted = ref(activeTab.value === 'versions');
+watch(activeTab, (v) => {
+  if (v === 'versions') versionsMounted.value = true;
+  try {
+    sessionStorage.setItem(PROP_TAB_KEY, v);
+  } catch { /* sessionStorage unavailable */ }
+});
+const tabs: Array<{ id: PropTab; label: string }> = [
+  { id: 'general', label: 'Eigenschaften' },
+  { id: 'details', label: 'Details' },
+  { id: 'versions', label: 'Versionen' },
+];
+
 const editName = ref('');
 const editTitle = ref('');
 const editTags = ref('');
@@ -260,7 +291,24 @@ async function onCreated(created: DocumentDto): Promise<void> {
 
 <template>
   <div class="properties-panel border-b border-base-300 bg-base-100 px-3 py-2 text-xs">
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1">
+    <!-- Tab bar. Hand-rolled buttons (not DaisyUI `tabs`, which is
+         forbidden outside src/components/) — matches the header-strip
+         button styling in DocumentTabShell. -->
+    <div class="flex items-center gap-1 border-b border-base-300 mb-2 -mx-1 px-1">
+      <button
+        v-for="tab in tabs"
+        :key="tab.id"
+        type="button"
+        class="px-2 py-1 rounded-t border-b-2 -mb-px transition-colors"
+        :class="activeTab === tab.id
+          ? 'border-primary opacity-100 font-medium'
+          : 'border-transparent opacity-50 hover:opacity-80'"
+        @click="activeTab = tab.id"
+      >{{ tab.label }}</button>
+    </div>
+
+    <!-- Tab 1 — Eigenschaften: everything editable, one shared Save. -->
+    <div v-show="activeTab === 'general'">
       <div class="grid grid-cols-2 gap-x-2 gap-y-1">
         <VInput
           v-model="editName"
@@ -295,7 +343,38 @@ async function onCreated(created: DocumentDto): Promise<void> {
           />
         </div>
       </div>
-      <dl class="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-0.5 self-start">
+
+      <div class="mt-2 border-t border-base-300 pt-2">
+        <div class="opacity-60 mb-1">Lock (soft edit-protection)</div>
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
+          <span title="Block LLM / tool writes">
+            <VCheckbox v-model="lockAi" label="AI" :disabled="saving" />
+          </span>
+          <span title="Block manual user writes">
+            <VCheckbox v-model="lockUser" label="USER" :disabled="saving" />
+          </span>
+          <span title="Freeze against Kit-Apply updates">
+            <VCheckbox v-model="lockKit" label="KIT" :disabled="saving" />
+          </span>
+        </div>
+      </div>
+
+      <VAlert v-if="error" variant="error" class="mt-2">{{ error }}</VAlert>
+
+      <div class="mt-2 flex justify-end">
+        <VButton
+          size="sm"
+          variant="primary"
+          :disabled="!isDirty"
+          :loading="saving"
+          @click="onSave"
+        >Save properties</VButton>
+      </div>
+    </div>
+
+    <!-- Tab 2 — Details: read-only meta, front-matter headers, summary. -->
+    <div v-show="activeTab === 'details'">
+      <dl class="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-0.5">
         <dt class="opacity-60">Path</dt>
         <dd class="font-mono break-all">{{ document.path }}</dd>
         <dt class="opacity-60">Kind</dt>
@@ -307,57 +386,34 @@ async function onCreated(created: DocumentDto): Promise<void> {
         <dt class="opacity-60">By</dt>
         <dd>{{ document.createdBy ?? '—' }}</dd>
       </dl>
-    </div>
 
-    <div v-if="headerEntries.length > 0" class="mt-2">
-      <div class="opacity-60 mb-0.5">Headers</div>
-      <dl class="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-0.5 bg-base-200 rounded px-2 py-1">
-        <template v-for="[k, v] in headerEntries" :key="k">
-          <dt class="font-mono opacity-70">{{ k }}</dt>
-          <dd class="font-mono break-all whitespace-pre-wrap">{{ v }}</dd>
-        </template>
-      </dl>
-    </div>
+      <div v-if="headerEntries.length > 0" class="mt-2">
+        <div class="opacity-60 mb-0.5">Headers</div>
+        <dl class="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-0.5 bg-base-200 rounded px-2 py-1">
+          <template v-for="[k, v] in headerEntries" :key="k">
+            <dt class="font-mono opacity-70">{{ k }}</dt>
+            <dd class="font-mono break-all whitespace-pre-wrap">{{ v }}</dd>
+          </template>
+        </dl>
+      </div>
 
-    <div v-if="document.summary" class="mt-2">
-      <div class="opacity-60 mb-0.5">Summary</div>
-      <div class="bg-base-200 rounded px-2 py-1 whitespace-pre-wrap">
-        {{ document.summary }}
+      <div v-if="document.summary" class="mt-2">
+        <div class="opacity-60 mb-0.5">Summary</div>
+        <div class="bg-base-200 rounded px-2 py-1 whitespace-pre-wrap">
+          {{ document.summary }}
+        </div>
       </div>
     </div>
 
-    <div class="mt-2 border-t border-base-300 pt-2">
-      <div class="opacity-60 mb-1">Lock (soft edit-protection)</div>
-      <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
-        <span title="Block LLM / tool writes">
-          <VCheckbox v-model="lockAi" label="AI" :disabled="saving" />
-        </span>
-        <span title="Block manual user writes">
-          <VCheckbox v-model="lockUser" label="USER" :disabled="saving" />
-        </span>
-        <span title="Freeze against Kit-Apply updates">
-          <VCheckbox v-model="lockKit" label="KIT" :disabled="saving" />
-        </span>
-      </div>
+    <!-- Tab 3 — Versionen: archives list + restore. Lazy-mounted so the
+         archives fetch only fires once the tab is first opened. -->
+    <div v-if="versionsMounted" v-show="activeTab === 'versions'">
+      <DocumentArchives
+        :document="dtoForArchives"
+        @restored="onRestored"
+        @created="onCreated"
+      />
     </div>
-
-    <VAlert v-if="error" variant="error" class="mt-2">{{ error }}</VAlert>
-
-    <div class="mt-2 flex justify-end">
-      <VButton
-        size="sm"
-        variant="primary"
-        :disabled="!isDirty"
-        :loading="saving"
-        @click="onSave"
-      >Save properties</VButton>
-    </div>
-
-    <DocumentArchives
-      :document="dtoForArchives"
-      @restored="onRestored"
-      @created="onCreated"
-    />
   </div>
 </template>
 

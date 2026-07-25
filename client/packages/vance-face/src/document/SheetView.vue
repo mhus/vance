@@ -163,13 +163,13 @@ function registerInput(addr: string, el: Element | null): void {
   else inputRefs.value.delete(addr);
 }
 
-function startEdit(addr: string): void {
+function startEdit(addr: string, initial?: string): void {
   selectedAddr.value = addr;
   selectionFocus.value = null;
   selectedColumn.value = null;
   selectedRow.value = null;
   editingAddr.value = addr;
-  editBuffer.value = getValue(addr);
+  editBuffer.value = initial !== undefined ? initial : getValue(addr);
   void nextTick(() => {
     const el = inputRefs.value.get(addr);
     if (el) {
@@ -308,6 +308,126 @@ function onCellPointerEnter(addr: string): void {
 }
 
 function endSelecting(): void { selecting.value = false; }
+
+// ── Keyboard navigation + clipboard ────────────────────────────────
+
+const cellButtonRefs = ref<Map<string, HTMLButtonElement>>(new Map());
+function registerCellButton(addr: string, el: Element | null): void {
+  if (el) cellButtonRefs.value.set(addr, el as HTMLButtonElement);
+  else cellButtonRefs.value.delete(addr);
+}
+function focusCell(addr: string): void {
+  void nextTick(() => cellButtonRefs.value.get(addr)?.focus());
+}
+
+/** Move the single-cell selection in a direction (collapses any range). */
+function moveSelection(dir: 'right' | 'left' | 'down' | 'up'): void {
+  const cur = selectedAddr.value ?? (localSchema.value[0] ? localSchema.value[0] + '1' : null);
+  if (!cur) return;
+  const target = nextAddr(cur, dir);
+  if (!target) return;
+  selectedAddr.value = target;
+  selectionFocus.value = null;
+  selectedColumn.value = null;
+  selectedRow.value = null;
+  focusCell(target);
+}
+
+/** Extend the rectangular selection's focus corner in a direction (Shift+Arrow). */
+function extendSelection(dir: 'right' | 'left' | 'down' | 'up'): void {
+  const corner = selectionFocus.value ?? selectedAddr.value;
+  if (!corner) return;
+  const target = nextAddr(corner, dir);
+  if (!target) return;
+  selectionFocus.value = target;
+  focusCell(target);
+}
+
+/** Clear the content of every selected cell (Delete/Backspace). */
+function clearSelectionData(): void {
+  applyToSelection({ data: '' });
+  scheduleRecalc();
+}
+
+function onCellKeydown(e: KeyboardEvent, addr: string): void {
+  if (editingAddr.value === addr) return; // the <input> handles editing keys
+  const key = e.key;
+  const meta = e.ctrlKey || e.metaKey;
+  if (meta && (key === 'c' || key === 'C')) { e.preventDefault(); void copySelection(); return; }
+  if (meta && (key === 'v' || key === 'V')) { e.preventDefault(); void pasteSelection(); return; }
+  const dir: Record<string, 'right' | 'left' | 'down' | 'up'> = {
+    ArrowRight: 'right', ArrowLeft: 'left', ArrowDown: 'down', ArrowUp: 'up',
+  };
+  if (dir[key]) {
+    e.preventDefault();
+    if (e.shiftKey) extendSelection(dir[key]);
+    else moveSelection(dir[key]);
+    return;
+  }
+  if (key === 'Enter') { e.preventDefault(); moveSelection(e.shiftKey ? 'up' : 'down'); return; }
+  if (key === 'Tab') { e.preventDefault(); moveSelection(e.shiftKey ? 'left' : 'right'); return; }
+  if (key === 'Delete' || key === 'Backspace') { e.preventDefault(); clearSelectionData(); return; }
+  // A printable character starts editing with that character (Excel-style).
+  if (key.length === 1 && !meta && !e.altKey) { e.preventDefault(); startEdit(addr, key); }
+}
+
+async function copySelection(): Promise<void> {
+  const r = selectionRect.value;
+  if (!r) return;
+  const lines: string[] = [];
+  for (let row = r.minRow; row <= Math.min(r.maxRow, localRows.value); row++) {
+    const cells: string[] = [];
+    for (let pos = r.minPos; pos <= r.maxPos; pos++) {
+      const col = localSchema.value[pos];
+      cells.push(col ? getValue(col + row) : '');
+    }
+    lines.push(cells.join('\t'));
+  }
+  try {
+    await navigator.clipboard.writeText(lines.join('\n'));
+  } catch {
+    // clipboard unavailable — ignore
+  }
+}
+
+async function pasteSelection(): Promise<void> {
+  const start = selectedAddr.value;
+  if (!start) return;
+  const sp = cellPos(start);
+  if (!sp) return;
+  let text: string;
+  try {
+    text = await navigator.clipboard.readText();
+  } catch {
+    return;
+  }
+  if (!text) return;
+  const grid = text.replace(/\r\n/g, '\n').replace(/\n$/, '').split('\n').map((l) => l.split('\t'));
+  // Grow schema / rows to fit the paste.
+  const needCols = sp.pos + Math.max(...grid.map((g) => g.length));
+  while (localSchema.value.length < needCols) {
+    localSchema.value = [...localSchema.value, columnLetterFromIndex(localSchema.value.length + 1)];
+  }
+  const needRows = sp.row - 1 + grid.length;
+  if (localRows.value < needRows) localRows.value = needRows;
+  // Batch-write the cells.
+  const cells = [...localCells.value];
+  const byField = new Map<string, number>();
+  cells.forEach((c, i) => byField.set(c.field, i));
+  grid.forEach((cols, ri) => {
+    cols.forEach((val, ci) => {
+      const col = localSchema.value[sp.pos + ci];
+      if (!col) return;
+      const key = col + (sp.row + ri);
+      const idx = byField.get(key);
+      if (idx != null) cells[idx] = { ...cells[idx], data: val, field: key };
+      else { cells.push({ field: key, data: val, extra: {} }); byField.set(key, cells.length - 1); }
+    });
+  });
+  localCells.value = cells.filter((c) => !cellShouldBeDropped(c));
+  emitDoc();
+  scheduleRecalc();
+}
 
 // ── Navigation between cells ───────────────────────────────────────
 
@@ -1037,7 +1157,9 @@ function applyNumberFormat(raw: string, code: string): string {
             />
             <button
               v-else
+              :ref="(el) => registerCellButton(col + row, el as Element | null)"
               type="button"
+              tabindex="0"
               class="cell"
               :class="{
                 'cell--selected': isSelected(col + row),
@@ -1052,6 +1174,7 @@ function applyNumberFormat(raw: string, code: string): string {
               @pointerdown="onCellPointerDown(col + row, $event)"
               @pointerenter="onCellPointerEnter(col + row)"
               @dblclick="startEdit(col + row)"
+              @keydown="onCellKeydown($event, col + row)"
             >
               <span class="cell-text">{{ cellDisplay(col + row) }}</span>
             </button>

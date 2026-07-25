@@ -1,7 +1,7 @@
 {
-  "description": "application/json, column metadata (width + border) round-trips; $computed overlay is dropped on parse",
+  "description": "application/json, column metadata (width + border) and row heights round-trip; $computed overlay is dropped on parse",
   "mime": "application/json",
-  "input": "{\"$meta\":{\"kind\":\"sheet\"},\"schema\":[\"A\",\"B\"],\"columns\":{\"A\":{\"width\":140},\"B\":{\"border\":\"right\"}},\"cells\":[{\"field\":\"A1\",\"data\":\"x\"},{\"field\":\"B1\",\"data\":\"=A1\"}],\"$computed\":{\"computedAt\":\"2026-01-01T00:00:00Z\",\"values\":[{\"field\":\"B1\",\"value\":\"x\",\"type\":\"text\"}]}}",
+  "input": "{\"$meta\":{\"kind\":\"sheet\"},\"schema\":[\"A\",\"B\"],\"columns\":{\"A\":{\"width\":140},\"B\":{\"border\":\"right\"}},\"rowHeights\":{\"1\":40,\"2\":64},\"cells\":[{\"field\":\"A1\",\"data\":\"x\"},{\"field\":\"B1\",\"data\":\"=A1\"}],\"$computed\":{\"computedAt\":\"2026-01-01T00:00:00Z\",\"values\":[{\"field\":\"B1\",\"value\":\"x\",\"type\":\"text\"}]}}",
   "expected": {
     "$meta": {
       "kind": "sheet"
@@ -17,6 +17,10 @@
       "B": {
         "border": "right"
       }
+    },
+    "rowHeights": {
+      "1": 40,
+      "2": 64
     },
     "cells": [
       {

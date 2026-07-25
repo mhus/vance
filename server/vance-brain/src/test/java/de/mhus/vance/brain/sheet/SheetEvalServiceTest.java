@@ -21,7 +21,8 @@ class SheetEvalServiceTest {
 
     private static SheetDocument sheet(SheetCell... cells) {
         return new SheetDocument("sheet", List.of("A", "B", "C"), null,
-                new ArrayList<>(List.of(cells)), new LinkedHashMap<>(), new LinkedHashMap<>());
+                new ArrayList<>(List.of(cells)), new LinkedHashMap<>(),
+                new LinkedHashMap<>(), new LinkedHashMap<>());
     }
 
     private static Map<String, SheetComputed.Value> byField(SheetComputed c) {

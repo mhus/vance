@@ -17,9 +17,11 @@ import org.jspecify.annotations.Nullable;
  * @param rows    the explicit visible row count, or {@code null} to
  *                let the viewer derive it from the highest cell row.
  * @param cells   sparse list of cells with content or formatting.
- * @param columns sparse per-column metadata (width, border), keyed by
- *                column letter.
- * @param extra   unknown top-level fields, passthrough.
+ * @param columns    sparse per-column metadata (width, border), keyed by
+ *                   column letter.
+ * @param rowHeights sparse per-row display height in pixels, keyed by row
+ *                   number (as a string, e.g. {@code "1"}).
+ * @param extra      unknown top-level fields, passthrough.
  *
  * <p>Spec: {@code specification/doc-kind-sheet.md}.
  */
@@ -29,6 +31,7 @@ public record SheetDocument(
         @Nullable Integer rows,
         List<SheetCell> cells,
         Map<String, SheetColumn> columns,
+        Map<String, Integer> rowHeights,
         Map<String, Object> extra) {
 
     public SheetDocument {
@@ -36,11 +39,12 @@ public record SheetDocument(
         if (schema == null) schema = new ArrayList<>();
         if (cells == null) cells = new ArrayList<>();
         if (columns == null) columns = new LinkedHashMap<>();
+        if (rowHeights == null) rowHeights = new LinkedHashMap<>();
         if (extra == null) extra = new LinkedHashMap<>();
     }
 
     public static SheetDocument empty() {
         return new SheetDocument("sheet", new ArrayList<>(), null, new ArrayList<>(),
-                new LinkedHashMap<>(), new LinkedHashMap<>());
+                new LinkedHashMap<>(), new LinkedHashMap<>(), new LinkedHashMap<>());
     }
 }

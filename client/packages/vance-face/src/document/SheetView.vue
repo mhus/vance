@@ -73,6 +73,11 @@ function cloneColumns(src: Record<string, SheetColumn> | undefined): Record<stri
   return out;
 }
 
+const localRowHeights = ref<Record<string, number>>({ ...(props.doc.rowHeights ?? {}) });
+watch(() => props.doc.rowHeights, (next) => {
+  localRowHeights.value = { ...(next ?? {}) };
+}, { deep: true });
+
 function cloneCells(src: SheetCell[]): SheetCell[] {
   return src.map((c) => ({
     field: c.field,
@@ -214,6 +219,7 @@ function emitDoc(): void {
     rows: localRows.value,
     cells: localCells.value,
     columns: { ...localColumns.value },
+    rowHeights: { ...localRowHeights.value },
     extra: props.doc.extra,
   });
 }
@@ -318,6 +324,14 @@ function deleteSelectedRow(): void {
   }
   localCells.value = survivors;
   if (localRows.value > 1) localRows.value = localRows.value - 1;
+  // Shift row heights: drop the removed row, renumber higher ones down.
+  const newHeights: Record<string, number> = {};
+  for (const [r, h] of Object.entries(localRowHeights.value)) {
+    const idx = parseInt(r, 10);
+    if (idx === row) continue;
+    newHeights[idx > row ? String(idx - 1) : r] = h;
+  }
+  localRowHeights.value = newHeights;
   selectedAddr.value = null;
   cancelEdit();
   emitDoc();
@@ -452,6 +466,46 @@ function onColumnResizeEnd(): void {
   resizeCol = null;
 }
 
+// ── Row height (drag on the row-number edge) ───────────────────────
+
+const ROW_MIN_HEIGHT = 22;
+const ROW_DEFAULT_HEIGHT = 30;
+
+function rowHeight(row: number): number | null {
+  return localRowHeights.value[String(row)] ?? null;
+}
+
+function rowStyle(row: number): Record<string, string> {
+  const h = rowHeight(row);
+  return h != null ? { height: `${h}px` } : {};
+}
+
+let resizeRow: number | null = null;
+let rowResizeStartY = 0;
+let rowResizeStartHeight = 0;
+
+function startRowResize(row: number, ev: PointerEvent): void {
+  ev.preventDefault();
+  ev.stopPropagation();
+  resizeRow = row;
+  rowResizeStartY = ev.clientY;
+  rowResizeStartHeight = rowHeight(row) ?? ROW_DEFAULT_HEIGHT;
+  window.addEventListener('pointermove', onRowResizeMove);
+  window.addEventListener('pointerup', onRowResizeEnd, { once: true });
+}
+
+function onRowResizeMove(ev: PointerEvent): void {
+  if (resizeRow == null) return;
+  const h = Math.max(ROW_MIN_HEIGHT, Math.round(rowResizeStartHeight + (ev.clientY - rowResizeStartY)));
+  localRowHeights.value = { ...localRowHeights.value, [String(resizeRow)]: h };
+}
+
+function onRowResizeEnd(): void {
+  window.removeEventListener('pointermove', onRowResizeMove);
+  resizeRow = null;
+  emitDoc(); // persist the final height
+}
+
 // ── Format actions (side panel) ────────────────────────────────────
 
 const selectedCell = computed<SheetCell | null>(() => {
@@ -555,6 +609,7 @@ function scheduleRecalc(): void {
 onBeforeUnmount(() => {
   if (recalcTimer) clearTimeout(recalcTimer);
   window.removeEventListener('pointermove', onColumnResizeMove);
+  window.removeEventListener('pointermove', onRowResizeMove);
 });
 
 /** Displayed cell content: computed value for a formula cell (once
@@ -647,9 +702,16 @@ function cellStyle(addr: string): Record<string, string> {
           v-for="row in rowNumbers"
           :key="row"
           class="data-row"
-          :style="gridStyle"
+          :style="{ ...gridStyle, ...rowStyle(row) }"
         >
-          <span class="row-num" aria-hidden="true">{{ row }}</span>
+          <span class="row-num">
+            {{ row }}
+            <span
+              class="row-resize"
+              @click.stop
+              @pointerdown="startRowResize(row, $event)"
+            />
+          </span>
           <template v-for="col in localSchema" :key="col + row">
             <input
               v-if="editingAddr === col + row"
@@ -848,6 +910,18 @@ function cellStyle(addr: string): Record<string, string> {
   z-index: 1;
 }
 .col-resize:hover {
+  background: oklch(var(--p) / 0.5);
+}
+.row-resize {
+  position: absolute;
+  left: 0;
+  bottom: -3px;
+  width: 100%;
+  height: 7px;
+  cursor: row-resize;
+  z-index: 2;
+}
+.row-resize:hover {
   background: oklch(var(--p) / 0.5);
 }
 .cell--col-selected {

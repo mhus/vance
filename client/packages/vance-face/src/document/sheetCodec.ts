@@ -66,6 +66,8 @@ export interface SheetDocument {
   cells: SheetCell[];
   /** Sparse per-column metadata (width, border), keyed by column letter. */
   columns: Record<string, SheetColumn>;
+  /** Sparse per-row display height in px, keyed by row number (as string). */
+  rowHeights: Record<string, number>;
   /** Unknown top-level fields, preserved across round-trip. */
   extra: Record<string, unknown>;
   /** Derived computed overlay (formula results). Read-only for display;
@@ -190,7 +192,7 @@ function serializeSheetYaml(doc: SheetDocument): string {
 // ── Promotion ───────────────────────────────────────────────────────
 
 function emptyDoc(): SheetDocument {
-  return { kind: 'sheet', schema: [], rows: null, cells: [], columns: {}, extra: {} };
+  return { kind: 'sheet', schema: [], rows: null, cells: [], columns: {}, rowHeights: {}, extra: {} };
 }
 
 function promoteToSheetDocument(obj: Record<string, unknown>): SheetDocument {
@@ -199,15 +201,28 @@ function promoteToSheetDocument(obj: Record<string, unknown>): SheetDocument {
   const rows = promoteRows(obj.rows);
   const cells = promoteCells(obj.cells);
   const columns = promoteColumns(obj.columns);
+  const rowHeights = promoteRowHeights(obj.rowHeights);
   const computed = promoteComputed(obj['$computed']);
   // `$computed` is a derived overlay — dropped from `extra` so it never
   // round-trips through serialize (server-authoritative), matching Java.
   const {
-    kind: _k, schema: _s, rows: _r, cells: _c, columns: _cols, ['$computed']: _comp, ...extra
+    kind: _k, schema: _s, rows: _r, cells: _c, columns: _cols, rowHeights: _rh,
+    ['$computed']: _comp, ...extra
   } = obj;
-  const doc: SheetDocument = { kind, schema, rows, cells, columns, extra };
+  const doc: SheetDocument = { kind, schema, rows, cells, columns, rowHeights, extra };
   if (computed) doc.computed = computed;
   return doc;
+}
+
+function promoteRowHeights(raw: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!isObject(raw)) return out;
+  for (const [k, v] of Object.entries(raw)) {
+    const row = parseInt(k.trim(), 10);
+    if (!Number.isFinite(row) || row < 1) continue;
+    if (typeof v === 'number' && Number.isFinite(v) && v > 0) out[String(row)] = Math.round(v);
+  }
+  return out;
 }
 
 function promoteColumns(raw: unknown): Record<string, SheetColumn> {
@@ -316,6 +331,9 @@ function buildBody(doc: SheetDocument): Record<string, unknown> {
   if (doc.rows != null) body.rows = doc.rows;
   const cols = columnsToObject(doc.columns);
   if (Object.keys(cols).length > 0) body.columns = cols;
+  if (doc.rowHeights && Object.keys(doc.rowHeights).length > 0) {
+    body.rowHeights = { ...doc.rowHeights };
+  }
   body.cells = doc.cells.map(cellToObject);
   for (const [k, v] of Object.entries(doc.extra)) {
     if (!(k in body)) body[k] = v;

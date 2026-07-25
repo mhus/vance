@@ -161,14 +161,17 @@ public final class SheetCodec {
         Integer rows = promoteRows(obj.get("rows"));
         List<SheetCell> cells = promoteCells(obj.get("cells"));
         Map<String, SheetColumn> columns = promoteColumns(obj.get("columns"));
+        Map<String, Integer> rowHeights = promoteRowHeights(obj.get("rowHeights"));
         Map<String, Object> extra = new LinkedHashMap<>(obj);
         extra.remove("kind");
         extra.remove("schema");
         extra.remove("rows");
         extra.remove("cells");
         extra.remove("columns");
+        extra.remove("rowHeights");
         extra.remove("$computed"); // derived overlay — never part of the input model
-        return new SheetDocument(kind.isEmpty() ? "sheet" : kind, schema, rows, cells, columns, extra);
+        return new SheetDocument(kind.isEmpty() ? "sheet" : kind, schema, rows, cells,
+                columns, rowHeights, extra);
     }
 
     private static List<String> promoteSchema(@Nullable Object raw) {
@@ -219,6 +222,26 @@ public final class SheetCodec {
         return t.equals("left") || t.equals("right") || t.equals("both");
     }
 
+    private static Map<String, Integer> promoteRowHeights(@Nullable Object raw) {
+        Map<String, Integer> out = new LinkedHashMap<>();
+        if (!(raw instanceof Map<?, ?> map)) return out;
+        for (Map.Entry<?, ?> e : map.entrySet()) {
+            if (!(e.getKey() instanceof String k)) continue;
+            String row = k.trim();
+            int rowNum;
+            try {
+                rowNum = Integer.parseInt(row);
+            } catch (NumberFormatException ex) {
+                continue;
+            }
+            if (rowNum < 1) continue;
+            if (e.getValue() instanceof Number n && n.intValue() > 0) {
+                out.put(Integer.toString(rowNum), n.intValue());
+            }
+        }
+        return out;
+    }
+
     private static List<SheetCell> promoteCells(@Nullable Object raw) {
         List<SheetCell> out = new ArrayList<>();
         if (!(raw instanceof List<?> list)) return out;
@@ -262,6 +285,9 @@ public final class SheetCodec {
         if (doc.rows() != null) body.put("rows", doc.rows());
         Map<String, Object> cols = columnsToMap(doc.columns());
         if (!cols.isEmpty()) body.put("columns", cols);
+        if (!doc.rowHeights().isEmpty()) {
+            body.put("rowHeights", new LinkedHashMap<String, Object>(doc.rowHeights()));
+        }
         body.put("cells", cellsToList(doc.cells()));
         for (Map.Entry<String, Object> e : doc.extra().entrySet()) {
             if (!body.containsKey(e.getKey()) && !"$computed".equals(e.getKey())) {

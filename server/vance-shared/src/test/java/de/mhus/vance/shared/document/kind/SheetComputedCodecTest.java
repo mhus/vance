@@ -13,7 +13,7 @@ class SheetComputedCodecTest {
                 new java.util.ArrayList<>(List.of(
                         new SheetCell("A1", "10", null, null, new LinkedHashMap<>()),
                         new SheetCell("B1", "=A1*2", null, null, new LinkedHashMap<>()))),
-                new LinkedHashMap<>(), new LinkedHashMap<>());
+                new LinkedHashMap<>(), new LinkedHashMap<>(), new LinkedHashMap<>());
     }
 
     private static SheetComputed computed() {
@@ -62,7 +62,7 @@ class SheetComputedCodecTest {
         cols.put("A", new SheetColumn(140, null));
         cols.put("B", new SheetColumn(null, "right"));
         SheetDocument doc = new SheetDocument("sheet", List.of("A", "B"), 3,
-                new java.util.ArrayList<>(), cols, new LinkedHashMap<>());
+                new java.util.ArrayList<>(), cols, new LinkedHashMap<>(), new LinkedHashMap<>());
 
         String json = SheetCodec.serialize(doc, "application/json");
         assertThat(json).contains("columns").contains("140").contains("right");
@@ -72,6 +72,29 @@ class SheetComputedCodecTest {
         assertThat(parsed.columns().get("A").width()).isEqualTo(140);
         assertThat(parsed.columns().get("B").border()).isEqualTo("right");
         assertThat(parsed.extra()).doesNotContainKey("columns");
+    }
+
+    @Test
+    void rowHeights_roundTripAndDropInvalid() {
+        java.util.Map<String, Integer> heights = new LinkedHashMap<>();
+        heights.put("1", 40);
+        heights.put("3", 64);
+        SheetDocument doc = new SheetDocument("sheet", List.of("A"), 3,
+                new java.util.ArrayList<>(), new LinkedHashMap<>(), heights, new LinkedHashMap<>());
+
+        String json = SheetCodec.serialize(doc, "application/json");
+        assertThat(json).contains("rowHeights").contains("40").contains("64");
+
+        SheetDocument parsed = SheetCodec.parse(json, "application/json");
+        assertThat(parsed.rowHeights()).containsEntry("1", 40).containsEntry("3", 64);
+        assertThat(parsed.extra()).doesNotContainKey("rowHeights");
+
+        // invalid keys/values dropped
+        SheetDocument bad = SheetCodec.parse(
+                "{\"$meta\":{\"kind\":\"sheet\"},\"rowHeights\":{\"1\":-5,\"x\":30,\"2\":48},"
+                        + "\"cells\":[]}", "application/json");
+        assertThat(bad.rowHeights()).containsOnlyKeys("2");
+        assertThat(bad.rowHeights().get("2")).isEqualTo(48);
     }
 
     @Test

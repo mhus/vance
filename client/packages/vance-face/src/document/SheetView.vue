@@ -1015,6 +1015,20 @@ function cellIsError(addr: string): boolean {
   return computedValues.value.get(addr)?.type === 'error';
 }
 
+/** Excel-style: a left/general-aligned non-empty cell whose right neighbour
+ *  is empty lets its text overflow into that empty space instead of being
+ *  clipped with an ellipsis. */
+function overflowsRight(addr: string): boolean {
+  const c = getCell(addr);
+  if (!c || c.align === 'right' || c.align === 'center') return false;
+  if (!cellDisplay(addr)) return false;
+  const p = cellPos(addr);
+  if (!p) return false;
+  const rightCol = localSchema.value[p.pos + 1];
+  if (!rightCol) return true; // last visible column
+  return getValue(rightCol + p.row) === '';
+}
+
 function cellStyle(addr: string): Record<string, string> {
   const c = getCell(addr);
   const m = /^([A-Z]+)([0-9]+)$/.exec(addr);
@@ -1176,7 +1190,10 @@ function applyNumberFormat(raw: string, code: string): string {
               @dblclick="startEdit(col + row)"
               @keydown="onCellKeydown($event, col + row)"
             >
-              <span class="cell-text">{{ cellDisplay(col + row) }}</span>
+              <span
+                class="cell-text"
+                :class="{ 'cell-text--overflow': overflowsRight(col + row) }"
+              >{{ cellDisplay(col + row) }}</span>
             </button>
           </template>
         </div>
@@ -1519,6 +1536,13 @@ function applyNumberFormat(raw: string, code: string): string {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* Excel-style spill into empty right neighbours. */
+.cell-text--overflow {
+  overflow: visible;
+  text-overflow: clip;
+  position: relative;
+  z-index: 1;
 }
 .cell-input {
   border-color: oklch(var(--p));

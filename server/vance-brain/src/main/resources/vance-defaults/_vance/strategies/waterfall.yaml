@@ -27,25 +27,25 @@ phases:
   - name: planning
     worker: ${params.workerRecipes.planning}
     workerInput: |
-      Erstelle einen Plan für: ${params.goal}
+      Create a plan for: ${params.goal}
 
-      Wenn relevant, gliedere in Schritte und Abhängigkeiten.
+      Where relevant, break it down into steps and dependencies.
     gate:
       requires: [planning_completed]
     checkpoint:
       type: approval
       message: |
-        Plan steht für '${params.goal}'. Soll ich mit der Umsetzung
-        weitermachen?
+        The plan for '${params.goal}' is ready. Should I go ahead
+        with the implementation?
       storeAs: plan_approved
       criticality: NORMAL
 
   - name: implementation
     worker: ${params.workerRecipes.implementation}
     workerInput: |
-      Setze den Plan aus Phase planning um.
+      Implement the plan from the planning phase.
 
-      Plan-Inhalt:
+      Plan content:
       ${phases.planning.result}
     gate:
       requires: [implementation_completed]
@@ -53,17 +53,17 @@ phases:
   - name: review
     worker: ${params.workerRecipes.review}
     workerInput: |
-      Reviewe die Umsetzung aus Phase implementation.
+      Review the implementation from the implementation phase.
 
-      Umsetzungs-Inhalt:
+      Implementation content:
       ${phases.implementation.result}
 
-      Beurteile: ist das Ergebnis vollständig und korrekt?
+      Assess: is the result complete and correct?
     gate:
       requires: [review_completed]
     checkpoint:
       type: approval
       message: |
-        Review ist da. Akzeptierst du das Ergebnis als final?
+        The review is ready. Do you accept the result as final?
       storeAs: review_accepted
       criticality: NORMAL

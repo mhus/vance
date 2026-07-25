@@ -11,11 +11,11 @@ LibreOffice, Pages, or Google Sheets.
 
 ## When to use this
 
-- "Mach mir das als Excel" / "Export this records doc as XLSX".
-- "Ich will die Tabelle in Excel öffnen / mit Filtern arbeiten /
-  Charts daraus bauen".
-- Records-Output an Kollegen schicken, die keinen Vance-Account
-  haben — sie öffnen die XLSX lokal.
+- "Make this an Excel file" / "Export this records doc as XLSX".
+- "I want to open the table in Excel / work with filters /
+  build charts from it".
+- Send records output to colleagues who don't have a Vance
+  account — they open the XLSX locally.
 
 ## Parameters
 
@@ -54,7 +54,7 @@ xlsx_from_records(documentRef="data/inventory.json")
 Then in your reply:
 
 ```
-Hier die Excel-Version:
+Here's the Excel version:
 [inventory-2026-05-28-201234.xlsx](vance:/reports/...)
 ```
 
@@ -63,11 +63,11 @@ Hier die Excel-Version:
 ```
 xlsx_from_records(
   documentRef="data/inventory.json",
-  title="Inventur Q3 — Vorab"
+  title="Inventory Q3 — Draft"
 )
 ```
 
-The sheet inside Excel is named "Inventur Q3 — Vorab", same string
+The sheet inside Excel is named "Inventory Q3 — Draft", same string
 goes into the document core properties (visible in Excel's File →
 Info).
 

@@ -74,20 +74,20 @@ Required: `plan`, `summary`, `todos`.
 - `summary`: one-line gist for spinner / log / inbox-announcement.
 - `todos`: 3 to 8 plan steps as `{ id, content, activeForm? }`.
   - `id`: stable, e.g. "1", "2", … (or descriptive slugs).
-  - `content`: imperative, e.g. "Token-Storage migrieren".
-  - `activeForm`: optional present-continuous, e.g. "Migriere
-    Token-Storage" — used for spinner / UI display.
+  - `content`: imperative, e.g. "Migrate token storage".
+  - `activeForm`: optional present-continuous, e.g. "Migrating
+    token storage" — used for spinner / UI display.
 
 ```
 { "type": "PROPOSE_PLAN",
   "reason": "Exploration complete — three modules touched, plan ready.",
-  "summary": "Auth-Refactoring in 4 Schritten, ~6 Dateien betroffen",
-  "plan": "## Refactoring-Plan\n\n1. AuthService analysieren\n2. ...\n\nRisiken: ...",
+  "summary": "Auth refactoring in 4 steps, ~6 files affected",
+  "plan": "## Refactoring plan\n\n1. Analyse AuthService\n2. ...\n\nRisks: ...",
   "todos": [
-    { "id": "1", "content": "AuthService analysieren", "activeForm": "Analysiere AuthService" },
-    { "id": "2", "content": "Token-Storage migrieren", "activeForm": "Migriere Token-Storage" },
-    { "id": "3", "content": "Refresh-Endpoint umschreiben" },
-    { "id": "4", "content": "Tests anpassen" }
+    { "id": "1", "content": "Analyse AuthService", "activeForm": "Analysing AuthService" },
+    { "id": "2", "content": "Migrate token storage", "activeForm": "Migrating token storage" },
+    { "id": "3", "content": "Rewrite refresh endpoint" },
+    { "id": "4", "content": "Adjust tests" }
   ] }
 ```
 
@@ -97,7 +97,7 @@ Required: `plan`, `summary`, `todos`.
 - Each entry is a **logical phase step with own value** —
   something that takes 1–3 tool calls or a sub-delegation.
 - **Not** atomic tool calls (like "doc_read AuthService.java").
-- **Not** over-generalisations (like "Refactoring durchführen").
+- **Not** over-generalisations (like "carry out the refactoring").
 
 When you pick up a Todo during execution you'll decide *then*
 whether to invoke tools yourself, delegate to a worker, or split
@@ -114,9 +114,9 @@ reading more code.
 { "type": "ANSWER",
   "reason": "Auth flow has two competing implementations — need
              user input on which to keep.",
-  "message": "Es gibt zwei Auth-Pfade (V1 in com.x.auth, V2 in
-              com.x.auth2). Soll der Plan beide vereinheitlichen
-              oder nur V2 erweitern?" }
+  "message": "There are two auth paths (V1 in com.x.auth, V2 in
+              com.x.auth2). Should the plan unify both
+              or only extend V2?" }
 ```
 
 ## `type: "START_PLAN"` (recursive sub-exploration)

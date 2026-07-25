@@ -70,8 +70,8 @@ public class ResearchRichTool implements Tool {
     public String description() {
         return "Search the web and return a mixed result set — text "
                 + "snippets, images, videos, and PDF documents in one "
-                + "call. Use when the user asks 'zeig mir was zu X', "
-                + "'gib mir einen Eindruck zu Y' — anything that wants "
+                + "call. Use when the user asks 'show me something on X', "
+                + "'give me an impression of Y' — anything that wants "
                 + "a rounded view. Each bucket comes with its own "
                 + "validation: images and PDFs are HEAD-probed, videos "
                 + "are oEmbed-checked. For text-only deep research, "

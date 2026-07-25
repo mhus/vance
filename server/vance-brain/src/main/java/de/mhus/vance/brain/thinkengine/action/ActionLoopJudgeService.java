@@ -114,9 +114,9 @@ public class ActionLoopJudgeService {
         }
         // Last-resort literal — engine should still surface SOMETHING
         // rather than leave the user staring at an empty chat.
-        return "Ich konnte zu deiner Frage in diesem Durchlauf keine "
-                + "belastbare Antwort produzieren — frag mich gerne "
-                + "konkreter oder lass uns einen anderen Weg probieren.";
+        return "I couldn't produce a solid answer to your question "
+                + "in this run — feel free to ask me more "
+                + "specifically or let's try a different approach.";
     }
 
     private static String formatToolsUsed(@Nullable List<String> toolsUsed) {

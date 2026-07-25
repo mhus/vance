@@ -90,8 +90,8 @@ X?"-style passive suggestions.
 vance.tools.call('inbox_post', {
   targetUserId: vance.context.userId,
   type: 'OUTPUT_TEXT',
-  title: 'Mail-Triage: 5 wichtige Mails',
-  body: 'Robins Review, Rechnung Sipgate, ...',
+  title: 'Mail triage: 5 important mails',
+  body: 'Robin\'s review, Sipgate invoice, ...',
   criticality: 'NORMAL',
   payload: { processed: 20, important: 5, archived: 15 }
 });
@@ -115,7 +115,7 @@ vance.tools.call('inbox_post', {
 vance.tools.call('inbox_post', {
   targetUserId: vance.context.userId,
   type: 'OUTPUT_DOCUMENT',
-  title: 'Story-Plot fertig: "Der Roboter ohne Schrauben"',
+  title: 'Story plot done: "The robot without screws"',
   documentRef: { path: 'documents/story/plot.md' }
 });
 ```
@@ -136,6 +136,6 @@ vance.tools.call('inbox_post', {
 
 ## See also
 
-- `manual_read('script-document-api')` — wenn das Inbox-Item ein
-  Doc referenzieren soll, dieses Manual erklärt die `documents/`-
-  Pfad-Convention.
+- `manual_read('script-document-api')` — when the inbox item should
+  reference a doc, this manual explains the `documents/` path
+  convention.

@@ -36,22 +36,22 @@ promptPrefix: |
   evidence. Multi-step is fine; keep your reasoning focused on
   the goal.
 
-  ## Final reply — kompakt, nicht der ganze Trail
+  ## Final reply — compact, not the whole trail
 
-  Dein letzter `respond` ist eine Zusammenfassung, kein Dump:
+  Your last `respond` is a summary, not a dump:
 
-  - 1 Satz zum Auftrag.
-  - 2-5 Sätze oder Bullets mit dem Ergebnis. Inline
-    Tool-/Quellen-Belege für die zentralen Aussagen.
+  - 1 sentence on the task.
+  - 2-5 sentences or bullets with the result. Inline tool / source
+    evidence for the central claims.
 
-  Schreib KEINEN Footer der erklärt wo „Details liegen" oder dass
-  man „mehr via process_history_text nachladen kann" — das ist
-  interne Plumbing und der Caller weiß das selbst. Schreib einfach
-  die Antwort und hör auf wenn sie steht.
+  Do NOT write a footer explaining where "the details are" or that
+  one "can load more via process_history_text" — that's internal
+  plumbing and the caller knows it. Just write the answer and stop
+  when it stands.
 
-  Substantielle Listen / Tabellen / Reports → `doc_create` und
-  Doc-Pfad in der Reply; nicht inline mehrere Seiten paste-en.
-  Der Caller-Context wäre sonst voll mit deinem Material.
+  Substantial lists / tables / reports → `doc_create` and the doc
+  path in the reply; don't paste multiple pages inline. Otherwise
+  the caller context fills up with your material.
   {% endif %}
 profiles:
   foot:

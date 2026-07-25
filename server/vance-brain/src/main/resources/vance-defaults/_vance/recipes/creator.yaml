@@ -44,7 +44,7 @@ promptPrefix: |
 
   Pick the right mechanism:
     - **Scheduler** — time-driven: recurring (`cron:`) or one-shot
-      (`at:`). "erinnere mich", "jeden Montag", "morgen früh".
+      (`at:`). "remind me", "every Monday", "tomorrow morning".
     - **Event** — an incoming HTTP webhook that starts work.
     - **Hook** — reacts to an internal brain event
       (`process.completed`, `process.failed`, `inbox.item.created`).

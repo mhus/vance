@@ -238,17 +238,17 @@ public class ConfirmingPhase {
             ThinkProcessDocument process,
             List<Criterion> pending) {
         StringBuilder body = new StringBuilder();
-        body.append("Der Planner hat ").append(pending.size())
-                .append(" Annahme(n) mit niedriger Konfidenz identifiziert. ")
-                .append("Sollen sie als bestätigte Anforderungen "
-                        + "übernommen werden?\n\n");
+        body.append("The planner identified ").append(pending.size())
+                .append(" low-confidence assumption(s). ")
+                .append("Should they be adopted as confirmed "
+                        + "requirements?\n\n");
         for (Criterion c : pending) {
             body.append("- [").append(c.getId()).append(", conf=")
                     .append(c.getConfidence()).append("] ")
                     .append(c.getText()).append("\n");
         }
-        body.append("\nAntwort: yes → alle als USER_CONFIRMED übernehmen; "
-                + "no → alle verwerfen.");
+        body.append("\nAnswer: yes → adopt all as USER_CONFIRMED; "
+                + "no → discard all.");
 
         Map<String, Object> payload = new LinkedHashMap<>();
         List<Map<String, Object>> criteriaPayload = new ArrayList<>();
@@ -273,8 +273,8 @@ public class ConfirmingPhase {
                 .originSessionId(process.getSessionId())
                 .type(InboxItemType.APPROVAL)
                 .criticality(Criticality.NORMAL)
-                .title("Slartibartfast: " + pending.size()
-                        + " Annahme(n) bestätigen?")
+                .title("Slartibartfast: confirm " + pending.size()
+                        + " assumption(s)?")
                 .body(body.toString())
                 .payload(payload)
                 .requiresAction(true)

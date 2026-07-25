@@ -17,8 +17,8 @@ Decide first:
 
 | Did the user ask for a saved file / document? | Use form |
 |---|---|
-| YES — "create a mindmap document", "speicher die Mindmap", "save the brainstorm" | **Stored** (below) |
-| NO — "show me a mindmap", "mach mir eine Mindmap zu X", "structure this as a radial map" | **Inline** (further below) |
+| YES — "create a mindmap document", "save the mindmap", "save the brainstorm" | **Stored** (below) |
+| NO — "show me a mindmap", "make me a mindmap about X", "structure this as a radial map" | **Inline** (further below) |
 
 ### Inline in chat — fence-wrapped bullets, no tool call
 
@@ -38,8 +38,8 @@ multiple top-level bullets render as a forest (parallel trees).
 ```
 ````
 
-The reply must CONTAIN this fence verbatim — narrating "Hier ist die
-Mindmap…" without the actual fenced block leaves the user with no
+The reply must CONTAIN this fence verbatim — narrating "Here is the
+mindmap…" without the actual fenced block leaves the user with no
 render.
 
 ### Stored document — raw markdown OR YAML/JSON, NO fence
@@ -101,13 +101,13 @@ the YAML/JSON form.
 
 ## When to use this
 
-User wants a *brainstorm-style* hierarchy visualised — "mach mir eine
-Mindmap zu X", "structure this as a radial map". Triggers:
+User wants a *brainstorm-style* hierarchy visualised — "make me a
+mindmap about X", "structure this as a radial map". Triggers:
 brainstorming, outlining, "give me the big picture".
 
 ## mindmap vs. tree vs. graph vs. diagram
 
-- **mindmap** — radial visual, anschau-fokussiert. This kind.
+- **mindmap** — radial visual, view-focused. This kind.
   Strict tree (one parent per node).
 - **tree** — same hierarchy, outliner UX (still indented bullets,
   no radial layout). Use ` ```tree` when the user wants a structured

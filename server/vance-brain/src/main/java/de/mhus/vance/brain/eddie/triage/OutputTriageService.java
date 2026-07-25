@@ -272,8 +272,8 @@ public class OutputTriageService {
     private static String spokenForInbox(TriageInput input) {
         String engine = input.workerEngine();
         if (engine == null || engine.isBlank()) {
-            return "Antwort liegt in der Inbox.";
+            return "Answer is in the inbox.";
         }
-        return engine + " hat geantwortet — liegt in der Inbox.";
+        return engine + " has replied — it's in the inbox.";
     }
 }

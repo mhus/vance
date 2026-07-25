@@ -30,10 +30,10 @@ survive the next discovery pass.
 
 ## When to use this manual
 
-- "Trag bitte Pricing für claude-sonnet-4-7 ein"
-- "Vance kennt das neue model X nicht — füg es hinzu"
-- "Override context window für gpt-5 auf 1M tokens"
-- "Kennzeichne deepseek-v4 als Reasoning-Modell"
+- "Please enter pricing for claude-sonnet-4-7"
+- "Vance doesn't know the new model X — add it"
+- "Override context window for gpt-5 to 1M tokens"
+- "Mark deepseek-v4 as a reasoning model"
 - After the user has run discovery and wants to enrich the auto-docs
 
 If the user just wants the discovery job to run, use the

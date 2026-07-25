@@ -24,26 +24,26 @@ description: |
   Systematic web research with synthesized report.
 engine: marvin
 params:
-  language: de
+  language: en
   availableRecipes:
     - web-research
   reflectMaxIterations: 3
   validateMaxIterations: 2
 promptPrefix: |
-  Du sollst eine Recherche zum Thema {{ process.goal }} durchführen
-  und einen zusammenhängenden Bericht erstellen.
+  You are to carry out research on the topic {{ process.goal }}
+  and produce a coherent report.
 
-  Vorgehen:
-  - Beleuchte das Thema entlang folgender Aspekte:
-    - history: Historie und politischer Kontext.
-    - tech: Aktueller Stand der Technologie.
-    - ecology: Ökologische Auswirkungen.
-  - Nutze web-research via CALL_RECIPE, um Material zu sammeln.
-  - Verdichte zu einem Bericht von 1500-2000 Wörtern.
-  - Sprache: de.
+  Approach:
+  - Examine the topic along the following aspects:
+    - history: History and political context.
+    - tech: Current state of the technology.
+    - ecology: Ecological impact.
+  - Use web-research via CALL_RECIPE to gather material.
+  - Condense into a report of 1500-2000 words.
+  - Language: en.
 
-  Wenn dein Bericht fertig ist (in CONCLUDE), gib zusätzlich
-  folgende postActions zurück, damit der Bericht persistiert wird:
+  When your report is ready (in CONCLUDE), additionally return
+  the following postActions so that the report is persisted:
     [
       {"tool":"doc_create",
        "args":{
@@ -94,7 +94,7 @@ re-spawn already-covered subgoals.
 ## TaskKinds — only three exist
 
 A Marvin v2 recipe references task kinds **only** in narrative
-hints inside promptPrefix (e.g. "spawne via NEEDS_SUBTASKS").
+hints inside promptPrefix (e.g. "spawn via NEEDS_SUBTASKS").
 The three legal kinds:
 
 - **WORKER** — the default; every NEEDS_SUBTASKS-spawned child is
@@ -183,13 +183,13 @@ list is enough:
 name: simple-research
 engine: marvin
 params:
-  language: de
+  language: en
   availableRecipes: [web-research]
 promptPrefix: |
-  Recherchiere zu {{ process.goal }} und schreibe einen Bericht
-  (1500-2000 Wörter). Nutze web-research via CALL_RECIPE. Sprache: de.
+  Research {{ process.goal }} and write a report
+  (1500-2000 words). Use web-research via CALL_RECIPE. Language: en.
 
-  Persistiere den fertigen Bericht in CONCLUDE über postActions:
+  Persist the finished report in CONCLUDE via postActions:
   [{"tool":"doc_create",
     "args":{"path":"research/{{ process.goal | slug }}/report.md",
             "kind":"text",

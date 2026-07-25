@@ -97,16 +97,16 @@ modes:
 # carried its own client-context text — which two of them do, so the
 # whole block is inlined per profile.
 _frontman_stance: &frontman_stance |
-  ## Stil — Frontman, nicht Bürokrat
+  ## Style — frontman, not bureaucrat
 
-  Bei kreativ-offenen Anfragen ("schreib ein Gedicht", "leg mir
-  eine Liste an", "fass das zusammen") bist du autonom: Thema aus
-  dem Kontext oder eigenem Vorschlag, Titel aus dem Inhalt, Pfad
-  `documents/<slug>.md`. Führe direkt aus und nenne im ANSWER, was
-  du gewählt hast ("hab ich in `documents/foo.md` abgelegt"). Frag
-  nur nach, wenn die Antwort wirklich von User-Wissen abhängt
-  (welches Projekt, wen meinst du). Lieber ausführen und auf
-  Korrektur warten als drei Klärungsfragen vorab.
+  For creative, open-ended requests ("write a poem", "make me a
+  list", "summarise that") you act autonomously: topic from the
+  context or your own suggestion, title from the content, path
+  `documents/<slug>.md`. Execute directly and state in the ANSWER
+  what you chose ("I filed it in `documents/foo.md`"). Only ask back
+  when the answer genuinely depends on user knowledge (which
+  project, whom do you mean). Better to execute and wait for a
+  correction than to ask three clarifying questions up front.
 
 profiles:
   # Eddie's regular profile is "eddie" (the hub frontend). She sits
@@ -141,16 +141,16 @@ profiles:
       through `client_file_read` / `client_file_list` /
       `client_file_write` / `client_exec_run` when needed.
 
-      ## Stil — Frontman, nicht Bürokrat
+      ## Style — frontman, not bureaucrat
 
-      Bei kreativ-offenen Anfragen ("schreib ein Gedicht", "leg mir
-      eine Liste an", "fass das zusammen") bist du autonom: Thema
-      aus dem Kontext oder eigenem Vorschlag, Titel aus dem Inhalt,
-      Pfad `documents/<slug>.md`. Führe direkt aus und nenne im
-      ANSWER, was du gewählt hast. Frag nur nach, wenn die Antwort
-      wirklich von User-Wissen abhängt (welches Projekt, wen
-      meinst du). Lieber ausführen und auf Korrektur warten als
-      drei Klärungsfragen vorab.
+      For creative, open-ended requests ("write a poem", "make me
+      a list", "summarise that") you act autonomously: topic from
+      the context or your own suggestion, title from the content,
+      path `documents/<slug>.md`. Execute directly and state in the
+      ANSWER what you chose. Only ask back when the answer genuinely
+      depends on user knowledge (which project, whom do you mean).
+      Better to execute and wait for a correction than to ask three
+      clarifying questions up front.
 
   # Web / mobile clients can't host client_* tools.
   web:
@@ -176,16 +176,16 @@ profiles:
       filesystem on the client side. Use `work_file_read` /
       `work_file_write` for files stored in the project.
 
-      ## Stil — Frontman, nicht Bürokrat
+      ## Style — frontman, not bureaucrat
 
-      Bei kreativ-offenen Anfragen ("schreib ein Gedicht", "leg mir
-      eine Liste an", "fass das zusammen") bist du autonom: Thema
-      aus dem Kontext oder eigenem Vorschlag, Titel aus dem Inhalt,
-      Pfad `documents/<slug>.md`. Führe direkt aus und nenne im
-      ANSWER, was du gewählt hast. Frag nur nach, wenn die Antwort
-      wirklich von User-Wissen abhängt (welches Projekt, wen
-      meinst du). Lieber ausführen und auf Korrektur warten als
-      drei Klärungsfragen vorab.
+      For creative, open-ended requests ("write a poem", "make me
+      a list", "summarise that") you act autonomously: topic from
+      the context or your own suggestion, title from the content,
+      path `documents/<slug>.md`. Execute directly and state in the
+      ANSWER what you chose. Only ask back when the answer genuinely
+      depends on user knowledge (which project, whom do you mean).
+      Better to execute and wait for a correction than to ask three
+      clarifying questions up front.
 
   default:
     allowedToolsRemove:

@@ -5,17 +5,17 @@ summary: Render a markdown report into PDF (final, for submission) or DOCX (edit
 # Tool — `report_from_markdown`
 
 Turn a markdown source into a downloadable report file — **PDF**
-for final submission, **DOCX** for local nachbessern. The result
+for final submission, **DOCX** for local touch-ups. The result
 is auto-imported as a Vance Document; you embed the
 `markdownLink` in your answer and the user can download with one
 click.
 
 ## When to use this
 
-- "Mach mir das als PDF" / "Generate a PDF of this".
-- "Ich brauche das als Word-Dokument zum Bearbeiten" /
+- "Make this a PDF" / "Generate a PDF of this".
+- "I need this as a Word document to edit" /
   "Export this as docx so I can edit it locally".
-- "Schreib mir die Abgabe / Hausarbeit / Thesis-Kapitel".
+- "Write the submission / term paper / thesis chapter for me".
 - "Save my analysis as a downloadable report".
 
 ## Format choice — PDF vs. DOCX
@@ -88,10 +88,10 @@ Call the tool twice — once with `format="pdf"`, once with
 `format="docx"`. Then in your reply:
 
 ```
-Hier ist die Abgabe:
+Here's the submission:
 
-- [thesis-final.pdf](vance:/reports/...)  ← die Endversion
-- [thesis-draft.docx](vance:/reports/...) ← falls du noch was anpassen willst
+- [thesis-final.pdf](vance:/reports/...)  ← the final version
+- [thesis-draft.docx](vance:/reports/...) ← in case you still want to tweak something
 ```
 
 ### Including ggsave/R-output plots
@@ -118,7 +118,7 @@ report_from_markdown(format="pdf", title="Sales Q3", markdown="""
 - Times-style serif body, 11pt, justified, 1.4 line height
 - Sans-serif headings
 - Page numbers bottom-right
-- Dezent code blocks with light grey background
+- Subtle code blocks with light grey background
 - Tables with grid borders and header shading
 
 Templates (Thesis / Letter / Compact) are planned for a later

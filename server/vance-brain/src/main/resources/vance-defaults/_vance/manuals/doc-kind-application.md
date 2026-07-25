@@ -52,7 +52,7 @@ calendar:
   gantt:
     outputPath: "_gantt.md"
     includeRecurring: false
-    tagFilter: []                       # leer = alle non-recurring Events
+    tagFilter: []                       # empty = all non-recurring events
     criticalTags: [milestone, critical] # → :crit im Gantt
     doneTags:     [done, erledigt]      # → :done
     sectionOrder: [design, backend, frontend]
@@ -86,30 +86,30 @@ app_rebuild(folder="projects/website/calendars")
 
 ## Available app types
 
-Mehrere Application-Typen sind produktiv. Die verbindliche Liste liefert zur
-Laufzeit `VanceApplicationRegistry.knownAppNames()`; aktuell registriert sind:
+Several application types are in production. The authoritative list is provided
+at runtime by `VanceApplicationRegistry.knownAppNames()`; currently registered are:
 
-| `app:` | Container für | Eigenes Manual |
+| `app:` | Container for | Own manual |
 |---|---|---|
-| `calendar` | Kalender-/Termin-Dokumente (Gantt, Konflikte) | siehe oben |
-| `kanban` | Board mit Cards in Spalten | `manual_read('app-kanban')` |
-| `wiki` | vernetzte Markdown-Pages | `manual_read('app-wiki')` |
-| `workbook` | `kind: workpage`-Seiten (Block-Editor) | `manual_read('app-workbook')` |
-| `canvasbook` | `kind: canvas`-Seiten (2D-Fläche) | `manual_read('app-canvasbook')` |
-| `gtd` | Getting-Things-Done-Listen | `manual_read('app-gtd')` |
-| `issues` | Issue-Tracker | `manual_read('app-issues')` |
-| `journal` | Tagebuch-/Log-Einträge | `manual_read('app-journal')` |
-| `slideshow` | Präsentations-Decks | `manual_read('app-slideshow')` |
-| `common-desktop` | Desktop-Container | — |
+| `calendar` | Calendar / appointment documents (Gantt, conflicts) | see above |
+| `kanban` | Board with cards in columns | `manual_read('app-kanban')` |
+| `wiki` | Interlinked Markdown pages | `manual_read('app-wiki')` |
+| `workbook` | `kind: workpage` pages (block editor) | `manual_read('app-workbook')` |
+| `canvasbook` | `kind: canvas` pages (2D surface) | `manual_read('app-canvasbook')` |
+| `gtd` | Getting-Things-Done lists | `manual_read('app-gtd')` |
+| `issues` | Issue tracker | `manual_read('app-issues')` |
+| `journal` | Diary / log entries | `manual_read('app-journal')` |
+| `slideshow` | Presentation decks | `manual_read('app-slideshow')` |
+| `common-desktop` | Desktop container | — |
 
-Ein unbekannter `app:`-Wert wird vom Backend abgelehnt; die Fehlermeldung führt
-die live registrierten Namen aus `knownAppNames()` — nicht raten, im Zweifel das
-per-App-Manual lesen. Schema-Details pro App stehen **nicht** hier, sondern im
-jeweiligen Addon-Manual.
+An unknown `app:` value is rejected by the backend; the error message lists the
+live registered names from `knownAppNames()` — don't guess, when in doubt read
+the per-app manual. Schema details per app are **not** here, but in the
+respective addon manual.
 
-## Multi-face apps (v2, geplant)
+## Multi-face apps (v2, planned)
 
-Ein Folder kann später mehrere App-Faces tragen — z.B. gleichzeitig ein Calendar UND ein Kanban-Board sein. Das Manifest unterstützt das schon strukturell (jeder App-Type hat seinen eigenen Sub-Block):
+A folder can later carry multiple app faces — e.g. be a calendar AND a kanban board at the same time. The manifest already supports this structurally (each app type has its own sub-block):
 
 ```yaml
 $meta:
@@ -123,18 +123,18 @@ kanban:                   # secondary face (v2)
   columns: [todo, doing, done]
 ```
 
-v1 ignoriert sekundäre Blocks — sie werden round-trip-stabil als `extra` durchgereicht.
+v1 ignores secondary blocks — they are passed through round-trip-stable as `extra`.
 
 ## Anti-patterns
 
-- **Don't write the manifest with the wrong `kind`.** `kind: calendar-suite`, `kind: app`, `kind: project` werden alle nicht erkannt. Es muss exakt `kind: application` sein.
-- **Don't omit `$meta.app`.** Ohne den Discriminator landet die App in einem undefined state — tools werfen "App folder has no $meta.app value".
-- **Don't move generated paths around.** `gantt.outputPath` und `conflicts.outputPath` *können* angepasst werden, aber `_gantt.md` / `_conflicts.yaml` sind die etablierte Konvention. Anpassen nur wenn der User explizit darauf besteht.
-- **Don't hand-build the manifest from scratch** wenn `doc_create(kind="application", …)` ein passendes Stub-Template hat. Im Web-UI gibt's eines unter "New Document → kind: application".
+- **Don't write the manifest with the wrong `kind`.** `kind: calendar-suite`, `kind: app`, `kind: project` are all not recognized. It must be exactly `kind: application`.
+- **Don't omit `$meta.app`.** Without the discriminator the app ends up in an undefined state — tools throw "App folder has no $meta.app value".
+- **Don't move generated paths around.** `gantt.outputPath` and `conflicts.outputPath` *can* be adjusted, but `_gantt.md` / `_conflicts.yaml` are the established convention. Only change them if the user explicitly insists.
+- **Don't hand-build the manifest from scratch** when `doc_create(kind="application", …)` has a suitable stub template. In the Web UI there's one under "New Document → kind: application".
 
 ## Related
 
-- `manual_read('app-calendar')` — der App-Workflow mit allen Tools
-- `manual_read('app-rebuild')` — Generic Rebuild-Tool
-- `manual_read('doc-kind-calendar')` — das Format der einzelnen Calendar-Files in den Lane-Unterordnern
+- `manual_read('app-calendar')` — the app workflow with all tools
+- `manual_read('app-rebuild')` — generic rebuild tool
+- `manual_read('doc-kind-calendar')` — the format of the individual calendar files in the lane subfolders
 - Spec: `specification/doc-kind-application.md`

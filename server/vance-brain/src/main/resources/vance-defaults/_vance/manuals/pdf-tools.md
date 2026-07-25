@@ -10,10 +10,10 @@ Both use PDFBox under the hood, no external binary, no OCR.
 
 ## When to use this
 
-- "Fasse mir das PDF zusammen" → `pdf_read` then summarise.
-- "Was steht auf Seite 3?" → `pdf_read` with `pages="3"`.
-- "Wer hat das PDF erstellt, wann?" → `pdf_metadata`.
-- "Wie viele Seiten hat das?" → `pdf_metadata` (cheap probe before
+- "Summarize the PDF for me" → `pdf_read` then summarise.
+- "What's on page 3?" → `pdf_read` with `pages="3"`.
+- "Who created the PDF, and when?" → `pdf_metadata`.
+- "How many pages does it have?" → `pdf_metadata` (cheap probe before
   a full read).
 - "Extract action items from this 100-page report" → `pdf_metadata`
   first to see the size, then `pdf_read` with a range or in chunks.

@@ -3,55 +3,54 @@ audience: creator
 triggers: hook, hook_set, hook_list, hook_get, hook_delete, hook anlegen, hook erstellen, reagiere auf, wenn ein prozess fertig, on completion, on failure, inbox trigger, process.completed, process.failed, inbox.item.created, UrsaHook, ursa hook, event-driven
 summary: How to create and maintain hooks — event-driven triggers that fire a recipe, script or workflow when a brain event (process.completed / process.failed / inbox.item.created) is published. YAML shape, the TriggerAction disjunction, the catalog of subscribable events, and the anti-patterns for not over-automating.
 ---
-# Wie ich Hooks anlege und pflege
+# How I create and maintain hooks
 
-Ein **Hook** ist ein event-getriebener Trigger: sobald im Brain ein
-bestimmtes Ereignis passiert (ein Prozess wird fertig, ein Prozess
-scheitert, ein Inbox-Item entsteht), spawnt der Hook einen Worker —
-über ein Recipe, ein Skript oder einen Workflow. Anders als ein
-**Scheduler** (zeitgesteuert) und anders als ein **Event** (eingehender
-Webhook) reagiert ein Hook auf *interne* Brain-Ereignisse.
+A **hook** is an event-driven trigger: as soon as a certain event
+happens in the brain (a process finishes, a process fails, an inbox item
+is created), the hook spawns a worker — via a recipe, a script or a
+workflow. Unlike a **scheduler** (time-driven) and unlike an **event**
+(incoming webhook), a hook reacts to *internal* brain events.
 
-Hooks liegen als YAML-Dokumente unter `_vance/hooks/<event>/<name>.yaml`
-im Projekt (oder tenant-weit unter `_vance/hooks/…`). Sie werden aktiv,
-sobald ich sie geschrieben habe — der Brain registriert sie nach jedem
-Schreiben selbständig (Delta-Refresh).
+Hooks live as YAML documents under `_vance/hooks/<event>/<name>.yaml` in
+the project (or tenant-wide under `_vance/hooks/…`). They become active
+as soon as I have written them — the brain registers them on its own
+after every write (delta refresh).
 
-## Welches Tool wofür
+## Which tool for what
 
-| Aufgabe | Tool |
+| Task | Tool |
 |---|---|
-| Vorhandene Hooks im Projekt sehen | `hook_list` |
-| Vollständiges YAML eines Hooks nachschlagen | `hook_get` |
-| Hook anlegen oder ändern | `hook_set` |
-| Entfernen | `hook_delete` |
-| Registry neu einlesen (selten nötig) | `hook_refresh` |
+| See existing hooks in the project | `hook_list` |
+| Look up the full YAML of a hook | `hook_get` |
+| Create or change a hook | `hook_set` |
+| Remove | `hook_delete` |
+| Reload the registry (rarely needed) | `hook_refresh` |
 
-`hook_set` ist idempotent: existiert bereits ein Hook mit demselben
-`(event, name)`, wird sein YAML überschrieben (der vorherige Stand wird
-vom Document-Layer automatisch archiviert). Die Antwort trägt
-`created: true|false`, damit ich weiß, welcher Pfad lief.
+`hook_set` is idempotent: if a hook with the same `(event, name)`
+already exists, its YAML is overwritten (the previous state is
+automatically archived by the document layer). The answer carries
+`created: true|false`, so I know which path ran.
 
-## Auf welche Events ein Hook hören kann
+## Which events a hook can listen to
 
-`hook_set` braucht den **Wire-Namen** des Events als eigenen Parameter
-(`event`), getrennt vom YAML-Body. Live in v1:
+`hook_set` needs the **wire name** of the event as its own parameter
+(`event`), separate from the YAML body. Live in v1:
 
-- **`process.completed`** — ein Think-Process ist erfolgreich terminiert.
-- **`process.failed`** — ein Think-Process ist gescheitert.
-- **`inbox.item.created`** — ein neues Inbox-Item wurde erzeugt.
+- **`process.completed`** — a think process has terminated successfully.
+- **`process.failed`** — a think process has failed.
+- **`inbox.item.created`** — a new inbox item was created.
 
-Reserviert (gültige Hook-Dokumente, feuern in v1 aber **nicht**, weil
-der Emitter noch fehlt): `session.suspended`, `session.resumed`,
-`insight.saved`, `relation.created`. Ich lege dafür keine Hooks „auf
-Vorrat" an — wenn der User einen davon will, weise ich darauf hin, dass
-er derzeit nicht ausgelöst wird.
+Reserved (valid hook documents, but do **not** fire in v1 because the
+emitter is still missing): `session.suspended`, `session.resumed`,
+`insight.saved`, `relation.created`. I don't create hooks for those "on
+spec" — if the user wants one of them, I point out that it currently
+does not get triggered.
 
-## Hook anlegen (`hook_set`)
+## Creating a hook (`hook_set`)
 
-Der YAML-Body definiert **genau eine** Aktion — `recipe:`, `script:`
-oder `workflow:` (Disjunktion, wird beim Parsen erzwungen). Beispiel:
-nach jedem gescheiterten Prozess ein kurzes Review-Recipe starten.
+The YAML body defines **exactly one** action — `recipe:`, `script:` or
+`workflow:` (a disjunction, enforced at parse time). Example: after
+every failed process, start a short review recipe.
 
 ```
 invoke_tool(
@@ -60,63 +59,62 @@ invoke_tool(
     "event": "process.failed",
     "name": "post-failure-review",
     "yaml": """
-description: \"Startet nach jedem Fehlschlag eine kurze Ursachen-Analyse.\"
+description: \"Starts a short root-cause analysis after every failure.\"
 recipe: \"analyze\"
 initialMessage: |
-  Ein Prozess ist gescheitert. Fasse die wahrscheinliche Ursache
-  in drei Sätzen zusammen und schlage einen nächsten Schritt vor.
+  A process has failed. Summarize the likely cause in three sentences
+  and suggest a next step.
 enabled: true
 """
   }
 )
 ```
 
-### Body-Felder
+### Body fields
 
-- **Aktion (Pflicht, genau eins):**
-  - `recipe: "<name>"` — spawnt einen Worker mit diesem Recipe.
-    Optional dazu `initialMessage:` (der erste Prompt) und `params:`.
-  - `script: { source: <document|inline>, path: "<pfad>" }` — führt ein
-    Skript-Dokument aus (optional `dirName`, `timeoutSeconds`, `params`).
-  - `workflow: <name>` — startet einen benannten Workflow.
-- **`enabled`** (optional, Default `true`) — auf `false` setzen, um den
-  Hook zu deaktivieren, ohne ihn zu löschen.
-- **`description`** (optional) — was der Hook tut, für Liste/Log.
-- **`timeout`** (optional) — Zahl in Sekunden oder Duration-String
-  (`"30s"`, `"5m"`). Es gibt eine harte Obergrenze pro Hook.
-- **`runAs`** (optional) — in wessen Namen der Worker läuft (dessen
-  Inbox bekommt Nachrichten/Errors). Ohne Angabe der `createdBy` des
-  Dokuments.
-- **`tags`** (optional) — freie Labels für Filterung.
-- **`params`** (optional) — Parameter-Map, die an die Aktion durchgereicht
-  wird.
+- **Action (mandatory, exactly one):**
+  - `recipe: "<name>"` — spawns a worker with this recipe. Optionally
+    with `initialMessage:` (the first prompt) and `params:`.
+  - `script: { source: <document|inline>, path: "<path>" }` — runs a
+    script document (optionally `dirName`, `timeoutSeconds`, `params`).
+  - `workflow: <name>` — starts a named workflow.
+- **`enabled`** (optional, default `true`) — set to `false` to disable
+  the hook without deleting it.
+- **`description`** (optional) — what the hook does, for the list/log.
+- **`timeout`** (optional) — a number in seconds or a duration string
+  (`"30s"`, `"5m"`). There is a hard upper bound per hook.
+- **`runAs`** (optional) — on whose behalf the worker runs (whose inbox
+  gets messages/errors). Without a value, the `createdBy` of the
+  document.
+- **`tags`** (optional) — free labels for filtering.
+- **`params`** (optional) — a parameter map that is passed through to
+  the action.
 
-**Schema-Hinweis:** Das alte `type: js|llm`-Format wird nicht mehr
-akzeptiert. JS-Hooks werden zu `script: { source: document, path: … }`,
-LLM-Hooks zu einem Skript, das `vance.lightllm.call(...)` ruft.
+**Schema note:** The old `type: js|llm` format is no longer accepted.
+JS hooks become `script: { source: document, path: … }`, LLM hooks
+become a script that calls `vance.lightllm.call(...)`.
 
-## Bestehende Hooks anpassen
+## Adjusting existing hooks
 
-`hook_set` braucht das **komplette** YAML — Full-Replace, keine
-Patch-Operation. Der vorherige Stand wird automatisch archiviert.
-Workflow:
+`hook_set` needs the **complete** YAML — full replace, no patch
+operation. The previous state is automatically archived. Workflow:
 
-1. `hook_get(event, name)` → aktuelles YAML
-2. Stelle anpassen
-3. `hook_set(event, name, yaml)` mit dem geänderten Gesamttext
+1. `hook_get(event, name)` → current YAML
+2. Adjust the spot
+3. `hook_set(event, name, yaml)` with the changed full text
 
-Nur deaktivieren: `enabled: false` ins YAML, `hook_set`.
+Only to disable: `enabled: false` into the YAML, `hook_set`.
 
-## Was ich NICHT anlege
+## What I do NOT create
 
-- **Keine Hooks auf Vorrat.** Ein Hook feuert bei *jedem* Auftreten
-  seines Events — das kann schnell laut werden. Erst fragen, ob das
-  wirklich bei jedem `process.completed` laufen soll.
-- **Keine Hooks für reservierte Events** (`session.*`, `insight.saved`,
-  `relation.created`) ohne den Hinweis, dass sie in v1 nicht feuern.
-- **Keine Selbst-Trigger-Schleifen.** Ein Hook auf `process.completed`,
-  der selbst einen Prozess spawnt, der wieder `process.completed`
-  feuert, läuft in eine Endlosschleife. Vor dem Anlegen prüfen, ob die
-  Hook-Aktion dasselbe Event erneut auslöst.
-- **Keine doppelten Hooks** für dasselbe Thema. Erst `hook_list`, dann
-  updaten oder fragen.
+- **No hooks on spec.** A hook fires on *every* occurrence of its
+  event — that can get loud fast. Ask first whether it should really
+  run on every `process.completed`.
+- **No hooks for reserved events** (`session.*`, `insight.saved`,
+  `relation.created`) without the note that they do not fire in v1.
+- **No self-trigger loops.** A hook on `process.completed` that itself
+  spawns a process which fires `process.completed` again runs into an
+  infinite loop. Before creating, check whether the hook action
+  re-triggers the same event.
+- **No duplicate hooks** for the same topic. First `hook_list`, then
+  update or ask.

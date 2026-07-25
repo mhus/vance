@@ -1180,15 +1180,15 @@ public class SlartibartfastEngine implements ThinkEngine {
             ArchitectState state,
             de.mhus.vance.api.slartibartfast.RecoveryRequest lastRecovery) {
         StringBuilder body = new StringBuilder();
-        body.append("Validation hat trotz ")
+        body.append("Despite ")
                 .append(state.getMaxRecoveries())
-                .append(" Korrektur-Versuchen keinen brauchbaren Plan ")
-                .append("produziert. Letzter Fehler-Grund: ")
+                .append(" correction attempts, validation did not produce a usable plan. ")
+                .append("Last failure reason: ")
                 .append(lastRecovery.getReason()).append("\n\n");
-        body.append("Letzter Hinweis an den Planner:\n")
+        body.append("Last hint to the planner:\n")
                 .append(lastRecovery.getHint()).append("\n\n");
-        body.append("Antwort: yes → frischer Recovery-Versuch (Budget "
-                + "wird zurückgesetzt); no → Lauf als ESCALATED beenden.");
+        body.append("Answer: yes → fresh recovery attempt (budget "
+                + "is reset); no → end the run as ESCALATED.");
 
         java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
         payload.put("kind", "slartibartfast.escalation");
@@ -1205,7 +1205,7 @@ public class SlartibartfastEngine implements ThinkEngine {
                 .originSessionId(process.getSessionId())
                 .type(InboxItemType.APPROVAL)
                 .criticality(Criticality.CRITICAL)
-                .title("Slartibartfast: Recovery-Budget erschöpft — retry?")
+                .title("Slartibartfast: recovery budget exhausted — retry?")
                 .body(body.toString())
                 .payload(payload)
                 .requiresAction(true)

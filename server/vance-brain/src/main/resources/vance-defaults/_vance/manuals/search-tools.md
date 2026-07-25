@@ -60,7 +60,7 @@ present:
 
 Use when:
 
-- *"Such mir was zu X"*, *"find articles about Y"*, *"references for Z"*
+- *"Search for something about X"*, *"find articles about Y"*, *"references for Z"*
 - The user asks for a specific media type — pass `modality=image`
   for pictures, `modality=video` for videos, `modality=pdf` for
   papers/reports/standards.
@@ -74,7 +74,7 @@ bucketed result:
 
 ```
 {
-  "query": "Lissabon",
+  "query": "Lisbon",
   "text":   { "results": [...], "count": 4 },
   "images": { "results": [...], "count": 4 },
   "videos": { "results": [...], "count": 2 },
@@ -88,8 +88,8 @@ reply by drawing from whichever buckets fit.
 
 Use when:
 
-- *"Zeig mir was zu X"*, *"was findest du zu Y"*, *"gib mir einen
-  Eindruck"*, *"Bilder und Videos von Z"*
+- *"Show me something about X"*, *"what do you find on Y"*, *"give me
+  an impression"*, *"images and videos of Z"*
 - Topic-style questions where the user might want a few of each
   format.
 - You're unsure which single modality fits best.
@@ -117,9 +117,9 @@ Deferred (not in the default tool manifest) — activate via
 
 Use when:
 
-- *"Such mir nur arxiv-Papers von 2024"*
-- *"Aus der englischen Wikipedia"*
-- *"Nur PDFs zum Thema X"*
+- *"Find me only arxiv papers from 2024"*
+- *"From the English Wikipedia"*
+- *"Only PDFs on topic X"*
 - The default-cascade picked a provider that the user didn't want
   (look at `research_providers` to see the inventory, then pin).
 
@@ -144,8 +144,8 @@ ranks where it does.
 
 Use when:
 
-- *"Research X for me"*, *"find the best sources on Y"*, *"was
-  weiss man über Z"* — anything where the user wants curation.
+- *"Research X for me"*, *"find the best sources on Y"*, *"what
+  is known about Z"* — anything where the user wants curation.
 - The first `research_search` returned a flat list and the user
   wants a quality-ranked, multi-source pass instead.
 - A question where source authority matters (academic, news,
@@ -201,15 +201,15 @@ settings. Use `research_providers` to list the inventory live.
 
 | User signal | Tool |
 |---|---|
-| "Was gibt's zu X?", "zeig mir was über Y" | `research_rich` |
-| "Such mir die Quellen zu X", citations needed | `research_search modality=web num=10` |
-| "Bilder von Lissabon", "wie sieht X aus?" | `research_search modality=image` |
-| "Video über X", "spiel ein Video" | `research_search modality=video` |
-| "Find me the PDF", "wo ist das Papier zu X?" | `research_search modality=pdf` |
-| "Aktuelle Nachrichten zu X" | `research_search modality=news` |
-| "Wikipedia über Y" | `research_search modality=encyclopedia` or `research_search_expert instance=wiki-de` |
+| "What's there about X?", "show me something about Y" | `research_rich` |
+| "Find me the sources on X", citations needed | `research_search modality=web num=10` |
+| "Images of Lisbon", "what does X look like?" | `research_search modality=image` |
+| "Video about X", "play a video" | `research_search modality=video` |
+| "Find me the PDF", "where is the paper on X?" | `research_search modality=pdf` |
+| "Current news on X" | `research_search modality=news` |
+| "Wikipedia on Y" | `research_search modality=encyclopedia` or `research_search_expert instance=wiki-de` |
 | "Find papers about Z" | `research_search modality=academic` |
-| "Nur arxiv, nur PDFs von 2024" | `research_search_expert` |
+| "Only arxiv, only PDFs from 2024" | `research_search_expert` |
 | "Research X", "find the best sources", multi-source quality ranking | `research_investigate` |
 | Which provider is configured? | `research_providers` |
 

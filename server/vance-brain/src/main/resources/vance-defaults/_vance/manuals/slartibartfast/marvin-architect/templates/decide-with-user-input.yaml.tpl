@@ -10,27 +10,26 @@ params:
 {%- endfor %}
   language: {{ params.language }}
 promptPrefix: |
-  Du sollst eine Entscheidung treffen, brauchst dafür aber zuerst
-  Eingaben vom User.
+  You are to make a decision, but first you need input from the
+  user.
 
-  Vorgehen:
-  - Stelle dem User in einem oder mehreren NEEDS_USER_INPUT-Turns
-    folgende Fragen:
+  Approach:
+  - In one or more NEEDS_USER_INPUT turns, ask the user the
+    following questions:
 {%- for q in params.questions %}
     - {{ q.title }} ({{ q.type | default('FEEDBACK') }}): {{ q.body | yamlIndent(6) }}{% if q.options is not null and q.options is not empty %}
-      Optionen: {{ q.options }}{% endif %}
+      Options: {{ q.options }}{% endif %}
 {%- endfor %}
-  - Du darfst die Fragen auch sequenziell stellen (eine nach der
-    anderen via NEEDS_USER_INPUT in jeweils eigenen SCOPE/REFLECT-
-    Turns) oder alle auf einmal via NEEDS_SUBTASKS mit
-    USER_INPUT-Kindern — je nachdem, ob die spätere Frage von der
-    Antwort auf die frühere abhängt.
-  - Wenn alle Antworten vorliegen: {{ params.decisionPrompt | yamlIndent(4) }}.
-  - Sprache: {{ params.language }}.
+  - You may also ask the questions sequentially (one after the
+    other via NEEDS_USER_INPUT in separate SCOPE/REFLECT turns)
+    or all at once via NEEDS_SUBTASKS with USER_INPUT children —
+    depending on whether a later question depends on the answer
+    to an earlier one.
+  - Once all answers are in: {{ params.decisionPrompt | yamlIndent(4) }}.
+  - Language: {{ params.language }}.
 
-  Wenn deine Entscheidung fertig ist (in CONCLUDE), gib
-  zusätzlich folgende postActions zurück, damit das Ergebnis
-  persistiert wird:
+  When your decision is ready (in CONCLUDE), additionally return
+  the following postActions so that the result is persisted:
     [
       {"tool":"doc_create",
        "args":{

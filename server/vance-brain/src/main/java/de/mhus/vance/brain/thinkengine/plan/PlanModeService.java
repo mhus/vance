@@ -321,12 +321,12 @@ public class PlanModeService {
                 .type(InboxItemType.APPROVAL)
                 .criticality(Criticality.NORMAL)
                 .tags(new ArrayList<>(List.of(RecompactionTags.TAG_INBOX_OFFER)))
-                .title("Plan abgeschlossen — Topic in Memory rollen?")
-                .body("Der Plan ist durch. Soll ich die "
-                        + todos.size() + " Todo-Turns zu einer Zusammenfassung "
-                        + "verdichten? Der rote Faden zum vorherigen Thema "
-                        + "bleibt klar — Originale stehen weiter über "
-                        + "history_search bereit.")
+                .title("Plan complete — roll the topic into memory?")
+                .body("The plan is done. Should I condense the "
+                        + todos.size() + " todo turns into a summary? "
+                        + "The thread to the previous topic "
+                        + "stays clear — the originals remain available via "
+                        + "history_search.")
                 .payload(payload)
                 .requiresAction(true)
                 .build();

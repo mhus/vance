@@ -7,8 +7,8 @@ summary: Geographic map document with markers (points), areas (polygons) and rou
 > **Not** `mindmap`. This kind renders a real geographic map (Earth,
 > OpenStreetMap tiles, lat/lon) — markers, polygon areas, polyline
 > routes. If the user said "Mindmap" / "brainstorm" / "radial outline"
-> they want `manual_read('kind-mindmap')`. If the user said "Karte"
-> / "map" / "Hamburg auf einer Karte" / "Route von X nach Y" they
+> they want `manual_read('kind-mindmap')`. If the user said "map"
+> / "Hamburg on a map" / "route from X to Y" they
 > want **this** kind.
 
 Three feature types cover the "show me a small map with some
@@ -28,8 +28,8 @@ renders the map inline in the chat or as a clickable document tab.
 
 | Did the user ask for a saved file / document? | Use form |
 |---|---|
-| YES — "create a map document", "speicher die Karte", "save the map" | **Stored** (below) |
-| NO — "show me a map", "zeig mir eine Karte von Hamburg", "map this out" | **Inline** (further below) |
+| YES — "create a map document", "store the map", "save the map" | **Stored** (below) |
+| NO — "show me a map", "show me a map of Hamburg", "map this out" | **Inline** (further below) |
 
 ### Inline in chat — fence-wrapped YAML
 
@@ -57,8 +57,8 @@ routes:
 ```
 ````
 
-The reply must CONTAIN this fence verbatim — narrating "Hier ist
-die Karte…" without the actual fenced block leaves the user with
+The reply must CONTAIN this fence verbatim — narrating "Here is
+the map…" without the actual fenced block leaves the user with
 no render.
 
 ### Stored document — YAML/JSON body, NO fence
@@ -167,16 +167,16 @@ Common confusion because both contain "map" in the name. They are
 | Fence | ` ```map ` with YAML view/markers/areas/routes | ` ```mindmap ` with bullet markdown |
 | Library | Leaflet + OpenStreetMap | markmap |
 
-If the user says **"Karte"**, **"map"**, **"OpenStreetMap"**,
-**"Route"**, **"Hamburg auf einer Karte"** → `kind: map` (this manual).
+If the user says **"map"**, **"OpenStreetMap"**,
+**"route"**, **"Hamburg on a map"** → `kind: map` (this manual).
 
 If the user says **"Mindmap"**, **"brainstorm"**, **"radial"**,
-**"big picture"**, **"Ideenkarte"** → `kind: mindmap`
+**"big picture"**, **"idea map"** → `kind: mindmap`
 (`manual_read('kind-mindmap')`).
 
 ## `map` vs. `image`
 
-For a one-shot screenshot of a map ("zeig ein Bild von Hamburg")
+For a one-shot screenshot of a map ("show a picture of Hamburg")
 where the user does not need to interact (pan/zoom), use image
 generation or a static URL — not this kind. `kind: map` is for
 when the user wants an actual interactive map (or a saved,
@@ -196,7 +196,7 @@ editable artefact).
 
 - The map is meant to be edited later (the document editor lives on the saved doc, not on the chat fence).
 - Multiple maps that belong together.
-- The user explicitly said "speichern" / "save" / "create a document".
+- The user explicitly said "save" / "create a document".
 
 Then call `doc_create(kind="map", path="maps/<name>.yaml",
 content=<raw YAML, NO fence>)` and embed the returned

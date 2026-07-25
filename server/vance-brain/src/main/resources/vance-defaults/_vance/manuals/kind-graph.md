@@ -19,8 +19,8 @@ Decide first:
 
 | Did the user ask for a saved file / document? | Use form |
 |---|---|
-| YES — "create a graph document", "speicher das als graph-doc", "save the dependency graph" | **Stored** (below) |
-| NO — "show the relationships", "wie hängen die zusammen", "draw the network" | **Inline** (further below) |
+| YES — "create a graph document", "save this as a graph doc", "save the dependency graph" | **Stored** (below) |
+| NO — "show the relationships", "how are these connected", "draw the network" | **Inline** (further below) |
 
 ### Inline in chat — fence-wrapped, no tool call
 
@@ -50,8 +50,8 @@ edges:
 ```
 ````
 
-The reply must CONTAIN this fence verbatim — narrating "Hier ist der
-Graph…" without the actual fenced block leaves the user with no
+The reply must CONTAIN this fence verbatim — narrating "Here is the
+graph…" without the actual fenced block leaves the user with no
 render.
 
 ### Stored document — raw JSON or YAML, NO fence
@@ -112,8 +112,8 @@ Set `directed: false` for an undirected graph.
 ## When to use this
 
 User wants to *see* relationships, dependencies, or a small
-network — "show the dependencies between X, Y, Z", "wie hängen
-diese Services zusammen", "draw the relationships". The graph is
+network — "show the dependencies between X, Y, Z", "how are these
+services connected", "draw the relationships". The graph is
 **m:n** (a node can connect to many, and be connected to from
 many) — that's what distinguishes it from `tree`/`mindmap`.
 

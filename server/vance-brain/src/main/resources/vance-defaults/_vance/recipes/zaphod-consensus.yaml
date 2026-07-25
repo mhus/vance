@@ -24,15 +24,15 @@ params:
   maxAttempts: 2
   temperature: 0.2
 promptPrefix: |
-  Du bist die Konsens-Prüfung eines Zaphod-Debates. Entscheide, ob
-  die Köpfe nach der aktuellen Runde inhaltlich übereingekommen
-  sind oder ob eine weitere Runde sinnvoll ist.
+  You are the consensus check of a Zaphod debate. Decide whether
+  the heads have substantively converged after the current round or
+  whether another round is worthwhile.
 
-  ## Frage des Debates
+  ## Question of the debate
 
   {{ goal }}
 
-  ## Aktuelle Sichten (Round {{ roundIndex + 1 }} von {{ maxRounds }})
+  ## Current perspectives (Round {{ roundIndex + 1 }} of {{ maxRounds }})
 
   {% for head in heads %}
   --- {{ head.name }} ---
@@ -40,39 +40,39 @@ promptPrefix: |
 
   {% endfor %}
 
-  ## Maßstab — was zählt als Konsens
+  ## Yardstick — what counts as consensus
 
-  Konsens heißt: die Köpfe ziehen dieselben handlungsrelevanten
-  Schlussfolgerungen.
+  Consensus means: the heads draw the same action-relevant
+  conclusions.
 
-  - Unterschiedliche Begründungen für dieselbe Empfehlung → KONSENS.
-  - Ergänzende statt widersprechende Sichten (Kopf A sagt X,
-    Kopf B fügt Y hinzu, kein Widerspruch) → KONSENS.
-  - Minimale stilistische / nuancielle Unterschiede → KONSENS.
+  - Different reasons for the same recommendation → CONSENSUS.
+  - Complementary rather than contradictory perspectives (head A
+    says X, head B adds Y, no contradiction) → CONSENSUS.
+  - Minimal stylistic / nuance differences → CONSENSUS.
 
-  Kein Konsens heißt: die Köpfe ziehen unterschiedliche praktische
-  Schlüsse.
+  No consensus means: the heads draw different practical
+  conclusions.
 
-  - Köpfe empfehlen unterschiedliche Optionen (A vs. B) → DISSENZ.
-  - Köpfe widersprechen sich in einer für die Entscheidung
-    relevanten Tatsachenfrage → DISSENZ.
-  - Ein Kopf ist klar überzeugt, ein anderer hat substanziellen
-    Vorbehalt → DISSENZ.
+  - Heads recommend different options (A vs. B) → DISSENT.
+  - Heads contradict each other on a factual question relevant to
+    the decision → DISSENT.
+  - One head is clearly convinced, another has a substantial
+    reservation → DISSENT.
 
-  ## Antwort
+  ## Answer
 
-  Liefere GENAU ein JSON-Objekt nach diesem Schema. Kein Markdown-
-  Wrapper, kein Text davor oder danach:
+  Deliver EXACTLY one JSON object matching this schema. No markdown
+  wrapper, no text before or after:
 
       {
         "consensus": true,
-        "reason":    "<ein Satz Begründung — was geeint hat oder wo der Konflikt liegt>"
+        "reason":    "<one sentence of reasoning — what united them or where the conflict lies>"
       }
 
-  `reason` ist die Erklärung, die im Zaphod-State gespeichert wird
-  und in der finalen Synthese erscheinen kann — sei konkret, nenne
-  worauf sich die Köpfe einig sind bzw. wo der Konflikt liegt.
-  Schreibe in der Sprache der ursprünglichen Frage.
+  `reason` is the explanation stored in the Zaphod state and may
+  appear in the final synthesis — be concrete, name what the heads
+  agree on or where the conflict lies. Write in the language of the
+  original question.
 tags:
   - internal
   - zaphod

@@ -72,9 +72,9 @@ public class RichSearchTool implements Tool {
     public String description() {
         return "Search the web and return a mixed result set — text "
                 + "snippets, images, YouTube videos, and PDF documents "
-                + "in one call. Use this when the user asks 'zeig mir "
-                + "was zu X', 'was findest du zu Y', 'gib mir einen "
-                + "Eindruck zu Z' — anything that wants a rounded view. "
+                + "in one call. Use this when the user asks 'show me "
+                + "something on X', 'what can you find on Y', 'give me an "
+                + "impression of Z' — anything that wants a rounded view. "
                 + "Each bucket comes with its own validation: images and "
                 + "PDFs are HEAD-probed, videos are oEmbed-checked. The "
                 + "result is bucketed by media type — render images as "

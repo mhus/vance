@@ -104,7 +104,7 @@ class ActionLoopJudgeServiceTest {
 
         assertThat(j.extend()).isFalse();
         assertThat(j.synthesizedAnswer()).isNotBlank();
-        assertThat(j.synthesizedAnswer()).contains("frag mich");
+        assertThat(j.synthesizedAnswer()).contains("ask me more");
     }
 
     @Test

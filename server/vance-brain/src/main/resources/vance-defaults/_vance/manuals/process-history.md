@@ -6,7 +6,7 @@ summary: process_history_text — pull the full chat transcript of another think
 
 Every worker terminates with a condensed final reply that arrives
 at the caller as `<process-event>` content. That summary is by
-design *kompakt* — it answers the question, but it doesn't carry
+design *compact* — it answers the question, but it doesn't carry
 the reasoning trail (sources consulted, tool-call results,
 intermediate decisions). When you need that detail, pull the
 worker's full transcript with **`process_history_text`**.
@@ -14,17 +14,17 @@ worker's full transcript with **`process_history_text`**.
 ## When to use
 
 - **User asks for sources / reasoning** behind a worker's answer:
-  *„welche Quellen?", „warum hat er das gesagt?", „wie ist er
-  drauf gekommen?"*. The summary doesn't have it; the transcript
+  *"which sources?", "why did it say that?", "how did it come to
+  that?"*. The summary doesn't have it; the transcript
   does.
-- **Re-Aufgreifen früherer Recherche-Themen** — before delegating
+- **Revisiting earlier research topics** — before delegating
   the same topic again, check what the previous worker found.
   Avoids re-doing work and re-routing context-less workers.
 - **Sibling-Worker-Briefing** — in a fresh `DELEGATE` prompt you
-  can tell the new worker *„lies erst
+  can tell the new worker *"first read
   `process_history_text(name=<previous-worker>)`"* so it inherits
   the trail before starting.
-- **Detail-Fragen lange nach Worker-Ende** — terminated workers'
+- **Detail questions long after the worker ended** — terminated workers'
   transcripts are still queryable; the data doesn't disappear when
   the process closes.
 
@@ -86,7 +86,7 @@ under the relevant ASSISTANT message:
 
 ```text
 [15:25:41] ASSISTANT:
-  → research_search({"query":"\"Opus 4.8\" KI-Modell"})
+  → research_search({"query":"\"Opus 4.8\" AI model"})
   ↳ tags: TOOL_CALL:research_search, RESOURCE:URL:…
 ```
 

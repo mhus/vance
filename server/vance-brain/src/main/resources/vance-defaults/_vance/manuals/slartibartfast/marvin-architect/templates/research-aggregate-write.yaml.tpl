@@ -10,25 +10,25 @@ params:
 {%- endfor %}
   language: {{ params.language }}
 promptPrefix: |
-  Du sollst eine Recherche zum Thema {% verbatim %}{{ process.goal }}{% endverbatim %} durchführen und einen
-  zusammenhängenden Bericht erstellen.
+  You are to carry out research on the topic {% verbatim %}{{ process.goal }}{% endverbatim %} and produce a
+  coherent report.
 
-  Vorgehen:
-  - Beleuchte das Thema entlang folgender Aspekte:
+  Approach:
+  - Examine the topic along the following aspects:
 {%- for a in params.aspects %}
     - {{ a.role }}: {{ a.goal | yamlIndent(6) }}
 {%- endfor %}
-  - Nutze die in availableRecipes aufgeführten Werkzeuge via
-    CALL_RECIPE (z.B. {% for r in params.availableRecipes %}{% if not loop.first %}, {% endif %}{{ r }}{% endfor %}), um Material zu sammeln.
-    Du darfst die Aspekte sequenziell abarbeiten oder via
-    NEEDS_SUBTASKS in parallele Kinder aufteilen — was sinnvoller
-    ist.
-  - {{ params.synthesisPrompt | yamlIndent(4) }}{% if params.reportLengthWords %} Ziellänge: {{ params.reportLengthWords }} Wörter.{% endif %}
-  - Sprache: {{ params.language }}.
+  - Use the tools listed in availableRecipes via CALL_RECIPE
+    (e.g. {% for r in params.availableRecipes %}{% if not loop.first %}, {% endif %}{{ r }}{% endfor %}) to gather material.
+    You may work through the aspects sequentially or split them
+    into parallel children via NEEDS_SUBTASKS — whichever makes
+    more sense.
+  - {{ params.synthesisPrompt | yamlIndent(4) }}{% if params.reportLengthWords %} Target length: {{ params.reportLengthWords }} words.{% endif %}
+  - Language: {{ params.language }}.
 
-  Wenn dein Bericht fertig ist (in CONCLUDE), gib zusätzlich
-  folgende postActions im JSON zurück, damit der Bericht
-  persistiert wird:
+  When your report is ready (in CONCLUDE), additionally return
+  the following postActions in the JSON so that the report is
+  persisted:
     [
       {"tool":"doc_create",
        "args":{

@@ -71,8 +71,8 @@ promptPrefix: |
       visible above (tool results are not shown to you, but they
       shaped the free text and tool-call list — work from those),
     - if the gathered material is genuinely insufficient, say so
-      plainly ("Ich konnte zu X keine belastbaren Quellen finden.
-      Was ich gefunden habe: …") rather than invent facts,
+      plainly ("I couldn't find any solid sources on X. What I did
+      find: …") rather than invent facts,
     - be plain text — no markdown fences, no JSON, no
       "**[Judge]**" decorations,
     - never echo the user's request back to them.

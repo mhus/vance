@@ -118,5 +118,5 @@ something like "fix imports" or "verify compiles":
 - The `reason` field is for the audit trail; one factual sentence.
 - Once all work is done, your final `ANSWER` is the only
   user-facing summary that matters. Make it specific:
-  "Erstellt: PetType.java mit Werten X, Y, Z. Geändert:
-  PetClinicApp.java (3 Stellen). mvn compile: grün."
+  "Created: PetType.java with values X, Y, Z. Changed:
+  PetClinicApp.java (3 places). mvn compile: green."

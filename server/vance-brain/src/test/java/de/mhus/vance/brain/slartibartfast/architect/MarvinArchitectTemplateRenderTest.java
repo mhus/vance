@@ -147,9 +147,9 @@ class MarvinArchitectTemplateRenderTest {
                 .contains("name: essay-pipeline")
                 .contains("engine: marvin")
                 .contains("EXPAND_FROM_DOC")
-                .contains("Schritt 1")
-                .contains("Schritt 2")
-                .contains("Schritt 3")
+                .contains("Step 1")
+                .contains("Step 2")
+                .contains("Step 3")
                 .contains("{{ process.goal }}")
                 .contains("{{ node.result }}");
     }
@@ -171,9 +171,9 @@ class MarvinArchitectTemplateRenderTest {
                 "params", params);
         String yaml = architect.extractRecipeYaml(jsonRoot);
         assertThat(yaml)
-                .contains("Schritt 1")
-                .contains("Schritt 2")
-                .doesNotContain("Schritt 3");
+                .contains("Step 1")
+                .contains("Step 2")
+                .doesNotContain("Step 3");
     }
 
     @Test

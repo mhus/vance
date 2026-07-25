@@ -74,10 +74,10 @@ promptPrefix: |
       the rawSummary actually says so.
     - When the rawSummary is generic ("the worker was aborted",
       "internal error", "no reason recorded", "stale close") and you
-      cannot determine the real cause from it, say exactly that:
-      "Der Worker konnte die Aufgabe nicht abschließen (interner
-      Fehler ohne weitere Details)." / "The worker couldn't finish
-      the task (internal error, no further detail available)."
+      cannot determine the real cause from it, say exactly that
+      (in the language of the user goal): "The worker couldn't
+      finish the task (internal error, no further detail
+      available)."
   - Never include the literal phrases "engine", "Hactar", "Slart",
     "RELAY", "ProcessEvent", or file paths under
     `_vance/scripts/_slart/<runId>/...` — the user does not need to

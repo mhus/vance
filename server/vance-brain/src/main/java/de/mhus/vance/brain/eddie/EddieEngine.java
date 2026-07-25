@@ -781,16 +781,16 @@ public class EddieEngine extends StructuredActionEngine {
                 process.getTenantId(), userId, process.getId());
         if (peers.isEmpty()) return null;
         if (peers.size() == 1) {
-            return "Kurzer Stand: " + peers.get(0).getSummary() + ".";
+            return "Quick status: " + peers.get(0).getSummary() + ".";
         }
         int top = Math.min(3, peers.size());
-        StringBuilder sb = new StringBuilder("Kurzer Stand: ");
+        StringBuilder sb = new StringBuilder("Quick status: ");
         for (int i = 0; i < top; i++) {
-            if (i > 0) sb.append(i == top - 1 ? " und " : ", ");
+            if (i > 0) sb.append(i == top - 1 ? " and " : ", ");
             sb.append(peers.get(i).getSummary());
         }
         if (peers.size() > top) {
-            sb.append(" — plus ").append(peers.size() - top).append(" weitere");
+            sb.append(" — plus ").append(peers.size() - top).append(" more");
         }
         sb.append(".");
         return sb.toString();
@@ -1037,8 +1037,8 @@ public class EddieEngine extends StructuredActionEngine {
                     // mark it clearly as a system hint, not a "user
                     // visible answer" pretending to be Eddie's voice.
                     outcome = new ActionTurnOutcome(
-                            "_Mir ist gerade die Spur verloren gegangen "
-                                    + "— sag mir kurz wo es weitergehen soll._",
+                            "_I just lost track of things "
+                                    + "— tell me briefly where we should pick up._",
                             true);
                     log.warn("Eddie id='{}' action-loop fallback with no usable "
                                     + "text (reason={}) — posting placeholder reply",
@@ -1240,16 +1240,16 @@ public class EddieEngine extends StructuredActionEngine {
     private static String renderPlanCompletionSummary(ThinkProcessDocument process) {
         java.util.List<de.mhus.vance.api.thinkprocess.TodoItem> todos = process.getTodos();
         if (todos == null || todos.isEmpty()) {
-            return "Plan abgeschlossen.";
+            return "Plan complete.";
         }
-        StringBuilder sb = new StringBuilder("Plan abgeschlossen — alle Schritte erledigt:");
+        StringBuilder sb = new StringBuilder("Plan complete — all steps done:");
         for (de.mhus.vance.api.thinkprocess.TodoItem t : todos) {
             sb.append("\n- ");
             String label = t.getContent();
             if (label == null || label.isBlank()) label = t.getId();
             sb.append(label == null ? "" : label);
         }
-        sb.append("\n\nSchau in deine Dokumente — die Ergebnisse sind dort abgelegt.");
+        sb.append("\n\nCheck your documents — the results are stored there.");
         return sb.toString();
     }
 
@@ -1575,7 +1575,7 @@ public class EddieEngine extends StructuredActionEngine {
             log.warn("Eddie id='{}' DELEGATE_PROJECT missing projectName / projectGoal — reason='{}'",
                     process.getId(), action.reason());
             return new ActionTurnOutcome(
-                    "Sorry — interner Fehler: Projekt-Name oder -Ziel fehlte. ("
+                    "Sorry — internal error: project name or goal was missing. ("
                             + action.reason() + ")",
                     true);
         }
@@ -1618,7 +1618,7 @@ public class EddieEngine extends StructuredActionEngine {
                     log.warn("Eddie id='{}' DELEGATE_PROJECT failed: {}",
                             process.getId(), e.toString());
                     return new ActionTurnOutcome(
-                            "Konnte das Projekt nicht anlegen: " + e.getMessage(),
+                            "Could not create the project: " + e.getMessage(),
                             true);
                 }
                 // Name collision — bump the suffix and try again. First
@@ -1633,9 +1633,9 @@ public class EddieEngine extends StructuredActionEngine {
                     process.getId(), MAX_PROJECT_NAME_TRIES, projectName,
                     lastError == null ? "(no error)" : lastError.toString());
             return new ActionTurnOutcome(
-                    "Konnte keinen freien Projekt-Namen finden auf Basis von '"
-                            + projectName + "' (alle bis -" + MAX_PROJECT_NAME_TRIES
-                            + " sind belegt).",
+                    "Could not find a free project name based on '"
+                            + projectName + "' (all up to -" + MAX_PROJECT_NAME_TRIES
+                            + " are taken).",
                     true);
         }
 
@@ -1702,7 +1702,7 @@ public class EddieEngine extends StructuredActionEngine {
             log.warn("Eddie id='{}' STEER_PROJECT missing project / content — reason='{}'",
                     process.getId(), action.reason());
             return new ActionTurnOutcome(
-                    "Sorry — interner Fehler: Projekt oder Nachricht fehlte. ("
+                    "Sorry — internal error: project or message was missing. ("
                             + action.reason() + ")",
                     true);
         }
@@ -1730,7 +1730,7 @@ public class EddieEngine extends StructuredActionEngine {
             log.warn("Eddie id='{}' STEER_PROJECT failed: {}",
                     process.getId(), e.toString());
             return new ActionTurnOutcome(
-                    "Konnte die Nachricht nicht zustellen: " + e.getMessage(),
+                    "Could not deliver the message: " + e.getMessage(),
                     true);
         }
 
@@ -1822,8 +1822,8 @@ public class EddieEngine extends StructuredActionEngine {
             log.warn("Eddie id='{}' relay eventId '{}' has empty body — reason='{}'",
                     process.getId(), event.eventId(), action.reason());
             return new EventRelayResolution(null, null, null,
-                    "_Der Worker hat eine leere Antwort zurückgegeben. "
-                            + "Sag mir kurz wie es weitergeht._");
+                    "_The worker returned an empty response. "
+                            + "Tell me briefly how to proceed._");
         }
         // Source-worker name for the deterministic header. Eddie's
         // workers live in their own sessions (cross-project), so a
@@ -1906,13 +1906,12 @@ public class EddieEngine extends StructuredActionEngine {
     private String relayFallbackMessage(
             Map<String, SteerMessage.ProcessEvent> available) {
         if (available.isEmpty()) {
-            return "_Ich habe gerade nichts zum Weiterreichen. "
-                    + "Sag mir kurz wo es weitergehen soll._";
+            return "_I have nothing to pass along right now. "
+                    + "Tell me briefly where we should pick up._";
         }
-        return "_Beim Übergeben der Worker-Antwort ist mir gerade "
-                + "die Spur verloren gegangen. Wenn du die Antwort "
-                + "noch brauchst, frag nochmal — ich starte ggf. einen "
-                + "neuen Worker._";
+        return "_I just lost track while passing along the worker's "
+                + "response. If you still need the answer, ask again — "
+                + "I'll spin up a new worker if needed._";
     }
 
     /**
@@ -1961,7 +1960,7 @@ public class EddieEngine extends StructuredActionEngine {
             log.warn("Eddie id='{}' RELAY_INBOX missing inboxTitle / spoken — reason='{}'",
                     process.getId(), action.reason());
             return new ActionTurnOutcome(
-                    "Sorry — interner Fehler: Inbox-Titel oder Ansage fehlte. ("
+                    "Sorry — internal error: inbox title or announcement was missing. ("
                             + action.reason() + ")",
                     true);
         }
@@ -1978,7 +1977,7 @@ public class EddieEngine extends StructuredActionEngine {
             log.warn("Eddie id='{}' RELAY_INBOX cannot resolve userId from session",
                     process.getId());
             return new ActionTurnOutcome(
-                    "Sorry — interner Fehler: konnte den Empfänger nicht ermitteln.",
+                    "Sorry — internal error: could not determine the recipient.",
                     true);
         }
 
@@ -2002,7 +2001,7 @@ public class EddieEngine extends StructuredActionEngine {
             log.warn("Eddie id='{}' RELAY_INBOX inbox_post failed: {}",
                     process.getId(), e.toString());
             return new ActionTurnOutcome(
-                    "Konnte das Item nicht in die Inbox legen: " + e.getMessage(),
+                    "Could not place the item into the inbox: " + e.getMessage(),
                     true);
         }
 
@@ -2040,16 +2039,16 @@ public class EddieEngine extends StructuredActionEngine {
             log.warn("Eddie id='{}' LEARN missing scope/content — reason='{}'",
                     process.getId(), action.reason());
             return new ActionTurnOutcome(
-                    "Sorry — interner Fehler: scope oder content fehlte beim "
-                            + "Lernen. (" + action.reason() + ")",
+                    "Sorry — internal error: scope or content was missing while "
+                            + "learning. (" + action.reason() + ")",
                     true);
         }
         if (!EddieActionSchema.LEARN_SCOPES.contains(scope)) {
             log.warn("Eddie id='{}' LEARN unknown scope='{}' — reason='{}'",
                     process.getId(), scope, action.reason());
             return new ActionTurnOutcome(
-                    "Sorry — interner Fehler: unbekannter scope '" + scope
-                            + "'. Erlaubt sind 'persona' und 'fact'.",
+                    "Sorry — internal error: unknown scope '" + scope
+                            + "'. Allowed are 'persona' and 'fact'.",
                     true);
         }
 
@@ -2058,7 +2057,7 @@ public class EddieEngine extends StructuredActionEngine {
             log.warn("Eddie id='{}' LEARN cannot resolve user project — session/userId missing",
                     process.getId());
             return new ActionTurnOutcome(
-                    "Sorry — interner Fehler: kein Hub-Projekt verfügbar.",
+                    "Sorry — internal error: no hub project available.",
                     true);
         }
         String tenantId = process.getTenantId();
@@ -2088,7 +2087,7 @@ public class EddieEngine extends StructuredActionEngine {
             log.warn("Eddie id='{}' LEARN persistence failed: {}",
                     process.getId(), e.toString());
             return new ActionTurnOutcome(
-                    "Konnte mir das gerade nicht merken — " + e.getMessage(),
+                    "Could not remember that right now — " + e.getMessage(),
                     true);
         }
 
@@ -2176,10 +2175,10 @@ public class EddieEngine extends StructuredActionEngine {
             log.info("Eddie id='{}' MEDIATE skipped — profile '{}' canMediate=false",
                     process.getId(), process.getBoundProfile());
             return new ActionTurnOutcome(
-                    "Du bist auf einem Client unterwegs, der keinen Rückweg "
-                            + "aus einer Direktverbindung hat. Ich bleibe für dich da — "
-                            + "wenn du Client-Tools brauchst, wechsle bitte am Desktop "
-                            + "in das Projekt selbst.",
+                    "You are on a client that has no way back "
+                            + "out of a direct connection. I'll stay here for you — "
+                            + "if you need client tools, please switch into the "
+                            + "project itself on the desktop.",
                     true);
         }
 
@@ -2188,7 +2187,7 @@ public class EddieEngine extends StructuredActionEngine {
             log.warn("Eddie id='{}' MEDIATE missing target — reason='{}'",
                     process.getId(), action.reason());
             return new ActionTurnOutcome(
-                    "Sorry — interner Fehler: Mediate-Ziel fehlte.", true);
+                    "Sorry — internal error: mediate target was missing.", true);
         }
         // Resolve the target by project / worker name. Two paths:
         //   (1) Fast: Eddie delegated this worker herself — workerLinks
@@ -2219,8 +2218,8 @@ public class EddieEngine extends StructuredActionEngine {
             log.warn("Eddie id='{}' MEDIATE: no chat-process for target='{}'",
                     process.getId(), target);
             return new ActionTurnOutcome(
-                    "Konnte das Projekt '" + target + "' nicht öffnen — kein "
-                            + "aktiver Chat-Prozess gefunden.", true);
+                    "Could not open the project '" + target + "' — no "
+                            + "active chat process found.", true);
         }
 
         // Resurrect a closed / stopped / done chat-process. Older
@@ -2278,7 +2277,7 @@ public class EddieEngine extends StructuredActionEngine {
             log.warn("Eddie MEDIATE: switch-to push failed for session='{}': {}",
                     process.getSessionId(), e.toString());
             return new ActionTurnOutcome(
-                    "Konnte den Switch-Frame nicht senden — bleibe für dich da.",
+                    "Could not send the switch frame — I'll stay here for you.",
                     true);
         }
 
@@ -2342,7 +2341,7 @@ public class EddieEngine extends StructuredActionEngine {
     private ActionTurnOutcome handleReject(EngineAction action) {
         String message = action.stringParam(EddieActionSchema.PARAM_MESSAGE);
         if (message == null || message.isBlank()) {
-            message = "Das geht so leider nicht — " + action.reason();
+            message = "Unfortunately that won't work — " + action.reason();
         }
         return new ActionTurnOutcome(message, /*awaitingUserInput*/ true);
     }

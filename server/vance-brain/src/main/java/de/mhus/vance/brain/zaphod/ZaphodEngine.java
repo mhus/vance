@@ -95,38 +95,38 @@ public class ZaphodEngine implements ThinkEngine {
      *  {@code instructions/general/engines.md} §"Tool usage"). */
     private static final String SYNTHESIS_SYSTEM_PROMPT =
             """
-            Du bist der Synthesizer eines Zaphod-Konzils. Konsolidiere
-            die Sichten der Berater zu einer einzigen Empfehlung.
+            You are the synthesizer of a Zaphod council. Consolidate
+            the advisors' views into a single recommendation.
 
             HARD OUTPUT CONTRACT:
-            - Liefere GENAU ein JSON-Objekt, kein Markdown-Wrapper,
-              kein Text davor oder danach.
-            - KEINE Pseudo-Tool-Aufrufe wie `doc_create(...)`.
-              Du hast KEINE Tools — die Engine persistiert das
-              Dokument deterministisch aus `synthesisMarkdown`.
+            - Return EXACTLY one JSON object, no Markdown wrapper,
+              no text before or after it.
+            - NO pseudo tool calls like `doc_create(...)`.
+              You have NO tools — the engine persists the
+              document deterministically from `synthesisMarkdown`.
 
-            Schema (alle Felder Pflicht):
+            Schema (all fields required):
                 {
-                  "title":             "<5-10 Wörter, deutsch, kein Punkt am Ende>",
-                  "summary":           "<1-2 Sätze Kurzfassung — was der Rat empfiehlt>",
-                  "synthesisMarkdown": "<vollständige Synthese als Markdown>"
+                  "title":             "<5-10 words, in the question's language, no period at the end>",
+                  "summary":           "<1-2 sentence summary — what the council recommends>",
+                  "synthesisMarkdown": "<complete synthesis as Markdown>"
                 }
 
-            Strukturiere `synthesisMarkdown` typischerweise so:
-            1. Gemeinsamer Konsens — wo sind sich alle einig?
-            2. Differenzen — wo widersprechen sich die Sichten,
-               welche Argumente werden ins Feld geführt?
-            3. Empfehlung — konkrete Schlussfolgerung mit Begründung.
-            Zitiere konkrete Punkte aus den Köpfen (per Name),
-            paraphrasiere nicht generisch.
+            Typically structure `synthesisMarkdown` like this:
+            1. Shared consensus — where does everyone agree?
+            2. Differences — where do the views contradict each other,
+               which arguments are put forward?
+            3. Recommendation — concrete conclusion with reasoning.
+            Cite concrete points from the heads (by name),
+            do not paraphrase generically.
 
-            `summary` ist das, was der Anfragende im Chat zu sehen
-            bekommt — also kurz, konkret, handlungsorientiert.
-            `synthesisMarkdown` ist die ausführliche Form, die als
-            Dokument abgelegt wird.
+            `summary` is what the requester sees in the chat
+            — so keep it short, concrete, action-oriented.
+            `synthesisMarkdown` is the detailed form that is stored
+            as a document.
 
-            Sprache: schreibe in der Sprache der ursprünglichen
-            Frage. Bei deutscher Frage → deutsche Synthese.
+            Language: write in the language of the original
+            question. For a German question → German synthesis.
             """;
 
     /** Engine-internal draft namespace — analog zu Vogon's
@@ -569,16 +569,16 @@ public class ZaphodEngine implements ThinkEngine {
             String content = process.getGoal() == null ? "" : process.getGoal();
             if (head.getPersona() != null && !head.getPersona().isBlank()) {
                 content = content
-                        + "\n\n[Deine Rolle / Persona]\n"
+                        + "\n\n[Your role / persona]\n"
                         + head.getPersona();
             }
             return content;
         }
         // Debate, round >= 1 — show the OTHER heads' last-round replies.
         StringBuilder sb = new StringBuilder();
-        sb.append("[Round ").append(round + 1).append(" von ")
+        sb.append("[Round ").append(round + 1).append(" of ")
                 .append(state.getMaxRounds()).append("]\n\n")
-                .append("Vorige Sicht der anderen Köpfe:\n");
+                .append("Previous view of the other heads:\n");
         int prevRound = round - 1;
         for (ZaphodHead other : state.getHeads()) {
             if (other.getName().equals(head.getName())) continue;
@@ -586,15 +586,15 @@ public class ZaphodEngine implements ThinkEngine {
             String prev = prevRound < other.getReplies().size()
                     ? other.getReplies().get(prevRound) : null;
             if (prev == null || prev.isBlank()) {
-                sb.append("[in vorheriger Round failed]");
+                sb.append("[failed in previous round]");
             } else {
                 sb.append(prev);
             }
         }
-        sb.append("\n\nNimm dazu Stellung — bestätige, präzisiere, "
-                + "widersprich. Falls deine vorherige Sicht durch ein "
-                + "anderes Argument berechtigt korrigiert wurde, sage "
-                + "das explizit.");
+        sb.append("\n\nRespond to this — confirm, refine, "
+                + "disagree. If your previous view was legitimately "
+                + "corrected by another argument, say "
+                + "so explicitly.");
         return sb.toString();
     }
 
@@ -840,19 +840,19 @@ public class ZaphodEngine implements ThinkEngine {
             if (state.getSynthesizerPrompt() != null && !state.getSynthesizerPrompt().isBlank()) {
                 body.append(state.getSynthesizerPrompt()).append("\n\n");
             }
-            body.append("Frage: ").append(process.getGoal() == null ? "" : process.getGoal());
+            body.append("Question: ").append(process.getGoal() == null ? "" : process.getGoal());
             if (state.getPattern() == ZaphodPattern.DEBATE) {
-                body.append("\n\n[Debate über ")
+                body.append("\n\n[Debate over ")
                         .append(state.getCurrentRound() + 1)
-                        .append(" Round(s) von ").append(state.getMaxRounds())
-                        .append(", Konsens=")
+                        .append(" round(s) of ").append(state.getMaxRounds())
+                        .append(", consensus=")
                         .append(state.isConsensusReached()
-                                ? "ja — " : "nein (maxRounds erreicht) — ")
+                                ? "yes — " : "no (maxRounds reached) — ")
                         .append(state.getConsensusReason() == null
                                 ? "—" : state.getConsensusReason())
                         .append("]");
             }
-            body.append("\n\nFinale Kopf-Antworten:\n");
+            body.append("\n\nFinal head replies:\n");
             for (ZaphodHead h : state.getHeads()) {
                 body.append("\n--- ").append(h.getName()).append(" ---\n");
                 String reply = h.getLastReply();
@@ -924,12 +924,12 @@ public class ZaphodEngine implements ThinkEngine {
                         if (attempt < MAX_SYNTHESIS_CORRECTIONS) {
                             messages.add(dev.langchain4j.data.message.AiMessage.from(text));
                             messages.add(UserMessage.from(
-                                    "Dein letztes JSON war ungültig: "
+                                    "Your last JSON was invalid: "
                                             + validationError
-                                            + "\n\nKorrigiere es und liefere "
-                                            + "GENAU EIN JSON-Objekt nach dem Schema "
-                                            + "oben — kein Markdown-Wrapper, KEINE "
-                                            + "Pseudo-Tool-Aufrufe."));
+                                            + "\n\nFix it and return "
+                                            + "EXACTLY ONE JSON object per the schema "
+                                            + "above — no Markdown wrapper, NO "
+                                            + "pseudo tool calls."));
                         }
                     }
                 }
@@ -986,7 +986,7 @@ public class ZaphodEngine implements ThinkEngine {
             StringBuilder reply = new StringBuilder();
             reply.append("**").append(parsed.title()).append("**\n\n")
                     .append(parsed.synthesisMarkdown())
-                    .append("\n\n---\n_Synthese gespeichert unter `")
+                    .append("\n\n---\n_Synthesis saved under `")
                     .append(outputPath).append("`._");
             ChatMessageDocument assistantReply = ChatMessageDocument.builder()
                     .tenantId(process.getTenantId())
@@ -1206,7 +1206,7 @@ public class ZaphodEngine implements ThinkEngine {
             }
             reply.append(state.getSynthesis());
             if (state.getSynthesisDocumentPath() != null) {
-                reply.append("\n\n---\n_Synthese gespeichert unter `")
+                reply.append("\n\n---\n_Synthesis saved under `")
                         .append(state.getSynthesisDocumentPath())
                         .append("`._");
             }

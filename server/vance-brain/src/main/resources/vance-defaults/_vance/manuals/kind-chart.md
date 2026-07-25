@@ -18,8 +18,8 @@ Decide first:
 
 | Did the user ask for a saved file / document? | Use form |
 |---|---|
-| YES — "create a chart document", "speicher das als chart-doc" | **Stored** (below) |
-| NO — "show me a chart", "plot the revenue", "zeig die Verteilung" | **Inline** (further below) |
+| YES — "create a chart document", "save this as a chart doc" | **Stored** (below) |
+| NO — "show me a chart", "plot the revenue", "show the distribution" | **Inline** (further below) |
 
 ### Inline in chat — fence-wrapped, no tool call
 
@@ -46,8 +46,8 @@ series:
 ```
 ````
 
-The reply must CONTAIN this fence verbatim — narrating "Hier ist der
-Chart…" without the actual fenced block leaves the user with no
+The reply must CONTAIN this fence verbatim — narrating "Here is the
+chart…" without the actual fenced block leaves the user with no
 render.
 
 ### Stored document — raw JSON or YAML, NO fence
@@ -104,11 +104,11 @@ anyway).
 ## When to use this
 
 User wants to *see* a numerical comparison or trend right now:
-"plot the revenue", "zeig die Verteilung", "compare these numbers as
+"plot the revenue", "show the distribution", "compare these numbers as
 a chart". The data is small enough to embed inline.
 
 When the user asks to **save** or **create a chart document** —
-"speicher das als chart-doc", "erstelle ein chart-Dokument", any
+"save this as a chart doc", "create a chart document", any
 phrasing that implies persistence — use the stored form via
 `doc_create`.
 

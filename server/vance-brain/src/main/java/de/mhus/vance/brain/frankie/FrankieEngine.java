@@ -185,11 +185,11 @@ public class FrankieEngine implements ThinkEngine {
      * turn stall silently and has no clue the worker bailed.
      */
     private static final String MODEL_COLLAPSE_MESSAGE =
-            "_Das Modell hat eine leere Antwort geliefert — "
-                    + "vermutlich Kontext zu groß oder Modell-seitiger Collapse. "
-                    + "Formuliere die Frage neu, kürze den Verlauf, oder "
-                    + "wechsle das Modell. Der Worker bleibt BLOCKED bis zur "
-                    + "nächsten Eingabe._";
+            "_The model returned an empty response — "
+                    + "likely context too large or a model-side collapse. "
+                    + "Rephrase the question, shorten the history, or "
+                    + "switch the model. The worker stays BLOCKED until the "
+                    + "next input._";
 
     /**
      * Last-resort hardcoded system prompt — used only when neither the

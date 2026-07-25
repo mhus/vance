@@ -13,7 +13,7 @@ embedding in your reply.
 ## When to use this
 
 - The user has a Vance document and wants a different format
-  saved alongside ("speicher das als Excel", "make a PDF of this
+  saved alongside ("save this as Excel", "make a PDF of this
   document", "convert to Word").
 - Both the source and the target are persistent Vance documents
   — when you have inline data, the format-specific tools are

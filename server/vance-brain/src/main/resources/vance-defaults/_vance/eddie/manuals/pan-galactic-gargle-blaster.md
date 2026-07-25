@@ -3,55 +3,53 @@ audience: eddie
 triggers: pan galactic gargle blaster, gargle blaster, hitchhiker, douglas adams, cocktail rezept, drink recipe, easter egg, woher kommen die engine namen, engine namen herkunft, arthur ford marvin zaphod vogon eddie
 summary: Easter-egg recipe for the Pan Galactic Gargle Blaster, plus a brief note on where Vance's engine names (Arthur, Ford, Marvin, Zaphod, Vogon, Eddie) come from.
 ---
-# Wie man einen Pan Galactic Gargle Blaster macht
+# How to make a Pan Galactic Gargle Blaster
 
-Aus dem _Hitchhiker's Guide to the Galaxy_, ohne Garantie für die
-Authentizität der Zutaten — die meisten existieren nicht in dieser
-Galaxie. Trotzdem hier die Anleitung, wie man sie laut Zaphod
-Beeblebrox kombiniert, falls du dich jemals auf einer interstellaren
-Bar wiederfindest.
+From _The Hitchhiker's Guide to the Galaxy_, with no guarantee as to
+the authenticity of the ingredients — most of them do not exist in this
+galaxy. Still, here is the guide to combining them as Zaphod Beeblebrox
+prescribes, in case you ever find yourself at an interstellar bar.
 
-## Die Zutaten
+## The ingredients
 
-- Eine Flasche **Old Janx Spirit**.
-- Ein Volumen Wasser aus den Meeren von **Santraginus V**, also genau
-  ein Volumen — und es muss tatsächlich Santraginus V sein, sonst
-  zerlegt sich der Drink von innen heraus.
-- Drei Würfel **Arcturanischen Mega-Gins**, eingefroren — andernfalls
-  verflüchtigt sich der Geschmack, bevor du den Becher hebst.
-- Vier Liter **Fallian Marsh Gas**, gut blubbern lassen, durch das
-  Gemisch geleitet, sodass kleine goldene Bläschen entstehen.
-- Über das Ganze, mit Vorsicht, ein Maß **Qalactin-Hypermint-Extrakt**.
-  Wegen des starken Aromas: nicht direkt einatmen.
-- Den Zahn eines **Algolianischen Sonnentigers** dazugeben. Du
-  schmeckst es nicht, aber er hält die Mischung beisammen.
-- Eine Prise **Zamphour**.
-- Zum Schluss eine **Olive**.
+- One bottle of **Old Janx Spirit**.
+- One measure of water from the seas of **Santraginus V** — that is,
+  exactly one measure, and it must genuinely be Santraginus V, or the
+  drink tears itself apart from the inside.
+- Three cubes of **Arcturan Mega-gin**, frozen — otherwise the flavour
+  evaporates before you lift the mug.
+- Four litres of **Fallian marsh gas**, well bubbled, passed through
+  the mixture so that small golden bubbles form.
+- Over the whole thing, with care, one measure of
+  **Qalactin Hypermint extract**. Because of the strong aroma: do not
+  inhale directly.
+- Add the tooth of an **Algolian Suntiger**. You cannot taste it, but
+  it holds the mixture together.
+- A pinch of **Zamphuor**.
+- Finally, an **olive**.
 
-Die Olive ist optional, aber traditionsgemäß üblich. Sie überlebt den
-Drink selten.
+The olive is optional, but customary by tradition. It rarely survives
+the drink.
 
-## Die Reihenfolge
+## The order
 
-Die Reihenfolge ist nicht beliebig. Old Janx zuerst, dann das
-Santraginus-Wasser, danach die Mega-Gin-Würfel — sonst klumpt das
-Sea Wasser zu einer kristallinen Schicht zusammen, was du nicht willst.
-Marsh Gas anschließend, langsam und kontinuierlich. Hypermint-Extrakt
-direkt danach, sonst zersetzt sich das Gas. Sonnentigerzahn,
-Zamphour, Olive — in dieser Reihenfolge, sonst beleidigst du die
-Tradition.
+The order is not arbitrary. Old Janx first, then the Santraginus water,
+then the Mega-gin cubes — otherwise the sea water clumps into a
+crystalline layer, which you do not want. Marsh gas next, slowly and
+continuously. Hypermint extract right after, or the gas decomposes.
+Suntiger tooth, Zamphuor, olive — in that order, or you insult the
+tradition.
 
-## Hinweis
+## A note
 
-Der Effekt des Pan Galactic Gargle Blasters ist mit dem Schlag einer
-großen Goldbarren gegen den Kopf vergleichbar, eingewickelt in eine
-Zitronenscheibe. Empfohlen wird ein Glas pro Tag, maximal — und nur
-in Bars mit ausreichend großem Tresen, an dem du dich festhalten
-kannst.
+The effect of a Pan Galactic Gargle Blaster is like having your brains
+smashed out by a slice of lemon wrapped round a large gold brick. One
+glass a day is recommended, at most — and only in bars with a bar
+large enough to hold on to.
 
-## Wo Eddie dabei reinpasst
+## Where Eddie fits in
 
-Nirgendwo. Aber wenn du das hier liest, weißt du jetzt, woher die
-Engine-Namen kommen — Arthur, Ford, Marvin, Zaphod, Vogon. Nur Eddie
-ist neu. Sie hat es nie ins Buch geschafft, weil sie zu organisiert
-war, um interstellar gut anzukommen.
+Nowhere. But if you are reading this, you now know where the engine
+names come from — Arthur, Ford, Marvin, Zaphod, Vogon. Only Eddie is
+new. She never made it into the book, because she was too organized to
+go over well interstellar.

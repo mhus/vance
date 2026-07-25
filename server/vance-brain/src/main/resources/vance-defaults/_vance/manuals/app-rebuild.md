@@ -10,8 +10,8 @@ Regenerate every derived artifact in a Vance application folder. The tool is **g
 
 Whenever the user has changed something inside a calendar / kanban / wiki app and wants the views updated:
 
-- "Update den Gantt-Chart"
-- "Regenerier die Konflikt-Liste"
+- "Update the Gantt chart"
+- "Regenerate the conflict list"
 - "Refresh the project plan"
 - "Build the app artifacts"
 - After any sequence of `calendar_create` / `doc_edit` calls inside an app folder
@@ -52,37 +52,37 @@ For one-off changes the user can keep editing source files; the artifacts only n
 **Always embed both `markdownLink`s in your chat reply** so the user can open both artifacts with one click:
 
 ```markdown
-✓ Projektplan aktualisiert:
+✓ Project plan updated:
 
-📊 [Gantt-Chart](vance:/projects/website/calendars/_gantt.md) — 12 Events in 3 Lanes
-⚠ [Konflikt-Übersicht](vance:/projects/website/calendars/_conflicts.yaml) — 2 Konflikte
+📊 [Gantt chart](vance:/projects/website/calendars/_gantt.md) — 12 events in 3 lanes
+⚠ [Conflict overview](vance:/projects/website/calendars/_conflicts.yaml) — 2 conflicts
 ```
 
 ## Use this — not the granular tools — by default
 
 For `app: calendar` there are also:
 
-- `calendar_conflicts(folder)` — refresh nur `_conflicts.yaml`
-- `gantt_from_calendars(folder)` — refresh nur `_gantt.md`
+- `calendar_conflicts(folder)` — refresh only `_conflicts.yaml`
+- `gantt_from_calendars(folder)` — refresh only `_gantt.md`
 
-Diese gibt es als Spezial-Werkzeuge wenn der User explizit "nur die Konflikte" oder "nur den Gantt" updaten will. Standard ist `app_rebuild` — kostet kaum mehr und liefert beide Artefakte konsistent.
+These exist as special-purpose tools for when the user explicitly wants to update "only the conflicts" or "only the Gantt". The default is `app_rebuild` — it costs barely more and delivers both artifacts consistently.
 
 ## Failure modes
 
 | Symptom | Likely cause | Recovery |
 |---|---|---|
-| "No _app.yaml manifest found" | Folder ist kein App-Folder | Erst `_app.yaml` anlegen (siehe `manual_read('doc-kind-application')`) |
-| "Unknown application type 'foo'" | `$meta.app` zeigt auf einen App-Type ohne registriertes Service-Bean | Tippfehler im Manifest? Aktuell unterstützte App-Types stehen in der Fehlermeldung |
-| "Folder is a 'kanban' app, expected 'calendar'" | Im `_app.yaml` steht ein anderer App-Type als die Calendar-Tools erwarten | Tool-Wahl prüfen; für andere Apps eigene Tools nutzen |
+| "No _app.yaml manifest found" | Folder is not an app folder | Create `_app.yaml` first (see `manual_read('doc-kind-application')`) |
+| "Unknown application type 'foo'" | `$meta.app` points to an app type without a registered service bean | Typo in the manifest? Currently supported app types are listed in the error message |
+| "Folder is a 'kanban' app, expected 'calendar'" | The `_app.yaml` declares a different app type than the calendar tools expect | Check tool choice; use the dedicated tools for other apps |
 
 ## Anti-patterns
 
-- **Nicht nach jeder kleinen Edit aufrufen.** Tool ist günstig aber nicht kostenlos. Einmal am Ende einer Edit-Session reicht.
-- **Hand-Edits an generated artifacts** (`_gantt.md`, `_conflicts.yaml`) verschwinden beim nächsten Rebuild. Edit die Sources.
-- **Nicht im falschen App-Folder aufrufen.** Wenn `app_rebuild` mit einem Folder ohne `_app.yaml` aufgerufen wird, throws — vorher mit `doc_read` oder ähnlich verifizieren.
+- **Don't call after every small edit.** The tool is cheap but not free. Once at the end of an edit session is enough.
+- **Hand-edits to generated artifacts** (`_gantt.md`, `_conflicts.yaml`) disappear on the next rebuild. Edit the sources.
+- **Don't call in the wrong app folder.** If `app_rebuild` is called with a folder that has no `_app.yaml`, it throws — verify beforehand with `doc_read` or similar.
 
 ## Related
 
-- `manual_read('app-calendar')` — der Calendar-spezifische Workflow inkl. Folder-Layout und `_app.yaml`-Schema
-- `manual_read('doc-kind-application')` — das App-Pattern generell, falls der LLM den Manifest direkt editieren will
-- `manual_read('calendar-aggregate')` — für Read-Queries ohne Schreib-Operation
+- `manual_read('app-calendar')` — the calendar-specific workflow including folder layout and `_app.yaml` schema
+- `manual_read('doc-kind-application')` — the app pattern in general, in case the LLM wants to edit the manifest directly
+- `manual_read('calendar-aggregate')` — for read queries without a write operation

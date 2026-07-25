@@ -72,7 +72,7 @@ script's `vance.context.*` — you cannot escape it.
 - **`call`** — when you just want raw text (a title, a slug, a
   one-line summary, a free-text label). You post-process yourself.
 
-Faustregel: any time the recipe asks the LLM for structured data
+Rule of thumb: any time the recipe asks the LLM for structured data
 (`{"important": ...}`, `{"category": "X", "score": 0.7}`, ...),
 use `callForJson` — even if the JSON is small. The retry loop costs
 nothing on success and saves you from manual parse-error handling.
@@ -82,7 +82,7 @@ nothing on success and saves you from manual parse-error handling.
 Script side:
 
 ```js
-const verdict = vance.llm.callForJson('mail-rate', 'Bewerte die Mail.', {
+const verdict = vance.llm.callForJson('mail-rate', 'Rate the mail.', {
   rules: vance.documents.read('documents/mail-rules.md'),
   from: full.from,
   subject: full.subject,
@@ -135,9 +135,9 @@ into worker territory.
 
 ## See also
 
-- `manual_read('scripts')` — generelle JS-Script-Surface (`vance.tools`,
+- `manual_read('scripts')` — general JS script surface (`vance.tools`,
   `vance.context`, `vance.log`, `vance.process`, `vance.documents`).
-- `manual_read('inbox-post')` — wie man eine LLM-Klassifikation als
-  Inbox-Item an den User dropt.
-- Spec: `specification/light-llm-service.md` — Recipe-Schema,
-  Pebble-Render-Kontext, Schema-Loop-Mechanik.
+- `manual_read('inbox-post')` — how to drop an LLM classification to
+  the user as an inbox item.
+- Spec: `specification/light-llm-service.md` — recipe schema,
+  Pebble render context, schema-loop mechanics.

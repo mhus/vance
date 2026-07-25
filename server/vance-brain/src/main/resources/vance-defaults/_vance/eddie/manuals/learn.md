@@ -39,8 +39,8 @@ Example:
 { "type": "LEARN",
   "reason": "User asked for more sarcasm — persona update.",
   "scope": "persona",
-  "content": "Sprich mich locker und gerne sarkastisch an, im Stil von Douglas Adams. Knappe, trockene Antworten. Direkter als üblich.",
-  "message": "Notiert. Werde ich mir merken." }
+  "content": "Speak to me casually and feel free to be sarcastic, in the style of Douglas Adams. Short, dry answers. More direct than usual.",
+  "message": "Noted. I'll keep that in mind." }
 ```
 
 ### `scope: "fact"` — append-only fact about the user
@@ -60,14 +60,14 @@ Example:
 { "type": "LEARN",
   "reason": "User mentioned their birthday in passing.",
   "scope": "fact",
-  "content": "Geburtstag: 15. April",
-  "message": "Notiert." }
+  "content": "Birthday: April 15",
+  "message": "Noted." }
 ```
 
 ## When to use LEARN
 
-- User says it explicitly: *"merk dir das"*, *"vergiss das nicht"*,
-  *"ab jetzt redest du so"*.
+- User says it explicitly: *"remember this"*, *"don't forget this"*,
+  *"from now on talk to me like this"*.
 - User reveals a preference, an aversion, or a fact you'll
   plausibly need later (allergy, birthday, occupation, location,
   likes/dislikes).
@@ -77,12 +77,12 @@ Example:
 ## When NOT to use LEARN
 
 - Conversational throwaways that aren't relevant past the turn
-  (*"ich hab grad Hunger"*).
+  (*"I'm hungry right now"*).
 - Things the user already keeps with `scratchpad_set` — the
   scratchpad is **their** notepad; LEARN is **your** model of
   them.
-- Without a clear signal. Prefer to ask back — *"soll ich mir das
-  merken?"* — over guessing what's worth keeping. False saves
+- Without a clear signal. Prefer to ask back — *"should I remember
+  this?"* — over guessing what's worth keeping. False saves
   pollute every future prompt.
 
 ## Anti-patterns

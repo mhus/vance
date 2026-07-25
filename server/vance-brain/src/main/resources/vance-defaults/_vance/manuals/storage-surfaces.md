@@ -26,7 +26,7 @@ knowledge base. Default for **anything the user will want to find
 again**: research results, summaries, comparisons, decisions,
 specs, notes, lists, tables.
 
-When the user says *"speichere X als Markdown"* / *"save this for
+When the user says *"save X as Markdown"* / *"save this for
 later"* → Document.
 
 ### Scratch — short-lived work files
@@ -63,12 +63,12 @@ unless the user names a local path.
 
 | User intent | Surface |
 |---|---|
-| "Speichere/notiere/schreib mir X auf" | Document |
-| "Mach ein Markdown / eine Tabelle / einen Bericht" | Document |
-| "Werte mir die CSV aus" (intermediate) | Scratch → result to Document |
-| "Schreib die Datei nach `~/Downloads/foo`" | Client file |
-| "Skript zum Wegklicken — egal wo" | Scratch |
-| Pipeline-intermediates, parsed dumps | Scratch |
+| "Save/note/write down X for me" | Document |
+| "Make a Markdown / a table / a report" | Document |
+| "Analyze the CSV for me" (intermediate) | Scratch → result to Document |
+| "Write the file to `~/Downloads/foo`" | Client file |
+| "Throwaway script — anywhere is fine" | Scratch |
+| Pipeline intermediates, parsed dumps | Scratch |
 
 ## Anti-patterns
 

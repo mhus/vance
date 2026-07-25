@@ -15,16 +15,16 @@ removed. Available actions: `START_EXECUTION`, `PROPOSE_PLAN`
 ## Recognising the user's intent
 
 **Approval** signals:
-- "ok", "klingt gut", "mach so", "go", "los", "perfect", "ja"
+- "ok", "sounds good", "do it that way", "go", "go ahead", "perfect", "yes"
 - "let's do it", "proceed", "yes, accept"
 - A short positive response without specific edits.
 
 → Emit `START_EXECUTION`.
 
 **Edit** signals:
-- "nicht X, dafür Y" / "change Y to Z"
+- "not X, but Y instead" / "change Y to Z"
 - "instead of A, do B"
-- "anders: …"
+- "different: …"
 - A specific suggestion or correction in their reply.
 
 → Emit `PROPOSE_PLAN` with the **complete adjusted plan + new
@@ -32,10 +32,10 @@ TodoList**. Do not emit just a diff — the next plan replaces the
 current one.
 
 **Rejection** signals:
-- "nein, das passt nicht"
-- "ganz anders überlegen"
-- "vergiss das"
-- "stop, neu denken"
+- "no, that doesn't fit"
+- "let's think completely differently"
+- "forget that"
+- "stop, rethink this"
 
 → Emit `START_PLAN` (re-enter EXPLORING) or `ANSWER` if a
 clarifying question would unblock you. If they want to abandon
@@ -75,7 +75,7 @@ this new one supersedes it.
 ```
 { "type": "PROPOSE_PLAN",
   "reason": "User asked for Bearer-Header approach instead of cookies.",
-  "summary": "Refactoring v2: JWT via Bearer-Header (4 Schritte)",
+  "summary": "Refactoring v2: JWT via Bearer-Header (4 steps)",
   "plan": "## Plan v2\n\nBased on user feedback (Bearer-Header instead of cookies):\n\n1. ...\n\n",
   "todos": [ { "id": "1", "content": "..." }, ... ] }
 ```
@@ -100,8 +100,8 @@ info before committing to a decision.
 ```
 { "type": "ANSWER",
   "reason": "User said 'tweak the second step' — unclear which way.",
-  "message": "Welche Anpassung in Schritt 2 — möchtest du PostgreSQL
-              statt SQLite, oder eine andere Migration-Strategie?" }
+  "message": "Which change in step 2 — do you want PostgreSQL
+              instead of SQLite, or a different migration strategy?" }
 ```
 
 ## What you don't do here

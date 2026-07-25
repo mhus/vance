@@ -11,9 +11,9 @@ admin curates the catalog; you (the agent) drive the install.
 ## When to use this
 
 The user says any of:
-- "richte mir <service> ein" / "set up <service>"
-- "verbinde Vance mit <service>"
-- "ich will <service> nutzen" / "I want <service>"
+- "set me up with <service>" / "set up <service>"
+- "connect Vance with <service>"
+- "I want to use <service>" / "I want <service>"
 
 …and `<service>` is a known integration (Jira, IMAP, SMTP, Slack,
 GitHub, …). Don't guess — check the catalog first.
@@ -55,10 +55,10 @@ the user has confirmed a direction.
    → postInstall: {kind: "oauth-connect", provider: "atlassian", ...}
 
 5. agent → user (ASK_USER):
-   "Brauche drei Werte:
-   - Welche Atlassian-Produkte? (Jira / Confluence / beides)
-   - OAuth Client ID (developer.atlassian.com/console → deine App → Settings)
-   - OAuth Client Secret (wird verschlüsselt in den Tenant-Settings abgelegt)"
+   "I need three values:
+   - Which Atlassian products? (Jira / Confluence / both)
+   - OAuth Client ID (developer.atlassian.com/console → your app → Settings)
+   - OAuth Client Secret (stored encrypted in the tenant settings)"
 
 6. user provides values
 
@@ -75,9 +75,9 @@ the user has confirmed a direction.
    → applied: true, postInstall: {kind: "oauth-connect", provider: "atlassian", ...}
 
 8. agent → user (ANSWER):
-   "Atlassian-Provider ist konfiguriert (Jira-Pack installiert). Letzter Schritt:
-   öffne Connected Accounts in der Web-UI (http://localhost:9900/connected-accounts.html)
-   und klick bei 'atlassian' auf Connect. Danach stehen die Jira-Tools zur Verfügung."
+   "Atlassian provider is configured (Jira pack installed). Last step:
+   open Connected Accounts in the Web UI (http://localhost:9900/connected-accounts.html)
+   and click Connect for 'atlassian'. After that the Jira tools are available."
 ```
 
 ## Multi-select inputs (v2 templates)
@@ -140,7 +140,7 @@ project and tools placed there cascade into every other project. Use
 `_tenant` unless:
 
 - The user explicitly wants the integration **only** in a specific
-  project (e.g. "diese Jira-Anbindung nur für das Sales-Projekt").
+  project (e.g. "this Jira integration only for the Sales project").
 - The template's secrets are user-specific (then `_user_<login>`).
 
 The describe response doesn't tell you which target to use — that's a
@@ -200,7 +200,7 @@ the build host" / "give me a remote shell tool":
 
 ## Catalog discovery for the user
 
-If the user asks "what can I install?" or "welche Tools gibt's?":
+If the user asks "what can I install?" or "which tools are there?":
 1. `invoke_tool(tool_template_list, {})`
 2. Group by `category` field in the answer
 3. Format each as: `**<title>** (`<name>`) — <description>`

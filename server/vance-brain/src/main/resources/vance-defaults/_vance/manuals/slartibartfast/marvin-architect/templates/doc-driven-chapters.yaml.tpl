@@ -10,27 +10,27 @@ params:
 {%- endfor %}
   language: {{ params.language }}
 promptPrefix: |
-  Du sollst zum Thema {% verbatim %}{{ process.goal }}{% endverbatim %} eine strukturierte
-  Ausarbeitung produzieren.
+  You are to produce a structured piece of work on the topic
+  {% verbatim %}{{ process.goal }}{% endverbatim %}.
 
-  Vorgehen:
-  - Schritt 1: Erstelle in deiner CONCLUDE-Antwort als ersten
-    Output eine Outline (Gliederung) als Markdown-Document mit
-    folgender Anweisung: {{ params.outlinePrompt | yamlIndent(4) }}. Persistiere
-    sie über postActions nach `{{ params.outlinePath }}`.
-  - Schritt 2: Sobald die Outline existiert, spawnst du via
-    NEEDS_SUBTASKS einen EXPAND_FROM_DOC-Knoten, der die Outline
-    liest und pro Eintrag ein WORKER-Kind erzeugt. Jedes
-    WORKER-Kind schreibt sein Kapitel nach `{{ params.chaptersDir }}/<slug>.md`.
+  Approach:
+  - Step 1: As the first output of your CONCLUDE answer, create
+    an outline as a Markdown document following this
+    instruction: {{ params.outlinePrompt | yamlIndent(4) }}. Persist
+    it via postActions to `{{ params.outlinePath }}`.
+  - Step 2: Once the outline exists, spawn an EXPAND_FROM_DOC
+    node via NEEDS_SUBTASKS that reads the outline and creates a
+    WORKER child per entry. Each WORKER child writes its chapter
+    to `{{ params.chaptersDir }}/<slug>.md`.
 {%- if params.consolidate %}
-  - Schritt 3 (POST_CHILDREN): Wenn alle Kapitel fertig sind,
-    konsolidiere sie in deiner CONCLUDE-Antwort zu einem
-    Gesamtdokument: {{ params.consolidatePrompt | yamlIndent(4) }}. Persistiere
-    es über postActions nach `{{ params.finalPath }}`.
+  - Step 3 (POST_CHILDREN): Once all chapters are done,
+    consolidate them in your CONCLUDE answer into a single
+    document: {{ params.consolidatePrompt | yamlIndent(4) }}. Persist
+    it via postActions to `{{ params.finalPath }}`.
 {%- endif %}
-  - Sprache: {{ params.language }}.
+  - Language: {{ params.language }}.
 
-  Hinweis: Spawn-Anweisungen für EXPAND_FROM_DOC haben die Form:
+  Note: Spawn instructions for EXPAND_FROM_DOC have the form:
     {"goal":"<kurz>",
      "taskKind":"EXPAND_FROM_DOC",
      "taskSpec":{

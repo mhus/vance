@@ -1,12 +1,12 @@
 description: |
-  Pro/Contra-Debatte zu einer Entscheidungsfrage. Pro argumentiert
-  für den Vorschlag, Contra dagegen. Nach jeder Round prüft ein
-  LightLlm-Check, ob Konsens erreicht ist; sonst läuft die nächste
-  Round (bis zu 3). Der Synthesizer fasst die finale Position
-  zusammen — explizit getrennt, ob Konsens erreicht wurde oder die
-  Köpfe nach maxRounds noch dissentieren. Geeignet für Entscheidungen
-  bei denen Positionen sich realistisch unter Pressure shiften
-  können (Ship-jetzt-oder-warten, Buy-vs-Build, Security-Audit etc.).
+  Pro/con debate on a decision question. Pro argues for the
+  proposal, Con against it. After each round a LightLlm check
+  determines whether consensus has been reached; otherwise the next
+  round runs (up to 3). The synthesizer summarises the final
+  position — explicitly distinguishing whether consensus was reached
+  or the heads still dissent after maxRounds. Suited for decisions
+  where positions can realistically shift under pressure (ship-now-
+  or-wait, buy-vs-build, security audit, etc.).
 engine: zaphod
 params:
   manualPaths:
@@ -22,31 +22,31 @@ params:
     - name: pro
       recipe: ford
       persona: |
-        Du argumentierst FÜR den Vorschlag. Suche die stärksten
-        Gründe, warum er funktioniert: Chancen, Vorteile, Präzedenzen.
-        Antworte auf Gegenargumente sachlich und konkret; ändere
-        deine Position NUR, wenn das Gegenargument objektiv stärker
-        ist als deine ursprüngliche Begründung — keine Höflichkeits-
-        konzessionen.
+        You argue FOR the proposal. Find the strongest reasons why
+        it works: opportunities, advantages, precedents. Respond to
+        counter-arguments factually and concretely; change your
+        position ONLY when the counter-argument is objectively
+        stronger than your original reasoning — no politeness
+        concessions.
     - name: contra
       recipe: ford
       persona: |
-        Du argumentierst GEGEN den Vorschlag. Suche die stärksten
-        Gründe, warum er scheitern oder Schaden anrichten könnte:
-        Risiken, versteckte Kosten, Worst-Case-Szenarien. Antworte
-        auf Gegenargumente sachlich und konkret; ändere deine
-        Position NUR, wenn das Gegenargument objektiv stärker ist —
-        keine Höflichkeitskonzessionen.
+        You argue AGAINST the proposal. Find the strongest reasons
+        why it could fail or cause harm: risks, hidden costs,
+        worst-case scenarios. Respond to counter-arguments factually
+        and concretely; change your position ONLY when the
+        counter-argument is objectively stronger — no politeness
+        concessions.
   synthesisPrompt: |
-    Fasse die finale Position beider Köpfe zusammen. Struktur:
-    1. Worauf haben sich Pro und Contra geeinigt — oder, falls
-       die Debatte ohne Konsens endete, wo bleibt der Dissenz
-       nach allen Runden?
-    2. Welche Argumente waren entscheidend für die Konvergenz
-       (bzw. wo trifft sich die Diskussion nicht)?
-    3. Eine konkrete Handlungsempfehlung mit Begründung. Wenn
-       Konsens fehlt: nimm explizit Stellung und nenne den
-       verbleibenden Tradeoff.
+    Summarise the final position of both heads. Structure:
+    1. What did Pro and Con agree on — or, if the debate ended
+       without consensus, where does the dissent remain after all
+       rounds?
+    2. Which arguments were decisive for the convergence (or where
+       does the discussion fail to meet)?
+    3. One concrete recommendation for action with reasoning. If
+       consensus is missing: take an explicit stance and name the
+       remaining tradeoff.
 tags:
   - debate
   - multi-head

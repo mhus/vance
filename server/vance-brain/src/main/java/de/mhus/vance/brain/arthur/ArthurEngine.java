@@ -981,8 +981,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                             renderPlanCompletionSummary(process), true);
                 } else {
                     outcome = new ActionTurnOutcome(
-                            "_Mir ist gerade die Spur verloren gegangen "
-                                    + "— sag mir kurz wo es weitergehen soll._",
+                            "_I just lost track of things "
+                                    + "— tell me briefly where we should pick up._",
                             true);
                     workerGaveUp = true;
                     log.warn("Arthur.turn id='{}' action-loop fallback with no usable "
@@ -1655,16 +1655,16 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     private static String renderPlanCompletionSummary(ThinkProcessDocument process) {
         java.util.List<de.mhus.vance.api.thinkprocess.TodoItem> todos = process.getTodos();
         if (todos == null || todos.isEmpty()) {
-            return "Plan abgeschlossen.";
+            return "Plan complete.";
         }
-        StringBuilder sb = new StringBuilder("Plan abgeschlossen — alle Schritte erledigt:");
+        StringBuilder sb = new StringBuilder("Plan complete — all steps done:");
         for (de.mhus.vance.api.thinkprocess.TodoItem t : todos) {
             sb.append("\n- ");
             String label = t.getContent();
             if (label == null || label.isBlank()) label = t.getId();
             sb.append(label == null ? "" : label);
         }
-        sb.append("\n\nSchau in deine Dokumente — die Ergebnisse sind dort abgelegt.");
+        sb.append("\n\nCheck your documents — the results are stored there.");
         return sb.toString();
     }
 
@@ -1915,7 +1915,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         } catch (RuntimeException e) {
             log.warn("Arthur id='{}' DELEGATE failed: {}", process.getId(), e.toString());
             return new ActionTurnOutcome(
-                    "Internal: konnte den Worker nicht starten ("
+                    "Internal: could not start the worker ("
                             + e.getMessage() + ").",
                     true);
         }
@@ -1985,8 +1985,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             log.warn("Arthur id='{}' RELAY eventRef '{}' has empty body — reason='{}'",
                     process.getId(), eventRef, action.reason());
             return new ActionTurnOutcome(
-                    "_Der Worker `" + sourceName + "` hat eine leere Antwort "
-                            + "zurückgegeben. Sag mir kurz wie wir weitermachen._",
+                    "_The worker `" + sourceName + "` returned an empty "
+                            + "response. Tell me briefly how we should proceed._",
                     true);
         }
 
@@ -2181,12 +2181,12 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     private String relayFallbackMessage(
             Map<String, SteerMessage.ProcessEvent> available) {
         if (available.isEmpty()) {
-            return "_Ich habe gerade nichts zum Weiterreichen — "
-                    + "sag mir kurz wo es weitergehen soll._";
+            return "_I have nothing to pass along right now — "
+                    + "tell me briefly where we should pick up._";
         }
-        return "_Beim Übergeben der Worker-Antwort ist mir gerade "
-                + "die Spur verloren gegangen — wenn die Antwort fehlt, "
-                + "sag's mir und ich starte den Worker neu._";
+        return "_I just lost track while passing along the worker's "
+                + "response — if the answer is missing, tell me and "
+                + "I'll restart the worker._";
     }
 
     /** Async work in flight, nothing to add. Engine goes IDLE. */
@@ -2203,7 +2203,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             de.mhus.vance.brain.thinkengine.action.EngineAction action) {
         String message = action.stringParam(ArthurActionSchema.PARAM_MESSAGE);
         if (message == null || message.isBlank()) {
-            message = "Das geht so leider nicht — " + action.reason();
+            message = "Unfortunately that won't work — " + action.reason();
         }
         return new ActionTurnOutcome(message, /*awaitingUserInput*/ true);
     }
@@ -2236,8 +2236,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             log.warn("Arthur id='{}' NOTIFY_TEAM missing message — reason='{}'",
                     process.getId(), action.reason());
             return new ActionTurnOutcome(
-                    "Konnte das Team nicht benachrichtigen — der Nachrichtentext "
-                            + "fehlte. (" + action.reason() + ")",
+                    "Could not notify the team — the message text "
+                            + "was missing. (" + action.reason() + ")",
                     true);
         }
         boolean delivered = notificationService.publish(
@@ -2247,9 +2247,9 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                 process.getId(), delivered, summariseReason(action.reason()));
         return new ActionTurnOutcome(
                 delivered
-                        ? "Das Team wurde benachrichtigt."
-                        : "Die Benachrichtigung wurde erstellt, aber es war kein "
-                                + "Empfänger verbunden — sie wurde nicht zugestellt.",
+                        ? "The team has been notified."
+                        : "The notification was created, but no "
+                                + "recipient was connected — it was not delivered.",
                 true);
     }
 
@@ -2264,7 +2264,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             log.warn("Arthur id='{}' LEARN missing scope/content — reason='{}'",
                     process.getId(), action.reason());
             return new ActionTurnOutcome(
-                    "Konnte das nicht speichern — scope oder content fehlte. ("
+                    "Could not save that — scope or content was missing. ("
                             + action.reason() + ")",
                     true);
         }
@@ -2272,8 +2272,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             log.warn("Arthur id='{}' LEARN unknown scope='{}' — reason='{}'",
                     process.getId(), scope, action.reason());
             return new ActionTurnOutcome(
-                    "Konnte das nicht speichern — unbekannter scope '" + scope
-                            + "'. Erlaubt: 'persona', 'fact'.",
+                    "Could not save that — unknown scope '" + scope
+                            + "'. Allowed: 'persona', 'fact'.",
                     true);
         }
         String userProject = resolveUserProjectName(ctx);
@@ -2281,7 +2281,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             log.warn("Arthur id='{}' LEARN cannot resolve user project — session/userId missing",
                     process.getId());
             return new ActionTurnOutcome(
-                    "Konnte das nicht speichern — kein User-Projekt verfügbar.",
+                    "Could not save that — no user project available.",
                     true);
         }
         String tenantId = process.getTenantId();
@@ -2311,7 +2311,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             log.warn("Arthur id='{}' LEARN persistence failed: {}",
                     process.getId(), e.toString());
             return new ActionTurnOutcome(
-                    "Konnte das gerade nicht merken — " + e.getMessage(),
+                    "Could not remember that right now — " + e.getMessage(),
                     true);
         }
 

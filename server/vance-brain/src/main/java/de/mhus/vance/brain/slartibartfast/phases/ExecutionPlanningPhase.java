@@ -96,13 +96,13 @@ public class ExecutionPlanningPhase {
             Decision rules (apply IN ORDER, first match wins):
 
             1. Explicit no-test in user description.
-               Signals: "nur anlegen", "nicht ausführen", "kein
-               Test", "do not run", "just save", "skip execution".
+               Signals: "just create", "don't execute", "no
+               test", "do not run", "just save", "skip execution".
                → decision = "SKIP", prompt = null.
 
             2. Explicit test prompt in user description.
-               Signals: "und frage 'X'", "teste mit 'X'", "und
-               versuch's mit 'X'", "ask it 'X'", "test it with 'X'".
+               Signals: "and ask 'X'", "test with 'X'", "and
+               try 'X'", "ask it 'X'", "test it with 'X'".
                Extract the literal X (preserve case, punctuation).
                → decision = "USE_USER_PROMPT", prompt = X.
 
@@ -120,14 +120,14 @@ public class ExecutionPlanningPhase {
                prompt = original user description.
 
             5. Architecture schema (ZAPHOD_RECIPE) AND user
-               description is purely structural ("Erstelle ein
-               Gremium aus …", "Build a council of …") with NO
+               description is purely structural ("Create a
+               council of …", "Build a council of …") with NO
                concrete question.
                The recipe is a reusable asset — execution comes
                later with real questions. → decision = "SKIP".
 
-            6. Architecture schema AND user said "teste mal" /
-               "und probier's aus" / "smoke test it" but gave no
+            6. Architecture schema AND user said "test it" /
+               "and try it out" / "smoke test it" but gave no
                specific test prompt.
                → decision = "USE_GENERATED_PROMPT", prompt = a
                SIMPLE one-sentence test question relevant to the

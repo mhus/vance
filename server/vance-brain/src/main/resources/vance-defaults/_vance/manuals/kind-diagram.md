@@ -20,8 +20,8 @@ Decide first:
 
 | Did the user ask for a saved file / document? | Use form |
 |---|---|
-| YES — "save the diagram", "speicher das als diagram-doc" | **Stored** (below) |
-| NO — "show me a flowchart", "zeig den Ablauf als Sequenz" | **Inline** (further below) |
+| YES — "save the diagram", "save this as a diagram doc" | **Stored** (below) |
+| NO — "show me a flowchart", "show the flow as a sequence" | **Inline** (further below) |
 
 ### Stored document — markdown with ```mermaid (canonical) OR JSON/YAML with source
 
@@ -96,8 +96,8 @@ The first source line picks the diagram type. Common openings:
 ## When to use this
 
 User wants a *visual* of a process, architecture, or relationship —
-"draw a flowchart", "zeig den Ablauf als Sequenz", "mach mir ein
-ER-Diagramm". The expectation is **immediate visual output** in chat.
+"draw a flowchart", "show the flow as a sequence", "make me an
+ER diagram". The expectation is **immediate visual output** in chat.
 
 ## Picking diagram vs. other kinds
 

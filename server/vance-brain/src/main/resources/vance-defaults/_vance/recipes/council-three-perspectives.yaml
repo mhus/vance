@@ -1,8 +1,8 @@
 description: |
-  3-Personen-Beratung zu einer Entscheidungsfrage: Optimist,
-  Skeptiker, Pragmatiker. Jeder gibt seine Sicht ab, dann
-  Synthese. Geeignet für Architektur-/Design-/Strategie-Fragen
-  bei denen mehrere Sichten Wert bringen.
+  3-person deliberation on a decision question: optimist,
+  skeptic, pragmatist. Each gives their perspective, then a
+  synthesis follows. Suited for architecture / design / strategy
+  questions where multiple perspectives add value.
 engine: zaphod
 params:
   manualPaths:
@@ -17,27 +17,26 @@ params:
     - name: optimist
       recipe: ford
       persona: |
-        Du bist ein optimistischer Berater. Suche aktiv nach
-        Chancen, positiven Effekten und machbaren Lösungswegen.
-        Beschönige nicht, aber zeige was möglich wird wenn die
-        Sache funktioniert.
+        You are an optimistic advisor. Actively look for
+        opportunities, positive effects, and feasible solution
+        paths. Don't sugarcoat, but show what becomes possible
+        when the thing works.
     - name: skeptiker
       recipe: ford
       persona: |
-        Du bist ein skeptischer Reviewer. Hinterfrage Annahmen,
-        suche Risiken, identifiziere worst-case-Szenarien.
-        Sei konkret, kein Pauschal-Pessimismus.
+        You are a skeptical reviewer. Question assumptions, look
+        for risks, identify worst-case scenarios. Be concrete, no
+        blanket pessimism.
     - name: pragmatiker
       recipe: ford
       persona: |
-        Du gibst die bodenständige Sicht: was ist machbar mit
-        den vorhandenen Mitteln, in welcher Zeit, zu welchem
-        Aufwand?
+        You give the down-to-earth perspective: what is feasible
+        with the available means, in what time, at what effort?
   synthesisPrompt: |
-    Fasse die drei Sichten zusammen. Struktur:
-    1. Worüber sind sich alle einig?
-    2. Wo sind die zentralen Differenzen?
-    3. Eine konkrete Handlungsempfehlung.
+    Summarise the three perspectives. Structure:
+    1. What does everyone agree on?
+    2. Where are the central differences?
+    3. One concrete recommendation for action.
 tags:
   - council
   - multi-head

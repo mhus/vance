@@ -124,7 +124,7 @@ class PlanModeServiceRecompactionHookTest {
         assertThat(offer.getOriginProcessId()).isEqualTo("p-1");
         assertThat(offer.getOriginSessionId()).isEqualTo("s");
         assertThat(offer.getTenantId()).isEqualTo("t");
-        assertThat(offer.getTitle()).contains("Plan abgeschlossen");
+        assertThat(offer.getTitle()).contains("Plan complete");
 
         // Payload carries the range coordinates the listener needs back.
         assertThat(offer.getPayload())

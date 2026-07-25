@@ -3,18 +3,18 @@ audience: creator
 triggers: event_set, event anlegen, event erstellen, event_fire, event testen, event manuell auslösen, webhook testen, UrsaEvent, ursa event, lief der webhook, event log
 summary: How to test-fire a configured UrsaEvent without the webhook bearer-token check, and how to read the resulting trigger log document.
 ---
-# Wie ich Events teste und ihr Log lese
+# How I test events and read their log
 
-Ein **Event** ist ein HTTP-Trigger, der einen Workflow oder ein Recipe
-startet — typisch eingehende Webhooks (GitHub PR, IoT-Push, …). Die
-YAMLs liegen unter `_vance/events/<name>.yaml`. Eingehende externe
-Requests gehen über `POST /brain/{tenant}/event/{project}/{event}` mit
-Bearer-Token-Authentifizierung.
+An **event** is an HTTP trigger that starts a workflow or a recipe —
+typically incoming webhooks (GitHub PR, IoT push, …). The YAMLs live
+under `_vance/events/<name>.yaml`. Incoming external requests go through
+`POST /brain/{tenant}/event/{project}/{event}` with bearer-token
+authentication.
 
-Wenn der User sagt "teste mal das Event", "ich will sehen ob mein
-Webhook funktioniert" oder "lass das github-pr Event einmal laufen",
-nutze ich das `event_fire`-Tool — das geht **ohne** den externen
-Bearer-Token, weil ich vom Project-Scope aus schon authentifiziert bin.
+When the user says "test the event", "I want to see if my webhook
+works" or "run the github-pr event once", I use the `event_fire` tool —
+which works **without** the external bearer token, because I am already
+authenticated from within the project scope.
 
 ## `event_fire`
 
@@ -23,7 +23,7 @@ invoke_tool(
   name = "event_fire",
   params = {
     "name": "github-pr",
-    "payload": {                      # optional, wird unter params.payload weitergereicht
+    "payload": {                      # optional, passed through under params.payload
       "action": "opened",
       "pull_request": { "number": 42 }
     }
@@ -31,7 +31,7 @@ invoke_tool(
 )
 ```
 
-Antwort bei Erfolg:
+Answer on success:
 ```
 { "correlationId": "evt_550e8400-…",
   "targetName": "review-pr",
@@ -40,47 +40,48 @@ Antwort bei Erfolg:
   "note": "Event fired. Read '...' via doc_read for the per-trigger log." }
 ```
 
-Antwort bei Misserfolg: das Tool wirft eine Fehler-Message mit dem
-Server-Reason (`not_found`, `disabled`, `magrathea_unavailable`,
-`spawn_failed`, …). Bei allen Misserfolgen **außer `not_found`** wurde
-trotzdem ein Log-Document geschrieben — `doc_read` auf den
-zurückgegebenen `logPath` zeigt die genauen Details.
+Answer on failure: the tool throws an error message with the server
+reason (`not_found`, `disabled`, `magrathea_unavailable`,
+`spawn_failed`, …). For all failures **except `not_found`** a log
+document was still written — `doc_read` on the returned `logPath` shows
+the exact details.
 
-## Log-Document direkt lesen
+## Reading the log document directly
 
-Genau wie beim Scheduler hinterlässt jedes Auslösen ein Markdown unter
-`_vance/logs/events/<eventName>/<isoStamp>-<correlationId>.md`. Front-
-Matter trägt `outcome`, `source` (`admin` für `event_fire`, `public`
-für Webhook), `httpMethod`, `runAs`, `targetName`, `spawnedId`,
-`durationMs`. Auto-TTL: Default 7 Tage, Setting `events.log.retentionDays`
-kann das pro Tenant/Projekt überschreiben (tri-state):
-- **> 0** → Tage Retention (≤ 365).
-- **0** → unbegrenzt erhalten (kein TTL).
-- **< 0** → Logging aus, keine Documents.
+Just like the scheduler, every firing leaves a markdown under
+`_vance/logs/events/<eventName>/<isoStamp>-<correlationId>.md`. The front
+matter carries `outcome`, `source` (`admin` for `event_fire`, `public`
+for a webhook), `httpMethod`, `runAs`, `targetName`, `spawnedId`,
+`durationMs`. Auto-TTL: default 7 days, the setting
+`events.log.retentionDays` can override this per tenant/project
+(tri-state):
+- **> 0** → days of retention (≤ 365).
+- **0** → kept indefinitely (no TTL).
+- **< 0** → logging off, no documents.
 
 ```
 invoke_tool(
   name = "doc_read",
-  params = { "path": "<logPath aus event_fire>" }
+  params = { "path": "<logPath from event_fire>" }
 )
 ```
 
-## Wenn der User fragt: „lief das Webhook gestern?"
+## When the user asks: "did the webhook run yesterday?"
 
-`doc_list(pathPrefix = "_vance/logs/events/<eventName>/")` —
-neueste zuletzt (ISO-Stamp sortiert). Pro Lauf eine Datei. Bei
-`source: public` ist es ein extern empfangener Webhook, bei
-`source: admin` ein Test-Fire (UI oder `event_fire`).
+`doc_list(pathPrefix = "_vance/logs/events/<eventName>/")` — newest last
+(ISO-stamp sorted). One file per run. With `source: public` it is an
+externally received webhook, with `source: admin` a test fire (UI or
+`event_fire`).
 
-## Was ich NICHT mache
+## What I do NOT do
 
-- **Keine Test-Events anlegen** nur fürs Probieren. `event_fire`
-  ersetzt das vollständig — kein temporäres Event mit Test-Payload
-  schreiben und hinterher löschen.
-- **Kein Bearer-Token reinkopieren**. Wenn der User mir ein Secret
-  zeigt, weise ich darauf hin, dass das nicht nötig ist — `event_fire`
-  bypasst den Token-Check.
-- **Kein Payload-Dump im Chat**, wenn die Payload sensitive Daten
-  enthält. Der Webhook-Body wird sowieso NICHT im Log-Document
-  persistiert (nur Größe + Content-Type), weil das forensisch zu
-  riskant wäre.
+- **Don't create test events** just for trying things out. `event_fire`
+  replaces that entirely — don't write a temporary event with a test
+  payload and delete it afterward.
+- **Don't paste in a bearer token**. If the user shows me a secret, I
+  point out that it isn't needed — `event_fire` bypasses the token
+  check.
+- **No payload dump in the chat** when the payload contains sensitive
+  data. The webhook body is NOT persisted in the log document anyway
+  (only size + content type), because that would be too risky
+  forensically.

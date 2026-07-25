@@ -145,11 +145,11 @@ public class TrillianControlEngine implements ThinkEngine {
                     + "`task_enqueue`. You do not execute work yourself.";
 
     private static final String MODEL_COLLAPSE_MESSAGE =
-            "_Das Modell hat eine leere Antwort geliefert — "
-                    + "vermutlich Kontext zu groß, Provider-Timeout, "
-                    + "oder Modell-seitiger Collapse. Formuliere die "
-                    + "Frage neu, oder wechsle das Modell. Brain-Log "
-                    + "zeigt Details._";
+            "_The model returned an empty response — "
+                    + "likely context too large, a provider timeout, "
+                    + "or a model-side collapse. Rephrase the "
+                    + "question, or switch the model. The brain log "
+                    + "shows details._";
 
     /**
      * Cap on tool-loop iterations within one turn. The chat host

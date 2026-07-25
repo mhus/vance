@@ -221,7 +221,7 @@ class FrankieEngineSkeletonTest {
         verify(chatMessageService).append(any());
         // Reply emitted so a parent (worker mode) or UI (session-primary)
         // sees the error too.
-        verify(ctx).emitReply(org.mockito.ArgumentMatchers.contains("leere Antwort"), any(), any());
+        verify(ctx).emitReply(org.mockito.ArgumentMatchers.contains("empty response"), any(), any());
     }
 
     // ─── Stop path 2: tool-driven terminate (mode-aware) ────────────────

@@ -28,6 +28,12 @@ export interface SheetCell {
   data: string;
   color?: string;
   background?: string;
+  bold?: boolean;
+  italic?: boolean;
+  /** left | center | right */
+  align?: string;
+  /** Excel-style number format code, e.g. `#,##0.00`, `0%`, `@`. */
+  numberFormat?: string;
   /** Unknown per-cell fields, preserved across round-trip. */
   extra: Record<string, unknown>;
 }
@@ -247,6 +253,15 @@ function isBorder(s: string): boolean {
   return t === 'left' || t === 'right' || t === 'both';
 }
 
+function isAlign(s: string): boolean {
+  const t = s.trim().toLowerCase();
+  return t === 'left' || t === 'center' || t === 'right';
+}
+
+const CELL_FIELDS = new Set([
+  'field', 'data', 'color', 'background', 'bold', 'italic', 'align', 'numberFormat',
+]);
+
 function promoteComputed(raw: unknown): SheetComputed | undefined {
   if (!isObject(raw)) return undefined;
   const valuesRaw = raw.values;
@@ -307,8 +322,14 @@ function promoteCells(raw: unknown): SheetCell[] {
     const cell: SheetCell = { field, data, extra: {} };
     if (typeof r.color === 'string' && r.color) cell.color = r.color;
     if (typeof r.background === 'string' && r.background) cell.background = r.background;
+    if (r.bold === true) cell.bold = true;
+    if (r.italic === true) cell.italic = true;
+    if (typeof r.align === 'string' && isAlign(r.align)) cell.align = r.align.toLowerCase();
+    if (typeof r.numberFormat === 'string' && r.numberFormat.trim()) {
+      cell.numberFormat = r.numberFormat.trim();
+    }
     for (const [k, v] of Object.entries(r)) {
-      if (k === 'field' || k === 'data' || k === 'color' || k === 'background') continue;
+      if (CELL_FIELDS.has(k)) continue;
       cell.extra[k] = v;
     }
     out.push(cell);
@@ -356,6 +377,10 @@ function cellToObject(cell: SheetCell): Record<string, unknown> {
   const obj: Record<string, unknown> = { field: cell.field, data: cell.data };
   if (cell.color !== undefined) obj.color = cell.color;
   if (cell.background !== undefined) obj.background = cell.background;
+  if (cell.bold === true) obj.bold = true;
+  if (cell.italic === true) obj.italic = true;
+  if (cell.align !== undefined) obj.align = cell.align;
+  if (cell.numberFormat !== undefined) obj.numberFormat = cell.numberFormat;
   for (const [k, v] of Object.entries(cell.extra)) {
     if (!(k in obj)) obj[k] = v;
   }

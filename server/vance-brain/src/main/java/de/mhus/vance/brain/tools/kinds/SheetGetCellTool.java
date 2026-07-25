@@ -1,11 +1,13 @@
 package de.mhus.vance.brain.tools.kinds;
 
+import de.mhus.vance.brain.sheet.SheetEvalService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.kind.SheetCell;
 import de.mhus.vance.shared.document.kind.SheetCodec;
+import de.mhus.vance.shared.document.kind.SheetComputed;
 import de.mhus.vance.shared.document.kind.SheetDocument;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -31,11 +33,13 @@ public class SheetGetCellTool implements Tool {
     }
 
     private final KindToolSupport support;
+    private final SheetEvalService evalService;
 
     @Override public String name() { return "sheet_get_cell"; }
     @Override public String description() {
         return "Read a single cell from a `kind: sheet` document by its A1 address. "
-                + "Returns the cell's data (value or formula string), color and background if set.";
+                + "Returns the cell's data (value or formula string), formatting, and — for "
+                + "formula cells — the server-evaluated `computedValue`.";
     }
     @Override public boolean primary() { return false; }
     @Override public Set<String> labels() { return Set.of("kind-sheet", "eddie", "read-only"); }
@@ -65,7 +69,19 @@ public class SheetGetCellTool implements Tool {
             out.put("data", cell.data());
             if (cell.color() != null) out.put("color", cell.color());
             if (cell.background() != null) out.put("background", cell.background());
-            out.put("isFormula", cell.data().startsWith("="));
+            boolean isFormula = cell.data().startsWith("=");
+            out.put("isFormula", isFormula);
+            if (isFormula) {
+                SheetComputed computed = evalService.evaluate(sheet);
+                computed.values().stream()
+                        .filter(v -> v.field().equals(key))
+                        .findFirst()
+                        .ifPresent(v -> {
+                            out.put("computedValue", v.value());
+                            out.put("computedType", v.type());
+                            if (v.error() != null) out.put("computedError", v.error());
+                        });
+            }
         }
         return out;
     }

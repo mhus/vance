@@ -84,6 +84,10 @@ function cloneCells(src: SheetCell[]): SheetCell[] {
     data: c.data,
     color: c.color,
     background: c.background,
+    bold: c.bold,
+    italic: c.italic,
+    align: c.align,
+    numberFormat: c.numberFormat,
     extra: { ...c.extra },
   }));
 }
@@ -210,6 +214,10 @@ function cellShouldBeDropped(c: SheetCell): boolean {
   return c.data === ''
     && c.color === undefined
     && c.background === undefined
+    && !c.bold
+    && !c.italic
+    && c.align === undefined
+    && c.numberFormat === undefined
     && Object.keys(c.extra).length === 0;
 }
 
@@ -574,9 +582,9 @@ function onRowResizeEnd(): void {
 
 // ── Format actions (side panel) ────────────────────────────────────
 
-/** The value of a cell attribute shared by ALL selected cells, or
- *  undefined when they differ / none is set (→ panel shows "none"). */
-function selectionCommon(attr: 'color' | 'background'): string | undefined {
+/** The value of a string cell attribute shared by ALL selected cells,
+ *  or undefined when they differ / none is set (→ panel shows "none"). */
+function selectionCommon(attr: 'color' | 'background' | 'align' | 'numberFormat'): string | undefined {
   const addrs = selectedAddresses.value;
   if (!addrs.length) return undefined;
   const first = getCell(addrs[0])?.[attr];
@@ -585,8 +593,34 @@ function selectionCommon(attr: 'color' | 'background'): string | undefined {
 
 const selectionColor = computed(() => selectionCommon('color'));
 const selectionBackground = computed(() => selectionCommon('background'));
+const selectionAlign = computed(() => selectionCommon('align'));
+const selectionNumberFormat = computed(() => selectionCommon('numberFormat') ?? '');
+const selectionBold = computed(() =>
+  selectedAddresses.value.length > 0 && selectedAddresses.value.every((a) => getCell(a)?.bold === true));
+const selectionItalic = computed(() =>
+  selectedAddresses.value.length > 0 && selectedAddresses.value.every((a) => getCell(a)?.italic === true));
 const selectionHasFormat = computed(() =>
-  selectedAddresses.value.some((a) => { const c = getCell(a); return c?.color || c?.background; }));
+  selectedAddresses.value.some((a) => {
+    const c = getCell(a);
+    return c?.color || c?.background || c?.bold || c?.italic || c?.align || c?.numberFormat;
+  }));
+
+function toggleBold(): void { applyToSelection({ bold: selectionBold.value ? undefined : true }); }
+function toggleItalic(): void { applyToSelection({ italic: selectionItalic.value ? undefined : true }); }
+function setAlign(a: string): void {
+  applyToSelection({ align: selectionAlign.value === a ? undefined : a });
+}
+function setNumberFormat(code: string): void {
+  applyToSelection({ numberFormat: code ? code : undefined });
+}
+
+const NUMBER_FORMATS: { value: string; labelKey: string }[] = [
+  { value: '', labelKey: 'documents.sheetView.fmtGeneral' },
+  { value: '#,##0.00', labelKey: 'documents.sheetView.fmtNumber' },
+  { value: '#,##0', labelKey: 'documents.sheetView.fmtInteger' },
+  { value: '0%', labelKey: 'documents.sheetView.fmtPercent' },
+  { value: '@', labelKey: 'documents.sheetView.fmtText' },
+];
 
 /** Apply a formatting patch to EVERY selected cell in one batch (one emit). */
 function applyToSelection(patch: Partial<SheetCell>): void {
@@ -617,7 +651,10 @@ function setBackground(bg: string): void {
 }
 
 function clearCellFormat(): void {
-  applyToSelection({ color: undefined, background: undefined });
+  applyToSelection({
+    color: undefined, background: undefined,
+    bold: undefined, italic: undefined, align: undefined, numberFormat: undefined,
+  });
 }
 
 // ── Helpers for template ───────────────────────────────────────────
@@ -709,11 +746,14 @@ onBeforeUnmount(() => {
 function cellDisplay(addr: string): string {
   const c = getCell(addr);
   if (!c) return '';
+  let raw: string;
   if (c.data.startsWith('=')) {
     const cv = computedValues.value.get(addr);
-    return cv ? cv.value : c.data;
+    raw = cv ? cv.value : c.data;
+  } else {
+    raw = c.data;
   }
-  return c.data;
+  return c.numberFormat ? applyNumberFormat(raw, c.numberFormat) : raw;
 }
 
 function cellIsError(addr: string): boolean {
@@ -726,7 +766,30 @@ function cellStyle(addr: string): Record<string, string> {
   const out: Record<string, string> = m ? columnBorderStyle(m[1]) : {};
   if (c?.color) out.color = c.color;
   if (c?.background) out.background = c.background;
+  if (c?.bold) out.fontWeight = '700';
+  if (c?.italic) out.fontStyle = 'italic';
+  if (c?.align) out.textAlign = c.align;
   return out;
+}
+
+/** Apply an Excel-style number format code to a display value. Supports
+ *  the common subset (text `@`, percent, grouping, fixed decimals). */
+function applyNumberFormat(raw: string, code: string): string {
+  if (code === '@') return raw;
+  if (raw === '') return raw;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return raw;
+  const isPct = code.includes('%');
+  const useGrouping = code.includes(',');
+  const dot = code.indexOf('.');
+  const decimals = dot >= 0 ? code.slice(dot + 1).replace(/[^0#]/g, '').length : 0;
+  const value = isPct ? n * 100 : n;
+  const fmt = new Intl.NumberFormat(undefined, {
+    useGrouping,
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+  return fmt.format(value) + (isPct ? '%' : '');
 }
 </script>
 
@@ -876,6 +939,61 @@ function cellStyle(addr: string): Record<string, string> {
               @click="setBackground('')"
             >{{ t('documents.sheetView.clear') }}</button>
           </div>
+        </label>
+        <label>
+          {{ t('documents.sheetView.style') }}
+          <div class="fmt-row">
+            <button
+              type="button"
+              class="fmt-btn"
+              :class="{ 'fmt-btn--on': selectionBold }"
+              style="font-weight: 700"
+              :title="t('documents.sheetView.bold')"
+              @click="toggleBold"
+            >B</button>
+            <button
+              type="button"
+              class="fmt-btn"
+              :class="{ 'fmt-btn--on': selectionItalic }"
+              style="font-style: italic"
+              :title="t('documents.sheetView.italic')"
+              @click="toggleItalic"
+            >I</button>
+            <span class="fmt-sep" aria-hidden="true" />
+            <button
+              type="button"
+              class="fmt-btn"
+              :class="{ 'fmt-btn--on': selectionAlign === 'left' }"
+              :title="t('documents.sheetView.alignLeft')"
+              @click="setAlign('left')"
+            >⇤</button>
+            <button
+              type="button"
+              class="fmt-btn"
+              :class="{ 'fmt-btn--on': selectionAlign === 'center' }"
+              :title="t('documents.sheetView.alignCenter')"
+              @click="setAlign('center')"
+            >↔</button>
+            <button
+              type="button"
+              class="fmt-btn"
+              :class="{ 'fmt-btn--on': selectionAlign === 'right' }"
+              :title="t('documents.sheetView.alignRight')"
+              @click="setAlign('right')"
+            >⇥</button>
+          </div>
+        </label>
+        <label>
+          {{ t('documents.sheetView.numberFormat') }}
+          <select
+            class="fmt-select"
+            :value="selectionNumberFormat"
+            @change="(e) => setNumberFormat((e.target as HTMLSelectElement).value)"
+          >
+            <option v-for="f in NUMBER_FORMATS" :key="f.value" :value="f.value">
+              {{ t(f.labelKey) }}
+            </option>
+          </select>
         </label>
         <VButton
           size="sm"
@@ -1126,6 +1244,46 @@ function cellStyle(addr: string): Record<string, string> {
 .clear-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+.fmt-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: 0.2rem;
+}
+.fmt-btn {
+  min-width: 1.75rem;
+  height: 1.75rem;
+  padding: 0 0.35rem;
+  border: 1px solid oklch(var(--bc) / 0.2);
+  border-radius: 0.3rem;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  line-height: 1;
+}
+.fmt-btn:hover {
+  background: oklch(var(--bc) / 0.06);
+}
+.fmt-btn--on {
+  background: oklch(var(--p) / 0.18);
+  border-color: oklch(var(--p) / 0.6);
+}
+.fmt-sep {
+  width: 1px;
+  height: 1.25rem;
+  background: oklch(var(--bc) / 0.15);
+  margin: 0 0.15rem;
+}
+.fmt-select {
+  width: 100%;
+  margin-top: 0.2rem;
+  padding: 0.25rem 0.35rem;
+  border: 1px solid oklch(var(--bc) / 0.2);
+  border-radius: 0.3rem;
+  background: oklch(var(--b1));
+  color: inherit;
+  font: inherit;
 }
 .panel--empty {
   align-items: stretch;

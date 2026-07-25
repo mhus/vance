@@ -37,6 +37,8 @@ public final class SheetCodec {
             new TypeReference<>() {};
     private static final Pattern ADDRESS = Pattern.compile("^([A-Z]+)([1-9][0-9]*)$");
     private static final Pattern COL_LETTERS = Pattern.compile("^[A-Z]+$");
+    private static final Set<String> CELL_FIELDS = Set.of(
+            "field", "data", "color", "background", "bold", "italic", "align", "numberFormat");
 
     private SheetCodec() {
         // utility class
@@ -222,6 +224,11 @@ public final class SheetCodec {
         return t.equals("left") || t.equals("right") || t.equals("both");
     }
 
+    private static boolean isAlign(String s) {
+        String t = s.trim().toLowerCase();
+        return t.equals("left") || t.equals("center") || t.equals("right");
+    }
+
     private static Map<String, Integer> promoteRowHeights(@Nullable Object raw) {
         Map<String, Integer> out = new LinkedHashMap<>();
         if (!(raw instanceof Map<?, ?> map)) return out;
@@ -260,14 +267,19 @@ public final class SheetCodec {
             String data = coerceCellValue(map.get("data"));
             String color = (map.get("color") instanceof String cs && !cs.isEmpty()) ? cs : null;
             String bg = (map.get("background") instanceof String bs && !bs.isEmpty()) ? bs : null;
+            Boolean bold = Boolean.TRUE.equals(map.get("bold")) ? Boolean.TRUE : null;
+            Boolean italic = Boolean.TRUE.equals(map.get("italic")) ? Boolean.TRUE : null;
+            String align = (map.get("align") instanceof String as && isAlign(as))
+                    ? as.trim().toLowerCase() : null;
+            String numberFormat = (map.get("numberFormat") instanceof String nf && !nf.isBlank())
+                    ? nf.trim() : null;
             Map<String, Object> extra = new LinkedHashMap<>();
             for (Map.Entry<?, ?> e : map.entrySet()) {
                 if (!(e.getKey() instanceof String key)) continue;
-                if ("field".equals(key) || "data".equals(key)
-                        || "color".equals(key) || "background".equals(key)) continue;
+                if (CELL_FIELDS.contains(key)) continue;
                 extra.put(key, e.getValue());
             }
-            out.add(new SheetCell(field, data, color, bg, extra));
+            out.add(new SheetCell(field, data, color, bg, bold, italic, align, numberFormat, extra));
         }
         return out;
     }
@@ -337,6 +349,10 @@ public final class SheetCodec {
             m.put("data", cell.data());
             if (cell.color() != null) m.put("color", cell.color());
             if (cell.background() != null) m.put("background", cell.background());
+            if (Boolean.TRUE.equals(cell.bold())) m.put("bold", true);
+            if (Boolean.TRUE.equals(cell.italic())) m.put("italic", true);
+            if (cell.align() != null) m.put("align", cell.align());
+            if (cell.numberFormat() != null) m.put("numberFormat", cell.numberFormat());
             for (Map.Entry<String, Object> e : cell.extra().entrySet()) {
                 if (!m.containsKey(e.getKey())) m.put(e.getKey(), e.getValue());
             }

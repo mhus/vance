@@ -33,6 +33,13 @@ public class SheetSetCellTool implements Tool {
                 "description", "Optional HTML hex color for the cell text. Empty string clears."));
         p.put("background", Map.of("type", "string",
                 "description", "Optional HTML hex color for the cell background. Empty string clears."));
+        p.put("bold", Map.of("type", "boolean", "description", "Bold text."));
+        p.put("italic", Map.of("type", "boolean", "description", "Italic text."));
+        p.put("align", Map.of("type", "string",
+                "description", "Horizontal alignment: left | center | right. Empty string clears."));
+        p.put("numberFormat", Map.of("type", "string",
+                "description", "Excel-style number format code, e.g. '#,##0.00', '0%', '@' (text). "
+                        + "Empty string clears."));
         return p;
     }
 
@@ -59,6 +66,13 @@ public class SheetSetCellTool implements Tool {
         String data = KindToolSupport.requireRawString(params, "data");
         String color = KindToolSupport.paramRawString(params, "color");
         String bg = KindToolSupport.paramRawString(params, "background");
+        String align = KindToolSupport.paramRawString(params, "align");
+        String numberFormat = KindToolSupport.paramRawString(params, "numberFormat");
+        Boolean bold = Boolean.TRUE.equals(params.get("bold")) ? Boolean.TRUE : null;
+        Boolean italic = Boolean.TRUE.equals(params.get("italic")) ? Boolean.TRUE : null;
+        String alignVal = (align != null && !align.isEmpty()
+                && ("left".equals(align) || "center".equals(align) || "right".equals(align)))
+                ? align : null;
 
         SheetDocument sheet = SheetCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         List<SheetCell> cells = new ArrayList<>(sheet.cells().size() + 1);
@@ -66,6 +80,8 @@ public class SheetSetCellTool implements Tool {
         SheetCell newCell = new SheetCell(key, data,
                 (color != null && !color.isEmpty()) ? color : null,
                 (bg != null && !bg.isEmpty()) ? bg : null,
+                bold, italic, alignVal,
+                (numberFormat != null && !numberFormat.isEmpty()) ? numberFormat : null,
                 new LinkedHashMap<>());
         for (SheetCell c : sheet.cells()) {
             if (c.field().equals(key)) {

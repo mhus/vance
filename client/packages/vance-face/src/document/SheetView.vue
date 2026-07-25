@@ -493,7 +493,7 @@ const gridStyle = computed(() => {
 function columnBorderStyle(col: string): Record<string, string> {
   const b = localColumns.value[col]?.border;
   if (!b) return {};
-  const line = '2px solid hsl(var(--bc) / 0.5)';
+  const line = '2px solid oklch(var(--bc) / 0.5)';
   const out: Record<string, string> = {};
   if (b === 'left' || b === 'both') out.borderLeft = line;
   if (b === 'right' || b === 'both') out.borderRight = line;
@@ -764,9 +764,9 @@ function cellStyle(addr: string): Record<string, string> {
 .grid-wrap {
   flex: 1 1 auto;
   min-width: 0;
-  border: 1px solid hsl(var(--bc) / 0.18);
+  border: 1px solid oklch(var(--bc) / 0.18);
   border-radius: 0.4rem;
-  background: hsl(var(--b1));
+  background: oklch(var(--b1));
   max-height: 65vh;
   overflow: auto;
 }
@@ -774,25 +774,25 @@ function cellStyle(addr: string): Record<string, string> {
 .data-row {
   display: grid;
   align-items: stretch;
-  border-bottom: 1px solid hsl(var(--bc) / 0.08);
+  border-bottom: 1px solid oklch(var(--bc) / 0.08);
 }
 .header-row {
   position: sticky;
   top: 0;
   z-index: 2;
-  background: hsl(var(--b2));
-  border-bottom-color: hsl(var(--bc) / 0.18);
+  background: oklch(var(--b2));
+  border-bottom-color: oklch(var(--bc) / 0.18);
 }
 .header-corner,
 .row-num {
-  background: hsl(var(--b2));
+  background: oklch(var(--b2));
   font-family: ui-monospace, monospace;
   font-size: 0.7rem;
-  color: hsl(var(--bc) / 0.55);
+  color: oklch(var(--bc) / 0.55);
   display: flex;
   align-items: center;
   justify-content: center;
-  border-right: 1px solid hsl(var(--bc) / 0.08);
+  border-right: 1px solid oklch(var(--bc) / 0.08);
   min-height: 1.85rem;
 }
 .row-num {
@@ -807,16 +807,16 @@ function cellStyle(addr: string): Record<string, string> {
   text-align: center;
   padding: 0.35rem 0;
   letter-spacing: 0.04em;
-  color: hsl(var(--bc) / 0.7);
-  border-right: 1px solid hsl(var(--bc) / 0.08);
+  color: oklch(var(--bc) / 0.7);
+  border-right: 1px solid oklch(var(--bc) / 0.08);
   cursor: pointer;
   user-select: none;
 }
 .header-col--selected {
-  background: hsl(var(--p) / 0.28);
-  color: hsl(var(--bc));
+  background: oklch(var(--p) / 0.28);
+  color: oklch(var(--bc));
   font-weight: 700;
-  box-shadow: inset 0 -3px 0 hsl(var(--p));
+  box-shadow: inset 0 -3px 0 oklch(var(--p));
 }
 .col-resize {
   position: absolute;
@@ -828,10 +828,10 @@ function cellStyle(addr: string): Record<string, string> {
   z-index: 1;
 }
 .col-resize:hover {
-  background: hsl(var(--p) / 0.5);
+  background: oklch(var(--p) / 0.5);
 }
 .cell--col-selected {
-  background: hsl(var(--p) / 0.1);
+  background: oklch(var(--p) / 0.1);
 }
 .cell,
 .cell-input {
@@ -844,22 +844,22 @@ function cellStyle(addr: string): Record<string, string> {
   outline: none;
   min-height: 1.85rem;
   cursor: text;
-  border-right: 1px solid hsl(var(--bc) / 0.08);
+  border-right: 1px solid oklch(var(--bc) / 0.08);
 }
 .cell:hover {
-  background: hsl(var(--bc) / 0.04);
+  background: oklch(var(--bc) / 0.04);
 }
 .cell--selected {
-  background: hsl(var(--p) / 0.06);
-  outline: 1px solid hsl(var(--p) / 0.5);
+  background: oklch(var(--p) / 0.06);
+  outline: 1px solid oklch(var(--p) / 0.5);
   outline-offset: -1px;
 }
 .cell--formula {
-  box-shadow: inset 2px 0 0 hsl(var(--p));
+  box-shadow: inset 2px 0 0 oklch(var(--p));
 }
 .cell--error {
-  color: hsl(var(--er));
-  box-shadow: inset 2px 0 0 hsl(var(--er));
+  color: oklch(var(--er));
+  box-shadow: inset 2px 0 0 oklch(var(--er));
 }
 .cell-text {
   display: block;
@@ -868,15 +868,15 @@ function cellStyle(addr: string): Record<string, string> {
   text-overflow: ellipsis;
 }
 .cell-input {
-  border-color: hsl(var(--p));
-  box-shadow: 0 0 0 2px hsl(var(--p) / 0.2);
+  border-color: oklch(var(--p));
+  box-shadow: 0 0 0 2px oklch(var(--p) / 0.2);
   width: 100%;
 }
 .panel {
   width: 14rem;
   flex: 0 0 14rem;
-  background: hsl(var(--b1));
-  border: 1px solid hsl(var(--bc) / 0.15);
+  background: oklch(var(--b1));
+  border: 1px solid oklch(var(--bc) / 0.15);
   border-radius: 0.5rem;
   padding: 0.7rem;
   display: flex;
@@ -912,7 +912,7 @@ function cellStyle(addr: string): Record<string, string> {
 .color-row input[type="color"] {
   flex: 0 0 2.5rem;
   height: 1.85rem;
-  border: 1px solid hsl(var(--bc) / 0.25);
+  border: 1px solid oklch(var(--bc) / 0.25);
   border-radius: 0.25rem;
   background: transparent;
   cursor: pointer;
@@ -920,7 +920,7 @@ function cellStyle(addr: string): Record<string, string> {
 }
 .clear-btn {
   background: transparent;
-  border: 1px solid hsl(var(--bc) / 0.2);
+  border: 1px solid oklch(var(--bc) / 0.2);
   border-radius: 0.25rem;
   padding: 0.2rem 0.5rem;
   font-size: 0.72rem;

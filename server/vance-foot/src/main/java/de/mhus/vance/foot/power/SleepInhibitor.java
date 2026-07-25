@@ -80,6 +80,7 @@ public class SleepInhibitor implements BusyListener {
      */
     private long releaseSeq;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public SleepInhibitor(FootConfig config) {
         this.enabled = config.getSleepGuard().isEnabled();
         this.lingerMillis = config.getSleepGuard().getLinger().toMillis();

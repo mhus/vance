@@ -474,7 +474,55 @@ public class SkillLoader {
                             "skill '" + stem + "': script file '" + relativePath
                                     + "' not found in this layer"));
             String description = stringOrNull(spec.get("description"));
-            out.add(new ResolvedSkill.Script(name, target, description, body));
+            List<ResolvedSkill.Script.ScriptParam> params =
+                    parseScriptParams(spec.get("params"), stem, i);
+            out.add(new ResolvedSkill.Script(name, target, description, params, body));
+        }
+        return List.copyOf(out);
+    }
+
+    /** Accepted JSON-Schema primitive types for a declared script param.
+     *  Kept deliberately small — scripts do their own deep validation. */
+    private static final java.util.Set<String> SCRIPT_PARAM_TYPES = java.util.Set.of(
+            "string", "number", "integer", "boolean", "object", "array");
+
+    /**
+     * Parses the optional {@code params} list of a script entry into
+     * typed {@link ResolvedSkill.Script.ScriptParam}s. Missing / empty
+     * list yields {@link List#of()} — the script stays free-form. Each
+     * entry needs a {@code name} and a {@code type} from
+     * {@link #SCRIPT_PARAM_TYPES}; {@code description} and
+     * {@code required} (default {@code false}) are optional.
+     */
+    @SuppressWarnings("unchecked")
+    private static List<ResolvedSkill.Script.ScriptParam> parseScriptParams(
+            Object raw, String stem, int scriptIndex) {
+        if (raw == null) return List.of();
+        if (!(raw instanceof List<?> list)) {
+            throw new IllegalStateException(
+                    "skill '" + stem + "' scripts[" + scriptIndex
+                            + "]: 'params' must be a list");
+        }
+        List<ResolvedSkill.Script.ScriptParam> out = new ArrayList<>(list.size());
+        for (int j = 0; j < list.size(); j++) {
+            Object item = list.get(j);
+            if (!(item instanceof Map<?, ?> mm)) {
+                throw new IllegalStateException(
+                        "skill '" + stem + "' scripts[" + scriptIndex
+                                + "].params[" + j + "] must be a map");
+            }
+            Map<String, Object> spec = (Map<String, Object>) mm;
+            String ctx = stem + " scripts[" + scriptIndex + "].params[" + j + "]";
+            String name = requireString(spec, "name", ctx);
+            String type = requireString(spec, "type", ctx).toLowerCase();
+            if (!SCRIPT_PARAM_TYPES.contains(type)) {
+                throw new IllegalStateException(
+                        ctx + ": unknown param type '" + type + "' (expected one of "
+                                + SCRIPT_PARAM_TYPES + ")");
+            }
+            String description = stringOrNull(spec.get("description"));
+            boolean required = spec.get("required") instanceof Boolean b && b;
+            out.add(new ResolvedSkill.Script.ScriptParam(name, type, description, required));
         }
         return List.copyOf(out);
     }

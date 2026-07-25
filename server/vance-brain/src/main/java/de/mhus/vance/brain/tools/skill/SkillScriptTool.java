@@ -11,6 +11,7 @@ import de.mhus.vance.toolpack.ToolBus;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -92,12 +93,36 @@ public final class SkillScriptTool implements Tool {
 
     @Override
     public Map<String, Object> paramsSchema() {
-        // v1: free-form bag — the script does its own shape checks.
-        // Phase 3 (§13.4) can grow this to declared schemas.
-        return Map.of(
-                "type", "object",
-                "properties", Map.of(),
-                "additionalProperties", true);
+        List<ResolvedSkill.Script.ScriptParam> params = script.params();
+        if (params.isEmpty()) {
+            // Free-form bag — the script does its own shape checks.
+            // Scripts that declare no params keep this v1 behaviour.
+            return Map.of(
+                    "type", "object",
+                    "properties", Map.of(),
+                    "additionalProperties", true);
+        }
+        // Declared params → real JSON-Schema so even weak models get an
+        // explicit, typed parameter list instead of relying on the
+        // skill body's prose (§13.7). additionalProperties stays true:
+        // scripts may still read undeclared optional args.
+        Map<String, Object> properties = new LinkedHashMap<>();
+        List<String> required = new ArrayList<>();
+        for (ResolvedSkill.Script.ScriptParam p : params) {
+            Map<String, Object> prop = new LinkedHashMap<>();
+            prop.put("type", p.type());
+            if (p.description() != null && !p.description().isBlank()) {
+                prop.put("description", p.description());
+            }
+            properties.put(p.name(), prop);
+            if (p.required()) required.add(p.name());
+        }
+        Map<String, Object> schema = new LinkedHashMap<>();
+        schema.put("type", "object");
+        schema.put("properties", properties);
+        if (!required.isEmpty()) schema.put("required", required);
+        schema.put("additionalProperties", true);
+        return schema;
     }
 
     @Override

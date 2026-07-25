@@ -2,6 +2,7 @@ package de.mhus.vance.api.skills;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
+import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -36,4 +37,9 @@ public class SkillScriptDto {
      *  LLM's tool-picker. Kept brief; the skill body is where
      *  trigger-instructions live. */
     private @Nullable String description;
+
+    /** Declared input parameters. When present they render into the
+     *  virtual tool's JSON-Schema so the LLM sees an explicit
+     *  parameter list; when empty the script stays free-form. */
+    private @Nullable List<ScriptParamDto> params;
 }

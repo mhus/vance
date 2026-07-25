@@ -54,6 +54,21 @@ public record ResolvedSkill(
             String name,
             ScriptTarget target,
             @Nullable String description,
+            List<ScriptParam> params,
             String body) {
+
+        /**
+         * One declared input parameter of a {@link Script}. Rendered
+         * into the virtual tool's JSON-Schema by {@code SkillScriptTool}
+         * so the LLM gets an explicit, typed parameter contract instead
+         * of relying on prose in the skill body. An empty {@code params}
+         * list keeps the free-form v1 behaviour.
+         */
+        public record ScriptParam(
+                String name,
+                String type,
+                @Nullable String description,
+                boolean required) {
+        }
     }
 }

@@ -4,9 +4,11 @@
 */
 
 import { ScriptTarget } from './ScriptTarget';
+import { ScriptParamDto } from './ScriptParamDto';
 
 export interface SkillScriptDto {
   name: string;
   target: ScriptTarget;
   description?: string;
+  params?: ScriptParamDto[];
 }

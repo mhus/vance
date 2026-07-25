@@ -35,7 +35,8 @@ class SpanStrengthDeriverTest {
     @BeforeEach
     void setUp() {
         chatMessageService = mock(ChatMessageService.class);
-        deriver = new SpanStrengthDeriver(new HotPathMarkerDetector(), chatMessageService);
+        deriver = new SpanStrengthDeriver(
+                new HotPathMarkerDetector(), chatMessageService, new TrivialPatterns());
     }
 
     // ─── derive: STRONG ───

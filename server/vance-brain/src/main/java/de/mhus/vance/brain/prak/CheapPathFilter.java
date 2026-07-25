@@ -36,6 +36,7 @@ public class CheapPathFilter {
     static final int ACK_MAX_TOKENS = 10;
 
     private final HotPathMarkerDetector markerDetector;
+    private final TrivialPatterns trivialPatterns;
 
     public SpanProfile profile(
             List<SpanMessage> messages,
@@ -61,14 +62,14 @@ public class CheapPathFilter {
                 if (tokens > SUBSTANTIAL_USER_TOKENS) {
                     substantialUserTurns++;
                 }
-                if (tokens <= ACK_MAX_TOKENS && isTrivialAck(content)) {
+                if (tokens <= ACK_MAX_TOKENS && isTrivialAck(content, lang)) {
                     trivialAcks++;
                 }
             } else if (msg.role() == ChatRole.ASSISTANT) {
-                if (isSelfNarration(content)) {
+                if (isSelfNarration(content, lang)) {
                     selfNarrations++;
                 }
-                if (tokens <= ACK_MAX_TOKENS && isTrivialAck(content)) {
+                if (tokens <= ACK_MAX_TOKENS && isTrivialAck(content, lang)) {
                     trivialAcks++;
                 }
             }
@@ -124,11 +125,11 @@ public class CheapPathFilter {
         return count;
     }
 
-    static boolean isTrivialAck(String text) {
-        return TrivialPatterns.isAck(text);
+    boolean isTrivialAck(String text, @org.jspecify.annotations.Nullable String lang) {
+        return trivialPatterns.isAck(text, lang);
     }
 
-    static boolean isSelfNarration(String text) {
-        return TrivialPatterns.isSelfNarration(text);
+    boolean isSelfNarration(String text, @org.jspecify.annotations.Nullable String lang) {
+        return trivialPatterns.isSelfNarration(text, lang);
     }
 }

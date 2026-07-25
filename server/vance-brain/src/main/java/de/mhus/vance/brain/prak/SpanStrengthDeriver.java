@@ -53,6 +53,7 @@ public class SpanStrengthDeriver {
 
     private final HotPathMarkerDetector markerDetector;
     private final ChatMessageService chatMessageService;
+    private final TrivialPatterns trivialPatterns;
 
     /**
      * Pure compute — no Mongo access. Returns the sparse override map.
@@ -115,7 +116,7 @@ public class SpanStrengthDeriver {
 
             // 5: trivial pattern → WEAK
             String content = msg.content() == null ? "" : msg.content();
-            if (TrivialPatterns.isAck(content) || TrivialPatterns.isSelfNarration(content)) {
+            if (trivialPatterns.isAck(content, lang) || trivialPatterns.isSelfNarration(content, lang)) {
                 overrides.put(id, SpanStrength.WEAK);
             }
         }

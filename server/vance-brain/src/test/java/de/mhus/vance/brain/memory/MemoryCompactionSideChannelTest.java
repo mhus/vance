@@ -85,10 +85,12 @@ class MemoryCompactionSideChannelTest {
                 chatMessageService, memoryService, aiModelService,
                 sessionService, settingService, properties,
                 llmCallTracker, progressEmitter, metricService, runner,
-                new de.mhus.vance.brain.memory.StrengthAwareSelector(prakProps),
+                new de.mhus.vance.brain.memory.StrengthAwareSelector(
+                        prakProps, new de.mhus.vance.brain.prak.TrivialPatterns()),
                 new de.mhus.vance.brain.memory.CompactionTriggerService(prakProps),
                 prakProps,
-                mock(de.mhus.vance.brain.prak.PrakPeriodicTrigger.class));
+                mock(de.mhus.vance.brain.prak.PrakPeriodicTrigger.class),
+                mock(de.mhus.vance.shared.settings.LanguageResolver.class));
 
         aiChat = mock(AiChat.class);
         chatModel = mock(ChatModel.class);

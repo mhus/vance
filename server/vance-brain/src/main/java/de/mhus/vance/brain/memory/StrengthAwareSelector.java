@@ -37,6 +37,7 @@ import org.springframework.stereotype.Component;
 public class StrengthAwareSelector {
 
     private final PrakProperties prakProperties;
+    private final TrivialPatterns trivialPatterns;
 
     /**
      * Returns the prefix of {@code active} (chronologically oldest
@@ -47,9 +48,14 @@ public class StrengthAwareSelector {
      * references, in their original order. Empty when nothing
      * qualifies (history under anchor, or every older message is
      * STRONG/PINNED).
+     *
+     * @param lang resolved {@code chat.language} for the optimistic
+     *     trivial-pattern fallback on unrated messages; {@code null} =
+     *     English baseline only.
      */
     public List<ChatMessageDocument> selectForCompaction(
-            List<ChatMessageDocument> active, CompactionMode mode) {
+            List<ChatMessageDocument> active, CompactionMode mode,
+            @Nullable String lang) {
         if (active == null || active.isEmpty()) return List.of();
         int anchor = anchorForMode(mode);
         int total = active.size();
@@ -58,7 +64,7 @@ public class StrengthAwareSelector {
         List<ChatMessageDocument> out = new ArrayList<>();
         for (int i = 0; i < total - anchor; i++) {
             ChatMessageDocument m = active.get(i);
-            if (shouldCompact(m, mode)) {
+            if (shouldCompact(m, mode, lang)) {
                 out.add(m);
             }
         }
@@ -74,7 +80,8 @@ public class StrengthAwareSelector {
         };
     }
 
-    private static boolean shouldCompact(ChatMessageDocument m, CompactionMode mode) {
+    private boolean shouldCompact(
+            ChatMessageDocument m, CompactionMode mode, @Nullable String lang) {
         @Nullable SpanStrength s = readStrength(m);
 
         // PINNED is sacrosanct in every mode.
@@ -89,7 +96,8 @@ public class StrengthAwareSelector {
         if (s == SpanStrength.NORMAL) return mode == CompactionMode.HARD;
         // Unrated: optimistic-fallback heuristic.
         String content = m.getContent() == null ? "" : m.getContent();
-        boolean trivial = TrivialPatterns.isAck(content) || TrivialPatterns.isSelfNarration(content);
+        boolean trivial = trivialPatterns.isAck(content, lang)
+                || trivialPatterns.isSelfNarration(content, lang);
         if (trivial) return true;          // unrated-trivial = treat as WEAK
         return mode == CompactionMode.HARD; // unrated-substantive: HARD compacts, SOFT keeps
     }

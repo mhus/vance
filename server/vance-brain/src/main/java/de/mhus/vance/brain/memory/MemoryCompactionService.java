@@ -98,6 +98,7 @@ public class MemoryCompactionService {
     private final CompactionTriggerService compactionTriggerService;
     private final de.mhus.vance.brain.prak.PrakProperties prakProperties;
     private final de.mhus.vance.brain.prak.PrakPeriodicTrigger prakPeriodicTrigger;
+    private final de.mhus.vance.shared.settings.LanguageResolver languageResolver;
 
     /**
      * Compacts older history of {@code process}. Resolves the
@@ -169,8 +170,9 @@ public class MemoryCompactionService {
             }
         }
 
+        String chatLang = resolveChatLanguage(process);
         List<ChatMessageDocument> older =
-                strengthAwareSelector.selectForCompaction(active, mode);
+                strengthAwareSelector.selectForCompaction(active, mode, chatLang);
         if (older.isEmpty()) {
             return CompactionResult.noop(
                     "mode=" + mode + " — no messages eligible for compaction "
@@ -549,6 +551,27 @@ public class MemoryCompactionService {
             log.warn("Prak side-channel from compaction failed process='{}': {}",
                     process.getId(), e.toString());
         }
+    }
+
+    /**
+     * Resolves the active {@code chat.language} for the process so the
+     * {@link StrengthAwareSelector} optimistic-fallback matches the
+     * user's trivial-turn phrases on top of the English baseline. Uses
+     * the <b>defaulting</b> resolver variant — a {@code de}-defaulted
+     * install ({@code vance.language.default}) matches the German
+     * ack/self-narration phrases without any per-user setting. Mirrors
+     * {@code PrakSideChannelRunner.resolveChatLanguage(...)}.
+     */
+    private String resolveChatLanguage(ThinkProcessDocument process) {
+        String sessionId = process.getSessionId();
+        SessionDocument session =
+                (sessionId == null || sessionId.isBlank())
+                        ? null
+                        : sessionService.findBySessionId(sessionId).orElse(null);
+        String userId = session == null ? null : session.getUserId();
+        String projectId = session == null ? null : session.getProjectId();
+        return languageResolver.chatLanguage(
+                process.getTenantId(), userId, projectId, process.getId());
     }
 
     private AiChatConfig resolveAiConfig(ThinkProcessDocument process) {

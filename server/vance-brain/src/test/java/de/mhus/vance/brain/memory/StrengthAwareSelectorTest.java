@@ -3,6 +3,7 @@ package de.mhus.vance.brain.memory;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import de.mhus.vance.brain.prak.PrakProperties;
+import de.mhus.vance.brain.prak.TrivialPatterns;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.prak.SpanStrength;
 import java.util.ArrayList;
@@ -24,6 +25,12 @@ import org.junit.jupiter.api.Test;
  */
 class StrengthAwareSelectorTest {
 
+    /** Real trivial-pattern service backed by the bundled catalogue. */
+    private static final TrivialPatterns TRIVIAL = new TrivialPatterns();
+
+    /** Representative chat language for the optimistic fallback. */
+    private static final String LANG = "de";
+
     private StrengthAwareSelector selector;
 
     @BeforeEach
@@ -34,7 +41,7 @@ class StrengthAwareSelectorTest {
         props.setSoftAnchor(1);
         props.setHardAnchor(1);
         props.setEmergencyAnchor(1);
-        selector = new StrengthAwareSelector(props);
+        selector = new StrengthAwareSelector(props, TRIVIAL);
     }
 
     // ──────────────── 6×3 matrix ────────────────
@@ -90,7 +97,7 @@ class StrengthAwareSelectorTest {
     private boolean isSelected(ChatMessageDocument target, CompactionMode mode) {
         ChatMessageDocument anchor = strength(SpanStrength.WEAK); // last K=1, always kept
         List<ChatMessageDocument> result =
-                selector.selectForCompaction(List.of(target, anchor), mode);
+                selector.selectForCompaction(List.of(target, anchor), mode, LANG);
         return result.contains(target) && !result.contains(anchor);
     }
 
@@ -100,13 +107,13 @@ class StrengthAwareSelectorTest {
     void anchor_lastKMessages_alwaysStay_evenWhenWeak() {
         PrakProperties props = new PrakProperties();
         props.setHardAnchor(3);
-        StrengthAwareSelector s = new StrengthAwareSelector(props);
+        StrengthAwareSelector s = new StrengthAwareSelector(props, TRIVIAL);
 
         // Five WEAK messages: HARD would compact all — but the last 3 are anchor.
         List<ChatMessageDocument> active = new ArrayList<>();
         for (int i = 0; i < 5; i++) active.add(strength(SpanStrength.WEAK));
 
-        List<ChatMessageDocument> result = s.selectForCompaction(active, CompactionMode.HARD);
+        List<ChatMessageDocument> result = s.selectForCompaction(active, CompactionMode.HARD, LANG);
 
         assertThat(result).containsExactly(active.get(0), active.get(1));
         assertThat(result).doesNotContain(active.get(2), active.get(3), active.get(4));
@@ -118,37 +125,37 @@ class StrengthAwareSelectorTest {
     void noneMode_selectsNothing() {
         List<ChatMessageDocument> active =
                 List.of(strength(SpanStrength.WEAK), strength(SpanStrength.WEAK));
-        assertThat(selector.selectForCompaction(active, CompactionMode.NONE)).isEmpty();
+        assertThat(selector.selectForCompaction(active, CompactionMode.NONE, LANG)).isEmpty();
     }
 
     @Test
     void emptyOrNullInput_selectsNothing() {
-        assertThat(selector.selectForCompaction(List.of(), CompactionMode.HARD)).isEmpty();
-        assertThat(selector.selectForCompaction(null, CompactionMode.HARD)).isEmpty();
+        assertThat(selector.selectForCompaction(List.of(), CompactionMode.HARD, LANG)).isEmpty();
+        assertThat(selector.selectForCompaction(null, CompactionMode.HARD, LANG)).isEmpty();
     }
 
     @Test
     void historyUnderAnchor_selectsNothing() {
         PrakProperties props = new PrakProperties();
         props.setHardAnchor(5);
-        StrengthAwareSelector s = new StrengthAwareSelector(props);
+        StrengthAwareSelector s = new StrengthAwareSelector(props, TRIVIAL);
 
         List<ChatMessageDocument> active =
                 List.of(strength(SpanStrength.WEAK), strength(SpanStrength.WEAK));
-        assertThat(s.selectForCompaction(active, CompactionMode.HARD)).isEmpty();
+        assertThat(s.selectForCompaction(active, CompactionMode.HARD, LANG)).isEmpty();
     }
 
     @Test
     void output_preservesOrderAndReferences() {
         PrakProperties props = new PrakProperties();
         props.setHardAnchor(1);
-        StrengthAwareSelector s = new StrengthAwareSelector(props);
+        StrengthAwareSelector s = new StrengthAwareSelector(props, TRIVIAL);
 
         ChatMessageDocument a = strength(SpanStrength.WEAK);
         ChatMessageDocument b = strength(SpanStrength.WEAK);
         ChatMessageDocument c = strength(SpanStrength.WEAK);
         List<ChatMessageDocument> result =
-                s.selectForCompaction(List.of(a, b, c), CompactionMode.HARD);
+                s.selectForCompaction(List.of(a, b, c), CompactionMode.HARD, LANG);
 
         // Same references, chronological order, anchor (c) excluded.
         assertThat(result).containsExactly(a, b);

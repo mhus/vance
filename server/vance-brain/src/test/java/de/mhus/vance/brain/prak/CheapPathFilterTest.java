@@ -9,7 +9,8 @@ import org.junit.jupiter.api.Test;
 
 class CheapPathFilterTest {
 
-    private final CheapPathFilter filter = new CheapPathFilter(new HotPathMarkerDetector());
+    private final CheapPathFilter filter =
+            new CheapPathFilter(new HotPathMarkerDetector(), new TrivialPatterns());
 
     // ---- skip decisions ----
 
@@ -159,37 +160,37 @@ class CheapPathFilterTest {
 
     @Test
     void isTrivialAck_matchesCommonAcks() {
-        assertThat(CheapPathFilter.isTrivialAck("ok")).isTrue();
-        assertThat(CheapPathFilter.isTrivialAck("Ja")).isTrue();
-        assertThat(CheapPathFilter.isTrivialAck("danke!")).isTrue();
-        assertThat(CheapPathFilter.isTrivialAck("alles klar")).isTrue();
-        assertThat(CheapPathFilter.isTrivialAck("yes")).isTrue();
-        assertThat(CheapPathFilter.isTrivialAck("got it.")).isTrue();
+        assertThat(filter.isTrivialAck("ok", "de")).isTrue();
+        assertThat(filter.isTrivialAck("Ja", "de")).isTrue();
+        assertThat(filter.isTrivialAck("danke!", "de")).isTrue();
+        assertThat(filter.isTrivialAck("alles klar", "de")).isTrue();
+        assertThat(filter.isTrivialAck("yes", "de")).isTrue();
+        assertThat(filter.isTrivialAck("got it.", "de")).isTrue();
     }
 
     @Test
     void isTrivialAck_rejectsLongerSentences() {
-        assertThat(CheapPathFilter.isTrivialAck("ok, dann machen wir das so")).isFalse();
-        assertThat(CheapPathFilter.isTrivialAck("schau mal foo.java")).isFalse();
+        assertThat(filter.isTrivialAck("ok, dann machen wir das so", "de")).isFalse();
+        assertThat(filter.isTrivialAck("schau mal foo.java", "de")).isFalse();
     }
 
     @Test
     void isSelfNarration_matchesAssistantPrefixes() {
-        assertThat(CheapPathFilter.isSelfNarration("Ich werde jetzt foo.java lesen"))
+        assertThat(filter.isSelfNarration("Ich werde jetzt foo.java lesen", "de"))
                 .isTrue();
-        assertThat(CheapPathFilter.isSelfNarration("Lass mich kurz überlegen"))
+        assertThat(filter.isSelfNarration("Lass mich kurz überlegen", "de"))
                 .isTrue();
-        assertThat(CheapPathFilter.isSelfNarration("Let me check that"))
+        assertThat(filter.isSelfNarration("Let me check that", "de"))
                 .isTrue();
-        assertThat(CheapPathFilter.isSelfNarration("I'll now read the file"))
+        assertThat(filter.isSelfNarration("I'll now read the file", "de"))
                 .isTrue();
     }
 
     @Test
     void isSelfNarration_rejectsRealStatements() {
-        assertThat(CheapPathFilter.isSelfNarration("Der Code verwendet JSpecify"))
+        assertThat(filter.isSelfNarration("Der Code verwendet JSpecify", "de"))
                 .isFalse();
-        assertThat(CheapPathFilter.isSelfNarration("Die Codebase ist konsistent"))
+        assertThat(filter.isSelfNarration("Die Codebase ist konsistent", "de"))
                 .isFalse();
     }
 

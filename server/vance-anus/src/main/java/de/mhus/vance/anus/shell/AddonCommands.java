@@ -3,8 +3,12 @@ package de.mhus.vance.anus.shell;
 import de.mhus.vance.anus.access.RequiresAuth;
 import de.mhus.vance.shared.addon.AddonDocument;
 import de.mhus.vance.shared.addon.AddonService;
+import de.mhus.vance.shared.addon.VanceAddon;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
 import org.springframework.shell.standard.ShellComponent;
@@ -26,6 +30,13 @@ import org.springframework.shell.standard.ShellOption;
 public class AddonCommands {
 
     private final AddonService addonService;
+    /**
+     * Every {@link VanceAddon} bean registered in this anus process — i.e. the
+     * addons whose anus/lib JAR is actually on the classpath right now. Spring
+     * injects an empty list when none are loaded. This is the "live" truth,
+     * distinct from the db.addons "configured" truth that {@link #list()} shows.
+     */
+    private final List<VanceAddon> loadedAddons;
 
     @ShellMethod(key = "addon list", value = "List all addons (including disabled).")
     public String list() {
@@ -42,6 +53,33 @@ public class AddonCommands {
                         a -> a.getChecksum() != null ? "set" : "-",
                         AddonDocument::getCreatedAt),
                 all);
+    }
+
+    @ShellMethod(key = "addon active",
+            value = "List addons actually loaded in THIS anus process (live beans), "
+                    + "cross-checked against db.addons. Unlike 'addon list' (db "
+                    + "configuration) this reflects the real classpath.")
+    public String active() {
+        if (loadedAddons.isEmpty()) {
+            return "(no addons loaded in this process)";
+        }
+        Map<String, AddonDocument> byName = addonService.listAll().stream()
+                .collect(Collectors.toMap(AddonDocument::getName, d -> d, (a, b) -> a));
+        List<VanceAddon> sorted = loadedAddons.stream()
+                .sorted(Comparator.comparing(VanceAddon::id))
+                .toList();
+        return Tables.render(
+                List.of("ID", "NAME", "STATUS", "DB"),
+                List.<Function<VanceAddon, @Nullable Object>>of(
+                        VanceAddon::id,
+                        VanceAddon::displayName,
+                        a -> a.status() != null ? a.status() : "",
+                        a -> {
+                            AddonDocument doc = byName.get(a.id());
+                            return doc == null ? "— (not in db)"
+                                    : (doc.isEnabled() ? "enabled" : "disabled");
+                        }),
+                sorted);
     }
 
     @ShellMethod(key = "addon show", value = "Show one addon by name.")

@@ -27,7 +27,7 @@ import org.junit.jupiter.api.Test;
 class SchoolEssayLoopScriptUnitTest {
 
     private static final Path WRITE_JS = Path.of(
-            "../../../../qa/kits/school-essay-script-loop-kit/documents/skills/"
+            "../../../../qa/kits/school-essay-script-loop-kit/documents/_vance/skills/"
                     + "school-essay-script-loop/scripts/write.js");
 
     private static final String EXPECTED_MARKER =

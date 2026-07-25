@@ -24,7 +24,7 @@ import org.junit.jupiter.api.Test;
 class HelloScriptUnitTest {
 
     private static final Path GREET_JS = Path.of(
-            "../../../../qa/kits/hello-script-kit/documents/skills/"
+            "../../../../qa/kits/hello-script-kit/documents/_vance/skills/"
                     + "hello-script/scripts/greet.js");
 
     @Test

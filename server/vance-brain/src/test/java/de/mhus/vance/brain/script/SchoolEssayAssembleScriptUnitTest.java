@@ -24,7 +24,7 @@ import org.junit.jupiter.api.Test;
 class SchoolEssayAssembleScriptUnitTest {
 
     private static final Path ASSEMBLE_JS = Path.of(
-            "../../../../qa/kits/school-essay-script-kit/documents/skills/"
+            "../../../../qa/kits/school-essay-script-kit/documents/_vance/skills/"
                     + "school-essay-script/scripts/assemble.js");
 
     private static final String EXPECTED_MARKER = "SCHOOL-ESSAY-SCRIPT-XJ4K9-ASSEMBLED";

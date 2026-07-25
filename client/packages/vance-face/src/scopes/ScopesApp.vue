@@ -646,13 +646,14 @@ async function submitKitDialog(): Promise<void> {
 // The user-level chat.language lives on the profile page; this is
 // the project override on top of it.
 
-const LANGUAGE_OPTIONS_KEYS: readonly string[] = ['de', 'en', 'fr', 'es', 'it'] as const;
+const LANGUAGE_OPTIONS_KEYS: readonly string[] = ['de', 'en', 'fr', 'es', 'it', 'pl'] as const;
 const LANGUAGE_OPTIONS_LABELS: Record<string, string> = {
   de: 'Deutsch',
   en: 'English',
   fr: 'Français',
   es: 'Español',
   it: 'Italiano',
+  pl: 'Polski',
 };
 
 const projectLanguageOptions = computed(() => [

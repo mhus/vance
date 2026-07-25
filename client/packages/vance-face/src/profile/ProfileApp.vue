@@ -219,6 +219,7 @@ const chatLanguageOptions = computed(() => [
   { value: 'fr', label: 'Français' },
   { value: 'es', label: 'Español' },
   { value: 'it', label: 'Italiano' },
+  { value: 'pl', label: 'Polski' },
 ]);
 
 const themeOptions = computed(() => [

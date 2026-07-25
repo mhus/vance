@@ -390,7 +390,13 @@ const activeView = computed<Component | undefined>(() => {
 // can fetch their own bytes.
 const viewBindings = computed<Record<string, unknown>>(() => {
   if (codecPair.value?.parse) {
-    return { doc: parseResult.value.model };
+    // projectId + docPath let identity-aware typed-model views (Sheet)
+    // call their server endpoints; other views ignore the extra props.
+    return {
+      doc: parseResult.value.model,
+      projectId: store.projectId ?? '',
+      docPath: props.document.path,
+    };
   }
   return { document: docDtoForView.value };
 });

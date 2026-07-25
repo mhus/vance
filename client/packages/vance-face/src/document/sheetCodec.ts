@@ -32,6 +32,21 @@ export interface SheetCell {
   extra: Record<string, unknown>;
 }
 
+/** One evaluated cell in the `$computed` overlay (server-authoritative). */
+export interface SheetComputedValue {
+  field: string;
+  value: string;
+  /** number | text | boolean | date | error | empty */
+  type: string;
+  error?: string;
+}
+
+/** The derived `$computed` overlay: server-evaluated formula results. */
+export interface SheetComputed {
+  computedAt?: string;
+  values: SheetComputedValue[];
+}
+
 export interface SheetDocument {
   kind: string;
   /** Geordnete Liste der angezeigten Spaltenbuchstaben. Optional —
@@ -44,6 +59,10 @@ export interface SheetDocument {
   cells: SheetCell[];
   /** Unknown top-level fields, preserved across round-trip. */
   extra: Record<string, unknown>;
+  /** Derived computed overlay (formula results). Read-only for display;
+   *  NEVER written back by {@link serializeSheet} — the server owns it
+   *  (parse drops any `$computed`; write it only via /sheet/calc). */
+  computed?: SheetComputed;
 }
 
 export class SheetCodecError extends Error {
@@ -170,8 +189,34 @@ function promoteToSheetDocument(obj: Record<string, unknown>): SheetDocument {
   const schema = promoteSchema(obj.schema);
   const rows = promoteRows(obj.rows);
   const cells = promoteCells(obj.cells);
-  const { kind: _k, schema: _s, rows: _r, cells: _c, ...extra } = obj;
-  return { kind, schema, rows, cells, extra };
+  const computed = promoteComputed(obj['$computed']);
+  // `$computed` is a derived overlay — dropped from `extra` so it never
+  // round-trips through serialize (server-authoritative), matching Java.
+  const { kind: _k, schema: _s, rows: _r, cells: _c, ['$computed']: _comp, ...extra } = obj;
+  const doc: SheetDocument = { kind, schema, rows, cells, extra };
+  if (computed) doc.computed = computed;
+  return doc;
+}
+
+function promoteComputed(raw: unknown): SheetComputed | undefined {
+  if (!isObject(raw)) return undefined;
+  const valuesRaw = raw.values;
+  if (!Array.isArray(valuesRaw)) return undefined;
+  const values: SheetComputedValue[] = [];
+  for (const r of valuesRaw) {
+    if (!isObject(r)) continue;
+    if (typeof r.field !== 'string') continue;
+    const v: SheetComputedValue = {
+      field: r.field,
+      value: typeof r.value === 'string' ? r.value : String(r.value ?? ''),
+      type: typeof r.type === 'string' ? r.type : 'text',
+    };
+    if (typeof r.error === 'string') v.error = r.error;
+    values.push(v);
+  }
+  const computed: SheetComputed = { values };
+  if (typeof raw.computedAt === 'string') computed.computedAt = raw.computedAt;
+  return computed;
 }
 
 function promoteSchema(raw: unknown): string[] {

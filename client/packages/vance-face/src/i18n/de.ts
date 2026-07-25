@@ -642,6 +642,8 @@ export default {
       addColumn: 'Spalte hinzufügen',
       deleteRow: 'Zeile löschen',
       deleteColumn: 'Spalte löschen',
+      recalc: 'Neu berechnen',
+      recalcHint: 'Alle Formeln server-seitig auswerten und Ergebnisse aktualisieren',
       hint: 'Zelle klicken zum Auswählen · Doppelklick zum Bearbeiten · Tab/Enter zum Navigieren',
       cellProps: 'Zell-Eigenschaften',
       cellEmptyHint: 'Leere Zelle — tippen zum Befüllen.',

@@ -646,6 +646,8 @@ export default {
       addColumn: 'Add column',
       deleteRow: 'Delete row',
       deleteColumn: 'Delete column',
+      recalc: 'Recalculate',
+      recalcHint: 'Evaluate all formulas server-side and refresh the results',
       hint: 'Click a cell to select · Double-click to edit · Tab/Enter to navigate',
       cellProps: 'Cell properties',
       cellEmptyHint: 'Empty cell — type to add content.',

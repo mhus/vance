@@ -49,8 +49,18 @@ public final class SheetCodec {
     }
 
     public static String serialize(SheetDocument doc, @Nullable String mimeType) {
-        if (isJson(mimeType)) return serializeJson(doc);
-        if (isYaml(mimeType)) return serializeYaml(doc);
+        return serialize(doc, null, mimeType);
+    }
+
+    /**
+     * Serialise with an optional computed overlay written under
+     * {@code $computed}. The overlay is derived data — dropped on the
+     * next {@link #parse}; only the brain-side eval service passes it.
+     */
+    public static String serialize(SheetDocument doc, @Nullable SheetComputed computed,
+                                   @Nullable String mimeType) {
+        if (isJson(mimeType)) return serializeJson(doc, computed);
+        if (isYaml(mimeType)) return serializeYaml(doc, computed);
         throw new KindCodecException("Unsupported mime type for sheet: " + mimeType);
     }
 
@@ -128,8 +138,9 @@ public final class SheetCodec {
         return promoteToDocument(KindHeaderCodec.parseYamlBody(body));
     }
 
-    private static String serializeJson(SheetDocument doc) {
-        Map<String, Object> wrapped = KindHeaderCodec.wrapJsonMeta(canonicalKind(doc), buildBody(doc));
+    private static String serializeJson(SheetDocument doc, @Nullable SheetComputed computed) {
+        Map<String, Object> wrapped =
+                KindHeaderCodec.wrapJsonMeta(canonicalKind(doc), buildBody(doc, computed));
         try {
             return JSON.writerWithDefaultPrettyPrinter().writeValueAsString(wrapped) + "\n";
         } catch (JacksonException e) {
@@ -137,8 +148,8 @@ public final class SheetCodec {
         }
     }
 
-    private static String serializeYaml(SheetDocument doc) {
-        return KindHeaderCodec.dumpYamlBody(canonicalKind(doc), buildBody(doc));
+    private static String serializeYaml(SheetDocument doc, @Nullable SheetComputed computed) {
+        return KindHeaderCodec.dumpYamlBody(canonicalKind(doc), buildBody(doc, computed));
     }
 
     // ── Promotion ──────────────────────────────────────────────────
@@ -154,6 +165,7 @@ public final class SheetCodec {
         extra.remove("schema");
         extra.remove("rows");
         extra.remove("cells");
+        extra.remove("$computed"); // derived overlay — never part of the input model
         return new SheetDocument(kind.isEmpty() ? "sheet" : kind, schema, rows, cells, extra);
     }
 
@@ -217,15 +229,36 @@ public final class SheetCodec {
         return String.valueOf(v);
     }
 
-    private static Map<String, Object> buildBody(SheetDocument doc) {
+    private static Map<String, Object> buildBody(SheetDocument doc, @Nullable SheetComputed computed) {
         Map<String, Object> body = new LinkedHashMap<>();
         if (!doc.schema().isEmpty()) body.put("schema", new ArrayList<>(doc.schema()));
         if (doc.rows() != null) body.put("rows", doc.rows());
         body.put("cells", cellsToList(doc.cells()));
         for (Map.Entry<String, Object> e : doc.extra().entrySet()) {
-            if (!body.containsKey(e.getKey())) body.put(e.getKey(), e.getValue());
+            if (!body.containsKey(e.getKey()) && !"$computed".equals(e.getKey())) {
+                body.put(e.getKey(), e.getValue());
+            }
+        }
+        if (computed != null && !computed.values().isEmpty()) {
+            body.put("$computed", computedToMap(computed));
         }
         return body;
+    }
+
+    private static Map<String, Object> computedToMap(SheetComputed computed) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        if (computed.computedAt() != null) m.put("computedAt", computed.computedAt());
+        List<Map<String, Object>> values = new ArrayList<>(computed.values().size());
+        for (SheetComputed.Value v : computed.values()) {
+            Map<String, Object> vm = new LinkedHashMap<>();
+            vm.put("field", v.field());
+            vm.put("value", v.value());
+            vm.put("type", v.type());
+            if (v.error() != null) vm.put("error", v.error());
+            values.add(vm);
+        }
+        m.put("values", values);
+        return m;
     }
 
     private static List<Map<String, Object>> cellsToList(List<SheetCell> cells) {

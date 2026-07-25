@@ -1,8 +1,14 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { brainFetch } from '@vance/shared';
 import { VButton } from '@/components';
-import type { SheetCell, SheetDocument } from './sheetCodec';
+import type {
+  SheetCell,
+  SheetComputed,
+  SheetComputedValue,
+  SheetDocument,
+} from './sheetCodec';
 import { columnIndexFromLetter, columnLetterFromIndex } from './sheetCodec';
 
 /**
@@ -16,7 +22,14 @@ import { columnIndexFromLetter, columnLetterFromIndex } from './sheetCodec';
  */
 defineOptions({ name: 'SheetView' });
 
-const props = defineProps<{ doc: SheetDocument }>();
+const props = defineProps<{
+  doc: SheetDocument;
+  /** Document identity for server-side recalc (`/sheet/calc`). Passed by
+   *  the Cortex shell; absent in embed/documents.html — recalc is then
+   *  disabled and cells render the last persisted `$computed` overlay. */
+  projectId?: string;
+  docPath?: string;
+}>();
 const emit = defineEmits<{
   (event: 'update:doc', doc: SheetDocument): void;
 }>();
@@ -146,6 +159,7 @@ function commitEdit(): void {
   upsertCell(addr, { data: value });
   editingAddr.value = null;
   editBuffer.value = '';
+  scheduleRecalc();
 }
 
 function upsertCell(addr: string, patch: Partial<SheetCell>): void {
@@ -367,6 +381,65 @@ function isFormula(addr: string): boolean {
   return v.startsWith('=');
 }
 
+// ── Computed overlay (server-evaluated, finance-style) ──────────────
+
+function computedMap(c?: SheetComputed): Map<string, SheetComputedValue> {
+  const m = new Map<string, SheetComputedValue>();
+  if (c) for (const v of c.values) m.set(v.field, v);
+  return m;
+}
+
+const computedValues = ref<Map<string, SheetComputedValue>>(computedMap(props.doc.computed));
+watch(() => props.doc.computed, (c) => { computedValues.value = computedMap(c); }, { deep: true });
+
+const canRecalc = computed(() => !!(props.projectId && props.docPath));
+const recalcing = ref(false);
+let recalcTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Recompute formulas server-side (Apache POI) and refresh the overlay. */
+async function recalc(): Promise<void> {
+  if (!canRecalc.value || recalcing.value) return;
+  recalcing.value = true;
+  try {
+    const res = await brainFetch<SheetComputed>(
+      'POST',
+      `sheet/calc?projectId=${encodeURIComponent(props.projectId!)}`
+        + `&path=${encodeURIComponent(props.docPath!)}`,
+    );
+    computedValues.value = computedMap(res);
+  } catch {
+    // best-effort; the "Neu berechnen" button retries
+  } finally {
+    recalcing.value = false;
+  }
+}
+
+/** Debounced auto-recalc after an edit — long enough for the shell's
+ *  content save to land first (the endpoint evaluates the persisted doc). */
+function scheduleRecalc(): void {
+  if (!canRecalc.value) return;
+  if (recalcTimer) clearTimeout(recalcTimer);
+  recalcTimer = setTimeout(() => void recalc(), 1500);
+}
+
+onBeforeUnmount(() => { if (recalcTimer) clearTimeout(recalcTimer); });
+
+/** Displayed cell content: computed value for a formula cell (once
+ *  evaluated), otherwise the raw source. Editing always shows the source. */
+function cellDisplay(addr: string): string {
+  const c = getCell(addr);
+  if (!c) return '';
+  if (c.data.startsWith('=')) {
+    const cv = computedValues.value.get(addr);
+    return cv ? cv.value : c.data;
+  }
+  return c.data;
+}
+
+function cellIsError(addr: string): boolean {
+  return computedValues.value.get(addr)?.type === 'error';
+}
+
 function cellStyle(addr: string): Record<string, string> {
   const c = getCell(addr);
   if (!c) return {};
@@ -398,6 +471,14 @@ function cellStyle(addr: string): Record<string, string> {
         :disabled="!selectedAddr || localSchema.length <= 1"
         @click="deleteSelectedColumn"
       >{{ t('documents.sheetView.deleteColumn') }}</VButton>
+      <VButton
+        v-if="canRecalc"
+        size="sm"
+        variant="ghost"
+        :disabled="recalcing"
+        :title="t('documents.sheetView.recalcHint')"
+        @click="recalc"
+      >{{ recalcing ? '…' : t('documents.sheetView.recalc') }}</VButton>
       <span class="hint">{{ t('documents.sheetView.hint') }}</span>
     </div>
 
@@ -436,13 +517,14 @@ function cellStyle(addr: string): Record<string, string> {
               :class="{
                 'cell--selected': selectedAddr === col + row,
                 'cell--formula': isFormula(col + row),
+                'cell--error': cellIsError(col + row),
               }"
               :style="cellStyle(col + row)"
-              :title="col + row"
+              :title="isFormula(col + row) ? getValue(col + row) : (col + row)"
               @click="selectCell(col + row)"
               @dblclick="startEdit(col + row)"
             >
-              <span class="cell-text">{{ getValue(col + row) }}</span>
+              <span class="cell-text">{{ cellDisplay(col + row) }}</span>
             </button>
           </template>
         </div>
@@ -598,6 +680,10 @@ function cellStyle(addr: string): Record<string, string> {
 }
 .cell--formula {
   box-shadow: inset 2px 0 0 hsl(var(--p));
+}
+.cell--error {
+  color: hsl(var(--er, 0 72% 51%));
+  box-shadow: inset 2px 0 0 hsl(var(--er, 0 72% 51%));
 }
 .cell-text {
   display: block;

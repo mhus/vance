@@ -1,7 +1,7 @@
 package de.mhus.vance.shared.settings;
 
-import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 /**
@@ -29,16 +29,22 @@ import org.springframework.stereotype.Service;
  * settings rows by hand or via a one-off script. The resolver does
  * <b>not</b> read the legacy key.
  *
- * <p>Default fallback is {@link #DEFAULT_LANGUAGE} ({@value #DEFAULT_LANGUAGE})
- * when no scope has the key set. Callers that want "no opinion" should
- * use {@link #findChatLanguage} / {@link #findContentLanguage} which
- * return {@code null} on absence.
+ * <p>Default fallback is the configured {@code vance.language.default}
+ * property (built-in default {@link #DEFAULT_LANGUAGE},
+ * {@value #DEFAULT_LANGUAGE}) when no scope has the key set. Local
+ * installations can flip the fallback (e.g. to {@code de}) without any
+ * per-user settings. Callers that want "no opinion" should use
+ * {@link #findChatLanguage} / {@link #findContentLanguage} which return
+ * {@code null} on absence.
  */
 @Service
-@RequiredArgsConstructor
 public class LanguageResolver {
 
-    /** Final fallback when neither user nor project nor tenant set a language. */
+    /**
+     * Built-in code default, used when {@code vance.language.default} is
+     * absent (e.g. in apps whose {@code application.yml} lacks the line)
+     * or configured blank.
+     */
     public static final String DEFAULT_LANGUAGE = "en";
 
     /** Setting-key constants — public so callers can read/write directly via SettingService when needed. */
@@ -58,10 +64,23 @@ public class LanguageResolver {
     private final SettingService settingService;
 
     /**
+     * Configured final fallback ({@code vance.language.default}),
+     * normalized to {@link #DEFAULT_LANGUAGE} when the property is blank.
+     */
+    private final String defaultLanguage;
+
+    public LanguageResolver(
+            SettingService settingService,
+            @Value("${vance.language.default:" + DEFAULT_LANGUAGE + "}") String defaultLanguage) {
+        this.settingService = settingService;
+        this.defaultLanguage = defaultLanguage.isBlank() ? DEFAULT_LANGUAGE : defaultLanguage;
+    }
+
+    /**
      * Resolves {@link Keys#CHAT_LANGUAGE} via the
      * project → user → tenant cascade. {@code null} when nothing is set.
-     * Use {@link #chatLanguage} for the version that defaults to
-     * {@link #DEFAULT_LANGUAGE}.
+     * Use {@link #chatLanguage} for the version that defaults to the
+     * configured {@code vance.language.default}.
      */
     public @Nullable String findChatLanguage(
             String tenantId,
@@ -72,21 +91,21 @@ public class LanguageResolver {
                 tenantId, userId, projectId, thinkProcessId, Keys.CHAT_LANGUAGE);
     }
 
-    /** Same as {@link #findChatLanguage} but falls back to {@link #DEFAULT_LANGUAGE}. */
+    /** Same as {@link #findChatLanguage} but falls back to {@link #defaultLanguage}. */
     public String chatLanguage(
             String tenantId,
             @Nullable String userId,
             @Nullable String projectId,
             @Nullable String thinkProcessId) {
         String v = findChatLanguage(tenantId, userId, projectId, thinkProcessId);
-        return v == null || v.isBlank() ? DEFAULT_LANGUAGE : v;
+        return v == null || v.isBlank() ? defaultLanguage : v;
     }
 
     /**
      * Resolves {@link Keys#CONTENT_LANGUAGE} via the project → tenant
      * cascade. {@code null} when nothing is set. Use
-     * {@link #contentLanguage} for the version that defaults to
-     * {@link #DEFAULT_LANGUAGE}.
+     * {@link #contentLanguage} for the version that defaults to the
+     * configured {@code vance.language.default}.
      *
      * <p>The user layer is intentionally <b>not</b> consulted — content
      * belongs to the project.
@@ -99,13 +118,13 @@ public class LanguageResolver {
                 tenantId, projectId, thinkProcessId, Keys.CONTENT_LANGUAGE);
     }
 
-    /** Same as {@link #findContentLanguage} but falls back to {@link #DEFAULT_LANGUAGE}. */
+    /** Same as {@link #findContentLanguage} but falls back to {@link #defaultLanguage}. */
     public String contentLanguage(
             String tenantId,
             @Nullable String projectId,
             @Nullable String thinkProcessId) {
         String v = findContentLanguage(tenantId, projectId, thinkProcessId);
-        return v == null || v.isBlank() ? DEFAULT_LANGUAGE : v;
+        return v == null || v.isBlank() ? defaultLanguage : v;
     }
 
     /**

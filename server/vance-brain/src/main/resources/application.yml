@@ -40,6 +40,14 @@ server:
     include-message: always
 
 vance:
+  language:
+    # Final language fallback used when neither chat.language /
+    # content.language nor any scope setting (project / user / tenant)
+    # picks a language. Built-in default 'en'; local installations can
+    # set this to 'de' (etc.) to default the assistant + content
+    # language without touching per-user settings. Does NOT affect the
+    # find*Language() "no opinion" paths, which still return null.
+    default: en
   net:
     ssrf:
       # SSRF egress guard escape hatch. Default false: web_fetch / doc_import_url

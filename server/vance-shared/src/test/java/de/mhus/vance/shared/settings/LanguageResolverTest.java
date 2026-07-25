@@ -17,7 +17,8 @@ import org.junit.jupiter.api.Test;
 class LanguageResolverTest {
 
     private final SettingService settingService = mock(SettingService.class);
-    private final LanguageResolver resolver = new LanguageResolver(settingService);
+    private final LanguageResolver resolver =
+            new LanguageResolver(settingService, LanguageResolver.DEFAULT_LANGUAGE);
 
     @Test
     void chatLanguage_usesUserProjectCascade() {
@@ -83,6 +84,51 @@ class LanguageResolverTest {
                 .thenReturn("   ");
 
         assertThat(resolver.chatLanguage("tenant", "alice", "proj", null))
+                .isEqualTo(LanguageResolver.DEFAULT_LANGUAGE);
+    }
+
+    @Test
+    void chatLanguage_usesConfiguredFallback_whenUnset() {
+        LanguageResolver deResolver = new LanguageResolver(settingService, "de");
+        when(settingService.getStringValueUserProjectCascade(
+                "tenant", "alice", "proj", null, LanguageResolver.Keys.CHAT_LANGUAGE))
+                .thenReturn(null);
+
+        assertThat(deResolver.chatLanguage("tenant", "alice", "proj", null)).isEqualTo("de");
+    }
+
+    @Test
+    void contentLanguage_usesConfiguredFallback_whenUnset() {
+        LanguageResolver deResolver = new LanguageResolver(settingService, "de");
+        when(settingService.getStringValueCascade(
+                "tenant", null, null, LanguageResolver.Keys.CONTENT_LANGUAGE))
+                .thenReturn(null);
+
+        assertThat(deResolver.contentLanguage("tenant", null, null)).isEqualTo("de");
+    }
+
+    @Test
+    void findVariants_ignoreConfiguredFallback_returnNull_whenAbsent() {
+        LanguageResolver deResolver = new LanguageResolver(settingService, "de");
+        when(settingService.getStringValueUserProjectCascade(
+                "tenant", null, null, null, LanguageResolver.Keys.CHAT_LANGUAGE))
+                .thenReturn(null);
+        when(settingService.getStringValueCascade(
+                "tenant", null, null, LanguageResolver.Keys.CONTENT_LANGUAGE))
+                .thenReturn(null);
+
+        assertThat(deResolver.findChatLanguage("tenant", null, null, null)).isNull();
+        assertThat(deResolver.findContentLanguage("tenant", null, null)).isNull();
+    }
+
+    @Test
+    void blankConfiguredFallback_normalizesToBuiltInDefault() {
+        LanguageResolver blankResolver = new LanguageResolver(settingService, "   ");
+        when(settingService.getStringValueUserProjectCascade(
+                "tenant", null, null, null, LanguageResolver.Keys.CHAT_LANGUAGE))
+                .thenReturn(null);
+
+        assertThat(blankResolver.chatLanguage("tenant", null, null, null))
                 .isEqualTo(LanguageResolver.DEFAULT_LANGUAGE);
     }
 

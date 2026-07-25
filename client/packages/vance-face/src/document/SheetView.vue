@@ -1638,11 +1638,16 @@ function applyNumberFormat(raw: string, code: string): string {
 .row-resize:hover {
   background: oklch(var(--p) / 0.5);
 }
-.cell--col-selected {
+/* Column / row highlight — a translucent overlay (::before) that alpha-blends
+   over any cell background, so the highlight stays visible on coloured cells. */
+.cell--col-selected::before,
+.cell--row-selected::before {
+  content: '';
+  position: absolute;
+  inset: 0;
   background: oklch(var(--p) / 0.1);
-}
-.cell--row-selected {
-  background: oklch(var(--p) / 0.1);
+  pointer-events: none;
+  z-index: 0;
 }
 .row-num--selected {
   background: oklch(var(--p) / 0.28);
@@ -1652,6 +1657,7 @@ function applyNumberFormat(raw: string, code: string): string {
 }
 .cell,
 .cell-input {
+  position: relative;
   background: transparent;
   border: 1px solid transparent;
   padding: 0.25rem 0.4rem;
@@ -1671,9 +1677,15 @@ function applyNumberFormat(raw: string, code: string): string {
 .cell:hover {
   background: oklch(var(--bc) / 0.04);
 }
-.cell--selected {
-  /* every cell in the selection rectangle */
-  background: oklch(var(--p) / 0.1);
+/* Range selection — translucent overlay (::after) that alpha-blends over the
+   cell's own background instead of replacing it (invisible otherwise). */
+.cell--selected::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: oklch(var(--p) / 0.2);
+  pointer-events: none;
+  z-index: 0;
 }
 .cell--active {
   /* the anchor cell of the selection */
@@ -1693,6 +1705,9 @@ function applyNumberFormat(raw: string, code: string): string {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  /* above the selection/column/row overlays */
+  position: relative;
+  z-index: 1;
 }
 /* Excel-style spill into empty right neighbours. */
 .cell-text--overflow {

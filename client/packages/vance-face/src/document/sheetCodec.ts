@@ -76,6 +76,8 @@ export interface SheetDocument {
   columns: Record<string, SheetColumn>;
   /** Sparse per-row display height in px, keyed by row number (as string). */
   rowHeights: Record<string, number>;
+  /** Sparse per-row border (top|bottom|both), keyed by row number. */
+  rowBorders: Record<string, string>;
   /** Unknown top-level fields, preserved across round-trip. */
   extra: Record<string, unknown>;
   /** Derived computed overlay (formula results). Read-only for display;
@@ -200,7 +202,10 @@ function serializeSheetYaml(doc: SheetDocument): string {
 // ── Promotion ───────────────────────────────────────────────────────
 
 function emptyDoc(): SheetDocument {
-  return { kind: 'sheet', schema: [], rows: null, cells: [], columns: {}, rowHeights: {}, extra: {} };
+  return {
+    kind: 'sheet', schema: [], rows: null, cells: [],
+    columns: {}, rowHeights: {}, rowBorders: {}, extra: {},
+  };
 }
 
 function promoteToSheetDocument(obj: Record<string, unknown>): SheetDocument {
@@ -210,14 +215,15 @@ function promoteToSheetDocument(obj: Record<string, unknown>): SheetDocument {
   const cells = promoteCells(obj.cells);
   const columns = promoteColumns(obj.columns);
   const rowHeights = promoteRowHeights(obj.rowHeights);
+  const rowBorders = promoteRowBorders(obj.rowBorders);
   const computed = promoteComputed(obj['$computed']);
   // `$computed` is a derived overlay — dropped from `extra` so it never
   // round-trips through serialize (server-authoritative), matching Java.
   const {
     kind: _k, schema: _s, rows: _r, cells: _c, columns: _cols, rowHeights: _rh,
-    ['$computed']: _comp, ...extra
+    rowBorders: _rb, ['$computed']: _comp, ...extra
   } = obj;
-  const doc: SheetDocument = { kind, schema, rows, cells, columns, rowHeights, extra };
+  const doc: SheetDocument = { kind, schema, rows, cells, columns, rowHeights, rowBorders, extra };
   if (computed) doc.computed = computed;
   return doc;
 }
@@ -231,6 +237,22 @@ function promoteRowHeights(raw: unknown): Record<string, number> {
     if (typeof v === 'number' && Number.isFinite(v) && v > 0) out[String(row)] = Math.round(v);
   }
   return out;
+}
+
+function promoteRowBorders(raw: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!isObject(raw)) return out;
+  for (const [k, v] of Object.entries(raw)) {
+    const row = parseInt(k.trim(), 10);
+    if (!Number.isFinite(row) || row < 1) continue;
+    if (typeof v === 'string' && isRowBorder(v)) out[String(row)] = v.trim().toLowerCase();
+  }
+  return out;
+}
+
+function isRowBorder(s: string): boolean {
+  const t = s.trim().toLowerCase();
+  return t === 'top' || t === 'bottom' || t === 'both';
 }
 
 function promoteColumns(raw: unknown): Record<string, SheetColumn> {
@@ -368,6 +390,9 @@ function buildBody(doc: SheetDocument): Record<string, unknown> {
   if (Object.keys(cols).length > 0) body.columns = cols;
   if (doc.rowHeights && Object.keys(doc.rowHeights).length > 0) {
     body.rowHeights = { ...doc.rowHeights };
+  }
+  if (doc.rowBorders && Object.keys(doc.rowBorders).length > 0) {
+    body.rowBorders = { ...doc.rowBorders };
   }
   body.cells = doc.cells.map(cellToObject);
   for (const [k, v] of Object.entries(doc.extra)) {

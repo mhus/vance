@@ -165,6 +165,7 @@ public final class SheetCodec {
         List<SheetCell> cells = promoteCells(obj.get("cells"));
         Map<String, SheetColumn> columns = promoteColumns(obj.get("columns"));
         Map<String, Integer> rowHeights = promoteRowHeights(obj.get("rowHeights"));
+        Map<String, String> rowBorders = promoteRowBorders(obj.get("rowBorders"));
         Map<String, Object> extra = new LinkedHashMap<>(obj);
         extra.remove("kind");
         extra.remove("schema");
@@ -172,9 +173,10 @@ public final class SheetCodec {
         extra.remove("cells");
         extra.remove("columns");
         extra.remove("rowHeights");
+        extra.remove("rowBorders");
         extra.remove("$computed"); // derived overlay — never part of the input model
         return new SheetDocument(kind.isEmpty() ? "sheet" : kind, schema, rows, cells,
-                columns, rowHeights, extra);
+                columns, rowHeights, rowBorders, extra);
     }
 
     private static List<String> promoteSchema(@Nullable Object raw) {
@@ -261,6 +263,30 @@ public final class SheetCodec {
         return out;
     }
 
+    private static Map<String, String> promoteRowBorders(@Nullable Object raw) {
+        Map<String, String> out = new LinkedHashMap<>();
+        if (!(raw instanceof Map<?, ?> map)) return out;
+        for (Map.Entry<?, ?> e : map.entrySet()) {
+            if (!(e.getKey() instanceof String k)) continue;
+            int rowNum;
+            try {
+                rowNum = Integer.parseInt(k.trim());
+            } catch (NumberFormatException ex) {
+                continue;
+            }
+            if (rowNum < 1) continue;
+            if (e.getValue() instanceof String bs && isRowBorder(bs)) {
+                out.put(Integer.toString(rowNum), bs.trim().toLowerCase());
+            }
+        }
+        return out;
+    }
+
+    private static boolean isRowBorder(String s) {
+        String t = s.trim().toLowerCase();
+        return t.equals("top") || t.equals("bottom") || t.equals("both");
+    }
+
     private static List<SheetCell> promoteCells(@Nullable Object raw) {
         List<SheetCell> out = new ArrayList<>();
         if (!(raw instanceof List<?> list)) return out;
@@ -314,6 +340,9 @@ public final class SheetCodec {
         if (!cols.isEmpty()) body.put("columns", cols);
         if (!doc.rowHeights().isEmpty()) {
             body.put("rowHeights", new LinkedHashMap<String, Object>(doc.rowHeights()));
+        }
+        if (!doc.rowBorders().isEmpty()) {
+            body.put("rowBorders", new LinkedHashMap<String, Object>(doc.rowBorders()));
         }
         body.put("cells", cellsToList(doc.cells()));
         for (Map.Entry<String, Object> e : doc.extra().entrySet()) {

@@ -13,7 +13,8 @@ class SheetComputedCodecTest {
                 new java.util.ArrayList<>(List.of(
                         new SheetCell("A1", "10", null, null, new LinkedHashMap<>()),
                         new SheetCell("B1", "=A1*2", null, null, new LinkedHashMap<>()))),
-                new LinkedHashMap<>(), new LinkedHashMap<>(), new LinkedHashMap<>());
+                new LinkedHashMap<>(), new LinkedHashMap<>(), new LinkedHashMap<>(),
+                new LinkedHashMap<>());
     }
 
     private static SheetComputed computed() {
@@ -62,7 +63,8 @@ class SheetComputedCodecTest {
         cols.put("A", new SheetColumn(140, null));
         cols.put("B", new SheetColumn(null, "right"));
         SheetDocument doc = new SheetDocument("sheet", List.of("A", "B"), 3,
-                new java.util.ArrayList<>(), cols, new LinkedHashMap<>(), new LinkedHashMap<>());
+                new java.util.ArrayList<>(), cols, new LinkedHashMap<>(), new LinkedHashMap<>(),
+                new LinkedHashMap<>());
 
         String json = SheetCodec.serialize(doc, "application/json");
         assertThat(json).contains("columns").contains("140").contains("right");
@@ -80,7 +82,8 @@ class SheetComputedCodecTest {
         heights.put("1", 40);
         heights.put("3", 64);
         SheetDocument doc = new SheetDocument("sheet", List.of("A"), 3,
-                new java.util.ArrayList<>(), new LinkedHashMap<>(), heights, new LinkedHashMap<>());
+                new java.util.ArrayList<>(), new LinkedHashMap<>(), heights, new LinkedHashMap<>(),
+                new LinkedHashMap<>());
 
         String json = SheetCodec.serialize(doc, "application/json");
         assertThat(json).contains("rowHeights").contains("40").contains("64");

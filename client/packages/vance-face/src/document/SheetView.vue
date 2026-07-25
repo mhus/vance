@@ -78,6 +78,11 @@ watch(() => props.doc.rowHeights, (next) => {
   localRowHeights.value = { ...(next ?? {}) };
 }, { deep: true });
 
+const localRowBorders = ref<Record<string, string>>({ ...(props.doc.rowBorders ?? {}) });
+watch(() => props.doc.rowBorders, (next) => {
+  localRowBorders.value = { ...(next ?? {}) };
+}, { deep: true });
+
 function cloneCells(src: SheetCell[]): SheetCell[] {
   return src.map((c) => ({
     field: c.field,
@@ -148,6 +153,7 @@ const selectedAddr = ref<string | null>(null);
 const selectionFocus = ref<string | null>(null);
 const selecting = ref(false); // true while drag-selecting
 const selectedColumn = ref<string | null>(null);
+const selectedRow = ref<number | null>(null);
 const editingAddr = ref<string | null>(null);
 const editBuffer = ref('');
 const inputRefs = ref<Map<string, HTMLInputElement>>(new Map());
@@ -161,6 +167,7 @@ function startEdit(addr: string): void {
   selectedAddr.value = addr;
   selectionFocus.value = null;
   selectedColumn.value = null;
+  selectedRow.value = null;
   editingAddr.value = addr;
   editBuffer.value = getValue(addr);
   void nextTick(() => {
@@ -231,6 +238,7 @@ function emitDoc(): void {
     cells: localCells.value,
     columns: { ...localColumns.value },
     rowHeights: { ...localRowHeights.value },
+    rowBorders: { ...localRowBorders.value },
     extra: props.doc.extra,
   });
 }
@@ -285,6 +293,7 @@ const selectionCount = computed(() => selectedAddresses.value.length);
 function onCellPointerDown(addr: string, ev: PointerEvent): void {
   if (ev.button !== 0 || editingAddr.value === addr) return;
   selectedColumn.value = null;
+  selectedRow.value = null;
   if (ev.shiftKey && selectedAddr.value) {
     selectionFocus.value = addr; // extend the rectangle from the anchor
     return;
@@ -466,6 +475,8 @@ const activeColumn = computed<string | null>(() => {
 function selectColumn(col: string): void {
   selectedColumn.value = col;
   selectedAddr.value = null;
+  selectionFocus.value = null;
+  selectedRow.value = null;
   cancelEdit();
 }
 
@@ -474,6 +485,63 @@ const columnBorderLabel = computed<string>(() => {
   const b = col ? localColumns.value[col]?.border : undefined;
   return b ?? '—';
 });
+
+// ── Row selection / border ─────────────────────────────────────────
+
+/** The row a row-op targets: an explicit row-number selection, else the
+ *  row of the selected cell. */
+const activeRow = computed<number | null>(() => {
+  if (selectedRow.value != null) return selectedRow.value;
+  if (selectedAddr.value) {
+    const m = /^[A-Z]+([0-9]+)$/.exec(selectedAddr.value);
+    if (m) return parseInt(m[1], 10);
+  }
+  return null;
+});
+
+function selectRow(row: number): void {
+  selectedRow.value = row;
+  selectedAddr.value = null;
+  selectionFocus.value = null;
+  selectedColumn.value = null;
+  cancelEdit();
+}
+
+const rowBorderLabel = computed<string>(() => {
+  const row = activeRow.value;
+  const b = row != null ? localRowBorders.value[String(row)] : undefined;
+  return b ?? '—';
+});
+
+const ROW_BORDER_CYCLE: (string | undefined)[] = [undefined, 'bottom', 'top', 'both'];
+
+/** Cycle the active row's border none → bottom → top → both → none. */
+function cycleRowBorder(): void {
+  const row = activeRow.value;
+  if (row == null) return;
+  const key = String(row);
+  const cur = localRowBorders.value[key];
+  const idx = ROW_BORDER_CYCLE.indexOf(cur ?? undefined);
+  const next = ROW_BORDER_CYCLE[(idx + 1) % ROW_BORDER_CYCLE.length];
+  if (next === undefined) {
+    const { [key]: _drop, ...rest } = localRowBorders.value;
+    localRowBorders.value = rest;
+  } else {
+    localRowBorders.value = { ...localRowBorders.value, [key]: next };
+  }
+  emitDoc();
+}
+
+/** CSS borders for a row: top/bottom edges on every cell of the row. */
+function rowBorderStyle(row: number): Record<string, string> {
+  const b = localRowBorders.value[String(row)];
+  if (!b) return {};
+  const line = '2px solid oklch(var(--bc) / 0.5)';
+  const out: Record<string, string> = {};
+  if (b === 'top' || b === 'both') out.borderTop = line;
+  if (b === 'bottom' || b === 'both') out.borderBottom = line;
+  return out;
+}
 
 const BORDER_CYCLE: (string | undefined)[] = [undefined, 'right', 'left', 'both'];
 
@@ -829,8 +897,11 @@ function cellIsError(addr: string): boolean {
 
 function cellStyle(addr: string): Record<string, string> {
   const c = getCell(addr);
-  const m = /^([A-Z]+)[0-9]+$/.exec(addr);
-  const out: Record<string, string> = m ? columnBorderStyle(m[1]) : {};
+  const m = /^([A-Z]+)([0-9]+)$/.exec(addr);
+  // column + row borders form the base (additive); cell borders override per side.
+  const out: Record<string, string> = m
+    ? { ...columnBorderStyle(m[1]), ...rowBorderStyle(parseInt(m[2], 10)) }
+    : {};
   if (c?.color) out.color = c.color;
   if (c?.background) out.background = c.background;
   if (c?.bold) out.fontWeight = '700';
@@ -897,6 +968,13 @@ function applyNumberFormat(raw: string, code: string): string {
         @click="cycleColumnBorder"
       >{{ t('documents.sheetView.columnBorder') }}: {{ columnBorderLabel }}</VButton>
       <VButton
+        v-if="activeRow != null"
+        size="sm"
+        variant="ghost"
+        :title="t('documents.sheetView.rowBorderHint')"
+        @click="cycleRowBorder"
+      >{{ t('documents.sheetView.rowBorder') }}: {{ rowBorderLabel }}</VButton>
+      <VButton
         v-if="canRecalc"
         size="sm"
         variant="ghost"
@@ -934,7 +1012,11 @@ function applyNumberFormat(raw: string, code: string): string {
           class="data-row"
           :style="{ ...gridStyle, ...rowStyle(row) }"
         >
-          <span class="row-num">
+          <span
+            class="row-num"
+            :class="{ 'row-num--selected': activeRow === row }"
+            @click="selectRow(row)"
+          >
             {{ row }}
             <span
               class="row-resize"
@@ -961,6 +1043,7 @@ function applyNumberFormat(raw: string, code: string): string {
                 'cell--selected': isSelected(col + row),
                 'cell--active': selectedAddr === col + row,
                 'cell--col-selected': activeColumn === col,
+                'cell--row-selected': activeRow === row,
                 'cell--formula': isFormula(col + row),
                 'cell--error': cellIsError(col + row),
               }"
@@ -1208,6 +1291,8 @@ function applyNumberFormat(raw: string, code: string): string {
   position: sticky;
   left: 0;
   z-index: 1;
+  cursor: pointer;
+  user-select: none;
 }
 .header-corner {
   position: sticky;
@@ -1258,6 +1343,15 @@ function applyNumberFormat(raw: string, code: string): string {
 }
 .cell--col-selected {
   background: oklch(var(--p) / 0.1);
+}
+.cell--row-selected {
+  background: oklch(var(--p) / 0.1);
+}
+.row-num--selected {
+  background: oklch(var(--p) / 0.28);
+  color: oklch(var(--bc));
+  font-weight: 700;
+  box-shadow: inset -3px 0 0 oklch(var(--p));
 }
 .cell,
 .cell-input {

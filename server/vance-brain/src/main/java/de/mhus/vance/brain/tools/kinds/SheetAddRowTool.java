@@ -42,7 +42,7 @@ public class SheetAddRowTool implements Tool {
                 : sheet.rows();
         int newRows = currentRows + 1;
         SheetDocument updated = new SheetDocument(sheet.kind(), sheet.schema(),
-                newRows, sheet.cells(), sheet.columns(), sheet.rowHeights(), sheet.extra());
+                newRows, sheet.cells(), sheet.columns(), sheet.rowHeights(), sheet.rowBorders(), sheet.extra());
         support.writeBody(doc, SheetCodec.serialize(updated, doc.getMimeType()), ctx);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("documentId", doc.getId());

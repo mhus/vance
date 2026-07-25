@@ -646,6 +646,8 @@ export default {
       recalcHint: 'Alle Formeln server-seitig auswerten und Ergebnisse aktualisieren',
       columnBorder: 'Spalten-Rahmen',
       columnBorderHint: 'Rahmen der Spalte durchschalten: keiner → rechts → links → beide',
+      rowBorder: 'Zeilen-Rahmen',
+      rowBorderHint: 'Rahmen der Zeile durchschalten: keiner → unten → oben → beide',
       cellsSelected: '{n} Zellen',
       style: 'Stil',
       bold: 'Fett',

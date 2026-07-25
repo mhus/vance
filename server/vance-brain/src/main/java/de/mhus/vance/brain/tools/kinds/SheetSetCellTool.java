@@ -99,7 +99,7 @@ public class SheetSetCellTool implements Tool {
         }
         if (!replaced) cells.add(newCell);
         SheetDocument updated = new SheetDocument(sheet.kind(), sheet.schema(),
-                sheet.rows(), cells, sheet.columns(), sheet.rowHeights(), sheet.extra());
+                sheet.rows(), cells, sheet.columns(), sheet.rowHeights(), sheet.rowBorders(), sheet.extra());
         support.writeBody(doc, SheetCodec.serialize(updated, doc.getMimeType()), ctx);
         return Map.of("documentId", doc.getId(),
                 "field", key,

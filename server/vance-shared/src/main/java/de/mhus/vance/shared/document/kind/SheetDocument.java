@@ -21,6 +21,9 @@ import org.jspecify.annotations.Nullable;
  *                   column letter.
  * @param rowHeights sparse per-row display height in pixels, keyed by row
  *                   number (as a string, e.g. {@code "1"}).
+ * @param rowBorders sparse per-row border ({@code top|bottom|both}), keyed
+ *                   by row number, rendered on the whole row (additive to
+ *                   column / cell borders).
  * @param extra      unknown top-level fields, passthrough.
  *
  * <p>Spec: {@code specification/doc-kind-sheet.md}.
@@ -32,6 +35,7 @@ public record SheetDocument(
         List<SheetCell> cells,
         Map<String, SheetColumn> columns,
         Map<String, Integer> rowHeights,
+        Map<String, String> rowBorders,
         Map<String, Object> extra) {
 
     public SheetDocument {
@@ -40,11 +44,13 @@ public record SheetDocument(
         if (cells == null) cells = new ArrayList<>();
         if (columns == null) columns = new LinkedHashMap<>();
         if (rowHeights == null) rowHeights = new LinkedHashMap<>();
+        if (rowBorders == null) rowBorders = new LinkedHashMap<>();
         if (extra == null) extra = new LinkedHashMap<>();
     }
 
     public static SheetDocument empty() {
         return new SheetDocument("sheet", new ArrayList<>(), null, new ArrayList<>(),
-                new LinkedHashMap<>(), new LinkedHashMap<>(), new LinkedHashMap<>());
+                new LinkedHashMap<>(), new LinkedHashMap<>(), new LinkedHashMap<>(),
+                new LinkedHashMap<>());
     }
 }

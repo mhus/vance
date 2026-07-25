@@ -60,7 +60,8 @@ public class TableReportProcessor implements FinanceReportProcessor {
 
         SheetDocument sheet =
                 new SheetDocument("sheet", schema, 1 + rows.size(), cells,
-                        new LinkedHashMap<>(), new LinkedHashMap<>(), new LinkedHashMap<>());
+                        new LinkedHashMap<>(), new LinkedHashMap<>(), new LinkedHashMap<>(),
+                        new LinkedHashMap<>());
         String body = SheetCodec.serialize(sheet, ReportSupport.YAML_MIME);
         return new FinanceReport("sheet", ReportSupport.YAML_MIME, body, null);
     }

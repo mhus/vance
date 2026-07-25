@@ -650,6 +650,8 @@ export default {
       recalcHint: 'Evaluate all formulas server-side and refresh the results',
       columnBorder: 'Column border',
       columnBorderHint: 'Cycle the selected column border: none → right → left → both',
+      rowBorder: 'Row border',
+      rowBorderHint: 'Cycle the selected row border: none → bottom → top → both',
       cellsSelected: '{n} cells',
       style: 'Style',
       bold: 'Bold',

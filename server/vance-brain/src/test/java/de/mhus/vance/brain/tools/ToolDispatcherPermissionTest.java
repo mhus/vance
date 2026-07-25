@@ -112,14 +112,16 @@ class ToolDispatcherPermissionTest {
     }
 
     @Test
-    void invoke_withoutUserId_usesSystemSubject() {
+    void invoke_withoutUserId_usesSystemSubject_whichBypassesTheResolver() {
         ToolInvocationContext ctx = new ToolInvocationContext(
                 "acme", "proj", null, null, null);
 
         dispatcher.invoke("fake.tool", Map.of(), ctx);
 
-        assertThat(recorder.lastCheck().subject().subjectType())
-                .isEqualTo(SubjectType.SYSTEM);
+        // A null userId yields a SYSTEM subject, which PermissionService trusts
+        // at the framework boundary BEFORE the provider — so the resolver is
+        // never consulted and the invoke succeeds without a recorded check.
+        assertThat(recorder.checks()).isEmpty();
     }
 
     @Test

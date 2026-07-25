@@ -9,6 +9,11 @@ server:
 # `vance.redis.enabled` default (false) — Live-features just stay
 # pod-local then.
 vance:
+  language:
+    # Dev default: German. Assistant + content default to 'de' when no
+    # chat.language / content.language scope setting picks a language
+    # (see application.yml for the property doc).
+    default: de
   encryption:
     # Local IDE/dev default so this profile boots without setting
     # VANCE_ENCRYPTION_PASSWORD. Deliberately NOT "changeit" (the service

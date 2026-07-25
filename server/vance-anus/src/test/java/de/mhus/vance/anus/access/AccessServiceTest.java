@@ -15,8 +15,6 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 class AccessServiceTest {
 
-    // Deliberately different from AccessService.DEFAULT_PASSWORD so the
-    // "configured hash does not silently accept the default" test is meaningful.
     private static final String SECRET = "test-correct-horse-battery-staple";
     private AccessProperties props;
     private AccessService service;
@@ -40,27 +38,51 @@ class AccessServiceTest {
     }
 
     @Test
-    void boot_withBlankHash_fallsBackToV1DefaultPassword() {
-        // No hash configured → service must accept the v1 default plaintext
-        // password and flag itself as running on the default. Wrong passwords
-        // are still rejected.
+    void boot_withBlankHash_disablesLoginEntirely() {
+        // No credential configured → there is NO default fallback. Every login
+        // attempt fails and the service flags login as unconfigured/disabled.
         AccessProperties empty = new AccessProperties();
         empty.setPasswordHash("   ");
 
-        AccessService fallback = new AccessService(empty, auditService);
+        AccessService disabled = new AccessService(empty, auditService);
 
-        assertThat(fallback.isUsingDefaultPassword()).isTrue();
-        assertThat(fallback.login("anything")).isFalse();
-        assertThat(fallback.login(AccessService.DEFAULT_PASSWORD)).isTrue();
-        assertThat(fallback.isAuthorized()).isTrue();
+        assertThat(disabled.isLoginConfigured()).isFalse();
+        assertThat(disabled.isLoginDisabledWarning()).isTrue();
+        assertThat(disabled.login("anything")).isFalse();
+        assertThat(disabled.login("vance-anus-login")).isFalse();
+        assertThat(disabled.isAuthorized()).isFalse();
     }
 
     @Test
-    void boot_withConfiguredHash_doesNotAcceptDefaultPassword() {
-        // Sanity: configured hash must NOT silently accept the v1 default.
-        assertThat(service.isUsingDefaultPassword()).isFalse();
-        assertThat(service.login(AccessService.DEFAULT_PASSWORD)).isFalse();
-        assertThat(service.isAuthorized()).isFalse();
+    void boot_withConfiguredHash_reportsLoginEnabled() {
+        // Sanity: a configured credential enables login and shows no warning.
+        assertThat(service.isLoginConfigured()).isTrue();
+        assertThat(service.isLoginDisabledWarning()).isFalse();
+    }
+
+    @Test
+    void login_noopPlaintextCredential_armsWindow() {
+        // {noop} prefix = plaintext credential, the zero-friction path for ops.
+        AccessProperties noop = new AccessProperties();
+        noop.setPasswordHash("{noop}plain-secret");
+        AccessService svc = new AccessService(noop, auditService);
+
+        assertThat(svc.isLoginConfigured()).isTrue();
+        assertThat(svc.login("wrong")).isFalse();
+        assertThat(svc.login("plain-secret")).isTrue();
+        assertThat(svc.isAuthorized()).isTrue();
+    }
+
+    @Test
+    void login_bcryptPrefixedCredential_armsWindow() {
+        // {bcrypt} prefix = hashed-at-rest credential, as minted by `hash`.
+        AccessProperties bcrypt = new AccessProperties();
+        bcrypt.setPasswordHash("{bcrypt}" + new BCryptPasswordEncoder(4).encode(SECRET));
+        AccessService svc = new AccessService(bcrypt, auditService);
+
+        assertThat(svc.login("wrong")).isFalse();
+        assertThat(svc.login(SECRET)).isTrue();
+        assertThat(svc.isAuthorized()).isTrue();
     }
 
     @Test
@@ -141,19 +163,20 @@ class AccessServiceTest {
     }
 
     @Test
-    void armForSudo_suppressesDefaultPasswordWarning() {
+    void armForSudo_suppressesLoginDisabledWarning() {
         AccessProperties empty = new AccessProperties();
         empty.setPasswordHash(null);
-        AccessService fallback = new AccessService(empty, auditService);
+        AccessService disabled = new AccessService(empty, auditService);
 
-        // Before sudo-arm: warning is on (fresh install on the v1 default).
-        assertThat(fallback.isUsingDefaultPassword()).isTrue();
+        // Before sudo-arm: warning is on (no credential configured).
+        assertThat(disabled.isLoginDisabledWarning()).isTrue();
 
-        fallback.armForSudo();
+        disabled.armForSudo();
 
-        // In sudo-mode the warning is irrelevant — process exits after the
-        // requested commands, there is no shell left to leave open.
-        assertThat(fallback.isUsingDefaultPassword()).isFalse();
+        // In sudo-mode the warning is irrelevant — sudo arms the window without
+        // a login, and the process exits after the requested commands.
+        assertThat(disabled.isLoginDisabledWarning()).isFalse();
+        assertThat(disabled.isAuthorized()).isTrue();
     }
 
     @Test

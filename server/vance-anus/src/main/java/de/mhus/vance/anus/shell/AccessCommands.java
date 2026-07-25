@@ -66,15 +66,16 @@ public class AccessCommands {
         } else {
             sb.append("Not authorized.");
         }
-        if (accessService.isUsingDefaultPassword()) {
-            sb.append("\nWARNING: running on the v1 default password — "
-                    + "set VANCE_ANUS_PASSWORD_HASH for anything beyond local dev.");
+        if (accessService.isLoginDisabledWarning()) {
+            sb.append("\nWARNING: no login credential configured — login is DISABLED. "
+                    + "Set VANCE_ANUS_PASSWORD_HASH ({noop}<password> or a {bcrypt} hash).");
         }
         return sb.toString();
     }
 
     @ShellMethod(key = "hash",
-            value = "Generate a BCrypt hash from a plaintext password (for VANCE_ANUS_PASSWORD_HASH).")
+            value = "Mint a {bcrypt} credential from a plaintext password (for VANCE_ANUS_PASSWORD_HASH). "
+                    + "For zero-friction setups you can also just use {noop}<password> directly.")
     public String hash(
             @ShellOption(value = {"--plain"}, defaultValue = ShellOption.NULL,
                     help = "Plaintext password. Omit to be prompted with a masked input.")
@@ -88,8 +89,11 @@ public class AccessCommands {
         }
         // Strength 12: same default we'd want for the production env var.
         // Each call generates a fresh salt, so the hash differs every time.
+        // The {bcrypt} prefix matches the DelegatingPasswordEncoder convention
+        // AccessService uses, so the output can be pasted straight into the
+        // VANCE_ANUS_PASSWORD_HASH secret.
         BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(12);
-        return encoder.encode(input);
+        return "{bcrypt}" + encoder.encode(input);
     }
 
     private static String formatDuration(Duration d) {

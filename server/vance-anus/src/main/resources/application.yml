@@ -23,8 +23,16 @@ vance:
     password: ${VANCE_ENCRYPTION_PASSWORD}
   anus:
     access:
-      # BCrypt hash of the login password. Required at boot — no default.
-      # Generate with: java -jar vance-anus.jar hash --plain <password>
+      # The Anus login credential. Uses Spring's {id} prefix convention:
+      #   {noop}my-secret   → plaintext, zero friction (recommended for the
+      #                       Kubernetes/Docker secret — no hashing tool needed)
+      #   {bcrypt}$2a$...    → BCrypt hash minted via `vance-anus hash`
+      #   $2a$...            → bare BCrypt still accepted (backward compat)
+      # Comes from outside via VANCE_ANUS_PASSWORD_HASH. There is NO default
+      # fallback: if unset, login is disabled entirely (nobody can authenticate)
+      # and every `status` warns. The boot still succeeds — we don't hard-fail,
+      # because forcing a hash just makes people ship a default. Setting a real
+      # credential is trivial via the {noop} plaintext option above.
       password-hash: ${VANCE_ANUS_PASSWORD_HASH:}
       # Sliding-window timeout. Each authorised command resets the clock.
       timeout: 10m

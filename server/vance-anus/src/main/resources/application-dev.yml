@@ -12,4 +12,25 @@ vance:
     # key); production application.yml carries no default and fails fast
     # if the env var is unset (code-review F4). Matches the brain dev
     # profiles so both share the same local key store.
+    #
+    # NOTE: this is the ENCRYPTION key (crypto keystore), NOT the login
+    # password. The Anus shell login password is set below.
     password: ${VANCE_ENCRYPTION_PASSWORD:vance-local-dev}
+  anus:
+    access:
+      # Explicit dev login password so nobody has to rely on the silent v1
+      # default fallback. {noop} = plaintext — the login password is literally
+      # "vance-anus-login", right here, no hashing tool needed. In production
+      # set VANCE_ANUS_PASSWORD_HASH to {noop}<your-password> or a {bcrypt}
+      # hash from `vance-anus hash`.
+      password-hash: "{noop}vance-anus-login"
+
+# Local dev logging: mirror the brain dev profile so Anus debugging has
+# a dedicated file at TRACE level (matches vance-brain1.log). Spring Boot's
+# default logback config writes to logging.file.name; Anus ships no custom
+# logback-spring.xml, so the default file appender is used.
+logging:
+  file:
+    name: vance-anus.log
+  level:
+    de.mhus.vance: TRACE

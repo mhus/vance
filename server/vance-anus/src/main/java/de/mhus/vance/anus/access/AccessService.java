@@ -3,10 +3,15 @@ package de.mhus.vance.anus.access;
 import de.mhus.vance.shared.audit.AuditService;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.HashMap;
+import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.jspecify.annotations.Nullable;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.DelegatingPasswordEncoder;
+import org.springframework.security.crypto.password.NoOpPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 /**
@@ -20,29 +25,38 @@ import org.springframework.stereotype.Service;
  *
  * <p>Anus is a single-user tool — there is no per-session, per-user or
  * per-IP scoping. The whole JVM has exactly one auth state.
+ *
+ * <p>The configured credential ({@code vance.anus.access.password-hash})
+ * uses Spring's {@link DelegatingPasswordEncoder} {@code {id}} prefix
+ * convention so operators can pick their friction/security trade-off:
+ * <ul>
+ *   <li>{@code {noop}my-secret} — plaintext. Zero friction: no hashing tool
+ *       needed, just drop the password into the Kubernetes/Docker secret.
+ *       Deliberately supported because forcing a BCrypt hash is friction
+ *       enough that people leave it unset and ship the v1 default instead.</li>
+ *   <li>{@code {bcrypt}$2a$…} — a BCrypt hash minted via the {@code hash}
+ *       shell command, for those who want it hashed at rest.</li>
+ *   <li>A bare {@code $2a$…} (no prefix) is still accepted as BCrypt for
+ *       backward compatibility with credentials minted before the prefix
+ *       convention existed.</li>
+ * </ul>
  */
 @Service
 @Slf4j
 public class AccessService {
 
-    /**
-     * v1 default plaintext password. Used when no hash is configured —
-     * see the note on the constructor below. Kept as a constant so tests
-     * can pin it without copy-pasting.
-     */
-    public static final String DEFAULT_PASSWORD = "vance-anus-login";
-
     private final AccessProperties properties;
     private final AuditService auditService;
-    private final BCryptPasswordEncoder encoder;
-    /** Effective hash — either the configured one, or a freshly generated one for {@link #DEFAULT_PASSWORD}. */
+    private final PasswordEncoder encoder;
+    /** The configured credential, or blank if none is set. Blank ⇒ login disabled. */
     private final String effectiveHash;
-    private final boolean usingDefault;
+    /** {@code true} iff a non-blank credential was configured. */
+    private final boolean configured;
 
     @Nullable private volatile Instant authorizedUntil;
     /**
      * Marks the window as armed by {@code --sudo} rather than a password
-     * login. Suppresses the default-password warning (irrelevant in one-shot
+     * login. Suppresses the "login disabled" warning (irrelevant in one-shot
      * mode — the process exits after the requested commands) and lets the
      * audit trail distinguish unattended sudo runs from interactive logins.
      */
@@ -51,31 +65,37 @@ public class AccessService {
     public AccessService(AccessProperties properties, AuditService auditService) {
         this.properties = properties;
         this.auditService = auditService;
-        this.encoder = new BCryptPasswordEncoder();
-        if (StringUtils.isBlank(properties.getPasswordHash())) {
-            // v1 fallback: no hash configured → accept the well-known
-            // default. The hash is regenerated per process so a leak of
-            // an old hash is meaningless. Operators are loudly told to
-            // override this in production via VANCE_ANUS_PASSWORD_HASH.
-            this.effectiveHash = encoder.encode(DEFAULT_PASSWORD);
-            this.usingDefault = true;
-            log.warn("vance.anus.access.password-hash is not set — falling back to "
-                    + "the v1 default password. Set VANCE_ANUS_PASSWORD_HASH "
-                    + "(e.g. in confidential/anus.env) for anything beyond local dev.");
-        } else {
-            this.effectiveHash = properties.getPasswordHash();
-            this.usingDefault = false;
+        this.encoder = buildEncoder();
+        this.effectiveHash = StringUtils.defaultString(properties.getPasswordHash());
+        this.configured = StringUtils.isNotBlank(this.effectiveHash);
+        if (!configured) {
+            // No credential configured → login is disabled entirely. There is
+            // no built-in default password: an unset secret means nobody can
+            // authenticate, which is safer than shipping a well-known default.
+            // Boot still succeeds; the operator sets VANCE_ANUS_PASSWORD_HASH
+            // (e.g. {noop}<password> or a {bcrypt} hash) to enable login.
+            log.warn("vance.anus.access.password-hash is not set — Anus login is "
+                    + "DISABLED. Set VANCE_ANUS_PASSWORD_HASH (e.g. {noop}<password> "
+                    + "or a {bcrypt} hash from `vance-anus hash`) to enable it.");
         }
     }
 
     /**
-     * {@code true} iff the service is running on the built-in v1 default
-     * password AND the shell is in interactive mode. In {@code --sudo}
-     * one-shot mode the warning is meaningless: the process exits after the
-     * requested commands, there is no shell to leave open.
+     * {@code true} iff a login credential is configured. When {@code false},
+     * every {@link #login(String)} fails — there is no default fallback.
      */
-    public boolean isUsingDefaultPassword() {
-        return usingDefault && !sudoMode;
+    public boolean isLoginConfigured() {
+        return configured;
+    }
+
+    /**
+     * {@code true} iff login is disabled (no credential configured) AND the
+     * shell is interactive. In {@code --sudo} one-shot mode the warning is
+     * meaningless: the process exits after the requested commands, and sudo
+     * arms the window without a login anyway.
+     */
+    public boolean isLoginDisabledWarning() {
+        return !configured && !sudoMode;
     }
 
     /** {@code true} iff the current authorisation window was armed by {@code --sudo}. */
@@ -99,13 +119,20 @@ public class AccessService {
     }
 
     /**
-     * Verifies {@code plainPassword} against the configured BCrypt hash.
+     * Verifies {@code plainPassword} against the configured credential.
      * On success, arms the sliding window and returns {@code true}; on
      * mismatch, leaves the window untouched and returns {@code false}.
-     * Blank passwords are rejected without consulting BCrypt.
+     * Blank passwords — and every attempt when no credential is configured —
+     * are rejected without consulting the encoder.
      */
     public synchronized boolean login(String plainPassword) {
         if (StringUtils.isBlank(plainPassword)) {
+            auditService.anusLoginFailure();
+            return false;
+        }
+        if (!configured) {
+            log.warn("Anus login rejected — no credential configured "
+                    + "(VANCE_ANUS_PASSWORD_HASH unset); login is disabled");
             auditService.anusLoginFailure();
             return false;
         }
@@ -164,5 +191,22 @@ public class AccessService {
 
     private void extendWindow() {
         authorizedUntil = Instant.now().plus(properties.getTimeout());
+    }
+
+    /**
+     * Builds the delegating encoder that understands the {@code {noop}} and
+     * {@code {bcrypt}} prefixes. Unprefixed values are matched as BCrypt so a
+     * bare {@code $2a$…} keeps working.
+     */
+    @SuppressWarnings("deprecation") // NoOpPasswordEncoder is discouraged in
+    // general but is exactly the point here: it is the standard backing for
+    // the opt-in {noop} prefix that lets operators store a plaintext password.
+    private static PasswordEncoder buildEncoder() {
+        Map<String, PasswordEncoder> encoders = new HashMap<>();
+        encoders.put("bcrypt", new BCryptPasswordEncoder());
+        encoders.put("noop", NoOpPasswordEncoder.getInstance());
+        DelegatingPasswordEncoder delegating = new DelegatingPasswordEncoder("bcrypt", encoders);
+        delegating.setDefaultPasswordEncoderForMatches(new BCryptPasswordEncoder());
+        return delegating;
     }
 }

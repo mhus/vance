@@ -176,12 +176,30 @@ public class ProcessRunTool implements Tool {
                 ctx.sessionId(), ctx.processId());
 
         ActionResult result = actionRegistry.execute(action, triggerCtx, TriggerKind.TOOL);
-        if (result.outcome() != ActionOutcome.SCHEDULED) {
+        String childId;
+        if (result.outcome() == ActionOutcome.SCHEDULED) {
+            childId = result.spawnedId();
+        } else if (result.outcome() == ActionOutcome.SUCCESS) {
+            // Idempotent soft-success: a process with this name already
+            // exists in the session (SpawnActionExecutor.buildAlready
+            // ExistsSoftSuccess). process_run's contract is spawn-or-reuse
+            // + steer + wait, so reuse the existing process for the steer
+            // below rather than reporting the contradictory
+            // "spawn failed (SUCCESS)". The output map carries its id.
+            Map<String, Object> out = result.output();
+            Object existing = out == null ? null : out.get("existingProcessId");
+            if (!(existing instanceof String existingId) || existingId.isBlank()) {
+                throw new ToolException(
+                        "process_run: a process named '" + name + "' already "
+                                + "exists in this session but its id is "
+                                + "unavailable — steer it by name instead");
+            }
+            childId = existingId;
+        } else {
             throw new ToolException(
                     "process_run: spawn failed (" + result.outcome() + "): "
                             + result.errorMessage());
         }
-        String childId = result.spawnedId();
         ThinkProcessDocument child = thinkProcessService.findById(childId)
                 .orElseThrow(() -> new ToolException(
                         "process_run: spawned process '" + childId + "' is gone"));

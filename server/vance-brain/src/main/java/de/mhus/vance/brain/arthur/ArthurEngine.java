@@ -1867,12 +1867,11 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         try {
             Map<String, Object> params = new LinkedHashMap<>();
             params.put("name", workerName);
-            params.put("goal", prompt);
-            params.put("steerContent", prompt);
+            params.put("task", prompt);
             if (explicitRecipe) {
                 params.put("recipe", preset);
             }
-            ctx.tools().invokeInternal("process_create", params);
+            ctx.tools().invokeInternal("process_spawn", params);
             if (explicitRecipe) {
                 log.info("Arthur id='{}' DELEGATE recipe='{}' worker='{}' reason='{}'",
                         process.getId(), preset, workerName, summariseReason(action.reason()));

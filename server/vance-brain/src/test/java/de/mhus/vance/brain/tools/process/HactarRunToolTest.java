@@ -19,20 +19,20 @@ import org.springframework.beans.factory.ObjectProvider;
 
 /**
  * Unit tests for {@link HactarRunTool}. Verifies the param shape
- * forwarded to {@link ProcessCreateTool} — the tool itself is mocked,
+ * forwarded to {@link ProcessSpawnTool} — the tool itself is mocked,
  * so we exercise the wrapper logic only.
  */
 class HactarRunToolTest {
 
-    private ProcessCreateTool processCreate;
+    private ProcessSpawnTool processCreate;
     private HactarRunTool tool;
     private ToolInvocationContext ctx;
 
     @BeforeEach
     @SuppressWarnings("unchecked")
     void setUp() {
-        processCreate = mock(ProcessCreateTool.class);
-        ObjectProvider<ProcessCreateTool> provider = mock(ObjectProvider.class);
+        processCreate = mock(ProcessSpawnTool.class);
+        ObjectProvider<ProcessSpawnTool> provider = mock(ObjectProvider.class);
         when(provider.getIfAvailable()).thenReturn(processCreate);
         tool = new HactarRunTool(provider);
         ctx = new ToolInvocationContext("acme", "proj-1", "sess-1",
@@ -49,7 +49,7 @@ class HactarRunToolTest {
         assertThat(result).containsEntry("thinkProcessId", "child-1");
         Map<String, Object> forwarded = capturedProcessCreateParams();
         assertThat(forwarded).containsEntry("recipe", "hactar-run");
-        assertThat(forwarded).containsEntry("goal", "Run script scripts/mailbot.js");
+        assertThat(forwarded).containsEntry("task", "Run script scripts/mailbot.js");
         assertThat(forwarded.get("name")).asString().startsWith("hactar-mailbot-");
         @SuppressWarnings("unchecked")
         Map<String, Object> engineParams = (Map<String, Object>) forwarded.get("params");

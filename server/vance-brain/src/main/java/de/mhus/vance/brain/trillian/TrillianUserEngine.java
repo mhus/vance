@@ -125,7 +125,7 @@ public class TrillianUserEngine implements ThinkEngine {
         // through spawned workers via cross_process_create instead.
         base.add("project_list");
         // Worker spawn + observation
-        base.add("process_create");          // same-project (caller's home)
+        base.add("process_spawn");          // same-project (caller's home)
         base.add("cross_process_create");    // cross-project (NEW, role-gated)
         base.add("process_status");
         base.add("process_steer");

@@ -566,7 +566,7 @@ public final class VanceScriptApi {
 
         @HostAccess.Export
         public Map<String, Object> spawn(Map<String, Object> params) {
-            return parent.tools.call("process_create", params);
+            return parent.tools.call("process_spawn", params);
         }
 
         /**

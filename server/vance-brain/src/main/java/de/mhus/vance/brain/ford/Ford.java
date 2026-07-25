@@ -252,7 +252,7 @@ public class Ford implements ThinkEngine {
         // Reply / completion contract (Ford's structured exit path)
         base.add("respond");
         // Sub-worker spawn — Ford recipes occasionally delegate
-        base.add("process_create");
+        base.add("process_spawn");
         base.add("process_status");
         // User-facing signal
         base.add("vance_notify");

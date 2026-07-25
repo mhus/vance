@@ -5,8 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import de.mhus.vance.brain.tools.magrathea.WorkflowStartTool;
 import de.mhus.vance.brain.tools.hooks.HookDeleteTool;
 import de.mhus.vance.brain.tools.hooks.HookSetTool;
-import de.mhus.vance.brain.tools.process.ProcessCreateTool;
-import de.mhus.vance.brain.tools.process.ProcessRunTool;
+import de.mhus.vance.brain.tools.process.ProcessSpawnTool;
 import de.mhus.vance.brain.tools.script.ScriptRunDocTool;
 import de.mhus.vance.brain.tools.script.ScriptRunWorkspaceTool;
 import de.mhus.vance.brain.tools.ursascheduler.UrsaSchedulerDeleteTool;
@@ -37,8 +36,7 @@ class AllSpawnToolsAnnotatedTest {
 
     /** Curated list — keep in sync with §8 of the plan. */
     private static final List<Class<? extends Tool>> EXPECTED_SPAWN_TOOLS = List.of(
-            ProcessCreateTool.class,
-            ProcessRunTool.class,
+            ProcessSpawnTool.class,
             ScriptRunDocTool.class,
             ScriptRunWorkspaceTool.class,
             WorkflowStartTool.class,

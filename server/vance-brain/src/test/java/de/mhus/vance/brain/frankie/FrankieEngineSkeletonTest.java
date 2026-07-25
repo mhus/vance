@@ -384,7 +384,7 @@ class FrankieEngineSkeletonTest {
         assertThat(set).contains("find_tools", "describe_tool", "how_do_i",
                 "manual_read", "tool_result_read");
         // Sub-worker spawn — Frankie's escape hatch
-        assertThat(set).contains("process_create");
+        assertThat(set).contains("process_spawn");
         // User-facing signal
         assertThat(set).contains("vance_notify");
         // Generic work-target file / exec wrappers + work_target_get/set

@@ -39,7 +39,7 @@ import org.springframework.stereotype.Component;
  *
  * <p>{@code @SpawnTool}-annotated: the trigger-scoped sandbox refuses
  * to dispatch this from inside a script, same as
- * {@link ProcessCreateTool} and {@code script_run_doc}. A script that
+ * {@link ProcessSpawnTool} and {@code script_run_doc}. A script that
  * can spawn another script-running process at will would defeat the
  * isolation we get from trigger-scoped sandboxes.
  *
@@ -94,9 +94,9 @@ public class HactarRunTool implements Tool {
                 "required", List.of("scriptRef"));
     }
 
-    /** Lazy lookup — see {@link ProcessCreateTool#thinkEngineServiceProvider}
+    /** Lazy lookup — see {@link ProcessSpawnTool}
      *  for the rationale. The bean graph cycles otherwise. */
-    private final ObjectProvider<ProcessCreateTool> processCreateProvider;
+    private final ObjectProvider<ProcessSpawnTool> processSpawnProvider;
 
     @Override
     public String name() {
@@ -154,14 +154,14 @@ public class HactarRunTool implements Tool {
 
         Map<String, Object> processCreateParams = new LinkedHashMap<>();
         processCreateParams.put("name", name);
-        processCreateParams.put("goal", "Run script " + scriptRef);
+        processCreateParams.put("task", "Run script " + scriptRef);
         processCreateParams.put("recipe", "hactar-run");
         processCreateParams.put("params", hactarParams);
 
-        ProcessCreateTool inner = processCreateProvider.getIfAvailable();
+        ProcessSpawnTool inner = processSpawnProvider.getIfAvailable();
         if (inner == null) {
             throw new ToolException(
-                    "hactar_run: ProcessCreateTool bean unavailable");
+                    "hactar_run: ProcessSpawnTool bean unavailable");
         }
         return inner.invoke(processCreateParams, ctx);
     }

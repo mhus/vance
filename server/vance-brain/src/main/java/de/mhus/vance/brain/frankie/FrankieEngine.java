@@ -144,7 +144,7 @@ public class FrankieEngine implements ThinkEngine {
         base.add("tool_result_read");
         // sub-worker spawn — Frankie's escape hatch when a task
         // needs strategic planning or different skill set
-        base.add("process_create");
+        base.add("process_spawn");
         base.add("process_status");
         // user-facing signals
         base.add("vance_notify");

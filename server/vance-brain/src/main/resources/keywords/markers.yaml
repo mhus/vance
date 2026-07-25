@@ -1,19 +1,38 @@
 # Hot-path memory markers. Baseline 'en' is ALWAYS active; the resolved
 # chat.language entries are added on top. Add new languages / phrases as
 # they become known — one YAML line, no code change.
+#
+# Language keys are the 2-letter chat.language codes (see the Web-UI
+# chatLanguageOptions). Phrases are matched case-insensitively on Unicode
+# word boundaries, so keep them specific enough to avoid false positives.
 markers:
   MEMORIZE:
     en: ["remember", "remind me"]
     de: ["merk dir", "merke dir", "erinnere mich", "notiere", "vermerke"]
+    fr: ["souviens-toi", "rappelle-toi", "rappelle-moi", "retiens"]
+    es: ["recuerda", "recuérdame", "acuérdate", "anota"]
+    it: ["ricorda", "ricordati", "ricordami", "annota"]
   FORGET:
     en: ["forget"]
     de: ["vergiss", "vergesse"]
+    fr: ["oublie"]
+    es: ["olvida", "olvídate"]
+    it: ["dimentica", "dimenticati"]
   FUTURE_RULE:
     en: ["from now on", "going forward", "new rule"]
     de: ["ab jetzt", "ab sofort", "in zukunft", "von nun an", "künftig", "neue regel"]
+    fr: ["à partir de maintenant", "désormais", "dorénavant", "à l'avenir", "nouvelle règle"]
+    es: ["a partir de ahora", "de ahora en adelante", "en adelante", "nueva regla"]
+    it: ["d'ora in poi", "d'ora in avanti", "da adesso", "nuova regola"]
   PUNCTUAL:
     en: ["this time"]
     de: ["diesmal"]
+    fr: ["cette fois", "cette fois-ci"]
+    es: ["esta vez"]
+    it: ["questa volta", "stavolta"]
   REVOKE:
     en: ["no longer", "never again"]
     de: ["nicht mehr", "nie wieder"]
+    fr: ["plus jamais"]
+    es: ["ya no", "nunca más", "jamás"]
+    it: ["non più", "mai più"]

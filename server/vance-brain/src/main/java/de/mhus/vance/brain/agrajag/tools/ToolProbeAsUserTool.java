@@ -37,7 +37,7 @@ public class ToolProbeAsUserTool implements Tool {
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
             "properties", Map.of(
-                    "toolName", Map.of("type", "string"),
+                    "toolName", Map.of("type", "string", "description", "Name of the SAFE_PROBE tool to invoke as a health probe."),
                     "userId", Map.of(
                             "type", "string",
                             "description",

@@ -22,11 +22,11 @@ public class ToolHealthClearCooldownTool implements Tool {
             "properties", Map.of(
                     "scope", Map.of(
                             "type", "string",
-                            "enum", List.of("SESSION", "USER", "PROJECT", "TENANT", "GLOBAL")),
-                    "scopeId", Map.of("type", "string"),
-                    "toolName", Map.of("type", "string"),
-                    "errorSignature", Map.of("type", "string"),
-                    "userId", Map.of("type", "string")),
+                            "enum", List.of("SESSION", "USER", "PROJECT", "TENANT", "GLOBAL"), "description", "Scope level the health record applies to (SESSION, USER, PROJECT, TENANT, or GLOBAL)."),
+                    "scopeId", Map.of("type", "string", "description", "Id within `scope` (session/user/project/tenant id). Omit to use the caller's current scope id."),
+                    "toolName", Map.of("type", "string", "description", "Name of the tool this record is about, e.g. `web_fetch`."),
+                    "errorSignature", Map.of("type", "string", "description", "Signature string identifying the specific failure class this record targets."),
+                    "userId", Map.of("type", "string", "description", "User id for a USER-scoped record; omit for other scopes.")),
             "required", List.of("scope", "toolName", "errorSignature"));
 
     private final ToolHealthService toolHealthService;

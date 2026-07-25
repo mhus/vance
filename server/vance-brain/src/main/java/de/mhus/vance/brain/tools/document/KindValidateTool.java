@@ -46,7 +46,7 @@ public class KindValidateTool implements Tool {
                                 + "against; inferred from the $meta.kind header when "
                                 + "omitted. Set it only for bare content without a "
                                 + "header."));
-                put("projectId", Map.of("type", "string"));
+                put("projectId", Map.of("type", "string", "description", "Project id of the document to validate. Omit to use the caller's current project."));
             }},
             "required", List.of());
 

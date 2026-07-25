@@ -27,20 +27,20 @@ public class ToolHealthSetUnavailableTool implements Tool {
             "properties", Map.of(
                     "scope", Map.of(
                             "type", "string",
-                            "enum", List.of("SESSION", "USER", "PROJECT", "TENANT", "GLOBAL")),
-                    "scopeId", Map.of("type", "string"),
-                    "toolName", Map.of("type", "string"),
+                            "enum", List.of("SESSION", "USER", "PROJECT", "TENANT", "GLOBAL"), "description", "Scope level the health record applies to (SESSION, USER, PROJECT, TENANT, or GLOBAL)."),
+                    "scopeId", Map.of("type", "string", "description", "Id within `scope` (session/user/project/tenant id). Omit to use the caller's current scope id."),
+                    "toolName", Map.of("type", "string", "description", "Name of the tool this record is about, e.g. `web_fetch`."),
                     "classification", Map.of(
                             "type", "string",
                             "enum", List.of(
                                     "TECHNICALLY_BROKEN",
                                     "USER_SPECIFIC_TECHNICAL",
-                                    "INTERMITTENT")),
+                                    "INTERMITTENT"), "description", "Why the tool is failing/unavailable — its failure classification."),
                     "expectedRecoveryAt", Map.of(
                             "type", "string",
                             "description",
                             "ISO-8601 instant, e.g. 2026-05-23T15:00:00Z. Optional."),
-                    "note", Map.of("type", "string")),
+                    "note", Map.of("type", "string", "description", "Optional free-text operator note stored with the record.")),
             "required", List.of("scope", "toolName", "classification"));
 
     private final ToolHealthService toolHealthService;

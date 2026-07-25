@@ -20,8 +20,8 @@ public class HookDeleteTool implements Tool {
     private static final Map<String, Object> SCHEMA;
     static {
         Map<String, Object> props = new LinkedHashMap<>();
-        props.put("event", Map.of("type", "string"));
-        props.put("name", Map.of("type", "string"));
+        props.put("event", Map.of("type", "string", "description", "Lifecycle event the hook is registered on, e.g. process.completed or inbox.item.created."));
+        props.put("name", Map.of("type", "string", "description", "Name of the hook to delete (the <name> in _vance/hooks/<event>/<name>.yaml)."));
         SCHEMA = Map.of(
                 "type", "object",
                 "properties", props,

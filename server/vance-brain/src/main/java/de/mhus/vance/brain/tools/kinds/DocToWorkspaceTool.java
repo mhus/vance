@@ -50,7 +50,7 @@ public class DocToWorkspaceTool implements Tool {
                 + "flushed first so the scratch file matches the latest in-flight content.";
     }
     @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("scratch-bridge", "eddie", "write", "scratch"); }
+    @Override public Set<String> labels() { return Set.of("scratch-bridge", "eddie", "write", "workspace"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

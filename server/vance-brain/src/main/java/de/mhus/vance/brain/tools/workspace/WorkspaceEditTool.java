@@ -74,9 +74,9 @@ public class WorkspaceEditTool implements Tool {
 
     @Override
     public java.util.Set<String> labels() {
-        // "scratch" tag matches WorkspaceWriteTool — same history-tagging
-        // hook encodes the returned path as SCRATCH: resource key.
-        return java.util.Set.of("write", "side-effect", "scratch");
+        // "workspace" tag matches WorkspaceWriteTool — same history-tagging
+        // hook encodes the returned path as a WORKSPACE: resource key.
+        return java.util.Set.of("write", "side-effect", "workspace");
     }
 
     @Override

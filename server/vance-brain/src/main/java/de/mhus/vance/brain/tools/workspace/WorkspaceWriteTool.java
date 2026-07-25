@@ -77,12 +77,11 @@ public class WorkspaceWriteTool implements Tool {
 
     @Override
     public java.util.Set<String> labels() {
-        // "scratch" tells the history-tagging hook to encode the
-        // returned "path" as a SCRATCH: resource key — kept as
-        // backward-compat after the tool rename to work_file_*; see
-        // HistoryTagBuilder.LABEL_SCRATCH and
+        // "workspace" tells the history-tagging hook to encode the
+        // returned "path" as a WORKSPACE:<processId>/<path> resource key
+        // — see HistoryTagBuilder.LABEL_WORKSPACE and
         // planning/process-history-search.md §5.1.
-        return java.util.Set.of("write", "side-effect", "scratch");
+        return java.util.Set.of("write", "side-effect", "workspace");
     }
 
     @Override

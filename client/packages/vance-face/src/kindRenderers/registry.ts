@@ -58,6 +58,7 @@ const FinanceView = defineAsyncComponent(async () => {
   const m = mod as { default?: unknown };
   return (m?.default ?? mod) as ReturnType<typeof defineAsyncComponent>;
 });
+const SheetSummaryView = defineAsyncComponent(() => import('@/document/SheetSummaryView.vue'));
 const SlidesView  = defineAsyncComponent(() => import('@/document/SlidesView.vue'));
 const ImageView   = defineAsyncComponent(() => import('@/document/ImageView.vue'));
 const PdfView     = defineAsyncComponent(() => import('@/document/PdfView.vue'));
@@ -122,10 +123,11 @@ export const kindRegistry: Record<string, KindRenderer> = {
   // The fence body carries the URL or video ID.
   youtube: { inline: YouTubeView, label: 'YouTube', icon: '▶' },
 
-  // Sheet remains editor-only for now (cell-formula logic too
-  // intertwined with edit handlers to adapt cheaply). The fallback
-  // chain in §5 surfaces it as standard Markdown until SheetView
-  // grows the `mode` prop.
+  // Sheet: embedded-only data card (read-only mini-grid) with a
+  // "Bearbeiten" dialog that opens the full SheetView editor — mirrors
+  // the finance-tree summary pattern. Authoring lives in the Cortex
+  // kind editor.
+  sheet: { embedded: SheetSummaryView, label: 'Sheet', icon: '▦' },
 };
 
 /**

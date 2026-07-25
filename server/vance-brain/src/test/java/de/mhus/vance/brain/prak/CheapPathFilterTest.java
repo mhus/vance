@@ -15,7 +15,7 @@ class CheapPathFilterTest {
 
     @Test
     void profile_emptySpanIsSkippable() {
-        var profile = filter.profile(List.of());
+        var profile = filter.profile(List.of(), "de");
 
         assertThat(profile.isSkippable()).isTrue();
         assertThat(profile.skipReason()).isEqualTo("empty");
@@ -25,7 +25,7 @@ class CheapPathFilterTest {
     void profile_shortSpanBelowTokenThresholdIsSkippable() {
         var profile = filter.profile(List.of(
                 user("kurz"),
-                assistant("ok")));
+                assistant("ok")), "de");
 
         assertThat(profile.isSkippable()).isTrue();
         assertThat(profile.skipReason()).isEqualTo("below-token-threshold");
@@ -36,7 +36,7 @@ class CheapPathFilterTest {
         // 50+ tokens but all assistant filler and short user
         var profile = filter.profile(List.of(
                 user("Hi"),
-                assistant(repeat("filler ", 60))));
+                assistant(repeat("filler ", 60))), "de");
 
         assertThat(profile.isSkippable()).isTrue();
         assertThat(profile.skipReason()).isEqualTo("no-substance");
@@ -54,7 +54,7 @@ class CheapPathFilterTest {
                 user("ja"),
                 assistant("Lass mich kurz überlegen wie wir das am besten machen können "
                         + "und dann komme ich gleich darauf zurück mit einem Vorschlag "
-                        + "den wir dann gemeinsam diskutieren können bevor du etwas tust")));
+                        + "den wir dann gemeinsam diskutieren können bevor du etwas tust")), "de");
 
         assertThat(profile.isSkippable()).isTrue();
         assertThat(profile.skipReason()).isEqualTo("only-ack-or-narration");
@@ -69,7 +69,7 @@ class CheapPathFilterTest {
         // For now, the token threshold dominates — there's a separate
         // hot-path entrypoint that bypasses this filter (§4a.3).
         var profile = filter.profile(List.of(
-                user("ab jetzt")));
+                user("ab jetzt")), "de");
 
         assertThat(profile.isSkippable()).isTrue();
         assertThat(profile.skipReason()).isEqualTo("below-token-threshold");
@@ -86,7 +86,7 @@ class CheapPathFilterTest {
                         + "ist und das sollten wir aufräumen damit das konsistent "
                         + "ist und niemand sich wundert woher die Unterschiede kommen"),
                 assistant("Verstanden, ich gehe das mit dir durch und wir räumen "
-                        + "die drei Stellen einzeln auf damit nichts schiefgeht.")));
+                        + "die drei Stellen einzeln auf damit nichts schiefgeht.")), "de");
 
         assertThat(profile.isSkippable()).isFalse();
         assertThat(profile.substantialUserTurnCount()).isEqualTo(1);
@@ -100,7 +100,7 @@ class CheapPathFilterTest {
                         + "komme bei den verschiedenen Branches die wir parallel "
                         + "haben und manche davon noch nicht reif für Push sind"),
                 assistant("Verstanden, vermerke ich für diese Session und das ganze "
-                        + "Projekt damit das konsistent bleibt.")));
+                        + "Projekt damit das konsistent bleibt.")), "de");
 
         assertThat(profile.isSkippable()).isFalse();
         assertThat(profile.markerHits()).isGreaterThanOrEqualTo(1);
@@ -112,7 +112,7 @@ class CheapPathFilterTest {
     void expectation_markerRichWhenMarkersPresent() {
         var profile = filter.profile(List.of(
                 user("Ab jetzt nur committen wenn ich frage. Und vergiss die "
-                        + "alte Regel mit dem Push-Verhalten — merk dir das gut.")));
+                        + "alte Regel mit dem Push-Verhalten — merk dir das gut.")), "de");
 
         assertThat(profile.markerHits()).isGreaterThanOrEqualTo(2);
         assertThat(profile.expectation()).isEqualTo(ItemCountExpectation.MARKER_RICH);
@@ -124,7 +124,7 @@ class CheapPathFilterTest {
                 user("ok"),
                 assistant("alles klar"),
                 user("ja"),
-                assistant(repeat("filler ", 50))));
+                assistant(repeat("filler ", 50))), "de");
 
         assertThat(profile.substantialUserTurnCount()).isZero();
         // even though this span is skippable, the expectation is still queryable
@@ -140,7 +140,7 @@ class CheapPathFilterTest {
                         + "ist und das sollten wir bei Gelegenheit aufräumen "
                         + "damit das konsistent bleibt und niemand sich wundert "
                         + "woher dieser Unterschied kommt zwischen den Modulen"),
-                assistant("verstanden ich räume das mit dir zusammen auf")));
+                assistant("verstanden ich räume das mit dir zusammen auf")), "de");
 
         assertThat(profile.substantialUserTurnCount()).isEqualTo(1);
         assertThat(profile.markerHits()).isZero();

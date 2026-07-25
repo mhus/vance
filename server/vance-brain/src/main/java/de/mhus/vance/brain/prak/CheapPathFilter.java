@@ -37,7 +37,9 @@ public class CheapPathFilter {
 
     private final HotPathMarkerDetector markerDetector;
 
-    public SpanProfile profile(List<SpanMessage> messages) {
+    public SpanProfile profile(
+            List<SpanMessage> messages,
+            @org.jspecify.annotations.Nullable String lang) {
         if (messages.isEmpty()) {
             return new SpanProfile(0, 0, 0, 0, 0, 0, "empty");
         }
@@ -53,7 +55,7 @@ public class CheapPathFilter {
             int tokens = approxTokenCount(content);
             approxTokens += tokens;
 
-            markerHits += markerDetector.detect(content).size();
+            markerHits += markerDetector.detect(content, lang).size();
 
             if (msg.role() == ChatRole.USER) {
                 if (tokens > SUBSTANTIAL_USER_TOKENS) {

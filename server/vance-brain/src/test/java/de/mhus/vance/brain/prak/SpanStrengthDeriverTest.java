@@ -45,7 +45,7 @@ class SpanStrengthDeriverTest {
         List<SpanMessage> msgs = List.of(
                 user("m1", "Ab jetzt nicht mehr committen"));
 
-        StrengthDerivation d = deriver.derive(msgs, emptyOutput());
+        StrengthDerivation d = deriver.derive(msgs, emptyOutput(), "de");
 
         assertThat(d.overrides()).containsExactly(entry("m1", SpanStrength.STRONG));
     }
@@ -58,7 +58,7 @@ class SpanStrengthDeriverTest {
         EvaluationOutput out = outputWith(item(
                 "evt-1", 4, evidenceOf("m1"), LongTermMemoryDecision.skip("test")));
 
-        StrengthDerivation d = deriver.derive(msgs, out);
+        StrengthDerivation d = deriver.derive(msgs, out, "de");
 
         assertThat(d.overrides()).containsEntry("m1", SpanStrength.STRONG);
     }
@@ -70,7 +70,7 @@ class SpanStrengthDeriverTest {
                 "evt-1", 2, evidenceOf("m1"),
                 LongTermMemoryDecision.promote("low imp but promote")));
 
-        StrengthDerivation d = deriver.derive(msgs, out);
+        StrengthDerivation d = deriver.derive(msgs, out, "de");
 
         assertThat(d.overrides()).containsEntry("m1", SpanStrength.STRONG);
     }
@@ -84,7 +84,7 @@ class SpanStrengthDeriverTest {
                 "evt-1", 2, evidenceOf("m1"),
                 LongTermMemoryDecision.skip("low signal")));
 
-        StrengthDerivation d = deriver.derive(msgs, out);
+        StrengthDerivation d = deriver.derive(msgs, out, "de");
 
         assertThat(d.overrides()).doesNotContainKey("m1");
     }
@@ -100,7 +100,7 @@ class SpanStrengthDeriverTest {
                 "evt-1", 3, evidenceOf("m2"),
                 LongTermMemoryDecision.promote("ok")));
 
-        StrengthDerivation d = deriver.derive(msgs, out);
+        StrengthDerivation d = deriver.derive(msgs, out, "de");
 
         assertThat(d.overrides()).doesNotContainKey("m1");
         // m2 also stays NORMAL because importance 3 < 4 — but it IS promote
@@ -113,7 +113,7 @@ class SpanStrengthDeriverTest {
     void derive_ackWithNoEvidenceBecomesWeak() {
         List<SpanMessage> msgs = List.of(user("m1", "ok"));
 
-        StrengthDerivation d = deriver.derive(msgs, emptyOutput());
+        StrengthDerivation d = deriver.derive(msgs, emptyOutput(), "de");
 
         assertThat(d.overrides()).containsExactly(entry("m1", SpanStrength.WEAK));
     }
@@ -123,7 +123,7 @@ class SpanStrengthDeriverTest {
         List<SpanMessage> msgs = List.of(
                 assistant("m1", "Ich werde jetzt foo.java lesen und mal schauen"));
 
-        StrengthDerivation d = deriver.derive(msgs, emptyOutput());
+        StrengthDerivation d = deriver.derive(msgs, emptyOutput(), "de");
 
         assertThat(d.overrides()).containsExactly(entry("m1", SpanStrength.WEAK));
     }
@@ -135,7 +135,7 @@ class SpanStrengthDeriverTest {
                         + "fast überall JSpecify nutzt aber an drei Stellen "
                         + "noch javax.annotation übrig ist."));
 
-        StrengthDerivation d = deriver.derive(msgs, emptyOutput());
+        StrengthDerivation d = deriver.derive(msgs, emptyOutput(), "de");
 
         assertThat(d.overrides()).isEmpty();
     }
@@ -147,7 +147,7 @@ class SpanStrengthDeriverTest {
                 new SpanMessage(null, ChatRole.USER, "ok"),
                 user("m2", "ok"));
 
-        StrengthDerivation d = deriver.derive(msgs, emptyOutput());
+        StrengthDerivation d = deriver.derive(msgs, emptyOutput(), "de");
 
         // Only m2 makes it in.
         assertThat(d.overrides().keySet()).containsExactly("m2");
@@ -155,7 +155,7 @@ class SpanStrengthDeriverTest {
 
     @Test
     void derive_returnsEmptyForEmptyMessageList() {
-        StrengthDerivation d = deriver.derive(List.of(), emptyOutput());
+        StrengthDerivation d = deriver.derive(List.of(), emptyOutput(), "de");
 
         assertThat(d.overrides()).isEmpty();
     }

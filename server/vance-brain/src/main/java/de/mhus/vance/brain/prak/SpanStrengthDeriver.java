@@ -61,7 +61,9 @@ public class SpanStrengthDeriver {
      * patterns (and STRONG from marker detection).
      */
     public StrengthDerivation derive(
-            List<SpanMessage> messages, EvaluationOutput evaluation) {
+            List<SpanMessage> messages,
+            EvaluationOutput evaluation,
+            @org.jspecify.annotations.Nullable String lang) {
         if (messages == null || messages.isEmpty()) {
             return StrengthDerivation.empty();
         }
@@ -86,7 +88,7 @@ public class SpanStrengthDeriver {
         String prevId = null;
         for (SpanMessage msg : messages) {
             String id = msg.messageId();
-            if (id != null && markerDetector.hasMarker(msg.content())) {
+            if (id != null && markerDetector.hasMarker(msg.content(), lang)) {
                 markerIds.add(id);
             }
             if (prevId != null && id != null && anyItemEvidence.contains(id)) {

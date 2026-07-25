@@ -5,6 +5,9 @@ import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.prak.EvaluationOutput;
 import de.mhus.vance.shared.prak.audit.PrakRunRecord;
 import de.mhus.vance.shared.prak.audit.PrakRunService;
+import de.mhus.vance.shared.session.SessionDocument;
+import de.mhus.vance.shared.session.SessionService;
+import de.mhus.vance.shared.settings.LanguageResolver;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -49,6 +52,8 @@ public class PrakSideChannelRunner {
     private final PrakPromotionService prakPromotionService;
     private final PrakRunService prakRunService;
     private final MetricService metricService;
+    private final LanguageResolver languageResolver;
+    private final SessionService sessionService;
 
     /**
      * Run the side-channel over {@code spanDocs}. Returns {@code true}
@@ -72,8 +77,11 @@ public class PrakSideChannelRunner {
         String runId = triggerLabelPrefix(triggerLabel) + "-"
                 + process.getId() + "-" + Instant.now();
         try {
+            String resolvedProjectId =
+                    projectId == null || projectId.isBlank() ? null : projectId;
+            String chatLang = resolveChatLanguage(process, resolvedProjectId);
             List<SpanMessage> span = projectToSpan(spanDocs);
-            SpanProfile profile = cheapPathFilter.profile(span);
+            SpanProfile profile = cheapPathFilter.profile(span, chatLang);
             if (profile.isSkippable()) {
                 log.debug("Side-channel skipped for process='{}' trigger='{}' reason='{}'",
                         process.getId(), triggerLabel, profile.skipReason());
@@ -90,7 +98,7 @@ public class PrakSideChannelRunner {
 
             EvaluationOutput raw = prakService.analyze(
                     process.getTenantId(),
-                    projectId == null || projectId.isBlank() ? null : projectId,
+                    resolvedProjectId,
                     process.getId(),
                     span,
                     triggerLabel,
@@ -126,7 +134,7 @@ public class PrakSideChannelRunner {
                     .record(sanitized.metrics().finalItemCount());
 
             StrengthDerivation derivation =
-                    spanStrengthDeriver.derive(span, sanitized.output());
+                    spanStrengthDeriver.derive(span, sanitized.output(), chatLang);
             long strengthModified = spanStrengthDeriver.persist(span, derivation);
             metricService.summary("vance.prak.strength.overrides")
                     .record(derivation.overrides().size());
@@ -180,6 +188,31 @@ public class PrakSideChannelRunner {
     }
 
     // ─── helpers ───
+
+    /**
+     * Resolves the active {@code chat.language} for the process so the
+     * marker detector can add the user's language phrases on top of the
+     * English baseline. Falls back to the configured installation default
+     * ({@code vance.language.default}, built-in {@code en}) when no scope
+     * sets a language — so a {@code de}-defaulted local install matches
+     * the German markers without per-user configuration.
+     */
+    private String resolveChatLanguage(
+            ThinkProcessDocument process, @Nullable String projectId) {
+        String userId = resolveUserId(process);
+        return languageResolver.chatLanguage(
+                process.getTenantId(), userId, projectId, process.getId());
+    }
+
+    private @Nullable String resolveUserId(ThinkProcessDocument process) {
+        String sessionId = process.getSessionId();
+        if (sessionId == null || sessionId.isBlank()) {
+            return null;
+        }
+        return sessionService.findBySessionId(sessionId)
+                .map(SessionDocument::getUserId)
+                .orElse(null);
+    }
 
     /** Trigger label → short prefix for the runId. */
     private static String triggerLabelPrefix(String trigger) {

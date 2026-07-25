@@ -1,0 +1,19 @@
+# Hot-path memory markers. Baseline 'en' is ALWAYS active; the resolved
+# chat.language entries are added on top. Add new languages / phrases as
+# they become known — one YAML line, no code change.
+markers:
+  MEMORIZE:
+    en: ["remember", "remind me"]
+    de: ["merk dir", "merke dir", "erinnere mich", "notiere", "vermerke"]
+  FORGET:
+    en: ["forget"]
+    de: ["vergiss", "vergesse"]
+  FUTURE_RULE:
+    en: ["from now on", "going forward", "new rule"]
+    de: ["ab jetzt", "ab sofort", "in zukunft", "von nun an", "künftig", "neue regel"]
+  PUNCTUAL:
+    en: ["this time"]
+    de: ["diesmal"]
+  REVOKE:
+    en: ["no longer", "never again"]
+    de: ["nicht mehr", "nie wieder"]

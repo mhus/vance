@@ -1,0 +1,78 @@
+<assembly xmlns="http://maven.apache.org/ASSEMBLY/2.1.1"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/ASSEMBLY/2.1.1 https://maven.apache.org/xsd/assembly-2.1.1.xsd">
+    <!--
+      Descriptor for the brain-side Simple-Auth addon's .vab bundle.
+      Layout per specification/addon-system.md §9.1:
+
+        META-INF/
+          vance-addon.yaml      ← bootstrap reads this (id, version, host)
+          spring/...imports     ← informational; Spring reads from JAR
+        brain/lib/
+          vance-addon-brain-simpleauth.jar   ← this module's own JAR
+          vance-addon-shared-simpleauth.jar  ← shared provider core (see below)
+        face/
+          remoteEntry.js + …    ← the permission-grants federation remote
+
+      The shared core (vance-addon-shared-simpleauth) is NOT on the Brain's
+      base classpath, so it must ride inside this vab's brain/lib. It is a
+      provided-scope dependency here; the dependencySet below pulls exactly
+      that one artifact (no transitives — those are on the base classpath).
+      The anus surface ships its own copy in the sibling anus-simpleauth vab.
+
+      maven-antrun-plugin renames the produced .zip to .vab in the same
+      package phase (assembly-plugin cannot set its own extension).
+    -->
+    <id>vab</id>
+    <formats>
+        <format>zip</format>
+    </formats>
+    <includeBaseDirectory>false</includeBaseDirectory>
+
+    <files>
+        <file>
+            <source>${project.build.directory}/${project.build.finalName}.jar</source>
+            <outputDirectory>brain/lib</outputDirectory>
+        </file>
+        <file>
+            <source>${project.build.outputDirectory}/META-INF/vance-addon.yaml</source>
+            <outputDirectory>META-INF</outputDirectory>
+        </file>
+    </files>
+
+    <dependencySets>
+        <dependencySet>
+            <outputDirectory>brain/lib</outputDirectory>
+            <scope>provided</scope>
+            <useProjectArtifact>false</useProjectArtifact>
+            <useTransitiveDependencies>false</useTransitiveDependencies>
+            <includes>
+                <include>de.mhus.vance:vance-addon-shared-simpleauth</include>
+            </includes>
+        </dependencySet>
+    </dependencySets>
+
+    <fileSets>
+        <fileSet>
+            <directory>${project.build.outputDirectory}/META-INF/spring</directory>
+            <outputDirectory>META-INF/spring</outputDirectory>
+        </fileSet>
+
+        <!--
+          Federation remote: the permission-grants frontend produced by
+          `vite build` in client/. The brain bootstrap symlinks the face/
+          subtree into nginx's serve root, so remoteEntry.js becomes
+          reachable at /addons/<id>-<ver>/remoteEntry.js. The dev-only
+          index.html stub is excluded — production has no standalone HTML
+          entry for the remote.
+        -->
+        <fileSet>
+            <directory>${project.basedir}/client/dist</directory>
+            <outputDirectory>face</outputDirectory>
+            <excludes>
+                <exclude>index.html</exclude>
+                <exclude>@mf-types/**</exclude>
+            </excludes>
+        </fileSet>
+    </fileSets>
+</assembly>

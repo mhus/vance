@@ -1,5 +1,9 @@
 id: simpleauth
 version: "@project.version@"
+# Server surface this addon loads into. brain → brain/lib + face; the anus
+# CRUD lives in the sibling addon 'anus-simpleauth' (host: anus). Mirrored
+# into db.addons by the staging bootstrap; absent ⇒ brain.
+host: brain
 tile:
   label: Permissions
   description: Grant and revoke roles for users and teams.

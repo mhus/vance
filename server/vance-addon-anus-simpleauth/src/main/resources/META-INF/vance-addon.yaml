@@ -1,2 +1,6 @@
 id: anus-simpleauth
 version: "@project.version@"
+# Server surface this addon loads into. anus → anus/lib only (no face; the
+# frontend always hangs on brain). Mirrored into db.addons by the staging
+# bootstrap; the anus host stages only host: anus addons.
+host: anus

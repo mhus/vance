@@ -1,0 +1,60 @@
+<assembly xmlns="http://maven.apache.org/ASSEMBLY/2.1.1"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/ASSEMBLY/2.1.1 https://maven.apache.org/xsd/assembly-2.1.1.xsd">
+    <!--
+      Descriptor for the anus-side Simple-Auth addon's .vab bundle.
+      Layout per specification/addon-system.md §9.1 — NO face/ (the
+      frontend always hangs on the Brain, never on the Anus):
+
+        META-INF/
+          vance-addon.yaml      ← bootstrap reads this (id, version, host)
+          spring/...imports     ← informational; Spring reads from JAR
+        anus/lib/
+          vance-addon-anus-simpleauth.jar    ← this module's own JAR
+          vance-addon-shared-simpleauth.jar  ← shared provider core
+
+      Both JARs carry their OWN META-INF/spring/...AutoConfiguration.imports.
+      Because the Anus only globs anus/lib/*.jar into its classpath, the
+      brain-side AutoConfiguration never reaches the Anus context (which runs
+      WebApplicationType.NONE). The shared core is duplicated here (also in
+      the brain vab) because it is on neither host's base classpath.
+
+      maven-antrun-plugin renames the produced .zip to .vab in the same
+      package phase (assembly-plugin cannot set its own extension).
+    -->
+    <id>vab</id>
+    <formats>
+        <format>zip</format>
+    </formats>
+    <includeBaseDirectory>false</includeBaseDirectory>
+
+    <files>
+        <file>
+            <source>${project.build.directory}/${project.build.finalName}.jar</source>
+            <outputDirectory>anus/lib</outputDirectory>
+        </file>
+        <file>
+            <source>${project.build.outputDirectory}/META-INF/vance-addon.yaml</source>
+            <outputDirectory>META-INF</outputDirectory>
+        </file>
+    </files>
+
+    <dependencySets>
+        <dependencySet>
+            <outputDirectory>anus/lib</outputDirectory>
+            <scope>provided</scope>
+            <useProjectArtifact>false</useProjectArtifact>
+            <useTransitiveDependencies>false</useTransitiveDependencies>
+            <includes>
+                <include>de.mhus.vance:vance-addon-shared-simpleauth</include>
+            </includes>
+        </dependencySet>
+    </dependencySets>
+
+    <fileSets>
+        <fileSet>
+            <directory>${project.build.outputDirectory}/META-INF/spring</directory>
+            <outputDirectory>META-INF/spring</outputDirectory>
+        </fileSet>
+    </fileSets>
+</assembly>

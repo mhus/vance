@@ -13,6 +13,13 @@
     <description>Brain-side management surface for the Simple-Auth provider: the permission-grants admin REST endpoint and the permission_grant_* LLM tools. Depends on the shared-level core (vance-addon-simpleauth) for the grant storage/service + on vance-brain for RequestAuthority/tooling. Only loaded in the Brain — the anus CRUD lives in its own module.</description>
     <packaging>jar</packaging>
 
+    <properties>
+        <!-- The federation-remote face build runs pnpm. CI or a Java-only
+             dev without pnpm on PATH can pass -Dskip.pnpm=true (the .vab is
+             then built without a face/ subtree). -->
+        <skip.pnpm>false</skip.pnpm>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>de.mhus.vance</groupId>
@@ -63,5 +70,89 @@
                 </excludes>
             </resource>
         </resources>
+        <plugins>
+            <!--
+              Federation-remote build of the addon's client/ pnpm package.
+              Runs in prepare-package so client/dist exists when the assembly
+              below copies it into the .vab face/. Skippable via -Dskip.pnpm=true.
+            -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.5.0</version>
+                <executions>
+                    <execution>
+                        <id>build-addon-face</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>pnpm</executable>
+                            <workingDirectory>${project.basedir}/../..</workingDirectory>
+                            <arguments>
+                                <argument>--filter</argument>
+                                <argument>@vance-addon/simpleauth</argument>
+                                <argument>build</argument>
+                            </arguments>
+                            <skip>${skip.pnpm}</skip>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!--
+              Build the .vab bundle in the package phase — layout in
+              src/assembly/vab.xml. Output is target/${artifactId}-${version}.zip;
+              the antrun execution below renames it to .vab.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>vab</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                        <configuration>
+                            <descriptors>
+                                <descriptor>src/assembly/vab.xml</descriptor>
+                            </descriptors>
+                            <appendAssemblyId>false</appendAssemblyId>
+                            <finalName>${project.artifactId}-${project.version}</finalName>
+                            <!-- Do not attach: antrun renames .zip → .vab, so
+                                 install would fail looking for the .zip. -->
+                            <attach>false</attach>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!--
+              assembly-plugin can only emit .zip; rename to .vab so the
+              build-image / default-addons glob picks it up.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>rename-vab</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <move file="${project.build.directory}/${project.artifactId}-${project.version}.zip"
+                                      tofile="${project.build.directory}/${project.artifactId}-${project.version}.vab"/>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
     </build>
 </project>

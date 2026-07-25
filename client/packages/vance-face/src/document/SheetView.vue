@@ -466,7 +466,7 @@ function onEditKeydown(event: KeyboardEvent, addr: string): void {
     commitEdit();
     let target = nextAddr(addr, 'down');
     if (!target) {
-      addRow();
+      addRowAppend();
       target = nextAddr(addr, 'down');
     }
     if (target) void nextTick(() => startEdit(target!));
@@ -483,7 +483,7 @@ function onEditKeydown(event: KeyboardEvent, addr: string): void {
     const dir = event.shiftKey ? 'left' : 'right';
     let target = nextAddr(addr, dir);
     if (!target && !event.shiftKey) {
-      addRow();
+      addRowAppend();
       target = nextAddr(addr, 'right');
     }
     if (target) void nextTick(() => startEdit(target!));
@@ -492,7 +492,7 @@ function onEditKeydown(event: KeyboardEvent, addr: string): void {
 
 // ── Toolbar actions ────────────────────────────────────────────────
 
-function addColumn(): void {
+function addColumnAppend(): void {
   const next = columnLetterFromIndex(localSchema.value.length + 1);
   // Skip already-used letters (sparse cells may reference columns
   // beyond the explicit schema; we want a real free letter).
@@ -504,16 +504,66 @@ function addColumn(): void {
   emitDoc();
 }
 
-function addRow(): void {
+/** Insert an empty column to the right of the active column (Excel-style);
+ *  appends at the end when no column/cell is selected. */
+function insertColumnRight(): void {
+  const col = activeColumn.value;
+  if (!col) { addColumnAppend(); return; }
+  const insertIdx = columnIndexFromLetter(col) + 1; // 1-based position of the new column
+  localCells.value = localCells.value.map((c) => {
+    const m = /^([A-Z]+)([0-9]+)$/.exec(c.field);
+    if (!m) return c;
+    const ci = columnIndexFromLetter(m[1]);
+    return ci >= insertIdx ? { ...c, field: columnLetterFromIndex(ci + 1) + m[2] } : c;
+  });
+  localSchema.value = [...localSchema.value, columnLetterFromIndex(localSchema.value.length + 1)];
+  const newCols: Record<string, SheetColumn> = {};
+  for (const [c, meta] of Object.entries(localColumns.value)) {
+    const ci = columnIndexFromLetter(c);
+    newCols[ci >= insertIdx ? columnLetterFromIndex(ci + 1) : c] = meta;
+  }
+  localColumns.value = newCols;
+  selectedColumn.value = columnLetterFromIndex(insertIdx);
+  selectedAddr.value = null;
+  emitDoc();
+}
+
+function addRowAppend(): void {
   localRows.value = localRows.value + 1;
   emitDoc();
 }
 
+/** Insert an empty row below the active row (Excel-style); appends at the
+ *  end when no row/cell is selected. */
+function insertRowBelow(): void {
+  const at = activeRow.value;
+  if (at == null) { addRowAppend(); return; }
+  const insertRow = at + 1;
+  localCells.value = localCells.value.map((c) => {
+    const m = /^([A-Z]+)([0-9]+)$/.exec(c.field);
+    if (!m) return c;
+    const r = parseInt(m[2], 10);
+    return r >= insertRow ? { ...c, field: m[1] + (r + 1) } : c;
+  });
+  localRows.value = localRows.value + 1;
+  const shift = (obj: Record<string, unknown>) => {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(obj)) {
+      const n = parseInt(k, 10);
+      out[n >= insertRow ? String(n + 1) : k] = v;
+    }
+    return out;
+  };
+  localRowHeights.value = shift(localRowHeights.value) as Record<string, number>;
+  localRowBorders.value = shift(localRowBorders.value) as Record<string, string>;
+  selectedRow.value = insertRow;
+  selectedAddr.value = null;
+  emitDoc();
+}
+
 function deleteSelectedRow(): void {
-  if (!selectedAddr.value) return;
-  const m = /^([A-Z]+)([0-9]+)$/.exec(selectedAddr.value);
-  if (!m) return;
-  const row = parseInt(m[2], 10);
+  const row = activeRow.value;
+  if (row == null) return;
   // Remove cells in this row and renumber cells below it.
   const survivors: SheetCell[] = [];
   for (const c of localCells.value) {
@@ -1076,38 +1126,46 @@ function applyNumberFormat(raw: string, code: string): string {
 <template>
   <div class="sheet-view">
     <div class="toolbar">
-      <VButton size="sm" variant="ghost" @click="addRow">
-        + {{ t('documents.sheetView.addRow') }}
-      </VButton>
-      <VButton size="sm" variant="ghost" @click="addColumn">
-        + {{ t('documents.sheetView.addColumn') }}
-      </VButton>
       <VButton
         size="sm"
         variant="ghost"
-        :disabled="!selectedAddr"
+        :title="t('documents.sheetView.insertRow')"
+        @click="insertRowBelow"
+      ><span class="ico">＋▭</span></VButton>
+      <VButton
+        size="sm"
+        variant="ghost"
+        :title="t('documents.sheetView.insertColumn')"
+        @click="insertColumnRight"
+      ><span class="ico">＋▯</span></VButton>
+      <VButton
+        size="sm"
+        variant="ghost"
+        :disabled="activeRow == null"
+        :title="t('documents.sheetView.deleteRow')"
         @click="deleteSelectedRow"
-      >{{ t('documents.sheetView.deleteRow') }}</VButton>
+      ><span class="ico">－▭</span></VButton>
       <VButton
         size="sm"
         variant="ghost"
         :disabled="!activeColumn || localSchema.length <= 1"
+        :title="t('documents.sheetView.deleteColumn')"
         @click="deleteSelectedColumn"
-      >{{ t('documents.sheetView.deleteColumn') }}</VButton>
+      ><span class="ico">－▯</span></VButton>
       <VButton
         v-if="activeColumn"
         size="sm"
         variant="ghost"
         :title="t('documents.sheetView.columnBorderHint')"
         @click="cycleColumnBorder"
-      >{{ t('documents.sheetView.columnBorder') }}: {{ columnBorderLabel }}</VButton>
+      ><span class="ico">▯</span> {{ columnBorderLabel }}</VButton>
       <VButton
         v-if="activeRow != null"
         size="sm"
         variant="ghost"
         :title="t('documents.sheetView.rowBorderHint')"
         @click="cycleRowBorder"
-      >{{ t('documents.sheetView.rowBorder') }}: {{ rowBorderLabel }}</VButton>
+      ><span class="ico">▭</span> {{ rowBorderLabel }}</VButton>
       <VButton
         v-if="canRecalc"
         size="sm"
@@ -1115,7 +1173,7 @@ function applyNumberFormat(raw: string, code: string): string {
         :disabled="recalcing"
         :title="t('documents.sheetView.recalcHint')"
         @click="recalc"
-      >{{ recalcing ? '…' : t('documents.sheetView.recalc') }}</VButton>
+      ><span class="ico">{{ recalcing ? '…' : '↻' }}</span></VButton>
       <span class="hint">{{ t('documents.sheetView.hint') }}</span>
     </div>
 
@@ -1377,6 +1435,11 @@ function applyNumberFormat(raw: string, code: string): string {
   font-size: 0.7rem;
   opacity: 0.55;
   margin-left: auto;
+}
+.ico {
+  font-family: ui-monospace, monospace;
+  font-size: 0.95rem;
+  letter-spacing: -0.02em;
 }
 .grid-and-panel {
   display: flex;

@@ -644,6 +644,8 @@ export default {
     sheetView: {
       addRow: 'Add row',
       addColumn: 'Add column',
+      insertRow: 'Insert row below the selection',
+      insertColumn: 'Insert column right of the selection',
       deleteRow: 'Delete row',
       deleteColumn: 'Delete column',
       recalc: 'Recalculate',

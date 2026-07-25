@@ -640,6 +640,8 @@ export default {
     sheetView: {
       addRow: 'Zeile hinzufügen',
       addColumn: 'Spalte hinzufügen',
+      insertRow: 'Zeile unter der Auswahl einfügen',
+      insertColumn: 'Spalte rechts der Auswahl einfügen',
       deleteRow: 'Zeile löschen',
       deleteColumn: 'Spalte löschen',
       recalc: 'Neu berechnen',

@@ -1,5 +1,5 @@
 ---
-triggers: search, web search, recherche, suchen, "look up", find information online, "what does the web say", project memory, do we have, haben wir was zu, research_search, research_rich, research_search_expert, research_providers, research_investigate, investigate, "research the topic", "best sources", "find me the best", web_search, image_search, video_search, pdf_search, rich_search, memory_search
+triggers: search, web search, recherche, suchen, "look up", find information online, "what does the web say", project memory, do we have, haben wir was zu, research_search, research_rich, research_search_expert, research_providers, research_investigate, investigate, "research the topic", "best sources", "find me the best", web_search, image_search, video_search, pdf_search, memory_search
 summary: How to pick between memory_search (project-local), research_search / research_rich / research_investigate (web), and the deferred legacy *_search tools. Check memory first; on the web side everything goes through the research_* family.
 ---
 # Search tools — picking the right one
@@ -7,10 +7,11 @@ summary: How to pick between memory_search (project-local), research_search / re
 The web-search surface is **`research_search`** (modality-aware) plus
 **`research_rich`** (multi-modality fan-out) — both routed through the
 project's `research.endpoint.*` configuration so the operator controls
-which provider serves each modality. The five legacy `web_search` /
-`image_search` / `video_search` / `pdf_search` / `rich_search` tools
+which provider serves each modality. The four legacy `web_search` /
+`image_search` / `video_search` / `pdf_search` tools
 still exist as deferred fallbacks; the LLM should prefer the
-`research_*` successors.
+`research_*` successors. (The old multi-modal `rich_search` was
+removed — use `research_rich`.)
 
 ## Before going to the web — check the project first
 
@@ -232,7 +233,7 @@ settings. Use `research_providers` to list the inventory live.
 ## Legacy fallback
 
 The original `web_search` / `image_search` / `video_search` /
-`pdf_search` / `rich_search` tools are still wired up as
+`pdf_search` tools are still wired up as
 `deferred=true`. They keep working unchanged for legacy recipes
 that reference them by name, but the search-hint on each one
 points at the `research_*` successor. Don't reach for them from

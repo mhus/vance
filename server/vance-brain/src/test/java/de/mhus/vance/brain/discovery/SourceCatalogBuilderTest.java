@@ -226,24 +226,31 @@ class SourceCatalogBuilderTest {
     }
 
     @Test
-    void renders_tools_section_only_for_primary_tools() {
+    void renders_primaryToolsFull_andNonPrimaryToolsCompact() {
         DocumentService documentService = mock(DocumentService.class);
         when(documentService.listByPrefixCascade(any(), any(), any())).thenReturn(Map.of());
         SkillResolver skillResolver = mock(SkillResolver.class);
         when(skillResolver.listAvailable(any())).thenReturn(List.of());
 
         Tool primaryTool = stubTool("web_search", "Search the web.", true);
-        Tool helperTool = stubTool("manual_read", "Read a manual.", false);
+        Tool helperTool = stubTool(
+                "manual_read", "Read a manual. Second sentence with extra detail.", false);
 
         SourceCatalogBuilder builder = new SourceCatalogBuilder(
                 documentService, skillResolver, List.of(primaryTool, helperTool));
         String md = builder.build(TENANT, null).markdown();
 
         assertThat(md)
+                // Primary tools keep their full description under "## Tools".
                 .contains("## Tools")
                 .contains("### web_search")
                 .contains("Search the web.")
-                .doesNotContain("### manual_read");
+                // Non-primary tools are now discoverable too (previously skipped
+                // entirely) — as a COMPACT first-sentence card in a separate section.
+                .contains("## More tools")
+                .contains("### manual_read")
+                .contains("Read a manual.")
+                .doesNotContain("Second sentence with extra detail.");
     }
 
     @Test

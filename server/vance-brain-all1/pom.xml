@@ -26,76 +26,97 @@
             <groupId>de.mhus.vance</groupId>
             <artifactId>vance-addon-shared-simpleauth</artifactId>
             <version>${project.version}</version>
+            <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>de.mhus.vance</groupId>
             <artifactId>vance-addon-brain-simpleauth</artifactId>
             <version>${project.version}</version>
+            <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>de.mhus.vance</groupId>
             <artifactId>vance-addon-brain-slideshow</artifactId>
             <version>${project.version}</version>
+            <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>de.mhus.vance</groupId>
             <artifactId>vance-addon-brain-kanban</artifactId>
             <version>${project.version}</version>
+            <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>de.mhus.vance</groupId>
             <artifactId>vance-addon-brain-calendar</artifactId>
             <version>${project.version}</version>
+            <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>de.mhus.vance</groupId>
             <artifactId>vance-addon-brain-rlang</artifactId>
             <version>${project.version}</version>
+            <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>de.mhus.vance</groupId>
             <artifactId>vance-addon-brain-workbook</artifactId>
             <version>${project.version}</version>
+            <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>de.mhus.vance</groupId>
             <artifactId>vance-addon-brain-wiki</artifactId>
             <version>${project.version}</version>
+            <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>de.mhus.vance</groupId>
             <artifactId>vance-addon-brain-journal</artifactId>
             <version>${project.version}</version>
+            <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>de.mhus.vance</groupId>
             <artifactId>vance-addon-brain-gtd</artifactId>
             <version>${project.version}</version>
+            <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>de.mhus.vance</groupId>
             <artifactId>vance-addon-brain-issues</artifactId>
             <version>${project.version}</version>
+            <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>de.mhus.vance</groupId>
             <artifactId>vance-addon-brain-canvas</artifactId>
             <version>${project.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>de.mhus.vance</groupId>
+            <artifactId>vance-addon-brain-binder</artifactId>
+            <version>${project.version}</version>
+            <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>de.mhus.vance</groupId>
             <artifactId>vance-addon-brain-finance</artifactId>
             <version>${project.version}</version>
+            <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>de.mhus.vance</groupId>
             <artifactId>vance-addon-brain-tex</artifactId>
             <version>${project.version}</version>
+            <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>de.mhus.vance</groupId>
             <artifactId>vance-addon-brain-common-desktop</artifactId>
             <version>${project.version}</version>
+            <scope>runtime</scope>
         </dependency>
     </dependencies>
 

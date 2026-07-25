@@ -1,0 +1,11 @@
+package de.mhus.vance.addon.brain.binder;
+
+import de.mhus.vance.api.annotations.GenerateTypeScript;
+import org.jspecify.annotations.Nullable;
+
+/** Body of {@code POST /addon/binder/entry} — anchor a document. */
+@GenerateTypeScript("binder")
+public record AddEntryRequest(
+        String ref,
+        @Nullable String section,
+        @Nullable String title) {}

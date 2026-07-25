@@ -1,0 +1,9 @@
+$meta:
+  kind: application
+  app: binder
+title: "{{ title }}"
+{% if description %}description: "{{ description }}"{% endif %}
+binder:
+  entries: []
+  index:
+    outputPath: _index.md

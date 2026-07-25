@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { brainFetch } from '@vance/shared';
 import { VButton } from '@/components';
@@ -138,6 +138,10 @@ function getValue(addr: string): string {
 // ── Selection / Edit ───────────────────────────────────────────────
 
 const selectedAddr = ref<string | null>(null);
+// The opposite corner of a rectangular multi-cell selection. null = the
+// selection is just the single `selectedAddr`.
+const selectionFocus = ref<string | null>(null);
+const selecting = ref(false); // true while drag-selecting
 const selectedColumn = ref<string | null>(null);
 const editingAddr = ref<string | null>(null);
 const editBuffer = ref('');
@@ -148,13 +152,10 @@ function registerInput(addr: string, el: Element | null): void {
   else inputRefs.value.delete(addr);
 }
 
-function selectCell(addr: string): void {
-  selectedAddr.value = addr;
-  selectedColumn.value = null;
-}
-
 function startEdit(addr: string): void {
   selectedAddr.value = addr;
+  selectionFocus.value = null;
+  selectedColumn.value = null;
   editingAddr.value = addr;
   editBuffer.value = getValue(addr);
   void nextTick(() => {
@@ -223,6 +224,71 @@ function emitDoc(): void {
     extra: props.doc.extra,
   });
 }
+
+// ── Rectangular multi-cell selection ──────────────────────────────
+
+/** Locate an address by its column POSITION in the visible schema (so
+ *  gaps in `schema` work) and its row number. */
+function cellPos(addr: string): { pos: number; row: number } | null {
+  const m = /^([A-Z]+)([0-9]+)$/.exec(addr);
+  if (!m) return null;
+  const pos = localSchema.value.indexOf(m[1]);
+  if (pos < 0) return null;
+  return { pos, row: parseInt(m[2], 10) };
+}
+
+const selectionRect = computed(() => {
+  const a = selectedAddr.value ? cellPos(selectedAddr.value) : null;
+  if (!a) return null;
+  const b = (selectionFocus.value ? cellPos(selectionFocus.value) : null) ?? a;
+  return {
+    minPos: Math.min(a.pos, b.pos), maxPos: Math.max(a.pos, b.pos),
+    minRow: Math.min(a.row, b.row), maxRow: Math.max(a.row, b.row),
+  };
+});
+
+function isSelected(addr: string): boolean {
+  const r = selectionRect.value;
+  const p = cellPos(addr);
+  if (!r || !p) return false;
+  return p.pos >= r.minPos && p.pos <= r.maxPos && p.row >= r.minRow && p.row <= r.maxRow;
+}
+
+/** All addresses inside the current selection rectangle, clamped to the
+ *  visible schema columns and row count. */
+const selectedAddresses = computed<string[]>(() => {
+  const r = selectionRect.value;
+  if (!r) return [];
+  const out: string[] = [];
+  for (let pos = r.minPos; pos <= r.maxPos; pos++) {
+    const col = localSchema.value[pos];
+    if (!col) continue;
+    for (let row = r.minRow; row <= Math.min(r.maxRow, localRows.value); row++) {
+      out.push(col + row);
+    }
+  }
+  return out;
+});
+
+const selectionCount = computed(() => selectedAddresses.value.length);
+
+function onCellPointerDown(addr: string, ev: PointerEvent): void {
+  if (ev.button !== 0 || editingAddr.value === addr) return;
+  selectedColumn.value = null;
+  if (ev.shiftKey && selectedAddr.value) {
+    selectionFocus.value = addr; // extend the rectangle from the anchor
+    return;
+  }
+  selectedAddr.value = addr;
+  selectionFocus.value = null;
+  selecting.value = true;
+}
+
+function onCellPointerEnter(addr: string): void {
+  if (selecting.value) selectionFocus.value = addr;
+}
+
+function endSelecting(): void { selecting.value = false; }
 
 // ── Navigation between cells ───────────────────────────────────────
 
@@ -508,28 +574,50 @@ function onRowResizeEnd(): void {
 
 // ── Format actions (side panel) ────────────────────────────────────
 
-const selectedCell = computed<SheetCell | null>(() => {
-  if (!selectedAddr.value) return null;
-  return getCell(selectedAddr.value) ?? null;
-});
+/** The value of a cell attribute shared by ALL selected cells, or
+ *  undefined when they differ / none is set (→ panel shows "none"). */
+function selectionCommon(attr: 'color' | 'background'): string | undefined {
+  const addrs = selectedAddresses.value;
+  if (!addrs.length) return undefined;
+  const first = getCell(addrs[0])?.[attr];
+  return addrs.every((a) => getCell(a)?.[attr] === first) ? (first ?? undefined) : undefined;
+}
+
+const selectionColor = computed(() => selectionCommon('color'));
+const selectionBackground = computed(() => selectionCommon('background'));
+const selectionHasFormat = computed(() =>
+  selectedAddresses.value.some((a) => { const c = getCell(a); return c?.color || c?.background; }));
+
+/** Apply a formatting patch to EVERY selected cell in one batch (one emit). */
+function applyToSelection(patch: Partial<SheetCell>): void {
+  const addrs = selectedAddresses.value;
+  if (!addrs.length) return;
+  const cells = [...localCells.value];
+  const byField = new Map<string, number>();
+  cells.forEach((c, i) => byField.set(c.field, i));
+  for (const addr of addrs) {
+    const idx = byField.get(addr);
+    if (idx != null) {
+      cells[idx] = { ...cells[idx], ...patch, field: addr };
+    } else {
+      cells.push({ field: addr, data: '', extra: {}, ...patch });
+      byField.set(addr, cells.length - 1);
+    }
+  }
+  localCells.value = cells.filter((c) => !cellShouldBeDropped(c));
+  emitDoc();
+}
 
 function setColor(color: string): void {
-  if (!selectedAddr.value) return;
-  upsertCell(selectedAddr.value, {
-    color: color && color.length > 0 ? color : undefined,
-  });
+  applyToSelection({ color: color && color.length > 0 ? color : undefined });
 }
 
 function setBackground(bg: string): void {
-  if (!selectedAddr.value) return;
-  upsertCell(selectedAddr.value, {
-    background: bg && bg.length > 0 ? bg : undefined,
-  });
+  applyToSelection({ background: bg && bg.length > 0 ? bg : undefined });
 }
 
 function clearCellFormat(): void {
-  if (!selectedAddr.value) return;
-  upsertCell(selectedAddr.value, { color: undefined, background: undefined });
+  applyToSelection({ color: undefined, background: undefined });
 }
 
 // ── Helpers for template ───────────────────────────────────────────
@@ -606,10 +694,14 @@ function scheduleRecalc(): void {
   recalcTimer = setTimeout(() => void recalc(), 1500);
 }
 
+onMounted(() => {
+  window.addEventListener('pointerup', endSelecting);
+});
 onBeforeUnmount(() => {
   if (recalcTimer) clearTimeout(recalcTimer);
   window.removeEventListener('pointermove', onColumnResizeMove);
   window.removeEventListener('pointermove', onRowResizeMove);
+  window.removeEventListener('pointerup', endSelecting);
 });
 
 /** Displayed cell content: computed value for a formula cell (once
@@ -728,14 +820,16 @@ function cellStyle(addr: string): Record<string, string> {
               type="button"
               class="cell"
               :class="{
-                'cell--selected': selectedAddr === col + row,
+                'cell--selected': isSelected(col + row),
+                'cell--active': selectedAddr === col + row,
                 'cell--col-selected': activeColumn === col,
                 'cell--formula': isFormula(col + row),
                 'cell--error': cellIsError(col + row),
               }"
               :style="cellStyle(col + row)"
               :title="isFormula(col + row) ? getValue(col + row) : (col + row)"
-              @click="selectCell(col + row)"
+              @pointerdown="onCellPointerDown(col + row, $event)"
+              @pointerenter="onCellPointerEnter(col + row)"
               @dblclick="startEdit(col + row)"
             >
               <span class="cell-text">{{ cellDisplay(col + row) }}</span>
@@ -744,21 +838,25 @@ function cellStyle(addr: string): Record<string, string> {
         </div>
       </div>
 
-      <aside v-if="selectedCell" class="panel">
+      <aside v-if="selectionCount > 0" class="panel">
         <h4>{{ t('documents.sheetView.cellProps') }}</h4>
-        <p class="cell-addr">{{ selectedAddr }}</p>
+        <p class="cell-addr">
+          {{ selectionCount === 1
+            ? selectedAddr
+            : t('documents.sheetView.cellsSelected', { n: selectionCount }) }}
+        </p>
         <label>
           {{ t('documents.sheetView.colorField') }}
           <div class="color-row">
             <input
               type="color"
-              :value="selectedCell.color ?? '#1f2937'"
+              :value="selectionColor ?? '#1f2937'"
               @input="(e) => setColor((e.target as HTMLInputElement).value)"
             />
             <button
               type="button"
               class="clear-btn"
-              :disabled="!selectedCell.color"
+              :disabled="!selectionColor"
               @click="setColor('')"
             >{{ t('documents.sheetView.clear') }}</button>
           </div>
@@ -768,13 +866,13 @@ function cellStyle(addr: string): Record<string, string> {
           <div class="color-row">
             <input
               type="color"
-              :value="selectedCell.background ?? '#ffffff'"
+              :value="selectionBackground ?? '#ffffff'"
               @input="(e) => setBackground((e.target as HTMLInputElement).value)"
             />
             <button
               type="button"
               class="clear-btn"
-              :disabled="!selectedCell.background"
+              :disabled="!selectionBackground"
               @click="setBackground('')"
             >{{ t('documents.sheetView.clear') }}</button>
           </div>
@@ -782,15 +880,9 @@ function cellStyle(addr: string): Record<string, string> {
         <VButton
           size="sm"
           variant="ghost"
-          :disabled="!selectedCell.color && !selectedCell.background"
+          :disabled="!selectionHasFormat"
           @click="clearCellFormat"
         >{{ t('documents.sheetView.clearFormat') }}</VButton>
-      </aside>
-
-      <aside v-else-if="selectedAddr" class="panel">
-        <h4>{{ t('documents.sheetView.cellProps') }}</h4>
-        <p class="cell-addr">{{ selectedAddr }}</p>
-        <p class="panel-empty-hint">{{ t('documents.sheetView.cellEmptyHint') }}</p>
       </aside>
 
       <aside v-else class="panel panel--empty">
@@ -937,16 +1029,26 @@ function cellStyle(addr: string): Record<string, string> {
   color: inherit;
   outline: none;
   min-height: 1.85rem;
-  cursor: text;
+  cursor: cell;
   border-right: 1px solid oklch(var(--bc) / 0.08);
+  user-select: none;
+}
+.cell-input {
+  cursor: text;
+  user-select: text;
 }
 .cell:hover {
   background: oklch(var(--bc) / 0.04);
 }
 .cell--selected {
-  background: oklch(var(--p) / 0.06);
-  outline: 1px solid oklch(var(--p) / 0.5);
+  /* every cell in the selection rectangle */
+  background: oklch(var(--p) / 0.1);
+}
+.cell--active {
+  /* the anchor cell of the selection */
+  outline: 2px solid oklch(var(--p) / 0.7);
   outline-offset: -1px;
+  z-index: 1;
 }
 .cell--formula {
   box-shadow: inset 2px 0 0 oklch(var(--p));

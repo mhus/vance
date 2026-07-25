@@ -813,8 +813,10 @@ function cellStyle(addr: string): Record<string, string> {
   user-select: none;
 }
 .header-col--selected {
-  background: hsl(var(--p) / 0.14);
+  background: hsl(var(--p) / 0.28);
   color: hsl(var(--bc));
+  font-weight: 700;
+  box-shadow: inset 0 -3px 0 hsl(var(--p));
 }
 .col-resize {
   position: absolute;
@@ -829,7 +831,7 @@ function cellStyle(addr: string): Record<string, string> {
   background: hsl(var(--p) / 0.5);
 }
 .cell--col-selected {
-  background: hsl(var(--p) / 0.05);
+  background: hsl(var(--p) / 0.1);
 }
 .cell,
 .cell-input {

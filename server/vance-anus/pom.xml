@@ -87,6 +87,12 @@
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
                     <mainClass>de.mhus.vance.anus.VanceAnusApplication</mainClass>
+                    <!-- Keep the regular jar as a normal library so other
+                         Maven modules (the vance-anus-all dev-bundle) can
+                         depend on anus's classes. The executable jar lands at
+                         vance-anus-exec.jar — the Docker image copies that,
+                         `mvn spring-boot:run` is unaffected. Mirrors vance-brain. -->
+                    <classifier>exec</classifier>
                     <!-- ZIP layout swaps the default JarLauncher for
                          PropertiesLauncher, which honours -Dloader.path
                          (and the LOADER_PATH env var). The Docker entrypoint

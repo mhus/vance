@@ -146,7 +146,10 @@ public class WebFetchTool implements Tool {
                 + "'no-llms' skips the originOverview probe entirely; "
                 + "'insecure' skips TLS certificate verification for "
                 + "this one call — only use when the user has explicitly "
-                + "asked to bypass a known-broken cert chain.";
+                + "asked to bypass a known-broken cert chain. "
+                + "Returns the body once and does NOT persist it — to save "
+                + "a page as a project document the user can find later, use "
+                + "doc_import_url instead.";
     }
 
     @Override

@@ -119,14 +119,13 @@ public class FindToolsTool implements Tool {
      */
     static List<Map<String, Object>> filterMatches(
             List<ToolSpec> all, String query, boolean includePrimary, Set<String> invocable) {
-        String needle = query == null ? null : query.toLowerCase();
+        String[] tokens = (query == null || query.isBlank())
+                ? new String[0]
+                : query.toLowerCase().trim().split("\\s+");
         return all.stream()
                 .filter(t -> includePrimary || !t.isPrimary())
                 .filter(t -> invocable.isEmpty() || invocable.contains(t.getName()))
-                .filter(t -> needle == null
-                        || t.getName().toLowerCase().contains(needle)
-                        || (t.getDescription() != null
-                                && t.getDescription().toLowerCase().contains(needle)))
+                .filter(t -> matchesAllTokens(t, tokens))
                 .map(t -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("name", t.getName());
@@ -135,5 +134,21 @@ public class FindToolsTool implements Tool {
                     return row;
                 })
                 .toList();
+    }
+
+    /**
+     * AND-match over whitespace tokens: every token of the query must be a
+     * substring of the tool's name or description. Fixes multi-word queries
+     * ("create document") that a single-substring match would miss, while a
+     * single-token query behaves exactly as the old substring filter.
+     */
+    private static boolean matchesAllTokens(ToolSpec t, String[] tokens) {
+        if (tokens.length == 0) return true;
+        String hay = (t.getName() + " "
+                + (t.getDescription() == null ? "" : t.getDescription())).toLowerCase();
+        for (String tok : tokens) {
+            if (!hay.contains(tok)) return false;
+        }
+        return true;
     }
 }

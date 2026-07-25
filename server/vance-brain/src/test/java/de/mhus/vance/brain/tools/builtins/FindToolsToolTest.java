@@ -68,4 +68,19 @@ class FindToolsToolTest {
 
         assertThat(out).isEmpty();
     }
+
+    @Test
+    void multiWordQuery_matchesWhenEveryTokenIsPresent() {
+        // "workpage create" — both tokens appear in workpage_create; a single-substring
+        // filter would miss (the underscore breaks the literal "workpage create").
+        assertThat(FindToolsTool.filterMatches(all, "workpage create", false, Set.of()))
+                .extracting(m -> m.get("name")).containsExactly("workpage_create");
+    }
+
+    @Test
+    void multiWordQuery_excludesWhenAnyTokenIsMissing() {
+        // "banana" appears nowhere → no match, even though "workpage" does.
+        assertThat(FindToolsTool.filterMatches(all, "workpage banana", false, Set.of()))
+                .isEmpty();
+    }
 }

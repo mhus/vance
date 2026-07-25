@@ -71,13 +71,19 @@ class PermissionPromptTest {
     void resolve_allowAlways_persistsRule_andReloadsPolicy(@TempDir Path dir) {
         Stack s = stack(dir, true);
 
+        // ClientSecurityService canonicalizes the path BEFORE prompting, so the
+        // rule persisted by "allow always" is the canonical form and matches the
+        // canonical path evaluated later. Mirror that here — a raw /tmp path would
+        // resolve through the /tmp→/private/tmp symlink on macOS and never match.
+        String canonical = PermissionPaths.canonicalize(PATH).toString();
+
         CompletableFuture<PermissionDecision> result = CompletableFuture.supplyAsync(
-                () -> s.prompt().resolve("client_file_write", PermissionDomain.PATHS, PATH));
+                () -> s.prompt().resolve("client_file_write", PermissionDomain.PATHS, canonical));
         awaitActive(s.pending());
         s.pending().offerAnswer("2"); // allow always
 
         assertThat(result.join()).isEqualTo(PermissionDecision.ALLOW);
-        assertThat(s.loader().load().getPaths().getAllow()).contains(PATH);
+        assertThat(s.loader().load().getPaths().getAllow()).contains(canonical);
         assertThat(s.permissions().policy().evaluatePath(PermissionPaths.canonicalize(PATH)))
                 .isEqualTo(PermissionDecision.ALLOW);
     }

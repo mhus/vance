@@ -59,6 +59,20 @@ public class FookTicketService {
     static final String DOC_KIND = "fook-ticket";
     static final String TRIAGED_BY = "fook";
 
+    /** Document kind of the session-analysis sidecar written next to a
+     *  ticket. Separate kind so ticket scans ({@link #DOC_KIND}) never
+     *  pick the report up. See {@code planning/fook-session-report.md}. */
+    public static final String ANALYSIS_DOC_KIND = "fook-ticket-analysis";
+
+    /** {@code $meta.analysisStatus} values. {@code written} = a sidecar
+     *  exists ({@code analysisRef} points to it); {@code skipped} = the
+     *  analysis was requested but produced nothing (no session, or the
+     *  model judged the session unhelpful); {@code failed} = the
+     *  analysis attempt errored. Absent = never requested. */
+    public static final String ANALYSIS_WRITTEN = "written";
+    public static final String ANALYSIS_SKIPPED = "skipped";
+    public static final String ANALYSIS_FAILED = "failed";
+
     /** Local transport-lifecycle states. {@code new} → {@code transferred}
      *  on a successful upstream push; {@code failed} after the sender
      *  has given up retrying. */
@@ -309,6 +323,87 @@ public class FookTicketService {
     /** Write the back-pointer from the ticket to its tracker inbox-item. */
     public void setInboxItemId(String uuid, String inboxItemId) {
         patchMeta(uuid, meta -> meta.put("inboxItemId", inboxItemId));
+    }
+
+    // ─── Session-analysis sidecar ───────────────────────────────────
+
+    /**
+     * Persist the session-analysis report as a sibling markdown
+     * document ({@code <uuid>.analysis.md}) and stamp the ticket's
+     * {@code $meta.analysisRef} + {@code analysisStatus=written}. The
+     * report body is scrubbed of secret-shaped tokens at rest — like
+     * the ticket description, it lands in the globally-readable
+     * {@code _vance} pool and is later redacted again before any
+     * upstream egress.
+     *
+     * <p>The sidecar carries a markdown front-matter header so it is
+     * indexed under {@link #ANALYSIS_DOC_KIND} and never surfaces in a
+     * {@code fook-ticket} scan. Written before the meta patch so a
+     * crash between the two leaves an orphan sidecar (harmless) rather
+     * than a dangling {@code analysisRef}.
+     */
+    public void writeAnalysis(String uuid, String reportMarkdown) {
+        String scrubbed = de.mhus.vance.brain.fook.upstream.FookTicketAnonymizer
+                .scrubSecretsAtRest(nonBlank(reportMarkdown, ""));
+        String body = "---\n"
+                + "kind: " + ANALYSIS_DOC_KIND + "\n"
+                + "ticket: " + uuid + "\n"
+                + "createdAt: " + Instant.now() + "\n"
+                + "---\n\n"
+                + scrubbed
+                + (scrubbed.endsWith("\n") ? "" : "\n");
+        documentService.upsertText(
+                TENANT_ID, PROJECT_ID, analysisPathFor(uuid),
+                "Session analysis for ticket " + uuid,
+                List.of("fook", "fook-analysis"),
+                body,
+                TRIAGED_BY,
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+        patchMeta(uuid, meta -> {
+            meta.put("analysisRef", analysisPathFor(uuid));
+            meta.put("analysisStatus", ANALYSIS_WRITTEN);
+        });
+        log.info("Fook: wrote session analysis for ticket id='{}' ({} chars)",
+                uuid, scrubbed.length());
+    }
+
+    /**
+     * Stamp {@code $meta.analysisStatus} without writing a sidecar —
+     * used for the {@link #ANALYSIS_SKIPPED} / {@link #ANALYSIS_FAILED}
+     * outcomes so Lunkwill can tell "no report exists, and why" from
+     * "report pending".
+     */
+    public void setAnalysisStatus(String uuid, String status) {
+        patchMeta(uuid, meta -> meta.put("analysisStatus", status));
+    }
+
+    static String analysisPathFor(String uuid) {
+        return PATH_PREFIX + uuid + ".analysis.md";
+    }
+
+    /**
+     * Read a ticket's session-analysis report body (front-matter
+     * stripped), or empty when no sidecar exists. Used by the upstream
+     * transport to fold the report into the external ticket (§11).
+     */
+    public Optional<String> readAnalysis(String uuid) {
+        return documentService.findByPath(TENANT_ID, PROJECT_ID, analysisPathFor(uuid))
+                .map(documentService::readContent)
+                .map(FookTicketService::stripFrontMatter)
+                .filter(s -> !s.isBlank());
+    }
+
+    /** Drop a leading {@code ---}…{@code ---} fenced front-matter block. */
+    static String stripFrontMatter(String body) {
+        if (body == null) return "";
+        String s = body.stripLeading();
+        if (!s.startsWith("---")) return body.strip();
+        int firstNl = s.indexOf('\n');
+        if (firstNl < 0) return "";
+        int end = s.indexOf("\n---", firstNl);
+        if (end < 0) return body.strip();
+        int afterFence = s.indexOf('\n', end + 1);
+        return afterFence < 0 ? "" : s.substring(afterFence + 1).strip();
     }
 
     /**

@@ -92,6 +92,7 @@ public class FookService {
     private final LightLlmService lightLlm;
     private final InboxItemService inboxItemService;
     private final SettingService settingService;
+    private final FookSessionAnalysisService sessionAnalysisService;
 
     /** FIFO, thread-safe, lock-free. {@link #submit} writes,
      *  {@link #drainQueue} reads. Bounded only by JVM heap — a
@@ -233,6 +234,66 @@ public class FookService {
                 log.warn("Fook: could not stamp inboxItemId on ticket {}: {}",
                         ticketId, e.getMessage());
             }
+        }
+
+        maybeEnqueueSessionAnalysis(sub, result, ticketId);
+    }
+
+    /**
+     * Hand the ticket off to {@link FookSessionAnalysisService} when the
+     * triage LLM flagged {@code needSessionReport} <b>and</b> the
+     * report carries a session/process context to analyse (the ENGINE
+     * report path — user-direct reports without a process are v2). When
+     * flagged but un-analysable, stamp {@code analysisStatus=skipped}
+     * so Lunkwill can tell "asked, but nothing to analyse" apart from
+     * "never asked". Never fatal to ticket creation.
+     */
+    private void maybeEnqueueSessionAnalysis(
+            Submission sub, TriageResult result, String ticketId) {
+        if (!result.isNeedSessionReport()) {
+            return;
+        }
+        TicketContext ctx = sub.request().getContext();
+        String tenantId = sub.request().getReporter().getTenantId();
+        boolean analysable = ctx != null
+                && ctx.getSessionId() != null && !ctx.getSessionId().isBlank()
+                && ctx.getProcessId() != null && !ctx.getProcessId().isBlank()
+                && tenantId != null && !tenantId.isBlank();
+        if (!analysable) {
+            log.info("Fook: session report requested for ticket {} but no "
+                    + "session/process context — skipping analysis", ticketId);
+            safeSetAnalysisSkipped(ticketId);
+            return;
+        }
+        try {
+            sessionAnalysisService.enqueue(
+                    FookSessionAnalysisService.AnalysisJob.builder()
+                            .ticketId(ticketId)
+                            .submissionId(sub.id())
+                            .tenantId(tenantId)
+                            .projectId(ctx.getProjectId())
+                            .sessionId(ctx.getSessionId())
+                            .processId(ctx.getProcessId())
+                            .reason(result.getReason())
+                            .triageNote(result.getTriageNote())
+                            .ticketTitle(result.getDerivedTitle())
+                            .ticketType(result.getDerivedType())
+                            .engine(ctx.getEngine())
+                            .recipe(ctx.getRecipe())
+                            .build());
+        } catch (RuntimeException e) {
+            log.warn("Fook: could not enqueue session analysis for ticket {}: {}",
+                    ticketId, e.getMessage());
+        }
+    }
+
+    private void safeSetAnalysisSkipped(String ticketId) {
+        try {
+            ticketService.setAnalysisStatus(
+                    ticketId, FookTicketService.ANALYSIS_SKIPPED);
+        } catch (RuntimeException e) {
+            log.warn("Fook: could not stamp analysisStatus on ticket {}: {}",
+                    ticketId, e.getMessage());
         }
     }
 
@@ -518,6 +579,7 @@ public class FookService {
                 .relatedTickets(stringList(raw.get("relatedTickets")))
                 .category(stringOrNull(raw.get("category")))
                 .triageNote(stringOrNull(raw.get("triageNote")))
+                .needSessionReport(boolOrFalse(raw.get("needSessionReport")))
                 .reason(stringOrNull(raw.get("reason")))
                 .build();
     }
@@ -538,6 +600,12 @@ public class FookService {
         if (o == null) return null;
         if (o instanceof String s) return s.isBlank() ? null : s;
         return o.toString();
+    }
+
+    private static boolean boolOrFalse(@Nullable Object o) {
+        if (o instanceof Boolean b) return b;
+        if (o instanceof String s) return Boolean.parseBoolean(s.trim());
+        return false;
     }
 
     private static List<String> stringList(@Nullable Object o) {

@@ -80,6 +80,7 @@ promptPrefix: |
         "derivedSeverity": "low" | "medium" | "high",
         "derivedTitle": "short imperative title — ALWAYS English",
         "englishTranslation": "English translation of the report body, OR empty string if the report is already in English",
+        "needSessionReport": true | false,
         "relatedTickets": ["<uuid>", ...],
         "triageNote": "1–3 sentences in English (optional)",
         "reason": "1 sentence for the user's inbox item (in the reporter's language if obvious, otherwise English)"
@@ -122,6 +123,19 @@ promptPrefix: |
     (a process used `vance_support_request` to complain about
     Fook's response). Stop the loop.
   - `other` — fallback when nothing above fits cleanly.
+
+  ## Session report (new_ticket only)
+
+  Set `needSessionReport` to `true` when a distilled analysis of the
+  reporter's session would help whoever fixes this ticket — they have
+  no access to the session itself. This is the common case for
+  reproducible `bug` reports filed by an engine mid-task, where the
+  conversation shows what was attempted and where it broke. Set it to
+  `false` for pure `feature` wishes, trivial/cosmetic issues, or
+  reports whose whole context is already in the text. When in doubt for
+  a bug, prefer `true` — the analysis stage has its own gate and will
+  drop a session that turns out to hold nothing useful. Omitting the
+  field is treated as `false`.
 
   ## Type derivation rules (new_ticket)
 

@@ -208,6 +208,38 @@ class FookTicketAnonymizerTest {
 
     // ─── helpers ────────────────────────────────────────────────────
 
+    // ─── session-analysis inclusion (§11) ───────────────────────────
+
+    @Test
+    void analysis_report_is_folded_into_upstream_body() {
+        TicketDocument t = ticket("Crash on save", "It crashed.");
+        ProviderTicketDraft d = anonymizer.buildDraft(
+                t, "s", "fp", true, List.of(), List.of(),
+                "The save_file tool NPEs when path is null.");
+        assertThat(d.getBody())
+                .contains("## Session analysis")
+                .contains("The save_file tool NPEs when path is null.");
+    }
+
+    @Test
+    void analysis_report_is_scrubbed_like_the_rest_of_the_body() {
+        TicketDocument t = ticket("Crash", "descr");
+        ProviderTicketDraft d = anonymizer.buildDraft(
+                t, "s", "fp", true, List.of("email"), List.of(),
+                "Repro emailed from alice@example.com during the session.");
+        assertThat(d.getBody())
+                .contains("[redacted-email]")
+                .doesNotContain("alice@example.com");
+    }
+
+    @Test
+    void blank_analysis_report_adds_no_section() {
+        TicketDocument t = ticket("Crash", "descr");
+        ProviderTicketDraft d = anonymizer.buildDraft(
+                t, "s", "fp", true, List.of(), List.of(), "   ");
+        assertThat(d.getBody()).doesNotContain("## Session analysis");
+    }
+
     private static TicketDocument ticket(String title, String description) {
         return TicketDocument.builder()
                 .id("uuid-1")

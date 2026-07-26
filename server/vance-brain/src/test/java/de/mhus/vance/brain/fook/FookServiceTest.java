@@ -42,6 +42,7 @@ class FookServiceTest {
     private LightLlmService lightLlm;
     private InboxItemService inboxItemService;
     private SettingService settingService;
+    private FookSessionAnalysisService sessionAnalysisService;
     private FookService service;
 
     @BeforeEach
@@ -58,8 +59,10 @@ class FookServiceTest {
                 .thenReturn("never");
         when(inboxItemService.create(any())).thenAnswer(inv ->
                 inv.<InboxItemDocument>getArgument(0));
+        sessionAnalysisService = mock(FookSessionAnalysisService.class);
         service = new FookService(
-                ticketService, lightLlm, inboxItemService, settingService);
+                ticketService, lightLlm, inboxItemService, settingService,
+                sessionAnalysisService);
 
         when(ticketService.searchSimilar(any(), anyInt())).thenReturn(List.of());
     }
@@ -491,6 +494,95 @@ class FookServiceTest {
         service.drainQueue();
 
         verify(ticketService).setInboxItemId("uuid-new", "inbox-42");
+    }
+
+    // ─── session-analysis enqueue ───────────────────────────────────
+
+    @Test
+    void new_ticket_with_needSessionReport_enqueues_analysis_job() {
+        when(lightLlm.callForJson(any(LightLlmRequest.class)))
+                .thenReturn(Map.of("decision", "new_ticket",
+                        "derivedTitle", "Crash on save",
+                        "derivedType", "bug",
+                        "derivedSeverity", "high",
+                        "needSessionReport", true,
+                        "triageNote", "Repro in session.",
+                        "reason", "ok"));
+        when(ticketService.createTicket(any())).thenReturn("uuid-new");
+
+        service.submit(engineSubmission("It crashed while I was saving."));
+        service.drainQueue();
+
+        ArgumentCaptor<FookSessionAnalysisService.AnalysisJob> cap =
+                ArgumentCaptor.forClass(FookSessionAnalysisService.AnalysisJob.class);
+        verify(sessionAnalysisService).enqueue(cap.capture());
+        FookSessionAnalysisService.AnalysisJob job = cap.getValue();
+        assertThat(job.getTicketId()).isEqualTo("uuid-new");
+        assertThat(job.getTenantId()).isEqualTo("acme");
+        assertThat(job.getProjectId()).isEqualTo("p1");
+        assertThat(job.getSessionId()).isEqualTo("s1");
+        assertThat(job.getProcessId()).isEqualTo("proc-1");
+        assertThat(job.getTicketTitle()).isEqualTo("Crash on save");
+        assertThat(job.getTicketType()).isEqualTo("bug");
+        assertThat(job.getEngine()).isEqualTo("arthur");
+    }
+
+    @Test
+    void new_ticket_without_needSessionReport_does_not_enqueue_analysis() {
+        when(lightLlm.callForJson(any(LightLlmRequest.class)))
+                .thenReturn(Map.of("decision", "new_ticket",
+                        "derivedTitle", "T", "derivedType", "bug",
+                        "derivedSeverity", "low",
+                        "reason", "ok"));   // needSessionReport absent → false
+        when(ticketService.createTicket(any())).thenReturn("uuid-new");
+
+        service.submit(engineSubmission("text"));
+        service.drainQueue();
+
+        verifyNoInteractions(sessionAnalysisService);
+        verify(ticketService, never()).setAnalysisStatus(any(), any());
+    }
+
+    @Test
+    void needSessionReport_without_process_context_stamps_skipped() {
+        when(lightLlm.callForJson(any(LightLlmRequest.class)))
+                .thenReturn(Map.of("decision", "new_ticket",
+                        "derivedTitle", "T", "derivedType", "bug",
+                        "derivedSeverity", "low",
+                        "needSessionReport", true,
+                        "reason", "ok"));
+        when(ticketService.createTicket(any())).thenReturn("uuid-new");
+
+        // user_direct-style: sessionId but no processId → not analysable.
+        SubmissionRequest req = SubmissionRequest.builder()
+                .text("A bug I hit somewhere.")
+                .reporter(reporterEngine())
+                .context(TicketContext.builder()
+                        .projectId("p1")
+                        .sessionId("s1")   // no processId
+                        .build())
+                .build();
+        service.submit(req);
+        service.drainQueue();
+
+        verify(sessionAnalysisService, never()).enqueue(any());
+        verify(ticketService).setAnalysisStatus(
+                "uuid-new", FookTicketService.ANALYSIS_SKIPPED);
+    }
+
+    @Test
+    void parse_reads_needSessionReport_flag() {
+        assertThat(FookService.parseTriageResult(Map.of(
+                "decision", "new_ticket",
+                "needSessionReport", true)).isNeedSessionReport())
+                .isTrue();
+        assertThat(FookService.parseTriageResult(Map.of(
+                "decision", "new_ticket")).isNeedSessionReport())
+                .isFalse();
+        assertThat(FookService.parseTriageResult(Map.of(
+                "decision", "new_ticket",
+                "needSessionReport", "true")).isNeedSessionReport())
+                .isTrue();
     }
 
     // ─── system → reporter tenant fallback ──────────────────────────

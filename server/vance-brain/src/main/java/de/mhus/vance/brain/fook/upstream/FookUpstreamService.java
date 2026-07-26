@@ -125,13 +125,18 @@ public class FookUpstreamService {
             TicketDocument ticket,
             TicketProvider provider,
             UpstreamConfig cfg) {
+        // Fold the session-analysis report (if any) into the upstream body so
+        // the fixer — who has no access to the original session — gets the
+        // distilled context. Scrubbed inside buildDraft with the same patterns.
+        String analysisReport = ticketService.readAnalysis(ticket.getId()).orElse(null);
         ProviderTicketDraft draft = anonymizer.buildDraft(
                 ticket,
                 cfg.instanceSecret(),
                 cfg.instanceFingerprint(),
                 cfg.anonymize(),
                 cfg.scrubPatterns(),
-                cfg.extraLabels());
+                cfg.extraLabels(),
+                analysisReport);
 
         ProviderTicketRef ref = provider.create(draft);
 

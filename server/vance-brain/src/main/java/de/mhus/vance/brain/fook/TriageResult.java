@@ -63,6 +63,17 @@ public class TriageResult {
      *  the ticket's body. */
     @Nullable String triageNote;
 
+    /**
+     * new_ticket only — the triage LLM's hint that a distilled
+     * analysis of the reporter's session would help whoever fixes the
+     * ticket (Lunkwill, on a system with no access to the session).
+     * Only a hint: the analysis path additionally requires a
+     * session/process context and the analysis model may still decide
+     * the session held nothing useful. Defaults to {@code false} when
+     * the field is absent. See {@code planning/fook-session-report.md}.
+     */
+    boolean needSessionReport;
+
     /** One sentence for the user-facing inbox item, always set. */
     @Nullable String reason;
 }

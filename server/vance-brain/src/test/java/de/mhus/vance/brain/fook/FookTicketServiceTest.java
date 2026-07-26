@@ -394,6 +394,105 @@ class FookTicketServiceTest {
         assertThat(meta.get("duplicateOf")).isEqualTo("prior-target");
     }
 
+    // ─── writeAnalysis: sidecar + meta patch ────────────────────────
+
+    @Test
+    void write_analysis_creates_sidecar_and_stamps_ticket_meta() {
+        String existing = """
+                $meta:
+                  kind: fook-ticket
+                  id: uuid-9
+                  title: T
+                  type: bug
+                  severity: high
+                  status: new
+                  duplicateOf: null
+                  reporterKind: engine
+                  reporterUserId: alice
+                  reporterTenantId: acme
+                  createdAt: '2026-01-01T00:00:00Z'
+                  triagedAt: '2026-01-01T00:00:00Z'
+                  triagedBy: fook
+                description: 'body'
+                relations:
+                  rootCauseOf: []
+                  relatedTo: []
+                """;
+        DocumentDocument ticketDoc = DocumentDocument.builder()
+                .path("_vance/fook/tickets/uuid-9.yaml")
+                .storageId("blob-9").mimeType("application/yaml").build();
+        when(documentService.findByPath("_vance", "_tenant",
+                "_vance/fook/tickets/uuid-9.yaml")).thenReturn(Optional.of(ticketDoc));
+        when(documentService.readContent(ticketDoc)).thenReturn(existing);
+        when(documentService.upsertText(any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(ticketDoc);
+
+        service.writeAnalysis("uuid-9", "The save tool NPEs when path is null.");
+
+        ArgumentCaptor<String> pathCap = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> textCap = ArgumentCaptor.forClass(String.class);
+        // Two writes: the sidecar .md and the ticket-meta patch .yaml.
+        verify(documentService, org.mockito.Mockito.times(2)).upsertText(
+                any(), any(), pathCap.capture(), any(), any(),
+                textCap.capture(), any(), any());
+
+        int sidecarIdx = pathCap.getAllValues().indexOf(
+                "_vance/fook/tickets/uuid-9.analysis.md");
+        assertThat(sidecarIdx).isGreaterThanOrEqualTo(0);
+        String sidecar = textCap.getAllValues().get(sidecarIdx);
+        assertThat(sidecar)
+                .contains("kind: fook-ticket-analysis")
+                .contains("ticket: uuid-9")
+                .contains("The save tool NPEs when path is null.");
+
+        int ticketIdx = pathCap.getAllValues().indexOf(
+                "_vance/fook/tickets/uuid-9.yaml");
+        Map<String, Object> root = parse(textCap.getAllValues().get(ticketIdx));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> meta = (Map<String, Object>) root.get("$meta");
+        assertThat(meta.get("analysisRef"))
+                .isEqualTo("_vance/fook/tickets/uuid-9.analysis.md");
+        assertThat(meta.get("analysisStatus")).isEqualTo("written");
+    }
+
+    @Test
+    void read_analysis_returns_body_without_front_matter() {
+        String sidecar = """
+                ---
+                kind: fook-ticket-analysis
+                ticket: uuid-9
+                createdAt: '2026-07-26T00:00:00Z'
+                ---
+
+                The save tool NPEs when path is null.
+                """;
+        DocumentDocument doc = DocumentDocument.builder()
+                .path("_vance/fook/tickets/uuid-9.analysis.md")
+                .storageId("blob-a").mimeType("text/markdown").build();
+        when(documentService.findByPath("_vance", "_tenant",
+                "_vance/fook/tickets/uuid-9.analysis.md")).thenReturn(Optional.of(doc));
+        when(documentService.readContent(doc)).thenReturn(sidecar);
+
+        assertThat(service.readAnalysis("uuid-9"))
+                .contains("The save tool NPEs when path is null.");
+    }
+
+    @Test
+    void read_analysis_is_empty_when_no_sidecar() {
+        when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.empty());
+        assertThat(service.readAnalysis("uuid-x")).isEmpty();
+    }
+
+    @Test
+    void strip_front_matter_handles_fenced_and_unfenced_bodies() {
+        assertThat(FookTicketService.stripFrontMatter(
+                "---\nkind: x\n---\n\nhello world"))
+                .isEqualTo("hello world");
+        // No fence → returned trimmed, verbatim.
+        assertThat(FookTicketService.stripFrontMatter("just a body"))
+                .isEqualTo("just a body");
+    }
+
     // ─── helpers ────────────────────────────────────────────────────
 
     private TicketReporter reporterEngine() {

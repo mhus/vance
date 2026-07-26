@@ -1,0 +1,70 @@
+# Dependabot configuration — https://docs.github.com/code-security/dependabot
+#
+# Opens pull requests with dependency-update suggestions. Weekly cadence to
+# keep the noise low; minor + patch updates are grouped into a single PR per
+# ecosystem, while major updates (potentially breaking) arrive as individual
+# PRs so they can be reviewed on their own.
+#
+# Ecosystems present in this repo:
+#   - maven : the multi-module Java reactor under /server
+#   - npm   : the pnpm workspace at the repo root (packages/* + addon clients)
+#   - github-actions : workflows under .github/workflows (added later)
+# Docker base images are NOT here — the image build scripts live in the
+# separate workbench repo, so there is no `docker` ecosystem entry.
+
+version: 2
+updates:
+  # --- Java / Maven -----------------------------------------------------------
+  - package-ecosystem: "maven"
+    directory: "/server"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "java"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    groups:
+      maven-minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # --- TypeScript / pnpm workspace (root) ------------------------------------
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "typescript"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    groups:
+      npm-minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # --- GitHub Actions (kicks in once workflows exist) ------------------------
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+      - "ci"
+    commit-message:
+      prefix: "deps"
+      include: "scope"

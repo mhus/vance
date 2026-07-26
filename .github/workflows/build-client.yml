@@ -1,0 +1,60 @@
+# Client build check — pnpm workspace at the repo root.
+#
+# Pure Node/pnpm: the generated @vance/generated DTOs are committed, so no
+# Maven step is needed here. Builds generated/shared/vance-face and runs the
+# vitest suites.
+#
+# When it runs:
+#   - push to ANY branch (feature + dependabot) → always, if a workspace path changed
+#   - push to main                              → only if the commit message contains [ci]
+#   - manual "Run workflow"                     → always (workflow_dispatch)
+
+name: build-client
+
+on:
+  push:
+    paths:
+      - "client/**"
+      - "server/vance-addon-brain-*/client/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/build-client.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: build-client-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # Non-main branches + manual runs always build; main only with [ci].
+    if: >-
+      github.event_name != 'push'
+      || github.ref != 'refs/heads/main'
+      || contains(github.event.head_commit.message, '[ci]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # action-setup before setup-node so the node cache can resolve pnpm.
+      # No version pin — it reads `packageManager` (pnpm@10.19.0) from package.json.
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      # --frozen-lockfile fails if pnpm-lock.yaml is out of sync — exactly what
+      # we want to validate on a Dependabot lockfile bump.
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build (generated + shared + vance-face)
+        run: pnpm -r build
+
+      - name: Test (vitest)
+        run: pnpm -r test

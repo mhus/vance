@@ -1,0 +1,51 @@
+# Server build check — Java 25 / Maven reactor under /server.
+#
+# When it runs:
+#   - push to ANY branch (feature + dependabot) → always, if server/** changed
+#   - push to main                              → only if the commit message
+#                                                 contains the keyword [ci]
+#   - manual "Run workflow"                     → always (workflow_dispatch)
+#
+# The main-gate keeps everyday WIP commits on main from building on every push,
+# while Dependabot PRs (on their own branches) are always verified. Change the
+# `if:` below to `github.event_name == 'workflow_dispatch'` for manual-only.
+
+name: build-server
+
+on:
+  push:
+    paths:
+      - "server/**"
+      - ".github/workflows/build-server.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: build-server-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # Non-main branches + manual runs always build; main only with [ci].
+    if: >-
+      github.event_name != 'push'
+      || github.ref != 'refs/heads/main'
+      || contains(github.event.head_commit.message, '[ci]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+
+      # clean install (not verify) mirrors `wb build vance` — the in-reactor
+      # generate-java-to-ts plugin must be installed to ~/.m2 before vance-api
+      # consumes it. -DskipTests still compiles test sources (catches API
+      # breaks) but skips execution, so a green build means "it compiles and
+      # packages". Drop -DskipTests to also run the unit tests.
+      - name: Build (mvn clean install)
+        working-directory: server
+        run: mvn -B -ntp clean install -DskipTests

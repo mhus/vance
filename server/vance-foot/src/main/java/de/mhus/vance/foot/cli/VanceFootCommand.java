@@ -1,6 +1,9 @@
 package de.mhus.vance.foot.cli;
 
 import de.mhus.vance.foot.agent.ClientAgentDocService;
+import de.mhus.vance.foot.auth.ProjectBindingApplier;
+import de.mhus.vance.foot.auth.ProjectBindingStore;
+import de.mhus.vance.foot.auth.VancePaths;
 import de.mhus.vance.foot.config.FootConfig;
 import de.mhus.vance.foot.connection.ConnectionService;
 import de.mhus.vance.foot.ide.IdeBridgeService;
@@ -93,6 +96,11 @@ public class VanceFootCommand implements Callable<Integer> {
     @Option(names = "--no-bootstrap",
             description = "Skip the auto-bootstrap from vance.bootstrap config after welcome.")
     boolean noBootstrap;
+
+    @Option(names = "--no-local",
+            description = "Ignore a project-local ./.vance directory; use only the "
+                    + "global home ($VANCE_HOME or ~/.vance) for config and credentials.")
+    boolean noLocal;
 
     @Option(names = "--no-ui",
             description = "Skip the JLine REPL; the JVM stays alive until SIGINT/SIGTERM.")
@@ -216,6 +224,9 @@ public class VanceFootCommand implements Callable<Integer> {
     private final WindowTitleService windowTitle;
     private final MarkdownRenderState markdownState;
     private final PermissionService permissions;
+    private final VancePaths vancePaths;
+    private final ProjectBindingStore bindingStore;
+    private final ProjectBindingApplier bindingApplier;
 
     public VanceFootCommand(ChatRepl repl,
                             ConnectionService connection,
@@ -228,7 +239,10 @@ public class VanceFootCommand implements Callable<Integer> {
                             SessionResumeFlow resumeFlow,
                             WindowTitleService windowTitle,
                             MarkdownRenderState markdownState,
-                            PermissionService permissions) {
+                            PermissionService permissions,
+                            VancePaths vancePaths,
+                            ProjectBindingStore bindingStore,
+                            ProjectBindingApplier bindingApplier) {
         this.repl = repl;
         this.connection = connection;
         this.terminal = terminal;
@@ -241,6 +255,9 @@ public class VanceFootCommand implements Callable<Integer> {
         this.windowTitle = windowTitle;
         this.markdownState = markdownState;
         this.permissions = permissions;
+        this.vancePaths = vancePaths;
+        this.bindingStore = bindingStore;
+        this.bindingApplier = bindingApplier;
     }
 
     @Override
@@ -251,6 +268,13 @@ public class VanceFootCommand implements Callable<Integer> {
         }
         applyDaemonShortcut();
         applyWebShortcut();
+
+        // Overlay a project-local (or global-home) .vance/project.yaml binding
+        // onto the config BEFORE the CLI-flag overrides below, so precedence is
+        // application.yaml < project.yaml < flags. A stored binding that sets a
+        // project also arms the welcome-time auto-bootstrap, so a directory with
+        // a saved login boots straight into its project.
+        applyLocalBinding();
 
         // Headless runs (daemon / --no-ui) have no user to answer a sandbox
         // prompt — set this before connect() so an early tool-invoke
@@ -381,6 +405,20 @@ public class VanceFootCommand implements Callable<Integer> {
             repl.run();
         }
         return 0;
+    }
+
+    private void applyLocalBinding() {
+        vancePaths.setLocalEnabled(!noLocal);
+        if (noLocal) {
+            terminal.println(Verbosity.VERBOSE,
+                    "Project-local .vance disabled (--no-local); using %s.",
+                    vancePaths.globalHomeDir());
+        }
+        bindingStore.load(vancePaths.activeDir()).ifPresent(binding -> {
+            bindingApplier.apply(binding, config);
+            terminal.println(Verbosity.VERBOSE,
+                    "Applied .vance/project.yaml from %s.", vancePaths.activeDir());
+        });
     }
 
     private void applyDaemonShortcut() {

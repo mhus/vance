@@ -1,6 +1,5 @@
 package de.mhus.vance.foot.connection;
 
-import de.mhus.vance.api.access.AccessTokenRequest;
 import de.mhus.vance.api.access.AccessTokenResponse;
 import de.mhus.vance.api.ws.Profiles;
 import de.mhus.vance.api.ws.ErrorData;
@@ -9,6 +8,8 @@ import de.mhus.vance.api.ws.PingData;
 import de.mhus.vance.api.ws.PongData;
 import de.mhus.vance.api.ws.ClientContext;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
+import de.mhus.vance.foot.auth.FootAuthService;
+import de.mhus.vance.foot.auth.TransportGuard;
 import de.mhus.vance.foot.config.FootConfig;
 import de.mhus.vance.foot.permission.PermissionService;
 import de.mhus.vance.foot.session.SessionService;
@@ -17,9 +18,6 @@ import de.mhus.vance.foot.ui.Verbosity;
 import de.mhus.vance.foot.ui.WindowTitleService;
 import jakarta.annotation.PreDestroy;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.ZoneId;
 import java.util.concurrent.CompletableFuture;
@@ -35,9 +33,9 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Owns the WebSocket lifecycle to the Brain. Mints a JWT against the HTTP
- * access endpoint, opens the WebSocket, hands inbound envelopes to the
- * {@link MessageDispatcher}.
+ * Owns the WebSocket lifecycle to the Brain. Obtains a JWT via
+ * {@link FootAuthService} (cached / refreshed / password), opens the
+ * WebSocket, hands inbound envelopes to the {@link MessageDispatcher}.
  *
  * <p>One connection at a time. {@link #connect()} on an already-open
  * connection is a no-op with a verbose log; {@link #disconnect(String)} on a
@@ -55,10 +53,8 @@ public class ConnectionService {
     private final SessionService sessions;
     private final WindowTitleService windowTitle;
     private final PermissionService permissions;
+    private final FootAuthService auth;
 
-    private final HttpClient http = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(10))
-            .build();
     private final ObjectMapper json = JsonMapper.builder().build();
     /** Most recent JWT minted during {@link #connect()}; reused for REST GETs. */
     private volatile @Nullable AccessTokenResponse currentToken;
@@ -73,13 +69,15 @@ public class ConnectionService {
                              ChatTerminal terminal,
                              SessionService sessions,
                              WindowTitleService windowTitle,
-                             PermissionService permissions) {
+                             PermissionService permissions,
+                             FootAuthService auth) {
         this.config = config;
         this.dispatcher = dispatcher;
         this.terminal = terminal;
         this.sessions = sessions;
         this.windowTitle = windowTitle;
         this.permissions = permissions;
+        this.auth = auth;
     }
 
     public State state() {
@@ -102,9 +100,9 @@ public class ConnectionService {
             return;
         }
         try {
-            AccessTokenResponse token = mintToken();
+            AccessTokenResponse token = auth.acquireAccessToken();
             currentToken = token;
-            terminal.verbose("Minted JWT, expires at "
+            terminal.verbose("Access token ready, expires at "
                     + java.time.Instant.ofEpochMilli(token.getExpiresAtTimestamp()));
 
             URI wsUri = URI.create(config.getBrain().getWsBase()
@@ -389,43 +387,14 @@ public class ConnectionService {
      * password is warned about either way.
      */
     void assertTransportAllowed() {
-        boolean allowInsecure = config.getBrain().isAllowInsecureTransport();
         boolean hasPassword = config.getAuth().getPassword() != null
                 && !config.getAuth().getPassword().isBlank();
-        for (String base : new String[] {
-                config.getBrain().getHttpBase(), config.getBrain().getWsBase()}) {
-            if (base == null || base.isBlank()) continue;
-            URI uri;
-            try {
-                uri = URI.create(base.strip());
-            } catch (IllegalArgumentException e) {
-                throw new IllegalStateException("Malformed brain base URL: " + base, e);
-            }
-            String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase();
-            boolean plaintext = scheme.equals("http") || scheme.equals("ws");
-            if (!plaintext) continue;
-            if (!isLoopbackHost(uri.getHost()) && !allowInsecure) {
-                throw new IllegalStateException(
-                        "Refusing plaintext transport to non-loopback brain '" + base
-                                + "' — credentials would go over the wire in cleartext. "
-                                + "Use wss://https://, or set vance.brain.allowInsecureTransport=true "
-                                + "for an insecure local/dev connection.");
-            }
-            if (hasPassword) {
-                terminal.println(Verbosity.WARN,
-                        "Insecure transport (%s) with a configured password — "
-                                + "credentials are sent in cleartext.", base);
-            }
-        }
-    }
-
-    private static boolean isLoopbackHost(@Nullable String host) {
-        if (host == null || host.isBlank()) return true; // no host = local
-        String h = host.replace("[", "").replace("]", "");
-        return h.equalsIgnoreCase("localhost")
-                || h.startsWith("127.")
-                || h.equals("::1")
-                || h.equals("0:0:0:0:0:0:0:1");
+        TransportGuard.assertAllowed(
+                config.getBrain().getHttpBase(),
+                config.getBrain().getWsBase(),
+                config.getBrain().isAllowInsecureTransport(),
+                hasPassword,
+                msg -> terminal.println(Verbosity.WARN, "%s", msg));
     }
 
     /**
@@ -465,26 +434,6 @@ public class ConnectionService {
 
     private static boolean isWindows() {
         return System.getProperty("os.name", "").toLowerCase().contains("win");
-    }
-
-    private AccessTokenResponse mintToken() throws Exception {
-        String url = config.getBrain().getHttpBase()
-                + "/brain/" + config.getAuth().getTenant()
-                + "/access/" + config.getAuth().getUsername();
-        String body = json.writeValueAsString(
-                AccessTokenRequest.builder().password(config.getAuth().getPassword()).build());
-
-        HttpRequest request = HttpRequest.newBuilder(URI.create(url))
-                .header("content-type", "application/json")
-                .timeout(Duration.ofSeconds(10))
-                .POST(HttpRequest.BodyPublishers.ofString(body))
-                .build();
-        HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
-        if (response.statusCode() != 200) {
-            throw new IllegalStateException("Token mint failed: HTTP " + response.statusCode()
-                    + (response.body().isEmpty() ? "" : " — " + response.body()));
-        }
-        return json.readValue(response.body(), AccessTokenResponse.class);
     }
 
     private final class Listener implements VanceWebSocketClientListener {

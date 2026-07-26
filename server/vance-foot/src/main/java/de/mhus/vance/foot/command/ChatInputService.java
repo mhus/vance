@@ -13,6 +13,7 @@ import de.mhus.vance.foot.permission.PendingPermissionPrompt;
 import de.mhus.vance.foot.session.SessionService;
 import de.mhus.vance.foot.ui.BusyIndicator;
 import de.mhus.vance.foot.ui.ChatTerminal;
+import de.mhus.vance.foot.ui.PendingLinePrompt;
 import de.mhus.vance.foot.ui.PromptGate;
 import jakarta.annotation.PreDestroy;
 import java.time.Duration;
@@ -64,6 +65,7 @@ public class ChatInputService {
     private final IdeContextBuilder ideContextBuilder;
     private final PendingAskUserPicker askUserPicker;
     private final PendingPermissionPrompt pendingPermission;
+    private final PendingLinePrompt pendingLine;
 
     /**
      * Background executor for async chat submission. Keeps the REPL
@@ -88,6 +90,7 @@ public class ChatInputService {
                             IdeContextBuilder ideContextBuilder,
                             PendingAskUserPicker askUserPicker,
                             PendingPermissionPrompt pendingPermission,
+                            PendingLinePrompt pendingLine,
                             AutoAiService autoAi) {
         this.commandService = commandService;
         this.connection = connection;
@@ -98,6 +101,7 @@ public class ChatInputService {
         this.ideContextBuilder = ideContextBuilder;
         this.askUserPicker = askUserPicker;
         this.pendingPermission = pendingPermission;
+        this.pendingLine = pendingLine;
         this.autoAi = autoAi;
     }
 
@@ -108,7 +112,13 @@ public class ChatInputService {
      */
     public InputResult submit(String line) {
         if (line == null) {
-            return InputResult.command("", false, "blank input");
+            line = "";
+        }
+        // An active line prompt (e.g. /login) claims input first — even a
+        // blank line is a valid answer (accept default / skip), so this must
+        // run before the blank-input short-circuit below.
+        if (pendingLine.offerAnswer(line)) {
+            return InputResult.command(line, true, null);
         }
         String trimmed = line.trim();
         if (trimmed.isEmpty()) {
@@ -162,8 +172,14 @@ public class ChatInputService {
      * {@code printAbove}-based writes that respect the prompt gate.
      */
     public void submitFromRepl(String line) {
-        if (line == null) return;
-        String trimmed = line.trim();
+        final String raw = line == null ? "" : line;
+        // Answer to an active line prompt (e.g. /login): deliver synchronously
+        // on the REPL input thread (the awaiting worker is the taker) and
+        // before the blank short-circuit, since blank is a valid answer.
+        if (pendingLine.offerAnswer(raw)) {
+            return;
+        }
+        String trimmed = raw.trim();
         if (trimmed.isEmpty()) return;
         // Answer to an active sandbox prompt: handle synchronously on the
         // REPL input thread. Routing it through the async chat executor
@@ -175,11 +191,11 @@ public class ChatInputService {
         if (trimmed.startsWith("/")) {
             // Slash commands stay synchronous — they're cheap and the
             // REPL expects their feedback before the next prompt.
-            submit(line);
+            submit(raw);
             return;
         }
         // Chat content → async dispatch so the REPL is free to capture ESC.
-        asyncExecutor.submit(() -> submit(line));
+        asyncExecutor.submit(() -> submit(raw));
     }
 
     /**

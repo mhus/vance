@@ -80,6 +80,15 @@ public class LiveRegion {
     private volatile int cursorIdx = 0;
     private volatile int inputViewportTop = 0;
 
+    /**
+     * When set, the input row is rendered with each character replaced by a
+     * bullet so a secret (e.g. a {@code /login} password) is not shown on
+     * screen. The real characters stay in {@link #inputText}; only the
+     * visible glyphs are masked, and ghost-text completion is suppressed.
+     * Toggled around a masked line-prompt by {@link PendingLinePrompt}.
+     */
+    private volatile boolean maskInput = false;
+
     /** Newest-last list of submitted lines for ↑/↓ history navigation. */
     private final java.util.List<String> history = new java.util.ArrayList<>();
     private int historyIdx = 0;
@@ -1054,7 +1063,8 @@ public class LiveRegion {
         String status = statusBar.buildStatusLine(width, frame.get());
         String hints = statusBar.buildHintsRow(width);
 
-        String[] inputSegs = inputText.split("\n", -1);
+        String source = maskInput ? maskLine(inputText) : inputText;
+        String[] inputSegs = source.split("\n", -1);
         int totalLines = inputSegs.length;
         int[] cl = cursorLineAndCol();
         int cursorLine = Math.max(0, Math.min(cl[0], totalLines - 1));
@@ -1074,7 +1084,7 @@ public class LiveRegion {
         boolean overflowAbove = inputViewportTop > 0;
         boolean overflowBelow = viewportEnd < totalLines;
 
-        String ghost = currentSuggestion();
+        String ghost = maskInput ? "" : currentSuggestion();
         java.util.List<String> assembled = new java.util.ArrayList<>(visibleCount + 3);
         assembled.add(status);
         assembled.add("");
@@ -1151,6 +1161,27 @@ public class LiveRegion {
         StringBuilder sb = new StringBuilder(n);
         for (int i = 0; i < n; i++) sb.append(c);
         return sb.toString();
+    }
+
+    /** Replaces every non-newline character with a bullet for masked echo. */
+    private static String maskLine(String s) {
+        StringBuilder sb = new StringBuilder(s.length());
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            sb.append(c == '\n' ? '\n' : '•');
+        }
+        return sb.toString();
+    }
+
+    /** Turns masked input echo on/off (see {@link #maskInput}). Repaints. */
+    public void setMaskInput(boolean masked) {
+        this.maskInput = masked;
+        refresh();
+    }
+
+    /** Whether input is currently echoed masked. */
+    public boolean isMaskInput() {
+        return maskInput;
     }
 
     private void writeRaw(String s) {

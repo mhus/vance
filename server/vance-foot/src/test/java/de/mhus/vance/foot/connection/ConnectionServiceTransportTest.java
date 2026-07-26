@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
+import de.mhus.vance.foot.auth.FootAuthService;
 import de.mhus.vance.foot.config.FootConfig;
 import de.mhus.vance.foot.permission.PermissionService;
 import de.mhus.vance.foot.session.SessionService;
@@ -29,7 +30,8 @@ class ConnectionServiceTransportTest {
                 mock(ChatTerminal.class),
                 mock(SessionService.class),
                 mock(WindowTitleService.class),
-                mock(PermissionService.class));
+                mock(PermissionService.class),
+                mock(FootAuthService.class));
     }
 
     @Test

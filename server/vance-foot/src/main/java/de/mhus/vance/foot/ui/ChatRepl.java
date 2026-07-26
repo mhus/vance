@@ -48,6 +48,7 @@ public class ChatRepl {
     private final CommandService commandService;
     private final AutoAiService autoAi;
     private final IdeSelectionState ideSelection;
+    private final PendingLinePrompt linePrompt;
 
     private final AtomicBoolean stopRequested = new AtomicBoolean(false);
     private @Nullable Terminal terminal;
@@ -60,7 +61,8 @@ public class ChatRepl {
                     FootConfig config,
                     @Lazy CommandService commandService,
                     AutoAiService autoAi,
-                    IdeSelectionState ideSelection) {
+                    IdeSelectionState ideSelection,
+                    PendingLinePrompt linePrompt) {
         this.input = input;
         this.chatTerminal = chatTerminal;
         this.interfaceService = interfaceService;
@@ -69,6 +71,7 @@ public class ChatRepl {
         this.commandService = commandService;
         this.autoAi = autoAi;
         this.ideSelection = ideSelection;
+        this.linePrompt = linePrompt;
     }
 
     public void requestStop() {
@@ -153,6 +156,14 @@ public class ChatRepl {
     }
 
     private void onSubmit(String line) {
+        // A line prompt (e.g. /login) claims input first — even a blank line
+        // (blank = accept default / skip). Its answer is neither written to
+        // history nor echoed, so a masked password never leaks to disk or
+        // scrollback.
+        if (linePrompt.hasActive()) {
+            input.submitFromRepl(line == null ? "" : line);
+            return;
+        }
         if (line == null || line.isBlank()) {
             return;
         }

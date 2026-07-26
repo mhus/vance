@@ -102,13 +102,17 @@ public final class ArthurActionSchema {
     public static final String TYPE_LEARN      = "LEARN";
 
     /**
-     * Notifies the team via a configured channel (email / slack / …)
-     * about the current task context. Available in NORMAL and EXECUTING
-     * modes so the user can ping the team at any point during a session.
-     * The handler dispatches through {@code NotificationService} and
-     * returns a brief confirmation.
+     * Sends a short attention signal to the user on the current session
+     * — a wake notification (terminal bell / beep / mobile push), not a
+     * chat message. Use at the end of a task or on a blocking problem so
+     * an away user knows to come back and act (e.g. "finished
+     * successfully" / "stopped with errors"). Available in NORMAL and
+     * EXECUTING modes. The handler dispatches through the session-bound
+     * {@code NotificationService} ({@code NOTIFY} frame) and returns a
+     * brief confirmation; delivery is best-effort (dropped when no
+     * client is connected).
      */
-    public static final String TYPE_NOTIFY_TEAM = "NOTIFY_TEAM";
+    public static final String TYPE_NOTIFY_USER = "NOTIFY_USER";
 
     // ── Plan-Mode action types ───────────────────────────────────
     public static final String TYPE_START_PLAN      = "START_PLAN";
@@ -127,7 +131,7 @@ public final class ArthurActionSchema {
     public static final Set<String> SUPPORTED_TYPES = Set.of(
             TYPE_ANSWER, TYPE_ASK_USER, TYPE_DELEGATE, TYPE_RELAY,
             TYPE_WAIT, TYPE_REJECT, TYPE_LEARN, TYPE_DISCOVER,
-            TYPE_NOTIFY_TEAM,
+            TYPE_NOTIFY_USER,
             TYPE_START_PLAN, TYPE_PROPOSE_PLAN, TYPE_START_EXECUTION,
             TYPE_TODO_UPDATE);
 
@@ -142,7 +146,7 @@ public final class ArthurActionSchema {
     public static final Set<String> TYPES_FOR_NORMAL = Set.of(
             TYPE_ANSWER, TYPE_ASK_USER, TYPE_DELEGATE, TYPE_RELAY,
             TYPE_WAIT, TYPE_REJECT, TYPE_LEARN, TYPE_DISCOVER, TYPE_START_PLAN,
-            TYPE_NOTIFY_TEAM);
+            TYPE_NOTIFY_USER);
 
     /**
      * Action types allowed in {@code EXPLORING} mode — read-only
@@ -170,7 +174,7 @@ public final class ArthurActionSchema {
             TYPE_ANSWER, TYPE_ASK_USER, TYPE_DELEGATE, TYPE_RELAY,
             TYPE_WAIT, TYPE_REJECT, TYPE_LEARN, TYPE_DISCOVER,
             TYPE_START_PLAN, TYPE_TODO_UPDATE,
-            TYPE_NOTIFY_TEAM);
+            TYPE_NOTIFY_USER);
 
     public static Set<String> typesForMode(
             de.mhus.vance.api.thinkprocess.ProcessMode mode) {
@@ -217,6 +221,15 @@ public final class ArthurActionSchema {
      */
     public static final String PARAM_OPTIONS = "options";
 
+    /**
+     * Optional severity for {@link #TYPE_NOTIFY_USER}. One of the
+     * {@link de.mhus.vance.api.notification.NotificationSeverity} names
+     * ({@code INFO} / {@code WARN} / {@code ERROR}); drives the client's
+     * alert loudness (bell tone, toast colour, OS interruption level).
+     * Absent → {@code INFO}.
+     */
+    public static final String PARAM_SEVERITY = "severity";
+
     // Plan-Mode params
     public static final String PARAM_GOAL    = "goal";
     public static final String PARAM_PLAN    = "plan";
@@ -243,7 +256,7 @@ public final class ArthurActionSchema {
         typeProp.put("enum", List.of(
                 TYPE_ANSWER, TYPE_ASK_USER, TYPE_DELEGATE,
                 TYPE_RELAY, TYPE_WAIT, TYPE_REJECT, TYPE_LEARN,
-                TYPE_DISCOVER, TYPE_NOTIFY_TEAM,
+                TYPE_DISCOVER, TYPE_NOTIFY_USER,
                 TYPE_START_PLAN, TYPE_PROPOSE_PLAN,
                 TYPE_START_EXECUTION, TYPE_TODO_UPDATE));
         typeProp.put("description",
@@ -265,7 +278,13 @@ public final class ArthurActionSchema {
                         + "TodoList for user approval (EXPLORING/PLANNING). "
                         + "START_EXECUTION = begin work after user accepted "
                         + "the plan (PLANNING). TODO_UPDATE = update TodoList "
-                        + "item statuses (EXECUTING). NOTIFY_TEAM = send a notification to the team via a configured channel (email / slack / …). The system prompt tells "
+                        + "item statuses (EXECUTING). NOTIFY_TEAM = send a "
+                        + "short attention signal to the user on this session "
+                        + "(a wake notification — bell / beep / mobile push, "
+                        + "not chat); use at the end of a task or on a blocking "
+                        + "problem so an away user knows to look and act "
+                        + "(e.g. 'finished successfully' / 'stopped with "
+                        + "errors'). The system prompt tells "
                         + "you which subset is currently allowed.");
 
         Map<String, Object> reasonProp = new LinkedHashMap<>();
@@ -278,8 +297,9 @@ public final class ArthurActionSchema {
         Map<String, Object> messageProp = new LinkedHashMap<>();
         messageProp.put("type", "string");
         messageProp.put("description",
-                "User-facing text. Required for ANSWER, ASK_USER, REJECT. "
-                        + "Optional for DELEGATE, WAIT, LEARN. Markdown allowed.");
+                "User-facing text. Required for ANSWER, ASK_USER, REJECT, "
+                        + "NOTIFY_TEAM. Optional for DELEGATE, WAIT, LEARN. "
+                        + "Markdown allowed.");
 
         Map<String, Object> scopeProp = new LinkedHashMap<>();
         scopeProp.put("type", "string");
@@ -455,10 +475,21 @@ public final class ArthurActionSchema {
                         + "the result back so you can pick a downstream "
                         + "action with the result in hand.");
 
+        Map<String, Object> severityProp = new LinkedHashMap<>();
+        severityProp.put("type", "string");
+        severityProp.put("enum", List.of("INFO", "WARN", "ERROR"));
+        severityProp.put("description",
+                "NOTIFY_USER-only: how loud the wake signal should be. "
+                        + "'INFO' (default) = heads-up, task finished. "
+                        + "'WARN' = needs attention soon (blocked, awaiting "
+                        + "input). 'ERROR' = failure or escalation (crashed, "
+                        + "stopped with errors). Absent → INFO.");
+
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("type", typeProp);
         properties.put("reason", reasonProp);
         properties.put(PARAM_MESSAGE, messageProp);
+        properties.put(PARAM_SEVERITY, severityProp);
         properties.put(PARAM_PRESET, presetProp);
         properties.put(PARAM_PROMPT, promptProp);
         properties.put(PARAM_EVENT_REF, eventRefProp);

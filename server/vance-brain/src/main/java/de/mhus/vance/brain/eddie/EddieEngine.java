@@ -238,6 +238,7 @@ public class EddieEngine extends StructuredActionEngine {
     private final ObjectMapper objectMapper;
     private final de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeService
             actionLoopJudgeService;
+    private final de.mhus.vance.brain.notification.NotificationService notificationService;
 
     /**
      * Per-process flag tracking whether the in-flight turn was
@@ -291,7 +292,8 @@ public class EddieEngine extends StructuredActionEngine {
             de.mhus.vance.brain.chat.CollabContextResolver collabContextResolver,
             de.mhus.vance.brain.applications.ActiveAppPromptResolver activeAppPromptResolver,
             de.mhus.vance.brain.thinkengine.action.ActionLoopJudgeService actionLoopJudgeService,
-            de.mhus.vance.brain.context.PromptDateContextResolver promptDateContextResolver) {
+            de.mhus.vance.brain.context.PromptDateContextResolver promptDateContextResolver,
+            de.mhus.vance.brain.notification.NotificationService notificationService) {
         super(streamingProperties, llmCallTracker, objectMapper, composer);
         this.thinkProcessService = thinkProcessService;
         this.modelCatalog = modelCatalog;
@@ -319,6 +321,7 @@ public class EddieEngine extends StructuredActionEngine {
         this.objectMapper = objectMapper;
         this.actionLoopJudgeService = actionLoopJudgeService;
         this.promptDateContextResolver = promptDateContextResolver;
+        this.notificationService = notificationService;
     }
 
     // ──────────────────── Metadata ────────────────────
@@ -1452,6 +1455,7 @@ public class EddieEngine extends StructuredActionEngine {
             case EddieActionSchema.TYPE_RELAY_INBOX      -> handleRelayInbox(action, process, ctx);
             case EddieActionSchema.TYPE_LEARN            -> handleLearn(action, process);
             case EddieActionSchema.TYPE_MEDIATE          -> handleMediate(action, process, ctx);
+            case EddieActionSchema.TYPE_NOTIFY_USER      -> handleNotifyUser(action, process);
             case EddieActionSchema.TYPE_WAIT             -> handleWait(action);
             case EddieActionSchema.TYPE_REJECT           -> handleReject(action);
             default -> {
@@ -2329,6 +2333,61 @@ public class EddieEngine extends StructuredActionEngine {
         }
         if (best == null) return null;
         return new MediateTarget(best.getSessionId(), best.getChatProcessId(), projectName);
+    }
+
+    /**
+     * NOTIFY_USER — send a short attention signal to the user on the
+     * current session (a wake notification — terminal bell / beep /
+     * mobile push, not a chat message). Mirror of Arthur's handler.
+     * Routes through the session-bound
+     * {@link de.mhus.vance.brain.notification.NotificationService}
+     * ({@code NOTIFY} frame). Delivery is best-effort: dropped when no
+     * client is connected to the session.
+     */
+    private ActionTurnOutcome handleNotifyUser(
+            EngineAction action, ThinkProcessDocument process) {
+        String message = action.stringParam(EddieActionSchema.PARAM_MESSAGE);
+        if (message == null || message.isBlank()) {
+            log.warn("Eddie id='{}' NOTIFY_USER missing message — reason='{}'",
+                    process.getId(), action.reason());
+            return new ActionTurnOutcome(
+                    "Could not notify the user — the message text "
+                            + "was missing. (" + action.reason() + ")",
+                    true);
+        }
+        de.mhus.vance.api.notification.NotificationSeverity severity =
+                parseNotifySeverity(
+                        action.stringParam(EddieActionSchema.PARAM_SEVERITY),
+                        process);
+        boolean delivered = notificationService.publish(process, message, severity);
+        log.info("Eddie id='{}' NOTIFY_USER severity={} delivered={} reason='{}'",
+                process.getId(), severity, delivered, action.reason());
+        return new ActionTurnOutcome(
+                delivered
+                        ? "The user has been notified."
+                        : "The notification was created, but no "
+                                + "client was connected — it was not delivered.",
+                true);
+    }
+
+    /**
+     * Maps the NOTIFY_USER {@code severity} action-param to a
+     * {@link de.mhus.vance.api.notification.NotificationSeverity}. Absent
+     * or unrecognised → {@code INFO} (the safe heads-up default).
+     */
+    private de.mhus.vance.api.notification.NotificationSeverity parseNotifySeverity(
+            @Nullable String raw, ThinkProcessDocument process) {
+        if (raw == null || raw.isBlank()) {
+            return de.mhus.vance.api.notification.NotificationSeverity.INFO;
+        }
+        try {
+            return de.mhus.vance.api.notification.NotificationSeverity.valueOf(
+                    raw.trim().toUpperCase(java.util.Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            log.debug("Eddie id='{}' NOTIFY_USER unknown severity '{}' — defaulting to INFO",
+                    process.getId(), raw);
+            return de.mhus.vance.api.notification.NotificationSeverity.INFO;
+        }
     }
 
     private ActionTurnOutcome handleWait(EngineAction action) {

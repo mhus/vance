@@ -1441,7 +1441,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             case ArthurActionSchema.TYPE_WAIT            -> handleWait(action);
             case ArthurActionSchema.TYPE_REJECT          -> handleReject(action);
             case ArthurActionSchema.TYPE_LEARN           -> handleLearn(action, process, ctx);
-            case ArthurActionSchema.TYPE_NOTIFY_TEAM     -> handleNotifyTeam(action, process, ctx);
+            case ArthurActionSchema.TYPE_NOTIFY_USER     -> handleNotifyUser(action, process, ctx);
             default -> {
                 // Should never happen — the base class validates against
                 // supportedActionTypes() before reaching here. Surface as
@@ -2220,37 +2220,63 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      * wrong project.
      */
     /**
-     * NOTIFY_TEAM — send a short notification about the current task
-     * context to the team, then confirm to the user. Routes through
-     * {@link de.mhus.vance.brain.notification.NotificationService} (a
-     * session-anchored {@code NOTIFY} frame); any email/slack fan-out is
-     * handled downstream by the notification-delivery layer. Available in
-     * NORMAL and EXECUTING modes.
+     * NOTIFY_USER — send a short attention signal to the user on the
+     * current session (a wake notification — terminal bell / beep /
+     * mobile push, not a chat message). Routes through the session-bound
+     * {@link de.mhus.vance.brain.notification.NotificationService}
+     * ({@code NOTIFY} frame). Delivery is best-effort: dropped when no
+     * client is connected to the session. Available in NORMAL and
+     * EXECUTING modes so the model can nudge the user at the end of a
+     * task or on a blocking problem.
      */
-    private ActionTurnOutcome handleNotifyTeam(
+    private ActionTurnOutcome handleNotifyUser(
             de.mhus.vance.brain.thinkengine.action.EngineAction action,
             ThinkProcessDocument process,
             ThinkEngineContext ctx) {
         String message = action.stringParam(ArthurActionSchema.PARAM_MESSAGE);
         if (message == null || message.isBlank()) {
-            log.warn("Arthur id='{}' NOTIFY_TEAM missing message — reason='{}'",
+            log.warn("Arthur id='{}' NOTIFY_USER missing message — reason='{}'",
                     process.getId(), action.reason());
             return new ActionTurnOutcome(
-                    "Could not notify the team — the message text "
+                    "Could not notify the user — the message text "
                             + "was missing. (" + action.reason() + ")",
                     true);
         }
-        boolean delivered = notificationService.publish(
-                process, message,
-                de.mhus.vance.api.notification.NotificationSeverity.INFO);
-        log.info("Arthur id='{}' NOTIFY_TEAM delivered={} reason='{}'",
-                process.getId(), delivered, summariseReason(action.reason()));
+        de.mhus.vance.api.notification.NotificationSeverity severity =
+                parseNotifySeverity(
+                        action.stringParam(ArthurActionSchema.PARAM_SEVERITY),
+                        process);
+        boolean delivered = notificationService.publish(process, message, severity);
+        log.info("Arthur id='{}' NOTIFY_USER severity={} delivered={} reason='{}'",
+                process.getId(), severity, delivered, summariseReason(action.reason()));
         return new ActionTurnOutcome(
                 delivered
-                        ? "The team has been notified."
+                        ? "The user has been notified."
                         : "The notification was created, but no "
-                                + "recipient was connected — it was not delivered.",
+                                + "client was connected — it was not delivered.",
                 true);
+    }
+
+    /**
+     * Maps the NOTIFY_USER {@code severity} action-param to a
+     * {@link de.mhus.vance.api.notification.NotificationSeverity}. Absent
+     * or unrecognised → {@code INFO} (the safe heads-up default) with a
+     * debug log for the unrecognised case.
+     */
+    private de.mhus.vance.api.notification.NotificationSeverity parseNotifySeverity(
+            @org.jspecify.annotations.Nullable String raw,
+            ThinkProcessDocument process) {
+        if (raw == null || raw.isBlank()) {
+            return de.mhus.vance.api.notification.NotificationSeverity.INFO;
+        }
+        try {
+            return de.mhus.vance.api.notification.NotificationSeverity.valueOf(
+                    raw.trim().toUpperCase(java.util.Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            log.debug("Arthur id='{}' NOTIFY_USER unknown severity '{}' — defaulting to INFO",
+                    process.getId(), raw);
+            return de.mhus.vance.api.notification.NotificationSeverity.INFO;
+        }
     }
 
     private ActionTurnOutcome handleLearn(

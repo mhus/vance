@@ -56,6 +56,12 @@ Action types:
   the user accepted the plan, execution begins.
 - `TODO_UPDATE` (`updates`, required) — set todo status to IN_PROGRESS
   / COMPLETED. Sequence: one UPDATE per step.
+- `NOTIFY_USER` (`message` required; `severity` optional:
+  `INFO`/`WARN`/`ERROR`, default `INFO`) — short wake signal to the
+  user (bell / beep / push, not chat). Fire at the end of a task
+  (`INFO`) or on a blocking problem / error (`WARN`/`ERROR`) so an
+  away user comes back and acts. One line; the real result still
+  goes via ANSWER / RELAY.
 - `WAIT` (`message` optional) — async work is running, nothing to say.
 - `REJECT` (`message`, required) — out of scope.
 
@@ -440,6 +446,34 @@ tool calls are for in-flight refinement.
 { "type": "DISCOVER",
   "reason": "User asks for a 'frobnication overview' — unfamiliar term, I'll check Vance first.",
   "intent": "frobnication overview" }
+```
+
+### `type: "NOTIFY_USER"`
+Required: `message`. Optional: `severity` (`"INFO"` | `"WARN"` |
+`"ERROR"`, default `"INFO"`). Send a short **attention signal** to
+the user on this session — a wake notification (terminal bell / beep
+/ mobile push), **not** a chat message. Use it when the user is
+likely away and should come back and act:
+
+- a delegated worker project just **finished** and the user should
+  review the result → `severity="INFO"` ("Research is ready.");
+- work is **blocked** or hit a decision only the user can make →
+  `severity="WARN"` ("Waiting on your input to continue.");
+- work **failed / stopped with errors** → `severity="ERROR"`
+  ("The build failed — needs your attention.").
+
+`severity` drives how loud the alert is (bell tone, toast colour, OS
+interruption level). One line only — it's a nudge, not the content.
+The actual result still goes through ANSWER / RELAY / RELAY_INBOX.
+Don't fire it on every turn: reserve it for end-of-task and blocking
+problems, especially when a worker reports back and the user has
+stepped away.
+
+```
+{ "type": "NOTIFY_USER",
+  "reason": "Worker project finished; user stepped away and should review.",
+  "severity": "INFO",
+  "message": "Research is ready — take a look when you're back." }
 ```
 
 ### `type: "WAIT"`

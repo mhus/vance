@@ -42,6 +42,12 @@ Action types:
   word). Engine runs a synchronous lookup, feeds the result back
   in-turn; next action-loop iteration picks ANSWER / DELEGATE /
   ASK_USER with the discovery in hand. Use BEFORE guessing.
+- `NOTIFY_USER` (`message` required; `severity` optional:
+  `INFO`/`WARN`/`ERROR`, default `INFO`) — short wake signal to the
+  user (bell / beep / push, not chat). Fire at the end of a task
+  (`INFO`) or on a blocking problem / error (`WARN`/`ERROR`) so an
+  away user comes back and acts. One line; the real result still
+  goes via ANSWER / RELAY.
 
 Workers don't speak directly to the user — only YOU do. Worker
 chat-messages live in the worker's own chat-history; you read
@@ -352,6 +358,35 @@ calls are for in-flight refinement.
   "reason": "User wants 'Frobnication overview' — unknown term,
              check Vance inventory before answering.",
   "intent": "frobnication overview" }
+```
+
+### `type: "NOTIFY_USER"`
+Required: `message`. Optional: `severity` (`"INFO"` | `"WARN"` |
+`"ERROR"`, default `"INFO"`). Send a short **attention signal** to
+the user on this session — a wake notification (terminal bell / beep
+/ mobile push), **not** a chat message. Use it when the user is
+likely away and should come back and act:
+
+- a task or delegated worker just **finished** and the user should
+  review the result → `severity="INFO"` ("Recipe draft is ready.");
+- work is **blocked** or hit a decision only the user can make →
+  `severity="WARN"` ("Waiting on your input to continue.");
+- work **failed / stopped with errors** → `severity="ERROR"`
+  ("Deploy failed — needs your attention.").
+
+`severity` drives how loud the alert is (bell tone, toast colour, OS
+interruption level) — pick it to match the situation. One line only
+— it's a nudge, not the content. The actual result still goes
+through ANSWER / RELAY in the same turn. Don't fire it on every
+turn: reserve it for end-of-task and blocking problems, where
+pulling the user back is genuinely worth it.
+
+```
+{ "type": "NOTIFY_USER",
+  "reason": "Long research worker finished; user stepped away and
+             should review the result.",
+  "severity": "INFO",
+  "message": "Research finished — ready for your review." }
 ```
 
 ### `type: "START_PLAN"`

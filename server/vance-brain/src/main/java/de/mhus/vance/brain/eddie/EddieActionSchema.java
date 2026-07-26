@@ -40,6 +40,9 @@ import java.util.Set;
  *       (how-to-talk-to-this-user summary, always in the prompt) and
  *       {@code fact} (specific facts — birthday, preferences,
  *       dislikes — appended to a journal).</li>
+ *   <li>{@link #TYPE_NOTIFY_USER} — short attention/wake signal to
+ *       the user on the session (bell / beep / push, not chat) at
+ *       the end of a task or on a blocking problem.</li>
  *   <li>{@link #TYPE_WAIT} — async work in flight, nothing to add.</li>
  *   <li>{@link #TYPE_REJECT} — out of scope, explain briefly.</li>
  * </ul>
@@ -74,6 +77,20 @@ public final class EddieActionSchema {
     public static final String TYPE_REJECT           = "REJECT";
 
     /**
+     * Sends a short attention signal to the user on the current session
+     * — a wake notification (terminal bell / beep / mobile push), not a
+     * chat message. Mirror of Arthur's {@code NOTIFY_USER}. Use at the
+     * end of a task or on a blocking problem so an away user knows to
+     * come back and act (e.g. "finished successfully" / "stopped with
+     * errors"). Optional {@code severity} ({@code INFO} / {@code WARN} /
+     * {@code ERROR}, default {@code INFO}) drives the alert loudness. The
+     * handler dispatches through the session-bound
+     * {@code NotificationService} ({@code NOTIFY} frame); delivery is
+     * best-effort (dropped when no client is connected).
+     */
+    public static final String TYPE_NOTIFY_USER      = "NOTIFY_USER";
+
+    /**
      * Looks up a user-mentioned term / intent in the Vance knowledge
      * surface (manuals, skills, server tools, kit-installed apps)
      * before deciding what to do. CONTINUING action — the engine
@@ -101,7 +118,7 @@ public final class EddieActionSchema {
             TYPE_DELEGATE_PROJECT, TYPE_STEER_PROJECT,
             TYPE_RELAY, TYPE_RELAY_INBOX,
             TYPE_LEARN, TYPE_DISCOVER,
-            TYPE_MEDIATE,
+            TYPE_MEDIATE, TYPE_NOTIFY_USER,
             TYPE_WAIT, TYPE_REJECT);
 
     /**
@@ -203,6 +220,15 @@ public final class EddieActionSchema {
     public static final String PARAM_INTENT       = "intent";
 
     /**
+     * Optional severity for {@link #TYPE_NOTIFY_USER}. One of the
+     * {@link de.mhus.vance.api.notification.NotificationSeverity} names
+     * ({@code INFO} / {@code WARN} / {@code ERROR}); drives the client's
+     * alert loudness (bell tone, toast colour, OS interruption level).
+     * Absent → {@code INFO}.
+     */
+    public static final String PARAM_SEVERITY     = "severity";
+
+    /**
      * Schema (flat) covering all action types. Per-type required-field
      * validation lives in {@code EddieEngine.handleAction}, where the
      * type is known. Top-level {@code type} and {@code reason} are
@@ -219,7 +245,7 @@ public final class EddieActionSchema {
                 TYPE_DELEGATE_PROJECT, TYPE_STEER_PROJECT,
                 TYPE_RELAY, TYPE_RELAY_INBOX,
                 TYPE_LEARN, TYPE_DISCOVER,
-                TYPE_MEDIATE,
+                TYPE_MEDIATE, TYPE_NOTIFY_USER,
                 TYPE_WAIT, TYPE_REJECT,
                 // Plan-Mode types — handled by the shared PlanModeService.
                 PlanModeActionSchema.TYPE_START_PLAN,
@@ -244,7 +270,13 @@ public final class EddieActionSchema {
                         + "hand the user-WS over to a worker session for a "
                         + "direct conversation (use when the user needs "
                         + "client-side tools the worker has but Eddie can't "
-                        + "route — see eddie-engine §8.5). WAIT = async work "
+                        + "route — see eddie-engine §8.5). NOTIFY_USER = "
+                        + "send a short attention signal to the user on this "
+                        + "session (a wake notification — bell / beep / mobile "
+                        + "push, not chat); use at the end of a task or on a "
+                        + "blocking problem so an away user knows to look and "
+                        + "act (e.g. 'finished successfully' / 'stopped with "
+                        + "errors'). WAIT = async work "
                         + "running. REJECT = out of scope. "
                         + "START_PLAN = enter EXPLORING mode for a non-"
                         + "trivial task that benefits from explore-then-"
@@ -264,10 +296,10 @@ public final class EddieActionSchema {
         messageProp.put("type", "string");
         messageProp.put("description",
                 "User-facing chat text (spoken-friendly). Required for "
-                        + "ANSWER, ASK_USER, REJECT. Optional for WAIT (only "
-                        + "when you have something to say). Markdown is "
-                        + "discouraged — Eddie reads aloud, prose works "
-                        + "better than lists or headers.");
+                        + "ANSWER, ASK_USER, REJECT, NOTIFY_USER. Optional "
+                        + "for WAIT (only when you have something to say). "
+                        + "Markdown is discouraged — Eddie reads aloud, prose "
+                        + "works better than lists or headers.");
 
         Map<String, Object> projectNameProp = new LinkedHashMap<>();
         projectNameProp.put("type", "string");
@@ -503,10 +535,21 @@ public final class EddieActionSchema {
                         + "you can pick a downstream action with the "
                         + "result in hand.");
 
+        Map<String, Object> severityProp = new LinkedHashMap<>();
+        severityProp.put("type", "string");
+        severityProp.put("enum", List.of("INFO", "WARN", "ERROR"));
+        severityProp.put("description",
+                "NOTIFY_USER-only: how loud the wake signal should be. "
+                        + "'INFO' (default) = heads-up, task finished. "
+                        + "'WARN' = needs attention soon (blocked, awaiting "
+                        + "input). 'ERROR' = failure or escalation (crashed, "
+                        + "stopped with errors). Absent → INFO.");
+
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("type", typeProp);
         properties.put("reason", reasonProp);
         properties.put(PARAM_MESSAGE, messageProp);
+        properties.put(PARAM_SEVERITY, severityProp);
         properties.put(PARAM_PROJECT_NAME, projectNameProp);
         properties.put(PARAM_PROJECT_TITLE, projectTitleProp);
         properties.put(PARAM_PROJECT_GOAL, projectGoalProp);

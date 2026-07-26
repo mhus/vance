@@ -110,6 +110,20 @@ class FookControllerTest {
     }
 
     @Test
+    void submit_returns_503_when_disabled() {
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                controller, "enabled", false);
+
+        assertThatThrownBy(() -> controller.submit(TENANT,
+                FookSubmissionRequestDto.builder().text("x").build(),
+                request))
+                .isInstanceOfSatisfying(ResponseStatusException.class, e ->
+                        assertThat(e.getStatusCode())
+                                .isEqualTo(HttpStatus.SERVICE_UNAVAILABLE));
+        verifyNoInteractions(fookService);
+    }
+
+    @Test
     void submit_propagates_authority_denial() {
         org.mockito.Mockito.doThrow(new ResponseStatusException(HttpStatus.FORBIDDEN))
                 .when(authority).enforce(eq(request), any(), any());

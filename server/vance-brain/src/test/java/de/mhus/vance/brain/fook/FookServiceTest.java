@@ -109,6 +109,29 @@ class FookServiceTest {
         verifyNoInteractions(inboxItemService);
     }
 
+    // ─── master enable switch (vance.fook.enabled) ──────────────────
+
+    @Test
+    void submit_throws_when_disabled() {
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                service, "enabled", false);
+        assertThatThrownBy(() -> service.submit(engineSubmission("anything")))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("disabled");
+    }
+
+    @Test
+    void drain_does_nothing_when_disabled() {
+        // Enqueued while enabled, then disabled before the tick fires —
+        // the drain must not triage anything.
+        service.submit(engineSubmission("queued while enabled"));
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                service, "enabled", false);
+        service.drainQueue();
+        verifyNoInteractions(lightLlm);
+        verifyNoInteractions(inboxItemService);
+    }
+
     // ─── new_ticket decision ────────────────────────────────────────
 
     @Test

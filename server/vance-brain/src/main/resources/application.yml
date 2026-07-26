@@ -57,6 +57,16 @@ vance:
       # localhost / a LAN service while testing — it re-opens SSRF and logs a
       # startup warning. Operator config only; never an LLM-controllable flag.
       allowPrivate: false
+  fook:
+    # Master on/off switch for the Fook feedback/triage subsystem —
+    # the vance_support_request LLM tool, the web user-menu feedback
+    # modal, the foot /support command, plus triage, session-analysis
+    # and upstream forwarding. Default true. Set false to turn all of
+    # it off on this brain: the LLM tool stays listed but every call
+    # returns a "disabled" note (so the model stops retrying), POST
+    # /brain/{tenant}/fook/submit answers 503, and nothing is queued,
+    # triaged, analysed, or forwarded upstream.
+    enabled: true
   bootstrap:
     # Seed the Acme demo tenant on first start (users, project groups,
     # projects, demo documents, _vance system project, init-settings

@@ -75,6 +75,14 @@ public class FookUpstreamService {
     private final ClusterMasterService masterService;
     private final List<TicketProvider> providers;
 
+    /** Mirrors {@code vance.fook.enabled} (default {@code true}). Part
+     *  of the master Fook switch: when off, neither the send nor the
+     *  poll tick does anything (on top of the existing
+     *  {@code fook.upstream.mode == never} early-out). Field-injected
+     *  so unit tests keep the enabled default. */
+    @org.springframework.beans.factory.annotation.Value("${vance.fook.enabled:true}")
+    private boolean enabled = true;
+
     // ─── send tick ──────────────────────────────────────────────────
 
     /**
@@ -84,6 +92,7 @@ public class FookUpstreamService {
      */
     @Scheduled(fixedDelayString = "${vance.fook.upstream.sendTick:PT5M}")
     public void sendTick() {
+        if (!enabled) return;
         // Multi-pod safety: only the cluster-master pod sends. Other
         // pods run the same Scheduler but skip — otherwise every pod
         // would push the same pending ticket to GitHub and we'd get
@@ -220,6 +229,7 @@ public class FookUpstreamService {
      */
     @Scheduled(fixedDelayString = "${vance.fook.upstream.pollTick:PT1H}")
     public void pollTick() {
+        if (!enabled) return;
         // Same multi-pod guard as sendTick — keeps the GH API rate-limit
         // budget unified and prevents N inbox-items per ticket-status-
         // change.

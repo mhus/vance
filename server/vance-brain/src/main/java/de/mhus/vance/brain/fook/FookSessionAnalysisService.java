@@ -119,6 +119,13 @@ public class FookSessionAnalysisService {
     private final FookTicketService ticketService;
     private final MetricService metricService;
 
+    /** Mirrors {@code vance.fook.enabled} (default {@code true}). Part
+     *  of the master Fook switch: when off, no analysis job is queued
+     *  or processed. Field-injected so unit tests keep the enabled
+     *  default. */
+    @org.springframework.beans.factory.annotation.Value("${vance.fook.enabled:true}")
+    private boolean enabled = true;
+
     /** Loop-turn budget; {@link #DEFAULT_MAX_STEPS} unless overridden.
      *  Field-injected (not a constructor arg) so unit tests that build
      *  the service directly get the default. */
@@ -134,6 +141,7 @@ public class FookSessionAnalysisService {
     /** Enqueue an analysis job. Returns immediately; the scheduled tick
      *  does the work. */
     public void enqueue(AnalysisJob job) {
+        if (!enabled) return;
         queue.add(job);
         inFlight.incrementAndGet();
         log.info("Fook: queued session-analysis ticket={} tenant={} session={} process={}",
@@ -150,6 +158,7 @@ public class FookSessionAnalysisService {
 
     @Scheduled(fixedDelayString = "${vance.fook.analysis.tick:PT5S}")
     public void drainQueue() {
+        if (!enabled) return;
         AnalysisJob job;
         while ((job = queue.poll()) != null) {
             try {

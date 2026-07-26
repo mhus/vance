@@ -94,6 +94,17 @@ public class FookService {
     private final SettingService settingService;
     private final FookSessionAnalysisService sessionAnalysisService;
 
+    /** Master on/off switch for the Fook feedback subsystem
+     *  ({@code vance.fook.enabled}, default {@code true}). When
+     *  {@code false} no submission is ever queued or triaged — the
+     *  three reporting surfaces short-circuit before reaching
+     *  {@link #submit}, and {@link #submit}/{@link #drainQueue} guard
+     *  as defense-in-depth. Field-injected (not a constructor arg) so
+     *  unit tests that build the service directly keep the enabled
+     *  default. */
+    @org.springframework.beans.factory.annotation.Value("${vance.fook.enabled:true}")
+    private boolean enabled = true;
+
     /** FIFO, thread-safe, lock-free. {@link #submit} writes,
      *  {@link #drainQueue} reads. Bounded only by JVM heap — a
      *  pathological flood gets noticed in metrics, not by a
@@ -113,6 +124,13 @@ public class FookService {
      * wait for the triage LLM.
      */
     public String submit(SubmissionRequest request) {
+        if (!enabled) {
+            // Reporting surfaces are expected to short-circuit before
+            // calling submit; reaching here with Fook disabled is a
+            // programming error, not a user-visible path.
+            throw new IllegalStateException(
+                    "Fook is disabled (vance.fook.enabled=false)");
+        }
         if (request == null) {
             throw new IllegalArgumentException("submission request is null");
         }
@@ -141,6 +159,20 @@ public class FookService {
         return inFlight.get();
     }
 
+    /** One-line startup banner when the subsystem is switched off, so
+     *  ops can tell at a glance that in-app feedback is intentionally
+     *  disabled on this brain rather than silently broken. Runs after
+     *  {@code @Value} injection, before the first tick. */
+    @jakarta.annotation.PostConstruct
+    void logStartupState() {
+        if (!enabled) {
+            log.info("Fook feedback disabled (vance.fook.enabled=false) — "
+                    + "the vance_support_request tool returns a disabled note, "
+                    + "POST /brain/{tenant}/fook/submit answers 503, and no "
+                    + "triage / session-analysis / upstream forwarding runs");
+        }
+    }
+
     // ─── worker ─────────────────────────────────────────────────────
 
     /**
@@ -151,6 +183,7 @@ public class FookService {
      */
     @Scheduled(fixedDelayString = "${vance.fook.tick:PT2S}")
     public void drainQueue() {
+        if (!enabled) return;
         Submission sub;
         while ((sub = queue.poll()) != null) {
             try {

@@ -139,6 +139,22 @@ class VanceSupportRequestToolTest {
         assertThat(ctx.getEngine()).isEqualTo("arthur");
     }
 
+    // ─── master enable switch (vance.fook.enabled) ──────────────────
+
+    @Test
+    void invoke_returns_disabled_note_and_skips_submit_when_disabled() {
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                tool, "enabled", false);
+
+        Map<String, Object> result = tool.invoke(Map.of("text", "a bug"), CTX);
+
+        assertThat(result).containsEntry("status", "disabled");
+        assertThat(result.get("note").toString())
+                .contains("disabled")
+                .contains("Do not retry");
+        verifyNoInteractions(fookService);
+    }
+
     // ─── rate-limit ─────────────────────────────────────────────────
 
     @Test

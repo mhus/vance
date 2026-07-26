@@ -56,6 +56,15 @@ public class VanceSupportRequestTool implements Tool {
     private final FookService fookService;
     private final ThinkProcessService thinkProcessService;
 
+    /** Mirrors {@code vance.fook.enabled} (default {@code true}). When
+     *  off, the tool stays visible in the LLM's inventory but every
+     *  invocation returns a {@code status: disabled} note instead of
+     *  queueing — so the model learns feedback is turned off here and
+     *  stops retrying. Field-injected so unit tests keep the enabled
+     *  default. */
+    @org.springframework.beans.factory.annotation.Value("${vance.fook.enabled:true}")
+    private boolean enabled = true;
+
     /** Upper bound on tracked per-process counters — LRU-evicted past this. */
     private static final int MAX_TRACKED_PROCESSES = 4096;
 
@@ -152,6 +161,19 @@ public class VanceSupportRequestTool implements Tool {
     @Override
     public Map<String, Object> invoke(
             Map<String, Object> params, ToolInvocationContext ctx) {
+        if (!enabled) {
+            // Feedback disabled brain-wide: don't queue, don't burn the
+            // per-process budget, and tell the model plainly so it
+            // doesn't retry.
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("status", "disabled");
+            out.put("note",
+                    "Feedback (Fook) is disabled on this brain — your report "
+                            + "was NOT submitted. Do not retry. Let the user "
+                            + "know that in-app feedback/support reporting is "
+                            + "turned off here.");
+            return out;
+        }
         String processId = ctx.processId();
         if (processId == null || processId.isBlank()) {
             throw new ToolException(

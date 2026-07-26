@@ -44,6 +44,15 @@ public class FookController {
     private final FookService fookService;
     private final RequestAuthority authority;
 
+    /** Mirrors {@code vance.fook.enabled} (default {@code true}). When
+     *  off, the endpoint answers 503 with a clear message so the web
+     *  feedback modal and the foot {@code /support} command surface
+     *  "feedback is disabled" instead of silently queueing nothing.
+     *  Field-injected so controller unit tests keep the enabled
+     *  default. */
+    @org.springframework.beans.factory.annotation.Value("${vance.fook.enabled:true}")
+    private boolean enabled = true;
+
     @PostMapping("/brain/{tenant}/fook/submit")
     public FookSubmissionResponseDto submit(
             @PathVariable("tenant") String tenant,
@@ -51,6 +60,11 @@ public class FookController {
             HttpServletRequest request) {
 
         authority.enforce(request, new Resource.Tenant(tenant), Action.WRITE);
+
+        if (!enabled) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Feedback (Fook) is disabled on this brain");
+        }
         SecurityContext sc = authority.contextOf(request);
 
         if (body.getText() == null || body.getText().isBlank()) {

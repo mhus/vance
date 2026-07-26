@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.ws;
 
+import de.mhus.vance.api.ws.ClientContext;
 import de.mhus.vance.api.ws.HandshakeHeaders;
 import de.mhus.vance.api.ws.Profiles;
 import de.mhus.vance.shared.access.AccessFilterBase;
@@ -20,6 +21,7 @@ import org.springframework.http.server.ServletServerHttpRequest;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.WebSocketHandler;
 import org.springframework.web.socket.server.HandshakeInterceptor;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Validates the HTTP upgrade request and prepares the per-connection
@@ -66,6 +68,7 @@ public class VanceHandshakeInterceptor implements HandshakeInterceptor {
     private static final Pattern PROFILE_PATTERN = Pattern.compile(Profiles.PATTERN);
 
     private final LocationService locationService;
+    private final ObjectMapper objectMapper;
 
     @Override
     public boolean beforeHandshake(
@@ -122,6 +125,7 @@ public class VanceHandshakeInterceptor implements HandshakeInterceptor {
                 clientName,
                 UUID.randomUUID().toString(),
                 locationService.getPodIp());
+        ctx.setClientContext(parseClientContext(request));
         attributes.put(ATTR_CONNECTION, ctx);
         log.debug("Handshake ok: user='{}' tenant='{}' profile={} clientName='{}' editorId='{}' podIp='{}'",
                 claims.username(), claims.tenantId(), profile, clientName,
@@ -136,6 +140,26 @@ public class VanceHandshakeInterceptor implements HandshakeInterceptor {
             WebSocketHandler wsHandler,
             @Nullable Exception exception) {
         // No session is bound here anymore — nothing to release.
+    }
+
+    /**
+     * Parses the optional {@link HandshakeHeaders#CLIENT_CONTEXT} header
+     * into a {@link ClientContext}. A missing, blank or malformed value
+     * yields {@code null} — it must never fail the handshake (the header
+     * is purely informational, sent only by CLI clients).
+     */
+    private @Nullable ClientContext parseClientContext(ServerHttpRequest request) {
+        String raw = firstHeader(request, HandshakeHeaders.CLIENT_CONTEXT);
+        if (isBlank(raw)) {
+            return null;
+        }
+        try {
+            return objectMapper.readValue(raw, ClientContext.class);
+        } catch (RuntimeException e) {
+            log.debug("Ignoring malformed {} header: {}",
+                    HandshakeHeaders.CLIENT_CONTEXT, e.getMessage());
+            return null;
+        }
     }
 
     private static @Nullable VanceJwtClaims resolveClaims(ServerHttpRequest request) {

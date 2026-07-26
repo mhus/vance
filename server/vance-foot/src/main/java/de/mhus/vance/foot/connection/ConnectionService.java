@@ -7,8 +7,10 @@ import de.mhus.vance.api.ws.ErrorData;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.PingData;
 import de.mhus.vance.api.ws.PongData;
+import de.mhus.vance.api.ws.ClientContext;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.foot.config.FootConfig;
+import de.mhus.vance.foot.permission.PermissionService;
 import de.mhus.vance.foot.session.SessionService;
 import de.mhus.vance.foot.ui.ChatTerminal;
 import de.mhus.vance.foot.ui.Verbosity;
@@ -19,6 +21,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.time.ZoneId;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -51,6 +54,7 @@ public class ConnectionService {
     private final ChatTerminal terminal;
     private final SessionService sessions;
     private final WindowTitleService windowTitle;
+    private final PermissionService permissions;
 
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
@@ -68,12 +72,14 @@ public class ConnectionService {
                              MessageDispatcher dispatcher,
                              ChatTerminal terminal,
                              SessionService sessions,
-                             WindowTitleService windowTitle) {
+                             WindowTitleService windowTitle,
+                             PermissionService permissions) {
         this.config = config;
         this.dispatcher = dispatcher;
         this.terminal = terminal;
         this.sessions = sessions;
         this.windowTitle = windowTitle;
+        this.permissions = permissions;
     }
 
     public State state() {
@@ -121,6 +127,7 @@ public class ConnectionService {
                     .profile(profile)
                     .clientVersion(config.getClient().getVersion())
                     .clientName(clientName)
+                    .clientContextJson(buildClientContextJson())
                     .build();
 
             VanceWebSocketClient client = new VanceWebSocketClient(wsConfig, new Listener());
@@ -419,6 +426,45 @@ public class ConnectionService {
                 || h.startsWith("127.")
                 || h.equals("::1")
                 || h.equals("0:0:0:0:0:0:0:1");
+    }
+
+    /**
+     * Builds the JSON-encoded {@link ClientContext} sent on the handshake
+     * so the brain can tell the LLM which platform / shell this client's
+     * {@code client_exec_run} calls run on. Never throws — a serialization
+     * failure just drops the header (the connection still opens; the brain
+     * degrades to "no client context").
+     */
+    private @Nullable String buildClientContextJson() {
+        try {
+            ClientContext ctx = ClientContext.builder()
+                    .os(osFamily())
+                    .arch(System.getProperty("os.arch"))
+                    // Mirror ClientExecutorService's own shell selection —
+                    // this is the interpreter client_exec_run actually uses.
+                    .shell(isWindows() ? "cmd.exe" : "/bin/sh")
+                    .cwd(System.getProperty("user.dir"))
+                    .sandboxEnabled(permissions.isSandboxEnabled())
+                    .timezone(ZoneId.systemDefault().getId())
+                    .build();
+            return json.writeValueAsString(ctx);
+        } catch (Exception e) {
+            terminal.verbose("Client-context header skipped (ignored): " + e.getMessage());
+            return null;
+        }
+    }
+
+    /** Normalised OS family for {@link ClientContext#getOs()}. */
+    private static String osFamily() {
+        String os = System.getProperty("os.name", "").toLowerCase();
+        if (os.contains("win")) return "windows";
+        if (os.contains("mac") || os.contains("darwin")) return "macos";
+        if (os.contains("nux") || os.contains("nix") || os.contains("aix")) return "linux";
+        return "unknown";
+    }
+
+    private static boolean isWindows() {
+        return System.getProperty("os.name", "").toLowerCase().contains("win");
     }
 
     private AccessTokenResponse mintToken() throws Exception {

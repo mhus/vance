@@ -2531,6 +2531,10 @@ public class EddieEngine extends StructuredActionEngine {
         // behind the cache marker. See PromptDateBlock.
         promptDateContextResolver.appendDynamicMessage(
                 messages, process, modelInfo == null ? null : modelInfo.size());
+        // Client environment (os/shell/cwd/sandbox) — tells the LLM which
+        // command dialect its client_exec_run calls run on. DYNAMIC, no-op
+        // when no CLIENT connection is bound. See PromptEnvironmentBlock.
+        promptDateContextResolver.appendClientEnvMessage(messages, process);
 
         // ── DYNAMIC blocks — mutated by LEARN, ride outside cache ──
         // Persona / facts: rewritten by `LEARN` action. Memory block:

@@ -38,6 +38,15 @@ public class VanceWebSocketConfig {
     @Nullable
     String clientName;
 
+    /**
+     * Optional JSON-encoded {@code de.mhus.vance.api.ws.ClientContext} —
+     * sent via {@code X-Vance-Client-Context}. Describes this client's
+     * platform (os / arch / shell / cwd / sandbox) so the brain can tell
+     * the LLM which command dialect its client-side exec calls run on.
+     */
+    @Nullable
+    String clientContextJson;
+
     /** Handshake/connect timeout; default 10s if not set. */
     @Builder.Default
     Duration connectTimeout = Duration.ofSeconds(10);

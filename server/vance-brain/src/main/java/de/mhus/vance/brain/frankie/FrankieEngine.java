@@ -752,6 +752,10 @@ public class FrankieEngine implements ThinkEngine {
         // cached static prefix. See PromptDateBlock.
         promptDateContextResolver.appendDynamicMessage(
                 messages, process, modelInfo == null ? null : modelInfo.size());
+        // Client environment (os/shell/cwd/sandbox) — tells the LLM which
+        // command dialect its client_exec_run calls run on. DYNAMIC, no-op
+        // when no CLIENT connection is bound. See PromptEnvironmentBlock.
+        promptDateContextResolver.appendClientEnvMessage(messages, process);
         // Reduced Plan-Mode TodoList (see §9.2). Marked DYNAMIC so the
         // Anthropic mapper places cache_control before this block —
         // plan-state churn (PENDING → IN_PROGRESS → COMPLETED) doesn't

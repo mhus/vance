@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.ws;
 
+import de.mhus.vance.api.ws.ClientContext;
 import de.mhus.vance.shared.session.SessionDocument;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
@@ -44,6 +45,16 @@ public class ConnectionContext {
     private volatile @Nullable SessionDocument sessionDocument;
 
     /**
+     * Client-platform description parsed from the
+     * {@link de.mhus.vance.api.ws.HandshakeHeaders#CLIENT_CONTEXT} header.
+     * Handshake-final like the identity fields, but set just after
+     * construction (mirrors {@link #attach}) so the many test call-sites
+     * of the constructor stay untouched. {@code null} for web clients and
+     * any client that doesn't send the header.
+     */
+    private volatile @Nullable ClientContext clientContext;
+
+    /**
      * Per-connection cache of the resolved {@link de.mhus.vance.shared.permission.SecurityContext}
      * (user + team memberships). tenantId/userId are handshake-final, so this
      * is stable for the connection lifetime; without it every permission-checked
@@ -55,6 +66,10 @@ public class ConnectionContext {
 
     public void attach(WebSocketSession webSocketSession) {
         this.webSocketSession = webSocketSession;
+    }
+
+    public void setClientContext(@Nullable ClientContext clientContext) {
+        this.clientContext = clientContext;
     }
 
     public boolean hasSession() {

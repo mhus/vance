@@ -304,6 +304,7 @@ export * from './users/UserUpdateRequest';
 export * from './web/LinkPreviewDto';
 
 export * from './ws/ClientAgentUploadRequest';
+export * from './ws/ClientContext';
 export * from './ws/DocumentChangedNotification';
 export * from './ws/DocumentNoteChangedNotification';
 export * from './ws/DocumentPresenceNotification';

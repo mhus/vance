@@ -90,6 +90,9 @@ public class VanceWebSocketClient implements AutoCloseable {
         if (config.getClientName() != null && !config.getClientName().isBlank()) {
             builder.header(HandshakeHeaders.CLIENT_NAME, config.getClientName());
         }
+        if (config.getClientContextJson() != null && !config.getClientContextJson().isBlank()) {
+            builder.header(HandshakeHeaders.CLIENT_CONTEXT, config.getClientContextJson());
+        }
         return builder.buildAsync(config.getUri(), new JdkListener())
                 .thenAccept(ws -> this.webSocket = ws);
     }

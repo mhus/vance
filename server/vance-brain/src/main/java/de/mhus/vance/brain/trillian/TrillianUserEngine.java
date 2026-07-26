@@ -489,6 +489,10 @@ public class TrillianUserEngine implements ThinkEngine {
         // cache marker. See PromptDateBlock.
         promptDateContextResolver.appendDynamicMessage(
                 messages, process, modelInfo == null ? null : modelInfo.size());
+        // Client environment (os/shell/cwd/sandbox) — tells the LLM which
+        // command dialect its client_exec_run calls run on. DYNAMIC, no-op
+        // when no CLIENT connection is bound. See PromptEnvironmentBlock.
+        promptDateContextResolver.appendClientEnvMessage(messages, process);
         for (ChatMessageDocument msg : chatLog.activeHistory(
                 process.getTenantId(), process.getSessionId(), process.getId())) {
             messages.add(toLangchain(msg));

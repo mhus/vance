@@ -28,6 +28,17 @@ public final class HandshakeHeaders {
     public static final String CLIENT_NAME = "X-Vance-Client-Name";
 
     /**
+     * {@code X-Vance-Client-Context} — optional JSON-encoded
+     * {@link ClientContext} describing the client's platform (os / arch /
+     * shell / cwd / sandbox state). Sent by CLI clients ({@code vance-foot})
+     * so the brain can tell the LLM which command dialect its client-side
+     * exec calls run on. Browsers cannot set custom headers and do not send
+     * it — they never drive {@code client_exec_run}. A malformed value is
+     * ignored, never fatal.
+     */
+    public static final String CLIENT_CONTEXT = "X-Vance-Client-Context";
+
+    /**
      * Query-parameter fallback for {@link #PROFILE}. Browsers cannot
      * attach custom headers to the WebSocket upgrade, so web clients
      * pass the profile as {@code ?profile=web}.

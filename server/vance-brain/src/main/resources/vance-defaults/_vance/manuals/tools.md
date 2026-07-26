@@ -41,6 +41,9 @@ When a foot client is connected, these are available:
   own `client.*` host binding (see `manual_read scripts`).
 
 Use these when the user asks about *their* files, not project files.
+When a client is connected, a `## Environment` system block states its OS,
+shell and working directory — write `client_exec_run` commands in that
+platform's dialect (Windows `cmd.exe` vs. POSIX `sh`), don't assume bash.
 
 ## Memory + RAG
 

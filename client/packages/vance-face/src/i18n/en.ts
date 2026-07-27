@@ -77,6 +77,15 @@ export default {
     giveUp: 'The connection could not be restored automatically.',
     tryAgain: 'Try again',
   },
+  sessionTakeover: {
+    title: 'Session open elsewhere',
+    body: 'This session is currently open in another window or on another '
+      + 'device. You can take it over here — the other connection will be '
+      + 'disconnected.',
+    takeOver: 'Take over here',
+    cancel: 'Cancel',
+    failed: 'Could not take over the session. Please try again.',
+  },
 
   documentPresence: {
     tooltip: '{n} other viewer(s) of this document',

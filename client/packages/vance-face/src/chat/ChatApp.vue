@@ -50,7 +50,21 @@ const {
   socket,
   status: wsStatus,
   activeSessionId,
+  bindConflict,
 } = useWsConnection();
+
+// When the user dismisses the global "take over?" dialog (bindConflict
+// clears without binding here), don't leave the view stuck on
+// "Connecting…". chat.html has a session picker — fall back to it so the
+// user can pick another session or re-attempt. Binding here clears the
+// conflict via activeSessionId instead, so we only redirect the decline.
+watch(bindConflict, (now, prev) => {
+  if (prev && now === null
+      && activeSessionId.value !== prev
+      && mode.value !== 'live') {
+    mode.value = 'picker';
+  }
+});
 
 /**
  * True while the store reports the underlying WebSocket is not in the
@@ -480,6 +494,14 @@ async function openAndBind(sessionId: string): Promise<boolean> {
     return true;
   } catch (e) {
     if (e instanceof WebSocketRequestError) {
+      if (e.errorCode === 409 && e.reason === 'session_bound_elsewhere') {
+        // Same user, session live in another window — the global
+        // SessionTakeoverDialog owns this UX (the store flagged
+        // bindConflict). Stay in 'connecting' rather than showing the
+        // "occupied by another user" copy, which is for the private-
+        // session-held-by-someone-else case.
+        return false;
+      }
       switch (e.errorCode) {
         case 409:
           mode.value = 'occupied';

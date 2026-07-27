@@ -11,4 +11,5 @@ export interface SessionBootstrapRequest {
   processes: ProcessSpec[];
   chatRecipe?: string;
   initialMessage?: string;
+  takeover: boolean;
 }

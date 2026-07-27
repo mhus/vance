@@ -4,7 +4,15 @@ import {
   type BrainWsApi,
   getTenantId,
   setActiveSessionId,
+  WebSocketRequestError,
 } from '@vance/shared';
+
+/**
+ * Server {@code ErrorData.reason} value flagging a resume refused because
+ * the session is held by a live sibling connection of the same user.
+ * Mirrors {@code de.mhus.vance.api.ws.ErrorData.REASON_SESSION_BOUND_ELSEWHERE}.
+ */
+const REASON_SESSION_BOUND_ELSEWHERE = 'session_bound_elsewhere';
 import type {
   DocumentChangedNotification,
   DocumentNoteChangedNotification,
@@ -85,6 +93,19 @@ const lastError: Ref<string | null> = ref(null);
  */
 const desiredSessionId: Ref<string | null> = ref(null);
 const activeSessionId: Ref<string | null> = ref(null);
+
+/**
+ * Set to the sessionId when a resume is refused because the session is
+ * currently held by a <em>live</em> connection of the same user (server
+ * {@code 409 session_bound_elsewhere}). The UI watches this to show a
+ * "take over here?" dialog; on confirm it calls {@link takeoverSession}.
+ *
+ * <p>Crucially, we do <em>not</em> auto-escalate to {@code takeover:true}.
+ * Two windows of the same user both auto-taking-over is exactly the
+ * connect/kick ping-pong we're preventing — the loop only breaks because
+ * the confirmation is a human decision (see planning/session-takeover.md).
+ */
+const bindConflict: Ref<string | null> = ref(null);
 
 /**
  * Desired-state of {@code documents}-channel subscriptions. The store is
@@ -330,24 +351,22 @@ async function attemptReconnect(): Promise<void> {
     return;
   }
   try {
-    const fresh = await connectSingleton({ tenant });
+    await connectSingleton({ tenant });
     status.value = 'connected';
     reconnectAttempts.value = 0;
     lastError.value = null;
     // Auto-resume desired session, if the editor had one before the drop.
+    // Never auto-takeover here: if the drop was a takeover-kick by another
+    // window of the same user, the re-resume lands on a 409
+    // session_bound_elsewhere, doSendResume flags bindConflict, and we stop.
+    // That refusal is the loop-breaker — the user decides via the dialog.
     if (desiredSessionId.value) {
       try {
-        await fresh.send<SessionResumeRequest, SessionResumeResponse>(
-          'session-resume',
-          { sessionId: desiredSessionId.value },
-        );
-        activeSessionId.value = desiredSessionId.value;
-        setActiveSessionId(desiredSessionId.value);
+        await doSendResume(desiredSessionId.value, false);
       } catch (resumeErr) {
-        // Resume failed — session might no longer exist, or another
-        // client took the lease. Leave activeSessionId null; the editor
-        // will surface the failure via its own bind-call when it
-        // notices.
+        // Resume failed — session gone, held by a live sibling (bindConflict
+        // now set, dialog shows), or a transient error. Leave activeSessionId
+        // null; the editor surfaces it via its own bind-call / the dialog.
         console.warn('[wsStore] auto-resume after reconnect failed:', resumeErr);
       }
     }
@@ -369,16 +388,29 @@ async function doSendUnbind(): Promise<void> {
   setActiveSessionId(null);
 }
 
-async function doSendResume(sessionId: string): Promise<void> {
+async function doSendResume(sessionId: string, takeover = false): Promise<void> {
   if (!socket.value) {
     throw new Error('WebSocket not connected');
   }
-  await socket.value.send<SessionResumeRequest, SessionResumeResponse>(
-    'session-resume',
-    { sessionId },
-  );
+  try {
+    await socket.value.send<SessionResumeRequest, SessionResumeResponse>(
+      'session-resume',
+      { sessionId, takeover },
+    );
+  } catch (e) {
+    if (e instanceof WebSocketRequestError
+        && e.errorCode === 409
+        && e.reason === REASON_SESSION_BOUND_ELSEWHERE) {
+      // Session is held by a live sibling connection of the same user.
+      // Flag the conflict for the UI and DO NOT retry — auto-escalating to
+      // takeover is what makes two windows fight forever.
+      bindConflict.value = sessionId;
+    }
+    throw e;
+  }
   activeSessionId.value = sessionId;
   setActiveSessionId(sessionId);
+  bindConflict.value = null;
 }
 
 // ─── public surface ─────────────────────────────────────────
@@ -477,6 +509,46 @@ export async function ensureBound(): Promise<boolean> {
     console.warn('[wsStore] ensureBound: rebind failed:', e);
     return false;
   }
+}
+
+/**
+ * Confirm a pending {@link bindConflict}: re-issue the resume with
+ * {@code takeover:true}, which closes the sibling connection server-side
+ * and binds the session here. Call only from an explicit user action (a
+ * "take over here?" confirmation) — never automatically.
+ *
+ * @returns {@code true} when the session is bound here afterwards.
+ */
+export async function takeoverSession(): Promise<boolean> {
+  const want = bindConflict.value ?? desiredSessionId.value;
+  if (!want) return false;
+  desiredSessionId.value = want;
+  try {
+    await ensureConnected();
+  } catch (e) {
+    console.warn('[wsStore] takeoverSession: connect failed:', e);
+    return false;
+  }
+  if (activeSessionId.value !== null && activeSessionId.value !== want) {
+    await doSendUnbind();
+  }
+  try {
+    await doSendResume(want, true);
+  } catch (e) {
+    console.warn('[wsStore] takeoverSession: resume failed:', e);
+    return false;
+  }
+  return activeSessionId.value === want;
+}
+
+/**
+ * Dismiss a pending {@link bindConflict} without taking over. Clears the
+ * desired session so a later reconnect does not re-issue the resume and
+ * re-pop the dialog — the user chose to leave the session where it is.
+ */
+export function dismissBindConflict(): void {
+  bindConflict.value = null;
+  desiredSessionId.value = null;
 }
 
 /**
@@ -1095,6 +1167,7 @@ export function useWsConnection(): {
   status: Ref<WsStatus>;
   activeSessionId: Ref<string | null>;
   desiredSessionId: Ref<string | null>;
+  bindConflict: Ref<string | null>;
   reconnectAttempts: Ref<number>;
   maxReconnectAttempts: number;
   lastError: Ref<string | null>;
@@ -1106,6 +1179,7 @@ export function useWsConnection(): {
     status,
     activeSessionId,
     desiredSessionId,
+    bindConflict,
     reconnectAttempts,
     maxReconnectAttempts: MAX_RECONNECT_ATTEMPTS,
     lastError,

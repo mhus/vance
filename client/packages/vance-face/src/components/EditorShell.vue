@@ -16,6 +16,7 @@ import {
   useWsConnection,
 } from '@/ws/wsConnectionStore';
 import ReconnectOverlay from '@/ws/ReconnectOverlay.vue';
+import SessionTakeoverDialog from '@/ws/SessionTakeoverDialog.vue';
 import { useNotificationSubscription } from '@/notification/useNotificationSubscription';
 
 // Re-export the breadcrumb segment type so existing consumers
@@ -470,6 +471,11 @@ onBeforeUnmount(() => {
          every editor (chat, cortex, documents, …) automatically
          inherits the "Verbindung verloren / Erneut versuchen" UX. -->
     <ReconnectOverlay />
+    <!-- Global session-takeover dialog — shown when a resume is refused
+         because the session is live in another window/device of the same
+         user. Every EditorShell-based editor inherits the "take over here?"
+         confirmation that breaks the connect/kick ping-pong. -->
+    <SessionTakeoverDialog />
   </div>
 </template>
 

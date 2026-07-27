@@ -148,9 +148,13 @@ public class EddieWorkerConnection implements AutoCloseable {
                     "Welcome frame not received from " + link.getWorkerPodAddress(), e);
         }
 
-        // Bind the WS to the worker session.
+        // Bind the WS to the worker session. This is an internal machine-to-
+        // machine reconnect to a headless worker session we own, so take the
+        // bind over unconditionally (like a daemon) rather than 409-ing when a
+        // previous worker connection is still registered.
         SessionResumeRequest req = new SessionResumeRequest();
         req.setSessionId(link.getWorkerSessionId());
+        req.setTakeover(true);
         WebSocketEnvelope reply;
         try {
             reply = sendRequest(MessageType.SESSION_RESUME, req, BIND_TIMEOUT);

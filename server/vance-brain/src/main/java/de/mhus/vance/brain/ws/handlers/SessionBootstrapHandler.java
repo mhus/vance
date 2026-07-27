@@ -413,6 +413,22 @@ public class SessionBootstrapHandler implements WsHandler {
             return Optional.empty();
         }
         projectManager.claimForLocalPod(doc.getTenantId(), doc.getProjectId());
+        // Concurrent-owner guard (same rule as SessionResumeHandler): a live
+        // sibling connection of the same user already holding this session is
+        // a conflict, not a takeover target — refuse unless the caller opted
+        // in via takeover. A stale sibling (closed socket) is not a conflict.
+        if (!request.isTakeover()) {
+            boolean liveSibling = connectionRegistry.findForUser(doc.getSessionId(), ctx.getUserId())
+                    .map(WebSocketSession::isOpen)
+                    .orElse(false);
+            if (liveSibling) {
+                sender.sendError(wsSession, envelope, 409,
+                        "Session '" + doc.getSessionId()
+                                + "' is open in another connection of the same user",
+                        de.mhus.vance.api.ws.ErrorData.REASON_SESSION_BOUND_ELSEWHERE);
+                return Optional.empty();
+            }
+        }
         // Same-user takeover: the userId-match check above guarantees the
         // existing bind (if any) belongs to the same human. Allow them to
         // resume from a fresh tab/pod without waiting for the previous

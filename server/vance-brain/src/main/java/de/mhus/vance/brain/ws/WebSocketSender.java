@@ -46,7 +46,24 @@ public class WebSocketSender {
             @Nullable WebSocketEnvelope request,
             int code,
             String message) throws IOException {
-        ErrorData data = ErrorData.builder().errorCode(code).errorMessage(message).build();
+        sendError(wsSession, request, code, message, null);
+    }
+
+    /**
+     * Sends an {@link MessageType#ERROR} reply carrying an optional
+     * machine-readable {@code reason} discriminator (see {@link ErrorData}).
+     */
+    public void sendError(
+            WebSocketSession wsSession,
+            @Nullable WebSocketEnvelope request,
+            int code,
+            String message,
+            @Nullable String reason) throws IOException {
+        ErrorData data = ErrorData.builder()
+                .errorCode(code)
+                .errorMessage(message)
+                .reason(reason)
+                .build();
         String replyTo = request == null ? null : request.getId();
         WebSocketEnvelope envelope = replyTo != null
                 ? WebSocketEnvelope.reply(replyTo, MessageType.ERROR, data)

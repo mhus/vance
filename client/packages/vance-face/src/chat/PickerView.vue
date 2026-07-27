@@ -476,6 +476,8 @@ async function bootstrapNew(chatRecipe: string | null): Promise<void> {
     const payload: SessionBootstrapRequest = {
       projectId: selectedProjectName.value,
       processes: [],
+      // Creating a fresh session — takeover only applies to resume.
+      takeover: false,
     };
     if (chatRecipe) payload.chatRecipe = chatRecipe;
     const response = await props.socket.send<SessionBootstrapRequest, SessionBootstrapResponse>(

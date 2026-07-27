@@ -291,7 +291,8 @@ public class ConnectionService {
         if (MessageType.ERROR.equals(reply.getType())) {
             ErrorData err = json.convertValue(reply.getData(), ErrorData.class);
             throw new BrainException(err.getErrorCode(),
-                    err.getErrorMessage() == null ? "(no message)" : err.getErrorMessage());
+                    err.getErrorMessage() == null ? "(no message)" : err.getErrorMessage(),
+                    err.getReason());
         }
         return json.convertValue(reply.getData(), replyType);
     }
@@ -368,7 +369,8 @@ public class ConnectionService {
         if (MessageType.ERROR.equals(reply.getType())) {
             ErrorData err = json.convertValue(reply.getData(), ErrorData.class);
             throw new BrainException(err.getErrorCode(),
-                    err.getErrorMessage() == null ? "(no message)" : err.getErrorMessage());
+                    err.getErrorMessage() == null ? "(no message)" : err.getErrorMessage(),
+                    err.getReason());
         }
         return json.convertValue(reply.getData(), replyType);
     }

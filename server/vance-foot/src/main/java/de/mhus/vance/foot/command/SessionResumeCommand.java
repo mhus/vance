@@ -9,6 +9,7 @@ import com.googlecode.lanterna.gui2.Label;
 import com.googlecode.lanterna.gui2.LinearLayout;
 import com.googlecode.lanterna.gui2.Panel;
 import com.googlecode.lanterna.gui2.Window;
+import de.mhus.vance.api.ws.ErrorData;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.Profiles;
 import de.mhus.vance.api.ws.SessionListRequest;
@@ -16,6 +17,8 @@ import de.mhus.vance.api.ws.SessionListResponse;
 import de.mhus.vance.api.ws.SessionResumeRequest;
 import de.mhus.vance.api.ws.SessionResumeResponse;
 import de.mhus.vance.api.ws.SessionSummary;
+import de.mhus.vance.foot.config.FootConfig;
+import de.mhus.vance.foot.connection.BrainException;
 import de.mhus.vance.foot.connection.ConnectionService;
 import de.mhus.vance.foot.session.SessionService;
 import de.mhus.vance.foot.ui.ChatTerminal;
@@ -52,15 +55,18 @@ public class SessionResumeCommand implements SlashCommand {
     private final SessionService sessions;
     private final ChatTerminal terminal;
     private final InterfaceService ui;
+    private final FootConfig config;
 
     public SessionResumeCommand(ConnectionService connection,
                                 SessionService sessions,
                                 ChatTerminal terminal,
-                                InterfaceService ui) {
+                                InterfaceService ui,
+                                FootConfig config) {
         this.connection = connection;
         this.sessions = sessions;
         this.terminal = terminal;
         this.ui = ui;
+        this.config = config;
     }
 
     @Override
@@ -70,29 +76,58 @@ public class SessionResumeCommand implements SlashCommand {
 
     @Override
     public String description() {
-        return "Resume a session and bind it. Args: [sessionId] (omit to pick from a list).";
+        return "Resume a session and bind it. Args: [sessionId] [--takeover] "
+                + "(omit sessionId to pick from a list; --takeover to steal a "
+                + "session already open in another connection of yours).";
     }
 
     @Override
     public List<ArgSpec> argSpec() {
-        return List.of(ArgSpec.of("sessionId", ArgKind.SESSION));
+        return List.of(
+                ArgSpec.of("sessionId", ArgKind.SESSION),
+                ArgSpec.enumOf("takeover", List.of("--takeover")));
     }
 
     @Override
     public void execute(List<String> args) throws Exception {
-        if (args.size() > 1) {
-            terminal.error("Usage: /session-resume [sessionId]");
+        boolean takeoverFlag = args.stream().anyMatch(SessionResumeCommand::isTakeoverToken);
+        List<String> positional = args.stream()
+                .filter(a -> !isTakeoverToken(a))
+                .toList();
+        if (positional.size() > 1) {
+            terminal.error("Usage: /session-resume [sessionId] [--takeover]");
             return;
         }
-        String sessionId = args.isEmpty() ? pickSessionInteractively() : args.get(0);
+        String sessionId = positional.isEmpty() ? pickSessionInteractively() : positional.get(0);
         if (sessionId == null) {
             return;
         }
-        SessionResumeResponse response = connection.request(
-                MessageType.SESSION_RESUME,
-                SessionResumeRequest.builder().sessionId(sessionId).build(),
-                SessionResumeResponse.class,
-                Duration.ofSeconds(10));
+        // Daemons have no user to confirm with, so they take over unconditionally
+        // (the operator accepts the ping-pong risk for headless clients).
+        boolean daemon = Profiles.DAEMON.equals(config.getClient().getProfile());
+        boolean takeover = takeoverFlag || daemon;
+
+        SessionResumeResponse response;
+        try {
+            response = connection.request(
+                    MessageType.SESSION_RESUME,
+                    SessionResumeRequest.builder().sessionId(sessionId).takeover(takeover).build(),
+                    SessionResumeResponse.class,
+                    Duration.ofSeconds(10));
+        } catch (BrainException e) {
+            if (e.getErrorCode() == 409
+                    && ErrorData.REASON_SESSION_BOUND_ELSEWHERE.equals(e.getReason())) {
+                // Held by another live connection of the same user. Never
+                // auto-steal — tell the user to opt in explicitly. That
+                // manual step is what prevents two clients fighting over
+                // the session in a reconnect loop.
+                terminal.error("Session '" + sessionId + "' is open in another connection "
+                        + "of yours. Re-run with --takeover to take it over here:");
+                terminal.info("    /session-resume " + sessionId + " --takeover");
+                return;
+            }
+            throw e;
+        }
 
         sessions.bind(response.getSessionId(), response.getProjectId());
         if (response.getChatProcessName() != null && !response.getChatProcessName().isBlank()) {
@@ -219,5 +254,9 @@ public class SessionResumeCommand implements SlashCommand {
 
     private static String truncate(String value, int max) {
         return value.length() <= max ? value : value.substring(0, Math.max(0, max - 1)) + "…";
+    }
+
+    private static boolean isTakeoverToken(String arg) {
+        return "--takeover".equals(arg) || "-t".equals(arg) || "takeover".equalsIgnoreCase(arg);
     }
 }

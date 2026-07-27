@@ -4,7 +4,11 @@ import de.mhus.vance.api.thinkprocess.BootstrappedProcess;
 import de.mhus.vance.api.thinkprocess.ProcessSpec;
 import de.mhus.vance.api.thinkprocess.SessionBootstrapRequest;
 import de.mhus.vance.api.thinkprocess.SessionBootstrapResponse;
+import de.mhus.vance.api.ws.ErrorData;
 import de.mhus.vance.api.ws.MessageType;
+import de.mhus.vance.api.ws.Profiles;
+import de.mhus.vance.foot.config.FootConfig;
+import de.mhus.vance.foot.connection.BrainException;
 import de.mhus.vance.foot.connection.ConnectionService;
 import de.mhus.vance.foot.session.SessionService;
 import de.mhus.vance.foot.ui.ChatTerminal;
@@ -44,13 +48,16 @@ public class SessionBootstrapCommand implements SlashCommand {
     private final ConnectionService connection;
     private final SessionService sessions;
     private final ChatTerminal terminal;
+    private final FootConfig config;
 
     public SessionBootstrapCommand(ConnectionService connection,
                                    SessionService sessions,
-                                   ChatTerminal terminal) {
+                                   ChatTerminal terminal,
+                                   FootConfig config) {
         this.connection = connection;
         this.sessions = sessions;
         this.terminal = terminal;
+        this.config = config;
     }
 
     @Override
@@ -70,13 +77,21 @@ public class SessionBootstrapCommand implements SlashCommand {
             return;
         }
         int sepIdx = args.indexOf("--");
-        List<String> head = sepIdx == -1 ? args : args.subList(0, sepIdx);
+        List<String> rawHead = sepIdx == -1 ? args : args.subList(0, sepIdx);
         @Nullable String initialMessage = sepIdx == -1
                 ? null
                 : String.join(" ", args.subList(sepIdx + 1, args.size())).trim();
         if (initialMessage != null && initialMessage.isEmpty()) {
             initialMessage = null;
         }
+
+        // Pull the takeover flag out of the head tokens so it isn't parsed as
+        // a process spec. On resume (@sessionId) it steals a session held by
+        // another live connection of the same user; ignored on create.
+        boolean takeoverFlag = rawHead.stream().anyMatch(SessionBootstrapCommand::isTakeoverToken);
+        List<String> head = rawHead.stream()
+                .filter(t -> !isTakeoverToken(t))
+                .toList();
 
         if (head.size() < 2) {
             printUsage();
@@ -110,16 +125,34 @@ public class SessionBootstrapCommand implements SlashCommand {
             specs.add(ProcessSpec.builder().recipe(recipe).name(processName).build());
         }
 
-        SessionBootstrapResponse response = connection.request(
-                MessageType.SESSION_BOOTSTRAP,
-                SessionBootstrapRequest.builder()
-                        .projectId(projectId)
-                        .sessionId(sessionId)
-                        .processes(specs)
-                        .initialMessage(initialMessage)
-                        .build(),
-                SessionBootstrapResponse.class,
-                Duration.ofSeconds(30));
+        // Daemons have no user to confirm with → auto-takeover on resume.
+        boolean daemon = Profiles.DAEMON.equals(config.getClient().getProfile());
+        boolean takeover = takeoverFlag || daemon;
+
+        SessionBootstrapResponse response;
+        try {
+            response = connection.request(
+                    MessageType.SESSION_BOOTSTRAP,
+                    SessionBootstrapRequest.builder()
+                            .projectId(projectId)
+                            .sessionId(sessionId)
+                            .processes(specs)
+                            .initialMessage(initialMessage)
+                            .takeover(takeover)
+                            .build(),
+                    SessionBootstrapResponse.class,
+                    Duration.ofSeconds(30));
+        } catch (BrainException e) {
+            if (e.getErrorCode() == 409
+                    && ErrorData.REASON_SESSION_BOUND_ELSEWHERE.equals(e.getReason())
+                    && sessionId != null) {
+                terminal.error("Session '" + sessionId + "' is open in another connection "
+                        + "of yours. Re-run with --takeover to take it over here:");
+                terminal.info("    /session-bootstrap @" + sessionId + " … --takeover");
+                return;
+            }
+            throw e;
+        }
 
         sessions.bind(response.getSessionId(), response.getProjectId());
         terminal.info((response.isSessionCreated() ? "Session created: " : "Session resumed: ")
@@ -149,6 +182,11 @@ public class SessionBootstrapCommand implements SlashCommand {
     }
 
     private void printUsage() {
-        terminal.error("Usage: /session-bootstrap <projectId>|@<sessionId> <recipe>[:name] [more...] [-- <initial message>]");
+        terminal.error("Usage: /session-bootstrap <projectId>|@<sessionId> <recipe>[:name] "
+                + "[more...] [--takeover] [-- <initial message>]");
+    }
+
+    private static boolean isTakeoverToken(String arg) {
+        return "--takeover".equals(arg) || "-t".equals(arg) || "takeover".equalsIgnoreCase(arg);
     }
 }

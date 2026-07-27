@@ -94,7 +94,7 @@ class HomePodLookupServiceTest {
                 ctx,
                 null,
                 WebSocketEnvelope.request("r2", MessageType.SESSION_RESUME,
-                        new SessionResumeRequest("sess-42")));
+                        SessionResumeRequest.builder().sessionId("sess-42").build()));
 
         assertThat(target.local()).isFalse();
         assertThat(target.requireEndpoint()).isEqualTo("pod-9:8080");

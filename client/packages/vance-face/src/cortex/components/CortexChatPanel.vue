@@ -13,6 +13,7 @@ import {
   bindSession,
   ensureBound,
   leaveChat,
+  takeoverSession,
   useWsConnection,
 } from '@/ws/wsConnectionStore';
 import { VAlert, VButton } from '@/components';
@@ -121,9 +122,43 @@ const activeApp = computed<ActiveAppContext | null>(() => {
 // the constant is the contract.
 const CHAT_PROCESS_NAME = 'chat';
 
-type Status = 'connecting' | 'live' | 'occupied' | 'failed';
+type Status = 'connecting' | 'live' | 'occupied' | 'failed' | 'elsewhere';
 
-const { socket, activeSessionId, status: wsStatus } = useWsConnection();
+const { socket, activeSessionId, bindConflict, status: wsStatus } = useWsConnection();
+
+/**
+ * True once the user dismissed the "take over?" dialog for this session
+ * (chose to leave it in the other window). Without this the panel would
+ * fall back to a permanent "Connecting…" — see {@link status}. Reset the
+ * moment the session actually binds here.
+ */
+const declinedTakeover = ref(false);
+watch(bindConflict, (now, prev) => {
+  if (now === props.sessionId) {
+    // Dialog (re)opened for our session — not a declined state (yet).
+    declinedTakeover.value = false;
+  } else if (prev === props.sessionId && activeSessionId.value !== props.sessionId) {
+    // Dialog closed without binding here → the user declined the takeover.
+    declinedTakeover.value = true;
+  }
+});
+watch(activeSessionId, (id) => {
+  if (id === props.sessionId) declinedTakeover.value = false;
+});
+
+/**
+ * True once the tab-singleton socket is open <em>and</em> our session is
+ * the server-confirmed bound one. The tool-service attach gates on this:
+ * {@code client-tool-register} is a session-scoped frame (server-side
+ * {@code canExecute} = "session bound"), so registering the instant a
+ * fresh socket appears — before {@code session-resume} lands — earns a
+ * 403 "requires a bound session". That window opens on every mount and
+ * again on every auto-reconnect (which swaps {@code socket.value} before
+ * the re-resume completes).
+ */
+const sessionBound = computed(
+  () => activeSessionId.value === props.sessionId,
+);
 const bindError = ref<string | null>(null);
 const occupied = ref(false);
 
@@ -133,6 +168,13 @@ const status = computed<Status>(() => {
   if (activeSessionId.value === props.sessionId
       && (wsStatus.value === 'connected' || wsStatus.value === 'reconnecting')) {
     return 'live';
+  }
+  // User declined the takeover — the session stays live in the other
+  // window and is not bound here. Show a distinct state (not a permanent
+  // "Connecting…"). While the dialog is still up (bindConflict === us) we
+  // keep 'connecting' — the modal covers the panel anyway.
+  if (declinedTakeover.value && bindConflict.value !== props.sessionId) {
+    return 'elsewhere';
   }
   return 'connecting';
 });
@@ -144,23 +186,30 @@ const errorMessage = computed<string | null>(() => {
   return bindError.value;
 });
 
-// ToolService attach follows the singleton socket — re-attach after
-// every fresh socket (e.g. after an auto-reconnect).
+// ToolService attach follows the singleton socket AND the session bind —
+// re-attach after every fresh socket (e.g. after an auto-reconnect) once
+// the session is server-confirmed bound again. Attaching before the bind
+// lands would 403 (see {@link sessionBound}).
 let attachedToolSocket: typeof socket.value = null;
 watch(
-  socket,
-  (next) => {
+  [socket, sessionBound],
+  ([next, bound]) => {
     if (!props.toolService) return;
-    if (next && next !== attachedToolSocket) {
-      try {
-        void props.toolService.attach(next);
-        attachedToolSocket = next;
-      } catch (regError) {
-        console.warn('Failed to register Cortex client tools', regError);
-      }
-    } else if (!next && attachedToolSocket) {
-      attachedToolSocket = null;
+    if (!next || !bound) {
+      // Socket gone (reconnect) or session not bound yet — nothing to
+      // attach to. Clear the marker so the next ready socket re-attaches.
+      if (attachedToolSocket) attachedToolSocket = null;
+      return;
     }
+    if (next === attachedToolSocket) return;
+    const target = next;
+    attachedToolSocket = target;
+    props.toolService.attach(target).catch((regError) => {
+      // Register failed (stale socket swapped out under us, transient
+      // error) — drop the marker so a fresh ready socket retries.
+      if (attachedToolSocket === target) attachedToolSocket = null;
+      console.warn('Failed to register Cortex client tools', regError);
+    });
   },
   { immediate: true },
 );
@@ -178,7 +227,13 @@ async function bindToSession(): Promise<void> {
   try {
     await bindSession(props.sessionId);
   } catch (e) {
-    if (e instanceof WebSocketRequestError && e.errorCode === 409) {
+    if (e instanceof WebSocketRequestError
+        && e.errorCode === 409
+        && e.reason === 'session_bound_elsewhere') {
+      // Same user, session live in another window — the global
+      // SessionTakeoverDialog owns this UX (the store flagged bindConflict).
+      // Don't also show the local "occupied" panel.
+    } else if (e instanceof WebSocketRequestError && e.errorCode === 409) {
       occupied.value = true;
     } else if (e instanceof WebSocketRequestError && e.errorCode === 404) {
       bindError.value = `Session ${props.sessionId} not found.`;
@@ -193,7 +248,16 @@ async function bindToSession(): Promise<void> {
 }
 
 async function retry(): Promise<void> {
+  // Re-attempt a plain bind. If the other window has since let go, this
+  // binds cleanly; if it still holds the session, the takeover dialog
+  // pops again.
+  declinedTakeover.value = false;
   await bindToSession();
+}
+
+async function takeOverHere(): Promise<void> {
+  declinedTakeover.value = false;
+  await takeoverSession();
 }
 
 /**
@@ -273,6 +337,17 @@ async function onConversationExported(
 
     <div v-if="status === 'connecting'" class="flex-1 flex items-center justify-center text-sm opacity-60">
       Connecting…
+    </div>
+
+    <div v-else-if="status === 'elsewhere'" class="p-3 space-y-2">
+      <VAlert variant="warning">
+        This session is open in another window or on another device — it is
+        not connected here.
+      </VAlert>
+      <div class="flex flex-col gap-2">
+        <VButton size="sm" variant="secondary" @click="retry">Reconnect</VButton>
+        <VButton size="sm" variant="primary" @click="takeOverHere">Take over here</VButton>
+      </div>
     </div>
 
     <div v-else-if="status !== 'live'" class="p-3">

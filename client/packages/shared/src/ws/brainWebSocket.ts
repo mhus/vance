@@ -329,7 +329,8 @@ export class BrainWebSocket {
           pending.reject(new WebSocketRequestError(
             err?.errorCode ?? 0,
             pending.type,
-            err?.errorMessage ?? `Server error on ${pending.type}`));
+            err?.errorMessage ?? `Server error on ${pending.type}`,
+            err?.reason));
         } else {
           // Auto-track the bound sessionId so subsequent frames carry it
           // in the LiveEnvelope (face-pod routing needs it for everything

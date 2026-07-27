@@ -106,10 +106,33 @@ public class SessionResumeHandler implements WsHandler {
             return;
         }
 
+        // Concurrent-owner guard: when another *live* connection of the
+        // same user already holds this session, a silent takeover starts a
+        // connect/kick ping-pong — the kicked window auto-reconnects, re-
+        // resumes, kicks back, forever (see planning/session-takeover.md).
+        // Refuse with a 409 + machine-readable reason unless the caller
+        // explicitly asked to take over (interactive: after a user
+        // confirmation; daemon: unconditionally). A *stale* sibling (socket
+        // already closed, only a leftover registry / Mongo bind) is not a
+        // conflict — fall through and bind, so plain network reconnects
+        // never prompt.
+        if (isOwner && !request.isTakeover()) {
+            boolean liveSibling = connectionRegistry.findForUser(doc.getSessionId(), ctx.getUserId())
+                    .map(WebSocketSession::isOpen)
+                    .orElse(false);
+            if (liveSibling) {
+                sender.sendError(wsSession, envelope, 409,
+                        "Session '" + doc.getSessionId()
+                                + "' is open in another connection of the same user",
+                        de.mhus.vance.api.ws.ErrorData.REASON_SESSION_BOUND_ELSEWHERE);
+                return;
+            }
+        }
+
         // Bind strategy depends on who's joining:
-        //  - Owner: same-user takeover from a fresh tab / pod —
-        //    unconditional, the userId-match above guarantees we're
-        //    the same human.
+        //  - Owner: same-user takeover from a fresh tab / pod — the
+        //    userId-match above guarantees we're the same human; the
+        //    concurrent-owner guard above gated the live-sibling case.
         //  - Non-owner on a shared session: try to claim the Mongo
         //    bind only if it's currently free or stale; never preempt
         //    the owner. If the owner is bound and fresh, we still

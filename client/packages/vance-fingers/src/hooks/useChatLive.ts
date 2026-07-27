@@ -139,6 +139,7 @@ export function useChatLive(sessionId: string): UseChatLiveResult {
       try {
         await socket.send<SessionResumeRequest, SessionResumeResponse>('session-resume', {
           sessionId,
+          takeover: false,
         });
       } catch (e) {
         // The session-resume reply might be an error if the session

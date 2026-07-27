@@ -71,6 +71,15 @@ export default {
     giveUp: 'Verbindung konnte nicht automatisch wiederhergestellt werden.',
     tryAgain: 'Erneut versuchen',
   },
+  sessionTakeover: {
+    title: 'Session woanders geöffnet',
+    body: 'Diese Session ist gerade in einem anderen Fenster oder auf einem '
+      + 'anderen Gerät geöffnet. Du kannst sie hier übernehmen — die andere '
+      + 'Verbindung wird dabei getrennt.',
+    takeOver: 'Hier übernehmen',
+    cancel: 'Abbrechen',
+    failed: 'Session konnte nicht übernommen werden. Bitte erneut versuchen.',
+  },
 
   documentPresence: {
     tooltip: '{n} weitere(r) Betrachter dieses Dokuments',

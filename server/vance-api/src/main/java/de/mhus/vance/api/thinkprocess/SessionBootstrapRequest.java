@@ -58,4 +58,14 @@ public class SessionBootstrapRequest {
 
     /** Optional chat message steered to the first process after creation. */
     private @Nullable String initialMessage;
+
+    /**
+     * On <em>resume</em> only: take the session over when it is currently
+     * held by a live sibling connection of the same user. Default
+     * ({@code false}) makes the server refuse with a {@code 409}
+     * {@code session_bound_elsewhere} instead of silently kicking the
+     * sibling, mirroring {@code SessionResumeRequest.takeover}. Ignored on
+     * create.
+     */
+    private boolean takeover;
 }

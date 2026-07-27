@@ -5,4 +5,5 @@
 
 export interface SessionResumeRequest {
   sessionId: string;
+  takeover: boolean;
 }

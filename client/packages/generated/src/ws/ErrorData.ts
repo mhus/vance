@@ -3,7 +3,10 @@
  Source: de.mhus.vance.api.ws.ErrorData
 */
 
+export const REASON_SESSION_BOUND_ELSEWHERE = "session_bound_elsewhere";
+
 export interface ErrorData {
   errorCode: number;
   errorMessage?: string;
+  reason?: string;
 }

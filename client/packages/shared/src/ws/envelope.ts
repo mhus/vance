@@ -17,19 +17,27 @@ export interface WebSocketEnvelope<T = unknown> {
 export interface WireErrorData {
   errorCode: number;
   errorMessage?: string;
+  /**
+   * Optional machine-readable discriminator — see `ErrorData.reason` on the
+   * server. Lets the client branch on ambiguous codes (notably the several
+   * distinct `409` conflict situations) without parsing the message string.
+   */
+  reason?: string;
 }
 
 /**
  * Error thrown when the brain replies with an `error` frame to a
  * request. Carries the HTTP-style status code so the chat editor can
  * distinguish a 409 (occupied) from a 404 (missing) without parsing
- * the message string.
+ * the message string. `reason` carries the optional machine-readable
+ * discriminator (e.g. `session_bound_elsewhere`).
  */
 export class WebSocketRequestError extends Error {
   constructor(
     public readonly errorCode: number,
     public readonly type: string,
     message: string,
+    public readonly reason?: string,
   ) {
     super(message);
     this.name = 'WebSocketRequestError';

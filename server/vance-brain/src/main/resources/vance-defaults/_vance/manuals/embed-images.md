@@ -7,6 +7,14 @@ summary: How to show a picture in chat — external URLs, project Documents, or 
 How to show a picture in the chat. There are three sources, all
 delivered through Markdown — no special protocol, no tool gymnastics.
 
+> **The one rule that matters: never invent an image URL.** An LLM
+> does not "have" real image URLs — a plausible-looking one you write
+> from memory (or lift out of a web-search snippet) is almost always a
+> 404 by the time the user sees it. To *show a picture*, run
+> `research_search modality=image` first: every returned `imageUrl` is
+> HEAD-validated against its host, so it is guaranteed live. Embed that
+> `imageUrl` — nothing else.
+
 ## When to use this
 
 User asks to *see* a photo, screenshot, diagram or any visual.
@@ -16,7 +24,7 @@ results contain image URLs.
 
 ## Three ways to embed an image
 
-### 1. External URL — most common
+### 1. External URL from image search — most common
 
 Standard Markdown image syntax. The Web-UI's Markdown renderer
 permits `<img>` tags from `https://` (DOMPurify default profile),

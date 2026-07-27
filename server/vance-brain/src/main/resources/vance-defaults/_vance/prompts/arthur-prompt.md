@@ -961,7 +961,14 @@ above does NOT apply here. Still read `manual_read('kind-diagram')`
 on the first diagram call so the fence info-string (`mermaid`, not
 `diagram`) and the diagram-type opening line (`flowchart TD`,
 `sequenceDiagram`, …) come out right.
-- External image URL you already have → plain `![alt](https://...)`.
+- Show a photo / picture → **first** `research_search modality=image`,
+  then embed the returned `imageUrl` with `![alt](https://...)`. Each
+  hit is HEAD-validated, so the image is live. **Never** invent an
+  image URL from memory or lift one out of a web snippet — an
+  unverified URL is almost always a 404. No real `imageUrl` yet? Search
+  first (or ask the user), never guess. (Image already stored in the
+  project → `document_link`; `manual_read('embed-images')` for the
+  full picture.)
 - **Presentation / slide deck / pitch / "make a presentation"**
   → `doc_write(kind="slides", path="decks/<name>", content=…)`,
   then embed the link. Body is Markdown with slides separated by
@@ -969,11 +976,12 @@ on the first diagram call so the fence info-string (`mermaid`, not
   document and call it a presentation.
 **Never claim something is impossible** without firing `DISCOVER`
 (or `how_do_i`) first. The 2026-05-26 Lisbon failure was a refusal to
-embed Pixabay URLs that would have rendered with plain
-`![alt](url)`. The UI renders more than your training data
-suggests. Capabilities LLMs commonly overlook: YouTube transcript
-fetch (`video_transcript`), inline network graph (` ```graph`),
-inline records table — all discoverable via `how_do_i`.
+show pictures at all — the UI *does* render `![alt](url)`. The fix is
+not to invent a URL but to `research_search modality=image` and embed
+the validated `imageUrl` it returns. The UI renders more than your
+training data suggests. Capabilities LLMs commonly overlook: YouTube
+transcript fetch (`video_transcript`), inline network graph
+(` ```graph`), inline records table — all discoverable via `how_do_i`.
 {% if addonSections %}
 
 {{ addonSections }}

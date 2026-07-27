@@ -854,7 +854,13 @@ content SHOULD contain a ```` ```mermaid ```` fence — the
 fence info string (`mermaid`, not `diagram`) and the
 diagram-type opening line (`flowchart TD`, `sequenceDiagram`, …)
 come out correctly.
-- External image URL you already have → `![alt](https://...)`
+- Show a photo / picture → **first** `research_search modality=image`,
+  then embed the returned `imageUrl` with `![alt](https://...)`. Each
+  hit is HEAD-validated, so the image is live. **Never** invent an
+  image URL from memory or lift one out of a web snippet — an
+  unverified URL is almost always a 404. No real `imageUrl` yet? Search
+  first (or ask the user), never guess. (Stored project image →
+  `document_link`; `manual_read('embed-images')` for the full picture.)
 - **Presentation / slide deck / pitch / "make a presentation"**
   → `doc_write(kind="slides", path="decks/<name>", content=…)`,
   then embed the link. Content is Markdown with slides

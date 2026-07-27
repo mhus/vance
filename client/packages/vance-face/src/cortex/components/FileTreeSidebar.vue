@@ -1,11 +1,17 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, provide, ref } from 'vue';
+import { nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue';
 import type { FolderNode } from '../types';
 import FileTreeNode from './FileTreeNode.vue';
 
 interface Props {
   root: FolderNode;
   activeFileId?: string | null;
+  /**
+   * When true, auto-reveal the active file in the tree whenever it changes
+   * (or the tree (re)loads) — the same effect as clicking the 🎯 button,
+   * applied on every tab switch. Owned + persisted by EditorApp.
+   */
+  autoReveal?: boolean;
 }
 
 const props = defineProps<Props>();
@@ -92,6 +98,17 @@ function revealActiveFile(): void {
     el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   });
 }
+
+// Auto-Target: reveal the active file whenever it changes, the mode gets
+// switched on, or the tree (re)loads (root identity changes after a
+// loadList). Manual 🎯 clicks work regardless of the mode.
+watch(
+  [() => props.activeFileId, () => props.autoReveal, () => props.root],
+  () => {
+    if (props.autoReveal && props.activeFileId) revealActiveFile();
+  },
+  { immediate: true },
+);
 </script>
 
 <template>

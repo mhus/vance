@@ -71,6 +71,7 @@ interface CortexStateBody {
   openDocumentIds: string[];
   chatBindMode?: ChatBindMode;
   pinnedDocumentId?: string | null;
+  autoTarget?: boolean;
 }
 
 // Session-id is read from the URL synchronously so the rest of the
@@ -87,6 +88,12 @@ const projectId = ref<string | null>(null);
 const chatBindMode = ref<ChatBindMode>('auto');
 const pinnedDocumentId = ref<string | null>(null);
 const focusZone = ref<FocusZone>('main');
+
+// Auto-Target: when on (default), the document tree auto-reveals the
+// active tab's file — same effect as clicking the 🎯 button in the tree
+// header, but on every tab switch. Persisted per session in
+// sessionStorage like {@link chatBindMode}. Toggled via the View menu.
+const autoTarget = ref(true);
 
 // Session-bound mode = there's a sessionId on this tab. Used everywhere
 // the chat-bound logic, persistence, bind-icon, etc. needs to gate.
@@ -300,6 +307,7 @@ async function restoreCortexState(): Promise<void> {
   const sid = sessionId.value;
   chatBindMode.value = 'auto';
   pinnedDocumentId.value = null;
+  autoTarget.value = true;
   if (!sid) return;
   const raw = sessionStorage.getItem(cortexStateKey(sid));
   if (!raw) return;
@@ -309,6 +317,9 @@ async function restoreCortexState(): Promise<void> {
   } catch {
     return;
   }
+  // Restore before the no-tabs early-return so the toggle survives even
+  // when no documents were open.
+  autoTarget.value = parsed?.autoTarget ?? true;
   const tabIds = parsed?.openDocumentIds ?? [];
   if (tabIds.length === 0) return;
   restoring.value = true;
@@ -356,6 +367,7 @@ function persistCortexState(): void {
     openDocumentIds: store.openTabs.map((t) => t.id),
     chatBindMode: chatBindMode.value,
     pinnedDocumentId: chatBindMode.value === 'pinned' ? pinnedDocumentId.value : null,
+    autoTarget: autoTarget.value,
   };
   try {
     sessionStorage.setItem(cortexStateKey(sid), JSON.stringify(body));
@@ -386,7 +398,7 @@ watch(
   },
 );
 
-watch([chatBindMode, pinnedDocumentId], () => {
+watch([chatBindMode, pinnedDocumentId, autoTarget], () => {
   void persistCortexState();
 });
 
@@ -1157,6 +1169,7 @@ const toggleTooltip = computed<string>(() => {
             v-if="projectId"
             :root="store.fileTree"
             :active-file-id="store.activeTabId"
+            :auto-reveal="autoTarget"
             @open-file="(id: string) => { focusZone = 'main'; store.openFile(id); }"
             @delete-file="onDelete"
             @move-file="onMoveFile"
@@ -1215,6 +1228,16 @@ const toggleTooltip = computed<string>(() => {
             <li>
               <a @click="closeMenus(); backHome()">
                 <span class="flex-1">{{ hasSession ? 'Back to chat' : 'Back to documents' }}</span>
+              </a>
+            </li>
+        </VDropdown>
+
+        <VDropdown menu-class="mt-1 w-64">
+          <template #trigger>View</template>
+            <li>
+              <a @click="closeMenus(); autoTarget = !autoTarget">
+                <span class="w-4 text-center">{{ autoTarget ? '✓' : '' }}</span>
+                <span class="flex-1">Auto — reveal active file in tree</span>
               </a>
             </li>
         </VDropdown>

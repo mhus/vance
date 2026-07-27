@@ -2,6 +2,8 @@ package de.mhus.vance.anus;
 
 import de.mhus.vance.anus.access.AccessProperties;
 import de.mhus.vance.anus.brain.AnusBrainProperties;
+import de.mhus.vance.anus.compose.DockerComposeSetupBootstrap;
+import de.mhus.vance.anus.compose.DockerComposeSetupWizard;
 import de.mhus.vance.anus.devmode.DevModeProperties;
 import de.mhus.vance.anus.setup.SetupBootstrap;
 import de.mhus.vance.anus.sudo.SudoBootstrap;
@@ -49,9 +51,18 @@ public class VanceAnusApplication {
         try {
             remaining = SudoBootstrap.parse(args);
             remaining = SetupBootstrap.parse(remaining);
+            remaining = DockerComposeSetupBootstrap.parse(remaining);
         } catch (IllegalArgumentException e) {
             System.err.println("anus: " + e.getMessage());
             System.exit(2);
+            return;
+        }
+        if (DockerComposeSetupBootstrap.isMode()) {
+            // Pure offline file scaffolder — writes docker-compose.yml + .env
+            // into the mounted volume and exits. Runs BEFORE Spring Boot so the
+            // Mongo-dependent context never boots (no database exists yet at
+            // this point in a fresh install).
+            System.exit(DockerComposeSetupWizard.run());
             return;
         }
         SpringApplication app = new SpringApplication(VanceAnusApplication.class);

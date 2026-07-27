@@ -3,6 +3,7 @@ package de.mhus.vance.anus.setup;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.password.PasswordService;
 import de.mhus.vance.api.settings.SettingType;
+import de.mhus.vance.shared.settings.LanguageResolver;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.tenant.TenantDocument;
 import de.mhus.vance.shared.tenant.TenantService;
@@ -549,6 +550,8 @@ public class SetupWizard {
                     pb -> pb.grantTenantAdmin(state.getTenantId(), state.getUserName()));
         }
 
+        seedLanguageSettings(out, state);
+
         writeProviderSettings(out, state);
         if (!StringUtils.isBlank(state.getSerperKey())) {
             writeResearchSettings(out, state);
@@ -661,6 +664,67 @@ public class SetupWizard {
         setString(tenantId, "research.fallback.academic", "arxiv", null);
 
         out.println("  + Serper key written, research stack enabled");
+    }
+
+    /**
+     * Seeds the default-language settings chosen in the docker-compose
+     * scaffolder ({@code --setup-docker-compose}), which cannot write them
+     * itself: {@code chat.language}/{@code content.language} are per-tenant
+     * Mongo settings and the tenant doesn't exist until this runtime wizard
+     * runs. The choice is carried across the two phases via the environment
+     * variables {@code VANCE_DEFAULT_LANGUAGE} (human-readable name, e.g.
+     * {@code German}) and {@code VANCE_DEFAULT_LANGUAGE_CODE} (short code, e.g.
+     * {@code de}).
+     *
+     * <p>The name seeds {@code chat.language} + {@code content.language} on the
+     * tenant's {@code _tenant} project; the code seeds the user-private
+     * {@code webui.language} on the operator's Hub project. Existing values are
+     * never overwritten — re-running the wizard leaves an operator's manual
+     * language edits intact. No-op when the env vars are absent (a hand-written
+     * compose stack, or a language-less scaffold).
+     */
+    private void seedLanguageSettings(PrintWriter out, SetupState state) {
+        String name = System.getenv("VANCE_DEFAULT_LANGUAGE");
+        String code = System.getenv("VANCE_DEFAULT_LANGUAGE_CODE");
+        String tenantId = state.getTenantId();
+
+        boolean seeded = false;
+        if (StringUtils.isNotBlank(name)) {
+            if (setStringIfAbsent(tenantId, SettingService.SCOPE_PROJECT,
+                    HomeBootstrapService.TENANT_PROJECT_NAME,
+                    LanguageResolver.Keys.CHAT_LANGUAGE, name.trim(),
+                    "Default assistant chat language.")) {
+                seeded = true;
+            }
+            if (setStringIfAbsent(tenantId, SettingService.SCOPE_PROJECT,
+                    HomeBootstrapService.TENANT_PROJECT_NAME,
+                    LanguageResolver.Keys.CONTENT_LANGUAGE, name.trim(),
+                    "Default document/memory content language.")) {
+                seeded = true;
+            }
+        }
+        if (StringUtils.isNotBlank(code) && StringUtils.isNotBlank(state.getUserName())) {
+            String hubProject = homeBootstrapService
+                    .ensureHome(tenantId, state.getUserName()).getName();
+            if (setStringIfAbsent(tenantId, SettingService.SCOPE_PROJECT, hubProject,
+                    LanguageResolver.Keys.WEBUI_LANGUAGE, code.trim().toLowerCase(),
+                    "Default Web-UI chrome language.")) {
+                seeded = true;
+            }
+        }
+        if (seeded) {
+            out.println("  + default language seeded (" + StringUtils.defaultIfBlank(name, code) + ")");
+        }
+    }
+
+    /** @return {@code true} if the setting was newly written (absent before). */
+    private boolean setStringIfAbsent(String tenantId, String scope, String refId,
+            String key, String value, @Nullable String description) {
+        if (StringUtils.isNotBlank(settingService.getStringValue(tenantId, scope, refId, key))) {
+            return false;
+        }
+        settingService.set(tenantId, scope, refId, key, value, SettingType.STRING, description);
+        return true;
     }
 
     private void setString(String tenantId, String key, String value, @Nullable String description) {

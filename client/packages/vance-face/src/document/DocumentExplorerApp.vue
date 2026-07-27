@@ -238,14 +238,21 @@ function gotoPage(p: number): void {
 // ── Multi-select ────────────────────────────────────────────────
 // Selection is scoped to the currently loaded page/folder: any
 // reload (folder walk, paging, project switch, search) replaces
-// docsState.items with a fresh array, so we clear the set then.
-// Folders are navigational and never selectable.
+// docsState.items with a fresh array, so we clear both sets then.
+//
+// Documents are tracked by id. Folders have no id (they are virtual
+// path prefixes), so they are tracked by their full prefix. The bulk
+// actions do not operate on folders yet — folder-aware, server-side
+// prefix expansion is the next step; until then a folder in the
+// selection disables the doc actions (see `foldersSelected`).
 const selectedIds = ref<Set<string>>(new Set());
+const selectedFolders = ref<Set<string>>(new Set());
 
 watch(
   () => docsState.items.value,
   () => {
     selectedIds.value = new Set();
+    selectedFolders.value = new Set();
     notice.value = '';
   },
 );
@@ -261,29 +268,61 @@ function toggleDoc(id: string): void {
   selectedIds.value = next;
 }
 
-const allSelected = computed<boolean>(
-  () =>
-    docsState.items.value.length > 0 &&
-    docsState.items.value.every((d) => selectedIds.value.has(d.id)),
-);
+/** Full path prefix of a visible subfolder (matches navigateIntoFolder). */
+function folderPrefixOf(folder: string): string {
+  const base = docsState.pathPrefix.value.replace(/\/+$/, '');
+  return base ? `${base}/${folder}/` : `${folder}/`;
+}
+
+function isFolderSelected(folder: string): boolean {
+  return selectedFolders.value.has(folderPrefixOf(folder));
+}
+
+function toggleFolder(folder: string): void {
+  const key = folderPrefixOf(folder);
+  const next = new Set(selectedFolders.value);
+  if (next.has(key)) next.delete(key);
+  else next.add(key);
+  selectedFolders.value = next;
+}
+
+const allSelected = computed<boolean>(() => {
+  const docs = docsState.items.value;
+  const folders = docsState.subFolders.value;
+  if (docs.length === 0 && folders.length === 0) return false;
+  return docs.every((d) => selectedIds.value.has(d.id))
+    && folders.every((f) => selectedFolders.value.has(folderPrefixOf(f)));
+});
 
 const someSelected = computed<boolean>(
-  () => selectedIds.value.size > 0 && !allSelected.value,
+  () => selectedIds.value.size + selectedFolders.value.size > 0 && !allSelected.value,
 );
 
 function toggleAll(): void {
-  selectedIds.value = allSelected.value
-    ? new Set()
-    : new Set(docsState.items.value.map((d) => d.id));
+  if (allSelected.value) {
+    selectedIds.value = new Set();
+    selectedFolders.value = new Set();
+  } else {
+    selectedIds.value = new Set(docsState.items.value.map((d) => d.id));
+    selectedFolders.value = new Set(docsState.subFolders.value.map((f) => folderPrefixOf(f)));
+  }
 }
 
-const selectedCount = computed<number>(() => selectedIds.value.size);
+const selectedCount = computed<number>(
+  () => selectedIds.value.size + selectedFolders.value.size,
+);
 const selectedDocs = computed(() =>
   docsState.items.value.filter((d) => selectedIds.value.has(d.id)),
 );
 
+// Folder-aware bulk actions are not implemented yet — while any folder
+// is selected the doc actions are disabled rather than silently ignoring
+// the folders. Lifting this gate is the next step.
+const foldersSelected = computed<boolean>(() => selectedFolders.value.size > 0);
+
 function clearSelection(): void {
   selectedIds.value = new Set();
+  selectedFolders.value = new Set();
 }
 
 // ── Bulk actions ────────────────────────────────────────────────
@@ -620,20 +659,33 @@ function confirmNewFolder(): void {
         <VButton variant="ghost" size="sm" @click="clearSelection">
           {{ $t('documents.selection.clear') }}
         </VButton>
+        <span v-if="foldersSelected" class="text-xs opacity-60">
+          {{ $t('documents.selection.foldersPending') }}
+        </span>
         <div class="flex-1"></div>
         <VButton
           variant="ghost"
           size="sm"
           :loading="exportBusy"
-          :disabled="bulkBusy"
+          :disabled="bulkBusy || foldersSelected"
           @click="exportSelected"
         >
           {{ $t('documents.selection.export') }}
         </VButton>
-        <VButton variant="secondary" size="sm" :disabled="bulkBusy || exportBusy" @click="openMoveModal">
+        <VButton
+          variant="secondary"
+          size="sm"
+          :disabled="bulkBusy || exportBusy || foldersSelected"
+          @click="openMoveModal"
+        >
           {{ $t('documents.selection.move') }}
         </VButton>
-        <VButton variant="danger" size="sm" :disabled="bulkBusy || exportBusy" @click="showTrashModal = true">
+        <VButton
+          variant="danger"
+          size="sm"
+          :disabled="bulkBusy || exportBusy || foldersSelected"
+          @click="showTrashModal = true"
+        >
           {{ $t('documents.selection.trash') }}
         </VButton>
       </div>
@@ -663,7 +715,7 @@ function confirmNewFolder(): void {
                 <VCheckbox
                   :model-value="allSelected"
                   :indeterminate="someSelected"
-                  :disabled="docsState.items.value.length === 0"
+                  :disabled="docsState.items.value.length === 0 && docsState.subFolders.value.length === 0"
                   @update:model-value="toggleAll"
                 />
               </th>
@@ -682,9 +734,15 @@ function confirmNewFolder(): void {
               v-for="folder in docsState.subFolders.value"
               :key="`f:${folder}`"
               class="border-b border-base-200 hover:bg-base-200/60 cursor-pointer"
+              :class="{ 'bg-primary/5': isFolderSelected(folder) }"
               @click="navigateIntoFolder(folder)"
             >
-              <td class="pl-4 pr-1 py-1.5"></td>
+              <td class="pl-4 pr-1 py-1.5" @click.stop>
+                <VCheckbox
+                  :model-value="isFolderSelected(folder)"
+                  @update:model-value="toggleFolder(folder)"
+                />
+              </td>
               <td class="px-2 py-1.5">📁</td>
               <td class="px-2 py-1.5 font-medium">{{ folder }}</td>
               <td class="px-2 py-1.5 opacity-50">folder</td>

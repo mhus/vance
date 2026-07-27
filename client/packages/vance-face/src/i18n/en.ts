@@ -462,6 +462,7 @@ export default {
     selection: {
       count: '{count} selected',
       clear: 'Clear selection',
+      foldersPending: 'Folder actions coming soon',
       export: 'Export',
       move: 'Move',
       trash: 'Move to trash',

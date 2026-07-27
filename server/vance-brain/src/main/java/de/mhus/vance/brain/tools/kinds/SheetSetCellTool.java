@@ -28,7 +28,8 @@ public class SheetSetCellTool implements Tool {
         Map<String, Object> p = new LinkedHashMap<>(KindToolSupport.documentSelectorProperties());
         p.put("field", Map.of("type", "string", "description", "A1-style cell address."));
         p.put("data", Map.of("type", "string",
-                "description", "Cell content. Lead with '=' for a formula (stored verbatim, not evaluated in v1)."));
+                "description", "Cell content. Lead with '=' for a formula (stored verbatim; "
+                        + "evaluate server-side with sheet_calc to persist computed values)."));
         p.put("color", Map.of("type", "string",
                 "description", "Optional HTML hex color for the cell text. Empty string clears."));
         p.put("background", Map.of("type", "string",

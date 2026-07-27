@@ -61,6 +61,8 @@ export * from './documents/DocumentNoteDto';
 export * from './documents/DocumentNoteUpdateRequest';
 export * from './documents/DocumentSummary';
 export * from './documents/DocumentSummaryRequest';
+export * from './documents/DocumentTrashChunkRequest';
+export * from './documents/DocumentTrashChunkResponse';
 export * from './documents/DocumentUnpackResponse';
 export * from './documents/DocumentUpdateRequest';
 export * from './documents/WriterRole';

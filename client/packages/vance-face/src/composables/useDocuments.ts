@@ -7,6 +7,7 @@ import type {
   DocumentKindsResponse,
   DocumentMoveChunkResponse,
   DocumentSummary,
+  DocumentTrashChunkResponse,
   DocumentUnpackResponse,
   DocumentUpdateRequest,
 } from '@vance/generated';
@@ -15,6 +16,13 @@ export interface MoveChunkArgs {
   ids?: string[];
   folders?: string[];
   targetFolder: string;
+  limit?: number;
+  cursor?: string;
+}
+
+export interface TrashChunkArgs {
+  ids?: string[];
+  folders?: string[];
   limit?: number;
   cursor?: string;
 }
@@ -75,6 +83,7 @@ export function useDocuments(pageSize = 20): {
   ) => Promise<{ blob: Blob; filename: string | null } | null>;
   unpack: (projectId: string, id: string) => Promise<DocumentUnpackResponse | null>;
   moveChunk: (projectId: string, args: MoveChunkArgs) => Promise<DocumentMoveChunkResponse | null>;
+  trashChunk: (projectId: string, args: TrashChunkArgs) => Promise<DocumentTrashChunkResponse | null>;
 } {
   const items = ref<DocumentSummary[]>([]);
   const page = ref(0);
@@ -457,6 +466,29 @@ export function useDocuments(pageSize = 20): {
     }
   }
 
+  /**
+   * Move one bounded chunk of the selection to the trash. Mirrors
+   * {@link moveChunk}: loop passing {@code args.cursor} back until {@code done};
+   * the server skips anything it cannot delete.
+   */
+  async function trashChunk(
+    projectId: string,
+    args: TrashChunkArgs,
+  ): Promise<DocumentTrashChunkResponse | null> {
+    error.value = null;
+    try {
+      const params = new URLSearchParams({ projectId });
+      return await brainFetch<DocumentTrashChunkResponse>(
+        'POST',
+        `documents/trash-chunk?${params}`,
+        { body: args },
+      );
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to trash documents.';
+      return null;
+    }
+  }
+
   async function remove(id: string): Promise<boolean> {
     loading.value = true;
     error.value = null;
@@ -509,5 +541,6 @@ export function useDocuments(pageSize = 20): {
     exportZip,
     unpack,
     moveChunk,
+    trashChunk,
   };
 }

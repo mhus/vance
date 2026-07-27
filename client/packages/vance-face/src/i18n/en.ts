@@ -462,9 +462,10 @@ export default {
     selection: {
       count: '{count} selected',
       clear: 'Clear selection',
-      foldersPending: 'Delete for folders coming soon',
       moveRunning: 'Moved {moved}…',
       moveDone: 'Moved {moved}, skipped {skipped}.',
+      trashRunning: 'Trashed {trashed}…',
+      trashDone: 'Trashed {trashed}, skipped {skipped}.',
       stop: 'Stop',
       export: 'Export',
       move: 'Move',

@@ -9,6 +9,8 @@ import de.mhus.vance.api.documents.DocumentDto;
 import de.mhus.vance.api.documents.DocumentExportRequest;
 import de.mhus.vance.api.documents.DocumentMoveChunkRequest;
 import de.mhus.vance.api.documents.DocumentMoveChunkResponse;
+import de.mhus.vance.api.documents.DocumentTrashChunkRequest;
+import de.mhus.vance.api.documents.DocumentTrashChunkResponse;
 import de.mhus.vance.api.documents.DocumentUnpackResponse;
 import de.mhus.vance.api.documents.DocumentFolderListResponse;
 import de.mhus.vance.api.documents.DocumentFoldersResponse;
@@ -1113,6 +1115,91 @@ public class DocumentController {
         String t = raw == null ? "" : raw.trim();
         t = t.replaceAll("^/+", "").replaceAll("/+$", "");
         return t.isEmpty() ? "" : t + "/";
+    }
+
+    // ──────────────────── Chunked trash ────────────────────
+
+    /**
+     * Move one bounded chunk of the selection to the trash — the delete
+     * counterpart of {@link #moveChunk}. Same client-driven loop and keyset
+     * cursor: explicit {@code ids} not inside a selected folder are trashed on
+     * the first call (blank cursor); {@code folders} are keyset-scanned by path
+     * and the client passes {@code cursor} back until {@code done}. The server
+     * skips anything it cannot delete (no {@code DELETE} permission, reserved /
+     * privileged documents). Trashed documents move to the trash prefix and
+     * thus leave the folder scan, so the loop is O(N) and terminates.
+     */
+    @PostMapping("/brain/{tenant}/documents/trash-chunk")
+    public DocumentTrashChunkResponse trashChunk(
+            @PathVariable("tenant") String tenant,
+            @RequestParam("projectId") String projectId,
+            @Valid @RequestBody DocumentTrashChunkRequest request,
+            @RequestHeader(value = HEADER_EDITOR_ID, required = false) @Nullable String editorId,
+            HttpServletRequest httpRequest) {
+
+        int limit = Math.max(1, Math.min(
+                request.getLimit() == null ? 25 : request.getLimit(), MOVE_CHUNK_MAX));
+        List<String> folders = new ArrayList<>();
+        if (request.getFolders() != null) {
+            for (String f : request.getFolders()) {
+                String norm = normalizeFolderPrefixTrailing(f);
+                if (!norm.isEmpty()) folders.add(norm);
+            }
+        }
+
+        DocumentService.WriterIdentity writer = writerIdentity(httpRequest, editorId);
+        int trashed = 0;
+        int skipped = 0;
+
+        boolean firstCall = request.getCursor() == null || request.getCursor().isBlank();
+        if (firstCall && request.getIds() != null) {
+            for (String id : request.getIds()) {
+                DocumentDocument doc = documentService.findById(id).orElse(null);
+                if (doc == null
+                        || !tenant.equals(doc.getTenantId())
+                        || !projectId.equals(doc.getProjectId())
+                        || isUnderAnyFolder(doc.getPath(), folders)) {
+                    continue;
+                }
+                if (tryTrashDoc(tenant, doc, writer, httpRequest)) trashed++;
+                else skipped++;
+            }
+        }
+
+        String cursor = request.getCursor();
+        boolean done = true;
+        if (!folders.isEmpty()) {
+            List<DocumentDocument> batch =
+                    documentService.listUnderFoldersAfter(tenant, projectId, folders, cursor, limit);
+            for (DocumentDocument doc : batch) {
+                cursor = doc.getPath();
+                if (tryTrashDoc(tenant, doc, writer, httpRequest)) trashed++;
+                else skipped++;
+            }
+            done = batch.size() < limit;
+        }
+
+        return DocumentTrashChunkResponse.builder()
+                .trashed(trashed)
+                .skipped(skipped)
+                .cursor(done ? null : cursor)
+                .done(done)
+                .build();
+    }
+
+    private boolean tryTrashDoc(String tenant, DocumentDocument doc,
+            DocumentService.WriterIdentity writer, HttpServletRequest httpRequest) {
+        if (!authority.check(httpRequest,
+                new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.DELETE)) {
+            return false;
+        }
+        try {
+            documentService.trash(doc.getId(), writer, actor(httpRequest));
+            return true;
+        } catch (RuntimeException e) {
+            // Reserved/privileged docs or a race — skip rather than abort.
+            return false;
+        }
     }
 
     // ──────────────────── Archive endpoints ────────────────────

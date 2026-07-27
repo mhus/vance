@@ -241,10 +241,9 @@ function gotoPage(p: number): void {
 // docsState.items with a fresh array, so we clear both sets then.
 //
 // Documents are tracked by id. Folders have no id (they are virtual
-// path prefixes), so they are tracked by their full prefix. The bulk
-// actions do not operate on folders yet — folder-aware, server-side
-// prefix expansion is the next step; until then a folder in the
-// selection disables the doc actions (see `foldersSelected`).
+// path prefixes), so they are tracked by their full prefix. All bulk
+// actions expand folders server-side (export directly, move/trash via
+// the chunk loop).
 const selectedIds = ref<Set<string>>(new Set());
 const selectedFolders = ref<Set<string>>(new Set());
 
@@ -311,14 +310,6 @@ function toggleAll(): void {
 const selectedCount = computed<number>(
   () => selectedIds.value.size + selectedFolders.value.size,
 );
-const selectedDocs = computed(() =>
-  docsState.items.value.filter((d) => selectedIds.value.has(d.id)),
-);
-
-// Folder-aware bulk actions are not implemented yet — while any folder
-// is selected the doc actions are disabled rather than silently ignoring
-// the folders. Lifting this gate is the next step.
-const foldersSelected = computed<boolean>(() => selectedFolders.value.size > 0);
 
 function clearSelection(): void {
   selectedIds.value = new Set();
@@ -326,10 +317,10 @@ function clearSelection(): void {
 }
 
 // ── Bulk actions ────────────────────────────────────────────────
-// Both operations run per-id over the single-document REST endpoints
-// (there is no bulk endpoint). A failing item lands its message in
-// docsState.error and the loop moves on — a partial success still
-// reflects in the list.
+// Export, move and trash all accept documents (by id) and folders (by
+// prefix, expanded server-side). Move and trash run as client-driven,
+// server-executed chunk loops (see confirmMove / confirmTrash) so they
+// scale, show progress and can be cancelled.
 const bulkBusy = ref(false);
 const showTrashModal = ref(false);
 const showMoveModal = ref(false);
@@ -341,15 +332,35 @@ const moveFolderOptions = computed(() => [
 ]);
 
 async function confirmTrash(): Promise<void> {
+  const pid = selectedProjectId.value;
+  if (!pid) return;
+  const ids = [...selectedIds.value];
+  const folders = [...selectedFolders.value];
   bulkBusy.value = true;
+  bulkAbort.value = false;
+  bulkProgress.value = 0;
+  let trashedTotal = 0;
+  let skippedTotal = 0;
+  let cursor: string | undefined;
   try {
-    for (const doc of selectedDocs.value) {
-      await docsState.remove(doc.id);
+    let done = false;
+    while (!done && !bulkAbort.value) {
+      const r = await docsState.trashChunk(pid, { ids, folders, limit: MOVE_CHUNK, cursor });
+      if (!r) break; // error surfaced via docsState.error
+      trashedTotal += r.trashed;
+      skippedTotal += r.skipped;
+      bulkProgress.value = trashedTotal;
+      cursor = r.cursor ?? undefined;
+      done = r.done;
     }
+    await docsState.loadPage(pid, docsState.page.value, docsState.pathPrefix.value);
+    notice.value = t('documents.selection.trashDone', {
+      trashed: trashedTotal,
+      skipped: skippedTotal,
+    });
   } finally {
     bulkBusy.value = false;
     showTrashModal.value = false;
-    clearSelection();
   }
 }
 
@@ -460,8 +471,8 @@ function openMoveModal(): void {
 // loop, show progress and can cancel between chunks. Passing the cursor back
 // makes it O(N) and terminating (stop when the server reports done).
 const MOVE_CHUNK = 25;
-const moveProgress = ref(0);
-const moveAbort = ref(false);
+const bulkProgress = ref(0);
+const bulkAbort = ref(false);
 
 async function confirmMove(): Promise<void> {
   const pid = selectedProjectId.value;
@@ -470,14 +481,14 @@ async function confirmMove(): Promise<void> {
   const ids = [...selectedIds.value];
   const folders = [...selectedFolders.value];
   bulkBusy.value = true;
-  moveAbort.value = false;
-  moveProgress.value = 0;
+  bulkAbort.value = false;
+  bulkProgress.value = 0;
   let movedTotal = 0;
   let skippedTotal = 0;
   let cursor: string | undefined;
   try {
     let done = false;
-    while (!done && !moveAbort.value) {
+    while (!done && !bulkAbort.value) {
       const r = await docsState.moveChunk(pid, {
         ids,
         folders,
@@ -488,7 +499,7 @@ async function confirmMove(): Promise<void> {
       if (!r) break; // error surfaced via docsState.error
       movedTotal += r.moved;
       skippedTotal += r.skipped;
-      moveProgress.value = movedTotal;
+      bulkProgress.value = movedTotal;
       cursor = r.cursor ?? undefined;
       done = r.done;
     }
@@ -692,9 +703,6 @@ function confirmNewFolder(): void {
         <VButton variant="ghost" size="sm" @click="clearSelection">
           {{ $t('documents.selection.clear') }}
         </VButton>
-        <span v-if="foldersSelected" class="text-xs opacity-60">
-          {{ $t('documents.selection.foldersPending') }}
-        </span>
         <div class="flex-1"></div>
         <VButton
           variant="ghost"
@@ -716,7 +724,7 @@ function confirmNewFolder(): void {
         <VButton
           variant="danger"
           size="sm"
-          :disabled="bulkBusy || exportBusy || foldersSelected"
+          :disabled="bulkBusy || exportBusy"
           @click="showTrashModal = true"
         >
           {{ $t('documents.selection.trash') }}
@@ -871,7 +879,7 @@ function confirmNewFolder(): void {
       :close-on-backdrop="!bulkBusy"
     >
       <p v-if="bulkBusy" class="text-sm mb-3">
-        {{ $t('documents.selection.moveRunning', { moved: moveProgress }) }}
+        {{ $t('documents.selection.moveRunning', { moved: bulkProgress }) }}
       </p>
       <template v-else>
         <p class="text-sm mb-3 opacity-80">
@@ -887,8 +895,8 @@ function confirmNewFolder(): void {
         <VButton
           v-if="bulkBusy"
           variant="ghost"
-          :disabled="moveAbort"
-          @click="moveAbort = true"
+          :disabled="bulkAbort"
+          @click="bulkAbort = true"
         >
           {{ $t('documents.selection.stop') }}
         </VButton>
@@ -907,11 +915,22 @@ function confirmNewFolder(): void {
       :title="$t('documents.selection.trashTitle')"
       :close-on-backdrop="!bulkBusy"
     >
-      <p class="text-sm opacity-80">
+      <p v-if="bulkBusy" class="text-sm">
+        {{ $t('documents.selection.trashRunning', { trashed: bulkProgress }) }}
+      </p>
+      <p v-else class="text-sm opacity-80">
         {{ $t('documents.selection.trashBody', { count: selectedCount }) }}
       </p>
       <template #actions>
-        <VButton variant="ghost" :disabled="bulkBusy" @click="showTrashModal = false">
+        <VButton
+          v-if="bulkBusy"
+          variant="ghost"
+          :disabled="bulkAbort"
+          @click="bulkAbort = true"
+        >
+          {{ $t('documents.selection.stop') }}
+        </VButton>
+        <VButton v-else variant="ghost" @click="showTrashModal = false">
           {{ $t('common.cancel') }}
         </VButton>
         <VButton variant="danger" :loading="bulkBusy" @click="confirmTrash">

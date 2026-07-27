@@ -67,10 +67,18 @@ describe('scriptComposeCodec', () => {
   });
 
   it('non-agent kinds carry no session block', () => {
-    for (const nodeName of ['vanceComposeJs', 'vanceComposeBash', 'vanceComposePython']) {
+    for (const nodeName of ['vanceComposeJs', 'vanceComposeBash', 'vanceComposePython', 'vanceComposeR']) {
       const yaml = initialManifest(kind(nodeName));
       expect(parse(yaml).session).toBeUndefined();
     }
+  });
+
+  it('r block forces exactly one r task carrying the inline code', () => {
+    const yaml = applyScript('workspace:\n  name: w\n', kind('vanceComposeR'), 'summary(cars)');
+    const t = firstTask(yaml);
+    expect(t.type).toBe('r');
+    expect(t.code).toBe('summary(cars)');
+    expect((parse(yaml).tasks as unknown[]).length).toBe(1);
   });
 
   it('exposes an agent kind with agent/prompt wiring', () => {

@@ -69,6 +69,15 @@ export const SCRIPT_COMPOSE_KINDS: ScriptComposeKind[] = [
     placeholder: "print('hello')",
   },
   {
+    fence: 'vance-compose-r',
+    nodeName: 'vanceComposeR',
+    taskType: 'r',
+    scriptField: 'code',
+    label: 'Compose R',
+    hint: 'Compose-Block mit einem R-Task (Rserve, WORK-only)',
+    placeholder: 'write.csv(data.frame(x = 1:5), "out.csv", row.names = FALSE)',
+  },
+  {
     fence: 'vance-compose-agent',
     nodeName: 'vanceComposeAgent',
     taskType: 'agent',

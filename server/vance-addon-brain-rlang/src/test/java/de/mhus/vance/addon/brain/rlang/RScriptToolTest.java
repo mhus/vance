@@ -23,37 +23,6 @@ class RScriptToolTest {
         assertThat(tool.safety()).isEqualTo(ToolSafety.MUTATING);
     }
 
-    @Test
-    void combine_bothEmpty_returnsEmpty() {
-        assertThat(RScriptTool.combine("", "")).isEmpty();
-        assertThat(RScriptTool.combine(null, null)).isEmpty();
-        assertThat(RScriptTool.combine("  ", "\n")).isEmpty();
-    }
-
-    @Test
-    void combine_outputOnly_returnsOutput() {
-        assertThat(RScriptTool.combine("printed line", ""))
-                .isEqualTo("printed line");
-    }
-
-    @Test
-    void combine_valueOnly_returnsValue() {
-        assertThat(RScriptTool.combine("", "[1] 42"))
-                .isEqualTo("[1] 42");
-    }
-
-    @Test
-    void combine_bothPresent_joinedWithNewline() {
-        assertThat(RScriptTool.combine("hello world", "[1] 3.14"))
-                .isEqualTo("hello world\n[1] 3.14");
-    }
-
-    @Test
-    void combine_stripsBoundaryWhitespace() {
-        assertThat(RScriptTool.combine("  hello\n", "\n[1] 42\n"))
-                .isEqualTo("hello\n[1] 42");
-    }
-
     // ─── kindForExtension ───────────────────────────────────────────
 
     @Test

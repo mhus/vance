@@ -41,8 +41,9 @@ const label = computed<string>(() => {
   return type === 'js' ? 'Compose JS'
     : type === 'python' ? 'Compose Python'
       : type === 'exec' ? 'Compose Bash'
-        : type === 'spawn' ? 'Compose Agent'
-          : 'Compose';
+        : type === 'r' ? 'Compose R'
+          : type === 'spawn' ? 'Compose Agent'
+            : 'Compose';
 });
 
 const title = computed<string | undefined>(() =>

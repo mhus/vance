@@ -28,9 +28,6 @@ import java.util.Set;
 import java.util.stream.Stream;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
-import org.rosuda.REngine.REXP;
-import org.rosuda.REngine.RList;
-import org.rosuda.REngine.Rserve.RConnection;
 import org.springframework.stereotype.Component;
 
 /**
@@ -45,10 +42,11 @@ import org.springframework.stereotype.Component;
  * to escape quotes, newlines, and dollar signs which they get wrong
  * about half the time. As a string variable, anything goes verbatim.
  *
- * <p>Stdout is captured with {@code capture.output(...)} so the
- * tool returns it as a clean line-oriented string. Errors are caught
- * with {@code tryCatch} and turned into a {@code ToolException} that
- * carries the R-level {@code conditionMessage()} verbatim.
+ * <p>The eval itself is delegated to {@link RExecutionService} (the shared
+ * Rserve core, also used by {@code RDamogranTask}). This tool owns the
+ * consumer-specific parts: minting/cleaning a temp working dir when the caller
+ * didn't pin one, emitting progress pings, and importing the files the run
+ * produced as Vance documents (see {@link #importOutputs}).
  *
  * <p>Limitations of this iteration:
  * <ul>
@@ -56,10 +54,6 @@ import org.springframework.stereotype.Component;
  *       a child process per client connection, so simultaneous tool
  *       calls don't collide, but the brain doesn't yet pool
  *       connections. Each tool call opens + closes.</li>
- *   <li>No file-output discovery — plots saved via {@code ggsave()}
- *       land in Rserve's working directory but aren't imported as
- *       Vance documents yet (iteration 2 will add the workspace-root
- *       handler that does the file-diff + auto-import).</li>
  *   <li>No streaming progress mid-script. The tool emits a
  *       {@code FETCH} ping before the eval and an {@code INFO} ping
  *       when it returns.</li>
@@ -68,9 +62,6 @@ import org.springframework.stereotype.Component;
 @Component
 @Slf4j
 public class RScriptTool implements Tool {
-
-    /** Truncation budget for the captured stdout, in characters. */
-    static final int MAX_OUTPUT_CHARS = 50_000;
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
@@ -94,7 +85,7 @@ public class RScriptTool implements Tool {
             "required", List.of("script"));
 
     private final RserveHealth health;
-    private final RserveDaemonManager daemonManager;
+    private final RExecutionService rExecutionService;
     private final ThinkProcessService thinkProcessService;
     private final ProgressEmitter progressEmitter;
     private final DocumentService documentService;
@@ -102,14 +93,14 @@ public class RScriptTool implements Tool {
     private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
     public RScriptTool(RserveHealth health,
-                       RserveDaemonManager daemonManager,
+                       RExecutionService rExecutionService,
                        ThinkProcessService thinkProcessService,
                        ProgressEmitter progressEmitter,
                        DocumentService documentService,
                        DocumentLinkBuilder linkBuilder,
                        de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
         this.health = health;
-        this.daemonManager = daemonManager;
+        this.rExecutionService = rExecutionService;
         this.thinkProcessService = thinkProcessService;
         this.progressEmitter = progressEmitter;
         this.documentService = documentService;
@@ -176,12 +167,6 @@ public class RScriptTool implements Tool {
         }
         String workingDir = asString(params == null ? null : params.get("workingDir"));
 
-        // Lazy daemon start: on first call (or after a daemon crash),
-        // RserveDaemonManager spawns `R CMD Rserve` and blocks until
-        // the port answers. Subsequent calls fall through immediately
-        // because health.isReachable() short-circuits inside.
-        daemonManager.ensureRunning();
-
         ThinkProcessDocument process = loadProcess(ctx);
         emit(process, StatusTag.FETCH,
                 "Evaluating R script on Rserve "
@@ -206,107 +191,36 @@ public class RScriptTool implements Tool {
             effectiveDir = Path.of(workingDir);
         }
 
-        long started = System.currentTimeMillis();
-        RConnection c;
         try {
-            c = new RConnection(health.properties().getHost(),
-                    health.properties().getPort());
-        } catch (Exception e) {
-            if (ownsTempDir) cleanupTempDir(effectiveDir);
-            throw new ToolException(
-                    "Could not open Rserve connection: " + e.getMessage());
-        }
-
-        // File snapshot for the post-eval diff. For an owned temp
-        // dir this is empty; for a caller-supplied dir we only
-        // pick up things that appeared during this run.
-        Set<String> preExisting = snapshot(effectiveDir);
-
-        try {
-            {
-                c.assign("vance_workdir", effectiveDir.toString());
-                REXP setOk = c.eval(
-                        "tryCatch({"
-                                + " setwd(vance_workdir);"
-                                + " list(ok=TRUE, dir=getwd())"
-                                + "}, error=function(e) list(ok=FALSE, "
-                                + "message=conditionMessage(e)))");
-                RList sl = setOk.asList();
-                boolean setwdOk = sl.at("ok").asInteger() == 1;
-                if (!setwdOk) {
-                    throw new ToolException(
-                            "setwd('" + effectiveDir + "') failed: "
-                                    + sl.at("message").asString());
-                }
+            RExecutionService.Result res = rExecutionService.evaluate(script, effectiveDir);
+            if (!res.ok()) {
+                emit(process, StatusTag.INFO, "R script failed: " + res.errorMessage());
+                throw new ToolException(res.errorMessage());
             }
-
-            c.assign("vance_script", script);
-            REXP result = c.eval(
-                    "tryCatch({"
-                            + " .vance_out <- capture.output("
-                            + "   .vance_value <- "
-                            + "     source(textConnection(vance_script),"
-                            + "            echo=FALSE, max.deparse.length=Inf)$value"
-                            + " );"
-                            + " list(status='ok',"
-                            + "      output=paste(.vance_out, collapse='\\n'),"
-                            + "      value=if (is.null(.vance_value)) ''"
-                            + "            else paste(capture.output(print(.vance_value)),"
-                            + "                       collapse='\\n'))"
-                            + "}, error=function(e) list(status='error', "
-                            + "                          message=conditionMessage(e)))");
-
-            RList r = result.asList();
-            String status = r.at("status").asString();
-            if (!"ok".equals(status)) {
-                String msg = r.at("message").asString();
-                emit(process, StatusTag.INFO, "R script failed: " + msg);
-                throw new ToolException("R error: " + msg);
-            }
-
-            String output = r.at("output").asString();
-            String value = r.at("value").asString();
-            String combined = combine(output, value);
-            int fullLen = combined.length();
-            boolean truncated = fullLen > MAX_OUTPUT_CHARS;
-            String body = truncated ? combined.substring(0, MAX_OUTPUT_CHARS) : combined;
-            double elapsedSec = (System.currentTimeMillis() - started) / 1000.0;
 
             log.info("RScriptTool tenant='{}' workingDir='{}' "
                             + "outputBytes={} elapsedSec={}",
                     ctx.tenantId(), workingDir == null ? "(default)" : workingDir,
-                    fullLen, elapsedSec);
+                    res.contentLength(), res.elapsedSec());
             emit(process, StatusTag.INFO,
                     String.format(Locale.ROOT,
                             "R script done in %.2fs (%d chars).",
-                            elapsedSec, fullLen));
+                            res.elapsedSec(), res.contentLength()));
 
-            // ── Auto-discover + import new files as Documents ──
-            List<Map<String, Object>> outputs = discoverAndImportOutputs(
-                    effectiveDir, preExisting, ctx, process);
+            // ── Import the run's new files as Documents ──
+            List<Map<String, Object>> outputs = importOutputs(res.newFiles(), ctx, process);
 
             Map<String, Object> out = new LinkedHashMap<>();
-            out.put("rVersion", health.version() == null ? "unknown" : health.version());
-            out.put("elapsedSec", elapsedSec);
-            out.put("contentLength", fullLen);
-            out.put("truncated", truncated);
-            out.put("text", body);
+            out.put("rVersion", res.rVersion());
+            out.put("elapsedSec", res.elapsedSec());
+            out.put("contentLength", res.contentLength());
+            out.put("truncated", res.truncated());
+            out.put("text", res.text());
             if (!outputs.isEmpty()) {
                 out.put("outputs", outputs);
             }
             return out;
-        } catch (ToolException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new ToolException(
-                    "Rserve communication failed: " + e.getMessage());
         } finally {
-            try {
-                c.close();
-            } catch (Exception e) {
-                log.warn("Could not close Rserve connection cleanly: {}",
-                        e.getMessage());
-            }
             if (ownsTempDir) {
                 cleanupTempDir(effectiveDir);
             }
@@ -314,50 +228,19 @@ public class RScriptTool implements Tool {
     }
 
     /**
-     * Take a flat snapshot (filename-only) of the working dir, so we
-     * can diff against it after the R script ran. Returns an empty
-     * set when the dir doesn't exist yet (it will after setwd).
-     */
-    private static Set<String> snapshot(Path dir) {
-        if (!Files.isDirectory(dir)) return Set.of();
-        try (Stream<Path> stream = Files.list(dir)) {
-            Set<String> names = new java.util.HashSet<>();
-            stream.forEach(p -> names.add(p.getFileName().toString()));
-            return names;
-        } catch (IOException e) {
-            log.warn("Could not snapshot working dir {}: {}", dir, e.getMessage());
-            return Set.of();
-        }
-    }
-
-    /**
-     * Scan {@code dir} for files that weren't there before the R
-     * eval, classify them by extension, import each as a Vance
-     * Document under {@code r-outputs/&lt;timestamp&gt;/&lt;name&gt;},
-     * and return a list of result maps with {@code kind}, {@code path},
+     * Classify each of the run's {@code newFiles} by extension, import it as a
+     * Vance Document under {@code r-outputs/&lt;timestamp&gt;/&lt;name&gt;}, and
+     * return a list of result maps with {@code kind}, {@code path},
      * {@code vanceUri}, {@code markdownLink}, {@code size}.
      *
-     * <p>When the tool context has no {@code projectId} (rare —
-     * admin flows), import is skipped and the files are listed with
-     * just {@code kind} + {@code localPath} so the caller can at
-     * least see what was produced.
+     * <p>When the tool context has no {@code projectId} (rare — admin flows),
+     * import is skipped and the files are listed with just {@code kind} +
+     * {@code localPath} so the caller can at least see what was produced.
      */
-    private List<Map<String, Object>> discoverAndImportOutputs(
-            Path dir,
-            Set<String> preExisting,
+    private List<Map<String, Object>> importOutputs(
+            List<Path> newFiles,
             ToolInvocationContext ctx,
             @Nullable ThinkProcessDocument process) {
-        List<Path> newFiles = new ArrayList<>();
-        try (Stream<Path> stream = Files.list(dir)) {
-            stream
-                    .filter(Files::isRegularFile)
-                    .filter(p -> !preExisting.contains(p.getFileName().toString()))
-                    .sorted(Comparator.comparing(p -> p.getFileName().toString()))
-                    .forEach(newFiles::add);
-        } catch (IOException e) {
-            log.warn("Could not list outputs in {}: {}", dir, e.getMessage());
-            return List.of();
-        }
         if (newFiles.isEmpty()) return List.of();
 
         String projectId = ctx.projectId();
@@ -492,20 +375,6 @@ public class RScriptTool implements Tool {
                       StatusTag tag, String text) {
         if (process == null) return;
         progressEmitter.emitStatus(process, tag, text);
-    }
-
-    /** Glue {@code output} (stdout) and {@code value} (final expression
-     *  printed) — omit either when empty so we don't emit dangling
-     *  separator lines. */
-    static String combine(@Nullable String output, @Nullable String value) {
-        String o = output == null ? "" : output.strip();
-        String v = value == null ? "" : value.strip();
-        if (o.isEmpty() && v.isEmpty()) return "";
-        if (o.isEmpty()) return v;
-        if (v.isEmpty()) return o;
-        // The trailing value gets a separator so the LLM can tell
-        // print()-stream apart from the final value of the script.
-        return o + "\n" + v;
     }
 
     private static @Nullable String asString(@Nullable Object v) {

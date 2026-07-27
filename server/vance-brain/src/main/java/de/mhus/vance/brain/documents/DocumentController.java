@@ -6,6 +6,8 @@ import de.mhus.vance.api.documents.DocumentArchiveListResponse;
 import de.mhus.vance.api.documents.DocumentArchiveSummary;
 import de.mhus.vance.api.documents.DocumentCreateRequest;
 import de.mhus.vance.api.documents.DocumentDto;
+import de.mhus.vance.api.documents.DocumentExportRequest;
+import de.mhus.vance.api.documents.DocumentUnpackResponse;
 import de.mhus.vance.api.documents.DocumentFolderListResponse;
 import de.mhus.vance.api.documents.DocumentFoldersResponse;
 import de.mhus.vance.api.documents.DocumentKindsResponse;
@@ -23,15 +25,22 @@ import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -55,6 +64,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 /**
  * REST endpoints for documents — list (paged), detail, update.
@@ -710,6 +720,230 @@ public class DocumentController {
             documentService.trash(id, identity, actor(httpRequest));
         }
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Stream a ZIP of the requested documents, one entry per document keyed
+     * by its path so the (virtual) folder structure is preserved.
+     *
+     * <p>The archive is written directly onto the response output stream via
+     * {@link ZipOutputStream} — content is copied one document at a time
+     * through {@link DocumentService#loadContent}, which itself streams — so
+     * neither heap nor disk holds the full archive. Every id is resolved and
+     * {@code READ}-authorized <em>before</em> the body starts: once bytes are
+     * flushed the status is committed and a late failure could only produce a
+     * corrupt download, so access errors surface as a clean status here.
+     */
+    @PostMapping("/brain/{tenant}/documents/export")
+    public ResponseEntity<StreamingResponseBody> export(
+            @PathVariable("tenant") String tenant,
+            @RequestParam("projectId") String projectId,
+            @Valid @RequestBody DocumentExportRequest request,
+            HttpServletRequest httpRequest) {
+
+        List<DocumentDocument> docs = new ArrayList<>();
+        for (String id : request.getIds()) {
+            DocumentDocument doc = documentService.findById(id)
+                    .orElseThrow(() -> new ResponseStatusException(
+                            HttpStatus.NOT_FOUND, "Document not found: " + id));
+            if (!tenant.equals(doc.getTenantId()) || !projectId.equals(doc.getProjectId())) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found: " + id);
+            }
+            authority.enforce(httpRequest,
+                    new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.READ);
+            docs.add(doc);
+        }
+
+        StreamingResponseBody body = out -> {
+            try (ZipOutputStream zip = new ZipOutputStream(out)) {
+                for (DocumentDocument doc : docs) {
+                    zip.putNextEntry(new ZipEntry(zipEntryName(doc.getPath())));
+                    try (InputStream in = documentService.loadContent(doc)) {
+                        in.transferTo(zip);
+                    } catch (RuntimeException e) {
+                        // One unreadable document must not abort the whole
+                        // archive: log and leave a (possibly empty) entry
+                        // rather than corrupting the ZIP mid-stream.
+                        log.warn("export: failed to stream content for {} ({})",
+                                doc.getId(), e.toString());
+                    }
+                    zip.closeEntry();
+                }
+            }
+        };
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"documents.zip\"")
+                .contentType(new MediaType("application", "zip"))
+                .body(body);
+    }
+
+    /**
+     * Document path → ZIP entry name. Document paths already use {@code '/'}
+     * as the folder separator, which is exactly the ZIP convention; we only
+     * strip a leading slash and guard against a blank name.
+     */
+    private static String zipEntryName(String path) {
+        String p = path.startsWith("/") ? path.substring(1) : path;
+        return p.isBlank() ? "unnamed" : p;
+    }
+
+    /** Hard guards against pathological archives (zip bombs). */
+    private static final int UNPACK_MAX_ENTRIES = 5000;
+    private static final long UNPACK_MAX_TOTAL_BYTES = 512L * 1024 * 1024; // 512 MiB
+
+    /**
+     * Extract a ZIP document into individual documents under a sibling folder
+     * named after the archive ({@code notes/a.zip} → {@code notes/a/…}).
+     *
+     * <p>Streamed end to end: {@link ZipInputStream} over the archive's
+     * content stream (no central-directory seek, so no temp file), each entry
+     * piped straight into {@link DocumentService#create} (which streams into
+     * storage). Only one entry's worth of bytes is in flight at a time.
+     *
+     * <p>Safety: entry names are sanitised against path traversal (zip-slip);
+     * existing target documents are skipped (not overwritten); entry count and
+     * total uncompressed size are capped. Writes are authorised inside
+     * {@code create} ({@code Action.CREATE}); reading the archive requires
+     * {@code READ} on the archive document, enforced up front.
+     */
+    @PostMapping("/brain/{tenant}/documents/{id}/unpack")
+    public ResponseEntity<DocumentUnpackResponse> unpack(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("id") String id,
+            @RequestParam("projectId") String projectId,
+            HttpServletRequest httpRequest) {
+
+        DocumentDocument zip = documentService.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        if (!tenant.equals(zip.getTenantId()) || !projectId.equals(zip.getProjectId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
+        authority.enforce(httpRequest,
+                new Resource.Document(tenant, zip.getProjectId(), zip.getPath()), Action.READ);
+
+        String zipPath = zip.getPath();
+        if (!looksLikeZip(zipPath, zip.getMimeType())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Not a ZIP archive: " + zipPath);
+        }
+        String targetFolder = unpackTargetFolder(zipPath);
+        String username = (String) httpRequest.getAttribute(AccessFilterBase.ATTR_USERNAME);
+
+        int extracted = 0;
+        List<String> skipped = new ArrayList<>();
+        List<String> failed = new ArrayList<>();
+        boolean truncated = false;
+
+        // Counting wrapper: bytes accumulate across all entries so the size
+        // guard bounds the whole archive, not just a single member.
+        long[] total = {0L};
+        try (InputStream raw = documentService.loadContent(zip);
+                InputStream counting = new FilterInputStream(raw) {
+                    @Override public int read() throws IOException {
+                        int b = super.read();
+                        if (b != -1) total[0]++;
+                        return b;
+                    }
+                    @Override public int read(byte[] b, int off, int len) throws IOException {
+                        int n = super.read(b, off, len);
+                        if (n > 0) total[0] += n;
+                        return n;
+                    }
+                };
+                ZipInputStream zin = new ZipInputStream(counting)) {
+
+            ZipEntry entry;
+            while ((entry = zin.getNextEntry()) != null) {
+                if (extracted + skipped.size() + failed.size() >= UNPACK_MAX_ENTRIES) {
+                    truncated = true;
+                    break;
+                }
+                if (entry.isDirectory()) {
+                    zin.closeEntry();
+                    continue;
+                }
+                String safe = safeUnpackPath(targetFolder, entry.getName());
+                if (safe == null) {
+                    failed.add(entry.getName());
+                    zin.closeEntry();
+                    continue;
+                }
+                try {
+                    documentService.create(tenant, projectId, safe, null, null, null,
+                            closeShield(zin), username, actor(httpRequest));
+                    extracted++;
+                } catch (DocumentService.DocumentAlreadyExistsException e) {
+                    skipped.add(safe);
+                } catch (RuntimeException e) {
+                    log.warn("unpack: failed to create {} from {} ({})",
+                            safe, zipPath, e.toString());
+                    failed.add(safe);
+                }
+                zin.closeEntry();
+                if (total[0] > UNPACK_MAX_TOTAL_BYTES) {
+                    truncated = true;
+                    break;
+                }
+            }
+        } catch (IOException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Failed to read ZIP archive: " + e.getMessage());
+        }
+
+        return ResponseEntity.ok(DocumentUnpackResponse.builder()
+                .targetFolder(targetFolder)
+                .extracted(extracted)
+                .skipped(skipped)
+                .failed(failed)
+                .truncated(truncated)
+                .build());
+    }
+
+    private static boolean looksLikeZip(String path, @Nullable String mime) {
+        if (path.toLowerCase().endsWith(".zip")) return true;
+        return mime != null
+                && (mime.equalsIgnoreCase("application/zip")
+                        || mime.equalsIgnoreCase("application/x-zip-compressed"));
+    }
+
+    /** {@code notes/archive.zip} → {@code notes/archive} (sibling folder). */
+    private static String unpackTargetFolder(String zipPath) {
+        String p = zipPath.startsWith("/") ? zipPath.substring(1) : zipPath;
+        int slash = p.lastIndexOf('/');
+        String dir = slash >= 0 ? p.substring(0, slash) : "";
+        String name = slash >= 0 ? p.substring(slash + 1) : p;
+        int dot = name.toLowerCase().lastIndexOf(".zip");
+        String base = dot > 0 ? name.substring(0, dot) : name;
+        return dir.isEmpty() ? base : dir + "/" + base;
+    }
+
+    /**
+     * Join a sanitised entry name onto the target folder. Returns {@code null}
+     * for unsafe entries (absolute paths, {@code ..} traversal, empty) so the
+     * caller can reject them — a zip-slip guard.
+     */
+    private static @Nullable String safeUnpackPath(String base, String entryName) {
+        String n = entryName.replace('\\', '/');
+        Deque<String> parts = new ArrayDeque<>();
+        for (String seg : n.split("/")) {
+            if (seg.isEmpty() || seg.equals(".")) continue;
+            if (seg.equals("..")) return null; // traversal → reject the entry
+            parts.add(seg);
+        }
+        if (parts.isEmpty()) return null;
+        return base + "/" + String.join("/", parts);
+    }
+
+    /**
+     * Wrap a stream so {@code close()} is a no-op. {@code create} consumes the
+     * per-entry stream to its (entry-)EOF; without the shield it would close
+     * the shared {@link ZipInputStream} and abort the remaining entries.
+     */
+    private static InputStream closeShield(InputStream in) {
+        return new FilterInputStream(in) {
+            @Override public void close() { /* keep the underlying ZipInputStream open */ }
+        };
     }
 
     // ──────────────────── Archive endpoints ────────────────────

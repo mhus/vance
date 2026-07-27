@@ -200,17 +200,18 @@ export async function brainFetchWithMeta<T>(
 export async function brainFetchBlob(
   path: string,
   options: RestOptions = {},
+  method = 'GET',
 ): Promise<{ blob: Blob; filename: string | null }> {
   const tenant = getTenantId();
   if (!tenant) throw new RestError(0, path, 'No tenant configured — user is not logged in.');
 
   const url = `${brainBaseUrl()}/brain/${encodeURIComponent(tenant)}/${path.replace(/^\//, '')}`;
-  let response = await doFetch(url, 'GET', options);
+  let response = await doFetch(url, method, options);
 
   if (response.status === 401) {
     const refreshed = await getRestConfig().refreshAccess();
     if (refreshed) {
-      response = await doFetch(url, 'GET', options);
+      response = await doFetch(url, method, options);
     } else {
       redirectToLogin();
       return new Promise<{ blob: Blob; filename: string | null }>(() => {});

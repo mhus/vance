@@ -22,12 +22,15 @@ import {
   VInput,
   VModal,
   VSelect,
+  RowActionsMenu,
   accentColorDotClass,
   type FocusZone,
+  type RowMenuItem,
 } from '@/components';
 import { useI18n } from 'vue-i18n';
 import { useTenantProjects } from '@composables/useTenantProjects';
 import { useDocuments } from '@composables/useDocuments';
+import type { DocumentSummary } from '@vance/generated';
 import DocumentIcon from './DocumentIcon.vue';
 
 const { t } = useI18n();
@@ -243,6 +246,7 @@ watch(
   () => docsState.items.value,
   () => {
     selectedIds.value = new Set();
+    notice.value = '';
   },
 );
 
@@ -307,6 +311,96 @@ async function confirmTrash(): Promise<void> {
     bulkBusy.value = false;
     showTrashModal.value = false;
     clearSelection();
+  }
+}
+
+// ── Per-row action menu (single-file actions) ───────────────────
+// Context-dependent "⋯" menu on every document row. Currently the only
+// action is "unpack", offered when the row is a ZIP; future single-file
+// actions (rename, duplicate, download, …) slot into rowMenuItems.
+const notice = ref('');
+
+function isZip(doc: DocumentSummary): boolean {
+  const mime = (doc.mimeType ?? '').toLowerCase();
+  return doc.path.toLowerCase().endsWith('.zip')
+    || mime === 'application/zip'
+    || mime === 'application/x-zip-compressed';
+}
+
+function rowMenuItems(doc: DocumentSummary): RowMenuItem[] {
+  const items: RowMenuItem[] = [];
+  if (isZip(doc)) items.push({ key: 'unpack', label: t('documents.rowMenu.unpack') });
+  items.push({ key: 'delete', label: t('documents.rowMenu.delete'), danger: true });
+  return items;
+}
+
+async function onRowAction(doc: DocumentSummary, key: string): Promise<void> {
+  if (key === 'delete') {
+    pendingDelete.value = doc;
+    return;
+  }
+  if (key !== 'unpack') return;
+  const pid = selectedProjectId.value;
+  if (!pid) return;
+  notice.value = '';
+  const result = await docsState.unpack(pid, doc.id);
+  if (!result) return; // failure already surfaced via docsState.error
+  // Reload first — it fires the items watch which clears the notice — then
+  // set the summary so it survives the refresh.
+  await docsState.loadPage(pid, docsState.page.value, docsState.pathPrefix.value);
+  notice.value = t('documents.rowMenu.unpackDone', {
+    extracted: result.extracted,
+    folder: result.targetFolder,
+    skipped: result.skipped.length,
+    failed: result.failed.length,
+  });
+}
+
+// Single-file delete (moves to trash, like the bulk action) with a
+// confirm scoped to the one row.
+const pendingDelete = ref<DocumentSummary | null>(null);
+const deleteBusy = ref(false);
+
+async function confirmRowDelete(): Promise<void> {
+  const doc = pendingDelete.value;
+  if (!doc) return;
+  deleteBusy.value = true;
+  try {
+    const ok = await docsState.remove(doc.id);
+    if (ok) {
+      // remove() splices the row in place (no items reassign), so also drop
+      // it from the selection set by hand.
+      const next = new Set(selectedIds.value);
+      next.delete(doc.id);
+      selectedIds.value = next;
+      pendingDelete.value = null;
+    }
+  } finally {
+    deleteBusy.value = false;
+  }
+}
+
+const exportBusy = ref(false);
+
+async function exportSelected(): Promise<void> {
+  const pid = selectedProjectId.value;
+  if (!pid || selectedIds.value.size === 0) return;
+  exportBusy.value = true;
+  try {
+    const result = await docsState.exportZip(pid, [...selectedIds.value]);
+    if (!result) return;
+    // Blob → temporary object URL → programmatic download. The server
+    // streamed the archive; the blob only lives briefly in the browser.
+    const url = URL.createObjectURL(result.blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = result.filename || 'documents.zip';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } finally {
+    exportBusy.value = false;
   }
 }
 
@@ -527,16 +621,29 @@ function confirmNewFolder(): void {
           {{ $t('documents.selection.clear') }}
         </VButton>
         <div class="flex-1"></div>
-        <VButton variant="secondary" size="sm" :disabled="bulkBusy" @click="openMoveModal">
+        <VButton
+          variant="ghost"
+          size="sm"
+          :loading="exportBusy"
+          :disabled="bulkBusy"
+          @click="exportSelected"
+        >
+          {{ $t('documents.selection.export') }}
+        </VButton>
+        <VButton variant="secondary" size="sm" :disabled="bulkBusy || exportBusy" @click="openMoveModal">
           {{ $t('documents.selection.move') }}
         </VButton>
-        <VButton variant="danger" size="sm" :disabled="bulkBusy" @click="showTrashModal = true">
+        <VButton variant="danger" size="sm" :disabled="bulkBusy || exportBusy" @click="showTrashModal = true">
           {{ $t('documents.selection.trash') }}
         </VButton>
       </div>
 
       <VAlert v-if="docsState.error.value" variant="error" class="m-4">
         <span>{{ docsState.error.value }}</span>
+      </VAlert>
+
+      <VAlert v-if="notice" variant="success" class="m-4">
+        <span>{{ notice }}</span>
       </VAlert>
 
       <div class="flex-1 min-h-0 overflow-y-auto">
@@ -566,7 +673,8 @@ function confirmNewFolder(): void {
               <th class="text-left px-2 py-2 w-32">Tags</th>
               <th class="text-right px-2 py-2 w-20">Size</th>
               <th class="text-left px-2 py-2 w-28">Created</th>
-              <th class="text-left px-4 py-2 w-32">By</th>
+              <th class="text-left px-2 py-2 w-32">By</th>
+              <th class="w-10 pr-3 py-2"></th>
             </tr>
           </thead>
           <tbody>
@@ -583,7 +691,8 @@ function confirmNewFolder(): void {
               <td class="px-2 py-1.5"></td>
               <td class="px-2 py-1.5"></td>
               <td class="px-2 py-1.5"></td>
-              <td class="px-4 py-1.5"></td>
+              <td class="px-2 py-1.5"></td>
+              <td class="pr-3 py-1.5"></td>
             </tr>
             <tr
               v-for="doc in docsState.items.value"
@@ -619,7 +728,15 @@ function confirmNewFolder(): void {
               </td>
               <td class="px-2 py-1.5 text-right text-xs">{{ formatSize(doc.size) }}</td>
               <td class="px-2 py-1.5 text-xs">{{ formatDate(doc.createdAtMs) }}</td>
-              <td class="px-4 py-1.5 text-xs opacity-70 truncate">{{ doc.createdBy ?? '—' }}</td>
+              <td class="px-2 py-1.5 text-xs opacity-70 truncate">{{ doc.createdBy ?? '—' }}</td>
+              <td class="pr-3 py-1.5 text-right" @click.stop>
+                <RowActionsMenu
+                  :items="rowMenuItems(doc)"
+                  :title="$t('documents.rowMenu.title')"
+                  :empty-label="$t('documents.rowMenu.empty')"
+                  @select="(k) => onRowAction(doc, k)"
+                />
+              </td>
             </tr>
           </tbody>
         </table>
@@ -694,6 +811,28 @@ function confirmNewFolder(): void {
           {{ $t('common.cancel') }}
         </VButton>
         <VButton variant="danger" :loading="bulkBusy" @click="confirmTrash">
+          {{ $t('documents.selection.trash') }}
+        </VButton>
+      </template>
+    </VModal>
+
+    <!-- Single-file delete (→ trash) -->
+    <VModal
+      :model-value="pendingDelete !== null"
+      :title="$t('documents.selection.trashTitle')"
+      :close-on-backdrop="!deleteBusy"
+      @update:model-value="(v) => { if (!v) pendingDelete = null; }"
+    >
+      <p class="text-sm opacity-80">
+        {{ $t('documents.rowMenu.deleteBody', {
+          name: pendingDelete ? (pendingDelete.title || fileBasename(pendingDelete.path)) : '',
+        }) }}
+      </p>
+      <template #actions>
+        <VButton variant="ghost" :disabled="deleteBusy" @click="pendingDelete = null">
+          {{ $t('common.cancel') }}
+        </VButton>
+        <VButton variant="danger" :loading="deleteBusy" @click="confirmRowDelete">
           {{ $t('documents.selection.trash') }}
         </VButton>
       </template>

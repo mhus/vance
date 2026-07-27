@@ -48,6 +48,7 @@ export * from './documents/DocumentArchiveListResponse';
 export * from './documents/DocumentArchiveSummary';
 export * from './documents/DocumentCreateRequest';
 export * from './documents/DocumentDto';
+export * from './documents/DocumentExportRequest';
 export * from './documents/DocumentFolderListResponse';
 export * from './documents/DocumentFoldersResponse';
 export * from './documents/DocumentInvalidateNotification';
@@ -58,6 +59,7 @@ export * from './documents/DocumentNoteDto';
 export * from './documents/DocumentNoteUpdateRequest';
 export * from './documents/DocumentSummary';
 export * from './documents/DocumentSummaryRequest';
+export * from './documents/DocumentUnpackResponse';
 export * from './documents/DocumentUpdateRequest';
 export * from './documents/WriterRole';
 

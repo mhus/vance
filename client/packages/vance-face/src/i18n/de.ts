@@ -457,6 +457,7 @@ export default {
     selection: {
       count: '{count} ausgewählt',
       clear: 'Auswahl aufheben',
+      export: 'Exportieren',
       move: 'Verschieben',
       trash: 'In den Papierkorb',
       trashTitle: 'In den Papierkorb verschieben',
@@ -467,6 +468,15 @@ export default {
       moveTargetLabel: 'Zielordner',
       moveRoot: '/ (Stammverzeichnis)',
       moveConfirm: 'Verschieben',
+    },
+    rowMenu: {
+      title: 'Aktionen',
+      empty: 'Keine Aktionen',
+      unpack: 'Auspacken',
+      unpackDone:
+        '{extracted} Dateien nach „{folder}" entpackt ({skipped} übersprungen, {failed} fehlgeschlagen).',
+      delete: 'Löschen',
+      deleteBody: '„{name}" in den Papierkorb verschieben? Du kannst es später im Papierkorb wiederherstellen oder endgültig löschen.',
     },
     archives: {
       heading: 'Versionen',

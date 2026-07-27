@@ -6,9 +6,10 @@ import type {
   DocumentFoldersResponse,
   DocumentKindsResponse,
   DocumentSummary,
+  DocumentUnpackResponse,
   DocumentUpdateRequest,
 } from '@vance/generated';
-import { brainFetch, brainFetchText, brainSendRaw } from '@vance/shared';
+import { brainFetch, brainFetchBlob, brainFetchText, brainSendRaw } from '@vance/shared';
 
 export interface UploadOptions {
   file: File;
@@ -58,6 +59,11 @@ export function useDocuments(pageSize = 20): {
   replaceContent: (id: string, content: string, mimeType: string) => Promise<DocumentDto | null>;
   setSummary: (id: string, summary: string) => Promise<DocumentDto | null>;
   remove: (id: string) => Promise<boolean>;
+  exportZip: (
+    projectId: string,
+    ids: string[],
+  ) => Promise<{ blob: Blob; filename: string | null } | null>;
+  unpack: (projectId: string, id: string) => Promise<DocumentUnpackResponse | null>;
 } {
   const items = ref<DocumentSummary[]>([]);
   const page = ref(0);
@@ -375,6 +381,47 @@ export function useDocuments(pageSize = 20): {
     }
   }
 
+  /**
+   * Streams a ZIP of the given documents from the brain (built on the fly,
+   * never buffered whole server-side) and returns it as a Blob plus the
+   * server-suggested filename. The caller triggers the browser download.
+   */
+  async function exportZip(
+    projectId: string,
+    ids: string[],
+  ): Promise<{ blob: Blob; filename: string | null } | null> {
+    error.value = null;
+    try {
+      const params = new URLSearchParams({ projectId });
+      return await brainFetchBlob(`documents/export?${params}`, { body: { ids } }, 'POST');
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to export documents.';
+      return null;
+    }
+  }
+
+  /**
+   * Server-side ZIP extraction: unpacks the given document (a ZIP) into
+   * individual documents under a sibling folder. All work happens on the
+   * brain (streamed entry by entry); we just get a summary back.
+   */
+  async function unpack(projectId: string, id: string): Promise<DocumentUnpackResponse | null> {
+    loading.value = true;
+    error.value = null;
+    try {
+      const params = new URLSearchParams({ projectId });
+      return await brainFetch<DocumentUnpackResponse>(
+        'POST',
+        `documents/${encodeURIComponent(id)}/unpack?${params}`,
+      );
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to unpack archive.';
+      return null;
+    } finally {
+      loading.value = false;
+    }
+  }
+
   async function remove(id: string): Promise<boolean> {
     loading.value = true;
     error.value = null;
@@ -424,5 +471,7 @@ export function useDocuments(pageSize = 20): {
     replaceContent,
     setSummary,
     remove,
+    exportZip,
+    unpack,
   };
 }

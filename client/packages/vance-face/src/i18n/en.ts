@@ -462,6 +462,7 @@ export default {
     selection: {
       count: '{count} selected',
       clear: 'Clear selection',
+      export: 'Export',
       move: 'Move',
       trash: 'Move to trash',
       trashTitle: 'Move to trash',
@@ -472,6 +473,15 @@ export default {
       moveTargetLabel: 'Target folder',
       moveRoot: '/ (root)',
       moveConfirm: 'Move',
+    },
+    rowMenu: {
+      title: 'Actions',
+      empty: 'No actions',
+      unpack: 'Unpack',
+      unpackDone:
+        'Extracted {extracted} files to “{folder}” ({skipped} skipped, {failed} failed).',
+      delete: 'Delete',
+      deleteBody: 'Move “{name}” to the trash? You can restore it later from the trash, or delete it permanently.',
     },
     archives: {
       heading: 'Versions',

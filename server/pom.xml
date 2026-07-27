@@ -5,7 +5,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>4.0.6</version>
+        <version>4.1.0</version>
         <relativePath/>
     </parent>
 
@@ -48,37 +48,37 @@
 
     <properties>
         <java.version>25</java.version>
-        <lombok.version>1.18.42</lombok.version>
-        <spring.boot.version>4.0.6</spring.boot.version>
-        <langchain4j.version>1.14.1</langchain4j.version>
-        <langgraph4j.version>1.5.14</langgraph4j.version>
-        <picocli.version>4.7.6</picocli.version>
+        <lombok.version>1.18.46</lombok.version>
+        <spring.boot.version>4.1.0</spring.boot.version>
+        <langchain4j.version>1.18.0</langchain4j.version>
+        <langgraph4j.version>1.8.20</langgraph4j.version>
+        <picocli.version>4.7.7</picocli.version>
         <jspecify.version>1.0.0</jspecify.version>
-        <jjwt.version>0.12.6</jjwt.version>
+        <jjwt.version>0.13.0</jjwt.version>
         <console-master.version>1.0.0-SNAPSHOT</console-master.version>
         <jline.version>3.27.1</jline.version>
-        <lanterna.version>3.1.3</lanterna.version>
-        <graaljs.version>25.0.3</graaljs.version>
-        <jgit.version>7.1.0.202411261347-r</jgit.version>
-        <anthropic.sdk.version>2.30.0</anthropic.sdk.version>
+        <lanterna.version>3.1.5</lanterna.version>
+        <graaljs.version>25.1.3</graaljs.version>
+        <jgit.version>7.7.1.202607240634-r</jgit.version>
+        <anthropic.sdk.version>2.52.0</anthropic.sdk.version>
         <!-- swagger-parser 2.x supports both OpenAPI 3.x and Swagger 2.x. Used by
              RestApiToolPackFactory to materialise REST-API packs into Vance Tools. -->
-        <swagger.parser.version>2.1.22</swagger.parser.version>
+        <swagger.parser.version>2.1.45</swagger.parser.version>
         <!-- HTML → text extraction for WebFetchTool's 'text' flag. Robust against
              broken markup, drops script/style content, decodes entities. -->
-        <jsoup.version>1.18.3</jsoup.version>
+        <jsoup.version>1.22.2</jsoup.version>
         <!-- PDFBox: PDF→text fallback for providers/models without
              native PDF vision (OpenAI lc4j adapter, Ollama, LM Studio).
              Streamed: AttachmentResolver passes an InputStream straight
              into PDFBox's Loader, no full-file byte[] held twice. -->
-        <pdfbox.version>3.0.4</pdfbox.version>
+        <pdfbox.version>3.0.8</pdfbox.version>
         <!-- Pebble: Jinja2-style template engine for recipe / engine prompt
              templating. ~150 KB with slf4j as only transitive dep. Drives
              tier/mode/profile-aware prompt rendering — see
              planning/prompt-template-migration.md. -->
         <pebble.version>3.2.2</pebble.version>
-        <angus.mail.version>2.0.3</angus.mail.version>
-        <greenmail.version>2.1.4</greenmail.version>
+        <angus.mail.version>2.0.5</angus.mail.version>
+        <greenmail.version>2.1.11</greenmail.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     </properties>

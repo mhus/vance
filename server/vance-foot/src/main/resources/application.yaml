@@ -6,8 +6,14 @@ vance:
     tenant: acme
     username: wile.coyote
     password: acme-rocket
+  # Build stamp — filled by Maven resource filtering (@…@ delimiter) from the
+  # reactor version. Drives the client handshake version and `--version`.
+  # Falls back to 'dev' / empty on an unfiltered classpath.
+  build:
+    version: @project.version@
+    time: @build.timestamp@
   client:
-    version: 0.1.0
+    version: @project.version@
   foot:
     agent:
       # Two size limits for the foot-uploaded agent.md / CLAUDE.md.

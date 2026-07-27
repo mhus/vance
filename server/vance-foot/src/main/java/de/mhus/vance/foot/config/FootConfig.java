@@ -19,6 +19,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class FootConfig {
 
     private Brain brain = new Brain();
+    private Build build = new Build();
     private Auth auth = new Auth();
     private Client client = new Client();
     private Debug debug = new Debug();
@@ -44,6 +45,20 @@ public class FootConfig {
         private boolean allowInsecureTransport = false;
     }
 
+    /**
+     * Build stamp injected from the Maven reactor via resource filtering
+     * ({@code vance.build.*} in {@code application.yaml}). Drives {@code
+     * --version}. Defaults keep the CLI working when launched from an
+     * unfiltered classpath (raw IDE resources).
+     */
+    @Data
+    public static class Build {
+        /** Maven project version, e.g. {@code 1.0.0-SNAPSHOT}. */
+        private String version = "dev";
+        /** Build timestamp, ISO-8601 UTC. Empty when unknown. */
+        private String time = "";
+    }
+
     @Data
     public static class Auth {
         private String tenant = "acme";
@@ -53,7 +68,7 @@ public class FootConfig {
 
     @Data
     public static class Client {
-        private String version = "0.1.0";
+        private String version = "dev";
         /**
          * Human-readable client identifier sent during the WebSocket
          * handshake. Always sent; falls back to {@code vance.auth.username}

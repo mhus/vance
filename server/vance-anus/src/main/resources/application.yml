@@ -17,6 +17,12 @@ spring:
       name: ${user.home}/.vance-anus-history
 
 vance:
+  # Build stamp — filled by Maven resource filtering (@…@ delimiter) from the
+  # reactor version so the `version` shell command reports the real release.
+  # Falls back to 'dev' / empty on an unfiltered classpath.
+  build:
+    version: @project.version@
+    time: @build.timestamp@
   encryption:
     # Anus shares the same key store as Brain. No insecure default — a
     # missing VANCE_ENCRYPTION_PASSWORD must fail the boot (F4).

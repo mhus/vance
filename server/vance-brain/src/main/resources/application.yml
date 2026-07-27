@@ -40,6 +40,15 @@ server:
     include-message: always
 
 vance:
+  # Build stamp — filled by Maven resource filtering (@…@ delimiter, enabled by
+  # spring-boot-starter-parent) from the reactor version, so brain reports the
+  # real release at runtime instead of a hardcoded string. Consumed by
+  # ClusterService, GeocodeService, ProfileController and the WS welcome below.
+  # Falls back to 'dev' / empty on an unfiltered classpath (rare, e.g. raw IDE
+  # resources without a Maven build).
+  build:
+    version: @project.version@
+    time: @build.timestamp@
   language:
     # Final language fallback used when neither chat.language /
     # content.language nor any scope setting (project / user / tenant)
@@ -91,7 +100,12 @@ vance:
   services:
     storage-cleanup: true         # this brain instance runs the cleanup
     magrathea: true                  # workflow subsystem (planning/workflow-service.md)
-    serverVersion: 0.1.0
+  # WebSocket layer — bound by VanceBrainProperties (prefix vance.ws). These
+  # keys previously sat under vance.services by mistake and never bound, so the
+  # welcome message silently fell back to the Java defaults. serverVersion now
+  # tracks the build version, so connecting clients see the real release.
+  ws:
+    serverVersion: ${vance.build.version}
     protocolVersion: 1
     pingIntervalSeconds: 30
     capabilities: []

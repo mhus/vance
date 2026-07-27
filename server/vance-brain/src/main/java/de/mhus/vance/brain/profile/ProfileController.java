@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -77,6 +78,13 @@ public class ProfileController {
     private final SettingService settingService;
     private final TeamService teamService;
     private final WebUiCookieService webUiCookieService;
+
+    /** Build stamp injected from Maven (see application.yml vance.build.*). */
+    @Value("${vance.build.version:dev}")
+    private String buildVersion;
+
+    @Value("${vance.build.time:}")
+    private String buildTime;
 
     @GetMapping
     public ProfileDto get(
@@ -227,9 +235,9 @@ public class ProfileController {
         return merged;
     }
 
-    private static ProfileDto toDto(UserDocument user,
-                                    List<TeamSummary> teams,
-                                    Map<String, String> settings) {
+    private ProfileDto toDto(UserDocument user,
+                             List<TeamSummary> teams,
+                             Map<String, String> settings) {
         return ProfileDto.builder()
                 .tenantId(user.getTenantId())
                 .name(user.getName())
@@ -237,6 +245,8 @@ public class ProfileController {
                 .email(user.getEmail())
                 .teams(teams)
                 .webUiSettings(settings)
+                .brainVersion(buildVersion)
+                .brainBuildTime(buildTime == null || buildTime.isBlank() ? null : buildTime)
                 .build();
     }
 }

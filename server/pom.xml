@@ -81,6 +81,14 @@
         <greenmail.version>2.1.4</greenmail.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+        <!-- Build stamp injected into application.yml via the resource filtering
+             that spring-boot-starter-parent already enables (@…@ delimiter) so
+             brain/anus/foot report the real Maven release version at runtime
+             (vance.build.version / vance.build.time). The indirection through a
+             project property is the documented workaround for MRESOURCES-99 —
+             a bare @maven.build.timestamp@ otherwise filters to an empty string. -->
+        <build.timestamp>${maven.build.timestamp}</build.timestamp>
+        <maven.build.timestamp.format>yyyy-MM-dd'T'HH:mm:ss'Z'</maven.build.timestamp.format>
     </properties>
 
     <dependencyManagement>

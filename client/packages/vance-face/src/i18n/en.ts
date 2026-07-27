@@ -1719,6 +1719,7 @@ export default {
       displayNamePlaceholder: 'e.g. Wile E. Coyote',
       email: 'Email',
       saved: 'Profile saved.',
+      serverVersion: 'Server version',
     },
     preferences: {
       title: 'Preferences',

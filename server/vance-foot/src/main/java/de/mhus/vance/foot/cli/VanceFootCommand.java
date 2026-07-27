@@ -73,7 +73,7 @@ import picocli.CommandLine.Option;
 @Command(
         name = "vance-foot",
         mixinStandardHelpOptions = true,
-        version = "vance-foot 0.1.0",
+        versionProvider = FootVersionProvider.class,
         description = {
                 "Spring-based CLI client for the Vance Brain.",
                 "",

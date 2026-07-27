@@ -12,4 +12,6 @@ export interface ProfileDto {
   email?: string;
   teams: TeamSummary[];
   webUiSettings: Record<string, string>;
+  brainVersion?: string;
+  brainBuildTime?: string;
 }

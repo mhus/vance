@@ -1727,6 +1727,7 @@ export default {
       displayNamePlaceholder: 'z. B. Wile E. Coyote',
       email: 'E-Mail',
       saved: 'Profil gespeichert.',
+      serverVersion: 'Server-Version',
     },
     preferences: {
       title: 'Einstellungen',

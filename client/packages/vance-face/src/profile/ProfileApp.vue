@@ -613,6 +613,14 @@ async function onResetTalkCommands(): Promise<void> {
                 {{ identitySaved }}
               </span>
             </div>
+            <div
+              v-if="profile.brainVersion"
+              class="text-xs opacity-50 pt-2 mt-1 border-t border-base-300"
+            >
+              {{ $t('profile.identity.serverVersion') }}:
+              <span class="font-mono">{{ profile.brainVersion }}</span>
+              <span v-if="profile.brainBuildTime"> · {{ profile.brainBuildTime }}</span>
+            </div>
           </div>
         </VCard>
         </template>

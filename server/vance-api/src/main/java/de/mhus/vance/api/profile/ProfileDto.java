@@ -48,4 +48,14 @@ public class ProfileDto {
      * {@code webui.} prefix.
      */
     private Map<String, String> webUiSettings;
+
+    /**
+     * Brain build version (Maven reactor version, e.g.
+     * {@code 1.0.0-SNAPSHOT}) — injected from {@code vance.build.version}
+     * so the profile page can display which release the server runs.
+     */
+    private @Nullable String brainVersion;
+
+    /** Brain build timestamp (ISO-8601 UTC), if known. */
+    private @Nullable String brainBuildTime;
 }

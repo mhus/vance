@@ -16,7 +16,7 @@ import org.springframework.stereotype.Component;
  * Rename / move a document to a new path inside the same project.
  * The id stays stable, only {@code path} and {@code name} change.
  *
- * <p>Cross-project moves are a separate {@code cross_doc_move} tool.
+ * <p>Cross-project moves are a separate {@code foreign_doc_move} tool.
  */
 @Component
 @RequiredArgsConstructor

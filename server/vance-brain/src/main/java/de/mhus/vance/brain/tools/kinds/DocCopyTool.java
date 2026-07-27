@@ -20,7 +20,7 @@ import org.springframework.stereotype.Component;
  * the copy reflects the latest in-flight state, not stale disk
  * content.
  *
- * <p>Cross-project copy is a separate {@code cross_doc_copy} tool —
+ * <p>Cross-project copy is a separate {@code foreign_doc_copy} tool —
  * different blast radius, different default availability.
  */
 @Component

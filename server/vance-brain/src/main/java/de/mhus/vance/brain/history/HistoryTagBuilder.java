@@ -115,10 +115,10 @@ public class HistoryTagBuilder {
      *       returns {@code id} (Mongo-style short).</li>
      *   <li>{@link de.mhus.vance.brain.tools.kinds.DocPurgeTool}
      *       returns {@code purgedId}.</li>
-     *   <li>{@code CrossDocCopy} / {@code CrossDocMove} / {@code DocCopy}
-     *       return {@code newId} (the produced copy) plus
-     *       {@code sourceId}; we tag against {@code newId} since that is
-     *       the freshly written resource.</li>
+     *   <li>{@code foreign_doc_copy} / {@code foreign_doc_move} /
+     *       {@code DocCopy} return {@code newId} (the produced copy); we
+     *       tag against {@code newId} since that is the freshly written
+     *       resource.</li>
      * </ul>
      * Standardising the tool returns would be cleaner long-term; this
      * fallback chain pays the cost in one place instead.
@@ -127,7 +127,7 @@ public class HistoryTagBuilder {
         if (map == null) return null;
         String s = stringFrom(map, "documentId");
         if (s == null) s = stringFrom(map, "docId");
-        // newId = freshly produced copy/created doc (CrossDocCopy/Move,
+        // newId = freshly produced copy/created doc (foreign_doc_copy/move,
         // DocCopy, DocCreateKind family). Prefer over sourceId because the
         // edit landed on the new resource.
         if (s == null) s = stringFrom(map, "newId");

@@ -635,6 +635,16 @@ costs time you don't have to spend:
 - `manual_read('scripting')` — JavaScript vs. Python, the four
   runners, when to persist a script vs. one-shot inline
 
+## Other projects in this tenant
+
+When the user points at a *different* project ("look at project X",
+"copy the results from project Y here"), you can read across the
+project boundary read-only and copy findings into the current
+project. Read `manual_read('foreign-projects')` before saying you
+can't reach another project — then use the `foreign_*` tools
+(`foreign_project_list` to find it, `foreign_doc_search` /
+`foreign_doc_read` to inspect, `foreign_doc_copy` to pull it in).
+
 ## Generating images
 
 When the user asks for a new image, illustration, logo, cover, or

@@ -86,6 +86,12 @@ _destructive_excludes: &destructive_excludes
   - work_file_delete
   - peer_notify
   - git_checkout
+  # Cross-project write/move — Arthur reads other projects and copies
+  # findings INTO the current one (foreign_doc_copy below), but never
+  # moves a document OUT of another project. Permission would block it
+  # anyway (READER-only on foreign projects), but keep it off the
+  # surface entirely so Arthur doesn't propose it.
+  - foreign_doc_move
 
 modes:
   NORMAL:
@@ -115,6 +121,17 @@ modes:
       - doc_note_add
       - doc_note_update
       - doc_note_delete
+      # Cross-project read + copy-in. These are deferred()=true tools
+      # (kept off every engine's default surface), surfaced primary for
+      # Arthur here so "look into project X" / "copy from Y" work
+      # directly. Read-only across the boundary; foreign_doc_copy writes
+      # only into the current project. See
+      # specification/public/foreign-document-access.md.
+      - foreign_project_list
+      - foreign_doc_list
+      - foreign_doc_search
+      - foreign_doc_read
+      - foreign_doc_copy
     allowedToolsDefer:
       - "@write"
       - "@executive"

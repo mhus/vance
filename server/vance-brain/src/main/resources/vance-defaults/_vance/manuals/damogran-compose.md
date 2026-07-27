@@ -1,6 +1,6 @@
 ---
-triggers: compose, damogran, workspace, workspace ausführen, prepare files, exec im workspace, kompilieren, latex, tex nach pdf, python analyse, dateien importieren, git clone, git pull, git push, git commit, repo klonen, batch
-summary: Provision a named workspace, import documents, run a linear list of tasks (exec/js/python/llm/tex), export results — via compose_run. Run/clear a compose block held by a document via compose_block_run / compose_block_clear_output.
+triggers: compose, damogran, workspace, workspace ausführen, prepare files, exec im workspace, kompilieren, latex, tex nach pdf, python analyse, r script, r analyse, statistik, ggplot, rserve, dateien importieren, git clone, git pull, git push, git commit, repo klonen, batch
+summary: Provision a named workspace, import documents, run a linear list of tasks (exec/js/python/r/llm/tex), export results — via compose_run. Run/clear a compose block held by a document via compose_block_run / compose_block_clear_output.
 requires-tools: compose_run, compose_block_run, compose_block_clear_output
 ---
 
@@ -117,6 +117,7 @@ export:
 | `spawn` | `recipe`, `prompt` | worker process (fire-and-forget, new process per run) |
 | `agent` | `prompt` (recipe via `session.recipe`) | prompt as a turn to the session process, blocks until reply; output `vance-process:<pid>/<msgId>` |
 | `tex-task` | `main` (`.tex`), opt. `engine` | LaTeX → PDF |
+| `r` | `code` (inline) **or** `script` (workspace `.R` file) | R script on the Rserve daemon (stats/data-frame/ggplot); **WORK only** |
 
 ## Rules
 
@@ -158,6 +159,13 @@ export:
   `deadlineSeconds`, default 300) and returns the concrete reply message as a
   **`vance-process:<pid>/<msgId>` output**. For agent runs that build on one
   another, use `agent` instead of `spawn`.
+- **`r`** runs on the brain's Rserve daemon (not a subprocess), so it is
+  **WORK-only** — never `target: CLIENT`/`DAEMON`. Pass inline `code` or a
+  workspace-relative `script` file. Packages come from the R image
+  (`install.packages` at runtime is discouraged). Outputs = declared
+  `outputs:`/`output:` **plus** any new top-level files the script wrote
+  (e.g. `ggsave("plot.png", …)`, `write.csv(…, "out.csv")`); stdout + the
+  final expression's value ride the task `log`.
 - Errors appear in the task result (`status: failure`, `error`), not as an exception.
 - **`target: CLIENT` / `DAEMON`**: runs against the filesystem of a remote
   host — CLIENT = the connected **Foot** (Foot session required), DAEMON = a
@@ -193,4 +201,23 @@ tasks:
 export:
   - from: thesis.pdf
     to: vance:thesis.pdf
+```
+
+## Example (R)
+
+```yaml
+workspace: { name: analysis, type: temp }
+import:
+  - from: vance:data.csv
+    to: data.csv
+tasks:
+  - type: r
+    code: |
+      df <- read.csv("data.csv")
+      print(summary(df))
+      write.csv(df[order(df$value), ], "sorted.csv", row.names = FALSE)
+    outputs: [sorted.csv]         # plus any file the script wrote is surfaced
+export:
+  - from: sorted.csv
+    to: vance:sorted.csv
 ```

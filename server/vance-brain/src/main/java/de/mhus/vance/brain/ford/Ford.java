@@ -469,16 +469,28 @@ public class Ford implements ThinkEngine {
             String finalText = outcome.finalText();
 
             // Budget-exhausted worker: the "best free text" is whatever the
-            // model last said mid-task (often a progress note like "I'm now
-            // reading the docs"), which a parent orchestrator can't tell
-            // apart from a real answer and would silently WAIT on. Prefix an
-            // explicit non-completion marker so both the parent's RELAY and
-            // the chat history state the truth. Pairs with the INCOMPLETE
-            // close reason below (→ FAILED ProcessEvent for non-Working-WS
-            // parents + honest audit).
+            // model last said mid-task (often a dangling progress note like
+            // "I'm now reading the docs"), which a parent orchestrator can't
+            // tell apart from a real answer and would either silently WAIT on
+            // or — worse — echo forward as its own "let me continue" preamble.
+            //
+            // For a parent watching this worker over the Working WS the
+            // structured FAILED ProcessEvent is SUPPRESSED (live reply already
+            // streams), so this reply text is the parent's ONLY signal about
+            // the worker's fate — it must state the truth unambiguously.
+            // "step budget" read as a soft, resumable shortfall; spell out
+            // that this is a hard force-abort at the iteration cap, the worker
+            // is closed, and the text below is partial-not-answer.
             if (recoveredFromMaxIter && process.getParentProcessId() != null) {
-                finalText = "⚠️ I could not finish this task within my step budget ("
-                        + maxIters + " steps). Progress so far:\n\n" + finalText;
+                finalText = "⚠️ TASK FAILED — this worker was force-stopped after "
+                        + "hitting its hard limit of " + maxIters + " processing "
+                        + "steps (maxIterations). It is now CLOSED and cannot be "
+                        + "resumed. The task is UNFINISHED: the text below is "
+                        + "PARTIAL progress only, NOT an answer — do not treat it "
+                        + "as done, and do not assume the remaining steps ran. To "
+                        + "carry the task further, start a fresh worker (tighter "
+                        + "scope or a higher step limit).\n\nPartial progress:\n\n"
+                        + finalText;
             }
 
             ChatMessageDocument saved = chatLog.append(ChatMessageDocument.builder()

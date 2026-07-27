@@ -46,12 +46,101 @@ class ToolResultReadToolTest {
 
         assertThat(out)
                 .containsEntry("id", resultId)
+                .containsEntry("offset", 0)
+                .containsEntry("hasMore", false)
                 .containsKey("content")
-                .containsKey("length");
+                .containsKey("returnedChars")
+                .containsKey("totalChars");
         assertThat((String) out.get("content"))
                 .contains("xxxxxx")
                 .contains("stdout");
-        assertThat(out.get("length")).isEqualTo(((String) out.get("content")).length());
+        assertThat(out.get("returnedChars")).isEqualTo(((String) out.get("content")).length());
+        assertThat(out.get("totalChars")).isEqualTo(out.get("returnedChars"));
+    }
+
+    @Test
+    void bypassOutputTruncation_isTrue() {
+        // The regress guard: tool_result_read's own output must NOT be
+        // re-fed through the truncation path — otherwise reading a large
+        // stored result persists a fresh stub and loops forever
+        // (observed live 2026-07-27 on the utaw.tech article fetch).
+        assertThat(tool.bypassOutputTruncation()).isTrue();
+    }
+
+    @Test
+    void invoke_largeResult_paginatesWithNextOffset() {
+        // Content bigger than one window comes back in bounded chunks;
+        // the LLM pages forward via nextOffset instead of re-reading.
+        String payload = "abcdefghij".repeat(20_000); // 200k chars of content
+        Map<String, Object> big = Map.of("stdout", payload);
+        ToolResultPayload p = storage.truncateIfLarge(big, CTX);
+        String resultId = (String) p.result().get(ToolResultStorage.STUB_RESULT_ID_KEY);
+
+        Map<String, Object> first = tool.invoke(
+                Map.of("id", resultId, "maxChars", 1000), CTX);
+
+        assertThat(first).containsEntry("offset", 0).containsEntry("hasMore", true);
+        assertThat((String) first.get("content")).hasSize(1000);
+        int next = (int) first.get("nextOffset");
+        assertThat(next).isEqualTo(1000);
+        int total = (int) first.get("totalChars");
+
+        Map<String, Object> second = tool.invoke(
+                Map.of("id", resultId, "offset", next, "maxChars", 1000), CTX);
+        assertThat(second).containsEntry("offset", 1000);
+        assertThat((int) second.get("totalChars")).isEqualTo(total);
+
+        // The two adjacent windows must reconstruct the single [0,2000)
+        // window exactly — proves offset paging is contiguous, no gap
+        // and no overlap.
+        Map<String, Object> whole = tool.invoke(
+                Map.of("id", resultId, "maxChars", 2000), CTX);
+        assertThat((String) first.get("content") + (String) second.get("content"))
+                .isEqualTo((String) whole.get("content"));
+    }
+
+    @Test
+    void invoke_maxChars_cappedAtHardCeiling() {
+        String payload = "y".repeat(MaxProbe.OVER); // bigger than the ceiling
+        Map<String, Object> big = Map.of("stdout", payload);
+        ToolResultPayload p = storage.truncateIfLarge(big, CTX);
+        String resultId = (String) p.result().get(ToolResultStorage.STUB_RESULT_ID_KEY);
+
+        Map<String, Object> out = tool.invoke(
+                Map.of("id", resultId, "maxChars", Integer.MAX_VALUE), CTX);
+
+        assertThat((int) out.get("returnedChars"))
+                .isLessThanOrEqualTo(ToolResultReadTool.MAX_WINDOW_CHARS);
+        assertThat(out).containsEntry("hasMore", true);
+    }
+
+    @Test
+    void invoke_offsetPastEnd_returnsEmptyWindow() {
+        Map<String, Object> big = Map.of("stdout", "x".repeat(4096));
+        ToolResultPayload p = storage.truncateIfLarge(big, CTX);
+        String resultId = (String) p.result().get(ToolResultStorage.STUB_RESULT_ID_KEY);
+
+        Map<String, Object> out = tool.invoke(
+                Map.of("id", resultId, "offset", 10_000_000), CTX);
+
+        assertThat((String) out.get("content")).isEmpty();
+        assertThat(out).containsEntry("hasMore", false);
+    }
+
+    @Test
+    void invoke_negativeOffset_throwsToolException() {
+        Map<String, Object> big = Map.of("stdout", "x".repeat(4096));
+        ToolResultPayload p = storage.truncateIfLarge(big, CTX);
+        String resultId = (String) p.result().get(ToolResultStorage.STUB_RESULT_ID_KEY);
+
+        assertThatThrownBy(() -> tool.invoke(Map.of("id", resultId, "offset", -1), CTX))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("offset");
+    }
+
+    /** Marker constant kept out of the assertion for readability. */
+    private static final class MaxProbe {
+        static final int OVER = ToolResultReadTool.MAX_WINDOW_CHARS + 10_000;
     }
 
     @Test

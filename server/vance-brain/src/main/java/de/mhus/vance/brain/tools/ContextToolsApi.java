@@ -440,8 +440,14 @@ public final class ContextToolsApi implements ToolBus {
             // Output-truncation comes AFTER tag extraction — the
             // builder needs the full result to find a documentId /
             // path. The LLM only sees the (possibly stubbed) form
-            // returned here.
-            return maybeTruncateResult(name, result);
+            // returned here. Tools that surface previously-stored
+            // results (tool_result_read) opt out — re-truncating their
+            // output would spawn a fresh stub and loop forever.
+            boolean bypass = resolved
+                    .map(ToolDispatcher.Resolved::tool)
+                    .map(Tool::bypassOutputTruncation)
+                    .orElse(false);
+            return bypass ? result : maybeTruncateResult(name, result);
         } catch (RuntimeException e) {
             listener.after(name, System.currentTimeMillis() - startMs, e);
             emitHistoryTags(historyTagBuilder.onError(name));

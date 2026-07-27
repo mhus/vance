@@ -172,6 +172,25 @@ public interface Tool {
     }
 
     /**
+     * When {@code true}, the engine leaves this tool's result untouched
+     * by the oversized-output truncation path (see
+     * {@code ToolResultStorage}). Default {@code false} — every tool
+     * result larger than the inline threshold is persisted and replaced
+     * with a {@code _resultId} stub.
+     *
+     * <p>The one legitimate override is {@code tool_result_read} itself:
+     * its whole job is to surface a previously-stored oversized result,
+     * so re-truncating its output would persist a fresh stub under a new
+     * {@code _resultId} and hand the LLM yet another preview — an
+     * infinite regress that never yields the content. Such tools must
+     * bound their own output (e.g. by paginating) instead of relying on
+     * the truncation wrapper.
+     */
+    default boolean bypassOutputTruncation() {
+        return false;
+    }
+
+    /**
      * Optional one-line recovery hint that {@code ToolDispatcher}
      * prepends to the error text when this tool throws
      * {@link ToolException}. Evergreen prose — not workflow-deep like a

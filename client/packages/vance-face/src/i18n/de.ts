@@ -477,11 +477,20 @@ export default {
     rowMenu: {
       title: 'Aktionen',
       empty: 'Keine Aktionen',
+      rename: 'Umbenennen',
       unpack: 'Auspacken',
       unpackDone:
         '{extracted} Dateien nach „{folder}" entpackt ({skipped} übersprungen, {failed} fehlgeschlagen).',
       delete: 'Löschen',
       deleteBody: '„{name}" in den Papierkorb verschieben? Du kannst es später im Papierkorb wiederherstellen oder endgültig löschen.',
+    },
+    rename: {
+      title: 'Umbenennen',
+      label: 'Neuer Name',
+      confirm: 'Umbenennen',
+      invalid: 'Bitte einen Namen ohne „/" eingeben.',
+      running: '{renamed} umbenannt…',
+      done: '{renamed} umbenannt, {skipped} übersprungen.',
     },
     archives: {
       heading: 'Versionen',

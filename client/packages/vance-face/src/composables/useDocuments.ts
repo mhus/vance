@@ -6,6 +6,7 @@ import type {
   DocumentFoldersResponse,
   DocumentKindsResponse,
   DocumentMoveChunkResponse,
+  DocumentRenameChunkResponse,
   DocumentSummary,
   DocumentTrashChunkResponse,
   DocumentUnpackResponse,
@@ -23,6 +24,15 @@ export interface MoveChunkArgs {
 export interface TrashChunkArgs {
   ids?: string[];
   folders?: string[];
+  limit?: number;
+  cursor?: string;
+}
+
+export interface RenameChunkArgs {
+  /** Document path, or folder prefix (trailing '/') to rename. */
+  path: string;
+  /** New last segment (no '/'). */
+  newName: string;
   limit?: number;
   cursor?: string;
 }
@@ -84,6 +94,7 @@ export function useDocuments(pageSize = 20): {
   unpack: (projectId: string, id: string) => Promise<DocumentUnpackResponse | null>;
   moveChunk: (projectId: string, args: MoveChunkArgs) => Promise<DocumentMoveChunkResponse | null>;
   trashChunk: (projectId: string, args: TrashChunkArgs) => Promise<DocumentTrashChunkResponse | null>;
+  renameChunk: (projectId: string, args: RenameChunkArgs) => Promise<DocumentRenameChunkResponse | null>;
 } {
   const items = ref<DocumentSummary[]>([]);
   const page = ref(0);
@@ -489,6 +500,28 @@ export function useDocuments(pageSize = 20): {
     }
   }
 
+  /**
+   * Rename a document (one call) or a folder (chunked, cursor loop). Mirrors
+   * {@link moveChunk}: the server skips anything it cannot write.
+   */
+  async function renameChunk(
+    projectId: string,
+    args: RenameChunkArgs,
+  ): Promise<DocumentRenameChunkResponse | null> {
+    error.value = null;
+    try {
+      const params = new URLSearchParams({ projectId });
+      return await brainFetch<DocumentRenameChunkResponse>(
+        'POST',
+        `documents/rename-chunk?${params}`,
+        { body: args },
+      );
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to rename.';
+      return null;
+    }
+  }
+
   async function remove(id: string): Promise<boolean> {
     loading.value = true;
     error.value = null;
@@ -542,5 +575,6 @@ export function useDocuments(pageSize = 20): {
     unpack,
     moveChunk,
     trashChunk,
+    renameChunk,
   };
 }

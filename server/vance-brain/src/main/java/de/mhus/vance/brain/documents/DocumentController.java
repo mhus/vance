@@ -9,6 +9,8 @@ import de.mhus.vance.api.documents.DocumentDto;
 import de.mhus.vance.api.documents.DocumentExportRequest;
 import de.mhus.vance.api.documents.DocumentMoveChunkRequest;
 import de.mhus.vance.api.documents.DocumentMoveChunkResponse;
+import de.mhus.vance.api.documents.DocumentRenameChunkRequest;
+import de.mhus.vance.api.documents.DocumentRenameChunkResponse;
 import de.mhus.vance.api.documents.DocumentTrashChunkRequest;
 import de.mhus.vance.api.documents.DocumentTrashChunkResponse;
 import de.mhus.vance.api.documents.DocumentUnpackResponse;
@@ -1181,6 +1183,83 @@ public class DocumentController {
 
         return DocumentTrashChunkResponse.builder()
                 .trashed(trashed)
+                .skipped(skipped)
+                .cursor(done ? null : cursor)
+                .done(done)
+                .build();
+    }
+
+    // ──────────────────── Chunked rename ────────────────────
+
+    /**
+     * Rename a document or a (virtual) folder. A {@code path} ending in
+     * {@code '/'} renames the folder as a prefix substitution over every
+     * document beneath it — the same client-driven, cursor-paged chunk loop as
+     * {@link #moveChunk}, with per-document {@code WRITE} checks (skip what you
+     * can't write). Any other {@code path} renames a single document and
+     * completes in one call. Renaming physically rewrites each document's path,
+     * so it honours per-document permissions rather than treating the folder as
+     * an ownable entity.
+     */
+    @PostMapping("/brain/{tenant}/documents/rename-chunk")
+    public DocumentRenameChunkResponse renameChunk(
+            @PathVariable("tenant") String tenant,
+            @RequestParam("projectId") String projectId,
+            @Valid @RequestBody DocumentRenameChunkRequest request,
+            @RequestHeader(value = HEADER_EDITOR_ID, required = false) @Nullable String editorId,
+            HttpServletRequest httpRequest) {
+
+        String newName = request.getNewName().trim();
+        if (newName.isEmpty() || newName.contains("/") || newName.equals(".") || newName.equals("..")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Invalid new name: " + request.getNewName());
+        }
+        String path = request.getPath().trim();
+        DocumentService.WriterIdentity writer = writerIdentity(httpRequest, editorId);
+
+        // Single-document rename (path is not a folder prefix).
+        if (!path.endsWith("/")) {
+            DocumentDocument doc = documentService.findByPath(tenant, projectId, path)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+            int slash = path.lastIndexOf('/');
+            String parent = slash >= 0 ? path.substring(0, slash + 1) : "";
+            MoveOutcome o = tryMoveDoc(tenant, doc, parent + newName, writer, httpRequest);
+            return DocumentRenameChunkResponse.builder()
+                    .renamed(o == MoveOutcome.MOVED ? 1 : 0)
+                    .skipped(o == MoveOutcome.SKIPPED ? 1 : 0)
+                    .cursor(null)
+                    .done(true)
+                    .build();
+        }
+
+        // Folder rename = prefix substitution oldPrefix → newPrefix.
+        String oldPrefix = normalizeFolderPrefixTrailing(path);
+        String trimmed = oldPrefix.substring(0, oldPrefix.length() - 1);
+        int slash = trimmed.lastIndexOf('/');
+        String parent = slash >= 0 ? trimmed.substring(0, slash + 1) : "";
+        String newPrefix = parent + newName + "/";
+
+        int limit = Math.max(1, Math.min(
+                request.getLimit() == null ? 25 : request.getLimit(), MOVE_CHUNK_MAX));
+        int renamed = 0;
+        int skipped = 0;
+        String cursor = request.getCursor();
+        boolean done = true;
+        if (!newPrefix.equals(oldPrefix)) {
+            List<DocumentDocument> batch = documentService.listUnderFoldersAfter(
+                    tenant, projectId, List.of(oldPrefix), cursor, limit);
+            for (DocumentDocument doc : batch) {
+                cursor = doc.getPath();
+                String newPath = newPrefix + doc.getPath().substring(oldPrefix.length());
+                MoveOutcome o = tryMoveDoc(tenant, doc, newPath, writer, httpRequest);
+                if (o == MoveOutcome.MOVED) renamed++;
+                else if (o == MoveOutcome.SKIPPED) skipped++;
+            }
+            done = batch.size() < limit;
+        }
+
+        return DocumentRenameChunkResponse.builder()
+                .renamed(renamed)
                 .skipped(skipped)
                 .cursor(done ? null : cursor)
                 .done(done)

@@ -482,11 +482,20 @@ export default {
     rowMenu: {
       title: 'Actions',
       empty: 'No actions',
+      rename: 'Rename',
       unpack: 'Unpack',
       unpackDone:
         'Extracted {extracted} files to “{folder}” ({skipped} skipped, {failed} failed).',
       delete: 'Delete',
       deleteBody: 'Move “{name}” to the trash? You can restore it later from the trash, or delete it permanently.',
+    },
+    rename: {
+      title: 'Rename',
+      label: 'New name',
+      confirm: 'Rename',
+      invalid: 'Please enter a name without “/”.',
+      running: 'Renamed {renamed}…',
+      done: 'Renamed {renamed}, skipped {skipped}.',
     },
     archives: {
       heading: 'Versions',

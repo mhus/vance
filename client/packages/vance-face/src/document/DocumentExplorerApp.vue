@@ -378,13 +378,25 @@ function isZip(doc: DocumentSummary): boolean {
 }
 
 function rowMenuItems(doc: DocumentSummary): RowMenuItem[] {
-  const items: RowMenuItem[] = [];
+  const items: RowMenuItem[] = [{ key: 'rename', label: t('documents.rowMenu.rename') }];
   if (isZip(doc)) items.push({ key: 'unpack', label: t('documents.rowMenu.unpack') });
   items.push({ key: 'delete', label: t('documents.rowMenu.delete'), danger: true });
   return items;
 }
 
+const folderMenuItems: RowMenuItem[] = [
+  { key: 'rename', label: t('documents.rowMenu.rename') },
+];
+
+function onFolderAction(folder: string, key: string): void {
+  if (key === 'rename') openRename('folder', folderPrefixOf(folder), folder);
+}
+
 async function onRowAction(doc: DocumentSummary, key: string): Promise<void> {
+  if (key === 'rename') {
+    openRename('file', doc.path, fileBasename(doc.path));
+    return;
+  }
   if (key === 'delete') {
     pendingDelete.value = doc;
     return;
@@ -410,6 +422,64 @@ async function onRowAction(doc: DocumentSummary, key: string): Promise<void> {
 // confirm scoped to the one row.
 const pendingDelete = ref<DocumentSummary | null>(null);
 const deleteBusy = ref(false);
+
+// Rename — single row action for a file (one call) or a folder (chunked,
+// cursor loop with progress/abort, per-doc WRITE check).
+const renameTarget = ref<{ kind: 'file' | 'folder'; path: string; currentName: string } | null>(null);
+const renameName = ref('');
+const renameError = ref('');
+
+function openRename(kind: 'file' | 'folder', path: string, currentName: string): void {
+  renameTarget.value = { kind, path, currentName };
+  renameName.value = currentName;
+  renameError.value = '';
+}
+
+async function confirmRename(): Promise<void> {
+  const target = renameTarget.value;
+  const pid = selectedProjectId.value;
+  if (!target || !pid) return;
+  const newName = renameName.value.trim();
+  if (!newName || newName.includes('/')) {
+    renameError.value = t('documents.rename.invalid');
+    return;
+  }
+  if (newName === target.currentName) {
+    renameTarget.value = null;
+    return;
+  }
+  bulkBusy.value = true;
+  bulkAbort.value = false;
+  bulkProgress.value = 0;
+  let renamedTotal = 0;
+  let skippedTotal = 0;
+  let cursor: string | undefined;
+  try {
+    let done = false;
+    while (!done && !bulkAbort.value) {
+      const r = await docsState.renameChunk(pid, {
+        path: target.path,
+        newName,
+        limit: MOVE_CHUNK,
+        cursor,
+      });
+      if (!r) break; // error surfaced via docsState.error
+      renamedTotal += r.renamed;
+      skippedTotal += r.skipped;
+      bulkProgress.value = renamedTotal;
+      cursor = r.cursor ?? undefined;
+      done = r.done;
+    }
+    await docsState.loadPage(pid, docsState.page.value, docsState.pathPrefix.value);
+    notice.value = t('documents.rename.done', {
+      renamed: renamedTotal,
+      skipped: skippedTotal,
+    });
+  } finally {
+    bulkBusy.value = false;
+    renameTarget.value = null;
+  }
+}
 
 async function confirmRowDelete(): Promise<void> {
   const doc = pendingDelete.value;
@@ -791,7 +861,13 @@ function confirmNewFolder(): void {
               <td class="px-2 py-1.5"></td>
               <td class="px-2 py-1.5"></td>
               <td class="px-2 py-1.5"></td>
-              <td class="pr-3 py-1.5"></td>
+              <td class="pr-3 py-1.5 text-right" @click.stop>
+                <RowActionsMenu
+                  :items="folderMenuItems"
+                  :title="$t('documents.rowMenu.title')"
+                  @select="(k) => onFolderAction(folder, k)"
+                />
+              </td>
             </tr>
             <tr
               v-for="doc in docsState.items.value"
@@ -935,6 +1011,41 @@ function confirmNewFolder(): void {
         </VButton>
         <VButton variant="danger" :loading="bulkBusy" @click="confirmTrash">
           {{ $t('documents.selection.trash') }}
+        </VButton>
+      </template>
+    </VModal>
+
+    <!-- Rename (file: one call, folder: chunked) -->
+    <VModal
+      :model-value="renameTarget !== null"
+      :title="$t('documents.rename.title')"
+      :close-on-backdrop="!bulkBusy"
+      @update:model-value="(v) => { if (!v && !bulkBusy) renameTarget = null; }"
+    >
+      <p v-if="bulkBusy" class="text-sm">
+        {{ $t('documents.rename.running', { renamed: bulkProgress }) }}
+      </p>
+      <form v-else @submit.prevent="confirmRename">
+        <VInput
+          v-model="renameName"
+          :label="$t('documents.rename.label')"
+          :error="renameError"
+        />
+      </form>
+      <template #actions>
+        <VButton
+          v-if="bulkBusy"
+          variant="ghost"
+          :disabled="bulkAbort"
+          @click="bulkAbort = true"
+        >
+          {{ $t('documents.selection.stop') }}
+        </VButton>
+        <VButton v-else variant="ghost" @click="renameTarget = null">
+          {{ $t('common.cancel') }}
+        </VButton>
+        <VButton variant="primary" :loading="bulkBusy" @click="confirmRename">
+          {{ $t('documents.rename.confirm') }}
         </VButton>
       </template>
     </VModal>

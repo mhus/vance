@@ -195,17 +195,22 @@ function openFook(): void {
       @click.stop
     >{{ serverBacklink }}</a>
 
-    <div class="flex-1 flex items-center gap-2 text-sm">
+    <!-- Single-line, ellipsizing region: {@code min-w-0} lets this flex
+         child shrink below its content and {@code truncate} clips the
+         overflow with an ellipsis, so a long document/session title can
+         never wrap the topbar onto a second row. Children are inline so
+         title + breadcrumbs flow on one line and clip at the end. -->
+    <div class="flex-1 min-w-0 truncate text-sm">
       <button
         v-if="titleClickable"
         type="button"
-        class="title-link font-semibold"
+        class="title-link font-semibold align-middle"
         @pointerdown.stop
         @click="emit('title-click')"
       >{{ title }}</button>
-      <span v-else class="font-semibold">{{ title }}</span>
-      <span v-if="breadcrumbs.length" class="opacity-50">·</span>
-      <span class="opacity-70 truncate">
+      <span v-else class="font-semibold align-middle">{{ title }}</span>
+      <span v-if="breadcrumbs.length" class="opacity-50 mx-2 align-middle">·</span>
+      <span class="opacity-70 align-middle">
         <template v-for="(crumb, idx) in breadcrumbs" :key="idx">
           <button
             v-if="crumbOnClick(crumb)"

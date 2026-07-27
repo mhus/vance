@@ -312,7 +312,7 @@ class SlartibartfastEngineSummarizeForParentTest {
         return Criterion.builder()
                 .id("cr-" + Math.abs(path.hashCode()))
                 .text("The recipe must persist its output at `" + path
-                        + "` via doc_write_text.")
+                        + "` via doc_write.")
                 .origin(CriterionOrigin.INFERRED_DOMAIN)
                 .confidence(0.8)
                 .build();

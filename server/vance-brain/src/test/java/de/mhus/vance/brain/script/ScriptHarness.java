@@ -45,12 +45,12 @@ import org.slf4j.LoggerFactory;
  * ScriptHarness harness = ScriptHarness.builder()
  *     .scriptFile(Path.of("../../qa/kits/hello-script-kit/.../greet.js"))
  *     .args(Map.of("name", "Klaus"))
- *     .mockTool("doc_write_text", params -> Map.of("size", 42))
+ *     .mockTool("doc_write", params -> Map.of("size", 42))
  *     .build();
  *
  * ScriptResult result = harness.run();
  * assertThat(harness.toolCalls()).extracting(ToolCall::name)
- *     .containsExactly("doc_write_text");
+ *     .containsExactly("doc_write");
  * assertThat(harness.logRecords()).hasSize(1);
  * }</pre>
  *

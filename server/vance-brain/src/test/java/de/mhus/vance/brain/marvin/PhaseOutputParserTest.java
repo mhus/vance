@@ -147,13 +147,13 @@ class PhaseOutputParserTest {
         PhaseOutputParser.Result<ConcludeOutput> r = parser.parseConclude("""
                 {"result":"answer",
                  "postActions":[
-                   {"tool":"doc_write_text",
+                   {"tool":"doc_write",
                     "args":{"path":"r/x.md","content":"{{ node.result }}"}}],
                  "reason":"done"}
                 """);
         assertThat(r.ok()).isTrue();
         assertThat(r.output().postActions()).hasSize(1);
-        assertThat(r.output().postActions().get(0).tool()).isEqualTo("doc_write_text");
+        assertThat(r.output().postActions().get(0).tool()).isEqualTo("doc_write");
     }
 
     // ─── VALIDATE ───

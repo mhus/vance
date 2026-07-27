@@ -101,11 +101,11 @@ class GraaljsScriptExecutorHeaderTest {
         GraaljsScriptExecutor exec = new GraaljsScriptExecutor(engine, props);
         String code = """
                 /**
-                 * @requiresTools doc_write_text
+                 * @requiresTools doc_write
                  */
                 "ok"
                 """;
-        ContextToolsApi tools = toolsWithAllowed(Set.of("doc_write_text"));
+        ContextToolsApi tools = toolsWithAllowed(Set.of("doc_write"));
         ScriptResult r = exec.run(new ScriptRequest(
                 "js", code, "test", tools, Duration.ofSeconds(5)));
         assertThat(r.value()).isEqualTo("ok");
@@ -117,11 +117,11 @@ class GraaljsScriptExecutorHeaderTest {
         GraaljsScriptExecutor exec = new GraaljsScriptExecutor(engine, props);
         String code = """
                 /**
-                 * @requiresTools doc_write_text, process_run
+                 * @requiresTools doc_write, process_run
                  */
                 "should not reach here"
                 """;
-        ContextToolsApi tools = toolsWithAllowed(Set.of("doc_write_text"));
+        ContextToolsApi tools = toolsWithAllowed(Set.of("doc_write"));
         assertThatThrownBy(() -> exec.run(new ScriptRequest(
                 "js", code, "test", tools, Duration.ofSeconds(5))))
                 .isInstanceOf(ScriptExecutionException.class)

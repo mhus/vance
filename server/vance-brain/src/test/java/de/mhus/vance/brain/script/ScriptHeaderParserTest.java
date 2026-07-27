@@ -68,19 +68,19 @@ class ScriptHeaderParserTest {
     void parse_allowTools_comma_and_whitespace_separated() {
         ScriptHeader commas = ScriptHeaderParser.parse("""
                 /**
-                 * @allowTools  doc_write_text, process_run, web_search
+                 * @allowTools  doc_write, process_run, web_search
                  */
                 """, "test");
         assertThat(commas.allowTools())
-                .containsExactly("doc_write_text", "process_run", "web_search");
+                .containsExactly("doc_write", "process_run", "web_search");
 
         ScriptHeader spaces = ScriptHeaderParser.parse("""
                 /**
-                 * @allowTools doc_write_text  process_run   web_search
+                 * @allowTools doc_write  process_run   web_search
                  */
                 """, "test");
         assertThat(spaces.allowTools())
-                .containsExactly("doc_write_text", "process_run", "web_search");
+                .containsExactly("doc_write", "process_run", "web_search");
     }
 
     @Test
@@ -88,12 +88,12 @@ class ScriptHeaderParserTest {
         ScriptHeader h = ScriptHeaderParser.parse("""
                 /**
                  * @requiresTools process_run
-                 * @allowTools    process_run, doc_write_text
+                 * @allowTools    process_run, doc_write
                  */
                 """, "test");
         assertThat(h.requiresTools()).containsExactly("process_run");
         assertThat(h.allowTools())
-                .containsExactly("process_run", "doc_write_text");
+                .containsExactly("process_run", "doc_write");
     }
 
     @Test

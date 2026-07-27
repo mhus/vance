@@ -45,7 +45,7 @@ class JsValidationServiceTest {
         String code = """
                 /**
                  * @timeout 30s
-                 * @requiresTools doc_write_text
+                 * @requiresTools doc_write
                  */
                 (function () { return 42; })();
                 """;

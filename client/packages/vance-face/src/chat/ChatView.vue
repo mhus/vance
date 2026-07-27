@@ -16,7 +16,7 @@ import type {
 import { useChatHistory } from '@composables/useChatHistory';
 import { useConversationExport } from '@composables/useConversationExport';
 import { useTenantProjects } from '@composables/useTenantProjects';
-import { useDocumentRefStore } from '@/document/documentRefStore';
+import { useDocumentRefStore } from '@/kindViews/documentRefStore';
 import { SessionHeader, VAlert, VButton } from '@components/index';
 import { getUsername } from '@vance/shared';
 import {

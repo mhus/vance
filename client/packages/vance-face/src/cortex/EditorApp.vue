@@ -41,7 +41,7 @@ import { onDocumentChanged } from '@/ws/wsConnectionStore';
 import VanceEmbedView from '@/components/VanceEmbedView.vue';
 import VanceFormView from '@/components/VanceFormView.vue';
 import ComposeOutput from '@/cortex/components/ComposeOutput.vue';
-import { useDocumentRefStore } from '@/document/documentRefStore';
+import { useDocumentRefStore } from '@/kindViews/documentRefStore';
 import { isBinaryMime } from './stores/cortexStore';
 import { useCortexStore } from './stores/cortexStore';
 import { useViewEditMode } from './useViewEditMode';

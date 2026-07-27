@@ -23,15 +23,15 @@ export interface KindRenderer {
 // Async-loaded views keep the initial bundle small. Each view module
 // is fetched on first encounter (chat-stream with a mindmap, an
 // embedded PDF, etc.).
-const MindmapView = defineAsyncComponent(() => import('@/document/MindmapView.vue'));
-const DiagramView = defineAsyncComponent(() => import('@/document/DiagramView.vue'));
-const ListView    = defineAsyncComponent(() => import('@/document/ListView.vue'));
-const ChecklistView = defineAsyncComponent(() => import('@/document/ChecklistView.vue'));
-const TreeView    = defineAsyncComponent(() => import('@/document/TreeView.vue'));
-const RecordsView = defineAsyncComponent(() => import('@/document/RecordsView.vue'));
-const GraphView   = defineAsyncComponent(() => import('@/document/GraphView.vue'));
-const ChartView   = defineAsyncComponent(() => import('@/document/ChartView.vue'));
-const MapView     = defineAsyncComponent(() => import('@/document/MapView.vue'));
+const MindmapView = defineAsyncComponent(() => import('@/kindViews/MindmapView.vue'));
+const DiagramView = defineAsyncComponent(() => import('@/kindViews/DiagramView.vue'));
+const ListView    = defineAsyncComponent(() => import('@/kindViews/ListView.vue'));
+const ChecklistView = defineAsyncComponent(() => import('@/kindViews/ChecklistView.vue'));
+const TreeView    = defineAsyncComponent(() => import('@/kindViews/TreeView.vue'));
+const RecordsView = defineAsyncComponent(() => import('@/kindViews/RecordsView.vue'));
+const GraphView   = defineAsyncComponent(() => import('@/kindViews/GraphView.vue'));
+const ChartView   = defineAsyncComponent(() => import('@/kindViews/ChartView.vue'));
+const MapView     = defineAsyncComponent(() => import('@/kindViews/MapView.vue'));
 // Calendar's view moved to the calendar addon (Etappe 2.x). The
 // chat-stream still references it for inline-fence rendering;
 // federation gives us the same component at runtime via the dynamic
@@ -58,15 +58,15 @@ const FinanceView = defineAsyncComponent(async () => {
   const m = mod as { default?: unknown };
   return (m?.default ?? mod) as ReturnType<typeof defineAsyncComponent>;
 });
-const SheetSummaryView = defineAsyncComponent(() => import('@/document/SheetSummaryView.vue'));
-const SlidesView  = defineAsyncComponent(() => import('@/document/SlidesView.vue'));
-const ImageView   = defineAsyncComponent(() => import('@/document/ImageView.vue'));
-const PdfView     = defineAsyncComponent(() => import('@/document/PdfView.vue'));
-const DocxView    = defineAsyncComponent(() => import('@/document/DocxView.vue'));
-const XlsxView    = defineAsyncComponent(() => import('@/document/XlsxView.vue'));
-const AudioView   = defineAsyncComponent(() => import('@/document/AudioView.vue'));
-const VideoView   = defineAsyncComponent(() => import('@/document/VideoView.vue'));
-const YouTubeView = defineAsyncComponent(() => import('@/document/YouTubeView.vue'));
+const SheetSummaryView = defineAsyncComponent(() => import('@/kindViews/SheetSummaryView.vue'));
+const SlidesView  = defineAsyncComponent(() => import('@/kindViews/SlidesView.vue'));
+const ImageView   = defineAsyncComponent(() => import('@/kindViews/ImageView.vue'));
+const PdfView     = defineAsyncComponent(() => import('@/kindViews/PdfView.vue'));
+const DocxView    = defineAsyncComponent(() => import('@/kindViews/DocxView.vue'));
+const XlsxView    = defineAsyncComponent(() => import('@/kindViews/XlsxView.vue'));
+const AudioView   = defineAsyncComponent(() => import('@/kindViews/AudioView.vue'));
+const VideoView   = defineAsyncComponent(() => import('@/kindViews/VideoView.vue'));
+const YouTubeView = defineAsyncComponent(() => import('@/kindViews/YouTubeView.vue'));
 
 /**
  * Registry of Vance-specific rich-content renderers. ONLY Vance kinds

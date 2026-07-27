@@ -16,7 +16,7 @@ import { VAlert, VButton, VCheckbox, VColorPicker, VInput, VSelect } from '@/com
 import type { AccentColor, DocumentDto } from '@vance/generated';
 import { WriterRole } from '@vance/generated';
 import { useI18n } from 'vue-i18n';
-import DocumentArchives from '@/document/DocumentArchives.vue';
+import DocumentArchives from '@/kindViews/DocumentArchives.vue';
 import type { CortexDocument } from '../types';
 import { useCortexStore } from '../stores/cortexStore';
 

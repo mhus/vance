@@ -20,7 +20,7 @@ import type { DocumentCreateRequest, DocumentDto } from '@vance/generated';
 import KindBox from './KindBox.vue';
 import { kindIcon, kindLabel, resolveRenderer } from '@/kindRenderers/registry';
 import type { FenceMeta } from '@/kindRenderers/parseFenceLang';
-import { useDocumentRefStore } from '@/document/documentRefStore';
+import { useDocumentRefStore } from '@/kindViews/documentRefStore';
 
 interface Props {
   kind: string;

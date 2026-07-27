@@ -36,7 +36,7 @@ import { isVanceUri, parseVanceUri, type EmbedRef } from '@/kindRenderers/parseV
  * doc.kind during render.
  */
 const PREVIEW_MEDIA_KINDS = new Set(['image', 'svg', 'audio', 'video', 'pdf']);
-import { useDocumentRefStore } from '@/document/documentRefStore';
+import { useDocumentRefStore } from '@/kindViews/documentRefStore';
 import { getOpenDocumentsInNewTab } from '@/platform/webUiSession';
 import { VANCE_LINK_HANDLER_KEY } from './vanceLinkHandler';
 

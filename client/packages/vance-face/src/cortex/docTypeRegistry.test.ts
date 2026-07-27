@@ -5,11 +5,11 @@ import type { Component } from 'vue';
 // eagerly-imported SFCs — keeps their (heavy) dependency graphs out of the test.
 // The defineAsyncComponent(() => import(...)) views never fire in resolveBinding,
 // so they need no mock. Codecs are pure TS and load for real via the `@` alias.
-vi.mock('@/document/ListView.vue', () => ({ default: {} }));
-vi.mock('@/document/TreeView.vue', () => ({ default: {} }));
-vi.mock('@/document/RecordsView.vue', () => ({ default: {} }));
-vi.mock('@/document/SheetView.vue', () => ({ default: {} }));
-vi.mock('@/document/MindmapView.vue', () => ({ default: {} }));
+vi.mock('@/kindViews/ListView.vue', () => ({ default: {} }));
+vi.mock('@/kindViews/TreeView.vue', () => ({ default: {} }));
+vi.mock('@/kindViews/RecordsView.vue', () => ({ default: {} }));
+vi.mock('@/kindViews/SheetView.vue', () => ({ default: {} }));
+vi.mock('@/kindViews/MindmapView.vue', () => ({ default: {} }));
 
 import { registerKind } from '@vance/kind-registry';
 import { resolveBinding } from './docTypeRegistry';

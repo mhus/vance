@@ -2,82 +2,82 @@ import type { Component } from 'vue';
 import { defineAsyncComponent } from 'vue';
 import { resolveKind, resolveKindFor, type KindEntry } from '@vance/kind-registry';
 
-import ListView from '@/document/ListView.vue';
-import TreeView from '@/document/TreeView.vue';
-import RecordsView from '@/document/RecordsView.vue';
-import SheetView from '@/document/SheetView.vue';
-import MindmapView from '@/document/MindmapView.vue';
+import ListView from '@/kindViews/ListView.vue';
+import TreeView from '@/kindViews/TreeView.vue';
+import RecordsView from '@/kindViews/RecordsView.vue';
+import SheetView from '@/kindViews/SheetView.vue';
+import MindmapView from '@/kindViews/MindmapView.vue';
 // Heavy views — lazy-load to keep the cortex bundle lean, mirroring
 // the pattern in documents/DocumentApp.vue.
 const ChecklistView = defineAsyncComponent(
-  () => import('@/document/ChecklistView.vue'),
+  () => import('@/kindViews/ChecklistView.vue'),
 );
 const ChartView = defineAsyncComponent(
-  () => import('@/document/ChartView.vue'),
+  () => import('@/kindViews/ChartView.vue'),
 );
 const GraphView = defineAsyncComponent(
-  () => import('@/document/GraphView.vue'),
+  () => import('@/kindViews/GraphView.vue'),
 );
 const MapView = defineAsyncComponent(
-  () => import('@/document/MapView.vue'),
+  () => import('@/kindViews/MapView.vue'),
 );
 const SlidesView = defineAsyncComponent(
-  () => import('@/document/SlidesView.vue'),
+  () => import('@/kindViews/SlidesView.vue'),
 );
 const DiagramView = defineAsyncComponent(
-  () => import('@/document/DiagramView.vue'),
+  () => import('@/kindViews/DiagramView.vue'),
 );
 
 import {
   parseList,
   serializeList,
   isListMime,
-} from '@/document/listItemsCodec';
+} from '@/kindViews/listItemsCodec';
 import {
   parseChecklist,
   serializeChecklist,
   isChecklistMime,
-} from '@/document/checklistCodec';
+} from '@/kindViews/checklistCodec';
 import {
   parseTree,
   serializeTree,
   isTreeMime,
-} from '@/document/treeItemsCodec';
+} from '@/kindViews/treeItemsCodec';
 import {
   parseRecords,
   serializeRecords,
   isRecordsMime,
-} from '@/document/recordsCodec';
+} from '@/kindViews/recordsCodec';
 import {
   parseChart,
   serializeChart,
   isChartMime,
-} from '@/document/chartCodec';
+} from '@/kindViews/chartCodec';
 import {
   parseSheet,
   serializeSheet,
   isSheetMime,
-} from '@/document/sheetCodec';
+} from '@/kindViews/sheetCodec';
 import {
   parseGraph,
   serializeGraph,
   isGraphMime,
-} from '@/document/graphCodec';
+} from '@/kindViews/graphCodec';
 import {
   parseMap,
   serializeMap,
   isMapMime,
-} from '@/document/mapCodec';
+} from '@/kindViews/mapCodec';
 import {
   parseSlides,
   serializeSlides,
   isSlidesMime,
-} from '@/document/slidesCodec';
+} from '@/kindViews/slidesCodec';
 import {
   parseDiagram,
   serializeDiagram,
   isDiagramMime,
-} from '@/document/diagramCodec';
+} from '@/kindViews/diagramCodec';
 
 import type { CortexDocument } from './types';
 import { isBinaryDoc } from './stores/cortexStore';

@@ -16,7 +16,7 @@ import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import KindBox from './KindBox.vue';
 import MarkdownView from './MarkdownView.vue';
 import { kindIcon, kindLabel, resolveRenderer } from '@/kindRenderers/registry';
-import { useDocumentRefStore } from '@/document/documentRefStore';
+import { useDocumentRefStore } from '@/kindViews/documentRefStore';
 import type { EmbedRef } from '@/kindRenderers/parseVanceUri';
 import { onDocumentChanged } from '@/ws/wsConnectionStore';
 import { VANCE_LINK_HANDLER_KEY } from './vanceLinkHandler';

@@ -16,7 +16,7 @@ import { brainFetch } from '@vance/shared';
 import type { FormFieldDto, FormChoiceDto } from '@vance/generated';
 import { FormFields, type FormValue } from './index';
 import { parseVanceUri, VanceUriParseError } from '@/kindRenderers/parseVanceUri';
-import { useDocumentRefStore } from '@/document/documentRefStore';
+import { useDocumentRefStore } from '@/kindViews/documentRefStore';
 
 interface FormDef {
   single?: boolean;

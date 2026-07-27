@@ -338,6 +338,88 @@ async function confirmMove(): Promise<void> {
     showMoveModal.value = false;
   }
 }
+
+// ── External file drop (Finder → current folder) ────────────────
+// Same upload path as Cortex's file tree: each OS file is POSTed to
+// documents/upload with a path anchored at the folder currently in
+// view (docsState.pathPrefix). Dropping into a virtual folder makes
+// it real on the first successful upload.
+const isDragOver = ref(false);
+const uploadBusy = ref(false);
+// dragenter/dragleave fire per child element, so a plain boolean
+// flickers — count depth and only clear the highlight at zero.
+let dragDepth = 0;
+
+function dragHasFiles(e: DragEvent): boolean {
+  return Array.from(e.dataTransfer?.types ?? []).includes('Files');
+}
+
+function onDragEnter(e: DragEvent): void {
+  if (!dragHasFiles(e)) return;
+  dragDepth += 1;
+  isDragOver.value = true;
+}
+
+function onDragOver(e: DragEvent): void {
+  if (!dragHasFiles(e)) return;
+  e.preventDefault(); // required to allow the drop
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+}
+
+function onDragLeave(e: DragEvent): void {
+  if (!dragHasFiles(e)) return;
+  dragDepth = Math.max(0, dragDepth - 1);
+  if (dragDepth === 0) isDragOver.value = false;
+}
+
+async function onDrop(e: DragEvent): Promise<void> {
+  if (!dragHasFiles(e)) return;
+  e.preventDefault();
+  dragDepth = 0;
+  isDragOver.value = false;
+  const pid = selectedProjectId.value;
+  const files = Array.from(e.dataTransfer?.files ?? []);
+  if (!pid || files.length === 0) return;
+  const base = docsState.pathPrefix.value.replace(/\/+$/, '');
+  uploadBusy.value = true;
+  try {
+    for (const file of files) {
+      const path = base ? `${base}/${file.name}` : file.name;
+      await docsState.upload(pid, { file, path });
+    }
+  } finally {
+    uploadBusy.value = false;
+  }
+}
+
+// ── Virtual folder ──────────────────────────────────────────────
+// The server has no folder entity — folders are just path prefixes on
+// documents. "New folder" therefore navigates into a not-yet-existing
+// prefix: the list shows empty until the first document is saved there
+// (drop, upload, or "+ New"), and leaving the path drops it again.
+const showNewFolderModal = ref(false);
+const newFolderName = ref('');
+const newFolderError = ref('');
+
+function openNewFolder(): void {
+  newFolderName.value = '';
+  newFolderError.value = '';
+  showNewFolderModal.value = true;
+}
+
+function confirmNewFolder(): void {
+  if (!selectedProjectId.value) return;
+  const name = newFolderName.value.trim().replace(/^\/+|\/+$/g, '');
+  if (!name) {
+    newFolderError.value = t('documents.newFolderDialog.nameRequired');
+    return;
+  }
+  const base = docsState.pathPrefix.value.replace(/\/+$/, '');
+  const virtualPath = base ? `${base}/${name}/` : `${name}/`;
+  showNewFolderModal.value = false;
+  void docsState.loadPage(selectedProjectId.value, 0, virtualPath);
+  syncUrl();
+}
 </script>
 
 <template>
@@ -380,7 +462,14 @@ async function confirmMove(): Promise<void> {
       />
     </div>
 
-    <div v-else class="h-full min-h-0 flex flex-col">
+    <div
+      v-else
+      class="h-full min-h-0 flex flex-col relative"
+      @dragenter="onDragEnter"
+      @dragover="onDragOver"
+      @dragleave="onDragLeave"
+      @drop="onDrop"
+    >
       <!-- Path crumb + search + actions -->
       <div class="px-6 pt-4 pb-3 border-b border-base-300 bg-base-100 flex items-center gap-3 flex-wrap">
         <VButton
@@ -412,6 +501,12 @@ async function confirmMove(): Promise<void> {
             :placeholder="$t('documents.searchPlaceholder')"
           />
         </div>
+        <VButton
+          variant="secondary"
+          size="sm"
+          :title="$t('documents.newFolder')"
+          @click="openNewFolder"
+        >+ 📁</VButton>
         <VButton
           variant="primary"
           size="sm"
@@ -551,6 +646,14 @@ async function confirmMove(): Promise<void> {
           @click="gotoPage(docsState.page.value + 1)"
         >→</VButton>
       </div>
+
+      <!-- External file drop overlay -->
+      <div
+        v-if="isDragOver"
+        class="absolute inset-0 z-10 flex items-center justify-center bg-primary/10 border-2 border-dashed border-primary pointer-events-none"
+      >
+        <span class="text-sm font-medium text-primary">{{ $t('documents.dropHint') }}</span>
+      </div>
     </div>
 
     <!-- Bulk move to another folder -->
@@ -592,6 +695,27 @@ async function confirmMove(): Promise<void> {
         </VButton>
         <VButton variant="danger" :loading="bulkBusy" @click="confirmTrash">
           {{ $t('documents.selection.trash') }}
+        </VButton>
+      </template>
+    </VModal>
+
+    <!-- New (virtual) folder -->
+    <VModal v-model="showNewFolderModal" :title="$t('documents.newFolderDialog.title')">
+      <form @submit.prevent="confirmNewFolder">
+        <VInput
+          v-model="newFolderName"
+          :label="$t('documents.newFolderDialog.nameLabel')"
+          :placeholder="$t('documents.newFolderDialog.namePlaceholder')"
+          :help="$t('documents.newFolderDialog.nameHelp')"
+          :error="newFolderError"
+        />
+      </form>
+      <template #actions>
+        <VButton variant="ghost" @click="showNewFolderModal = false">
+          {{ $t('common.cancel') }}
+        </VButton>
+        <VButton variant="primary" @click="confirmNewFolder">
+          {{ $t('documents.newFolderDialog.create') }}
         </VButton>
       </template>
     </VModal>

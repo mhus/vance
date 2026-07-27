@@ -63,7 +63,7 @@ class HactarRunToolTest {
         Map<String, Object> in = new LinkedHashMap<>();
         in.put("scriptRef", "scripts/x.js");
         in.put("validateBeforeRun", true);
-        in.put("scriptAllowedTools", List.of("doc_create", "doc_read"));
+        in.put("scriptAllowedTools", List.of("doc_write", "doc_read"));
         in.put("scriptParams", Map.of("k", "v"));
         in.put("timeout", 600);
 
@@ -75,7 +75,7 @@ class HactarRunToolTest {
         assertThat(engineParams)
                 .containsEntry(HactarEngine.VALIDATE_BEFORE_RUN_KEY, Boolean.TRUE)
                 .containsEntry(HactarEngine.SCRIPT_ALLOWED_TOOLS_KEY,
-                        List.of("doc_create", "doc_read"))
+                        List.of("doc_write", "doc_read"))
                 .containsEntry(HactarEngine.SCRIPT_PARAMS_KEY, Map.of("k", "v"))
                 .containsEntry(HactarEngine.TIMEOUT_KEY, 600);
     }

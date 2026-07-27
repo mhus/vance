@@ -68,7 +68,7 @@ optional title and tags. I can:
   not mine.
 - **Read** with `doc_read(path)` or `doc_read(id=...)` — content up to
   50,000 characters, then truncated.
-- **Create with content** via `doc_create(kind="text", path, content,
+- **Create with content** via `doc_write(kind="text", path, content,
   title?, tags?)` — when I currently have a text in hand (a summary, a
   note, something the user dictated to me).
 - **Import a URL** via `doc_import_url(url, path, title?, tags?)` —

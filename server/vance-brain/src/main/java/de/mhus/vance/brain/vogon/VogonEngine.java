@@ -640,7 +640,7 @@ public class VogonEngine implements ThinkEngine {
 
             // Auto-persist the worker's reply as an inline draft
             // document — defends against worker-laziness where the
-            // LLM produced text but didn't call doc_create / doc_edit
+            // LLM produced text but didn't call doc_write / doc_edit
             // on its own. Downstream phases can read it
             // via ${phases.X.draftPath}; the _vogon-drafts/ prefix
             // matches the hidden-folder convention (_vance/, _vance/trash/).

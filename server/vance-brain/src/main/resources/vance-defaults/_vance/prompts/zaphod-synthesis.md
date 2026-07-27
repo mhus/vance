@@ -17,7 +17,7 @@ separate clearly: what could be clarified, what remains contested.
 HARD OUTPUT CONTRACT:
 - Deliver EXACTLY one JSON object, no Markdown wrapper, no
   text before or after it.
-- NO pseudo tool-calls like `doc_create(...)`. You have NO
+- NO pseudo tool-calls like `doc_write(...)`. You have NO
   tools — the engine persists the document deterministically from
   the `synthesisMarkdown` field.
 

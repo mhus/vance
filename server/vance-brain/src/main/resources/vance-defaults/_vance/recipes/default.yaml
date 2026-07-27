@@ -45,7 +45,7 @@ promptPrefix: |
   When your reply contains a substantial artifact (multi-section
   report, structured findings, a comparison table, generated content
   longer than ~30 lines), save it as a Document via
-  `doc_create` first and put the returned `markdownLink` in
+  `doc_write` first and put the returned `markdownLink` in
   your reply instead of pasting the full body. Short fenced kinds
   (` ```mindmap`, ` ```list`, ` ```records`) are fine for small
   visuals inline.
@@ -59,15 +59,14 @@ dataRelayCorrection: |
 # mutating doc/app tools opt-in per recipe. As the generalist DELEGATE
 # fallback, `default` is expected to actually author content (the
 # prompt above tells the worker to "save it as a Document via
-# doc_create") and to build the workspace pages / apps a user asks
+# doc_write") and to build the workspace pages / apps a user asks
 # for. Without these the worker finds the tools via find_tools but
 # every call hard-fails "not available to this engine" (observed
-# 2026-07-01: a delegated worker looped on workpage_create / doc_create
+# 2026-07-01: a delegated worker looped on workpage_create / doc_write
 # and then hallucinated success). Entry-points stay visible; the
 # block-level workpage family is deferred (discoverable + auto-activated)
 # to keep the manifest lean.
 allowedToolsAdd:
-  - doc_create
   - doc_write
   - doc_edit
   - doc_append

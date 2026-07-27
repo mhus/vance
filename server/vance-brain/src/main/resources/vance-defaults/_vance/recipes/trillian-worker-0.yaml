@@ -43,7 +43,6 @@ allowedToolsAdd:
   - doc_write
   - doc_edit
   - doc_append
-  - doc_create
   - doc_replace_lines
 
 params:

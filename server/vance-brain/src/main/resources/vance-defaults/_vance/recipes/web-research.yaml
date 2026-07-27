@@ -95,11 +95,10 @@ promptPrefix: |
 
   Goal: the caller context stays lean. Three paragraphs of summary
   are enough — the fifteen source snippets stay in your history, not
-  in its prompt. Longer tables / structured reports only when the
-  caller explicitly asked for them ("write a report / a list / a
-  table"). Then feel free to use a `doc_create(kind="text",
-  path="…", content=…)` and put only the doc path + a short summary
-  in the reply.
+  in its prompt. If the caller explicitly asked for a longer
+  write-up ("write a report / a list / a table"), put that directly
+  in your reply. You do NOT persist documents yourself — you have no
+  document-write tools; deciding what to save is the caller's job.
 profiles:
   # Web-research mostly uses research_search/web_fetch — client_*
   # tools are irrelevant. Pass-through profile-blocks just for

@@ -51,7 +51,7 @@ public class DocCreateKindTool implements Tool {
 
     @Override public String name() { return "doc_create_kind"; }
     @Override public String description() {
-        return "DEPRECATED — use `doc_create(kind=…, path=…, "
+        return "DEPRECATED — use `doc_write(kind=…, path=…, "
                 + "content=…)` instead, which unifies kind-typed and "
                 + "text creation and supports upsert. Kept as a "
                 + "legacy alias for kits and scripts that hardcode "

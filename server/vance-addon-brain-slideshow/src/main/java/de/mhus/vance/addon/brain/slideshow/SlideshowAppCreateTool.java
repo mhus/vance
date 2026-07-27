@@ -24,7 +24,7 @@ import org.springframework.stereotype.Component;
  * workflow is:
  * <ol>
  *   <li>User uploads images via the Documents editor or
- *       {@code doc_create} tool.</li>
+ *       {@code doc_write} tool.</li>
  *   <li>LLM calls {@code slideshow_app_create(folder, title, ...)}.</li>
  *   <li>The user opens {@code _app.yaml} in the App editor.</li>
  * </ol>
@@ -78,7 +78,7 @@ public class SlideshowAppCreateTool implements Tool {
     public String description() {
         return "Bootstrap a slideshow-app folder. Writes _app.yaml + "
                 + "runs refresh to produce _index.yaml. Image uploads "
-                + "go through the standard doc_create / Documents "
+                + "go through the standard doc_write / Documents "
                 + "editor — this tool only writes the manifest. "
                 + "Embed the resulting `markdownLink` so the user can "
                 + "open the interactive viewer with one click.";

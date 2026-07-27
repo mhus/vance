@@ -156,12 +156,11 @@ omit the dropped one.
    `projectId` parameter — **do not** rely on the active-project
    default. Operator edits to the model catalog typically target a
    *different* project than the chat session is currently in.
-   - **`doc_create`** when the file doesn't exist yet. Set
-     `projectId: <_tenant or chosen project name>`, `path:
-     "_vance/model/<provider>/<slug>.yaml"`, `kind: "yaml"`,
-     `content: <yaml>`.
-   - **`doc_write`** when the file already exists and the user wants
-     to replace its full content. Same `projectId` + `path`.
+   - **`doc_write`** to create the file or replace its full content
+     (it upserts by path — creates when missing, overwrites when it
+     already exists). Set `projectId: <_tenant or chosen project
+     name>`, `path: "_vance/model/<provider>/<slug>.yaml"`, `kind:
+     "yaml"`, `content: <yaml>`.
    - **`doc_edit`** for surgical changes (e.g. flip one pricing value)
      when the rest of the file should stay verbatim.
 5. **Write minimal YAML.** Only the fields that actually change;

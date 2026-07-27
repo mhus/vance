@@ -49,7 +49,7 @@ promptPrefix: |
   plumbing and the caller knows it. Just write the answer and stop
   when it stands.
 
-  Substantial lists / tables / reports → `doc_create` and the doc
+  Substantial lists / tables / reports → `doc_write` and the doc
   path in the reply; don't paste multiple pages inline. Otherwise
   the caller context fills up with your material.
   {% endif %}

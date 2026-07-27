@@ -403,7 +403,7 @@ An **editable, typed form** over a `kind: records` data document. The
 data document holds **only** `schema` + `items`; the **form definition**
 (`form:` — fields + single) and the recompute **`saveScript`** live in the
 block's **fence**, not in the file. `data` is the `vance:` URI of the data
-doc (create it with `doc_create`, `kind: records`, `items: []`). Use this for
+doc (create it with `doc_write`, `kind: records`, `items: []`). Use this for
 "user enters structured data, a script derives something" pages.
 
 **Before you author the fence, call `manual_read('workbook-forms')`** — it has
@@ -419,7 +419,7 @@ the full contract. The essentials you'll otherwise get wrong:
   trigger. There is **no** `$meta.onSave` in the file. Add fence `session: true`
   only if the script needs a session (LLM / session-bound tools); default is
   sessionless.
-- **Create the script with `doc_write`/`doc_create`, NOT `work_file_write`.**
+- **Create the script with `doc_write`, NOT `work_file_write`.**
   It's a project document; `work_file_write` targets the Brain WORK sandbox and
   fails on an app path ("Unknown RootDir").
 - **For a standalone "click to run" action, use the `button` block** (below) —

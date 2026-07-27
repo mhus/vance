@@ -35,7 +35,7 @@ Each phase declares:
 - `name`: phase identifier (kebab-case).
 - `worker`: name of an existing project recipe — typically `ford`,
   `marvin-worker`, `analyze`, `code-read`, or a task-specific
-  recipe from the project. Tool names (e.g. `doc_create`) are
+  recipe from the project. Tool names (e.g. `doc_write`) are
   NOT valid worker values; the validator rejects them.
 - `workerInput`: the prompt the worker receives.
 - `gate.requires`: list of completion markers that must be set
@@ -45,7 +45,7 @@ Optional per-phase:
 - `scorer`: branch decision based on output quality.
 - `loop`: repeat the phase until a condition is met.
 - `postActions`: tool calls run after the worker (typically
-  `doc_create` to persist artefacts).
+  `doc_write` to persist artefacts).
 
 ## Phase chaining
 
@@ -60,7 +60,7 @@ via `doc_read` (full) or `doc_summary` (1-3 sentence recap).
 **any phase that produces a meaningful artefact** (essay outline,
 chapter text, research synthesis, refactor plan, …) the recipe
 MUST include a `postActions` block that persists the worker's
-output to a known project path via `doc_create`.
+output to a known project path via `doc_write`.
 Without postActions, the phase's output lives
 only as an inline string in the Vogon state — workers in later
 phases see at best a 1-3 sentence summary in the discovery block,
@@ -76,7 +76,7 @@ post-Actions by default, not wait for validator pressure.
 
 ```
 postActions:
-  - tool: doc_create
+  - tool: doc_write
     args:
       path: essay/outline.md
       kind: text
@@ -117,7 +117,7 @@ research synthesis), add a Lector-style review loop:
   workerInput: |
     Write chapter 1 …
   postActions:
-    - tool: doc_create            # doc_create upserts so revisions overwrite
+    - tool: doc_write            # doc_write upserts so revisions overwrite
       args:
         path: essay/chapters/01.md
         kind: text
@@ -246,7 +246,7 @@ phases:
       Create a 3-chapter outline. Plot, key characters,
       satirical points per chapter.
     postActions:
-      - tool: doc_create
+      - tool: doc_write
         args:
           path: essay/outline.md
           kind: text
@@ -260,7 +260,7 @@ phases:
       Read essay/outline.md via doc_read. Write chapter 1
       (200-500 words). Style: Douglas Adams.
     postActions:
-      - tool: doc_create
+      - tool: doc_write
         args:
           path: essay/chapters/01.md
           kind: text
@@ -277,7 +277,7 @@ phases:
       Consolidate into essay/final-essay.md with chapter
       headings. Add a short intro paragraph.
     postActions:
-      - tool: doc_create
+      - tool: doc_write
         args:
           path: essay/final-essay.md
           kind: text

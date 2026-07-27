@@ -125,7 +125,7 @@ brief reason. Design the synthesis-prompt with that in mind:
 
 The Zaphod synthesizer is a direct LLM call with **structured
 JSON output** (`{title, summary, synthesisMarkdown}`). It does
-NOT have access to file-writing tools like `doc_create`. The
+NOT have access to file-writing tools like `doc_write`. The
 engine itself parses
 the structured reply and writes the synthesis to a project
 document at the resolved output path.

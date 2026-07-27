@@ -119,7 +119,7 @@ If the user wants to add events to an existing app:
 
 Or simpler: `calendar_app_create(overwrite=true, events=[<all events including the new ones>])` — replays the whole one-shot setup.
 
-**Never** hand-write `_app.yaml` via `doc_create_kind` / `doc_create_text` — the schema has tripwires (kind/app/lane-shape) that `calendar_app_create` avoids.
+**Never** hand-write `_app.yaml` via `doc_create_kind` / `doc_write` — the schema has tripwires (kind/app/lane-shape) that `calendar_app_create` avoids.
 
 The response contains the Gantt + conflicts paths and markdownLinks. Embed both in the chat reply:
 

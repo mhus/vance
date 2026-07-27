@@ -124,8 +124,7 @@ promptTemplate: |
   Lies zuerst `manual_read('ai-model-catalog')` und folge dem dortigen Workflow.
 
   Trag einen **manual-layer**-Override für ein KI-Modell tenant-weit ein.
-  Schreib das Dokument mit `doc_create` (oder `doc_write` wenn die Datei
-  schon existiert), Parameter:
+  Schreib das Dokument mit `doc_write`, Parameter:
 
   - `projectId`: `_tenant`
   - `path`: `_vance/model/{{ providerInstance }}/<slug>.yaml`

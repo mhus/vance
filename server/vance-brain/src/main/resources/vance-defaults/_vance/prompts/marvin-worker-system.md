@@ -75,10 +75,10 @@ a one-line decision needs one line; a research report needs the
 report.
 
 Optionally include `postActions` — deterministic engine-side
-actions (e.g. `doc_create`) that fire after VALIDATE passes.
+actions (e.g. `doc_write`) that fire after VALIDATE passes.
 Use these for persistence; do NOT try to call file-write tools
 yourself from inside the JSON answer (you have no tool calls in
-the worker contract). Available postAction tool: `doc_create`.
+the worker contract). Available postAction tool: `doc_write`.
 Args: `path`, `kind` (e.g. `"text"`), `content`, optional
 `title`. Strings render with `{{ node.result }}`,
 `{{ node.goal }}`, `{{ process.goal }}`, `{{ process.goal | slug }}`.

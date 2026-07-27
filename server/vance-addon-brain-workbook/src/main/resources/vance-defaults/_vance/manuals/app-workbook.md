@@ -191,7 +191,7 @@ workpage_block_insert(
 
 ## Anti-patterns
 
-- **Don't write `_app.yaml` by hand** via `doc_create`. Use `workbook_app_create` so the manifest schema is locked in.
+- **Don't write `_app.yaml` by hand** via `doc_write`. Use `workbook_app_create` so the manifest schema is locked in.
 - **Don't edit `_index.md` by hand.** It's a generated artefact and gets overwritten on the next `app_rebuild`. Edit the source pages, then rebuild.
 - **Don't nest workbooks.** One `_app.yaml` per tree root. Sub-folders are sections, not sub-workbooks.
 - **Don't use a workbook for a single page.** Just `workpage_create` — the index machinery is overhead.

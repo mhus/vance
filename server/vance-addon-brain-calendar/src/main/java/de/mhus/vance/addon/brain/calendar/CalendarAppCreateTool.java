@@ -24,7 +24,7 @@ import org.springframework.stereotype.Component;
  * <p>This is the **first** call the LLM should make when the user
  * asks for a multi-lane planning app / Sprint plan / Gantt-style
  * project layout. Hand-writing {@code _app.yaml} via
- * {@code doc_create} is brittle — the model typically gets one of
+ * {@code doc_write} is brittle — the model typically gets one of
  * {kind, app, lane structure} wrong and the resulting app silently
  * misbehaves.
  */
@@ -178,7 +178,7 @@ public class CalendarAppCreateTool implements Tool {
                 + "Conflicts artifacts in a single call. ALWAYS use "
                 + "this for sprint plans / multi-lane planning apps "
                 + "/ project Gantts. Do NOT hand-write _app.yaml via "
-                + "doc_create, do NOT chain multiple calendar_create "
+                + "doc_write, do NOT chain multiple calendar_create "
                 + "+ app_rebuild calls when events are known up-front "
                 + "— pass them here instead.";
     }

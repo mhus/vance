@@ -41,7 +41,7 @@ promptPrefix: |
          "goal":"{{ params.chapterPromptTpl }}",
          "taskSpec":{
            "postActions":[
-             {"tool":"doc_create",
+             {"tool":"doc_write",
               "args":{
                 "path":"{{ params.chaptersDir }}/{% verbatim %}{{ node.goal | slug }}{% endverbatim %}.md",
                 "kind":"text",

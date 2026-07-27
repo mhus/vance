@@ -1,5 +1,5 @@
 ---
-triggers: "Document, document_link, doc_create, vance: URI, markdownLink, save as document, save as file, slides, slide deck, presentation, Präsentation, Foliendeck, PDF, audio, video, generated artifact, project file, attach"
+triggers: "Document, document_link, doc_write, vance: URI, markdownLink, save as document, save as file, slides, slide deck, presentation, Präsentation, Foliendeck, PDF, audio, video, generated artifact, project file, attach"
 summary: How to reference a project Document (PDF, image, audio, slides, generated artifact) via a vance:-URI Markdown link.
 ---
 # Embedding — Project Documents
@@ -13,7 +13,7 @@ slash-commands.
 ## When to use this
 
 You have a **real** Document path — either from a tool you just
-called (`doc_create`, `image_generate`), from a path the user
+called (`doc_write`, `image_generate`), from a path the user
 mentioned, or from project memory. You want to point the user
 at it.
 
@@ -48,10 +48,10 @@ single tool keeps correct.
 Tools that produce a Document return `markdownLink` directly in
 their response. Copy it into your reply verbatim — no extra call:
 
-- `doc_create` → `{ path, markdownLink, … }`
+- `doc_write` → `{ path, markdownLink, … }`
 - `image_generate` → `{ path, markdownLink, … }`
 
-Example after `doc_create(kind="mindmap", name="onboarding-plan", content=…)`:
+Example after `doc_write(kind="mindmap", name="onboarding-plan", content=…)`:
 
 ```
 I drafted a mindmap of the onboarding plan:
@@ -60,7 +60,7 @@ I drafted a mindmap of the onboarding plan:
 
 The `markdownLink` field already contains that string.
 
-### Slide decks via `doc_create(kind="slides")`
+### Slide decks via `doc_write(kind="slides")`
 
 When the user asks for a presentation, slide deck, or "slides about X",
 create a `kind: slides` Document. The body is Markdown — slides are
@@ -68,7 +68,7 @@ separated by a `---` thematic break on its own line. Front-matter is
 optional but useful for theme / aspect / pagination.
 
 ```
-doc_create(
+doc_write(
   kind="slides",
   path="decks/q1-review",
   title="Q1 Review",

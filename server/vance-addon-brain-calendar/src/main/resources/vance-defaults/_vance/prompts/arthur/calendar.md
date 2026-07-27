@@ -25,7 +25,7 @@
   `common`). The result's `artefacts` array carries the Gantt +
   Conflicts `markdownLink`s — embed both in your chat reply.
 
-  Do **not** hand-write `_app.yaml` via `doc_create` (schema
+  Do **not** hand-write `_app.yaml` via `doc_write` (schema
   tripwires) and do **not** chain
   `calendar_app_create` + N × `calendar_create` + `app_rebuild`
   when you have all the events up-front (5+ calls instead of 1,

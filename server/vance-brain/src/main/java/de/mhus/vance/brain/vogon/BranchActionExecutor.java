@@ -189,7 +189,7 @@ final class BranchActionExecutor {
             return Result.exitedStrategy(es.outcome());
         }
         if (action instanceof BranchAction.DocCreateText d) {
-            requireDocService(ctx, "doc_create");
+            requireDocService(ctx, "doc_write");
             String tenantId = ctx.process().getTenantId();
             String projectId = ctx.process().getProjectId();
             String content = d.content() == null ? "" : d.content();
@@ -216,7 +216,7 @@ final class BranchActionExecutor {
             return null;
         }
         if (action instanceof BranchAction.DocCreateKind d) {
-            requireDocService(ctx, "doc_create");
+            requireDocService(ctx, "doc_write");
             String tenantId = ctx.process().getTenantId();
             String projectId = ctx.process().getProjectId();
             // Render the kind-document as YAML front-matter + body
@@ -254,7 +254,7 @@ final class BranchActionExecutor {
                     .orElseThrow(() -> new IllegalStateException(
                             "list_append: target document '" + la.path()
                                     + "' does not exist — create it with "
-                                    + "doc_create first"));
+                                    + "doc_write first"));
             String current = ctx.documentService().readContent(existing);
             String updated = current.endsWith("\n") || current.isEmpty()
                     ? current : current + "\n";

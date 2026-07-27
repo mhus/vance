@@ -52,6 +52,6 @@ a `vance:`-URI Markdown link → `manual_read('embed-documents')`.
 ## Do NOT
 
 - Don't use `doc_import_url` for a one-shot read — that's `web_fetch`.
-- Don't pipe a `web_fetch` result into `doc_create` by hand when the
+- Don't pipe a `web_fetch` result into `doc_write` by hand when the
   user wants the original page kept — import it directly so the source
   URL, mime-type and idempotency are handled for you.

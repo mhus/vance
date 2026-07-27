@@ -56,7 +56,7 @@ class McpServerServiceTest {
 
     @Test
     void toolsList_mapsCatalogueToMcpToolShape() {
-        Tool tool = stubTool("doc_create", "Create a document",
+        Tool tool = stubTool("doc_write", "Create a document",
                 Map.of("type", "object",
                         "properties", Map.of("path", Map.of("type", "string")),
                         "required", List.of("path")));
@@ -71,7 +71,7 @@ class McpServerServiceTest {
         List<Map<String, Object>> tools =
                 (List<Map<String, Object>>) resultOf(out).get("tools");
         assertThat(tools).hasSize(1);
-        assertThat(tools.get(0)).containsEntry("name", "doc_create");
+        assertThat(tools.get(0)).containsEntry("name", "doc_write");
         assertThat(tools.get(0)).containsEntry("description", "Create a document");
         @SuppressWarnings("unchecked")
         Map<String, Object> schema = (Map<String, Object>) tools.get(0).get("inputSchema");
@@ -98,11 +98,11 @@ class McpServerServiceTest {
 
     @Test
     void toolsCall_wrapsSuccessfulResultAsTextContent() {
-        when(toolDispatcher.invoke(eq("doc_create"), any(), any(ToolInvocationContext.class)))
+        when(toolDispatcher.invoke(eq("doc_write"), any(), any(ToolInvocationContext.class)))
                 .thenReturn(Map.of("id", "abc", "path", "notes.md"));
 
         String body = "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"doc_create\",\"arguments\":{\"path\":\"notes.md\"}}}";
+                + "\"params\":{\"name\":\"doc_write\",\"arguments\":{\"path\":\"notes.md\"}}}";
         McpServerService.Outcome out = service.handle(body, "acme", "proj", "_showcase");
 
         Map<String, Object> result = resultOf(out);

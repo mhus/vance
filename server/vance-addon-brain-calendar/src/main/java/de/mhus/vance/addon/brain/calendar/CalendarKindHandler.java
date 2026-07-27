@@ -10,7 +10,7 @@ import org.springframework.stereotype.Service;
  *
  * <p>The actual on-disk parsing / serialisation lives in the
  * {@link CalendarCodec}; this class just stamps {@code "calendar"} as
- * a known kind so {@code doc_create(kind="calendar", …)} resolves
+ * a known kind so {@code doc_write(kind="calendar", …)} resolves
  * cleanly and the kind isn't treated as a typo by the fuzzy resolver.
  */
 @Service

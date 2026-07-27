@@ -136,7 +136,7 @@ explicitly requested — and then via a Document, not inline.
 
 For the *how*:
 
-- `manual_read('embed-documents')` — `doc_create` workflow,
+- `manual_read('embed-documents')` — `doc_write` workflow,
   `markdownLink`-Felder in Tool-Responses, when to embed vs.
   reference
 - `manual_read('embed-fences')` — router for small-inline kinds

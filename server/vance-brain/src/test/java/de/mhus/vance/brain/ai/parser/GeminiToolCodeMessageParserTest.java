@@ -89,7 +89,7 @@ class GeminiToolCodeMessageParserTest {
         // Defensive: a clean turn with real tool calls must pass through even
         // if the (irrelevant) text happens to mention tool_code.
         ToolExecutionRequest original = ToolExecutionRequest.builder()
-                .id("real-id").name("doc_create").arguments("{}").build();
+                .id("real-id").name("doc_write").arguments("{}").build();
         ChatResponse raw = ChatResponse.builder()
                 .aiMessage(AiMessage.from("tool_code: mentioned", List.of(original))).build();
 

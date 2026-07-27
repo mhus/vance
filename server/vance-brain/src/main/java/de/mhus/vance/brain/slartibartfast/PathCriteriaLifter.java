@@ -52,7 +52,7 @@ import org.springframework.stereotype.Component;
  *   <li>Emits one synthetic {@link Criterion} per remaining path
  *       with {@code origin = INFERRED_DOMAIN} and confidence 0.8.
  *       The text is a stable predicate: "The recipe must persist
- *       its output at `<path>` via doc_create." VALIDATING's
+ *       its output at `<path>` via doc_write." VALIDATING's
  *       {@code RULE_PATH_OUTPUTS_PERSISTED} rule extracts the path
  *       back via the back-tick pattern; the tool name in the
  *       wording steers the LLM toward the canonical upsert tool.</li>
@@ -155,7 +155,7 @@ public class PathCriteriaLifter {
             Criterion lifted = Criterion.builder()
                     .id(id)
                     .text("The recipe must persist its output at `"
-                            + path + "` via doc_create.")
+                            + path + "` via doc_write.")
                     .origin(CriterionOrigin.INFERRED_DOMAIN)
                     .confidence(LIFTED_CONFIDENCE)
                     .build();

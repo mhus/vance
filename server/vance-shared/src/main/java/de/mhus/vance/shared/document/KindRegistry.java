@@ -19,7 +19,7 @@ import org.springframework.stereotype.Service;
  * calendar addon's {@code CalendarKindHandler}) — and exposes their
  * names here.
  *
- * <p>Consulted by {@code doc_create} and friends to decide whether a
+ * <p>Consulted by {@code doc_write} and friends to decide whether a
  * caller-supplied {@code kind} string is known and to fuzzy-resolve
  * typos / variants without throwing.
  *

@@ -246,7 +246,7 @@ public class JsScriptArchitect implements SchemaArchitect {
     @Override
     public boolean wantsPathPersistenceCheck() {
         // Scripts persist their own outputs via host-API tool calls
-        // (vance.tools.call('doc_create', ...)) at runtime — not
+        // (vance.tools.call('doc_write', ...)) at runtime — not
         // through a recipe YAML the substring check could see.
         return false;
     }

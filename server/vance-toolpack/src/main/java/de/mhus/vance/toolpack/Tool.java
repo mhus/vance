@@ -229,8 +229,7 @@ public interface Tool {
      * <p>Examples:
      * <ul>
      *   <li>{@code imap_*}: {@code {"email", "imap", "integration"}}</li>
-     *   <li>{@code doc_create}/{@code doc_write}: {@code {"knowledge",
-     *       "documents"}}</li>
+     *   <li>{@code doc_write}: {@code {"knowledge", "documents"}}</li>
      *   <li>{@code exec_run}: {@code {"execution", "shell"}}</li>
      * </ul>
      *

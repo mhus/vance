@@ -31,7 +31,7 @@ promptPrefix: |
   When your decision is ready (in CONCLUDE), additionally return
   the following postActions so that the result is persisted:
     [
-      {"tool":"doc_create",
+      {"tool":"doc_write",
        "args":{
          "path":"{{ params.outputPathTpl }}",
          "kind":"text",

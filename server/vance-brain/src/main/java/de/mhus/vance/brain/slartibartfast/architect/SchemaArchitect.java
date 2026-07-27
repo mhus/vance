@@ -111,7 +111,7 @@ public interface SchemaArchitect {
      *  check apply to this schema? The check (in
      *  {@code ValidatingPhase}) reads each acceptance criterion
      *  that names a file-path and verifies the recipe yaml
-     *  contains a {@code doc_create} call against that path.
+     *  contains a {@code doc_write} call against that path.
      *  Returns true by default — accurate
      *  for Vogon (the strategyPlanYaml carries workerInputs with
      *  tool calls) and Marvin (the promptPrefix's KIND blocks

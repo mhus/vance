@@ -18,7 +18,7 @@ import org.springframework.stereotype.Component;
  * One-shot bootstrap for a Common Desktop folder. Writes the
  * {@code _app.yaml} manifest with the correct schema and produces the
  * first {@code _desktop.md} snapshot. Preferred over hand-writing the
- * manifest via {@code doc_create}.
+ * manifest via {@code doc_write}.
  */
 @Component
 @Slf4j

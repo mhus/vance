@@ -68,7 +68,7 @@ Tools that **already return** a `markdownLink` field in their
 response (use it directly, no extra `document_link` call):
 
 - `image_generate` — returns `{ path, markdownLink, … }`
-- `doc_create(kind="image", …)` — same shape
+- `doc_write(kind="image", …)` — same shape
 
 ### 3. SVG inline — diagrams you draft
 
@@ -84,7 +84,7 @@ fence works:
 ```
 
 For anything bigger or that the user wants to keep around: save as
-Document first (`doc_create(kind="image", …)`), then embed
+Document first (`doc_write(kind="image", …)`), then embed
 the returned link.
 
 ## What not to do

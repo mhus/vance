@@ -7,7 +7,7 @@ import org.springframework.stereotype.Service;
 /**
  * Coerces an LLM-supplied {@code kind} string to a registered kind
  * name without throwing. The whole point of this class is that
- * {@code doc_create} must NEVER fail because the model wrote
+ * {@code doc_write} must NEVER fail because the model wrote
  * {@code "diagramm"} or {@code "MERMAID"} or left the field blank —
  * silent best-effort resolution beats a hard error in user-facing
  * tools.

@@ -7,7 +7,7 @@ import java.util.List;
 /**
  * Service for a document {@code kind}. A bean implementing this interface
  * declares that the {@code kind} name it returns from {@link #getName()} is
- * a valid Vance document kind — known to {@code doc_create}, surfaced in tool
+ * a valid Vance document kind — known to {@code doc_write}, surfaced in tool
  * descriptions, accepted by {@link de.mhus.vance.shared.document.KindRegistry}.
  *
  * <p>Beyond registration the handler is a <b>capability-carrying service per

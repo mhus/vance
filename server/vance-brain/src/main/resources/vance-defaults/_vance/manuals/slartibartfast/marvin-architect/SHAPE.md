@@ -45,7 +45,7 @@ promptPrefix: |
   When your report is ready (in CONCLUDE), additionally return
   the following postActions so that the report is persisted:
     [
-      {"tool":"doc_create",
+      {"tool":"doc_write",
        "args":{
          "path":"research/{{ process.goal | slug }}/report.md",
          "kind":"text",
@@ -130,13 +130,13 @@ The worker emits `postActions` inside its CONCLUDE JSON. They
 run deterministically after VALIDATE passes, with no LLM
 involvement and no tool-call risk. Supported tools:
 
-- `doc_create` — upsert by path (find → update, else create).
+- `doc_write` — upsert by path (find → update, else create).
   Required: `path`, `kind`, `content`.
 
 ### postAction shape
 
 ```json
-{"tool":"doc_create",
+{"tool":"doc_write",
  "args":{
    "path":"research/{{ process.goal | slug }}/report.md",
    "kind":"text",
@@ -190,7 +190,7 @@ promptPrefix: |
   (1500-2000 words). Use web-research via CALL_RECIPE. Language: en.
 
   Persist the finished report in CONCLUDE via postActions:
-  [{"tool":"doc_create",
+  [{"tool":"doc_write",
     "args":{"path":"research/{{ process.goal | slug }}/report.md",
             "kind":"text",
             "content":"{{ node.result }}"}}]

@@ -110,7 +110,6 @@ modes:
       - doc_edit
       - doc_append
       - doc_replace_lines
-      - doc_create
       - doc_note_list
       - doc_note_add
       - doc_note_update

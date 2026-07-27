@@ -15,7 +15,7 @@ import org.springframework.stereotype.Service;
 /**
  * {@link KindHandler} for the {@code finance-tree} kind. Registering this bean
  * (component-scanned by {@link FinanceAddon}) makes {@code finance-tree} a
- * known Vance document kind — accepted by {@code doc_create}, surfaced in tool
+ * known Vance document kind — accepted by {@code doc_write}, surfaced in tool
  * descriptions, tracked by {@code KindRegistry}.
  *
  * <p>Validation is structural: the body must parse via {@link FinanceTreeCodec}

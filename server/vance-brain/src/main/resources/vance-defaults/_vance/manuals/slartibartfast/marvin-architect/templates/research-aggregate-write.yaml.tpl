@@ -30,7 +30,7 @@ promptPrefix: |
   the following postActions in the JSON so that the report is
   persisted:
     [
-      {"tool":"doc_create",
+      {"tool":"doc_write",
        "args":{
          "path":"{{ params.outputPathTpl }}",
          "kind":"text",

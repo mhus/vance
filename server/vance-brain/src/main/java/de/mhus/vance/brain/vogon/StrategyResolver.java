@@ -583,8 +583,8 @@ public class StrategyResolver {
             }
             case "exitLoop" -> new BranchAction.ExitLoop(parseExitOutcome(value, trail));
             case "exitStrategy" -> new BranchAction.ExitStrategy(parseExitOutcome(value, trail));
-            case "doc_create" -> {
-                // Canonical doc_create — dispatches to text or kind branch
+            case "doc_write" -> {
+                // Canonical doc_write — dispatches to text or kind branch
                 // based on whether `kind` is set. Routing keeps the legacy
                 // BranchAction types so the Vogon executor stays untouched.
                 if (!(value instanceof Map<?, ?> m)) {

@@ -25,7 +25,7 @@ Decide first:
 
 ### Stored document — markdown with ```mermaid (canonical) OR JSON/YAML with source
 
-Call `doc_create(kind="diagram", path="<…>", content=<raw>)`.
+Call `doc_write(kind="diagram", path="<…>", content=<raw>)`.
 
 **Markdown form** (path `<…>.md`) — canonical for diagram. The
 body IS a markdown document with one ```` ```mermaid ```` fence
@@ -61,7 +61,7 @@ when a tool needs to extract the `source` field programmatically.
 ### Inline in chat — fence-wrapped, no tool call
 
 When the user just wants to *see* the diagram right now in the
-assistant's reply (no save, no `doc_create`), emit a single
+assistant's reply (no save, no `doc_write`), emit a single
 ```` ```mermaid ```` fence in the chat message:
 
 ````
@@ -146,7 +146,7 @@ Same trigger as other inline kinds:
 - Body grows past ~30 lines.
 - Several diagrams that belong together as a set.
 
-Then `doc_create(kind="diagram", path="diagrams/<name>.md",
+Then `doc_write(kind="diagram", path="diagrams/<name>.md",
 content=<markdown with one ```mermaid fence>)` and embed the returned
 `markdownLink`. Reminder: **for diagram, the fence IS the stored
 content** — unlike chart/graph/mindmap, you don't strip it for storage.

@@ -34,7 +34,7 @@ renders the map inline in the chat or as a clickable document tab.
 ### Inline in chat — fence-wrapped YAML
 
 When the user wants to *see* the map right now in the assistant's
-reply (no save, no `doc_create`), **emit a single
+reply (no save, no `doc_write`), **emit a single
 ```` ```map ```` fence in the chat message** with YAML body.
 
 ````
@@ -64,7 +64,7 @@ no render.
 ### Stored document — YAML/JSON body, NO fence
 
 When the user wants to *save* the map via
-`doc_create(kind="map", path="<…>.yaml", content=<raw>)`, the content
+`doc_write(kind="map", path="<…>.yaml", content=<raw>)`, the content
 is the raw YAML/JSON body — **no `` ```map `` fence wrapper**
 (that's the inline-chat shape only).
 
@@ -185,7 +185,7 @@ editable artefact).
 ## Anti-patterns
 
 - **Inventing coordinates for known cities.** Use `place: Hamburg`, not `lat: 53.5, lon: 9.9`. The geocoder is precise; your memory of city coords usually isn't.
-- **Wrapping the stored body in a ```` ```map ```` fence.** That is the inline-chat form only. When saving via `doc_create`, the body is raw YAML/JSON — never fence-wrapped.
+- **Wrapping the stored body in a ```` ```map ```` fence.** That is the inline-chat form only. When saving via `doc_write`, the body is raw YAML/JSON — never fence-wrapped.
 - **Using `route` for road navigation.** Routes are straight lines. "Drive Munich → Berlin via Leipzig" as a 3-waypoint route shows three line segments through forests, not the actual roads.
 - **Markdown form.** Bodies with `kind: map` and a Markdown mime type are rejected by the codec; the Web-UI offers only the Raw editor. Use YAML or JSON.
 - **Building areas with < 3 points.** Polygons need ≥ 3 vertices. If you want a single spot, use a marker.
@@ -198,7 +198,7 @@ editable artefact).
 - Multiple maps that belong together.
 - The user explicitly said "save" / "create a document".
 
-Then call `doc_create(kind="map", path="maps/<name>.yaml",
+Then call `doc_write(kind="map", path="maps/<name>.yaml",
 content=<raw YAML, NO fence>)` and embed the returned
 `markdownLink`.
 

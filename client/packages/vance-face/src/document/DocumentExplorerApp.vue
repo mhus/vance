@@ -455,21 +455,50 @@ function openMoveModal(): void {
   showMoveModal.value = true;
 }
 
+// Chunked move: the server executes one bounded chunk per call and skips
+// anything it can't move (no permission / collision / cycle); we drive the
+// loop, show progress and can cancel between chunks. Passing the cursor back
+// makes it O(N) and terminating (stop when the server reports done).
+const MOVE_CHUNK = 25;
+const moveProgress = ref(0);
+const moveAbort = ref(false);
+
 async function confirmMove(): Promise<void> {
   const pid = selectedProjectId.value;
   if (!pid) return;
   const target = (moveTarget.value ?? '').replace(/\/+$/, '');
+  const ids = [...selectedIds.value];
+  const folders = [...selectedFolders.value];
   bulkBusy.value = true;
+  moveAbort.value = false;
+  moveProgress.value = 0;
+  let movedTotal = 0;
+  let skippedTotal = 0;
+  let cursor: string | undefined;
   try {
-    for (const doc of selectedDocs.value) {
-      const base = fileBasename(doc.path);
-      const newPath = target ? `${target}/${base}` : base;
-      if (newPath === doc.path) continue; // already in the target folder
-      await docsState.update(doc.id, { newPath });
+    let done = false;
+    while (!done && !moveAbort.value) {
+      const r = await docsState.moveChunk(pid, {
+        ids,
+        folders,
+        targetFolder: target,
+        limit: MOVE_CHUNK,
+        cursor,
+      });
+      if (!r) break; // error surfaced via docsState.error
+      movedTotal += r.moved;
+      skippedTotal += r.skipped;
+      moveProgress.value = movedTotal;
+      cursor = r.cursor ?? undefined;
+      done = r.done;
     }
-    // Moved rows may have left the current folder — reload to reconcile.
-    // The items watch clears the selection on the fresh page.
+    // Refresh — the items watch clears the selection on the fresh page — then
+    // set the summary so it survives the reload.
     await docsState.loadPage(pid, docsState.page.value, docsState.pathPrefix.value);
+    notice.value = t('documents.selection.moveDone', {
+      moved: movedTotal,
+      skipped: skippedTotal,
+    });
   } finally {
     bulkBusy.value = false;
     showMoveModal.value = false;
@@ -679,7 +708,7 @@ function confirmNewFolder(): void {
         <VButton
           variant="secondary"
           size="sm"
-          :disabled="bulkBusy || exportBusy || foldersSelected"
+          :disabled="bulkBusy || exportBusy"
           @click="openMoveModal"
         >
           {{ $t('documents.selection.move') }}
@@ -841,16 +870,29 @@ function confirmNewFolder(): void {
       :title="$t('documents.selection.moveTitle')"
       :close-on-backdrop="!bulkBusy"
     >
-      <p class="text-sm mb-3 opacity-80">
-        {{ $t('documents.selection.moveBody', { count: selectedCount }) }}
+      <p v-if="bulkBusy" class="text-sm mb-3">
+        {{ $t('documents.selection.moveRunning', { moved: moveProgress }) }}
       </p>
-      <VSelect
-        v-model="moveTarget"
-        :options="moveFolderOptions"
-        :label="$t('documents.selection.moveTargetLabel')"
-      />
+      <template v-else>
+        <p class="text-sm mb-3 opacity-80">
+          {{ $t('documents.selection.moveBody', { count: selectedCount }) }}
+        </p>
+        <VSelect
+          v-model="moveTarget"
+          :options="moveFolderOptions"
+          :label="$t('documents.selection.moveTargetLabel')"
+        />
+      </template>
       <template #actions>
-        <VButton variant="ghost" :disabled="bulkBusy" @click="showMoveModal = false">
+        <VButton
+          v-if="bulkBusy"
+          variant="ghost"
+          :disabled="moveAbort"
+          @click="moveAbort = true"
+        >
+          {{ $t('documents.selection.stop') }}
+        </VButton>
+        <VButton v-else variant="ghost" @click="showMoveModal = false">
           {{ $t('common.cancel') }}
         </VButton>
         <VButton variant="primary" :loading="bulkBusy" @click="confirmMove">

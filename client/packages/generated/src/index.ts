@@ -54,6 +54,8 @@ export * from './documents/DocumentFoldersResponse';
 export * from './documents/DocumentInvalidateNotification';
 export * from './documents/DocumentKindsResponse';
 export * from './documents/DocumentListResponse';
+export * from './documents/DocumentMoveChunkRequest';
+export * from './documents/DocumentMoveChunkResponse';
 export * from './documents/DocumentNoteCreateRequest';
 export * from './documents/DocumentNoteDto';
 export * from './documents/DocumentNoteUpdateRequest';

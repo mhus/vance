@@ -222,6 +222,40 @@ public class DocumentService {
     }
 
     /**
+     * Keyset page of {@link DocumentStatus#ACTIVE} documents under any of the
+     * given folder prefixes, path-ordered and strictly after {@code afterPath}.
+     * Used by the chunked folder-move loop: the client passes the last path
+     * back as {@code afterPath}, so skipped (non-movable) documents advance the
+     * cursor and are never re-scanned — the scan is O(N) overall and cannot
+     * loop. A blank prefix list returns nothing.
+     */
+    public List<DocumentDocument> listUnderFoldersAfter(
+            String tenantId, String projectId, List<String> folderPrefixes,
+            @Nullable String afterPath, int limit) {
+        List<Criteria> prefixCriteria = new ArrayList<>();
+        for (String raw : folderPrefixes) {
+            String p = raw == null ? "" : raw.trim();
+            while (p.startsWith("/")) p = p.substring(1);
+            if (!p.isEmpty()) {
+                prefixCriteria.add(Criteria.where("path").regex("^" + java.util.regex.Pattern.quote(p)));
+            }
+        }
+        if (prefixCriteria.isEmpty()) return List.of();
+        Query q = new Query()
+                .addCriteria(Criteria.where("tenantId").is(tenantId))
+                .addCriteria(Criteria.where("projectId").is(projectId))
+                .addCriteria(Criteria.where("status").is(DocumentStatus.ACTIVE))
+                .addCriteria(new Criteria().orOperator(prefixCriteria.toArray(new Criteria[0])));
+        if (afterPath != null && !afterPath.isEmpty()) {
+            q.addCriteria(Criteria.where("path").gt(afterPath));
+        }
+        q.with(org.springframework.data.domain.Sort.by(
+                org.springframework.data.domain.Sort.Direction.ASC, "path"));
+        q.limit(Math.max(1, limit));
+        return mongoTemplate.find(q, DocumentDocument.class);
+    }
+
+    /**
      * Page through {@link DocumentStatus#ACTIVE} documents in the project,
      * sorted by {@code path} ascending so the order is deterministic across
      * pages. {@code page} is zero-based.

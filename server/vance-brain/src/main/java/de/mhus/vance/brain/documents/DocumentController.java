@@ -7,6 +7,8 @@ import de.mhus.vance.api.documents.DocumentArchiveSummary;
 import de.mhus.vance.api.documents.DocumentCreateRequest;
 import de.mhus.vance.api.documents.DocumentDto;
 import de.mhus.vance.api.documents.DocumentExportRequest;
+import de.mhus.vance.api.documents.DocumentMoveChunkRequest;
+import de.mhus.vance.api.documents.DocumentMoveChunkResponse;
 import de.mhus.vance.api.documents.DocumentUnpackResponse;
 import de.mhus.vance.api.documents.DocumentFolderListResponse;
 import de.mhus.vance.api.documents.DocumentFoldersResponse;
@@ -964,6 +966,153 @@ public class DocumentController {
         return new FilterInputStream(in) {
             @Override public void close() { /* keep the underlying ZipInputStream open */ }
         };
+    }
+
+    // ──────────────────── Chunked move ────────────────────
+
+    private static final int MOVE_CHUNK_MAX = 1000;
+
+    private enum MoveOutcome { MOVED, SKIPPED, NOOP }
+
+    /**
+     * Move one bounded chunk of the selection to {@code targetFolder}. The
+     * client drives the loop (progress + cancel between chunks); the server
+     * skips anything it cannot move (no WRITE, collision, or folder cycle).
+     *
+     * <p>Explicit {@code ids} not inside a selected folder are moved on the
+     * first call (blank cursor). {@code folders} are keyset-scanned by path via
+     * {@link DocumentService#listUnderFoldersAfter}: the returned {@code cursor}
+     * must be passed back on each call. Moved documents leave the prefix and the
+     * cursor advances past skipped ones, so the loop is O(N) and terminates when
+     * {@code done} is true — no re-scanning, no runaway.
+     */
+    @PostMapping("/brain/{tenant}/documents/move-chunk")
+    public DocumentMoveChunkResponse moveChunk(
+            @PathVariable("tenant") String tenant,
+            @RequestParam("projectId") String projectId,
+            @Valid @RequestBody DocumentMoveChunkRequest request,
+            @RequestHeader(value = HEADER_EDITOR_ID, required = false) @Nullable String editorId,
+            HttpServletRequest httpRequest) {
+
+        String target = normalizeMoveFolder(request.getTargetFolder());
+        int limit = Math.max(1, Math.min(
+                request.getLimit() == null ? 25 : request.getLimit(), MOVE_CHUNK_MAX));
+        // Selected folders, cycle-guarded: a folder whose target would land
+        // inside itself is dropped entirely (its members are never scanned).
+        List<String> folders = new ArrayList<>();
+        if (request.getFolders() != null) {
+            for (String f : request.getFolders()) {
+                String norm = normalizeFolderPrefixTrailing(f);
+                if (!norm.isEmpty() && !moveWouldCycle(norm, target)) folders.add(norm);
+            }
+        }
+
+        DocumentService.WriterIdentity writer = writerIdentity(httpRequest, editorId);
+        int moved = 0;
+        int skipped = 0;
+
+        // First call: explicit ids that are not covered by a selected folder.
+        boolean firstCall = request.getCursor() == null || request.getCursor().isBlank();
+        if (firstCall && request.getIds() != null) {
+            for (String id : request.getIds()) {
+                DocumentDocument doc = documentService.findById(id).orElse(null);
+                if (doc == null
+                        || !tenant.equals(doc.getTenantId())
+                        || !projectId.equals(doc.getProjectId())
+                        || isUnderAnyFolder(doc.getPath(), folders)) {
+                    continue;
+                }
+                MoveOutcome o = tryMoveDoc(tenant, doc, moveNewPath(doc, folders, target), writer, httpRequest);
+                if (o == MoveOutcome.MOVED) moved++;
+                else if (o == MoveOutcome.SKIPPED) skipped++;
+            }
+        }
+
+        // Folder scan: one keyset page after the cursor.
+        String cursor = request.getCursor();
+        boolean done = true;
+        if (!folders.isEmpty()) {
+            List<DocumentDocument> batch =
+                    documentService.listUnderFoldersAfter(tenant, projectId, folders, cursor, limit);
+            for (DocumentDocument doc : batch) {
+                cursor = doc.getPath();
+                MoveOutcome o = tryMoveDoc(tenant, doc, moveNewPath(doc, folders, target), writer, httpRequest);
+                if (o == MoveOutcome.MOVED) moved++;
+                else if (o == MoveOutcome.SKIPPED) skipped++;
+            }
+            done = batch.size() < limit;
+        }
+
+        return DocumentMoveChunkResponse.builder()
+                .moved(moved)
+                .skipped(skipped)
+                .cursor(done ? null : cursor)
+                .done(done)
+                .build();
+    }
+
+    private MoveOutcome tryMoveDoc(String tenant, DocumentDocument doc, String newPath,
+            DocumentService.WriterIdentity writer, HttpServletRequest httpRequest) {
+        if (newPath.equals(doc.getPath())) return MoveOutcome.NOOP;
+        if (!authority.check(httpRequest,
+                new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.WRITE)) {
+            return MoveOutcome.SKIPPED;
+        }
+        try {
+            documentService.update(doc.getId(), null, null, null, newPath, null, null, null, null,
+                    writer, actor(httpRequest));
+            return MoveOutcome.MOVED;
+        } catch (DocumentService.DocumentAlreadyExistsException | IllegalArgumentException e) {
+            return MoveOutcome.SKIPPED;
+        }
+    }
+
+    /** Target folder for a document being moved, folder structure preserved. */
+    private static String moveNewPath(DocumentDocument doc, List<String> folders, String target) {
+        String path = doc.getPath();
+        // Longest matching selected folder wins → keep the folder name + the
+        // substructure below it under the target.
+        String best = null;
+        for (String f : folders) {
+            if (path.startsWith(f) && (best == null || f.length() > best.length())) best = f;
+        }
+        if (best != null) {
+            String trimmed = best.substring(0, best.length() - 1); // drop trailing '/'
+            int slash = trimmed.lastIndexOf('/');
+            String parent = slash >= 0 ? trimmed.substring(0, slash + 1) : "";
+            String relative = path.substring(parent.length()); // foldername/.../file
+            return target.isEmpty() ? relative : target + "/" + relative;
+        }
+        // Explicit doc not under a selected folder → basename move.
+        int slash = path.lastIndexOf('/');
+        String base = slash >= 0 ? path.substring(slash + 1) : path;
+        return target.isEmpty() ? base : target + "/" + base;
+    }
+
+    private static boolean isUnderAnyFolder(String path, List<String> folders) {
+        for (String f : folders) {
+            if (path.startsWith(f)) return true;
+        }
+        return false;
+    }
+
+    /** A move cycles when the destination sits inside the folder being moved. */
+    private static boolean moveWouldCycle(String folderPrefix, String target) {
+        String targetPrefix = target.isEmpty() ? "" : target + "/";
+        return !targetPrefix.isEmpty() && targetPrefix.startsWith(folderPrefix);
+    }
+
+    /** Normalise a destination folder: no leading/trailing slashes ("" = root). */
+    private static String normalizeMoveFolder(@Nullable String raw) {
+        String t = raw == null ? "" : raw.trim();
+        return t.replaceAll("^/+", "").replaceAll("/+$", "");
+    }
+
+    /** Normalise a source folder prefix to a single trailing slash. */
+    private static String normalizeFolderPrefixTrailing(@Nullable String raw) {
+        String t = raw == null ? "" : raw.trim();
+        t = t.replaceAll("^/+", "").replaceAll("/+$", "");
+        return t.isEmpty() ? "" : t + "/";
     }
 
     // ──────────────────── Archive endpoints ────────────────────

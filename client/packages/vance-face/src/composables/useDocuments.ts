@@ -5,10 +5,19 @@ import type {
   DocumentFolderListResponse,
   DocumentFoldersResponse,
   DocumentKindsResponse,
+  DocumentMoveChunkResponse,
   DocumentSummary,
   DocumentUnpackResponse,
   DocumentUpdateRequest,
 } from '@vance/generated';
+
+export interface MoveChunkArgs {
+  ids?: string[];
+  folders?: string[];
+  targetFolder: string;
+  limit?: number;
+  cursor?: string;
+}
 import { brainFetch, brainFetchBlob, brainFetchText, brainSendRaw } from '@vance/shared';
 
 export interface UploadOptions {
@@ -65,6 +74,7 @@ export function useDocuments(pageSize = 20): {
     folders?: string[],
   ) => Promise<{ blob: Blob; filename: string | null } | null>;
   unpack: (projectId: string, id: string) => Promise<DocumentUnpackResponse | null>;
+  moveChunk: (projectId: string, args: MoveChunkArgs) => Promise<DocumentMoveChunkResponse | null>;
 } {
   const items = ref<DocumentSummary[]>([]);
   const page = ref(0);
@@ -424,6 +434,29 @@ export function useDocuments(pageSize = 20): {
     }
   }
 
+  /**
+   * Move one bounded chunk of the selection to a target folder. The caller
+   * loops, passing {@code args.cursor} back from each response, until the
+   * response reports {@code done}. The server skips anything it cannot move.
+   */
+  async function moveChunk(
+    projectId: string,
+    args: MoveChunkArgs,
+  ): Promise<DocumentMoveChunkResponse | null> {
+    error.value = null;
+    try {
+      const params = new URLSearchParams({ projectId });
+      return await brainFetch<DocumentMoveChunkResponse>(
+        'POST',
+        `documents/move-chunk?${params}`,
+        { body: args },
+      );
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to move documents.';
+      return null;
+    }
+  }
+
   async function remove(id: string): Promise<boolean> {
     loading.value = true;
     error.value = null;
@@ -475,5 +508,6 @@ export function useDocuments(pageSize = 20): {
     remove,
     exportZip,
     unpack,
+    moveChunk,
   };
 }

@@ -62,6 +62,7 @@ export function useDocuments(pageSize = 20): {
   exportZip: (
     projectId: string,
     ids: string[],
+    folders?: string[],
   ) => Promise<{ blob: Blob; filename: string | null } | null>;
   unpack: (projectId: string, id: string) => Promise<DocumentUnpackResponse | null>;
 } {
@@ -389,11 +390,12 @@ export function useDocuments(pageSize = 20): {
   async function exportZip(
     projectId: string,
     ids: string[],
+    folders: string[] = [],
   ): Promise<{ blob: Blob; filename: string | null } | null> {
     error.value = null;
     try {
       const params = new URLSearchParams({ projectId });
-      return await brainFetchBlob(`documents/export?${params}`, { body: { ids } }, 'POST');
+      return await brainFetchBlob(`documents/export?${params}`, { body: { ids, folders } }, 'POST');
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to export documents.';
       return null;

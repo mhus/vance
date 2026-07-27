@@ -741,18 +741,38 @@ public class DocumentController {
             @Valid @RequestBody DocumentExportRequest request,
             HttpServletRequest httpRequest) {
 
-        List<DocumentDocument> docs = new ArrayList<>();
-        for (String id : request.getIds()) {
+        List<String> ids = request.getIds() == null ? List.of() : request.getIds();
+        List<String> folders = request.getFolders() == null ? List.of() : request.getFolders();
+        if (ids.isEmpty() && folders.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Nothing to export — provide ids and/or folders.");
+        }
+
+        // Union of explicit ids and folder expansions, de-duplicated by id and
+        // READ-authorized. Insertion order (ids first, then folder members) is
+        // preserved for a stable archive layout.
+        Map<String, DocumentDocument> byId = new LinkedHashMap<>();
+        for (String id : ids) {
             DocumentDocument doc = documentService.findById(id)
                     .orElseThrow(() -> new ResponseStatusException(
                             HttpStatus.NOT_FOUND, "Document not found: " + id));
             if (!tenant.equals(doc.getTenantId()) || !projectId.equals(doc.getProjectId())) {
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found: " + id);
             }
-            authority.enforce(httpRequest,
-                    new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.READ);
-            docs.add(doc);
+            if (byId.putIfAbsent(doc.getId(), doc) == null) {
+                authority.enforce(httpRequest,
+                        new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.READ);
+            }
         }
+        for (String folder : folders) {
+            for (DocumentDocument doc : documentService.listUnderFolder(tenant, projectId, folder)) {
+                if (byId.putIfAbsent(doc.getId(), doc) == null) {
+                    authority.enforce(httpRequest,
+                            new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.READ);
+                }
+            }
+        }
+        List<DocumentDocument> docs = new ArrayList<>(byId.values());
 
         StreamingResponseBody body = out -> {
             try (ZipOutputStream zip = new ZipOutputStream(out)) {

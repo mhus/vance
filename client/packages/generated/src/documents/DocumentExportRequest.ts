@@ -4,5 +4,6 @@
 */
 
 export interface DocumentExportRequest {
-  ids: string[];
+  ids?: string[];
+  folders?: string[];
 }

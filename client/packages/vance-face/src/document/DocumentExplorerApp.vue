@@ -423,10 +423,14 @@ const exportBusy = ref(false);
 
 async function exportSelected(): Promise<void> {
   const pid = selectedProjectId.value;
-  if (!pid || selectedIds.value.size === 0) return;
+  if (!pid || selectedIds.value.size + selectedFolders.value.size === 0) return;
   exportBusy.value = true;
   try {
-    const result = await docsState.exportZip(pid, [...selectedIds.value]);
+    const result = await docsState.exportZip(
+      pid,
+      [...selectedIds.value],
+      [...selectedFolders.value],
+    );
     if (!result) return;
     // Blob → temporary object URL → programmatic download. The server
     // streamed the archive; the blob only lives briefly in the browser.
@@ -667,7 +671,7 @@ function confirmNewFolder(): void {
           variant="ghost"
           size="sm"
           :loading="exportBusy"
-          :disabled="bulkBusy || foldersSelected"
+          :disabled="bulkBusy"
           @click="exportSelected"
         >
           {{ $t('documents.selection.export') }}

@@ -457,7 +457,7 @@ export default {
     selection: {
       count: '{count} ausgewählt',
       clear: 'Auswahl aufheben',
-      foldersPending: 'Ordner-Aktionen folgen',
+      foldersPending: 'Verschieben/Löschen für Ordner folgen',
       export: 'Exportieren',
       move: 'Verschieben',
       trash: 'In den Papierkorb',

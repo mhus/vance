@@ -1,21 +1,24 @@
 package de.mhus.vance.api.documents;
 
 import de.mhus.vance.api.annotations.GenerateTypeScript;
-import jakarta.validation.constraints.NotEmpty;
 import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Body of {@code POST /brain/{tenant}/documents/export}.
  *
- * <p>The server streams a ZIP archive of the listed documents, one entry per
- * document keyed by its document path so the (virtual) folder structure is
- * preserved. Every id is resolved and {@code READ}-authorized up front — the
- * ZIP body only starts once all ids passed, so a missing/foreign/forbidden id
- * fails the whole request with a clean status instead of a corrupt archive.
+ * <p>The server streams a ZIP archive keyed by each document's path so the
+ * (virtual) folder structure is preserved. The selection is the union of
+ * {@link #ids} (explicit documents) and {@link #folders} (path prefixes, each
+ * expanded server-side to every document beneath it). Everything is resolved
+ * and {@code READ}-authorized up front — the ZIP body only starts once the
+ * whole set passed, so a forbidden entry fails cleanly instead of producing a
+ * corrupt archive. At least one of {@code ids} / {@code folders} must be
+ * non-empty (enforced by the controller).
  */
 @Data
 @Builder
@@ -24,7 +27,13 @@ import lombok.NoArgsConstructor;
 @GenerateTypeScript("documents")
 public class DocumentExportRequest {
 
-    /** Document ids to include. Must be non-empty. */
-    @NotEmpty
-    private List<String> ids;
+    /** Explicit document ids to include. */
+    private @Nullable List<String> ids;
+
+    /**
+     * Folder prefixes to expand (recursive). Each should end with {@code '/'}
+     * (e.g. {@code notes/archive/}). Members are unioned with {@link #ids} and
+     * de-duplicated.
+     */
+    private @Nullable List<String> folders;
 }

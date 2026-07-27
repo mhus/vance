@@ -200,6 +200,28 @@ public class DocumentService {
     }
 
     /**
+     * All {@link DocumentStatus#ACTIVE} documents whose path sits under
+     * {@code folderPrefix} (recursive, not paged). Folders are virtual, so
+     * this expands a folder to its members for folder-scoped operations
+     * (e.g. export). {@code folderPrefix} is expected to end with {@code '/'}
+     * (a real folder prefix); a blank prefix returns an empty list rather
+     * than the whole project, so an empty selection can never match all.
+     */
+    public List<DocumentDocument> listUnderFolder(
+            String tenantId, String projectId, String folderPrefix) {
+        String prefix = folderPrefix == null ? "" : folderPrefix.trim();
+        while (prefix.startsWith("/")) prefix = prefix.substring(1);
+        if (prefix.isEmpty()) return List.of();
+        Query q = new Query()
+                .addCriteria(Criteria.where("tenantId").is(tenantId))
+                .addCriteria(Criteria.where("projectId").is(projectId))
+                .addCriteria(Criteria.where("status").is(DocumentStatus.ACTIVE))
+                .addCriteria(Criteria.where("path")
+                        .regex("^" + java.util.regex.Pattern.quote(prefix)));
+        return mongoTemplate.find(q, DocumentDocument.class);
+    }
+
+    /**
      * Page through {@link DocumentStatus#ACTIVE} documents in the project,
      * sorted by {@code path} ascending so the order is deterministic across
      * pages. {@code page} is zero-based.

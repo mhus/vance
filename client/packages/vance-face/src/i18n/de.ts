@@ -464,6 +464,20 @@ export default {
     noDocumentsBody: 'Dieses Projekt hat noch keine Dokumente.',
     createFirstDocument: 'Erstes Dokument anlegen',
     ungrouped: 'Ohne Gruppe',
+    selection: {
+      count: '{count} ausgewählt',
+      clear: 'Auswahl aufheben',
+      move: 'Verschieben',
+      trash: 'In den Papierkorb',
+      trashTitle: 'In den Papierkorb verschieben',
+      trashBody:
+        'Die {count} ausgewählten Dokumente in den Papierkorb verschieben? Du kannst sie später im Papierkorb wiederherstellen oder endgültig löschen.',
+      moveTitle: 'Dokumente verschieben',
+      moveBody: '{count} ausgewählte Dokumente in einen anderen Ordner verschieben.',
+      moveTargetLabel: 'Zielordner',
+      moveRoot: '/ (Stammverzeichnis)',
+      moveConfirm: 'Verschieben',
+    },
     editAsFile: 'Als Datei bearbeiten (statt App öffnen)',
     detail: {
       sizeBy: 'von {user}',

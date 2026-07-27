@@ -20,6 +20,8 @@ import {
   VCheckbox,
   VEmptyState,
   VInput,
+  VModal,
+  VSelect,
   accentColorDotClass,
   type FocusZone,
 } from '@/components';
@@ -64,6 +66,7 @@ onMounted(async () => {
   if (selectedProjectId.value) {
     docsState.pathPrefix.value = queryPath ?? DEFAULT_PATH_PREFIX;
     await docsState.loadPage(selectedProjectId.value, 0, docsState.pathPrefix.value);
+    void docsState.loadFolders(selectedProjectId.value);
   }
   window.addEventListener('popstate', onPopstate);
 });
@@ -116,6 +119,7 @@ watch(selectedProjectId, async (next, prev) => {
   docsState.pathPrefix.value = DEFAULT_PATH_PREFIX;
   search.value = '';
   await docsState.loadPage(next, 0, DEFAULT_PATH_PREFIX);
+  void docsState.loadFolders(next);
   syncUrl();
 });
 
@@ -268,6 +272,72 @@ function toggleAll(): void {
     ? new Set()
     : new Set(docsState.items.value.map((d) => d.id));
 }
+
+const selectedCount = computed<number>(() => selectedIds.value.size);
+const selectedDocs = computed(() =>
+  docsState.items.value.filter((d) => selectedIds.value.has(d.id)),
+);
+
+function clearSelection(): void {
+  selectedIds.value = new Set();
+}
+
+// ── Bulk actions ────────────────────────────────────────────────
+// Both operations run per-id over the single-document REST endpoints
+// (there is no bulk endpoint). A failing item lands its message in
+// docsState.error and the loop moves on — a partial success still
+// reflects in the list.
+const bulkBusy = ref(false);
+const showTrashModal = ref(false);
+const showMoveModal = ref(false);
+const moveTarget = ref<string | null>(null);
+
+const moveFolderOptions = computed(() => [
+  { value: '', label: t('documents.selection.moveRoot') },
+  ...docsState.folders.value.map((f) => ({ value: f, label: f })),
+]);
+
+async function confirmTrash(): Promise<void> {
+  bulkBusy.value = true;
+  try {
+    for (const doc of selectedDocs.value) {
+      await docsState.remove(doc.id);
+    }
+  } finally {
+    bulkBusy.value = false;
+    showTrashModal.value = false;
+    clearSelection();
+  }
+}
+
+function openMoveModal(): void {
+  moveTarget.value = docsState.pathPrefix.value.replace(/\/+$/, '') || null;
+  if (selectedProjectId.value && docsState.folders.value.length === 0) {
+    void docsState.loadFolders(selectedProjectId.value);
+  }
+  showMoveModal.value = true;
+}
+
+async function confirmMove(): Promise<void> {
+  const pid = selectedProjectId.value;
+  if (!pid) return;
+  const target = (moveTarget.value ?? '').replace(/\/+$/, '');
+  bulkBusy.value = true;
+  try {
+    for (const doc of selectedDocs.value) {
+      const base = fileBasename(doc.path);
+      const newPath = target ? `${target}/${base}` : base;
+      if (newPath === doc.path) continue; // already in the target folder
+      await docsState.update(doc.id, { newPath });
+    }
+    // Moved rows may have left the current folder — reload to reconcile.
+    // The items watch clears the selection on the fresh page.
+    await docsState.loadPage(pid, docsState.page.value, docsState.pathPrefix.value);
+  } finally {
+    bulkBusy.value = false;
+    showMoveModal.value = false;
+  }
+}
 </script>
 
 <template>
@@ -348,6 +418,26 @@ function toggleAll(): void {
           :title="$t('documents.newDocument')"
           @click="openCreateInNotepad"
         >+ Neu</VButton>
+      </div>
+
+      <!-- Bulk-action bar — appears once at least one document is selected -->
+      <div
+        v-if="selectedCount > 0"
+        class="px-6 py-2 border-b border-base-300 bg-base-200/50 flex items-center gap-3 text-sm"
+      >
+        <span class="font-medium">
+          {{ $t('documents.selection.count', { count: selectedCount }) }}
+        </span>
+        <VButton variant="ghost" size="sm" @click="clearSelection">
+          {{ $t('documents.selection.clear') }}
+        </VButton>
+        <div class="flex-1"></div>
+        <VButton variant="secondary" size="sm" :disabled="bulkBusy" @click="openMoveModal">
+          {{ $t('documents.selection.move') }}
+        </VButton>
+        <VButton variant="danger" size="sm" :disabled="bulkBusy" @click="showTrashModal = true">
+          {{ $t('documents.selection.trash') }}
+        </VButton>
       </div>
 
       <VAlert v-if="docsState.error.value" variant="error" class="m-4">
@@ -462,5 +552,48 @@ function toggleAll(): void {
         >→</VButton>
       </div>
     </div>
+
+    <!-- Bulk move to another folder -->
+    <VModal
+      v-model="showMoveModal"
+      :title="$t('documents.selection.moveTitle')"
+      :close-on-backdrop="!bulkBusy"
+    >
+      <p class="text-sm mb-3 opacity-80">
+        {{ $t('documents.selection.moveBody', { count: selectedCount }) }}
+      </p>
+      <VSelect
+        v-model="moveTarget"
+        :options="moveFolderOptions"
+        :label="$t('documents.selection.moveTargetLabel')"
+      />
+      <template #actions>
+        <VButton variant="ghost" :disabled="bulkBusy" @click="showMoveModal = false">
+          {{ $t('common.cancel') }}
+        </VButton>
+        <VButton variant="primary" :loading="bulkBusy" @click="confirmMove">
+          {{ $t('documents.selection.moveConfirm') }}
+        </VButton>
+      </template>
+    </VModal>
+
+    <!-- Bulk move to trash -->
+    <VModal
+      v-model="showTrashModal"
+      :title="$t('documents.selection.trashTitle')"
+      :close-on-backdrop="!bulkBusy"
+    >
+      <p class="text-sm opacity-80">
+        {{ $t('documents.selection.trashBody', { count: selectedCount }) }}
+      </p>
+      <template #actions>
+        <VButton variant="ghost" :disabled="bulkBusy" @click="showTrashModal = false">
+          {{ $t('common.cancel') }}
+        </VButton>
+        <VButton variant="danger" :loading="bulkBusy" @click="confirmTrash">
+          {{ $t('documents.selection.trash') }}
+        </VButton>
+      </template>
+    </VModal>
   </EditorShell>
 </template>

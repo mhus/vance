@@ -468,6 +468,20 @@ export default {
     noDocumentsBody: 'This project has no documents yet.',
     createFirstDocument: 'Create first document',
     ungrouped: 'Ungrouped',
+    selection: {
+      count: '{count} selected',
+      clear: 'Clear selection',
+      move: 'Move',
+      trash: 'Move to trash',
+      trashTitle: 'Move to trash',
+      trashBody:
+        'Move the {count} selected documents to the trash? You can restore them later from the trash, or delete them permanently.',
+      moveTitle: 'Move documents',
+      moveBody: 'Move {count} selected documents to another folder.',
+      moveTargetLabel: 'Target folder',
+      moveRoot: '/ (root)',
+      moveConfirm: 'Move',
+    },
     editAsFile: 'Edit as file (skip app)',
     detail: {
       sizeBy: 'by {user}',

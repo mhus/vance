@@ -296,6 +296,7 @@ function gotoPage(p: number): void {
         <div class="w-[180px] shrink-0">
           <VInput
             v-model="search"
+            size="sm"
             :placeholder="$t('documents.searchPlaceholder')"
           />
         </div>

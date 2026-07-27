@@ -724,6 +724,7 @@ async function onBlockDrop(block: GroupBlock, ev: DragEvent): Promise<void> {
     <VInput
       v-if="searchEnabled && !loading && !error && projects.length > 0"
       v-model="projectFilter"
+      size="sm"
       :placeholder="filterPlaceholder"
     />
 

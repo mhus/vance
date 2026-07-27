@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { computed } from 'vue';
+
 interface Props {
   modelValue: string;
   label?: string;
@@ -9,15 +11,25 @@ interface Props {
   required?: boolean;
   disabled?: boolean;
   autocomplete?: string;
+  size?: 'xs' | 'sm' | 'md';
 }
 
-withDefaults(defineProps<Props>(), {
+const props = withDefaults(defineProps<Props>(), {
   type: 'text',
   required: false,
   disabled: false,
+  size: 'md',
 });
 
 defineEmits<{ (e: 'update:modelValue', value: string): void }>();
+
+const sizeClass = computed<string>(() => {
+  switch (props.size) {
+    case 'xs': return 'input-xs';
+    case 'sm': return 'input-sm';
+    default: return '';
+  }
+});
 </script>
 
 <template>
@@ -32,7 +44,7 @@ defineEmits<{ (e: 'update:modelValue', value: string): void }>();
       :required="required"
       :disabled="disabled"
       :autocomplete="autocomplete"
-      :class="['input', 'input-bordered', 'w-full', { 'input-error': !!error }]"
+      :class="['input', 'input-bordered', 'w-full', sizeClass, { 'input-error': !!error }]"
       @input="(e) => $emit('update:modelValue', (e.target as HTMLInputElement).value)"
     />
     <div v-if="error || help" class="label">

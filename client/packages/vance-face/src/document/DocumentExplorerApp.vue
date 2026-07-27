@@ -17,6 +17,7 @@ import {
   ProjectListSidebar,
   VAlert,
   VButton,
+  VCheckbox,
   VEmptyState,
   VInput,
   accentColorDotClass,
@@ -226,6 +227,47 @@ function gotoPage(p: number): void {
   if (p < 0 || p >= totalPages.value) return;
   void docsState.loadPage(selectedProjectId.value, p, docsState.pathPrefix.value);
 }
+
+// ── Multi-select ────────────────────────────────────────────────
+// Selection is scoped to the currently loaded page/folder: any
+// reload (folder walk, paging, project switch, search) replaces
+// docsState.items with a fresh array, so we clear the set then.
+// Folders are navigational and never selectable.
+const selectedIds = ref<Set<string>>(new Set());
+
+watch(
+  () => docsState.items.value,
+  () => {
+    selectedIds.value = new Set();
+  },
+);
+
+function isSelected(id: string): boolean {
+  return selectedIds.value.has(id);
+}
+
+function toggleDoc(id: string): void {
+  const next = new Set(selectedIds.value);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  selectedIds.value = next;
+}
+
+const allSelected = computed<boolean>(
+  () =>
+    docsState.items.value.length > 0 &&
+    docsState.items.value.every((d) => selectedIds.value.has(d.id)),
+);
+
+const someSelected = computed<boolean>(
+  () => selectedIds.value.size > 0 && !allSelected.value,
+);
+
+function toggleAll(): void {
+  selectedIds.value = allSelected.value
+    ? new Set()
+    : new Set(docsState.items.value.map((d) => d.id));
+}
 </script>
 
 <template>
@@ -325,7 +367,15 @@ function gotoPage(p: number): void {
         <table v-else class="w-full text-sm">
           <thead class="text-xs uppercase opacity-60 sticky top-0 bg-base-100 z-[1]">
             <tr>
-              <th class="text-left px-4 py-2 w-8"></th>
+              <th class="text-left pl-4 pr-1 py-2 w-8">
+                <VCheckbox
+                  :model-value="allSelected"
+                  :indeterminate="someSelected"
+                  :disabled="docsState.items.value.length === 0"
+                  @update:model-value="toggleAll"
+                />
+              </th>
+              <th class="text-left px-2 py-2 w-8"></th>
               <th class="text-left px-2 py-2">Name</th>
               <th class="text-left px-2 py-2 w-24">Kind</th>
               <th class="text-left px-2 py-2 w-32">Tags</th>
@@ -341,7 +391,8 @@ function gotoPage(p: number): void {
               class="border-b border-base-200 hover:bg-base-200/60 cursor-pointer"
               @click="navigateIntoFolder(folder)"
             >
-              <td class="px-4 py-1.5">📁</td>
+              <td class="pl-4 pr-1 py-1.5"></td>
+              <td class="px-2 py-1.5">📁</td>
               <td class="px-2 py-1.5 font-medium">{{ folder }}</td>
               <td class="px-2 py-1.5 opacity-50">folder</td>
               <td class="px-2 py-1.5"></td>
@@ -353,9 +404,16 @@ function gotoPage(p: number): void {
               v-for="doc in docsState.items.value"
               :key="doc.id"
               class="border-b border-base-200 hover:bg-base-200/60 cursor-pointer"
+              :class="{ 'bg-primary/5': isSelected(doc.id) }"
               @click="openInNotepad(doc.id)"
             >
-              <td class="px-4 py-1.5">
+              <td class="pl-4 pr-1 py-1.5" @click.stop>
+                <VCheckbox
+                  :model-value="isSelected(doc.id)"
+                  @update:model-value="toggleDoc(doc.id)"
+                />
+              </td>
+              <td class="px-2 py-1.5">
                 <DocumentIcon :kind="doc.kind ?? null" :mime-type="doc.mimeType ?? null" />
               </td>
               <td class="px-2 py-1.5">

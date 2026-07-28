@@ -1,0 +1,136 @@
+title:
+  de: "Vault — Secret-Manager"
+  en: "Vault — Secret Manager"
+description:
+  de: "Verbindet diesen Scope mit einem externen Secret-Manager. Secrets
+       werden nie in Vance gespeichert, sondern zur Laufzeit server-seitig
+       aufgelöst und über `{{secret:vault:<key>}}` (Tool-Templates, SMTP,
+       REST-Tools) bzw. den `secrets:`-Block in Compose genutzt. Pro Scope
+       genau eine Bindung — eine auf User-Ebene gesetzte Bindung gewinnt über
+       die Projekt-Bindung, diese über die Tenant-weite `_vance`-Bindung.
+       v1 unterstützt Infisical."
+  en: "Binds this scope to an external secret manager. Secrets are never
+       stored in Vance — they are resolved server-side at run time and used
+       via `{{secret:vault:<key>}}` (tool templates, SMTP, REST tools) or the
+       `secrets:` block in Compose. Exactly one binding per scope — a binding
+       set at user scope wins over the project binding, which wins over the
+       tenant-wide `_vance` binding. v1 supports Infisical."
+icon: key
+category: integrations
+defaultScope: project
+availableIn: [ "_vance", "project", "user" ]
+
+fields:
+
+  # ─── Provider selection ──────────────────────────────────────────
+
+  - name: type
+    type: select
+    required: true
+    defaultValue: "infisical"
+    label:
+      de: "Secret-Manager"
+      en: "Secret manager"
+    help:
+      de: "Welches System die Secrets hält. v1 unterstützt nur Infisical
+           (self-hostbar); weitere Manager folgen als Addons."
+      en: "Which system holds the secrets. v1 supports Infisical only
+           (self-hostable); more managers follow as addons."
+    bindsTo:
+      key: "vault.type"
+    choices:
+      - value: "infisical"
+        label: { de: "Infisical", en: "Infisical" }
+
+  # ─── Connection ──────────────────────────────────────────────────
+
+  - name: baseUrl
+    type: string
+    required: true
+    defaultValue: "https://app.infisical.com"
+    label:
+      de: "Basis-URL"
+      en: "Base URL"
+    help:
+      de: "Infisical-Endpoint. Für self-hosted die eigene Instanz-URL,
+           z.B. `https://vault.example.tld`. Default ist die Infisical-Cloud."
+      en: "Infisical endpoint. For self-hosted use your instance URL,
+           e.g. `https://vault.example.tld`. Default is Infisical Cloud."
+    bindsTo:
+      key: "vault.baseUrl"
+
+  - name: project
+    type: string
+    required: true
+    label:
+      de: "Projekt-ID"
+      en: "Project ID"
+    help:
+      de: "Infisical Project- (Workspace-) ID, aus der Secrets gelesen werden."
+      en: "Infisical project (workspace) ID to read secrets from."
+    bindsTo:
+      key: "vault.project"
+
+  - name: environment
+    type: string
+    required: true
+    defaultValue: "prod"
+    label:
+      de: "Environment"
+      en: "Environment"
+    help:
+      de: "Infisical-Environment-Slug, z.B. `prod`, `staging`, `dev`."
+      en: "Infisical environment slug, e.g. `prod`, `staging`, `dev`."
+    bindsTo:
+      key: "vault.environment"
+
+  - name: path
+    type: string
+    defaultValue: "/"
+    label:
+      de: "Secret-Pfad"
+      en: "Secret path"
+    help:
+      de: "Default-Folder innerhalb des Environments. `/` = Wurzel."
+      en: "Default folder within the environment. `/` = root."
+    bindsTo:
+      key: "vault.path"
+
+  # ─── Machine identity (Universal Auth) ───────────────────────────
+
+  - name: clientId
+    type: string
+    required: true
+    label:
+      de: "Machine-Identity Client-ID"
+      en: "Machine identity client ID"
+    help:
+      de: "Client-ID der Infisical Machine Identity (Universal Auth). Die
+           Identity braucht mindestens Read-Zugriff auf das Projekt/Environment.
+           Write-Zugriff nur, wenn Secret-Generierung/-Schreiben genutzt wird."
+      en: "Client ID of the Infisical machine identity (Universal Auth). The
+           identity needs at least read access to the project/environment.
+           Write access only if secret generation/writing is used."
+    bindsTo:
+      key: "vault.clientId"
+
+  - name: clientSecret
+    type: password
+    required: true
+    label:
+      de: "Machine-Identity Client-Secret"
+      en: "Machine identity client secret"
+    help:
+      de: "Client-Secret der Machine Identity. Verschlüsselt gespeichert,
+           nie zurückgelesen. Leer lassen, um ein bestehendes Secret nicht
+           zu überschreiben."
+      en: "Client secret of the machine identity. Stored encrypted, never
+           read back. Leave empty to keep an existing secret unchanged."
+    bindsTo:
+      key: "vault.clientSecret"
+
+settings:
+  # Marker key so other code can detect "a vault has been bound at this scope".
+  - key: "vault.configured"
+    settingType: BOOLEAN
+    value: "true"

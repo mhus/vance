@@ -215,4 +215,24 @@ def _scope() -> dict:
 scope = _scope
 
 
-__all__ = ["VanceError", "documents", "scope"]
+# ─── Secrets ────────────────────────────────────────────────────────────────
+
+
+def secret(ref: str) -> Optional[str]:
+    """Resolve a secret reference to its value, server-side.
+
+    ``ref`` uses the same grammar as everywhere else: ``vault:key`` (external
+    secret manager), ``project:key`` / ``tenant:key`` / ``user:key``, or a bare
+    key (cascade). Returns ``None`` when nothing is bound or the reference does
+    not resolve. The value is returned only to this script and is masked out of
+    the run's stdout — still, don't echo or persist it needlessly.
+    """
+    if not ref or not ref.strip():
+        raise VanceError("secret: ref must not be empty")
+    result = _json_request("GET", "/script/secret", params={"ref": ref})
+    if not isinstance(result, dict):
+        return None
+    return result.get("value")
+
+
+__all__ = ["VanceError", "documents", "scope", "secret"]

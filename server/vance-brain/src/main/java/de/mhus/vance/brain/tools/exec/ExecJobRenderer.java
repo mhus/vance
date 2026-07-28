@@ -1,9 +1,12 @@
 package de.mhus.vance.brain.tools.exec;
 
+import de.mhus.vance.brain.vault.ScriptSecretAccumulator;
+import de.mhus.vance.brain.vault.SecretMasker;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Projects an {@link ExecJob} onto the flat map shape tools return to
@@ -30,6 +33,16 @@ final class ExecJobRenderer {
 
         String stdout = job.readStdout();
         String stderr = job.readStderr();
+        // Mask secret values this run pulled via vance.secret(...) out of the
+        // rendered output (peek, so repeated status polls stay masked).
+        String runId = job.labels().get(ExecLabels.KEY_RUN_ID);
+        if (runId != null) {
+            Set<String> secrets = ScriptSecretAccumulator.peek(runId);
+            if (!secrets.isEmpty()) {
+                stdout = SecretMasker.mask(stdout, secrets);
+                stderr = SecretMasker.mask(stderr, secrets);
+            }
+        }
         out.put("stdout", truncate(stdout, inlineCap));
         out.put("stderr", truncate(stderr, inlineCap));
         if (stdout.length() > inlineCap || stderr.length() > inlineCap) {

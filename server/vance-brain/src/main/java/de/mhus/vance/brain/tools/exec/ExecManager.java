@@ -4,6 +4,7 @@ import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.brain.execution.ExecutionRegistryService;
 import de.mhus.vance.brain.execution.ExecutionStatus;
+import de.mhus.vance.brain.vault.ScriptSecretAccumulator;
 import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
 import de.mhus.vance.shared.thinkprocess.PendingMessageType;
 import de.mhus.vance.shared.workspace.RootDirHandle;
@@ -832,9 +833,11 @@ public class ExecManager {
             if (perProject.size() > cap) {
                 // Drop the oldest terminal job to stay under cap.
                 String victim = null;
+                ExecJob victimJob = null;
                 for (Map.Entry<String, ExecJob> e : perProject.entrySet()) {
                     if (e.getValue().isTerminal()) {
                         victim = e.getKey();
+                        victimJob = e.getValue();
                         break;
                     }
                 }
@@ -844,6 +847,9 @@ public class ExecManager {
                     // Brain-owned ExecutionRegistryEntry outlives the job and
                     // leaks for the pod's lifetime (code-review Phase 2).
                     registry.removeById(victim);
+                    // Drop any secret values this run pulled via vance.secret(...)
+                    // so decrypted values don't linger past the job's lifetime.
+                    ScriptSecretAccumulator.evict(victimJob.labels().get(ExecLabels.KEY_RUN_ID));
                     // Reclaim the evicted job's on-disk log dir. Otherwise
                     // <baseDir>/<scopeKey>/<jobId>/ accumulates unbounded for the
                     // pod lifetime (nothing else deletes it — these dirs live

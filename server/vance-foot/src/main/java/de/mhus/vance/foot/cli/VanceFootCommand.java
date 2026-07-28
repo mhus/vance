@@ -22,6 +22,7 @@ import java.nio.file.Paths;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
+import lombok.extern.slf4j.Slf4j;
 import org.jline.utils.AttributedStyle;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
@@ -70,6 +71,7 @@ import picocli.CommandLine.Option;
  * {@code --rest-api}.
  */
 @Component
+@Slf4j
 @Command(
         name = "vance-foot",
         mixinStandardHelpOptions = true,
@@ -262,6 +264,13 @@ public class VanceFootCommand implements Callable<Integer> {
 
     @Override
     public Integer call() throws Exception {
+        // Once at startup: version to the log file (for support) and to the
+        // console (WARN-only file/console split means an INFO log would never
+        // reach the user's terminal, so print it explicitly).
+        String versionLine = FootVersionProvider.format(config.getBuild());
+        log.info(versionLine);
+        terminal.info(versionLine);
+
         if (daemonShortcut && webShortcut) {
             terminal.error("-d and -w are mutually exclusive (different profiles).");
             return 2;

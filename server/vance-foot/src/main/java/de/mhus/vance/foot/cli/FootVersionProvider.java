@@ -22,11 +22,19 @@ public class FootVersionProvider implements IVersionProvider {
 
     @Override
     public String[] getVersion() {
-        FootConfig.Build build = config.getBuild();
+        return new String[] {format(config.getBuild())};
+    }
+
+    /**
+     * Single formatting source for the foot version line, e.g.
+     * {@code "vance-foot 1.0.0-SNAPSHOT (built 2026-07-27T20:16:08Z)"}.
+     * Shared by {@code --version} and the startup log/console line.
+     */
+    public static String format(FootConfig.Build build) {
         String line = "vance-foot " + build.getVersion();
         if (build.getTime() != null && !build.getTime().isBlank()) {
             line += " (built " + build.getTime() + ")";
         }
-        return new String[] {line};
+        return line;
     }
 }

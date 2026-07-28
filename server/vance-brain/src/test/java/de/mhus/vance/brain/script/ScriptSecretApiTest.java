@@ -13,6 +13,8 @@ import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.core.SecretResolver;
 import java.util.HashSet;
 import java.util.Set;
+import org.graalvm.polyglot.Context;
+import org.graalvm.polyglot.Value;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -82,5 +84,33 @@ class ScriptSecretApiTest {
         api.get("vault:k");
 
         assertThat(tee).contains("s3cr3t");
+    }
+
+    // ── callable surface: vance.secret('ref') via ProxyExecutable.execute ──
+
+    @Test
+    void execute_delegatesToGet_returnsValue() {
+        when(resolver.resolve(eq("{{secret:vault:k}}"), any())).thenReturn("s3cr3t");
+        try (Context ctx = Context.create()) {
+            Value ref = ctx.asValue("vault:k");
+            assertThat(api.execute(ref)).isEqualTo("s3cr3t");
+        }
+    }
+
+    @Test
+    void execute_noArguments_throws() {
+        assertThatThrownBy(() -> api.execute())
+                .isInstanceOf(ScriptHostException.class)
+                .hasMessageContaining("reference must not be empty");
+    }
+
+    @Test
+    void execute_nullArgument_throws() {
+        try (Context ctx = Context.create()) {
+            Value nil = ctx.asValue(null);
+            assertThatThrownBy(() -> api.execute(nil))
+                    .isInstanceOf(ScriptHostException.class)
+                    .hasMessageContaining("reference must not be empty");
+        }
     }
 }

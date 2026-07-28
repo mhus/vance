@@ -20,6 +20,8 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.BiConsumer;
 import org.graalvm.polyglot.HostAccess;
+import org.graalvm.polyglot.Value;
+import org.graalvm.polyglot.proxy.ProxyExecutable;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -1158,7 +1160,15 @@ public final class VanceScriptApi {
      * run's string output. Full grammar: {@code vault:key} / {@code project:key} /
      * {@code tenant:key} / {@code user:key} / bare key (cascade default).
      */
-    public static final class ScriptSecretApi {
+    /**
+     * Callable secret surface: {@code vance.secret('vault:key')}. Implemented as a
+     * {@link ProxyExecutable} so JavaScript invokes {@code vance.secret(ref)} as a
+     * plain function — the same shape the Python helper ({@code vance.secret(ref)})
+     * and the manuals/spec document, so both languages read identically. The Java
+     * method {@link #get(String)} carries the logic and stays directly callable
+     * from host-side unit tests.
+     */
+    public static final class ScriptSecretApi implements ProxyExecutable {
 
         private final SecretResolver resolver;
         private final ToolInvocationContext scope;
@@ -1168,13 +1178,20 @@ public final class VanceScriptApi {
             this.scope = scope;
         }
 
+        @Override
+        public @Nullable Object execute(Value... arguments) {
+            if (arguments.length == 0 || arguments[0].isNull()) {
+                throw new ScriptHostException("vance.secret: reference must not be empty", null);
+            }
+            return get(arguments[0].asString());
+        }
+
         /**
          * Resolve a secret reference to its value, or {@code null} when nothing is
          * bound / the reference does not resolve. The value never enters the
          * script's environment or persisted state — it lives only in the returned
          * JS value (and is masked out of the run's string output).
          */
-        @HostAccess.Export
         public @Nullable String get(String ref) {
             if (ref == null || ref.isBlank()) {
                 throw new ScriptHostException("vance.secret: reference must not be empty", null);

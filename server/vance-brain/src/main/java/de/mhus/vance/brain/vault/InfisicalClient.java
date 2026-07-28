@@ -57,7 +57,16 @@ public class InfisicalClient {
     @Autowired
     public InfisicalClient(ObjectMapper objectMapper) {
         this(objectMapper,
-                HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build(),
+                // Pin HTTP/1.1: the JDK client defaults to HTTP/2, which over cleartext
+                // http:// attempts the h2c Upgrade handshake. Self-hosted Infisical (and
+                // many reverse proxies in front of it) mishandle that Upgrade and answer
+                // a 500 InternalServerError instead of negotiating down — so a working
+                // vault endpoint looks broken. A vault client talks to arbitrary operator
+                // endpoints; HTTP/1.1 is the safe, universally-supported floor.
+                HttpClient.newBuilder()
+                        .version(HttpClient.Version.HTTP_1_1)
+                        .connectTimeout(CONNECT_TIMEOUT)
+                        .build(),
                 System::currentTimeMillis);
     }
 

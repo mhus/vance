@@ -99,10 +99,10 @@ public class VaultSecretGenerateTool implements Tool {
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
+        VaultScope scope = support.enforceAndScope(ctx);
         String key = stringOrThrow(params, "key");
         SecretFormat format = parseFormat(optString(params, "format"));
         int length = parseLength(params.get("length"));
-        VaultScope scope = support.enforceAndScope(ctx);
         try {
             vaultService.generateSecret(scope, key, format, length);
         } catch (VaultException e) {

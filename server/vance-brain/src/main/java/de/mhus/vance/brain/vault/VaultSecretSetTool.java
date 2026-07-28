@@ -93,9 +93,9 @@ public class VaultSecretSetTool implements Tool {
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
+        VaultScope scope = support.enforceAndScope(ctx);
         String key = stringOrThrow(params, "key");
         String value = stringOrThrow(params, "value");
-        VaultScope scope = support.enforceAndScope(ctx);
         try {
             vaultService.writeSecret(scope, key, value);
         } catch (VaultException e) {

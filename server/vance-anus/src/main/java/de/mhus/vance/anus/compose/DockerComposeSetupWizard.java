@@ -113,12 +113,15 @@ public final class DockerComposeSetupWizard {
         }
 
         Path setupPath = dir.resolve("setup.sh");
+        Path caddyPath = dir.resolve("Caddyfile");
         try {
             Files.createDirectories(dir);
             Map<String, String> managed = ComposeFileRenderer.renderEnv(state);
             Files.writeString(envPath, DotEnvFile.render(managed, existingEnv),
                     StandardCharsets.UTF_8);
             Files.writeString(composePath, ComposeFileRenderer.renderCompose(state),
+                    StandardCharsets.UTF_8);
+            Files.writeString(caddyPath, ComposeFileRenderer.renderCaddyfile(),
                     StandardCharsets.UTF_8);
             Files.writeString(setupPath, ComposeFileRenderer.renderSetupScript(),
                     StandardCharsets.UTF_8);
@@ -129,7 +132,7 @@ public final class DockerComposeSetupWizard {
             return 1;
         }
 
-        printDone(out, state, envPath, composePath, setupPath);
+        printDone(out, state, envPath, composePath, setupPath, caddyPath);
         return 0;
     }
 
@@ -384,7 +387,7 @@ public final class DockerComposeSetupWizard {
     }
 
     private void printDone(PrintWriter out, ComposeSetupState s, Path envPath, Path composePath,
-            Path setupPath) {
+            Path setupPath, Path caddyPath) {
         String url = s.isExternalAccess() && !s.getExternalUrl().isBlank()
                 ? s.getExternalUrl()
                 : "http://localhost:" + s.getFacePort();
@@ -392,6 +395,7 @@ public final class DockerComposeSetupWizard {
         out.println("Wrote:");
         out.printf("  - %s%n", composePath.toAbsolutePath());
         out.printf("  - %s%n", envPath.toAbsolutePath());
+        out.printf("  - %s%n", caddyPath.toAbsolutePath());
         out.printf("  - %s%n", setupPath.toAbsolutePath());
         out.println();
         out.println("Next steps (from the directory containing these files):");

@@ -21,7 +21,8 @@ class ComposeFileRendererTest {
         assertThat(yaml).doesNotContain("VANCE_REDIS_URI");
         // Caddy is the single published front door on the Vance port; face is internal.
         assertThat(yaml).contains("caddy:");
-        assertThat(yaml).contains("caddy reverse-proxy --from ${VANCE_SITE_ADDRESS:-:80} --to face:80");
+        assertThat(yaml).contains("./Caddyfile:/etc/caddy/Caddyfile:ro");
+        assertThat(yaml).contains("VANCE_SITE_ADDRESS: ${VANCE_SITE_ADDRESS:-:80}");
         assertThat(yaml).contains("${VANCE_PORT:-9999}:80");
         // Persistent data is host-bind-mounted under ./data — no named volumes.
         assertThat(yaml).contains("- ./data/mongo:/data/db");
@@ -86,7 +87,7 @@ class ComposeFileRendererTest {
         String yaml = ComposeFileRenderer.renderCompose(s);
 
         assertThat(yaml).contains("caddy:");
-        assertThat(yaml).contains("caddy reverse-proxy --from ${VANCE_SITE_ADDRESS:-:80} --to face:80");
+        assertThat(yaml).contains("./Caddyfile:/etc/caddy/Caddyfile:ro");
         assertThat(yaml).contains("\"80:80\"").contains("\"443:443\"");
         // no plain single-port publish in TLS mode
         assertThat(yaml).doesNotContain("${VANCE_PORT");
@@ -222,6 +223,18 @@ class ComposeFileRendererTest {
 
         assertThat(env).containsKeys("MONGO_EXPRESS_USERNAME",
                 "MONGO_EXPRESS_PASSWORD", "MONGO_EXPRESS_PORT", "REDIS_UI_PORT");
+    }
+
+    @Test
+    void caddyfile_routesBrainToBrainAndRestToFace() {
+        String cf = ComposeFileRenderer.renderCaddyfile();
+
+        assertThat(cf).contains("{$VANCE_SITE_ADDRESS::80}");
+        assertThat(cf).contains("handle /brain/*");
+        assertThat(cf).contains("reverse_proxy brain:9990");
+        assertThat(cf).contains("reverse_proxy face:80");
+        assertThat(cf).contains("flush_interval -1");
+        assertThat(cf).contains("max_size 50MB");
     }
 
     @Test

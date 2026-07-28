@@ -95,7 +95,6 @@ final class DotEnvFile {
 
         section(sb, "Redis (live features)");
         put(sb, managed, "VANCE_REDIS_ENABLED");
-        put(sb, managed, "VANCE_REDIS_URI");
         put(sb, managed, "REDIS_PORT");
 
         section(sb, "Front door (Caddy) + access");

@@ -14,6 +14,11 @@ class ComposeFileRendererTest {
         assertThat(yaml).contains("mongodb:").contains("brain:").contains("face:");
         assertThat(yaml).contains("redis:");
         assertThat(yaml).contains("VANCE_REDIS_ENABLED: \"true\"");
+        // Brain must reach Redis by its compose service name, not localhost —
+        // the property is vance.redis.host/port (VANCE_REDIS_HOST/PORT), NOT a URI.
+        assertThat(yaml).contains("VANCE_REDIS_HOST: redis");
+        assertThat(yaml).contains("VANCE_REDIS_PORT: \"6379\"");
+        assertThat(yaml).doesNotContain("VANCE_REDIS_URI");
         // Caddy is the single published front door on the Vance port; face is internal.
         assertThat(yaml).contains("caddy:");
         assertThat(yaml).contains("caddy reverse-proxy --from ${VANCE_SITE_ADDRESS:-:80} --to face:80");

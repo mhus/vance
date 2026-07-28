@@ -98,7 +98,6 @@ final class ComposeFileRenderer {
         env.put("VANCE_DEFAULT_LANGUAGE_CODE", s.getLanguageCode());
 
         env.put("VANCE_REDIS_ENABLED", Boolean.toString(s.isRedisEnabled()));
-        env.put("VANCE_REDIS_URI", "redis://redis:6379");
         env.put("REDIS_PORT", Integer.toString(s.getRedisPort()));
 
         // The single published front-door port + Caddy's listen address.
@@ -312,7 +311,8 @@ final class ComposeFileRenderer {
                 environment:
             """ + BRAIN_ENV_COMMON + """
                   VANCE_REDIS_ENABLED: "true"
-                  VANCE_REDIS_URI: ${VANCE_REDIS_URI:-redis://redis:6379}
+                  VANCE_REDIS_HOST: redis
+                  VANCE_REDIS_PORT: "6379"
             """ + BRAIN_TAIL;
 
     // The face image serves the SPA and reverse-proxies /brain/* (REST + WS) to

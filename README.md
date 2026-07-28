@@ -80,7 +80,7 @@ In active development. Brain, CLI and Web UI run locally; twelve think-engines a
 
 ## Documentation
 
-Full docs at <https://vance.mhus.de>. To run Vance locally with Docker, see <https://github.com/mhus/vance-startup>.
+Full docs at <https://vance.mhus.de>. Run it locally with one command — `curl -fsSL https://vance.mhus.de/install.sh | bash` — see the [getting-started guide](https://vance.mhus.de/getting-started).
 
 ## License
 

@@ -4,6 +4,9 @@ import de.mhus.vance.brain.oauth.OAuthExpiredException;
 import de.mhus.vance.brain.oauth.OAuthTokenRefresher;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.settings.SettingService;
+import de.mhus.vance.shared.vault.VaultException;
+import de.mhus.vance.shared.vault.VaultScope;
+import de.mhus.vance.shared.vault.VaultService;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.core.SecretResolver;
 import java.util.regex.Matcher;
@@ -25,7 +28,16 @@ import org.springframework.stereotype.Service;
  *   {{secret:tenant:&lt;key&gt;}}               explicit tenant scope ({@code _tenant} project)
  *   {{secret:user:&lt;key&gt;}}                 explicit user scope
  *   {{secret:user:oauth.&lt;providerId&gt;.access_token}}   OAuth access token (auto-refresh)
+ *   {{secret:vault:&lt;key&gt;}}                external secret manager (Infisical, …)
  * </pre>
+ *
+ * <p>The {@code vault:} scope reads from the external secret manager bound at
+ * the invocation's scope via {@link VaultService} (fixed prefix, provider-agnostic
+ * — the backing manager is decided by the {@code vault.type} setting, not the
+ * reference). A {@link VaultException} — no vault bound, provider unreachable,
+ * auth failure — is caught and treated like any other unresolved reference
+ * (empty + WARN), so a broken vault escalates to a downstream 401 rather than
+ * propagating.
  *
  * <p>The default form keeps the historical cascade
  * {@code think-process → projectId → _tenant}. The explicit prefixes
@@ -55,6 +67,7 @@ public class SettingsSecretResolver implements SecretResolver {
     private static final String SCOPE_USER = "user";
     private static final String SCOPE_TENANT = "tenant";
     private static final String SCOPE_PROJECT = "project";
+    private static final String SCOPE_VAULT = "vault";
 
     /** Pattern that identifies a user-scope OAuth access-token key. */
     private static final Pattern OAUTH_ACCESS_TOKEN_KEY =
@@ -62,6 +75,7 @@ public class SettingsSecretResolver implements SecretResolver {
 
     private final SettingService settings;
     private final OAuthTokenRefresher oauthTokenRefresher;
+    private final VaultService vaultService;
 
     @Override
     public @Nullable String resolve(@Nullable String input, ToolInvocationContext ctx) {
@@ -102,6 +116,7 @@ public class SettingsSecretResolver implements SecretResolver {
             case SCOPE_USER -> resolveUser(scoped.key(), ctx);
             case SCOPE_TENANT -> resolveTenant(scoped.key(), ctx);
             case SCOPE_PROJECT -> resolveProject(scoped.key(), ctx);
+            case SCOPE_VAULT -> resolveVault(scoped.key(), ctx);
             default -> resolveCascade(scoped.key(), ctx);
         };
     }
@@ -151,6 +166,20 @@ public class SettingsSecretResolver implements SecretResolver {
                 ctx.tenantId(), ctx.projectId(), ctx.processId(), key);
     }
 
+    private @Nullable String resolveVault(String key, ToolInvocationContext ctx) {
+        try {
+            return vaultService.readSecret(
+                    new VaultScope(ctx.tenantId(), ctx.userId(), ctx.projectId()), key);
+        } catch (VaultException e) {
+            // Fail closed like any other unresolved secret: the outer loop
+            // substitutes empty and the dependent call escalates to a 401.
+            log.warn("SettingsSecretResolver: vault lookup '{}' failed "
+                            + "(tenant='{}', project='{}', user='{}'): {}",
+                    key, ctx.tenantId(), ctx.projectId(), ctx.userId(), e.getMessage());
+            return null;
+        }
+    }
+
     /** Split {@code "user:oauth.slack.access_token"} → ({@code user}, {@code oauth.slack.access_token}). */
     private static Scoped parseScope(String body) {
         int colon = body.indexOf(':');
@@ -168,7 +197,8 @@ public class SettingsSecretResolver implements SecretResolver {
     }
 
     private static boolean isScopePrefix(String s) {
-        return SCOPE_USER.equals(s) || SCOPE_TENANT.equals(s) || SCOPE_PROJECT.equals(s);
+        return SCOPE_USER.equals(s) || SCOPE_TENANT.equals(s)
+                || SCOPE_PROJECT.equals(s) || SCOPE_VAULT.equals(s);
     }
 
     private record Scoped(String scope, String key) {

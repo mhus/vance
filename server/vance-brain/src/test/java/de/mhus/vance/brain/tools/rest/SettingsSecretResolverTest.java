@@ -12,6 +12,9 @@ import static org.mockito.Mockito.when;
 import de.mhus.vance.brain.oauth.OAuthExpiredException;
 import de.mhus.vance.brain.oauth.OAuthTokenRefresher;
 import de.mhus.vance.shared.settings.SettingService;
+import de.mhus.vance.shared.vault.VaultException;
+import de.mhus.vance.shared.vault.VaultScope;
+import de.mhus.vance.shared.vault.VaultService;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -30,13 +33,15 @@ class SettingsSecretResolverTest {
 
     private SettingService settings;
     private OAuthTokenRefresher refresher;
+    private VaultService vault;
     private SettingsSecretResolver resolver;
 
     @BeforeEach
     void setUp() {
         settings = mock(SettingService.class);
         refresher = mock(OAuthTokenRefresher.class);
-        resolver = new SettingsSecretResolver(settings, refresher);
+        vault = mock(VaultService.class);
+        resolver = new SettingsSecretResolver(settings, refresher, vault);
     }
 
     // ─────── No-op paths ───────
@@ -183,6 +188,40 @@ class SettingsSecretResolverTest {
 
         assertThat(out).isEqualTo("Bearer ");
         verify(refresher, never()).resolveAccessToken(any(), any(), any());
+    }
+
+    // ─────── Vault scope ───────
+
+    @Test
+    void vault_scope_routes_to_vault_service() {
+        when(vault.readSecret(new VaultScope(TENANT, USER, PROJECT), "jira-token"))
+                .thenReturn("vault-secret");
+
+        String out = resolver.resolve("Bearer {{secret:vault:jira-token}}", ctx());
+
+        assertThat(out).isEqualTo("Bearer vault-secret");
+        verify(settings, never()).getDecryptedPasswordCascade(any(), any(), any(), any());
+    }
+
+    @Test
+    void vault_scope_absent_secret_substitutes_empty() {
+        when(vault.readSecret(any(), eq("missing"))).thenReturn(null);
+
+        String out = resolver.resolve("X: {{secret:vault:missing}}", ctx());
+
+        assertThat(out).isEqualTo("X: ");
+    }
+
+    @Test
+    void vault_exception_fails_closed_to_empty() {
+        // A misconfigured / unreachable vault must not propagate — it fails
+        // closed like any unresolved secret so the tool call escalates to 401.
+        when(vault.readSecret(any(), eq("db.pw")))
+                .thenThrow(new VaultException("No vault bound at scope"));
+
+        String out = resolver.resolve("Pass={{secret:vault:db.pw}}", ctx());
+
+        assertThat(out).isEqualTo("Pass=");
     }
 
     // ─────── Multiple placeholders ───────

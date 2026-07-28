@@ -240,10 +240,16 @@ final class ComposeFileRenderer {
                   -e VANCE_MONGODB_URI="mongodb://$MONGO_INITDB_ROOT_USERNAME:$MONGO_INITDB_ROOT_PASSWORD@mongodb:27017/$VANCE_MONGODB_DATABASE?authSource=admin" \\
                   -e VANCE_MONGODB_DATABASE="$VANCE_MONGODB_DATABASE" \\
                   -e VANCE_ENCRYPTION_PASSWORD="$VANCE_ENCRYPTION_PASSWORD" \\
+                  -e VANCE_ANUS_BRAIN_HTTPBASE=http://brain:9990 \\
                   -e VANCE_DEFAULT_LANGUAGE="$VANCE_DEFAULT_LANGUAGE" \\
                   -e VANCE_DEFAULT_LANGUAGE_CODE="$VANCE_DEFAULT_LANGUAGE_CODE" \\
                   "$VANCE_IMAGE_NAMESPACE/vance-anus:$IMAGE_TAG" --setup
                 ```
+
+                Any anus admin command that reaches the brain (e.g.
+                `project-kits import`) needs the same `--network` and
+                `-e VANCE_ANUS_BRAIN_HTTPBASE=http://brain:9990`, and a running
+                brain (`docker compose up -d`).
 
                 Then open %s and log in.
 
@@ -551,6 +557,9 @@ final class ComposeFileRenderer {
                   VANCE_MONGODB_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME:-root}:${MONGO_INITDB_ROOT_PASSWORD:-example}@mongodb:27017/${VANCE_MONGODB_DATABASE:-vance}?authSource=admin
                   VANCE_MONGODB_DATABASE: ${VANCE_MONGODB_DATABASE:-vance}
                   VANCE_ENCRYPTION_PASSWORD: ${VANCE_ENCRYPTION_PASSWORD:-changeit}
+                  # Admin commands that touch the brain (e.g. project-kits import)
+                  # call it over the compose network — not localhost.
+                  VANCE_ANUS_BRAIN_HTTPBASE: http://brain:9990
                   VANCE_ANUS_PASSWORD_HASH: ${VANCE_ANUS_PASSWORD_HASH:-}
                   VANCE_DEFAULT_LANGUAGE: ${VANCE_DEFAULT_LANGUAGE:-English}
                   VANCE_DEFAULT_LANGUAGE_CODE: ${VANCE_DEFAULT_LANGUAGE_CODE:-en}

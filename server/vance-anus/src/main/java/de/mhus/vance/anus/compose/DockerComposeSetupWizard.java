@@ -105,9 +105,11 @@ public final class DockerComposeSetupWizard {
         out.flush();
 
         if (!menu(out, reader, state)) {
+            // Quit ('q') / Ctrl-C / EOF: nothing written. Exit non-zero so a
+            // wrapping script can tell an aborted run from a successful save.
             out.println("Cancelled. No files written.");
             out.flush();
-            return 0;
+            return 1;
         }
 
         Path setupPath = dir.resolve("setup.sh");

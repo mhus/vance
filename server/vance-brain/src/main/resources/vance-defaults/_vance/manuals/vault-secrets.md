@@ -52,6 +52,24 @@ a bound vault and project-scope write permission.
   value has, by definition, already passed through your context — if secrecy from
   the model matters, use `vault_secret_generate` instead.
 
+## 4. Pull from a script (`vance.secret`)
+
+Inside a script, resolve a reference to its value server-side — the value lives
+only in a local variable, never in env or the state store:
+
+```js
+const token = vance.secret('vault:jira-token');   // JS
+```
+```python
+token = vance.secret('vault:jira-token')           # Python (vance.py)
+```
+
+Same grammar (`vault:` / `project:` / `tenant:` / `user:` / bare key); returns
+`null`/`None` when nothing is bound or it doesn't resolve. Available on
+Cortex-run scripts (where `vance.documents` etc. also work). Pulled values are
+masked out of a JS string return / Python stdout — but don't echo or persist
+them needlessly.
+
 ## Don't refuse without checking
 
 Never say "I can't store/generate a secret" or "I have no way to keep this

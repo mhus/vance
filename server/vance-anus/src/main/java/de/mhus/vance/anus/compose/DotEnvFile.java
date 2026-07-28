@@ -97,10 +97,22 @@ final class DotEnvFile {
         put(sb, managed, "VANCE_REDIS_URI");
         put(sb, managed, "REDIS_PORT");
 
-        section(sb, "Web UI");
+        section(sb, "Web UI / access");
         put(sb, managed, "FACE_PORT");
+        put(sb, managed, "VANCE_ACCESS_MODE");
+        put(sb, managed, "VANCE_WEB_PUBLICBASEURL");
+        put(sb, managed, "VANCE_WEB_COOKIES_SECURE");
+        put(sb, managed, "VANCE_EXTERNAL_URL");
+        put(sb, managed, "VANCE_CADDY_TLS");
+        put(sb, managed, "VANCE_EXTERNAL_HOST");
+
+        section(sb, "Host-port exposure (expert; default: internal only)");
+        put(sb, managed, "VANCE_EXPOSE_BRAIN");
+        put(sb, managed, "VANCE_EXPOSE_MONGO");
+        put(sb, managed, "VANCE_EXPOSE_REDIS");
 
         section(sb, "Anus admin shell");
+        put(sb, managed, "VANCE_ANUS_SERVICE");
         put(sb, managed, "VANCE_ANUS_PASSWORD_HASH");
 
         if (managed.containsKey("MONGO_EXPRESS_USERNAME")) {

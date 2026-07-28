@@ -5,6 +5,7 @@ import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
 import java.util.List;
 import java.util.Map;
 import org.jline.reader.EndOfFileException;
@@ -107,6 +108,7 @@ public final class DockerComposeSetupWizard {
             return 0;
         }
 
+        Path setupPath = dir.resolve("setup.sh");
         try {
             Files.createDirectories(dir);
             Map<String, String> managed = ComposeFileRenderer.renderEnv(state);
@@ -114,14 +116,30 @@ public final class DockerComposeSetupWizard {
                     StandardCharsets.UTF_8);
             Files.writeString(composePath, ComposeFileRenderer.renderCompose(state),
                     StandardCharsets.UTF_8);
+            Files.writeString(setupPath, ComposeFileRenderer.renderSetupScript(),
+                    StandardCharsets.UTF_8);
+            makeExecutable(setupPath);
         } catch (IOException e) {
             out.println("Write failed: " + e.getMessage());
             out.flush();
             return 1;
         }
 
-        printDone(out, state, envPath, composePath);
+        printDone(out, state, envPath, composePath, setupPath);
         return 0;
+    }
+
+    /** Best-effort {@code chmod +x} — silently ignored on non-POSIX filesystems. */
+    private static void makeExecutable(Path path) {
+        try {
+            var perms = Files.getPosixFilePermissions(path);
+            perms.add(PosixFilePermission.OWNER_EXECUTE);
+            perms.add(PosixFilePermission.GROUP_EXECUTE);
+            perms.add(PosixFilePermission.OTHERS_EXECUTE);
+            Files.setPosixFilePermissions(path, perms);
+        } catch (IOException | UnsupportedOperationException ignored) {
+            // Non-POSIX (e.g. Windows) — the user runs it via `bash setup.sh`.
+        }
     }
 
     // ──────────────────────── menu ────────────────────────
@@ -131,17 +149,29 @@ public final class DockerComposeSetupWizard {
         while (true) {
             out.println("Settings");
             out.println("--------");
-            out.printf("  1) Default language:     %s (%s)%n", s.getLanguageName(), s.getLanguageCode());
-            out.printf("  2) Anus login password:  %s%n",
+            out.printf("   1) Default language:     %s (%s)%n", s.getLanguageName(), s.getLanguageCode());
+            out.printf("   2) Anus login password:  %s%n",
                     s.getAnusPasswordHash().isBlank() ? "(none — REPL open)" : "(set)");
-            out.printf("  3) Secret encryption pw: %s%n", mask(s.getEncryptionPassword()));
-            out.printf("  4) Analysis (Fook):      %s%n", s.isFookEnabled() ? "enabled" : "disabled");
-            out.printf("  5) Expert mode:          %s%n", s.isExpertMode() ? "on" : "off");
+            out.printf("   3) Secret encryption pw: %s%n", mask(s.getEncryptionPassword()));
+            out.printf("   4) Analysis (Fook):      %s%n", s.isFookEnabled() ? "enabled" : "disabled");
+            out.printf("   5) Access mode:          %s%n", s.isExternalAccess() ? "external URL" : "local (localhost)");
+            if (s.isExternalAccess()) {
+                out.printf("   6)   External URL:       %s%n",
+                        s.getExternalUrl().isBlank() ? "(not set — required!)" : s.getExternalUrl());
+                out.printf("   7)   TLS:                %s%n",
+                        s.isCaddyTls() ? "bundled Caddy (auto-HTTPS)" : "HTTP only (upstream does TLS)");
+            }
+            out.printf("   8) Vance port:           http://localhost:%d%n", s.getFacePort());
+            out.printf("   9) Expert mode:          %s%n", s.isExpertMode() ? "on" : "off");
             if (s.isExpertMode()) {
-                out.printf("  6) Redis (live):         %s%n", s.isRedisEnabled() ? "enabled" : "disabled");
-                out.printf("  7) Debug tools (UIs):    %s%n", s.isToolsEnabled() ? "enabled" : "disabled");
-                out.printf("  8) Image tag:            %s%n", s.getImageTag());
-                out.printf("  9) MongoDB password:     %s%n", mask(s.getMongoPassword()));
+                out.printf("  10) Redis (live):         %s%n", s.isRedisEnabled() ? "enabled" : "disabled");
+                out.printf("  11) Debug tools (UIs):    %s%n", s.isToolsEnabled() ? "enabled" : "disabled");
+                out.printf("  12) Anus admin service:   %s%n", s.isAnusServiceEnabled() ? "enabled" : "disabled");
+                out.printf("  13) Expose Brain port:    %s%n", exposeLabel(s.isExposeBrainPort(), s.getBrainPort()));
+                out.printf("  14) Expose Mongo port:    %s%n", exposeLabel(s.isExposeMongoPort(), s.getMongoPort()));
+                out.printf("  15) Expose Redis port:    %s%n", exposeLabel(s.isExposeRedisPort(), s.getRedisPort()));
+                out.printf("  16) Image tag:            %s%n", s.getImageTag());
+                out.printf("  17) MongoDB password:     %s%n", mask(s.getMongoPassword()));
             }
             out.println();
             out.flush();
@@ -157,15 +187,50 @@ public final class DockerComposeSetupWizard {
                 case "2" -> editAnusPassword(out, reader, s);
                 case "3" -> editEncryptionPassword(out, reader, s);
                 case "4" -> s.setFookEnabled(!s.isFookEnabled());
-                case "5" -> s.setExpertMode(!s.isExpertMode());
-                case "6" -> { if (s.isExpertMode()) s.setRedisEnabled(!s.isRedisEnabled()); }
-                case "7" -> { if (s.isExpertMode()) s.setToolsEnabled(!s.isToolsEnabled()); }
-                case "8" -> { if (s.isExpertMode()) editImageTag(out, reader, s); }
-                case "9" -> { if (s.isExpertMode()) editMongoPassword(out, reader, s); }
+                case "5" -> s.setExternalAccess(!s.isExternalAccess());
+                case "6" -> { if (s.isExternalAccess()) editExternalUrl(out, reader, s); }
+                case "7" -> { if (s.isExternalAccess()) s.setCaddyTls(!s.isCaddyTls()); }
+                case "8" -> editVancePort(out, reader, s);
+                case "9" -> s.setExpertMode(!s.isExpertMode());
+                case "10" -> { if (s.isExpertMode()) s.setRedisEnabled(!s.isRedisEnabled()); }
+                case "11" -> { if (s.isExpertMode()) s.setToolsEnabled(!s.isToolsEnabled()); }
+                case "12" -> { if (s.isExpertMode()) s.setAnusServiceEnabled(!s.isAnusServiceEnabled()); }
+                case "13" -> { if (s.isExpertMode()) s.setExposeBrainPort(!s.isExposeBrainPort()); }
+                case "14" -> { if (s.isExpertMode()) s.setExposeMongoPort(!s.isExposeMongoPort()); }
+                case "15" -> { if (s.isExpertMode()) s.setExposeRedisPort(!s.isExposeRedisPort()); }
+                case "16" -> { if (s.isExpertMode()) editImageTag(out, reader, s); }
+                case "17" -> { if (s.isExpertMode()) editMongoPassword(out, reader, s); }
                 default -> out.println("Unknown choice.");
             }
             out.println();
             out.flush();
+        }
+    }
+
+    private static String exposeLabel(boolean exposed, int port) {
+        return exposed ? "yes → host " + port : "no (internal only)";
+    }
+
+    private void editExternalUrl(PrintWriter out, LineReader reader, ComposeSetupState s) {
+        out.println("Browser-facing URL, e.g. https://vance.example.de");
+        out.println("(https → Caddy can auto-provision TLS and cookies get the Secure flag;");
+        out.println(" an http:// URL is fine when an upstream like ngrok terminates TLS).");
+        out.flush();
+        String v = readLine(reader, "External URL: ");
+        if (v != null && !v.isBlank()) {
+            s.setExternalUrl(v.strip());
+        }
+    }
+
+    private void editVancePort(PrintWriter out, LineReader reader, ComposeSetupState s) {
+        out.println("Host port Vance is reachable on (http://localhost:<port>).");
+        out.flush();
+        String v = readLine(reader, "Vance port [" + s.getFacePort() + "]: ");
+        Integer port = parseInt(v);
+        if (port != null && port > 0 && port < 65536) {
+            s.setFacePort(port);
+        } else if (v != null && !v.isBlank()) {
+            out.println("Invalid port — unchanged.");
         }
     }
 
@@ -284,6 +349,13 @@ public final class DockerComposeSetupWizard {
                 case "VANCE_REDIS_ENABLED" -> s.setRedisEnabled(Boolean.parseBoolean(v));
                 case "REDIS_PORT" -> s.setRedisPort(intOr(v, s.getRedisPort()));
                 case "FACE_PORT" -> s.setFacePort(intOr(v, s.getFacePort()));
+                case "VANCE_ACCESS_MODE" -> s.setExternalAccess("external".equalsIgnoreCase(v));
+                case "VANCE_EXTERNAL_URL" -> s.setExternalUrl(v);
+                case "VANCE_CADDY_TLS" -> s.setCaddyTls(!"off".equalsIgnoreCase(v));
+                case "VANCE_EXPOSE_BRAIN" -> s.setExposeBrainPort(Boolean.parseBoolean(v));
+                case "VANCE_EXPOSE_MONGO" -> s.setExposeMongoPort(Boolean.parseBoolean(v));
+                case "VANCE_EXPOSE_REDIS" -> s.setExposeRedisPort(Boolean.parseBoolean(v));
+                case "VANCE_ANUS_SERVICE" -> s.setAnusServiceEnabled(Boolean.parseBoolean(v));
                 case "VANCE_ANUS_PASSWORD_HASH" -> s.setAnusPasswordHash(v);
                 case "MONGO_EXPRESS_USERNAME" -> { s.setToolsEnabled(true); s.setMongoExpressUser(v); }
                 case "MONGO_EXPRESS_PASSWORD" -> s.setMongoExpressPassword(v);
@@ -307,16 +379,35 @@ public final class DockerComposeSetupWizard {
         }
     }
 
-    private void printDone(PrintWriter out, ComposeSetupState s, Path envPath, Path composePath) {
+    private void printDone(PrintWriter out, ComposeSetupState s, Path envPath, Path composePath,
+            Path setupPath) {
+        String url = s.isExternalAccess() && !s.getExternalUrl().isBlank()
+                ? s.getExternalUrl()
+                : "http://localhost:" + s.getFacePort();
         out.println();
         out.println("Wrote:");
         out.printf("  - %s%n", composePath.toAbsolutePath());
         out.printf("  - %s%n", envPath.toAbsolutePath());
+        out.printf("  - %s%n", setupPath.toAbsolutePath());
         out.println();
         out.println("Next steps (from the directory containing these files):");
-        out.println("  docker compose up -d");
-        out.println("  docker compose run --rm anus --setup      # create tenant + user + LLM provider");
-        out.printf("  open http://localhost:%d%n", s.getFacePort());
+        out.println("  1) Start the stack:");
+        out.println("       docker compose up -d");
+        out.println("  2) First-time setup (tenant + user + LLM) — one-shot admin container:");
+        out.println("       ./setup.sh");
+        out.println("  3) Open Vance:");
+        out.printf("       %s%n", url);
+        if (s.isExternalAccess() && s.isCaddyTls()) {
+            out.println();
+            out.println("External access: the bundled Caddy publishes ports 80 + 443 and");
+            out.printf("  auto-provisions a TLS certificate for %s — make sure both ports%n",
+                    ComposeFileRenderer.externalHost(s));
+            out.println("  are reachable from the public internet (port-forwarding / DNS).");
+        } else if (s.isExternalAccess()) {
+            out.println();
+            out.printf("External access (HTTP only): Vance listens plain HTTP on port %d.%n", s.getFacePort());
+            out.println("  Point your TLS terminator (ngrok, Cloudflare Tunnel, external LB) at it.");
+        }
         if (s.isToolsEnabled()) {
             out.println();
             out.println("Debug tools (start with):  docker compose --profile tools up -d");

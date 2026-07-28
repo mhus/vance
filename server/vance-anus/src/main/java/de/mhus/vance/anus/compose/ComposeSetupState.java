@@ -52,6 +52,32 @@ class ComposeSetupState {
     private boolean redisEnabled = true;
     /** Debug/admin UIs (mongo-express + redis-commander) under a compose profile. Expert-only. */
     private boolean toolsEnabled = false;
+    /**
+     * Persistent {@code anus} admin-shell service in the compose file. Expert-only,
+     * default off — first-time setup runs as a one-shot {@code docker run} (see the
+     * generated {@code setup.sh}), so the running stack never needs anus.
+     */
+    private boolean anusServiceEnabled = false;
+
+    // ── access mode ───────────────────────────────────────────────
+    /**
+     * {@code false} = local (only the Vance/face port bound on {@code localhost});
+     * {@code true} = reachable under an external URL / domain.
+     */
+    private boolean externalAccess = false;
+    /** External browser-facing URL, e.g. {@code https://vance.example.de}. External mode only. */
+    private String externalUrl = "";
+    /**
+     * External mode only: {@code true} = a bundled Caddy terminates TLS (auto-HTTPS
+     * for the domain); {@code false} = plain HTTP on the Vance port, an upstream
+     * (ngrok, Cloudflare Tunnel, external LB) does TLS.
+     */
+    private boolean caddyTls = true;
+
+    // ── expert: host-port exposure (default: internal to the compose network) ──
+    private boolean exposeBrainPort = false;
+    private boolean exposeMongoPort = false;
+    private boolean exposeRedisPort = false;
 
     // ── language (seeded later by the runtime --setup wizard) ──────
     /** Human-readable language name, e.g. {@code English}. */

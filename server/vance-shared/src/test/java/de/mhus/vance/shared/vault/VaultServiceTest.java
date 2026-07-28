@@ -212,11 +212,71 @@ class VaultServiceTest {
                 .hasMessageContaining("readonly");
     }
 
-    /** In-memory {@link VaultProvider} that records the last binding it saw. */
+    // ─────── write / generate ───────
+
+    @Test
+    void writeSecret_boundVault_delegatesToProvider() {
+        setting(PROJECT, "vault.type", "infisical");
+        setting(PROJECT, "vault.baseUrl", "https://vault.example.tld");
+        RecordingProvider infisical = new RecordingProvider("infisical");
+
+        serviceWith(infisical).writeSecret(SCOPE, "jira-token", "s3cr3t");
+
+        assertThat(infisical.lastWriteKey).isEqualTo("jira-token");
+        assertThat(infisical.lastWriteValue).isEqualTo("s3cr3t");
+    }
+
+    @Test
+    void writeSecret_noVaultBound_throwsVaultException() {
+        assertThatThrownBy(() -> serviceWith(new RecordingProvider("infisical")).writeSecret(SCOPE, "k", "v"))
+                .isInstanceOf(VaultException.class)
+                .hasMessageContaining("No vault bound");
+    }
+
+    @Test
+    void writeSecret_nullValue_throwsVaultException() {
+        assertThatThrownBy(() -> serviceWith(new RecordingProvider("infisical")).writeSecret(SCOPE, "k", null))
+                .isInstanceOf(VaultException.class)
+                .hasMessageContaining("must not be null");
+    }
+
+    @Test
+    void generateSecret_storesGeneratedAlphanumericOfRequestedLength() {
+        setting(PROJECT, "vault.type", "infisical");
+        setting(PROJECT, "vault.baseUrl", "https://vault.example.tld");
+        RecordingProvider infisical = new RecordingProvider("infisical");
+
+        serviceWith(infisical).generateSecret(SCOPE, "gen", VaultService.SecretFormat.ALPHANUMERIC, 24);
+
+        assertThat(infisical.lastWriteKey).isEqualTo("gen");
+        assertThat(infisical.lastWriteValue).hasSize(24).matches("[A-Za-z0-9]+");
+    }
+
+    @Test
+    void generateValue_hex_hasRequestedLengthAndHexChars() {
+        assertThat(VaultService.generateValue(VaultService.SecretFormat.HEX, 16))
+                .hasSize(16).matches("[0-9a-f]+");
+    }
+
+    @Test
+    void generateValue_uuid_ignoresLength() {
+        assertThat(VaultService.generateValue(VaultService.SecretFormat.UUID, 999))
+                .matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}");
+    }
+
+    @Test
+    void generateValue_nonPositiveLength_throws() {
+        assertThatThrownBy(() -> VaultService.generateValue(VaultService.SecretFormat.ALPHANUMERIC, 0))
+                .isInstanceOf(VaultException.class);
+    }
+
+    /** In-memory {@link VaultProvider} that records the last binding/write it saw. */
     private static final class RecordingProvider implements VaultProvider {
         private final String type;
         private final Map<String, String> store = new HashMap<>();
         private @Nullable VaultBinding lastBinding;
+        private @Nullable String lastWriteKey;
+        private @Nullable String lastWriteValue;
 
         RecordingProvider(String type) {
             this.type = type;
@@ -231,6 +291,14 @@ class VaultServiceTest {
         public @Nullable String readSecret(VaultBinding binding, String key) {
             this.lastBinding = binding;
             return store.get(key);
+        }
+
+        @Override
+        public void writeSecret(VaultBinding binding, String key, String value) {
+            this.lastBinding = binding;
+            this.lastWriteKey = key;
+            this.lastWriteValue = value;
+            store.put(key, value);
         }
     }
 }

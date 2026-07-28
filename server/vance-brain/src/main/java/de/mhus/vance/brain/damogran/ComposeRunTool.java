@@ -99,11 +99,14 @@ public class ComposeRunTool implements Tool {
         String yaml = resolveYaml(params, ctx.tenantId(), projectId);
         // Relative vance: paths resolve against the compose document's directory.
         String baseDir = composePath != null ? DamogranUri.parentDir(composePath) : null;
+        // State store is keyed by the compose document path; inline composeYaml
+        // (no document identity) carries no state.
+        String stateKey = composePath;
 
         ComposeRun run;
         try {
             run = composeService.runAsync(ctx.tenantId(), projectId, ctx.processId(), yaml, baseDir,
-                    contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()));
+                    stateKey, contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()));
         } catch (DamogranException e) {
             throw new ToolException(e.getMessage());
         }

@@ -4,6 +4,7 @@ import de.mhus.vance.brain.damogran.DamogranContext;
 import de.mhus.vance.brain.damogran.DamogranManifest.OutputSpec;
 import de.mhus.vance.brain.damogran.DamogranManifest.TaskSpec;
 import de.mhus.vance.brain.damogran.DamogranMime;
+import de.mhus.vance.brain.damogran.DamogranStateService;
 import de.mhus.vance.brain.damogran.DamogranTask;
 import de.mhus.vance.brain.damogran.DamogranTaskResult;
 import de.mhus.vance.brain.damogran.OutputArtifact;
@@ -50,10 +51,13 @@ public class RDamogranTask implements DamogranTask {
 
     private final RExecutionService rExecutionService;
     private final WorkspaceService workspaceService;
+    private final DamogranStateService stateService;
 
-    public RDamogranTask(RExecutionService rExecutionService, WorkspaceService workspaceService) {
+    public RDamogranTask(RExecutionService rExecutionService, WorkspaceService workspaceService,
+                         DamogranStateService stateService) {
         this.rExecutionService = rExecutionService;
         this.workspaceService = workspaceService;
+        this.stateService = stateService;
     }
 
     @Override
@@ -70,16 +74,21 @@ public class RDamogranTask implements DamogranTask {
                             + "pod's Rserve daemon and has no CLIENT/DAEMON path");
         }
 
-        String script;
+        String body;
         try {
-            script = resolveScript(ctx, spec);
+            body = resolveScript(ctx, spec);
         } catch (IOException e) {
             return DamogranTaskResult.failure("r task: could not read script file: " + e.getMessage());
         }
-        if (script == null) {
+        if (body == null) {
             return DamogranTaskResult.failure(
                     "r task requires inline 'code' or a 'script' file path");
         }
+
+        // When a state store is active for 'r', wrap the body in a jsonlite
+        // load/dump around a `state` list (kurzlebiger Zustand über Runs).
+        DamogranStateService.StateDir sd = stateService.resolve(ctx, "r");
+        String script = sd == null ? body : wrapState(sd, body);
 
         RExecutionService.Result res = rExecutionService.evaluate(script, workspaceRoot);
         String log = res.text().isBlank() ? null : res.text();
@@ -87,6 +96,27 @@ public class RDamogranTask implements DamogranTask {
             return DamogranTaskResult.failure(res.errorMessage(), log);
         }
         return DamogranTaskResult.success(collectOutputs(spec, res, workspaceRoot), log);
+    }
+
+    /**
+     * Wrap the R body in a jsonlite load/dump around a {@code state} list. R runs
+     * with {@code setwd(RootDir)}, so the workspace-relative cache path resolves
+     * from cwd. {@code simplifyVector = FALSE} keeps JSON objects as nested lists
+     * (stable round-trip); {@code auto_unbox = TRUE} writes scalars as scalars.
+     * Requires {@code jsonlite} in the brain's R image. Ends with
+     * {@code invisible(NULL)} so the serialize call doesn't pollute the value log
+     * (user output rides {@code print()}/{@code cat()} stdout).
+     */
+    private static String wrapState(DamogranStateService.StateDir sd, String body) {
+        String cache = DamogranStateService.jsonQuote(sd.cacheRel());
+        return """
+                # Damogran state wrapper (r) — generated, do not edit.
+                .dgs_p <- %s
+                state <- if (file.exists(.dgs_p)) jsonlite::fromJSON(.dgs_p, simplifyVector = FALSE) else list()
+                %s
+                jsonlite::write_json(state, .dgs_p, auto_unbox = TRUE, null = "null")
+                invisible(NULL)
+                """.formatted(cache, body);
     }
 
     /** Inline {@code code} wins; otherwise read the workspace-relative {@code script} file. */

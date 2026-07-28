@@ -29,6 +29,9 @@ import org.jspecify.annotations.Nullable;
  * @param composeBaseDir  directory of the compose document, used to resolve
  *                        relative {@code vance:} import/export paths ({@code null}
  *                        for inline runs without a document context)
+ * @param stateKey        per-document key (compose doc / page path) scoping the
+ *                        Damogran state store ({@code _damogran-state/<stateKey>/…});
+ *                        {@code null} = no document identity → state disabled
  * @param caller          the user on whose behalf the run fires (directly via REST
  *                        or through an agent session) — threaded so cross-project
  *                        {@code vance:} import/export is authorized against the
@@ -45,6 +48,7 @@ public record DamogranContext(
         String target,
         @Nullable String daemonName,
         @Nullable String composeBaseDir,
+        @Nullable String stateKey,
         @Nullable ComposeFileIo fileIo,
         @Nullable ComposeProgress progress,
         @Nullable ComposeExec exec,
@@ -57,7 +61,7 @@ public record DamogranContext(
             String workspaceName, String workspaceDirName, @Nullable Path workspacePath,
             String target, @Nullable String daemonName, @Nullable String composeBaseDir) {
         this(tenantId, projectId, processId, workspaceName, workspaceDirName, workspacePath,
-                target, daemonName, composeBaseDir, null, null, null, null, null);
+                target, daemonName, composeBaseDir, null, null, null, null, null, null);
     }
 
     /** The run's file backend for import/export; throws if none was bound. */

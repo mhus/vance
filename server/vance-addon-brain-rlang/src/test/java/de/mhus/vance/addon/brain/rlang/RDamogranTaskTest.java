@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Test;
  */
 class RDamogranTaskTest {
 
-    private final RDamogranTask task = new RDamogranTask(null, null);
+    private final RDamogranTask task = new RDamogranTask(null, null, null);
 
     @Test
     void type_isR() {

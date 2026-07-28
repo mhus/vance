@@ -82,9 +82,9 @@ public class DamogranComposeService {
     /** Parse and start an async compose run; returns the (registered) {@link ComposeRun}. */
     public ComposeRun runAsync(
             String tenantId, String projectId, @Nullable String processId,
-            String yaml, @Nullable String baseDir,
+            String yaml, @Nullable String baseDir, @Nullable String stateKey,
             de.mhus.vance.shared.permission.@Nullable SecurityContext caller) {
-        return runAsync(tenantId, projectId, processId, parser.parse(yaml), baseDir, caller);
+        return runAsync(tenantId, projectId, processId, parser.parse(yaml), baseDir, stateKey, caller);
     }
 
     /**
@@ -92,14 +92,18 @@ public class DamogranComposeService {
      * {@link ComposeRun} immediately (registered for polling). The run keeps
      * going after this returns — callers wait a fast-path budget for a quick
      * result, else poll by {@code runId}. In-pod only (a pod restart loses it).
+     *
+     * @param stateKey per-document key (compose doc / page path) scoping the
+     *                 Damogran state store, or {@code null} for a run without a
+     *                 document identity (no state — see {@code planning/damogran-state.md})
      */
     public ComposeRun runAsync(
             String tenantId, String projectId, @Nullable String processId,
-            DamogranManifest manifest, @Nullable String baseDir,
+            DamogranManifest manifest, @Nullable String baseDir, @Nullable String stateKey,
             de.mhus.vance.shared.permission.@Nullable SecurityContext caller) {
         String runId = "cr-" + UUID.randomUUID().toString().substring(0, 8);
         ComposeRun run = new ComposeRun(
-                runId, tenantId, projectId, manifest.workspace().name(), Instant.now());
+                runId, tenantId, projectId, manifest.workspace().name(), Instant.now(), stateKey);
         runRegistry.register(run);
         asyncRunners.submit(() -> {
             try {

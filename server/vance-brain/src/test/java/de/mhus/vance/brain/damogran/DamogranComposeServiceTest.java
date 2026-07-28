@@ -44,7 +44,8 @@ class DamogranComposeServiceTest {
         transport = mock(DamogranTransport.class);
         service = new DamogranComposeService(new DamogranManifestParser(), new ComposeRunRegistry(), List.of(
                 new WorkspaceComposeRunner(workspaceService, workTargetService, taskExecutor, transport,
-                        mock(ExecManager.class), mock(GitService.class))));
+                        mock(ExecManager.class), mock(GitService.class),
+                        mock(DamogranStateService.class))));
     }
 
     private RootDirHandle handle(String label, String type) {
@@ -97,7 +98,8 @@ class DamogranComposeServiceTest {
         when(workspaceService.createRootDir(any())).thenReturn(handle("ws", "temp"));
         WorkspaceComposeRunner runner = new WorkspaceComposeRunner(
                 workspaceService, workTargetService, taskExecutor, transport,
-                mock(ExecManager.class), mock(GitService.class));
+                mock(ExecManager.class), mock(GitService.class),
+                mock(DamogranStateService.class));
         ComposeRun run = new ComposeRun("cr-x", "t", "p", "ws", java.time.Instant.EPOCH);
         run.requestCancel();
 
@@ -133,7 +135,7 @@ class DamogranComposeServiceTest {
         when(taskExecutor.dispatch(any(), any())).thenReturn(DamogranTaskResult.success(List.of()));
 
         DamogranManifest m = manifest("WORK", List.of(task("exec")), List.of(), List.of());
-        ComposeRun run = service.runAsync("t", "p", "proc1", m, null, null);
+        ComposeRun run = service.runAsync("t", "p", "proc1", m, null, null, null);
 
         assertThat(run.runId()).startsWith("cr-");
         assertThat(run.awaitDone(5000)).isTrue();

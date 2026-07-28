@@ -66,7 +66,19 @@ public record DamogranManifest(
         List<ExportEntry> exports,
         @Nullable String title,
         @Nullable String description,
-        SessionSpec session) {
+        SessionSpec session,
+        List<StateSpec> state) {
+
+    /**
+     * Back-compat constructor for a manifest without a {@code state:} section —
+     * keeps existing callers/tests that build a manifest directly compiling.
+     */
+    public DamogranManifest(
+            WorkspaceSpec workspace, List<ImportEntry> imports, List<TaskSpec> tasks,
+            List<ExportEntry> exports, @Nullable String title, @Nullable String description,
+            SessionSpec session) {
+        this(workspace, imports, tasks, exports, title, description, session, List.of());
+    }
 
     /**
      * The session process this compose binds to on the REST run path (the Web-UI
@@ -185,4 +197,41 @@ public record DamogranManifest(
      * @param title optional display title
      */
     public record OutputSpec(String path, @Nullable String kind, @Nullable String title) {}
+
+    /**
+     * One entry of the top-level {@code state:} section — a management operation
+     * applied (in list order) to the per-document, per-type state store
+     * ({@code <workspace>/_damogran-state/<docKey>/<type>/}) before the tasks run.
+     * State lets the code-executing tasks ({@code exec}/{@code python}/{@code js}/
+     * {@code r}) carry a JSON-shaped {@code state} object between runs of the same
+     * document, plus persisted {@code header}/{@code footer} code fragments the
+     * handler wraps around the script. See {@code planning/damogran-state.md}.
+     *
+     * <p>Shapes (validated fail-fast by the parser):
+     * <ul>
+     *   <li>{@code {delete: true}} — wipe the whole {@code <docKey>/} store (all
+     *       types); must stand alone (no {@code type}/{@code init}/{@code header}/
+     *       {@code footer}).</li>
+     *   <li>{@code {type: <t>, init: true}} — empty (recreate) that type's folder.</li>
+     *   <li>{@code {type: <t>, header: <text>}} / {@code footer: <text>} — write
+     *       that file into the type folder (creating it). {@code header}/{@code footer}
+     *       may be empty strings.</li>
+     * </ul>
+     * {@code type} is required whenever {@code init}/{@code header}/{@code footer}
+     * is set (they address a type folder); it is forbidden with {@code delete}.
+     *
+     * @param type   target state type (matches a task type: exec/python/js/r); may
+     *               be {@code null} only for a {@code delete} entry
+     * @param init   empty the type folder before any header/footer write
+     * @param header persisted prolog code fragment, or {@code null} if not set
+     *               (an empty string writes an empty header file)
+     * @param footer persisted epilog code fragment, or {@code null} if not set
+     * @param delete wipe the entire per-document store (all types)
+     */
+    public record StateSpec(
+            @Nullable String type,
+            boolean init,
+            @Nullable String header,
+            @Nullable String footer,
+            boolean delete) {}
 }

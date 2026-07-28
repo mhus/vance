@@ -24,17 +24,23 @@ class DamogranBuiltinTasksTest {
 
     private static DamogranContext workCtx(@Nullable ComposeExec exec) {
         return new DamogranContext("t", "p", "proc1", "ws", "ws", Path.of("/tmp/ws"),
-                "WORK", null, null, null, null, exec, null, null);
+                "WORK", null, null, null, null, null, exec, null, null);
     }
 
     // ──────────────────── exec ────────────────────
+
+    /** exec/python task with a state service that stays inert (no state key on the ctx). */
+    private static ExecDamogranTask execTask() {
+        WorkspaceService ws = mock(WorkspaceService.class);
+        return new ExecDamogranTask(new DamogranStateService(ws), ws);
+    }
 
     @Test
     void exec_completedZeroExit_isSuccessWithStdoutLog() {
         ComposeExec exec = mock(ComposeExec.class);
         when(exec.run(any(), anyInt())).thenReturn(new ComposeExec.Result("COMPLETED", 0, "hi", ""));
 
-        DamogranTaskResult result = new ExecDamogranTask()
+        DamogranTaskResult result = execTask()
                 .execute(workCtx(exec), new TaskSpec("exec", Map.of("command", "echo hi"), List.of()));
 
         assertThat(result.isSuccess()).isTrue();
@@ -47,7 +53,7 @@ class DamogranBuiltinTasksTest {
         ComposeExec exec = mock(ComposeExec.class);
         when(exec.run(any(), anyInt())).thenReturn(new ComposeExec.Result("COMPLETED", 1, "", "boom"));
 
-        DamogranTaskResult result = new ExecDamogranTask()
+        DamogranTaskResult result = execTask()
                 .execute(workCtx(exec), new TaskSpec("exec", Map.of("command", "false"), List.of()));
 
         assertThat(result.status()).isEqualTo(DamogranStatus.FAILURE);
@@ -97,7 +103,7 @@ class DamogranBuiltinTasksTest {
     void python_withoutScriptOrCode_fails() {
         WorkspaceService workspaceService = mock(WorkspaceService.class);
 
-        DamogranTaskResult result = new PythonDamogranTask(workspaceService)
+        DamogranTaskResult result = new PythonDamogranTask(new DamogranStateService(workspaceService), workspaceService)
                 .execute(workCtx(null), new TaskSpec("python", Map.of(), List.of()));
 
         assertThat(result.status()).isEqualTo(DamogranStatus.FAILURE);
@@ -110,7 +116,7 @@ class DamogranBuiltinTasksTest {
         ComposeExec exec = mock(ComposeExec.class);
         when(exec.run(any(), anyInt())).thenReturn(new ComposeExec.Result("COMPLETED", 0, "ok", ""));
 
-        DamogranTaskResult result = new PythonDamogranTask(workspaceService)
+        DamogranTaskResult result = new PythonDamogranTask(new DamogranStateService(workspaceService), workspaceService)
                 .execute(workCtx(exec), new TaskSpec("python", Map.of("code", "print('x')"), List.of()));
 
         assertThat(result.isSuccess()).isTrue();

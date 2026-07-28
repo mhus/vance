@@ -4,6 +4,7 @@ import de.mhus.vance.brain.damogran.DamogranManifest.ExportEntry;
 import de.mhus.vance.brain.damogran.DamogranManifest.ImportEntry;
 import de.mhus.vance.brain.damogran.DamogranManifest.OutputSpec;
 import de.mhus.vance.brain.damogran.DamogranManifest.SessionSpec;
+import de.mhus.vance.brain.damogran.DamogranManifest.StateSpec;
 import de.mhus.vance.brain.damogran.DamogranManifest.TaskSpec;
 import de.mhus.vance.brain.damogran.DamogranManifest.WorkspaceSpec;
 import java.util.ArrayList;
@@ -48,17 +49,68 @@ public class DamogranManifestParser {
         List<ImportEntry> imports = parseImports(root.get("import"));
         List<TaskSpec> tasks = parseTasks(root.get("tasks"));
         List<ExportEntry> exports = parseExports(root.get("export"));
+        List<StateSpec> state = parseState(root.get("state"));
 
         if (workspace.delete()
-                && (workspace.clear() || !imports.isEmpty() || !tasks.isEmpty() || !exports.isEmpty())) {
+                && (workspace.clear() || !imports.isEmpty() || !tasks.isEmpty()
+                        || !exports.isEmpty() || !state.isEmpty())) {
             throw new DamogranException("compose manifest: 'workspace.delete' is terminal — it must "
-                    + "not be combined with 'clear', 'import', 'tasks' or 'export'");
+                    + "not be combined with 'clear', 'import', 'tasks', 'export' or 'state'");
         }
 
         SessionSpec session = parseSession(root.get("session"));
 
         return new DamogranManifest(workspace, imports, tasks, exports,
-                readString(root, "title"), readString(root, "description"), session);
+                readString(root, "title"), readString(root, "description"), session, state);
+    }
+
+    // ──────────────────── state ────────────────────
+
+    private List<StateSpec> parseState(@Nullable Object raw) {
+        if (raw == null) {
+            return List.of();
+        }
+        if (!(raw instanceof List<?> list)) {
+            throw new DamogranException("compose manifest: 'state' must be a list of operations");
+        }
+        List<StateSpec> result = new ArrayList<>();
+        for (Object item : list) {
+            result.add(parseStateEntry(requireMap(item, "state")));
+        }
+        return List.copyOf(result);
+    }
+
+    private StateSpec parseStateEntry(Map<String, Object> map) {
+        boolean delete = Boolean.TRUE.equals(map.get("delete"));
+        boolean init = Boolean.TRUE.equals(map.get("init"));
+        boolean hasHeader = map.containsKey("header");
+        boolean hasFooter = map.containsKey("footer");
+        String type = readString(map, "type");
+
+        if (delete) {
+            if (type != null || init || hasHeader || hasFooter) {
+                throw new DamogranException("compose manifest: state 'delete' wipes the whole store "
+                        + "and must stand alone (no 'type', 'init', 'header' or 'footer')");
+            }
+            return new StateSpec(null, false, null, null, true);
+        }
+        if (!init && !hasHeader && !hasFooter) {
+            throw new DamogranException("compose manifest: state entry must set one of "
+                    + "'delete', 'init', 'header' or 'footer'");
+        }
+        if (type == null) {
+            throw new DamogranException("compose manifest: state entry with "
+                    + "'init'/'header'/'footer' requires a 'type'");
+        }
+        // header/footer preserve content verbatim (incl. empty string); a bare
+        // `header:` (null value) means "empty header file".
+        String header = hasHeader ? asString(map.get("header")) : null;
+        String footer = hasFooter ? asString(map.get("footer")) : null;
+        return new StateSpec(type, init, header, footer, false);
+    }
+
+    private static String asString(@Nullable Object raw) {
+        return raw == null ? "" : raw.toString();
     }
 
     // ──────────────────── workspace ────────────────────

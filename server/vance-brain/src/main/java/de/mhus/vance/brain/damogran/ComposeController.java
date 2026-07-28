@@ -123,8 +123,14 @@ public class ComposeController {
             return errorResult(e.getMessage());
         }
 
+        // State store key: the compose document identity (path) when run by path,
+        // else the inline base path (Cortex doc / Workbook app folder); null = no state.
+        String stateKey = body.composePath() != null && !body.composePath().isBlank()
+                ? body.composePath().trim()
+                : (body.composeBasePath() != null && !body.composeBasePath().isBlank()
+                        ? body.composeBasePath().trim() : null);
         ComposeRun run = composeService.runAsync(tenant, projectId, processId, manifest, baseDir,
-                authority.contextOf(httpRequest));
+                stateKey, authority.contextOf(httpRequest));
         try {
             run.awaitDone(FAST_PATH_WAIT_MS);
         } catch (InterruptedException e) {

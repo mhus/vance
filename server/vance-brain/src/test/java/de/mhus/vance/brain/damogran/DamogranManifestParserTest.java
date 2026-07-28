@@ -273,4 +273,130 @@ class DamogranManifestParserTest {
         assertThat(exp.option("message")).isEqualTo("Update from Damogran");
         assertThat(exp.boolOption("push", false)).isTrue();
     }
+
+    // ──────────────────── state section ────────────────────
+
+    @Test
+    void parse_stateSection_keepsOperationOrder() {
+        String yaml =
+                """
+                workspace:
+                  name: ws
+                state:
+                  - delete: true
+                  - type: python
+                    header: |
+                      import pandas as pd
+                  - type: exec
+                    init: true
+                    footer: 'echo bye'
+                """;
+
+        DamogranManifest m = parser.parse(yaml);
+
+        assertThat(m.state()).hasSize(3);
+
+        DamogranManifest.StateSpec del = m.state().get(0);
+        assertThat(del.delete()).isTrue();
+        assertThat(del.type()).isNull();
+
+        DamogranManifest.StateSpec py = m.state().get(1);
+        assertThat(py.type()).isEqualTo("python");
+        assertThat(py.init()).isFalse();
+        assertThat(py.header()).isEqualTo("import pandas as pd\n");
+        assertThat(py.footer()).isNull();
+
+        DamogranManifest.StateSpec ex = m.state().get(2);
+        assertThat(ex.type()).isEqualTo("exec");
+        assertThat(ex.init()).isTrue();
+        assertThat(ex.footer()).isEqualTo("echo bye");
+    }
+
+    @Test
+    void parse_stateMissing_yieldsEmptyList() {
+        DamogranManifest m = parser.parse("workspace:\n  name: ws\n");
+        assertThat(m.state()).isEmpty();
+    }
+
+    @Test
+    void parse_stateHeaderPresentButEmpty_writesEmptyHeader() {
+        String yaml =
+                """
+                workspace:
+                  name: ws
+                state:
+                  - type: python
+                    header: ''
+                """;
+
+        DamogranManifest.StateSpec s = parser.parse(yaml).state().get(0);
+
+        // Present-but-empty is distinct from absent: a header file gets written
+        // (empty), which still activates state wrapping for the type.
+        assertThat(s.header()).isEqualTo("");
+        assertThat(s.footer()).isNull();
+    }
+
+    @Test
+    void parse_stateDeleteWithType_rejected() {
+        String yaml =
+                """
+                workspace:
+                  name: ws
+                state:
+                  - delete: true
+                    type: python
+                """;
+
+        assertThatThrownBy(() -> parser.parse(yaml))
+                .isInstanceOf(DamogranException.class)
+                .hasMessageContaining("must stand alone");
+    }
+
+    @Test
+    void parse_stateInitWithoutType_rejected() {
+        String yaml =
+                """
+                workspace:
+                  name: ws
+                state:
+                  - init: true
+                """;
+
+        assertThatThrownBy(() -> parser.parse(yaml))
+                .isInstanceOf(DamogranException.class)
+                .hasMessageContaining("requires a 'type'");
+    }
+
+    @Test
+    void parse_stateEmptyOperation_rejected() {
+        String yaml =
+                """
+                workspace:
+                  name: ws
+                state:
+                  - type: python
+                """;
+
+        assertThatThrownBy(() -> parser.parse(yaml))
+                .isInstanceOf(DamogranException.class)
+                .hasMessageContaining("must set one of");
+    }
+
+    @Test
+    void parse_workspaceDeleteWithState_rejected() {
+        String yaml =
+                """
+                workspace:
+                  name: ws
+                  delete: true
+                state:
+                  - type: python
+                    init: true
+                """;
+
+        assertThatThrownBy(() -> parser.parse(yaml))
+                .isInstanceOf(DamogranException.class)
+                .hasMessageContaining("terminal");
+    }
 }

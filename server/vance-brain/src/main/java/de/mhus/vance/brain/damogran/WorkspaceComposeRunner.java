@@ -46,6 +46,7 @@ public class WorkspaceComposeRunner implements ComposeRunner {
     private final DamogranTransport transport;
     private final ExecManager execManager;
     private final GitService gitService;
+    private final DamogranStateService stateService;
 
     public WorkspaceComposeRunner(
             WorkspaceService workspaceService,
@@ -53,13 +54,15 @@ public class WorkspaceComposeRunner implements ComposeRunner {
             DamogranTaskExecutor taskExecutor,
             DamogranTransport transport,
             ExecManager execManager,
-            GitService gitService) {
+            GitService gitService,
+            DamogranStateService stateService) {
         this.workspaceService = workspaceService;
         this.workTargetService = workTargetService;
         this.taskExecutor = taskExecutor;
         this.transport = transport;
         this.execManager = execManager;
         this.gitService = gitService;
+        this.stateService = stateService;
     }
 
     @Override
@@ -90,10 +93,16 @@ public class WorkspaceComposeRunner implements ComposeRunner {
                 execManager, tenantId, projectId, handle.getDirName(), processId, run);
         ComposeGit git = new WorkspaceComposeGit(
                 workspaceService, gitService, tenantId, projectId, handle.getDirName());
+        // The state store is keyed by the run's document identity (stateKey), which
+        // is carried on the async ComposeRun; a synchronous/internal run has none.
+        String stateKey = run != null ? run.stateKey() : null;
         DamogranContext ctx = new DamogranContext(
                 tenantId, projectId, processId,
                 ws.name(), handle.getDirName(), handle.getPath(),
-                ws.target(), null, baseDir, io, run, exec, git, caller);
+                ws.target(), null, baseDir, stateKey, io, run, exec, git, caller);
+
+        // Apply state management ops (delete/init/header/footer) before anything runs.
+        stateService.applyOps(ctx, manifest.state());
 
         for (ImportEntry imp : manifest.imports()) {
             transport.doImport(ctx, imp);

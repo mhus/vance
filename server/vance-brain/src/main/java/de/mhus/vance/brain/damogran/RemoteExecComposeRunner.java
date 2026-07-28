@@ -81,6 +81,10 @@ abstract class RemoteExecComposeRunner implements ComposeRunner {
             throw new DamogranException(target()
                     + " target has no managed workspace — 'delete'/'clear' not supported");
         }
+        if (!manifest.state().isEmpty()) {
+            throw new DamogranException(target()
+                    + " target has no server-side workspace — a 'state:' section is WORK only");
+        }
         if (processId == null) {
             throw new DamogranException(target()
                     + " target requires a session-bound process with a connected remote");
@@ -98,7 +102,7 @@ abstract class RemoteExecComposeRunner implements ComposeRunner {
         ComposeExec exec = new RemoteComposeExec(tools);
         DamogranContext ctx = new DamogranContext(
                 tenantId, projectId, processId, ws.name(), ws.name(), null,
-                target(), null, baseDir, new RemoteFileIo(tools), run,
+                target(), null, baseDir, null, new RemoteFileIo(tools), run,
                 exec, new RemoteComposeGit(exec, target()), caller);
 
         for (ImportEntry imp : manifest.imports()) {

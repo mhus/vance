@@ -27,6 +27,8 @@ public final class ComposeRun implements ComposeProgress {
     private final String projectId;
     private final String workspaceName;
     private final Instant startedAt;
+    /** Per-document state key (compose doc / page path) — scopes the state store; null = no state. */
+    private final @Nullable String stateKey;
     private final CountDownLatch done = new CountDownLatch(1);
     private final List<DamogranTaskResult> doneTasks = Collections.synchronizedList(new ArrayList<>());
     private final List<Consumer<ComposeRun>> onDone = Collections.synchronizedList(new ArrayList<>());
@@ -42,11 +44,17 @@ public final class ComposeRun implements ComposeProgress {
 
     public ComposeRun(String runId, String tenantId, String projectId,
                       String workspaceName, Instant startedAt) {
+        this(runId, tenantId, projectId, workspaceName, startedAt, null);
+    }
+
+    public ComposeRun(String runId, String tenantId, String projectId,
+                      String workspaceName, Instant startedAt, @Nullable String stateKey) {
         this.runId = runId;
         this.tenantId = tenantId;
         this.projectId = projectId;
         this.workspaceName = workspaceName;
         this.startedAt = startedAt;
+        this.stateKey = stateKey;
     }
 
     // ──────────────────── runner-facing mutation ────────────────────
@@ -145,6 +153,7 @@ public final class ComposeRun implements ComposeProgress {
     public String projectId() { return projectId; }
     public String workspaceName() { return workspaceName; }
     public Instant startedAt() { return startedAt; }
+    public @Nullable String stateKey() { return stateKey; }
     public Status status() { return status; }
     public int currentTaskIndex() { return currentTaskIndex; }
     public @Nullable String currentTaskType() { return currentTaskType; }

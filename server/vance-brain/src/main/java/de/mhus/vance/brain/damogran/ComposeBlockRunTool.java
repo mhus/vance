@@ -127,11 +127,14 @@ public class ComposeBlockRunTool implements Tool {
         String projectId = ctx.resolveLocalProjectId();
         // Relative vance: imports resolve against the compose document's directory.
         String baseDir = DamogranUri.parentDir(path);
+        // State store is keyed by the document path (a top-level compose doc, or the
+        // page holding an inline block — so blocks of the same page share state).
+        String stateKey = path;
 
         ComposeRun run;
         try {
             run = composeService.runAsync(ctx.tenantId(), projectId, ctx.processId(), target.manifest(), baseDir,
-                    contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()));
+                    stateKey, contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()));
         } catch (DamogranException e) {
             throw new ToolException(e.getMessage());
         }

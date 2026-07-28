@@ -37,7 +37,7 @@ class VanceDocumentTransportAuthzTest {
 
     private DamogranContext ctx(SecurityContext caller, ComposeFileIo io) {
         return new DamogranContext("acme", "projA", null, "ws", "ws", null,
-                "WORK", null, null, io, null, null, null, caller);
+                "WORK", null, null, null, io, null, null, null, caller);
     }
 
     // ── Exporter: user actor, never SYSTEM ──────────────────────────

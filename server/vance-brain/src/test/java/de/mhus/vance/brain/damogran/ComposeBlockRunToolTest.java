@@ -76,7 +76,8 @@ class ComposeBlockRunToolTest {
         when(run.isTerminal()).thenReturn(true);
         when(run.result()).thenReturn(result);
         // Disambiguate the (…, String yaml, …) overload from the manifest one.
-        when(composeService.runAsync(anyString(), anyString(), any(), anyString(), any(), any())).thenReturn(run);
+        when(composeService.runAsync(anyString(), anyString(), any(), anyString(), any(), any(), any()))
+                .thenReturn(run);
         return run;
     }
 

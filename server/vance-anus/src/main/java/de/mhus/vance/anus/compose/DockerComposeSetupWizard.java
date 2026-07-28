@@ -1,5 +1,6 @@
 package de.mhus.vance.anus.compose;
 
+import de.mhus.vance.anus.BuildInfo;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
@@ -77,6 +78,7 @@ public final class DockerComposeSetupWizard {
         out.println();
         out.println("Vance — Docker Compose Setup");
         out.println("============================");
+        out.printf("%s%n", BuildInfo.line());
         out.println();
         out.printf("Output directory: %s%n", dir.toAbsolutePath());
         out.flush();
@@ -348,7 +350,7 @@ public final class DockerComposeSetupWizard {
                 case "VANCE_DEFAULT_LANGUAGE_CODE" -> s.setLanguageCode(v);
                 case "VANCE_REDIS_ENABLED" -> s.setRedisEnabled(Boolean.parseBoolean(v));
                 case "REDIS_PORT" -> s.setRedisPort(intOr(v, s.getRedisPort()));
-                case "FACE_PORT" -> s.setFacePort(intOr(v, s.getFacePort()));
+                case "VANCE_PORT", "FACE_PORT" -> s.setFacePort(intOr(v, s.getFacePort()));
                 case "VANCE_ACCESS_MODE" -> s.setExternalAccess("external".equalsIgnoreCase(v));
                 case "VANCE_EXTERNAL_URL" -> s.setExternalUrl(v);
                 case "VANCE_CADDY_TLS" -> s.setCaddyTls(!"off".equalsIgnoreCase(v));

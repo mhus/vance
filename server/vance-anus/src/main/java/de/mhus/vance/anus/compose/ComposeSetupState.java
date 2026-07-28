@@ -87,7 +87,9 @@ class ComposeSetupState {
 
     // ── ports ─────────────────────────────────────────────────────
     private int brainPort = 9990;
-    private int facePort = 8080;
+    /** The single published front-door (Caddy) port — 9999 by default to sit
+     * clear of a dev stack on 8080. */
+    private int facePort = 9999;
     private int redisPort = 6379;
     private int mongoExpressPort = 9081;
     private int redisUiPort = 8082;

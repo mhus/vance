@@ -1,5 +1,6 @@
 package de.mhus.vance.anus.compose;
 
+import de.mhus.vance.anus.BuildInfo;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -8,20 +9,22 @@ import java.util.Map;
  * one-shot {@code setup.sh} from a {@link ComposeSetupState}.
  *
  * <p>The compose file is assembled from typed service fragments rather than a
- * templating engine: {@code mongodb}/{@code brain}/{@code face} are always
- * present, {@code redis} joins when live features are on, a {@code caddy} front
- * joins in external mode with TLS, and the debug UIs (mongo-express +
- * redis-commander) plus the optional {@code anus} admin service ride along under
- * Compose {@code profiles} so they never start with a plain {@code docker compose
- * up}. Concrete values are supplied by {@code .env} via {@code ${VAR}}
- * interpolation — the fragments only decide <b>which</b> services exist and
- * <b>whether</b> a host port is published, not their literal settings.
+ * templating engine. Topology:
+ * <ul>
+ *   <li>{@code caddy} is <b>always</b> the single published front door — every
+ *       request enters on one port and Caddy reverse-proxies to the face (which
+ *       in turn splits {@code /brain/*} REST + WebSocket to the brain). Like the
+ *       Mini deployment, but local and, by default, without TLS.</li>
+ *   <li>{@code mongodb}/{@code brain}/{@code face} are internal to the compose
+ *       network; their host ports are published only on an expert opt-in.</li>
+ *   <li>{@code redis} joins when live features are on; the debug UIs
+ *       (mongo-express + redis-commander) and the optional {@code anus} admin
+ *       service ride along under Compose {@code profiles}.</li>
+ * </ul>
  *
- * <p>Host ports for {@code mongodb}/{@code redis}/{@code brain} are published
- * only when the operator opts in (expert mode). The default topology binds a
- * single port — the Vance/face port — because the {@code face} image's own nginx
- * already reverse-proxies {@code /brain/*} (REST + WebSocket) to the brain, so
- * the browser reaches everything through one origin.
+ * <p>Caddy's listen address rides through {@code .env} as {@code VANCE_SITE_ADDRESS}:
+ * {@code :80} for plain HTTP (local, or external behind an upstream TLS
+ * terminator like ngrok), or the bare hostname for auto-provisioned HTTPS.
  */
 final class ComposeFileRenderer {
 
@@ -43,7 +46,7 @@ final class ComposeFileRenderer {
                 && s.getExternalUrl().strip().toLowerCase().startsWith("https://");
     }
 
-    /** Bare host (no scheme, no path) for Caddy's auto-HTTPS {@code --from}. */
+    /** Bare host (no scheme, no path) for Caddy's auto-HTTPS site address. */
     static String externalHost(ComposeSetupState s) {
         String url = s.getExternalUrl().strip();
         int scheme = url.indexOf("://");
@@ -57,9 +60,14 @@ final class ComposeFileRenderer {
         return url;
     }
 
-    /** External mode with a bundled Caddy that terminates TLS. */
-    private static boolean caddyFronts(ComposeSetupState s) {
+    /** External access with Caddy terminating TLS (auto-HTTPS for the domain). */
+    static boolean caddyTerminatesTls(ComposeSetupState s) {
         return s.isExternalAccess() && s.isCaddyTls();
+    }
+
+    /** Caddy's {@code --from} listen address: a hostname (auto-HTTPS) or {@code :80} (plain). */
+    static String siteAddress(ComposeSetupState s) {
+        return caddyTerminatesTls(s) ? externalHost(s) : ":80";
     }
 
     private static String stripTrailingSlash(String v) {
@@ -93,7 +101,9 @@ final class ComposeFileRenderer {
         env.put("VANCE_REDIS_URI", "redis://redis:6379");
         env.put("REDIS_PORT", Integer.toString(s.getRedisPort()));
 
-        env.put("FACE_PORT", Integer.toString(s.getFacePort()));
+        // The single published front-door port + Caddy's listen address.
+        env.put("VANCE_PORT", Integer.toString(s.getFacePort()));
+        env.put("VANCE_SITE_ADDRESS", siteAddress(s));
 
         // Access mode + browser-facing URL (Brain callbacks / cookie security).
         env.put("VANCE_ACCESS_MODE", s.isExternalAccess() ? "external" : "local");
@@ -102,9 +112,6 @@ final class ComposeFileRenderer {
         if (s.isExternalAccess()) {
             env.put("VANCE_EXTERNAL_URL", stripTrailingSlash(s.getExternalUrl().strip()));
             env.put("VANCE_CADDY_TLS", s.isCaddyTls() ? "auto" : "off");
-            if (caddyFronts(s)) {
-                env.put("VANCE_EXTERNAL_HOST", externalHost(s));
-            }
         }
 
         // Host-port exposure toggles (round-tripped so a re-run restores them —
@@ -130,7 +137,7 @@ final class ComposeFileRenderer {
 
     static String renderCompose(ComposeSetupState s) {
         StringBuilder sb = new StringBuilder();
-        sb.append(HEADER);
+        sb.append(header(s));
 
         sb.append(MONGODB);
         if (s.isExposeMongoPort()) {
@@ -152,16 +159,10 @@ final class ComposeFileRenderer {
         }
 
         sb.append(FACE);
-        // In external mode with a bundled TLS Caddy the face stays internal —
-        // Caddy is the only published front door. Otherwise the face port is
-        // the single Vance port (local, or external HTTP-only behind ngrok).
-        if (!caddyFronts(s)) {
-            sb.append(FACE_PORTS);
-        }
 
-        if (caddyFronts(s)) {
-            sb.append(CADDY);
-        }
+        // Caddy is the single published front door — always present.
+        sb.append(CADDY_HEAD);
+        sb.append(caddyTerminatesTls(s) ? CADDY_PORTS_TLS : CADDY_PORTS_HTTP);
 
         if (s.isToolsEnabled()) {
             sb.append(MONGO_EXPRESS);
@@ -175,6 +176,28 @@ final class ComposeFileRenderer {
         return sb.toString();
     }
 
+    private static String header(ComposeSetupState s) {
+        return """
+            # Generated by `vance-anus --setup-docker-compose`
+            #   %s
+            #
+            # Quick start:
+            #   docker compose up -d
+            #   ./setup.sh              # first-time tenant + user + LLM (one-shot anus)
+            #   open %s
+            #
+            # Everything is served through Caddy on the single Vance port above;
+            # brain/mongo/redis stay internal to the compose network.
+            # Config lives in the sibling .env — edit it or re-run the wizard.
+            # Persistent data (Mongo, Brain, Redis, …) is bind-mounted under ./data
+            # next to this file — back that folder up, it survives `docker compose down`.
+
+            name: vance
+
+            services:
+            """.formatted(BuildInfo.line(), publicBaseUrl(s));
+    }
+
     // ──────────────────────── setup.sh ────────────────────────
 
     /**
@@ -184,27 +207,11 @@ final class ComposeFileRenderer {
      * throwaway container — so anus never has to be a running service.
      */
     static String renderSetupScript() {
-        return SETUP_SH;
+        return "#!/usr/bin/env bash\n#\n# Generated by `vance-anus --setup-docker-compose`\n#   "
+                + BuildInfo.line() + "\n" + SETUP_SH_BODY;
     }
 
     // ──────────────────────── fragments ────────────────────────
-
-    private static final String HEADER = """
-            # Generated by `vance-anus --setup-docker-compose`.
-            #
-            # Quick start:
-            #   docker compose up -d
-            #   ./setup.sh              # first-time tenant + user + LLM (one-shot anus)
-            #   open http://localhost:8080
-            #
-            # Config lives in the sibling .env — edit it or re-run the wizard.
-            # Persistent data (Mongo, Brain, Redis, …) is bind-mounted under ./data
-            # next to this file — back that folder up, it survives `docker compose down`.
-
-            name: vance
-
-            services:
-            """;
 
     private static final String MONGODB = """
 
@@ -265,7 +272,7 @@ final class ComposeFileRenderer {
                   VANCE_INTERNAL_TOKEN: ${VANCE_INTERNAL_TOKEN:-changeit-internal}
                   VANCE_BOOTSTRAP_ACME: ${VANCE_BOOTSTRAP_ACME:-false}
                   VANCE_FOOK_ENABLED: ${VANCE_FOOK_ENABLED:-true}
-                  VANCE_WEB_PUBLICBASEURL: ${VANCE_WEB_PUBLICBASEURL:-http://localhost:8080}
+                  VANCE_WEB_PUBLICBASEURL: ${VANCE_WEB_PUBLICBASEURL:-http://localhost:9999}
                   VANCE_WEB_COOKIES_SECURE: ${VANCE_WEB_COOKIES_SECURE:-false}
             """;
 
@@ -308,6 +315,8 @@ final class ComposeFileRenderer {
                   VANCE_REDIS_URI: ${VANCE_REDIS_URI:-redis://redis:6379}
             """ + BRAIN_TAIL;
 
+    // The face image serves the SPA and reverse-proxies /brain/* (REST + WS) to
+    // the brain internally. It has no published host port — Caddy fronts it.
     private static final String FACE = """
 
               face:
@@ -318,30 +327,33 @@ final class ComposeFileRenderer {
                     condition: service_started
             """;
 
-    private static final String FACE_PORTS = """
-                ports:
-                  - "${FACE_PORT:-8080}:80"
-            """;
+    private static final String CADDY_HEAD = """
 
-    private static final String CADDY = """
-
-              # TLS-terminating front door for external access. Auto-provisions a
-              # Let's Encrypt certificate for ${VANCE_EXTERNAL_HOST} and reverse-
-              # proxies everything to the face (which itself proxies /brain/*).
-              # Requires ports 80 + 443 reachable from the public internet.
+              # Single front door. `caddy reverse-proxy --from ${VANCE_SITE_ADDRESS}`
+              # listens plain HTTP on :80 (local / upstream-TLS) or auto-provisions
+              # HTTPS when VANCE_SITE_ADDRESS is a hostname. Forwards everything to
+              # the face, which splits /brain/* to the brain.
               caddy:
                 image: caddy:2
                 restart: unless-stopped
                 depends_on:
                   face:
                     condition: service_started
-                command: caddy reverse-proxy --from ${VANCE_EXTERNAL_HOST} --to face:80
-                ports:
-                  - "80:80"
-                  - "443:443"
+                command: caddy reverse-proxy --from ${VANCE_SITE_ADDRESS:-:80} --to face:80
                 volumes:
                   - ./data/caddy:/data
                   - ./data/caddy-config:/config
+            """;
+
+    private static final String CADDY_PORTS_HTTP = """
+                ports:
+                  - "${VANCE_PORT:-9999}:80"
+            """;
+
+    private static final String CADDY_PORTS_TLS = """
+                ports:
+                  - "80:80"
+                  - "443:443"
             """;
 
     private static final String MONGO_EXPRESS = """
@@ -405,10 +417,7 @@ final class ComposeFileRenderer {
                   - ./data/anus:/app/data
             """;
 
-    private static final String SETUP_SH = """
-            #!/usr/bin/env bash
-            #
-            # Generated by `vance-anus --setup-docker-compose`.
+    private static final String SETUP_SH_BODY = """
             #
             # One-shot first-time setup: runs the anus `--setup` wizard against
             # the compose-managed MongoDB in a throwaway container, so anus never

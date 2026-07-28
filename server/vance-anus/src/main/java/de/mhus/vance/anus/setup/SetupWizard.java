@@ -86,6 +86,7 @@ public class SetupWizard {
         out.println();
         out.println("Vance Setup");
         out.println("===========");
+        out.println(de.mhus.vance.anus.BuildInfo.line());
         out.println();
 
         List<TenantDocument> tenants = listOperatorTenants();

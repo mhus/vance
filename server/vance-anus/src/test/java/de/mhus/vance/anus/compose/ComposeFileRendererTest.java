@@ -8,19 +8,22 @@ import org.junit.jupiter.api.Test;
 class ComposeFileRendererTest {
 
     @Test
-    void compose_default_singlePort_noAnus_noDebugUis() {
+    void compose_default_caddyFront_singlePort_noAnus_noDebugUis() {
         String yaml = ComposeFileRenderer.renderCompose(new ComposeSetupState());
 
         assertThat(yaml).contains("mongodb:").contains("brain:").contains("face:");
         assertThat(yaml).contains("redis:");
         assertThat(yaml).contains("VANCE_REDIS_ENABLED: \"true\"");
+        // Caddy is the single published front door on the Vance port; face is internal.
+        assertThat(yaml).contains("caddy:");
+        assertThat(yaml).contains("caddy reverse-proxy --from ${VANCE_SITE_ADDRESS:-:80} --to face:80");
+        assertThat(yaml).contains("${VANCE_PORT:-9999}:80");
         // Persistent data is host-bind-mounted under ./data — no named volumes.
         assertThat(yaml).contains("- ./data/mongo:/data/db");
         assertThat(yaml).contains("- ./data/brain:/app/data");
         assertThat(yaml).contains("- ./data/redis:/data");
         assertThat(yaml).doesNotContain("\nvolumes:\n");
-        // Only the Vance/face port is published; brain/mongo/redis stay internal.
-        assertThat(yaml).contains("${FACE_PORT:-8080}:80");
+        // brain/mongo/redis host ports stay internal by default.
         assertThat(yaml).doesNotContain("${BRAIN_PORT");
         assertThat(yaml).doesNotContain("${MONGO_PORT");
         assertThat(yaml).doesNotContain("${REDIS_PORT");
@@ -28,7 +31,6 @@ class ComposeFileRendererTest {
         assertThat(yaml).doesNotContain("anus:");
         assertThat(yaml).doesNotContain("mongo-express:");
         assertThat(yaml).doesNotContain("redis-commander:");
-        assertThat(yaml).doesNotContain("caddy:");
     }
 
     @Test
@@ -70,7 +72,7 @@ class ComposeFileRendererTest {
     }
 
     @Test
-    void compose_externalWithCaddy_frontsTlsAndKeepsFaceInternal() {
+    void compose_externalWithTls_caddyPublishes80And443() {
         ComposeSetupState s = new ComposeSetupState();
         s.setExternalAccess(true);
         s.setExternalUrl("https://vance.example.de");
@@ -79,14 +81,14 @@ class ComposeFileRendererTest {
         String yaml = ComposeFileRenderer.renderCompose(s);
 
         assertThat(yaml).contains("caddy:");
-        assertThat(yaml).contains("caddy reverse-proxy --from ${VANCE_EXTERNAL_HOST} --to face:80");
-        assertThat(yaml).contains("- ./data/caddy:/data").contains("- ./data/caddy-config:/config");
-        // Caddy is the only published front door — face is not host-exposed.
-        assertThat(yaml).doesNotContain("${FACE_PORT");
+        assertThat(yaml).contains("caddy reverse-proxy --from ${VANCE_SITE_ADDRESS:-:80} --to face:80");
+        assertThat(yaml).contains("\"80:80\"").contains("\"443:443\"");
+        // no plain single-port publish in TLS mode
+        assertThat(yaml).doesNotContain("${VANCE_PORT");
     }
 
     @Test
-    void compose_externalHttpOnly_noCaddy_facePublished() {
+    void compose_externalHttpOnly_caddyPublishesVancePort() {
         ComposeSetupState s = new ComposeSetupState();
         s.setExternalAccess(true);
         s.setExternalUrl("https://tunnel.ngrok.app");
@@ -94,8 +96,9 @@ class ComposeFileRendererTest {
 
         String yaml = ComposeFileRenderer.renderCompose(s);
 
-        assertThat(yaml).doesNotContain("caddy:");
-        assertThat(yaml).contains("${FACE_PORT:-8080}:80");
+        assertThat(yaml).contains("caddy:");
+        assertThat(yaml).contains("${VANCE_PORT:-9999}:80");
+        assertThat(yaml).doesNotContain("\"443:443\"");
     }
 
     @Test
@@ -141,18 +144,28 @@ class ComposeFileRendererTest {
     @Test
     void env_local_defaultsPublicBaseUrlToLocalhostVancePort() {
         ComposeSetupState s = new ComposeSetupState();
-        s.setFacePort(8090);
+        s.setFacePort(9090);
 
         Map<String, String> env = ComposeFileRenderer.renderEnv(s);
 
         assertThat(env).containsEntry("VANCE_ACCESS_MODE", "local");
-        assertThat(env).containsEntry("VANCE_WEB_PUBLICBASEURL", "http://localhost:8090");
+        assertThat(env).containsEntry("VANCE_PORT", "9090");
+        assertThat(env).containsEntry("VANCE_SITE_ADDRESS", ":80");
+        assertThat(env).containsEntry("VANCE_WEB_PUBLICBASEURL", "http://localhost:9090");
         assertThat(env).containsEntry("VANCE_WEB_COOKIES_SECURE", "false");
         assertThat(env).doesNotContainKey("VANCE_EXTERNAL_URL");
     }
 
     @Test
-    void env_externalHttps_setsSecureCookiesAndHost() {
+    void env_defaultVancePortIs9999() {
+        Map<String, String> env = ComposeFileRenderer.renderEnv(new ComposeSetupState());
+
+        assertThat(env).containsEntry("VANCE_PORT", "9999");
+        assertThat(env).containsEntry("VANCE_WEB_PUBLICBASEURL", "http://localhost:9999");
+    }
+
+    @Test
+    void env_externalHttps_setsSecureCookiesAndSiteAddress() {
         ComposeSetupState s = new ComposeSetupState();
         s.setExternalAccess(true);
         s.setExternalUrl("https://vance.example.de/");
@@ -163,22 +176,22 @@ class ComposeFileRendererTest {
         assertThat(env).containsEntry("VANCE_ACCESS_MODE", "external");
         assertThat(env).containsEntry("VANCE_WEB_PUBLICBASEURL", "https://vance.example.de");
         assertThat(env).containsEntry("VANCE_WEB_COOKIES_SECURE", "true");
-        assertThat(env).containsEntry("VANCE_EXTERNAL_HOST", "vance.example.de");
+        assertThat(env).containsEntry("VANCE_SITE_ADDRESS", "vance.example.de");
         assertThat(env).containsEntry("VANCE_CADDY_TLS", "auto");
     }
 
     @Test
-    void env_externalHttpUrl_cookiesNotSecure() {
+    void env_externalHttpUrl_cookiesNotSecure_siteIsPlain() {
         ComposeSetupState s = new ComposeSetupState();
         s.setExternalAccess(true);
-        s.setExternalUrl("http://192.168.1.10:8080");
+        s.setExternalUrl("http://192.168.1.10:9999");
         s.setCaddyTls(false);
 
         Map<String, String> env = ComposeFileRenderer.renderEnv(s);
 
         assertThat(env).containsEntry("VANCE_WEB_COOKIES_SECURE", "false");
         assertThat(env).containsEntry("VANCE_CADDY_TLS", "off");
-        assertThat(env).doesNotContainKey("VANCE_EXTERNAL_HOST");
+        assertThat(env).containsEntry("VANCE_SITE_ADDRESS", ":80");
     }
 
     @Test

@@ -6,7 +6,6 @@ import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.PosixFilePermission;
 import java.util.List;
 import java.util.Map;
 import org.jline.reader.EndOfFileException;
@@ -112,8 +111,8 @@ public final class DockerComposeSetupWizard {
             return 1;
         }
 
-        Path setupPath = dir.resolve("setup.sh");
         Path caddyPath = dir.resolve("Caddyfile");
+        Path readmePath = dir.resolve("README.md");
         try {
             Files.createDirectories(dir);
             Map<String, String> managed = ComposeFileRenderer.renderEnv(state);
@@ -123,30 +122,16 @@ public final class DockerComposeSetupWizard {
                     StandardCharsets.UTF_8);
             Files.writeString(caddyPath, ComposeFileRenderer.renderCaddyfile(),
                     StandardCharsets.UTF_8);
-            Files.writeString(setupPath, ComposeFileRenderer.renderSetupScript(),
+            Files.writeString(readmePath, ComposeFileRenderer.renderReadme(state),
                     StandardCharsets.UTF_8);
-            makeExecutable(setupPath);
         } catch (IOException e) {
             out.println("Write failed: " + e.getMessage());
             out.flush();
             return 1;
         }
 
-        printDone(out, state, envPath, composePath, setupPath, caddyPath);
+        printDone(out, state, envPath, composePath, readmePath, caddyPath);
         return 0;
-    }
-
-    /** Best-effort {@code chmod +x} — silently ignored on non-POSIX filesystems. */
-    private static void makeExecutable(Path path) {
-        try {
-            var perms = Files.getPosixFilePermissions(path);
-            perms.add(PosixFilePermission.OWNER_EXECUTE);
-            perms.add(PosixFilePermission.GROUP_EXECUTE);
-            perms.add(PosixFilePermission.OTHERS_EXECUTE);
-            Files.setPosixFilePermissions(path, perms);
-        } catch (IOException | UnsupportedOperationException ignored) {
-            // Non-POSIX (e.g. Windows) — the user runs it via `bash setup.sh`.
-        }
     }
 
     // ──────────────────────── menu ────────────────────────
@@ -387,7 +372,7 @@ public final class DockerComposeSetupWizard {
     }
 
     private void printDone(PrintWriter out, ComposeSetupState s, Path envPath, Path composePath,
-            Path setupPath, Path caddyPath) {
+            Path readmePath, Path caddyPath) {
         String url = s.isExternalAccess() && !s.getExternalUrl().isBlank()
                 ? s.getExternalUrl()
                 : "http://localhost:" + s.getFacePort();
@@ -396,13 +381,13 @@ public final class DockerComposeSetupWizard {
         out.printf("  - %s%n", composePath.toAbsolutePath());
         out.printf("  - %s%n", envPath.toAbsolutePath());
         out.printf("  - %s%n", caddyPath.toAbsolutePath());
-        out.printf("  - %s%n", setupPath.toAbsolutePath());
+        out.printf("  - %s%n", readmePath.toAbsolutePath());
         out.println();
         out.println("Next steps (from the directory containing these files):");
         out.println("  1) Start the stack:");
         out.println("       docker compose up -d");
-        out.println("  2) First-time setup (tenant + user + LLM) — one-shot admin container:");
-        out.println("       ./setup.sh");
+        out.println("  2) First-time setup (tenant + user + LLM) — see README.md for the");
+        out.println("     one-shot admin-container command.");
         out.println("  3) Open Vance:");
         out.printf("       %s%n", url);
         if (s.isExternalAccess() && s.isCaddyTls()) {

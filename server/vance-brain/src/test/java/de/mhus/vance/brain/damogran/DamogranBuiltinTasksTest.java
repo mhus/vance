@@ -14,11 +14,13 @@ import de.mhus.vance.brain.ai.light.LightLlmService;
 import de.mhus.vance.brain.damogran.DamogranManifest.OutputSpec;
 import de.mhus.vance.brain.damogran.DamogranManifest.TaskSpec;
 import de.mhus.vance.shared.workspace.WorkspaceService;
+import de.mhus.vance.toolpack.core.SecretResolver;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 class DamogranBuiltinTasksTest {
 
@@ -32,7 +34,8 @@ class DamogranBuiltinTasksTest {
     /** exec/python task with a state service that stays inert (no state key on the ctx). */
     private static ExecDamogranTask execTask() {
         WorkspaceService ws = mock(WorkspaceService.class);
-        return new ExecDamogranTask(new DamogranStateService(ws), ws);
+        return new ExecDamogranTask(
+                new DamogranStateService(ws), ws, new ComposeSecretResolver(SecretResolver.NOOP));
     }
 
     @Test
@@ -58,6 +61,28 @@ class DamogranBuiltinTasksTest {
 
         assertThat(result.status()).isEqualTo(DamogranStatus.FAILURE);
         assertThat(result.error()).contains("exit=1").contains("boom");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void exec_withSecrets_injectsEnvAndMasksOutput() {
+        ComposeExec exec = mock(ComposeExec.class);
+        // The command echoes the secret value into stdout — it must come back masked.
+        when(exec.run(any(), any(), anyInt()))
+                .thenReturn(new ComposeExec.Result("COMPLETED", 0, "using s3cr3t-value now", ""));
+        SecretResolver secretResolver = mock(SecretResolver.class);
+        when(secretResolver.resolve(eq("{{secret:vault:tok}}"), any())).thenReturn("s3cr3t-value");
+        WorkspaceService ws = mock(WorkspaceService.class);
+        ExecDamogranTask task = new ExecDamogranTask(
+                new DamogranStateService(ws), ws, new ComposeSecretResolver(secretResolver));
+
+        DamogranTaskResult result = task.execute(workCtx(exec), new TaskSpec(
+                "exec", Map.of("command", "run.sh"), List.of(), Map.of("TOKEN", "vault:tok")));
+
+        ArgumentCaptor<Map<String, String>> envCap = ArgumentCaptor.forClass(Map.class);
+        verify(exec).run(eq("run.sh"), envCap.capture(), anyInt());
+        assertThat(envCap.getValue()).containsEntry("TOKEN", "s3cr3t-value");
+        assertThat(result.log()).isEqualTo("using *** now");
     }
 
     // ──────────────────── llm ────────────────────

@@ -2,6 +2,8 @@ package de.mhus.vance.brain.damogran;
 
 import de.mhus.vance.brain.damogran.DamogranManifest.TaskSpec;
 import de.mhus.vance.shared.workspace.WorkspaceService;
+import java.util.Map;
+import java.util.Set;
 import org.springframework.stereotype.Service;
 
 /**
@@ -26,10 +28,13 @@ class ExecDamogranTask implements DamogranTask {
 
     private final DamogranStateService stateService;
     private final WorkspaceService workspaceService;
+    private final ComposeSecretResolver secretResolver;
 
-    ExecDamogranTask(DamogranStateService stateService, WorkspaceService workspaceService) {
+    ExecDamogranTask(DamogranStateService stateService, WorkspaceService workspaceService,
+                     ComposeSecretResolver secretResolver) {
         this.stateService = stateService;
         this.workspaceService = workspaceService;
+        this.secretResolver = secretResolver;
     }
 
     @Override
@@ -39,18 +44,21 @@ class ExecDamogranTask implements DamogranTask {
 
     @Override
     public DamogranTaskResult execute(DamogranContext ctx, TaskSpec spec) {
+        Map<String, String> secretEnv = secretResolver.resolve(spec.secrets(), ctx);
         DamogranStateService.StateDir sd = stateService.resolve(ctx, "exec");
         if (sd == null) {
-            return DamogranTaskSupport.runExecTask(ctx, spec);
+            return DamogranTaskSupport.runExecTask(ctx, spec, secretEnv);
         }
         String command = DamogranTaskSupport.requireString(spec, "command");
-        String script = wrap(sd, command, sd.readHeader(), sd.readFooter());
+        String script = wrap(sd, command, sd.readHeader(), sd.readFooter(), secretEnv.keySet());
         workspaceService.write(ctx.tenantId(), ctx.projectId(), ctx.workspaceDirName(),
                 WRAPPER_PATH, script);
         // cwd is the workspace root, so the wrapper path is workspace-relative.
-        ComposeExec.Result result = ctx.requireExec("exec")
-                .run("bash " + WRAPPER_PATH, DamogranTaskSupport.execDeadlineSeconds(spec));
-        return DamogranTaskSupport.toResult(result, command, DamogranTaskSupport.outputsFor(ctx, spec));
+        ComposeExec.Result result = DamogranTaskSupport.runWithEnv(
+                ctx.requireExec("exec"), "bash " + WRAPPER_PATH, secretEnv,
+                DamogranTaskSupport.execDeadlineSeconds(spec));
+        return DamogranTaskSupport.toResult(
+                result, command, DamogranTaskSupport.outputsFor(ctx, spec), secretEnv.values());
     }
 
     /**
@@ -63,8 +71,16 @@ class ExecDamogranTask implements DamogranTask {
      * even on a failing body but the task status still reflects the command.
      */
     private static String wrap(DamogranStateService.StateDir sd, String command,
-                               String header, String footer) {
+                               String header, String footer, Set<String> secretNames) {
         String cache = DamogranStateService.posixQuote(sd.cacheRel());
+        // Deny-list: never persist an injected secret env var, even if the body
+        // re-declares it (the process-env form is already excluded via the
+        // baseline snapshot, but a `FOO=…` inside the body would slip through).
+        // Names are validated identifiers at parse time, so they are safe inside
+        // the case pattern. `:` is a bash no-op when there are no secrets.
+        String denyClause = secretNames.isEmpty()
+                ? ":"
+                : "case \"$_dgs_v\" in " + String.join("|", secretNames) + ") continue ;; esac";
         return """
                 # Damogran state wrapper (exec) — generated, do not edit.
                 _dgs_cache=%s
@@ -81,11 +97,12 @@ class ExecDamogranTask implements DamogranTask {
                 {
                   for _dgs_v in $(compgen -v); do
                     case "$_dgs_v" in _dgs_*) continue ;; esac
+                    %s
                     case "$_dgs_base" in *"|$_dgs_v|"*) continue ;; esac
                     declare -p "$_dgs_v" 2>/dev/null
                   done
                 } > "$_dgs_cache"
                 exit $_dgs_rc
-                """.formatted(cache, header, command, footer);
+                """.formatted(cache, header, command, footer, denyClause);
     }
 }

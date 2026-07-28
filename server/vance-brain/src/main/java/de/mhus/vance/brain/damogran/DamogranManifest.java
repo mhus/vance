@@ -180,11 +180,26 @@ public record DamogranManifest(
      * {@code params} carries every other field verbatim for that bean to read.
      * {@code declaredOutputs} are the workspace files the task should surface as
      * outputs (for the notebook output region and as export candidates).
+     * {@code secrets} maps an environment-variable name to a secret reference
+     * ({@code vault:key}, {@code project:key}, …); the runner resolves each server
+     * side and injects it as a sealed env var for {@code exec} tasks (WORK only),
+     * keeping the value out of the manifest, the state store and the logs.
      */
     public record TaskSpec(
             String type,
             Map<String, Object> params,
-            List<OutputSpec> declaredOutputs) {}
+            List<OutputSpec> declaredOutputs,
+            Map<String, String> secrets) {
+
+        public TaskSpec {
+            secrets = secrets == null ? Map.of() : Map.copyOf(secrets);
+        }
+
+        /** Convenience without secrets — the common case and existing call sites. */
+        public TaskSpec(String type, Map<String, Object> params, List<OutputSpec> declaredOutputs) {
+            this(type, params, declaredOutputs, Map.of());
+        }
+    }
 
     /**
      * A declared output of a task: which workspace file to surface, with an

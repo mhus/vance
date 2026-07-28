@@ -179,6 +179,90 @@ class DamogranManifestParserTest {
     }
 
     @Test
+    void parse_secretsMap_isParsedAndStrippedFromParams() {
+        String yaml =
+                """
+                workspace:
+                  name: scratch
+                tasks:
+                  - type: exec
+                    command: deploy.sh
+                    secrets:
+                      JIRA_TOKEN: vault:jira-token
+                      DB_PW: project:db.password
+                """;
+
+        TaskSpec task = parser.parse(yaml).tasks().get(0);
+
+        assertThat(task.secrets())
+                .containsEntry("JIRA_TOKEN", "vault:jira-token")
+                .containsEntry("DB_PW", "project:db.password");
+        assertThat(task.params()).doesNotContainKey("secrets");
+        assertThat(task.params()).containsEntry("command", "deploy.sh");
+    }
+
+    @Test
+    void parse_secretsWithInvalidEnvName_throws() {
+        String yaml =
+                """
+                workspace:
+                  name: scratch
+                tasks:
+                  - type: exec
+                    command: x
+                    secrets:
+                      "bad name": vault:k
+                """;
+
+        assertThatThrownBy(() -> parser.parse(yaml))
+                .isInstanceOf(DamogranException.class)
+                .hasMessageContaining("environment variable name");
+    }
+
+    @Test
+    void parse_secretsWithEmptyReference_throws() {
+        String yaml =
+                """
+                workspace:
+                  name: scratch
+                tasks:
+                  - type: exec
+                    command: x
+                    secrets:
+                      TOKEN: ""
+                """;
+
+        assertThatThrownBy(() -> parser.parse(yaml))
+                .isInstanceOf(DamogranException.class)
+                .hasMessageContaining("empty reference");
+    }
+
+    @Test
+    void parse_secretsNotAMap_throws() {
+        String yaml =
+                """
+                workspace:
+                  name: scratch
+                tasks:
+                  - type: exec
+                    command: x
+                    secrets:
+                      - vault:k
+                """;
+
+        assertThatThrownBy(() -> parser.parse(yaml))
+                .isInstanceOf(DamogranException.class)
+                .hasMessageContaining("must be a map");
+    }
+
+    @Test
+    void parse_taskWithoutSecrets_hasEmptyMap() {
+        TaskSpec task = parser.parse(
+                "workspace:\n  name: s\ntasks:\n  - type: exec\n    command: x\n").tasks().get(0);
+        assertThat(task.secrets()).isEmpty();
+    }
+
+    @Test
     void parse_emptyYaml_throws() {
         assertThatThrownBy(() -> parser.parse("   "))
                 .isInstanceOf(DamogranException.class)

@@ -3,7 +3,9 @@ package de.mhus.vance.brain.damogran;
 import de.mhus.vance.brain.damogran.DamogranManifest.OutputSpec;
 import de.mhus.vance.brain.damogran.DamogranManifest.TaskSpec;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -88,26 +90,58 @@ final class DamogranTaskSupport {
      * result mapping, regardless of target.
      */
     static DamogranTaskResult runExecTask(DamogranContext ctx, TaskSpec spec) {
+        return runExecTask(ctx, spec, Map.of());
+    }
+
+    /**
+     * Exec task with resolved secret env vars injected for the run (WORK backend).
+     * The values are also handed to {@link #toResult} so an accidental echo is
+     * masked out of the returned log.
+     */
+    static DamogranTaskResult runExecTask(
+            DamogranContext ctx, TaskSpec spec, Map<String, String> secretEnv) {
         String command = requireString(spec, "command");
-        ComposeExec.Result result = ctx.requireExec("exec").run(command, execDeadlineSeconds(spec));
-        return toResult(result, command, outputsFor(ctx, spec));
+        ComposeExec.Result result =
+                runWithEnv(ctx.requireExec("exec"), command, secretEnv, execDeadlineSeconds(spec));
+        return toResult(result, command, outputsFor(ctx, spec), secretEnv.values());
+    }
+
+    /**
+     * Runs on the backend, using the env-overload only when there are secrets to
+     * inject — an empty map takes the plain {@code run(command, deadline)} path so
+     * the no-secret behaviour (and every existing backend/mock) is unchanged.
+     */
+    static ComposeExec.Result runWithEnv(
+            ComposeExec exec, String command, Map<String, String> env, int deadlineSeconds) {
+        return env.isEmpty()
+                ? exec.run(command, deadlineSeconds)
+                : exec.run(command, env, deadlineSeconds);
+    }
+
+    static DamogranTaskResult toResult(
+            ComposeExec.Result result, String command, List<OutputArtifact> outputs) {
+        return toResult(result, command, outputs, List.of());
     }
 
     /**
      * Maps a {@link ComposeExec.Result} into a task result. Success =
      * {@code COMPLETED} with exit code 0; otherwise the failure carries the
-     * status, exit code and (capped) stderr.
+     * status, exit code and (capped) stderr. Any {@code secretValues} injected
+     * for this task are masked out of the log/detail before they reach the caller.
      */
     static DamogranTaskResult toResult(
-            ComposeExec.Result result, String command, List<OutputArtifact> outputs) {
+            ComposeExec.Result result, String command, List<OutputArtifact> outputs,
+            Collection<String> secretValues) {
         String stdout = result.stdout();
         String stderr = result.stderr();
-        String log = stdout.isBlank() ? stderr
+        String rawLog = stdout.isBlank() ? stderr
                 : (stderr.isBlank() ? stdout : stdout + "\n" + stderr);
+        String log = SecretMasker.mask(rawLog, secretValues);
         if (result.ok()) {
             return DamogranTaskResult.success(outputs, log);
         }
-        String detail = stderr.isBlank() ? "" : ": " + cap(stderr);
+        String maskedStderr = SecretMasker.mask(stderr, secretValues);
+        String detail = maskedStderr.isBlank() ? "" : ": " + cap(maskedStderr);
         return DamogranTaskResult.failure(
                 "'" + command + "' status=" + result.status() + " exit=" + result.exitCode() + detail, log);
     }

@@ -260,13 +260,54 @@ public class DamogranManifestParser {
         }
 
         List<OutputSpec> outputs = parseOutputs(map);
+        Map<String, String> secrets = parseSecrets(map);
 
         // params = everything except the reserved keys, verbatim for the bean.
         Map<String, Object> params = new LinkedHashMap<>((Map<String, Object>) map);
         params.remove("type");
         params.remove("outputs");
+        params.remove("secrets");
 
-        return new TaskSpec(type, Map.copyOf(params), outputs);
+        return new TaskSpec(type, Map.copyOf(params), outputs, secrets);
+    }
+
+    /** Valid POSIX-ish environment variable name — also guards the state-wrapper
+     *  deny-list, which interpolates these names into a bash {@code case} pattern. */
+    private static final java.util.regex.Pattern ENV_NAME =
+            java.util.regex.Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
+
+    /**
+     * Reads the optional {@code secrets:} map (env-var name → secret reference).
+     * Env names are validated so they can't inject into the exec/env or the
+     * state-wrapper bash template; references are kept verbatim and resolved at
+     * run time by the shared secret resolver.
+     */
+    @SuppressWarnings("unchecked")
+    private Map<String, String> parseSecrets(Map<String, Object> task) {
+        Object raw = task.get("secrets");
+        if (raw == null) {
+            return Map.of();
+        }
+        if (!(raw instanceof Map<?, ?> m)) {
+            throw new DamogranException(
+                    "compose manifest: task 'secrets' must be a map of envName -> secretRef");
+        }
+        Map<String, String> result = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> e : ((Map<String, Object>) m).entrySet()) {
+            String envName = e.getKey();
+            if (envName == null || !ENV_NAME.matcher(envName).matches()) {
+                throw new DamogranException(
+                        "compose manifest: task 'secrets' key '" + envName
+                                + "' is not a valid environment variable name");
+            }
+            Object v = e.getValue();
+            if (v == null || v.toString().isBlank()) {
+                throw new DamogranException(
+                        "compose manifest: task 'secrets' entry '" + envName + "' has an empty reference");
+            }
+            result.put(envName, v.toString().trim());
+        }
+        return Map.copyOf(result);
     }
 
     /**

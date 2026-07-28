@@ -6,6 +6,7 @@ import static de.mhus.vance.brain.damogran.DamogranTaskSupport.NO_DEADLINE_WAIT_
 import de.mhus.vance.brain.tools.exec.ExecManager;
 import de.mhus.vance.brain.tools.exec.SubmitOptions;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
@@ -38,6 +39,11 @@ final class WorkspaceComposeExec implements ComposeExec {
 
     @Override
     public Result run(String command, int deadlineSeconds) {
+        return run(command, Map.of(), deadlineSeconds);
+    }
+
+    @Override
+    public Result run(String command, Map<String, String> env, int deadlineSeconds) {
         SubmitOptions options;
         long waitMs;
         if (deadlineSeconds <= 0) {
@@ -46,6 +52,14 @@ final class WorkspaceComposeExec implements ComposeExec {
         } else {
             options = SubmitOptions.withDeadline(Instant.now().plusSeconds(deadlineSeconds));
             waitMs = (deadlineSeconds + EXEC_KILL_GRACE_SECONDS) * 1000L;
+        }
+        if (!env.isEmpty()) {
+            // ExecManager wipes inherited env when a sealed env is set, so merge
+            // the injected secrets on top of the current environment — otherwise
+            // the command loses PATH/HOME and friends.
+            Map<String, String> merged = new LinkedHashMap<>(System.getenv());
+            merged.putAll(env);
+            options = options.withEnv(merged);
         }
         Consumer<String> onJobId = progress == null ? null : progress::execJob;
 

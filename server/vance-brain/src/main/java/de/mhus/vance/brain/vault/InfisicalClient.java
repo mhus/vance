@@ -16,6 +16,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.LongSupplier;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -53,6 +54,7 @@ public class InfisicalClient {
 
     private final Map<String, CachedToken> tokenCache = new ConcurrentHashMap<>();
 
+    @Autowired
     public InfisicalClient(ObjectMapper objectMapper) {
         this(objectMapper,
                 HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build(),

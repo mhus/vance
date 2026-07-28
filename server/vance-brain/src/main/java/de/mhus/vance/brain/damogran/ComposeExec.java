@@ -1,5 +1,7 @@
 package de.mhus.vance.brain.damogran;
 
+import java.util.Map;
+
 /**
  * Per-run shell-exec backend — the one place a compose's exec mechanism differs
  * by target. WORK runs through {@link de.mhus.vance.brain.tools.exec.ExecManager}
@@ -18,6 +20,17 @@ public interface ComposeExec {
      * halt the linear run cleanly.
      */
     Result run(String command, int deadlineSeconds);
+
+    /**
+     * Run with additional sealed environment variables merged on top of the
+     * inherited environment. Only the WORK backend supports env injection; other
+     * backends (CLIENT/DAEMON) ignore {@code env} and behave as
+     * {@link #run(String, int)} — {@code secrets:} in compose is therefore
+     * WORK-only in v1.
+     */
+    default Result run(String command, Map<String, String> env, int deadlineSeconds) {
+        return run(command, deadlineSeconds);
+    }
 
     /**
      * Normalised outcome of a command. {@code status} is the backend's terminal

@@ -14,7 +14,11 @@ class ComposeFileRendererTest {
         assertThat(yaml).contains("mongodb:").contains("brain:").contains("face:");
         assertThat(yaml).contains("redis:");
         assertThat(yaml).contains("VANCE_REDIS_ENABLED: \"true\"");
-        assertThat(yaml).contains("redis-data:");
+        // Persistent data is host-bind-mounted under ./data — no named volumes.
+        assertThat(yaml).contains("- ./data/mongo:/data/db");
+        assertThat(yaml).contains("- ./data/brain:/app/data");
+        assertThat(yaml).contains("- ./data/redis:/data");
+        assertThat(yaml).doesNotContain("\nvolumes:\n");
         // Only the Vance/face port is published; brain/mongo/redis stay internal.
         assertThat(yaml).contains("${FACE_PORT:-8080}:80");
         assertThat(yaml).doesNotContain("${BRAIN_PORT");
@@ -50,7 +54,7 @@ class ComposeFileRendererTest {
 
         assertThat(yaml).doesNotContain("redis:");
         assertThat(yaml).doesNotContain("VANCE_REDIS_ENABLED");
-        assertThat(yaml).doesNotContain("redis-data:");
+        assertThat(yaml).doesNotContain("./data/redis");
         assertThat(yaml).contains("brain:");
     }
 
@@ -62,7 +66,7 @@ class ComposeFileRendererTest {
         String yaml = ComposeFileRenderer.renderCompose(s);
 
         assertThat(yaml).contains("anus:").contains("profiles: [\"tools\"]");
-        assertThat(yaml).contains("anus-data:");
+        assertThat(yaml).contains("- ./data/anus:/app/data");
     }
 
     @Test
@@ -76,7 +80,7 @@ class ComposeFileRendererTest {
 
         assertThat(yaml).contains("caddy:");
         assertThat(yaml).contains("caddy reverse-proxy --from ${VANCE_EXTERNAL_HOST} --to face:80");
-        assertThat(yaml).contains("caddy-data:").contains("caddy-config:");
+        assertThat(yaml).contains("- ./data/caddy:/data").contains("- ./data/caddy-config:/config");
         // Caddy is the only published front door — face is not host-exposed.
         assertThat(yaml).doesNotContain("${FACE_PORT");
     }

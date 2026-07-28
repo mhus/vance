@@ -172,26 +172,7 @@ final class ComposeFileRenderer {
         if (s.isAnusServiceEnabled()) {
             sb.append(ANUS);
         }
-        sb.append(volumes(s));
         return sb.toString();
-    }
-
-    private static String volumes(ComposeSetupState s) {
-        StringBuilder v = new StringBuilder("\nvolumes:\n");
-        v.append("  mongo-data:\n");
-        v.append("  brain-data:\n");
-        v.append("  brain-logs:\n");
-        if (s.isRedisEnabled()) {
-            v.append("  redis-data:\n");
-        }
-        if (caddyFronts(s)) {
-            v.append("  caddy-data:\n");
-            v.append("  caddy-config:\n");
-        }
-        if (s.isAnusServiceEnabled()) {
-            v.append("  anus-data:\n");
-        }
-        return v.toString();
     }
 
     // ──────────────────────── setup.sh ────────────────────────
@@ -217,6 +198,8 @@ final class ComposeFileRenderer {
             #   open http://localhost:8080
             #
             # Config lives in the sibling .env — edit it or re-run the wizard.
+            # Persistent data (Mongo, Brain, Redis, …) is bind-mounted under ./data
+            # next to this file — back that folder up, it survives `docker compose down`.
 
             name: vance
 
@@ -233,7 +216,7 @@ final class ComposeFileRenderer {
                   MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD:-example}
                   MONGO_INITDB_DATABASE: ${VANCE_MONGODB_DATABASE:-vance}
                 volumes:
-                  - mongo-data:/data/db
+                  - ./data/mongo:/data/db
             """;
 
     private static final String MONGO_PORTS = """
@@ -256,7 +239,7 @@ final class ComposeFileRenderer {
                 image: redis:7-alpine
                 restart: unless-stopped
                 volumes:
-                  - redis-data:/data
+                  - ./data/redis:/data
                 command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
             """;
 
@@ -289,8 +272,8 @@ final class ComposeFileRenderer {
     private static final String BRAIN_TAIL = """
                   JAVA_OPTS: ${BRAIN_JAVA_OPTS:--XX:+UseG1GC -XX:MaxRAMPercentage=75.0}
                 volumes:
-                  - brain-data:/app/data
-                  - brain-logs:/app/logs
+                  - ./data/brain:/app/data
+                  - ./data/brain-logs:/app/logs
             """;
 
     private static final String BRAIN_PORTS = """
@@ -357,8 +340,8 @@ final class ComposeFileRenderer {
                   - "80:80"
                   - "443:443"
                 volumes:
-                  - caddy-data:/data
-                  - caddy-config:/config
+                  - ./data/caddy:/data
+                  - ./data/caddy-config:/config
             """;
 
     private static final String MONGO_EXPRESS = """
@@ -419,7 +402,7 @@ final class ComposeFileRenderer {
                   VANCE_DEFAULT_LANGUAGE: ${VANCE_DEFAULT_LANGUAGE:-English}
                   VANCE_DEFAULT_LANGUAGE_CODE: ${VANCE_DEFAULT_LANGUAGE_CODE:-en}
                 volumes:
-                  - anus-data:/app/data
+                  - ./data/anus:/app/data
             """;
 
     private static final String SETUP_SH = """

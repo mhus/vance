@@ -1,6 +1,6 @@
 ---
-triggers: search, web search, recherche, suchen, "look up", find information online, "what does the web say", project memory, do we have, haben wir was zu, research_search, research_rich, research_search_expert, research_providers, research_investigate, investigate, "research the topic", "best sources", "find me the best", web_search, image_search, video_search, pdf_search, memory_search
-summary: How to pick between memory_search (project-local), research_search / research_rich / research_investigate (web), and the deferred legacy *_search tools. Check memory first; on the web side everything goes through the research_* family.
+triggers: search, web search, recherche, suchen, "look up", find information online, "what does the web say", project memory, do we have, haben wir was zu, research_search, research_rich, research_search_expert, research_providers, research_investigate, research_document, investigate, "research the topic", "best sources", "find me the best", "research and save", "write up the research", web_search, image_search, video_search, pdf_search, memory_search
+summary: How to pick between memory_search (project-local), research_search / research_rich / research_investigate (web corpus), research_document (research saved as a document), and the deferred legacy *_search tools. Check memory first; on the web side everything goes through the research_* family.
 ---
 # Search tools — picking the right one
 
@@ -165,6 +165,27 @@ Anti-patterns:
 - Calling it for memory-lookups. If the user's project already has
   notes on the topic, `memory_search` is the right first stop.
 
+### `research_document` — research saved as a document
+
+`research_document question=<text> [path=<...>] [tags=[...]]`
+
+Same pipeline as `research_investigate`, but instead of handing the
+corpus back into the turn it **writes a document**: it synthesizes a
+Markdown answer, saves it (default `research/<slug>.md`), stores a short
+summary on it, and attaches every source as a sticky-**note** citation.
+Returns a *pointer* — `path`, `summary`, `tags` — not the body.
+
+Use when the deliverable is a *document*, not a chat answer: "research X
+and write it up", "make a document about Y", "look into Z in the
+background". The point is to keep a large corpus **out** of your context
+— afterwards work the document with `doc_read` ranges / grep plus the
+returned summary, don't pull the whole body back in.
+
+Pick `research_investigate` instead when you want the raw ranked hits in
+front of you to reason over right now. Full how-to:
+`manual_read('research-to-document')`. It creates a document, so it needs
+write access to the project.
+
 ### `research_providers` — inventory probe (deferred)
 
 `research_providers` (no params)
@@ -212,6 +233,7 @@ settings. Use `research_providers` to list the inventory live.
 | "Find papers about Z" | `research_search modality=academic` |
 | "Only arxiv, only PDFs from 2024" | `research_search_expert` |
 | "Research X", "find the best sources", multi-source quality ranking | `research_investigate` |
+| "Research X and write it up / make a document / look into it in the background" | `research_document` |
 | Which provider is configured? | `research_providers` |
 
 ## Anti-patterns

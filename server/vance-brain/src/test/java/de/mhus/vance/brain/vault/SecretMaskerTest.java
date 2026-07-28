@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.damogran;
+package de.mhus.vance.brain.vault;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

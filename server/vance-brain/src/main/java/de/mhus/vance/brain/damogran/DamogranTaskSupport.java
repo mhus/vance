@@ -2,6 +2,7 @@ package de.mhus.vance.brain.damogran;
 
 import de.mhus.vance.brain.damogran.DamogranManifest.OutputSpec;
 import de.mhus.vance.brain.damogran.DamogranManifest.TaskSpec;
+import de.mhus.vance.brain.vault.SecretMasker;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;

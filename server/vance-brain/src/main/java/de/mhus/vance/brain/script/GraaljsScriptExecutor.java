@@ -4,11 +4,13 @@ import de.mhus.vance.brain.action.ScopeLevel;
 import de.mhus.vance.brain.action.SpawnToolRegistry;
 import de.mhus.vance.brain.ai.light.LightLlmService;
 import de.mhus.vance.brain.tools.ContextToolsApi;
+import de.mhus.vance.brain.vault.SecretMasker;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.workspace.NodeHandler;
 import de.mhus.vance.shared.workspace.RootDirHandle;
 import de.mhus.vance.shared.workspace.WorkspaceService;
+import de.mhus.vance.toolpack.core.SecretResolver;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -19,6 +21,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -71,6 +74,15 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
      *  writes so they carry {@code WriteReason.USER} and the permission provider
      *  applies the normal role check. Null in test builds → teamless fallback. */
     private final de.mhus.vance.brain.permission.@Nullable SecurityContextFactory securityContextFactory;
+
+    /**
+     * Optional — enables {@code vance.secret(...)} in scripts. Field-injected
+     * ({@code required=false}) so the executor's constructor telescoping (used by
+     * the unit-test stubs) stays untouched; the Spring bean gets the resolver, the
+     * test-constructed instances leave it null and the capability is withheld.
+     */
+    @Autowired(required = false)
+    private @Nullable SecretResolver secretResolver;
 
     @Autowired
     public GraaljsScriptExecutor(
@@ -266,7 +278,7 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
                 documentService, request.progressEmitter(),
                 request.notificationEmitter(), paramsForApi,
                 lightLlmService, settingService, request.documentBasePath(),
-                securityContextFactory);
+                securityContextFactory, secretResolver);
         // Resource bounds enforceable on GraalVM CE / HotSpot:
         //   - statementLimit bounds the *number* of statements executed, and
         //   - the wall-clock watchdog below (ctx.close(true) on timeout) bounds
@@ -337,6 +349,11 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
             return t;
         });
 
+        // Collect secret values the script pulls via vance.secret(...) so a
+        // string return can be masked (InheritableThreadLocal → the watchdog
+        // child thread inherits the sink at creation).
+        Set<String> pulledSecrets = ConcurrentHashMap.newKeySet();
+        VanceScriptApi.setActiveSecretTee(pulledSecrets);
         try {
             ctx.getBindings("js").putMember("vance", api);
             // Tool-supplied bindings become top-level variables in the
@@ -351,6 +368,11 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
                     ctx.eval(source), effectiveMaxResultNodes, resultMaxDepth));
             try {
                 Object value = future.get(effectiveTimeout.toMillis(), TimeUnit.MILLISECONDS);
+                if (value instanceof String s) {
+                    // Mask pulled secret values out of a string return (the
+                    // LLM-facing output). Object-graph returns are not deep-masked.
+                    value = SecretMasker.mask(s, pulledSecrets);
+                }
                 return new ScriptResult(value, Duration.between(start, Instant.now()));
             } catch (TimeoutException e) {
                 future.cancel(true);
@@ -371,6 +393,7 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
                 throw mapEvalFailure(e.getCause() == null ? e : e.getCause());
             }
         } finally {
+            VanceScriptApi.clearActiveSecretTee();
             watchdog.shutdownNow();
             try {
                 ctx.close();

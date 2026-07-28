@@ -11,6 +11,7 @@ import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.core.SecretResolver;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -64,6 +65,25 @@ public final class VanceScriptApi {
 
     public static void clearActiveLogTee() {
         ACTIVE_LOG_TEE.remove();
+    }
+
+    /**
+     * Per-run sink for secret values pulled via {@code vance.secret(...)}, so the
+     * executor can mask them out of the run's string output. Same
+     * {@link InheritableThreadLocal} rationale as {@link #ACTIVE_LOG_TEE}: the
+     * eval runs on a watchdog child thread that inherits the sink at creation.
+     * Set/clear around the eval; the set must be thread-safe.
+     */
+    private static final InheritableThreadLocal<Set<String>> ACTIVE_SECRET_TEE =
+            new InheritableThreadLocal<>();
+
+    public static void setActiveSecretTee(@Nullable Set<String> tee) {
+        if (tee == null) ACTIVE_SECRET_TEE.remove();
+        else ACTIVE_SECRET_TEE.set(tee);
+    }
+
+    public static void clearActiveSecretTee() {
+        ACTIVE_SECRET_TEE.remove();
     }
 
     @HostAccess.Export
@@ -134,6 +154,18 @@ public final class VanceScriptApi {
      */
     @HostAccess.Export
     public final @Nullable ScriptSettingsApi settings;
+
+    /**
+     * Vault-secret surface exposed as {@code vance.secret}. Resolves a secret
+     * reference ({@code vault:key}, {@code project:key}, …) server-side via the
+     * shared {@link SecretResolver} and returns the value to the script — the
+     * leak-free pull counterpart to compose {@code secrets:} env injection.
+     * {@code null} when no {@link SecretResolver} was wired (unit-test stubs);
+     * {@code vance.secret} is then {@code null} in JavaScript.
+     * See {@link ScriptSecretApi}.
+     */
+    @HostAccess.Export
+    public final @Nullable ScriptSecretApi secret;
 
     public VanceScriptApi(ContextToolsApi toolsApi) {
         this(toolsApi, null, Set.of(), null, null, null);
@@ -212,6 +244,7 @@ public final class VanceScriptApi {
                 : new ScriptDocumentApi(documentService, toolsApi.scope(), null, null);
         this.llm = null;
         this.settings = null;
+        this.secret = null;
     }
 
     /**
@@ -232,7 +265,7 @@ public final class VanceScriptApi {
                                   @Nullable NotificationSeverity> notificationEmitter,
                           @Nullable Map<String, Object> paramsMap) {
         this(toolsApi, recipeName, deniedToolNames, documentService,
-                progressEmitter, notificationEmitter, paramsMap, null, null, null, null);
+                progressEmitter, notificationEmitter, paramsMap, null, null, null, null, null);
     }
 
     public VanceScriptApi(ContextToolsApi toolsApi,
@@ -246,7 +279,7 @@ public final class VanceScriptApi {
                           @Nullable Map<String, Object> paramsMap,
                           @Nullable LightLlmService lightLlmService) {
         this(toolsApi, recipeName, deniedToolNames, documentService,
-                progressEmitter, notificationEmitter, paramsMap, lightLlmService, null, null, null);
+                progressEmitter, notificationEmitter, paramsMap, lightLlmService, null, null, null, null);
     }
 
     /**
@@ -266,11 +299,33 @@ public final class VanceScriptApi {
                           @Nullable LightLlmService lightLlmService,
                           @Nullable SettingService settingService) {
         this(toolsApi, recipeName, deniedToolNames, documentService, progressEmitter,
-                notificationEmitter, paramsMap, lightLlmService, settingService, null, null);
+                notificationEmitter, paramsMap, lightLlmService, settingService, null, null, null);
     }
 
     /**
-     * 10-arg canonical constructor — adds {@code documentBasePath}, the
+     * 11-arg overload (adds {@code contextFactory}) — pre-secret call surface,
+     * delegates with a {@code null} {@link SecretResolver}.
+     */
+    public VanceScriptApi(ContextToolsApi toolsApi,
+                          @Nullable String recipeName,
+                          Set<String> deniedToolNames,
+                          @Nullable DocumentService documentService,
+                          @Nullable BiConsumer<String,
+                                  @Nullable Map<String, Object>> progressEmitter,
+                          @Nullable BiConsumer<String,
+                                  @Nullable NotificationSeverity> notificationEmitter,
+                          @Nullable Map<String, Object> paramsMap,
+                          @Nullable LightLlmService lightLlmService,
+                          @Nullable SettingService settingService,
+                          @Nullable String documentBasePath,
+                          de.mhus.vance.brain.permission.@Nullable SecurityContextFactory contextFactory) {
+        this(toolsApi, recipeName, deniedToolNames, documentService, progressEmitter,
+                notificationEmitter, paramsMap, lightLlmService, settingService,
+                documentBasePath, contextFactory, null);
+    }
+
+    /**
+     * 12-arg canonical constructor — adds {@code documentBasePath}, the
      * "current path" that {@code vance.documents.*} resolves relative paths
      * against ({@code /abs} stays project-root). {@code null}/empty keeps
      * document paths project-root-relative. GraaljsScriptExecutor uses this,
@@ -288,7 +343,8 @@ public final class VanceScriptApi {
                           @Nullable LightLlmService lightLlmService,
                           @Nullable SettingService settingService,
                           @Nullable String documentBasePath,
-                          de.mhus.vance.brain.permission.@Nullable SecurityContextFactory contextFactory) {
+                          de.mhus.vance.brain.permission.@Nullable SecurityContextFactory contextFactory,
+                          @Nullable SecretResolver secretResolver) {
         this.tools = new ScriptToolsApi(toolsApi, deniedToolNames);
         this.files = new ScriptFilesApi(this.tools);
         this.context = new ScriptContextView(toolsApi.scope(), recipeName);
@@ -306,6 +362,9 @@ public final class VanceScriptApi {
         this.settings = settingService == null
                 ? null
                 : new ScriptSettingsApi(settingService, toolsApi.scope());
+        this.secret = secretResolver == null
+                ? null
+                : new ScriptSecretApi(secretResolver, toolsApi.scope());
     }
 
     /** Tool-dispatch surface exposed as {@code vance.tools}. */
@@ -1088,6 +1147,54 @@ public final class VanceScriptApi {
                 throw new ScriptHostException(
                         "vance.settings requires a tenant-scoped run", null);
             }
+        }
+    }
+
+    /**
+     * Vault-secret pull surface exposed as {@code vance.secret(...)}. Resolves a
+     * reference through the shared {@link SecretResolver} using the run's bound
+     * scope (never a script-supplied scope), returns the value to the script, and
+     * records it in the active secret-tee so the executor can mask it out of the
+     * run's string output. Full grammar: {@code vault:key} / {@code project:key} /
+     * {@code tenant:key} / {@code user:key} / bare key (cascade default).
+     */
+    public static final class ScriptSecretApi {
+
+        private final SecretResolver resolver;
+        private final ToolInvocationContext scope;
+
+        ScriptSecretApi(SecretResolver resolver, ToolInvocationContext scope) {
+            this.resolver = resolver;
+            this.scope = scope;
+        }
+
+        /**
+         * Resolve a secret reference to its value, or {@code null} when nothing is
+         * bound / the reference does not resolve. The value never enters the
+         * script's environment or persisted state — it lives only in the returned
+         * JS value (and is masked out of the run's string output).
+         */
+        @HostAccess.Export
+        public @Nullable String get(String ref) {
+            if (ref == null || ref.isBlank()) {
+                throw new ScriptHostException("vance.secret: reference must not be empty", null);
+            }
+            if (scope.tenantId() == null || scope.tenantId().isBlank()) {
+                throw new ScriptHostException("vance.secret requires a tenant-scoped run", null);
+            }
+            String wrapped = "{{secret:" + ref + "}}";
+            String resolved = resolver.resolve(wrapped, scope);
+            // resolved.equals(wrapped) == no substitution (unbound, or a ref whose
+            // shape the resolver's pattern can't match) — treat as unresolved and
+            // return null rather than leak a literal placeholder.
+            if (resolved == null || resolved.isEmpty() || resolved.equals(wrapped)) {
+                return null;
+            }
+            Set<String> tee = ACTIVE_SECRET_TEE.get();
+            if (tee != null) {
+                tee.add(resolved);
+            }
+            return resolved;
         }
     }
 

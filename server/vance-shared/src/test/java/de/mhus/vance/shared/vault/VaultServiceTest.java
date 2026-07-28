@@ -7,7 +7,9 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.shared.home.HomeBootstrapService;
+import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.settings.SettingService;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -45,7 +47,8 @@ class VaultServiceTest {
     }
 
     private VaultService serviceWith(VaultProvider... providers) {
-        return new VaultService(settingService, List.of(providers));
+        return new VaultService(
+                settingService, List.of(providers), new MetricService(new SimpleMeterRegistry()));
     }
 
     @Test

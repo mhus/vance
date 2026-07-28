@@ -1,6 +1,7 @@
 package de.mhus.vance.shared.vault;
 
 import de.mhus.vance.shared.home.HomeBootstrapService;
+import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.settings.SettingService;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -46,12 +47,18 @@ public class VaultService {
     static final List<String> CONFIG_SUFFIXES =
             List.of("project", "environment", "path", "clientId");
 
+    /** Outcome-tagged counter for the read path. */
+    static final String METRIC_READS = "vance.vault.reads";
+
     private final SettingService settingService;
     private final List<VaultProvider> providers;
+    private final MetricService metricService;
 
-    public VaultService(SettingService settingService, List<VaultProvider> providers) {
+    public VaultService(
+            SettingService settingService, List<VaultProvider> providers, MetricService metricService) {
         this.settingService = settingService;
         this.providers = providers;
+        this.metricService = metricService;
     }
 
     /**
@@ -66,18 +73,43 @@ public class VaultService {
         if (key == null || key.isBlank()) {
             throw new VaultException("Secret key must not be blank");
         }
-        VaultBinding binding = resolveBinding(scope);
+        VaultBinding binding;
+        try {
+            binding = resolveBinding(scope);
+        } catch (RuntimeException e) {
+            count("error");
+            throw e;
+        }
         if (binding == null) {
+            count("not_configured");
             throw new VaultException(
                     "No vault bound at scope (tenant='" + scope.tenantId()
                             + "', project='" + scope.projectId()
                             + "', user='" + scope.userId()
                             + "'): set '" + KEY_TYPE + "' to bind one");
         }
-        VaultProvider provider = selectProvider(binding.type());
+        VaultProvider provider;
+        try {
+            provider = selectProvider(binding.type());
+        } catch (RuntimeException e) {
+            count("no_provider");
+            throw e;
+        }
         log.trace("Vault read: type='{}' key='{}' scope(tenant='{}',project='{}',user='{}')",
                 binding.type(), key, scope.tenantId(), scope.projectId(), scope.userId());
-        return provider.readSecret(binding, key);
+        String value;
+        try {
+            value = provider.readSecret(binding, key);
+        } catch (RuntimeException e) {
+            count("error");
+            throw e;
+        }
+        count(value == null ? "not_found" : "success");
+        return value;
+    }
+
+    private void count(String outcome) {
+        metricService.counter(METRIC_READS, "outcome", outcome).increment();
     }
 
     /**

@@ -171,9 +171,11 @@ public class SettingsSecretResolver implements SecretResolver {
             return vaultService.readSecret(
                     new VaultScope(ctx.tenantId(), ctx.userId(), ctx.projectId()), key);
         } catch (VaultException e) {
-            // Fail closed like any other unresolved secret: the outer loop
-            // substitutes empty and the dependent call escalates to a 401.
-            log.warn("SettingsSecretResolver: vault lookup '{}' failed "
+            // Fail closed like any other unresolved secret: returning null makes
+            // the outer loop substitute empty (+ WARN) and the dependent call
+            // escalates to a 401. The cause detail goes to trace so we don't
+            // double-warn — the outer loop already logs the unresolved reference.
+            log.trace("SettingsSecretResolver: vault lookup '{}' failed "
                             + "(tenant='{}', project='{}', user='{}'): {}",
                     key, ctx.tenantId(), ctx.projectId(), ctx.userId(), e.getMessage());
             return null;

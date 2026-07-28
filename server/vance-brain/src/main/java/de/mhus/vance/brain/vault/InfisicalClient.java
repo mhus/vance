@@ -122,9 +122,13 @@ public class InfisicalClient {
 
     private HttpResponse<String> sendAuthorized(
             String method, String url, @Nullable String jsonBody, Endpoint ep) {
+        boolean usedCachedToken = tokenCache.containsKey(cacheKey(ep));
         HttpResponse<String> resp = doSend(method, url, jsonBody, accessToken(ep, false));
-        if (resp.statusCode() == 401) {
-            // Token may be stale/revoked mid-cache — force one fresh login and retry.
+        // Retry only when a *cached* token was used — it may have gone stale
+        // mid-cache. A 401 on a token we just logged in for means the identity
+        // itself is rejected; re-logging in would only repeat the failure (and
+        // double the latency of a doomed call).
+        if (resp.statusCode() == 401 && usedCachedToken) {
             resp = doSend(method, url, jsonBody, accessToken(ep, true));
         }
         return resp;
@@ -147,8 +151,12 @@ public class InfisicalClient {
 
     // ──────────────────── auth ────────────────────
 
+    private static String cacheKey(Endpoint ep) {
+        return ep.base + "|" + ep.clientId;
+    }
+
     private String accessToken(Endpoint ep, boolean forceRefresh) {
-        String cacheKey = ep.base + "|" + ep.clientId;
+        String cacheKey = cacheKey(ep);
         if (forceRefresh) {
             tokenCache.remove(cacheKey);
         } else {
@@ -187,7 +195,12 @@ public class InfisicalClient {
             throw new VaultException("Infisical login response missing 'accessToken'");
         }
         long expiresInSec = node.path("expiresIn").asLong();
-        long expiresAt = clock.getAsLong() + Math.max(0, expiresInSec) * 1000L;
+        if (expiresInSec <= 0) {
+            // A missing/zero TTL would defeat the cache (immediate re-login on
+            // every call). Fall back to a short conservative lifetime.
+            expiresInSec = 60;
+        }
+        long expiresAt = clock.getAsLong() + expiresInSec * 1000L;
         return new CachedToken(tokenNode.asText(), expiresAt);
     }
 

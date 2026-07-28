@@ -67,7 +67,9 @@ public class VaultService {
      * @return the secret value, or {@code null} if the vault has no such key
      * @throws VaultException if no vault is bound at the scope, no provider is
      *         registered for the configured type, a required binding setting is
-     *         missing, or the provider fails to reach the vault
+     *         missing, or the provider fails to reach the vault. Any lower-level
+     *         failure (settings-store error, provider RuntimeException) is wrapped
+     *         as VaultException, so this method never leaks another exception type
      */
     public @Nullable String readSecret(VaultScope scope, String key) {
         if (key == null || key.isBlank()) {
@@ -76,9 +78,14 @@ public class VaultService {
         VaultBinding binding;
         try {
             binding = resolveBinding(scope);
-        } catch (RuntimeException e) {
+        } catch (VaultException e) {
             count("error");
             throw e;
+        } catch (RuntimeException e) {
+            // Wrap infra failures (e.g. a settings-store read error) so readSecret
+            // only ever throws VaultException — callers fail closed uniformly.
+            count("error");
+            throw new VaultException("Vault binding resolution failed: " + e.getMessage(), e);
         }
         if (binding == null) {
             count("not_configured");
@@ -100,9 +107,13 @@ public class VaultService {
         String value;
         try {
             value = provider.readSecret(binding, key);
-        } catch (RuntimeException e) {
+        } catch (VaultException e) {
             count("error");
             throw e;
+        } catch (RuntimeException e) {
+            count("error");
+            throw new VaultException(
+                    "Vault provider '" + binding.type() + "' read failed: " + e.getMessage(), e);
         }
         count(value == null ? "not_found" : "success");
         return value;

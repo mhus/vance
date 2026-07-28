@@ -93,15 +93,31 @@ class InfisicalClientTest {
     }
 
     @Test
-    void readSecret_on401_refreshesTokenAndRetriesOnce() throws Exception {
+    void readSecret_staleCachedToken_refreshesAndRetriesOnce() throws Exception {
         httpReturns(
-                resp(200, LOGIN_OK),                                   // initial login
-                resp(401, "{\"message\":\"token expired\"}"),          // GET rejected
-                resp(200, LOGIN_OK),                                   // forced re-login
-                resp(200, "{\"secret\":{\"secretValue\":\"after\"}}")); // GET retry ok
+                resp(200, LOGIN_OK),                                    // read#1 login
+                resp(200, "{\"secret\":{\"secretValue\":\"first\"}}"),  // read#1 GET ok -> caches token
+                resp(401, "{\"message\":\"token expired\"}"),           // read#2 GET with cached token: stale
+                resp(200, LOGIN_OK),                                    // read#2 forced re-login
+                resp(200, "{\"secret\":{\"secretValue\":\"second\"}}")); // read#2 retry ok
 
-        assertThat(client.readSecret(binding(), "k")).isEqualTo("after");
-        verify(http, times(4)).send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class));
+        assertThat(client.readSecret(binding(), "k1")).isEqualTo("first");
+        assertThat(client.readSecret(binding(), "k2")).isEqualTo("second");
+        verify(http, times(5)).send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class));
+    }
+
+    @Test
+    void readSecret_freshToken401_doesNotRetry() throws Exception {
+        // A 401 on a token we just logged in for means the identity is rejected —
+        // re-logging in would only repeat it, so no retry (fail fast).
+        httpReturns(
+                resp(200, LOGIN_OK),  // fresh login (cache empty)
+                resp(401, "nope"));   // GET rejected on the fresh token
+
+        assertThatThrownBy(() -> client.readSecret(binding(), "k"))
+                .isInstanceOf(VaultException.class)
+                .hasMessageContaining("HTTP 401");
+        verify(http, times(2)).send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class));
     }
 
     @Test

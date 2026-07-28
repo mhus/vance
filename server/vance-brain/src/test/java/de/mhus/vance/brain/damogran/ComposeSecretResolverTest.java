@@ -66,6 +66,26 @@ class ComposeSecretResolverTest {
     }
 
     @Test
+    void resolve_refLeftUnchangedByResolver_isDropped() {
+        // A free-form key with whitespace makes the resolver's {{secret:…}} pattern
+        // not match, so resolve() returns the input verbatim — must not be injected.
+        String wrapped = "{{secret:vault:weird key}}";
+        when(secretResolver.resolve(eq(wrapped), any())).thenReturn(wrapped);
+
+        Map<String, String> out = resolver.resolve(secrets("K", "vault:weird key"), ctx(null));
+
+        assertThat(out).isEmpty();
+    }
+
+    @Test
+    void resolve_invalidEnvName_isSkippedWithoutResolving() {
+        Map<String, String> out = resolver.resolve(secrets("bad name", "vault:k"), ctx(null));
+
+        assertThat(out).isEmpty();
+        verifyNoInteractions(secretResolver);
+    }
+
+    @Test
     void resolve_derivesUserIdFromUserCaller() {
         when(secretResolver.resolve(any(), any())).thenReturn("X");
         ArgumentCaptor<ToolInvocationContext> cap = ArgumentCaptor.forClass(ToolInvocationContext.class);

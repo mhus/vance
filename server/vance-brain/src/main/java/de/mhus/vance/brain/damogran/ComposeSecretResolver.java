@@ -6,6 +6,7 @@ import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.core.SecretResolver;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
@@ -32,6 +33,10 @@ import org.springframework.stereotype.Component;
 @Slf4j
 class ComposeSecretResolver {
 
+    /** Defense-in-depth: env names also reach the state-wrapper bash template, so
+     *  re-validate here even though the parser already checks manifest input. */
+    private static final Pattern ENV_NAME = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
+
     private final SecretResolver secretResolver;
 
     ComposeSecretResolver(SecretResolver secretResolver) {
@@ -51,9 +56,18 @@ class ComposeSecretResolver {
         for (Map.Entry<String, String> e : secrets.entrySet()) {
             String envName = e.getKey();
             String ref = e.getValue();
-            String resolved = secretResolver.resolve("{{secret:" + ref + "}}", tc);
-            if (resolved == null || resolved.isEmpty()) {
-                log.warn("compose secrets: '{}' -> '{}' resolved to empty "
+            if (!ENV_NAME.matcher(envName).matches()) {
+                log.warn("compose secrets: env name '{}' is not a valid identifier — not injecting",
+                        envName);
+                continue;
+            }
+            String wrapped = "{{secret:" + ref + "}}";
+            String resolved = secretResolver.resolve(wrapped, tc);
+            // resolved.equals(wrapped) == no substitution happened: an empty value,
+            // OR a ref the resolver's pattern can't match (e.g. a free-form key with
+            // whitespace/'}'). Either way, don't inject a blank or a literal placeholder.
+            if (resolved == null || resolved.isEmpty() || resolved.equals(wrapped)) {
+                log.warn("compose secrets: '{}' -> '{}' did not resolve "
                                 + "(tenant='{}', project='{}') — not injecting",
                         envName, ref, ctx.tenantId(), ctx.projectId());
                 continue;

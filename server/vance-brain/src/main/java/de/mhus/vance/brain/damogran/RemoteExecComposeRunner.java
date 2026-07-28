@@ -146,6 +146,13 @@ abstract class RemoteExecComposeRunner implements ComposeRunner {
             return DamogranTaskResult.failure("task type '" + task.type()
                     + "' is not supported on " + target() + " target (only 'exec')");
         }
+        if (!task.secrets().isEmpty()) {
+            // Secret env injection is WORK-only (the env is sealed into the local
+            // ExecManager); remote targets have no such channel. Warn rather than
+            // silently run the command with the env vars unset.
+            log.warn("compose secrets {} declared on {} target — secret injection is "
+                    + "WORK-only and will be ignored here", task.secrets().keySet(), target());
+        }
         return DamogranTaskSupport.runExecTask(ctx, task);
     }
 }

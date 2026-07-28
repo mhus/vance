@@ -7,18 +7,21 @@ description:
        aufgelöst und über `{{secret:vault:<key>}}` (Tool-Templates, SMTP,
        REST-Tools) bzw. den `secrets:`-Block in Compose genutzt. Pro Scope
        genau eine Bindung — eine auf User-Ebene gesetzte Bindung gewinnt über
-       die Projekt-Bindung, diese über die Tenant-weite `_vance`-Bindung.
+       die Projekt-Bindung, diese über die Tenant-weite `_tenant`-Bindung.
        v1 unterstützt Infisical."
   en: "Binds this scope to an external secret manager. Secrets are never
        stored in Vance — they are resolved server-side at run time and used
        via `{{secret:vault:<key>}}` (tool templates, SMTP, REST tools) or the
        `secrets:` block in Compose. Exactly one binding per scope — a binding
        set at user scope wins over the project binding, which wins over the
-       tenant-wide `_vance` binding. v1 supports Infisical."
+       tenant-wide `_tenant` binding. v1 supports Infisical."
 icon: key
 category: integrations
 defaultScope: project
-availableIn: [ "_vance", "project", "user" ]
+# No availableIn → offered in every scope (user home, regular projects, and the
+# _tenant default project) so the full user→project→tenant binding cascade is
+# settable from the UI. (availableIn is a glob over the projectId, not a list of
+# scope keywords.)
 
 fields:
 

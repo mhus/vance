@@ -14,7 +14,9 @@ description:
 icon: image-edit
 category: ai
 defaultScope: tenant
-availableIn: [ "_vance", "project" ]
+# Tenant + regular projects (not per-user). availableIn is a projectId glob,
+# not scope keywords — the old ["_vance","project"] matched nothing.
+availableIn: [ "!_user_*" ]
 
 fields:
 

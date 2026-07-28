@@ -13,7 +13,9 @@ description:
 icon: paper-airplane
 category: integrations
 defaultScope: tenant
-availableIn: [ "_vance" ]
+# Tenant-level only (defaultScope: tenant). availableIn is a projectId glob —
+# the tenant-default project is "_tenant", not "_vance" (which matched nothing).
+availableIn: [ "_tenant" ]
 
 fields:
 

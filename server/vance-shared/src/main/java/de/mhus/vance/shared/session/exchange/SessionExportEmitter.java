@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.insights;
+package de.mhus.vance.shared.session.exchange;
 
 import tools.jackson.databind.ObjectMapper;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
@@ -11,6 +11,8 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -35,19 +37,21 @@ import org.jspecify.annotations.Nullable;
  * without schema knowledge.
  *
  * <p>This emitter is intentionally a pure function over {@link ExportData}
- * so the controller stays thin and the assembly is unit-testable
- * without a Spring context.
+ * so callers (the Brain export endpoint, the anus session commands) stay
+ * thin and the assembly is unit-testable without a Spring context. The
+ * hydration of {@link ExportData} from Mongo lives in
+ * {@link SessionExchangeService}.
  */
-final class SessionExportEmitter {
+public final class SessionExportEmitter {
 
     private SessionExportEmitter() {}
 
     /**
-     * Pre-loaded, tenant-scoped slice of the session graph. The
-     * controller hydrates this from its services; the emitter only
-     * formats it.
+     * Pre-loaded, tenant-scoped slice of the session graph.
+     * {@link SessionExchangeService} hydrates this from the shared
+     * services; the emitter only formats it.
      */
-    record ExportData(
+    public record ExportData(
             SessionDocument session,
             List<ThinkProcessDocument> processes,
             List<ChatMessageDocument> chatMessages,
@@ -58,12 +62,11 @@ final class SessionExportEmitter {
 
     /**
      * Stream the export to {@code out}. Does not close the stream — the
-     * caller (Spring's {@code StreamingResponseBody}) owns the response
-     * body lifecycle. {@code mapper} controls JSON formatting; we use
-     * the controller's shared {@link ObjectMapper} so {@code Instant}
-     * serialisation matches the rest of the REST surface.
+     * caller owns the output lifecycle (Spring's
+     * {@code StreamingResponseBody} for the REST path, a file stream for
+     * anus). {@code mapper} controls JSON formatting.
      */
-    static void write(OutputStream out, ObjectMapper mapper, ExportData data) throws IOException {
+    public static void write(OutputStream out, ObjectMapper mapper, ExportData data) throws IOException {
         // session_meta is always first — gives the consumer the
         // session id, project, user and engines used before any
         // per-record context.
@@ -94,6 +97,18 @@ final class SessionExportEmitter {
             throws IOException {
         out.write(mapper.writeValueAsBytes(row));
         out.write('\n');
+    }
+
+    /** Build {@code session-{id}-{utc-ts-with-dashes}.jsonl}. */
+    public static String buildExportFilename(String sessionId, Instant now) {
+        // ISO-8601 UTC with colons replaced by dashes so the filename is
+        // safe on every platform (Windows in particular rejects ':' in
+        // filenames).
+        String ts = DateTimeFormatter.ISO_INSTANT
+                .format(now.atOffset(ZoneOffset.UTC))
+                .replace(':', '-');
+        String safeId = sessionId.replaceAll("[^A-Za-z0-9._-]", "_");
+        return "session-" + safeId + "-" + ts + ".jsonl";
     }
 
     // ─── Per-type record builders ─────────────────────────────────────
@@ -178,6 +193,7 @@ final class SessionExportEmitter {
         r.put("sessionId", c.getSessionId());
         r.put("role", c.getRole() == null ? "" : c.getRole().name());
         r.put("content", c.getContent());
+        putIfNotNull(r, "thinking", c.getThinking());
         if (c.getTags() != null && !c.getTags().isEmpty()) {
             r.put("tags", new ArrayList<>(c.getTags()));
         }

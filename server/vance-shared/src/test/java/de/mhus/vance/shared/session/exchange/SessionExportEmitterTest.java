@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.insights;
+package de.mhus.vance.shared.session.exchange;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -244,7 +244,7 @@ class SessionExportEmitterTest {
 
     @Test
     void buildExportFilename_isWindowsSafeAndIncludesSessionId() {
-        String name = InsightsAdminController.buildExportFilename(
+        String name = SessionExportEmitter.buildExportFilename(
                 "abc-123", Instant.parse("2026-05-27T13:45:00Z"));
         // Colons would break Windows filenames — must be replaced.
         assertThat(name).doesNotContain(":");
@@ -257,7 +257,7 @@ class SessionExportEmitterTest {
     void buildExportFilename_sanitisesUnsafeSessionIdCharacters() {
         // A pathological session id with slashes / spaces must not
         // produce a filename that escapes the download folder.
-        String name = InsightsAdminController.buildExportFilename(
+        String name = SessionExportEmitter.buildExportFilename(
                 "a/b c\\d", Instant.parse("2026-05-27T13:45:00Z"));
         assertThat(name).doesNotContain("/");
         assertThat(name).doesNotContain("\\");

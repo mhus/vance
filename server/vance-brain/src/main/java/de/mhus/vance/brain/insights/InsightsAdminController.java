@@ -70,6 +70,8 @@ import de.mhus.vance.shared.memory.MemoryService;
 import de.mhus.vance.api.session.SessionStatus;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
+import de.mhus.vance.shared.session.exchange.SessionExchangeService;
+import de.mhus.vance.shared.session.exchange.SessionExportEmitter;
 import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
@@ -147,6 +149,7 @@ public class InsightsAdminController {
     private final ToolHealthService toolHealthService;
     private final ZarniwoopInsightsService zarniwoopInsightsService;
     private final ZarniwoopGateService zarniwoopGateService;
+    private final SessionExchangeService sessionExchangeService;
     private final RequestAuthority authority;
     private final ObjectMapper objectMapper;
 
@@ -254,59 +257,17 @@ public class InsightsAdminController {
                 new Resource.Session(tenant, session.getProjectId(), session.getSessionId()),
                 Action.ADMIN);
 
-        // Collect every process in the session, then everything keyed by
-        // those process ids. Each per-process service call is bounded —
-        // even a long-running session is at most a few processes.
-        List<ThinkProcessDocument> processes = thinkProcessService.findBySession(tenant, sessionId);
+        // Hydration of the export graph lives in the shared exchange
+        // service (single home, reused by the anus session commands).
+        SessionExportEmitter.ExportData data = sessionExchangeService.collectExport(session);
 
-        List<ChatMessageDocument> chat = new ArrayList<>();
-        List<MemoryDocument> memory = new ArrayList<>();
-        List<LlmTraceDocument> traces = new ArrayList<>();
-        List<MarvinNodeDocument> marvinNodes = new ArrayList<>();
-        List<PrakRunRecord> prakRuns = new ArrayList<>();
-        for (ThinkProcessDocument p : processes) {
-            String pid = p.getId();
-            if (pid == null) continue;
-            chat.addAll(chatMessageService.history(tenant, sessionId, pid));
-            memory.addAll(memoryService.listByProcess(tenant, pid));
-            // listByProcess is paginated (cap 200/page); walk pages until
-            // exhausted so we don't silently truncate a chatty session.
-            int page = 0;
-            while (true) {
-                org.springframework.data.domain.Page<LlmTraceDocument> chunk =
-                        llmTraceService.listByProcess(tenant, pid, page, 200);
-                traces.addAll(chunk.getContent());
-                if (chunk.getNumber() + 1 >= chunk.getTotalPages() || chunk.isEmpty()) break;
-                page++;
-            }
-            if ("marvin".equalsIgnoreCase(p.getThinkEngine())) {
-                marvinNodes.addAll(marvinNodeService.listAll(pid));
-            }
-            prakRuns.addAll(prakRunService.listByProcess(tenant, pid, PrakRunService.MAX_LIST_LIMIT));
-        }
-
-        SessionExportEmitter.ExportData data = new SessionExportEmitter.ExportData(
-                session, processes, chat, memory, traces, marvinNodes, prakRuns);
-
-        String filename = buildExportFilename(sessionId, Instant.now());
+        String filename = SessionExportEmitter.buildExportFilename(sessionId, Instant.now());
         StreamingResponseBody body = (OutputStream out) -> SessionExportEmitter.write(out, objectMapper, data);
 
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType("application/x-ndjson"))
                 .header("Content-Disposition", "attachment; filename=\"" + filename + "\"")
                 .body(body);
-    }
-
-    /** Build {@code session-{id}-{utc-ts-with-dashes}.jsonl}. */
-    static String buildExportFilename(String sessionId, Instant now) {
-        // ISO-8601 UTC with colons replaced by dashes so the filename is
-        // safe on every platform (Windows in particular rejects ':' in
-        // filenames).
-        String ts = DateTimeFormatter.ISO_INSTANT
-                .format(now.atOffset(ZoneOffset.UTC))
-                .replace(':', '-');
-        String safeId = sessionId.replaceAll("[^A-Za-z0-9._-]", "_");
-        return "session-" + safeId + "-" + ts + ".jsonl";
     }
 
     // ─── Processes ─────────────────────────────────────────────────────────

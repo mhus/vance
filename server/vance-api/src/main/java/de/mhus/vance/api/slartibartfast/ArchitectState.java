@@ -287,6 +287,17 @@ public class ArchitectState {
      *  {@code null} until DONE. */
     private @Nullable String persistedRecipePath;
 
+    /** Document path of the audit chain, set by PERSISTING (sibling
+     *  of {@link #persistedRecipePath}, e.g.
+     *  {@code "_vance/recipes/_user/got-talent.audit.json"}). Retained
+     *  on the state so the engine can re-serialize the audit after the
+     *  post-persist phases (EXECUTION_PLANNING / EXECUTING /
+     *  EXECUTION_VALIDATING) — otherwise the audit freezes at the
+     *  PERSISTING snapshot and the whole execution leg (decision,
+     *  prompt, child outcome) is never recorded. {@code null} until
+     *  PERSISTING writes the audit. */
+    private @Nullable String auditPath;
+
     /** Set when {@link #status} is {@link ArchitectStatus#FAILED}. */
     private @Nullable String failureReason;
 

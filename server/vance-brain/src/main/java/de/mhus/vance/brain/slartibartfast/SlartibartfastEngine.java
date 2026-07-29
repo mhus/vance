@@ -600,6 +600,11 @@ public class SlartibartfastEngine implements ThinkEngine {
                     && state.getChildExecutionProcessId() != null) {
                 log.info("Slartibartfast id='{}' parking on child '{}'",
                         process.getId(), state.getChildExecutionProcessId());
+                // Persist the audit now that EXECUTION_PLANNING's
+                // decision + prompt and the child spawn are known —
+                // so a pod crash while the child runs still leaves a
+                // record of what was decided and launched.
+                persistingPhase.rewriteAudit(state, process);
                 thinkProcessService.updateStatus(
                         process.getId(), ThinkProcessStatus.BLOCKED);
                 return;
@@ -612,6 +617,7 @@ public class SlartibartfastEngine implements ThinkEngine {
                         "Slartibartfast finished — recipe at `"
                                 + state.getPersistedRecipePath() + "`.");
                 emitFinalReply(process, ctx, state, ProcessEventType.DONE);
+                persistingPhase.rewriteAudit(state, process);
                 thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
                 return;
             }
@@ -624,6 +630,7 @@ public class SlartibartfastEngine implements ThinkEngine {
                                         ? "no reason recorded"
                                         : state.getFailureReason()));
                 emitFinalReply(process, ctx, state, ProcessEventType.FAILED);
+                persistingPhase.rewriteAudit(state, process);
                 thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
                 return;
             }
@@ -634,6 +641,7 @@ public class SlartibartfastEngine implements ThinkEngine {
                         "Slartibartfast escalated — inbox item `"
                                 + state.getEscalationInboxItemId()
                                 + "` awaiting user decision.");
+                persistingPhase.rewriteAudit(state, process);
                 thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
                 return;
             }
@@ -652,6 +660,9 @@ public class SlartibartfastEngine implements ThinkEngine {
                     "Slartibartfast aborted: " + e.getClass().getSimpleName()
                             + " — " + (e.getMessage() == null
                                     ? "(no message)" : e.getMessage()));
+            state.setFailureReason("aborted: " + e.getClass().getSimpleName()
+                    + " — " + (e.getMessage() == null ? "(no message)" : e.getMessage()));
+            persistingPhase.rewriteAudit(state, process);
             thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
             throw e;
         }

@@ -205,6 +205,11 @@ public class PersistingPhase {
         TerminationRationale termination = buildTerminationRationale(state);
         state.setTerminationRationale(termination);
         state.setPersistedRecipePath(recipePath);
+        // Retain the audit path so the engine can re-serialize the
+        // audit after the post-persist phases (EXECUTION_PLANNING /
+        // EXECUTING / EXECUTION_VALIDATING) via rewriteAudit — without
+        // it the audit freezes at this PERSISTING snapshot.
+        state.setAuditPath(auditPath);
 
         try {
             String auditJson = objectMapper
@@ -231,6 +236,37 @@ public class PersistingPhase {
                 process.getId(), artefactNoun, recipePath, draft.getConfidence(),
                 termination.getIterationCount(),
                 termination.getRecoveryEvents());
+    }
+
+    // ──────────────────── Audit re-write ────────────────────
+
+    /**
+     * Re-serialize the current {@link ArchitectState} to the audit
+     * document that PERSISTING first wrote. Lets the engine capture
+     * the post-persist phases — the EXECUTION_PLANNING decision +
+     * prompt, the EXECUTING child outcome, {@code replyEmitted} — that
+     * the one-shot PERSISTING dump can never see (it runs before them).
+     *
+     * <p>No-op before PERSISTING has written the audit (auditPath still
+     * {@code null}). Best-effort: a failed re-write is logged, never
+     * thrown — the recipe is already persisted and the run stands on
+     * its own terms.
+     */
+    public void rewriteAudit(ArchitectState state, ThinkProcessDocument process) {
+        String auditPath = state.getAuditPath();
+        if (auditPath == null || auditPath.isBlank()) {
+            return;
+        }
+        try {
+            String auditJson = objectMapper
+                    .writerWithDefaultPrettyPrinter()
+                    .writeValueAsString(state);
+            writeOrUpdate(process, auditPath, auditJson,
+                    "Audit chain for Slartibartfast run " + state.getRunId());
+        } catch (RuntimeException e) {
+            log.warn("Slartibartfast id='{}' audit re-write to '{}' failed: {}",
+                    process.getId(), auditPath, e.toString());
+        }
     }
 
     // ──────────────────── Document write ────────────────────

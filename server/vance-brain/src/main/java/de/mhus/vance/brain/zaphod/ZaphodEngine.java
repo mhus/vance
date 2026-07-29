@@ -388,6 +388,45 @@ public class ZaphodEngine implements ThinkEngine {
     // ──────────────────── Head spawn + sync drive ────────────────────
 
     /**
+     * Tools that let a process spawn or drive <b>other</b> think-processes.
+     * A Zaphod head is a leaf worker: it contributes exactly one
+     * perspective and terminates. Left in a head's manifest,
+     * {@code process_spawn} in particular turns a head into a rogue
+     * orchestrator — a persona like "you are jury member X" led an LLM to
+     * spawn the other jury members as full nested councils, fanning out
+     * recursively (the 2026-07-29 Got-Talent incident). These are stripped
+     * from every head's tool manifest at spawn time, engine-agnostically
+     * (a head recipe may be {@code ford}, {@code arthur}, …). Read-only
+     * introspection ({@code process_status}, {@code process_list}) stays —
+     * it cannot fan out and is inert for a childless leaf.
+     */
+    private static final Set<String> HEAD_ORCHESTRATION_EXCLUDES = Set.of(
+            "process_spawn",
+            "cross_process_create",
+            "hactar_run",
+            "process_steer",
+            "process_stop",
+            "process_pause",
+            "process_resume");
+
+    /**
+     * Materialise a head's effective tool set with the orchestration
+     * family removed. {@code effective} is {@code null} when the head
+     * recipe made no adjustment to the engine default; in that case we
+     * resolve the engine's own default set so the exclusion still bites —
+     * a {@code null} override would otherwise fall through to the
+     * unrestricted engine default downstream (see
+     * {@code ThinkEngineService}), re-granting {@code process_spawn}.
+     */
+    static Set<String> restrictHeadTools(
+            @Nullable Set<String> effective, ThinkEngine engine) {
+        Set<String> base = effective != null ? effective : engine.allowedTools();
+        Set<String> restricted = new LinkedHashSet<>(base);
+        restricted.removeAll(HEAD_ORCHESTRATION_EXCLUDES);
+        return restricted;
+    }
+
+    /**
      * Drive a head through one round. For round 0 the head is spawned
      * (recipe → child process) and started; the steer message carries
      * the original goal + persona. For round 1+ ({@code debate} only)
@@ -445,7 +484,7 @@ public class ZaphodEngine implements ThinkEngine {
                         applied.promptOverrideAppend(),
                         applied.promptMode(),
                         applied.dataRelayCorrection(),
-                        applied.effectiveAllowedTools(),
+                        restrictHeadTools(applied.effectiveAllowedTools(), targetEngine),
                         applied.connectionProfile(),
                         applied.defaultActiveSkills(),
                         applied.allowedSkills() == null

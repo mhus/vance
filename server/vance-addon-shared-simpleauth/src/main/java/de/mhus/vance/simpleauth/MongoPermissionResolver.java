@@ -110,11 +110,16 @@ public class MongoPermissionResolver implements PermissionResolver {
 
     private boolean documentAllowed(SecurityContext subject, Resource.Document d, Action action) {
         if (isWrite(action) && isReservedPath(d.path())) {
-            // The _vance/ config namespace is server-owned: WRITE is reserved to
-            // trusted server code (WriteReason.SYSTEM, short-circuited upstream
-            // by PermissionService) — no user actor writes it, not even a
-            // project ADMIN. READ falls through to the normal project rule.
-            return false;
+            // The _vance/ config namespace is server-owned: a normal user
+            // (READER/WRITER) is read-only here, but an ADMIN may edit it
+            // directly — project ADMIN, or tenant ADMIN via R3 inheritance.
+            // WriteReason.SYSTEM is the additive elevation channel (a vouched
+            // SYSTEM action is allowed regardless of the actor's role, audited
+            // via the real subject) and is short-circuited upstream in
+            // PermissionService before this resolver runs; a $meta.privileged/
+            // runAs document keeps its own extra ADMIN gate in DocumentService.
+            // READ falls through to the normal project rule.
+            return roleOnProject(subject, d.tenantId(), d.projectName(), GrantRole.ADMIN);
         }
         return roleOnProject(subject, d.tenantId(), d.projectName(), minRole(action));
     }
@@ -155,13 +160,16 @@ public class MongoPermissionResolver implements PermissionResolver {
         }
         // _vance: server-owned system config (recipes, models, manuals,
         // setting-forms). Every tenant member may READ (the recipe/model/
-        // settings cascade resolves here for all users), but WRITE is reserved
-        // to trusted server code (WriteReason.SYSTEM, short-circuited upstream
-        // by PermissionService) — not even a tenant ADMIN writes _vance through
-        // the normal policy; admin edits go through dedicated tools that vouch
-        // SYSTEM. Unlike _tenant (ADMIN-writable), _vance is read-only to users.
+        // settings cascade resolves here for all users). WRITE needs
+        // tenant-ADMIN — like _tenant. Trusted server code still writes via
+        // WriteReason.SYSTEM (short-circuited upstream by PermissionService);
+        // dedicated authoring tools keep their own ADMIN check + SYSTEM vouch
+        // as defense-in-depth.
         if (project.equals(VANCE_PROJECT)) {
-            return required == GrantRole.READER;
+            if (required == GrantRole.READER) {
+                return true;
+            }
+            return hasRole(tenantRole(subject, tenantId), GrantRole.ADMIN);
         }
         // Other users' hubs (_user_<other>) and any other system project:
         // tenant-ADMIN only.

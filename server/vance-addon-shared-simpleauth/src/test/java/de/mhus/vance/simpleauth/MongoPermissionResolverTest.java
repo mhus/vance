@@ -59,10 +59,10 @@ class MongoPermissionResolverTest {
     }
 
     @Test
-    void vanceProject_isReadableByAnyMember_butWriteIsSystemOnly() {
+    void vanceProject_isReadableByAnyMember_butWriteNeedsAdmin() {
         // System defaults (recipes/models/manuals/setting-forms) live in _vance and
-        // must be readable by every tenant member for the cascade; WRITE is
-        // server-only (WriteReason.SYSTEM, handled upstream) — a user actor is denied.
+        // must be readable by every tenant member for the cascade; WRITE needs
+        // tenant-ADMIN — a plain member (alice, no admin grant) is denied.
         assertThat(resolver.isAllowed(alice,
                 new Resource.Document("acme", "_vance", "recipes/default.yaml"), Action.READ))
                 .isTrue();
@@ -72,16 +72,27 @@ class MongoPermissionResolverTest {
     }
 
     @Test
-    void vanceProject_notWritableEvenByTenantAdmin() {
-        // Unlike _tenant, _vance is read-only to users: not even a tenant ADMIN
-        // writes it through policy — only server code via WriteReason.SYSTEM.
+    void vanceProject_writableByTenantAdmin() {
+        // Like _tenant, _vance is READ for every member and WRITE for a tenant
+        // ADMIN — admins may edit system config (recipes/models/manuals)
+        // directly; server code still writes via WriteReason.SYSTEM.
         when(grants.forScope("acme", GrantScopeType.TENANT, "acme"))
                 .thenReturn(List.of(grant(GrantScopeType.TENANT, "acme",
                         GrantSubjectType.USER, "alice", GrantRole.ADMIN)));
         assertThat(resolver.isAllowed(alice,
                 new Resource.Document("acme", "_vance", "recipes/default.yaml"), Action.WRITE))
+                .isTrue();
+        assertThat(resolver.isAllowed(alice,
+                new Resource.Document("acme", "_vance", "recipes/default.yaml"), Action.READ))
+                .isTrue();
+    }
+
+    @Test
+    void vanceProject_notWritableByNonAdminMember() {
+        // A plain tenant member (no ADMIN grant) stays read-only on _vance.
+        assertThat(resolver.isAllowed(alice,
+                new Resource.Document("acme", "_vance", "recipes/default.yaml"), Action.WRITE))
                 .isFalse();
-        // …but READ still works for the admin (and every member).
         assertThat(resolver.isAllowed(alice,
                 new Resource.Document("acme", "_vance", "recipes/default.yaml"), Action.READ))
                 .isTrue();
@@ -122,7 +133,7 @@ class MongoPermissionResolverTest {
     }
 
     @Test
-    void r4_reservedVancePath_writeDenied_evenForProjectAdmin() {
+    void r4_reservedVancePath_writeNeedsAdmin() {
         // alice is project WRITER
         when(grants.forScope("acme", GrantScopeType.PROJECT, "proj"))
                 .thenReturn(List.of(grant(GrantScopeType.PROJECT, "proj",
@@ -130,14 +141,15 @@ class MongoPermissionResolverTest {
         Resource.Document reserved = new Resource.Document("acme", "proj", "_vance/scheduler/x.yaml");
         // READ on a reserved path follows the project rule (WRITER can read)
         assertThat(resolver.isAllowed(alice, reserved, Action.READ)).isTrue();
-        // WRITE into _vance/ is server-only → WRITER denied
+        // WRITE into _vance/ needs ADMIN → a plain WRITER is denied
         assertThat(resolver.isAllowed(alice, reserved, Action.WRITE)).isFalse();
 
-        // …and a project ADMIN is denied too — only WriteReason.SYSTEM writes it.
+        // …but a project ADMIN may write it directly (server code still uses
+        // WriteReason.SYSTEM; a $meta.privileged doc keeps its own ADMIN gate).
         when(grants.forScope("acme", GrantScopeType.PROJECT, "proj"))
                 .thenReturn(List.of(grant(GrantScopeType.PROJECT, "proj",
                         GrantSubjectType.USER, "alice", GrantRole.ADMIN)));
-        assertThat(resolver.isAllowed(alice, reserved, Action.WRITE)).isFalse();
+        assertThat(resolver.isAllowed(alice, reserved, Action.WRITE)).isTrue();
     }
 
     @Test

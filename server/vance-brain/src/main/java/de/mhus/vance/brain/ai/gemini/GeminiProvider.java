@@ -72,6 +72,10 @@ public class GeminiProvider extends AbstractChatProvider {
             AiChatConfig config, AiChatOptions options, ModelInfo modelInfo) {
         Duration timeout = Duration.ofSeconds(
                 modelInfo.effectiveTimeoutSeconds(options.getTimeoutSeconds()));
+        // Streaming gets a generous total-request budget so a healthy
+        // long generation is not cut off at the sync timeout.
+        Duration streamTimeout = Duration.ofSeconds(
+                modelInfo.effectiveStreamTimeoutSeconds(options.getTimeoutSeconds()));
         ThinkingLevel effectiveLevel = gateThinkingLevel(
                 options.getThinkingLevel(), modelInfo);
         @Nullable GeminiThinkingConfig thinking = mapThinking(effectiveLevel);
@@ -102,7 +106,7 @@ public class GeminiProvider extends AbstractChatProvider {
                         .presencePenalty(options.getPresencePenalty())
                         .seed(seed)
                         .stopSequences(options.getStopSequences())
-                        .timeout(timeout)
+                        .timeout(streamTimeout)
                         .logRequestsAndResponses(options.getLogRequests());
         if (thinking != null) {
             syncBuilder.thinkingConfig(thinking);

@@ -102,6 +102,10 @@ public class OllamaProvider extends AbstractChatProvider {
             AiChatConfig config, AiChatOptions options, ModelInfo modelInfo) {
         Duration timeout = Duration.ofSeconds(
                 modelInfo.effectiveTimeoutSeconds(options.getTimeoutSeconds()));
+        // Streaming gets a generous total-request budget so a healthy
+        // long generation is not cut off at the sync timeout.
+        Duration streamTimeout = Duration.ofSeconds(
+                modelInfo.effectiveStreamTimeoutSeconds(options.getTimeoutSeconds()));
         boolean think = options.getThinkingLevel() != ThinkingLevel.OFF;
         Integer seed = options.getSeed() == null ? null : options.getSeed().intValue();
         // Ollama defaults num_ctx=4096 unless overridden — that's far
@@ -138,7 +142,7 @@ public class OllamaProvider extends AbstractChatProvider {
                 .topK(options.getTopK())
                 .seed(seed)
                 .stop(options.getStopSequences())
-                .timeout(timeout)
+                .timeout(streamTimeout)
                 .think(think)
                 .returnThinking(think)
                 .logRequests(options.getLogRequests())

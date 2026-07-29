@@ -68,6 +68,19 @@ public record ModelInfo(
     public static final int DEFAULT_TIMEOUT_SECONDS = 60;
 
     /**
+     * Floor for the <b>streaming</b> total-request timeout. A streamed
+     * response legitimately runs far longer than a single sync JSON
+     * response — it emits tokens over time — so applying the sync
+     * {@link #effectiveTimeoutSeconds} budget to a stream cuts off
+     * healthy long generations at the sync limit. The 2026-07-29
+     * {@code deepseek-v4-pro} incident was exactly this: a big-manifest
+     * chat turn hit the 60s sync cap mid-stream and got abandoned to
+     * the fallback model. Streaming therefore gets a generous floor
+     * while a truly hung connection stays bounded.
+     */
+    public static final int DEFAULT_STREAM_TIMEOUT_SECONDS = 300;
+
+    /**
      * Default budget for action-loop "free text without tool call"
      * corrections. The action loop re-prompts the LLM up to this many
      * times before falling back to the best free-text it captured.
@@ -116,6 +129,20 @@ public record ModelInfo(
             return callerOverride;
         }
         return timeoutSeconds;
+    }
+
+    /**
+     * Resolve the per-call timeout providers should apply to the
+     * <b>streaming</b> model. Never shorter than
+     * {@link #effectiveTimeoutSeconds(Integer)} and never below
+     * {@link #DEFAULT_STREAM_TIMEOUT_SECONDS} — a slow model that
+     * streams for minutes is not cut off at the sync budget, while a
+     * caller/recipe that pins an even larger budget still wins.
+     */
+    public int effectiveStreamTimeoutSeconds(
+            @org.jspecify.annotations.Nullable Integer callerOverride) {
+        return Math.max(
+                effectiveTimeoutSeconds(callerOverride), DEFAULT_STREAM_TIMEOUT_SECONDS);
     }
 
     /**

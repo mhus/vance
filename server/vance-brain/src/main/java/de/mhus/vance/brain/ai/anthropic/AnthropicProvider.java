@@ -100,14 +100,24 @@ public class AnthropicProvider extends AbstractChatProvider {
                 : DEFAULT_MAX_TOKENS;
         Duration timeout = Duration.ofSeconds(
                 modelInfo.effectiveTimeoutSeconds(effective.getTimeoutSeconds()));
+        // Streaming gets a generous total-request budget so a healthy
+        // long generation is not cut off at the sync timeout. The OkHttp
+        // call timeout caps the whole response, so streaming needs its
+        // own client with the larger budget.
+        Duration streamTimeout = Duration.ofSeconds(
+                modelInfo.effectiveStreamTimeoutSeconds(effective.getTimeoutSeconds()));
         AnthropicClient client = AnthropicOkHttpClient.builder()
                 .apiKey(config.apiKey())
                 .timeout(timeout)
                 .build();
+        AnthropicClient streamClient = AnthropicOkHttpClient.builder()
+                .apiKey(config.apiKey())
+                .timeout(streamTimeout)
+                .build();
         ChatModel sync = new AnthropicDirectChatModel(
                 client, config.modelName(), maxTokens, effective);
         StreamingChatModel streaming = new AnthropicDirectStreamingChatModel(
-                client, config.modelName(), maxTokens, effective);
+                streamClient, config.modelName(), maxTokens, effective);
         log.debug("Built Anthropic chat: model='{}', maxTokens={}, "
                         + "cacheBoundary={}, ttl={}, thinking={}",
                 config.modelName(), maxTokens,

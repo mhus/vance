@@ -92,6 +92,10 @@ public class OllamaCloudProvider extends AbstractChatProvider {
             AiChatConfig config, AiChatOptions options, ModelInfo modelInfo) {
         Duration timeout = Duration.ofSeconds(
                 modelInfo.effectiveTimeoutSeconds(options.getTimeoutSeconds()));
+        // Streaming gets a generous total-request budget so a healthy
+        // long generation is not cut off at the sync timeout.
+        Duration streamTimeout = Duration.ofSeconds(
+                modelInfo.effectiveStreamTimeoutSeconds(options.getTimeoutSeconds()));
         Map<String, String> authHeader = Map.of("Authorization", "Bearer " + config.apiKey());
         boolean think = options.getThinkingLevel() != ThinkingLevel.OFF;
         Integer seed = options.getSeed() == null ? null : options.getSeed().intValue();
@@ -120,7 +124,7 @@ public class OllamaCloudProvider extends AbstractChatProvider {
                 .topK(options.getTopK())
                 .seed(seed)
                 .stop(options.getStopSequences())
-                .timeout(timeout)
+                .timeout(streamTimeout)
                 .customHeaders(authHeader)
                 .think(think)
                 .returnThinking(think)

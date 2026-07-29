@@ -99,6 +99,11 @@ public class OpenAiProvider extends AbstractChatProvider {
             AiChatConfig config, AiChatOptions options, ModelInfo modelInfo) {
         Duration timeout = Duration.ofSeconds(
                 modelInfo.effectiveTimeoutSeconds(options.getTimeoutSeconds()));
+        // Streaming gets a generous total-request budget — a healthy
+        // streamed generation runs far longer than a single sync
+        // response and must not be cut off at the sync timeout.
+        Duration streamTimeout = Duration.ofSeconds(
+                modelInfo.effectiveStreamTimeoutSeconds(options.getTimeoutSeconds()));
         Map<String, Object> cacheParams = buildCacheParameters(config, options, cacheEnabled);
         Integer seed = options.getSeed() == null ? null : options.getSeed().intValue();
         // Per-tenant override (cortecs / OpenRouter / vLLM) wins over the Spring
@@ -116,6 +121,13 @@ public class OpenAiProvider extends AbstractChatProvider {
                 .seed(seed)
                 .stop(options.getStopSequences())
                 .timeout(timeout)
+                // Bound the retry storm on a persistent failure. The sync
+                // model backs LightLlm helpers (follow-up, judge,
+                // discovery) — a timeout is a persistent condition, so
+                // langchain4j's default retries just re-issue the same
+                // slow request and multiply the wait. One retry still
+                // covers a genuine transient blip (429 / 5xx).
+                .maxRetries(1)
                 .logRequests(options.getLogRequests())
                 .logResponses(options.getLogRequests());
         OpenAiStreamingChatModel.OpenAiStreamingChatModelBuilder streamBuilder =
@@ -130,7 +142,7 @@ public class OpenAiProvider extends AbstractChatProvider {
                         .presencePenalty(options.getPresencePenalty())
                         .seed(seed)
                         .stop(options.getStopSequences())
-                        .timeout(timeout)
+                        .timeout(streamTimeout)
                         .logRequests(options.getLogRequests())
                         .logResponses(options.getLogRequests());
         if (!cacheParams.isEmpty()) {

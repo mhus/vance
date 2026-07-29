@@ -96,6 +96,10 @@ public class LmStudioProvider extends AbstractChatProvider {
             AiChatConfig config, AiChatOptions options, ModelInfo modelInfo) {
         Duration timeout = Duration.ofSeconds(
                 modelInfo.effectiveTimeoutSeconds(options.getTimeoutSeconds()));
+        // Streaming gets a generous total-request budget so a healthy
+        // long generation is not cut off at the sync timeout.
+        Duration streamTimeout = Duration.ofSeconds(
+                modelInfo.effectiveStreamTimeoutSeconds(options.getTimeoutSeconds()));
         Integer seed = options.getSeed() == null ? null : options.getSeed().intValue();
         // Per-tenant override (custom LM Studio host) wins over the Spring
         // boot-time default. Empty / unset falls back to vance.ai.lmstudio.base-url.
@@ -126,7 +130,7 @@ public class LmStudioProvider extends AbstractChatProvider {
                         .presencePenalty(options.getPresencePenalty())
                         .seed(seed)
                         .stop(options.getStopSequences())
-                        .timeout(timeout)
+                        .timeout(streamTimeout)
                         .logRequests(options.getLogRequests())
                         .logResponses(options.getLogRequests());
         ThinkingLevel effectiveLevel = OpenAiProvider.gateThinkingLevel(

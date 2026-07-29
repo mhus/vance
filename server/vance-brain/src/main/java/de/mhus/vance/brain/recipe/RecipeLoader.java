@@ -74,7 +74,7 @@ public class RecipeLoader {
         }
         LookupResult result = hit.get();
         try {
-            return Optional.of(parse(name.toLowerCase().trim(), result, templateRenderer));
+            return Optional.of(parse(canonicalName(name), result, templateRenderer));
         } catch (RuntimeException e) {
             throw new RecipeParseException(
                     "Failed to parse recipe '" + name + "' from "
@@ -127,7 +127,21 @@ public class RecipeLoader {
     }
 
     private static String pathFor(String name) {
-        return RECIPE_PATH_PREFIX + name.toLowerCase().trim() + RECIPE_PATH_SUFFIX;
+        return RECIPE_PATH_PREFIX + canonicalName(name) + RECIPE_PATH_SUFFIX;
+    }
+
+    /**
+     * Canonical form of a recipe name used to build the document path.
+     * Recipe names are kebab-case identifiers: lower-cased, trimmed, with
+     * internal whitespace runs collapsed to a single {@code -}. The loader
+     * always resolves this canonical form, so every write path that
+     * persists a recipe <b>must</b> apply the same canonicalization —
+     * otherwise a name like {@code "Got Talent"} is stored at a path the
+     * loader will never resolve. Path separators ({@code /}, used by the
+     * {@code _user/} prefix) are preserved.
+     */
+    public static String canonicalName(String name) {
+        return name.trim().toLowerCase().replaceAll("\\s+", "-");
     }
 
     private static String effectiveProjectId(@Nullable String projectId) {

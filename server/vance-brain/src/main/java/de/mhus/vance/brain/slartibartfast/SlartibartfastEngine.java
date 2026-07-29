@@ -22,6 +22,7 @@ import de.mhus.vance.api.slartibartfast.Criterion;
 import de.mhus.vance.api.slartibartfast.CriterionOrigin;
 import de.mhus.vance.api.slartibartfast.PendingInboxKind;
 import de.mhus.vance.brain.recipe.AppliedRecipe;
+import de.mhus.vance.brain.recipe.RecipeLoader;
 import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.slartibartfast.architect.SchemaArchitect;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
@@ -1613,8 +1614,14 @@ public class SlartibartfastEngine implements ThinkEngine {
         // Phase-D engine-params: caller-supplied recipe naming + edit-target.
         // FRAMING-LLM can populate these from the user description too;
         // engine-params win when both are set (explicit > inferred).
-        String recipeName = stringParam(p, RECIPE_NAME_KEY);
-        String targetRecipeName = stringParam(p, TARGET_RECIPE_NAME_KEY);
+        // Recipe names are case-insensitive identifiers — canonicalize
+        // them here (once, at the boundary) so the persist path built in
+        // PersistingPhase matches the lower-cased path RecipeLoader looks
+        // up. Without this a name like "Got Talent" is stored where the
+        // loader can never find it. FRAMING-LLM tends to echo the user's
+        // literal casing, so this is the natural failure case.
+        String recipeName = canonicalRecipeName(stringParam(p, RECIPE_NAME_KEY));
+        String targetRecipeName = canonicalRecipeName(stringParam(p, TARGET_RECIPE_NAME_KEY));
         String modificationSummary = stringParam(p, MODIFICATION_SUMMARY_KEY);
         String existingScriptRef = stringParam(p, EXISTING_SCRIPT_REF_KEY);
         String failureReason = stringParam(p, FAILURE_REASON_KEY);
@@ -1654,6 +1661,15 @@ public class SlartibartfastEngine implements ThinkEngine {
      * unknown values warn-log and fall through to the inferred
      * default.
      */
+    /**
+     * Canonicalizes a caller-supplied recipe name to the case-insensitive
+     * identifier form the loader resolves. Blank stays blank so the
+     * downstream {@code isBlank()} defaulting is unaffected.
+     */
+    private static String canonicalRecipeName(String raw) {
+        return raw.isBlank() ? raw : RecipeLoader.canonicalName(raw);
+    }
+
     private static de.mhus.vance.api.slartibartfast.ArchitectMode resolveInitialMode(
             String modeRaw, String targetRecipeName, String existingScriptRef) {
         if (!modeRaw.isBlank()) {

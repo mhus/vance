@@ -33,9 +33,13 @@ class SetupState {
     /** Track edits so {@code save()} only calls {@code userService.update} when needed. */
     private boolean userFieldsChanged;
 
-    private ProviderPreset provider = ProviderPreset.GEMINI;
+    /** {@code null} = no AI provider configured (the new, no-default state). */
+    private @Nullable ProviderPreset provider;
     private String aiModel = "";
     private @Nullable String aiApiKey;
+
+    /** Endpoint override — only set for {@link ProviderPreset#CUSTOM}. */
+    private @Nullable String baseUrl;
 
     /** Set together with {@link #aiApiKey} for providers that have their own embeddings. */
     private @Nullable String embeddingApiKey;

@@ -343,9 +343,9 @@ public class SetupWizard {
         // plaintext field (we'd have to decrypt + redisplay, which is more
         // exposure than the convenience is worth). API-key fields therefore
         // start blank: leaving them blank in the menu means "keep existing".
+        // No default provider — a fresh tenant starts with AI unconfigured and
+        // the operator picks one explicitly (or skips it entirely).
         if (state.isTenantCreated()) {
-            state.setProvider(ProviderPreset.GEMINI);
-            state.setAiModel(ProviderPreset.GEMINI.defaultModel());
             return;
         }
         String tenantId = state.getTenantId();
@@ -355,13 +355,21 @@ public class SetupWizard {
         ProviderPreset preset = providerId == null ? null
                 : ProviderPreset.fromSettingsId(providerId);
         if (preset == null) {
-            preset = ProviderPreset.GEMINI;
+            // Existing tenant without a recognised provider: leave unconfigured.
+            return;
         }
         state.setProvider(preset);
         String model = settingService.getStringValue(
                 tenantId, SettingService.SCOPE_PROJECT,
                 HomeBootstrapService.TENANT_PROJECT_NAME, "ai.default.model");
         state.setAiModel(StringUtils.defaultIfBlank(model, preset.defaultModel()));
+        String baseUrl = settingService.getStringValue(
+                tenantId, SettingService.SCOPE_PROJECT,
+                HomeBootstrapService.TENANT_PROJECT_NAME,
+                "ai.provider." + preset.settingsId() + ".baseUrl");
+        if (StringUtils.isNotBlank(baseUrl)) {
+            state.setBaseUrl(baseUrl);
+        }
     }
 
     // ──────────────────────── setup menu ────────────────────────
@@ -369,6 +377,8 @@ public class SetupWizard {
     /** @return {@code true} if the operator picked {@code s) Save}. */
     private boolean setupMenu(PrintWriter out, LineReader reader, SetupState state) {
         while (true) {
+            boolean existing = !state.isTenantCreated();
+            @Nullable ProviderPreset p = state.getProvider();
             out.println();
             out.println("Setup");
             out.println("-----");
@@ -382,29 +392,40 @@ public class SetupWizard {
                     StringUtils.defaultIfBlank(state.getUserTitle(), "—"));
             out.printf("  5) User email:           %s%n",
                     StringUtils.defaultIfBlank(state.getUserEmail(), "—"));
-            out.printf("  6) AI provider:          %s%n", state.getProvider().displayName());
-            out.printf("  7) AI model:             %s%n", state.getAiModel());
-            out.printf("  8) AI API key:           %s%n", maskedFor(state.getAiApiKey(),
-                    !state.isTenantCreated()));
-            if (state.getProvider().supportsEmbedding()) {
-                out.printf("  9) Embedding API key:    %s  (reuses chat key if blank)%n",
-                        maskedFor(state.getEmbeddingApiKey(), !state.isTenantCreated()));
+            out.printf("  6) AI provider:          %s%n",
+                    p == null ? "(not configured)" : p.displayName());
+            out.printf("  7) AI model:             %s%n",
+                    p == null ? "—" : StringUtils.defaultIfBlank(state.getAiModel(), "—"));
+            if (p != null && p.requiresBaseUrl()) {
+                out.printf("  8) AI base URL:          %s%n",
+                        StringUtils.defaultIfBlank(state.getBaseUrl(), "(required — not set)"));
             } else {
-                out.println("  9) Embedding API key:    (provider has no embeddings — uses in-process model)");
+                out.printf("  8) AI base URL:          %s%n",
+                        p == null ? "—" : "(n/a — provider uses its own endpoint)");
             }
-            out.printf(" 10) Serper key (research): %s%n",
-                    maskedFor(state.getSerperKey(), !state.isTenantCreated()));
+            out.printf("  9) AI API key:           %s%n",
+                    p == null ? "—" : maskedFor(state.getAiApiKey(), existing));
+            if (p != null && p.supportsEmbedding()) {
+                out.printf(" 10) Embedding API key:    %s  (reuses chat key if blank)%n",
+                        maskedFor(state.getEmbeddingApiKey(), existing));
+            } else if (p != null) {
+                out.println(" 10) Embedding API key:    (provider has no embeddings — uses in-process model)");
+            } else {
+                out.println(" 10) Embedding API key:    —");
+            }
+            out.printf(" 11) Serper key (research): %s%n",
+                    maskedFor(state.getSerperKey(), existing));
             out.println();
             out.flush();
 
-            String in = readLine(reader, "Edit [1-10], s) Save, q) Quit: ");
+            String in = readLine(reader, "Edit [1-11], s) Save, q) Quit: ");
             if (in == null) {
                 return false;
             }
             in = in.trim().toLowerCase();
             switch (in) {
                 case "s" -> {
-                    if (validate(out, state)) {
+                    if (confirmSave(out, reader, state)) {
                         return true;
                     }
                 }
@@ -437,16 +458,38 @@ public class SetupWizard {
                 }
                 case "6" -> editProvider(out, reader, state);
                 case "7" -> {
+                    if (state.getProvider() == null) {
+                        out.println("Pick an AI provider first (entry 6).");
+                        break;
+                    }
                     String v = readLine(reader, "AI model: ");
                     if (v != null && !v.isBlank()) state.setAiModel(v.trim());
                 }
                 case "8" -> {
+                    ProviderPreset pr = state.getProvider();
+                    if (pr == null || !pr.requiresBaseUrl()) {
+                        out.println("Base URL only applies to the OpenAI-compatible provider (entry 6).");
+                        break;
+                    }
+                    String v = readLine(reader, "AI base URL (e.g. https://api.cortecs.ai/v1): ");
+                    if (v != null && !v.isBlank()) state.setBaseUrl(v.trim());
+                }
+                case "9" -> {
+                    if (state.getProvider() == null) {
+                        out.println("Pick an AI provider first (entry 6).");
+                        break;
+                    }
                     String v = readPassword(reader, "AI API key (blank to keep current): ");
                     if (!StringUtils.isBlank(v)) state.setAiApiKey(v);
                 }
-                case "9" -> {
-                    if (!state.getProvider().supportsEmbedding()) {
-                        out.println("Provider " + state.getProvider().displayName()
+                case "10" -> {
+                    ProviderPreset pr = state.getProvider();
+                    if (pr == null) {
+                        out.println("Pick an AI provider first (entry 6).");
+                        break;
+                    }
+                    if (!pr.supportsEmbedding()) {
+                        out.println("Provider " + pr.displayName()
                                 + " has no embedding endpoint — skip.");
                         break;
                     }
@@ -454,7 +497,7 @@ public class SetupWizard {
                             "Embedding API key (blank to reuse chat key): ");
                     if (!StringUtils.isBlank(v)) state.setEmbeddingApiKey(v);
                 }
-                case "10" -> {
+                case "11" -> {
                     String v = readPassword(reader,
                             "Serper key (https://serper.dev, blank to skip research): ");
                     if (!StringUtils.isBlank(v)) state.setSerperKey(v);
@@ -471,34 +514,77 @@ public class SetupWizard {
         for (int i = 0; i < values.length; i++) {
             out.printf("  %d) %s%n", i + 1, values[i].displayName());
         }
+        int none = values.length + 1;
+        out.printf("  %d) None — skip AI setup (configure later in the Web-UI)%n", none);
         out.flush();
         String in = readLine(reader, "Pick provider: ");
         if (in == null) return;
         Integer pick = parsePositiveInt(in);
-        if (pick == null || pick < 1 || pick > values.length) {
+        if (pick == null || pick < 1 || pick > none) {
             out.println("Invalid choice.");
             out.flush();
+            return;
+        }
+        if (pick == none) {
+            state.setProvider(null);
+            state.setAiModel("");
+            state.setAiApiKey(null);
+            state.setEmbeddingApiKey(null);
+            state.setBaseUrl(null);
             return;
         }
         ProviderPreset chosen = values[pick - 1];
         if (chosen != state.getProvider()) {
             state.setProvider(chosen);
             state.setAiModel(chosen.defaultModel());
-            // Different provider ⇒ existing chat key is wrong for the new
-            // one. Wipe so the menu's "blank means keep" rule doesn't keep
-            // a stale key around.
+            // Different provider ⇒ existing chat key/endpoint are wrong for the
+            // new one. Wipe so the menu's "blank means keep" rule doesn't keep
+            // a stale value around.
             state.setAiApiKey(null);
             state.setEmbeddingApiKey(null);
+            state.setBaseUrl(null);
+        }
+        if (chosen.requiresBaseUrl()) {
+            out.println("OpenAI-compatible gateway selected — set the base URL (entry 8)"
+                    + " and a model id (entry 7).");
+            out.flush();
         }
     }
 
-    private boolean validate(PrintWriter out, SetupState state) {
-        if (state.isTenantCreated() && StringUtils.isBlank(state.getAiApiKey())) {
-            out.println("New tenant requires an AI API key (menu entry 8).");
+    /**
+     * Gate before {@code save()}. AI is optional: a half-configured provider is
+     * a hard error (fix it), but "no provider" or "provider without a key" is a
+     * deliberate skip that only needs an explicit confirmation.
+     *
+     * @return {@code true} if the wizard may proceed to save.
+     */
+    private boolean confirmSave(PrintWriter out, LineReader reader, SetupState state) {
+        ProviderPreset p = state.getProvider();
+        if (p != null && p.requiresBaseUrl() && StringUtils.isBlank(state.getBaseUrl())) {
+            out.println("The OpenAI-compatible provider needs a base URL (entry 8).");
             out.flush();
             return false;
         }
-        return true;
+        if (p != null && StringUtils.isBlank(state.getAiModel())) {
+            out.println("Set an AI model (entry 7).");
+            out.flush();
+            return false;
+        }
+        // Existing tenants may already hold the key in the DB, so a blank field
+        // there still counts as configured.
+        boolean keyPresent = StringUtils.isNotBlank(state.getAiApiKey()) || !state.isTenantCreated();
+        if (p != null && keyPresent) {
+            return true;
+        }
+        String reason = (p == null)
+                ? "No AI provider is configured"
+                : "No AI API key is set for " + p.displayName();
+        out.println();
+        out.println(reason + " — the assistant won't be able to answer until you");
+        out.println("configure a provider + API key later (Web-UI → LLM setup).");
+        out.flush();
+        String ans = readLine(reader, "Really save and proceed without AI? [y/N]: ");
+        return ans != null && ans.trim().equalsIgnoreCase("y");
     }
 
     // ──────────────────────── save ────────────────────────
@@ -564,12 +650,24 @@ public class SetupWizard {
     }
 
     private void writeProviderSettings(PrintWriter out, SetupState state) {
-        String tenantId = state.getTenantId();
         ProviderPreset preset = state.getProvider();
+        if (preset == null) {
+            out.println("  ~ no AI provider configured (skipped — set one later in the Web-UI)");
+            return;
+        }
+        String tenantId = state.getTenantId();
         setString(tenantId, "ai.default.provider", preset.settingsId(),
                 "Default AI provider for new sessions.");
         setString(tenantId, "ai.default.model", state.getAiModel(),
                 "Default model id for the configured provider.");
+        // Custom OpenAI-compatible gateway (Cortecs, local proxy, …): the
+        // endpoint override lives next to the api key on the same instance.
+        String baseUrl = state.getBaseUrl();
+        if (StringUtils.isNotBlank(baseUrl)) {
+            setString(tenantId, "ai.provider." + preset.settingsId() + ".baseUrl",
+                    baseUrl.trim(), "OpenAI-compatible endpoint base URL.");
+            out.println("  + base URL written (" + baseUrl.trim() + ")");
+        }
         // Aliases all point at the chat model — operator can split later
         // through the Web-UI / settings if they want fast vs. analyze vs.
         // deep tiers on different models.

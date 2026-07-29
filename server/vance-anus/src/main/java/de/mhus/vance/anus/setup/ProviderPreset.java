@@ -17,29 +17,35 @@ package de.mhus.vance.anus.setup;
  *       (in-process E5-small-v2, no key).</li>
  * </ul>
  *
- * <p>Ollama and other keyless / self-hosted providers are deliberately
- * out-of-scope for the v1 wizard — they need extra fields ({@code baseUrl})
- * that don't fit the "API key only" preset shape. Operators who need
- * Ollama keep using {@code confidential/init-settings-ollama.yaml}.
+ * <p>{@link #CUSTOM} covers any OpenAI-compatible gateway (Cortecs, a local
+ * OpenAI-compatible proxy, …): it writes the {@code openai} provider instance
+ * but additionally requires a {@code baseUrl} and a model id (no sensible
+ * default exists), and leaves embeddings on the keyless in-process model —
+ * the custom chat endpoint may not serve embeddings. Ollama and other keyless
+ * / self-hosted providers stay out-of-scope for presets; operators who need
+ * them keep using {@code confidential/init-settings-ollama.yaml}.
  */
 public enum ProviderPreset {
 
-    GEMINI("gemini", "Gemini", "gemini-2.5-flash", true),
-    OPENAI("openai", "OpenAI", "gpt-4o", true),
-    ANTHROPIC("anthropic", "Anthropic", "claude-sonnet-4-5", false),
+    GEMINI("gemini", "Gemini", "gemini-2.5-flash", true, false),
+    OPENAI("openai", "OpenAI", "gpt-4o", true, false),
+    ANTHROPIC("anthropic", "Anthropic", "claude-sonnet-4-5", false, false),
+    CUSTOM("openai", "OpenAI-compatible (custom base URL)", "", false, true),
     ;
 
     private final String settingsId;
     private final String displayName;
     private final String defaultModel;
     private final boolean supportsEmbedding;
+    private final boolean requiresBaseUrl;
 
     ProviderPreset(String settingsId, String displayName, String defaultModel,
-            boolean supportsEmbedding) {
+            boolean supportsEmbedding, boolean requiresBaseUrl) {
         this.settingsId = settingsId;
         this.displayName = displayName;
         this.defaultModel = defaultModel;
         this.supportsEmbedding = supportsEmbedding;
+        this.requiresBaseUrl = requiresBaseUrl;
     }
 
     /** Identifier used in setting keys ({@code ai.default.provider} value). */
@@ -66,7 +72,22 @@ public enum ProviderPreset {
         return supportsEmbedding;
     }
 
-    /** Lookup by {@link #settingsId()} — used when reading defaults back. */
+    /**
+     * Whether this preset needs an explicit {@code baseUrl} (an
+     * OpenAI-compatible gateway with no fixed endpoint). Presets pointing at a
+     * provider's own API return {@code false}.
+     */
+    public boolean requiresBaseUrl() {
+        return requiresBaseUrl;
+    }
+
+    /**
+     * Lookup by {@link #settingsId()} — used when reading defaults back. Note
+     * {@link #CUSTOM} shares the {@code openai} id with {@link #OPENAI}; this
+     * returns the first match ({@code OPENAI}), which is fine for pre-filling
+     * the menu — the stored {@code baseUrl} setting is what actually drives the
+     * runtime endpoint either way.
+     */
     public static @org.jspecify.annotations.Nullable ProviderPreset fromSettingsId(String id) {
         for (ProviderPreset p : values()) {
             if (p.settingsId.equals(id)) {

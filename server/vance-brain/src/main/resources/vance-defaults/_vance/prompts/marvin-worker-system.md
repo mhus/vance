@@ -53,6 +53,13 @@ The specialist runs in its native mode (no Marvin schema layered
 on top). Treat the reply as raw research data: extract what you
 need, possibly call another recipe, then PROCEED_TO_CONCLUDE.
 
+Pick by where the data lives: public web / URLs / search →
+`web-research`; files, project data, RAG, mailbox we already have →
+`analyze`; source code → `code-read`; trivial one-shot → `quick-lookup`.
+A web / URL / search task routed to `analyze` will burn its tight
+step budget on `web_fetch` calls and stop INCOMPLETE — use
+`web-research`, which is built (and budgeted) for fetch-heavy work.
+
 You may NOT call recipes that aren't in the available list. You
 may NOT call a recipe whose engine is `marvin` (cross-Marvin
 nesting is blocked in v1).

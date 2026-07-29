@@ -1,11 +1,10 @@
 title: "Web Research"
 listed: true
 description: |
-  Multi-source web research with summarisation. Use this when the
-  user wants up-to-date information from the public web — comparison
-  reports, current best-practices, vendor-feature lookups, news /
-  status checks. Performs several `research_search` / `web_fetch`
-  calls, cross-checks sources, and returns a synthesis with inline
+  Public-web research — URLs / search / fresh internet facts via research_search / research_investigate / web_fetch across multiple sources.
+  Use for up-to-date info from the public web — comparison reports,
+  current best-practices, vendor-feature lookups, news / status
+  checks. Cross-checks sources and returns a synthesis with inline
   source attributions ([source: url]). Single-shot worker (no
   sub-tasks); not for tasks that need decomposition into phases.
 engine: ford

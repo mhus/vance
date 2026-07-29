@@ -1,8 +1,8 @@
 title: "Analyze"
 listed: true
 description: |
-  Substantive analysis with multiple tool calls. Reads files,
-  inspects state, returns findings with cited evidence.
+  Analysis of material we ALREADY have (files, project data, RAG, mailbox) — NOT public-web research; for URLs / search use web-research.
+  Multi-step tool calls; returns findings with cited evidence.
 engine: ford
 params:
   model: default:analyze

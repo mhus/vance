@@ -120,10 +120,10 @@ const saveError = ref<string | null>(null);
 
 const saveStatusLabel = computed<string | null>(() => {
   switch (saveStatus.value) {
-    case 'dirty': return 'Bearbeitet…';
-    case 'saving': return 'Speichern…';
-    case 'saved': return 'Gespeichert';
-    case 'error': return saveError.value ?? 'Speichern fehlgeschlagen';
+    case 'dirty': return 'Edited';
+    case 'saving': return 'Saving…';
+    case 'saved': return 'Saved';
+    case 'error': return saveError.value ?? 'Save failed';
     default: return null;
   }
 });
@@ -358,14 +358,14 @@ onBeforeUnmount(() => {
 
       <div class="flex flex-col gap-1">
         <VButton variant="ghost" class="justify-start" @click="onContentModal(true)">
-          ✎ Content bearbeiten…
+          ✎ Edit content…
         </VButton>
       </div>
     </div>
 
     <VModal
       :model-value="contentOpen"
-      title="Card-Inhalt"
+      title="Card content"
       size="xl"
       :close-on-backdrop="true"
       @update:model-value="onContentModal"
@@ -393,7 +393,7 @@ onBeforeUnmount(() => {
         <span class="text-xs text-base-content/50 mr-auto self-center">
           {{ saveStatusLabel }}
         </span>
-        <VButton variant="primary" @click="onContentModal(false)">Fertig</VButton>
+        <VButton variant="primary" @click="onContentModal(false)">Done</VButton>
       </template>
     </VModal>
 

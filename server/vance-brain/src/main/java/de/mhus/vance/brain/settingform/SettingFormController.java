@@ -9,6 +9,7 @@ import de.mhus.vance.api.settingform.SettingFormDto;
 import de.mhus.vance.api.settingform.SettingFormListResponseDto;
 import de.mhus.vance.api.settingform.SettingFormSummaryDto;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.shared.form.FormValidationException;
 import de.mhus.vance.shared.form.LocalizedTexts;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
@@ -220,7 +221,16 @@ public class SettingFormController {
             try {
                 scope = settingFormService.resolveScope(wireScope, projectId, userId);
             } catch (IllegalStateException e) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
+                // Scope precondition failure (e.g. a project-scoped form applied
+                // without a projectId). Left blind before, this produced a bare
+                // HTTP 400 with no log and — because of Spring's default
+                // server.error.include-message=never — no message in the body.
+                // Log it and route through FormValidationExceptionAdvice so the
+                // Web-UI receives a structured, human-readable reason.
+                log.warn("Setting form '{}' scope resolution failed (scope='{}', projectId='{}'): {}",
+                        form.name(), wireScope, projectId, e.getMessage());
+                throw new FormValidationException(List.of(
+                        new FormValidationException.FormValidationError("_scope", e.getMessage())));
             }
             // Per-form-scope check on the synthetic Resource.Setting; the key
             // is intentionally blank — the permission resolver treats this as

@@ -106,6 +106,24 @@ const pageIcon = computed(
 const pageCover = computed(
   () => headerCache.value?.cover ?? parsedPage.value?.cover ?? null,
 );
+
+// The cover is stored as a portable `vance:` URI (same convention as inline
+// images — see uploadImage). A raw `vance:` scheme can't be loaded by an
+// `<img>`, so resolve it to an HTTP content URL before binding. Non-vance
+// values (absolute http/data URLs) pass through untouched. Resolution is
+// async, hence a ref driven by a watcher rather than a computed.
+const resolvedCover = ref<string | null>(null);
+watch(pageCover, async (uri) => {
+  if (!uri) {
+    resolvedCover.value = null;
+    return;
+  }
+  if (!uri.startsWith('vance:')) {
+    resolvedCover.value = uri;
+    return;
+  }
+  resolvedCover.value = await resolveVanceImageSrc(uri);
+}, { immediate: true });
 const pageDisplayTitle = computed(
   () =>
     headerCache.value?.title
@@ -1664,7 +1682,8 @@ onBeforeUnmount(() => {
       <template v-else-if="activePageId">
         <div v-if="pageCover" class="workbook-app__page-cover-wrap">
           <img
-            :src="pageCover"
+            v-if="resolvedCover"
+            :src="resolvedCover"
             alt=""
             class="workbook-app__page-cover"
           />

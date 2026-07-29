@@ -32,6 +32,40 @@ class ToolErrorPatternResolverTest {
     }
 
     @Test
+    void bundled_tlsCertPathError_classifiesAsUserInput_beforeGenericUnclear() {
+        // A remote target's untrusted/incomplete TLS chain surfaces as a
+        // ToolException whose message carries the PKIX marker. It must match
+        // the dedicated `tls-cert-path` rule (USER_INPUT — cooldown only) and
+        // NOT fall through to `tool-exception-generic` (UNCLEAR), which would
+        // escalate to an Agrajag diagnose worker and could mark the whole
+        // fetch tool DOWN for the project.
+        String message = "Fetch failed: (certificate_unknown) PKIX path building failed: "
+                + "sun.security.provider.certpath.SunCertPathBuilderException: "
+                + "unable to find valid certification path to requested target";
+        List<String> exceptionTypes = List.of("de.mhus.vance.toolpack.ToolException");
+
+        ToolErrorPattern matched = firstMatch(
+                resolver.bundledForTest(), null, exceptionTypes, message);
+
+        assertThat(matched).isNotNull();
+        assertThat(matched.getId()).isEqualTo("tls-cert-path");
+        assertThat(matched.getClassification()).isEqualTo(ToolHealthClassification.USER_INPUT);
+        assertThat(matched.getHealthAction()).isEqualTo(HealthAction.NONE);
+    }
+
+    /** Mirrors {@link AgrajagChecker}'s first-match-wins loop. */
+    private static ToolErrorPattern firstMatch(
+            List<ToolErrorPattern> patterns,
+            Integer httpStatus,
+            List<String> exceptionTypes,
+            String message) {
+        for (ToolErrorPattern p : patterns) {
+            if (AgrajagChecker.matches(p, httpStatus, exceptionTypes, message)) return p;
+        }
+        return null;
+    }
+
+    @Test
     void parseText_http403_classifiesAsUserPermission() {
         String yaml = """
                 patterns:

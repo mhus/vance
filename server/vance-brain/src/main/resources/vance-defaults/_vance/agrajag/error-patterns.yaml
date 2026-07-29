@@ -136,6 +136,29 @@ patterns:
     locked: true
     note: "User asked for a non-existent manual. The tool is fine; the model can retry with a corrected name (e.g. via manual_list)."
 
+  # A TLS certificate-validation failure (PKIX path building / unknown
+  # CA / untrusted or incomplete chain) is a property of the *remote
+  # target*, not of the fetch tool — exactly like a 404. The tool
+  # worked and reported that this specific URL can't be trusted; the
+  # model should just skip it and fetch another source. Left as the
+  # generic UNCLEAR ToolException it escalates to an Agrajag diagnose
+  # worker, which then judged web_fetch TECHNICALLY_BROKEN and marked
+  # the whole tool DOWN for the project (observed: a single .edu.iq host
+  # with a broken chain took web_fetch down for iron-research). Classify
+  # as USER_INPUT — cooldown-only on this exact signature, no health
+  # degradation, no diagnose spawn.
+  #
+  # MUST stay above `tool-exception-generic` so this specific rule wins
+  # over the UNCLEAR catch-all on first-match.
+  - id: tls-cert-path
+    match:
+      exceptionType: ["de.mhus.vance.toolpack.ToolException", "javax.net.ssl.SSLHandshakeException", "sun.security.validator.ValidatorException"]
+      bodyContains: ["PKIX path building failed", "unable to find valid certification path", "certificate_unknown"]
+    signature: tls-cert-path
+    classification: USER_INPUT
+    locked: true
+    note: "Remote target's TLS cert can't be validated (untrusted/incomplete chain). The tool is fine; the model should fetch a different source."
+
   - id: tool-exception-generic
     match:
       exceptionType: ["de.mhus.vance.toolpack.ToolException"]

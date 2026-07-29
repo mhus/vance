@@ -232,6 +232,8 @@ onMounted(async () => {
       createPrefill.value = { path: createPath ?? '' };
       showCreate.value = true;
     }
+    // Consume the one-shot handoff params so a refresh doesn't reopen the modal.
+    stripCreateParamsFromUrl();
     const urlDoc = readDocFromUrl();
     if (urlDoc) {
       try {
@@ -469,6 +471,24 @@ function replaceDocInUrl(docId: string | null): void {
   const next = buildUrlWithDoc(docId);
   if (next === `${window.location.pathname}${window.location.search}`) return;
   window.history.replaceState({ doc: docId }, '', next);
+}
+
+/**
+ * Drop the one-shot handoff params ({@code create}, {@code path}) from the
+ * URL once they've been consumed on mount. Without this they linger, so a
+ * page refresh would re-trigger the create-document modal every time.
+ */
+function stripCreateParamsFromUrl(): void {
+  const params = new URLSearchParams(window.location.search);
+  if (!params.has('create') && !params.has('path')) return;
+  params.delete('create');
+  params.delete('path');
+  const query = params.toString();
+  window.history.replaceState(
+    window.history.state,
+    '',
+    `${window.location.pathname}${query ? `?${query}` : ''}`,
+  );
 }
 
 function onPopState(): void {

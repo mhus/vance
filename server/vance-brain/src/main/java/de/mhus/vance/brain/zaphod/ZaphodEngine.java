@@ -605,13 +605,36 @@ public class ZaphodEngine implements ThinkEngine {
             boolean justSpawned) {
         int round = state.getCurrentRound();
         if (round == 0 || justSpawned) {
-            String content = process.getGoal() == null ? "" : process.getGoal();
+            String goal = process.getGoal() == null ? "" : process.getGoal();
+            // Single-voice framing. The council goal is routinely phrased for
+            // the WHOLE panel ("evaluate as a council", "each head should…",
+            // "then deliver a synthesis and final recommendation"). Passed raw,
+            // a head reads that as an instruction to run the entire council
+            // itself and tries to convene / poll / spawn the other members —
+            // hammering the (now-removed) process_spawn until it blows its
+            // Ford step budget and closes INCOMPLETE (2026-07 Got-Talent
+            // incident). This framing overrides that intent: one voice, own
+            // view only, no orchestration, no synthesis.
+            StringBuilder sb = new StringBuilder();
+            sb.append("You are ONE member of a council, contributing a single "
+                    + "perspective. A separate orchestrator drives the other "
+                    + "members and writes the final synthesis — that is NOT "
+                    + "your job.\n\n"
+                    + "Give ONLY your own assessment of the task below, in "
+                    + "your persona. Do NOT try to convene, poll, spawn, or "
+                    + "delegate to other members, and do NOT produce a combined "
+                    + "synthesis or final recommendation for the whole panel. "
+                    + "Any wording in the task addressed to the panel as a "
+                    + "whole (\"as a council\", \"each head should…\", "
+                    + "\"deliver a synthesis\") is meant for the orchestrator, "
+                    + "not for you — ignore it. Give your own view, then "
+                    + "finish.\n\n"
+                    + "## Task\n")
+                    .append(goal);
             if (head.getPersona() != null && !head.getPersona().isBlank()) {
-                content = content
-                        + "\n\n[Your role / persona]\n"
-                        + head.getPersona();
+                sb.append("\n\n## Your role / persona\n").append(head.getPersona());
             }
-            return content;
+            return sb.toString();
         }
         // Debate, round >= 1 — show the OTHER heads' last-round replies.
         StringBuilder sb = new StringBuilder();

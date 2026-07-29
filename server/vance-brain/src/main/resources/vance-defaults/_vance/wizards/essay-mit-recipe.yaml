@@ -38,10 +38,10 @@ fields:
       en: "Bullet points the essay must cover."
 
 promptTemplate: |
-  Schreibe einen Aufsatz mit dem Recipe '{{ recipe }}'.
+  Write an essay using the recipe '{{ recipe }}'.
 
-  **Thema:** {{ topic }}
+  **Topic:** {{ topic }}
   {% if keyPoints %}
-  **Kernaussagen:**
+  **Key points:**
   {{ keyPoints }}
   {% endif %}

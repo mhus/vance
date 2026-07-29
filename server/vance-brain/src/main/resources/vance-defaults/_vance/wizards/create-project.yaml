@@ -29,4 +29,4 @@ fields:
       en: "Name of a kit from the tenant catalog. Leave empty for a blank project."
 
 promptTemplate: |
-  Erstelle ein neues Projekt '{{ projectName }}'{% if kit %} mit dem Kit '{{ kit }}'{% endif %} und verbinde mich danach. Frage nicht nach, mache es sofort.
+  Create a new project '{{ projectName }}'{% if kit %} using the kit '{{ kit }}'{% endif %} and connect me to it afterwards. Don't ask back, just do it.

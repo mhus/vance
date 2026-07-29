@@ -121,18 +121,20 @@ fields:
       en: "Set stripThinkTags (for reasoning models that emit `<think>` blocks)"
 
 promptTemplate: |
-  Lies zuerst `manual_read('ai-model-catalog')` und folge dem dortigen Workflow.
+  First read `manual_read('ai-model-catalog')` and follow the workflow
+  described there.
 
-  Trag einen **manual-layer**-Override für ein KI-Modell tenant-weit ein.
-  Schreib das Dokument mit `doc_write`, Parameter:
+  Enter a **manual-layer** override for an AI model, tenant-wide. Write
+  the document with `doc_write`, parameters:
 
   - `projectId`: `_tenant`
   - `path`: `_vance/model/{{ providerInstance }}/<slug>.yaml`
-    (Slug aus `{{ wireModel }}` ableiten — `:` durch `-` ersetzen, dann
-    `wireName: "{{ wireModel }}"` ins YAML; `/` bleibt als Subverzeichnis)
+    (derive the slug from `{{ wireModel }}` — replace `:` with `-`, then
+    put `wireName: "{{ wireModel }}"` into the YAML; `/` stays as a
+    subdirectory)
   - `kind`: `yaml`
 
-  YAML-Inhalt (nur die Felder unten, der Rest erbt aus Bundled):
+  YAML content (only the fields below, the rest inherits from bundled):
   {% if pricingCurrency != "__SKIP__" and inputPerMTok and outputPerMTok %}
   - pricing:
       - currency: {{ pricingCurrency }}
@@ -147,10 +149,9 @@ promptTemplate: |
   {% if stripThinkTags == "true" %}- stripThinkTags: true{% endif %}
   - discoveredBy: manual
 
-  Wenn die Datei schon existiert, **erst `doc_read`**, dann die obigen
-  Felder hineinmergen statt die Datei komplett zu ersetzen.
+  If the file already exists, **`doc_read` first**, then merge the fields
+  above into it instead of replacing the whole file.
 
-  Nach dem Schreiben weise mich darauf hin, dass ich **Profile →
-  Aktionen → "Refresh AI Model Catalog"** klicken soll, damit der
-  Override sofort wirkt (sonst zieht er beim nächsten 30-Min-Refresh
-  automatisch).
+  After writing, remind me to click **Profile → Actions → "Refresh AI
+  Model Catalog"** so the override takes effect immediately (otherwise it
+  gets picked up automatically at the next 30-minute refresh).

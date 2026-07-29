@@ -66,14 +66,14 @@ fields:
       en: "Run immediately"
 
 promptTemplate: |
-  Erstelle mit slart eine Vogon-Strategie:
+  Use slart to create a Vogon strategy:
 
   **Deliverable:** {{ deliverable }}
 
   **Scope:**
   {{ scope }}
 
-  **Tiefe:** {% if depth == "light" %}Überblick mit 1-2 Phasen.{% elseif depth == "deep" %}Tiefgehend mit 5+ Phasen inkl. Quellen-Validierung und Cross-Check.{% else %}Ausgewogen mit 3-4 Phasen.{% endif %}
+  **Depth:** {% if depth == "light" %}Overview with 1-2 phases.{% elseif depth == "deep" %}In-depth with 5+ phases including source validation and cross-checks.{% else %}Balanced with 3-4 phases.{% endif %}
 
-  Speicher unter '{{ outputName }}'.
-  {% if runNow == "true" %}Führe sie direkt aus.{% else %}Erzeuge nur die Strategie, ohne auszuführen.{% endif %}
+  Save it under '{{ outputName }}'.
+  {% if runNow == "true" %}Run it directly.{% else %}Only generate the strategy, without executing.{% endif %}

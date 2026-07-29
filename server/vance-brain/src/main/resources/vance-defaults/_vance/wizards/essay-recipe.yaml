@@ -61,14 +61,14 @@ fields:
       en: "E.g. 'intro, three arguments, conclusion' or 'pro/contra with synthesis'."
 
 promptTemplate: |
-  Erstelle mit slart ein Recipe für Aufsätze.
+  Use slart to create a recipe for essays.
 
-  **Zielgruppe:** {{ audience }}
-  **Tonalität:** {{ tone }}
-  **Ziel-Wortzahl:** {{ targetLength }}
-  {% if structureHints %}**Struktur:** {{ structureHints }}{% endif %}
+  **Audience:** {{ audience }}
+  **Tone:** {{ tone }}
+  **Target word count:** {{ targetLength }}
+  {% if structureHints %}**Structure:** {{ structureHints }}{% endif %}
 
-  Speicher das Recipe unter '{{ recipeName }}'.
+  Save the recipe under '{{ recipeName }}'.
 
 suggestedFollowUps:
   - wizard: essay-mit-recipe

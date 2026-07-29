@@ -48,23 +48,26 @@ fields:
           de: "Beschreibung / Rolle / Persona"
           en: "Description / role / persona"
 
-  - name: createNow
-    type: boolean
-    defaultValue: "true"
+  - name: testQuestion
+    type: textarea
+    rows: 2
     label:
-      de: "Direkt erstellen (keine Test-Frage)"
-      en: "Create now (no test question)"
+      de: "Test-Frage (optional — nur ausfüllen, wenn das Gremium sofort laufen soll)"
+      en: "Test question (optional — fill in only if the council should run right away)"
+    help:
+      de: "Leer lassen, um das Gremium nur anzulegen. Mit einer Frage wird es einmal direkt ausgeführt."
+      en: "Leave empty to only create the council. With a question, it is run once immediately."
 
 promptTemplate: |
-  Erstelle mit slart ein Gremium aus folgenden {{ members | length }} Personen,
-  das ich später zu strategischen Fragen befragen kann.
+  Use slart to create a council of the following {{ members | length }} people
+  that I can consult on strategic questions later.
 
-  Zweck: {{ purpose }}
+  Purpose: {{ purpose }}
 
-  Mitglieder:
+  Members:
   {% for m in members %}
   - **{{ m.name }}** — {{ m.description }}
   {% endfor %}
 
-  Speicher es unter '{{ outputName }}'.
-  {% if createNow == "true" %}Führe es direkt aus.{% else %}Führe jetzt keinen Test aus.{% endif %}
+  Save it under the name '{{ outputName }}'.
+  {% if testQuestion %}After creating it, run it once right away with this first test question: "{{ testQuestion }}".{% else %}Do not run it now — just create the council.{% endif %}

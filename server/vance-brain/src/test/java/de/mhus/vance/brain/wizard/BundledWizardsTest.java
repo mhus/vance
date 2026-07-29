@@ -40,7 +40,7 @@ class BundledWizardsTest {
         assertThat(w.title()).containsKeys("de", "en");
         assertThat(w.fields())
                 .extracting(f -> f.getName())
-                .containsExactly("outputName", "purpose", "members", "createNow");
+                .containsExactly("outputName", "purpose", "members", "testQuestion");
 
         // The members field is a repeat with two nested items.
         var membersField = w.fields().stream()

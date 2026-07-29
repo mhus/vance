@@ -335,6 +335,23 @@ onBeforeUnmount(() => {
 
 // ────────────────── Edit mode: create group / project ──────────────────
 
+/**
+ * Turn a human-typed label into a server-legal name key. Both project and
+ * group names are validated against {@code ^[a-z0-9][a-z0-9_-]*$}, so
+ * lowercasing alone is not enough — spaces and other punctuation would be
+ * rejected ("My First Project" → 400). Lowercase, fold every run of illegal
+ * characters into a single {@code -}, then trim leading non-alphanumerics and
+ * trailing separators. Kept in sync with {@code slugifyGroupName} in
+ * PickerView.vue.
+ */
+function slugifyName(raw: string): string {
+  return raw
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/^[^a-z0-9]+/, '')
+    .replace(/[-_]+$/, '');
+}
+
 const showCreateGroup = ref(false);
 const newGroupName = ref('');
 const newGroupTitle = ref('');
@@ -404,11 +421,12 @@ async function submitCreateGroup(): Promise<void> {
   if (!raw) return;
   // Group names are case-sensitive identifiers on the server side
   // (validated against ^[a-z0-9][a-z0-9_-]*$) but humans frequently type
-  // "MyGroup" expecting it to work like a label. Mirror the project path:
-  // lowercase on submit, and — if the user's original typing carried any
-  // uppercase — promote that original spelling to `title` so the prettier
-  // form survives as the display name.
-  const name = raw.toLowerCase();
+  // "My Group" expecting it to work like a label. Mirror the project path:
+  // slugify on submit, and — if the user's original typing differed from the
+  // slug — promote that original spelling to `title` so the prettier form
+  // survives as the display name.
+  const name = slugifyName(raw);
+  if (!name) return;
   const titleInput = newGroupTitle.value.trim();
   const title = titleInput || (raw !== name ? raw : undefined);
   creating.value = true;
@@ -433,11 +451,13 @@ async function submitCreateProject(): Promise<void> {
   const raw = newProjectName.value.trim();
   if (!raw) return;
   // Project names are case-sensitive identifiers on the server side
-  // but humans frequently type "MyProject" expecting it to work like
-  // a label. Lowercase on submit, and — if the user's original typing
-  // carried any uppercase — promote that original spelling to `title`
-  // so the prettier form survives as the display name.
-  const name = raw.toLowerCase();
+  // (validated against ^[a-z0-9][a-z0-9_-]*$) but humans frequently type
+  // "My First Project" expecting it to work like a label. Slugify on submit,
+  // and — if the user's original typing differed from the slug — promote that
+  // original spelling to `title` so the prettier form survives as the display
+  // name.
+  const name = slugifyName(raw);
+  if (!name) return;
   const titleInput = newProjectTitle.value.trim();
   const title = titleInput || (raw !== name ? raw : undefined);
   creating.value = true;

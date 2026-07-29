@@ -79,6 +79,27 @@ public class WorkspaceRoutingCache {
         entries.remove(key);
     }
 
+    /**
+     * True when <em>this</em> pod is the project's home — its {@code homeNode}
+     * equals {@link ClusterService#selfNodeName()}. The owning pod always holds
+     * the project's workspace on its own filesystem, so the caller must serve it
+     * locally and never proxy to its own advertised endpoint: a pod cannot
+     * reliably reach itself via that endpoint (a dev box after an IP change; a
+     * k8s pod's own Pod-IP/ClusterIP depending on CNI hairpin config).
+     *
+     * <p>Comparison is by node <b>name</b>, not endpoint, so it is immune to an
+     * advertised-IP change since boot. This is orthogonal to {@link #lookup}:
+     * ownership by a <em>foreign</em> live pod still resolves to that pod's
+     * endpoint and is proxied; only self-ownership short-circuits to local.
+     */
+    public boolean isSelfOwned(ProjectPodKey key) {
+        return projectService.findByTenantAndName(key.tenantId(), key.projectName())
+                .map(ProjectDocument::getHomeNode)
+                .filter(homeNode -> !homeNode.isBlank())
+                .map(homeNode -> homeNode.equals(clusterService.selfNodeName()))
+                .orElse(false);
+    }
+
     private Optional<String> readFromMongo(ProjectPodKey key) {
         Optional<ProjectDocument> doc = projectService.findByTenantAndName(key.tenantId(), key.projectName());
         if (doc.isEmpty()) {

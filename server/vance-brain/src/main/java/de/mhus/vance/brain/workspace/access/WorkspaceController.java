@@ -105,10 +105,14 @@ public class WorkspaceController {
             @RequestParam(value = "depth", required = false, defaultValue = "1") int depth,
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Project(tenant, project), Action.READ);
-        if (properties.isBypassProxy() || ProjectService.isPodless(project)) {
+        ProjectPodKey key = new ProjectPodKey(tenant, project);
+        // Self-owned → serve locally: the owning pod holds the workspace on its
+        // own filesystem, so never proxy to our own advertised endpoint (a pod
+        // can't reliably reach itself via it — dev IP change / k8s CNI hairpin).
+        if (properties.isBypassProxy() || ProjectService.isPodless(project)
+                || routingCache.isSelfOwned(key)) {
             return treeDirect(tenant, project, path, depth);
         }
-        ProjectPodKey key = new ProjectPodKey(tenant, project);
         if (routingCache.lookup(key).isEmpty()) {
             // No live pod owns this project (homeNode null or stale). Adopt it
             // onto this pod and serve the workspace locally; only fall back to
@@ -137,10 +141,13 @@ public class WorkspaceController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "path is required");
         }
         authority.enforce(httpRequest, new Resource.Project(tenant, project), Action.READ);
-        if (properties.isBypassProxy() || ProjectService.isPodless(project)) {
+        ProjectPodKey key = new ProjectPodKey(tenant, project);
+        // Self-owned → serve locally (see tree()): never self-proxy to our own
+        // advertised endpoint, which a pod can't reliably reach via hairpin.
+        if (properties.isBypassProxy() || ProjectService.isPodless(project)
+                || routingCache.isSelfOwned(key)) {
             return fileDirect(tenant, project, path);
         }
-        ProjectPodKey key = new ProjectPodKey(tenant, project);
         if (routingCache.lookup(key).isEmpty()) {
             // No live pod owns this project (homeNode null or stale). Adopt it
             // onto this pod and serve locally; 404 only if a live pod holds it.

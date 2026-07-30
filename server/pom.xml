@@ -76,7 +76,7 @@
              templating. ~150 KB with slf4j as only transitive dep. Drives
              tier/mode/profile-aware prompt rendering — see
              planning/prompt-template-migration.md. -->
-        <pebble.version>3.2.2</pebble.version>
+        <pebble.version>4.1.2</pebble.version>
         <angus.mail.version>2.0.3</angus.mail.version>
         <greenmail.version>2.1.4</greenmail.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>

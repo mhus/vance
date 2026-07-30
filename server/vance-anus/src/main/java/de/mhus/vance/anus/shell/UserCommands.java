@@ -11,16 +11,16 @@ import org.jline.reader.LineReader;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.shell.standard.ShellComponent;
-import org.springframework.shell.standard.ShellMethod;
-import org.springframework.shell.standard.ShellOption;
+import org.springframework.shell.core.command.annotation.Command;
+import org.springframework.shell.core.command.annotation.Option;
+import org.springframework.stereotype.Component;
 
 /**
  * CRUD over {@link UserDocument}. Passwords are hashed in this layer (Anus is
  * the operator UI; brain users hand it a plain password) and only the hash is
  * persisted via {@link UserService#setPasswordHash(String, String, String)}.
  */
-@ShellComponent
+@Component
 @RequiresAuth
 public class UserCommands {
 
@@ -33,8 +33,8 @@ public class UserCommands {
         this.lineReader = lineReader;
     }
 
-    @ShellMethod(key = "user list", value = "List users in a tenant.")
-    public String list(@ShellOption(value = {"--tenant", "-T"}) String tenant) {
+    @Command(name = {"user", "list"}, description = "List users in a tenant.")
+    public String list(@Option(longName = "tenant", shortName = 'T', required = true) String tenant) {
         List<UserDocument> all = userService.all(tenant);
         if (all.isEmpty()) {
             return "(no users in tenant '" + tenant + "')";
@@ -51,30 +51,32 @@ public class UserCommands {
                 all);
     }
 
-    @ShellMethod(key = "user show", value = "Show a user.")
+    @Command(name = {"user", "show"}, description = "Show a user.")
     public String show(
-            @ShellOption(value = {"--tenant", "-T"}) String tenant,
-            @ShellOption(value = {"--name", "-n"}) String name) {
+            @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
+            @Option(longName = "name", shortName = 'n', required = true) String name) {
         return userService.findByTenantAndName(tenant, name)
                 .map(UserCommands::renderOne)
                 .orElse("User '" + name + "' not found in tenant '" + tenant + "'.");
     }
 
-    @ShellMethod(key = "user create", value = "Create a user. Password is prompted (masked) when --password is omitted.")
+    @Command(name = {"user", "create"}, description = "Create a user. Password is prompted (masked) when --password is omitted.")
     public String create(
-            @ShellOption(value = {"--tenant", "-T"}) String tenant,
-            @ShellOption(value = {"--name", "-n"}) String name,
-            @ShellOption(value = {"--title", "-t"}, defaultValue = ShellOption.NULL) @Nullable String title,
-            @ShellOption(value = {"--email", "-e"}, defaultValue = ShellOption.NULL) @Nullable String email,
-            @ShellOption(value = {"--password", "-p"}, defaultValue = ShellOption.NULL,
-                    help = "Plaintext. Stored as BCrypt hash. Omit to be prompted with masked input.")
+            @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
+            @Option(longName = "name", shortName = 'n', required = true) String name,
+            @Option(longName = "title", shortName = 't') @Nullable String title,
+            @Option(longName = "email", shortName = 'e') @Nullable String email,
+            @Option(longName = "password", shortName = 'p',
+                    description = "Plaintext. Stored as BCrypt hash. Omit to be prompted with masked input.")
             @Nullable String password,
-            @ShellOption(value = {"--no-password"}, defaultValue = "false",
-                    help = "Create the user without setting a password (e.g. for SSO-only accounts).")
+            @Option(longName = "no-password",
+                    description = "Create the user without setting a password (e.g. for SSO-only accounts).",
+                    defaultValue = "false")
             boolean noPassword,
-            @ShellOption(value = {"--service-account"}, defaultValue = "false",
-                    help = "Mark as service account. Name must start with '_' and not with '_vance-'. "
-                            + "Login is disabled by default; tokens must be minted out-of-band.")
+            @Option(longName = "service-account",
+                    description = "Mark as service account. Name must start with '_' and not with '_vance-'. "
+                            + "Login is disabled by default; tokens must be minted out-of-band.",
+                    defaultValue = "false")
             boolean serviceAccount) {
         @Nullable String hash = null;
         if (!noPassword) {
@@ -92,28 +94,28 @@ public class UserCommands {
         return "Created:\n" + renderOne(user);
     }
 
-    @ShellMethod(key = "user update", value = "Update mutable fields of a user.")
+    @Command(name = {"user", "update"}, description = "Update mutable fields of a user.")
     public String update(
-            @ShellOption(value = {"--tenant", "-T"}) String tenant,
-            @ShellOption(value = {"--name", "-n"}) String name,
-            @ShellOption(value = {"--title", "-t"}, defaultValue = ShellOption.NULL) @Nullable String title,
-            @ShellOption(value = {"--email", "-e"}, defaultValue = ShellOption.NULL) @Nullable String email,
-            @ShellOption(value = {"--status", "-s"}, defaultValue = ShellOption.NULL,
-                    help = "ACTIVE | DISABLED")
+            @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
+            @Option(longName = "name", shortName = 'n', required = true) String name,
+            @Option(longName = "title", shortName = 't') @Nullable String title,
+            @Option(longName = "email", shortName = 'e') @Nullable String email,
+            @Option(longName = "status", shortName = 's',
+                    description = "ACTIVE | DISABLED")
             @Nullable UserStatus status,
-            @ShellOption(value = {"--login-enabled"}, defaultValue = ShellOption.NULL,
-                    help = "Toggle the password-login gate. Cannot be set to true on service accounts.")
+            @Option(longName = "login-enabled",
+                    description = "Toggle the password-login gate. Cannot be set to true on service accounts.")
             @Nullable Boolean loginEnabled) {
         UserDocument user = userService.update(tenant, name, title, email, status, loginEnabled);
         return "Updated:\n" + renderOne(user);
     }
 
-    @ShellMethod(key = "user set-password",
-            value = "Reset a user's password. Plaintext prompted (masked) when --password is omitted.")
+    @Command(name = {"user", "set-password"},
+            description = "Reset a user's password. Plaintext prompted (masked) when --password is omitted.")
     public String setPassword(
-            @ShellOption(value = {"--tenant", "-T"}) String tenant,
-            @ShellOption(value = {"--name", "-n"}) String name,
-            @ShellOption(value = {"--password", "-p"}, defaultValue = ShellOption.NULL) @Nullable String password) {
+            @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
+            @Option(longName = "name", shortName = 'n', required = true) String name,
+            @Option(longName = "password", shortName = 'p') @Nullable String password) {
         String plain = StringUtils.isBlank(password)
                 ? lineReader.getObject().readLine("New password for '" + name + "': ", '*')
                 : password;
@@ -125,10 +127,10 @@ public class UserCommands {
         return "Password reset for user '" + name + "' in tenant '" + tenant + "'.";
     }
 
-    @ShellMethod(key = "user delete", value = "Hard-delete a user.")
+    @Command(name = {"user", "delete"}, description = "Hard-delete a user.")
     public String delete(
-            @ShellOption(value = {"--tenant", "-T"}) String tenant,
-            @ShellOption(value = {"--name", "-n"}) String name) {
+            @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
+            @Option(longName = "name", shortName = 'n', required = true) String name) {
         userService.delete(tenant, name);
         return "Deleted user '" + name + "' in tenant '" + tenant + "'.";
     }

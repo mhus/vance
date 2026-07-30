@@ -9,24 +9,24 @@ import java.util.function.Function;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
 import org.jspecify.annotations.Nullable;
-import org.springframework.shell.standard.ShellComponent;
-import org.springframework.shell.standard.ShellMethod;
-import org.springframework.shell.standard.ShellOption;
+import org.springframework.shell.core.command.annotation.Command;
+import org.springframework.shell.core.command.annotation.Option;
+import org.springframework.stereotype.Component;
 
 /**
  * CRUD over {@link TeamDocument}. Member lists are passed as a comma-separated
  * string of usernames; {@code update --members} replaces the list wholesale to
  * match {@link TeamService#update}'s contract.
  */
-@ShellComponent
+@Component
 @RequiresAuth
 @RequiredArgsConstructor
 public class TeamCommands {
 
     private final TeamService teamService;
 
-    @ShellMethod(key = "team list", value = "List teams in a tenant.")
-    public String list(@ShellOption(value = {"--tenant", "-T"}) String tenant) {
+    @Command(name = {"team", "list"}, description = "List teams in a tenant.")
+    public String list(@Option(longName = "tenant", shortName = 'T', required = true) String tenant) {
         List<TeamDocument> all = teamService.all(tenant);
         if (all.isEmpty()) {
             return "(no teams in tenant '" + tenant + "')";
@@ -41,42 +41,42 @@ public class TeamCommands {
                 all);
     }
 
-    @ShellMethod(key = "team show", value = "Show a team.")
+    @Command(name = {"team", "show"}, description = "Show a team.")
     public String show(
-            @ShellOption(value = {"--tenant", "-T"}) String tenant,
-            @ShellOption(value = {"--name", "-n"}) String name) {
+            @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
+            @Option(longName = "name", shortName = 'n', required = true) String name) {
         return teamService.findByTenantAndName(tenant, name)
                 .map(TeamCommands::renderOne)
                 .orElse("Team '" + name + "' not found in tenant '" + tenant + "'.");
     }
 
-    @ShellMethod(key = "team create", value = "Create a team. --members is comma-separated.")
+    @Command(name = {"team", "create"}, description = "Create a team. --members is comma-separated.")
     public String create(
-            @ShellOption(value = {"--tenant", "-T"}) String tenant,
-            @ShellOption(value = {"--name", "-n"}) String name,
-            @ShellOption(value = {"--title", "-t"}, defaultValue = ShellOption.NULL) @Nullable String title,
-            @ShellOption(value = {"--members"}, defaultValue = ShellOption.NULL) @Nullable String members) {
+            @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
+            @Option(longName = "name", shortName = 'n', required = true) String name,
+            @Option(longName = "title", shortName = 't') @Nullable String title,
+            @Option(longName = "members") @Nullable String members) {
         TeamDocument team = teamService.create(tenant, name, title, parseList(members));
         return "Created:\n" + renderOne(team);
     }
 
-    @ShellMethod(key = "team update", value = "Update mutable fields of a team. --members replaces the list.")
+    @Command(name = {"team", "update"}, description = "Update mutable fields of a team. --members replaces the list.")
     public String update(
-            @ShellOption(value = {"--tenant", "-T"}) String tenant,
-            @ShellOption(value = {"--name", "-n"}) String name,
-            @ShellOption(value = {"--title", "-t"}, defaultValue = ShellOption.NULL) @Nullable String title,
-            @ShellOption(value = {"--enabled"}, defaultValue = ShellOption.NULL) @Nullable Boolean enabled,
-            @ShellOption(value = {"--members"}, defaultValue = ShellOption.NULL,
-                    help = "Comma-separated usernames — replaces the list wholesale")
+            @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
+            @Option(longName = "name", shortName = 'n', required = true) String name,
+            @Option(longName = "title", shortName = 't') @Nullable String title,
+            @Option(longName = "enabled") @Nullable Boolean enabled,
+            @Option(longName = "members",
+                    description = "Comma-separated usernames — replaces the list wholesale")
             @Nullable String members) {
         TeamDocument team = teamService.update(tenant, name, title, enabled, parseList(members));
         return "Updated:\n" + renderOne(team);
     }
 
-    @ShellMethod(key = "team delete", value = "Hard-delete a team.")
+    @Command(name = {"team", "delete"}, description = "Hard-delete a team.")
     public String delete(
-            @ShellOption(value = {"--tenant", "-T"}) String tenant,
-            @ShellOption(value = {"--name", "-n"}) String name) {
+            @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
+            @Option(longName = "name", shortName = 'n', required = true) String name) {
         teamService.delete(tenant, name);
         return "Deleted team '" + name + "' in tenant '" + tenant + "'.";
     }

@@ -15,9 +15,9 @@ import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
 import org.jspecify.annotations.Nullable;
-import org.springframework.shell.standard.ShellComponent;
-import org.springframework.shell.standard.ShellMethod;
-import org.springframework.shell.standard.ShellOption;
+import org.springframework.shell.core.command.annotation.Command;
+import org.springframework.shell.core.command.annotation.Option;
+import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -42,7 +42,7 @@ import tools.jackson.databind.json.JsonMapper;
  *
  * <p>Spec: {@code specification/project-kits-catalog.md} §7.
  */
-@ShellComponent
+@Component
 @RequiresAuth
 @RequiredArgsConstructor
 public class ProjectKitsCommands {
@@ -70,8 +70,8 @@ public class ProjectKitsCommands {
     // a web context.
     private final ObjectMapper objectMapper = JsonMapper.builder().build();
 
-    @ShellMethod(key = "project-kits show", value = "Display the tenant's project-kits catalog.")
-    public String show(@ShellOption(value = {"--tenant", "-T"}) String tenant) {
+    @Command(name = {"project-kits", "show"}, description = "Display the tenant's project-kits catalog.")
+    public String show(@Option(longName = "tenant", shortName = 'T', required = true) String tenant) {
         Response response = brainClient.get(tenant, "/brain/" + tenant + BASE_PATH + "/catalog");
         if (!response.isSuccess()) {
             return "Show FAILED — HTTP " + response.statusCode() + "\n" + response.body();
@@ -80,14 +80,14 @@ public class ProjectKitsCommands {
         return renderCatalog(tenant, catalog);
     }
 
-    @ShellMethod(key = "project-kits import",
-            value = "Bootstrap the tenant's project-kits catalog from a git repo. Fails if one already exists.")
+    @Command(name = {"project-kits", "import"},
+            description = "Bootstrap the tenant's project-kits catalog from a git repo. Fails if one already exists.")
     public String importCatalog(
-            @ShellOption(value = {"--tenant", "-T"}) String tenant,
-            @ShellOption(value = {"--git"}, defaultValue = DEFAULT_KIT_REPO) String git,
-            @ShellOption(value = {"--ref"}, defaultValue = DEFAULT_REF) String ref,
-            @ShellOption(value = {"--token"}, defaultValue = ShellOption.NULL,
-                    help = "Optional credential for private repos.")
+            @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
+            @Option(longName = "git", defaultValue = DEFAULT_KIT_REPO) String git,
+            @Option(longName = "ref", defaultValue = DEFAULT_REF) String ref,
+            @Option(longName = "token",
+                    description = "Optional credential for private repos.")
             @Nullable String token) {
         ProjectKitsCatalogDto existing = loadCatalog(tenant);
         if (existing != null && existing.getKits() != null && !existing.getKits().isEmpty()) {
@@ -107,17 +107,17 @@ public class ProjectKitsCommands {
                 + tenant + "'.\n" + renderCatalog(tenant, scanned);
     }
 
-    @ShellMethod(key = "project-kits update",
-            value = "Refresh the tenant's project-kits catalog from a git repo (merge or overwrite).")
+    @Command(name = {"project-kits", "update"},
+            description = "Refresh the tenant's project-kits catalog from a git repo (merge or overwrite).")
     public String update(
-            @ShellOption(value = {"--tenant", "-T"}) String tenant,
-            @ShellOption(value = {"--git"}, defaultValue = DEFAULT_KIT_REPO) String git,
-            @ShellOption(value = {"--ref"}, defaultValue = DEFAULT_REF) String ref,
-            @ShellOption(value = {"--mode"}, defaultValue = MODE_MERGE,
-                    help = "merge (default) | overwrite") String mode,
-            @ShellOption(value = {"--dry-run"}, defaultValue = "false") boolean dryRun,
-            @ShellOption(value = {"--token"}, defaultValue = ShellOption.NULL,
-                    help = "Optional credential for private repos.")
+            @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
+            @Option(longName = "git", defaultValue = DEFAULT_KIT_REPO) String git,
+            @Option(longName = "ref", defaultValue = DEFAULT_REF) String ref,
+            @Option(longName = "mode", description = "merge (default) | overwrite",
+                    defaultValue = MODE_MERGE) String mode,
+            @Option(longName = "dry-run", defaultValue = "false") boolean dryRun,
+            @Option(longName = "token",
+                    description = "Optional credential for private repos.")
             @Nullable String token) {
         String normalizedMode = mode == null ? MODE_MERGE : mode.toLowerCase(Locale.ROOT);
         if (!MODE_MERGE.equals(normalizedMode) && !MODE_OVERWRITE.equals(normalizedMode)) {

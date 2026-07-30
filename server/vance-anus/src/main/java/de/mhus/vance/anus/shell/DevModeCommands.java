@@ -6,9 +6,9 @@ import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.shell.standard.ShellComponent;
-import org.springframework.shell.standard.ShellMethod;
-import org.springframework.shell.standard.ShellOption;
+import org.springframework.shell.core.command.annotation.Command;
+import org.springframework.shell.core.command.annotation.Option;
+import org.springframework.stereotype.Component;
 
 /**
  * Dev-mode-only shell commands. The whole component is gated by
@@ -20,7 +20,7 @@ import org.springframework.shell.standard.ShellOption;
  * PASSWORD-setting. Every disclosure is logged at warn level (without the
  * plaintext) so the regular log file doubles as an audit trail.
  */
-@ShellComponent
+@Component
 @RequiresAuth
 @ConditionalOnProperty(name = "vance.anus.dev-mode.enabled", havingValue = "true")
 public class DevModeCommands {
@@ -33,13 +33,13 @@ public class DevModeCommands {
         this.settingService = settingService;
     }
 
-    @ShellMethod(key = "setting show-password",
-            value = "DEV-MODE — print the decrypted plaintext of a PASSWORD setting.")
+    @Command(name = {"setting", "show-password"},
+            description = "DEV-MODE — print the decrypted plaintext of a PASSWORD setting.")
     public String showPassword(
-            @ShellOption(value = {"--tenant", "-T"}) String tenant,
-            @ShellOption(value = {"--scope", "-s"}) String scope,
-            @ShellOption(value = {"--ref", "-r"}, defaultValue = ShellOption.NULL) @Nullable String ref,
-            @ShellOption(value = {"--key", "-k"}) String key) {
+            @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
+            @Option(longName = "scope", shortName = 's', required = true) String scope,
+            @Option(longName = "ref", shortName = 'r') @Nullable String ref,
+            @Option(longName = "key", shortName = 'k', required = true) String key) {
 
         SettingCommands.StorageRef storage;
         try {

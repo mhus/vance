@@ -436,6 +436,9 @@ function readNextParam(): string | null {
 </template>
 
 <style scoped>
+/* Tailwind 4 no longer gives scoped <style> blocks implicit access to the
+   theme/utilities for @apply — pull them in from the main stylesheet. */
+@reference "../style/app.css";
 /* Each tile is a bordered card — same look as a document-picker row
  * via VDataList. The whole tile is the link (block, no underline).
  * Hover lifts the border to primary, matching the documents/inbox

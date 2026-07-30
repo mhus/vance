@@ -1,6 +1,6 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+/* Legacy JS config (content globs) — v4 no longer auto-detects it. */
+@config "../tailwind.config.js";
 
 :root {
   color-scheme: dark;

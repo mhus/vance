@@ -40,7 +40,7 @@ jobs:
       # action-setup before setup-node so the node cache can resolve pnpm.
       # No version pin — it reads `packageManager` (pnpm@10.19.0) from package.json.
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
 
       - name: Set up Node
         uses: actions/setup-node@v5

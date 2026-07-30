@@ -6,8 +6,8 @@
  *   documents.html). The browser's native PDF viewer is embedded via
  *   {@code <iframe>}; pagination, zoom, search, print all come from
  *   the browser plugin.
- * - {@code embedded} — chat-friendly card body: only a single "PDF
- *   anzeigen" button. Click opens a fullscreen lightbox with an
+ * - {@code embedded} — chat-friendly card body: only a single "Open
+ *   PDF" button. Click opens a fullscreen lightbox with an
  *   {@code <iframe>} pointing at the same content endpoint.
  *
  * Same-origin request carries the {@code vance_access} cookie, so no
@@ -16,6 +16,7 @@
  * No {@code inline} channel — PDFs aren't markdown text. Spec §8.
  */
 import { computed, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { documentContentUrl } from '@vance/shared';
 import type { DocumentDto } from '@vance/generated';
 import type { EmbedRef } from '@/kindRenderers/parseVanceUri';
@@ -27,6 +28,8 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), { mode: 'embedded' });
+
+const { t } = useI18n();
 
 const lightbox = ref<boolean>(false);
 
@@ -58,7 +61,7 @@ function closeLightbox(): void {
       @click="openLightbox"
     >
       <span class="pdf-view__open-icon" aria-hidden="true">📄</span>
-      <span>PDF anzeigen</span>
+      <span>{{ t('documents.pdfView.open') }}</span>
     </button>
     <p v-if="embedRef?.caption" class="pdf-view__caption">
       {{ embedRef.caption }}

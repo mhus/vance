@@ -590,6 +590,9 @@ export default {
     mindmapView: {
       panZoomHint: 'Scrollen zum Zoomen · Ziehen zum Verschieben · Klick auf Knoten zum Einklappen',
     },
+    pdfView: {
+      open: 'PDF anzeigen',
+    },
     sheetView: {
       addRow: 'Zeile hinzufügen',
       addColumn: 'Spalte hinzufügen',

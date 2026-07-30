@@ -573,6 +573,9 @@ export default {
     mindmapView: {
       panZoomHint: 'Scroll to zoom · Drag to pan · Click a node to fold',
     },
+    pdfView: {
+      open: 'Open PDF',
+    },
     diagramView: {
       renderError: 'Diagram syntax error',
       sourceLabel: 'Source',

@@ -78,6 +78,10 @@ Java 25 + Spring Boot 4 + MongoDB + langchain4j/langgraph4j (Brain) · TypeScrip
 
 In aktiver Entwicklung. Brain, CLI und Web-UI laufen lokal; zwölf Think-Engines sind implementiert (`arthur`, `eddie`, `ford`, `marvin`, `vogon`, `zaphod`, `jeltz`, `frankie`, `trillian`, `slartibartfast`, `hactar`, `agrajag`) plus Workflow-Runtime `magrathea` und die Dienste `fook`, `fenchurch`, `zarniwoop`. Tenants, Service-Accounts und Rechte sind im Datenmodell aktiv; die kollaborativen Multi-User-Features kommen schrittweise.
 
+## Dokumentation
+
+Vollständige Doku unter <https://vance.mhus.de>. Lokal mit einem Befehl starten — `curl -fsSL https://vance.mhus.de/install.sh | bash` — siehe den [Getting-Started-Guide](https://vance.mhus.de/getting-started).
+
 ## CLI installieren
 
 Der `vance-foot`-Terminal-Client verbindet sich mit einem laufenden Brain. Drei Wege:

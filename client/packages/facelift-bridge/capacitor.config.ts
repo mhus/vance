@@ -20,6 +20,11 @@ const config: CapacitorConfig = {
     // status-bar area looks unified during the JS boot window.
     backgroundColor: '#1e3a8a',
   },
+  android: {
+    // Match the Android launch background to the splash colour, same
+    // rationale as iOS above.
+    backgroundColor: '#1e3a8a',
+  },
   server: {
     // No `url` field — release builds load bundled assets from `webDir`.
     // For livereload dev runs use `cap run ios --livereload --external`

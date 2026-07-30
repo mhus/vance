@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Library manifest for the plugin. No permissions declared here —
+     runtime permissions (CAMERA / RECORD_AUDIO for in-WebView media
+     capture, USE_BIOMETRIC for the lock) belong in the HOST APP's
+     manifest (facelift-bridge). See planning/vance-facelift-android.md §5.
+     The package namespace lives in build.gradle (AGP 8 convention). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+</manifest>

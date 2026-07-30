@@ -11,6 +11,7 @@
   "files": [
     "dist",
     "ios",
+    "android",
     "VanceFaceliftAccountWebview.podspec"
   ],
   "exports": {
@@ -26,6 +27,9 @@
   "capacitor": {
     "ios": {
       "src": "ios"
+    },
+    "android": {
+      "src": "android"
     }
   },
   "peerDependencies": {

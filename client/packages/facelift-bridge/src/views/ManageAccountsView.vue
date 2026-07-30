@@ -13,15 +13,19 @@ import {
   setBiometricEnabled,
 } from '@/lock/lockStore';
 import { isBiometricSupported, tryBiometricUnlock } from '@/lock/biometric';
+import { isDesktop } from '@/platform';
 
 const router = useRouter();
+// Desktop has no app-lock, so the whole Security section (Change PIN +
+// Face ID / Touch ID) is hidden there — see platform.ts / router guard.
+const isDesktopApp = isDesktop();
 const accounts = ref<Account[]>([]);
 const activeId = ref<string | null>(null);
 const loading = ref(true);
 
 onMounted(async () => {
   await refresh();
-  await refreshSecurity();
+  if (!isDesktopApp) await refreshSecurity();
   loading.value = false;
 });
 
@@ -138,7 +142,7 @@ const hasAccounts = computed(() => accounts.value.length > 0);
         </li>
       </ul>
     </div>
-    <section class="border-t border-gray-800 px-4 py-3">
+    <section v-if="!isDesktopApp" class="border-t border-gray-800 px-4 py-3">
       <h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
         Security
       </h2>

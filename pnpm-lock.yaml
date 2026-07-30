@@ -247,7 +247,7 @@ importers:
         specifier: ^20.14.0
         version: 20.19.43
       electron:
-        specifier: ^43.0.0
+        specifier: 43.2.0
         version: 43.2.0
       electron-builder:
         specifier: ^26.0.0
@@ -10140,7 +10140,7 @@ snapshots:
     dependencies:
       '@types/http-cache-semantics': 4.2.0
       '@types/keyv': 3.1.4
-      '@types/node': 20.19.43
+      '@types/node': 22.19.21
       '@types/responselike': 1.0.3
 
   '@types/d3-array@3.2.2': {}
@@ -10274,7 +10274,7 @@ snapshots:
 
   '@types/fs-extra@9.0.13':
     dependencies:
-      '@types/node': 20.19.43
+      '@types/node': 22.19.21
 
   '@types/geojson@7946.0.16': {}
 
@@ -10304,7 +10304,7 @@ snapshots:
 
   '@types/keyv@3.1.4':
     dependencies:
-      '@types/node': 20.19.43
+      '@types/node': 22.19.21
 
   '@types/leaflet@1.9.21':
     dependencies:
@@ -10343,7 +10343,7 @@ snapshots:
 
   '@types/responselike@1.0.3':
     dependencies:
-      '@types/node': 20.19.43
+      '@types/node': 22.19.21
 
   '@types/slice-ansi@4.0.0': {}
 

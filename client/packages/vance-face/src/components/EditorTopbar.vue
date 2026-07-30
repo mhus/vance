@@ -171,7 +171,7 @@ function openFook(): void {
       :title="$t('common.backToHome')"
     >
       <VanceLogo size="sm" class="text-primary" />
-      <span class="font-bold text-lg font-mono">vance</span>
+      <span class="font-bold text-lg font-mono">vancetope</span>
     </a>
     <!-- Server identity from the pod-written /config.json. The title
          renders as a clickable link to the backlink URL when both are

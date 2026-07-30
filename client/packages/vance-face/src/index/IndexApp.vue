@@ -289,7 +289,7 @@ function readNextParam(): string | null {
   <div v-if="mode === 'auto-login'" class="hero min-h-screen bg-base-200">
     <div class="hero-content flex-col">
       <VanceLogo size="xl" class="text-primary mb-2" />
-      <h1 class="text-3xl font-bold mb-1 font-mono opacity-60">vance</h1>
+      <h1 class="text-3xl font-bold mb-1 font-mono opacity-60">vancetope</h1>
       <p v-if="serverTitle" class="text-base font-medium opacity-70">{{ serverTitle }}</p>
       <a
         v-if="serverBacklink"
@@ -309,7 +309,7 @@ function readNextParam(): string | null {
   <div v-else-if="mode === 'login'" class="hero min-h-screen bg-base-200">
     <div class="hero-content w-full max-w-md flex-col">
       <VanceLogo size="xl" class="text-primary mb-2" />
-      <h1 class="text-3xl font-bold mb-1 font-mono opacity-60">vance</h1>
+      <h1 class="text-3xl font-bold mb-1 font-mono opacity-60">vancetope</h1>
       <p v-if="serverTitle" class="text-base font-medium opacity-70">{{ serverTitle }}</p>
       <a
         v-if="serverBacklink"

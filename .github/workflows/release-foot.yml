@@ -6,10 +6,14 @@
 # this fans out over a matrix of native runners, each building + smoke-testing
 # its own bundle and attaching it to the release.
 #
-# Trigger: fires when `wb release publish` creates the GitHub release (which
-# already uploaded vancetope-<version>.jar). This workflow downloads that jar,
-# wraps it per platform, and uploads the bundles to the SAME release. Manual
-# re-runs via workflow_dispatch with the tag (e.g. v0.1.0).
+# Trigger: MANUAL only (workflow_dispatch), pass the release tag (e.g. v0.1.0).
+# This workflow downloads that release's vancetope-<version>.jar, wraps it per
+# platform, and uploads the bundles to the SAME release.
+#
+# Why manual and not `release: published`: the release event fires the moment
+# the release is created, but `wb release publish` uploads vancetope-<version>.jar
+# a moment later — so an auto-triggered run raced ahead of the asset and died
+# with "no assets to download". Run this by hand once the fat-jar is attached.
 #
 # Independent of the Homebrew tap: brew uses the arch-neutral jar + openjdk@25
 # dependency; these bundles are the no-brew direct-download channel.
@@ -17,8 +21,6 @@
 name: release-foot
 
 on:
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
       tag:

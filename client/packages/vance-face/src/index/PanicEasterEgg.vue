@@ -3,7 +3,7 @@
  * Konami-code easter egg for the login/landing page only.
  *
  * ↑ ↑ ↓ ↓ ← → ← → B A  reveals a full-screen "DON'T PANIC" overlay
- * with a mock Hitchhiker's-Guide entry about Vance that types itself
+ * with a mock Hitchhiker's-Guide entry about Vancetope that types itself
  * out, ending on a big friendly 42. Fully self-contained: its own
  * window keydown listener, its own overlay, its own scoped CSS — it
  * touches nothing in the login flow and renders no DOM until armed.
@@ -31,15 +31,17 @@ const KONAMI = [
  * Rendered one character at a time.
  */
 const GUIDE_ENTRY =
-  'The Guide has this to say on the subject of Vance:\n\n' +
-  '"Vance is a mostly harmless workbench. It has been described as a ' +
-  'place where documents go to become agents, and where agents ' +
-  'occasionally return the favour.\n\n' +
+  'The Guide has this to say on the subject of Vancetope:\n\n' +
+  '"Vancetope is a mostly harmless place. It has been described as ' +
+  'somewhere documents go to become agents, and where agents ' +
+  'occasionally return the favour — a small, well-lit corner of the ' +
+  'galaxy in which your data and the things working on it finally ' +
+  'share an address.\n\n' +
   'It is run by a small, tireless assistant who is convinced that ' +
   'everything will be fine, which is more than can be said for the ' +
   'assistant fitted to most ships.\n\n' +
   'The Answer to Life, the Universe, and Everything remains 42. ' +
-  'Vance will at least help you format it."';
+  'Vancetope will at least help you format it."';
 
 /** Buffer of recent keys, trimmed to the sequence length. */
 const buffer: string[] = [];

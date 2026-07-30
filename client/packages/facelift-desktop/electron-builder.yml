@@ -1,0 +1,27 @@
+appId: de.mhus.vance.facelift.desktop
+productName: Vance
+directories:
+  output: release
+# The Electron main/preload are compiled into dist/. The renderer is the
+# facelift-bridge web build, bundled from the sibling package into the app
+# resources under `renderer/` (main.ts loads it from resourcesPath in the
+# packaged app). Build the bridge first: `pnpm --filter @vance/facelift-bridge build`.
+files:
+  - dist/**
+extraResources:
+  - from: ../facelift-bridge/dist
+    to: renderer
+mac:
+  category: public.app-category.productivity
+  target:
+    - dmg
+    - zip
+  # Signing + notarization are configured out-of-band (CSC_LINK / Apple
+  # notarytool creds) — v1 leaves the app unsigned for local runs.
+win:
+  target:
+    - nsis
+linux:
+  target:
+    - AppImage
+  category: Utility

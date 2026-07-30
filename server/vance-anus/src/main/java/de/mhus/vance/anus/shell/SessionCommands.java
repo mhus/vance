@@ -19,9 +19,9 @@ import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
-import org.springframework.shell.standard.ShellComponent;
-import org.springframework.shell.standard.ShellMethod;
-import org.springframework.shell.standard.ShellOption;
+import org.springframework.shell.core.command.annotation.Command;
+import org.springframework.shell.core.command.annotation.Option;
+import org.springframework.stereotype.Component;
 
 /**
  * Export and import whole sessions against the local Mongo connection.
@@ -31,7 +31,7 @@ import org.springframework.shell.standard.ShellOption;
  * {@code vance-shared}. Import reconstructs (VANCE format) or synthesises
  * (CLAUDE format) the chat process so the imported session is continuable.
  */
-@ShellComponent
+@Component
 @RequiresAuth
 @RequiredArgsConstructor
 public class SessionCommands {
@@ -41,12 +41,12 @@ public class SessionCommands {
 
     // ─── Export ─────────────────────────────────────────────────────────
 
-    @ShellMethod(key = "session export", value = "Export one session to a .jsonl file (Vance format).")
+    @Command(name = {"session", "export"}, description = "Export one session to a .jsonl file (Vance format).")
     public String export(
-            @ShellOption(value = {"--tenant", "-T"}) String tenant,
-            @ShellOption(value = {"--session", "-s"}) String sessionId,
-            @ShellOption(value = {"--out", "-o"},
-                    help = "Target file, or a directory (a session-<id>-<ts>.jsonl name is generated).")
+            @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
+            @Option(longName = "session", shortName = 's', required = true) String sessionId,
+            @Option(longName = "out", shortName = 'o', required = true,
+                    description = "Target file, or a directory (a session-<id>-<ts>.jsonl name is generated).")
             String out) {
         SessionDocument session = sessionService.findBySessionId(sessionId)
                 .filter(s -> tenant.equals(s.getTenantId()))
@@ -63,12 +63,12 @@ public class SessionCommands {
         }
     }
 
-    @ShellMethod(key = "session export-all",
-            value = "Export every session of a tenant (or one project) into a directory.")
+    @Command(name = {"session", "export-all"},
+            description = "Export every session of a tenant (or one project) into a directory.")
     public String exportAll(
-            @ShellOption(value = {"--tenant", "-T"}) String tenant,
-            @ShellOption(value = {"--project", "-p"}, defaultValue = ShellOption.NULL) @Nullable String project,
-            @ShellOption(value = {"--out", "-o"}, help = "Target directory (created if missing).") String out) {
+            @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
+            @Option(longName = "project", shortName = 'p') @Nullable String project,
+            @Option(longName = "out", shortName = 'o', required = true, description = "Target directory (created if missing).") String out) {
         List<SessionDocument> sessions = project != null
                 ? sessionService.listForProject(tenant, project)
                 : sessionService.listForTenant(tenant);
@@ -102,23 +102,25 @@ public class SessionCommands {
 
     // ─── Import ─────────────────────────────────────────────────────────
 
-    @ShellMethod(key = "session import",
-            value = "Import a session file (Vance or Claude-Code export) as a new session.")
+    @Command(name = {"session", "import"},
+            description = "Import a session file (Vance or Claude-Code export) as a new session.")
     public String importSession(
-            @ShellOption(value = {"--tenant", "-T"}) String tenant,
-            @ShellOption(value = {"--project", "-p"}) String project,
-            @ShellOption(value = {"--user", "-u"}) String user,
-            @ShellOption(value = {"--file", "-f"}) String file,
-            @ShellOption(value = {"--recipe", "-r"}, defaultValue = ShellOption.NULL) @Nullable String recipe,
-            @ShellOption(value = {"--engine", "-e"}, defaultValue = ShellOption.NULL,
-                    help = "Think-engine for the chat process (Claude imports only). Default: arthur.")
+            @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
+            @Option(longName = "project", shortName = 'p', required = true) String project,
+            @Option(longName = "user", shortName = 'u', required = true) String user,
+            @Option(longName = "file", shortName = 'f', required = true) String file,
+            @Option(longName = "recipe", shortName = 'r') @Nullable String recipe,
+            @Option(longName = "engine", shortName = 'e',
+                    description = "Think-engine for the chat process (Claude imports only). Default: arthur.")
             @Nullable String engine,
-            @ShellOption(value = {"--title", "-t"}, defaultValue = ShellOption.NULL) @Nullable String title,
-            @ShellOption(value = {"--format"}, defaultValue = "auto",
-                    help = "auto | vance | claude")
+            @Option(longName = "title", shortName = 't') @Nullable String title,
+            @Option(longName = "format",
+                    description = "auto | vance | claude",
+                    defaultValue = "auto")
             String format,
-            @ShellOption(value = {"--as-memory"}, defaultValue = "false",
-                    help = "Also seed an ARCHIVED_CHAT memory with the full transcript.")
+            @Option(longName = "as-memory",
+                    description = "Also seed an ARCHIVED_CHAT memory with the full transcript.",
+                    defaultValue = "false")
             boolean asMemory) {
         ImportFormat fmt = parseFormat(format);
         if (fmt == null) {
@@ -138,17 +140,17 @@ public class SessionCommands {
         }
     }
 
-    @ShellMethod(key = "session import-all",
-            value = "Import every *.jsonl file in a directory as a new session each.")
+    @Command(name = {"session", "import-all"},
+            description = "Import every *.jsonl file in a directory as a new session each.")
     public String importAll(
-            @ShellOption(value = {"--tenant", "-T"}) String tenant,
-            @ShellOption(value = {"--project", "-p"}) String project,
-            @ShellOption(value = {"--user", "-u"}) String user,
-            @ShellOption(value = {"--dir", "-d"}) String dir,
-            @ShellOption(value = {"--recipe", "-r"}, defaultValue = ShellOption.NULL) @Nullable String recipe,
-            @ShellOption(value = {"--engine", "-e"}, defaultValue = ShellOption.NULL) @Nullable String engine,
-            @ShellOption(value = {"--format"}, defaultValue = "auto") String format,
-            @ShellOption(value = {"--as-memory"}, defaultValue = "false") boolean asMemory) {
+            @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
+            @Option(longName = "project", shortName = 'p', required = true) String project,
+            @Option(longName = "user", shortName = 'u', required = true) String user,
+            @Option(longName = "dir", shortName = 'd', required = true) String dir,
+            @Option(longName = "recipe", shortName = 'r') @Nullable String recipe,
+            @Option(longName = "engine", shortName = 'e') @Nullable String engine,
+            @Option(longName = "format", defaultValue = "auto") String format,
+            @Option(longName = "as-memory", defaultValue = "false") boolean asMemory) {
         ImportFormat fmt = parseFormat(format);
         if (fmt == null) {
             return "Unknown --format '" + format + "' (expected auto | vance | claude).";

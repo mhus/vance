@@ -11,9 +11,9 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
-import org.springframework.shell.standard.ShellComponent;
-import org.springframework.shell.standard.ShellMethod;
-import org.springframework.shell.standard.ShellOption;
+import org.springframework.shell.core.command.annotation.Command;
+import org.springframework.shell.core.command.annotation.Option;
+import org.springframework.stereotype.Component;
 
 /**
  * CRUD over {@link AddonDocument}. The admin can register new addons
@@ -24,7 +24,7 @@ import org.springframework.shell.standard.ShellOption;
  *
  * <p>Spec: {@code specification/addon-system.md}.
  */
-@ShellComponent
+@Component
 @RequiresAuth
 @RequiredArgsConstructor
 public class AddonCommands {
@@ -38,7 +38,7 @@ public class AddonCommands {
      */
     private final List<VanceAddon> loadedAddons;
 
-    @ShellMethod(key = "addon list", value = "List all addons (including disabled).")
+    @Command(name = {"addon", "list"}, description = "List all addons (including disabled).")
     public String list() {
         List<AddonDocument> all = addonService.listAll();
         if (all.isEmpty()) {
@@ -55,8 +55,8 @@ public class AddonCommands {
                 all);
     }
 
-    @ShellMethod(key = "addon active",
-            value = "List addons actually loaded in THIS anus process (live beans), "
+    @Command(name = {"addon", "active"},
+            description = "List addons actually loaded in THIS anus process (live beans), "
                     + "cross-checked against db.addons. Unlike 'addon list' (db "
                     + "configuration) this reflects the real classpath.")
     public String active() {
@@ -82,65 +82,65 @@ public class AddonCommands {
                 sorted);
     }
 
-    @ShellMethod(key = "addon show", value = "Show one addon by name.")
-    public String show(@ShellOption(value = {"--name", "-n"}) String name) {
+    @Command(name = {"addon", "show"}, description = "Show one addon by name.")
+    public String show(@Option(longName = "name", shortName = 'n', required = true) String name) {
         return addonService.findByName(name)
                 .map(AddonCommands::renderOne)
                 .orElse("Addon '" + name + "' not found.");
     }
 
-    @ShellMethod(key = "addon create",
-            value = "Create a new addon row. Fails if the name already exists — "
+    @Command(name = {"addon", "create"},
+            description = "Create a new addon row. Fails if the name already exists — "
                     + "use 'addon update' to change the path of an existing row. "
                     + "Optional --checksum (format 'sha256:<hex>') is verified on download.")
     public String create(
-            @ShellOption(value = {"--name", "-n"}) String name,
-            @ShellOption(value = {"--path", "-p"}) String path,
-            @ShellOption(value = {"--checksum", "-c"}, defaultValue = ShellOption.NULL) @Nullable String checksum) {
+            @Option(longName = "name", shortName = 'n', required = true) String name,
+            @Option(longName = "path", shortName = 'p', required = true) String path,
+            @Option(longName = "checksum", shortName = 'c') @Nullable String checksum) {
         AddonDocument addon = addonService.create(name, path, checksum);
         return "Created addon:\n" + renderOne(addon);
     }
 
-    @ShellMethod(key = "addon update", value = "Change the source path of an existing addon.")
+    @Command(name = {"addon", "update"}, description = "Change the source path of an existing addon.")
     public String update(
-            @ShellOption(value = {"--name", "-n"}) String name,
-            @ShellOption(value = {"--path", "-p"}) String path) {
+            @Option(longName = "name", shortName = 'n', required = true) String name,
+            @Option(longName = "path", shortName = 'p', required = true) String path) {
         AddonDocument addon = addonService.updatePath(name, path);
         return "Updated addon:\n" + renderOne(addon);
     }
 
-    @ShellMethod(key = "addon set-checksum",
-            value = "Set or clear the expected SHA-256 of the source .vab. "
+    @Command(name = {"addon", "set-checksum"},
+            description = "Set or clear the expected SHA-256 of the source .vab. "
                     + "Format: 'sha256:<hex>'. Pass an empty string to clear.")
     public String setChecksum(
-            @ShellOption(value = {"--name", "-n"}) String name,
-            @ShellOption(value = {"--checksum", "-c"}) String checksum) {
+            @Option(longName = "name", shortName = 'n', required = true) String name,
+            @Option(longName = "checksum", shortName = 'c', required = true) String checksum) {
         String value = checksum.isBlank() ? null : checksum;
         AddonDocument addon = addonService.updateChecksum(name, value);
         return "Updated addon:\n" + renderOne(addon);
     }
 
-    @ShellMethod(key = "addon enable",
-            value = "Mark an addon enabled — it reappears in GET /face/addons "
+    @Command(name = {"addon", "enable"},
+            description = "Mark an addon enabled — it reappears in GET /face/addons "
                     + "and is unpacked on the next container restart.")
-    public String enable(@ShellOption(value = {"--name", "-n"}) String name) {
+    public String enable(@Option(longName = "name", shortName = 'n', required = true) String name) {
         AddonDocument addon = addonService.setEnabled(name, true);
         return "Enabled addon:\n" + renderOne(addon);
     }
 
-    @ShellMethod(key = "addon disable",
-            value = "Mark an addon disabled — hidden from GET /face/addons "
+    @Command(name = {"addon", "disable"},
+            description = "Mark an addon disabled — hidden from GET /face/addons "
                     + "and skipped by the bootstrap on the next container restart. "
                     + "Works on bundled addons too.")
-    public String disable(@ShellOption(value = {"--name", "-n"}) String name) {
+    public String disable(@Option(longName = "name", shortName = 'n', required = true) String name) {
         AddonDocument addon = addonService.setEnabled(name, false);
         return "Disabled addon:\n" + renderOne(addon);
     }
 
-    @ShellMethod(key = "addon delete",
-            value = "Hard-delete an addon row. The /shared/addons/<name>/ cache "
+    @Command(name = {"addon", "delete"},
+            description = "Hard-delete an addon row. The /shared/addons/<name>/ cache "
                     + "on disk is left intact and must be cleaned up separately.")
-    public String delete(@ShellOption(value = {"--name", "-n"}) String name) {
+    public String delete(@Option(longName = "name", shortName = 'n', required = true) String name) {
         addonService.delete(name);
         return "Deleted addon '" + name + "'.";
     }

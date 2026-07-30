@@ -7,9 +7,9 @@ import org.jline.reader.LineReader;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.shell.standard.ShellComponent;
-import org.springframework.shell.standard.ShellMethod;
-import org.springframework.shell.standard.ShellOption;
+import org.springframework.shell.core.command.annotation.Command;
+import org.springframework.shell.core.command.annotation.Option;
+import org.springframework.stereotype.Component;
 
 /**
  * Login / logout / status / hash. None of these need {@code @RequiresAuth}:
@@ -17,7 +17,7 @@ import org.springframework.shell.standard.ShellOption;
  * armed, {@code status} just reports state, and {@code hash} is a stateless
  * helper for ops to mint a fresh BCrypt hash for the env var.
  */
-@ShellComponent
+@Component
 public class AccessCommands {
 
     private final AccessService accessService;
@@ -32,10 +32,10 @@ public class AccessCommands {
         this.lineReader = lineReader;
     }
 
-    @ShellMethod(key = "login", value = "Authenticate. Without --password the prompt is masked.")
+    @Command(name = "login", description = "Authenticate. Without --password the prompt is masked.")
     public String login(
-            @ShellOption(value = {"--password", "-p"}, defaultValue = ShellOption.NULL,
-                    help = "Plaintext password — usually omitted; pass only in trusted scripts.")
+            @Option(longName = "password", shortName = 'p',
+                    description = "Plaintext password — usually omitted; pass only in trusted scripts.")
             @Nullable String password) {
         String plain = password;
         if (StringUtils.isBlank(plain)) {
@@ -50,13 +50,13 @@ public class AccessCommands {
         return "Login failed.";
     }
 
-    @ShellMethod(key = "logout", value = "Drop the current authorisation.")
+    @Command(name = "logout", description = "Drop the current authorisation.")
     public String logout() {
         accessService.logout();
         return "Logged out.";
     }
 
-    @ShellMethod(key = "status", value = "Show current authorisation state.")
+    @Command(name = "status", description = "Show current authorisation state.")
     public String status() {
         StringBuilder sb = new StringBuilder();
         if (accessService.isAuthorized()) {
@@ -73,12 +73,12 @@ public class AccessCommands {
         return sb.toString();
     }
 
-    @ShellMethod(key = "hash",
-            value = "Mint a {bcrypt} credential from a plaintext password (for VANCE_ANUS_PASSWORD_HASH). "
+    @Command(name = "hash",
+            description = "Mint a {bcrypt} credential from a plaintext password (for VANCE_ANUS_PASSWORD_HASH). "
                     + "For zero-friction setups you can also just use {noop}<password> directly.")
     public String hash(
-            @ShellOption(value = {"--plain"}, defaultValue = ShellOption.NULL,
-                    help = "Plaintext password. Omit to be prompted with a masked input.")
+            @Option(longName = "plain",
+                    description = "Plaintext password. Omit to be prompted with a masked input.")
             @Nullable String plain) {
         String input = plain;
         if (StringUtils.isBlank(input)) {

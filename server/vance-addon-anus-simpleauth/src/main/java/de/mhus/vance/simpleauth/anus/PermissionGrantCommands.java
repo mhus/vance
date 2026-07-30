@@ -6,9 +6,9 @@ import de.mhus.vance.simpleauth.GrantSubjectType;
 import de.mhus.vance.simpleauth.PermissionGrantDocument;
 import de.mhus.vance.simpleauth.PermissionGrantService;
 import java.util.List;
-import org.springframework.shell.standard.ShellComponent;
-import org.springframework.shell.standard.ShellMethod;
-import org.springframework.shell.standard.ShellOption;
+import org.springframework.shell.core.command.annotation.Command;
+import org.springframework.shell.core.command.annotation.Option;
+import org.springframework.stereotype.Component;
 
 /**
  * Operator CRUD over Simple-Auth grants — the anus counterpart of the Web-UI
@@ -17,7 +17,7 @@ import org.springframework.shell.standard.ShellOption;
  * an explicit argument. A TENANT-scope grant keys its {@code scopeId} on the
  * tenant itself.
  */
-@ShellComponent
+@Component
 public class PermissionGrantCommands {
 
     private final PermissionGrantService grants;
@@ -26,11 +26,11 @@ public class PermissionGrantCommands {
         this.grants = grants;
     }
 
-    @ShellMethod(key = "permission grant list", value = "List grants on a scope (TENANT or PROJECT).")
+    @Command(name = {"permission", "grant", "list"}, description = "List grants on a scope (TENANT or PROJECT).")
     public String list(
-            @ShellOption(value = {"--tenant", "-T"}) String tenant,
-            @ShellOption(value = {"--scope-type", "-s"}, defaultValue = "PROJECT") String scopeType,
-            @ShellOption(value = {"--scope-id", "-p"}, defaultValue = "") String scopeId) {
+            @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
+            @Option(longName = "scope-type", shortName = 's', defaultValue = "PROJECT") String scopeType,
+            @Option(longName = "scope-id", shortName = 'p', defaultValue = "") String scopeId) {
         GrantScopeType st = scope(scopeType);
         String sid = scopeId(st, tenant, scopeId);
         List<PermissionGrantDocument> rows = grants.forScope(tenant, st, sid);
@@ -47,14 +47,14 @@ public class PermissionGrantCommands {
         return sb.toString();
     }
 
-    @ShellMethod(key = "permission grant set", value = "Grant or update a role for a user or team on a scope.")
+    @Command(name = {"permission", "grant", "set"}, description = "Grant or update a role for a user or team on a scope.")
     public String set(
-            @ShellOption(value = {"--tenant", "-T"}) String tenant,
-            @ShellOption(value = {"--scope-type", "-s"}, defaultValue = "PROJECT") String scopeType,
-            @ShellOption(value = {"--scope-id", "-p"}, defaultValue = "") String scopeId,
-            @ShellOption(value = {"--subject-type", "-t"}, defaultValue = "USER") String subjectType,
-            @ShellOption(value = {"--subject-id", "-n"}) String subjectId,
-            @ShellOption(value = {"--role", "-r"}) String role) {
+            @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
+            @Option(longName = "scope-type", shortName = 's', defaultValue = "PROJECT") String scopeType,
+            @Option(longName = "scope-id", shortName = 'p', defaultValue = "") String scopeId,
+            @Option(longName = "subject-type", shortName = 't', defaultValue = "USER") String subjectType,
+            @Option(longName = "subject-id", shortName = 'n', required = true) String subjectId,
+            @Option(longName = "role", shortName = 'r', required = true) String role) {
         GrantScopeType st = scope(scopeType);
         String sid = scopeId(st, tenant, scopeId);
         grants.set(tenant, st, sid, subject(subjectType), subjectId, role(role), "anus");
@@ -62,13 +62,13 @@ public class PermissionGrantCommands {
                 + " '" + subjectId + "' on " + st + ":" + sid + ".";
     }
 
-    @ShellMethod(key = "permission grant remove", value = "Remove a subject's grant on a scope.")
+    @Command(name = {"permission", "grant", "remove"}, description = "Remove a subject's grant on a scope.")
     public String remove(
-            @ShellOption(value = {"--tenant", "-T"}) String tenant,
-            @ShellOption(value = {"--scope-type", "-s"}, defaultValue = "PROJECT") String scopeType,
-            @ShellOption(value = {"--scope-id", "-p"}, defaultValue = "") String scopeId,
-            @ShellOption(value = {"--subject-type", "-t"}, defaultValue = "USER") String subjectType,
-            @ShellOption(value = {"--subject-id", "-n"}) String subjectId) {
+            @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
+            @Option(longName = "scope-type", shortName = 's', defaultValue = "PROJECT") String scopeType,
+            @Option(longName = "scope-id", shortName = 'p', defaultValue = "") String scopeId,
+            @Option(longName = "subject-type", shortName = 't', defaultValue = "USER") String subjectType,
+            @Option(longName = "subject-id", shortName = 'n', required = true) String subjectId) {
         GrantScopeType st = scope(scopeType);
         String sid = scopeId(st, tenant, scopeId);
         boolean removed = grants.remove(tenant, st, sid, subject(subjectType), subjectId);

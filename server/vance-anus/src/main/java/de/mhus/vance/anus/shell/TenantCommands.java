@@ -7,9 +7,9 @@ import java.util.List;
 import java.util.function.Function;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
-import org.springframework.shell.standard.ShellComponent;
-import org.springframework.shell.standard.ShellMethod;
-import org.springframework.shell.standard.ShellOption;
+import org.springframework.shell.core.command.annotation.Command;
+import org.springframework.shell.core.command.annotation.Option;
+import org.springframework.stereotype.Component;
 
 /**
  * CRUD over {@link TenantDocument}. {@code tenant create} delegates to
@@ -18,14 +18,14 @@ import org.springframework.shell.standard.ShellOption;
  * {@code tenant delete} — {@link TenantService} does not support removal,
  * and a hard-deleted tenant would orphan all its projects/users/teams.
  */
-@ShellComponent
+@Component
 @RequiresAuth
 @RequiredArgsConstructor
 public class TenantCommands {
 
     private final TenantService tenantService;
 
-    @ShellMethod(key = "tenant list", value = "List all tenants.")
+    @Command(name = {"tenant", "list"}, description = "List all tenants.")
     public String list() {
         List<TenantDocument> all = tenantService.all();
         if (all.isEmpty()) {
@@ -41,27 +41,27 @@ public class TenantCommands {
                 all);
     }
 
-    @ShellMethod(key = "tenant show", value = "Show a tenant by name.")
-    public String show(@ShellOption(value = {"--name", "-n"}) String name) {
+    @Command(name = {"tenant", "show"}, description = "Show a tenant by name.")
+    public String show(@Option(longName = "name", shortName = 'n', required = true) String name) {
         return tenantService.findByName(name)
                 .map(TenantCommands::renderOne)
                 .orElse("Tenant '" + name + "' not found.");
     }
 
-    @ShellMethod(key = "tenant create",
-            value = "Create (or ensure) a tenant. Idempotent — also mints the JWT signing key.")
+    @Command(name = {"tenant", "create"},
+            description = "Create (or ensure) a tenant. Idempotent — also mints the JWT signing key.")
     public String create(
-            @ShellOption(value = {"--name", "-n"}) String name,
-            @ShellOption(value = {"--title", "-t"}, defaultValue = ShellOption.NULL) @Nullable String title) {
+            @Option(longName = "name", shortName = 'n', required = true) String name,
+            @Option(longName = "title", shortName = 't') @Nullable String title) {
         TenantDocument tenant = tenantService.ensure(name, title);
         return "Ensured tenant:\n" + renderOne(tenant);
     }
 
-    @ShellMethod(key = "tenant update", value = "Update a tenant's title and/or enabled flag.")
+    @Command(name = {"tenant", "update"}, description = "Update a tenant's title and/or enabled flag.")
     public String update(
-            @ShellOption(value = {"--name", "-n"}) String name,
-            @ShellOption(value = {"--title", "-t"}, defaultValue = ShellOption.NULL) @Nullable String title,
-            @ShellOption(value = {"--enabled"}, defaultValue = ShellOption.NULL) @Nullable Boolean enabled) {
+            @Option(longName = "name", shortName = 'n', required = true) String name,
+            @Option(longName = "title", shortName = 't') @Nullable String title,
+            @Option(longName = "enabled") @Nullable Boolean enabled) {
         TenantDocument tenant = tenantService.update(name, title, enabled);
         return "Updated:\n" + renderOne(tenant);
     }

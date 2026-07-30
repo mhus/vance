@@ -23,9 +23,9 @@ import java.util.List;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.shell.standard.ShellComponent;
-import org.springframework.shell.standard.ShellMethod;
-import org.springframework.shell.standard.ShellOption;
+import org.springframework.shell.core.command.annotation.Command;
+import org.springframework.shell.core.command.annotation.Option;
+import org.springframework.stereotype.Component;
 
 /**
  * Local-filesystem helpers — list, cat, mkdir, rm — for inspecting and
@@ -37,7 +37,7 @@ import org.springframework.shell.standard.ShellOption;
  * directory ({@code Paths.get("")}). Symlinks are not followed when
  * deleting — same posture as POSIX {@code rm -r}.
  */
-@ShellComponent
+@Component
 @RequiresAuth
 public class LocalFileCommands {
 
@@ -50,13 +50,15 @@ public class LocalFileCommands {
     /** Truncation threshold for {@code lcat} so a huge file can't lock the shell. */
     private static final int MAX_CAT_BYTES = 2 * 1024 * 1024; // 2 MiB
 
-    @ShellMethod(key = "lls", value = "List a local directory (default: cwd).")
+    @Command(name = "lls", description = "List a local directory (default: cwd).")
     public String lls(
-            @ShellOption(value = {"--path", "-p"}, defaultValue = ".",
-                    help = "Directory to list. Defaults to '.' (cwd).")
+            @Option(longName = "path", shortName = 'p',
+                    description = "Directory to list. Defaults to '.' (cwd).",
+                    defaultValue = ".")
             String pathArg,
-            @ShellOption(value = {"--all", "-a"}, defaultValue = "false",
-                    help = "Include hidden entries (names starting with '.').")
+            @Option(longName = "all", shortName = 'a',
+                    description = "Include hidden entries (names starting with '.').",
+                    defaultValue = "false")
             boolean all) {
 
         Path dir = Paths.get(pathArg).toAbsolutePath().normalize();
@@ -98,10 +100,10 @@ public class LocalFileCommands {
         return out.toString();
     }
 
-    @ShellMethod(key = "lcat", value = "Print a local file's contents (UTF-8, truncated past 2 MiB).")
+    @Command(name = "lcat", description = "Print a local file's contents (UTF-8, truncated past 2 MiB).")
     public String lcat(
-            @ShellOption(value = {"--file", "-f"},
-                    help = "Path to the file.")
+            @Option(longName = "file", shortName = 'f', required = true,
+                    description = "Path to the file.")
             String fileArg) {
 
         Path file = Paths.get(fileArg).toAbsolutePath().normalize();
@@ -130,10 +132,10 @@ public class LocalFileCommands {
         }
     }
 
-    @ShellMethod(key = "lmkdir", value = "Create a local directory (creates parents).")
+    @Command(name = "lmkdir", description = "Create a local directory (creates parents).")
     public String lmkdir(
-            @ShellOption(value = {"--path", "-p"},
-                    help = "Directory path to create. Parents are created as needed.")
+            @Option(longName = "path", shortName = 'p', required = true,
+                    description = "Directory path to create. Parents are created as needed.")
             String pathArg) {
 
         Path dir = Paths.get(pathArg).toAbsolutePath().normalize();
@@ -152,23 +154,26 @@ public class LocalFileCommands {
         return "Created: " + dir;
     }
 
-    @ShellMethod(key = "lwrite",
-            value = "Write text to a local file (UTF-8). Default overwrites; use --append/-a to append.")
+    @Command(name = "lwrite",
+            description = "Write text to a local file (UTF-8). Default overwrites; use --append/-a to append.")
     public String lwrite(
-            @ShellOption(value = {"--file", "-f"},
-                    help = "Path to the file. Created if missing.")
+            @Option(longName = "file", shortName = 'f', required = true,
+                    description = "Path to the file. Created if missing.")
             String fileArg,
-            @ShellOption(value = {"--content", "-c"},
-                    help = "Text content to write. Pass an empty string to truncate / no-op append.")
+            @Option(longName = "content", shortName = 'c', required = true,
+                    description = "Text content to write. Pass an empty string to truncate / no-op append.")
             String content,
-            @ShellOption(value = {"--append", "-a"}, defaultValue = "false",
-                    help = "Append instead of overwriting.")
+            @Option(longName = "append", shortName = 'a',
+                    description = "Append instead of overwriting.",
+                    defaultValue = "false")
             boolean append,
-            @ShellOption(value = {"--create-parents", "-P"}, defaultValue = "false",
-                    help = "Create missing parent directories before writing.")
+            @Option(longName = "create-parents", shortName = 'P',
+                    description = "Create missing parent directories before writing.",
+                    defaultValue = "false")
             boolean createParents,
-            @ShellOption(value = {"--newline", "-n"}, defaultValue = "false",
-                    help = "Append a trailing newline after content (handy for log-style files).")
+            @Option(longName = "newline", shortName = 'n',
+                    description = "Append a trailing newline after content (handy for log-style files).",
+                    defaultValue = "false")
             boolean addNewline) {
 
         Path file = Paths.get(fileArg).toAbsolutePath().normalize();
@@ -217,25 +222,28 @@ public class LocalFileCommands {
                 + " (file now " + (size < 0 ? "?" : size) + " bytes).";
     }
 
-    @ShellMethod(key = "lwget",
-            value = "Download an http(s) URL to a local file. Follows redirects, "
+    @Command(name = "lwget",
+            description = "Download an http(s) URL to a local file. Follows redirects, "
                     + "overwrites the target by default.")
     public String lwget(
-            @ShellOption(value = {"--file", "-f"},
-                    help = "Local destination path. Overwritten if it exists "
+            @Option(longName = "file", shortName = 'f', required = true,
+                    description = "Local destination path. Overwritten if it exists "
                             + "(use --no-clobber to refuse).")
             String fileArg,
-            @ShellOption(value = {"--url", "-u"},
-                    help = "Absolute http:// or https:// URL.")
+            @Option(longName = "url", shortName = 'u', required = true,
+                    description = "Absolute http:// or https:// URL.")
             String urlArg,
-            @ShellOption(value = {"--no-clobber"}, defaultValue = "false",
-                    help = "Refuse to overwrite an existing file.")
+            @Option(longName = "no-clobber",
+                    description = "Refuse to overwrite an existing file.",
+                    defaultValue = "false")
             boolean noClobber,
-            @ShellOption(value = {"--create-parents", "-P"}, defaultValue = "false",
-                    help = "Create missing parent directories before writing.")
+            @Option(longName = "create-parents", shortName = 'P',
+                    description = "Create missing parent directories before writing.",
+                    defaultValue = "false")
             boolean createParents,
-            @ShellOption(value = {"--timeout", "-t"}, defaultValue = "60",
-                    help = "Per-request timeout in seconds (connect + total).")
+            @Option(longName = "timeout", shortName = 't',
+                    description = "Per-request timeout in seconds (connect + total).",
+                    defaultValue = "60")
             int timeoutSeconds) {
 
         URI uri;
@@ -317,16 +325,18 @@ public class LocalFileCommands {
                 + " (HTTP " + status + ") to " + file;
     }
 
-    @ShellMethod(key = "lrm", value = "Delete a local file or directory. Use --recursive for directories.")
+    @Command(name = "lrm", description = "Delete a local file or directory. Use --recursive for directories.")
     public String lrm(
-            @ShellOption(value = {"--path", "-p"},
-                    help = "File or directory to delete.")
+            @Option(longName = "path", shortName = 'p', required = true,
+                    description = "File or directory to delete.")
             String pathArg,
-            @ShellOption(value = {"--recursive", "-r"}, defaultValue = "false",
-                    help = "Required to delete a non-empty directory.")
+            @Option(longName = "recursive", shortName = 'r',
+                    description = "Required to delete a non-empty directory.",
+                    defaultValue = "false")
             boolean recursive,
-            @ShellOption(value = {"--force"}, defaultValue = "false",
-                    help = "Do not error if the path is missing.")
+            @Option(longName = "force",
+                    description = "Do not error if the path is missing.",
+                    defaultValue = "false")
             boolean force) {
 
         Path target = Paths.get(pathArg).toAbsolutePath().normalize();

@@ -19,9 +19,9 @@ import org.apache.commons.lang3.StringUtils;
 import org.jline.reader.LineReader;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.shell.standard.ShellComponent;
-import org.springframework.shell.standard.ShellMethod;
-import org.springframework.shell.standard.ShellOption;
+import org.springframework.shell.core.command.annotation.Command;
+import org.springframework.shell.core.command.annotation.Option;
+import org.springframework.stereotype.Component;
 import org.yaml.snakeyaml.Yaml;
 
 /**
@@ -38,7 +38,7 @@ import org.yaml.snakeyaml.Yaml;
  * never leak through {@code list} / {@code show} — they are rendered as
  * {@value #PASSWORD_MASK}.
  */
-@ShellComponent
+@Component
 @RequiresAuth
 public class SettingCommands {
 
@@ -52,17 +52,17 @@ public class SettingCommands {
         this.lineReader = lineReader;
     }
 
-    @ShellMethod(key = "setting list",
-            value = "List settings. Either --scope+--ref for a scope, or --key alone for that key across the tenant.")
+    @Command(name = {"setting", "list"},
+            description = "List settings. Either --scope+--ref for a scope, or --key alone for that key across the tenant.")
     public String list(
-            @ShellOption(value = {"--tenant", "-T"}) String tenant,
-            @ShellOption(value = {"--scope", "-s"}, defaultValue = ShellOption.NULL,
-                    help = "tenant | user | project | think-process")
+            @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
+            @Option(longName = "scope", shortName = 's',
+                    description = "tenant | user | project | think-process")
             @Nullable String scope,
-            @ShellOption(value = {"--ref", "-r"}, defaultValue = ShellOption.NULL,
-                    help = "user login / project name / think-process id; auto-filled for scope=tenant.")
+            @Option(longName = "ref", shortName = 'r',
+                    description = "user login / project name / think-process id; auto-filled for scope=tenant.")
             @Nullable String ref,
-            @ShellOption(value = {"--key", "-k"}, defaultValue = ShellOption.NULL)
+            @Option(longName = "key", shortName = 'k')
             @Nullable String key) {
 
         if (scope == null && StringUtils.isBlank(key)) {
@@ -92,12 +92,12 @@ public class SettingCommands {
         return renderTable(docs);
     }
 
-    @ShellMethod(key = "setting show", value = "Show a single setting.")
+    @Command(name = {"setting", "show"}, description = "Show a single setting.")
     public String show(
-            @ShellOption(value = {"--tenant", "-T"}) String tenant,
-            @ShellOption(value = {"--scope", "-s"}) String scope,
-            @ShellOption(value = {"--ref", "-r"}, defaultValue = ShellOption.NULL) @Nullable String ref,
-            @ShellOption(value = {"--key", "-k"}) String key) {
+            @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
+            @Option(longName = "scope", shortName = 's', required = true) String scope,
+            @Option(longName = "ref", shortName = 'r') @Nullable String ref,
+            @Option(longName = "key", shortName = 'k', required = true) String key) {
 
         StorageRef storage;
         try {
@@ -113,20 +113,21 @@ public class SettingCommands {
         return renderOne(doc.get());
     }
 
-    @ShellMethod(key = "setting set",
-            value = "Set a non-password value. Use 'setting set-password' for PASSWORD.")
+    @Command(name = {"setting", "set"},
+            description = "Set a non-password value. Use 'setting set-password' for PASSWORD.")
     public String set(
-            @ShellOption(value = {"--tenant", "-T"}) String tenant,
-            @ShellOption(value = {"--scope", "-s"}) String scope,
-            @ShellOption(value = {"--ref", "-r"}, defaultValue = ShellOption.NULL) @Nullable String ref,
-            @ShellOption(value = {"--key", "-k"}) String key,
-            @ShellOption(value = {"--value", "-v"}, defaultValue = ShellOption.NULL,
-                    help = "Plain string value. Omit to clear the value while keeping the document.")
+            @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
+            @Option(longName = "scope", shortName = 's', required = true) String scope,
+            @Option(longName = "ref", shortName = 'r') @Nullable String ref,
+            @Option(longName = "key", shortName = 'k', required = true) String key,
+            @Option(longName = "value", shortName = 'v',
+                    description = "Plain string value. Omit to clear the value while keeping the document.")
             @Nullable String value,
-            @ShellOption(value = {"--type", "-t"}, defaultValue = "STRING",
-                    help = "STRING | INT | LONG | DOUBLE | BOOLEAN — PASSWORD is rejected here.")
+            @Option(longName = "type", shortName = 't',
+                    description = "STRING | INT | LONG | DOUBLE | BOOLEAN — PASSWORD is rejected here.",
+                    defaultValue = "STRING")
             SettingType type,
-            @ShellOption(value = {"--description", "-d"}, defaultValue = ShellOption.NULL) @Nullable String description) {
+            @Option(longName = "description", shortName = 'd') @Nullable String description) {
 
         if (type == SettingType.PASSWORD) {
             return "Refusing to set PASSWORD via 'setting set' — use 'setting set-password' instead.";
@@ -145,15 +146,15 @@ public class SettingCommands {
         return "Set:\n" + renderOne(saved);
     }
 
-    @ShellMethod(key = "setting set-password",
-            value = "Store an encrypted PASSWORD setting. Plaintext is prompted (masked) when --value is omitted.")
+    @Command(name = {"setting", "set-password"},
+            description = "Store an encrypted PASSWORD setting. Plaintext is prompted (masked) when --value is omitted.")
     public String setPassword(
-            @ShellOption(value = {"--tenant", "-T"}) String tenant,
-            @ShellOption(value = {"--scope", "-s"}) String scope,
-            @ShellOption(value = {"--ref", "-r"}, defaultValue = ShellOption.NULL) @Nullable String ref,
-            @ShellOption(value = {"--key", "-k"}) String key,
-            @ShellOption(value = {"--value", "-v"}, defaultValue = ShellOption.NULL,
-                    help = "Plaintext. Stored AES-GCM-encrypted with the shared encryption key.")
+            @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
+            @Option(longName = "scope", shortName = 's', required = true) String scope,
+            @Option(longName = "ref", shortName = 'r') @Nullable String ref,
+            @Option(longName = "key", shortName = 'k', required = true) String key,
+            @Option(longName = "value", shortName = 'v',
+                    description = "Plaintext. Stored AES-GCM-encrypted with the shared encryption key.")
             @Nullable String value) {
 
         StorageRef storage;
@@ -174,28 +175,30 @@ public class SettingCommands {
         return "Set (encrypted):\n" + renderOne(saved);
     }
 
-    @ShellMethod(key = "setting import",
-            value = "Bulk-import settings from a YAML file (init-settings.yaml format). "
+    @Command(name = {"setting", "import"},
+            description = "Bulk-import settings from a YAML file (init-settings.yaml format). "
                     + "Top-level YAML key is the tenant; CLI --scope/--ref decide where the "
                     + "settings land. Idempotent upsert; PASSWORD entries are encrypted.")
     public String importYaml(
-            @ShellOption(value = {"--file", "-f"},
-                    help = "Path to the YAML file. Relative paths walk parent directories.")
+            @Option(longName = "file", shortName = 'f', required = true,
+                    description = "Path to the YAML file. Relative paths walk parent directories.")
             String fileArg,
-            @ShellOption(value = {"--tenant", "-T"}, defaultValue = ShellOption.NULL,
-                    help = "Tenant to import into. When set, must match the YAML top-level "
+            @Option(longName = "tenant", shortName = 'T',
+                    description = "Tenant to import into. When set, must match the YAML top-level "
                             + "key (single-tenant files); when omitted, every tenant entry "
                             + "in the YAML is applied to its own tenant.")
             @Nullable String tenantFilter,
-            @ShellOption(value = {"--scope", "-s"}, defaultValue = "tenant",
-                    help = "tenant | user | project | think-process. Default 'tenant' lands "
-                            + "in the tenant-wide _vance system project.")
+            @Option(longName = "scope", shortName = 's',
+                    description = "tenant | user | project | think-process. Default 'tenant' lands "
+                            + "in the tenant-wide _vance system project.",
+                    defaultValue = "tenant")
             String scope,
-            @ShellOption(value = {"--ref", "-r"}, defaultValue = ShellOption.NULL,
-                    help = "user login / project name / think-process id; auto-filled for scope=tenant.")
+            @Option(longName = "ref", shortName = 'r',
+                    description = "user login / project name / think-process id; auto-filled for scope=tenant.")
             @Nullable String ref,
-            @ShellOption(value = {"--dry-run"}, defaultValue = "false",
-                    help = "Print what would happen, without writing.")
+            @Option(longName = "dry-run",
+                    description = "Print what would happen, without writing.",
+                    defaultValue = "false")
             boolean dryRun) {
 
         // 1. Resolve scope/ref to storage early so a bad combination
@@ -357,12 +360,12 @@ public class SettingCommands {
         }
     }
 
-    @ShellMethod(key = "setting delete", value = "Delete a setting.")
+    @Command(name = {"setting", "delete"}, description = "Delete a setting.")
     public String delete(
-            @ShellOption(value = {"--tenant", "-T"}) String tenant,
-            @ShellOption(value = {"--scope", "-s"}) String scope,
-            @ShellOption(value = {"--ref", "-r"}, defaultValue = ShellOption.NULL) @Nullable String ref,
-            @ShellOption(value = {"--key", "-k"}) String key) {
+            @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
+            @Option(longName = "scope", shortName = 's', required = true) String scope,
+            @Option(longName = "ref", shortName = 'r') @Nullable String ref,
+            @Option(longName = "key", shortName = 'k', required = true) String key) {
 
         StorageRef storage;
         try {

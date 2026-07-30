@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'de.mhus.vance.facelift',
-  appName: 'Vance',
+  appName: 'Vancetope',
   webDir: 'dist',
   ios: {
     // 'never' keeps the Capacitor WebView's CSS y=0 aligned with

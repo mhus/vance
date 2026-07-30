@@ -33,7 +33,7 @@ async function onSubmit(): Promise<void> {
     // forcing the user through the WebView round-trip.
     const verify = await verifyVanceUrl(url);
     if (!verify.ok) {
-      error.value = `Not a Vance instance (${verify.reason ?? 'unknown'})`;
+      error.value = `Not a Vancetope instance (${verify.reason ?? 'unknown'})`;
       return;
     }
     // Prefer the server-declared title as the default display name

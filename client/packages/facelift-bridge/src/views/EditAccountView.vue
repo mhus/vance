@@ -59,7 +59,7 @@ async function onSubmit(): Promise<void> {
     if (url !== current.faceUrl) {
       const verify = await verifyVanceUrl(url);
       if (!verify.ok) {
-        error.value = `Not a Vance instance (${verify.reason ?? 'unknown'})`;
+        error.value = `Not a Vancetope instance (${verify.reason ?? 'unknown'})`;
         return;
       }
     }

@@ -32,7 +32,7 @@ export async function isBiometricSupported(): Promise<boolean> {
 export async function tryBiometricUnlock(): Promise<boolean> {
   try {
     const result = await VanceAccountWebView.authenticateBiometric({
-      reason: 'Unlock Vance',
+      reason: 'Unlock Vancetope',
     });
     if (!result.success) {
       console.info('[facelift] biometric auth failed:', result.errorCode, result.errorMessage);

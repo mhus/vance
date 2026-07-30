@@ -52,7 +52,7 @@ function onBack(): void {
 
 <template>
   <div class="flex h-full flex-col items-center justify-center px-6">
-    <div class="mb-2 text-2xl font-semibold">Vance</div>
+    <div class="mb-2 text-2xl font-semibold">Vancetope</div>
     <div v-if="step === 'enter'" class="mb-6 text-sm text-gray-400">
       Set a PIN to protect the app
     </div>

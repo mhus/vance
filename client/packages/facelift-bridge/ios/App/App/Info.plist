@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>Vance</string>
+	<string>Vancetope</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -34,13 +34,13 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Vance uses the camera so you can attach photos to documents and chat messages.</string>
+	<string>Vancetope uses the camera so you can attach photos to documents and chat messages.</string>
 	<key>NSFaceIDUsageDescription</key>
-	<string>Vance uses Face ID to unlock the app.</string>
+	<string>Vancetope uses Face ID to unlock the app.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Vance uses the microphone for voice input (speech-to-text) in the chat editor.</string>
+	<string>Vancetope uses the microphone for voice input (speech-to-text) in the chat editor.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Vance uses your photo library so you can attach pictures to documents and chat messages.</string>
+	<string>Vancetope uses your photo library so you can attach pictures to documents and chat messages.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

@@ -238,7 +238,7 @@ async function goAdd(): Promise<void> {
         <span class="truncate text-sm font-medium">{{ active.displayName }}</span>
         <span class="text-xs text-gray-400">v</span>
       </button>
-      <span v-else class="flex-1 py-2 text-sm text-gray-400">Vance</span>
+      <span v-else class="flex-1 py-2 text-sm text-gray-400">Vancetope</span>
       <button
         v-if="active !== null"
         type="button"
@@ -293,7 +293,7 @@ async function goAdd(): Promise<void> {
       >
         <p class="text-lg font-medium">No account yet</p>
         <p class="text-sm text-gray-400">
-          Add a Brain server URL to start using Vance on this device.
+          Add a Brain server URL to start using Vancetope on this device.
         </p>
         <button
           type="button"

@@ -115,7 +115,7 @@ export async function verifyVanceUrl(url: string): Promise<VerifyResult> {
   if (parsed?.product !== 'vance') {
     return {
       ok: false,
-      reason: `not a Vance instance (product=${JSON.stringify(parsed?.product)})`,
+      reason: `not a Vancetope instance (product=${JSON.stringify(parsed?.product)})`,
     };
   }
   return { ok: true, config: parsed };

@@ -1,8 +1,7 @@
 dist/
 node_modules/
 *.tsbuildinfo
-# The iOS native project is committed (see ios/.gitignore for the
-# generated bits it excludes: Pods/, App/App/public, DerivedData,
-# xcuserdata, capacitor-cordova-ios-plugins, generated config files).
-# Android is not generated yet.
-android/
+# The iOS and Android native projects are both committed. Their own
+# ios/.gitignore and android/.gitignore exclude the generated bits
+# (Pods/DerivedData/xcuserdata on iOS; build/, .gradle/, local.properties,
+# copied web assets + generated config on Android).

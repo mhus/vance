@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Vance</string>
+    <string name="title_activity_main">Vance</string>
+    <string name="package_name">de.mhus.vance.facelift</string>
+    <string name="custom_url_scheme">de.mhus.vance.facelift</string>
+</resources>

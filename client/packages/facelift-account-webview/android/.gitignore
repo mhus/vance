@@ -1,0 +1,6 @@
+# Gradle build output for the plugin's Android library module.
+/build
+/.gradle
+*.iml
+.idea
+local.properties

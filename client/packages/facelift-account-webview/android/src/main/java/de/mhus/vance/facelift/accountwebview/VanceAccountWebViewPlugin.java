@@ -457,10 +457,10 @@ public class VanceAccountWebViewPlugin extends Plugin {
                     List<String> granted = new ArrayList<>();
                     for (String res : request.getResources()) {
                         if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(res)
-                            && hasPermission(Manifest.permission.CAMERA)) {
+                            && hasOsPermission(Manifest.permission.CAMERA)) {
                             granted.add(res);
                         } else if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(res)
-                            && hasPermission(Manifest.permission.RECORD_AUDIO)) {
+                            && hasOsPermission(Manifest.permission.RECORD_AUDIO)) {
                             granted.add(res);
                         }
                     }
@@ -474,7 +474,7 @@ public class VanceAccountWebViewPlugin extends Plugin {
         };
     }
 
-    private boolean hasPermission(String permission) {
+    private boolean hasOsPermission(String permission) {
         return ContextCompat.checkSelfPermission(getContext(), permission)
             == PackageManager.PERMISSION_GRANTED;
     }

@@ -121,11 +121,30 @@ function store(): Map<string, KindEntry> {
 }
 
 /**
+ * Registration input for {@link registerKind}. Identical to {@link KindEntry}
+ * except the Vue component slots are widened to {@code unknown}.
+ *
+ * <p>Assigning an async component — a deeply-generic {@code DefineComponent}
+ * returned by {@code defineAsyncComponent} — to {@code Component} blows
+ * TypeScript's type-comparison recursion under Vue 3.5.x (TS2321 "Excessive
+ * stack depth"; a tsc bug even turns it into a hard compiler crash). The slots
+ * are only ever rendered through {@code <component :is>}, so dropping the
+ * structural check at the registration boundary costs nothing — {@link KindEntry}
+ * itself keeps the {@code Component} typing for everything that reads back.
+ */
+export type RegisterKindInput<TDoc = unknown> =
+  Omit<KindEntry<TDoc>, 'view' | 'edit' | 'codePreview'> & {
+    view?: unknown;
+    edit?: unknown;
+    codePreview?: unknown;
+  };
+
+/**
  * Register a Kind entry. Idempotent — registering the same id again
  * replaces the previous entry (handy for HMR + addon re-load).
  */
-export function registerKind<TDoc = unknown>(entry: KindEntry<TDoc>): void {
-  store().set(entry.id, entry as KindEntry);
+export function registerKind<TDoc = unknown>(entry: RegisterKindInput<TDoc>): void {
+  store().set(entry.id, entry as unknown as KindEntry);
 }
 
 /**

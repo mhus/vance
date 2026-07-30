@@ -1,0 +1,130 @@
+# Java-free vance-foot CLI bundles — one self-contained tarball per platform.
+#
+# Each bundle ships a jlink-trimmed OpenJDK 25 runtime next to the foot fat-jar
+# plus a launcher, so users need NO system Java: unpack, run ./bin/vance.
+# jlink cannot cross-compile — a runtime must be built on its target OS — so
+# this fans out over a matrix of native runners, each building + smoke-testing
+# its own bundle and attaching it to the release.
+#
+# Trigger: fires when `wb release publish` creates the GitHub release (which
+# already uploaded vance-foot-<version>.jar). This workflow downloads that jar,
+# wraps it per platform, and uploads the bundles to the SAME release. Manual
+# re-runs via workflow_dispatch with the tag (e.g. v0.1.0).
+#
+# Independent of the Homebrew tap: brew uses the arch-neutral jar + openjdk@25
+# dependency; these bundles are the no-brew direct-download channel.
+
+name: release-foot
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build bundles for (e.g. v0.1.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  bundle:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            label: macos-arm64
+          - runner: macos-13
+            label: macos-x64
+          - runner: ubuntu-latest
+            label: linux-x64
+          - runner: windows-latest
+            label: windows-x64
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LABEL: ${{ matrix.label }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - name: Resolve tag + download fat-jar from the release
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.release.tag_name || inputs.tag }}"
+          VERSION="${TAG#v}"
+          echo "TAG=$TAG"         >> "$GITHUB_ENV"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'vance-foot-*.jar' --dir dl
+          ls -l dl
+
+      - name: Build jlink runtime + assemble bundle
+        run: |
+          set -euo pipefail
+          DIST="vance-foot-${VERSION}-${LABEL}"
+          # ALL-MODULE-PATH bundles the full JDK module set: robust for a
+          # reflection-heavy Spring Boot + GraalJS + Lanterna app. Trim later
+          # with a jdeps-derived --add-modules list if size matters.
+          "$JAVA_HOME/bin/jlink" \
+            --module-path "$JAVA_HOME/jmods" \
+            --add-modules ALL-MODULE-PATH \
+            --strip-debug --no-man-pages --no-header-files --compress=zip-6 \
+            --output "$DIST/runtime"
+
+          mkdir -p "$DIST/lib" "$DIST/bin"
+          cp dl/vance-foot-*.jar "$DIST/lib/vance-foot.jar"
+          [ -f LICENSE ] && cp LICENSE "$DIST/" || true
+          [ -f CHANGELOG.md ] && cp CHANGELOG.md "$DIST/" || true
+
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            cat > "$DIST/bin/vance.bat" <<'BAT'
+          @echo off
+          set "DIR=%~dp0.."
+          "%DIR%\runtime\bin\java.exe" -jar "%DIR%\lib\vance-foot.jar" %*
+          BAT
+          else
+            cat > "$DIST/bin/vance" <<'SH'
+          #!/bin/sh
+          DIR="$(cd "$(dirname "$0")/.." && pwd)"
+          exec "$DIR/runtime/bin/java" -jar "$DIR/lib/vance-foot.jar" "$@"
+          SH
+            chmod +x "$DIST/bin/vance"
+          fi
+          echo "DIST=$DIST" >> "$GITHUB_ENV"
+
+      - name: Smoke test (bundled runtime runs on this OS)
+        run: |
+          set -euo pipefail
+          # Proves the jlink image is a valid native runtime for this platform
+          # — the whole reason for building per-OS. Foot-level boot depends on
+          # a running server, so it is not exercised here.
+          "$DIST/runtime/bin/java" --version
+
+      - name: Package
+        run: |
+          set -euo pipefail
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            ARTIFACT="${DIST}.zip"
+            7z a -tzip "$ARTIFACT" "$DIST" >/dev/null
+          else
+            ARTIFACT="${DIST}.tar.gz"
+            tar -czf "$ARTIFACT" "$DIST"
+          fi
+          echo "ARTIFACT=$ARTIFACT" >> "$GITHUB_ENV"
+          ls -lh "$ARTIFACT"
+
+      - name: Upload bundle to the release
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" "$ARTIFACT" --clobber --repo "$GITHUB_REPOSITORY"

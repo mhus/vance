@@ -491,7 +491,7 @@ public class VanceAccountWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigatio
     /// most common non-success outcome and should not be treated as
     /// a fatal error by the caller.
     @objc func authenticateBiometric(_ call: CAPPluginCall) {
-        let reason = call.getString("reason") ?? "Unlock Vance"
+        let reason = call.getString("reason") ?? "Unlock Vancetope"
         let context = LAContext()
         // Suppress the Apple-side "fallback to passcode" affordance —
         // our JS layer owns the PIN fallback so the two paths don't

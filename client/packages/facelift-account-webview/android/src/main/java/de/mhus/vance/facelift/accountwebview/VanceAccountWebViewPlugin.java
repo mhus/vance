@@ -546,7 +546,7 @@ public class VanceAccountWebViewPlugin extends Plugin {
 
     @PluginMethod
     public void authenticateBiometric(final PluginCall call) {
-        final String reason = call.getString("reason", "Unlock Vance");
+        final String reason = call.getString("reason", "Unlock Vancetope");
         getActivity().runOnUiThread(() -> {
             FragmentActivity activity = (FragmentActivity) getActivity();
             Executor executor = ContextCompat.getMainExecutor(getContext());

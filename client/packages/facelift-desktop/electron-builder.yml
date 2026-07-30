@@ -1,5 +1,5 @@
 appId: de.mhus.vance.facelift.desktop
-productName: Vance
+productName: Vancetope
 directories:
   output: release
 # The Electron main/preload are compiled into dist/. The renderer is the

@@ -46,7 +46,7 @@ export function registerIpc(getManager: () => AccountViewManager | null): void {
   ipcMain.handle(
     'facelift:authenticateBiometric',
     (_e, o: { reason?: string }) =>
-      authenticateBiometric(o?.reason ?? 'Unlock Vance'),
+      authenticateBiometric(o?.reason ?? 'Unlock Vancetope'),
   );
 
   ipcMain.handle(

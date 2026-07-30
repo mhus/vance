@@ -1,5 +1,6 @@
 {
   "name": "@vance/facelift-desktop",
+  "productName": "Vancetope",
   "version": "0.1.0",
   "private": true,
   "description": "Vance Facelift Desktop — standalone Electron wrapper around the deployed Vance web UI (macOS/Windows/Linux). Reuses the facelift-bridge Vue shell + the VanceAccountWebView plugin interface; per-account isolation via WebContentsView + partitioned sessions.",

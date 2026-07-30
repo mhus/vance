@@ -20,10 +20,10 @@ import org.springframework.stereotype.Component;
  *
  * <p>Builds a {@link OpenAiImageModel} per call from {@link AiImageConfig},
  * runs {@code generate(prompt)}, and streams the resulting bytes into the
- * caller's {@link ImageDestinationStream}. Forces {@code responseFormat=b64_json}
- * so the response always carries inline bytes — no URL-fetch round-trip
- * (URLs are short-lived on OpenAI's CDN; for a single-call workflow
- * grabbing base64 is simpler and one fewer thing that can fail).
+ * caller's {@link ImageDestinationStream}. gpt-image-1 always returns inline
+ * base64 bytes — no URL-fetch round-trip (URLs are short-lived on OpenAI's
+ * CDN; for a single-call workflow grabbing base64 is simpler and one fewer
+ * thing that can fail).
  *
  * <p>Aspect-ratio mapping (OpenAI takes a literal pixel size, not a
  * W:H string):
@@ -82,7 +82,9 @@ public class OpenAiImageProvider implements AiImageModelProvider {
                 .modelName(config.modelName())
                 .size(mapAspectRatioToSize(config.aspectRatio()))
                 .quality("high")
-                .responseFormat("b64_json")
+                // gpt-image-1 always returns base64 image data; the OpenAI
+                // response_format param is gone for it and langchain4j dropped
+                // the builder method in 1.18.x. decodeBytes still reads b64.
                 .timeout(Duration.ofSeconds(config.timeoutSeconds()))
                 .maxRetries(0)   // Fenchurch handles retries at a higher level.
                 .build();
@@ -131,7 +133,7 @@ public class OpenAiImageProvider implements AiImageModelProvider {
             throw new AiImageException(
                     "OpenAI image response carries no base64 data for "
                             + config.fullName()
-                            + " (responseFormat=b64_json was requested)");
+                            + " (expected b64_json image data)");
         }
         try {
             return Base64.getDecoder().decode(b64);

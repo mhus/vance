@@ -86,7 +86,12 @@ jobs:
           # the modules from the run-time image and omitting --module-path links
           # straight from the image (JEP 493), and stays portable to JDKs that
           # still have jmods (jlink then defaults the path to them).
-          MODS="$("$JAVA_HOME/bin/java" --list-modules | sed 's/@.*//' | tr '\n' ',' | sed 's/,$//')"
+          #
+          # jdk.jlink is dropped on purpose: JEP 493 forbids an image linked
+          # from the run-time image from containing jdk.jlink ("This JDK does
+          # not contain packaged modules..."), and our CLI runtime never links
+          # images itself, so it isn't needed.
+          MODS="$("$JAVA_HOME/bin/java" --list-modules | sed 's/@.*//' | grep -vxF 'jdk.jlink' | tr '\n' ',' | sed 's/,$//')"
           "$JAVA_HOME/bin/jlink" \
             --add-modules "$MODS" \
             --strip-debug --no-man-pages --no-header-files --compress=zip-6 \

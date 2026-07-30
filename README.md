@@ -1,21 +1,21 @@
 # 𝑣 vance
 
-**A personal project.** Vance is something I built to develop LLM agents — and to shape them until I could actually work productively with them. Over time everything I found interesting went in, plus a few things I think others might get something out of.
+**A personal project.** Vancetope is something I built to develop LLM agents — and to shape them until I could actually work productively with them. Over time everything I found interesting went in, plus a few things I think others might get something out of.
 
 It's a project, not a product — no support contract, no roadmap promises. The source is public: read it, run it, take it for a spin. It's source-available, not classic open source, and where it goes from here I'm keeping open.
 
 > [!WARNING]
-> **Beta.** Vance is in active development. APIs, data model, configuration keys and engine behaviour can change between releases. Good for hands-on experimentation; not hardened for unattended production use.
+> **Beta.** Vancetope is in active development. APIs, data model, configuration keys and engine behaviour can change between releases. Good for hands-on experimentation; not hardened for unattended production use.
 
 > 🇩🇪 German version: [`README-DE.md`](README-DE.md)
 
 ## The idea
 
-Vance is a server (the "Brain") on which agents work assignments over hours and days — and which you can shape almost entirely from within itself, because configuration, behaviour and knowledge all live as documents in the database.
+Vancetope is a server (the "Brain") on which agents work assignments over hours and days — and which you can shape almost entirely from within itself, because configuration, behaviour and knowledge all live as documents in the database.
 
 ## Written by agents. On purpose.
 
-Every line of Vance is AI-written — directed, reviewed and shaped by one human. That's not a confession, it's the whole point: Vance is what working *with* agents over months actually builds — a large, coherent system you can run, read and change. The tool and the demo are the same thing.
+Every line of Vancetope is AI-written — directed, reviewed and shaped by one human. That's not a confession, it's the whole point: Vancetope is what working *with* agents over months actually builds — a large, coherent system you can run, read and change. The tool and the demo are the same thing.
 
 ## What makes it tick
 
@@ -33,9 +33,9 @@ Every line of Vance is AI-written — directed, reviewed and shaped by one human
 - **Several clients, one Brain.** CLI (`vance-foot`) — work right at the terminal, but always inside a project with everything stored in it. Web UI (`vance-face`). Mobile (`vance-facelift` — a Capacitor wrapper around the deployed Web UI, one isolated WebView per account). The Brain is the single source of truth; clients are different entry points, not views on the same thing.
 - **Connectors to the outside.** Mail, Jira, Google services, MCP tools. Inputs come in; finished artefacts that live on elsewhere go out.
 
-## What Vance is not
+## What Vancetope is not
 
-Not a team-chat replacement (Slack/Teams), not a project-management tool (Jira/Linear), not a generic publishing workflow. Finished artefacts that live on outside Vance — a shared spec, a final issue, shipped code — go out via export to Google Docs, Jira, Obsidian, your IDE. Vance is the workplace and the brain, not the filing cabinet for the end product.
+Not a team-chat replacement (Slack/Teams), not a project-management tool (Jira/Linear), not a generic publishing workflow. Finished artefacts that live on outside Vancetope — a shared spec, a final issue, shipped code — go out via export to Google Docs, Jira, Obsidian, your IDE. Vancetope is the workplace and the brain, not the filing cabinet for the end product.
 
 ## Concepts in one line each
 
@@ -66,7 +66,7 @@ Not a team-chat replacement (Slack/Teams), not a project-management tool (Jira/L
 | `agrajag` | Tool Health | Service engine for tool-failure classification via LLM. Diagnoses why a tool call failed. |
 | `magrathea` | Workflow Runtime | Not a think engine — its own lifecycle class: runs YAML workflows (phases, steps, sub-process spawns). Composable with engine calls. |
 | `fook` | Triage Service | Bug and feature triage: reporters (LLM, web menu, Foot `/support`) submit free-text, Fook decides via a LightLLM call between `new_ticket`/`merge_into`/`discard` and stores tickets in the `_vance` tenant. Optional upstream transfer to GitHub Issues. |
-| `fenchurch` | Image Service | Vance's only image generator: service + tool set (`image_generate`, `image_style_*`), synchronous provider call, concatenative style cascade across tenant → user → project → session. Aliases `default:image` / `default:image-high`. |
+| `fenchurch` | Image Service | Vancetope's only image generator: service + tool set (`image_generate`, `image_style_*`), synchronous provider call, concatenative style cascade across tenant → user → project → session. Aliases `default:image` / `default:image-high`. |
 | `zarniwoop` | Research Service | Unified search/research layer with pluggable protocols (web, Wikipedia, OpenAlex, arXiv, OpenLibrary, …). One endpoint = one instance with its own quotas and scopes. |
 | `ursa` | Trigger System | Not an engine but the trigger subsystem with three paths: **Scheduler** (time-based), **Ursahooks** (internal lifecycle events) and **Events** (external HTTP calls). All three fire the same `TriggerAction` hierarchy (recipe / script / workflow). |
 
@@ -106,6 +106,6 @@ Assets live on each [GitHub release](https://github.com/mhus/vance/releases).
 
 **Business Source License 1.1** — see [`LICENSE.txt`](LICENSE.txt). Source-available, not classic open source. On **2029-06-23** (three years after initial release) it converts automatically to **AGPLv3**.
 
-Permitted under the Additional Use Grant (including production): personal use, education, research, internal business use, consulting, and customer-specific deployments (one instance per customer). Not permitted: offering Vance as a hosted/managed/SaaS service to third parties where Vance forms a substantial part of the service. A commercial license for uses outside the grant is available per LICENSE.txt.
+Permitted under the Additional Use Grant (including production): personal use, education, research, internal business use, consulting, and customer-specific deployments (one instance per customer). Not permitted: offering Vancetope as a hosted/managed/SaaS service to third parties where Vancetope forms a substantial part of the service. A commercial license for uses outside the grant is available per LICENSE.txt.
 
 Enterprise-oriented features (SSO, audit, team management) live separately in [`vance-ee`](https://github.com/mhus/vance-ee) under their own license.

@@ -14,7 +14,7 @@
     <packaging>jar</packaging>
 
     <properties>
-        <spring-shell.version>3.4.0</spring-shell.version>
+        <spring-shell.version>4.0.3</spring-shell.version>
     </properties>
 
     <dependencies>

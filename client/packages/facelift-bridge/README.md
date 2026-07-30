@@ -9,7 +9,8 @@ paths that face's nginx proxies. Auth, editors, and all REST/WS traffic
 happen inside the website exactly as in a desktop browser.
 
 Replaces `@vance/vance-fingers` over the medium term — see
-`planning/vance-facelift.md` for the architecture and phasing.
+`specification/public/vance-facelift.md` for the architecture and
+phasing.
 
 ## Why this shape
 

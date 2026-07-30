@@ -41,7 +41,9 @@ What the wrapper adds on top of just "open Safari to
 - Picker (`/#/`) + Add-Account (`/#/add`) screens
 - Account list persisted in `@capacitor/preferences` —
   `{ id, faceUrl, displayName, createdAt, lastUsedAt }`
-- iOS only (Android scaffolding deferred)
+- iOS **and** Android are scaffolded and committed (both native
+  projects live under `ios/` and `android/`). Android build/run
+  workflow: `readme/facelift-android-build.md`.
 
 Explicit non-features in v1:
 
@@ -53,9 +55,10 @@ Explicit non-features in v1:
   adds a "Back to picker" bridge plugin.
 - No push, no voice, no share — Phase 5+.
 - Multiple users on the **same** origin share cookies in any
-  given WebView, but the `@vance/facelift-account-webview` plugin's
-  per-account `WKWebsiteDataStore(forIdentifier:)` keeps them
-  isolated across the picker entries.
+  given WebView, but the `@vance/facelift-account-webview` plugin
+  keeps them isolated across the picker entries: per-account
+  `WKWebsiteDataStore(forIdentifier:)` on iOS, the androidx.webkit
+  per-account `Profile` on Android.
 
 ## One-time iOS setup
 

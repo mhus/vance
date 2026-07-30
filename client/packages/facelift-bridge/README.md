@@ -8,8 +8,8 @@ The Vance brain is reachable from that same URL via the `/brain/*`
 paths that face's nginx proxies. Auth, editors, and all REST/WS traffic
 happen inside the website exactly as in a desktop browser.
 
-Replaces `@vance/vance-fingers` over the medium term — see
-`specification/public/vance-facelift.md` for the architecture and
+Replaces the former `@vance/vance-fingers` React-Native app (now removed) —
+see `specification/public/vance-facelift.md` for the architecture and
 phasing.
 
 ## Why this shape

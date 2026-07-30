@@ -7,7 +7,7 @@
 // snapshot in time for the next read.
 //
 // The matching `@vance/shared/speech/preferences` module is a
-// localStorage-based equivalent used by Mobile (vance-fingers). The
+// localStorage-based equivalent used by the mobile client. The
 // two modules deliberately stay separate: Web stores on the brain,
 // Mobile stores locally until we wire Mobile's settings path through
 // the brain too.

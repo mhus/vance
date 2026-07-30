@@ -1,10 +1,10 @@
 # Java-free vancetope CLI bundles — one self-contained tarball per platform.
 #
-# Each bundle ships a jlink-trimmed OpenJDK 25 runtime next to the foot fat-jar
-# plus a launcher, so users need NO system Java: unpack, run ./bin/vancetope.
-# jlink cannot cross-compile — a runtime must be built on its target OS — so
-# this fans out over a matrix of native runners, each building + smoke-testing
-# its own bundle and attaching it to the release.
+# Each bundle ships a full OpenJDK 25 runtime next to the foot fat-jar plus a
+# launcher, so users need NO system Java: unpack, run ./bin/vancetope.
+# The runtime is per-OS native (a JDK from one platform won't run on another),
+# so this fans out over a matrix of native runners, each assembling +
+# smoke-testing its own bundle and attaching it to the release.
 #
 # Trigger: MANUAL only (workflow_dispatch), pass the release tag (e.g. v0.1.0).
 # This workflow downloads that release's vancetope-<version>.jar, wraps it per
@@ -71,31 +71,25 @@ jobs:
             --pattern 'vancetope-*.jar' --dir dl
           ls -l dl
 
-      - name: Build jlink runtime + assemble bundle
+      - name: Assemble bundle (full JDK runtime + fat-jar)
         run: |
           set -euo pipefail
           DIST="vancetope-${VERSION}-${LABEL}"
-          # Bundle the full JDK module set: robust for a reflection-heavy Spring
-          # Boot + GraalJS + Lanterna app. Trim later with a jdeps-derived list
-          # if size matters.
+          # Bundle the setup-java JDK verbatim as the runtime (minus src.zip).
           #
-          # We pass every system module explicitly instead of `--add-modules
-          # ALL-MODULE-PATH --module-path $JAVA_HOME/jmods`: Temurin 24+ enables
-          # JEP 493 and ships NO jmods dir, so ALL-MODULE-PATH (which requires a
-          # module path) fails with "No module found in module path". Listing
-          # the modules from the run-time image and omitting --module-path links
-          # straight from the image (JEP 493), and stays portable to JDKs that
-          # still have jmods (jlink then defaults the path to them).
-          #
-          # jdk.jlink is dropped on purpose: JEP 493 forbids an image linked
-          # from the run-time image from containing jdk.jlink ("This JDK does
-          # not contain packaged modules..."), and our CLI runtime never links
-          # images itself, so it isn't needed.
-          MODS="$("$JAVA_HOME/bin/java" --list-modules | sed 's/@.*//' | grep -vxF 'jdk.jlink' | tr '\n' ',' | sed 's/,$//')"
-          "$JAVA_HOME/bin/jlink" \
-            --add-modules "$MODS" \
-            --strip-debug --no-man-pages --no-header-files --compress=zip-6 \
-            --output "$DIST/runtime"
+          # We do NOT jlink a trimmed image: Temurin 24+ ships neither a jmods
+          # dir NOR a jlink-linkable run-time image (JEP 493 removal without the
+          # linkable-runtime capability), so ANY jlink invocation dies here with
+          # "This JDK does not contain packaged modules and cannot be used to
+          # create another image with the jdk.jlink module" — regardless of
+          # --add-modules. Copying the whole JDK is Adoptium's own recommended
+          # workaround: distribution-agnostic, no jmods needed, and robust for a
+          # reflection-heavy Spring Boot + GraalJS + Lanterna app that would be
+          # fragile under a jdeps-derived module list anyway. Trade-off is size;
+          # trim later with a jmods-bearing JDK + jlink if it matters.
+          mkdir -p "$DIST/runtime"
+          cp -a "$JAVA_HOME/." "$DIST/runtime/"
+          rm -f "$DIST/runtime/lib/src.zip"
 
           mkdir -p "$DIST/lib" "$DIST/bin"
           cp dl/vancetope-*.jar "$DIST/lib/vancetope.jar"
@@ -121,9 +115,9 @@ jobs:
       - name: Smoke test (bundled runtime runs on this OS)
         run: |
           set -euo pipefail
-          # Proves the jlink image is a valid native runtime for this platform
-          # — the whole reason for building per-OS. Foot-level boot depends on
-          # a running server, so it is not exercised here.
+          # Proves the bundled runtime is a valid native runtime for this
+          # platform — the whole reason for building per-OS. Foot-level boot
+          # depends on a running server, so it is not exercised here.
           "$DIST/runtime/bin/java" --version
 
       - name: Package

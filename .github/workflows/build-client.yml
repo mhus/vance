@@ -35,7 +35,7 @@ jobs:
       || contains(github.event.head_commit.message, '[ci]')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       # action-setup before setup-node so the node cache can resolve pnpm.
       # No version pin — it reads `packageManager` (pnpm@10.19.0) from package.json.

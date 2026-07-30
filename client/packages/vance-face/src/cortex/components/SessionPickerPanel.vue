@@ -2,10 +2,12 @@
 /**
  * Compact session picker that mounts in the right-panel slot of
  * Cortex when no sessionId is bound. Lists the current project's
- * sessions; click on a row navigates to {@code cortex.html?sessionId=…}
- * with the project preserved. "+ New session" hands off to
- * {@code chat.html?project=…} where the recipe-modal lives — the new
- * session jumps back into Cortex via the existing chat → cortex link.
+ * sessions; click on a row emits {@code open-session} so the host
+ * (EditorApp) can navigate to {@code cortex.html?sessionId=…} while
+ * carrying the currently-open tabs across (they'd otherwise vanish).
+ * "+ New session" hands off to {@code chat.html?project=…} where the
+ * recipe-modal lives — the new session jumps back into Cortex via the
+ * existing chat → cortex link.
  */
 import { computed, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -24,6 +26,10 @@ const { t } = useI18n();
 
 const props = defineProps<{
   projectId: string;
+}>();
+
+const emit = defineEmits<{
+  (e: 'open-session', sessionId: string): void;
 }>();
 
 const projectIdRef = computed(() => props.projectId);
@@ -165,10 +171,8 @@ function formatRelativeTime(value: Date | string | number | undefined): string {
 
 function openSession(session: SessionSummaryRichDto): void {
   if (session.status === SessionStatus.ARCHIVED) return;
-  const params = new URLSearchParams();
-  params.set('sessionId', session.sessionId);
-  params.set('project', props.projectId);
-  window.location.href = `/cortex.html?${params.toString()}`;
+  // Let the host build the target URL — it carries the open tabs across.
+  emit('open-session', session.sessionId);
 }
 
 function newSession(): void {

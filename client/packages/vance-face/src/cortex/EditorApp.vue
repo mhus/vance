@@ -44,6 +44,7 @@ import ComposeOutput from '@/cortex/components/ComposeOutput.vue';
 import { useDocumentRefStore } from '@/kindViews/documentRefStore';
 import { isBinaryMime } from './stores/cortexStore';
 import { useCortexStore } from './stores/cortexStore';
+import { cortexHref, readCortexView, writeCortexView, type CortexView } from './cortexUrl';
 import { useViewEditMode } from './useViewEditMode';
 import { CortexClientToolService } from './clientToolService';
 import { useDocumentInvalidate } from './composables/useDocumentInvalidate';
@@ -66,14 +67,6 @@ import NewFolderModal from './components/NewFolderModal.vue';
 //  - 'off':    nothing is bound.
 type ChatBindMode = 'auto' | 'pinned' | 'off';
 
-// Cortex view-state persisted in sessionStorage (see persistCortexState).
-interface CortexStateBody {
-  openDocumentIds: string[];
-  chatBindMode?: ChatBindMode;
-  pinnedDocumentId?: string | null;
-  autoTarget?: boolean;
-}
-
 // Session-id is read from the URL synchronously so the rest of the
 // script setup can branch on it (e.g. {@link clientToolService}). Boot
 // still happens in {@link onMounted}.
@@ -91,8 +84,8 @@ const focusZone = ref<FocusZone>('main');
 
 // Auto-Target: when on (default), the document tree auto-reveals the
 // active tab's file — same effect as clicking the 🎯 button in the tree
-// header, but on every tab switch. Persisted per session in
-// sessionStorage like {@link chatBindMode}. Toggled via the View menu.
+// header, but on every tab switch. Carried in the URL like the rest of
+// the view-state (see cortexUrl). Toggled via the View menu.
 const autoTarget = ref(true);
 
 // Session-bound mode = there's a sessionId on this tab. Used everywhere
@@ -227,21 +220,14 @@ onMounted(async () => {
   } else if (pid) {
     await resolveProject(pid);
     // Optional URL-driven actions for the explorer → chatless handoff.
+    // Read the one-shot params before restoreView(), which strips them.
     const createPath = params.get('path');
     if (params.get('create') === '1') {
       createPrefill.value = { path: createPath ?? '' };
       showCreate.value = true;
     }
-    // Consume the one-shot handoff params so a refresh doesn't reopen the modal.
-    stripCreateParamsFromUrl();
-    const urlDoc = readDocFromUrl();
-    if (urlDoc) {
-      try {
-        await store.openFile(urlDoc);
-      } catch {
-        // doc id might be stale (deleted, moved); stay on empty state.
-      }
-    }
+    // Open the tabs the URL declares (create/path are dropped in the process).
+    await restoreView();
   } else {
     window.location.replace('/documents.html');
   }
@@ -269,7 +255,7 @@ async function resolveSession(id: string): Promise<void> {
     useDocumentRefStore().setCurrentProject(match.projectId);
     void loadTenantProjects();
     await store.loadList(match.projectId);
-    await restoreCortexState();
+    await restoreView();
   } catch (e) {
     bootError.value = e instanceof Error ? e.message : 'Failed to load session.';
   }
@@ -295,98 +281,107 @@ async function resolveProject(pid: string): Promise<void> {
   }
 }
 
-// Cortex view-state (open tabs + which is chat-bound) is pure per-tab UI
-// state, keyed by session — it belongs in the browser, not the server DB.
-// sessionStorage survives a refresh (F5) but not a tab close, which is
-// exactly the "reopen my tabs when I reload this session" scope. The
-// LLM-facing "bound file" travels with each steer instead (see
-// ChatComposer.boundDocumentId), so nothing about this needs the server.
-function cortexStateKey(sid: string): string {
-  return `cortex:${sid}`;
+// ──────────────── URL-as-truth view-state ────────────────
+// Cortex holds its whole per-view state (open tabs, active tab, chat-bind,
+// auto-target) in the URL — see cortexUrl.ts for the rationale. That makes
+// it survive hard navigations (chat ↔ chatless), browser history, F5 and
+// bookmarking, and keeps every browser tab independent with no shared
+// storage to race on. The LLM-facing "bound file" travels with each steer
+// (see ChatComposer.boundDocumentId), so none of this needs the server.
+
+// The last active-doc id we wrote to the URL. Used to decide push vs.
+// replace: switching the active document is navigable history (pushState);
+// pure open-set or preference edits update the current entry (replaceState).
+let lastActiveDoc: string | null = null;
+
+/** Snapshot the current view from the store + preference refs. */
+function currentView(): CortexView {
+  return {
+    open: store.openTabs.map((t) => t.id),
+    doc: store.activeTabId ?? null,
+    bind: chatBindMode.value,
+    pinned: chatBindMode.value === 'pinned' ? pinnedDocumentId.value : null,
+    autoTarget: autoTarget.value,
+  };
 }
 
-async function restoreCortexState(): Promise<void> {
-  const sid = sessionId.value;
-  chatBindMode.value = 'auto';
-  pinnedDocumentId.value = null;
-  autoTarget.value = true;
-  if (!sid) return;
-  const raw = sessionStorage.getItem(cortexStateKey(sid));
-  if (!raw) return;
-  let parsed: CortexStateBody | null = null;
-  try {
-    parsed = JSON.parse(raw) as CortexStateBody;
-  } catch {
-    return;
-  }
-  // Restore before the no-tabs early-return so the toggle survives even
-  // when no documents were open.
-  autoTarget.value = parsed?.autoTarget ?? true;
-  const tabIds = parsed?.openDocumentIds ?? [];
-  if (tabIds.length === 0) return;
+/**
+ * Write the current view into the URL. The equality guard is the central
+ * anti-flip-flop net: if the target URL already matches, we write nothing,
+ * so a popstate-driven store mutation can never echo back a redundant
+ * history write.
+ */
+function syncUrl(mode: 'push' | 'replace'): void {
+  const qs = writeCortexView(window.location.search, currentView());
+  const next = `${window.location.pathname}${qs ? `?${qs}` : ''}`;
+  if (next === `${window.location.pathname}${window.location.search}`) return;
+  if (mode === 'push') window.history.pushState({ cortex: true }, '', next);
+  else window.history.replaceState({ cortex: true }, '', next);
+}
+
+/**
+ * Bring the store + preferences in line with whatever the URL declares.
+ * Used on boot and on browser back/forward (popstate). Runs under the
+ * {@link restoring} guard so the sync watchers stay muted while we mutate;
+ * the equality guard in {@link syncUrl} covers any late watcher flush.
+ */
+async function restoreView(): Promise<void> {
+  const view = readCortexView();
   restoring.value = true;
   try {
-    for (const docId of tabIds) {
+    // Open tabs the URL declares that aren't open yet (URL order).
+    for (const id of view.open) {
+      if (store.openTabs.some((t) => t.id === id)) continue;
       try {
-        await store.openFile(docId);
+        await store.openFile(id);
       } catch {
         // Document gone or unreadable — skip silently.
       }
     }
-    const mode = parsed?.chatBindMode ?? 'auto';
-    const pinned = parsed?.pinnedDocumentId ?? null;
-    if (mode === 'pinned' && pinned && store.openTabs.some((t) => t.id === pinned)) {
+    // Close tabs the URL no longer lists (back/forward reverting an open).
+    // Persist unsaved edits first so a history step can't drop them.
+    for (const tab of [...store.openTabs]) {
+      if (view.open.includes(tab.id)) continue;
+      if (tab.dirty) {
+        try {
+          await store.saveTab(tab.id);
+        } catch {
+          // best-effort — closing anyway to honour the URL
+        }
+      }
+      store.closeTab(tab.id);
+    }
+    // Active tab.
+    if (view.doc && store.openTabs.some((t) => t.id === view.doc)) {
+      store.setActiveTab(view.doc);
+    }
+    // Preferences, with a graceful fallback when the pinned doc is gone.
+    if (view.bind === 'pinned' && view.pinned && store.openTabs.some((t) => t.id === view.pinned)) {
       chatBindMode.value = 'pinned';
-      pinnedDocumentId.value = pinned;
-    } else if (mode === 'off') {
+      pinnedDocumentId.value = view.pinned;
+    } else if (view.bind === 'off') {
       chatBindMode.value = 'off';
       pinnedDocumentId.value = null;
     } else {
-      // Default, plus graceful fallback when a pinned doc is gone.
       chatBindMode.value = 'auto';
       pinnedDocumentId.value = null;
     }
-    const urlDoc = readDocFromUrl();
-    if (urlDoc && store.openTabs.some((t) => t.id === urlDoc)) {
-      store.setActiveTab(urlDoc);
-    } else if (
-      chatBindMode.value === 'pinned'
-      && pinnedDocumentId.value
-      && store.openTabs.some((t) => t.id === pinnedDocumentId.value)
-    ) {
-      store.setActiveTab(pinnedDocumentId.value);
-    }
-    replaceDocInUrl(store.activeTabId ?? null);
+    autoTarget.value = view.autoTarget;
+    lastActiveDoc = store.activeTabId ?? null;
+    // Normalise the URL once (canonical param set, transient params dropped).
+    syncUrl('replace');
   } finally {
     restoring.value = false;
   }
 }
 
-function persistCortexState(): void {
-  const sid = sessionId.value;
-  if (!sid || restoring.value) return;
-  const body: CortexStateBody = {
-    openDocumentIds: store.openTabs.map((t) => t.id),
-    chatBindMode: chatBindMode.value,
-    pinnedDocumentId: chatBindMode.value === 'pinned' ? pinnedDocumentId.value : null,
-    autoTarget: autoTarget.value,
-  };
-  try {
-    sessionStorage.setItem(cortexStateKey(sid), JSON.stringify(body));
-  } catch (e) {
-    console.warn('Failed to persist Cortex state', e);
-  }
-}
-
-// Keep the persisted view-state in sync with open tabs, and gracefully
-// drop back to 'auto' when the pinned document's tab is closed — a
-// pinned binding pointing at a gone tab would otherwise silently bind
-// nothing. 'auto' needs no tab bookkeeping: it derives from the active
-// tab in {@link chatBoundDocumentId}.
+// Mirror open tabs + active tab into the URL. Active-doc changes are
+// navigable (pushState); background open/close or a pinned-doc cleanup
+// only rewrite the current entry (replaceState). Also drop a stale 'pinned'
+// binding when its tab is closed — otherwise it would silently bind nothing.
 watch(
-  () => store.openTabs.map((t) => t.id).join(','),
+  () => [store.openTabs.map((t) => t.id).join(','), store.activeTabId ?? ''] as const,
   () => {
-    if (!hasSession.value) return;
     if (restoring.value) return;
     if (
       chatBindMode.value === 'pinned'
@@ -396,12 +391,18 @@ watch(
       chatBindMode.value = 'auto';
       pinnedDocumentId.value = null;
     }
-    void persistCortexState();
+    const active = store.activeTabId ?? null;
+    const mode = active !== lastActiveDoc ? 'push' : 'replace';
+    lastActiveDoc = active;
+    syncUrl(mode);
   },
 );
 
+// Preference edits (bind mode / pinned doc / auto-target) are not
+// navigation — update the current history entry in place.
 watch([chatBindMode, pinnedDocumentId, autoTarget], () => {
-  void persistCortexState();
+  if (restoring.value) return;
+  syncUrl('replace');
 });
 
 const title = computed<string>(() => {
@@ -444,61 +445,12 @@ const breadcrumbs = computed<Crumb[]>(() => {
   return crumbs;
 });
 
-// ──────────────── URL sync for active document tab ────────────────
-const URL_DOC_PARAM = 'doc';
-let suppressHistoryPush = false;
-
-function readDocFromUrl(): string | null {
-  const params = new URLSearchParams(window.location.search);
-  return params.get(URL_DOC_PARAM);
-}
-
-function buildUrlWithDoc(docId: string | null): string {
-  const params = new URLSearchParams(window.location.search);
-  if (docId) params.set(URL_DOC_PARAM, docId);
-  else params.delete(URL_DOC_PARAM);
-  const query = params.toString();
-  return `${window.location.pathname}${query ? `?${query}` : ''}`;
-}
-
-function pushDocToUrl(docId: string | null): void {
-  const next = buildUrlWithDoc(docId);
-  if (next === `${window.location.pathname}${window.location.search}`) return;
-  window.history.pushState({ doc: docId }, '', next);
-}
-
-function replaceDocInUrl(docId: string | null): void {
-  const next = buildUrlWithDoc(docId);
-  if (next === `${window.location.pathname}${window.location.search}`) return;
-  window.history.replaceState({ doc: docId }, '', next);
-}
-
-/**
- * Drop the one-shot handoff params ({@code create}, {@code path}) from the
- * URL once they've been consumed on mount. Without this they linger, so a
- * page refresh would re-trigger the create-document modal every time.
- */
-function stripCreateParamsFromUrl(): void {
-  const params = new URLSearchParams(window.location.search);
-  if (!params.has('create') && !params.has('path')) return;
-  params.delete('create');
-  params.delete('path');
-  const query = params.toString();
-  window.history.replaceState(
-    window.history.state,
-    '',
-    `${window.location.pathname}${query ? `?${query}` : ''}`,
-  );
-}
-
+// ──────────────── Browser history (back/forward) ────────────────
+// Replay the URL's view on popstate. restoreView() reconciles open tabs,
+// active tab and preferences to match the history entry and writes nothing
+// back (the URL is already at the target), so there is no flip-flop.
 function onPopState(): void {
-  const urlDoc = readDocFromUrl();
-  if (urlDoc && !store.openTabs.some((t) => t.id === urlDoc)) return;
-  if ((urlDoc ?? null) === (store.activeTabId ?? null)) return;
-  suppressHistoryPush = true;
-  if (urlDoc) {
-    store.setActiveTab(urlDoc);
-  }
+  void restoreView();
 }
 
 const activeTab = computed(() => store.activeTab);
@@ -1007,18 +959,6 @@ watch(
   },
 );
 
-watch(
-  () => store.activeTabId,
-  (curr) => {
-    if (restoring.value) return;
-    if (suppressHistoryPush) {
-      suppressHistoryPush = false;
-      return;
-    }
-    pushDocToUrl(curr ?? null);
-  },
-);
-
 function onBeforeUnload(e: BeforeUnloadEvent): void {
   if (store.openTabs.some((t) => t.dirty)) {
     e.preventDefault();
@@ -1070,17 +1010,15 @@ const bootReadyKey = computed(() => !!projectId.value);
  * to chatless mode (the session-picker can then be re-opened with the
  * same toggle). This matches the user's mental model: the toggle is a
  * single "am I currently in a chat?" switch, not a panel-visibility
- * checkbox.
+ * checkbox. The open tabs ride along via {@link cortexHref} so leaving
+ * the chat doesn't wipe the workspace.
  *
  * In chatless mode the toggle is a stupid show/hide of the picker
  * panel — no URL change.
  */
 function toggleRightPanel(): void {
   if (hasSession.value) {
-    const params = new URLSearchParams();
-    if (projectId.value) params.set('project', projectId.value);
-    const qs = params.toString();
-    window.location.href = `/cortex.html${qs ? `?${qs}` : ''}`;
+    window.location.href = cortexHref({ project: projectId.value }, currentView());
     return;
   }
   rightPanelOpen.value = !rightPanelOpen.value;
@@ -1090,6 +1028,15 @@ const toggleTooltip = computed<string>(() => {
   if (hasSession.value) return 'Leave chat';
   return rightPanelOpen.value ? 'Hide sessions' : 'Show sessions';
 });
+
+/**
+ * Enter a chat from the (chatless-mode) session picker. Carry the current
+ * open tabs into the session URL so opening a chat doesn't wipe the
+ * documents the user had open — the reported bug this whole change fixes.
+ */
+function enterSession(sid: string): void {
+  window.location.href = cortexHref({ sessionId: sid, project: projectId.value }, currentView());
+}
 </script>
 
 <template>
@@ -1356,6 +1303,7 @@ const toggleTooltip = computed<string>(() => {
       <SessionPickerPanel
         v-else-if="projectId"
         :project-id="projectId"
+        @open-session="enterSession"
       />
       <div
         v-else

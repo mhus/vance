@@ -22,7 +22,7 @@ import tools.jackson.databind.ObjectMapper;
  * a 5 MB bash output would otherwise dominate the prompt and poison
  * cache for every subsequent turn. When a result's JSON size exceeds
  * {@code vance.tool.outputTruncation.threshold}, the original is
- * persisted to {@code ~/.vance/<tenantId>/<sessionId>/tool-results/
+ * persisted to {@code ~/.vancetope/<tenantId>/<sessionId>/tool-results/
  * <uuid>.txt} and the LLM gets a stub map with the first 2 KB
  * preview, the original size, and the storage path.
  *
@@ -77,7 +77,7 @@ public class ToolResultStorage {
     @Autowired
     public ToolResultStorage(
             ObjectMapper objectMapper,
-            @Value("${vance.dir:#{systemProperties['user.home']}/.vance}") String baseDirSetting,
+            @Value("${vance.dir:#{systemProperties['user.home']}/.vancetope}") String baseDirSetting,
             @Value("${vance.tool.outputTruncation.threshold:" + DEFAULT_THRESHOLD_BYTES + "}")
                     int thresholdBytes) {
         this(objectMapper, Paths.get(baseDirSetting), thresholdBytes);

@@ -14,13 +14,13 @@ import org.springframework.stereotype.Component;
  *
  * <p><b>Resolution — "project wins, else global".</b>
  * <ul>
- *   <li><b>Project-local</b> {@code ./.vance} (relative to the CWD) is the
+ *   <li><b>Project-local</b> {@code ./.vancetope} (relative to the CWD) is the
  *       active location when it exists <em>and</em> local mode is enabled.
  *       This is the per-project store — the folder "belongs to" a specific
  *       brain + project.</li>
  *   <li><b>Global home</b> is the fallback when there is no usable
  *       project-local directory: {@code $VANCE_HOME} when set, otherwise
- *       {@code ~/.vance} (the historical location shared with permissions,
+ *       {@code ~/.vancetope} (the historical location shared with permissions,
  *       history, foot-tools, …).</li>
  * </ul>
  *
@@ -37,7 +37,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class VancePaths {
 
-    public static final String DIR_NAME = ".vance";
+    public static final String DIR_NAME = ".vancetope";
     public static final String PROJECT_FILE = "project.yaml";
     public static final String ACCESS_FILE = "access.yaml";
 
@@ -76,7 +76,7 @@ public class VancePaths {
         this.userHome = userHome;
     }
 
-    /** Whether project-local {@code ./.vance} participates in resolution. */
+    /** Whether project-local {@code ./.vancetope} participates in resolution. */
     public boolean isLocalEnabled() {
         return localEnabled;
     }
@@ -86,7 +86,7 @@ public class VancePaths {
         this.localEnabled = enabled;
     }
 
-    /** The project-local directory {@code ./.vance} (may not exist). */
+    /** The project-local directory {@code ./.vancetope} (may not exist). */
     public Path projectLocalDir() {
         if (localDirOverride != null) {
             return Path.of(localDirOverride);
@@ -94,7 +94,7 @@ public class VancePaths {
         return Path.of(userDir, DIR_NAME);
     }
 
-    /** The global home directory: {@code $VANCE_HOME} else {@code ~/.vance} (may not exist). */
+    /** The global home directory: {@code $VANCE_HOME} else {@code ~/.vancetope} (may not exist). */
     public Path globalHomeDir() {
         if (homeOverride != null) {
             return Path.of(homeOverride);

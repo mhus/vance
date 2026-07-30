@@ -178,7 +178,7 @@ class ToolResultStorageTest {
         ToolResultPayload p = storage.truncateIfLarge(big, ctx("acme", "sess-42"));
 
         Path written = Path.of(p.storagePath());
-        // ~/.vance/acme/sess-42/tool-results/<uuid>.txt
+        // ~/.vancetope/acme/sess-42/tool-results/<uuid>.txt
         assertThat(written.toString()).contains("acme")
                                        .contains("sess-42")
                                        .contains("tool-results")

@@ -13,9 +13,9 @@ import tools.jackson.dataformat.yaml.YAMLMapper;
 
 /**
  * Reads and writes the central permissions file
- * {@code ~/.vance/permissions.yaml} (override the location with the
+ * {@code ~/.vancetope/permissions.yaml} (override the location with the
  * {@code vance.permissions.file} property — mainly for tests) and, on
- * top of it, an optional project-local {@code ./.vance/permissions.yaml}
+ * top of it, an optional project-local {@code ./.vancetope/permissions.yaml}
  * ({@code vance.permissions.local-file}).
  *
  * <p><b>Tightening-only cascade.</b> The central file carries the full
@@ -56,7 +56,7 @@ public class PermissionConfigLoader {
             "~/.ssh", "~/.ssh/**",
             "~/.aws", "~/.aws/**",
             "~/.gnupg", "~/.gnupg/**",
-            "~/.vance", "~/.vance/**");
+            "~/.vancetope", "~/.vancetope/**");
 
     private final YAMLMapper mapper = (YAMLMapper) YAMLMapper.builder()
             .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
@@ -72,20 +72,20 @@ public class PermissionConfigLoader {
         this.configuredLocalPath = configuredLocalPath;
     }
 
-    /** Central permissions file: explicit override, else {@code ~/.vance/permissions.yaml}. */
+    /** Central permissions file: explicit override, else {@code ~/.vancetope/permissions.yaml}. */
     public Path file() {
         if (configuredPath != null && !configuredPath.isBlank()) {
             return Path.of(configuredPath.trim());
         }
-        return Path.of(System.getProperty("user.home", ""), ".vance", "permissions.yaml");
+        return Path.of(System.getProperty("user.home", ""), ".vancetope", "permissions.yaml");
     }
 
-    /** Project-local file: explicit override, else {@code ./.vance/permissions.yaml} (CWD). */
+    /** Project-local file: explicit override, else {@code ./.vancetope/permissions.yaml} (CWD). */
     public Path localFile() {
         if (configuredLocalPath != null && !configuredLocalPath.isBlank()) {
             return Path.of(configuredLocalPath.trim());
         }
-        return Path.of(System.getProperty("user.dir", ""), ".vance", "permissions.yaml");
+        return Path.of(System.getProperty("user.dir", ""), ".vancetope", "permissions.yaml");
     }
 
     /**
@@ -186,7 +186,7 @@ public class PermissionConfigLoader {
     /**
      * Appends an "always" rule and persists it. Idempotent — an
      * identical rule already present is not duplicated. Creates the file
-     * (and {@code ~/.vance/}) if needed. The floor denies are never
+     * (and {@code ~/.vancetope/}) if needed. The floor denies are never
      * written; they are added at compile time.
      */
     public synchronized void appendRule(PermissionDomain domain, boolean allow, String rule) {

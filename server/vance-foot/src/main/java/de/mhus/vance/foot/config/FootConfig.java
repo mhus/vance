@@ -106,7 +106,7 @@ public class FootConfig {
      * submitted, the same set that ARROW_UP / ARROW_DOWN walks. Plain text,
      * one submitted line per file line (the {@code .bash_history} shape).
      *
-     * <p>Default path when {@link #file} is {@code null}: {@code ~/.vance/foot-history}.
+     * <p>Default path when {@link #file} is {@code null}: {@code ~/.vancetope/foot-history}.
      * A leading {@code ~/} in {@link #file} is expanded against {@code user.home}.
      */
     @Data

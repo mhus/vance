@@ -10,7 +10,7 @@ import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.dataformat.yaml.YAMLMapper;
 
 /**
- * Reads and writes {@code .vance/project.yaml} ({@link ProjectBinding}).
+ * Reads and writes {@code .vancetope/project.yaml} ({@link ProjectBinding}).
  * Pure file I/O over an explicit directory — callers pass the directory
  * resolved by {@link VancePaths} so the store stays trivially testable.
  */

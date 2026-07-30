@@ -218,7 +218,7 @@ public class ChatRepl {
 
     /**
      * Resolves the history file path or returns {@code null} when
-     * persistence is disabled. Defaults to {@code ~/.vance/foot-history};
+     * persistence is disabled. Defaults to {@code ~/.vancetope/foot-history};
      * an explicit {@code vance.history.file} value overrides, with
      * leading {@code ~/} expanded against {@code user.home}.
      */
@@ -230,7 +230,7 @@ public class ChatRepl {
         Path path;
         if (configured == null || configured.isBlank()) {
             if (home == null || home.isBlank()) return null;
-            path = Path.of(home, ".vance", "foot-history");
+            path = Path.of(home, ".vancetope", "foot-history");
         } else if (configured.startsWith("~/") && home != null && !home.isBlank()) {
             path = Path.of(home, configured.substring(2));
         } else {

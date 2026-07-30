@@ -6,7 +6,7 @@ import java.util.List;
 import org.springframework.stereotype.Component;
 
 /**
- * {@code /tools-reload} — re-reads {@code ~/.vance/foot-tools/*.json},
+ * {@code /tools-reload} — re-reads {@code ~/.vancetope/foot-tools/*.json},
  * rebuilds the pack-tool list (parses OpenAPI specs, runs MCP
  * {@code tools/list}, ...), and announces the union of bean-tools +
  * pack-tools to the brain. Synchronous — blocks the REPL until the
@@ -33,7 +33,7 @@ public class ToolsReloadCommand implements SlashCommand {
 
     @Override
     public String description() {
-        return "Re-read ~/.vance/foot-tools/*.json, rebuild the pack-tool list "
+        return "Re-read ~/.vancetope/foot-tools/*.json, rebuild the pack-tool list "
                 + "(REST/OpenAPI + MCP), and re-announce to the brain.";
     }
 

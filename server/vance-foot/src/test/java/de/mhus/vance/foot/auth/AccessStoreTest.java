@@ -43,7 +43,7 @@ class AccessStoreTest {
 
     @Test
     void save_createsMissingDirectory(@TempDir Path dir) {
-        Path nested = dir.resolve("sub").resolve(".vance");
+        Path nested = dir.resolve("sub").resolve(".vancetope");
         AccessData data = new AccessData();
         data.setAccessToken("x");
 

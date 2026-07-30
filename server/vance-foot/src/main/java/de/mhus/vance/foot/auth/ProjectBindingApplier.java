@@ -5,7 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 /**
- * Overlays a {@link ProjectBinding} (from {@code .vance/project.yaml}) onto
+ * Overlays a {@link ProjectBinding} (from {@code .vancetope/project.yaml}) onto
  * the running {@link FootConfig}. Every non-blank field wins over the
  * {@code application.yaml} default; blank/absent fields are left untouched.
  *

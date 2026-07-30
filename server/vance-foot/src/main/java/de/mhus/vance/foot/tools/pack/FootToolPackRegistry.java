@@ -16,7 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 /**
- * Loads {@code ~/.vance/foot-tools/*.json} into runnable
+ * Loads {@code ~/.vancetope/foot-tools/*.json} into runnable
  * {@link Tool}s and pushes them through {@link ClientToolService}
  * so the brain sees a single registration containing both the
  * hand-coded {@code @Component ClientTool} beans and the JSON-defined

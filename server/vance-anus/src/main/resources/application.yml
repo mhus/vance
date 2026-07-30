@@ -14,7 +14,7 @@ spring:
       enabled: false
     history:
       enabled: true
-      name: ${user.home}/.vance-anus-history
+      name: ${user.home}/.vancetope-anus-history
 
 vance:
   # Build stamp — filled by Maven resource filtering (@…@ delimiter) from the

@@ -18,7 +18,7 @@ explore beyond the primary set advertised every turn.
 Per-project sandbox the LLM controls in the brain:
 
 - `work_file_write / read / list / delete` — UTF-8 files under
-  `~/.vance/workspaces/<tenant>/<projectId>/`. Survives restarts;
+  `~/.vancetope/workspaces/<tenant>/<projectId>/`. Survives restarts;
   visible to every session in the same project.
 - `execute_javascript code=…` / `execute_work_javascript path=…`
   — sandboxed GraalJS. Scripts can call other tools through the

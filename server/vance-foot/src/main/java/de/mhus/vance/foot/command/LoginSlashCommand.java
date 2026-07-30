@@ -25,8 +25,8 @@ import org.springframework.stereotype.Component;
 
 /**
  * {@code /login [username [project [password]]]} — authenticate against the
- * brain, persist a renewable token to {@code .vance/access.yaml} plus a
- * {@code .vance/project.yaml} binding, keep the credential out of git, then
+ * brain, persist a renewable token to {@code .vancetope/access.yaml} plus a
+ * {@code .vancetope/project.yaml} binding, keep the credential out of git, then
  * (re)connect and bootstrap the bound project.
  *
  * <p>Any field not given as an argument is resolved from the existing
@@ -81,7 +81,7 @@ public class LoginSlashCommand implements SlashCommand {
 
     @Override
     public String description() {
-        return "Log in and store a renewable token in .vance/access.yaml "
+        return "Log in and store a renewable token in .vancetope/access.yaml "
                 + "(usage: /login [username [project [password]]]).";
     }
 

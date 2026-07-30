@@ -13,14 +13,14 @@ class GitignoreGuardTest {
 
     private Path repoWithVance(Path root) throws Exception {
         Files.createDirectories(root.resolve(".git"));
-        Path vance = root.resolve(".vance");
+        Path vance = root.resolve(".vancetope");
         Files.createDirectories(vance);
         return vance;
     }
 
     @Test
     void noGitRepo_reportsNoGit(@TempDir Path root) throws Exception {
-        Path vance = root.resolve(".vance");
+        Path vance = root.resolve(".vancetope");
         Files.createDirectories(vance);
 
         GitignoreGuard.Result result = guard.ensureAccessIgnored(vance);
@@ -35,9 +35,9 @@ class GitignoreGuardTest {
         GitignoreGuard.Result result = guard.ensureAccessIgnored(vance);
 
         assertThat(result.kind()).isEqualTo(GitignoreGuard.Kind.ADDED);
-        assertThat(result.entry()).isEqualTo(".vance/access.yaml");
+        assertThat(result.entry()).isEqualTo(".vancetope/access.yaml");
         assertThat(Files.readString(root.resolve(".gitignore")))
-                .contains(".vance/access.yaml");
+                .contains(".vancetope/access.yaml");
     }
 
     @Test
@@ -48,13 +48,13 @@ class GitignoreGuardTest {
         guard.ensureAccessIgnored(vance);
 
         String gi = Files.readString(root.resolve(".gitignore"));
-        assertThat(gi).isEqualTo("target/\n.vance/access.yaml\n");
+        assertThat(gi).isEqualTo("target/\n.vancetope/access.yaml\n");
     }
 
     @Test
     void alreadyIgnoredByFileEntry_noChange(@TempDir Path root) throws Exception {
         Path vance = repoWithVance(root);
-        Files.writeString(root.resolve(".gitignore"), ".vance/access.yaml\n");
+        Files.writeString(root.resolve(".gitignore"), ".vancetope/access.yaml\n");
 
         GitignoreGuard.Result result = guard.ensureAccessIgnored(vance);
 
@@ -64,7 +64,7 @@ class GitignoreGuardTest {
     @Test
     void alreadyIgnoredByDirEntry_noChange(@TempDir Path root) throws Exception {
         Path vance = repoWithVance(root);
-        Files.writeString(root.resolve(".gitignore"), "# secrets\n.vance/\n");
+        Files.writeString(root.resolve(".gitignore"), "# secrets\n.vancetope/\n");
 
         GitignoreGuard.Result result = guard.ensureAccessIgnored(vance);
 
@@ -74,12 +74,12 @@ class GitignoreGuardTest {
     @Test
     void findsGitRootFromNestedDirectory(@TempDir Path root) throws Exception {
         Files.createDirectories(root.resolve(".git"));
-        Path vance = root.resolve("sub").resolve(".vance");
+        Path vance = root.resolve("sub").resolve(".vancetope");
         Files.createDirectories(vance);
 
         GitignoreGuard.Result result = guard.ensureAccessIgnored(vance);
 
         assertThat(result.kind()).isEqualTo(GitignoreGuard.Kind.ADDED);
-        assertThat(result.entry()).isEqualTo("sub/.vance/access.yaml");
+        assertThat(result.entry()).isEqualTo("sub/.vancetope/access.yaml");
     }
 }

@@ -100,8 +100,8 @@ public class VanceFootCommand implements Callable<Integer> {
     boolean noBootstrap;
 
     @Option(names = "--no-local",
-            description = "Ignore a project-local ./.vance directory; use only the "
-                    + "global home ($VANCE_HOME or ~/.vance) for config and credentials.")
+            description = "Ignore a project-local ./.vancetope directory; use only the "
+                    + "global home ($VANCE_HOME or ~/.vancetope) for config and credentials.")
     boolean noLocal;
 
     @Option(names = "--no-ui",
@@ -278,7 +278,7 @@ public class VanceFootCommand implements Callable<Integer> {
         applyDaemonShortcut();
         applyWebShortcut();
 
-        // Overlay a project-local (or global-home) .vance/project.yaml binding
+        // Overlay a project-local (or global-home) .vancetope/project.yaml binding
         // onto the config BEFORE the CLI-flag overrides below, so precedence is
         // application.yaml < project.yaml < flags. A stored binding that sets a
         // project also arms the welcome-time auto-bootstrap, so a directory with
@@ -426,7 +426,7 @@ public class VanceFootCommand implements Callable<Integer> {
         bindingStore.load(vancePaths.activeDir()).ifPresent(binding -> {
             bindingApplier.apply(binding, config);
             terminal.println(Verbosity.VERBOSE,
-                    "Applied .vance/project.yaml from %s.", vancePaths.activeDir());
+                    "Applied .vancetope/project.yaml from %s.", vancePaths.activeDir());
         });
     }
 

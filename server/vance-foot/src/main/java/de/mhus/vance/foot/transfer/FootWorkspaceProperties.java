@@ -22,7 +22,7 @@ public class FootWorkspaceProperties {
      * named by its {@code projectId}. Default is below the user's home
      * directory; production setups can point this anywhere writable.
      */
-    private String root = System.getProperty("user.home") + "/.vance/foot";
+    private String root = System.getProperty("user.home") + "/.vancetope/foot";
 
     /**
      * POSIX mode mask AND-ed against {@code attrs.mode} from the

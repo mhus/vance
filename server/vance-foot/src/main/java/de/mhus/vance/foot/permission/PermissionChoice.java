@@ -3,7 +3,7 @@ package de.mhus.vance.foot.permission;
 /**
  * The four answers to an interactive permission prompt. {@code *_ONCE}
  * applies to the current tool call only; {@code *_ALWAYS} additionally
- * persists an exact-match rule to the central {@code ~/.vance/permissions.yaml}
+ * persists an exact-match rule to the central {@code ~/.vancetope/permissions.yaml}
  * so the same subject is auto-resolved next time.
  */
 public enum PermissionChoice {

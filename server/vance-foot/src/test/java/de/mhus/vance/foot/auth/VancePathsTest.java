@@ -15,10 +15,10 @@ class VancePathsTest {
 
     @Test
     void activeDir_prefersProjectLocalWhenPresent(@TempDir Path cwd, @TempDir Path home) throws Exception {
-        Files.createDirectories(cwd.resolve(".vance"));
+        Files.createDirectories(cwd.resolve(".vancetope"));
         VancePaths paths = paths(cwd.toString(), home.toString(), null);
 
-        assertThat(paths.activeDir()).isEqualTo(cwd.resolve(".vance"));
+        assertThat(paths.activeDir()).isEqualTo(cwd.resolve(".vancetope"));
         assertThat(paths.isActiveLocal()).isTrue();
     }
 
@@ -26,7 +26,7 @@ class VancePathsTest {
     void activeDir_fallsBackToGlobalHomeWhenNoProjectLocal(@TempDir Path cwd, @TempDir Path home) {
         VancePaths paths = paths(cwd.toString(), home.toString(), null);
 
-        assertThat(paths.activeDir()).isEqualTo(home.resolve(".vance"));
+        assertThat(paths.activeDir()).isEqualTo(home.resolve(".vancetope"));
         assertThat(paths.isActiveLocal()).isFalse();
     }
 
@@ -40,20 +40,20 @@ class VancePathsTest {
 
     @Test
     void activeDir_ignoresProjectLocalWhenLocalDisabled(@TempDir Path cwd, @TempDir Path home) throws Exception {
-        Files.createDirectories(cwd.resolve(".vance"));
+        Files.createDirectories(cwd.resolve(".vancetope"));
         VancePaths paths = paths(cwd.toString(), home.toString(), null);
 
         paths.setLocalEnabled(false);
 
-        assertThat(paths.activeDir()).isEqualTo(home.resolve(".vance"));
-        assertThat(paths.loginTargetDir()).isEqualTo(home.resolve(".vance"));
+        assertThat(paths.activeDir()).isEqualTo(home.resolve(".vancetope"));
+        assertThat(paths.loginTargetDir()).isEqualTo(home.resolve(".vancetope"));
     }
 
     @Test
     void loginTargetDir_isProjectLocalByDefault(@TempDir Path cwd, @TempDir Path home) {
         VancePaths paths = paths(cwd.toString(), home.toString(), null);
 
-        // Even when ./.vance does not exist yet, a fresh login targets it.
-        assertThat(paths.loginTargetDir()).isEqualTo(cwd.resolve(".vance"));
+        // Even when ./.vancetope does not exist yet, a fresh login targets it.
+        assertThat(paths.loginTargetDir()).isEqualTo(cwd.resolve(".vancetope"));
     }
 }

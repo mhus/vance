@@ -5,7 +5,7 @@ import lombok.Data;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Contents of {@code .vance/project.yaml} — the non-secret binding that
+ * Contents of {@code .vancetope/project.yaml} — the non-secret binding that
  * says which brain + tenant + project a working directory belongs to.
  * Safe to commit (it carries no credentials); the token lives in the
  * separate {@link AccessData} / {@code access.yaml}.

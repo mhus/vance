@@ -13,7 +13,7 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Reads {@code ~/.vance/foot-tools/*.json} (or the path given by the
+ * Reads {@code ~/.vancetope/foot-tools/*.json} (or the path given by the
  * {@code vance.foot.tools.dir} Spring property) and parses each entry
  * to a {@link FootToolPackConfig}. Files with the suffix
  * {@code .json.disabled} are skipped — the rename-to-disable
@@ -32,7 +32,7 @@ public class FootToolPackLoader {
      * read if missing, but only logged at info; foot tolerates an
      * absent directory so users without packs aren't burdened.
      */
-    public static final String DEFAULT_DIR = ".vance/foot-tools";
+    public static final String DEFAULT_DIR = ".vancetope/foot-tools";
 
     /**
      * Self-built Jackson 3 mapper. Spring Boot 4 still auto-configures
@@ -50,7 +50,7 @@ public class FootToolPackLoader {
 
     /**
      * Resolves the effective config directory. Spring-property override
-     * wins; falls through to {@code ~/.vance/foot-tools}. Returns
+     * wins; falls through to {@code ~/.vancetope/foot-tools}. Returns
      * {@code null} if {@code user.home} isn't set <i>and</i> no override
      * is configured (test JVMs, sandboxes).
      */

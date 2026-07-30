@@ -17,7 +17,7 @@ public class WorkspaceProperties {
      * by its {@code projectId}. Resolved against the JVM's working
      * directory if relative.
      */
-    private String root = System.getProperty("user.home") + "/.vance/workspaces";
+    private String root = System.getProperty("user.home") + "/.vancetope/workspaces";
 
     /** Hard cap on characters returned by a single read. */
     private int defaultReadCharCap = 8_000;

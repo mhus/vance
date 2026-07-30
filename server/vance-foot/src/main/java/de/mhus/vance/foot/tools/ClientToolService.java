@@ -30,7 +30,7 @@ import org.springframework.stereotype.Service;
  *       8 hand-coded foot-side capabilities (file/exec/javascript).
  *       Indexed at construction time, fixed for the JVM lifetime.</li>
  *   <li><b>Pack-scope:</b> {@link Tool}s materialised from
- *       {@code ~/.vance/foot-tools/*.json} by
+ *       {@code ~/.vancetope/foot-tools/*.json} by
  *       {@code FootToolPackRegistry}. Mutable — replaced on
  *       {@code /tools reload}.</li>
  * </ol>

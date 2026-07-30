@@ -5,7 +5,7 @@ import lombok.Data;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Contents of {@code .vance/access.yaml} — the per-user credential cache.
+ * Contents of {@code .vancetope/access.yaml} — the per-user credential cache.
  * Holds the brain-issued access token and (when the login requested one)
  * a longer-lived refresh token used to re-mint without re-prompting.
  *

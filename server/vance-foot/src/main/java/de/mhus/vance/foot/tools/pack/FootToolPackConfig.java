@@ -11,7 +11,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Mirror of the {@code ServerToolDocument} essentials, in JSON form.
- * One file per pack under {@code ~/.vance/foot-tools/}. Loaded by
+ * One file per pack under {@code ~/.vancetope/foot-tools/}. Loaded by
  * {@link FootToolPackLoader} via Jackson.
  *
  * <p>Schema:

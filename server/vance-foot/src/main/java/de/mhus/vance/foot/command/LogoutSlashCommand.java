@@ -8,7 +8,7 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
 /**
- * {@code /logout} — drops the stored credentials ({@code .vance/access.yaml})
+ * {@code /logout} — drops the stored credentials ({@code .vancetope/access.yaml})
  * and closes the connection. The refresh token is a self-expiring JWT with
  * no server-side revocation yet, so this is a local delete
  * (see {@code specification/cli-token-auth-plan.md}).
@@ -35,7 +35,7 @@ public class LogoutSlashCommand implements SlashCommand {
 
     @Override
     public String description() {
-        return "Forget the stored token (.vance/access.yaml) and disconnect.";
+        return "Forget the stored token (.vancetope/access.yaml) and disconnect.";
     }
 
     @Override

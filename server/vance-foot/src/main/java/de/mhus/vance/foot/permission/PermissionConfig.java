@@ -7,7 +7,7 @@ import org.jspecify.annotations.Nullable;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 /**
- * Raw, file-bound shape of {@code ~/.vance/permissions.yaml}. Mutable
+ * Raw, file-bound shape of {@code ~/.vancetope/permissions.yaml}. Mutable
  * POJO so Jackson's relaxed binding (and the "always" writer) can fill
  * and append fields directly. Compiled into an immutable
  * {@link PermissionPolicy} by {@link PermissionPolicy#compile}.

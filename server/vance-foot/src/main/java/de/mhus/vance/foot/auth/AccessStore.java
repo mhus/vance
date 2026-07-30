@@ -14,7 +14,7 @@ import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.dataformat.yaml.YAMLMapper;
 
 /**
- * Reads, writes and deletes {@code .vance/access.yaml} ({@link AccessData}).
+ * Reads, writes and deletes {@code .vancetope/access.yaml} ({@link AccessData}).
  * Pure file I/O over an explicit directory — the caller resolves the
  * directory via {@link VancePaths}.
  *

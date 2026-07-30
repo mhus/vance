@@ -7,7 +7,6 @@ settings:
 overrides:
   yallist: 4.0.0
   '@module-federation/vite': 1.4.0
-  vue: 3.5.40
 
 patchedDependencies:
   tiptap-extension-global-drag-handle:
@@ -83,7 +82,7 @@ importers:
         specifier: ^4.1.10
         version: 4.1.10(@types/node@24.13.3)(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))
       vue:
-        specifier: 3.5.40
+        specifier: ^3.5.40
         version: 3.5.40(typescript@5.9.3)
 
   client/packages/components:
@@ -141,11 +140,11 @@ importers:
         version: link:../shared
     devDependencies:
       vue:
-        specifier: 3.5.40
+        specifier: ^3.5.40
         version: 3.5.40(typescript@5.6.3)
       vue-tsc:
-        specifier: ^2.1.10
-        version: 2.2.12(typescript@5.6.3)
+        specifier: ^3.3.8
+        version: 3.3.8(typescript@5.6.3)
 
   client/packages/facelift-account-webview:
     dependencies:
@@ -192,7 +191,7 @@ importers:
         specifier: ^2.2.4
         version: 2.3.1(typescript@5.6.3)(vue@3.5.40(typescript@5.6.3))
       vue:
-        specifier: 3.5.40
+        specifier: ^3.5.40
         version: 3.5.40(typescript@5.6.3)
       vue-router:
         specifier: ^4.4.5
@@ -223,8 +222,8 @@ importers:
         specifier: ^8.2.0
         version: 8.2.0(@types/node@24.13.3)(jiti@1.21.7)(terser@5.49.0)(yaml@2.9.0)
       vue-tsc:
-        specifier: ^2.1.10
-        version: 2.2.12(typescript@5.6.3)
+        specifier: ^3.3.8
+        version: 3.3.8(typescript@5.6.3)
 
   client/packages/facelift-desktop:
     dependencies:
@@ -250,7 +249,7 @@ importers:
   client/packages/kind-registry:
     dependencies:
       vue:
-        specifier: 3.5.40
+        specifier: ^3.5.0
         version: 3.5.40(typescript@5.9.3)
     devDependencies:
       vitest:
@@ -260,7 +259,7 @@ importers:
   client/packages/runner-registry:
     dependencies:
       vue:
-        specifier: 3.5.40
+        specifier: ^3.5.0
         version: 3.5.40(typescript@5.9.3)
 
   client/packages/shared:
@@ -387,7 +386,7 @@ importers:
         specifier: ^2.2.4
         version: 2.3.1(typescript@5.6.3)(vue@3.5.40(typescript@5.6.3))
       vue:
-        specifier: 3.5.40
+        specifier: ^3.5.40
         version: 3.5.40(typescript@5.6.3)
       vue-draggable-plus:
         specifier: ^0.6.1
@@ -439,8 +438,8 @@ importers:
         specifier: ^4.1.10
         version: 4.1.10(@types/node@22.19.21)(vite@8.2.0(@types/node@22.19.21)(esbuild@0.25.12)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))
       vue-tsc:
-        specifier: ^2.1.10
-        version: 2.2.12(typescript@5.6.3)
+        specifier: ^3.3.8
+        version: 3.3.8(typescript@5.6.3)
 
   client/packages/vance-fingers:
     dependencies:
@@ -540,11 +539,11 @@ importers:
         specifier: ^8.2.0
         version: 8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0)
       vue:
-        specifier: 3.5.40
+        specifier: ^3.5.40
         version: 3.5.40(typescript@5.6.3)
       vue-tsc:
-        specifier: ^2.1.10
-        version: 2.2.12(typescript@5.6.3)
+        specifier: ^3.3.8
+        version: 3.3.8(typescript@5.6.3)
 
   server/vance-addon-brain-calendar/client:
     dependencies:
@@ -568,11 +567,11 @@ importers:
         specifier: ^8.2.0
         version: 8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0)
       vue:
-        specifier: 3.5.40
+        specifier: ^3.5.40
         version: 3.5.40(typescript@5.6.3)
       vue-tsc:
-        specifier: ^2.1.10
-        version: 2.2.12(typescript@5.6.3)
+        specifier: ^3.3.8
+        version: 3.3.8(typescript@5.6.3)
 
   server/vance-addon-brain-canvas/client:
     dependencies:
@@ -611,11 +610,11 @@ importers:
         specifier: ^8.2.0
         version: 8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0)
       vue:
-        specifier: 3.5.40
+        specifier: ^3.5.40
         version: 3.5.40(typescript@5.6.3)
       vue-tsc:
-        specifier: ^2.1.10
-        version: 2.2.12(typescript@5.6.3)
+        specifier: ^3.3.8
+        version: 3.3.8(typescript@5.6.3)
 
   server/vance-addon-brain-common-desktop/client:
     dependencies:
@@ -639,11 +638,11 @@ importers:
         specifier: ^8.2.0
         version: 8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0)
       vue:
-        specifier: 3.5.40
+        specifier: ^3.5.40
         version: 3.5.40(typescript@5.6.3)
       vue-tsc:
-        specifier: ^2.1.10
-        version: 2.2.12(typescript@5.6.3)
+        specifier: ^3.3.8
+        version: 3.3.8(typescript@5.6.3)
 
   server/vance-addon-brain-finance/client:
     dependencies:
@@ -667,11 +666,11 @@ importers:
         specifier: ^8.2.0
         version: 8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0)
       vue:
-        specifier: 3.5.40
+        specifier: ^3.5.40
         version: 3.5.40(typescript@5.6.3)
       vue-tsc:
-        specifier: ^2.1.10
-        version: 2.2.12(typescript@5.6.3)
+        specifier: ^3.3.8
+        version: 3.3.8(typescript@5.6.3)
 
   server/vance-addon-brain-gtd/client:
     dependencies:
@@ -704,11 +703,11 @@ importers:
         specifier: ^8.2.0
         version: 8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0)
       vue:
-        specifier: 3.5.40
+        specifier: ^3.5.40
         version: 3.5.40(typescript@5.6.3)
       vue-tsc:
-        specifier: ^2.1.10
-        version: 2.2.12(typescript@5.6.3)
+        specifier: ^3.3.8
+        version: 3.3.8(typescript@5.6.3)
 
   server/vance-addon-brain-issues/client:
     dependencies:
@@ -741,11 +740,11 @@ importers:
         specifier: ^8.2.0
         version: 8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0)
       vue:
-        specifier: 3.5.40
+        specifier: ^3.5.40
         version: 3.5.40(typescript@5.6.3)
       vue-tsc:
-        specifier: ^2.1.10
-        version: 2.2.12(typescript@5.6.3)
+        specifier: ^3.3.8
+        version: 3.3.8(typescript@5.6.3)
 
   server/vance-addon-brain-journal/client:
     dependencies:
@@ -778,11 +777,11 @@ importers:
         specifier: ^8.2.0
         version: 8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0)
       vue:
-        specifier: 3.5.40
+        specifier: ^3.5.40
         version: 3.5.40(typescript@5.6.3)
       vue-tsc:
-        specifier: ^2.1.10
-        version: 2.2.12(typescript@5.6.3)
+        specifier: ^3.3.8
+        version: 3.3.8(typescript@5.6.3)
 
   server/vance-addon-brain-kanban/client:
     dependencies:
@@ -824,11 +823,11 @@ importers:
         specifier: ^8.2.0
         version: 8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0)
       vue:
-        specifier: 3.5.40
+        specifier: ^3.5.40
         version: 3.5.40(typescript@5.6.3)
       vue-tsc:
-        specifier: ^2.1.10
-        version: 2.2.12(typescript@5.6.3)
+        specifier: ^3.3.8
+        version: 3.3.8(typescript@5.6.3)
 
   server/vance-addon-brain-simpleauth/client:
     dependencies:
@@ -849,11 +848,11 @@ importers:
         specifier: ^8.2.0
         version: 8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0)
       vue:
-        specifier: 3.5.40
+        specifier: ^3.5.40
         version: 3.5.40(typescript@5.6.3)
       vue-tsc:
-        specifier: ^2.1.10
-        version: 2.2.12(typescript@5.6.3)
+        specifier: ^3.3.8
+        version: 3.3.8(typescript@5.6.3)
 
   server/vance-addon-brain-slideshow/client:
     dependencies:
@@ -877,11 +876,11 @@ importers:
         specifier: ^8.2.0
         version: 8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0)
       vue:
-        specifier: 3.5.40
+        specifier: ^3.5.40
         version: 3.5.40(typescript@5.6.3)
       vue-tsc:
-        specifier: ^2.1.10
-        version: 2.2.12(typescript@5.6.3)
+        specifier: ^3.3.8
+        version: 3.3.8(typescript@5.6.3)
 
   server/vance-addon-brain-wiki/client:
     dependencies:
@@ -920,11 +919,11 @@ importers:
         specifier: ^4.1.10
         version: 4.1.10(@types/node@24.13.3)(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))
       vue:
-        specifier: 3.5.40
+        specifier: ^3.5.40
         version: 3.5.40(typescript@5.6.3)
       vue-tsc:
-        specifier: ^2.1.10
-        version: 2.2.12(typescript@5.6.3)
+        specifier: ^3.3.8
+        version: 3.3.8(typescript@5.6.3)
 
   server/vance-addon-brain-workbook/client:
     dependencies:
@@ -960,11 +959,11 @@ importers:
         specifier: ^8.2.0
         version: 8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0)
       vue:
-        specifier: 3.5.40
+        specifier: ^3.5.40
         version: 3.5.40(typescript@5.6.3)
       vue-tsc:
-        specifier: ^2.1.10
-        version: 2.2.12(typescript@5.6.3)
+        specifier: ^3.3.8
+        version: 3.3.8(typescript@5.6.3)
 
 packages:
 
@@ -2890,7 +2889,7 @@ packages:
       '@floating-ui/dom': ^1.0.0
       '@tiptap/core': 3.29.2
       '@tiptap/pm': 3.29.2
-      vue: 3.5.40
+      vue: ^3.0.0
 
   '@trapezedev/gradle-parse@7.1.3':
     resolution: {integrity: sha512-WQVF5pEJ5o/mUyvfGTG9nBKx9Te/ilKM3r2IT69GlbaooItT5ao7RyF1MUTBNjHLPk/xpGUY3c6PyVnjDlz0Vw==}
@@ -3124,7 +3123,7 @@ packages:
     engines: {node: ^20.19.0 || >=22.12.0}
     peerDependencies:
       vite: ^5.0.0 || ^6.0.0 || ^7.0.0 || ^8.0.0
-      vue: 3.5.40
+      vue: ^3.2.25
 
   '@vitest/expect@4.1.10':
     resolution: {integrity: sha512-YsCn+qAk1GWjQOWFEsEcL2gNQ0zmVmQu3T03qP6UyjhtmdtwtbuI+DASn/7iQB3HGTXkdBwGddzxPlmiql5vlA==}
@@ -3155,14 +3154,14 @@ packages:
   '@vitest/utils@4.1.10':
     resolution: {integrity: sha512-fy9am/HWxbaGt/Sawrp90vt6Y6jQwf1RX77cz3uwoJwJVMli/e1IEwRPnMNJ7vKfPTwo0diXifkpPvwH9v7nGA==}
 
-  '@volar/language-core@2.4.15':
-    resolution: {integrity: sha512-3VHw+QZU0ZG9IuQmzT68IyN4hZNd9GchGPhbD9+pa8CVv7rnoOZwo7T8weIbrRmihqy3ATpdfXFnqRrfPVK6CA==}
+  '@volar/language-core@2.4.28':
+    resolution: {integrity: sha512-w4qhIJ8ZSitgLAkVay6AbcnC7gP3glYM3fYwKV3srj8m494E3xtrCv6E+bWviiK/8hs6e6t1ij1s2Endql7vzQ==}
 
-  '@volar/source-map@2.4.15':
-    resolution: {integrity: sha512-CPbMWlUN6hVZJYGcU/GSoHu4EnCHiLaXI9n8c9la6RaI9W5JHX+NqG+GSQcB0JdC2FIBLdZJwGsfKyBB71VlTg==}
+  '@volar/source-map@2.4.28':
+    resolution: {integrity: sha512-yX2BDBqJkRXfKw8my8VarTyjv48QwxdJtvRgUpNE5erCsgEUdI2DsLbpa+rOQVAJYshY99szEcRDmyHbF10ggQ==}
 
-  '@volar/typescript@2.4.15':
-    resolution: {integrity: sha512-2aZ8i0cqPGjXb4BhkMsPYDkkuc2ZQ6yOpqwAuNwUoncELqoy5fRgOQtLR9gB0g902iS0NAkvpIzs27geVyVdPg==}
+  '@volar/typescript@2.4.28':
+    resolution: {integrity: sha512-Ja6yvWrbis2QtN4ClAKreeUZPVYMARDYZl9LMEv1iQ1QdepB6wn0jTRxA9MftYmYa4DQ4k/DaSZpFPUfxl8giw==}
 
   '@vscode/markdown-it-katex@1.1.2':
     resolution: {integrity: sha512-+4IIv5PgrmhKvW/3LpkpkGg257OViEhXkOOgCyj5KMsjsOfnRXkni8XAuuF9Ui5p3B8WnUovlDXAQNb8RJ/RaQ==}
@@ -3170,19 +3169,19 @@ packages:
   '@vue-flow/core@1.48.2':
     resolution: {integrity: sha512-raxhgKWE+G/mcEvXJjGFUDYW9rAI3GOtiHR3ZkNpwBWuIaCC1EYiBmKGwJOoNzVFgwO7COgErnK7i08i287AFA==}
     peerDependencies:
-      vue: 3.5.40
+      vue: ^3.3.0
 
   '@vue-flow/node-resizer@1.5.1':
     resolution: {integrity: sha512-DNYgXTF39GXPAygVMFmgn5azgFztaWfqbWvv8D/X0HGgeunRrexJ0W94DyXH1rnndGyYAJ0KexEjyelsb+Nlbg==}
     peerDependencies:
       '@vue-flow/core': ^1.23.0
-      vue: 3.5.40
+      vue: ^3.3.0
 
   '@vue-flow/node-toolbar@1.1.1':
     resolution: {integrity: sha512-vgSnGMLd3FXstdpvC721qcBDzGkPsudmyA8urEP55/EMikCp59klgzPvVULTDxxsew5MdXtTBCumsqOi+PXJdg==}
     peerDependencies:
       '@vue-flow/core': ^1.23.0
-      vue: 3.5.40
+      vue: ^3.3.0
 
   '@vue/compiler-core@3.5.40':
     resolution: {integrity: sha512-39E8IgOhTbVDnoJFMKc2DvYnypcZwUqgUhQkccva/0m6FUwtIKSGV7n1hpVmYcFaoRAwf9pBcwnKlCEsN63ZEQ==}
@@ -3196,19 +3195,11 @@ packages:
   '@vue/compiler-ssr@3.5.40':
     resolution: {integrity: sha512-rrE5xiXG663+vHCHa3J9p2z5OcBRjXmoqenprJxAFQxg5pSshzeBiCE6pu46axapRJ2Adk0YDA2BRZVjiHXnhg==}
 
-  '@vue/compiler-vue2@2.7.16':
-    resolution: {integrity: sha512-qYC3Psj9S/mfu9uVi5WvNZIzq+xnXMhOwbTFKKDD7b1lhpnn71jXSFdTQ+WsIEk0ONCd7VV2IMm7ONl6tbQ86A==}
-
   '@vue/devtools-api@6.6.4':
     resolution: {integrity: sha512-sGhTPMuXqZ1rVOk32RylztWkfXTRhuS7vgAKv0zjqk8gbsHkJ7xfFf+jbySxt7tWObEJwyKaHMikV/WGDiQm8g==}
 
-  '@vue/language-core@2.2.12':
-    resolution: {integrity: sha512-IsGljWbKGU1MZpBPN+BvPAdr55YPkj2nB/TBNGNC32Vy2qLG25DYu/NBN2vNtZqdRbTRjaoYrahLrToim2NanA==}
-    peerDependencies:
-      typescript: '*'
-    peerDependenciesMeta:
-      typescript:
-        optional: true
+  '@vue/language-core@3.3.8':
+    resolution: {integrity: sha512-ieGT8jJdhhy0mGzStZhsg/qPw5bQZJg5yF+3+XU6saf4sM7yo9ZXy3h+nCwrm2+b4qS/SypkNdR2jAF3uei9tA==}
 
   '@vue/reactivity@3.5.40':
     resolution: {integrity: sha512-B7ot9UlUZOi1zbq61/LvE88ZLTV8IlajTdiZTAEiDQgrnIMIZoPr9kGw0Zw46ObW62O9+H/Be3kMbfb7kYPQZA==}
@@ -3293,8 +3284,8 @@ packages:
   ajv@8.20.0:
     resolution: {integrity: sha512-Thbli+OlOj+iMPYFBVBfJ3OmCAnaSyNn4M1vz9T6Gka5Jt9ba/HIR56joy65tY6kx/FCF5VXNB819Y7/GUrBGA==}
 
-  alien-signals@1.0.13:
-    resolution: {integrity: sha512-OGj9yyTnJEttvzhTUWuscOvtqxq5vrhF7vL9oS0xJ2mK0ItPYP1/y+vCFebfxoEyAz0++1AIwJ5CMr+Fk3nDmg==}
+  alien-signals@3.2.1:
+    resolution: {integrity: sha512-I8FjmltrfnDFoZedi5CG8DghVYNhzb/Ijluz7tCSJH0xpd0484Kowhbb1XDYOxfJpU1p5wnM2X54dA+IfGyD1g==}
 
   amator@1.1.0:
     resolution: {integrity: sha512-V5+aH8pe+Z3u/UG3L3pG3BaFQGXAyXHVQDroRwjPHdh08bcUEchAVsU1MCuJSCaU5o60wTK6KaE6te5memzgYw==}
@@ -4120,9 +4111,6 @@ packages:
 
   dayjs@1.11.21:
     resolution: {integrity: sha512-98IT+HOahAisibz/yjKbzuOBwYcjJ7BCLPzARyHiyEBmRz4fatF+KPJszEHXsGYjUG234aH/cOjW1wwTbKUZlA==}
-
-  de-indent@1.0.2:
-    resolution: {integrity: sha512-e/1zu3xH5MQryN2zdVaF0OrdNLUbvWxzMbi+iNA6Bky7l1RoP8a2fIbRocyHclXt/arDrrR6lL3TqFD9pMQTsg==}
 
   debug@2.6.9:
     resolution: {integrity: sha512-bC7ElrdJaJnPbAP+1EotYvqZsb3ecl5wi6Bfi6BJTUcNowp6cvspg0jXznRTKDjm/E7AdgFBVeAPVMNcKGsHMA==}
@@ -6138,7 +6126,7 @@ packages:
     resolution: {integrity: sha512-khUlZSwt9xXCaTbbxFYBKDc/bWAGWJjOgvxETwkTN7KRm66EeT1ZdZj6i2ceh9sP2Pzqsbc704r2yngBrxBVug==}
     peerDependencies:
       typescript: '>=4.4.4'
-      vue: 3.5.40
+      vue: ^2.7.0 || ^3.5.11
     peerDependenciesMeta:
       typescript:
         optional: true
@@ -7371,7 +7359,7 @@ packages:
     hasBin: true
     peerDependencies:
       '@vue/composition-api': ^1.0.0-rc.1
-      vue: 3.5.40
+      vue: ^3.0.0-0 || ^2.6.0
     peerDependenciesMeta:
       '@vue/composition-api':
         optional: true
@@ -7390,15 +7378,15 @@ packages:
     engines: {node: '>= 16'}
     deprecated: v9 and v10 no longer supported. please migrate to v11. about maintenance status, see https://vue-i18n.intlify.dev/guide/maintenance.html
     peerDependencies:
-      vue: 3.5.40
+      vue: ^3.0.0
 
   vue-router@4.6.4:
     resolution: {integrity: sha512-Hz9q5sa33Yhduglwz6g9skT8OBPii+4bFn88w6J+J4MfEo4KRRpmiNG/hHHkdbRFlLBOqxN8y8gf2Fb0MTUgVg==}
     peerDependencies:
-      vue: 3.5.40
+      vue: ^3.5.0
 
-  vue-tsc@2.2.12:
-    resolution: {integrity: sha512-P7OP77b2h/Pmk+lZdJ0YWs+5tJ6J2+uOQPo7tlBnY44QqQSPYvS0qVT4wqDJgwrZaLe47etJLLQRFia71GYITw==}
+  vue-tsc@3.3.8:
+    resolution: {integrity: sha512-xXmYlVQpcwJDWyGlqbHrGVOl1h3UOsASymRibrHc+iy9j/UNnOrOn4u+fntHz4D6Cs74RtapeqVV6CzJeg+UlA==}
     hasBin: true
     peerDependencies:
       typescript: '>=5.0.0'
@@ -9733,7 +9721,9 @@ snapshots:
       metro-runtime: 0.84.4
     transitivePeerDependencies:
       - '@babel/core'
+      - bufferutil
       - supports-color
+      - utf-8-validate
 
   '@react-native/normalize-colors@0.81.5': {}
 
@@ -10516,15 +10506,15 @@ snapshots:
       convert-source-map: 2.0.0
       tinyrainbow: 3.1.1
 
-  '@volar/language-core@2.4.15':
+  '@volar/language-core@2.4.28':
     dependencies:
-      '@volar/source-map': 2.4.15
+      '@volar/source-map': 2.4.28
 
-  '@volar/source-map@2.4.15': {}
+  '@volar/source-map@2.4.28': {}
 
-  '@volar/typescript@2.4.15':
+  '@volar/typescript@2.4.28':
     dependencies:
-      '@volar/language-core': 2.4.15
+      '@volar/language-core': 2.4.28
       path-browserify: 1.0.1
       vscode-uri: 3.1.0
 
@@ -10585,25 +10575,17 @@ snapshots:
       '@vue/compiler-dom': 3.5.40
       '@vue/shared': 3.5.40
 
-  '@vue/compiler-vue2@2.7.16':
-    dependencies:
-      de-indent: 1.0.2
-      he: 1.2.0
-
   '@vue/devtools-api@6.6.4': {}
 
-  '@vue/language-core@2.2.12(typescript@5.6.3)':
+  '@vue/language-core@3.3.8':
     dependencies:
-      '@volar/language-core': 2.4.15
+      '@volar/language-core': 2.4.28
       '@vue/compiler-dom': 3.5.40
-      '@vue/compiler-vue2': 2.7.16
       '@vue/shared': 3.5.40
-      alien-signals: 1.0.13
-      minimatch: 9.0.9
+      alien-signals: 3.2.1
       muggle-string: 0.4.1
       path-browserify: 1.0.1
-    optionalDependencies:
-      typescript: 5.6.3
+      picomatch: 4.0.5
 
   '@vue/reactivity@3.5.40':
     dependencies:
@@ -10698,7 +10680,7 @@ snapshots:
       json-schema-traverse: 1.0.0
       require-from-string: 2.0.2
 
-  alien-signals@1.0.13: {}
+  alien-signals@3.2.1: {}
 
   amator@1.1.0:
     dependencies:
@@ -11670,8 +11652,6 @@ snapshots:
   dateformat@3.0.3: {}
 
   dayjs@1.11.21: {}
-
-  de-indent@1.0.2: {}
 
   debug@2.6.9:
     dependencies:
@@ -15293,10 +15273,10 @@ snapshots:
       '@vue/devtools-api': 6.6.4
       vue: 3.5.40(typescript@5.6.3)
 
-  vue-tsc@2.2.12(typescript@5.6.3):
+  vue-tsc@3.3.8(typescript@5.6.3):
     dependencies:
-      '@volar/typescript': 2.4.15
-      '@vue/language-core': 2.2.12(typescript@5.6.3)
+      '@volar/typescript': 2.4.28
+      '@vue/language-core': 3.3.8
       typescript: 5.6.3
 
   vue@3.5.40(typescript@5.6.3):

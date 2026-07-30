@@ -219,7 +219,6 @@ watch(
 // user sees their message before the server frame arrives. Same dance
 // chat.html does in its parent ChatApp.
 const chatViewRef = ref<InstanceType<typeof ChatView> | null>(null);
-const composerRef = ref<InstanceType<typeof ChatComposer> | null>(null);
 
 async function bindToSession(): Promise<void> {
   bindError.value = null;
@@ -376,7 +375,6 @@ async function onConversationExported(
       <div class="shrink-0 border-t border-base-300">
         <ChatComposer
           v-if="socket"
-          ref="composerRef"
           :socket="socket"
           :chat-process-name="CHAT_PROCESS_NAME"
           :chat-project-id="projectId"

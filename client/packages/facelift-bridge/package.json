@@ -36,12 +36,12 @@
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
     "@capacitor/cli": "^6.2.0",
-    "@vitejs/plugin-vue": "^5.2.1",
+    "@vitejs/plugin-vue": "^6.0.8",
     "autoprefixer": "^10.5.4",
     "postcss": "^8.5.23",
     "sharp": "^0.35.3",
     "tailwindcss": "^3.4.17",
-    "vite": "^5.4.11",
+    "vite": "^8.2.0",
     "vue-tsc": "^2.1.10"
   }
 }

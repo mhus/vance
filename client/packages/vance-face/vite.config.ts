@@ -235,6 +235,11 @@ export default defineConfig({
     target: 'es2022',
     outDir: 'dist',
     sourcemap: true,
+    // Vite 8 defaults CSS minification to LightningCSS, which hard-errors on
+    // the throwaway rules Tailwind's JIT emits when it mistakes a regex
+    // character class (e.g. `/[-:.]/` in an addon component) for an arbitrary
+    // property. esbuild — the pre-Vite-8 default — tolerates them, so keep it.
+    cssMinify: 'esbuild',
     rollupOptions: {
       input: editorEntries,
     },

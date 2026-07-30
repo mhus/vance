@@ -16,11 +16,20 @@ mac:
   # build/icon.icns — generated from the Vancetope app icon
   # (facelift-bridge iOS AppIcon 1024px) via iconutil.
   icon: build/icon.icns
+  # Notarization prerequisites for Developer-ID (non-MAS) distribution.
+  # hardenedRuntime + these entitlements are harmless for unsigned local
+  # builds; signing + notarization only kick in when a Developer ID cert
+  # is in the keychain (or CSC_LINK) AND APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD
+  # / APPLE_TEAM_ID are set — otherwise electron-builder skips both and the
+  # local `dist:mac` still produces an (unsigned) app.
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  notarize: true
   target:
     - dmg
     - zip
-  # Signing + notarization are configured out-of-band (CSC_LINK / Apple
-  # notarytool creds) — v1 leaves the app unsigned for local runs.
 win:
   target:
     - nsis

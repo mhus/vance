@@ -91,13 +91,13 @@ jobs:
             cat > "$DIST/bin/vance.bat" <<'BAT'
           @echo off
           set "DIR=%~dp0.."
-          "%DIR%\runtime\bin\java.exe" -jar "%DIR%\lib\vance-foot.jar" %*
+          "%DIR%\runtime\bin\java.exe" --enable-native-access=ALL-UNNAMED -jar "%DIR%\lib\vance-foot.jar" %*
           BAT
           else
             cat > "$DIST/bin/vance" <<'SH'
           #!/bin/sh
           DIR="$(cd "$(dirname "$0")/.." && pwd)"
-          exec "$DIR/runtime/bin/java" -jar "$DIR/lib/vance-foot.jar" "$@"
+          exec "$DIR/runtime/bin/java" --enable-native-access=ALL-UNNAMED -jar "$DIR/lib/vance-foot.jar" "$@"
           SH
             chmod +x "$DIST/bin/vance"
           fi

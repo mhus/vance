@@ -75,12 +75,20 @@ jobs:
         run: |
           set -euo pipefail
           DIST="vancetope-${VERSION}-${LABEL}"
-          # ALL-MODULE-PATH bundles the full JDK module set: robust for a
-          # reflection-heavy Spring Boot + GraalJS + Lanterna app. Trim later
-          # with a jdeps-derived --add-modules list if size matters.
+          # Bundle the full JDK module set: robust for a reflection-heavy Spring
+          # Boot + GraalJS + Lanterna app. Trim later with a jdeps-derived list
+          # if size matters.
+          #
+          # We pass every system module explicitly instead of `--add-modules
+          # ALL-MODULE-PATH --module-path $JAVA_HOME/jmods`: Temurin 24+ enables
+          # JEP 493 and ships NO jmods dir, so ALL-MODULE-PATH (which requires a
+          # module path) fails with "No module found in module path". Listing
+          # the modules from the run-time image and omitting --module-path links
+          # straight from the image (JEP 493), and stays portable to JDKs that
+          # still have jmods (jlink then defaults the path to them).
+          MODS="$("$JAVA_HOME/bin/java" --list-modules | sed 's/@.*//' | tr '\n' ',' | sed 's/,$//')"
           "$JAVA_HOME/bin/jlink" \
-            --module-path "$JAVA_HOME/jmods" \
-            --add-modules ALL-MODULE-PATH \
+            --add-modules "$MODS" \
             --strip-debug --no-man-pages --no-header-files --compress=zip-6 \
             --output "$DIST/runtime"
 

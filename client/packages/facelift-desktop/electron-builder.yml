@@ -13,6 +13,9 @@ extraResources:
     to: renderer
 mac:
   category: public.app-category.productivity
+  # build/icon.icns — generated from the Vancetope app icon
+  # (facelift-bridge iOS AppIcon 1024px) via iconutil.
+  icon: build/icon.icns
   target:
     - dmg
     - zip

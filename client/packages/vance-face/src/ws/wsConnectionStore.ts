@@ -2,6 +2,7 @@ import { computed, reactive, ref, watch, type ComputedRef, type Ref } from 'vue'
 import {
   BrainWebSocket,
   type BrainWsApi,
+  getRestConfig,
   getTenantId,
   setActiveSessionId,
   WebSocketRequestError,
@@ -316,6 +317,35 @@ function connectSingleton(opts: { tenant: string; jwt?: string }): Promise<Brain
   return p;
 }
 
+// Set once we've determined the session is dead and kicked off the login
+// redirect, so a burst of concurrent connect failures (many consumers open
+// the socket on mount) doesn't fire refresh/redirect repeatedly.
+let sessionDeadHandled = false;
+
+/**
+ * A WebSocket connect failed. The browser never exposes the handshake's HTTP
+ * status to JS, so we can't tell a stale-cookie 401 (e.g. the brain's JWT
+ * signing key changed — fresh DB) from a transient drop (brain restart,
+ * network blip). Probe the session through the REST refresh endpoint — the
+ * same authority {@code restClient} uses on its own 401s: a valid session
+ * refreshes (→ keep reconnecting), a dead one fails (→ redirect to login,
+ * exactly like the REST path). Returns {@code true} when the session is gone
+ * and the login redirect was triggered.
+ */
+async function redirectIfSessionDead(): Promise<boolean> {
+  if (sessionDeadHandled) return true;
+  try {
+    if (await getRestConfig().refreshAccess()) return false;
+  } catch {
+    // Refresh itself errored (network) — treat as transient, let the caller
+    // fall back to the normal reconnect loop rather than bouncing to login.
+    return false;
+  }
+  sessionDeadHandled = true;
+  getRestConfig().onUnauthorized();
+  return true;
+}
+
 function handleSocketClose(): void {
   detachCloseListener();
   socket.value = null;
@@ -372,6 +402,11 @@ async function attemptReconnect(): Promise<void> {
     }
   } catch (e) {
     lastError.value = e instanceof Error ? e.message : String(e);
+    // Don't spin the reconnect loop on a dead session — probe + bail to login.
+    if (await redirectIfSessionDead()) {
+      status.value = 'down';
+      return;
+    }
     scheduleReconnect();
   }
 }
@@ -440,6 +475,9 @@ export async function ensureConnected(opts?: { jwt?: string }): Promise<BrainWeb
   } catch (e) {
     lastError.value = e instanceof Error ? e.message : String(e);
     status.value = 'down';
+    // Stale/dead session (e.g. cookie JWT signed by a wiped tenant key) →
+    // navigate to login instead of leaving the editor stuck on a dead socket.
+    await redirectIfSessionDead();
     throw e;
   }
 }

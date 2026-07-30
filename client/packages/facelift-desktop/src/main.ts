@@ -82,8 +82,12 @@ function registerRendererProtocol(): void {
 
 function createWindow(): void {
   const win = new BrowserWindow({
-    width: 420,
-    height: 900,
+    // Desktop-sized, not a phone frame. Sensible minimums so the shell +
+    // account webview stay usable when the user shrinks the window.
+    width: 1280,
+    height: 832,
+    minWidth: 900,
+    minHeight: 600,
     backgroundColor: '#1e3a8a',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),

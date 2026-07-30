@@ -1,4 +1,5 @@
 import { createRouter, createWebHashHistory, type Router } from 'vue-router';
+import { isDesktop } from './platform';
 import { isPinConfigured, isUnlocked } from './lock/lockStore';
 import ShellView from './views/ShellView.vue';
 import ManageAccountsView from './views/ManageAccountsView.vue';
@@ -47,6 +48,10 @@ export function createAppRouter(): Router {
   // unlocked but a hard kill re-locks. The lock routes themselves
   // are exempt (meta.skipLockGuard) to avoid redirect loops.
   router.beforeEach(async (to) => {
+    // Desktop is a windowed app on a personal machine, not a pocketable
+    // device — there is no app-lock, so the PIN/biometric gate is skipped
+    // entirely (the lock stays a mobile-only feature).
+    if (isDesktop()) return true;
     if (to.meta.skipLockGuard === true) return true;
     if (isUnlocked()) return true;
     const configured = await isPinConfigured();

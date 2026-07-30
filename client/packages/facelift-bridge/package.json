@@ -29,7 +29,7 @@
     "@capacitor/status-bar": "^6.0.2",
     "@capawesome/capacitor-file-picker": "^6.2.0",
     "@vance/facelift-account-webview": "workspace:*",
-    "pinia": "^2.2.4",
+    "pinia": "^4.0.2",
     "vue": "^3.5.40",
     "vue-router": "^4.4.5"
   },

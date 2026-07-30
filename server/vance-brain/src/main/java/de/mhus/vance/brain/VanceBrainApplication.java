@@ -12,6 +12,9 @@ import de.mhus.vance.brain.workspace.access.WorkspaceAccessProperties;
 import de.mhus.vance.shared.workspace.WorkspaceProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.data.redis.autoconfigure.DataRedisAutoConfiguration;
+import org.springframework.boot.data.redis.autoconfigure.DataRedisReactiveAutoConfiguration;
+import org.springframework.boot.data.redis.autoconfigure.DataRedisRepositoriesAutoConfiguration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.data.mongodb.config.EnableMongoAuditing;
 import org.springframework.data.mongodb.repository.config.EnableMongoRepositories;
@@ -28,7 +31,22 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * brain-only (e.g. the notification-delivery audit log), so the
  * {@link EnableMongoRepositories} basePackages list covers both.
  */
-@SpringBootApplication(scanBasePackages = {"de.mhus.vance.brain", "de.mhus.vance.shared"})
+// Exclude Spring Boot's default Redis auto-configuration entirely. All Redis
+// here is owned by VanceRedisConfig (vance* beans, gated on vance.redis.enabled);
+// nothing consumes the Boot defaults, and they cause harm in Boot 4.1:
+//   - DataRedis(AnnotationDriven): contributes `redisMessageListenerContainer`
+//     + `stringRedisTemplate`, which collide with our vance* beans
+//     (ambiguous ObjectProvider.getIfAvailable in VanceRedisMessagingService)
+//     when Redis is enabled, and spin up a localhost:6379 connection even
+//     when Redis is disabled.
+//   - DataRedisRepositories: contributes `redisReferenceResolver` which
+//     requires the default `redisTemplate` — we run no Redis repositories.
+@SpringBootApplication(
+        scanBasePackages = {"de.mhus.vance.brain", "de.mhus.vance.shared"},
+        exclude = {
+                DataRedisAutoConfiguration.class,
+                DataRedisReactiveAutoConfiguration.class,
+                DataRedisRepositoriesAutoConfiguration.class})
 @EnableMongoRepositories(basePackages = {"de.mhus.vance.shared", "de.mhus.vance.brain"})
 // Drives @CreatedDate / @LastModifiedDate on Mongo documents (e.g.
 // ChatMessageDocument.createdAt). Without this, fields stay null on

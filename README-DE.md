@@ -78,6 +78,26 @@ Java 25 + Spring Boot 4 + MongoDB + langchain4j/langgraph4j (Brain) · TypeScrip
 
 In aktiver Entwicklung. Brain, CLI und Web-UI laufen lokal; zwölf Think-Engines sind implementiert (`arthur`, `eddie`, `ford`, `marvin`, `vogon`, `zaphod`, `jeltz`, `frankie`, `trillian`, `slartibartfast`, `hactar`, `agrajag`) plus Workflow-Runtime `magrathea` und die Dienste `fook`, `fenchurch`, `zarniwoop`. Tenants, Service-Accounts und Rechte sind im Datenmodell aktiv; die kollaborativen Multi-User-Features kommen schrittweise.
 
+## CLI installieren
+
+Der `vance-foot`-Terminal-Client verbindet sich mit einem laufenden Brain. Drei Wege:
+
+```bash
+# Homebrew (macOS + Linux) — bringt eigenes OpenJDK 25 mit, kein System-Java nötig
+brew install mhus/vance/vance
+vance chat
+
+# Self-contained Bundle — eingebettetes Java, keine Installation; passendes Plattform-Asset
+#   vance-foot-<version>-{macos-arm64,macos-x64,linux-x64,windows-x64}.{tar.gz,zip}
+gh release download <tag> -R mhus/vance -p 'vance-foot-*-linux-x64.tar.gz'
+
+# Rohes Fat-JAR — braucht installiertes Java 25
+gh release download <tag> -R mhus/vance -p 'vance-foot-*.jar'
+java -jar vance-foot-<version>.jar chat
+```
+
+Die Assets hängen an jedem [GitHub-Release](https://github.com/mhus/vance/releases).
+
 ## Lizenz
 
 **Business Source License 1.1** — siehe [`LICENSE.txt`](LICENSE.txt). Source-available, kein klassisches Open-Source. Am **2029-06-23** (drei Jahre ab Initial-Release) konvertiert die Lizenz automatisch zu **AGPLv3**.

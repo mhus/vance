@@ -82,6 +82,26 @@ In active development. Brain, CLI and Web UI run locally; twelve think-engines a
 
 Full docs at <https://vance.mhus.de>. Run it locally with one command — `curl -fsSL https://vance.mhus.de/install.sh | bash` — see the [getting-started guide](https://vance.mhus.de/getting-started).
 
+## Install the CLI
+
+The `vance-foot` terminal client connects to a running Brain. Three ways to get it:
+
+```bash
+# Homebrew (macOS + Linux) — brings its own OpenJDK 25, no system Java needed
+brew install mhus/vance/vance
+vance chat
+
+# Self-contained bundle — embedded Java, no install; pick your platform asset
+#   vance-foot-<version>-{macos-arm64,macos-x64,linux-x64,windows-x64}.{tar.gz,zip}
+gh release download <tag> -R mhus/vance -p 'vance-foot-*-linux-x64.tar.gz'
+
+# Raw fat-jar — needs Java 25 installed
+gh release download <tag> -R mhus/vance -p 'vance-foot-*.jar'
+java -jar vance-foot-<version>.jar chat
+```
+
+Assets live on each [GitHub release](https://github.com/mhus/vance/releases).
+
 ## License
 
 **Business Source License 1.1** — see [`LICENSE.txt`](LICENSE.txt). Source-available, not classic open source. On **2029-06-23** (three years after initial release) it converts automatically to **AGPLv3**.

@@ -46,6 +46,10 @@ jobs:
       # consumes it. -DskipTests still compiles test sources (catches API
       # breaks) but skips execution, so a green build means "it compiles and
       # packages". Drop -DskipTests to also run the unit tests.
+      #
+      # -Dskip.pnpm=true: this Java-only runner has no pnpm/Node on PATH, so
+      # skip vance-api's post-generate `pnpm build` of @vance/generated. The
+      # TypeScript dist/ is (re)built by the separate build-client.yml workflow.
       - name: Build (mvn clean install)
         working-directory: server
-        run: mvn -B -ntp clean install -DskipTests
+        run: mvn -B -ntp clean install -DskipTests -Dskip.pnpm=true

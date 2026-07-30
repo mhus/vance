@@ -1136,30 +1136,35 @@ defineExpose({
         class="canvas-editor__bubble-btn"
         :class="{ 'canvas-editor__bubble-btn--active': editor.isActive('bold') }"
         :title="'Bold (Ctrl+B)'"
+        @mousedown.prevent
         @click="toggleBold"
       ><strong>B</strong></button>
       <button
         class="canvas-editor__bubble-btn"
         :class="{ 'canvas-editor__bubble-btn--active': editor.isActive('italic') }"
         :title="'Italic (Ctrl+I)'"
+        @mousedown.prevent
         @click="toggleItalic"
       ><em>i</em></button>
       <button
         class="canvas-editor__bubble-btn"
         :class="{ 'canvas-editor__bubble-btn--active': editor.isActive('strike') }"
         :title="'Strike'"
+        @mousedown.prevent
         @click="toggleStrike"
       ><s>S</s></button>
       <button
         class="canvas-editor__bubble-btn"
         :class="{ 'canvas-editor__bubble-btn--active': editor.isActive('code') }"
         :title="'Inline code'"
+        @mousedown.prevent
         @click="toggleCode"
       ><code>&lt;&gt;</code></button>
       <button
         class="canvas-editor__bubble-btn"
         :class="{ 'canvas-editor__bubble-btn--active': editor.isActive('link') }"
         :title="'Link (Ctrl+K)'"
+        @mousedown.prevent
         @click="setLink"
       >🔗</button>
     </BubbleMenu>
@@ -1180,6 +1185,7 @@ defineExpose({
             (currentImageWidth() ?? 'full') === opt,
         }"
         :title="`Width: ${opt}`"
+        @mousedown.prevent
         @click="setImageWidth(opt)"
       >{{ opt === 'full' ? 'F' : opt[0].toUpperCase() }}</button>
     </BubbleMenu>

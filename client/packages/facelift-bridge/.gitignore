@@ -1,8 +1,8 @@
 dist/
 node_modules/
 *.tsbuildinfo
-# Capacitor generates native projects locally — committing them later is
-# fine, but the v1 spike keeps the iOS folder out of git until we have a
-# build pipeline that depends on it.
-ios/
+# The iOS native project is committed (see ios/.gitignore for the
+# generated bits it excludes: Pods/, App/App/public, DerivedData,
+# xcuserdata, capacitor-cordova-ios-plugins, generated config files).
+# Android is not generated yet.
 android/

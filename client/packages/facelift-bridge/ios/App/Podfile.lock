@@ -1,0 +1,70 @@
+PODS:
+  - Capacitor (6.2.1):
+    - CapacitorCordova
+  - CapacitorCamera (6.1.3):
+    - Capacitor
+  - CapacitorCordova (6.2.1)
+  - CapacitorFilesystem (6.0.4):
+    - Capacitor
+  - CapacitorPreferences (6.0.4):
+    - Capacitor
+  - CapacitorShare (6.0.4):
+    - Capacitor
+  - CapacitorSplashScreen (6.0.4):
+    - Capacitor
+  - CapacitorStatusBar (6.0.3):
+    - Capacitor
+  - CapawesomeCapacitorFilePicker (6.2.0):
+    - Capacitor
+  - VanceFaceliftAccountWebview (0.1.0):
+    - Capacitor
+
+DEPENDENCIES:
+  - "Capacitor (from `../../../../../node_modules/@capacitor/ios`)"
+  - "CapacitorCamera (from `../../../../../node_modules/@capacitor/camera`)"
+  - "CapacitorCordova (from `../../../../../node_modules/@capacitor/ios`)"
+  - "CapacitorFilesystem (from `../../../../../node_modules/@capacitor/filesystem`)"
+  - "CapacitorPreferences (from `../../../../../node_modules/@capacitor/preferences`)"
+  - "CapacitorShare (from `../../../../../node_modules/@capacitor/share`)"
+  - "CapacitorSplashScreen (from `../../../../../node_modules/@capacitor/splash-screen`)"
+  - "CapacitorStatusBar (from `../../../../../node_modules/@capacitor/status-bar`)"
+  - "CapawesomeCapacitorFilePicker (from `../../../../../node_modules/@capawesome/capacitor-file-picker`)"
+  - VanceFaceliftAccountWebview (from `../../../facelift-account-webview`)
+
+EXTERNAL SOURCES:
+  Capacitor:
+    :path: "../../../../../node_modules/@capacitor/ios"
+  CapacitorCamera:
+    :path: "../../../../../node_modules/@capacitor/camera"
+  CapacitorCordova:
+    :path: "../../../../../node_modules/@capacitor/ios"
+  CapacitorFilesystem:
+    :path: "../../../../../node_modules/@capacitor/filesystem"
+  CapacitorPreferences:
+    :path: "../../../../../node_modules/@capacitor/preferences"
+  CapacitorShare:
+    :path: "../../../../../node_modules/@capacitor/share"
+  CapacitorSplashScreen:
+    :path: "../../../../../node_modules/@capacitor/splash-screen"
+  CapacitorStatusBar:
+    :path: "../../../../../node_modules/@capacitor/status-bar"
+  CapawesomeCapacitorFilePicker:
+    :path: "../../../../../node_modules/@capawesome/capacitor-file-picker"
+  VanceFaceliftAccountWebview:
+    :path: "../../../facelift-account-webview"
+
+SPEC CHECKSUMS:
+  Capacitor: c95400d761e376be9da6be5a05f226c0e865cebf
+  CapacitorCamera: 5ba135b0cb55a788758139fa2404d726bf60f0f3
+  CapacitorCordova: 8d93e14982f440181be7304aa9559ca631d77fff
+  CapacitorFilesystem: 5b9aec35c0212bd0064e26d278c93e925864f212
+  CapacitorPreferences: 5848e0691b36b4bb4acc98e481ab56d451578d30
+  CapacitorShare: 77ff779e3b7c6ae9fb5461e52cf7ef805d429491
+  CapacitorSplashScreen: ef140a8b1ea7244e0c245ce2dd4ce5251e7ab86a
+  CapacitorStatusBar: 149cde8f1328ec3aa6cbdd872a55137ae3f98b16
+  CapawesomeCapacitorFilePicker: c40822f0a39f86855321943c7829d52bca7f01bd
+  VanceFaceliftAccountWebview: 33e225d059232873109b2248cc550e14b4965b36
+
+PODFILE CHECKSUM: ba84cc5d6e83fe8cde670c3cdec065b8b97eeaf9
+
+COCOAPODS: 1.16.2

@@ -5,12 +5,12 @@
     <parent>
         <groupId>de.mhus.vance</groupId>
         <artifactId>plugins</artifactId>
-        <version>1.0.0-SNAPSHOT</version>
+        <version>0.1.0</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
     <groupId>de.mhus.vance</groupId>
-    <version>1.0.0-SNAPSHOT</version>
+    <version>0.1.0</version>
     <artifactId>generate-java-to-ts-maven-plugin</artifactId>
     <name>generate-java-to-ts-maven-plugin</name>
     <packaging>maven-plugin</packaging>

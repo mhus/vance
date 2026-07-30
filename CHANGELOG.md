@@ -9,6 +9,8 @@ breaking changes; a patch bump (`0.1.0` → `0.1.1`) is fixes only.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-07-30
+
 ### Added
 - Initial public release scaffolding.
 - CLI (`vance-foot`) distribution: a fat-jar asset on each GitHub release, a

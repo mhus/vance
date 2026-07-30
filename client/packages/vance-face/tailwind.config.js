@@ -1,4 +1,10 @@
 /** @type {import('tailwindcss').Config} */
+// Loaded from src/style/app.css via `@config` — Tailwind 4 no longer
+// auto-detects a JS config, and our `content` globs deliberately reach
+// across packages (the shared component library + every addon client's
+// source), which v4 automatic content detection would not scan.
+// Dark mode + the daisyUI plugin now live in the CSS (`@custom-variant`,
+// `@plugin "daisyui"`), so only content + theme remain here.
 export default {
   content: [
     './*.html',
@@ -6,11 +12,6 @@ export default {
     '../components/src/**/*.{vue,ts}',
     '../../../server/vance-addon-brain-*/client/src/**/*.{vue,ts}',
   ],
-  // 'class' instead of 'media' so dark: utilities follow the explicit
-  // webui.theme choice. The themeWeb.ts boot path toggles `dark` on
-  // <html> based on the resolved theme (auto → match prefers-color-scheme,
-  // light/dark → pinned).
-  darkMode: 'class',
   theme: {
     extend: {
       fontFamily: {
@@ -18,13 +19,5 @@ export default {
         mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
       },
     },
-  },
-  plugins: [require('daisyui')],
-  daisyui: {
-    themes: ['light', 'dark'],
-    darkTheme: 'dark',
-    base: true,
-    styled: true,
-    utils: true,
   },
 };

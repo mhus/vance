@@ -1,6 +1,13 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+/* Legacy JS config (content globs + theme) — v4 no longer auto-detects it. */
+@config "../../tailwind.config.js";
+/* daisyUI 5 loads as a CSS plugin now, not via tailwind.config's plugins[]. */
+@plugin "daisyui" {
+  themes: light --default, dark --prefersdark;
+}
+/* Keep Tailwind's `dark:` utilities driven by the `dark` class that
+   themeWeb.ts toggles on <html> (was darkMode: 'class'). */
+@custom-variant dark (&:where(.dark, .dark *));
 
 html,
 body,

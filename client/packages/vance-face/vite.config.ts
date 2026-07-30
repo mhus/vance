@@ -5,30 +5,34 @@ import { resolve, extname } from 'node:path';
 import { createReadStream, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import yaml from 'js-yaml';
 
+// Vite 8's native config loader no longer injects the CommonJS dir global —
+// use the ESM equivalent (Node 20.11+, satisfied by Vite 8's Node 20.19+ floor).
+const pkgDir = import.meta.dirname;
+
 // One Rollup input per top-level HTML file. Add new editor HTMLs here as they
 // are implemented — see specification/web-ui.md §3 for the full list.
 const editorEntries = {
-  index: resolve(__dirname, 'index.html'),
-  documents: resolve(__dirname, 'documents.html'),
-  inbox: resolve(__dirname, 'inbox.html'),
-  chat: resolve(__dirname, 'chat.html'),
-  scopes: resolve(__dirname, 'scopes.html'),
-  tools: resolve(__dirname, 'tools.html'),
-  insights: resolve(__dirname, 'insights.html'),
-  users: resolve(__dirname, 'users.html'),
-  profile: resolve(__dirname, 'profile.html'),
-  cortex: resolve(__dirname, 'cortex.html'),
+  index: resolve(pkgDir, 'index.html'),
+  documents: resolve(pkgDir, 'documents.html'),
+  inbox: resolve(pkgDir, 'inbox.html'),
+  chat: resolve(pkgDir, 'chat.html'),
+  scopes: resolve(pkgDir, 'scopes.html'),
+  tools: resolve(pkgDir, 'tools.html'),
+  insights: resolve(pkgDir, 'insights.html'),
+  users: resolve(pkgDir, 'users.html'),
+  profile: resolve(pkgDir, 'profile.html'),
+  cortex: resolve(pkgDir, 'cortex.html'),
   // notepad merged into cortex (2026-06); this stub keeps old bookmarks
   // and inline server redirects (3rd-party tools, history links)
   // working by forwarding to /cortex.html with all query params intact.
-  notepad: resolve(__dirname, 'notepad.html'),
-  'connected-accounts': resolve(__dirname, 'connected-accounts.html'),
-  'oauth-providers': resolve(__dirname, 'oauth-providers.html'),
-  'tool-templates': resolve(__dirname, 'tool-templates.html'),
-  'setting-forms': resolve(__dirname, 'setting-forms.html'),
+  notepad: resolve(pkgDir, 'notepad.html'),
+  'connected-accounts': resolve(pkgDir, 'connected-accounts.html'),
+  'oauth-providers': resolve(pkgDir, 'oauth-providers.html'),
+  'tool-templates': resolve(pkgDir, 'tool-templates.html'),
+  'setting-forms': resolve(pkgDir, 'setting-forms.html'),
   // Generic host for federated addon "areas": addon.html?addon=<id> loads the
   // addon's ./area expose (e.g. the Simple-Auth permission-grant UI).
-  addon: resolve(__dirname, 'addon.html'),
+  addon: resolve(pkgDir, 'addon.html'),
 };
 
 // Build-time remotes list is intentionally empty — addons are discovered
@@ -71,7 +75,7 @@ function vanceAddonDevServe(): Plugin {
     '.woff': 'font/woff',
     '.woff2': 'font/woff2',
   };
-  const workspaceRoot = resolve(__dirname, '..', '..', '..');
+  const workspaceRoot = resolve(pkgDir, '..', '..', '..');
 
   return {
     name: 'vance-addon-dev-serve',
@@ -223,9 +227,9 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@': resolve(__dirname, './src'),
-      '@components': resolve(__dirname, './src/components'),
-      '@composables': resolve(__dirname, './src/composables'),
+      '@': resolve(pkgDir, './src'),
+      '@components': resolve(pkgDir, './src/components'),
+      '@composables': resolve(pkgDir, './src/composables'),
     },
   },
   build: {

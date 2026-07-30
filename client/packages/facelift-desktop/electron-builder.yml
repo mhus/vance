@@ -24,6 +24,10 @@ mac:
   # local `dist:mac` still produces an (unsigned) app.
   hardenedRuntime: true
   gatekeeperAssess: false
+  # Deterministic per-arch artifact names (electron-builder otherwise drops the
+  # arch suffix for x64): Vancetope-<version>-arm64.dmg / -x64.dmg. The cask's
+  # #{arch} interpolation depends on this.
+  artifactName: ${productName}-${version}-${arch}.${ext}
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
   notarize: true

@@ -120,7 +120,7 @@ public class ChatRepl {
         liveRegion.attach(t);
 
         if (liveRegion.isAttached()) {
-            chatTerminal.info("Vance Foot — type /help for commands, Ctrl-D to exit.");
+            chatTerminal.info("Vancetope — type /help for commands, Ctrl-D to exit.");
         } else {
             // Dumb terminals (IntelliJ Run window, CI, piped stdin) leave
             // LiveRegion detached — no key reader runs, so anything the user
@@ -133,11 +133,11 @@ public class ChatRepl {
             // so this view stays faithful to a real REPL session.
             FootConfig.Rest rest = config.getDebug().getRest();
             if (rest.isEnabled()) {
-                chatTerminal.info("Vance Foot — dumb terminal: live activity mirror. "
+                chatTerminal.info("Vancetope — dumb terminal: live activity mirror. "
                         + "Send input via http://" + rest.getHost() + ":" + rest.getPort()
                         + "/debug/chat (chat) or /debug/command (slash commands).");
             } else {
-                chatTerminal.warn("Vance Foot — dumb terminal detected, REPL input disabled. "
+                chatTerminal.warn("Vancetope — dumb terminal detected, REPL input disabled. "
                         + "Restart with --rest-api to drive the session via HTTP, "
                         + "or run inside a real PTY (IntelliJ Terminal tool window, iTerm, …).");
             }

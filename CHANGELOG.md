@@ -14,7 +14,7 @@ breaking changes; a patch bump (`0.1.0` → `0.1.1`) is fixes only.
 ### Added
 - Initial public release scaffolding.
 - CLI (`vance-foot`) distribution: a fat-jar asset on each GitHub release, a
-  Homebrew tap (`brew install mhus/vance/vance` — bundles OpenJDK 25 as a
+  Homebrew tap (`brew install mhus/vancetope/vancetope` — bundles OpenJDK 25 as a
   dependency, no system Java required), and self-contained Java-free bundles
   per platform (macOS arm64/x64, Linux x64, Windows x64).
 

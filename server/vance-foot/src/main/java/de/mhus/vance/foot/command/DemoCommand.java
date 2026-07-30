@@ -38,7 +38,7 @@ public class DemoCommand implements SlashCommand {
     @Override
     public void execute(List<String> args) throws Exception {
         ui.runFullscreen(session -> {
-            BasicWindow window = new BasicWindow("Vance Foot — Lanterna demo");
+            BasicWindow window = new BasicWindow("Vancetope — Lanterna demo");
             window.setHints(Set.of(Window.Hint.CENTERED));
 
             Panel content = new Panel();

@@ -4,5 +4,5 @@
  \ \_\    \ \_____\  \ \_____\    \ \_\
   \/_/     \/_____/   \/_____/     \/_/
 
-Vance Foot
+Vancetope
 Copyright (c) 2024-present, Mike Hummel. All rights reserved.

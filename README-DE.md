@@ -84,20 +84,20 @@ Vollständige Doku unter <https://vance.mhus.de>. Lokal mit einem Befehl starten
 
 ## CLI installieren
 
-Der `vance-foot`-Terminal-Client verbindet sich mit einem laufenden Brain. Drei Wege:
+Der `vancetope`-Terminal-Client verbindet sich mit einem laufenden Brain. Drei Wege:
 
 ```bash
 # Homebrew (macOS + Linux) — bringt eigenes OpenJDK 25 mit, kein System-Java nötig
-brew install mhus/vance/vance
-vance chat
+brew install mhus/vancetope/vancetope
+vancetope chat
 
 # Self-contained Bundle — eingebettetes Java, keine Installation; passendes Plattform-Asset
-#   vance-foot-<version>-{macos-arm64,macos-x64,linux-x64,windows-x64}.{tar.gz,zip}
-gh release download <tag> -R mhus/vance -p 'vance-foot-*-linux-x64.tar.gz'
+#   vancetope-<version>-{macos-arm64,macos-x64,linux-x64,windows-x64}.{tar.gz,zip}
+gh release download <tag> -R mhus/vance -p 'vancetope-*-linux-x64.tar.gz'
 
 # Rohes Fat-JAR — braucht installiertes Java 25
-gh release download <tag> -R mhus/vance -p 'vance-foot-*.jar'
-java -jar vance-foot-<version>.jar chat
+gh release download <tag> -R mhus/vance -p 'vancetope-*.jar'
+java -jar vancetope-<version>.jar chat
 ```
 
 Die Assets hängen an jedem [GitHub-Release](https://github.com/mhus/vance/releases).

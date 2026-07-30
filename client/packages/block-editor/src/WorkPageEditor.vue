@@ -1,17 +1,14 @@
 <script setup lang="ts">
 import { computed, ref, watch, onBeforeUnmount, onMounted, provide } from 'vue';
 import { blockClipboard, setBlockClipboard } from './blockClipboard';
-import { useEditor, EditorContent, BubbleMenu } from '@tiptap/vue-3';
+import { useEditor, EditorContent } from '@tiptap/vue-3';
+import { BubbleMenu } from '@tiptap/vue-3/menus';
 import StarterKit from '@tiptap/starter-kit';
-import TaskList from '@tiptap/extension-task-list';
-import TaskItem from '@tiptap/extension-task-item';
+import { TaskList, TaskItem } from '@tiptap/extension-list';
 import Image from '@tiptap/extension-image';
-import Table from '@tiptap/extension-table';
-import TableRow from '@tiptap/extension-table-row';
-import TableCell from '@tiptap/extension-table-cell';
-import TableHeader from '@tiptap/extension-table-header';
+import { Table, TableRow, TableCell, TableHeader } from '@tiptap/extension-table';
 import Link from '@tiptap/extension-link';
-import Placeholder from '@tiptap/extension-placeholder';
+import { Placeholder } from '@tiptap/extensions';
 import GlobalDragHandle from 'tiptap-extension-global-drag-handle';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import { createLowlight, common } from 'lowlight';
@@ -48,7 +45,6 @@ import { ActiveBlock, activeBlockKey } from './extensions/ActiveBlock';
 import { VanceWikiLink } from './extensions/VanceWikiLink';
 import { VueNodeViewRenderer } from '@tiptap/vue-3';
 import VanceImageNodeView from './extensions/VanceImageNodeView.vue';
-import 'tippy.js/dist/tippy.css';
 
 /**
  * Tiptap-based WorkPage editor. Mount contract matches the kind-registry
@@ -332,6 +328,9 @@ const editor = useEditor({
       // lowlight-powered variant below for syntax highlighting.
       codeBlock: false,
       dropcursor: { color: 'oklch(var(--p))', width: 3 },
+      // Tiptap 3's StarterKit bundles Link; disable it here so our custom
+      // Link (per-link target attribute + vance: protocol) is the only one.
+      link: false,
     }),
     CodeBlockLowlight.configure({
       lowlight,
@@ -581,7 +580,7 @@ watch(
     const parsed = parseDocument(next ?? '');
     editor.value.commands.setContent(
       { type: 'doc', content: blocksToContent(parsed.blocks) },
-      false,
+      { emitUpdate: false },
     );
     currentHeader.value = {
       title: parsed.title,
@@ -1114,15 +1113,6 @@ function getContentEl(): HTMLElement | null {
   return (editor.value?.view.dom as HTMLElement | undefined) ?? null;
 }
 
-/**
- * tippy appendTo target for the floating menus: the enclosing <dialog>
- * (browser top layer) when the editor is mounted inside a modal, else
- * document.body. Without this, body-appended menus render BEHIND a
- * showModal() dialog (e.g. the Kanban card-content modal).
- */
-function menuAppendTo(): HTMLElement {
-  return (editor.value?.view.dom.closest('dialog') as HTMLElement | null) ?? document.body;
-}
 
 
 defineExpose({
@@ -1138,7 +1128,7 @@ defineExpose({
     <BubbleMenu
       v-if="editor"
       :editor="editor"
-      :tippy-options="{ duration: 100, placement: 'top', appendTo: menuAppendTo }"
+      :options="{ placement: 'top' }"
       :should-show="() => editor?.isEditable === true && !suppressFloating"
       class="canvas-editor__bubble-menu"
     >
@@ -1146,30 +1136,35 @@ defineExpose({
         class="canvas-editor__bubble-btn"
         :class="{ 'canvas-editor__bubble-btn--active': editor.isActive('bold') }"
         :title="'Bold (Ctrl+B)'"
+        @mousedown.prevent
         @click="toggleBold"
       ><strong>B</strong></button>
       <button
         class="canvas-editor__bubble-btn"
         :class="{ 'canvas-editor__bubble-btn--active': editor.isActive('italic') }"
         :title="'Italic (Ctrl+I)'"
+        @mousedown.prevent
         @click="toggleItalic"
       ><em>i</em></button>
       <button
         class="canvas-editor__bubble-btn"
         :class="{ 'canvas-editor__bubble-btn--active': editor.isActive('strike') }"
         :title="'Strike'"
+        @mousedown.prevent
         @click="toggleStrike"
       ><s>S</s></button>
       <button
         class="canvas-editor__bubble-btn"
         :class="{ 'canvas-editor__bubble-btn--active': editor.isActive('code') }"
         :title="'Inline code'"
+        @mousedown.prevent
         @click="toggleCode"
       ><code>&lt;&gt;</code></button>
       <button
         class="canvas-editor__bubble-btn"
         :class="{ 'canvas-editor__bubble-btn--active': editor.isActive('link') }"
         :title="'Link (Ctrl+K)'"
+        @mousedown.prevent
         @click="setLink"
       >🔗</button>
     </BubbleMenu>
@@ -1177,7 +1172,7 @@ defineExpose({
     <BubbleMenu
       v-if="editor"
       :editor="editor"
-      :tippy-options="{ duration: 100, placement: 'top', appendTo: menuAppendTo }"
+      :options="{ placement: 'top' }"
       :should-show="() => editor?.isEditable === true && !suppressFloating && isImageSelected()"
       class="canvas-editor__bubble-menu canvas-editor__bubble-menu--image"
     >
@@ -1190,6 +1185,7 @@ defineExpose({
             (currentImageWidth() ?? 'full') === opt,
         }"
         :title="`Width: ${opt}`"
+        @mousedown.prevent
         @click="setImageWidth(opt)"
       >{{ opt === 'full' ? 'F' : opt[0].toUpperCase() }}</button>
     </BubbleMenu>

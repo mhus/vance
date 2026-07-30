@@ -19,6 +19,6 @@
     "vue": "^3.5.0"
   },
   "devDependencies": {
-    "vitest": "^2.1.9"
+    "vitest": "^4.1.10"
   }
 }

@@ -1,4 +1,6 @@
-# 𝑣 vance
+# 𝑣 vancetope
+
+**[Website](https://www.vancetope.com)** · **[Get started](https://www.vancetope.com/getting-started)** · **[Blog](https://www.vancetope.com/blog/)**
 
 **A personal project.** Vancetope is something I built to develop LLM agents — and to shape them until I could actually work productively with them. Over time everything I found interesting went in, plus a few things I think others might get something out of.
 

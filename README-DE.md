@@ -80,7 +80,7 @@ In aktiver Entwicklung. Brain, CLI und Web-UI laufen lokal; zwölf Think-Engines
 
 ## Dokumentation
 
-Vollständige Doku unter <https://vance.mhus.de>. Lokal mit einem Befehl starten — `curl -fsSL https://vance.mhus.de/install.sh | bash` — siehe den [Getting-Started-Guide](https://vance.mhus.de/getting-started).
+Vollständige Doku unter <https://www.vancetope.com>. Lokal mit einem Befehl starten — `curl -fsSL https://www.vancetope.com/install.sh | bash` — siehe den [Getting-Started-Guide](https://www.vancetope.com/getting-started).
 
 ## CLI installieren
 

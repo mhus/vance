@@ -44,18 +44,65 @@ import {
 import { useProfile } from '@composables/useProfile';
 
 const { t } = useI18n();
-const { profile, loading, error, load, saveIdentity, saveSetting, deleteSetting } = useProfile();
+const {
+  profile, loading, error, load, saveIdentity, saveSetting, deleteSetting, changePassword,
+} = useProfile();
 
 // Left-rail tabs. Ids double as the URL hash fragment (deep-linkable:
 // profile.html#speech) and the VSideTabs slot names.
 const activeTab = ref('identity');
 const tabs = computed<SideTab[]>(() => [
   { id: 'identity', label: t('profile.identity.title') },
+  { id: 'security', label: t('profile.security.title') },
   { id: 'preferences', label: t('profile.preferences.title') },
   { id: 'speech', label: t('profile.speech.title') },
   { id: 'actions', label: t('profile.actions.title') },
   { id: 'teams', label: t('profile.teams.title'), badge: profile.value?.teams.length },
 ]);
+
+// ─── Password change (self-service) ───────────────────────────────
+// Minimum length mirrors the server policy (PasswordPolicyService.MIN_LENGTH).
+// The server is authoritative — this constant only drives the inline hint and
+// a cheap pre-submit check; the real enforcement (length, byte cap, common
+// list) happens server-side and its message is shown verbatim on rejection.
+const PASSWORD_MIN_LENGTH = 10;
+const currentPasswordDraft = ref('');
+const newPasswordDraft = ref('');
+const repeatPasswordDraft = ref('');
+const passwordBusy = ref(false);
+const passwordError = ref<string | null>(null);
+const passwordSaved = ref<string | null>(null);
+
+async function onChangePassword(): Promise<void> {
+  passwordError.value = null;
+  passwordSaved.value = null;
+  const current = currentPasswordDraft.value;
+  const next = newPasswordDraft.value;
+  if (!current || !next) {
+    passwordError.value = t('profile.security.required');
+    return;
+  }
+  if (next !== repeatPasswordDraft.value) {
+    passwordError.value = t('profile.security.mismatch');
+    return;
+  }
+  if (next.length < PASSWORD_MIN_LENGTH) {
+    passwordError.value = t('profile.security.tooShort', { min: PASSWORD_MIN_LENGTH });
+    return;
+  }
+  passwordBusy.value = true;
+  try {
+    await changePassword(current, next);
+    currentPasswordDraft.value = '';
+    newPasswordDraft.value = '';
+    repeatPasswordDraft.value = '';
+    passwordSaved.value = t('profile.security.changed');
+  } catch (e) {
+    passwordError.value = e instanceof Error ? e.message : t('profile.security.failed');
+  } finally {
+    passwordBusy.value = false;
+  }
+}
 
 const titleDraft = ref('');
 const emailDraft = ref('');
@@ -620,6 +667,53 @@ async function onResetTalkCommands(): Promise<void> {
               {{ $t('profile.identity.serverVersion') }}:
               <span class="font-mono">{{ profile.brainVersion }}</span>
               <span v-if="profile.brainBuildTime"> · {{ profile.brainBuildTime }}</span>
+            </div>
+          </div>
+        </VCard>
+        </template>
+
+        <template #security>
+        <!-- Security ─────────────────────────────────────────────────────── -->
+        <VCard>
+          <h2 class="text-lg font-semibold mb-3">{{ $t('profile.security.title') }}</h2>
+          <p class="text-sm opacity-70 mb-3">
+            {{ $t('profile.security.description') }}
+          </p>
+          <div class="flex flex-col gap-3 max-w-md">
+            <VInput
+              v-model="currentPasswordDraft"
+              :label="$t('profile.security.currentPassword')"
+              type="password"
+              autocomplete="current-password"
+              :disabled="passwordBusy"
+            />
+            <VInput
+              v-model="newPasswordDraft"
+              :label="$t('profile.security.newPassword')"
+              :help="$t('profile.security.newPasswordHelp', { min: PASSWORD_MIN_LENGTH })"
+              type="password"
+              autocomplete="new-password"
+              :disabled="passwordBusy"
+            />
+            <VInput
+              v-model="repeatPasswordDraft"
+              :label="$t('profile.security.repeatPassword')"
+              type="password"
+              autocomplete="new-password"
+              :disabled="passwordBusy"
+            />
+            <VAlert v-if="passwordError" variant="error">{{ passwordError }}</VAlert>
+            <div class="flex items-center gap-3">
+              <VButton
+                variant="primary"
+                :loading="passwordBusy"
+                @click="onChangePassword"
+              >
+                {{ $t('profile.security.submit') }}
+              </VButton>
+              <span v-if="passwordSaved" class="text-success text-sm">
+                {{ passwordSaved }}
+              </span>
             </div>
           </div>
         </VCard>

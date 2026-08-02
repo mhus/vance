@@ -6,6 +6,8 @@ import de.mhus.vance.api.users.UserPasswordRequest;
 import de.mhus.vance.api.users.UserUpdateRequest;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.access.AccessFilterBase;
+import de.mhus.vance.shared.password.PasswordPolicyException;
+import de.mhus.vance.shared.password.PasswordPolicyService;
 import de.mhus.vance.shared.password.PasswordService;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
@@ -51,6 +53,7 @@ public class UserAdminController {
 
     private final UserService userService;
     private final PasswordService passwordService;
+    private final PasswordPolicyService passwordPolicyService;
     private final RequestAuthority authority;
 
     @GetMapping
@@ -82,10 +85,14 @@ public class UserAdminController {
             @Valid @RequestBody UserCreateRequest request,
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
+        boolean withPassword = request.getPassword() != null && !request.getPassword().isBlank();
+        if (withPassword) {
+            validatePolicy(request.getPassword());
+        }
         try {
-            String passwordHash = (request.getPassword() == null || request.getPassword().isBlank())
-                    ? null
-                    : passwordService.hash(request.getPassword());
+            String passwordHash = withPassword
+                    ? passwordService.hash(request.getPassword())
+                    : null;
             UserDocument saved = userService.create(
                     tenant,
                     request.getName(),
@@ -128,6 +135,7 @@ public class UserAdminController {
             @Valid @RequestBody UserPasswordRequest request,
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.User(tenant, name), Action.ADMIN);
+        validatePolicy(request.getPassword());
         try {
             String hash = passwordService.hash(request.getPassword());
             userService.setPasswordHash(tenant, name, hash);
@@ -156,6 +164,15 @@ public class UserAdminController {
     }
 
     // ─── Helpers ───────────────────────────────────────────────────────────
+
+    /** Enforces the password policy; maps a violation to HTTP 400. */
+    private void validatePolicy(String plaintext) {
+        try {
+            passwordPolicyService.validate(plaintext);
+        } catch (PasswordPolicyException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+        }
+    }
 
     private static String currentUser(HttpServletRequest req) {
         Object u = req.getAttribute(AccessFilterBase.ATTR_USERNAME);

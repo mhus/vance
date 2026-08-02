@@ -3,14 +3,21 @@ package de.mhus.vance.shared.user;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.time.Instant;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.data.mongodb.core.FindAndModifyOptions;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 
 /**
  * Covers the prefix-and-flag rules introduced for service accounts:
@@ -28,12 +35,14 @@ class UserServiceTest {
 
     private static final String TENANT = "acme";
     private UserRepository repo;
+    private MongoTemplate mongoTemplate;
     private UserService service;
 
     @BeforeEach
     void setUp() {
         repo = mock(UserRepository.class);
-        service = new UserService(repo);
+        mongoTemplate = mock(MongoTemplate.class);
+        service = new UserService(repo, mongoTemplate);
         when(repo.save(any(UserDocument.class))).thenAnswer(inv -> inv.getArgument(0));
     }
 
@@ -182,5 +191,97 @@ class UserServiceTest {
                 TENANT, "alice", null, null, null, /* loginEnabled */ false);
 
         assertThat(updated.isLoginEnabled()).isFalse();
+    }
+
+    // ──────────────────── Brute-force lockout ────────────────────
+
+    @Test
+    void isLocked_futureLockedUntil_isTrue() {
+        UserDocument u = UserDocument.builder()
+                .lockedUntil(Instant.now().plusSeconds(60)).build();
+        assertThat(service.isLocked(u)).isTrue();
+    }
+
+    @Test
+    void isLocked_pastLockedUntil_isFalse() {
+        UserDocument u = UserDocument.builder()
+                .lockedUntil(Instant.now().minusSeconds(60)).build();
+        assertThat(service.isLocked(u)).isFalse();
+    }
+
+    @Test
+    void isLocked_noLockedUntil_isFalse() {
+        assertThat(service.isLocked(UserDocument.builder().build())).isFalse();
+    }
+
+    @Test
+    void recordFailedLogin_belowThreshold_incrementsOnly_doesNotLock() {
+        // findAndModify returns the post-increment doc with a sub-threshold count.
+        UserDocument afterInc = UserDocument.builder()
+                .tenantId(TENANT).name("alice")
+                .failedLoginAttempts(2).build();
+        when(mongoTemplate.findAndModify(
+                any(Query.class), any(Update.class),
+                any(FindAndModifyOptions.class), eq(UserDocument.class)))
+                .thenReturn(afterInc);
+
+        service.recordFailedLogin(TENANT, "alice");
+
+        // No second (lock) write.
+        verify(mongoTemplate, never()).updateFirst(
+                any(Query.class), any(Update.class), eq(UserDocument.class));
+    }
+
+    @Test
+    void recordFailedLogin_atThreshold_locksAndResetsCounter() {
+        UserDocument afterInc = UserDocument.builder()
+                .tenantId(TENANT).name("alice")
+                .failedLoginAttempts(UserService.MAX_FAILED_LOGIN_ATTEMPTS).build();
+        when(mongoTemplate.findAndModify(
+                any(Query.class), any(Update.class),
+                any(FindAndModifyOptions.class), eq(UserDocument.class)))
+                .thenReturn(afterInc);
+
+        service.recordFailedLogin(TENANT, "alice");
+
+        ArgumentCaptor<Update> lockUpdate = ArgumentCaptor.forClass(Update.class);
+        verify(mongoTemplate).updateFirst(
+                any(Query.class), lockUpdate.capture(), eq(UserDocument.class));
+        // Lock write sets both lockedUntil and resets the counter.
+        org.bson.Document set = lockUpdate.getValue().getUpdateObject().get("$set", org.bson.Document.class);
+        assertThat(set).containsKeys("lockedUntil", "failedLoginAttempts");
+        assertThat(set.get("failedLoginAttempts")).isEqualTo(0);
+    }
+
+    @Test
+    void recordFailedLogin_unknownUser_isNoOp() {
+        when(mongoTemplate.findAndModify(
+                any(Query.class), any(Update.class),
+                any(FindAndModifyOptions.class), eq(UserDocument.class)))
+                .thenReturn(null);
+
+        service.recordFailedLogin(TENANT, "ghost");
+
+        verify(mongoTemplate, never()).updateFirst(
+                any(Query.class), any(Update.class), eq(UserDocument.class));
+    }
+
+    @Test
+    void setPasswordHash_stampsChangedAt_andClearsLockout() {
+        UserDocument locked = UserDocument.builder()
+                .tenantId(TENANT).name("alice")
+                .failedLoginAttempts(4)
+                .lockedUntil(Instant.now().plusSeconds(600))
+                .lastFailedLoginAt(Instant.now())
+                .build();
+        when(repo.findByTenantIdAndName(TENANT, "alice")).thenReturn(Optional.of(locked));
+
+        UserDocument saved = service.setPasswordHash(TENANT, "alice", "new-hash");
+
+        assertThat(saved.getPasswordHash()).isEqualTo("new-hash");
+        assertThat(saved.getPasswordChangedAt()).isNotNull();
+        assertThat(saved.getFailedLoginAttempts()).isZero();
+        assertThat(saved.getLockedUntil()).isNull();
+        assertThat(saved.getLastFailedLoginAt()).isNull();
     }
 }

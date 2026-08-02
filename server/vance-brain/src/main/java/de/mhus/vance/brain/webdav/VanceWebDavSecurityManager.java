@@ -89,6 +89,14 @@ public class VanceWebDavSecurityManager implements io.milton.http.SecurityManage
             passwordService.verifyDecoy(password);
             return null;
         }
+        // Same brute-force lockout as the JWT-mint login: a temporarily
+        // locked account is refused here too until the lock auto-expires.
+        if (userService.isLocked(doc)) {
+            log.debug("webdav auth: account locked tenant='{}' name='{}' until={}",
+                    tenantId, user, doc.getLockedUntil());
+            passwordService.verifyDecoy(password);
+            return null;
+        }
         String hash = doc.getPasswordHash();
         if (hash == null) {
             passwordService.verifyDecoy(password);
@@ -96,7 +104,11 @@ public class VanceWebDavSecurityManager implements io.milton.http.SecurityManage
         }
         if (!passwordService.verify(password, hash)) {
             log.debug("webdav auth: bad password tenant='{}' name='{}'", tenantId, user);
+            userService.recordFailedLogin(tenantId, user);
             return null;
+        }
+        if (doc.getFailedLoginAttempts() > 0 || doc.getLockedUntil() != null) {
+            userService.resetLoginFailures(tenantId, user);
         }
         return new DavPrincipal(tenantId, user, resolveTeams(tenantId, user));
     }

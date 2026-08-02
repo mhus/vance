@@ -73,6 +73,37 @@ public class UserDocument {
     @Builder.Default
     private boolean serviceAccount = false;
 
+    /**
+     * Number of consecutive failed login attempts since the last success.
+     * Reset to zero on a successful login and whenever the password is
+     * changed. Once it reaches the lockout threshold, {@link #lockedUntil}
+     * is set and this counter is reset so a fresh window starts after the
+     * lock expires. Managed atomically by
+     * {@link UserService#recordFailedLogin} /
+     * {@link UserService#resetLoginFailures}.
+     *
+     * <p>Deliberately login-generic (not password-specific): a future
+     * second-factor failure path can share the same counter.
+     */
+    @Builder.Default
+    private int failedLoginAttempts = 0;
+
+    /**
+     * If set and in the future, the account is temporarily locked out and
+     * password logins are refused until this instant passes (auto-unlock —
+     * no admin action needed). {@code null} means not locked.
+     */
+    private @Nullable Instant lockedUntil;
+
+    /** Timestamp of the most recent failed login attempt, for diagnostics. */
+    private @Nullable Instant lastFailedLoginAt;
+
+    /**
+     * When the password hash was last set / changed. Carried for future use
+     * (password age display, optional expiry); not enforced today.
+     */
+    private @Nullable Instant passwordChangedAt;
+
     @CreatedDate
     private @Nullable Instant createdAt;
 }

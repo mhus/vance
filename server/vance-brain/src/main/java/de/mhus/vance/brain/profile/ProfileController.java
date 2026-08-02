@@ -78,6 +78,8 @@ public class ProfileController {
     private final SettingService settingService;
     private final TeamService teamService;
     private final WebUiCookieService webUiCookieService;
+    private final de.mhus.vance.shared.password.PasswordService passwordService;
+    private final de.mhus.vance.shared.password.PasswordPolicyService passwordPolicyService;
 
     /** Build stamp injected from Maven (see application.yml vance.build.*). */
     @Value("${vance.build.version:dev}")
@@ -116,6 +118,45 @@ public class ProfileController {
         } catch (UserService.UserNotFoundException e) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
         }
+    }
+
+    /**
+     * Self-service password change. The caller proves ownership with their
+     * {@code currentPassword}; the {@code newPassword} is validated against
+     * the password policy and stored. Subject is the authenticated user —
+     * there is no path parameter, so this can only ever change one's own
+     * password. Admin-driven resets go through
+     * {@code PUT /brain/{tenant}/admin/users/{name}/password}.
+     */
+    @PutMapping("/password")
+    public ResponseEntity<Void> changePassword(
+            @PathVariable("tenant") String tenant,
+            @Valid @RequestBody de.mhus.vance.api.profile.ProfilePasswordRequest request,
+            HttpServletRequest httpRequest) {
+        String username = currentUser(httpRequest);
+        UserDocument user = userService.findByTenantAndName(tenant, username)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Profile not found for current user"));
+
+        // Verify the current password. An account with no local password
+        // (e.g. SSO-only) cannot use this self-service flow.
+        String hash = user.getPasswordHash();
+        if (hash == null || !passwordService.verify(request.getCurrentPassword(), hash)) {
+            log.debug("Profile password change rejected: current password mismatch tenant='{}' user='{}'",
+                    tenant, username);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Current password is incorrect.");
+        }
+
+        try {
+            passwordPolicyService.validate(request.getNewPassword());
+        } catch (de.mhus.vance.shared.password.PasswordPolicyException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+        }
+
+        userService.setPasswordHash(tenant, username, passwordService.hash(request.getNewPassword()));
+        log.info("Profile password changed tenant='{}' user='{}'", tenant, username);
+        return ResponseEntity.noContent().build();
     }
 
     @PutMapping("/settings/{key}")

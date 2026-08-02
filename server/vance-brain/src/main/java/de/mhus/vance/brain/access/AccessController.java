@@ -143,6 +143,18 @@ public class AccessController {
             return rejectLogin(tenant, username, "login-disabled");
         }
 
+        // Brute-force lockout gate (password logins only). A temporarily
+        // locked account is refused even with the correct password until the
+        // lock auto-expires; the refresh-token path is exempt (not a guessing
+        // attack). Same decoy + uniform 401 so a locked account can't be
+        // distinguished from a wrong password by timing or response.
+        if (hasPassword && userService.isLocked(user)) {
+            log.debug("Login rejected: account locked tenant='{}' name='{}' until={}",
+                    tenant, username, user.getLockedUntil());
+            passwordService.verifyDecoy(request.getPassword());
+            return rejectLogin(tenant, username, "locked");
+        }
+
         if (hasPassword) {
             String hash = user.getPasswordHash();
             if (hash == null) {
@@ -152,6 +164,8 @@ public class AccessController {
             }
             if (!passwordService.verify(request.getPassword(), hash)) {
                 log.debug("Login rejected: bad password tenant='{}' name='{}'", tenant, username);
+                // Count this failure; may trip the lockout on the Nth miss.
+                userService.recordFailedLogin(tenant, username);
                 return rejectLogin(tenant, username, "bad-password");
             }
         } else {
@@ -175,6 +189,13 @@ public class AccessController {
                         tenant, username, claims.tenantId(), claims.username());
                 return rejectLogin(tenant, username, "refresh-token-identity-mismatch");
             }
+        }
+
+        // Successful auth — clear any accumulated failure counter / lock.
+        // Guarded so the happy path stays read-only when there is nothing
+        // to reset (the common case).
+        if (user.getFailedLoginAttempts() > 0 || user.getLockedUntil() != null) {
+            userService.resetLoginFailures(tenant, username);
         }
 
         // First-login Hub bootstrap: ensures the per-user vance-<login>

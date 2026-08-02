@@ -17,6 +17,7 @@ export * from './attachment/AttachmentRef';
 export * from './geocode/GeocodeResult';
 
 export * from './profile/ProfileDto';
+export * from './profile/ProfilePasswordRequest';
 export * from './profile/ProfileSettingWriteRequest';
 export * from './profile/ProfileUpdateRequest';
 

@@ -1,6 +1,9 @@
 package de.mhus.vance.anus.shell;
 
 import de.mhus.vance.anus.access.RequiresAuth;
+import de.mhus.vance.shared.password.PasswordPolicyException;
+import de.mhus.vance.shared.password.PasswordPolicyService;
+import de.mhus.vance.shared.password.PasswordService;
 import de.mhus.vance.shared.user.UserDocument;
 import de.mhus.vance.shared.user.UserService;
 import de.mhus.vance.shared.user.UserStatus;
@@ -10,7 +13,6 @@ import org.apache.commons.lang3.StringUtils;
 import org.jline.reader.LineReader;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.shell.core.command.annotation.Command;
 import org.springframework.shell.core.command.annotation.Option;
 import org.springframework.stereotype.Component;
@@ -19,17 +21,28 @@ import org.springframework.stereotype.Component;
  * CRUD over {@link UserDocument}. Passwords are hashed in this layer (Anus is
  * the operator UI; brain users hand it a plain password) and only the hash is
  * persisted via {@link UserService#setPasswordHash(String, String, String)}.
+ * Hashing goes through the shared {@link PasswordService} so the BCrypt cost
+ * stays uniform with the brain login path, and the plaintext is checked
+ * against {@link PasswordPolicyService} first.
  */
 @Component
 @RequiresAuth
 public class UserCommands {
 
     private final UserService userService;
+    private final PasswordService passwordService;
+    private final PasswordPolicyService passwordPolicyService;
     // Lazy LineReader to avoid the Spring-Shell bean cycle — see AccessCommands.
     private final ObjectProvider<LineReader> lineReader;
 
-    public UserCommands(UserService userService, ObjectProvider<LineReader> lineReader) {
+    public UserCommands(
+            UserService userService,
+            PasswordService passwordService,
+            PasswordPolicyService passwordPolicyService,
+            ObjectProvider<LineReader> lineReader) {
         this.userService = userService;
+        this.passwordService = passwordService;
+        this.passwordPolicyService = passwordPolicyService;
         this.lineReader = lineReader;
     }
 
@@ -86,7 +99,12 @@ public class UserCommands {
             if (StringUtils.isBlank(plain)) {
                 return "Empty password — refusing. Use --no-password to create without one.";
             }
-            hash = new BCryptPasswordEncoder(12).encode(plain);
+            try {
+                passwordPolicyService.validate(plain);
+            } catch (PasswordPolicyException e) {
+                return "Password rejected: " + e.getMessage();
+            }
+            hash = passwordService.hash(plain);
         }
         UserDocument user = serviceAccount
                 ? userService.createServiceAccount(tenant, name, hash, title, email)
@@ -122,7 +140,12 @@ public class UserCommands {
         if (StringUtils.isBlank(plain)) {
             return "Empty password — refusing.";
         }
-        String hash = new BCryptPasswordEncoder(12).encode(plain);
+        try {
+            passwordPolicyService.validate(plain);
+        } catch (PasswordPolicyException e) {
+            return "Password rejected: " + e.getMessage();
+        }
+        String hash = passwordService.hash(plain);
         userService.setPasswordHash(tenant, name, hash);
         return "Password reset for user '" + name + "' in tenant '" + tenant + "'.";
     }

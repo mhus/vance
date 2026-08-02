@@ -49,6 +49,7 @@ public class SetupWizard {
     private final TenantService tenantService;
     private final UserService userService;
     private final PasswordService passwordService;
+    private final de.mhus.vance.shared.password.PasswordPolicyService passwordPolicyService;
     private final SettingService settingService;
     private final HomeBootstrapService homeBootstrapService;
     // Optional permission-bootstrap SPI — present only when a grant-storing
@@ -66,6 +67,7 @@ public class SetupWizard {
             TenantService tenantService,
             UserService userService,
             PasswordService passwordService,
+            de.mhus.vance.shared.password.PasswordPolicyService passwordPolicyService,
             SettingService settingService,
             HomeBootstrapService homeBootstrapService,
             ObjectProvider<de.mhus.vance.shared.permission.PermissionBootstrap> permissionBootstrapProvider,
@@ -73,6 +75,7 @@ public class SetupWizard {
         this.tenantService = tenantService;
         this.userService = userService;
         this.passwordService = passwordService;
+        this.passwordPolicyService = passwordPolicyService;
         this.settingService = settingService;
         this.homeBootstrapService = homeBootstrapService;
         this.permissionBootstrapProvider = permissionBootstrapProvider;
@@ -315,6 +318,13 @@ public class SetupWizard {
             password = readPassword(reader, "Password: ");
             if (StringUtils.isBlank(password)) {
                 out.println("Password must not be empty.");
+                out.flush();
+                continue;
+            }
+            try {
+                passwordPolicyService.validate(password);
+            } catch (de.mhus.vance.shared.password.PasswordPolicyException e) {
+                out.println(e.getMessage());
                 out.flush();
                 continue;
             }

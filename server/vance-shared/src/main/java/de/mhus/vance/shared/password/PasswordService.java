@@ -11,11 +11,20 @@ import org.springframework.stereotype.Service;
  * baked into the hash string). Swapping to a different algorithm later only
  * needs a change here — callers stay on {@link #hash(String)} /
  * {@link #verify(String, String)}.
+ *
+ * <p>Cost factor {@value #BCRYPT_COST} is used tenant-wide. This is the one
+ * place that hashes account passwords — no caller may instantiate its own
+ * {@link BCryptPasswordEncoder}, so the cost stays uniform. Existing hashes
+ * minted at an older cost still verify: the cost is embedded in the stored
+ * hash string and {@link BCryptPasswordEncoder#matches} honours it.
  */
 @Service
 public class PasswordService {
 
-    private final PasswordEncoder encoder = new BCryptPasswordEncoder();
+    /** BCrypt work factor. Applied to every newly minted hash. */
+    public static final int BCRYPT_COST = 12;
+
+    private final PasswordEncoder encoder = new BCryptPasswordEncoder(BCRYPT_COST);
 
     /**
      * A real BCrypt hash of a fixed decoy secret, computed once at startup.

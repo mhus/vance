@@ -1,10 +1,17 @@
 package de.mhus.vance.shared.user;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.data.mongodb.core.FindAndModifyOptions;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Service;
 
 /**
@@ -36,7 +43,25 @@ public class UserService {
      */
     public static final String RESERVED_VANCE_PREFIX = "_vance-";
 
+    /**
+     * Consecutive failed password logins that trigger a temporary lockout.
+     */
+    public static final int MAX_FAILED_LOGIN_ATTEMPTS = 5;
+
+    /**
+     * How long an account stays locked after {@link #MAX_FAILED_LOGIN_ATTEMPTS}
+     * failures. The lock auto-expires — no admin action required.
+     */
+    public static final Duration LOCKOUT_DURATION = Duration.ofMinutes(15);
+
+    private static final String F_TENANT_ID = "tenantId";
+    private static final String F_NAME = "name";
+    private static final String F_FAILED_ATTEMPTS = "failedLoginAttempts";
+    private static final String F_LOCKED_UNTIL = "lockedUntil";
+    private static final String F_LAST_FAILED = "lastFailedLoginAt";
+
     private final UserRepository repository;
+    private final MongoTemplate mongoTemplate;
 
     public Optional<UserDocument> findByTenantAndName(String tenantId, String name) {
         return repository.findByTenantIdAndName(tenantId, name);
@@ -225,15 +250,76 @@ public class UserService {
         return update(tenantId, name, null, null, null, loginEnabled);
     }
 
-    /** Replaces the user's password hash. Caller hashes; service stores. */
+    /**
+     * Replaces the user's password hash. Caller hashes; service stores.
+     * Also stamps {@code passwordChangedAt} and clears any lockout state —
+     * a fresh password starts the login-failure window over.
+     */
     public UserDocument setPasswordHash(String tenantId, String name, String passwordHash) {
         UserDocument user = repository.findByTenantIdAndName(tenantId, name)
                 .orElseThrow(() -> new UserNotFoundException(
                         "User '" + name + "' not found in tenant '" + tenantId + "'"));
         user.setPasswordHash(passwordHash);
+        user.setPasswordChangedAt(Instant.now());
+        user.setFailedLoginAttempts(0);
+        user.setLockedUntil(null);
+        user.setLastFailedLoginAt(null);
         UserDocument saved = repository.save(user);
         log.info("Reset password tenantId='{}' name='{}'", saved.getTenantId(), saved.getName());
         return saved;
+    }
+
+    // ──────────────────── Brute-force lockout ────────────────────
+
+    /**
+     * Whether {@code user} is currently locked out — i.e. it has a
+     * {@link UserDocument#getLockedUntil() lockedUntil} in the future. Pure
+     * check against the given document, no DB access.
+     */
+    public boolean isLocked(UserDocument user) {
+        Instant until = user.getLockedUntil();
+        return until != null && Instant.now().isBefore(until);
+    }
+
+    /**
+     * Atomically records one failed password login. Increments the failure
+     * counter and stamps {@code lastFailedLoginAt}; once the counter reaches
+     * {@link #MAX_FAILED_LOGIN_ATTEMPTS} the account is locked for
+     * {@link #LOCKOUT_DURATION} (and the counter reset, so the window starts
+     * fresh after the lock expires). No-op if the user does not exist.
+     */
+    public void recordFailedLogin(String tenantId, String name) {
+        Instant now = Instant.now();
+        Query query = new Query(Criteria.where(F_TENANT_ID).is(tenantId).and(F_NAME).is(name));
+        Update update = new Update().inc(F_FAILED_ATTEMPTS, 1).set(F_LAST_FAILED, now);
+        UserDocument updated = mongoTemplate.findAndModify(
+                query, update,
+                FindAndModifyOptions.options().returnNew(true),
+                UserDocument.class);
+        if (updated == null) {
+            return;
+        }
+        if (updated.getFailedLoginAttempts() >= MAX_FAILED_LOGIN_ATTEMPTS) {
+            Instant lockedUntil = now.plus(LOCKOUT_DURATION);
+            Update lock = new Update().set(F_LOCKED_UNTIL, lockedUntil).set(F_FAILED_ATTEMPTS, 0);
+            mongoTemplate.updateFirst(query, lock, UserDocument.class);
+            log.warn("Account locked after {} failed logins tenantId='{}' name='{}' until={}",
+                    MAX_FAILED_LOGIN_ATTEMPTS, tenantId, name, lockedUntil);
+        }
+    }
+
+    /**
+     * Atomically clears the failure counter and any lockout for a user —
+     * called after a successful login. Best-effort; a no-op if the user does
+     * not exist.
+     */
+    public void resetLoginFailures(String tenantId, String name) {
+        Query query = new Query(Criteria.where(F_TENANT_ID).is(tenantId).and(F_NAME).is(name));
+        Update update = new Update()
+                .set(F_FAILED_ATTEMPTS, 0)
+                .set(F_LOCKED_UNTIL, null)
+                .set(F_LAST_FAILED, null);
+        mongoTemplate.updateFirst(query, update, UserDocument.class);
     }
 
     /**

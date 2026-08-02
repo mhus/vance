@@ -1317,7 +1317,7 @@ export default {
       emailLabel: 'E-Mail',
       passwordLabel: 'Passwort (optional)',
       passwordHelp:
-        'Leer lassen erzeugt ein passwortloses Konto, das sich nicht anmelden kann, bis ein Passwort gesetzt wird.',
+        'Leer lassen erzeugt ein passwortloses Konto, das sich nicht anmelden kann, bis ein Passwort gesetzt wird. Andernfalls mindestens 10 Zeichen.',
       cancel: 'Abbrechen',
       create: 'Anlegen',
       nameInvalid:
@@ -1346,6 +1346,7 @@ export default {
       intro:
         'Ersetzt das Passwort von {name}. Klartext wird serverseitig gehasht.',
       newPasswordLabel: 'Neues Passwort',
+      newPasswordHelp: 'Mindestens 10 Zeichen.',
       repeatPasswordLabel: 'Passwort wiederholen',
       cancel: 'Abbrechen',
       submit: 'Passwort setzen',
@@ -1731,6 +1732,20 @@ export default {
       email: 'E-Mail',
       saved: 'Profil gespeichert.',
       serverVersion: 'Server-Version',
+    },
+    security: {
+      title: 'Sicherheit',
+      description: 'Ändere das Passwort deines Kontos.',
+      currentPassword: 'Aktuelles Passwort',
+      newPassword: 'Neues Passwort',
+      newPasswordHelp: 'Mindestens {min} Zeichen.',
+      repeatPassword: 'Neues Passwort wiederholen',
+      submit: 'Passwort ändern',
+      required: 'Gib dein aktuelles und ein neues Passwort ein.',
+      mismatch: 'Die neuen Passwörter stimmen nicht überein.',
+      tooShort: 'Das Passwort muss mindestens {min} Zeichen lang sein.',
+      changed: 'Passwort geändert.',
+      failed: 'Passwort konnte nicht geändert werden.',
     },
     preferences: {
       title: 'Einstellungen',

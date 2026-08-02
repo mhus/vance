@@ -171,6 +171,65 @@ class AccessControllerTest {
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
     }
 
+    // ──────────────── Brute-force lockout ────────────────
+
+    @Test
+    void passwordLogin_wrongPassword_recordsFailedLogin() {
+        AccessTokenRequest req = AccessTokenRequest.builder()
+                .password("wrong-password")
+                .build();
+
+        controller.createToken(TENANT, USERNAME, req, emptyRequest());
+
+        verify(userService).recordFailedLogin(TENANT, USERNAME);
+    }
+
+    @Test
+    void passwordLogin_lockedAccount_returns401WithoutVerifying() {
+        UserDocument locked = activeUser();
+        locked.setLockedUntil(Instant.now().plusSeconds(600));
+        when(userService.findByTenantAndName(TENANT, USERNAME)).thenReturn(Optional.of(locked));
+        when(userService.isLocked(locked)).thenReturn(true);
+        AccessTokenRequest req = AccessTokenRequest.builder()
+                .password("right-password")
+                .build();
+
+        ResponseEntity<AccessTokenResponse> resp = controller.createToken(TENANT, USERNAME, req, emptyRequest());
+
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        // Locked accounts short-circuit before the real hash comparison.
+        verify(passwordService, never()).verify("right-password", "hash");
+        verify(passwordService).verifyDecoy("right-password");
+    }
+
+    @Test
+    void passwordLogin_success_resetsFailuresWhenCounterNonZero() {
+        UserDocument user = activeUser();
+        user.setFailedLoginAttempts(3);
+        when(userService.findByTenantAndName(TENANT, USERNAME)).thenReturn(Optional.of(user));
+        AccessTokenRequest req = AccessTokenRequest.builder()
+                .password("right-password")
+                .build();
+
+        controller.createToken(TENANT, USERNAME, req, emptyRequest());
+
+        verify(userService).resetLoginFailures(TENANT, USERNAME);
+    }
+
+    @Test
+    void passwordLogin_success_noResetWhenCounterZero() {
+        // Happy path stays read-only: nothing to reset, no write.
+        AccessTokenRequest req = AccessTokenRequest.builder()
+                .password("right-password")
+                .build();
+
+        controller.createToken(TENANT, USERNAME, req, emptyRequest());
+
+        verify(userService, never()).resetLoginFailures(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString());
+    }
+
     @Test
     void passwordLogin_withLoginDisabledUser_returns401() {
         // Service accounts (and temporarily login-blocked humans) must not

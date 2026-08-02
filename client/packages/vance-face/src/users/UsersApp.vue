@@ -858,6 +858,7 @@ function fmt(value: unknown): string {
         <VInput
           v-model="passwordPlaintext"
           :label="$t('users.setPassword.newPasswordLabel')"
+          :help="$t('users.setPassword.newPasswordHelp')"
           type="password"
           required
           autocomplete="new-password"

@@ -1,6 +1,7 @@
 import { ref, type Ref } from 'vue';
 import type {
   ProfileDto,
+  ProfilePasswordRequest,
   ProfileSettingWriteRequest,
   ProfileUpdateRequest,
 } from '@vance/generated';
@@ -23,6 +24,7 @@ export function useProfile(): {
   saveIdentity: (patch: ProfileUpdateRequest) => Promise<void>;
   saveSetting: (key: string, value: string | null) => Promise<void>;
   deleteSetting: (key: string) => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
 } {
   const profile = ref<ProfileDto | null>(null);
   const loading = ref(false);
@@ -91,5 +93,29 @@ export function useProfile(): {
     }
   }
 
-  return { profile, loading, error, load, saveIdentity, saveSetting, deleteSetting };
+  /**
+   * Self-service password change. The server verifies {@code
+   * currentPassword} and enforces the password policy on {@code
+   * newPassword}; a policy violation or wrong current password comes
+   * back as a rejected promise with the server message. Does not touch
+   * {@link profile} — the profile view is unaffected by a password change.
+   */
+  async function changePassword(
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<void> {
+    const body: ProfilePasswordRequest = { currentPassword, newPassword };
+    await brainFetch<void>('PUT', 'profile/password', { body });
+  }
+
+  return {
+    profile,
+    loading,
+    error,
+    load,
+    saveIdentity,
+    saveSetting,
+    deleteSetting,
+    changePassword,
+  };
 }

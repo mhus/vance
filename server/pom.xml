@@ -56,7 +56,7 @@
         <jspecify.version>1.0.1</jspecify.version>
         <jjwt.version>0.13.0</jjwt.version>
         <console-master.version>1.0.0-SNAPSHOT</console-master.version>
-        <jline.version>3.27.1</jline.version>
+        <jline.version>4.3.1</jline.version>
         <lanterna.version>3.1.5</lanterna.version>
         <graaljs.version>25.2.4</graaljs.version>
         <jgit.version>7.7.1.202607240634-r</jgit.version>

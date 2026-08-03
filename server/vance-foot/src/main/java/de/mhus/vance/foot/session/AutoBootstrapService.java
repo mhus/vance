@@ -6,6 +6,8 @@ import de.mhus.vance.api.thinkprocess.ProcessSpec;
 import de.mhus.vance.api.thinkprocess.SessionBootstrapRequest;
 import de.mhus.vance.api.thinkprocess.SessionBootstrapResponse;
 import de.mhus.vance.api.ws.MessageType;
+import de.mhus.vance.api.ws.SessionResumeRequest;
+import de.mhus.vance.api.ws.SessionResumeResponse;
 import de.mhus.vance.foot.config.FootConfig;
 import de.mhus.vance.foot.auth.SessionAnchor;
 import de.mhus.vance.foot.auth.SessionAnchorStore;
@@ -133,6 +135,58 @@ public class AutoBootstrapService {
                 inFlight.set(false);
             }
         });
+    }
+
+    /**
+     * Re-adopts the exact session the client was bound to before an unexpected
+     * transport drop. Runs on this service's executor (same hand-off reason as
+     * {@link #triggerAfterWelcome()} — we cannot block the welcome/listener
+     * thread on a {@code request}). Uses {@code takeover=true} unconditionally:
+     * on the brain the session is still bound to the now-dead connection, so a
+     * plain resume would be rejected as {@code SESSION_BOUND_ELSEWHERE} and the
+     * session left orphaned. This is our own connection reclaiming its own
+     * binding, which is exactly what takeover is for.
+     */
+    public void triggerReconnectResume(ConnectionService.ReconnectTarget target) {
+        if (!inFlight.compareAndSet(false, true)) {
+            terminal.verbose("Reconnect-resume skipped — bootstrap already in flight.");
+            return;
+        }
+        executor.submit(() -> {
+            try {
+                runReconnectResume(target);
+            } finally {
+                inFlight.set(false);
+            }
+        });
+    }
+
+    private void runReconnectResume(ConnectionService.ReconnectTarget target) {
+        SessionResumeResponse response;
+        try {
+            response = connection.request(
+                    MessageType.SESSION_RESUME,
+                    SessionResumeRequest.builder().sessionId(target.sessionId()).takeover(true).build(),
+                    SessionResumeResponse.class,
+                    Duration.ofSeconds(10));
+        } catch (Exception e) {
+            terminal.error("Reconnect could not re-adopt session " + target.sessionId()
+                    + ": " + e.getMessage()
+                    + " — run /session-resume " + target.sessionId() + " --takeover");
+            return;
+        }
+        sessions.bind(response.getSessionId(), response.getProjectId());
+        persistSessionAnchor(response.getSessionId(), response.getProjectId());
+        // Restore the process the user was steering; fall back to the session
+        // chat orchestrator the resume reports.
+        String active = target.activeProcess() != null && !target.activeProcess().isBlank()
+                ? target.activeProcess()
+                : response.getChatProcessName();
+        if (active != null && !active.isBlank()) {
+            sessions.setActiveProcess(active);
+        }
+        terminal.info("Reconnected → session re-adopted: " + response.getSessionId()
+                + " (project=" + response.getProjectId() + ")");
     }
 
     private void runBootstrap(FootConfig.Bootstrap b) {

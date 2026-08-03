@@ -26,6 +26,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.Nullable;
@@ -65,7 +66,23 @@ public class ConnectionService {
     private final AtomicReference<State> state = new AtomicReference<>(State.DISCONNECTED);
     private final AtomicReference<@Nullable VanceWebSocketClient> clientRef = new AtomicReference<>();
     private final AtomicReference<@Nullable ScheduledExecutorService> keepAliveRef = new AtomicReference<>();
+    /** Set while a {@code /disconnect} or shutdown is in effect so a resulting close does NOT auto-reconnect. */
+    private final AtomicBoolean intentionalClose = new AtomicBoolean(false);
+    /** Holds the single active reconnect campaign, {@code null} when none is running. */
+    private final AtomicReference<@Nullable ScheduledExecutorService> reconnectRef = new AtomicReference<>();
+    /**
+     * Session bound at the moment of an unexpected drop, captured before teardown
+     * so the reconnect can take it back over ({@code SESSION_RESUME} with
+     * {@code takeover=true}). Consumed once by {@code WelcomeHandler} on the
+     * post-reconnect welcome. {@code null} when nothing was bound.
+     */
+    private volatile @Nullable ReconnectTarget reconnectTarget;
     private final AtomicLong requestCounter = new AtomicLong();
+
+    /** The session (and its active process) to re-adopt after an auto-reconnect. */
+    public record ReconnectTarget(String sessionId,
+                                  @Nullable String projectId,
+                                  @Nullable String activeProcess) {}
 
     public ConnectionService(FootConfig config,
                              MessageDispatcher dispatcher,
@@ -98,44 +115,17 @@ public class ConnectionService {
      */
     public void connect() throws Exception {
         assertTransportAllowed();
+        // A manual connect takes over from any auto-reconnect campaign and
+        // clears the "user wants us offline" latch set by /disconnect.
+        intentionalClose.set(false);
+        stopReconnect();
         if (!state.compareAndSet(State.DISCONNECTED, State.CONNECTING)) {
             terminal.println(Verbosity.WARN, "Connection state is %s — /disconnect first.", state.get());
             return;
         }
         try {
-            AccessTokenResponse token = auth.acquireAccessToken();
-            currentToken = token;
-            terminal.verbose("Access token ready, expires at "
-                    + java.time.Instant.ofEpochMilli(token.getExpiresAtTimestamp()));
-
-            URI wsUri = URI.create(config.getBrain().getWsBase()
-                    + "/brain/" + config.getAuth().getTenant() + "/ws");
-            String profile = config.getClient().getProfile();
-            if (profile == null || profile.isBlank()) {
-                profile = Profiles.FOOT;
-            }
-            String clientName = config.getClient().getName();
-            if (clientName == null || clientName.isBlank()) {
-                // Fallback so the brain always sees a non-empty
-                // identifier; useful when multiple foot instances run
-                // against the same tenant under different shell users
-                // or hosts.
-                clientName = config.getAuth().getUsername();
-            }
-            VanceWebSocketConfig wsConfig = VanceWebSocketConfig.builder()
-                    .uri(wsUri)
-                    .jwtToken(token.getToken())
-                    .profile(profile)
-                    .clientVersion(config.getClient().getVersion())
-                    .clientName(clientName)
-                    .clientContextJson(buildClientContextJson())
-                    .build();
-
-            VanceWebSocketClient client = new VanceWebSocketClient(wsConfig, new Listener());
-            clientRef.set(client);
-            client.connect().get(10, TimeUnit.SECONDS);
+            openConnection();
             state.set(State.OPEN);
-            terminal.info("Connected to " + wsUri);
         } catch (Exception e) {
             state.set(State.DISCONNECTED);
             clientRef.set(null);
@@ -143,8 +133,52 @@ public class ConnectionService {
         }
     }
 
-    /** Closes the active WebSocket if any. Idempotent. */
+    /**
+     * Performs the actual dial: mints a token, builds the client and blocks
+     * on the handshake. Assumes state is already {@code CONNECTING}. Throws on
+     * any failure without touching state — the caller owns the state reset.
+     */
+    private void openConnection() throws Exception {
+        AccessTokenResponse token = auth.acquireAccessToken();
+        currentToken = token;
+        terminal.verbose("Access token ready, expires at "
+                + java.time.Instant.ofEpochMilli(token.getExpiresAtTimestamp()));
+
+        URI wsUri = URI.create(config.getBrain().getWsBase()
+                + "/brain/" + config.getAuth().getTenant() + "/ws");
+        String profile = config.getClient().getProfile();
+        if (profile == null || profile.isBlank()) {
+            profile = Profiles.FOOT;
+        }
+        String clientName = config.getClient().getName();
+        if (clientName == null || clientName.isBlank()) {
+            // Fallback so the brain always sees a non-empty
+            // identifier; useful when multiple foot instances run
+            // against the same tenant under different shell users
+            // or hosts.
+            clientName = config.getAuth().getUsername();
+        }
+        VanceWebSocketConfig wsConfig = VanceWebSocketConfig.builder()
+                .uri(wsUri)
+                .jwtToken(token.getToken())
+                .profile(profile)
+                .clientVersion(config.getClient().getVersion())
+                .clientName(clientName)
+                .clientContextJson(buildClientContextJson())
+                .build();
+
+        VanceWebSocketClient client = new VanceWebSocketClient(wsConfig, new Listener());
+        clientRef.set(client);
+        client.connect().get(10, TimeUnit.SECONDS);
+        terminal.info("Connected to " + wsUri);
+    }
+
+    /** Closes the active WebSocket if any. Idempotent. Suppresses auto-reconnect. */
     public void disconnect(String reason) {
+        // Latch first so a close callback triggered by client.close() below
+        // does not kick off an auto-reconnect campaign.
+        intentionalClose.set(true);
+        stopReconnect();
         VanceWebSocketClient client = clientRef.getAndSet(null);
         state.set(State.DISCONNECTED);
         stopKeepAlive();
@@ -224,6 +258,132 @@ public class ConnectionService {
         }
     }
 
+    /**
+     * Starts a background reconnect campaign after an unexpected drop, unless
+     * one is already running, the user asked to stay offline, or auto-reconnect
+     * is disabled. Idempotent: the {@code compareAndSet} on {@link #reconnectRef}
+     * guarantees a single campaign even if both the ping-timeout path and a
+     * subsequent {@code onClose} race to schedule one.
+     */
+    private void scheduleReconnect() {
+        if (intentionalClose.get()) {
+            return;
+        }
+        FootConfig.Reconnect rc = config.getBrain().getReconnect();
+        if (!rc.isEnabled()) {
+            return;
+        }
+        ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "vance-foot-reconnect");
+            t.setDaemon(true);
+            return t;
+        });
+        if (!reconnectRef.compareAndSet(null, scheduler)) {
+            scheduler.shutdownNow();
+            return;
+        }
+        long initialMs = Math.max(0L, rc.getInitialDelay().toMillis());
+        terminal.println(Verbosity.INFO,
+                "Connection lost — reconnecting (first retry in %ds)…", initialMs / 1000);
+        scheduler.schedule(() -> runReconnect(rc, 1, initialMs), initialMs, TimeUnit.MILLISECONDS);
+    }
+
+    /** Cancels any running reconnect campaign. Safe to call multiple times. */
+    private void stopReconnect() {
+        ScheduledExecutorService previous = reconnectRef.getAndSet(null);
+        if (previous != null) {
+            previous.shutdownNow();
+        }
+    }
+
+    /**
+     * Remembers the currently bound session before an unexpected drop tears it
+     * down, so the reconnect can re-adopt exactly it. No-op when nothing is
+     * bound. Only records a fresh target — never clobbers an existing one with
+     * {@code null} (the second teardown pass after {@code abort()} runs against
+     * an already-cleared {@link SessionService}).
+     */
+    private void captureReconnectTarget() {
+        SessionService.BoundSession bound = sessions.current();
+        if (bound != null) {
+            reconnectTarget = new ReconnectTarget(
+                    bound.sessionId(), bound.projectId(), sessions.activeProcess());
+        }
+    }
+
+    /**
+     * Returns and clears the session to re-adopt after a reconnect. Called by
+     * {@code WelcomeHandler} on the welcome frame; {@code null} means this was a
+     * fresh connect (not a reconnect) and normal auto-bootstrap should run.
+     */
+    public @Nullable ReconnectTarget consumePendingReconnectResume() {
+        ReconnectTarget t = reconnectTarget;
+        reconnectTarget = null;
+        return t;
+    }
+
+    /**
+     * One reconnect tick: dials once, and on failure re-schedules itself with
+     * geometric backoff capped at {@code maxDelay}. Stops the campaign on
+     * success, on a user disconnect, once already open, or when the optional
+     * attempt cap is reached.
+     */
+    private void runReconnect(FootConfig.Reconnect rc, int attempt, long delayMs) {
+        if (intentionalClose.get() || state.get() == State.OPEN) {
+            stopReconnect();
+            return;
+        }
+        if (tryDial()) {
+            terminal.info("Reconnected.");
+            stopReconnect();
+            return;
+        }
+        if (rc.getMaxAttempts() > 0 && attempt >= rc.getMaxAttempts()) {
+            terminal.println(Verbosity.WARN,
+                    "Reconnect gave up after %d attempts — use /connect to retry.", attempt);
+            stopReconnect();
+            return;
+        }
+        long nextMs = Math.min(
+                (long) (delayMs * rc.getBackoffMultiplier()),
+                Math.max(delayMs, rc.getMaxDelay().toMillis()));
+        terminal.println(Verbosity.DEBUG,
+                "Reconnect attempt %d failed — retrying in %ds", attempt, nextMs / 1000);
+        ScheduledExecutorService scheduler = reconnectRef.get();
+        if (scheduler != null && !intentionalClose.get()) {
+            scheduler.schedule(() -> runReconnect(rc, attempt + 1, nextMs), nextMs, TimeUnit.MILLISECONDS);
+        }
+    }
+
+    /**
+     * A single non-throwing dial used by the reconnect campaign. Mirrors
+     * {@link #connect()} but reports success as a boolean instead of an
+     * exception, and never disturbs the {@code intentionalClose} latch.
+     */
+    private boolean tryDial() {
+        if (!state.compareAndSet(State.DISCONNECTED, State.CONNECTING)) {
+            // Already CONNECTING/OPEN — treat OPEN as success, anything else as
+            // "try again next tick".
+            return state.get() == State.OPEN;
+        }
+        try {
+            openConnection();
+            state.set(State.OPEN);
+            return true;
+        } catch (Exception e) {
+            state.set(State.DISCONNECTED);
+            clientRef.set(null);
+            terminal.println(Verbosity.DEBUG, "reconnect dial failed: %s", describe(e));
+            return false;
+        }
+    }
+
+    /** Human-readable exception summary — {@code getMessage()} is {@code null} for e.g. {@link TimeoutException}. */
+    private static String describe(Throwable e) {
+        String m = e.getMessage();
+        return (m == null || m.isBlank()) ? e.getClass().getSimpleName() : m;
+    }
+
     private void sendKeepAlivePing() {
         if (!isOpen()) {
             return;
@@ -240,8 +400,40 @@ public class ConnectionService {
             terminal.println(Verbosity.DEBUG,
                     "ping rtt=%dms one-way=%dms", rtt, oneWay);
         } catch (Exception e) {
-            terminal.println(Verbosity.WARN, "ping failed: %s", e.getMessage());
+            // No pong inside the window: the socket is wedged — typically a
+            // half-open TCP left behind when a middlebox dropped the idle
+            // connection without a FIN, so onClose never fired. Tear it down
+            // and let the reconnect campaign take over instead of pinging a
+            // corpse forever.
+            terminal.println(Verbosity.WARN,
+                    "ping failed: %s — connection looks dead, reconnecting", describe(e));
+            handleUnexpectedDrop("ping timeout");
         }
+    }
+
+    /**
+     * Idempotent teardown of a dead / half-open connection followed by a
+     * reconnect campaign. Reached from the ping-timeout path (onClose never
+     * fires on a half-open socket). Uses {@link VanceWebSocketClient#abort()}
+     * rather than a clean close so we don't block on a close reply that will
+     * never come.
+     */
+    private void handleUnexpectedDrop(String why) {
+        captureReconnectTarget();
+        VanceWebSocketClient dead = clientRef.getAndSet(null);
+        state.set(State.DISCONNECTED);
+        stopKeepAlive();
+        sessions.clear();
+        windowTitle.setConnection("disconnected");
+        dispatcher.failAllPending(new IllegalStateException("Connection lost: " + why));
+        if (dead != null) {
+            try {
+                dead.abort();
+            } catch (Exception ignore) {
+                // Best-effort — the socket is already gone.
+            }
+        }
+        scheduleReconnect();
     }
 
     /**
@@ -477,6 +669,11 @@ public class ConnectionService {
 
         @Override
         public void onClose(int statusCode, @Nullable String reason) {
+            // Capture the bound session before clearing so an ensuing reconnect
+            // can take it back over. Only for drops we did not ask for.
+            if (!intentionalClose.get()) {
+                captureReconnectTarget();
+            }
             clientRef.set(null);
             state.set(State.DISCONNECTED);
             stopKeepAlive();
@@ -486,6 +683,12 @@ public class ConnectionService {
                     "Connection closed (" + statusCode + ")"));
             terminal.info("WebSocket closed: " + statusCode
                     + (reason == null || reason.isBlank() ? "" : " (" + reason + ")"));
+            // A close we did not ask for (peer/idle/abnormal 1006) kicks off an
+            // auto-reconnect; a user /disconnect latched intentionalClose and is
+            // left alone.
+            if (!intentionalClose.get()) {
+                scheduleReconnect();
+            }
         }
 
         @Override

@@ -86,6 +86,15 @@ public class WelcomeHandler implements MessageHandler {
         // (only-if-absent, never overwrites an explicit choice). Runs on
         // its own executor — independent of bootstrap.
         timezoneSeed.triggerAfterWelcome();
-        autoBootstrap.triggerAfterWelcome();
+        // After an auto-reconnect, re-adopt the exact session we were in
+        // (takeover — the brain still has it bound to the dropped connection)
+        // instead of running the default bootstrap, which could bind a
+        // different session and orphan the one the user was working in.
+        ConnectionService.ReconnectTarget resume = connection.consumePendingReconnectResume();
+        if (resume != null) {
+            autoBootstrap.triggerReconnectResume(resume);
+        } else {
+            autoBootstrap.triggerAfterWelcome();
+        }
     }
 }

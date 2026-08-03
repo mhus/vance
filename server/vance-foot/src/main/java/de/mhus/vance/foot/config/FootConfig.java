@@ -43,6 +43,31 @@ public class FootConfig {
          * default (code-review Phase 2, foot-core plaintext HIGH).
          */
         private boolean allowInsecureTransport = false;
+
+        /** Automatic re-dial after an unexpected transport drop. */
+        private Reconnect reconnect = new Reconnect();
+    }
+
+    /**
+     * Automatic re-dial after an <em>unexpected</em> transport drop — an
+     * idle-timeout middlebox tearing down a quiet WebSocket, a network blip,
+     * or a half-open socket surfaced by a keep-alive ping timeout. A
+     * user-initiated {@code /disconnect} (or {@code @PreDestroy} shutdown)
+     * never triggers it. Backoff grows geometrically from {@link #initialDelay}
+     * up to {@link #maxDelay}.
+     */
+    @Data
+    public static class Reconnect {
+        /** Master switch. When {@code false}, a dropped connection stays down until a manual {@code /connect}. */
+        private boolean enabled = true;
+        /** Delay before the first re-dial attempt. */
+        private java.time.Duration initialDelay = java.time.Duration.ofSeconds(1);
+        /** Ceiling for the exponential backoff between attempts. */
+        private java.time.Duration maxDelay = java.time.Duration.ofSeconds(30);
+        /** Backoff multiplier applied to the delay after each failed attempt. */
+        private double backoffMultiplier = 2.0;
+        /** Max consecutive failed attempts before giving up; {@code 0} = retry forever. */
+        private int maxAttempts = 0;
     }
 
     /**

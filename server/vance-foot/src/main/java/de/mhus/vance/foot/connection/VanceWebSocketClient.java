@@ -148,6 +148,19 @@ public class VanceWebSocketClient implements AutoCloseable {
         close(WebSocket.NORMAL_CLOSURE, "").join();
     }
 
+    /**
+     * Hard-aborts the connection without a close handshake. Use when the
+     * peer is gone — a half-open socket surfaced by a ping timeout — where a
+     * clean {@link #close} would block on a close reply that never arrives.
+     * Idempotent and safe to call when already closed.
+     */
+    public void abort() {
+        WebSocket ws = webSocket;
+        if (ws != null) {
+            ws.abort();
+        }
+    }
+
     /** Whether the client currently holds an open connection. */
     public boolean isOpen() {
         WebSocket ws = webSocket;

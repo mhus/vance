@@ -18,8 +18,8 @@ importers:
   .:
     devDependencies:
       typescript:
-        specifier: 5.6.3
-        version: 5.6.3
+        specifier: 7.0.2
+        version: 7.0.2
 
   client/packages/block-editor:
     dependencies:
@@ -58,7 +58,7 @@ importers:
         version: 3.29.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.29.2(@tiptap/pm@3.29.2))(@tiptap/pm@3.29.2)
       '@tiptap/vue-3':
         specifier: ^3.29.2
-        version: 3.29.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.29.2(@tiptap/pm@3.29.2))(@tiptap/pm@3.29.2)(vue@3.5.40(typescript@5.9.3))
+        version: 3.29.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.29.2(@tiptap/pm@3.29.2))(@tiptap/pm@3.29.2)(vue@3.5.40(typescript@7.0.2))
       highlight.js:
         specifier: ^11.10.0
         version: 11.11.1
@@ -83,7 +83,7 @@ importers:
         version: 4.1.10(@types/node@24.13.3)(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))
       vue:
         specifier: ^3.5.40
-        version: 3.5.40(typescript@5.9.3)
+        version: 3.5.40(typescript@7.0.2)
 
   client/packages/components:
     dependencies:
@@ -141,10 +141,10 @@ importers:
     devDependencies:
       vue:
         specifier: ^3.5.40
-        version: 3.5.40(typescript@5.6.3)
+        version: 3.5.40(typescript@7.0.2)
       vue-tsc:
         specifier: ^3.3.8
-        version: 3.3.8(typescript@5.6.3)
+        version: 3.3.8(typescript@7.0.2)
 
   client/packages/facelift-account-webview:
     dependencies:
@@ -189,17 +189,17 @@ importers:
         version: link:../facelift-account-webview
       pinia:
         specifier: ^4.0.2
-        version: 4.0.2(@vue/devtools-api@6.6.4)(typescript@5.6.3)(vue@3.5.40(typescript@5.6.3))
+        version: 4.0.2(@vue/devtools-api@6.6.4)(typescript@7.0.2)(vue@3.5.40(typescript@7.0.2))
       vue:
         specifier: ^3.5.40
-        version: 3.5.40(typescript@5.6.3)
+        version: 3.5.40(typescript@7.0.2)
       vue-router:
         specifier: ^4.4.5
-        version: 4.6.4(vue@3.5.40(typescript@5.6.3))
+        version: 4.6.4(vue@3.5.40(typescript@7.0.2))
     devDependencies:
       '@capacitor/assets':
         specifier: ^3.0.5
-        version: 3.0.5(@types/node@24.13.3)(typescript@5.6.3)
+        version: 3.0.5(@types/node@24.13.3)(typescript@7.0.2)
       '@capacitor/cli':
         specifier: ^6.2.0
         version: 6.2.1
@@ -208,7 +208,7 @@ importers:
         version: 4.3.3
       '@vitejs/plugin-vue':
         specifier: ^6.0.8
-        version: 6.0.8(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue@3.5.40(typescript@5.6.3))
+        version: 6.0.8(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue@3.5.40(typescript@7.0.2))
       postcss:
         specifier: ^8.5.23
         version: 8.5.25
@@ -223,7 +223,7 @@ importers:
         version: 8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0)
       vue-tsc:
         specifier: ^3.3.8
-        version: 3.3.8(typescript@5.6.3)
+        version: 3.3.8(typescript@7.0.2)
 
   client/packages/facelift-desktop:
     dependencies:
@@ -241,8 +241,8 @@ importers:
         specifier: ^26.0.0
         version: 26.15.3(electron-builder-squirrel-windows@26.15.3)
       typescript:
-        specifier: ^5.6.0
-        version: 5.9.3
+        specifier: ^7.0.2
+        version: 7.0.2
 
   client/packages/generated: {}
 
@@ -250,7 +250,7 @@ importers:
     dependencies:
       vue:
         specifier: ^3.5.0
-        version: 3.5.40(typescript@5.9.3)
+        version: 3.5.40(typescript@7.0.2)
     devDependencies:
       vitest:
         specifier: ^4.1.10
@@ -260,7 +260,7 @@ importers:
     dependencies:
       vue:
         specifier: ^3.5.0
-        version: 3.5.40(typescript@5.9.3)
+        version: 3.5.40(typescript@7.0.2)
 
   client/packages/shared:
     dependencies:
@@ -345,7 +345,7 @@ importers:
         version: link:../shared
       '@vue-flow/core':
         specifier: ^1.48.2
-        version: 1.48.2(vue@3.5.40(typescript@5.6.3))
+        version: 1.48.2(vue@3.5.40(typescript@7.0.2))
       diff-match-patch:
         specifier: ^1.0.5
         version: 1.0.5
@@ -384,23 +384,23 @@ importers:
         version: 9.4.4
       pinia:
         specifier: ^4.0.2
-        version: 4.0.2(@vue/devtools-api@6.6.4)(typescript@5.6.3)(vue@3.5.40(typescript@5.6.3))
+        version: 4.0.2(@vue/devtools-api@6.6.4)(typescript@7.0.2)(vue@3.5.40(typescript@7.0.2))
       vue:
         specifier: ^3.5.40
-        version: 3.5.40(typescript@5.6.3)
+        version: 3.5.40(typescript@7.0.2)
       vue-draggable-plus:
         specifier: ^0.6.1
         version: 0.6.1(@types/sortablejs@1.15.9)
       vue-i18n:
         specifier: ^11.4.8
-        version: 11.4.8(vue@3.5.40(typescript@5.6.3))
+        version: 11.4.8(vue@3.5.40(typescript@7.0.2))
       xlsx:
         specifier: ^0.18.5
         version: 0.18.5
     devDependencies:
       '@module-federation/vite':
         specifier: 1.20.1
-        version: 1.20.1(typescript@5.6.3)(vite@8.2.0(@types/node@22.19.21)(esbuild@0.25.12)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue-tsc@3.3.8(typescript@5.6.3))
+        version: 1.20.1(typescript@7.0.2)(vite@8.2.0(@types/node@22.19.21)(esbuild@0.25.12)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue-tsc@3.3.8(typescript@7.0.2))
       '@tailwindcss/postcss':
         specifier: ^4.3.3
         version: 4.3.3
@@ -418,7 +418,7 @@ importers:
         version: 22.19.21
       '@vitejs/plugin-vue':
         specifier: ^6.0.8
-        version: 6.0.8(vite@8.2.0(@types/node@22.19.21)(esbuild@0.25.12)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue@3.5.40(typescript@5.6.3))
+        version: 6.0.8(vite@8.2.0(@types/node@22.19.21)(esbuild@0.25.12)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue@3.5.40(typescript@7.0.2))
       daisyui:
         specifier: ^5.7.9
         version: 5.7.9
@@ -439,7 +439,7 @@ importers:
         version: 4.1.10(@types/node@22.19.21)(vite@8.2.0(@types/node@22.19.21)(esbuild@0.25.12)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))
       vue-tsc:
         specifier: ^3.3.8
-        version: 3.3.8(typescript@5.6.3)
+        version: 3.3.8(typescript@7.0.2)
 
   server/vance-addon-brain-binder/client:
     dependencies:
@@ -455,19 +455,19 @@ importers:
     devDependencies:
       '@module-federation/vite':
         specifier: 1.20.1
-        version: 1.20.1(typescript@5.6.3)(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue-tsc@3.3.8(typescript@5.6.3))
+        version: 1.20.1(typescript@7.0.2)(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue-tsc@3.3.8(typescript@7.0.2))
       '@vitejs/plugin-vue':
         specifier: ^6.0.8
-        version: 6.0.8(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue@3.5.40(typescript@5.6.3))
+        version: 6.0.8(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue@3.5.40(typescript@7.0.2))
       vite:
         specifier: ^8.2.0
         version: 8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0)
       vue:
         specifier: ^3.5.40
-        version: 3.5.40(typescript@5.6.3)
+        version: 3.5.40(typescript@7.0.2)
       vue-tsc:
         specifier: ^3.3.8
-        version: 3.3.8(typescript@5.6.3)
+        version: 3.3.8(typescript@7.0.2)
 
   server/vance-addon-brain-calendar/client:
     dependencies:
@@ -483,19 +483,19 @@ importers:
     devDependencies:
       '@module-federation/vite':
         specifier: 1.20.1
-        version: 1.20.1(typescript@5.6.3)(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue-tsc@3.3.8(typescript@5.6.3))
+        version: 1.20.1(typescript@7.0.2)(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue-tsc@3.3.8(typescript@7.0.2))
       '@vitejs/plugin-vue':
         specifier: ^6.0.8
-        version: 6.0.8(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue@3.5.40(typescript@5.6.3))
+        version: 6.0.8(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue@3.5.40(typescript@7.0.2))
       vite:
         specifier: ^8.2.0
         version: 8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0)
       vue:
         specifier: ^3.5.40
-        version: 3.5.40(typescript@5.6.3)
+        version: 3.5.40(typescript@7.0.2)
       vue-tsc:
         specifier: ^3.3.8
-        version: 3.3.8(typescript@5.6.3)
+        version: 3.3.8(typescript@7.0.2)
 
   server/vance-addon-brain-canvas/client:
     dependencies:
@@ -510,13 +510,13 @@ importers:
         version: link:../../../client/packages/shared
       '@vue-flow/core':
         specifier: ^1.48.2
-        version: 1.48.2(vue@3.5.40(typescript@5.6.3))
+        version: 1.48.2(vue@3.5.40(typescript@7.0.2))
       '@vue-flow/node-resizer':
         specifier: ^1.4.0
-        version: 1.5.1(@vue-flow/core@1.48.2(vue@3.5.40(typescript@5.6.3)))(vue@3.5.40(typescript@5.6.3))
+        version: 1.5.1(@vue-flow/core@1.48.2(vue@3.5.40(typescript@7.0.2)))(vue@3.5.40(typescript@7.0.2))
       '@vue-flow/node-toolbar':
         specifier: ^1.1.0
-        version: 1.1.1(@vue-flow/core@1.48.2(vue@3.5.40(typescript@5.6.3)))(vue@3.5.40(typescript@5.6.3))
+        version: 1.1.1(@vue-flow/core@1.48.2(vue@3.5.40(typescript@7.0.2)))(vue@3.5.40(typescript@7.0.2))
       dompurify:
         specifier: ^3.4.12
         version: 3.4.12
@@ -526,19 +526,19 @@ importers:
     devDependencies:
       '@module-federation/vite':
         specifier: 1.20.1
-        version: 1.20.1(typescript@5.6.3)(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue-tsc@3.3.8(typescript@5.6.3))
+        version: 1.20.1(typescript@7.0.2)(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue-tsc@3.3.8(typescript@7.0.2))
       '@vitejs/plugin-vue':
         specifier: ^6.0.8
-        version: 6.0.8(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue@3.5.40(typescript@5.6.3))
+        version: 6.0.8(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue@3.5.40(typescript@7.0.2))
       vite:
         specifier: ^8.2.0
         version: 8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0)
       vue:
         specifier: ^3.5.40
-        version: 3.5.40(typescript@5.6.3)
+        version: 3.5.40(typescript@7.0.2)
       vue-tsc:
         specifier: ^3.3.8
-        version: 3.3.8(typescript@5.6.3)
+        version: 3.3.8(typescript@7.0.2)
 
   server/vance-addon-brain-common-desktop/client:
     dependencies:
@@ -554,19 +554,19 @@ importers:
     devDependencies:
       '@module-federation/vite':
         specifier: 1.20.1
-        version: 1.20.1(typescript@5.6.3)(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue-tsc@3.3.8(typescript@5.6.3))
+        version: 1.20.1(typescript@7.0.2)(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue-tsc@3.3.8(typescript@7.0.2))
       '@vitejs/plugin-vue':
         specifier: ^6.0.8
-        version: 6.0.8(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue@3.5.40(typescript@5.6.3))
+        version: 6.0.8(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue@3.5.40(typescript@7.0.2))
       vite:
         specifier: ^8.2.0
         version: 8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0)
       vue:
         specifier: ^3.5.40
-        version: 3.5.40(typescript@5.6.3)
+        version: 3.5.40(typescript@7.0.2)
       vue-tsc:
         specifier: ^3.3.8
-        version: 3.3.8(typescript@5.6.3)
+        version: 3.3.8(typescript@7.0.2)
 
   server/vance-addon-brain-finance/client:
     dependencies:
@@ -582,19 +582,19 @@ importers:
     devDependencies:
       '@module-federation/vite':
         specifier: 1.20.1
-        version: 1.20.1(typescript@5.6.3)(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue-tsc@3.3.8(typescript@5.6.3))
+        version: 1.20.1(typescript@7.0.2)(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue-tsc@3.3.8(typescript@7.0.2))
       '@vitejs/plugin-vue':
         specifier: ^6.0.8
-        version: 6.0.8(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue@3.5.40(typescript@5.6.3))
+        version: 6.0.8(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue@3.5.40(typescript@7.0.2))
       vite:
         specifier: ^8.2.0
         version: 8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0)
       vue:
         specifier: ^3.5.40
-        version: 3.5.40(typescript@5.6.3)
+        version: 3.5.40(typescript@7.0.2)
       vue-tsc:
         specifier: ^3.3.8
-        version: 3.3.8(typescript@5.6.3)
+        version: 3.3.8(typescript@7.0.2)
 
   server/vance-addon-brain-gtd/client:
     dependencies:
@@ -613,25 +613,25 @@ importers:
     devDependencies:
       '@module-federation/vite':
         specifier: 1.20.1
-        version: 1.20.1(typescript@5.6.3)(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue-tsc@3.3.8(typescript@5.6.3))
+        version: 1.20.1(typescript@7.0.2)(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue-tsc@3.3.8(typescript@7.0.2))
       '@tiptap/core':
         specifier: ^3.29.2
         version: 3.29.2(@tiptap/pm@3.29.2)
       '@tiptap/vue-3':
         specifier: ^3.29.2
-        version: 3.29.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.29.2(@tiptap/pm@3.29.2))(@tiptap/pm@3.29.2)(vue@3.5.40(typescript@5.6.3))
+        version: 3.29.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.29.2(@tiptap/pm@3.29.2))(@tiptap/pm@3.29.2)(vue@3.5.40(typescript@7.0.2))
       '@vitejs/plugin-vue':
         specifier: ^6.0.8
-        version: 6.0.8(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue@3.5.40(typescript@5.6.3))
+        version: 6.0.8(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue@3.5.40(typescript@7.0.2))
       vite:
         specifier: ^8.2.0
         version: 8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0)
       vue:
         specifier: ^3.5.40
-        version: 3.5.40(typescript@5.6.3)
+        version: 3.5.40(typescript@7.0.2)
       vue-tsc:
         specifier: ^3.3.8
-        version: 3.3.8(typescript@5.6.3)
+        version: 3.3.8(typescript@7.0.2)
 
   server/vance-addon-brain-issues/client:
     dependencies:
@@ -650,25 +650,25 @@ importers:
     devDependencies:
       '@module-federation/vite':
         specifier: 1.20.1
-        version: 1.20.1(typescript@5.6.3)(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue-tsc@3.3.8(typescript@5.6.3))
+        version: 1.20.1(typescript@7.0.2)(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue-tsc@3.3.8(typescript@7.0.2))
       '@tiptap/core':
         specifier: ^3.29.2
         version: 3.29.2(@tiptap/pm@3.29.2)
       '@tiptap/vue-3':
         specifier: ^3.29.2
-        version: 3.29.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.29.2(@tiptap/pm@3.29.2))(@tiptap/pm@3.29.2)(vue@3.5.40(typescript@5.6.3))
+        version: 3.29.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.29.2(@tiptap/pm@3.29.2))(@tiptap/pm@3.29.2)(vue@3.5.40(typescript@7.0.2))
       '@vitejs/plugin-vue':
         specifier: ^6.0.8
-        version: 6.0.8(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue@3.5.40(typescript@5.6.3))
+        version: 6.0.8(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue@3.5.40(typescript@7.0.2))
       vite:
         specifier: ^8.2.0
         version: 8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0)
       vue:
         specifier: ^3.5.40
-        version: 3.5.40(typescript@5.6.3)
+        version: 3.5.40(typescript@7.0.2)
       vue-tsc:
         specifier: ^3.3.8
-        version: 3.3.8(typescript@5.6.3)
+        version: 3.3.8(typescript@7.0.2)
 
   server/vance-addon-brain-journal/client:
     dependencies:
@@ -687,25 +687,25 @@ importers:
     devDependencies:
       '@module-federation/vite':
         specifier: 1.20.1
-        version: 1.20.1(typescript@5.6.3)(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue-tsc@3.3.8(typescript@5.6.3))
+        version: 1.20.1(typescript@7.0.2)(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue-tsc@3.3.8(typescript@7.0.2))
       '@tiptap/core':
         specifier: ^3.29.2
         version: 3.29.2(@tiptap/pm@3.29.2)
       '@tiptap/vue-3':
         specifier: ^3.29.2
-        version: 3.29.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.29.2(@tiptap/pm@3.29.2))(@tiptap/pm@3.29.2)(vue@3.5.40(typescript@5.6.3))
+        version: 3.29.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.29.2(@tiptap/pm@3.29.2))(@tiptap/pm@3.29.2)(vue@3.5.40(typescript@7.0.2))
       '@vitejs/plugin-vue':
         specifier: ^6.0.8
-        version: 6.0.8(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue@3.5.40(typescript@5.6.3))
+        version: 6.0.8(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue@3.5.40(typescript@7.0.2))
       vite:
         specifier: ^8.2.0
         version: 8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0)
       vue:
         specifier: ^3.5.40
-        version: 3.5.40(typescript@5.6.3)
+        version: 3.5.40(typescript@7.0.2)
       vue-tsc:
         specifier: ^3.3.8
-        version: 3.3.8(typescript@5.6.3)
+        version: 3.3.8(typescript@7.0.2)
 
   server/vance-addon-brain-kanban/client:
     dependencies:
@@ -730,7 +730,7 @@ importers:
     devDependencies:
       '@module-federation/vite':
         specifier: 1.20.1
-        version: 1.20.1(typescript@5.6.3)(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue-tsc@3.3.8(typescript@5.6.3))
+        version: 1.20.1(typescript@7.0.2)(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue-tsc@3.3.8(typescript@7.0.2))
       '@tiptap/core':
         specifier: ^3.29.2
         version: 3.29.2(@tiptap/pm@3.29.2)
@@ -739,19 +739,19 @@ importers:
         version: 3.29.2
       '@tiptap/vue-3':
         specifier: ^3.29.2
-        version: 3.29.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.29.2(@tiptap/pm@3.29.2))(@tiptap/pm@3.29.2)(vue@3.5.40(typescript@5.6.3))
+        version: 3.29.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.29.2(@tiptap/pm@3.29.2))(@tiptap/pm@3.29.2)(vue@3.5.40(typescript@7.0.2))
       '@vitejs/plugin-vue':
         specifier: ^6.0.8
-        version: 6.0.8(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue@3.5.40(typescript@5.6.3))
+        version: 6.0.8(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue@3.5.40(typescript@7.0.2))
       vite:
         specifier: ^8.2.0
         version: 8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0)
       vue:
         specifier: ^3.5.40
-        version: 3.5.40(typescript@5.6.3)
+        version: 3.5.40(typescript@7.0.2)
       vue-tsc:
         specifier: ^3.3.8
-        version: 3.3.8(typescript@5.6.3)
+        version: 3.3.8(typescript@7.0.2)
 
   server/vance-addon-brain-simpleauth/client:
     dependencies:
@@ -764,19 +764,19 @@ importers:
     devDependencies:
       '@module-federation/vite':
         specifier: 1.20.1
-        version: 1.20.1(typescript@5.6.3)(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue-tsc@3.3.8(typescript@5.6.3))
+        version: 1.20.1(typescript@7.0.2)(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue-tsc@3.3.8(typescript@7.0.2))
       '@vitejs/plugin-vue':
         specifier: ^6.0.8
-        version: 6.0.8(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue@3.5.40(typescript@5.6.3))
+        version: 6.0.8(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue@3.5.40(typescript@7.0.2))
       vite:
         specifier: ^8.2.0
         version: 8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0)
       vue:
         specifier: ^3.5.40
-        version: 3.5.40(typescript@5.6.3)
+        version: 3.5.40(typescript@7.0.2)
       vue-tsc:
         specifier: ^3.3.8
-        version: 3.3.8(typescript@5.6.3)
+        version: 3.3.8(typescript@7.0.2)
 
   server/vance-addon-brain-slideshow/client:
     dependencies:
@@ -792,19 +792,19 @@ importers:
     devDependencies:
       '@module-federation/vite':
         specifier: 1.20.1
-        version: 1.20.1(typescript@5.6.3)(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue-tsc@3.3.8(typescript@5.6.3))
+        version: 1.20.1(typescript@7.0.2)(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue-tsc@3.3.8(typescript@7.0.2))
       '@vitejs/plugin-vue':
         specifier: ^6.0.8
-        version: 6.0.8(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue@3.5.40(typescript@5.6.3))
+        version: 6.0.8(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue@3.5.40(typescript@7.0.2))
       vite:
         specifier: ^8.2.0
         version: 8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0)
       vue:
         specifier: ^3.5.40
-        version: 3.5.40(typescript@5.6.3)
+        version: 3.5.40(typescript@7.0.2)
       vue-tsc:
         specifier: ^3.3.8
-        version: 3.3.8(typescript@5.6.3)
+        version: 3.3.8(typescript@7.0.2)
 
   server/vance-addon-brain-wiki/client:
     dependencies:
@@ -826,16 +826,16 @@ importers:
     devDependencies:
       '@module-federation/vite':
         specifier: 1.20.1
-        version: 1.20.1(typescript@5.6.3)(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue-tsc@3.3.8(typescript@5.6.3))
+        version: 1.20.1(typescript@7.0.2)(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue-tsc@3.3.8(typescript@7.0.2))
       '@tiptap/core':
         specifier: ^3.29.2
         version: 3.29.2(@tiptap/pm@3.29.2)
       '@tiptap/vue-3':
         specifier: ^3.29.2
-        version: 3.29.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.29.2(@tiptap/pm@3.29.2))(@tiptap/pm@3.29.2)(vue@3.5.40(typescript@5.6.3))
+        version: 3.29.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.29.2(@tiptap/pm@3.29.2))(@tiptap/pm@3.29.2)(vue@3.5.40(typescript@7.0.2))
       '@vitejs/plugin-vue':
         specifier: ^6.0.8
-        version: 6.0.8(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue@3.5.40(typescript@5.6.3))
+        version: 6.0.8(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue@3.5.40(typescript@7.0.2))
       vite:
         specifier: ^8.2.0
         version: 8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0)
@@ -844,10 +844,10 @@ importers:
         version: 4.1.10(@types/node@24.13.3)(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))
       vue:
         specifier: ^3.5.40
-        version: 3.5.40(typescript@5.6.3)
+        version: 3.5.40(typescript@7.0.2)
       vue-tsc:
         specifier: ^3.3.8
-        version: 3.3.8(typescript@5.6.3)
+        version: 3.3.8(typescript@7.0.2)
 
   server/vance-addon-brain-workbook/client:
     dependencies:
@@ -869,25 +869,25 @@ importers:
     devDependencies:
       '@module-federation/vite':
         specifier: 1.20.1
-        version: 1.20.1(typescript@5.6.3)(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue-tsc@3.3.8(typescript@5.6.3))
+        version: 1.20.1(typescript@7.0.2)(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue-tsc@3.3.8(typescript@7.0.2))
       '@tiptap/core':
         specifier: ^3.29.2
         version: 3.29.2(@tiptap/pm@3.29.2)
       '@tiptap/vue-3':
         specifier: ^3.29.2
-        version: 3.29.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.29.2(@tiptap/pm@3.29.2))(@tiptap/pm@3.29.2)(vue@3.5.40(typescript@5.6.3))
+        version: 3.29.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.29.2(@tiptap/pm@3.29.2))(@tiptap/pm@3.29.2)(vue@3.5.40(typescript@7.0.2))
       '@vitejs/plugin-vue':
         specifier: ^6.0.8
-        version: 6.0.8(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue@3.5.40(typescript@5.6.3))
+        version: 6.0.8(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue@3.5.40(typescript@7.0.2))
       vite:
         specifier: ^8.2.0
         version: 8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0)
       vue:
         specifier: ^3.5.40
-        version: 3.5.40(typescript@5.6.3)
+        version: 3.5.40(typescript@7.0.2)
       vue-tsc:
         specifier: ^3.3.8
-        version: 3.3.8(typescript@5.6.3)
+        version: 3.3.8(typescript@7.0.2)
 
 packages:
 
@@ -2242,6 +2242,126 @@ packages:
   '@types/web-bluetooth@0.0.20':
     resolution: {integrity: sha512-g9gZnnXVq7gM7v3tJCWV/qw7w+KeOlSHAhgF9RytFyifW6AF61hdT2ucrYhPq9hLs5JIryeupHV3qGk95dH9ow==}
 
+  '@typescript/typescript-aix-ppc64@7.0.2':
+    resolution: {integrity: sha512-MTKKkWB7p/0E9xi1d1tHtZ5PiLkGEMIq88pK2CubZjOsLtYTLqhgIgi6zepFa+9GHZ6h05NMCkQxGKiPXMxXtQ==}
+    engines: {node: '>=16.20.0'}
+    cpu: [ppc64]
+    os: [aix]
+
+  '@typescript/typescript-darwin-arm64@7.0.2':
+    resolution: {integrity: sha512-gowzar9MwS/aRWp6f3a4KUqzRjAZjOsmGNCM6LcTgXum+dBfgsBVMN+AgvOCCbguXyick6LJhpBszxMebJ8syA==}
+    engines: {node: '>=16.20.0'}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@typescript/typescript-darwin-x64@7.0.2':
+    resolution: {integrity: sha512-SZ9xZInqApNlNGc9s0W1VSsktYSOe9cFqNOIqmN1Gs8SmkjKZYFt017G4VwPxASInODuAdbTW7sXiFUf893RgA==}
+    engines: {node: '>=16.20.0'}
+    cpu: [x64]
+    os: [darwin]
+
+  '@typescript/typescript-freebsd-arm64@7.0.2':
+    resolution: {integrity: sha512-W5NH4y/J0plIIS5b2xvTEkU7JFxyqdMAOgf+Ilhl0vHQXKO5dZoxd+C/jEtq56c4F3wk71RB4BMRQ2XdI+bwYQ==}
+    engines: {node: '>=16.20.0'}
+    cpu: [arm64]
+    os: [freebsd]
+
+  '@typescript/typescript-freebsd-x64@7.0.2':
+    resolution: {integrity: sha512-UMGDx5sTpzNw3WiPebH7l90IWfJggEd+egHt/q6p7/Cm3zqoV7VxkGXt+3DxPIw8CcmvAB0j3sVVfbhX+M4Tpw==}
+    engines: {node: '>=16.20.0'}
+    cpu: [x64]
+    os: [freebsd]
+
+  '@typescript/typescript-linux-arm64@7.0.2':
+    resolution: {integrity: sha512-Qh4eU4/y3yDjnfjjyPYihMj5/ODIlmt+Bzu17OI+fiSRDW57QmU5SiN63exPRNJPKUzcc1INa1NXdrJ+MqHjUQ==}
+    engines: {node: '>=16.20.0'}
+    cpu: [arm64]
+    os: [linux]
+
+  '@typescript/typescript-linux-arm@7.0.2':
+    resolution: {integrity: sha512-gffT3xPz9sR7j/YJExkyPntrI0P2EP9XbOyWzth2/Gs0RstK+90RBcO0ncXoXy/beYll1SXw846Nf2zdnEz0QQ==}
+    engines: {node: '>=16.20.0'}
+    cpu: [arm]
+    os: [linux]
+
+  '@typescript/typescript-linux-loong64@7.0.2':
+    resolution: {integrity: sha512-uEHck9i8hoAzXPiYRib1O7miOnz23SxIeVl6F4LXox+qov1K35jHcEW6VHKvZI+pyvl7fZEP4MCU5LYvIq1GuQ==}
+    engines: {node: '>=16.20.0'}
+    cpu: [loong64]
+    os: [linux]
+
+  '@typescript/typescript-linux-mips64el@7.0.2':
+    resolution: {integrity: sha512-R4KvAMnE43W5Qeqb0Ly56O3mWMWIAgsMyz36DCaycd5nbg/9kzm0liw3JocfRqyJY0KPmzFjbswozXyW0DnIYA==}
+    engines: {node: '>=16.20.0'}
+    cpu: [mips64el]
+    os: [linux]
+
+  '@typescript/typescript-linux-ppc64@7.0.2':
+    resolution: {integrity: sha512-DORx5b3sd/4S7eayxm4FQv+A7CrkUIGRaHiwI8oiHTAI1fAPWhF4J0vAlkC8biAlHSVVwxMQ3tjZ2/DVbnQiiA==}
+    engines: {node: '>=16.20.0'}
+    cpu: [ppc64]
+    os: [linux]
+
+  '@typescript/typescript-linux-riscv64@7.0.2':
+    resolution: {integrity: sha512-wf0jqEDOjrPRnKwYRyyJDRo11KMbvMFrU+q4zqKyChODBzvlkbhNQfKvLxQCcwTpdDaXSHZTVuh0JoCrKCUMHQ==}
+    engines: {node: '>=16.20.0'}
+    cpu: [riscv64]
+    os: [linux]
+
+  '@typescript/typescript-linux-s390x@7.0.2':
+    resolution: {integrity: sha512-IkwJc3L7yhytWd/ewjyxNDfOmswCm9GWMJT/ue/dU4aZNbwZeYAetq42VyLmsmSjvoX7z74X6ZaYCtzAr0EuGw==}
+    engines: {node: '>=16.20.0'}
+    cpu: [s390x]
+    os: [linux]
+
+  '@typescript/typescript-linux-x64@7.0.2':
+    resolution: {integrity: sha512-EYdf2cNg7rgCWJnxCdJ+F3V39O8ihb37eHAu1LK8oAFizgTQbPOK7zHHXbPt8rX24COqODXeI3sIf0fCXG7H/A==}
+    engines: {node: '>=16.20.0'}
+    cpu: [x64]
+    os: [linux]
+
+  '@typescript/typescript-netbsd-arm64@7.0.2':
+    resolution: {integrity: sha512-+polYF4MF04aPpO5FTkHran9yUQDSXqy5GiSDKpsll5jy3l3+g9QLhpf39T+ePtefhXLOGrLl0QIjkQP6VnelA==}
+    engines: {node: '>=16.20.0'}
+    cpu: [arm64]
+    os: [netbsd]
+
+  '@typescript/typescript-netbsd-x64@7.0.2':
+    resolution: {integrity: sha512-8YIT0EHM/3dq10ZOVF/A7pc/YSMtbcecct4rWtexrnSCHOPcpC2KTLXfTCR6vDpnSiY12heNb1GiN/wu+T/FyA==}
+    engines: {node: '>=16.20.0'}
+    cpu: [x64]
+    os: [netbsd]
+
+  '@typescript/typescript-openbsd-arm64@7.0.2':
+    resolution: {integrity: sha512-APT8+ClYnuYm1u9+kgGXoMj2VzWzcymwh2gNSQVySHfkRDGOTVkoWLjCmOQSaO+PoqQ57B0flRp9SA+7GnnkzQ==}
+    engines: {node: '>=16.20.0'}
+    cpu: [arm64]
+    os: [openbsd]
+
+  '@typescript/typescript-openbsd-x64@7.0.2':
+    resolution: {integrity: sha512-yX7s+Q0Dln0Dt9tEzZsAjXXR/+ytBM7AlglaqyeMPxQszJ1JhlJdZ6jLA+IzldHtflX81em7lDao1xXu+aRRkg==}
+    engines: {node: '>=16.20.0'}
+    cpu: [x64]
+    os: [openbsd]
+
+  '@typescript/typescript-sunos-x64@7.0.2':
+    resolution: {integrity: sha512-dLJDGaLZ1D4HPQn62u1n8mBDkJREwMsAkCdkwd4Ieqw+x3TUyTsqY0YiBCtE6H6OzzgGk3iuZ3vFWRS+E8/d1g==}
+    engines: {node: '>=16.20.0'}
+    cpu: [x64]
+    os: [sunos]
+
+  '@typescript/typescript-win32-arm64@7.0.2':
+    resolution: {integrity: sha512-Gyl1Vy6OsWesLzmq+EP0Fb7b4Nid5232AvcA2SFcdYreldpNtYFFofPjnt62y9hQy7VTaZp65ICJjuAQRaVcIQ==}
+    engines: {node: '>=16.20.0'}
+    cpu: [arm64]
+    os: [win32]
+
+  '@typescript/typescript-win32-x64@7.0.2':
+    resolution: {integrity: sha512-0BQ3HkAHHlKLSp1qRvf3SUhGpGsDuhB/jgFw75guyqbxJqEaS0Cw/VFO8i2nHglJUzQCRtMMR/IBAKE3ETMC4g==}
+    engines: {node: '>=16.20.0'}
+    cpu: [x64]
+    os: [win32]
+
   '@upsetjs/venn.js@2.0.0':
     resolution: {integrity: sha512-WbBhLrooyePuQ1VZxrJjtLvTc4NVfpOyKx0sKqioq9bX1C1m7Jgykkn8gLrtwumBioXIqam8DLxp88Adbue6Hw==}
 
@@ -3410,7 +3530,7 @@ packages:
   git-raw-commits@2.0.11:
     resolution: {integrity: sha512-VnctFhw+xfj8Va1xtfEqCUD2XDrbAPSJx+hSrE5K7fGdjZruW7XV+QOrN7LF/RJyvspRiD2I0asWsxFp0ya26A==}
     engines: {node: '>=10'}
-    deprecated: This package is no longer maintained. For the JavaScript API, please use @conventional-changelog/git-client instead.
+    deprecated: Deprecated and no longer maintained. Use @conventional-changelog/git-client instead.
     hasBin: true
 
   git-remote-origin-url@2.0.0:
@@ -3420,7 +3540,7 @@ packages:
   git-semver-tags@4.1.1:
     resolution: {integrity: sha512-OWyMt5zBe7xFs8vglMmhM9lRQzCWL3WjHtxNNfJTMngGym7pC1kh8sP6jevfydJ6LP3ZvGxfb6ABYgPUM0mtsA==}
     engines: {node: '>=10'}
-    deprecated: This package is no longer maintained. For the JavaScript API, please use @conventional-changelog/git-client instead.
+    deprecated: Deprecated and no longer maintained. Use @conventional-changelog/git-client instead.
     hasBin: true
 
   gitconfiglocal@1.0.0:
@@ -4967,14 +5087,9 @@ packages:
     resolution: {integrity: sha512-RAH822pAdBgcNMAfWnCBU3CFZcfZ/i1eZjwFU/dsLKumyuuP3niueg2UAukXYF0E2AAoc82ZSSf9J0WQBinzHA==}
     engines: {node: '>=12.20'}
 
-  typescript@5.6.3:
-    resolution: {integrity: sha512-hjcS1mhfuyi4WW8IWtjP7brDrG2cuDZukyrYrSauoXGNgx0S7zceP07adYkJycEr56BOUTNPzbInooiN3fn1qw==}
-    engines: {node: '>=14.17'}
-    hasBin: true
-
-  typescript@5.9.3:
-    resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
-    engines: {node: '>=14.17'}
+  typescript@7.0.2:
+    resolution: {integrity: sha512-8FYau96o3NKOhbjKi/qNvG/W5jhzxkbdm5sj9AbZ/5T5sWqn3hJgLfGx27sRKZWTvyzCP8dLRBTf5tBTSRVUNA==}
+    engines: {node: '>=16.20.0'}
     hasBin: true
 
   uc.micro@2.1.0:
@@ -5385,12 +5500,12 @@ snapshots:
     dependencies:
       '@capacitor/core': 8.4.2
 
-  '@capacitor/assets@3.0.5(@types/node@24.13.3)(typescript@5.6.3)':
+  '@capacitor/assets@3.0.5(@types/node@24.13.3)(typescript@7.0.2)':
     dependencies:
       '@capacitor/cli': 5.7.8
       '@ionic/utils-array': 2.1.6
       '@ionic/utils-fs': 3.1.7
-      '@trapezedev/project': 7.1.4(@types/node@24.13.3)(typescript@5.6.3)
+      '@trapezedev/project': 7.1.4(@types/node@24.13.3)(typescript@7.0.2)
       commander: 8.3.0
       debug: 4.3.4
       fs-extra: 10.1.0
@@ -6277,7 +6392,7 @@ snapshots:
     dependencies:
       '@chevrotain/types': 11.1.2
 
-  '@module-federation/dts-plugin@2.8.1(typescript@5.6.3)(vue-tsc@3.3.8(typescript@5.6.3))':
+  '@module-federation/dts-plugin@2.8.1(typescript@7.0.2)(vue-tsc@3.3.8(typescript@7.0.2))':
     dependencies:
       '@module-federation/error-codes': 2.8.1
       '@module-federation/managers': 2.8.1
@@ -6285,11 +6400,11 @@ snapshots:
       '@module-federation/third-party-dts-extractor': 2.8.1
       adm-zip: 0.6.0
       isomorphic-ws: 5.0.0(ws@8.21.0)
-      typescript: 5.6.3
+      typescript: 7.0.2
       undici: 7.28.0
       ws: 8.21.0
     optionalDependencies:
-      vue-tsc: 3.3.8(typescript@5.6.3)
+      vue-tsc: 3.3.8(typescript@7.0.2)
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
@@ -6315,9 +6430,9 @@ snapshots:
 
   '@module-federation/third-party-dts-extractor@2.8.1': {}
 
-  '@module-federation/vite@1.20.1(typescript@5.6.3)(vite@8.2.0(@types/node@22.19.21)(esbuild@0.25.12)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue-tsc@3.3.8(typescript@5.6.3))':
+  '@module-federation/vite@1.20.1(typescript@7.0.2)(vite@8.2.0(@types/node@22.19.21)(esbuild@0.25.12)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue-tsc@3.3.8(typescript@7.0.2))':
     dependencies:
-      '@module-federation/dts-plugin': 2.8.1(typescript@5.6.3)(vue-tsc@3.3.8(typescript@5.6.3))
+      '@module-federation/dts-plugin': 2.8.1(typescript@7.0.2)(vue-tsc@3.3.8(typescript@7.0.2))
       '@module-federation/runtime': 2.8.1
       '@module-federation/sdk': 2.8.1
       vite: 8.2.0(@types/node@22.19.21)(esbuild@0.25.12)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0)
@@ -6327,9 +6442,9 @@ snapshots:
       - utf-8-validate
       - vue-tsc
 
-  '@module-federation/vite@1.20.1(typescript@5.6.3)(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue-tsc@3.3.8(typescript@5.6.3))':
+  '@module-federation/vite@1.20.1(typescript@7.0.2)(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue-tsc@3.3.8(typescript@7.0.2))':
     dependencies:
-      '@module-federation/dts-plugin': 2.8.1(typescript@5.6.3)(vue-tsc@3.3.8(typescript@5.6.3))
+      '@module-federation/dts-plugin': 2.8.1(typescript@7.0.2)(vue-tsc@3.3.8(typescript@7.0.2))
       '@module-federation/runtime': 2.8.1
       '@module-federation/sdk': 2.8.1
       vite: 8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0)
@@ -6688,29 +6803,19 @@ snapshots:
       '@tiptap/core': 3.29.2(@tiptap/pm@3.29.2)
       '@tiptap/pm': 3.29.2
 
-  '@tiptap/vue-3@3.29.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.29.2(@tiptap/pm@3.29.2))(@tiptap/pm@3.29.2)(vue@3.5.40(typescript@5.6.3))':
+  '@tiptap/vue-3@3.29.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.29.2(@tiptap/pm@3.29.2))(@tiptap/pm@3.29.2)(vue@3.5.40(typescript@7.0.2))':
     dependencies:
       '@floating-ui/dom': 1.8.0
       '@tiptap/core': 3.29.2(@tiptap/pm@3.29.2)
       '@tiptap/pm': 3.29.2
-      vue: 3.5.40(typescript@5.6.3)
-    optionalDependencies:
-      '@tiptap/extension-bubble-menu': 3.29.2(@tiptap/core@3.29.2(@tiptap/pm@3.29.2))(@tiptap/pm@3.29.2)
-      '@tiptap/extension-floating-menu': 3.29.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.29.2(@tiptap/pm@3.29.2))(@tiptap/pm@3.29.2)
-
-  '@tiptap/vue-3@3.29.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.29.2(@tiptap/pm@3.29.2))(@tiptap/pm@3.29.2)(vue@3.5.40(typescript@5.9.3))':
-    dependencies:
-      '@floating-ui/dom': 1.8.0
-      '@tiptap/core': 3.29.2(@tiptap/pm@3.29.2)
-      '@tiptap/pm': 3.29.2
-      vue: 3.5.40(typescript@5.9.3)
+      vue: 3.5.40(typescript@7.0.2)
     optionalDependencies:
       '@tiptap/extension-bubble-menu': 3.29.2(@tiptap/core@3.29.2(@tiptap/pm@3.29.2))(@tiptap/pm@3.29.2)
       '@tiptap/extension-floating-menu': 3.29.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.29.2(@tiptap/pm@3.29.2))(@tiptap/pm@3.29.2)
 
   '@trapezedev/gradle-parse@7.1.3': {}
 
-  '@trapezedev/project@7.1.4(@types/node@24.13.3)(typescript@5.6.3)':
+  '@trapezedev/project@7.1.4(@types/node@24.13.3)(typescript@7.0.2)':
     dependencies:
       '@ionic/utils-fs': 3.1.7
       '@ionic/utils-subprocess': 2.1.14
@@ -6731,7 +6836,7 @@ snapshots:
       replace: 1.2.2
       tempy: 3.2.0
       tmp: 0.2.7
-      ts-node: 10.9.2(@types/node@24.13.3)(typescript@5.6.3)
+      ts-node: 10.9.2(@types/node@24.13.3)(typescript@7.0.2)
       xcode: 3.0.1
       xml-js: 1.6.11
       xpath: 0.0.32
@@ -6954,22 +7059,82 @@ snapshots:
 
   '@types/web-bluetooth@0.0.20': {}
 
+  '@typescript/typescript-aix-ppc64@7.0.2':
+    optional: true
+
+  '@typescript/typescript-darwin-arm64@7.0.2':
+    optional: true
+
+  '@typescript/typescript-darwin-x64@7.0.2':
+    optional: true
+
+  '@typescript/typescript-freebsd-arm64@7.0.2':
+    optional: true
+
+  '@typescript/typescript-freebsd-x64@7.0.2':
+    optional: true
+
+  '@typescript/typescript-linux-arm64@7.0.2':
+    optional: true
+
+  '@typescript/typescript-linux-arm@7.0.2':
+    optional: true
+
+  '@typescript/typescript-linux-loong64@7.0.2':
+    optional: true
+
+  '@typescript/typescript-linux-mips64el@7.0.2':
+    optional: true
+
+  '@typescript/typescript-linux-ppc64@7.0.2':
+    optional: true
+
+  '@typescript/typescript-linux-riscv64@7.0.2':
+    optional: true
+
+  '@typescript/typescript-linux-s390x@7.0.2':
+    optional: true
+
+  '@typescript/typescript-linux-x64@7.0.2':
+    optional: true
+
+  '@typescript/typescript-netbsd-arm64@7.0.2':
+    optional: true
+
+  '@typescript/typescript-netbsd-x64@7.0.2':
+    optional: true
+
+  '@typescript/typescript-openbsd-arm64@7.0.2':
+    optional: true
+
+  '@typescript/typescript-openbsd-x64@7.0.2':
+    optional: true
+
+  '@typescript/typescript-sunos-x64@7.0.2':
+    optional: true
+
+  '@typescript/typescript-win32-arm64@7.0.2':
+    optional: true
+
+  '@typescript/typescript-win32-x64@7.0.2':
+    optional: true
+
   '@upsetjs/venn.js@2.0.0':
     optionalDependencies:
       d3-selection: 3.0.0
       d3-transition: 3.0.1(d3-selection@3.0.0)
 
-  '@vitejs/plugin-vue@6.0.8(vite@8.2.0(@types/node@22.19.21)(esbuild@0.25.12)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue@3.5.40(typescript@5.6.3))':
+  '@vitejs/plugin-vue@6.0.8(vite@8.2.0(@types/node@22.19.21)(esbuild@0.25.12)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue@3.5.40(typescript@7.0.2))':
     dependencies:
       '@rolldown/pluginutils': 1.0.1
       vite: 8.2.0(@types/node@22.19.21)(esbuild@0.25.12)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0)
-      vue: 3.5.40(typescript@5.6.3)
+      vue: 3.5.40(typescript@7.0.2)
 
-  '@vitejs/plugin-vue@6.0.8(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue@3.5.40(typescript@5.6.3))':
+  '@vitejs/plugin-vue@6.0.8(vite@8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue@3.5.40(typescript@7.0.2))':
     dependencies:
       '@rolldown/pluginutils': 1.0.1
       vite: 8.2.0(@types/node@24.13.3)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0)
-      vue: 3.5.40(typescript@5.6.3)
+      vue: 3.5.40(typescript@7.0.2)
 
   '@vitest/expect@4.1.10':
     dependencies:
@@ -7036,28 +7201,28 @@ snapshots:
     dependencies:
       katex: 0.16.47
 
-  '@vue-flow/core@1.48.2(vue@3.5.40(typescript@5.6.3))':
+  '@vue-flow/core@1.48.2(vue@3.5.40(typescript@7.0.2))':
     dependencies:
-      '@vueuse/core': 10.11.1(vue@3.5.40(typescript@5.6.3))
+      '@vueuse/core': 10.11.1(vue@3.5.40(typescript@7.0.2))
       d3-drag: 3.0.0
       d3-interpolate: 3.0.1
       d3-selection: 3.0.0
       d3-zoom: 3.0.0
-      vue: 3.5.40(typescript@5.6.3)
+      vue: 3.5.40(typescript@7.0.2)
     transitivePeerDependencies:
       - '@vue/composition-api'
 
-  '@vue-flow/node-resizer@1.5.1(@vue-flow/core@1.48.2(vue@3.5.40(typescript@5.6.3)))(vue@3.5.40(typescript@5.6.3))':
+  '@vue-flow/node-resizer@1.5.1(@vue-flow/core@1.48.2(vue@3.5.40(typescript@7.0.2)))(vue@3.5.40(typescript@7.0.2))':
     dependencies:
-      '@vue-flow/core': 1.48.2(vue@3.5.40(typescript@5.6.3))
+      '@vue-flow/core': 1.48.2(vue@3.5.40(typescript@7.0.2))
       d3-drag: 3.0.0
       d3-selection: 3.0.0
-      vue: 3.5.40(typescript@5.6.3)
+      vue: 3.5.40(typescript@7.0.2)
 
-  '@vue-flow/node-toolbar@1.1.1(@vue-flow/core@1.48.2(vue@3.5.40(typescript@5.6.3)))(vue@3.5.40(typescript@5.6.3))':
+  '@vue-flow/node-toolbar@1.1.1(@vue-flow/core@1.48.2(vue@3.5.40(typescript@7.0.2)))(vue@3.5.40(typescript@7.0.2))':
     dependencies:
-      '@vue-flow/core': 1.48.2(vue@3.5.40(typescript@5.6.3))
-      vue: 3.5.40(typescript@5.6.3)
+      '@vue-flow/core': 1.48.2(vue@3.5.40(typescript@7.0.2))
+      vue: 3.5.40(typescript@7.0.2)
 
   '@vue/compiler-core@3.5.40':
     dependencies:
@@ -7125,21 +7290,21 @@ snapshots:
 
   '@vue/shared@3.5.40': {}
 
-  '@vueuse/core@10.11.1(vue@3.5.40(typescript@5.6.3))':
+  '@vueuse/core@10.11.1(vue@3.5.40(typescript@7.0.2))':
     dependencies:
       '@types/web-bluetooth': 0.0.20
       '@vueuse/metadata': 10.11.1
-      '@vueuse/shared': 10.11.1(vue@3.5.40(typescript@5.6.3))
-      vue-demi: 0.14.10(vue@3.5.40(typescript@5.6.3))
+      '@vueuse/shared': 10.11.1(vue@3.5.40(typescript@7.0.2))
+      vue-demi: 0.14.10(vue@3.5.40(typescript@7.0.2))
     transitivePeerDependencies:
       - '@vue/composition-api'
       - vue
 
   '@vueuse/metadata@10.11.1': {}
 
-  '@vueuse/shared@10.11.1(vue@3.5.40(typescript@5.6.3))':
+  '@vueuse/shared@10.11.1(vue@3.5.40(typescript@7.0.2))':
     dependencies:
-      vue-demi: 0.14.10(vue@3.5.40(typescript@5.6.3))
+      vue-demi: 0.14.10(vue@3.5.40(typescript@7.0.2))
     transitivePeerDependencies:
       - '@vue/composition-api'
       - vue
@@ -9210,13 +9375,13 @@ snapshots:
 
   pify@3.0.0: {}
 
-  pinia@4.0.2(@vue/devtools-api@6.6.4)(typescript@5.6.3)(vue@3.5.40(typescript@5.6.3)):
+  pinia@4.0.2(@vue/devtools-api@6.6.4)(typescript@7.0.2)(vue@3.5.40(typescript@7.0.2)):
     dependencies:
       '@vue/devtools-api': 6.6.4
       nostics: 1.2.0
-      vue: 3.5.40(typescript@5.6.3)
+      vue: 3.5.40(typescript@7.0.2)
     optionalDependencies:
-      typescript: 5.6.3
+      typescript: 7.0.2
 
   pkijs@3.4.0:
     dependencies:
@@ -9926,7 +10091,7 @@ snapshots:
 
   ts-dedent@2.3.0: {}
 
-  ts-node@10.9.2(@types/node@24.13.3)(typescript@5.6.3):
+  ts-node@10.9.2(@types/node@24.13.3)(typescript@7.0.2):
     dependencies:
       '@cspotcode/source-map-support': 0.8.1
       '@tsconfig/node10': 1.0.12
@@ -9940,7 +10105,7 @@ snapshots:
       create-require: 1.1.1
       diff: 4.0.4
       make-error: 1.3.6
-      typescript: 5.6.3
+      typescript: 7.0.2
       v8-compile-cache-lib: 3.0.1
       yn: 3.1.1
 
@@ -9967,9 +10132,28 @@ snapshots:
 
   type-fest@2.19.0: {}
 
-  typescript@5.6.3: {}
-
-  typescript@5.9.3: {}
+  typescript@7.0.2:
+    optionalDependencies:
+      '@typescript/typescript-aix-ppc64': 7.0.2
+      '@typescript/typescript-darwin-arm64': 7.0.2
+      '@typescript/typescript-darwin-x64': 7.0.2
+      '@typescript/typescript-freebsd-arm64': 7.0.2
+      '@typescript/typescript-freebsd-x64': 7.0.2
+      '@typescript/typescript-linux-arm': 7.0.2
+      '@typescript/typescript-linux-arm64': 7.0.2
+      '@typescript/typescript-linux-loong64': 7.0.2
+      '@typescript/typescript-linux-mips64el': 7.0.2
+      '@typescript/typescript-linux-ppc64': 7.0.2
+      '@typescript/typescript-linux-riscv64': 7.0.2
+      '@typescript/typescript-linux-s390x': 7.0.2
+      '@typescript/typescript-linux-x64': 7.0.2
+      '@typescript/typescript-netbsd-arm64': 7.0.2
+      '@typescript/typescript-netbsd-x64': 7.0.2
+      '@typescript/typescript-openbsd-arm64': 7.0.2
+      '@typescript/typescript-openbsd-x64': 7.0.2
+      '@typescript/typescript-sunos-x64': 7.0.2
+      '@typescript/typescript-win32-arm64': 7.0.2
+      '@typescript/typescript-win32-x64': 7.0.2
 
   uc.micro@2.1.0: {}
 
@@ -10107,34 +10291,34 @@ snapshots:
 
   vscode-uri@3.1.0: {}
 
-  vue-demi@0.14.10(vue@3.5.40(typescript@5.6.3)):
+  vue-demi@0.14.10(vue@3.5.40(typescript@7.0.2)):
     dependencies:
-      vue: 3.5.40(typescript@5.6.3)
+      vue: 3.5.40(typescript@7.0.2)
 
   vue-draggable-plus@0.6.1(@types/sortablejs@1.15.9):
     dependencies:
       '@types/sortablejs': 1.15.9
 
-  vue-i18n@11.4.8(vue@3.5.40(typescript@5.6.3)):
+  vue-i18n@11.4.8(vue@3.5.40(typescript@7.0.2)):
     dependencies:
       '@intlify/core-base': 11.4.8
       '@intlify/devtools-types': 11.4.8
       '@intlify/shared': 11.4.8
       '@vue/devtools-api': 6.6.4
-      vue: 3.5.40(typescript@5.6.3)
+      vue: 3.5.40(typescript@7.0.2)
 
-  vue-router@4.6.4(vue@3.5.40(typescript@5.6.3)):
+  vue-router@4.6.4(vue@3.5.40(typescript@7.0.2)):
     dependencies:
       '@vue/devtools-api': 6.6.4
-      vue: 3.5.40(typescript@5.6.3)
+      vue: 3.5.40(typescript@7.0.2)
 
-  vue-tsc@3.3.8(typescript@5.6.3):
+  vue-tsc@3.3.8(typescript@7.0.2):
     dependencies:
       '@volar/typescript': 2.4.28
       '@vue/language-core': 3.3.8
-      typescript: 5.6.3
+      typescript: 7.0.2
 
-  vue@3.5.40(typescript@5.6.3):
+  vue@3.5.40(typescript@7.0.2):
     dependencies:
       '@vue/compiler-dom': 3.5.40
       '@vue/compiler-sfc': 3.5.40
@@ -10142,17 +10326,7 @@ snapshots:
       '@vue/server-renderer': 3.5.40
       '@vue/shared': 3.5.40
     optionalDependencies:
-      typescript: 5.6.3
-
-  vue@3.5.40(typescript@5.9.3):
-    dependencies:
-      '@vue/compiler-dom': 3.5.40
-      '@vue/compiler-sfc': 3.5.40
-      '@vue/runtime-dom': 3.5.40
-      '@vue/server-renderer': 3.5.40
-      '@vue/shared': 3.5.40
-    optionalDependencies:
-      typescript: 5.9.3
+      typescript: 7.0.2
 
   w3c-keyname@2.2.8: {}
 

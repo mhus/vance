@@ -35,7 +35,7 @@
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
-    "@capacitor/cli": "^6.2.0",
+    "@capacitor/cli": "^8.4.2",
     "@vitejs/plugin-vue": "^6.0.8",
     "postcss": "^8.5.23",
     "sharp": "^0.35.3",

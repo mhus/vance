@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.ai;
 
+import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
@@ -31,6 +32,14 @@ import org.slf4j.LoggerFactory;
  *       considered committed — mid-stream errors propagate without retry,
  *       because the caller has already started consuming partial output
  *       and a re-issue would emit duplicates.</li>
+ *   <li>A stream that <em>completes successfully</em> but carries neither
+ *       text nor a tool call is treated as a transient empty response and
+ *       retried on the same terms (only while nothing has been emitted).
+ *       Some providers (notably Gemini) return such empty completions
+ *       instead of throwing — the exception path never sees them, yet
+ *       they are just as recoverable. On exhaustion the empty response is
+ *       still delivered to the caller so downstream empty-reply handling
+ *       (e.g. an engine parking the worker) is unchanged.</li>
  *   <li>After an entry's attempts are exhausted (or the error isn't in
  *       the retry pattern set), the next chain entry is tried fresh.</li>
  *   <li>If all chain entries fail, the last error is forwarded to the
@@ -44,6 +53,23 @@ import org.slf4j.LoggerFactory;
 public class ResilientStreamingChatModel implements StreamingChatModel {
 
     private static final Logger log = LoggerFactory.getLogger(ResilientStreamingChatModel.class);
+
+    /**
+     * Upper bound on retries for a <em>successful but empty</em>
+     * completion, independent of (and never exceeding) the entry's
+     * {@link RetryPolicy#maxAttempts()}. An empty reply usually recovers
+     * on the very next attempt, so a small cap avoids stacking several
+     * full stream timeouts on a provider that is simply returning blanks.
+     */
+    private static final int EMPTY_MAX_ATTEMPTS = 3;
+
+    /**
+     * Synthetic cause used purely for log / notifier messages when an
+     * empty completion drives a retry or chain-advance. Never thrown to
+     * the caller — the empty response itself is delivered on exhaustion.
+     */
+    private static final AiChatException EMPTY_RESPONSE = new AiChatException(
+            "streaming completed with an empty response (neither text nor a tool call)");
 
     /**
      * Single shared scheduler — used only to delay the retry trigger.
@@ -124,6 +150,13 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
 
             @Override
             public void onCompleteResponse(ChatResponse complete) {
+                // Successful-but-empty completion (no text, no tool call).
+                // Only retriable while nothing has been emitted — a
+                // re-issue after partials would duplicate output.
+                if (!emitted.get() && isEmpty(complete)) {
+                    handleEmptyComplete(chainIdx, attempt, request, caller, entry, complete);
+                    return;
+                }
                 caller.onCompleteResponse(complete);
             }
 
@@ -186,6 +219,55 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
                 entry.label(), entry.policy().maxAttempts());
         notifyChainAdvance(entry, chainIdx, error);
         attempt(chainIdx + 1, 1, request, caller, error);
+    }
+
+    /**
+     * Retry / advance / deliver logic for a successful-but-empty
+     * completion. Mirrors {@link #handleError}'s retry+chain-advance
+     * shape, but the terminal action differs: instead of forwarding an
+     * error, the empty response is delivered via {@code onCompleteResponse}
+     * so the caller keeps its existing empty-reply handling.
+     */
+    private void handleEmptyComplete(int chainIdx,
+                                     int attempt,
+                                     ChatRequest request,
+                                     StreamingChatResponseHandler caller,
+                                     ChainEntry entry,
+                                     ChatResponse complete) {
+        int maxAttempts = Math.min(entry.policy().maxAttempts(), EMPTY_MAX_ATTEMPTS);
+        if (attempt < maxAttempts) {
+            long backoffMs = entry.policy().backoffFor(attempt).toMillis();
+            log.warn("ResilientChatModel '{}': empty response (attempt {}/{}), retry in {}ms",
+                    entry.label(), attempt, maxAttempts, backoffMs);
+            notifyRetry(entry, attempt, backoffMs, EMPTY_RESPONSE);
+            CompletableFuture.runAsync(
+                    () -> attempt(chainIdx, attempt + 1, request, caller, EMPTY_RESPONSE),
+                    delayed(backoffMs));
+            return;
+        }
+        if (chainIdx + 1 < chain.size()) {
+            log.warn("ResilientChatModel '{}': empty response, budget exhausted → advance",
+                    entry.label());
+            notifyChainAdvance(entry, chainIdx, EMPTY_RESPONSE);
+            attempt(chainIdx + 1, 1, request, caller, EMPTY_RESPONSE);
+            return;
+        }
+        // No provider produced a non-empty reply. Deliver the empty
+        // response unchanged — the caller (e.g. the engine loop) decides
+        // how to treat a genuine empty completion.
+        log.warn("ResilientChatModel '{}': empty response after {} attempt(s) — delivering empty",
+                entry.label(), attempt);
+        caller.onCompleteResponse(complete);
+    }
+
+    /** True when a completed response carries neither text nor a tool call. */
+    private static boolean isEmpty(@Nullable ChatResponse response) {
+        if (response == null) return true;
+        AiMessage message = response.aiMessage();
+        if (message == null) return true;
+        if (message.hasToolExecutionRequests()) return false;
+        String text = message.text();
+        return text == null || text.isBlank();
     }
 
     private void notifyRetry(ChainEntry entry, int attempt, long backoffMs, Throwable error) {

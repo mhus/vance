@@ -185,11 +185,11 @@ public class FrankieEngine implements ThinkEngine {
      * turn stall silently and has no clue the worker bailed.
      */
     private static final String MODEL_COLLAPSE_MESSAGE =
-            "_The model returned an empty response — "
-                    + "likely context too large or a model-side collapse. "
-                    + "Rephrase the question, shorten the history, or "
-                    + "switch the model. The worker stays BLOCKED until the "
-                    + "next input._";
+            "_The model returned an empty response (no text, no tool call) "
+                    + "even after automatic retries — a transient provider "
+                    + "glitch or a model-side collapse. Try again, or switch "
+                    + "the model. The worker stays BLOCKED until the next "
+                    + "input._";
 
     /**
      * Last-resort hardcoded system prompt — used only when neither the
@@ -462,21 +462,23 @@ public class FrankieEngine implements ThinkEngine {
                 // mode). Explicit "done forever" only happens via
                 // tool-terminate below.
                 //
-                // Edge case: empty LLM response. When the model
-                // returns neither text nor tool calls — typically a
-                // model-side collapse from over-large context or a
-                // provider timeout — the standard natural-stop path
-                // would silently drop the turn (nothing persisted,
-                // user sees no reply). Treat it as a stall instead:
-                // surface a clear assistant message so the user
-                // knows the worker bailed, and park BLOCKED so the
-                // attention is on the broken state rather than
-                // looking ready for the next input.
+                // Edge case: empty LLM response. When the model returns
+                // neither text nor tool calls — a transient provider glitch
+                // (notably Gemini returning a successful empty completion)
+                // or a model-side collapse — the standard natural-stop path
+                // would silently drop the turn (nothing persisted, user
+                // sees no reply). ResilientStreamingChatModel already
+                // retried the empty completion upstream; reaching here means
+                // it stayed empty across retries. Treat it as a stall:
+                // surface a clear assistant message so the user knows the
+                // worker bailed, and park BLOCKED so the attention is on the
+                // broken state rather than looking ready for the next input.
                 if (!reply.hasToolExecutionRequests()) {
                     String finalText = reply.text() == null ? "" : reply.text();
                     if (finalText.isBlank()) {
                         log.warn(
-                                "Frankie id='{}' empty LLM response (no text, no tool calls) — BLOCKED",
+                                "Frankie id='{}' empty LLM response after retries "
+                                        + "(no text, no tool calls) — BLOCKED",
                                 process.getId());
                         persistAssistantReply(process, chatLog, ctx,
                                 MODEL_COLLAPSE_MESSAGE, drained, tools, toolsThisTurn);

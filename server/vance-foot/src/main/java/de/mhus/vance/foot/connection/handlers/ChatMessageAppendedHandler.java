@@ -6,12 +6,17 @@ import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.foot.audit.ConversationAuditService;
 import de.mhus.vance.foot.chat.PendingAskUserPicker;
+import de.mhus.vance.foot.config.FootConfig;
 import de.mhus.vance.foot.connection.MessageHandler;
 import de.mhus.vance.foot.session.SessionService;
 import de.mhus.vance.foot.ui.ChatTerminal;
 import de.mhus.vance.foot.ui.StreamingDisplay;
+import de.mhus.vance.foot.ui.Verbosity;
 import java.util.List;
 import java.util.Objects;
+import org.jline.utils.AttributedString;
+import org.jline.utils.AttributedStringBuilder;
+import org.jline.utils.AttributedStyle;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
@@ -31,23 +36,30 @@ import tools.jackson.databind.json.JsonMapper;
 @Component
 public class ChatMessageAppendedHandler implements MessageHandler {
 
+    /** Dimmed grey for the reasoning block so it reads as a side-channel. */
+    private static final AttributedStyle THOUGHTS_STYLE = AttributedStyle.DEFAULT
+            .foreground(AttributedStyle.BRIGHT + AttributedStyle.BLACK);
+
     private final ChatTerminal terminal;
     private final StreamingDisplay streaming;
     private final SessionService sessions;
     private final PendingAskUserPicker askUserPicker;
     private final ConversationAuditService audit;
+    private final FootConfig config;
     private final ObjectMapper json = JsonMapper.builder().build();
 
     public ChatMessageAppendedHandler(ChatTerminal terminal,
                                       StreamingDisplay streaming,
                                       SessionService sessions,
                                       PendingAskUserPicker askUserPicker,
-                                      ConversationAuditService audit) {
+                                      ConversationAuditService audit,
+                                      FootConfig config) {
         this.terminal = terminal;
         this.streaming = streaming;
         this.sessions = sessions;
         this.askUserPicker = askUserPicker;
         this.audit = audit;
+        this.config = config;
     }
 
     @Override
@@ -61,13 +73,22 @@ public class ChatMessageAppendedHandler implements MessageHandler {
                 envelope.getData(), ChatMessageAppendedData.class);
         // Persist the message to the conversation audit log before
         // rendering — the audit is best-effort and must never block
-        // the UI. Only USER and ASSISTANT roles are audited; SYSTEM
-        // notes are ephemeral and not part of the conversation.
-        if (data.getRole() == ChatRole.USER || data.getRole() == ChatRole.ASSISTANT) {
+        // the UI. Only ASSISTANT turns are audited here: USER turns
+        // are captured locally at send time (see ChatInputService),
+        // because the server does not echo a chat-message-appended for
+        // them in solo sessions. Auditing USER echoes here too would
+        // both miss them in solo sessions and duplicate them in collab
+        // sessions where the echo does come back. SYSTEM notes are
+        // ephemeral and not part of the conversation either way.
+        if (data.getRole() == ChatRole.ASSISTANT) {
             audit.append(data);
         }
         boolean wasStreamed = streaming.onCommit(data.getThinkProcessId());
         if (wasStreamed) {
+            // Streamed turns already showed the answer live; thinking is
+            // only carried on this canonical commit, so it lands right
+            // after the reply.
+            maybeRenderThoughts(data);
             maybeUpdatePicker(data);
             return;
         }
@@ -97,12 +118,39 @@ public class ChatMessageAppendedHandler implements MessageHandler {
         // to the dimmed side-channel as a transparent audit trail —
         // the user can see what the workers are doing, but not as
         // primary conversation content.
+        maybeRenderThoughts(data);
         if (isMainProcess(data.getProcessName())) {
             terminal.chatMarkdown(header, content);
         } else {
             terminal.worker(header + content);
         }
         maybeUpdatePicker(data);
+    }
+
+    /**
+     * Renders the assistant's reasoning ("thoughts") as a dimmed,
+     * gutter-prefixed block at INFO level so it shows by default (see
+     * {@code FootConfig.Ui#showThoughts}). Only for main-process
+     * ASSISTANT turns — worker reasoning would just clutter the
+     * side-channel. No-op when the toggle is off or there is no thinking.
+     */
+    private void maybeRenderThoughts(ChatMessageAppendedData data) {
+        if (!config.getUi().isShowThoughts()) return;
+        if (data.getRole() != ChatRole.ASSISTANT) return;
+        if (!isMainProcess(data.getProcessName())) return;
+        String thinking = data.getThinking();
+        if (thinking == null || thinking.isBlank()) return;
+        terminal.printlnStyled(Verbosity.INFO, dim("💭 thoughts"));
+        for (String line : thinking.strip().split("\\R", -1)) {
+            terminal.printlnStyled(Verbosity.INFO, dim("│ " + line));
+        }
+    }
+
+    private static AttributedString dim(String text) {
+        return new AttributedStringBuilder()
+                .style(THOUGHTS_STYLE)
+                .append(text)
+                .toAttributedString();
     }
 
     /**

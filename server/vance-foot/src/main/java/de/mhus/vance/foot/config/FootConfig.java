@@ -198,6 +198,12 @@ public class FootConfig {
         private WindowTitle windowTitle = new WindowTitle();
         private ToolOutput toolOutput = new ToolOutput();
         private Markdown markdown = new Markdown();
+        /**
+         * Render the model's reasoning ("thoughts") for assistant turns
+         * as a dimmed block alongside the answer. On by default; set
+         * {@code false} to hide the reasoning and show only the reply.
+         */
+        private boolean showThoughts = true;
     }
 
     /**
@@ -345,6 +351,15 @@ public class FootConfig {
     public static class Ide {
         private Claude claude = new Claude();
         private IntellijMcp intellijMcp = new IntellijMcp();
+        /**
+         * Set by {@link VanceProjectConfigApplier} when
+         * {@code defaults.noSandbox} is {@code true} in
+         * {@code .vancetope/config.yaml}. Read by {@code VanceFootCommand}
+         * after {@code applyProjectConfig()} to call
+         * {@code permissions.disableSandbox()} — unless the CLI
+         * already set {@code --no-sandbox} explicitly (CLI wins).
+         */
+        private boolean noSandboxDefault = false;
     }
 
     @Data

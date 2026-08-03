@@ -455,6 +455,16 @@ public class FrankieEngine implements ThinkEngine {
                 AiMessage reply = streamOneIteration(
                         aiChat, req.build(), ctx, process, modelAlias, modelInfo);
 
+                // Accumulate the model's reasoning across the turn's
+                // iterations so persistAssistantReply can snapshot it into
+                // the assistant message's `thinking` field (surfaced by
+                // the client as "thoughts"). Mirrors Arthur/Eddie; append
+                // is null/blank-safe, so providers that don't return
+                // reasoning simply leave the buffer empty.
+                if (ctx.reasoning() != null) {
+                    ctx.reasoning().append(reply.thinking());
+                }
+
                 // Stop path: natural stop (no tool calls). Always
                 // transition to IDLE — context stays alive for a
                 // follow-up turn (parent's process_steer in worker
@@ -699,6 +709,7 @@ public class FrankieEngine implements ThinkEngine {
                 .thinkProcessId(process.getId())
                 .role(ChatRole.ASSISTANT)
                 .content(finalText)
+                .thinking(ctx.reasoning() == null ? null : ctx.reasoning().snapshot())
                 .meta(meta)
                 .build());
         if (saved != null && saved.getId() != null) {

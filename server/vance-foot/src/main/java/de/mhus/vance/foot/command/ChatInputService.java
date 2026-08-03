@@ -203,6 +203,22 @@ public class ChatInputService {
     }
 
     /**
+     * ESC-triggered pause. Sends a {@code process-pause} <b>only</b> when
+     * a chat turn / tool round-trip is actually in flight. A lone ESC
+     * while idle — including a stray ESC byte the terminal injects on
+     * focus change or sleep-wake — is a no-op: pausing an IDLE process
+     * would flip it to PAUSED and mint a bogus "USER INTERRUPTED —
+     * RECONSIDER" banner on the next user turn. Explicit {@code /pause}
+     * ({@link #requestPause()}) stays unconditional.
+     */
+    public void requestPauseFromInterrupt() {
+        if (!busyIndicator.isBusy()) {
+            return;
+        }
+        requestPause();
+    }
+
+    /**
      * Fire-and-forget {@code process-pause} for everything active in
      * the bound session (chat + workers). Halts further turns; the
      * user's next typed chat message lets Arthur decide what to do

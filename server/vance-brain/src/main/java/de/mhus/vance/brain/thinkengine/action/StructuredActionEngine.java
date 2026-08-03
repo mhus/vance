@@ -563,6 +563,17 @@ public abstract class StructuredActionEngine implements ThinkEngine {
                 continue;
             }
 
+            // Deliver the answer even when the model streamed no prose.
+            // Normally the answer arrives live as CHAT_MESSAGE_STREAM_CHUNK
+            // (streamed prose) and the terminal action merely echoes it;
+            // some OpenAI-compatible models (observed: cortecs glm-5.2)
+            // instead pack the whole answer into the structured action's
+            // `message` and stream nothing, so it reaches history via the
+            // commit but never as a chunk — and clients that suppress the
+            // canonical commit render after a streamed turn (foot's
+            // StreamingDisplay#onCommit) then swallow it. Publish it here
+            // so it always shows.
+            streamTerminalMessageIfUnstreamed(reply, parsed.action(), ctx, process);
             return ActionLoopResult.action(parsed.action(), toolInvocations);
         }
 
@@ -999,6 +1010,52 @@ public abstract class StructuredActionEngine implements ThinkEngine {
      * {@code ChatBehavior}). Callers may catch and recover with the
      * best-free-text fallback pattern.
      */
+    /**
+     * The user-facing message that must still be streamed to the client
+     * for a terminal action, or {@code null} when nothing extra is
+     * needed. Returns {@code null} when the model streamed prose this
+     * iteration ({@code replyText} non-blank) — the answer was already
+     * delivered live — or when the action carries no {@code message}.
+     * Pure so it can be unit-tested without the streaming stack.
+     */
+    static @Nullable String unstreamedTerminalMessage(
+            @Nullable String replyText, EngineAction action) {
+        if (replyText != null && !replyText.isBlank()) {
+            return null;
+        }
+        String message = action.stringParam("message");
+        return message == null || message.isBlank() ? null : message;
+    }
+
+    /**
+     * Publishes a terminal action's {@code message} as an answer stream
+     * chunk when the model streamed no prose this iteration, so clients
+     * that render only streamed content still see the reply. No-op in
+     * the normal case (prose was streamed) — see
+     * {@link #unstreamedTerminalMessage}.
+     */
+    private void streamTerminalMessageIfUnstreamed(
+            AiMessage reply, EngineAction action,
+            ThinkEngineContext ctx, ThinkProcessDocument process) {
+        String message = unstreamedTerminalMessage(reply.text(), action);
+        if (message == null) {
+            return;
+        }
+        ChatMessageChunkData data = ChatMessageChunkData.builder()
+                .thinkProcessId(process.getId())
+                .processName(process.getName())
+                .role(ChatRole.ASSISTANT)
+                .chunk(message)
+                .build();
+        try {
+            ctx.events().publish(process.getSessionId(),
+                    MessageType.CHAT_MESSAGE_STREAM_CHUNK, data);
+        } catch (RuntimeException e) {
+            log.warn("{} id='{}' terminal-message stream-publish threw: {}",
+                    name(), process.getId(), e.toString());
+        }
+    }
+
     protected AiMessage streamOneIteration(
             AiChat aiChat,
             ChatRequest request,

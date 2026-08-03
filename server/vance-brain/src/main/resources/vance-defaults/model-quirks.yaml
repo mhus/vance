@@ -28,6 +28,19 @@ rules:
   - match: "deepseek-v4*"
     messageParser: "deepseek-v4"
 
+  # GLM-5.x family (Zhipu, via cortecs): the model occasionally emits
+  # structurally invalid JSON in function.arguments — observed
+  # signature is an unquoted string value ({"glob": "...", "path":
+  # repos/vance"} — the value has no opening quote). The cortecs
+  # STREAMING deserializer then rejects its own replayed output for the
+  # whole request, surfaced misleadingly as `messages[N]: missing field
+  # content` (HTTP 400), which kills the turn. The "deepseek-v4" bean is
+  # the generic ToolArgumentNormalizer (name is historical) — its
+  # round-trip collapses structurally-invalid args to "{}", which the
+  # gateway accepts. Confirmed against api.cortecs.ai/v1 glm-5.2.
+  - match: "glm-*"
+    messageParser: "deepseek-v4"
+
   # Gemma-4 family hosted via LM Studio / llama.cpp HTTP: emits tool
   # calls as plain assistant text in a Gemma-internal pseudo-JSON
   # shape with <|"|> as the string delimiter, instead of populating

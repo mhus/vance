@@ -74,6 +74,17 @@ class ToolArgumentNormalizerTest {
         assertThat(r.args()).isEqualTo("{}");
     }
 
+    @Test
+    void normalize_unquotedValue_glmSignature_collapsesToEmptyObject() {
+        // Real GLM-5.2 output: the "path" value has no opening quote.
+        // cortecs' streaming deserializer rejects this on replay
+        // ("missing field content"); normalisation collapses it to {}.
+        ToolArgumentNormalizer.Result r = ToolArgumentNormalizer.normalizeWithOutcome(
+                "{\"glob\": \"**/readme/*\", \"path\": repos/vance\"}");
+        assertThat(r.outcome()).isEqualTo(ToolArgumentNormalizer.Outcome.EMPTIED);
+        assertThat(r.args()).isEqualTo("{}");
+    }
+
     // -- normalize(AiMessage) ------------------------------------------------
 
     @Test

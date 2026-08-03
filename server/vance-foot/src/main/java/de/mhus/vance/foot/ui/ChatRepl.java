@@ -186,7 +186,9 @@ public class ChatRepl {
     }
 
     private void onInterrupt() {
-        input.requestPause();
+        // ESC pauses in-flight work only; a lone ESC while idle is a
+        // no-op. See ChatInputService#requestPauseFromInterrupt.
+        input.requestPauseFromInterrupt();
     }
 
     /**

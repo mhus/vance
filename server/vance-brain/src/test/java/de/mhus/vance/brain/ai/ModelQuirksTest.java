@@ -15,6 +15,11 @@ class ModelQuirksTest {
         assertThat(quirks.messageParserFor("deepseek-v4-7b")).contains("deepseek-v4");
         assertThat(quirks.messageParserFor("gemma-4-26b-a4b-it")).contains("gemma4");
         assertThat(quirks.messageParserFor("gemma-4-31B-it-qat-4bit")).contains("gemma4");
+        // GLM-5.x shares the generic tool-argument normalizer: the model
+        // emits structurally-invalid JSON args that cortecs' streaming
+        // deserializer rejects on replay.
+        assertThat(quirks.messageParserFor("glm-5.2")).contains("deepseek-v4");
+        assertThat(quirks.messageParserFor("glm-4.6")).contains("deepseek-v4");
     }
 
     @Test
